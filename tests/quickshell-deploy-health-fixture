@@ -58,6 +58,7 @@ SH
 cat >"$scratch/bin/qs" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+[[ ${1:-} == ipc && ${2:-} == --pid && ${3:-} == "$(cat "${QS_DEPLOY_FIXTURE_CONTROL:?}/pid")" && ${4:-} == call ]] || exit 2
 if grep -q '^broken deployment$' \
     "${QS_DEPLOY_FIXTURE_HOME:?}/.local/share/fedora-config/runtime/quickshell/shell.qml"; then
   exit 1

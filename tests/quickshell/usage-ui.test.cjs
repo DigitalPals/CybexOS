@@ -145,3 +145,27 @@ test("xAI Grok is configurable and unknown quota percentages stay unknown", () =
     assert.match(popover, /text:\s*card\.hasUsage \? "% left" : "usage unavailable"/,
         "the xAI tab should still show its reset while its percentage is absent");
 });
+
+
+test("Sub2API settings use their own private key and fetch configuration", () => {
+    assert.match(moduleDetail, /value: "sub2api", label: "Sub2API"/);
+    assert.match(moduleDetail, /label: "Server URL"[\s\S]{0,150}?sub2apiUrl/);
+    assert.match(moduleDetail, /label: "Admin API key"[\s\S]{0,250}?secret: true/);
+    assert.match(moduleDetail, /saveManagementKey\(text, "sub2api"\)/);
+    assert.match(moduleDetail, /clearManagementKey\("sub2api"\)/);
+    assert.match(usage, /--sub2api-url[\s\S]{0,150}?--sub2api-insecure/);
+    assert.match(usage, /configuration !== root.fetchConfiguration[\s\S]{0,100}?Qt.callLater\(root.refresh\)/);
+    assert.match(drawerUsage, /Usage.dashboardUrl/);
+});
+
+
+test("connection testing shares server settings, waits for key saves, and exposes results", () => {
+    assert.match(moduleDetail, /"Test connection"/);
+    assert.match(moduleDetail, /onTriggered: Usage.testConnection\(\)/);
+    assert.match(moduleDetail, /text: Usage.connectionTestMessage/);
+    assert.match(usage, /command: root.fetchCommand\(true\)/);
+    assert.match(usage, /if \(testing\)[\s\S]{0,80}?--test-connection/);
+    assert.match(usage, /!connectionTestPending \|\| credentialProc.running/);
+    assert.match(usage, /credentialRevision\+\+/);
+    assert.match(usage, /connectionTestSucceeded[\s\S]{0,600}?root.refresh\(\)/);
+});

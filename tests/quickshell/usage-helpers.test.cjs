@@ -42,3 +42,16 @@ test("selection moves to the first provider when the proxy inventory changes", (
     assert.equal(H.selectedProvider(["codex", "xai"], "xai"), "xai");
     assert.equal(H.selectedProvider([], "kimi"), "kimi");
 });
+
+
+test("Sub2API discovers Gemini and managed failures without adding direct CLI tabs", () => {
+    assert.deepEqual(H.providerKeys("sub2api", {
+        claude: { source: "sub2api", status: "ok" },
+        codex: { source: "sub2api", status: "error", kind: "config" },
+        gemini: { source: "sub2api", status: "ok" },
+        xai: { source: "sub2api", staleKind: "nocreds" },
+        kimi: { source: "cliproxy", status: "ok" }
+    }), ["claude", "codex", "gemini"]);
+    assert.deepEqual(H.providerKeys("sub2api", {}), []);
+    assert.deepEqual(H.providerKeys("direct", {}), ["claude", "codex", "kimi", "xai"]);
+});

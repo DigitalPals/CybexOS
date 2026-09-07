@@ -1164,3 +1164,20 @@ test("reset snapshots restore only the covered values", () => {
     });
     assert.deepEqual(snapshot, { accent: "#9ecbeb", font: "oppo" });
 });
+
+
+test("Sub2API connection settings round-trip independently of CLIProxyAPI", () => {
+    const settings = H.defaults();
+    settings.modOpts.usage.source = "sub2api";
+    settings.modOpts.usage.sub2apiUrl = "https://models.test/sub2api";
+    settings.modOpts.usage.sub2apiTlsVerify = false;
+    settings.modOpts.usage.gemini = false;
+    settings.modOpts.usage.cliproxyUrl = "https://existing.test";
+    const restored = H.merge(JSON.parse(H.serialize(settings)));
+    assert.equal(restored.modOpts.usage.source, "sub2api");
+    assert.equal(restored.modOpts.usage.sub2apiUrl, "https://models.test/sub2api");
+    assert.equal(restored.modOpts.usage.sub2apiTlsVerify, false);
+    assert.equal(restored.modOpts.usage.gemini, false);
+    assert.equal(restored.modOpts.usage.cliproxyUrl, "https://existing.test");
+    assert.equal(H.defaults().modOpts.usage.source, "cliproxy");
+});

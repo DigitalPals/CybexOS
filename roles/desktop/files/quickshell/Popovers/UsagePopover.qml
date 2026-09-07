@@ -70,7 +70,7 @@ Surface {
         const name = Usage.meta[Usage.selected].name;
         switch (prov.kind) {
         case "config":
-            return "CLIProxyAPI setup required";
+            return Usage.sourceName + " setup required";
         case "nocreds":
             return name + " sign-in required";
         case "expired":
@@ -88,24 +88,24 @@ Surface {
 
     function errorBody(prov) {
         const cmd = Usage.meta[Usage.selected].cmd;
-        const proxied = Settings.modOpts.usage.source === "cliproxy";
+        const proxied = Settings.modOpts.usage.source !== "direct";
         switch (prov.kind) {
         case "config":
-            return prov.message || "Check the CLIProxyAPI connection in widget settings.";
+            return prov.message || "Check the " + Usage.sourceName + " connection in widget settings.";
         case "nocreds":
             if (proxied)
-                return prov.message || "No matching managed credential is enabled in CLIProxyAPI.";
+                return prov.message || "No matching account is enabled in " + Usage.sourceName + ".";
             return `No CLI credentials found. Run <font color="${Theme.textMid}" face="${Theme.fontMono}">${cmd}</font> in a terminal, complete the sign-in, then press Refresh.`;
         case "expired":
             if (proxied)
-                return prov.message || "CLIProxyAPI's managed provider token was rejected.";
+                return prov.message || "The managed provider token was rejected.";
             return `The stored token has expired. Run <font color="${Theme.textMid}" face="${Theme.fontMono}">${cmd}</font> in a terminal, then press Refresh.`;
         case "rate":
             return "The usage endpoint is rate limiting requests. Polling will retry automatically.";
         case "refresh":
             return `${prov.message || "Claude Code could not refresh the saved login."} Run <font color="${Theme.textMid}" face="${Theme.fontMono}">${cmd}</font> if it does not recover automatically.`;
         case "wait":
-            return "The previous quota period has reset. Its old reading was hidden; polling will fetch the new period when the five-minute endpoint interval allows it.";
+            return prov.message || "The previous quota period has reset. Its old reading was hidden; polling will fetch the new period when the five-minute endpoint interval allows it.";
         default:
             return prov.message || "The usage endpoint returned an unexpected response.";
         }
@@ -118,7 +118,7 @@ Surface {
             message = "The usage endpoint is rate limited. These are the last valid readings.";
             break;
         case "expired":
-            message = Settings.modOpts.usage.source === "cliproxy"
+            message = Settings.modOpts.usage.source !== "direct"
                 ? "A managed provider token was rejected. These are the last valid readings."
                 : Settings.modOpts.usage.claudeAutoRefresh
                 ? "Claude's login could not be refreshed. These are the last valid readings."
@@ -299,8 +299,8 @@ Surface {
 
             Text {
                 width: parent.width
-                text: Usage.loading ? "Waiting for CLIProxyAPI."
-                    : "CLIProxyAPI did not return a supported enabled provider."
+                text: Usage.loading ? "Waiting for " + Usage.sourceName + "."
+                    : Usage.sourceName + " did not return a supported enabled provider."
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontSecondary
                 color: Theme.textLow

@@ -231,6 +231,9 @@ function defaultModOpts() {
             source: "cliproxy",
             cliproxyUrl: "",
             cliproxyTlsVerify: true,
+            sub2apiUrl: "",
+            sub2apiTlsVerify: true,
+            gemini: true,
             claude: true, claudeAutoRefresh: true, codex: true, kimi: true,
             xai: true,
             warnAt: 25, critAt: 10
@@ -773,9 +776,12 @@ var MOD_OPT_CHECKS = {
         }
     },
     usage: {
-        source: function(v, d) { return enumIn(v, ["direct", "cliproxy"], d); },
+        source: function(v, d) { return enumIn(v, ["direct", "cliproxy", "sub2api"], d); },
         cliproxyUrl: function(v, d) { return textIn(v, 400, d); },
         cliproxyTlsVerify: boolIn,
+        sub2apiUrl: function(v, d) { return textIn(v, 400, d); },
+        sub2apiTlsVerify: boolIn,
+        gemini: boolIn,
         claude: boolIn,
         claudeAutoRefresh: boolIn,
         codex: boolIn,

@@ -4,7 +4,8 @@
 In direct mode this reads the credential files the provider CLIs (Claude Code,
 Codex CLI, Kimi Code) write locally.  In CLIProxyAPI mode it asks the protected
 management API to call the same usage endpoints with each managed credential,
-including xAI/Grok; provider tokens never leave CLIProxyAPI.  With
+including xAI/Grok; provider tokens never leave CLIProxyAPI. Sub2API mode
+reads managed account quotas through its admin API.  With
 ``--refresh-claude``, an expiring direct-mode Claude access token is handed
 back to the official Claude CLI for refresh.
 
@@ -12,7 +13,7 @@ Successful readings are cached privately.  Endpoint failures retain a marked
 stale reading until its reset passes, and repeated failures back off instead
 of hammering a rate-limited endpoint.
 
-Prints one JSON object with ``claude``, ``codex``, ``kimi``, and ``xai`` rows.
+Prints one JSON object keyed by provider (including Gemini in Sub2API mode).
 Each provider is {"status": "ok", ...} or {"status": "error", "kind": ...}.
 """
 
@@ -857,13 +858,17 @@ def parse_xai_usage(weekly_payload, monthly_payload=None):
 
 # ------------------------------------------------------------- CLIProxyAPI
 
-def cliproxy_key_path():
-    override = os.environ.get("QUICKSHELL_USAGE_CLIPROXY_KEY_PATH")
+def cliproxy_key_path(source="cliproxy"):
+    return management_key_path(source)
+
+
+def management_key_path(source):
+    override = os.environ.get(f"QUICKSHELL_USAGE_{source.upper()}_KEY_PATH")
     if override:
         return os.path.abspath(os.path.expanduser(override))
     state_home = os.environ.get("XDG_STATE_HOME") or home(".local", "state")
     return os.path.join(os.path.expanduser(state_home), "quickshell",
-                        "model-usage-cliproxy.key")
+                        f"model-usage-{source}.key")
 
 
 def read_cliproxy_key(path=None):
@@ -1184,6 +1189,10 @@ def fetch_cliproxy_provider(provider, entries, client):
                     provider, entry,
                     fetch_cliproxy_account(provider, entry, client), position)
                 for position, entry in enumerate(matching)]
+    return summarize_accounts(readings, "cliproxy")
+
+
+def summarize_accounts(readings, source):
     disambiguate_cliproxy_labels(readings)
     successful = [value for value in readings
                   if isinstance(value, dict) and value.get("status") == "ok"]
@@ -1195,8 +1204,8 @@ def fetch_cliproxy_provider(provider, entries, client):
         failure.pop("id", None)
         failure.pop("label", None)
         failure.update({
-            "source": "cliproxy",
-            "accountCount": len(matching),
+            "source": source,
+            "accountCount": len(readings),
             "availableCount": 0,
             "accounts": readings,
         })
@@ -1210,8 +1219,8 @@ def fetch_cliproxy_provider(provider, entries, client):
     best_account_id = best.pop("id")
     best.pop("label", None)
     best.pop("account", None)
-    best["source"] = "cliproxy"
-    best["accountCount"] = len(matching)
+    best["source"] = source
+    best["accountCount"] = len(readings)
     best["availableCount"] = len(successful)
     best["bestAccountId"] = best_account_id
     best["accounts"] = readings
@@ -1240,6 +1249,218 @@ def make_cliproxy_providers(address, verify_tls):
                           for name in provider_names)
     fingerprint = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
     return providers, f"{client.base}|{verify_tls}|{fingerprint}"
+
+
+# ---------------------------------------------------------------- Sub2API
+
+SUB2API_PLATFORMS = {"anthropic": "claude", "openai": "codex",
+                     "gemini": "gemini", "antigravity": "gemini", "grok": "xai"}
+SUB2API_PROVIDERS = ("claude", "codex", "gemini", "xai")
+
+
+def normalize_sub2api_url(value):
+    try:
+        base = normalize_cliproxy_url(value)
+    except ValueError as failure:
+        raise ValueError(str(failure).replace("CLIProxyAPI", "Sub2API")) from None
+    for suffix in ("/api/v1/admin/accounts", "/api/v1/admin", "/api/v1",
+                   "/admin/accounts", "/admin/dashboard", "/admin"):
+        if base.endswith(suffix):
+            return base[:-len(suffix)]
+    return base
+
+
+class Sub2ApiClient:
+    def __init__(self, address, key, verify_tls=True):
+        self.base = normalize_sub2api_url(address)
+        self.key = key
+        self.ssl_context = (ssl._create_unverified_context()
+                            if not verify_tls else None)
+
+    def api_json(self, path):
+        # Admin keys must never be forwarded by an HTTP redirect.
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+
+        request = urllib.request.Request(self.base + "/api/v1/admin" + path,
+            headers={"x-api-key": self.key, "Accept": "application/json"})
+        opener = urllib.request.build_opener(NoRedirect(),
+            urllib.request.HTTPSHandler(context=self.ssl_context))
+        try:
+            with opener.open(request, timeout=TIMEOUT) as response:
+                payload = response.read()
+        except urllib.error.HTTPError as failure:
+            with failure:
+                if failure.code in (401, 403):
+                    return None, err("config",
+                        f"Sub2API rejected the admin API key (HTTP {failure.code}). "
+                        "Use the admin API key from Sub2API admin settings, not an inference API key.")
+                if failure.code == 429:
+                    return None, err("rate", "Sub2API is rate limited.",
+                        retryAfter=retry_after_seconds(failure.headers))
+                return None, err("http", f"Sub2API returned HTTP {failure.code}.")
+        except Exception:
+            return None, err("network", "Could not connect to Sub2API. Check its URL and TLS settings.")
+        try:
+            envelope = json.loads(payload)
+            if not isinstance(envelope, dict) or envelope.get("code") != 0:
+                return None, err("parse", "Sub2API returned an unsuccessful API response.")
+            return envelope["data"], None
+        except (ValueError, TypeError, KeyError):
+            return None, err("parse", "Sub2API returned an invalid API response.")
+
+    def accounts(self):
+        accounts = []
+        for page in range(1, 101):
+            data, failure = self.api_json(
+                f"/accounts?lite=true&page={page}&page_size=100")
+            if failure:
+                return None, failure
+            if (not isinstance(data, dict) or not isinstance(data.get("items"), list)
+                    or not isinstance(data.get("total"), int)):
+                return None, err("parse", "Sub2API returned an invalid account list.")
+            items = data["items"]
+            if any(not isinstance(item, dict) for item in items):
+                return None, err("parse", "Sub2API returned an invalid account.")
+            accounts.extend(items)
+            if len(accounts) >= data["total"]:
+                return accounts, None
+            if not items:
+                break
+        return None, err("parse", "Sub2API account pagination did not complete.")
+
+
+def sub2api_number(value):
+    number = lenient_num(value) if not isinstance(value, bool) else None
+    return number if number is not None and math.isfinite(number) else None
+
+
+def parse_sub2api_usage(data):
+    if not isinstance(data, dict):
+        return err("parse", "Sub2API returned invalid account usage.")
+    if data.get("error") or data.get("error_code") or data.get("needs_reauth") or data.get("is_forbidden"):
+        kind = {"unauthenticated": "expired", "rate_limited": "rate",
+                "network_error": "network"}.get(data.get("error_code"), "http")
+        if data.get("needs_reauth"):
+            kind = "expired"
+        return err(kind, "Sub2API could not read this account's quota. Check the account in its dashboard.")
+    windows = []
+    fields = [("five_hour", "5 hour limit", FIVE_HOURS),
+              ("seven_day", "Weekly limit", SEVEN_DAYS),
+              ("seven_day_sonnet", "Sonnet weekly limit", SEVEN_DAYS),
+              ("seven_day_fable", "Fable weekly limit", SEVEN_DAYS),
+              ("thirty_day", "Monthly limit", 30 * 86400)]
+    for pool in ("shared", "pro", "flash"):
+        for period, seconds in (("daily", 86400), ("minute", 60)):
+            fields.append((f"gemini_{pool}_{period}",
+                           f"Gemini {pool.title()} {period}", seconds))
+    for field, label, seconds in fields:
+        value = data.get(field)
+        if not isinstance(value, dict):
+            continue
+        used = sub2api_number(value.get("utilization"))
+        reset = parse_rfc3339(value.get("resets_at"))
+        if reset is not None and reset <= time.time():
+            continue
+        windows.append({"label": label, "used": min(100, max(0, used))
+                        if used is not None else None,
+                        "windowSecs": seconds, "resetsAt": reset})
+    quotas = data.get("antigravity_quota")
+    if isinstance(quotas, dict):
+        for model, quota in sorted(quotas.items()):
+            if not isinstance(quota, dict):
+                continue
+            used = sub2api_number(quota.get("utilization"))
+            reset = parse_rfc3339(quota.get("reset_time"))
+            if reset is not None and reset <= time.time():
+                continue
+            windows.append({"label": str(model)[:80], "used": min(100, max(0, used))
+                            if used is not None else None,
+                            "windowSecs": None, "resetsAt": reset})
+    for field, label in (("grok_request_quota", "Request limit"),
+                         ("grok_token_quota", "Token limit")):
+        quota = data.get(field)
+        if not isinstance(quota, dict):
+            continue
+        limit = sub2api_number(quota.get("limit"))
+        left = sub2api_number(quota.get("remaining"))
+        reset = parse_rfc3339(quota.get("reset_at")) or sub2api_number(quota.get("reset_unix"))
+        if reset is not None and reset <= time.time():
+            continue
+        used = min(100, max(0, (1 - left / limit) * 100)) if limit and limit > 0 and left is not None else None
+        windows.append({"label": label, "used": used, "windowSecs": None, "resetsAt": reset})
+    if not windows:
+        return err("wait", "Sub2API has no current quota snapshot. Use the account, then refresh usage.")
+    return {"status": "ok", "windows": windows, "credits": None,
+            "plan": mask_emails_in_label(first_text(data, "subscription_tier"))}
+
+
+def sub2api_codex_snapshot(entry):
+    # GET /accounts/:id/usage can generate an inference request for Codex.
+    # Read the persisted snapshot from the lite inventory instead.
+    extra = entry.get("extra")
+    extra = extra if isinstance(extra, dict) else {}
+    data = {}
+    for period, field in (("5h", "five_hour"), ("7d", "seven_day")):
+        used = sub2api_number(extra.get(f"codex_{period}_used_percent"))
+        if used is None:
+            continue
+        reset = extra.get(f"codex_{period}_reset_at")
+        if not parse_rfc3339(reset):
+            observed = parse_rfc3339(extra.get("codex_usage_updated_at"))
+            after = sub2api_number(extra.get(f"codex_{period}_reset_after_seconds"))
+            if observed is not None and after is not None:
+                reset = datetime.fromtimestamp(observed + after, timezone.utc).isoformat()
+        data[field] = {"utilization": used, "resets_at": reset}
+    return parse_sub2api_usage(data)
+
+
+def fetch_sub2api_provider(provider, entries, client):
+    matching = [entry for entry in entries
+                if SUB2API_PLATFORMS.get(entry.get("platform")) == provider
+                and entry.get("status") != "disabled"]
+    if not matching:
+        return err("nocreds", f"No enabled {provider} accounts in Sub2API.")
+    readings = []
+    for position, entry in enumerate(matching):
+        account_id = entry.get("id")
+        if type(account_id) is not int or account_id <= 0:
+            value = err("parse", "Sub2API account has an invalid ID.")
+        elif provider == "codex":
+            value = sub2api_codex_snapshot(entry)
+        else:
+            data, failure = client.api_json(f"/accounts/{account_id}/usage")
+            value = failure or parse_sub2api_usage(data)
+        value["id"] = "account-" + hashlib.sha256(
+            f"sub2api:{account_id}".encode()).hexdigest()[:16]
+        value["label"] = mask_emails_in_label(first_text(entry, "name")) or f"Account {position + 1}"
+        readings.append(value)
+    return summarize_accounts(readings, "sub2api")
+
+
+def make_sub2api_providers(address, verify_tls):
+    key, failure = read_cliproxy_key(management_key_path("sub2api"))
+    if failure:
+        failure["message"] = failure["message"].replace("CLIProxyAPI management", "Sub2API admin API")
+    client = None
+    if not failure:
+        try:
+            client = Sub2ApiClient(address, key, verify_tls)
+        except ValueError as error:
+            failure = err("config", str(error))
+    fingerprint = "sub2api|" + hashlib.sha256(
+        f"{address}|{verify_tls}|{key}".encode()).hexdigest()
+    if not failure:
+        entries, failure = client.accounts()
+    if failure:
+        # Keep setup failures visible even before an inventory is available.
+        failure["source"] = "sub2api"
+        return tuple((name, lambda: copy.deepcopy(failure))
+                     for name in SUB2API_PROVIDERS), fingerprint
+    return tuple((name, lambda provider=name:
+                  fetch_sub2api_provider(provider, entries, client))
+                 for name in SUB2API_PROVIDERS), fingerprint
 
 
 PROVIDERS = (("claude", fetch_claude), ("codex", fetch_codex),
@@ -1353,10 +1574,41 @@ def fetch_all_resilient(providers, state, now=None, min_intervals=None):
     return result
 
 
+def test_connection(source, address, verify_tls=True):
+    """Check current credentials and inventory without cached quota readings."""
+    name = "Sub2API" if source == "sub2api" else "CLIProxyAPI"
+    key, failure = read_cliproxy_key(management_key_path(source))
+    if failure:
+        message = failure["message"].replace("CLIProxyAPI management", "Sub2API admin API") if source == "sub2api" else failure["message"]
+        return {"success": False, "kind": failure["kind"], "message": message}
+    try:
+        client = (Sub2ApiClient if source == "sub2api" else CliProxyClient)(address, key, verify_tls)
+    except ValueError as failure:
+        return {"success": False, "kind": "config", "message": str(failure)}
+    entries, failure = client.accounts() if source == "sub2api" else client.auth_files()
+    if failure:
+        return {"success": False, "kind": failure["kind"], "message": failure["message"]}
+    supported = 0
+    for entry in entries:
+        if source == "sub2api":
+            supported += (entry.get("status") != "disabled"
+                          and entry.get("platform") in SUB2API_PLATFORMS)
+        else:
+            supported += (entry.get("disabled") is not True and
+                (first_text(entry, "provider", "type") or "").lower() in
+                ("claude", "codex", "kimi", "xai"))
+    message = f"Connected to {name}. Admin access verified." if source == "sub2api" else f"Connected to {name}. Management access verified."
+    if supported:
+        message += f" Found {supported} supported enabled account{'s' if supported != 1 else ''}."
+    else:
+        message += " No supported enabled accounts found."
+    return {"success": True, "accountCount": supported, "message": message}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--source", choices=("direct", "cliproxy"), default="direct",
+        "--source", choices=("direct", "cliproxy", "sub2api"), default="direct",
         help="credential source (default: direct)",
     )
     parser.add_argument(
@@ -1373,10 +1625,25 @@ def main():
         action="store_true",
         help="let the installed Claude CLI refresh expiring Claude credentials",
     )
+    parser.add_argument("--sub2api-url", default="", help="Sub2API server or admin URL")
+    parser.add_argument("--sub2api-insecure", action="store_true",
+                        help="disable TLS verification for Sub2API only")
+    parser.add_argument("--test-connection", action="store_true",
+                        help="test management access without reading or writing the usage cache")
     args = parser.parse_args()
+    if args.test_connection:
+        if args.source == "direct":
+            parser.error("--test-connection requires a server source")
+        address = args.sub2api_url if args.source == "sub2api" else args.cliproxy_url
+        verify_tls = not (args.sub2api_insecure if args.source == "sub2api" else args.cliproxy_insecure)
+        json.dump(test_connection(args.source, address, verify_tls), sys.stdout)
+        return
 
     source_fingerprint = "direct"
-    if args.source == "cliproxy":
+    if args.source == "sub2api":
+        providers, source_fingerprint = make_sub2api_providers(
+            args.sub2api_url, not args.sub2api_insecure)
+    elif args.source == "cliproxy":
         providers, source_fingerprint = make_cliproxy_providers(
             args.cliproxy_url, not args.cliproxy_insecure)
     else:

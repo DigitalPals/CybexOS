@@ -242,8 +242,8 @@ Column {
             Text {
                 width: parent.width
                 text: !root.hasProvider
-                    ? (Usage.loading ? "Waiting for CLIProxyAPI."
-                        : "CLIProxyAPI did not return a supported enabled provider.")
+                    ? (Usage.loading ? "Waiting for " + Usage.sourceName + "."
+                        : Usage.sourceName + " did not return a supported enabled provider.")
                     : Usage.fetchError !== "" ? Usage.fetchError
                     : root.singleRecord && root.singleRecord.message
                     ? root.singleRecord.message
@@ -309,13 +309,13 @@ Column {
         info: root.record && root.record.source
             ? "via " + root.record.source
             : "source · " + Settings.modOpts.usage.source
-        actionText: Settings.modOpts.usage.source === "cliproxy"
-            && Settings.modOpts.usage.cliproxyUrl !== ""
+        actionText: Settings.modOpts.usage.source !== "direct"
+            && Usage.dashboardUrl !== ""
             ? "Open dashboard" : ""
         onActionClicked: {
             Popouts.close();
             Quickshell.execDetached(["xdg-open",
-                Settings.modOpts.usage.cliproxyUrl]);
+                Usage.dashboardUrl]);
         }
     }
 }

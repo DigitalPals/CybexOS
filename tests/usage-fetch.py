@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 import stat
@@ -423,6 +424,212 @@ class CliProxyCredentialHelperTests(unittest.TestCase):
                 stderr=subprocess.PIPE, env=environment, check=False)
             self.assertEqual(cleared.returncode, 0, cleared.stderr)
             self.assertFalse(path.exists())
+
+
+class Sub2ApiTests(unittest.TestCase):
+    def test_url_normalization_preserves_reverse_proxy_prefix(self):
+        for suffix in ("", "/", "/admin/accounts", "/admin/dashboard",
+                       "/api/v1", "/api/v1/admin"):
+            self.assertEqual(MODULE.normalize_sub2api_url(
+                "https://proxy.test/sub2api" + suffix), "https://proxy.test/sub2api")
+        for url in ("", "file:///tmp/key", "https://user:secret@proxy.test",
+                    "https://proxy.test?key=secret", "https://proxy.test/../admin"):
+            with self.assertRaises(ValueError):
+                MODULE.normalize_sub2api_url(url)
+
+    def test_pagination_and_partial_inventory_failure(self):
+        client = MODULE.Sub2ApiClient("https://proxy.test", "private")
+        client.api_json = mock.Mock(side_effect=[
+            ({"items": [{"id": 1}], "total": 2}, None),
+            ({"items": [{"id": 2}], "total": 2}, None)])
+        accounts, failure = client.accounts()
+        self.assertIsNone(failure)
+        self.assertEqual([row["id"] for row in accounts], [1, 2])
+        self.assertIn("page=2", client.api_json.call_args.args[0])
+        client.api_json = mock.Mock(side_effect=[
+            ({"items": [{"id": 1}], "total": 2}, None),
+            (None, MODULE.err("network"))])
+        self.assertEqual(client.accounts(), (None, MODULE.err("network")))
+
+    def test_quota_units_unknown_values_and_expired_windows(self):
+        with mock.patch.object(MODULE.time, "time", return_value=1000):
+            result = MODULE.parse_sub2api_usage({
+                "five_hour": {"utilization": 25, "resets_at": "1970-01-01T01:00:00Z"},
+                "seven_day": {"utilization": 150},
+                "seven_day_sonnet": {"utilization": "NaN"},
+                "seven_day_fable": {"utilization": True},
+                "thirty_day": {"utilization": 80, "resets_at": "1970-01-01T00:01:00Z"},
+                "gemini_pro_daily": {"utilization": 40},
+                "antigravity_quota": {"gemini-flash": {"utilization": 12}},
+                "grok_request_quota": {"limit": 100, "remaining": 75, "reset_unix": 2000},
+            })
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual([row["used"] for row in result["windows"]],
+                         [25, 100, None, None, 40, 12, 25])
+        self.assertEqual(result["windows"][0]["windowSecs"], MODULE.FIVE_HOURS)
+        self.assertEqual(result["windows"][-1]["resetsAt"], 2000)
+        self.assertEqual(MODULE.parse_sub2api_usage({})["kind"], "wait")
+        self.assertEqual(MODULE.parse_sub2api_usage([])["kind"], "parse")
+
+    def test_account_errors_do_not_expose_upstream_diagnostics(self):
+        result = MODULE.parse_sub2api_usage({
+            "error_code": "unauthenticated", "error": "secret-token",
+            "five_hour": {"utilization": 10}})
+        self.assertEqual(result["kind"], "expired")
+        self.assertNotIn("secret-token", json.dumps(result))
+
+    def test_codex_reads_saved_snapshot_without_an_inference_probe(self):
+        client = mock.Mock()
+        entries = [{"id": 1, "platform": "openai", "status": "active",
+                    "name": "test@example.com", "credentials": {"token": "secret"},
+                    "extra": {"codex_5h_used_percent": 30,
+                              "codex_usage_updated_at": "1970-01-01T00:16:40Z",
+                              "codex_5h_reset_after_seconds": 3600}}]
+        with mock.patch.object(MODULE.time, "time", return_value=1000):
+            result = MODULE.fetch_sub2api_provider("codex", entries, client)
+        client.api_json.assert_not_called()
+        self.assertEqual(result["source"], "sub2api")
+        self.assertEqual(result["windows"][0]["resetsAt"], 4600)
+        self.assertEqual(result["windows"][0]["used"], 30)
+        self.assertEqual(result["accounts"][0]["label"], "t•••@example.com")
+        self.assertNotIn("secret", json.dumps(result))
+        self.assertNotIn("test@example.com", json.dumps(result))
+
+    def test_best_account_summary_keeps_failures_and_excludes_disabled(self):
+        client = mock.Mock()
+        client.api_json.side_effect = [
+            ({"five_hour": {"utilization": 75}}, None),
+            (None, MODULE.err("expired", "Rejected")),
+            ({"five_hour": {"utilization": 20}}, None)]
+        entries = [{"id": n, "name": "Team", "platform": "anthropic",
+                    "status": "disabled" if n == 4 else "active"}
+                   for n in range(1, 5)]
+        result = MODULE.fetch_sub2api_provider("claude", entries, client)
+        self.assertEqual(result["accountCount"], 3)
+        self.assertEqual(result["availableCount"], 2)
+        self.assertEqual(result["windows"][0]["used"], 20)
+        self.assertEqual(result["bestAccountId"], result["accounts"][2]["id"])
+        self.assertEqual(result["accounts"][1]["kind"], "expired")
+        self.assertEqual(result["accounts"][2]["label"], "Team · 3")
+        absent = MODULE.fetch_sub2api_provider("gemini", entries, client)
+        self.assertEqual(absent["kind"], "nocreds")
+        self.assertNotIn("source", absent)
+
+    def test_connection_checks_inventory_without_reading_quotas_or_cache(self):
+        with mock.patch.object(MODULE, "read_cliproxy_key", return_value=("private", None)), \
+                mock.patch.object(MODULE.Sub2ApiClient, "accounts", return_value=([
+                    {"platform": "openai", "status": "active"},
+                    {"platform": "anthropic", "status": "disabled"},
+                    {"platform": "unknown", "status": "active"}], None)), \
+                mock.patch.object(MODULE, "load_state") as load, \
+                mock.patch.object(MODULE, "save_state") as save, \
+                mock.patch.object(MODULE.Sub2ApiClient, "api_json") as usage:
+            result = MODULE.test_connection("sub2api", "https://proxy.test")
+        self.assertTrue(result["success"])
+        self.assertEqual(result["accountCount"], 1)
+        self.assertIn("Admin access verified", result["message"])
+        load.assert_not_called()
+        save.assert_not_called()
+        usage.assert_not_called()
+        self.assertNotIn("private", json.dumps(result))
+
+    def test_connection_reports_auth_failure_and_empty_inventory(self):
+        with mock.patch.object(MODULE, "read_cliproxy_key", return_value=("private", None)), \
+                mock.patch.object(MODULE.Sub2ApiClient, "accounts", side_effect=[
+                    (None, MODULE.err("config", "Admin key rejected")), ([], None)]):
+            rejected = MODULE.test_connection("sub2api", "https://proxy.test")
+            empty = MODULE.test_connection("sub2api", "https://proxy.test")
+        self.assertFalse(rejected["success"])
+        self.assertEqual(rejected["message"], "Admin key rejected")
+        self.assertTrue(empty["success"])
+        self.assertEqual(empty["accountCount"], 0)
+        self.assertIn("No supported enabled accounts", empty["message"])
+
+    def test_connection_supports_cliproxy_and_invalid_urls(self):
+        with mock.patch.object(MODULE, "read_cliproxy_key", return_value=("private", None)), \
+                mock.patch.object(MODULE.CliProxyClient, "auth_files", return_value=([
+                    {"provider": "codex"}, {"provider": "xai", "disabled": True}], None)):
+            result = MODULE.test_connection("cliproxy", "https://proxy.test")
+            invalid = MODULE.test_connection("sub2api", "not-a-url")
+        self.assertTrue(result["success"])
+        self.assertEqual(result["accountCount"], 1)
+        self.assertFalse(invalid["success"])
+        self.assertEqual(invalid["kind"], "config")
+
+    def test_private_key_errors_stay_visible_and_fingerprints_change(self):
+        with mock.patch.object(MODULE, "read_cliproxy_key", return_value=(None, MODULE.err(
+                "config", "CLIProxyAPI management key is not configured."))):
+            providers, first = MODULE.make_sub2api_providers("https://one.test", True)
+            _, second = MODULE.make_sub2api_providers("https://two.test", True)
+        result = MODULE.fetch_all(providers)
+        self.assertNotEqual(first, second)
+        self.assertTrue(all(row["source"] == "sub2api" for row in result.values()))
+        self.assertIn("Sub2API admin API key", result["claude"]["message"])
+
+    def test_http_admin_auth_envelope_rate_limit_and_redirect_safety(self):
+        requests = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                requests.append((self.path, self.headers.get("x-api-key")))
+                if self.path.endswith("/redirect"):
+                    self.send_response(302)
+                    self.send_header("Location", "/leaked-key")
+                    self.end_headers()
+                    return
+                if self.path.endswith("/rate"):
+                    self.send_response(429)
+                    self.send_header("Retry-After", "120")
+                    self.end_headers()
+                    return
+                if self.path.endswith("/auth"):
+                    self.send_response(401)
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(json.dumps({"code": 0, "data": {"ok": True}}).encode())
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        worker = threading.Thread(target=server.serve_forever)
+        worker.start()
+        try:
+            client = MODULE.Sub2ApiClient(f"http://127.0.0.1:{server.server_port}/prefix", "private")
+            self.assertEqual(client.api_json("/success"), ({"ok": True}, None))
+            self.assertEqual(client.api_json("/redirect")[1]["kind"], "http")
+            self.assertEqual(client.api_json("/rate")[1]["retryAfter"], 120)
+            self.assertEqual(client.api_json("/auth")[1]["kind"], "config")
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join()
+        self.assertEqual(len(requests), 4)
+        self.assertTrue(all(path.startswith("/prefix/api/v1/admin/") and key == "private"
+                            for path, key in requests))
+
+    def test_sub2api_key_storage_is_separate_and_newline_does_not_wait_for_eof(self):
+        with tempfile.TemporaryDirectory(prefix="fedora-config-sub2api-test-") as temporary:
+            environment = dict(os.environ, XDG_STATE_HOME=temporary)
+            process = subprocess.Popen([str(CREDENTIAL_PATH), "store", "--source", "sub2api"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                env=environment)
+            try:
+                process.stdin.write(b"sub2api-test-key\n")
+                process.stdin.flush()
+                process.wait(timeout=3)
+                self.assertEqual(process.returncode, 0)
+                self.assertNotIn(b"sub2api-test-key", process.stdout.read())
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+            key = Path(temporary) / "quickshell/model-usage-sub2api.key"
+            self.assertEqual(stat.S_IMODE(key.stat().st_mode), 0o600)
+            self.assertEqual(MODULE.read_cliproxy_key(str(key)), ("sub2api-test-key", None))
+            self.assertFalse((key.parent / "model-usage-cliproxy.key").exists())
 
 
 class ResilientFetchTests(unittest.TestCase):

@@ -1000,6 +1000,7 @@ SettingsPage {
                 label: "Usage source"
                 model: [
                     { value: "cliproxy", label: "CLIProxyAPI" },
+                    { value: "sub2api", label: "Sub2API" },
                     { value: "direct", label: "Provider CLIs" }
                 ]
                 current: view.opts.source
@@ -1035,14 +1036,15 @@ SettingsPage {
                 visible: view.opts.source === "cliproxy"
                 width: parent.width
                 minimumLabelWidth: 126
+                enabled: !Usage.credentialBusy
                 label: "Management key"
                 value: ""
                 placeholder: Usage.cliproxyKeyConfigured
                     ? "Configured — enter to replace" : "Required"
                 secret: true
                 dirty: Usage.cliproxyKeyConfigured
-                onCommitted: text => Usage.saveCliProxyKey(text)
-                onResetRequested: Usage.clearCliProxyKey()
+                onCommitted: text => Usage.saveManagementKey(text)
+                onResetRequested: Usage.clearManagementKey()
             }
 
             Text {
@@ -1056,6 +1058,81 @@ SettingsPage {
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.fontMicro
                 color: Usage.credentialError ? Theme.redText : Theme.textFaint
+                wrapMode: Text.Wrap
+            }
+
+            SettingsTextRow {
+                visible: view.opts.source === "sub2api"
+                width: parent.width
+                minimumLabelWidth: 126
+                label: "Server URL"
+                value: view.opts.sub2apiUrl
+                placeholder: "https://sub2api.example.com"
+                dirty: view.optDirty("sub2apiUrl")
+                onCommitted: text => view.setOpt("sub2apiUrl", text)
+                onResetRequested: view.resetOpt("sub2apiUrl")
+            }
+
+            SwitchRow {
+                visible: view.opts.source === "sub2api"
+                width: parent.width
+                label: "Verify TLS"
+                description: "Require a certificate trusted by this computer"
+                checked: view.opts.sub2apiTlsVerify
+                dirty: view.optDirty("sub2apiTlsVerify")
+                onToggled: value => view.setOpt("sub2apiTlsVerify", value)
+                onResetRequested: view.resetOpt("sub2apiTlsVerify")
+            }
+
+            SettingsTextRow {
+                visible: view.opts.source === "sub2api"
+                width: parent.width
+                minimumLabelWidth: 126
+                enabled: !Usage.credentialBusy
+                label: "Admin API key"
+                value: ""
+                placeholder: Usage.sub2apiKeyConfigured
+                    ? "Configured — enter to replace" : "Required"
+                secret: true
+                dirty: Usage.sub2apiKeyConfigured
+                onCommitted: text => Usage.saveManagementKey(text, "sub2api")
+                onResetRequested: Usage.clearManagementKey("sub2api")
+            }
+
+            Text {
+                visible: view.opts.source === "sub2api"
+                width: parent.width
+                text: Usage.credentialBusy ? "Checking private key…"
+                    : Usage.credentialError ? Usage.credentialError
+                    : Usage.sub2apiKeyConfigured
+                        ? "Key stored privately; it is not saved in shell settings."
+                        : "A Sub2API admin API key is required."
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontMicro
+                color: Usage.credentialError ? Theme.redText : Theme.textFaint
+                wrapMode: Text.Wrap
+            }
+
+            ResponsiveActionRow {
+                visible: view.opts.source !== "direct"
+                width: parent.width
+                description: "Check the server and saved key"
+
+                SettingsAction {
+                    text: Usage.connectionTestBusy ? "Testing…" : "Test connection"
+                    glyph: "refresh"
+                    enabled: !Usage.connectionTestBusy
+                    onTriggered: Usage.testConnection()
+                }
+            }
+
+            Text {
+                visible: view.opts.source !== "direct" && Usage.connectionTestMessage !== ""
+                width: parent.width
+                text: Usage.connectionTestMessage
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.fontCaption
+                color: Usage.connectionTestSucceeded ? Theme.textMid : Theme.redText
                 wrapMode: Text.Wrap
             }
 
@@ -1089,7 +1166,18 @@ SettingsPage {
             }
 
             SwitchRow {
+                visible: view.opts.source === "sub2api"
                 width: parent.width
+                label: "Gemini / Antigravity"
+                checked: view.opts.gemini
+                dirty: view.optDirty("gemini")
+                onToggled: value => view.setOpt("gemini", value)
+                onResetRequested: view.resetOpt("gemini")
+            }
+
+            SwitchRow {
+                width: parent.width
+                visible: view.opts.source !== "sub2api"
                 label: "Kimi"
                 checked: view.opts.kimi
                 dirty: view.optDirty("kimi")
@@ -1100,9 +1188,9 @@ SettingsPage {
             SwitchRow {
                 width: parent.width
                 label: "xAI / Grok"
-                description: view.opts.source === "cliproxy"
-                    ? "Show Grok quota when CLIProxyAPI exposes a percentage"
-                    : "Grok usage requires the CLIProxyAPI source"
+                description: view.opts.source !== "direct"
+                    ? "Show Grok quota when the server exposes a percentage"
+                    : "Grok usage requires CLIProxyAPI or Sub2API"
                 checked: view.opts.xai
                 dirty: view.optDirty("xai")
                 onToggled: value => view.setOpt("xai", value)

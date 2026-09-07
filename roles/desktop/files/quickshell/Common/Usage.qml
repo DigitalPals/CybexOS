@@ -12,14 +12,15 @@ Singleton {
 
     readonly property var supportedProviderKeys: Helpers.SUPPORTED_PROVIDER_KEYS
     // Direct mode keeps sign-in/error tabs for every supported CLI. In proxy
-    // mode the auth-file inventory is authoritative: only managed providers
-    // returned by CLIProxyAPI belong in any usage surface.
+    // mode the server inventory is authoritative: only managed providers
+    // returned by that server belong in any usage surface.
     readonly property var providerKeys: Helpers.providerKeys(
         Settings.modOpts.usage.source, data)
     readonly property var meta: ({
             claude: { name: "Claude", title: "Claude Code", icon: "claude", cmd: "claude auth login" },
             codex: { name: "Codex", title: "Codex CLI", icon: "openai", cmd: "codex login" },
             kimi: { name: "Kimi", title: "Kimi Code", icon: "kimi", cmd: "kimi login" },
+            gemini: { name: "Gemini", title: "Gemini / Antigravity", icon: "gemini", cmd: "" },
             xai: { name: "xAI", title: "xAI Grok", icon: "grok", cmd: "" }
         })
 
@@ -27,10 +28,20 @@ Singleton {
     readonly property string fetchConfiguration: {
         const opts = Settings.modOpts.usage;
         return [opts.source, opts.cliproxyUrl, opts.cliproxyTlsVerify,
-            opts.claudeAutoRefresh].join("|");
+            opts.sub2apiUrl, opts.sub2apiTlsVerify, opts.claudeAutoRefresh, credentialRevision].join("|");
     }
+    readonly property string sourceName: Settings.modOpts.usage.source === "sub2api" ? "Sub2API" : "CLIProxyAPI"
+    readonly property string dashboardUrl: Settings.modOpts.usage.source === "sub2api"
+        ? Settings.modOpts.usage.sub2apiUrl : Settings.modOpts.usage.cliproxyUrl
+    property int credentialRevision: 0
+    property bool connectionTestPending: false
+    readonly property bool connectionTestBusy: connectionTestPending || connectionTestProc.running
+    property string connectionTestMessage: ""
+    property bool connectionTestSucceeded: false
+    property bool sub2apiKeyConfigured: false
     property bool cliproxyKeyConfigured: false
     property string credentialError: ""
+    property string pendingCredentialSource: ""
     readonly property bool credentialBusy: credentialProc.running
 
     // The Model usage chip is the only thing that needs fresh figures without
@@ -177,24 +188,70 @@ Singleton {
         }
     }
 
-    function checkCliProxyKey() {
-        if (credentialProc.running)
+    function fetchCommand(testing = false) {
+        const opts = Settings.modOpts.usage;
+        const args = ["python3", Quickshell.shellDir + "/scripts/usage-fetch.py",
+            "--source", opts.source];
+        if (opts.source === "cliproxy") {
+            args.push("--cliproxy-url", opts.cliproxyUrl);
+            if (!opts.cliproxyTlsVerify)
+                args.push("--cliproxy-insecure");
+        } else if (opts.source === "sub2api") {
+            args.push("--sub2api-url", opts.sub2apiUrl);
+            if (!opts.sub2apiTlsVerify)
+                args.push("--sub2api-insecure");
+        } else if (!testing && opts.claudeAutoRefresh) {
+            args.push("--refresh-claude");
+        }
+        if (testing)
+            args.push("--test-connection");
+        return args;
+    }
+
+    function testConnection() {
+        if (connectionTestProc.running || Settings.modOpts.usage.source === "direct")
             return;
+        connectionTestMessage = "";
+        connectionTestPending = true;
+        startConnectionTest();
+    }
+
+    function startConnectionTest() {
+        if (!connectionTestPending || credentialProc.running || connectionTestProc.running)
+            return;
+        connectionTestPending = false;
+        if (credentialError !== "") {
+            connectionTestSucceeded = false;
+            connectionTestMessage = credentialError;
+            return;
+        }
+        connectionTestProc.running = true;
+    }
+
+    function checkManagementKey(source = "cliproxy") {
+        if (credentialProc.running) {
+            pendingCredentialSource = source;
+            return;
+        }
+        credentialError = "";
+        credentialProc.source = source;
         credentialProc.action = "status";
         credentialProc.running = true;
     }
 
-    function saveCliProxyKey(key) {
+    function saveManagementKey(key, source = "cliproxy") {
         if (credentialProc.running || key.trim() === "")
             return;
+        credentialProc.source = source;
         credentialProc.action = "store";
         credentialProc.pendingKey = key;
         credentialProc.running = true;
     }
 
-    function clearCliProxyKey() {
+    function clearManagementKey(source = "cliproxy") {
         if (credentialProc.running)
             return;
+        credentialProc.source = source;
         credentialProc.action = "clear";
         credentialProc.running = true;
     }
@@ -262,24 +319,13 @@ Singleton {
         // before exited(), and the falling edge of `running` is the only
         // signal that arrives when the binary cannot be launched at all.
         //
+        property string configuration: ""
         property string body: ""
         property string errText: ""
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: {
-            const opts = Settings.modOpts.usage;
-            const args = ["python3", Quickshell.shellDir + "/scripts/usage-fetch.py",
-                "--source", opts.source];
-            if (opts.source === "cliproxy") {
-                args.push("--cliproxy-url", opts.cliproxyUrl);
-                if (!opts.cliproxyTlsVerify)
-                    args.push("--cliproxy-insecure");
-            } else if (opts.claudeAutoRefresh) {
-                args.push("--refresh-claude");
-            }
-            return args;
-        }
+        command: root.fetchCommand()
 
         stdout: StdioCollector {
             onStreamFinished: fetchProc.body = text
@@ -293,11 +339,16 @@ Singleton {
         }
         onRunningChanged: {
             if (running) {
+                configuration = root.fetchConfiguration;
                 body = "";
                 errText = "";
                 exitSeen = false;
                 lastExit = 0;
             } else {
+                if (configuration !== root.fetchConfiguration) {
+                    Qt.callLater(root.refresh);
+                    return;
+                }
                 root.settle(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
             }
         }
@@ -305,13 +356,14 @@ Singleton {
 
     Process {
         id: credentialProc
+        property string source: "cliproxy"
         property string action: "status"
         property string pendingKey: ""
         property string body: ""
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["python3", Quickshell.shellDir + "/scripts/usage-credential.py", action]
+        command: ["python3", Quickshell.shellDir + "/scripts/usage-credential.py", action, "--source", source]
         stdinEnabled: action === "store"
         stdout: StdioCollector { onStreamFinished: credentialProc.body = text }
         stderr: StdioCollector {}
@@ -341,14 +393,58 @@ Singleton {
             }
             const success = exitSeen && lastExit === 0 && result && result.success;
             if (success) {
-                root.cliproxyKeyConfigured = result.configured === true;
+                if (source === "sub2api")
+                    root.sub2apiKeyConfigured = result.configured === true;
+                else
+                    root.cliproxyKeyConfigured = result.configured === true;
                 root.credentialError = "";
-                if (action !== "status" && Settings.modOpts.usage.source === "cliproxy")
-                    root.refresh();
+                if (action !== "status")
+                    root.credentialRevision++;
             } else {
                 root.credentialError = result && result.error
-                    ? result.error : "Could not update the CLIProxyAPI management key.";
+                    ? result.error : "Could not update the private usage key.";
             }
+            Qt.callLater(root.startConnectionTest);
+            if (root.pendingCredentialSource !== "") {
+                const nextSource = root.pendingCredentialSource;
+                root.pendingCredentialSource = "";
+                Qt.callLater(() => root.checkManagementKey(nextSource));
+            }
+        }
+    }
+
+    Process {
+        id: connectionTestProc
+        property string configuration: ""
+        property string body: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+        command: root.fetchCommand(true)
+        stdout: StdioCollector { onStreamFinished: connectionTestProc.body = text }
+        stderr: StdioCollector {}
+        onExited: (exitCode, exitStatus) => {
+            exitSeen = true;
+            lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                configuration = root.fetchConfiguration;
+                body = "";
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            if (configuration !== root.fetchConfiguration)
+                return;
+            let result = null;
+            try { result = JSON.parse(body); } catch (e) {}
+            root.connectionTestSucceeded = exitSeen && lastExit === 0
+                && result && result.success === true;
+            root.connectionTestMessage = exitSeen && lastExit === 0 && result
+                && typeof result.message === "string" ? result.message
+                : "The connection test could not complete. Try again.";
+            if (root.connectionTestSucceeded)
+                root.refresh();
         }
     }
 
@@ -395,12 +491,16 @@ Singleton {
     onPollEnabledChanged: warmUp()
 
     onFetchConfigurationChanged: {
-        if (Settings.loaded)
+        connectionTestMessage = "";
+        if (Settings.loaded) {
+            data = ({});
+            checkManagementKey(Settings.modOpts.usage.source === "sub2api" ? "sub2api" : "cliproxy");
             refresh();
+        }
     }
 
     Component.onCompleted: {
-        checkCliProxyKey();
+        checkManagementKey(Settings.modOpts.usage.source === "sub2api" ? "sub2api" : "cliproxy");
         warmUp();
     }
 }

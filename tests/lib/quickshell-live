@@ -112,12 +112,14 @@ qs_live_begin() {
   qs_live_wait_service && qs_live_reconcile_processes
 }
 
+# Select the service PID: the runtime may live outside the default ~/.config
+# tree after migration, so an unqualified IPC call can target a dead config.
 qs_live_wait_ipc() {
   local timeout=$1 target=$2 method=$3 deadline out
   shift 3
   deadline=$((SECONDS + timeout))
   while ((SECONDS < deadline)); do
-    if out=$(qs ipc call "$target" "$method" "$@" 2>/dev/null); then
+    if out=$(qs ipc --pid "$(qs_live_main_pid)" call "$target" "$method" "$@" 2>/dev/null); then
       printf '%s\n' "$out"
       return 0
     fi
@@ -132,7 +134,7 @@ qs_live_wait_value() {
   shift 4
   deadline=$((SECONDS + timeout))
   while ((SECONDS < deadline)); do
-    if out=$(qs ipc call "$target" "$method" "$@" 2>/dev/null) &&
+    if out=$(qs ipc --pid "$(qs_live_main_pid)" call "$target" "$method" "$@" 2>/dev/null) &&
        [[ $out == "$expected" ]]; then
       printf '%s\n' "$out"
       return 0

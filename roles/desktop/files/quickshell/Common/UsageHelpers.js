@@ -1,18 +1,20 @@
 // Pure model-usage presentation helpers shared by QML and Node tests.
-// CLIProxyAPI discovery is represented by the fetcher's source marker: a
-// managed provider (including one whose accounts currently fail) carries
-// source "cliproxy"; a synthetic no-credentials placeholder does not.
+// Managed discovery uses the fetcher's source marker. Providers with failing
+// accounts retain that marker; absent-provider placeholders do not.
 
-var SUPPORTED_PROVIDER_KEYS = ["claude", "codex", "kimi", "xai"];
+var CLI_PROVIDER_KEYS = ["claude", "codex", "kimi", "xai"];
+var SUPPORTED_PROVIDER_KEYS = ["claude", "codex", "kimi", "gemini", "xai"];
 
 function providerKeys(source, data) {
-    if (source !== "cliproxy")
-        return SUPPORTED_PROVIDER_KEYS.slice();
+    if (source !== "cliproxy" && source !== "sub2api")
+        return CLI_PROVIDER_KEYS.slice();
 
     var records = data && typeof data === "object" ? data : {};
-    return SUPPORTED_PROVIDER_KEYS.filter(function (key) {
+    var keys = source === "sub2api" ? ["claude", "codex", "gemini", "xai"]
+        : CLI_PROVIDER_KEYS;
+    return keys.filter(function (key) {
         var reading = records[key];
-        if (!reading || reading.source !== "cliproxy")
+        if (!reading || reading.source !== source)
             return false;
         // If a formerly managed credential disappears, resilient polling may
         // briefly return its last reading qualified with the current failure.

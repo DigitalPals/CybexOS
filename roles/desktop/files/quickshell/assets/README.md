@@ -28,7 +28,7 @@ background.
 
 | Assets | Vector source | Revision | Local treatment |
 | --- | --- | --- | --- |
-| `claude.svg`, `github.svg`, `kimi.svg`, `tailscale.svg`, `whatsapp.svg`, `youtube.svg` and their `-white.svg` siblings | [Simple Icons](https://github.com/simple-icons/simple-icons) | `4a79bb55697c85b8bc9f3caa22be747e0277ad4f` | Upstream paths with product/shell paint; hover siblings change only that paint. |
+| `claude.svg`, `gemini.svg` (`googlegemini`), `github.svg`, `kimi.svg`, `tailscale.svg`, `whatsapp.svg`, `youtube.svg` and their `-white.svg` siblings | [Simple Icons](https://github.com/simple-icons/simple-icons) | `4a79bb55697c85b8bc9f3caa22be747e0277ad4f` | Upstream paths with product/shell paint; hover siblings change only that paint. |
 | `openai.svg`, `openai-white.svg` | [Tabler Icons: `brand-openai`](https://github.com/tabler/tabler-icons/blob/5a0fe38e97784d94279ce4eb1bf85f9a91bf027e/icons/outline/brand-openai.svg) | `5a0fe38e97784d94279ce4eb1bf85f9a91bf027e` | Upstream strokes with Codex/white paint. Stroke width and geometry are unchanged. |
 | `slack.svg`, `slack-white.svg` | [Tabler Icons: `brand-slack`](https://github.com/tabler/tabler-icons/blob/5a0fe38e97784d94279ce4eb1bf85f9a91bf027e/icons/outline/brand-slack.svg) | `5a0fe38e97784d94279ce4eb1bf85f9a91bf027e` | Upstream strokes with Slack red/white paint. Stroke width and geometry are unchanged. |
 | `grok.svg`, `grok-white.svg` | [CLI Proxy API Management Center: `grok.svg`](https://github.com/router-for-me/Cli-Proxy-API-Management-Center/blob/382c09109db2e70a6e60697c0ae0cf6ef97198e7/src/assets/icons/grok.svg) | `382c09109db2e70a6e60697c0ae0cf6ef97198e7` | Upstream Grok path with shell-silver/white paint; redundant sizing and inline-style metadata removed. |

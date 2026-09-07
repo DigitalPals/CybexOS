@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Store the Model Usage CLIProxyAPI management key outside shell settings."""
+"""Store Model Usage management keys outside shell settings. Input is one line."""
 
 import argparse
 import json
@@ -9,15 +9,15 @@ import sys
 import tempfile
 
 
-def key_path():
-    override = os.environ.get("QUICKSHELL_USAGE_CLIPROXY_KEY_PATH")
+def key_path(source="cliproxy"):
+    override = os.environ.get(f"QUICKSHELL_USAGE_{source.upper()}_KEY_PATH")
     if override:
         return os.path.abspath(os.path.expanduser(override))
     state_home = os.environ.get("XDG_STATE_HOME")
     if not state_home:
         state_home = os.path.join(os.path.expanduser("~"), ".local", "state")
     return os.path.join(os.path.expanduser(state_home), "quickshell",
-                        "model-usage-cliproxy.key")
+                        f"model-usage-{source}.key")
 
 
 def inspect(path):
@@ -34,7 +34,7 @@ def inspect(path):
 
 
 def store(path):
-    raw = sys.stdin.buffer.read(8193)
+    raw = sys.stdin.buffer.readline(8193)
     if len(raw) > 8192:
         raise ValueError("Management key is too large.")
     try:
@@ -77,8 +77,9 @@ def clear(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("status", "store", "clear"))
+    parser.add_argument("--source", choices=("cliproxy", "sub2api"), default="cliproxy")
     args = parser.parse_args()
-    path = key_path()
+    path = key_path(args.source)
     try:
         if args.action == "store":
             store(path)

@@ -52,8 +52,8 @@ trap 'exit 143' TERM
 qs_live_begin
 ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags quickshell
 qs_live_wait_ipc 20 popouts close >/dev/null
-qs ipc call popouts toggle t3code      # or: audio, control, wifi, notifications, …
-qs ipc call settings open notifications
+qs_live_wait_ipc 20 popouts toggle t3code # or: audio, control, wifi, notifications, …
+qs_live_wait_ipc 20 settings open notifications
 grim -g "1020,50 400x420" /tmp/shot.png
 qs_live_end
 trap - EXIT INT TERM
@@ -63,7 +63,9 @@ trap - EXIT INT TERM
 inspects command lines and cgroups, and only terminates a confirmed unmanaged
 `qs -d`/`qs -p` developer process. `qs_live_end` requires the service to be
 active, its MainPID to be the sole `qs`, and the current invocation journal to
-be free of known QML/runtime errors. Never replace this with `pkill qs`.
+be free of known QML/runtime errors. IPC readiness checks target the service PID
+so runtime migration cannot send them to a dead default configuration. Never
+replace this with `pkill qs`.
 
 The Ansible role is the supported deployment path. A test that temporarily
 edits the deployed tree must be trap-protected, restore the exact managed
