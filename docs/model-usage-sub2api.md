@@ -29,9 +29,25 @@ The widget discovers accounts across every inventory page and groups them as:
 | Grok | xAI |
 
 Disabled accounts and absent providers are omitted. The drawer shows individual
-accounts, including failures, and expands the account with the most remaining
-capacity by default. Provider toggles control menubar chips; the drawer retains
+accounts, including failures, and automatically expands the most recently used
+account per provider. Its quota drives the menubar and overview; the drawer,
+popover, and chip tooltip identify it with a masked name and a local-time
+**Last used** timestamp. Manual drawer expansion overrides automatic expansion.
+If no account has a valid activity timestamp, selection falls back to the account
+with the most remaining capacity; invalid and future timestamps are ignored.
+If the most recently used account has no quota
+reading, its quota stays unavailable instead of showing another account's.
+Provider toggles control menubar chips; the drawer retains
 all discovered providers for inspection. Account email labels are masked.
+If the selected Claude account has no Fable window, the overview also shows
+Fable limits from other accounts with their account labels. These extra cards
+do not change the selected-account summary or the menubar percentage.
+
+Activity comes from `last_used_at` in the existing lightweight account inventory,
+so it adds no requests and follows the normal polling interval. It reflects all
+traffic on the server, not a particular client's API key. **Last used** does not
+mean a request is currently running or predict which account will handle the
+next request. Cached activity retains the existing last-known/stale indication.
 
 Quota percentages and reset times come from the admin account usage response.
 Gemini pool/model windows and Grok request/token limits are supported. Unknown

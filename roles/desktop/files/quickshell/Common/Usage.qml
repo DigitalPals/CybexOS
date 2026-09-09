@@ -112,9 +112,19 @@ Singleton {
         return data[key] ?? null;
     }
 
+    function additionalFableWindows(key) {
+        return key === "claude" ? Helpers.additionalFableWindows(provider(key)) : [];
+    }
+
+    function displayWindows(key) {
+        const reading = provider(key);
+        return reading && reading.status === "ok"
+            ? (reading.windows || []).concat(additionalFableWindows(key)) : [];
+    }
+
     // Minimum remaining percent across any reading's windows, or -1. The
-    // top-level provider is the pool summary; account rows reuse this without
-    // changing the menubar's established best-available semantics.
+    // top-level provider follows Sub2API activity, or the best available quota
+    // when activity is unknown. Account rows reuse the same calculation.
     function readingRemaining(reading) {
         if (!reading || reading.status !== "ok" || !reading.windows
                 || reading.windows.length === 0)
@@ -128,6 +138,21 @@ Singleton {
 
     function minRemaining(key) {
         return readingRemaining(provider(key));
+    }
+
+    function lastUsedText(record) {
+        if (!record || typeof record.lastUsedAt !== "number" || record.lastUsedAt <= 0)
+            return "";
+        return "Last used " + Qt.formatDateTime(
+            new Date(record.lastUsedAt * 1000), "yyyy-MM-dd HH:mm");
+    }
+
+    function activityText(key) {
+        const record = provider(key);
+        if (!record || record.selectionReason !== "last-used")
+            return "";
+        return record.selectedAccountLabel + " · " + lastUsedText(record)
+            + (record.stale === true ? " · last known" : "");
     }
 
     function accountCount(key) {

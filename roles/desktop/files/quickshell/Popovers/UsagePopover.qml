@@ -256,6 +256,9 @@ Surface {
             Text {
                 width: parent.width
                 text: {
+                    const activity = Usage.activityText(root.sel);
+                    if (activity !== "")
+                        return activity;
                     if (!root.p || root.p.status !== "ok")
                         return "";
                     return root.p.plan || "";
@@ -418,7 +421,7 @@ Surface {
         width: parent.width
 
         Repeater {
-            model: root.p && root.p.status === "ok" ? root.p.windows : []
+            model: Usage.displayWindows(root.sel)
 
             delegate: Rectangle {
                 id: card

@@ -320,6 +320,8 @@ Item {
                     text: Usage.meta[chip.modelData].title + " usage · "
                         + (chip.status === "error" || chip.remaining < 0
                             ? "unavailable" : chip.remaining + "% remaining")
+                        + (Usage.activityText(chip.modelData) !== ""
+                            ? " · " + Usage.activityText(chip.modelData) : "")
                     align: 1
                     y: chip.height + 11
                     x: chip.width - width

@@ -461,7 +461,8 @@ def parse_claude_usage(data, plan=None):
         for key, label, secs in (("five_hour", "5 hour limit", FIVE_HOURS),
                                  ("seven_day", "Weekly limit", SEVEN_DAYS),
                                  ("seven_day_opus", "Weekly (Opus)", SEVEN_DAYS),
-                                 ("seven_day_sonnet", "Weekly (Sonnet)", SEVEN_DAYS)):
+                                 ("seven_day_sonnet", "Weekly (Sonnet)", SEVEN_DAYS),
+                                 ("seven_day_fable", "Weekly (Fable)", SEVEN_DAYS)):
             raw = data.get(key)
             if not isinstance(raw, dict):
                 continue
@@ -1196,6 +1197,23 @@ def summarize_accounts(readings, source):
     disambiguate_cliproxy_labels(readings)
     successful = [value for value in readings
                   if isinstance(value, dict) and value.get("status") == "ok"]
+    recent = [value for value in readings if value.get("lastUsedAt")]
+    if source == "sub2api" and recent:
+        # Activity and quota availability are independent. Even a failed quota
+        # reading must identify the account that was actually used.
+        selected = max(recent, key=lambda value: (
+            value["lastUsedAt"], provider_remaining_score(value)
+            if value.get("status") == "ok" else -1, value["id"]))
+        summary = copy.deepcopy(selected)
+        summary["selectedAccountId"] = summary.pop("id")
+        summary["selectedAccountLabel"] = summary.pop("label")
+        summary.update(source=source, selectionReason="last-used",
+                       accountCount=len(readings), availableCount=len(successful),
+                       accounts=readings)
+        if successful:
+            summary["bestAccountId"] = max(
+                successful, key=provider_remaining_score)["id"]
+        return summary
     if not successful:
         priority = {"config": 0, "expired": 1, "rate": 2, "network": 3,
                     "http": 4, "parse": 5}
@@ -1435,6 +1453,9 @@ def fetch_sub2api_provider(provider, entries, client):
         value["id"] = "account-" + hashlib.sha256(
             f"sub2api:{account_id}".encode()).hexdigest()[:16]
         value["label"] = mask_emails_in_label(first_text(entry, "name")) or f"Account {position + 1}"
+        last_used = parse_rfc3339(entry.get("last_used_at"))
+        if last_used is not None and 0 < last_used <= time.time():
+            value["lastUsedAt"] = last_used
         readings.append(value)
     return summarize_accounts(readings, "sub2api")
 
@@ -1555,6 +1576,11 @@ def fetch_all_resilient(providers, state, now=None, min_intervals=None):
             result[name] = value
             continue
 
+        # A fresh inventory identified the account in use, but its quota failed.
+        # Retire the old summary so neither this failure nor a later network
+        # failure can resurrect another account's quota/activity.
+        if value.get("selectedAccountId"):
+            entry.pop("lastOk", None)
         previous = entry.get("failures", 0)
         previous = previous if isinstance(previous, int) and previous >= 0 else 0
         failures = min(previous, 30) + 1

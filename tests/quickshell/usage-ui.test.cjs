@@ -66,7 +66,8 @@ test("menubar quota thresholds color text without semantic backgrounds", () => {
     assert.match(chips, /status === "warn" \? Theme\.barAmber/);
 });
 
-test("provider header shows only the full subscription", () => {
+test("provider header shows Sub2API activity or the full subscription", () => {
+    assert.match(popover, /Usage.activityText\(root.sel\)/);
     assert.match(popover, /return root\.p\.plan \|\| "";/);
     assert.doesNotMatch(popover, /root\.p\.(?:account|source)/);
     assert.doesNotMatch(popover, /join\(" · "\)/);
@@ -92,8 +93,8 @@ test("drawer exposes every CLIProxy subscription behind a provider group", () =>
     assert.match(drawerUsage,
         /text:\s*"SUBSCRIPTIONS"[\s\S]{0,300}?model:\s*root\.accounts[\s\S]{0,200}?DrawerUsageAccount/);
     assert.match(drawerUsage,
-        /expandedAccountId:[\s\S]{0,650}?record\.bestAccountId/,
-        "the best available subscription should be expanded initially");
+        /expandedAccountId:[\s\S]{0,650}?record\.selectedAccountId[\s\S]{0,300}?record\.bestAccountId/,
+        "recent activity should open first, with best quota as a fallback");
     assert.match(drawerUsage,
         /requestedAccountId === ""[\s\S]{0,80}?return ""/,
         "an explicit empty selection should keep every subscription collapsed");
@@ -168,4 +169,11 @@ test("connection testing shares server settings, waits for key saves, and expose
     assert.match(usage, /!connectionTestPending \|\| credentialProc.running/);
     assert.match(usage, /credentialRevision\+\+/);
     assert.match(usage, /connectionTestSucceeded[\s\S]{0,600}?root.refresh\(\)/);
+});
+
+
+test("both Claude overview surfaces expose account-labelled Fable windows", () => {
+    assert.match(popover, /model: Usage.displayWindows\(root.sel\)/);
+    assert.match(drawerUsage, /additionalWindows: Usage.additionalFableWindows\(root.selected\)/);
+    assert.match(drawerUsage, /windows: additionalWindows/);
 });

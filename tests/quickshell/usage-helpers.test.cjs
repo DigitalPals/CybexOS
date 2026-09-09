@@ -55,3 +55,26 @@ test("Sub2API discovers Gemini and managed failures without adding direct CLI ta
     assert.deepEqual(H.providerKeys("sub2api", {}), []);
     assert.deepEqual(H.providerKeys("direct", {}), ["claude", "codex", "kimi", "xai"]);
 });
+
+
+test("Claude overview includes Fable from another account without changing the pool score", () => {
+    const reading = { status: "ok", windows: [{ label: "Weekly limit", used: 34 }],
+        accounts: [
+            { status: "ok", label: "Account A", windows: [
+                { label: "Fable weekly limit", used: 51, windowSecs: 604800, resetsAt: 2000000000 }
+            ] },
+            { status: "error", label: "Failed", windows: [
+                { label: "Fable weekly limit", used: 0 }
+            ] }
+        ] };
+    const original = JSON.stringify(reading);
+    assert.deepEqual(H.additionalFableWindows(reading), [
+        { label: "Fable weekly limit · Account A", used: 51,
+          windowSecs: 604800, resetsAt: 2000000000 }
+    ]);
+    assert.equal(JSON.stringify(reading), original);
+    reading.windows.push({ label: "Weekly (Fable)", used: 20 });
+    assert.deepEqual(H.additionalFableWindows(reading), [], "do not duplicate a primary Fable window");
+    assert.deepEqual(H.additionalFableWindows(null), []);
+    assert.deepEqual(H.additionalFableWindows({ status: "error" }), []);
+});

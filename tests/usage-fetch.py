@@ -138,6 +138,18 @@ class ClaudeRefreshTests(unittest.TestCase):
             self.assertEqual(result["plan"], "Claude Pro")
 
 
+class ClaudeFableTests(unittest.TestCase):
+    def test_legacy_fable_limit_retains_weekly_percentage_and_reset(self):
+        data = {"seven_day": {"utilization": 26},
+                "seven_day_fable": {"utilization": 51, "resets_at": "2030-01-01T00:00:00Z"}}
+        result = MODULE.parse_claude_usage(data)
+        self.assertEqual([row["label"] for row in result["windows"]],
+                         ["Weekly limit", "Weekly (Fable)"])
+        self.assertEqual(result["windows"][1]["used"], 51)
+        self.assertEqual(result["windows"][1]["windowSecs"], MODULE.SEVEN_DAYS)
+        self.assertEqual(result["windows"][1]["resetsAt"], 1893456000)
+
+
 class ClaudePlanTests(unittest.TestCase):
     def test_max_tier_includes_its_usage_multiplier(self):
         self.assertEqual(MODULE.claude_plan({
@@ -514,6 +526,71 @@ class Sub2ApiTests(unittest.TestCase):
         absent = MODULE.fetch_sub2api_provider("gemini", entries, client)
         self.assertEqual(absent["kind"], "nocreds")
         self.assertNotIn("source", absent)
+
+    def test_recent_account_drives_quota_and_follows_rotation(self):
+        entries = [{"id": n, "platform": "openai", "name": "test@example.com",
+                    "last_used_at": f"2026-01-0{n}T12:00:00Z",
+                    "extra": {"codex_5h_used_percent": used}}
+                   for n, used in [(1, 10), (2, 80)]]
+        client = mock.Mock()
+        result = MODULE.fetch_sub2api_provider("codex", entries, client)
+        self.assertEqual(result["windows"][0]["used"], 80)
+        self.assertEqual(result["selectedAccountId"], result["accounts"][1]["id"])
+        self.assertEqual(result["bestAccountId"], result["accounts"][0]["id"])
+        self.assertEqual(result["selectionReason"], "last-used")
+        self.assertNotIn("test@example.com", json.dumps(result))
+        entries[0]["last_used_at"] = "2026-01-03T12:00:00Z"
+        rotated = MODULE.fetch_sub2api_provider("codex", entries, client)
+        self.assertEqual(rotated["selectedAccountId"], result["accounts"][0]["id"])
+        self.assertEqual(rotated["windows"][0]["used"], 10)
+        client.api_json.assert_not_called()
+
+    def test_missing_invalid_and_future_activity_falls_back_to_quota(self):
+        for timestamp in [None, "invalid", True, 123, "9999-01-01T00:00:00Z",
+                          "0001-01-01T00:00:00Z"]:
+            with self.subTest(timestamp=timestamp):
+                entries = [{"id": n, "platform": "openai", "last_used_at": timestamp,
+                            "extra": {"codex_5h_used_percent": used}}
+                           for n, used in [(1, 10), (2, 80)]]
+                result = MODULE.fetch_sub2api_provider("codex", entries, mock.Mock())
+                self.assertNotIn("selectedAccountId", result)
+                self.assertEqual(result["windows"][0]["used"], 10)
+
+    def test_recent_unavailable_account_is_not_replaced_by_cached_quota(self):
+        entries = [{"id": 1, "platform": "openai",
+                    "last_used_at": "2026-01-01T12:00:00Z",
+                    "extra": {"codex_5h_used_percent": 10}},
+                   {"id": 2, "platform": "openai", "extra": {}}]
+        fetch = lambda: MODULE.fetch_sub2api_provider("codex", entries, mock.Mock())
+        state = {}
+        MODULE.fetch_all_resilient((("codex", fetch),), state, now=1000)
+        entries[1]["last_used_at"] = "2026-01-02T12:00:00Z"
+        result = MODULE.fetch_all_resilient((("codex", fetch),), state, now=1001)["codex"]
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["selectedAccountId"], result["accounts"][1]["id"])
+        self.assertEqual(result["availableCount"], 1)
+        self.assertNotIn("windows", result)
+        skipped = MODULE.fetch_all_resilient((("codex", fetch),), state, now=1002)["codex"]
+        self.assertEqual(skipped["selectedAccountId"], result["selectedAccountId"])
+        self.assertEqual(skipped["status"], "error")
+        offline = MODULE.fetch_all_resilient(
+            (("codex", lambda: MODULE.err("network")),), state, now=2000)["codex"]
+        self.assertEqual(offline["status"], "error")
+        self.assertNotIn("windows", offline)
+
+    def test_activity_ties_are_stable_and_disabled_accounts_are_ignored(self):
+        entries = [{"id": n, "platform": "openai",
+                    "last_used_at": "2026-01-01T12:00:00Z",
+                    "extra": {"codex_5h_used_percent": 20}}
+                   for n in (1, 2)]
+        result = MODULE.fetch_sub2api_provider("codex", entries, mock.Mock())
+        reversed_result = MODULE.fetch_sub2api_provider("codex", entries[::-1], mock.Mock())
+        self.assertEqual(result["selectedAccountId"], reversed_result["selectedAccountId"])
+        entries.append({"id": 3, "platform": "openai", "status": "disabled",
+                        "last_used_at": "2026-01-02T12:00:00Z"})
+        filtered = MODULE.fetch_sub2api_provider("codex", entries, mock.Mock())
+        self.assertEqual(filtered["accountCount"], 2)
+        self.assertEqual(filtered["selectedAccountId"], result["selectedAccountId"])
 
     def test_connection_checks_inventory_without_reading_quotas_or_cache(self):
         with mock.patch.object(MODULE, "read_cliproxy_key", return_value=("private", None)), \

@@ -32,7 +32,7 @@ Column {
         ? record.availableCount
         : accounts.filter(account => account.status === "ok").length
 
-    // null means no explicit choice yet, so the best available account opens
+    // null follows recent activity, falling back to the best available account.
     // initially. An empty string is an explicit "collapse all" choice.
     property var requestedAccountId: null
     readonly property string expandedAccountId: {
@@ -43,6 +43,9 @@ Column {
         if (typeof requestedAccountId === "string"
                 && accounts.some(account => account.id === requestedAccountId))
             return requestedAccountId;
+        if (record && record.selectedAccountId
+                && accounts.some(account => account.id === record.selectedAccountId))
+            return record.selectedAccountId;
         if (record && record.bestAccountId
                 && accounts.some(account => account.id === record.bestAccountId))
             return record.bestAccountId;
@@ -207,6 +210,16 @@ Column {
         }
     }
 
+    Text {
+        visible: text !== ""
+        width: parent.width
+        text: Usage.activityText(root.selected)
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.fontCaption
+        color: Theme.textFaint
+        wrapMode: Text.WordWrap
+    }
+
     // A provider without per-account information keeps the established
     // signed-out panel. An all-failed CLIProxy pool instead shows each failed
     // account below, so one bad credential is never hidden by a generic row.
@@ -269,6 +282,14 @@ Column {
         }
     }
 
+    DrawerUsageDetails {
+        readonly property var additionalWindows: Usage.additionalFableWindows(root.selected)
+        visible: root.multipleAccounts && additionalWindows.length > 0
+        width: parent.width
+        windows: additionalWindows
+        stale: root.record && root.record.stale === true
+    }
+
     Column {
         visible: root.multipleAccounts
         width: parent.width
@@ -290,6 +311,7 @@ Column {
                 record: modelData
                 expanded: modelData.id === root.expandedAccountId
                 best: root.record && modelData.id === root.record.bestAccountId
+                lastUsed: root.record && modelData.id === root.record.selectedAccountId
                 providerStale: root.record && root.record.stale === true
                 onToggled: root.toggleAccount(modelData.id)
             }

@@ -11,6 +11,7 @@ Column {
     property var record: null
     property bool expanded: false
     property bool best: false
+    property bool lastUsed: false
     property bool providerStale: false
     signal toggled()
 
@@ -22,7 +23,9 @@ Column {
         && remaining <= Settings.modOpts.usage.critAt
     readonly property color tone: !ok || exhausted ? Theme.redText
         : low ? Theme.amber : Theme.textHi
-    readonly property string stateText: {
+    readonly property string stateText: [lastUsed ? "most recently used" : "",
+        Usage.lastUsedText(record), quotaStateText].filter(part => part !== "").join(" · ")
+    readonly property string quotaStateText: {
         if (!record)
             return "No reading";
         if (record.status !== "ok") {

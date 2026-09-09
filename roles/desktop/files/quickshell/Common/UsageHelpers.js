@@ -23,6 +23,29 @@ function providerKeys(source, data) {
     });
 }
 
+// The best overall account may not report Fable. Keep that account's summary
+// intact, but expose Fable readings from other accounts with explicit labels.
+function additionalFableWindows(reading) {
+    if (!reading || reading.status !== "ok")
+        return [];
+    var primary = reading.windows || [];
+    if (primary.some(function (window) { return /fable/i.test(window.label || ""); }))
+        return [];
+    var extra = [];
+    (reading.accounts || []).forEach(function (account) {
+        if (!account || account.status !== "ok")
+            return;
+        (account.windows || []).forEach(function (window) {
+            if (!/fable/i.test(window.label || ""))
+                return;
+            var copy = Object.assign({}, window);
+            copy.label = window.label + " · " + (account.label || "Account");
+            extra.push(copy);
+        });
+    });
+    return extra;
+}
+
 function selectedProvider(keys, current) {
     var available = Array.isArray(keys) ? keys : [];
     if (available.indexOf(current) !== -1 || available.length === 0)
@@ -33,6 +56,7 @@ function selectedProvider(keys, current) {
 var exported = {
     SUPPORTED_PROVIDER_KEYS: SUPPORTED_PROVIDER_KEYS,
     providerKeys: providerKeys,
+    additionalFableWindows: additionalFableWindows,
     selectedProvider: selectedProvider
 };
 
