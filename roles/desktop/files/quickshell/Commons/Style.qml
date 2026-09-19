@@ -348,4 +348,62 @@ QtObject {
     readonly property int statusSlot:     root.barToken("status-slot",     21)
   }
 
+
+  function applyShellValues(values) {
+    var fontOut = {}
+    var barOut = {}
+    var styleOut = {}
+    var spacingOut = {}
+    var nextBase = 12
+    var nextSpacingScale = 1.0
+    var nextSpacingScaleWithFont = true
+    var nextBarScaleWithFont = true
+    var v = values || {}
+    for (var fullKey in v) {
+      var dot = fullKey.indexOf(".")
+      if (dot < 0) continue
+      var section = fullKey.substr(0, dot)
+      var key = fullKey.substr(dot + 1)
+      var raw = v[fullKey]
+      if (section === "font") {
+        var ival = parseInt(raw, 10)
+        if (!isFinite(ival)) continue
+        if (key === "base-size") nextBase = ival
+        else fontOut[key] = ival
+      } else if (section === "bar") {
+        if (key === "scale-with-font") {
+          nextBarScaleWithFont = boolToken(raw, nextBarScaleWithFont)
+        } else if (key === "size-horizontal" || key === "size-vertical") {
+          var b = parseInt(raw, 10)
+          if (isFinite(b)) barOut[key] = b
+        }
+      } else if (section === "spacing") {
+        if (key === "scale-with-font") {
+          nextSpacingScaleWithFont = boolToken(raw, nextSpacingScaleWithFont)
+        } else {
+          var fval = parseFloat(raw)
+          if (!isFinite(fval)) continue
+          if (key === "scale") nextSpacingScale = fval
+          else spacingOut[key] = fval
+        }
+      } else if (section === "controls" || section === "style") {
+        // Strings are passed through; styleRawNum/styleString coerce on read.
+        // [style] is the legacy name for [controls].
+        styleOut[key] = raw
+      }
+    }
+    // Keep only a 1px sanity floor. Per-token overrides aren't clamped
+    // either — a theme that wants display-large = 64 should be allowed to
+    // ship it.
+    if (!isFinite(nextBase) || nextBase < 1) nextBase = 1
+    if (!isFinite(nextSpacingScale) || nextSpacingScale < 0) nextSpacingScale = 1.0
+    spacingScale = nextSpacingScale
+    spacingScaleWithFont = nextSpacingScaleWithFont
+    fontBaseSize = nextBase
+    fontOverrides = fontOut
+    barOverrides = barOut
+    barScaleWithFont = nextBarScaleWithFont
+    spacingOverrides = spacingOut
+    styleOverrides = styleOut
+  }
 }

@@ -344,6 +344,7 @@ stage_python_helpers() {
       && python3 tests/repository-policy.py \
       && python3 tests/application-defaults.py \
       && python3 tests/ownership-layering.py \
+      && python3 tests/plugin-packages.py \
       && python3 tests/user-plugins.py \
       && python3 tests/installer-convergence.py \
       && python3 tests/user-adoption.py \

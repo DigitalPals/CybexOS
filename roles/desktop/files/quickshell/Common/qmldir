@@ -86,3 +86,4 @@ OmarchyPluginApi OmarchyPluginApi.qml
 OmarchyEntryHost OmarchyEntryHost.qml
 singleton OmarchyPlugins OmarchyPlugins.qml
 singleton OmarchyApplications OmarchyApplications.qml
+OmarchyServiceApi OmarchyServiceApi.qml

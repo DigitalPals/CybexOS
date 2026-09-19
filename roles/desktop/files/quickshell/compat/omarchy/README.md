@@ -5,6 +5,8 @@ and `bin/{omarchy-notification-send,omarchy-shell}` derive from omacom/omarchy,
 commit 60663faf8764253646f1d6166e864b608d4a0fa1 (MIT). The accompanying LICENSE
 preserves the upstream notice. `Commons/Color.qml` bridges upstream color roles
 and helpers to Cybex's palette; it does not watch Omarchy theme files.
+The pinned upstream `loadColors`, `parseShell` and `applyShellValues` functions
+are retained for explicit session theme updates through IPC.
 
 Style retains upstream tokens/functions with Cybex font/radius values and
 omits Omarchy config watchers and Hyprland polling. UI changes qualify delegate

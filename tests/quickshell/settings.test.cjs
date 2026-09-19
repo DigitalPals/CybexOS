@@ -611,7 +611,7 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
     // The index is hand-maintained; hold it against the schema so a renamed
     // key or page cannot leave a search row jumping nowhere.
     const schemaKeys = Object.keys(load("SettingsHelpers.js").defaults());
-    const validPages = ["appearance", "wallpaper", "bar", "modules", "drawer",
+    const validPages = ["appearance", "wallpaper", "bar", "modules", "plugins", "drawer",
         "notifications", "system"];
     const rows = load("SettingsSearchData.js").ROWS;
     assert.ok(rows.length >= 30, "the search index must cover the workspace");

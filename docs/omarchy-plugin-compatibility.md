@@ -11,9 +11,57 @@ The implementation targets Omarchy commit
 inspected on 2026-09-19. Its `schemaVersion: 1` describes manifest structure;
 it does not freeze the host API across future upstream releases.
 
+## Parity assessment and implementation (2026-09-19)
+
+**The main management and runtime gaps are now implemented; compatibility is
+still qualified by the limits below.** The preceding audit used a fresh
+`git ls-remote` and upstream checkout to confirm that the pinned commit above is
+still Omarchy's default-branch HEAD. This comparison does not cover its separate
+development branch.
+
+| Capability | Assessment against that upstream revision |
+| --- | --- |
+| Six plugin kinds, defaults, service/UI lifecycle, repeated widgets, replacement bars | Implemented, with representative fixtures and the limits below; not universal package compatibility |
+| Git package management | `add`, `update [--preview]`, and `remove`; candidate manifests/entrypoints are validated before installation or fast-forward. Dirty/diverged checkouts are rejected; settings and data survive removal |
+| Built-in customization | `clone <id> <new-id> [--edit]`, with `--from <omarchy-checkout>` for built-in manifests and `clonePaths`. Installed originals are disabled and restored when the clone is removed. Native Cybex built-ins are not replaced by Omarchy clone IDs |
+| Management menus | Settings → Plugins supports trusted Git installs, enable/disable, update preview/update, clone and confirmed removal; built-in imports from an Omarchy checkout use the CLI |
+| Code reload | Two-second discovery refresh detects package edits and loads versioned snapshots, including relative QML/JS imports. `keepLoaded` services survive code reload; disable/re-enable or `plugin restart` recreates them |
+| Shell IPC | Added configuration/theme refresh, placement and settings mutations, panel toggling, transparency and geometry methods. Mutations are queued, and Cybex schemas/validation differ; this is not exact signature/result parity |
+| First-party integrations | Full bars receive narrow idle, nightlight, notification and media adapters backed by Cybex. Authentication, Omarchy commands and external backends are not supplied |
+| Manifest acceptance | Stricter here, not identical. For example, Cybex requires an ID beginning with a letter, while upstream's package CLI also accepts a leading digit; Cybex also requires entrypoint keys to exactly match declared kinds |
+
+The lack of a marketplace or manifest-generated settings editor is a local
+limitation, but is **not established as a parity gap** by this upstream revision.
+Its plugin catalogue enumerates local packages, its management menu handles
+enable/disable/clone/remove, and schema metadata alone does not demonstrate a
+generated settings editor.
+
+Implemented commands and menus share the existing locked preference writer.
+Package updates never run plugin installers or Git hooks. Git preview reports
+changed files; validation covers manifests and entrypoint paths, not arbitrary
+QML behavior or plugin dependencies. Runtime failures remain visible through
+plugin diagnostics and replacement-bar fallback.
+
+Comparison sources at the pinned revision:
+[shell contract](https://github.com/omacom/omarchy/blob/60663faf8764253646f1d6166e864b608d4a0fa1/docs/omarchy-shell.md),
+[package updater](https://github.com/omacom/omarchy/blob/60663faf8764253646f1d6166e864b608d4a0fa1/bin/omarchy-plugin-update),
+[clone command](https://github.com/omacom/omarchy/blob/60663faf8764253646f1d6166e864b608d4a0fa1/bin/omarchy-plugin-clone),
+[management menu](https://github.com/omacom/omarchy/blob/60663faf8764253646f1d6166e864b608d4a0fa1/bin/omarchy-menu-plugin),
+and [service proxies](https://github.com/omacom/omarchy/blob/60663faf8764253646f1d6166e864b608d4a0fa1/shell/services/PluginFirstPartyServiceApi.qml).
+
+Audit verification: `node --test tests/quickshell/*.test.cjs` completed with
+736 passes, two skips (installed Qt enum checks unavailable on the Debian host),
+and no failures. `tests/user-plugins.py` passed in a disposable Fedora 44
+container with Quickshell and two headless Sway outputs, including runtime
+replacement/rollback and the Omarchy entrypoint suite. Eight Omarchy fixture
+files matched current upstream HEAD byte-for-byte; both Pomodoro fixture files
+matched their recorded commit. This audit did not repeat the full `tests/run`
+pipeline or physical desktop qualification. That audit changed only this document; the implementation below adds code and regression tests.
+
 ## Install and configure
 
-Put a complete plugin checkout in
+Install a trusted package with `cybex plugin add <git-url-or-local-repository>`,
+then enable it, or put a complete plugin checkout in
 `~/.local/share/fedora-config/plugins/<manifest-id>/`. The directory must match
 its manifest ID. Preserve the manifest, QML, relative imports, scripts, and
 assets. No manifest conversion or Omarchy installation is required. Packages
@@ -29,10 +77,37 @@ cybex plugin set markbusking.pomodoro sound false
 cybex plugin list
 ```
 
-Preferences refresh within two seconds. Use `cybex plugin reload` after
-changing plugin **code**; this restarts the managed `quickshell.service`.
+Preferences and package code refresh within two seconds. `cybex plugin reload`
+requests an immediate scan through the running shell; `cybex plugin restart`
+explicitly restarts the managed `quickshell.service`.
 Disable with `cybex plugin disable <id>`; files and preferences remain.
 Deploy the updated Quickshell role before using this on an older desktop.
+
+Manage packages in **Settings → Plugins**, or from the CLI:
+
+```bash
+cybex plugin update markbusking.pomodoro --preview
+cybex plugin update markbusking.pomodoro
+cybex plugin clone markbusking.pomodoro personal.pomodoro --edit
+cybex plugin remove personal.pomodoro
+# Import a built-in from a trusted checkout of the pinned upstream revision:
+cybex plugin clone omarchy.spacer personal.spacer --from ~/Code/omarchy
+```
+
+Cloning copies settings, enables the new ID and disables an installed original.
+Removing the clone restores the original's previous enablement and selected-bar
+state. Removing any package preserves its preferences and persistent data.
+Clones are editable copies without Git history; update their source explicitly.
+Enabling a built-in import does not install its operating-system dependencies.
+
+Hot reload uses snapshots under `$XDG_RUNTIME_DIR/cybex-plugin-code/`, keyed by
+shell PID/start time and package fingerprint. Old snapshots remain for the
+session so retained services can still read their original assets; later scans
+remove dead sessions, and logout clears the runtime directory. Original package
+paths and persistent data remain user-owned. Ordinary settings edits preserve
+service/widget state. Package edits recreate UI and non-`keepLoaded` services;
+plugins must persist state they need across those events. Editing a symlink's
+external target is not watched; keep executable dependencies inside the package.
 
 Placement supports `--section left|center|right`, `--width 24..320`, and
 integer `--order`. Omarchy widgets default to their manifest's `defaultSection`
@@ -76,7 +151,7 @@ not a change to Cybex's native bar preference.
 | Paths and identity | Directory matches ID; ASCII letters, digits, dots, underscores and hyphens; no `..`, absolute entrypoints, missing files or escaping entrypoint symlinks |
 | Widget injection | `bar`, `moduleName`, `settings` supplied at creation; native API 1 remains unchanged |
 | Other entrypoints | Optional `shell`, `manifest`, `pluginRegistry`, `barWidgetRegistry`, `omarchyPath`, `barConfig`, `settings`, `service` injected after construction, matching upstream |
-| Services | One shared instance per enabled package; own-service lookup and own clone alias; service retained across ordinary preference updates and shared across outputs |
+| Services | One shared instance per enabled package; own-service lookup and clone alias; service retained across preference updates and shared across outputs; `keepLoaded` services also survive code reload |
 | Panels, overlays, menus | Lazy creation, `open(payloadJson)`, `close()`, `summon`, `hide`, `toggle`, `isPluginOpen`, `call`; `keepLoaded` retains closed entries; otherwise hiding destroys them |
 | Combined kinds | Service and widget can coexist with UI; lifecycle routing chooses panel, then overlay, then menu when several UI kinds are declared |
 | Settings | Defaults plus persisted values; locked atomic merge writes; native-bar instances write their own overrides; unrelated fields preserved |
@@ -84,7 +159,7 @@ not a change to Cybex's native bar preference.
 | Menus | Application listing, basic name/subtext search, icons and launch through Quickshell desktop entries; `appsChanged` notification |
 | UI | All 35 QML components from the pinned upstream `Ui` directory, including forms, popups, sliders, media backgrounds and speed-test overlay |
 | Theme | `qs.Commons` Style, Color, Util and Border APIs, with Cybex palette/font/rounding and upstream role names/helpers |
-| IPC | `shell` target: `ping`, `summon`, `hide`, `toggle`, `call`, `listPlugins`, `rescanPlugins`, `setPluginEnabled`; plugin-defined targets remain available |
+| IPC | `shell` target: `ping`, `summon`, `hide`, `toggle`, `call`, `listPlugins`, `rescanPlugins`, `setPluginEnabled`, `enablePlugin`, `putBarWidget`, `moveBarWidget`, `setBarWidget`, `togglePanelAt`, `reloadConfig`, `applyTheme`, `toggleBarTransparency`, `listShellConfig`, `debugBarGeometry`; plugin-defined targets remain available |
 | Helpers | Bundled `omarchy-shell` forwards IPC to the already-running matching runtime; `omarchy-notification-send` uses desktop notification D-Bus |
 
 `OMARCHY_PATH` points to the bundled compatibility directory and its `bin`
@@ -118,7 +193,7 @@ settings are saved in `plugins.json`; there is no second `shell.json` store.
   those still need their dependencies installed or a Fedora-specific adapter.
 - Authentication, lock-screen/polkit services, and privileged first-party
   host capabilities are not supplied. Cross-plugin private service lookup is
-  unavailable. The compatibility theme's lock/polkit colors do not implement
+  unavailable; full bars receive only the four narrow service adapters. The compatibility theme's lock/polkit colors do not implement
   those systems.
 - A replacement bar cannot render native Cybex API 1 widgets. Hosted widget
   facades do not expose service objects: a widget relying on direct service
@@ -129,9 +204,19 @@ settings are saved in `plugins.json`; there is no second `shell.json` store.
   named overrides are writable through the native bar, CLI, or full layout
   mutation; replacement facades are not keyed by instance. Full `shell.json`
   mutation is unavailable; only bar presentation/layout is persisted.
-- No marketplace install/update UI, manifest-generated settings editor,
-  live plugin-code watcher, or complete Omarchy shell IPC command surface.
-  Use the CLI for settings and a managed restart for code reloads.
+- No remote marketplace catalogue or manifest-generated settings editor.
+  `applyTheme` updates the Omarchy compatibility palette/style for the session,
+  not Cybex's persisted theme. `reloadConfig` refreshes plugin preferences;
+  Cybex shell settings retain their existing file watcher.
+- IPC mutations return acceptance before the serialized helper writes finish;
+  check plugin diagnostics for persistence errors. Layout validation is stricter
+  than upstream (for example, out-of-range indices are rejected, not clamped).
+  Native-bar transparency/geometry is not exposed through the Omarchy adapter.
+- Built-in clones that have no installed source cannot restore an absent
+  Omarchy package on removal. This host does not import Omarchy's whole built-in
+  catalogue or replace native Cybex widgets by matching their names.
+- The media adapter supports player selection and basic transport; it does not
+  reproduce Omarchy's feedback overlays or player-launch policy.
 - Application removal explicitly returns false. The menu application bridge
   does not reproduce Omarchy's launch feedback, icon-index refresh, hidden-app
   configuration or fuzzy ranking.
@@ -175,8 +260,22 @@ behavior still need live qualification under the repository's sole-PID and
 journal checks. Headless validation does not establish universal or future
 version compatibility.
 
-All 16 `tests/run` source stages passed, including 738 JavaScript tests and
+The earlier runtime implementation passed all 16 `tests/run` source stages, including 738 JavaScript tests and
 242 QML files (no lint errors; six nonfatal upstream warnings). The final
 active-bar geometry change was rechecked with QML lint and the complete
 real-engine plugin suite. The container and downloaded upstream sources used
 for this validation were disposable; no persistent desktop deployment was made.
+
+Implementation verification adds `tests/plugin-packages.py` for Git installation,
+preview, valid/invalid updates, dirty-checkout protection, clone restoration,
+built-in imports, removal retention and snapshot identity. The Quickshell suite
+also loads the Plugins settings page, exercises added IPC calls and first-party
+adapter scope, and edits a relative JS import while both outputs are running to
+verify UI reload and retained service identity/state. QML lint covers the new UI.
+Physical audio/idle/nightlight behavior is not qualified by the headless fixture.
+
+For this management/reload change, validation passed with 736 JavaScript tests
+(two host Qt-enum skips), all 244 QML files linted, the extended two-output engine
+suite, package transaction tests, both deployment fixtures, Ruff and ShellCheck.
+The full 16-stage source gate was not repeated. No persistent desktop deployment
+was possible on the Debian build server, which has no installed Quickshell.

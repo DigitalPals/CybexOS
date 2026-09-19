@@ -101,6 +101,8 @@ PopoutPanel {
             title: "Bar", description: "Placement, shape, and behavior" },
         { id: "modules", group: "SHELL", label: "Widgets", glyph: "widgets",
             title: "Widgets", description: "Choose and arrange the bar’s contents" },
+        { id: "plugins", group: "SHELL", label: "Plugins", glyph: "extension",
+            title: "Plugins", description: "Install and manage trusted desktop plugins" },
         { id: "drawer", group: "SHELL", label: "Drawer", glyph: "right_panel_open",
             title: "Drawer", description: "Tabs, overview contents, and how it opens" },
         { id: "notifications", group: "SYSTEM", label: "Notifications", glyph: "notifications",
@@ -633,6 +635,7 @@ PopoutPanel {
                 case "wallpaper": return wallpaperPage;
                 case "bar": return barPage;
                 case "modules": return modulesPage;
+                case "plugins": return pluginsPage;
                 case "drawer": return drawerPage;
                 case "notifications": return notificationsPage;
                 case "system": return systemPage;
@@ -812,6 +815,7 @@ PopoutPanel {
             }
         }
         Component { id: notificationsPage; NotificationsPage {} }
+        Component { id: pluginsPage; PluginsPage {} }
         Component { id: drawerPage; DrawerPage {} }
         Component { id: systemPage; SystemPage {} }
     }

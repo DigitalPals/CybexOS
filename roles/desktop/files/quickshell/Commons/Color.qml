@@ -129,4 +129,59 @@ QtObject {
     property color unselectedBorder: root.composed("image-picker.unselected-border", "image-picker.unselected-border-alpha", root.foreground, 0.28)
   }
 
+
+  function loadColors(raw) {
+    var lines = String(raw || "").split("\n")
+    var foundAccent = false
+    var foundMuted = false
+    var loadedForeground = false
+    var loadedBackground = false
+    var color0Value = ""
+    var color4Value = ""
+    var color7Value = ""
+    var color8Value = ""
+    for (var i = 0; i < lines.length; i++) {
+      var match = lines[i].match(/^\s*([A-Za-z0-9_-]+)\s*=\s*["']?(#[0-9A-Fa-f]{6})/)
+      if (!match) continue
+      if (match[1] === "foreground") { foreground = match[2]; loadedForeground = true }
+      else if (match[1] === "background") { background = match[2]; loadedBackground = true }
+      // Prefer the explicit `accent` key; only fall back to color4 when the
+      // theme doesn't define a separate accent. color4 appears later in the
+      // file so the old single-property approach clobbered accent with it.
+      else if (match[1] === "accent") { accent = match[2]; foundAccent = true }
+      else if (match[1] === "muted") { muted = match[2]; foundMuted = true }
+      else if (match[1] === "color0") color0Value = match[2]
+      else if (match[1] === "color4") color4Value = match[2]
+      else if (match[1] === "color7") color7Value = match[2]
+      else if (match[1] === "color8") color8Value = match[2]
+      else if (match[1] === "red" || match[1] === "color1") urgent = match[2]
+    }
+    if (!loadedBackground && color0Value.length > 0) background = color0Value
+    if (!loadedForeground && color7Value.length > 0) foreground = color7Value
+    if (!foundAccent && color4Value.length > 0) accent = color4Value
+    if (!foundMuted) muted = color8Value.length > 0 ? color8Value : foreground
+  }
+  function parseShell(raw) {
+    var parsed = {}
+    var text = String(raw || "")
+    if (text) {
+      var lines = text.split("\n")
+      var section = ""
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].replace(/^\s+|\s+$/g, "")
+        if (!line || line.charAt(0) === "#") continue
+        var sectionMatch = line.match(/^\[([A-Za-z0-9_-]+)\]\s*(#.*)?$/)
+        if (sectionMatch) { section = sectionMatch[1]; continue }
+        var stringKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*["']([^"']+)["']\s*(#.*)?$/)
+        var numKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(-?\d+(?:\.\d+)?)\s*(#.*)?$/)
+        var widthKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*(-?\d+(?:\.\d+)?(?:\s+-?\d+(?:\.\d+)?){1,3})\s*(#.*)?$/)
+        var bareKv = line.match(/^([A-Za-z0-9_-]+)\s*=\s*([A-Za-z][A-Za-z0-9_-]*)\s*(#.*)?$/)
+        var kv = stringKv || numKv || widthKv || bareKv
+        if (!kv || !section) continue
+        parsed[section + "." + kv[1]] = kv[2]
+      }
+    }
+    return parsed
+  }
+  function loadShell(raw) { shellValues = parseShell(raw); Style.applyShellValues(shellValues); }
 }

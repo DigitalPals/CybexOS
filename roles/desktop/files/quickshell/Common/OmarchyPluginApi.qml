@@ -34,9 +34,20 @@ QtObject {
     }
 
     function firstPartyServiceFor(id) {
-        // Supports upstream built-in packages installed under their original ID
-        // or a clone ID, without publishing unrelated Cybex services.
+        if (serviceAccess && fullBar) {
+            if (Object.prototype.hasOwnProperty.call(firstPartyAdapters, id)) return firstPartyAdapters[id];
+        }
         return serviceFor(id);
+    }
+
+    readonly property Component serviceAdapterFactory: Component { OmarchyServiceApi {} }
+    readonly property var firstPartyAdapters: {
+        const result = {};
+        if (fullBar && serviceAccess) {
+            for (const id of ["omarchy.idle", "omarchy.nightlight", "omarchy.notifications", "omarchy.media"])
+                result[id] = serviceAdapterFactory.createObject(root, { serviceId: id });
+        }
+        return result;
     }
 
     function pluginShellForBarEntry(ownerId, moduleName) {

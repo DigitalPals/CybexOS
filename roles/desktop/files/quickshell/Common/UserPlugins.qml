@@ -13,6 +13,8 @@ Singleton {
     property string error: ""
     property string lastResult: ""
     property var pendingWrites: []
+    readonly property bool busy: writer.running || pendingWrites.length > 0
+    property string operationResult: ""
     // Registry across outputs for Omarchy broadcast and popup ownership.
     property var widgetHosts: []
     property var activePopout: null
@@ -77,6 +79,8 @@ Singleton {
     function nextWrite() {
         if (writer.running || pendingWrites.length === 0)
             return;
+        error = "";
+        operationResult = "";
         writer.command = pendingWrites[0];
         pendingWrites = pendingWrites.slice(1);
         writer.running = true;
@@ -84,7 +88,7 @@ Singleton {
 
     Process {
         id: scanner
-        command: ["python3", root.helper, "list"]
+        command: ["python3", root.helper, "list", "--live"]
         stdout: StdioCollector {
             onStreamFinished: {
                 if (text === root.lastResult)
@@ -110,6 +114,9 @@ Singleton {
 
     Process {
         id: writer
+        stdout: StdioCollector {
+            onStreamFinished: root.operationResult = text.trim()
+        }
         stderr: StdioCollector {
             onStreamFinished: {
                 if (text.trim())

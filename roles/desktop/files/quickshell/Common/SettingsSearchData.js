@@ -35,6 +35,7 @@ var ROWS = [
     { page: "bar", pageLabel: "Bar", group: "Behavior", label: "Reserve space", key: "exclusive", terms: "exclusive zone tiled windows" },
 
     // Widgets
+    { page: "plugins", pageLabel: "Plugins", group: "Packages", label: "Manage plugins", key: "", terms: "install git add update clone remove enable disable omarchy" },
     { page: "modules", pageLabel: "Widgets", group: "Lanes", label: "Arrange widgets", key: "", terms: "drag order left center right lane module notification group grouping status pill separate" },
     { page: "modules", pageLabel: "Widgets", group: "Catalog", label: "Show or hide widgets", key: "", terms: "enable disable toggle module clock weather notes battery tray workspaces media" },
     { page: "modules", pageLabel: "Widgets", group: "Indicators", label: "Clock-side actions", key: "", terms: "indicator dictate recording ocr scan text clipboard reminder night light do not disturb dnd stay awake idle inhibit order startup duration" },

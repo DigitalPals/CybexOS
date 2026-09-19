@@ -16,7 +16,7 @@ Usage:
   fedora-config-runtime dev enable CHECKOUT
   fedora-config-runtime dev disable
   fedora-config-runtime dev status
-  fedora-config-runtime plugin list|enable|disable|set [arguments]
+  fedora-config-runtime plugin add|update|clone|remove|list|enable|disable|set|reload|restart [arguments]
 
 The development switch only records a validated checkout. It never fetches,
 resets, merges, or otherwise changes that checkout.
@@ -216,10 +216,13 @@ case $command_name in
     ;;
   dev) dev_command "$@" ;;
   plugin)
+    selected=$(runtime_path quickshell)
     if [[ ${1:-} == reload ]]; then
+      exec "$selected/compat/omarchy/bin/omarchy-shell" shell rescanPlugins
+    fi
+    if [[ ${1:-} == restart ]]; then
       exec systemctl --user restart quickshell.service
     fi
-    selected=$(runtime_path quickshell)
     exec python3 "$selected/scripts/user-plugins.py" "$@"
     ;;
   -h|--help|help) usage ;;

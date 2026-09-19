@@ -11,6 +11,10 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import shutil
+import subprocess
+import plugin_packages
+from urllib.parse import unquote
 
 
 API_VERSION = 1
@@ -66,6 +70,9 @@ def package(packages: Path, plugin_id: str) -> dict:
     manifest = read_object(directory / "manifest.json")
     if manifest.get("id") != plugin_id:
         raise ValueError("Manifest id must match its directory name")
+    metadata = manifest.get("omarchy", {})
+    if not isinstance(metadata, dict) or ("clonedFrom" in metadata and not valid_id(metadata["clonedFrom"])):
+        raise ValueError("Invalid Omarchy clone metadata")
     omarchy = "schemaVersion" in manifest
     defaults = {}
     kinds = ["bar-widget"]
@@ -296,12 +303,122 @@ def apply_layout(registry: dict, layout: object, packages: Path) -> None:
             saved["widgetEnabled"] = False
 
 
+def edit_layout(config: Path, packages: Path, state: Path, action: str, plugin_id: str, payload: dict) -> None:
+    # Called under the preference lock: each queued IPC edit sees all earlier
+    # writes, even when several arrive before the next discovery refresh.
+    info = scan(config, packages, state)
+    if info["error"]:
+        raise ValueError(info["error"])
+    item = next((item for item in info["plugins"] if item["id"] == plugin_id and not item["error"]), None)
+    if not item or item["format"] != "omarchy" or "bar-widget" not in item["kinds"]:
+        raise ValueError("Unknown Omarchy widget")
+    layout = {section: [] for section in ("left", "center", "right")}
+    for widget in info["widgets"]:
+        if widget["enabled"] and not widget["error"] and widget["format"] == "omarchy":
+            layout[widget["section"]].append({**widget["settings"], "id": widget["id"],
+                                               "__cybexInstance": widget.get("instanceName", "")})
+    selector = payload.get("selector", {}) if action == "set" else payload
+    if not isinstance(selector, dict):
+        raise ValueError("Invalid selector")
+    source_section = selector.get("fromSection", selector.get("section") if action == "set" else None)
+    source_index = selector.get("fromIndex", selector.get("index") if action == "set" else None)
+    if source_index is not None and (not source_section or type(source_index) is not int or source_index < 0):
+        raise ValueError("Invalid source index")
+    found = None
+    for section, entries in layout.items():
+        if source_section and section != source_section:
+            continue
+        for index, entry in enumerate(entries):
+            if entry["id"] == plugin_id and (source_index is None or source_index == index):
+                found = (section, index, entry)
+                break
+        if found:
+            break
+    if action == "put" and found:
+        return
+    if action in ("set", "move") and not found:
+        raise ValueError("Widget not found at source position")
+    if action == "set":
+        if not isinstance(payload.get("key"), str) or "value" not in payload:
+            raise ValueError("Setting mutation needs key and value")
+        if payload["key"] in ("id", "__cybexInstance"):
+            raise ValueError("Cannot change widget identity")
+        found[2][payload["key"]] = payload["value"]
+    else:
+        section = payload.get("section", found[0] if found else item["section"])
+        if section not in layout:
+            raise ValueError("Invalid section")
+        if payload.get("before") and payload.get("after"):
+            raise ValueError("Choose before or after")
+        entry = layout[found[0]].pop(found[1]) if found else {**item["settings"], "id": plugin_id}
+        index = payload.get("index", len(layout[section]))
+        relative = payload.get("before", payload.get("after"))
+        if relative:
+            anchor = next(((name, at) for name, entries in layout.items()
+                           for at, candidate in enumerate(entries) if candidate["id"] == relative
+                           and (not payload.get("section") or name == section)), None)
+            if anchor:
+                section, index = anchor
+                index += bool(payload.get("after"))
+            elif action != "put":
+                raise ValueError("Relative widget not found")
+        if type(index) is not int or not 0 <= index <= len(layout[section]):
+            raise ValueError("Invalid index")
+        layout[section].insert(index, entry)
+    value = preferences(config)
+    apply_layout(value, layout, packages)
+    write_preferences(config, value)
+
+
+def runtime_sources(result: dict, packages: Path, runtime: Path) -> None:
+    for item in result["plugins"]:
+        if item.get("error") or not item.get("enabled"):
+            continue
+        source = packages / item["id"]
+        revision = plugin_packages.fingerprint(source)
+        destination = runtime / item["id"] / revision
+        if not destination.exists():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix=".snapshot-", dir=destination.parent) as temporary:
+                staged = Path(temporary) / "code"
+                shutil.copytree(source, staged, symlinks=True, ignore=shutil.ignore_patterns(".git"))
+                if plugin_packages.fingerprint(source) != revision:
+                    raise ValueError("Plugin changed during scan; retrying on next refresh")
+                staged.rename(destination)
+        original = source.resolve()
+        item["sources"] = {kind: (destination / Path(unquote(url.removeprefix("file://"))).relative_to(original)).as_uri()
+                           for kind, url in item["sources"].items()}
+        item["source"] = item["sources"].get("barWidget", "")
+        for widget in result["widgets"]:
+            if widget["id"] == item["id"]:
+                widget["sources"] = item["sources"]
+                widget["source"] = item["source"]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    layout_edit = commands.add_parser("layout-edit", help="Apply one atomic IPC layout mutation")
+    layout_edit.add_argument("action", choices=("enable", "put", "move", "set"))
+    layout_edit.add_argument("id")
+    layout_edit.add_argument("payload")
     bar_config = commands.add_parser("bar-config", help="Persist replacement bar settings and widget layout")
     bar_config.add_argument("value")
-    commands.add_parser("list", help="Inspect installed widgets and compatibility as JSON")
+    listing = commands.add_parser("list", help="Inspect installed widgets and compatibility as JSON")
+    listing.add_argument("--runtime-root", type=Path)
+    listing.add_argument("--live", action="store_true")
+    add = commands.add_parser("add", help="Install a trusted Git package (disabled until enabled)")
+    add.add_argument("source")
+    update = commands.add_parser("update", help="Validate and fast-forward a clean Git checkout")
+    update.add_argument("id")
+    update.add_argument("--preview", action="store_true")
+    remove = commands.add_parser("remove", help="Remove package files, preserving settings and data")
+    remove.add_argument("id")
+    clone = commands.add_parser("clone", help="Customize an installed package under a new ID")
+    clone.add_argument("id")
+    clone.add_argument("new_id")
+    clone.add_argument("--edit", action="store_true")
+    clone.add_argument("--from", dest="builtin_root", type=Path, help="Omarchy checkout containing built-in sources")
     enable = commands.add_parser("enable", help="Enable a trusted local widget")
     enable.add_argument("id")
     enable.add_argument("--width", type=int)
@@ -332,7 +449,100 @@ def main() -> int:
     config, packages, state = roots()
     try:
         if args.command == "list":
-            print(json.dumps(scan(config, packages, state), ensure_ascii=False))
+            with locked(config):
+                result = scan(config, packages, state)
+                if args.live:
+                    owner = os.getppid()
+                    session = str(owner) + "-" + Path(f"/proc/{owner}/stat").read_text().rsplit(")", 1)[1].split()[19]
+                    cache = Path(os.environ["XDG_RUNTIME_DIR"]) / "cybex-plugin-code"
+                    cache.mkdir(mode=0o700, exist_ok=True)
+                    for old in cache.iterdir():
+                        if not old.is_dir() or old.is_symlink():
+                            continue
+                        pid, _, stamp = old.name.partition("-")
+                        try:
+                            current = Path(f"/proc/{int(pid)}/stat").read_text().rsplit(")", 1)[1].split()[19]
+                        except (OSError, ValueError):
+                            current = ""
+                        if current != stamp:
+                            shutil.rmtree(old)
+                    args.runtime_root = cache / session
+                if args.runtime_root:
+                    runtime_sources(result, packages, args.runtime_root)
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        if args.command == "layout-edit":
+            payload = json.loads(args.payload)
+            if not isinstance(payload, dict) or not valid_id(args.id):
+                raise ValueError("Invalid layout mutation")
+            with locked(config):
+                edit_layout(config, packages, state, args.action, args.id, payload)
+            return 0
+        if args.command == "add":
+            with locked(config):
+                value = preferences(config)
+                plugin_id = plugin_packages.install(packages, args.source, package, read_object)
+                try:
+                    entry = value["plugins"].setdefault(plugin_id, {})
+                    if not isinstance(entry, dict):
+                        raise ValueError("Plugin preferences must be an object")
+                    entry["enabled"] = False
+                    write_preferences(config, value)
+                except (OSError, ValueError):
+                    shutil.rmtree(packages / plugin_id)
+                    raise
+                print(plugin_id)
+            return 0
+        if args.command in ("update", "remove", "clone"):
+            if not valid_id(args.id):
+                raise ValueError("Invalid plugin id")
+            with locked(config):
+                if args.command == "update":
+                    print(plugin_packages.update(packages, args.id, package, args.preview))
+                elif args.command == "clone":
+                    if not valid_id(args.new_id):
+                        raise ValueError("Invalid clone id")
+                    value = preferences(config)
+                    original = value["plugins"].get(args.id, {})
+                    options(original)
+                    plugin_packages.clone(packages, args.id, args.new_id, package, read_object, args.builtin_root)
+                    cloned = json.loads(json.dumps(original))
+                    cloned["enabled"] = True
+                    cloned["cloneRestore"] = {"id": args.id, "enabled": original.get("enabled", False),
+                                               "bar": value.get("bar", {}).get("id") == args.id}
+                    value["plugins"][args.new_id] = cloned
+                    if args.id in value["plugins"]:
+                        value["plugins"][args.id]["enabled"] = False
+                    if cloned["cloneRestore"]["bar"]:
+                        value["bar"]["id"] = args.new_id
+                    try:
+                        write_preferences(config, value)
+                    except (OSError, ValueError):
+                        shutil.rmtree(packages / args.new_id)
+                        raise
+                else:
+                    directory = plugin_packages.managed_directory(packages, args.id)
+                    value = preferences(config)
+                    removed = value["plugins"].setdefault(args.id, {})
+                    if not isinstance(removed, dict):
+                        raise ValueError("Plugin preferences must be an object")
+                    restore = removed.pop("cloneRestore", {})
+                    if not isinstance(restore, dict):
+                        raise ValueError("Invalid clone restoration metadata")
+                    if restore.get("id") in value["plugins"]:
+                        original = value["plugins"][restore["id"]]
+                        if not isinstance(original, dict) or type(restore.get("enabled")) is not bool:
+                            raise ValueError("Invalid original plugin preferences")
+                        original["enabled"] = restore["enabled"]
+                    removed["enabled"] = False
+                    if value.get("bar", {}).get("id") == args.id:
+                        value["bar"]["id"] = restore.get("id", "") if restore.get("bar") else ""
+                    write_preferences(config, value)
+                    shutil.rmtree(directory)
+            if args.command == "clone" and args.edit:
+                import shlex
+                subprocess.run([*shlex.split(os.environ.get("EDITOR", "vi")),
+                                str(packages / args.new_id / "manifest.json")], check=True)
             return 0
         if args.command == "bar-config":
             incoming = json.loads(args.value)
@@ -391,7 +601,17 @@ def main() -> int:
                             configured[key] = getattr(args, key)
                     options({**entry, **configured})
             elif args.command == "enable":
-                package(packages, args.id)
+                candidate = package(packages, args.id)
+                origin = candidate["manifest"].get("omarchy", {}).get("clonedFrom", args.id)
+                for other_id, other in value["plugins"].items():
+                    if other_id == args.id or not isinstance(other, dict):
+                        continue
+                    try:
+                        related = package(packages, other_id)["manifest"].get("omarchy", {}).get("clonedFrom")
+                    except (OSError, ValueError):
+                        continue
+                    if other_id == origin or related == origin:
+                        other["enabled"] = False
                 entry["enabled"] = True
                 entry["widgetEnabled"] = True
                 for key in ("width", "order", "section"):
@@ -420,7 +640,7 @@ def main() -> int:
                 options(entry)
             write_preferences(config, value)
         return 0
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
         parser.exit(2, f"user-plugins: {error}\n")
 
 

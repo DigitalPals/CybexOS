@@ -4,18 +4,27 @@ import Quickshell
 import Quickshell.Io
 import "Common"
 import "Bar"
+import "Settings"
 
 ShellRoot {
     id: root
     property int attempts: 0
     property int stage: 0
     property var savedService: null
+    property var savedPanel: null
     property bool finished: false
     property bool ipcChecked: false
 
+    FloatingWindow {
+        visible: true
+        implicitWidth: 650
+        implicitHeight: 600
+        PluginsPage { anchors.fill: parent }
+    }
+
     Process {
         id: ipcCheck
-        command: [Quickshell.shellDir + "/compat/omarchy/bin/omarchy-shell", "shell", "ping"]
+        command: ["python3", "-c", "import subprocess,sys,json; h=sys.argv[1]; call=lambda *a: subprocess.check_output([h,'shell',*a],text=True).strip(); assert call('ping')=='pong'; assert 'bar' in json.loads(call('listShellConfig')); assert call('reloadConfig')=='ok'; assert call('putBarWidget','markbusking.pomodoro','{}')=='ok'; assert call('moveBarWidget','markbusking.pomodoro','{\"section\":\"bad\"}')=='invalid section'; assert call('applyTheme','YWNjZW50ID0gXCIjMTIzNDU2XCI=','')=='ok'; print('pong')", Quickshell.shellDir + "/compat/omarchy/bin/omarchy-shell"]
         stdout: StdioCollector {
             onStreamFinished: { root.ipcChecked = root.check(text.trim() === "pong", "bundled IPC helper ping: " + text); }
         }
@@ -107,14 +116,29 @@ ShellRoot {
                 if (!widgets.every(h => h.widget.settings.label === (h.descriptor.instanceName === "one" ? "changed" : "second"))) return;
                 if (!root.check(OmarchyPlugins.serviceFor("example.bundle") === root.savedService
                         && root.savedService.count === 1, "settings refresh recreated shared service")) return;
+                root.savedPanel = root.entry("example.bundle", "panel");
+                const item = UserPlugins.plugins.find(p => p.id === "example.bundle");
+                UserPlugins.enqueue(["python3", "-c", "from pathlib import Path; import sys; Path(sys.argv[1]).write_text('var revision = 2;\\n')", item.packagePath + "/ReloadProbe.js"]);
+                root.stage = 20;
+            } else if (root.stage === 20) {
+                const widgets = UserPlugins.widgetHosts.filter(h => h.descriptor.id === "example.bundle" && h.ready);
+                if (widgets.length !== Quickshell.screens.length * 2 || !widgets.every(h => h.widget.reloadRevision === 2)) return;
+                if (!root.check(OmarchyPlugins.serviceFor("example.bundle") === root.savedService
+                    && root.savedService.count === 1, "hot reload discarded keepLoaded service")) return;
+                if (!root.check(root.entry("example.bundle", "panel") !== root.savedPanel, "panel code did not reload")) return;
                 root.cli(["bar", "omarchy.bar"]);
-                root.stage++;
+                root.stage = 3;
             } else if (root.stage === 3) {
                 const bar = root.entry("omarchy.bar", "bar");
                 if (!bar || !OmarchyPlugins.replacementActive) return;
                 if (!root.check(bar.barWidgetRegistry.has("markbusking.pomodoro"), "replacement widget catalogue")) return;
                 if (!root.check(bar.shell.pluginShellForBarEntry("omarchy.bar", "example.bundle").serviceFor("example.bundle") === null,
                         "replacement entry facade exposes shared services")) return;
+                for (const id of ["omarchy.idle", "omarchy.nightlight", "omarchy.notifications", "omarchy.media"])
+                    if (!root.check(bar.shell.firstPartyServiceFor(id) !== null, "missing first-party proxy " + id)) return;
+                if (!root.check(bar.shell.firstPartyServiceFor("omarchy.lock") === null, "authentication service exposed")) return;
+                if (!root.check(OmarchyPlugins.placeWidget("markbusking.pomodoro", "{}", "put") === "ok", "idempotent put")) return;
+                if (!root.check(OmarchyPlugins.placeWidget("markbusking.pomodoro", '{"section":"invalid"}', "move") === "invalid section", "placement validation")) return;
                 root.cli(["bar", "omarchy.bar", "--position", "left"]);
                 root.stage++;
             } else if (root.stage === 4) {

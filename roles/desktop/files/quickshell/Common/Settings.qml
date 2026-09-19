@@ -133,7 +133,7 @@ Singleton {
     readonly property bool modsModified:
         JSON.stringify(mods) !== JSON.stringify(defaults.mods)
 
-    readonly property var validPages: ["appearance", "wallpaper", "bar", "modules", "drawer", "notifications", "system"]
+    readonly property var validPages: ["appearance", "wallpaper", "bar", "modules", "plugins", "drawer", "notifications", "system"]
 
     // One dirty/reset key list per settings page (grouped-rail design 1c).
     readonly property var sectionKeys: ({

@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "../Commons" as OmarchyTheme
 
 Singleton {
     id: root
@@ -37,7 +38,14 @@ Singleton {
     Component { id: apiFactory; OmarchyPluginApi {} }
     Component { id: hostFactory; OmarchyEntryHost {} }
 
+    function resolveId(id) {
+        const clone = UserPlugins.plugins.find(item => item.enabled && !item.error && item.manifest
+            && item.manifest.omarchy && item.manifest.omarchy.clonedFrom === id);
+        return clone ? clone.id : id;
+    }
+
     function descriptor(id) {
+        id = resolveId(id);
         return UserPlugins.plugins.find(item => item.id === id && item.enabled && !item.error
             && item.format === "omarchy") || null;
     }
@@ -87,8 +95,13 @@ Singleton {
     function load(item, kind) {
         const key = item.id + ":" + kind;
         const source = item.sources[kind];
-        if (records[key] && records[key].source !== source)
+        if (records[key] && records[key].source !== source && !(kind === "service" && item.keepLoaded)) {
             unload(key);
+            if (openIds[item.id] && kind !== "service" && kind !== "bar") {
+                const state = openIds[item.id];
+                openIds = Object.assign({}, openIds, { [item.id]: { queue: [state.lastPayload || "{}"] } });
+            }
+        }
         if (records[key]) {
             records[key].host.configure();
             return records[key].host;
@@ -105,6 +118,7 @@ Singleton {
             // Notify bindings that initially observed an asynchronous service.
             records = Object.assign({}, records);
             setError(key, "");
+            if (kind === "bar") replacing = true;
             if (kind === "service") {
                 for (const record of Object.values(records)) record.host.configure();
             }
@@ -211,7 +225,7 @@ Singleton {
         if (!state || !host.ready)
             return;
         const queue = state.queue || [];
-        openIds = Object.assign({}, openIds, { [id]: { queue: [] } });
+        openIds = Object.assign({}, openIds, { [id]: { queue: [], lastPayload: queue.length ? queue[queue.length - 1] : state.lastPayload } });
         try {
             if (typeof host.instance.open === "function") {
                 for (const payload of queue) host.instance.open(payload);
@@ -225,6 +239,7 @@ Singleton {
     }
 
     function summon(id, payloadJson) {
+        id = resolveId(id);
         const item = descriptor(id);
         if (!item)
             return false;
@@ -244,6 +259,7 @@ Singleton {
     }
 
     function hide(id) {
+        id = resolveId(id);
         const item = descriptor(id);
         if (!item) return false;
         const kind = panelKind(item);
@@ -268,6 +284,7 @@ Singleton {
     }
 
     function isPluginOpen(id) {
+        id = resolveId(id);
         const item = descriptor(id);
         if (!item) return false;
         const kind = panelKind(item);
@@ -284,6 +301,7 @@ Singleton {
     function toggle(id, payloadJson) { return isPluginOpen(id) ? hide(id) : summon(id, payloadJson); }
 
     function call(id, method, arg) {
+        id = resolveId(id);
         const item = descriptor(id);
         if (!item || ["destroy", "deleteLater"].includes(method)) return "unknown";
         const record = records[id + ":" + (panelKind(item) || "service")];
@@ -304,6 +322,89 @@ Singleton {
         return true;
     }
 
+    function placeWidget(id, placementJson, operation) {
+        try {
+            const placement = JSON.parse(placementJson || "{}");
+            if (!placement || typeof placement !== "object" || Array.isArray(placement)) return "invalid placement";
+            id = resolveId(id);
+            const item = UserPlugins.plugins.find(entry => entry.id === id && !entry.error);
+            if (!item) return "unknown";
+            if (!item.kinds.includes("bar-widget")) {
+                if (operation !== "enable") return "not a widget";
+                UserPlugins.enqueue(["python3", UserPlugins.helper, "enable", id]);
+                return "ok";
+            }
+            if (item.format !== "omarchy") return "not an Omarchy widget";
+            const layout = JSON.parse(JSON.stringify(barConfig.layout));
+            const sections = ["left", "center", "right"];
+            let existing = null;
+            for (const section of sections) {
+                const index = layout[section].findIndex(entry => entry.id === id);
+                if (!existing && index >= 0 && (!placement.fromSection || section === placement.fromSection))
+                    existing = { section: section, index: index, entry: layout[section][index] };
+            }
+            if (placement.fromIndex !== undefined) {
+                const at = Number(placement.fromIndex);
+                const entries = layout[placement.fromSection];
+                if (!entries || !Number.isInteger(at) || at < 0 || !entries[at] || entries[at].id !== id)
+                    return "invalid source index";
+                existing = { section: placement.fromSection, index: at, entry: entries[at] };
+            }
+            if (operation === "put" && existing) return "ok";
+            if (operation === "move" && !existing) return "unknown";
+            let section = placement.section || (existing ? existing.section : item.section);
+            if (!sections.includes(section)) return "invalid section";
+            if (placement.before && placement.after) return "choose before or after";
+            let entry = existing ? existing.entry : Object.assign({}, item.settings, { id: id });
+            if (existing) layout[existing.section].splice(existing.index, 1);
+            let index = layout[section].length;
+            const relative = placement.before || placement.after;
+            if (relative) {
+                const relativeSection = sections.find(name => (!placement.section || placement.section === name)
+                    && layout[name].some(candidate => candidate.id === resolveId(relative)));
+                if (!relativeSection && operation !== "put") return "relative widget not found";
+                if (relativeSection) {
+                    section = relativeSection;
+                    index = layout[section].findIndex(candidate => candidate.id === resolveId(relative)) + (placement.after ? 1 : 0);
+                }
+            } else if (placement.index !== undefined) {
+                index = Number(placement.index);
+                if (!Number.isInteger(index) || index < 0 || index > layout[section].length) return "invalid index";
+            }
+            layout[section].splice(index, 0, entry);
+            for (const key of ["before", "after"])
+                if (placement[key]) placement[key] = resolveId(placement[key]);
+            UserPlugins.enqueue(["python3", UserPlugins.helper, "layout-edit", operation, id, JSON.stringify(placement)]);
+            return "ok";
+        } catch (exception) { return "invalid placement: " + exception; }
+    }
+
+    function setBarWidgetValue(id, key, valueJson, selectorJson) {
+        try {
+            const selector = JSON.parse(selectorJson || "{}");
+            const value = JSON.parse(valueJson);
+            if (!selector || typeof selector !== "object" || Array.isArray(selector) || ["id", "__cybexInstance"].includes(key)) return "invalid selector or key";
+            const layout = JSON.parse(JSON.stringify(barConfig.layout));
+            const section = selector.fromSection || selector.section;
+            const index = selector.fromIndex !== undefined ? selector.fromIndex : selector.index;
+            const sections = section ? [section] : ["left", "center", "right"];
+            if (index !== undefined && !section) return "index requires section";
+            for (const name of sections) {
+                if (!layout[name]) return "invalid section";
+                const at = index !== undefined ? Number(index) : layout[name].findIndex(entry => entry.id === resolveId(id));
+                if (!Number.isInteger(at)) return "invalid index";
+                const entry = layout[name][at];
+                if (entry && entry.id === resolveId(id)) {
+                    entry[key] = value;
+                    UserPlugins.enqueue(["python3", UserPlugins.helper, "layout-edit", "set", resolveId(id),
+                        JSON.stringify({ key: key, value: value, selector: selector })]);
+                    return "ok";
+                }
+            }
+            return "unknown";
+        } catch (exception) { return "invalid widget setting: " + exception; }
+    }
+
     Connections {
         target: UserPlugins
         function onPluginsChanged() { Qt.callLater(root.sync); }
@@ -312,6 +413,41 @@ Singleton {
 
     IpcHandler {
         target: "shell"
+        function applyTheme(colorsB64: string, shellB64: string): string {
+            try {
+                const colors = Qt.atob(colorsB64);
+                const shell = Qt.atob(shellB64);
+                OmarchyTheme.Color.loadColors(colors);
+                OmarchyTheme.Color.loadShell(shell);
+                return "ok";
+            } catch (exception) { return "invalid theme"; }
+        }
+        function reloadConfig(): string { UserPlugins.refresh(); return "ok"; }
+        function listShellConfig(): string { return JSON.stringify({ bar: root.barConfig,
+            plugins: UserPlugins.enabled.map(item => item.id),
+            disabledPlugins: UserPlugins.plugins.filter(item => !item.enabled).map(item => item.id) }); }
+        function enablePlugin(id: string, placementJson: string): string { return root.placeWidget(id, placementJson, "enable"); }
+        function putBarWidget(id: string, placementJson: string): string { return root.placeWidget(id, placementJson, "put"); }
+        function moveBarWidget(id: string, placementJson: string): string { return root.placeWidget(id, placementJson, "move"); }
+        function setBarWidget(id: string, key: string, valueJson: string, selectorJson: string): string {
+            return root.setBarWidgetValue(id, key, valueJson, selectorJson);
+        }
+        function togglePanelAt(section: string, index: string): string {
+            const entries = root.barConfig.layout[section];
+            const at = Number(index);
+            const entry = entries && Number.isInteger(at) && at >= 0 ? entries[at] : null;
+            return entry && root.toggle(entry.id, "{}") ? entry.id : "unknown";
+        }
+        function toggleBarTransparency(): string {
+            if (!root.replacementActive) return "no-bar";
+            root.saveBarConfig({ transparent: !root.barConfig.transparent });
+            return "ok";
+        }
+        function debugBarGeometry(): string {
+            const record = root.records[(UserPlugins.barConfig.id || "") + ":bar"];
+            const bar = record ? record.host.instance : null;
+            return JSON.stringify(bar && typeof bar.debugBarGeometry === "function" ? bar.debugBarGeometry() : []);
+        }
         function ping(): string { return "pong"; }
         function summon(id: string, payloadJson: string): string { return root.summon(id, payloadJson) ? "ok" : "unknown"; }
         function hide(id: string): void { root.hide(id); }
