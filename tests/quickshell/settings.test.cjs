@@ -40,7 +40,7 @@ test("every connected output keeps a bar while popouts stay single-hosted", () =
     assert.match(screens,
         /layerSurfaceModel:\s*Quickshell\.screens\.map\([\s\S]*?screen\.x[\s\S]*?screen\.y[\s\S]*?screen\.width[\s\S]*?screen\.height/,
         "persistent layer surfaces must be recreated when a surviving output moves");
-    assert.equal((shell.match(/model:\s*Screens\.layerSurfaceModel/g) ?? []).length, 2,
+    assert.equal((shell.match(/model:\s*(?:OmarchyPlugins\.replacementActive \? \[\] : )?Screens\.layerSurfaceModel/g) ?? []).length, 2,
         "both wallpaper and bar surfaces must use geometry-sensitive identities");
     assert.doesNotMatch(shell, /onFocusedScreen|barEnabled|Settings\.monitor/,
         "focus and the retired monitor picker must not gate a bar window");

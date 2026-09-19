@@ -6,6 +6,11 @@ and state remain owned by the user. API 1 is a compatibility commitment: a
 future shell refactor must keep this interface working or provide an adapter.
 Changing the distro release number alone does not change the widget API.
 
+An additional adapter recognizes all six Omarchy `schemaVersion: 1` plugin
+kinds and injects their host interface. It shares this user-owned storage but does
+not change native API 1. See [Omarchy compatibility](../omarchy-plugin-compatibility.md)
+for supported UI modules, installation, and limits.
+
 ## Storage and ownership
 
 Default paths below follow XDG config and data roots. The runtime

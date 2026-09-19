@@ -42,7 +42,9 @@ jobs:
             python3-websockets \
             qt6-qtdeclarative-devel \
             qt6-qtwebsockets-devel \
+            qt6-qtmultimedia \
             ripgrep
+          dnf install -y sway
 
       # actions/checkout v4.4.0; pin the reviewed action code, not its moving
       # major tag. Dependabot/manual review can advance this commit explicitly.

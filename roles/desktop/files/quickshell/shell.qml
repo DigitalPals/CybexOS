@@ -156,7 +156,7 @@ ShellRoot {
     // output for its lifetime avoids layer-surface migration during focus
     // changes and lets hotplug create or destroy just that output's bar.
     Variants {
-        model: Screens.layerSurfaceModel
+        model: OmarchyPlugins.replacementActive ? [] : Screens.layerSurfaceModel
 
         Scope {
             id: barScope
@@ -196,6 +196,7 @@ ShellRoot {
     // for the popover — and settings must load from session start rather than
     // from the first popover open.
     Component.onCompleted: {
+        void OmarchyPlugins.ready;
         void Notifs.server;
         void Usage.pollIntervalSecs;
         void GitHub.pollEnabled;

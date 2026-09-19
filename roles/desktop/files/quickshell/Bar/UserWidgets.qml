@@ -3,10 +3,12 @@ import QtQuick
 import QtQuick.Controls
 import "../Common"
 
-// V1 occupies a bounded region before the built-in right-hand widgets.
+// Each section has its own bounded plugin area; native API 1 defaults right.
 Row {
     id: root
 
+    property string section: "right"
+    readonly property var entries: UserPlugins.enabledWidgets.filter(plugin => (plugin.section || "right") === section)
     property string screenName: ""
     property real availableWidth: 320
     readonly property var themeValues: ({
@@ -15,24 +17,28 @@ Row {
         fontSize: Theme.barLabelSize, reducedMotion: Settings.reducedMotion
     })
     spacing: Theme.barSpacing
-    visible: UserPlugins.enabled.length > 0 || UserPlugins.error !== ""
-    readonly property var hiddenWidgets: UserPlugins.enabled.filter((plugin, index) => !fits(index))
+    visible: root.entries.length > 0 || (section === "right" && (UserPlugins.error !== "" || Object.keys(OmarchyPlugins.errors).length > 0))
+    readonly property var hiddenWidgets: root.entries.filter((plugin, index) => !fits(index))
+    // Settings polling must not destroy timer state or close an open popup.
+    readonly property string widgetIdsJson: JSON.stringify(root.entries.map(plugin => plugin.key))
+    readonly property var widgetIds: JSON.parse(widgetIdsJson)
 
     function fits(index) {
         let used = 0;
-        for (let i = 0; i <= index; i++)
-            used += UserPlugins.enabled[i].width + (i > 0 ? spacing : 0);
+        for (let i = 0; i <= index && i < root.entries.length; i++)
+            used += root.entries[i].width + (i > 0 ? spacing : 0);
         // Reserve space for an overflow count so hidden widgets are discoverable.
         return used <= Math.max(0, availableWidth - 36);
     }
 
     Repeater {
-        model: UserPlugins.enabled
+        model: root.widgetIds
         delegate: UserWidgetHost {
             id: widgetHost
             required property var modelData
             required property int index
-            descriptor: modelData
+            descriptor: root.entries.find(plugin => plugin.key === modelData)
+                || ({ id: modelData, name: modelData, width: 120, error: "Plugin disabled" })
             themeValues: root.themeValues
             screenName: root.screenName
             width: descriptor.width
@@ -62,15 +68,15 @@ Row {
     }
 
     Text {
-        visible: UserPlugins.error !== ""
-        text: "Widgets !"
+        visible: (root.section === "right" && (UserPlugins.error !== "" || Object.keys(OmarchyPlugins.errors).length > 0))
+        text: "Plugins !"
         color: Theme.barTextHi
         font.pixelSize: Theme.barLabelSize
         height: Theme.chipHeight
         verticalAlignment: Text.AlignVCenter
-        Accessible.name: UserPlugins.error
+        Accessible.name: UserPlugins.error || JSON.stringify(OmarchyPlugins.errors)
         HoverHandler { id: registryHover }
         ToolTip.visible: registryHover.hovered
-        ToolTip.text: UserPlugins.error
+        ToolTip.text: UserPlugins.error || JSON.stringify(OmarchyPlugins.errors)
     }
 }

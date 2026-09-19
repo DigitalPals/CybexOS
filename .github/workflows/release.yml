@@ -23,7 +23,8 @@ jobs:
             ansible-core python3-ansible-lint python3-ruff ShellCheck yamllint \
             curl dbus-daemon dnf5-plugins findutils git gnupg2 jq luajit \
             nodejs24 python3 python3-websockets qt6-qtdeclarative-devel \
-            qt6-qtwebsockets-devel ripgrep
+            qt6-qtwebsockets-devel qt6-qtmultimedia ripgrep
+          dnf install -y sway
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Configure the fingerprint-verified Hyprland COPR
         run: |

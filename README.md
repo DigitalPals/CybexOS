@@ -95,6 +95,8 @@ Codex/Claude can create a package in
 no edits to built-in shell modules are needed. See the
 [widget contract and commands](docs/architecture/user-widgets.md). The
 ownership guide also identifies remaining application-configuration gaps.
+The Omarchy compatibility adapter supports widgets, shared services, panels,
+overlays, menus, and replacement bars, with representative unchanged plugins tested. See [installation and limits](docs/omarchy-plugin-compatibility.md).
 
 Each pre-existing `fedora-config` skill slot is backed up independently before
 first adoption. Updates retarget all three paths through the atomic active

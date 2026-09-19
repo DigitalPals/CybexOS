@@ -33,6 +33,14 @@ qml_import_path=$(qtpaths6 --query QT_INSTALL_QML 2>/dev/null \
   || qtpaths --query QT_INSTALL_QML 2>/dev/null || true)
 [[ -d ${qml_import_path:-} ]] || qml_import_path=/usr/lib64/qt6/qml
 
+# Quickshell provides qs.* as a virtual import of the configuration root.
+# Reproduce that mapping for Qt's standalone linter without modifying source.
+qs_import_root=$(mktemp -d "${TMPDIR:-/tmp}/fedora-config-qml-imports.XXXXXX") || exit 1
+trap 'rm -rf -- "$qs_import_root"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+ln -s "$shell_dir" "$qs_import_root/qs" || exit 1
+
 cd -- "$shell_dir" || exit 1
 mapfile -t -d '' files < <(find . -name '*.qml' -print0 | sort -z)
 if ((${#files[@]} == 0)); then
@@ -40,7 +48,7 @@ if ((${#files[@]} == 0)); then
   exit 1
 fi
 
-output=$("$qmllint" -I "$qml_import_path" -I . "${files[@]}" 2>&1)
+output=$("$qmllint" -I "$qml_import_path" -I "$qs_import_root" -I . "${files[@]}" 2>&1)
 status=$?
 
 # "[category]" suffixes, most frequent first — e.g. "421 unqualified".

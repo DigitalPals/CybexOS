@@ -12,10 +12,21 @@ Item {
     property string loadError: ""
     readonly property string error: descriptor.error || loadError
     readonly property bool ready: widget !== null
+    readonly property bool omarchy: descriptor.format === "omarchy"
+    property bool initialized: false
+    readonly property string loadIdentity: JSON.stringify([
+        descriptor.source || "", descriptor.format || "native", descriptor.error || ""
+    ])
+    onLoadIdentityChanged: if (initialized) reload()
     signal settingRequested(string pluginId, string key, string value)
 
     clip: true
     implicitWidth: descriptor.width
+
+    OmarchyBarApi {
+        id: omarchyApi
+        host: root
+    }
 
     QtObject {
         id: api
@@ -40,21 +51,29 @@ Item {
         if (component.status === Component.Error) {
             loadError = component.errorString();
         } else if (component.status === Component.Ready && !widget) {
-            const object = component.createObject(root, { pluginApi: api });
+            const properties = omarchy
+                ? { bar: omarchyApi, moduleName: descriptor.id, settings: descriptor.settings }
+                : { pluginApi: api };
+            const object = component.createObject(root, properties);
             const item = object as Item;
             if (!item) {
                 if (object)
                     object.destroy();
-                loadError = "Widget must be a QtQuick Item with a pluginApi property";
+                loadError = omarchy ? "Omarchy widget must be an Item with bar, moduleName and settings"
+                    : "Widget must be a QtQuick Item with a pluginApi property";
                 return;
             }
             widget = item;
+            if (omarchy)
+                widget.settings = Qt.binding(() => root.descriptor.settings);
             widget.width = Qt.binding(() => root.width);
             widget.height = Qt.binding(() => root.height);
         }
     }
 
     function unload() {
+        omarchyApi.tooltipTarget = null;
+        UserPlugins.unregisterHost(root);
         if (widget) {
             widget.destroy();
             widget = null;
@@ -71,12 +90,16 @@ Item {
         if (descriptor.error || !descriptor.source)
             return;
         component = Qt.createComponent(descriptor.source, Component.Asynchronous);
+        UserPlugins.registerHost(root);
         if (component.status === Component.Loading)
             component.statusChanged.connect(finishLoad);
         finishLoad();
     }
 
-    Component.onCompleted: reload()
+    Component.onCompleted: {
+        initialized = true;
+        reload();
+    }
     Component.onDestruction: unload()
 
     Rectangle {

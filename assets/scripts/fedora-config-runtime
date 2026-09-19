@@ -179,6 +179,8 @@ exec_runtime() {
       export FEDORA_CONFIG_USER_CONFIG_ROOT=$config_root
       export FEDORA_CONFIG_THEME_ROOT=$data_root/themes
       export FEDORA_CONFIG_PLUGIN_ROOT=$data_root/plugins
+      export OMARCHY_PATH=$selected/compat/omarchy
+      export PATH=$OMARCHY_PATH/bin:$PATH
       exec /usr/bin/qs -p "$selected"
       ;;
     hypridle|hyprlock)
@@ -214,6 +216,9 @@ case $command_name in
     ;;
   dev) dev_command "$@" ;;
   plugin)
+    if [[ ${1:-} == reload ]]; then
+      exec systemctl --user restart quickshell.service
+    fi
     selected=$(runtime_path quickshell)
     exec python3 "$selected/scripts/user-plugins.py" "$@"
     ;;

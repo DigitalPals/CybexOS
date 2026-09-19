@@ -32,7 +32,10 @@ you need the reasoning behind a particular change; `git log --oneline
 
 ## Testing without a GUI
 
-Run `./tests/run` first; it needs no live shell. For a live deployment, keep
+Run `./tests/run` first; it needs no live shell. External widget tests require
+`sway` for a disposable headless Wayland compositor (also installed by CI);
+this is a test dependency, not a change to the desktop's compositor.
+For a live deployment, keep
 `quickshell.service` as the only `qs` process and use the shared safety harness
 at both boundaries:
 

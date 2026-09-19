@@ -72,6 +72,8 @@
       # QtWebSockets QML module for the T3 Code bar client; Fedora ships
       # the QML plugin in the -devel subpackage.
       - qt6-qtwebsockets-devel
+      # Omarchy background video and media UI components.
+      - qt6-qtmultimedia
       # qmllint for the quickshell QML smoke check (tests/qml-lint).
       - qt6-qtdeclarative-devel
     state: present
@@ -841,7 +843,7 @@
   ansible.builtin.copy:
     src: "quickshell/{{ item }}"
     dest: "{{ fedora_config_runtime_root }}/quickshell/{{ item }}"
-    mode: "0644"
+    mode: "{{ '0755' if item.startswith('compat/omarchy/bin/') else '0644' }}"
     follow: false
     local_follow: false
   loop: "{{ quickshell_managed_manifest }}"

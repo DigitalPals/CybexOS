@@ -61,7 +61,8 @@ function blocksOf(type, source, rel) {
 
 test("the switch and the slider exist once, in Common/", () => {
     for (const control of CONTROLS) {
-        const homes = qmlFiles().filter(f => path.basename(f) === `${control}.qml`);
+        // qs.Ui has a separately versioned, upstream-compatible Toggle API.
+        const homes = qmlFiles().filter(f => !f.startsWith("Ui/")).filter(f => path.basename(f) === `${control}.qml`);
         assert.deepEqual(homes, [path.join("Common", `${control}.qml`)],
             `${control} must be defined exactly once, in Common/`);
     }

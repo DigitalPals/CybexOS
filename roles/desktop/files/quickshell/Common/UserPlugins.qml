@@ -8,19 +8,69 @@ Singleton {
     id: root
 
     property var plugins: []
+    property var widgets: []
+    property var barConfig: ({})
     property string error: ""
     property string lastResult: ""
     property var pendingWrites: []
+    // Registry across outputs for Omarchy broadcast and popup ownership.
+    property var widgetHosts: []
+    property var activePopout: null
+    property var clickTargets: []
     readonly property var enabled: plugins.filter(plugin => plugin.enabled)
+    readonly property var enabledWidgets: widgets.filter(plugin => plugin.enabled)
     readonly property string helper: Quickshell.shellDir + "/scripts/user-plugins.py"
+
+    function registerHost(host) {
+        widgetHosts = widgetHosts.concat([host]);
+    }
+
+    function unregisterHost(host) {
+        if (activePopout === host.widget)
+            releasePopout(activePopout);
+        widgetHosts = widgetHosts.filter(item => item !== host);
+    }
+
+    function requestPopout(owner) {
+        if (activePopout && activePopout !== owner && typeof activePopout.close === "function")
+            activePopout.close();
+        Popouts.close();
+        activePopout = owner;
+    }
+
+    function releasePopout(owner) {
+        if (activePopout === owner)
+            activePopout = null;
+    }
+
+    Connections {
+        target: Popouts
+        function onChanged() {
+            if (Popouts.open && root.activePopout) {
+                if (typeof root.activePopout.close === "function")
+                    root.activePopout.close();
+                root.activePopout = null;
+            }
+        }
+    }
 
     function refresh() {
         if (!scanner.running)
             scanner.running = true;
     }
 
+    function mergeSettings(id, settings, instanceName) {
+        const command = ["python3", helper, "merge", id, JSON.stringify(settings)];
+        if (instanceName) command.push("--instance", instanceName);
+        enqueue(command);
+    }
+
     function setSetting(id, key, value) {
-        pendingWrites = pendingWrites.concat([["python3", helper, "set", id, key, value]]);
+        enqueue(["python3", helper, "set", id, key, value]);
+    }
+
+    function enqueue(command) {
+        pendingWrites = pendingWrites.concat([command]);
         nextWrite();
     }
 
@@ -43,6 +93,8 @@ Singleton {
                     const result = JSON.parse(text);
                     root.error = result.error;
                     // A malformed registry is shown, never repaired with defaults.
+                    root.barConfig = result.bar || {};
+                    root.widgets = result.widgets || [];
                     root.plugins = result.plugins;
                     root.lastResult = text;
                 } catch (exception) {

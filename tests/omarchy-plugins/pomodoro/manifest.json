@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "markbusking.pomodoro",
+  "name": "Pomodoro",
+  "version": "0.1.0",
+  "author": "markbusking",
+  "description": "Pomodoro focus timer with work/break phases, progress, and desktop notifications",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Pomodoro",
+    "description": "Focus timer with work, short break, and long break phases",
+    "category": "Time",
+    "allowMultiple": false
+  }
+}

@@ -561,7 +561,8 @@ class Sub2ApiTests(unittest.TestCase):
                     "last_used_at": "2026-01-01T12:00:00Z",
                     "extra": {"codex_5h_used_percent": 10}},
                    {"id": 2, "platform": "openai", "extra": {}}]
-        fetch = lambda: MODULE.fetch_sub2api_provider("codex", entries, mock.Mock())
+        def fetch():
+            return MODULE.fetch_sub2api_provider("codex", entries, mock.Mock())
         state = {}
         MODULE.fetch_all_resilient((("codex", fetch),), state, now=1000)
         entries[1]["last_used_at"] = "2026-01-02T12:00:00Z"

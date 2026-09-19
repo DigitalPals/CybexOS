@@ -67,6 +67,7 @@ singleton Startup Startup.qml
 # import "../Common" for Theme, so unifying them cost no new import anywhere.
 Claim Claim.qml
 UserWidgetHost UserWidgetHost.qml
+OmarchyBarApi OmarchyBarApi.qml
 AnimatedText AnimatedText.qml
 HSlider HSlider.qml
 Sym Sym.qml
@@ -81,3 +82,7 @@ StatusPlaceholder StatusPlaceholder.qml
 Toggle Toggle.qml
 StateLayer StateLayer.qml
 HugCorner HugCorner.qml
+OmarchyPluginApi OmarchyPluginApi.qml
+OmarchyEntryHost OmarchyEntryHost.qml
+singleton OmarchyPlugins OmarchyPlugins.qml
+singleton OmarchyApplications OmarchyApplications.qml

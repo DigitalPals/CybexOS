@@ -919,6 +919,13 @@ PanelWindow {
                 onClicked: Launcher.toggle(barWindow.screen)
             }
 
+            UserWidgets {
+                section: "left"
+                screenName: barWindow.outputName
+                availableWidth: Math.max(0, barWindow.width * 0.15)
+                onImplicitWidthChanged: barWindow.scheduleFit()
+            }
+
             Cluster {
                 id: leftCluster
                 host: barWindow
@@ -930,11 +937,9 @@ PanelWindow {
 
         // CENTER — independent action, calendar and forecast pills, pinned on
         // the clock so disclosure grows outwards without moving the time.
-        Cluster {
+        Row {
             id: centerCluster
-            host: barWindow
-            col: "center"
-            model: Settings.mods.center
+            spacing: Theme.barSpacing
             // Algebraically this is the former centered anchor plus pin bias,
             // but as one binding it cannot render between the two halves of
             // that cancellation. The clock's local center is the only moving
@@ -943,6 +948,17 @@ PanelWindow {
                 + barWindow.animatedCenterShift
             anchors.verticalCenter: parent.verticalCenter
             onImplicitWidthChanged: barWindow.scheduleFit()
+
+            Cluster {
+                host: barWindow
+                col: "center"
+                model: Settings.mods.center
+            }
+            UserWidgets {
+                section: "center"
+                screenName: barWindow.outputName
+                availableWidth: Math.max(0, barWindow.width * 0.15)
+            }
         }
 
         // RIGHT — configured modules, then the fixed Control Panel trigger.

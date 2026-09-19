@@ -1,0 +1,4 @@
+singleton Border Border.qml
+singleton Color Color.qml
+singleton Style Style.qml
+singleton Util Util.qml

@@ -199,6 +199,8 @@ test("presentation marks do not fall back to unrelated text-font symbols", () =>
     const marks = /[✓✔✕×⌃⌄↑↓←→]/;
     for (const file of qmlFiles()) {
         const relative = path.relative(shellDir, file);
+        // The pinned Omarchy kit retains its upstream icon/font contract.
+        if (relative === "Ui/MultiSelect.qml") continue;
         fs.readFileSync(file, "utf8").split("\n").forEach((line, index) => {
             if (/\btext\s*:/.test(line) && marks.test(line))
                 offenders.push(`${relative}:${index + 1}`);
