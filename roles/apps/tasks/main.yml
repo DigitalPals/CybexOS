@@ -33,6 +33,10 @@
 - name: Install upstream release applications
   ansible.builtin.import_tasks: upstream.yml
 
+- name: Configure Omarchy font defaults
+  ansible.builtin.import_tasks: fonts.yml
+  tags: [fonts, font-defaults]
+
 - name: Install the Android SDK
   ansible.builtin.import_tasks: android.yml
   when: features.developer_tools | bool

@@ -1,0 +1,26 @@
+---
+- name: Install the distribution fonts used by Omarchy defaults
+  ansible.builtin.dnf:
+    name:
+      - fontconfig
+      - liberation-sans-fonts
+      - liberation-serif-fonts
+      - google-noto-color-emoji-fonts
+    state: present
+  register: apps_default_font_packages
+
+# JetBrainsMono Nerd Font is installed by the preceding upstream tasks.
+# Keep this separate from personal fonts.conf and load before 50-user.conf.
+- name: Install Omarchy font family mappings
+  ansible.builtin.copy:
+    src: 49-fedora-config-defaults.conf
+    dest: /etc/fonts/conf.d/49-fedora-config-defaults.conf
+    owner: root
+    group: root
+    mode: "0644"
+  register: apps_default_font_config
+
+- name: Refresh the font cache after changing font defaults
+  ansible.builtin.command: fc-cache -f
+  changed_when: true
+  when: apps_default_font_packages.changed or apps_default_font_config.changed

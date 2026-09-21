@@ -83,11 +83,30 @@ ansible-playbook site.yml --list-tags
 
 The stable role boundaries are `base`, `desktop`, `apps`, `xps-2026` (also
 `hardware`), `dotfiles`, `private-hooks`, `boot`, and `finalize`. Narrow tags
-currently exist for `browser`, `onepassword`, `fonts`, `packages`, `quickshell`,
+currently exist for `browser`, `onepassword`, `fonts`, `font-defaults`, `packages`, `quickshell`,
 `quickshell-lint`, `shell-defaults`, `user-tools`, `camera`, `fingerprint`,
 `speaker`, and `touchpad`. The
 narrow tags are development tools, not independent installation profiles;
 their prerequisites can live in an earlier role.
+
+The `font-defaults` tag installs Liberation Sans/Serif and Noto Color Emoji,
+then applies [Omarchy's font mappings](https://github.com/basecamp/omarchy/blob/master/config/fontconfig/fonts.conf)
+in `/etc/fonts/conf.d/49-fedora-config-defaults.conf`. Sans-serif and system UI
+aliases use Liberation Sans, serif uses Liberation Serif, and monospace uses
+JetBrainsMono Nerd Font. Strong UI aliases preserve these choices against
+Fedora's generic rules, and the system UI rule replaces Fedora's pre-expanded
+Cantarell preference. `ui-sans-serif` and `-apple-system-body` also map
+to Liberation Sans, and `ui-monospace` maps directly to JetBrainsMono Nerd Font.
+The latter must already be installed by the upstream
+application tasks. Personal Fontconfig files remain separate and load afterward.
+Apply just these defaults on an installed machine with:
+
+```bash
+ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags font-defaults
+```
+
+Restart existing browsers to clear their cached font selection. These system
+defaults are separate from the Quickshell Appearance presets.
 
 The `onepassword` tag installs the Wayland launcher under the upstream
 `com.onepassword.OnePassword.desktop` ID and removes the legacy user launcher

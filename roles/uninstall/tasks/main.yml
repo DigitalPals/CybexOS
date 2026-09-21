@@ -173,6 +173,7 @@
     - /etc/sudoers.d/10-wheel-nopasswd
     - /etc/polkit-1/rules.d/49-wheel-local.rules
     - /etc/brave/policies/managed/fedora-config.json
+    - /etc/fonts/conf.d/49-fedora-config-defaults.conf
     - /usr/local/libexec/fedora-config-github-release-install
     - /usr/local/libexec/fedora-config-source-app-build
     - /usr/local/libexec/fedora-config-android-sdk-update
