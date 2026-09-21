@@ -448,6 +448,64 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
+            title: "Shell sizing and surfaces"
+            dirty: ["shellFontSize", "shellScale", "surfaceBorderMode", "surfaceBorderColor",
+                "surfaceBorderWidth", "surfaceBorderOpacity", "surfaceCornerRadius"]
+                .some(key => Settings[key] !== Settings.defaults[key])
+            onResetRequested: Settings.resetKeys(["shellFontSize", "shellScale", "surfaceBorderMode",
+                "surfaceBorderColor", "surfaceBorderWidth", "surfaceBorderOpacity", "surfaceCornerRadius"], "Shell appearance")
+            SliderRow {
+                width: parent.width
+                label: "Base font"
+                settingKey: "shellFontSize"
+                min: 10; max: 24; step: 1
+            }
+            SliderRow {
+                width: parent.width
+                label: "UI scale"
+                settingKey: "shellScale"
+                min: 75; max: 200; step: 5; unit: "%"
+            }
+            PickerRow {
+                width: parent.width
+                label: "Panel border"
+                settingKey: "surfaceBorderMode"
+                model: [{ value: "accent", label: "Accent" }, { value: "subtle", label: "Subtle" },
+                    { value: "custom", label: "Custom" }]
+            }
+            SettingsTextRow {
+                width: parent.width
+                visible: Settings.surfaceBorderMode === "custom"
+                label: "Border color"
+                value: Settings.surfaceBorderColor
+                dirty: Settings.surfaceBorderColor !== Settings.defaults.surfaceBorderColor
+                resetKeys: ["surfaceBorderColor"]
+                onCommitted: text => {
+                    if (/^#[0-9a-fA-F]{6}$/.test(text)) Settings.set("surfaceBorderColor", text);
+                }
+            }
+            SliderRow {
+                width: parent.width
+                label: "Border width"
+                settingKey: "surfaceBorderWidth"
+                min: 0; max: 8; step: 1
+            }
+            SliderRow {
+                width: parent.width
+                label: "Border opacity"
+                settingKey: "surfaceBorderOpacity"
+                min: 0; max: 100; step: 5; unit: "%"
+            }
+            SliderRow {
+                width: parent.width
+                label: "Panel corners"
+                settingKey: "surfaceCornerRadius"
+                min: 0; max: 30; step: 1
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
             title: "Typography"
             dirty: Settings.font !== Settings.defaults.font
             onResetRequested: Settings.resetKeys(["font"], "Typography")
@@ -464,7 +522,7 @@ SettingsPage {
                         required property int index
                         readonly property bool selected: Settings.font === modelData.id
                         width: parent.width
-                        height: 38
+                        height: Theme.scaled(38)
                         radius: Theme.rowRadius
                         color: selected ? Theme.accentAlpha(0.14) : "transparent"
                         border.width: activeFocus ? 1 : 0
@@ -606,6 +664,22 @@ SettingsPage {
         SettingsGroup {
             width: parent.width
             title: "Preset"
+
+            ResponsiveActionRow {
+                width: parent.width
+                actionsFirst: true
+                description: "Shared typography, sizing and panel borders; keeps your accounts and layout"
+                SettingsAction {
+                    text: "Apply Omarchy"
+                    glyph: "text_fields"
+                    onTriggered: Settings.applyAppearancePreset("omarchy")
+                }
+                SettingsAction {
+                    text: "Apply Cybex"
+                    glyph: "text_fields"
+                    onTriggered: Settings.applyAppearancePreset("cybex")
+                }
+            }
 
             ResponsiveActionRow {
                 width: parent.width

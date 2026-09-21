@@ -24,13 +24,13 @@ SettingsRow {
     property int valueWidth: 44
     signal moved(real value)
 
-    narrowHeight: 52
+    narrowHeight: Theme.scaled(52)
     labelColor: slider.dimmed ? Theme.textDim : Theme.textMid
 
     HSlider {
         id: slider
         x: root.narrow ? 0 : root.labelWidth
-        y: root.narrow ? 23 : (parent.height - height) / 2
+        y: root.narrow ? Theme.scaled(23) : (parent.height - height) / 2
         width: root.narrow ? parent.width : valueText.x - x - 10
         height: Theme.settingsControlHeight
         // Every settings row overrides this; the default matters only so a

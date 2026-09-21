@@ -11,13 +11,13 @@ import "Popovers"
 Surface {
     id: root
 
-    implicitWidth: 460
+    implicitWidth: Theme.fitWidth(Theme.scaled(460, Theme.contentScale), availableWidth > 0 ? availableWidth : Theme.scaled(460, Theme.contentScale))
 
     readonly property int maxResults: LauncherProviders.maxResults
-    readonly property int tabHeight: 34
-    readonly property int searchHeight: 44
-    readonly property int rowHeight: 42
-    readonly property int resultIconSize: 28
+    readonly property int tabHeight: Theme.scaled(34)
+    readonly property int searchHeight: Theme.scaled(44)
+    readonly property int rowHeight: Theme.scaled(42)
+    readonly property int resultIconSize: Theme.scaled(28)
     readonly property int fullHeight: padding * 2 + tabHeight + searchHeight
         + maxResults * rowHeight + spacing * 2
     property int selected: 0
@@ -366,7 +366,8 @@ Surface {
     // ---- Results ---------------------------------------------------------
     Item {
         width: parent.width
-        height: Math.min(root.maxResults, root.rows.length) * root.rowHeight
+        height: Math.min(Math.min(root.maxResults, root.rows.length) * root.rowHeight,
+            root.availableHeight > 0 ? Math.max(0, root.availableHeight - root.padding * 2 - root.tabHeight - root.searchHeight - root.spacing * 2) : root.maxResults * root.rowHeight)
         clip: true
 
         ListView {
@@ -393,7 +394,8 @@ Surface {
                 color: isSelected ? Theme.chipHover : "transparent"
 
                 Item {
-                    x: 10
+                    id: resultIcon
+                    x: Theme.scaled(10)
                     anchors.verticalCenter: parent.verticalCenter
                     width: root.resultIconSize
                     height: root.resultIconSize
@@ -428,15 +430,15 @@ Surface {
                             visible: !!resultRow.modelData.iconText
                             text: resultRow.modelData.iconText || ""
                             font.family: Theme.fontMenu
-                            font.pixelSize: 20
+                            font.pixelSize: Theme.fontProminent
                         }
                     }
                 }
 
                 Text {
-                    x: 48
+                    x: resultIcon.x + resultIcon.width + Theme.scaled(10)
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - x - 12
+                    width: Math.max(0, parent.width - x - Theme.scaled(12))
                     textFormat: Text.StyledText
                     text: root.titleFor(resultRow.modelData)
                     font.family: Theme.fontMenu

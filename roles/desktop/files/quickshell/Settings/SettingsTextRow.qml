@@ -22,11 +22,11 @@ SettingsRow {
     Rectangle {
         id: frame
         x: root.narrow ? 0 : root.labelWidth
-        y: root.narrow ? 23 : (parent.height - height) / 2
+        y: root.narrow ? Theme.scaled(23) : (parent.height - height) / 2
         width: root.narrow ? parent.width - root.undoWidth - 2
             : root.contentRight - x - 2
-        height: 28
-        radius: 7
+        height: Theme.settingsControlHeight
+        radius: Theme.chipRadius
         color: input.activeFocus ? Theme.hoverFillStrong : Theme.cardFill
         border.width: input.activeFocus ? 1 : 0
         border.color: Theme.accent

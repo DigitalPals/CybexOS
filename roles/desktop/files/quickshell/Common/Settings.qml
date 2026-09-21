@@ -49,6 +49,20 @@ Singleton {
     property bool glassEnabled: defaults.glassEnabled
     property bool highContrast: defaults.highContrast
     property bool reducedMotion: defaults.reducedMotion
+    property int shellFontSize: defaults.shellFontSize
+    property int shellScale: defaults.shellScale
+    property string surfaceBorderMode: defaults.surfaceBorderMode
+    property string surfaceBorderColor: defaults.surfaceBorderColor
+    property int surfaceBorderWidth: defaults.surfaceBorderWidth
+    property int surfaceBorderOpacity: defaults.surfaceBorderOpacity
+    property int surfaceCornerRadius: defaults.surfaceCornerRadius
+    property int pluginScale: defaults.pluginScale
+    property string pluginBorderMode: defaults.pluginBorderMode
+    property string pluginBorderColor: defaults.pluginBorderColor
+    property int pluginBorderWidth: defaults.pluginBorderWidth
+    property int pluginBorderOpacity: defaults.pluginBorderOpacity
+    property int pluginRadius: defaults.pluginRadius
+    property var pluginThemeOverrides: defaults.pluginThemeOverrides
     property string textScale: defaults.textScale
     property string interfaceDensity: defaults.interfaceDensity
     property string barColorMode: defaults.barColorMode
@@ -139,11 +153,13 @@ Singleton {
     readonly property var sectionKeys: ({
         wallpaper: ["wall", "wallDir", "shuffle"],
         appearance: ["themeMode", "glassEnabled", "highContrast", "reducedMotion",
-            "textScale", "interfaceDensity", "barColorMode", "barCustomHue",
+            "textScale", "interfaceDensity", "shellFontSize", "shellScale", "surfaceBorderMode", "surfaceBorderColor", "surfaceBorderWidth", "surfaceBorderOpacity", "surfaceCornerRadius",
+            "barColorMode", "barCustomHue",
             "barCustomSaturation", "barCustomLightness", "font", "accent", "paletteMode"],
         bar: ["position", "barStyle", "gap", "barHeight", "barRadius", "autoHide",
             "exclusive"],
         modules: ["mods", "modOpts"],
+        plugins: ["pluginScale", "pluginBorderMode", "pluginBorderColor", "pluginBorderWidth", "pluginBorderOpacity", "pluginRadius", "pluginThemeOverrides"],
         drawer: ["drawerTabs", "drawerOverview", "drawerHover", "drawerWidth"],
         notifications: ["notifDnd", "notifDndUntilMs", "notifQuiet", "notifQuietStart", "notifQuietEnd",
             "notifDuration", "notifPosition", "notifDensity", "notifIcons",
@@ -324,6 +340,20 @@ Singleton {
     // A preset is one reversible transaction. It deliberately changes only
     // visual modes and the workspace presentation; widget order and the
     // user's stored floating dimensions remain untouched.
+    function applyAppearancePreset(name) {
+        const patch = SettingsHelpers.appearancePreset(name);
+        if (!patch) return;
+        migrationPending = false;
+        clearUndo();
+        const previous = {};
+        for (const key of Object.keys(patch)) previous[key] = SettingsHelpers.clone(root[key]);
+        resetSnapshot = previous;
+        resetLabel = name === "omarchy" ? "Omarchy appearance" : "Cybex appearance";
+        for (const key of Object.keys(patch)) root[key] = SettingsHelpers.clone(patch[key]);
+        announcement = resetLabel + " applied. Undo available for eight seconds.";
+        resetTimer.restart();
+    }
+
     function applyLayeredHugPreset() {
         migrationPending = false;
         clearUndo();
@@ -553,6 +583,20 @@ Singleton {
         applyGlassEffect();
     }
     onReducedMotionChanged: scheduleSave()
+    onShellFontSizeChanged: scheduleSave()
+    onShellScaleChanged: scheduleSave()
+    onSurfaceBorderModeChanged: scheduleSave()
+    onSurfaceBorderColorChanged: scheduleSave()
+    onSurfaceBorderWidthChanged: scheduleSave()
+    onSurfaceBorderOpacityChanged: scheduleSave()
+    onSurfaceCornerRadiusChanged: scheduleSave()
+    onPluginScaleChanged: scheduleSave()
+    onPluginBorderModeChanged: scheduleSave()
+    onPluginBorderColorChanged: scheduleSave()
+    onPluginBorderWidthChanged: scheduleSave()
+    onPluginBorderOpacityChanged: scheduleSave()
+    onPluginRadiusChanged: scheduleSave()
+    onPluginThemeOverridesChanged: scheduleSave()
     onTextScaleChanged: scheduleSave()
     onInterfaceDensityChanged: scheduleSave()
     onBarColorModeChanged: scheduleSave()

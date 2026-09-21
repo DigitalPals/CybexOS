@@ -34,7 +34,7 @@ PopoutPanel {
         anchors.fill: parent
         radius: Theme.panelRadius
         color: root.surfaceColor
-        border.width: 1
+        border.width: Theme.surfaceBorderWidth
         border.color: root.surfaceBorderColor
 
         Behavior on color {

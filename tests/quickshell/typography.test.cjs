@@ -57,7 +57,7 @@ function contrast(a, b) {
 }
 
 test("semantic typography tokens retain the intended logical-pixel scale", () => {
-    // The softer pass removes ten-pixel metadata without inflating body copy.
+    // Reference sizes are multiplied by the common font scale.
     assert.deepEqual([
         intToken("fontMicro"),
         intToken("fontTiny"),
@@ -68,7 +68,7 @@ test("semantic typography tokens retain the intended logical-pixel scale", () =>
         intToken("fontProminent"),
         intToken("fontDisplay"),
         intToken("fontHero"),
-    ], [11, 12, 12, 13, 14, 16, 20, 28, 34]);
+    ], [10, 11, 10, 11, 12, 16, 20, 28, 34]);
 });
 
 test("menu typography keeps the bar's own compact metrics", () => {
@@ -219,7 +219,7 @@ test("bar and popovers use semantic sizes with an eleven-pixel text floor", () =
         /readonly property int (font\w+):\s*(?:scaled\(\s*)?(\d+)/g)];
     assert.ok(textTokens.length > 0);
     for (const [, name, value] of textTokens)
-        assert.ok(Number(value) >= 11, `Theme.${name} falls below the 11 px floor`);
+        assert.ok(Math.round(Number(value) * load("ShellMetrics.js").calculate(load("SettingsHelpers.js").defaults()).fontScale) >= 11, `Theme.${name} falls below the 11 px floor`);
 
     for (const file of files) {
         const source = fs.readFileSync(file, "utf8");

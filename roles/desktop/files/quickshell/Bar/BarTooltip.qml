@@ -86,10 +86,10 @@ Item {
         id: tip
         implicitWidth: label.implicitWidth + 20
         implicitHeight: Theme.tooltipHeight
-        radius: height / 2
+        radius: Math.min(Theme.panelRadius, height / 2)
         color: Theme.surfaceMenu
-        border.width: 1
-        border.color: Theme.stroke
+        border.width: Theme.surfaceBorderWidth
+        border.color: Theme.surfaceBorderColor
 
         Text {
             id: label

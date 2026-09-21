@@ -39,7 +39,7 @@ Item {
     // Reflow metrics. Each row reserves a different slice of the narrow line
     // for its own control, and the switch row's label sits 2px lower because
     // its control is taller than the text beside it.
-    property int narrowHeight: 52
+    property int narrowHeight: Theme.scaled(52)
     property int narrowLabelY: 0
     property int narrowLabelInset: 100
     // Most rows use the theme's compact label column. A page can reserve more

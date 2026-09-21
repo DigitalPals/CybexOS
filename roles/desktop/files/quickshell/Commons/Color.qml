@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import "../Common" as Host
 import "BorderGeometry.js" as Geometry
+import "../Common/OmarchyTheme.js" as ThemeBridge
 
 // Color surfaces for the shell. Foundational palette (foreground, background,
 // accent, urgent) comes from theme/colors.toml. Per-surface roles come from
@@ -12,17 +13,21 @@ import "BorderGeometry.js" as Geometry
 QtObject {
   id: root
 
-  property color foreground: Host.Theme.barTextHi
-  property color background: Host.Theme.popBg
-  property color accent: Host.Theme.barAccent
-  property color urgent: Host.Theme.red
-  property color muted: Host.Theme.barTextMid
+  property color foreground: sessionPalette.foreground || Host.Theme.barTextHi
+  property color background: sessionPalette.background || Host.Theme.popBg
+  property color accent: sessionPalette.accent || Host.Theme.barAccent
+  property color urgent: sessionPalette.urgent || Host.Theme.red
+  property color muted: sessionPalette.muted || Host.Theme.barTextMid
 
-  // Flat dictionary of "section.key" -> raw string from shell.toml.
-  // Reassigning this whole property is what makes surface bindings below
-  // re-evaluate when the theme swaps; mutating it in place would not.
-  property var shellValues: ({ "bar.background": String(Host.Theme.barBg),
-    "popups.border": String(Host.Theme.popBorder), "tooltip.border": String(Host.Theme.popBorder) })
+  property var sessionPalette: ({})
+  property var sessionShellValues: ({})
+  readonly property var shellValues: ThemeBridge.values(Host.Settings, {
+    foreground: String(root.foreground), background: String(root.background),
+    accent: String(root.accent), outline: String(Host.Theme.popBorder),
+    bar: String(Host.Theme.barBg), surfaceBorder: String(Qt.rgba(Host.Theme.surfaceBorderBase.r, Host.Theme.surfaceBorderBase.g, Host.Theme.surfaceBorderBase.b, 1)),
+    surfaceBorderAlpha: Host.Theme.surfaceBorderColor.a,
+    surfaceBorderWidth: Host.Theme.surfaceBorderWidth
+  }, Host.Theme.metrics, sessionShellValues)
 
   function pick(key, fallback) {
     var v = shellValues[key]
@@ -131,6 +136,7 @@ QtObject {
 
 
   function loadColors(raw) {
+    var foreground = "", background = "", accent = "", urgent = "", muted = ""
     var lines = String(raw || "").split("\n")
     var foundAccent = false
     var foundMuted = false
@@ -160,6 +166,8 @@ QtObject {
     if (!loadedForeground && color7Value.length > 0) foreground = color7Value
     if (!foundAccent && color4Value.length > 0) accent = color4Value
     if (!foundMuted) muted = color8Value.length > 0 ? color8Value : foreground
+    sessionPalette = { foreground: foreground, background: background,
+      accent: accent, urgent: urgent, muted: muted }
   }
   function parseShell(raw) {
     var parsed = {}
@@ -183,5 +191,5 @@ QtObject {
     }
     return parsed
   }
-  function loadShell(raw) { shellValues = parseShell(raw); Style.applyShellValues(shellValues); }
+  function loadShell(raw) { sessionShellValues = parseShell(raw); }
 }

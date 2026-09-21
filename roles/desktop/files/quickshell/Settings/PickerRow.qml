@@ -16,14 +16,14 @@ SettingsRow {
 
     // A narrow segmented control may wrap to two or more lines. Let the row
     // grow with the Flow instead of painting the next row over those pills.
-    narrowHeight: 29 + Math.max(Theme.settingsControlHeight,
-        pills.implicitHeight) + 5
+    narrowHeight: Theme.scaled(29) + Math.max(Theme.settingsControlHeight,
+        pills.implicitHeight) + Theme.scaled(5)
     narrowLabelInset: 130
 
     PillRow {
         id: pills
         x: root.narrow ? 0 : root.labelWidth
-        y: root.narrow ? 29 : (parent.height - height) / 2
+        y: root.narrow ? Theme.scaled(29) : (parent.height - height) / 2
         width: root.narrow ? parent.width
             : Math.max(100, parent.width - x - root.undoWidth
                 - root.captionWidth - (root.captionWidth > 0 ? 10 : 0))

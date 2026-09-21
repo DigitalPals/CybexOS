@@ -9,14 +9,14 @@ SettingsRow {
     property bool checked: root.stored === true
     signal toggled(bool value)
 
-    narrowHeight: Math.max(48, 24 + descriptionText.implicitHeight + 3)
+    narrowHeight: Math.max(Theme.scaled(48), Theme.scaled(24) + descriptionText.implicitHeight + Theme.scaled(3))
     narrowLabelY: 2
     narrowLabelInset: 82
 
     Text {
         id: descriptionText
         x: root.narrow ? 0 : root.labelWidth
-        y: root.narrow ? 24 : (parent.height - height) / 2
+        y: root.narrow ? Theme.scaled(24) : (parent.height - height) / 2
         width: root.narrow ? parent.width - 4 : control.x - x - 10
         text: root.description
         font.family: Theme.fontMenu

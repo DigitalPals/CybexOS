@@ -127,6 +127,8 @@ PanelWindow {
                 id: launcherView
                 width: implicitWidth
                 height: implicitHeight
+                availableWidth: Math.max(1, root.width - Theme.panelPadding * 2)
+                availableHeight: Math.max(1, root.height - Theme.panelPadding * 2)
                 drawBackground: false
                 focus: Launcher.open
             }
@@ -135,8 +137,8 @@ PanelWindow {
                 anchors.fill: parent
                 radius: panel.radius
                 color: "transparent"
-                border.width: 1
-                border.color: Theme.stroke
+                border.width: Theme.surfaceBorderWidth
+                border.color: Theme.surfaceBorderColor
             }
         }
     }

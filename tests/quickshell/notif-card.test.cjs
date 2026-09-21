@@ -122,7 +122,7 @@ test("toast geometry and list motion stay compact and edge-aware", () => {
     const toast = read("NotificationToasts.qml");
 
     assert.match(toast,
-        /readonly property int cardWidth:\s*Math\.max\(1, Math\.min\(380,/,
+        /readonly property int cardWidth:\s*Math\.max\(1, Math\.min\(Theme\.scaled\(380, Theme\.contentScale\),/,
         "toast cards must stay compact and clamp on unusually narrow outputs");
     assert.match(toast, /edgeMargin:\s*Math\.max\(10, Theme\.barSideMargin\)/,
         "attached bars still need a screen-edge gutter");

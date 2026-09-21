@@ -19,10 +19,10 @@ PanelWindow {
     readonly property bool barSameEdge: Screens.hasBar(root.screen)
         && (Settings.position === "top") === onTop
     // Density scales the card's inner padding and content gap.
-    readonly property int padV: Settings.notifDensity === "compact" ? 8
-        : Settings.notifDensity === "roomy" ? 15 : 11
-    readonly property int padH: Settings.notifDensity === "compact" ? 10
-        : Settings.notifDensity === "roomy" ? 16 : 12
+    readonly property int padV: Theme.scaled(Settings.notifDensity === "compact" ? 8
+        : Settings.notifDensity === "roomy" ? 15 : 11)
+    readonly property int padH: Theme.scaled(Settings.notifDensity === "compact" ? 10
+        : Settings.notifDensity === "roomy" ? 16 : 12)
 
     // Toast type: an overlay surface, so it stays on the general UI face
     // rather than the menu font, and it is free of the popover scale's 12px
@@ -35,12 +35,12 @@ PanelWindow {
         bodyLines: Settings.notifBodyLines,
         bodyLeading: 1.15,
         stampFace: Theme.fontMono,
-        stampSize: 10,
+        stampSize: Theme.fontMicro,
         stampCentred: true,
-        trailingHeight: 18,
-        close: 17,
+        trailingHeight: Theme.scaled(18),
+        close: Theme.scaled(17, Theme.typeScale),
         closeColor: Theme.textLow,
-        pill: 11,
+        pill: Theme.fontTiny,
         stackedHeader: true
     })
 
@@ -69,7 +69,7 @@ PanelWindow {
     // to unusually narrow outputs.
     readonly property int edgeMargin: Math.max(10, Theme.barSideMargin)
     readonly property int windowPad: 12
-    readonly property int cardWidth: Math.max(1, Math.min(380,
+    readonly property int cardWidth: Math.max(1, Math.min(Theme.scaled(380, Theme.contentScale),
         root.screen ? root.screen.width - edgeMargin - windowPad : 380))
     implicitWidth: cardWidth + edgeMargin + windowPad
     // Keep the old height just long enough for ListView's exit transition.
@@ -239,14 +239,14 @@ PanelWindow {
                 padH: root.padH
                 padV: root.padV
                 showIcon: Settings.notifIcons
-                iconExtent: 34
-                iconSize: 24
+                iconExtent: Theme.scaled(34)
+                iconSize: Theme.scaled(24, Theme.typeScale)
                 framedIcon: true
                 expandTextOnHover: true
 
                 width: parent.width
                 height: contentHeight
-                radius: Theme.cardRadius
+                radius: Theme.panelRadius
                 clip: true
                 // The red fill is a translucent tint for an existing surface,
                 // not a standalone background over application windows.
@@ -254,9 +254,9 @@ PanelWindow {
                     ? Theme.surfaceMenu : Theme.panelSurface
                 color: slot.critical ? Qt.tint(baseSurface, Theme.redBgSoft)
                     : baseSurface
-                border.width: 1
+                border.width: Theme.surfaceBorderWidth
                 border.color: slot.critical ? Theme.redBorder
-                    : hovered ? Theme.accentAlpha(0.32) : Theme.popBorder
+                    : Theme.surfaceBorderColor
 
                 onActivated: Notifs.invokeDefault(slot.modelData)
                 onCloseRequested: Notifs.dismiss(slot.modelData)

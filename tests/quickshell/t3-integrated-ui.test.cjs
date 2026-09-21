@@ -190,7 +190,7 @@ test("the T3 composer is one shell with inline controls, cornered like the bar",
     // follows it when the bar's radius setting changes.
     assert.match(theme, /readonly property int composerRadius:\s*Theme\.panelRadius/);
     assert.match(read("Common/Theme.qml"),
-        /readonly property int panelRadius:\s*Settings\.barRadius/);
+        /readonly property int panelRadius:\s*Settings\.surfaceCornerRadius/);
 });
 
 test("the T3 composer exposes an attached settings drawer and round send action", () => {

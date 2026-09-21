@@ -29,8 +29,13 @@ import "../Common" as Host
 QtObject {
   id: root
 
-  property int cornerRadius: Host.Theme.panelRadius
-  property int gapsOut: 5
+  property int cornerRadius: Host.Settings.pluginRadius < 0 ? Host.Theme.panelRadius : Host.Settings.pluginRadius
+  property int gapsOut: Host.Settings.gap / 2
+
+  // Shared theme values stay reactive across preference and palette changes.
+  readonly property var themeValues: Color.shellValues
+  onThemeValuesChanged: applyShellValues(themeValues)
+  Component.onCompleted: applyShellValues(themeValues)
 
   // ---------------------------------------------------------- state tokens
   //
@@ -277,7 +282,7 @@ QtObject {
 
   // The only sanity floor is 1px. Themes and users can make this as large
   // as they like; if the shell gets ridiculous, that's their call.
-  property int fontBaseSize: Host.Theme.barLabelSize
+  property int fontBaseSize: 12
 
   property var fontOverrides: ({})
   property var barOverrides: ({})

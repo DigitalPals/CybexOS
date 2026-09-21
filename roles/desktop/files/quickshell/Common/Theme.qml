@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import "." as Common
 import "SettingsHelpers.js" as SettingsHelpers
+import "ShellMetrics.js" as ShellMetrics
 
 // Design tokens for the glass menubar ("QuickShell Menubar" redesign).
 //
@@ -24,13 +25,17 @@ Singleton {
     readonly property bool reducedMotion:
         Settings.reducedMotion
         || ["1", "true", "yes", "on"].includes(reducedMotionValue)
-    readonly property real typeScale: Settings.textScale === "larger" ? 1.30
-        : Settings.textScale === "large" ? 1.15 : 1.0
-    readonly property real densityScale: Settings.interfaceDensity === "comfortable" ? 1.16
-        : Settings.interfaceDensity === "compact" ? 0.92 : 1.0
-    readonly property real contentScale: Math.max(typeScale, densityScale)
+    readonly property var metrics: ShellMetrics.calculate(Settings)
+    readonly property real typeScale: metrics.fontScale
+    readonly property real densityScale: metrics.density
+    readonly property real contentScale: metrics.spacingScale
+    readonly property int fontBaseSize: metrics.fontBase
     function scaled(value, scale) {
         return Math.round(value * (scale === undefined ? contentScale : scale));
+    }
+
+    function fitWidth(preferred, available, margin) {
+        return ShellMetrics.fitWidth(preferred, available, margin || 0);
     }
 
     readonly property bool dark: Settings.themeMode !== "light"
@@ -382,20 +387,20 @@ Singleton {
     // Numeric readings — the clock, percentages, meters, resets. The
     // edge-drawer redesign sets these in Geist Mono against Figtree UI copy,
     // so a reading is recognisably an instrument value rather than prose.
-    readonly property string fontNumeric: "Geist Mono"
+    readonly property string fontNumeric: Settings.font === "mono" ? fontMono : "Geist Mono"
     // Material Symbols Rounded, installed as a pinned variable font by the
     // apps role. Draw it through Common/Sym.qml rather than by hand: the
     // glyph is selected by ligature name and the fill/weight axes need
     // setting for the icon to read at the intended optical weight.
     readonly property string fontIcon: "Material Symbols Rounded"
 
-    // Semantic logical-pixel type scale. Metadata now floors at 11px and the
-    // the roomier scale keeps compact copy from feeling compressed.
-    readonly property int fontMicro: scaled(11, typeScale)
-    readonly property int fontTiny: scaled(12, typeScale)
-    readonly property int fontCaption: scaled(12, typeScale)
-    readonly property int fontSecondary: scaled(13, typeScale)
-    readonly property int fontBody: scaled(14, typeScale)
+    // Shared 12px reference scale, multiplied by the selected base font and
+    // accessibility/UI scaling. Plugin body and caption use the same roles.
+    readonly property int fontMicro: scaled(10, typeScale)
+    readonly property int fontTiny: scaled(11, typeScale)
+    readonly property int fontCaption: scaled(10, typeScale)
+    readonly property int fontSecondary: scaled(11, typeScale)
+    readonly property int fontBody: scaled(12, typeScale)
     readonly property int fontHeading: scaled(16, typeScale)
     readonly property int fontProminent: scaled(20, typeScale)
     readonly property int fontDisplay: scaled(28, typeScale)
@@ -457,13 +462,13 @@ Singleton {
     readonly property int roundButton: scaled(26)
     readonly property int tooltipHeight: scaled(28)
 
-    readonly property int popWidth: scaled(408, Math.min(contentScale, 1.15))
-    readonly property int popWideWidth: scaled(448, Math.min(contentScale, 1.15))
+    readonly property int popWidth: scaled(408, contentScale)
+    readonly property int popWideWidth: scaled(448, contentScale)
     // The edge drawer and the Day sheet: attached surfaces from the 2026-09
     // redesign. The drawer holds one width across all its tabs so switching
     // never slides the surface; the sheet hangs under the clock.
-    readonly property int drawerWidth: scaled(Settings.drawerWidth, Math.min(contentScale, 1.15))
-    readonly property int daySheetWidth: scaled(680, Math.min(contentScale, 1.15))
+    readonly property int drawerWidth: scaled(Settings.drawerWidth, contentScale)
+    readonly property int daySheetWidth: scaled(680, contentScale)
     readonly property int t3MinWidth: 360
     readonly property int t3MaxWidth: 520
     readonly property int surfacePadding: scaled(16)
@@ -472,12 +477,12 @@ Singleton {
     // smaller target than standalone header, footer and form controls so a
     // two-line tile does not grow or clip when its actions are revealed.
     readonly property int inlineActionHeight: scaled(32)
-    readonly property int settingsControlHeight: scaled(28)
+    readonly property int settingsControlHeight: Math.max(scaled(28), fontBody + scaled(12))
     readonly property int rowHeight: scaled(52)
     readonly property int tileHeight: scaled(64)
     readonly property int calendarCellSize: scaled(22)
     readonly property int pickerRowHeight: scaled(40)
-    // A panel takes the bar's corner and everything inside it takes the bar's
+    // A panel takes the shared surface corner and everything inside it takes the bar's
     // chip corner. `surfaceRadius` stays where it is: it is the compositor's
     // window rounding (roles/desktop/templates/looknfeel.lua.j2) and the Hug corners
     // that have to match it, not a shell-internal design choice.
@@ -494,10 +499,16 @@ Singleton {
     // hanging off it, and its rows keep the bar's compact rhythm. The list row
     // is the menubar's own default height, held as a literal so a taller bar
     // does not drag every thread row up with it.
-    readonly property int panelRadius: Settings.barRadius
+    readonly property color surfaceBorderBase: Settings.surfaceBorderMode === "custom"
+        ? Settings.surfaceBorderColor : Settings.surfaceBorderMode === "subtle" ? stroke : accent
+    readonly property color surfaceBorderColor: Qt.rgba(surfaceBorderBase.r, surfaceBorderBase.g,
+        surfaceBorderBase.b, surfaceBorderBase.a * (Settings.highContrast ? 1 : Settings.surfaceBorderOpacity / 100))
+    readonly property int surfaceBorderWidth: Settings.highContrast
+        ? Math.max(2, Settings.surfaceBorderWidth) : Settings.surfaceBorderWidth
+    readonly property int panelRadius: Settings.surfaceCornerRadius
     readonly property int panelPadding: scaled(14)
     readonly property int sectionHeaderHeight: scaled(22)
-    readonly property int panelRowHeight: scaled(28)
+    readonly property int panelRowHeight: settingsControlHeight
     readonly property int listRowHeight: scaled(34)
     // A panel's title block: subject on one line, its qualifiers on the next,
     // closed by a hairline. The footer carries one line and no more.
@@ -508,16 +519,16 @@ Singleton {
     // qualifier is the shell's default, and `listRowHeight` is that.
     readonly property int panelTileHeight: scaled(48)
     // Between two rows in one group, and between two groups.
-    readonly property int panelRowSpacing: 2
+    readonly property int panelRowSpacing: scaled(2)
     readonly property int panelSectionSpacing: scaled(16)
 
     // The settings workspace uses one stable label lane in every font. Rows
     // stack below their labels only when the page itself becomes narrow.
-    readonly property int settingsLabelWidth: scaled(132, Math.min(contentScale, 1.15))
+    readonly property int settingsLabelWidth: scaled(132, typeScale)
     // The modified-mark gutter in front of every settings row: a 6px dot and
     // its gap, reserved so a row changing state never shifts its label.
-    readonly property int settingsMarkInset: 18
-    readonly property int settingsNarrowWidth: 520
+    readonly property int settingsMarkInset: scaled(18)
+    readonly property int settingsNarrowWidth: scaled(520, typeScale)
 
     // Switch geometry per surface, for Common/Toggle.qml: `box` is the hit
     // area, `track` the pill drawn centred inside it. The knob always sits

@@ -413,6 +413,23 @@ Singleton {
 
     IpcHandler {
         target: "shell"
+        function debugPluginTheme(): string {
+            return JSON.stringify({
+                fontBaseSize: OmarchyTheme.Style.fontBaseSize,
+                fontFamily: Theme.fontMenu,
+                native: { fontBase: Theme.fontBaseSize, body: Theme.fontBody,
+                    caption: Theme.fontCaption, spacingScale: Theme.contentScale,
+                    panelWidth: Theme.popWidth, controlHeight: Theme.settingsControlHeight,
+                    borderWidth: Theme.surfaceBorderWidth, borderColor: String(Theme.surfaceBorderColor),
+                    radius: Theme.panelRadius },
+                spacingScale: OmarchyTheme.Style.effectiveSpacingScale,
+                modelUsageWidth: OmarchyTheme.Style.space(420),
+                cornerRadius: OmarchyTheme.Style.cornerRadius,
+                popupBorder: OmarchyTheme.Border.surfaceSpec("popups", "border",
+                    OmarchyTheme.Color.popups.border, 2),
+                values: OmarchyTheme.Color.shellValues
+            });
+        }
         function applyTheme(colorsB64: string, shellB64: string): string {
             try {
                 const colors = Qt.atob(colorsB64);

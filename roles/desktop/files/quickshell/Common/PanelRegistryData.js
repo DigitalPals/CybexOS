@@ -26,8 +26,8 @@
 //   fillsBody            its view owns the whole popout body rather than
 //                        being laid out inside the standard padding
 //   attached             the surface sits flush against the bar with no gap,
-//                        squares its bar-side corners and bridges to the slab
-//                        with Hug corners (the edge drawer, the Day sheet)
+//                        retaining shared rounded corners (the edge drawer,
+//                        the Day sheet)
 //   edge                 "right" pins the surface to the screen edge instead
 //                        of centring it on its trigger (the edge drawer)
 //   tab                  which Control Dashboard tab this name presents. Every

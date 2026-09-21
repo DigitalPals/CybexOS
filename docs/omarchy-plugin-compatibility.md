@@ -186,6 +186,49 @@ in [the widget architecture](architecture/user-widgets.md), outside release
 replacement and rollback. Bar configuration, instance names, sections, and
 settings are saved in `plugins.json`; there is no second `shell.json` store.
 
+## Plugin appearance
+
+Native surfaces and Omarchy plugins share the font, logical-pixel sizing,
+accessibility scale, spacing density, border and corner settings described in
+[Shell appearance](shell-appearance.md). Settings → Appearance offers explicit
+Cybex and Omarchy presets; applying a preset is undoable and preserves accounts,
+plugin enablement, accessibility text size, wallpaper and layout.
+
+The Cybex default uses a 14px base font; the Omarchy preset uses JetBrains Mono
+at 12px, standard spacing, a 2px accent border and 16px panel corners. At the
+Omarchy preset's default accessibility scale, Model Usage's `Style.space(420)`
+is 420 logical pixels (840 image pixels on a 200% output). Qt applies monitor
+scaling; the shell never multiplies geometry by monitor scale itself.
+
+Settings → Plugins provides an additional UI scale (75–200%). Border mode
+**Shell** inherits the shared border; Accent/Subtle/Custom use the plugin width
+and opacity overrides. Corner value -1 follows the shared panel corners; 0 is
+square. Existing explicit plugin overrides are preserved until changed or a
+preset is applied. Scaling affects shared Omarchy UI, including bar widgets.
+
+Advanced users can set `pluginThemeOverrides` in
+`~/.config/fedora-config/shell.json`, using flat Omarchy shell tokens:
+
+```json
+{
+  "pluginThemeOverrides": {
+    "popups.border": "#9ecbeb #a992e0 45deg",
+    "popups.border-width": "2 1 2 1",
+    "font.base-size": 14,
+    "spacing.scale": 1.1
+  }
+}
+```
+
+Precedence: shared shell settings, plugin appearance overrides, explicit session
+`applyTheme` imports, then persistent advanced tokens. Resetting Plugins clears
+advanced tokens. An empty `applyTheme` palette/shell clears session imports and
+restores live inheritance. `shell debugPluginTheme` reports effective native
+and plugin sizing/borders. Omarchy theme files are not watched. Plugin-owned
+hardcoded styles (such as Model Usage's inner usage-card borders) remain under
+that plugin's control. Native critical-notification and keyboard-focus borders
+retain their status indications.
+
 ## Remaining limits
 
 - No automatic emulation of Arch packages, Omarchy's general command suite,

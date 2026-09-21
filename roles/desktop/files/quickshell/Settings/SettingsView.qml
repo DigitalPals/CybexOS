@@ -13,12 +13,12 @@ PopoutPanel {
     // Defaults for an unhosted instance; the host assigns both.
     availableWidth: 900
     availableHeight: 680
-    readonly property bool compactNav: availableWidth < 860
-    readonly property int headerHeight: 44
+    readonly property bool compactNav: availableWidth < Theme.scaled(860, Theme.typeScale)
+    readonly property int headerHeight: Theme.scaled(44)
     readonly property int gutter: Theme.panelPadding
-    readonly property int navWidth: compactNav ? 56 : 176
-    readonly property int preferredWidth: 900
-    readonly property int preferredHeight: 664
+    readonly property int navWidth: Theme.scaled(compactNav ? 56 : 200, Theme.typeScale)
+    readonly property int preferredWidth: Theme.scaled(900, Theme.contentScale)
+    readonly property int preferredHeight: Theme.scaled(664)
     property bool moduleDragActive: false
     property bool moduleSubPageActive: false
     signal cancelModuleDrag()
@@ -73,8 +73,8 @@ PopoutPanel {
         onTriggered: Settings.highlightKey = ""
     }
 
-    implicitWidth: Math.max(320, Math.min(preferredWidth, availableWidth))
-    implicitHeight: Math.max(280, Math.min(preferredHeight, availableHeight))
+    implicitWidth: Theme.fitWidth(preferredWidth, availableWidth > 0 ? availableWidth : preferredWidth)
+    implicitHeight: Math.max(1, Math.min(preferredHeight, availableHeight > 0 ? availableHeight : preferredHeight))
     focus: true
 
     // "/" from anywhere in the workspace focuses the nav search. A focused
@@ -388,7 +388,7 @@ PopoutPanel {
             Rectangle {
                 id: searchBox
                 width: parent.width
-                height: 30
+                height: Theme.settingsControlHeight
                 radius: Theme.chipRadius
                 color: searchField.activeFocus || root.searchActive
                     ? Theme.chipHover : Theme.chip
@@ -679,7 +679,7 @@ PopoutPanel {
                             }
 
                             width: parent.width
-                            height: 40
+                            height: Theme.scaled(40)
                             radius: Theme.rowRadius
                             color: selected ? Theme.chip
                                 : resultMouse.containsMouse ? Theme.hoverFill

@@ -8,7 +8,8 @@ and helpers to Cybex's palette; it does not watch Omarchy theme files.
 The pinned upstream `loadColors`, `parseShell` and `applyShellValues` functions
 are retained for explicit session theme updates through IPC.
 
-Style retains upstream tokens/functions with Cybex font/radius values and
+Style retains upstream tokens/functions with shared shell typography, density,
+persistent plugin overrides, accessibility scaling, and panel radius values, and
 omits Omarchy config watchers and Hyprland polling. UI changes qualify delegate
 references and use bound component contexts for strict linting. Dynamic host
 properties use `var` for standalone Qt linting. Popup anchors access the

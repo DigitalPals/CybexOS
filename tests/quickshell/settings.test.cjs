@@ -167,7 +167,7 @@ test("settings exposes responsive output and keyboard contracts", () => {
         "the settings view must inherit the popout contract");
     assert.match(read("Popovers/Surface.qml"), /^PopoutPanel \{/m,
         "every popover surface must inherit it too");
-    assert.match(view, /availableWidth\s*<\s*860/);
+    assert.match(view, /availableWidth\s*<\s*Theme\.scaled\(860, Theme\.typeScale\)/);
     assert.match(view, /function handleEscape\(\): bool/);
     // The host holds its loaded item as the contract type now, so these are
     // plain property writes rather than existence checks.
@@ -542,8 +542,8 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     const switchRow = read("Settings/SwitchRow.qml");
     const system = read("Settings/SystemPage.qml");
 
-    assert.match(view, /preferredWidth:\s*900/);
-    assert.match(view, /preferredHeight:\s*664/,
+    assert.match(view, /preferredWidth:\s*Theme\.scaled\(900, Theme\.contentScale\)/);
+    assert.match(view, /preferredHeight:\s*Theme\.scaled\(664\)/,
         "the sheet is 44 header + 620 body, hanging from the bar");
     // The gutter is unconditional: making it depend on scrollbarVisible
     // loops (narrower content re-wraps taller and flips the scrollbar).
@@ -552,8 +552,8 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     assert.match(page, /width:\s*root\.width - root\.scrollGutter/);
     // One fixed lane keeps every row aligned across all menu fonts.
     assert.match(theme,
-        /readonly property int settingsLabelWidth:\s*scaled\(132, Math\.min\(contentScale, 1\.15\)\)/);
-    assert.match(theme, /readonly property int settingsNarrowWidth:\s*520/);
+        /readonly property int settingsLabelWidth:\s*scaled\(132, typeScale\)/);
+    assert.match(theme, /readonly property int settingsNarrowWidth:\s*scaled\(520, typeScale\)/);
     assert.match(base, /readonly property int labelWidth:\s*markInset/,
         "the modified-mark gutter is part of every row's label column");
     assert.match(base, /Theme\.settingsLabelWidth >= root\.minimumLabelWidth/);
@@ -631,12 +631,12 @@ test("settings workspace uses shared responsive groups and bounded header lanes"
     const action = read("Settings/ResponsiveActionRow.qml");
     const qmldir = read("Settings/qmldir");
 
-    assert.match(view, /preferredWidth:\s*900/);
-    assert.match(view, /preferredHeight:\s*664/);
-    assert.match(view, /compactNav:\s*availableWidth < 860/);
+    assert.match(view, /preferredWidth:\s*Theme\.scaled\(900, Theme\.contentScale\)/);
+    assert.match(view, /preferredHeight:\s*Theme\.scaled\(664\)/);
+    assert.match(view, /compactNav:\s*availableWidth < Theme\.scaled\(860, Theme\.typeScale\)/);
     assert.match(view, /height:\s*Theme\.panelRowHeight \+ 2/,
         "navigation rows follow the shared panel rhythm, not a local literal");
-    assert.match(view, /headerHeight:\s*44/,
+    assert.match(view, /headerHeight:\s*Theme\.scaled\(44\)/,
         "the header is one line; the two-line form made it the tallest thing here");
     assert.match(view, /anchors\.right:\s*headerActions\.left/);
     assert.match(view, /id:\s*headerCopy[\s\S]{0,2000}?elide:\s*Text\.ElideRight/,

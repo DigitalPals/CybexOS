@@ -12,7 +12,7 @@ Surface {
     spacing: 6
     padding: T3Theme.pagePadding
     surfaceColor: T3Theme.canvas
-    surfaceBorderColor: T3Theme.borderStrong
+    surfaceBorderColor: Theme.surfaceBorderColor
 
     implicitWidth: availableWidth > 0
         ? Math.min(Theme.t3MaxWidth, availableWidth) : Theme.t3MaxWidth

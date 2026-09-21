@@ -10,7 +10,7 @@ Surface {
     spacing: 6
     padding: HermesTheme.pagePadding
     surfaceColor: HermesTheme.canvas
-    surfaceBorderColor: HermesTheme.borderStrong
+    surfaceBorderColor: Theme.surfaceBorderColor
 
     availableWidth: 560 - Theme.barSideMargin * 2
     availableHeight: 900 - Theme.barTopMargin - Theme.barHeight - 16

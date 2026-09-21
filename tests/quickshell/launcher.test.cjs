@@ -72,7 +72,7 @@ test("the app directory keeps every match in a fixed scrolling viewport", () => 
     assert.doesNotMatch(appRows, /slice\(0, root\.maxResults\)/,
         "the provider must not discard apps below the first viewport");
     assert.match(results,
-        /height:\s*Math\.min\(root\.maxResults, root\.rows\.length\) \* root\.rowHeight/);
+        /height:\s*Math\.min\(Math\.min\(root\.maxResults, root\.rows\.length\) \* root\.rowHeight,/);
     assert.match(results, /interactive:\s*contentHeight > height/);
     assert.match(results, /boundsBehavior:\s*Flickable\.StopAtBounds/);
     assert.match(results, /ScrollChrome\s*\{[\s\S]*target:\s*resultList/);
@@ -124,14 +124,14 @@ test("the launcher uses the compact single-line geometry", () => {
     const resultSection = view.slice(view.indexOf("// ---- Results"),
         view.indexOf("// ---- Empty state"));
 
-    assert.match(view, /implicitWidth:\s*460\b/);
+    assert.match(view, /implicitWidth:\s*Theme\.fitWidth\(Theme\.scaled\(460, Theme\.contentScale\)/);
     for (const [name, value] of Object.entries({
         tabHeight: 34,
         searchHeight: 44,
         rowHeight: 42,
         resultIconSize: 28
     }))
-        assert.match(view, new RegExp(`property int ${name}: ${value}\\b`));
+        assert.match(view, new RegExp(`property int ${name}: Theme\\.scaled\\(${value}\\)`));
     assert.match(providers, /property int maxResults:\s*8\b/);
     assert.match(view,
         /fullHeight:\s*padding \* 2 \+ tabHeight \+ searchHeight\s*\+ maxResults \* rowHeight \+ spacing \* 2/);
@@ -267,4 +267,11 @@ test("launcher-only motion stays brief and cannot gate input", () => {
     }
     assert.match(theme, /launcherInitialScale:\s*reducedMotion \? 1 : 0\.985/);
     assert.match(window, /Theme\.launcherInitialScale/);
+});
+
+// The enlarged icon must reserve its actual width, including in compact density.
+test("launcher labels follow the scaled icon instead of a fixed text offset", () => {
+    const view = read("LauncherView.qml");
+    assert.match(view, /x: resultIcon\.x \+ resultIcon\.width \+ Theme\.scaled\(10\)/);
+    assert.doesNotMatch(view, /font\.pixelSize: \d+/);
 });

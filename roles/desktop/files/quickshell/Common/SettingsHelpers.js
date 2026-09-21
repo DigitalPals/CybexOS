@@ -306,6 +306,20 @@ function defaults() {
         glassEnabled: false,
         highContrast: false,
         reducedMotion: false,
+        shellFontSize: 14,
+        shellScale: 100,
+        surfaceBorderMode: "accent",
+        surfaceBorderColor: "#9ecbeb",
+        surfaceBorderWidth: 2,
+        surfaceBorderOpacity: 100,
+        surfaceCornerRadius: 16,
+        pluginScale: 100,
+        pluginBorderMode: "inherit",
+        pluginBorderColor: "#9ecbeb",
+        pluginBorderWidth: 2,
+        pluginBorderOpacity: 100,
+        pluginRadius: -1,
+        pluginThemeOverrides: {},
         textScale: "default",
         interfaceDensity: "default",
         barColorMode: "default",
@@ -353,6 +367,30 @@ function defaults() {
         mods: defaultMods(),
         modOpts: defaultModOpts()
     };
+}
+
+// Presets are explicit, undoable patches; account, palette and layout stay intact.
+function appearancePreset(name) {
+    if (name !== "omarchy" && name !== "cybex") return null;
+    return { font: name === "omarchy" ? "mono" : "figtree",
+        shellFontSize: name === "omarchy" ? 12 : 14, shellScale: 100,
+        interfaceDensity: "default", surfaceCornerRadius: 16,
+        surfaceBorderMode: "accent", surfaceBorderWidth: 2, surfaceBorderOpacity: 100,
+        pluginScale: 100, pluginBorderMode: "inherit", pluginRadius: -1,
+        pluginThemeOverrides: {} };
+}
+
+function pluginThemeOverridesIn(value) {
+    var out = {};
+    if (!value || typeof value !== "object" || Array.isArray(value)) return out;
+    Object.keys(value).slice(0, 256).forEach(function(key) {
+        var v = value[key];
+        if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(key)) return;
+        if (typeof v === "string" && v.length <= 512
+            || typeof v === "boolean" || typeof v === "number" && isFinite(v))
+            out[key] = String(v);
+    });
+    return out;
 }
 
 function intIn(value, min, max, step, fallback) {
@@ -1207,6 +1245,20 @@ function merge(raw) {
         glassEnabled: boolIn(parsed.glassEnabled, d.glassEnabled),
         highContrast: boolIn(parsed.highContrast, d.highContrast),
         reducedMotion: boolIn(parsed.reducedMotion, d.reducedMotion),
+        shellFontSize: intIn(parsed.shellFontSize, 10, 24, 1, d.shellFontSize),
+        shellScale: intIn(parsed.shellScale, 75, 200, 5, d.shellScale),
+        surfaceBorderMode: enumIn(parsed.surfaceBorderMode, ["accent", "subtle", "custom"], d.surfaceBorderMode),
+        surfaceBorderColor: hexIn(parsed.surfaceBorderColor, d.surfaceBorderColor),
+        surfaceBorderWidth: intIn(parsed.surfaceBorderWidth, 0, 8, 1, d.surfaceBorderWidth),
+        surfaceBorderOpacity: intIn(parsed.surfaceBorderOpacity, 0, 100, 5, d.surfaceBorderOpacity),
+        surfaceCornerRadius: intIn(parsed.surfaceCornerRadius, 0, 30, 1, d.surfaceCornerRadius),
+        pluginScale: intIn(parsed.pluginScale, 75, 200, 5, d.pluginScale),
+        pluginBorderMode: enumIn(parsed.pluginBorderMode, ["inherit", "accent", "subtle", "custom"], d.pluginBorderMode),
+        pluginBorderColor: hexIn(parsed.pluginBorderColor, d.pluginBorderColor),
+        pluginBorderWidth: intIn(parsed.pluginBorderWidth, 0, 8, 1, d.pluginBorderWidth),
+        pluginBorderOpacity: intIn(parsed.pluginBorderOpacity, 0, 100, 5, d.pluginBorderOpacity),
+        pluginRadius: intIn(parsed.pluginRadius, -1, 30, 1, d.pluginRadius),
+        pluginThemeOverrides: pluginThemeOverridesIn(parsed.pluginThemeOverrides),
         textScale: enumIn(parsed.textScale, ["default", "large", "larger"], d.textScale),
         interfaceDensity: enumIn(parsed.interfaceDensity,
             ["compact", "default", "comfortable"], d.interfaceDensity),
@@ -1375,6 +1427,7 @@ var exported = {
     DRAWER_TAB_IDS: DRAWER_TAB_IDS,
     DRAWER_HOVER_MODES: DRAWER_HOVER_MODES,
     DRAWER_OVERVIEW_KEYS: DRAWER_OVERVIEW_KEYS,
+    appearancePreset: appearancePreset,
     defaults: defaults,
     defaultMods: defaultMods,
     defaultModOpts: defaultModOpts,
