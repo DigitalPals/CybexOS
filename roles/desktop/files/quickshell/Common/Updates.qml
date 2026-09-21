@@ -59,6 +59,10 @@ Singleton {
     property int checkFailureCount: 0
     property string lastLoggedCheckError: ""
 
+    readonly property string packageError: [dnfError, flatpakError]
+        .filter(value => value !== "").join(" · ");
+    readonly property bool packagesOnly: projectError !== "";
+
     readonly property int total: dnfCount + flatpakCount + (projectAvailable ? 1 : 0)
     readonly property bool flatpakEnabled: Settings.modOpts.updates.flatpak
 
@@ -69,10 +73,11 @@ Singleton {
     readonly property string summary: {
         if (busy)
             return "Checking…";
-        if (error !== "")
-            return "Updates unavailable";
+        if (packageError !== "")
+            return "Package updates unavailable";
         if (total === 0)
-            return "All up to date";
+            return packagesOnly ? "Packages up to date · CybexOS check unavailable"
+                : "All up to date";
         const parts = [];
         if (dnfCount > 0)
             parts.push("dnf " + dnfCount);
@@ -80,7 +85,7 @@ Singleton {
             parts.push("flatpak " + flatpakCount);
         if (projectAvailable)
             parts.push("CybexOS " + projectVersion);
-        return parts.join(" · ");
+        return parts.join(" · ") + (packagesOnly ? " · CybexOS check unavailable" : "");
     }
 
     function checkedLabel() {
@@ -198,6 +203,7 @@ Singleton {
         } else {
             projectError = ProcHelpers.commandError("CybexOS update check",
                 exitCode, errText, ({ 124: "CybexOS update check timed out" }));
+            projectError = UpdatesHelpers.projectCheckError(projectError);
             logCheckError(projectError);
         }
         projectDone = true;
@@ -388,13 +394,15 @@ Singleton {
         doneClear.stop();
     }
 
-    function run() {
+    function run(packagesOnly = false) {
         if (runActive || runStartProc.running)
             return;
         // This process only stages and starts the durable worker. systemd
         // requests authorization from the desktop Polkit agent when needed,
         // so the update and its progress stay on this Quickshell surface.
         const command = ["bash", updateClient, "start"];
+        if (packagesOnly)
+            command.push("--system-only");
         if (!flatpakEnabled)
             command.push("--no-flatpak");
         statusGeneration++;

@@ -274,3 +274,28 @@ test("the menu routes checks and runs through its deployment-aware client", () =
         /Quickshell\.env\("HOME"\) \+ "\/\.local\/share\/fedora-config\/current\/update"/,
         "the optional release runtime must not be an unconditional process");
 });
+
+test("release errors identify GitHub rejection without hiding other causes", () => {
+    assert.match(H.projectCheckError("curl: (22) The requested URL returned error: 403"),
+        /CybexOS: GitHub.*HTTP 403.*rate limited/);
+    assert.equal(H.projectCheckError("network offline"), "CybexOS: network offline");
+});
+
+test("a failed project check preserves a usable package summary and explicit action", () => {
+    const vm = require("node:vm");
+    const source = read("Common/Updates.qml");
+    const summary = source.match(/readonly property string summary: \{([\s\S]*?)\n    \}/)[1];
+    const state = {busy: false, packageError: "", packagesOnly: true, total: 0,
+        dnfCount: 0, flatpakCount: 0, projectAvailable: false};
+    assert.equal(vm.runInNewContext("(() => {" + summary + "})()", state),
+        "Packages up to date · CybexOS check unavailable");
+    state.dnfCount = state.total = 2;
+    assert.equal(vm.runInNewContext("(() => {" + summary + "})()", state),
+        "dnf 2 · CybexOS check unavailable");
+    state.packageError = "dnf failed";
+    assert.equal(vm.runInNewContext("(() => {" + summary + "})()", state),
+        "Package updates unavailable");
+    const panel = read("Popovers/UpdatesPopover.qml");
+    assert.match(panel, /Update packages only/);
+    assert.match(panel, /onClicked: Updates.run\(Updates.packagesOnly\)/);
+});

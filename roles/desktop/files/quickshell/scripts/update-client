@@ -24,6 +24,10 @@ case $command_name in
       '{"currentVersion":"","availableVersion":"","channel":"","available":false,"managed":false}'
     ;;
   start)
+    if [[ ${1:-} == --system-only ]]; then
+      managed=false
+      shift
+    fi
     if [[ $managed == true ]]; then
       exec "$release_updater" --start --json "$@"
     fi

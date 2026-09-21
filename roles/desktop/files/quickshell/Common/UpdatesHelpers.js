@@ -256,7 +256,16 @@ function acceptsStatusResponse(activeGeneration, requestGeneration,
         && requestGeneration === activeGeneration;
 }
 
+// Older release updaters only expose curl's status line. Keep the affected
+// source and the likely remedy visible instead of a bare HTTP error.
+function projectCheckError(message) {
+    if (/curl:.*(?:error:|returned error:) 403/.test(message))
+        return "CybexOS: GitHub refused the release check (HTTP 403). Its API may be rate limited; try again later.";
+    return "CybexOS: " + message;
+}
+
 var exported = {
+    projectCheckError: projectCheckError,
     dnfNames: dnfNames,
     flatpakNames: flatpakNames,
     shouldNotify: shouldNotify,

@@ -140,14 +140,14 @@ Surface {
                     : root.mode === "failed"
                     ? "dnf gave up " + Format.mmss(Updates.runDuration) + " in"
                     : Updates.busy ? "Checking…"
-                    : Updates.error !== "" ? Updates.error
+                    : Updates.packageError !== "" ? Updates.packageError
                     : Updates.checkedLabel() + " · every "
                         + Settings.modOpts.updates.pollMins + " m"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.metadata
                 font.weight: Theme.weightSemibold
                 font.features: Theme.tabularNumberFeatures
-                color: root.mode === "idle" && Updates.error !== ""
+                color: root.mode === "idle" && Updates.packageError !== ""
                     ? Theme.redText : Theme.textFaint
                 elide: Text.ElideRight
             }
@@ -354,18 +354,19 @@ Surface {
                 Sym {
                     anchors.horizontalCenter: parent.horizontalCenter
                     name: Updates.busy ? "refresh"
-                        : Updates.error !== "" ? "cloud_off" : "check_circle"
+                        : Updates.packageError !== "" ? "cloud_off" : "check_circle"
                     size: Theme.iconLarge
-                    fill: Updates.busy || Updates.error !== "" ? 0 : 1
+                    fill: Updates.busy || Updates.packageError !== "" ? 0 : 1
                     color: Updates.busy ? Theme.accent
-                        : Updates.error !== "" ? Theme.textFaint : Theme.accent
+                        : Updates.packageError !== "" ? Theme.textFaint : Theme.accent
                     opacity: 0.9
                 }
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: Updates.busy ? "Checking for updates…"
-                        : Updates.error !== "" ? "Could not check"
+                        : Updates.packageError !== "" ? "Could not check"
+                        : Updates.packagesOnly ? "Packages up to date"
                         : Updates.wasPending ? "Updated · nothing pending" : "All up to date"
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
@@ -376,14 +377,26 @@ Surface {
         }
     }
 
+    Text {
+        visible: root.mode === "idle" && Updates.projectError !== ""
+        width: parent.width
+        text: Updates.projectError + "\nFedora and Flatpak updates remain available."
+        wrapMode: Text.Wrap
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.metadata
+        color: Theme.amber
+    }
+
     // ---- act --------------------------------------------------------------
     Rectangle {
         id: goButton
 
-        visible: root.mode === "idle" && root.rows.length > 0
+        visible: root.mode === "idle" && (root.rows.length > 0 || Updates.packagesOnly)
         width: parent.width
         height: 38
         radius: 14
+        enabled: !Updates.busy
+        opacity: enabled ? 1 : 0.45
         color: goMouse.containsMouse ? Theme.accent : Theme.accentSoft
 
         Behavior on color {
@@ -414,7 +427,7 @@ Surface {
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Update now"
+                text: Updates.packagesOnly ? "Update packages only" : "Update now"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
@@ -427,7 +440,7 @@ Surface {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: Updates.run()
+            onClicked: Updates.run(Updates.packagesOnly)
         }
     }
 
@@ -1227,7 +1240,7 @@ Surface {
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Retry update"
+                text: Updates.packagesOnly ? "Retry packages only" : "Retry update"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
@@ -1240,7 +1253,7 @@ Surface {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: Updates.run()
+            onClicked: Updates.run(Updates.packagesOnly)
         }
     }
 

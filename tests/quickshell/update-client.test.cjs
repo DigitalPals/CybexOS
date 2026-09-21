@@ -78,3 +78,19 @@ test("an initialized installation retains verified project updates", t => {
     assert.equal(update.status, 0, update.stderr);
     assert.equal(update.stdout, "release:--no-flatpak\n");
 });
+
+test("explicit package-only start bypasses a broken managed release service", t => {
+    const f = fixture();
+    t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+    fs.writeFileSync(f.config, "config_schema_version: 1\n");
+    fs.writeFileSync(f.release,
+        "#!/usr/bin/env bash\necho 'curl: (22) The requested URL returned error: 403' >&2\nexit 22\n",
+        { mode: 0o755 });
+    const check = run(["check"], f.env);
+    assert.equal(check.status, 22, "release failures must remain visible");
+    const normal = run(["start"], f.env);
+    assert.equal(normal.status, 22, "never silently skip a project update");
+    const packages = run(["start", "--system-only", "--no-flatpak"], f.env);
+    assert.equal(packages.status, 0, packages.stderr);
+    assert.equal(packages.stdout, "backend:start --json --system-unit --no-flatpak\n");
+});

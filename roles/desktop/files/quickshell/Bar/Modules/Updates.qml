@@ -45,7 +45,7 @@ BarModule {
             : chip.rebootRecommended ? ""
             : Updates.runState === "done" ? ""
             : Updates.runState === "failed" ? "!"
-            : Updates.busy ? "…" : Updates.error !== "" ? "!" : Updates.total
+            : Updates.busy ? "…" : Updates.packageError !== "" ? "!" : Updates.total
         compact: root.compact
         labelColor: chip.rebootRecommended ? Theme.barAmber
             : Updates.runActive ? Theme.barAccent : Theme.barTextMid
