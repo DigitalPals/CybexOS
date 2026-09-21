@@ -6,12 +6,12 @@ import Quickshell.Io
 import "ProcHelpers.js" as ProcHelpers
 import "UpdatesHelpers.js" as UpdatesHelpers
 
-// Pending system updates: dnf packages and Flatpak refs — and the native run
-// that installs them without leaving the shell.
+// Pending updates: dnf packages, Flatpak refs, firmware and CybexOS releases.
+// Package installation runs inside the shell; firmware uses fwupd’s prompts.
 //
 // Polling is inherent here — there is nothing to subscribe to — so this is one
 // timer, at the interval the module's settings choose, plus a manual refresh
-// from the panel. Neither check needs root.
+// from the panel. Background checks do not install updates.
 //
 // The dnf side is deliberately `--cacheonly`: a refreshing check-update can
 // stop to ask whether to import a repository's signing key, and a shell poller
@@ -26,7 +26,16 @@ Singleton {
     id: root
 
     property int dnfCount: 0
+    property int firmwareCount: 0
+    property var firmwareNames: []
+    property var nextFirmwareNames: []
+    property string firmwareError: ""
+    property bool firmwareDone: true
+    readonly property bool firmwareInstalling: firmwareInstallProc.running
     property int flatpakCount: 0
+    // Temporarily disabled until GitHub releases are published. Keep the
+    // release-check process and handlers below for re-enabling later.
+    readonly property bool projectUpdatesEnabled: false
     property bool projectAvailable: false
     property string projectVersion: ""
     property var dnfNames: []
@@ -41,9 +50,9 @@ Singleton {
     property bool dnfDone: true
     property bool flatpakDone: true
     property bool projectDone: true
-    readonly property bool busy: !dnfDone || !flatpakDone || !projectDone
+    readonly property bool busy: !dnfDone || !flatpakDone || !projectDone || !firmwareDone
 
-    // Results stay private until both commands finish. Publishing each stream
+    // Results stay private until all checks finish. Publishing each stream
     // as it closes makes total briefly describe a half-completed check and can
     // fire a notification for a state that never existed.
     property var nextDnfNames: []
@@ -63,7 +72,7 @@ Singleton {
         .filter(value => value !== "").join(" · ");
     readonly property bool packagesOnly: projectError !== "";
 
-    readonly property int total: dnfCount + flatpakCount + (projectAvailable ? 1 : 0)
+    readonly property int total: dnfCount + flatpakCount + firmwareCount + (projectAvailable ? 1 : 0)
     readonly property bool flatpakEnabled: Settings.modOpts.updates.flatpak
 
     // Once the count has been non-zero and then falls to zero, the panel says
@@ -75,6 +84,8 @@ Singleton {
             return "Checking…";
         if (packageError !== "")
             return "Package updates unavailable";
+        if (firmwareError !== "")
+            return "Firmware check unavailable";
         if (total === 0)
             return packagesOnly ? "Packages up to date · CybexOS check unavailable"
                 : "All up to date";
@@ -83,6 +94,8 @@ Singleton {
             parts.push("dnf " + dnfCount);
         if (flatpakCount > 0)
             parts.push("flatpak " + flatpakCount);
+        if (firmwareCount > 0)
+            parts.push("firmware " + firmwareCount);
         if (projectAvailable)
             parts.push("CybexOS " + projectVersion);
         return parts.join(" · ") + (packagesOnly ? " · CybexOS check unavailable" : "");
@@ -123,7 +136,7 @@ Singleton {
         // A poll firing mid-transaction would read the cache while dnf is
         // rewriting the installed set; whatever it said would be wrong by the
         // time it landed. finishRun schedules the recount instead.
-        if (runActive)
+        if (runActive || firmwareInstalling)
             return;
         if (busy) {
             checkAgain = true;
@@ -134,6 +147,8 @@ Singleton {
         dnfError = "";
         flatpakError = "";
         projectError = "";
+        firmwareError = "";
+        nextFirmwareNames = [];
         nextDnfNames = [];
         nextFlatpakNames = [];
         nextProjectAvailable = false;
@@ -141,11 +156,14 @@ Singleton {
         checkingFlatpak = flatpakEnabled;
         dnfDone = false;
         flatpakDone = !checkingFlatpak;
-        projectDone = false;
+        projectDone = !projectUpdatesEnabled;
+        firmwareDone = false;
         dnfProc.running = true;
         if (checkingFlatpak)
             flatpakProc.running = true;
-        projectProc.running = true;
+        if (projectUpdatesEnabled)
+            projectProc.running = true;
+        firmwareProc.running = true;
     }
 
     // Automatic work waits for NetworkManager's global connected state.
@@ -190,6 +208,31 @@ Singleton {
         finishCheck();
     }
 
+    function finishFirmware(exitCode, body, errText) {
+        if (exitCode === 2) {
+            nextFirmwareNames = [];
+        } else if (exitCode === 0) {
+            try {
+                nextFirmwareNames = UpdatesHelpers.firmwareNames(body);
+            } catch (exception) {
+                firmwareError = "Firmware update check returned invalid data";
+            }
+        } else {
+            firmwareError = ProcHelpers.commandError("Firmware update check",
+                exitCode, errText, ({ 124: "Firmware update check timed out" }));
+        }
+        if (firmwareError !== "")
+            logCheckError(firmwareError);
+        firmwareDone = true;
+        finishCheck();
+    }
+
+    function installFirmware() {
+        if (runActive || busy || firmwareInstalling)
+            return;
+        firmwareInstallProc.running = true;
+    }
+
     function finishProject(exitCode, body, errText) {
         if (exitCode === 0) {
             try {
@@ -213,16 +256,17 @@ Singleton {
     function finishCheck() {
         if (!dnfDone || !flatpakDone)
             return;
-        if (!projectDone)
+        if (!projectDone || !firmwareDone)
             return;
 
         const previousTotal = total;
         const nextDnfCount = dnfError === "" ? nextDnfNames.length : dnfCount;
         const nextFlatpakCount = !checkingFlatpak ? 0
             : flatpakError === "" ? nextFlatpakNames.length : flatpakCount;
-        const nextTotal = nextDnfCount + nextFlatpakCount
+        const nextFirmwareCount = firmwareError === "" ? nextFirmwareNames.length : firmwareCount;
+        const nextTotal = nextDnfCount + nextFlatpakCount + nextFirmwareCount
             + (projectError === "" && nextProjectAvailable ? 1 : 0);
-        const errors = [dnfError, flatpakError, projectError].filter(value => value !== "");
+        const errors = [dnfError, flatpakError, projectError, firmwareError].filter(value => value !== "");
         const complete = errors.length === 0;
 
         if (dnfError === "") {
@@ -236,6 +280,11 @@ Singleton {
         if (projectError === "") {
             projectAvailable = nextProjectAvailable;
             projectVersion = nextProjectVersion;
+        }
+
+        if (firmwareError === "") {
+            firmwareNames = nextFirmwareNames;
+            firmwareCount = nextFirmwareCount;
         }
 
         error = errors.join(" · ");
@@ -395,13 +444,13 @@ Singleton {
     }
 
     function run(packagesOnly = false) {
-        if (runActive || runStartProc.running)
+        if (runActive || runStartProc.running || firmwareInstalling)
             return;
         // This process only stages and starts the durable worker. systemd
         // requests authorization from the desktop Polkit agent when needed,
         // so the update and its progress stay on this Quickshell surface.
         const command = ["bash", updateClient, "start"];
-        if (packagesOnly)
+        if (packagesOnly || !projectUpdatesEnabled)
             command.push("--system-only");
         if (!flatpakEnabled)
             command.push("--no-flatpak");
@@ -1023,6 +1072,70 @@ Singleton {
             } else {
                 root.finishFlatpak(exitSeen ? lastExit : ProcHelpers.NOT_STARTED,
                     body, errText);
+            }
+        }
+    }
+
+    Process {
+        id: firmwareProc
+        property string body: ""
+        property string errText: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        command: ["timeout", "45s", "env", "LC_ALL=C", "fwupdmgr",
+            "get-updates", "--json"]
+
+        stdout: StdioCollector {
+            onStreamFinished: firmwareProc.body = text
+        }
+
+        stderr: StdioCollector {
+            onStreamFinished: firmwareProc.errText = text
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            firmwareProc.exitSeen = true;
+            firmwareProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                errText = "";
+                exitSeen = false;
+                lastExit = 0;
+            } else {
+                root.finishFirmware(exitSeen ? lastExit : ProcHelpers.NOT_STARTED,
+                    body, errText);
+            }
+        }
+    }
+
+    // Keep fwupd's safety/device/reboot prompts in an interactive terminal.
+    // kitty stays attached, so closing it schedules a fresh count.
+    Process {
+        id: firmwareInstallProc
+        property bool started: false
+        property bool exitSeen: false
+        property int lastExit: 0
+        command: ["kitty", "--title", "Firmware updates", "bash",
+            Quickshell.shellDir + "/scripts/firmware-update"]
+        onExited: (exitCode, exitStatus) => {
+            exitSeen = true;
+            lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = 0;
+                started = true;
+            } else if (started) {
+                started = false;
+                if (!exitSeen || lastExit !== 0) {
+                    root.firmwareError = "Firmware updater did not complete. Check the terminal output or try again.";
+                } else {
+                    Qt.callLater(root.check);
+                }
             }
         }
     }

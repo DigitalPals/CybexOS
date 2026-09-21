@@ -20,6 +20,16 @@ function flatpakNames(body) {
         .filter(function (line) { return line !== ""; });
 }
 
+// Count devices, not alternative releases for the same device.
+function firmwareNames(body) {
+    const data = JSON.parse(body);
+    if (!data || !Array.isArray(data.Devices))
+        throw new Error("missing firmware device list");
+    return data.Devices.filter(device => Array.isArray(device.Releases)
+        && device.Releases.length > 0).map(device =>
+        typeof device.Name === "string" ? device.Name : "Firmware device");
+}
+
 // Only a complete zero -> positive transition after a known baseline is news.
 // A failed first attempt must not turn the first successful snapshot into a
 // notification for updates that may have been pending before login.
@@ -261,10 +271,13 @@ function acceptsStatusResponse(activeGeneration, requestGeneration,
 function projectCheckError(message) {
     if (/curl:.*(?:error:|returned error:) 403/.test(message))
         return "CybexOS: GitHub refused the release check (HTTP 403). Its API may be rate limited; try again later.";
+    if (/curl:.*(?:error:|returned error:) 404/.test(message))
+        return "CybexOS: GitHub found no published release (HTTP 404), or the repository is inaccessible.";
     return "CybexOS: " + message;
 }
 
 var exported = {
+    firmwareNames: firmwareNames,
     projectCheckError: projectCheckError,
     dnfNames: dnfNames,
     flatpakNames: flatpakNames,

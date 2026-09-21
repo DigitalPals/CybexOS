@@ -286,7 +286,7 @@ test("a failed project check preserves a usable package summary and explicit act
     const source = read("Common/Updates.qml");
     const summary = source.match(/readonly property string summary: \{([\s\S]*?)\n    \}/)[1];
     const state = {busy: false, packageError: "", packagesOnly: true, total: 0,
-        dnfCount: 0, flatpakCount: 0, projectAvailable: false};
+        dnfCount: 0, flatpakCount: 0, firmwareCount: 0, firmwareError: "", projectAvailable: false};
     assert.equal(vm.runInNewContext("(() => {" + summary + "})()", state),
         "Packages up to date · CybexOS check unavailable");
     state.dnfCount = state.total = 2;
@@ -298,4 +298,39 @@ test("a failed project check preserves a usable package summary and explicit act
     const panel = read("Popovers/UpdatesPopover.qml");
     assert.match(panel, /Update packages only/);
     assert.match(panel, /onClicked: Updates.run\(Updates.packagesOnly\)/);
+});
+
+
+test("firmware counts devices once and rejects malformed successful responses", () => {
+    assert.deepEqual(H.firmwareNames(JSON.stringify({ Devices: [
+        { Name: "UEFI dbx", Releases: [{Version: "2"}, {Version: "3"}] },
+        { Name: "System Firmware", Releases: [{Version: "5"}] },
+        { Name: "Current device", Releases: [] }
+    ] })), ["UEFI dbx", "System Firmware"]);
+    assert.deepEqual(H.firmwareNames('{"Devices":[]}'), []);
+    assert.throws(() => H.firmwareNames('{}'));
+    assert.throws(() => H.firmwareNames('not json'));
+    assert.match(H.projectCheckError("curl: (22) The requested URL returned error: 404"),
+        /no published release.*HTTP 404/);
+});
+
+test("firmware completion distinguishes no updates, malformed output and failures", () => {
+    const vm = require("node:vm");
+    const source = read("Common/Updates.qml");
+    const finish = source.match(/function finishFirmware\(exitCode, body, errText\) \{([\s\S]*?)\n    \}/)[1];
+    for (const [exitCode, body, failed] of [
+        [2, "", false], [0, '{"Devices":[]}', false],
+        [0, '{}', true], [124, "", true], [127, "", true]
+    ]) {
+        let settled = 0;
+        const state = {exitCode, body, errText: "", firmwareError: "", firmwareDone: false,
+            nextFirmwareNames: ["old"], UpdatesHelpers: H,
+            ProcHelpers: load("ProcHelpers.js"), logCheckError() {},
+            finishCheck() { settled++; }};
+        vm.runInNewContext("(() => {" + finish + "})()", state);
+        assert.equal(state.firmwareDone, true);
+        assert.equal(settled, 1);
+        assert.equal(state.firmwareError !== "", failed);
+        assert.equal(state.nextFirmwareNames.length, failed ? 1 : 0);
+    }
 });

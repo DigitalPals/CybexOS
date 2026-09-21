@@ -44,6 +44,14 @@ Surface {
                 sub: Updates.namesLabel(Updates.flatpakNames, Updates.flatpakCount),
                 count: Updates.flatpakCount
             });
+        if (Updates.firmwareCount > 0)
+            out.push({
+                key: "firmware",
+                glyph: "memory",
+                name: "Firmware",
+                sub: Updates.namesLabel(Updates.firmwareNames, Updates.firmwareCount),
+                count: Updates.firmwareCount
+            });
         if (Updates.projectAvailable)
             out.push({
                 key: "fedora-config",
@@ -161,7 +169,7 @@ Surface {
             width: 32
             height: 32
             radius: 10
-            enabled: !Updates.busy
+            enabled: !Updates.busy && !Updates.firmwareInstalling
             opacity: enabled ? 1 : 0.45
             color: refreshMouse.containsMouse && enabled
                 ? Theme.hoverFillStrong : Theme.chip
@@ -365,7 +373,7 @@ Surface {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: Updates.busy ? "Checking for updates…"
-                        : Updates.packageError !== "" ? "Could not check"
+                        : Updates.packageError !== "" || Updates.firmwareError !== "" ? "Could not check"
                         : Updates.packagesOnly ? "Packages up to date"
                         : Updates.wasPending ? "Updated · nothing pending" : "All up to date"
                     font.family: Theme.fontMenu
@@ -380,22 +388,41 @@ Surface {
     Text {
         visible: root.mode === "idle" && Updates.projectError !== ""
         width: parent.width
-        text: Updates.projectError + "\nFedora and Flatpak updates remain available."
+        text: Updates.projectError + "\nPackage and firmware updates remain available."
         wrapMode: Text.Wrap
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.metadata
         color: Theme.amber
     }
 
+    Text {
+        visible: root.mode === "idle" && Updates.firmwareError !== ""
+        width: parent.width
+        text: Updates.firmwareError
+        wrapMode: Text.Wrap
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.metadata
+        color: Theme.amber
+    }
+
+    ActionButton {
+        visible: root.mode === "idle" && (Updates.firmwareCount > 0 || Updates.firmwareInstalling)
+        enabled: !Updates.busy && !Updates.firmwareInstalling
+        revealed: visible
+        label: Updates.firmwareInstalling ? "Firmware updater open…" : "Install firmware in terminal…"
+        onTriggered: Updates.installFirmware()
+    }
+
     // ---- act --------------------------------------------------------------
     Rectangle {
         id: goButton
 
-        visible: root.mode === "idle" && (root.rows.length > 0 || Updates.packagesOnly)
+        visible: root.mode === "idle" && (Updates.dnfCount > 0 || Updates.flatpakCount > 0
+            || Updates.projectAvailable || Updates.packagesOnly)
         width: parent.width
         height: 38
         radius: 14
-        enabled: !Updates.busy
+        enabled: !Updates.busy && !Updates.firmwareInstalling
         opacity: enabled ? 1 : 0.45
         color: goMouse.containsMouse ? Theme.accent : Theme.accentSoft
 
@@ -1295,11 +1322,13 @@ Surface {
             width: parent.width - 8
             text: root.mode === "running"
                 ? "keeps running if you close this panel — the bar chip tracks progress"
-                : Updates.busy ? "checking the dnf cache and Flatpak remotes"
+                : Updates.busy ? "checking packages and firmware"
+                : Updates.firmwareInstalling ? "Follow the firmware updater’s instructions in the terminal"
+                : Updates.firmwareCount > 0 ? "Firmware installs separately with device and reboot prompts"
                 : root.rows.length > 0
                 ? "sudo dnf upgrade" + (Settings.modOpts.updates.flatpak
                     ? " · flatpak update" : "") + " — streams live here"
-                : "checked against the dnf metadata cache"
+                : "Package and firmware metadata are refreshed by system timers"
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.secondary
             font.weight: Theme.weightSemibold
