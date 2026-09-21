@@ -114,7 +114,7 @@ Surface {
                         : "Connected · " + Tailscale.ip + (Tailscale.exitNode ? " · exit node active" : "")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
-                    color: root.copiedIp === Tailscale.ip && Tailscale.ip !== "" ? Theme.accent : Theme.textLow
+                    color: root.copiedIp === Tailscale.ip && Tailscale.ip !== "" ? Theme.accentText : Theme.textLow
                     elide: Text.ElideRight
                 }
             }
@@ -228,7 +228,7 @@ Surface {
                         font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightSemibold
                         font.letterSpacing: 0.5
-                        color: peerRow.modelData.exit ? Theme.accent : Theme.textDim
+                        color: peerRow.modelData.exit ? Theme.accentText : Theme.textDim
                     }
                 }
             }
@@ -240,7 +240,7 @@ Surface {
                 text: root.copiedIp !== "" && root.copiedIp === peerRow.modelData.ip ? "copied" : peerRow.modelData.ip
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.typography.secondary
-                color: root.copiedIp !== "" && root.copiedIp === peerRow.modelData.ip ? Theme.accent : Theme.textDim
+                color: root.copiedIp !== "" && root.copiedIp === peerRow.modelData.ip ? Theme.accentText : Theme.textDim
             }
 
             MouseArea {

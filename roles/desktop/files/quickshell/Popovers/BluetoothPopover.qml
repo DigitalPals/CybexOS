@@ -104,7 +104,7 @@ Surface {
             enabled: !busy
             activeFocusOnTab: enabled
             border.width: activeFocus ? 1 : 0
-            border.color: Theme.accent
+            border.color: Theme.accentText
             Accessible.role: Accessible.Button
             Accessible.name: actionName
             Accessible.description: busy ? "Bluetooth action in progress"
@@ -153,7 +153,7 @@ Surface {
                         return "bluetooth";
                     }
                     size: Theme.fontBody
-                    color: dev.modelData.connected ? Theme.accent : Theme.textMid
+                    color: dev.modelData.connected ? Theme.accentText : Theme.textMid
                 }
 
                 Column {

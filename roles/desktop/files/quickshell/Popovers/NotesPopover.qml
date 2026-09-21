@@ -269,7 +269,7 @@ Surface {
             ? Theme.hoverFillStrong : "transparent"
         opacity: enabled ? 1 : 0.4
         border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
         // Visibility is already enforced by the parent view. Keeping this
         // independent avoids changing the flag while a focused view exits.
         activeFocusOnTab: enabled
@@ -405,7 +405,7 @@ Surface {
                         name: "sticky_note_2"
                         size: Theme.iconMedium
                         fill: Notes.count > 0 ? 1 : 0
-                        color: Theme.accent
+                        color: Theme.accentText
                     }
 
                     Text {
@@ -528,7 +528,7 @@ Surface {
                                 || cardActions.activeFocus
                                     ? Theme.hoverFillStrong : "transparent"
                             border.width: activeFocus ? 1 : 0
-                            border.color: Theme.accent
+                            border.color: Theme.accentText
                             activeFocusOnTab: true
                             Accessible.role: Accessible.Button
                             Accessible.name: "Edit note: " + modelData.title
@@ -582,7 +582,7 @@ Surface {
                                     font.features: Theme.tabularNumberFeatures
                                     color: noteCard.titleFailure !== ""
                                         ? Theme.redText
-                                        : noteCard.titleBusy ? Theme.accent : Theme.textFaint
+                                        : noteCard.titleBusy ? Theme.accentText : Theme.textFaint
                                 }
 
                                 FocusScope {

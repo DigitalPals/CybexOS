@@ -236,7 +236,7 @@ test("scroll chrome discloses overflow without becoming an input surface", () =>
 
 test("primary loading and empty states use a settled, gated placeholder", () => {
     const placeholder = read("Common/StatusPlaceholder.qml");
-    assert.match(placeholder, /running:\s*root\.shown && root\.kind === "loading"/,
+    assert.match(placeholder, /running:\s*root\.shown && root\.visible && !Theme\.reducedMotion && root\.kind === "loading"/,
         "the progress mark must stop when the status is hidden or settled");
     assert.match(placeholder, /Behavior on implicitHeight/);
     assert.match(placeholder, /Theme\.redBgSoft/);

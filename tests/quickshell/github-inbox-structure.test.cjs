@@ -111,7 +111,7 @@ test("the GitHub workspace follows the integrated T3 module hierarchy", () => {
     assert.match(source,
         /component TabButton[\s\S]{0,400}?color:\s*selected \? T3Theme\.hoverStrong/,
         "a selected tab lights the held chip rather than the accent");
-    assert.match(source, /component GroupHeader:[\s\S]*?T3Theme\.tabularNumberFeatures/);
+    assert.match(source, /component GroupHeader: SectionLabel/);
 
     // T3 and GitHub share one flat-line list grammar. The Inbox is the
     // quietest form: one coloured status glyph and one meaningful title.

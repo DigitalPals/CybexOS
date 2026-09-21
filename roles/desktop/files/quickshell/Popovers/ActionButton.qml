@@ -18,9 +18,9 @@ Rectangle {
     property string label: ""
     property color tint: Theme.textLow
     property color fill: Theme.hoverFill
-    property color focusColor: Theme.accent
+    property color focusColor: Theme.accentText
     property string fontFamily: Theme.fontMenu
-    property int buttonRadius: 6
+    property int buttonRadius: Theme.chipRadius
     // Side padding either side of the label.
     property real hPadding: 18
     // False while the row this sits in is collapsed: a hidden action must not
@@ -39,8 +39,10 @@ Rectangle {
     Accessible.role: Accessible.Button
     Accessible.name: label
     Accessible.onPressAction: {
-        actionState.pulseCenter();
-        root.triggered();
+        if (root.enabled && root.revealed) {
+            actionState.pulseCenter();
+            root.triggered();
+        }
     }
     border.width: activeFocus ? 1 : 0
     border.color: focusColor
@@ -83,6 +85,6 @@ Rectangle {
         enabled: root.enabled
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.triggered()
+        onClicked: { root.forceActiveFocus(); root.triggered(); }
     }
 }

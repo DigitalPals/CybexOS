@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls as Controls
 import "../Common"
 
 SettingsPage {
@@ -10,7 +9,7 @@ SettingsPage {
     }
     Column {
         width: parent.width
-        spacing: Theme.panelSectionSpacing
+        spacing: Theme.settingsGroupSpacing
         SettingsGroup {
             width: parent.width
             title: "Omarchy plugin appearance"
@@ -68,6 +67,7 @@ SettingsPage {
             }
             Text {
                 width: parent.width
+                leftPadding: Theme.settingsMarkInset
                 wrapMode: Text.WordWrap
                 text: "100% follows the shell font size, UI scale and control spacing. Shell borders follow Appearance. Changes apply to plugins using the shared Omarchy components."
                 color: Theme.textMid
@@ -75,57 +75,71 @@ SettingsPage {
                 font.pixelSize: Theme.typography.secondary
             }
         }
-        Text {
+        SettingsGroup {
             width: parent.width
-            wrapMode: Text.WordWrap
-            text: "Plugins run as your desktop user. Install only packages you trust. New packages start disabled."
-            color: Theme.textMid
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.typography.secondary
-        }
-        Controls.TextField {
-            id: repository
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.typography.control
-            font.weight: Theme.weightRegular
-            width: parent.width
-            placeholderText: "Git repository URL or local path"
-            Accessible.name: "Plugin repository"
-        }
-        SettingsAction {
-            text: UserPlugins.busy ? "Working…" : "Install plugin"
-            glyph: "add"
-            enabled: !UserPlugins.busy && repository.text.trim() !== ""
-            onTriggered: page.run(["add", repository.text.trim()])
-        }
-        Text {
-            width: parent.width
-            wrapMode: Text.WrapAnywhere
-            visible: text !== ""
-            text: UserPlugins.error || UserPlugins.operationResult
-            color: UserPlugins.error ? Theme.redText : Theme.textMid
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.typography.secondary
+            title: "Install plugin"
+            rowSpacing: Theme.settingsContentSpacing
+            Text {
+                width: parent.width
+                leftPadding: Theme.settingsMarkInset
+                wrapMode: Text.WordWrap
+                text: "Plugins run as your desktop user. Install only packages you trust. New packages start disabled."
+                color: Theme.textMid
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+            }
+            SettingsField {
+                id: repository
+                x: Theme.settingsMarkInset
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.control
+                font.weight: Theme.weightRegular
+                width: parent.width - x
+                placeholderText: "Git repository URL or local path"
+                Accessible.name: "Plugin repository"
+            }
+            SettingsAction {
+                x: Theme.settingsMarkInset
+                text: UserPlugins.busy ? "Working…" : "Install plugin"
+                glyph: "add"
+                enabled: !UserPlugins.busy && repository.text.trim() !== ""
+                onTriggered: page.run(["add", repository.text.trim()])
+            }
+            Text {
+                width: parent.width
+                wrapMode: Text.WrapAnywhere
+                visible: text !== ""
+                leftPadding: Theme.settingsMarkInset
+                text: UserPlugins.error || UserPlugins.operationResult
+                color: UserPlugins.error ? Theme.redText : Theme.textMid
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+            }
         }
         Repeater {
             model: UserPlugins.plugins
-            delegate: Column {
+            delegate: SettingsGroup {
                 id: row
                 required property var modelData
                 property bool confirmRemoval: false
                 width: parent.width
-                spacing: 8
+                title: row.modelData.name
+                rowSpacing: Theme.settingsContentSpacing
                 Text {
                     width: parent.width
-                    text: row.modelData.name + " · " + row.modelData.id
-                    color: Theme.textHi
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.primary
+                    leftPadding: Theme.settingsMarkInset
+                    text: row.modelData.id
+                    color: Theme.textDim
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.typography.secondary
                     wrapMode: Text.WrapAnywhere
                 }
                 Text {
                     width: parent.width
                     visible: text !== ""
+                    leftPadding: Theme.settingsMarkInset
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.typography.secondary
                     text: row.modelData.error || Object.keys(OmarchyPlugins.errors)
                         .filter(key => key.startsWith(row.modelData.id + ":"))
                         .map(key => OmarchyPlugins.errors[key]).join("\n")
@@ -133,8 +147,9 @@ SettingsPage {
                     wrapMode: Text.WrapAnywhere
                 }
                 Flow {
-                    width: parent.width
-                    spacing: 8
+                    x: Theme.settingsMarkInset
+                    width: parent.width - x
+                    spacing: Theme.settingsContentSpacing
                     enabled: !UserPlugins.busy
                     SettingsAction {
                         text: row.modelData.enabled ? "Disable" : "Enable"
@@ -167,16 +182,18 @@ SettingsPage {
                         onTriggered: row.confirmRemoval = false
                     }
                 }
-                Controls.TextField {
+                SettingsField {
                     id: cloneId
+                    x: Theme.settingsMarkInset
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.control
                     font.weight: Theme.weightRegular
-                    width: parent.width
+                    width: parent.width - x
                     placeholderText: "New ID for a custom copy"
                     Accessible.name: "Clone ID for " + row.modelData.id
                 }
                 SettingsAction {
+                    x: Theme.settingsMarkInset
                     text: "Clone"
                     glyph: "content_copy"
                     enabled: !UserPlugins.busy && cloneId.text.trim() !== ""

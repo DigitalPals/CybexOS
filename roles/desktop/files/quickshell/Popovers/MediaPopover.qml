@@ -286,7 +286,7 @@ Surface {
         scale: buttonMouse.pressed ? 0.9 : 1
         activeFocusOnTab: available
         border.width: activeFocus ? 2 : 0
-        border.color: primary ? Theme.accentFg : Theme.accent
+        border.color: primary ? Theme.accentFg : Theme.accentText
         Accessible.role: toggle ? Accessible.CheckBox : Accessible.Button
         Accessible.name: button.accessibleName
         Accessible.description: button.accessibleDescription
@@ -476,7 +476,7 @@ Surface {
                 name: root.playing ? "graphic_eq" : "pause"
                 size: Theme.iconSmall
                 fill: 1
-                color: root.playing ? Theme.accent : Theme.textDim
+                color: root.playing ? Theme.accentText : Theme.textDim
             }
 
             Text {
@@ -503,7 +503,7 @@ Surface {
             enabled: root.multiSource
             activeFocusOnTab: enabled
             border.width: activeFocus ? 1 : 0
-            border.color: Theme.accent
+            border.color: Theme.accentText
             Accessible.role: Accessible.Button
             Accessible.name: "Choose media player"
             Accessible.description: root.player ? root.player.identity : "No player"

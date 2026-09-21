@@ -25,3 +25,5 @@ SystemPage SystemPage.qml
 UndoChip UndoChip.qml
 WallpaperPage WallpaperPage.qml
 PluginsPage PluginsPage.qml
+SettingsSubsection SettingsSubsection.qml
+SettingsField SettingsField.qml

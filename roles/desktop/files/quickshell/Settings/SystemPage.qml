@@ -37,7 +37,7 @@ SettingsPage {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        spacing: 12
+        spacing: Theme.settingsGroupSpacing
 
         SettingsGroup {
             width: parent.width
@@ -100,7 +100,7 @@ SettingsPage {
             Text {
                 width: parent.width
                 leftPadding: page.width < Theme.settingsNarrowWidth
-                    ? 0 : Theme.settingsMarkInset + Theme.settingsLabelWidth + 10
+                    ? Theme.settingsMarkInset : Theme.settingsMarkInset + Theme.settingsLabelWidth
                 text: "Tint applies while Night light is on in Control Panel — "
                     + (SysInfo.nightLight ? "currently on" : "currently off")
                 font.family: Theme.fontMenu
@@ -116,32 +116,27 @@ SettingsPage {
             width: parent.width
             title: "Stay awake"
 
-            SettingsRow {
+            PickerRow {
                 width: parent.width
                 label: "Duration"
-                narrowHeight: 70
-                narrowLabelInset: 80
-
-                PillRow {
-                    x: parent.narrow ? 0 : parent.labelWidth
-                    y: parent.narrow ? 26 : (parent.height - height) / 2
-                    width: parent.contentRight - x
-                    current: SysInfo.idleInhibitMode
-                    model: [
-                        { value: "off", label: "Off" },
-                        { value: "30m", label: "30 min" },
-                        { value: "1h", label: "1 hour" },
-                        { value: "unplugged", label: "Until unplugged" },
-                        { value: "always", label: "Always" }
-                    ]
-                    onPicked: value => SysInfo.setIdleInhibitMode(value)
-                }
+                // Runtime session choice; there is no persisted default to reset.
+                dirty: false
+                resetKeys: []
+                current: SysInfo.idleInhibitMode
+                model: [
+                    { value: "off", label: "Off" },
+                    { value: "30m", label: "30 min" },
+                    { value: "1h", label: "1 hour" },
+                    { value: "unplugged", label: "Until unplugged" },
+                    { value: "always", label: "Always" }
+                ]
+                onPicked: value => SysInfo.setIdleInhibitMode(value)
             }
 
             Text {
                 width: parent.width
                 leftPadding: page.width < Theme.settingsNarrowWidth
-                    ? 0 : Theme.settingsMarkInset + Theme.settingsLabelWidth + 10
+                    ? Theme.settingsMarkInset : Theme.settingsMarkInset + Theme.settingsLabelWidth
                 text: SysInfo.idleInhibited
                     ? "Active · " + SysInfo.idleInhibitStatus
                     : "Off · default duration and sign-in behavior are configured under Widgets → Indicators."
@@ -199,10 +194,10 @@ SettingsPage {
                 label: "Status"
 
                 Row {
-                    x: parent.labelWidth
+                    x: parent.narrow ? parent.markInset : parent.labelWidth
                     width: parent.contentRight - x
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 7
+                    y: parent.narrow ? Theme.settingsStackOffset : (parent.height - height) / 2
+                    spacing: Theme.iconTextSpacing
 
                     Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
@@ -228,9 +223,9 @@ SettingsPage {
                 label: "Service"
 
                 Text {
-                    x: parent.labelWidth
+                    x: parent.narrow ? parent.markInset : parent.labelWidth
                     width: parent.contentRight - x
-                    anchors.verticalCenter: parent.verticalCenter
+                    y: parent.narrow ? Theme.settingsStackOffset : (parent.height - height) / 2
                     text: ShellHealth.serviceActive
                         ? "PID " + ShellHealth.servicePid + " · up " + ShellHealth.uptimeLabel()
                         : (ShellHealth.refreshError || "inactive")
@@ -246,9 +241,9 @@ SettingsPage {
                 label: "Deployment"
 
                 Text {
-                    x: parent.labelWidth
+                    x: parent.narrow ? parent.markInset : parent.labelWidth
                     width: parent.contentRight - x
-                    anchors.verticalCenter: parent.verticalCenter
+                    y: parent.narrow ? Theme.settingsStackOffset : (parent.height - height) / 2
                     text: ShellHealth.deploymentId === ""
                         ? ShellHealth.deploymentDetail
                         : ShellHealth.deploymentStatus + " · "
@@ -265,7 +260,7 @@ SettingsPage {
                 visible: ShellHealth.issueCount > 0
                 width: parent.width
                 leftPadding: page.width < Theme.settingsNarrowWidth
-                    ? 0 : Theme.settingsMarkInset + Theme.settingsLabelWidth + 10
+                    ? Theme.settingsMarkInset : Theme.settingsMarkInset + Theme.settingsLabelWidth
                 text: (ShellHealth.integrationIssues.concat(ShellHealth.recentWarnings))[0] || ""
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.secondary

@@ -234,7 +234,7 @@ Column {
                 name: "battery_saver"
                 size: 18
                 fill: BatteryHealth.enabled ? 1 : 0
-                color: BatteryHealth.enabled ? Theme.accent : Theme.textMid
+                color: BatteryHealth.enabled ? Theme.accentText : Theme.textMid
             }
 
             Column {
@@ -301,7 +301,7 @@ Column {
                 name: "coffee"
                 size: 18
                 fill: SysInfo.idleInhibited ? 1 : 0
-                color: SysInfo.idleInhibited ? Theme.accent : Theme.textMid
+                color: SysInfo.idleInhibited ? Theme.accentText : Theme.textMid
             }
 
             Column {

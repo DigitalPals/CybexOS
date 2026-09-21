@@ -125,7 +125,7 @@ Rectangle {
         radius: card.radius
         color: "transparent"
         border.width: card.activeFocus ? 2 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
     }
 
     Row {
@@ -255,7 +255,7 @@ Rectangle {
                             ? Theme.hoverFillStrong : "transparent"
                         activeFocusOnTab: card.keyboardEnabled
                         border.width: activeFocus ? 1 : 0
-                        border.color: Theme.accent
+                        border.color: Theme.accentText
                         Accessible.role: Accessible.Button
                         Accessible.name: "Dismiss notification from "
                             + (card.entry.displayAppName || "this app")
@@ -317,7 +317,7 @@ Rectangle {
                             ? Theme.hoverFillStrong : "transparent"
                         activeFocusOnTab: visible && card.keyboardEnabled
                         border.width: activeFocus ? 1 : 0
-                        border.color: Theme.accent
+                        border.color: Theme.accentText
 
                         Accessible.role: Accessible.Button
                         Accessible.name: card.textExpandedByUser

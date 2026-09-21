@@ -46,7 +46,7 @@ Singleton {
     readonly property color link: accent
     readonly property color accentSoft: Theme.accentBg
     readonly property color accentSubtle: Theme.accentBgSoft
-    readonly property color focus: Theme.accentGlow
+    readonly property color focus: Settings.highContrast ? Theme.accentText : Theme.accentGlow
 
     readonly property color amber: Theme.amber
     readonly property color amberSoft: Theme.amberBgSoft

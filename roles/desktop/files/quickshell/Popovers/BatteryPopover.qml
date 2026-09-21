@@ -175,7 +175,7 @@ Surface {
                     name: "bolt"
                     size: Theme.iconSmall
                     fill: 1
-                    color: Theme.accent
+                    color: Theme.accentText
                 }
 
                 Text {
@@ -342,7 +342,7 @@ Surface {
                 name: "battery_saver"
                 size: Theme.iconMedium
                 fill: BatteryHealth.enabled ? 1 : 0
-                color: BatteryHealth.enabled ? Theme.accent : Theme.textLow
+                color: BatteryHealth.enabled ? Theme.accentText : Theme.textLow
             }
 
             Column {
@@ -438,7 +438,7 @@ Surface {
                     color: current ? Theme.chipHover
                         : profileMouse.containsMouse ? Theme.tile : "transparent"
                     border.width: activeFocus || current ? 1 : 0
-                    border.color: activeFocus ? Theme.accent : Theme.stroke
+                    border.color: activeFocus ? Theme.accentText : Theme.stroke
                     activeFocusOnTab: visible && (current
                         || (!root.knownProfile && index === 0))
 

@@ -39,7 +39,7 @@ Item {
     // Reflow metrics. Each row reserves a different slice of the narrow line
     // for its own control, and the switch row's label sits 2px lower because
     // its control is taller than the text beside it.
-    property int narrowHeight: Theme.scaled(52)
+    property real narrowHeight: Theme.settingsStackOffset + Theme.settingsControlHeight
     property int narrowLabelY: 0
     property int narrowLabelInset: 100
     // Most rows use the theme's compact label column. A page can reserve more
@@ -64,7 +64,8 @@ Item {
     readonly property bool highlighted: settingKey !== ""
         && Settings.highlightKey === settingKey
 
-    height: narrow ? narrowHeight : Theme.panelRowHeight
+    property real wideHeight: Theme.panelRowHeight
+    height: narrow ? narrowHeight : wideHeight
 
     function commit(value) {
         if (root.settingKey !== "")
@@ -127,6 +128,7 @@ Item {
         UndoChip {
             id: undoChip
             visible: root.dirty
+            Accessible.name: "Reset " + root.resetLabel + " to default"
             // Revealed by the pointer or by keyboard focus; kept in the tab
             // order the whole time it is visible so it stays reachable.
             opacity: rowHover.hovered || activeFocus ? 1 : 0

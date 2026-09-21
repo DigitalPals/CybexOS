@@ -231,7 +231,7 @@ test("Control Panel fills use their intended accent strength", () => {
         "keyboard focus must expose the same neutral state layer as hover");
     assert.doesNotMatch(radioRow, /Theme\.(?:accentContainer|accentSoft|accentBg|accentSubtle)/,
         "a radio row must not paint an accent field behind its label");
-    assert.match(radioRow, /color: radio\.on \? Theme\.accent : Theme\.icon/,
+    assert.match(radioRow, /color: radio\.on \? Theme\.accentText : Theme\.icon/,
         "the accent survives on the glyph, where it is a mark");
 
     // Quick actions and value sliders use the same full-strength accent as

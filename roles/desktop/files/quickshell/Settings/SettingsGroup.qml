@@ -12,15 +12,16 @@ Item {
     default property alias content: contentColumn.data
     property string title: ""
     property bool dirty: false
-    property int rowSpacing: Theme.panelRowSpacing
+    property int rowSpacing: Theme.settingsRowSpacing
     signal resetRequested()
 
-    readonly property int headingHeight: title === "" ? 0 : Theme.sectionHeaderHeight
-    readonly property int headingGap: title === "" ? 0 : 8
+    readonly property real headingHeight: title === "" ? 0 : heading.height
+    readonly property int headingGap: title === "" ? 0 : Theme.settingsContentSpacing
     readonly property real availableContentHeight: Math.max(0,
         height - headingHeight - headingGap)
 
-    implicitHeight: headingHeight + headingGap + contentColumn.childrenRect.height
+    // Positioner height excludes hidden rows; childrenRect keeps their stale bounds.
+    implicitHeight: headingHeight + headingGap + contentColumn.implicitHeight
 
     SectionHeader {
         id: heading

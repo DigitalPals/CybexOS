@@ -268,6 +268,10 @@ Singleton {
     // ---- accent and status -------------------------------------------------
     readonly property color accent: paletteActive ? Common.Palette.primary
         : Settings.effectiveAccent
+    // Pale chosen accents are valid fills, but cannot also be readable ink
+    // on light panels. Keep the user's color and resolve copy independently.
+    readonly property color accentText: SettingsHelpers.ensureContrast(
+        accent.toString(), copyReferenceBg.toString(), 4.5)
     // Derived rather than fixed white: the redesign's chartreuse accent needs
     // dark ink on it, and any pale fixed accent has the same problem.
     readonly property color accentFg: paletteActive
@@ -523,6 +527,16 @@ Singleton {
 
     // The settings workspace uses one stable label lane in every font. Rows
     // stack below their labels only when the page itself becomes narrow.
+    // Settings distinguish compact rows, related content, subsections and
+    // groups. A subsection owns its leading space, including inside revealers.
+    readonly property int settingsRowSpacing: panelRowSpacing
+    readonly property int settingsContentSpacing: scaled(8)
+    readonly property int settingsSubsectionSpacing: scaled(12)
+    readonly property int settingsGroupSpacing: panelSectionSpacing
+    readonly property int controlSpacing: scaled(8)
+    readonly property int iconTextSpacing: scaled(6)
+    readonly property int settingsStackOffset: typography.control + settingsContentSpacing
+
     readonly property int settingsLabelWidth: scaled(132, typeScale)
     // The modified-mark gutter in front of every settings row: a 6px dot and
     // its gap, reserved so a row changing state never shifts its label.

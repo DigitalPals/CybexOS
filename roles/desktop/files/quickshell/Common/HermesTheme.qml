@@ -31,7 +31,7 @@ Singleton {
         Theme.accentFg.toString(), accent.toString(), 4.5)
     readonly property color accentSoft: Theme.accentBg
     readonly property color accentSubtle: Theme.accentBgSoft
-    readonly property color focus: Theme.accentGlow
+    readonly property color focus: Settings.highContrast ? Theme.accentText : Theme.accentGlow
     readonly property color amber: Theme.amber
     readonly property color amberSoft: Theme.amberBgSoft
     readonly property color amberBorder: Theme.amberBorder

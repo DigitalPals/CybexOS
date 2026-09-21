@@ -669,7 +669,7 @@ test("dialog chrome carries the menubar's grammar rather than a card stack", () 
         assert.doesNotMatch(group, banned,
             "the group card is gone; the section header and its rule replace it");
 
-    assert.match(header, /height:\s*Theme\.sectionHeaderHeight/);
+    assert.match(header, /height:\s*Math\.max\(Theme\.sectionHeaderHeight/);
     assert.match(header, /color:\s*Theme\.hairlineSoft/,
         "a section label runs a hairline to the page edge, as T3's inbox groups do");
 
@@ -695,7 +695,7 @@ test("progressive disclosure hides inactive controls without discarding latent v
 
     const fixedAt = appearance.indexOf("id: fixedColorReveal");
     const paletteAt = appearance.indexOf("id: paletteContent");
-    const barAt = appearance.indexOf('SectionHeader { label: "BAR BACKGROUND" }');
+    const barAt = appearance.indexOf('title: "Bar background"');
     const typeAt = appearance.indexOf('title: "Typography"');
     assert.ok(fixedAt > 0 && paletteAt > fixedAt && barAt > paletteAt && typeAt > barAt,
         "Fixed must reveal its accent controls immediately below the mode picker");
@@ -765,7 +765,7 @@ test("wallpaper and module layouts switch before content can collide", () => {
     const wallpaper = read("Settings/WallpaperPage.qml");
     const modules = read("Settings/ModulesPage.qml");
 
-    assert.match(wallpaper, /columnCount:\s*width < 520 \? 1 : 2/);
+    assert.match(wallpaper, /columnCount:\s*width < Theme\.settingsNarrowWidth \? 1 : 2/);
     assert.match(wallpaper, /cellWidth:\s*Math\.floor\(width \/ columnCount\)/);
     for (const lane of ["laneLeftBox", "laneCenterBox", "laneRightBox"])
         assert.match(modules, new RegExp(`id:\\s*${lane}[\\s\\S]{0,220}?clip:\\s*true`),

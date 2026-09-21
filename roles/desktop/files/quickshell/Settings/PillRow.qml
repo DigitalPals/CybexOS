@@ -31,12 +31,12 @@ Flow {
             required property int index
             readonly property bool selected: modelData.value === root.current
 
-            width: pillText.implicitWidth + root.padH * 2
+            width: Math.min(root.width, pillText.implicitWidth + root.padH * 2)
             height: root.pillHeight
             radius: Theme.chipRadius
             color: pill.selected ? Theme.chipHover : "transparent"
             border.width: activeFocus ? 1 : 0
-            border.color: Theme.accent
+            border.color: Theme.accentText
             activeFocusOnTab: pill.selected || (!root.anySelected && index === 0)
             Accessible.role: Accessible.RadioButton
             Accessible.name: pill.modelData.label
@@ -82,6 +82,9 @@ Flow {
             Text {
                 id: pillText
                 anchors.centerIn: parent
+                width: Math.max(0, parent.width - root.padH * 2)
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
                 text: pill.modelData.label
                 font.family: root.mono ? Theme.fontMono : Theme.fontMenu
                 font.pixelSize: Theme.typography.control

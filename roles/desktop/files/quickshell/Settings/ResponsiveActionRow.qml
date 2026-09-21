@@ -13,7 +13,20 @@ Item {
     property int breakpoint: 460
     property int maximumLines: 2
     readonly property bool stacked: width < breakpoint
-    readonly property int gap: 10
+    readonly property int gap: description === "" ? 0 : Theme.settingsContentSpacing
+    readonly property real contentInset: Theme.settingsMarkInset
+    readonly property real availableWidth: Math.max(0, width - contentInset)
+    readonly property real naturalActionWidth: {
+        let total = 0;
+        let count = 0;
+        for (const child of actionRow.children) {
+            if (child.visible && child.width > 0) {
+                total += child.width;
+                count++;
+            }
+        }
+        return total + Math.max(0, count - 1) * Theme.iconTextSpacing;
+    }
 
     implicitHeight: stacked
         ? actionRow.implicitHeight + descriptionText.implicitHeight + gap
@@ -22,10 +35,11 @@ Item {
 
     Text {
         id: descriptionText
-        x: root.stacked || !root.actionsFirst ? 0 : actionRow.width + root.gap
-        y: root.stacked && root.actionsFirst ? actionRow.height + root.gap : 0
-        width: root.stacked ? parent.width
-            : Math.max(0, parent.width - actionRow.width - root.gap)
+        x: root.contentInset + (root.stacked || !root.actionsFirst ? 0 : actionRow.width + root.gap)
+        y: root.stacked ? (root.actionsFirst ? actionRow.height + root.gap : 0)
+            : (root.height - height) / 2
+        width: root.stacked ? root.availableWidth
+            : Math.max(0, root.availableWidth - actionRow.width - root.gap)
         text: root.description
         font.family: root.descriptionMono ? Theme.fontMono : Theme.fontMenu
         font.pixelSize: Theme.typography.secondary
@@ -35,11 +49,12 @@ Item {
         elide: Text.ElideMiddle
     }
 
-    Row {
+    Flow {
         id: actionRow
-        x: root.stacked || root.actionsFirst ? 0 : parent.width - width
-        y: root.stacked && !root.actionsFirst
-            ? descriptionText.implicitHeight + root.gap : 0
-        spacing: 6
+        width: Math.min(root.availableWidth, root.naturalActionWidth)
+        x: root.stacked || root.actionsFirst ? root.contentInset : parent.width - width
+        y: root.stacked ? (!root.actionsFirst ? descriptionText.implicitHeight + root.gap : 0)
+            : (root.height - height) / 2
+        spacing: Theme.iconTextSpacing
     }
 }

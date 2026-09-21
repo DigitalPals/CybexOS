@@ -70,7 +70,7 @@ SettingsPage {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        spacing: 12
+        spacing: Theme.settingsGroupSpacing
 
         SettingsGroup {
             width: parent.width
@@ -148,10 +148,10 @@ SettingsPage {
                 width: parent.width
                 reveal: page.fixedPalette
 
-                Column {
+                SettingsSubsection {
                     width: fixedColorReveal.width
-                    spacing: 6
-                    SectionHeader { label: "ACCENT" }
+                    title: "ACCENT"
+                    insetContent: false
                     SliderRow {
                         width: parent.width
                         label: "Accent hue"
@@ -164,8 +164,9 @@ SettingsPage {
                         onMoved: value => page.pickAccent(SettingsHelpers.hueToHex(value))
                     }
                     Flow {
-                        width: parent.width
-                        spacing: 9
+                        x: Theme.settingsMarkInset
+                        width: parent.width - x
+                        spacing: Theme.controlSpacing
                         Repeater {
                             id: swatchRepeater
                             model: page.accentChoices
@@ -174,7 +175,7 @@ SettingsPage {
                                 required property string modelData
                                 required property int index
                                 readonly property bool selected: Settings.accent === modelData
-                                width: 28; height: 28
+                                width: Theme.settingsControlHeight; height: width
                                 activeFocusOnTab: selected || (index === 0
                                     && page.accentChoices.indexOf(Settings.accent) === -1)
                                 Accessible.role: Accessible.RadioButton
@@ -189,6 +190,10 @@ SettingsPage {
                                         next = Math.max(0, index - 1);
                                     else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down)
                                         next = Math.min(page.accentChoices.length - 1, index + 1);
+                                    else if (event.key === Qt.Key_Home)
+                                        next = 0;
+                                    else if (event.key === Qt.Key_End)
+                                        next = page.accentChoices.length - 1;
                                     else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                                             || event.key === Qt.Key_Space) {
                                         page.pickAccent(modelData); event.accepted = true; return;
@@ -201,16 +206,16 @@ SettingsPage {
                                 }
                                 Rectangle {
                                     anchors.centerIn: parent
-                                    width: 18; height: 18; radius: 9
+                                    width: Theme.scaled(18); height: width; radius: width / 2
                                     color: swatch.modelData
                                 }
                                 Rectangle {
                                     anchors.fill: parent
-                                    radius: 14
+                                    radius: width / 2
                                     color: "transparent"
                                     border.width: 1.5
-                                    border.color: swatch.modelData
-                                    visible: swatch.selected || swatch.activeFocus
+                                    border.color: swatch.activeFocus ? Theme.textHi : Theme.accentText
+                                    visible: swatch.selected || swatch.activeFocus || swatchMouse.containsMouse
                                 }
                                 MouseArea {
                                     id: swatchMouse
@@ -233,10 +238,10 @@ SettingsPage {
                 width: parent.width
                 reveal: !page.fixedPalette
 
-                Column {
+                SettingsSubsection {
                     width: wallpaperPaletteReveal.width
-                    spacing: 6
-                    SectionHeader { label: "WALLPAPER PALETTE PREVIEW" }
+                    title: "WALLPAPER PALETTE PREVIEW"
+                    insetContent: true
 
                     Item {
                         width: parent.width
@@ -244,21 +249,21 @@ SettingsPage {
                         Column {
                             id: paletteContent
                             width: parent.width
-                            spacing: 7
+                            spacing: Theme.settingsContentSpacing
                             Flow {
                                 width: parent.width
-                                spacing: 12
+                                spacing: Theme.controlSpacing
                                 Repeater {
                                     model: page.paletteSwatches
                                     delegate: Row {
                                         required property var modelData
-                                        spacing: 5
+                                        spacing: Theme.iconTextSpacing
                                         Accessible.role: Accessible.StaticText
                                         Accessible.name: modelData.label + " palette color"
 
                                         Rectangle {
                                             anchors.verticalCenter: parent.verticalCenter
-                                            width: 14; height: 14; radius: 4
+                                            width: Theme.iconSmall; height: width; radius: Theme.scaled(4)
                                             color: parent.modelData.color
                                             border.width: 1
                                             border.color: Theme.stroke
@@ -287,23 +292,22 @@ SettingsPage {
                                 color: Common.Palette.error !== ""
                                     ? Theme.redText : Theme.textDim
                                 wrapMode: Text.Wrap
-                                maximumLineCount: 2
-                                elide: Text.ElideRight
                             }
                         }
                     }
                 }
             }
 
-            Column {
+            SettingsSubsection {
                 id: barColorControls
                 width: parent.width
-                spacing: 6
-                SectionHeader { label: "BAR BACKGROUND" }
+                title: "Bar background"
+                spacing: Theme.settingsContentSpacing
 
                 Flow {
-                    width: parent.width
-                    spacing: 9
+                    x: Theme.settingsMarkInset
+                    width: parent.width - x
+                    spacing: Theme.controlSpacing
                     Repeater {
                         id: barColorRepeater
                         model: Settings.barColorChoices
@@ -313,7 +317,7 @@ SettingsPage {
                             required property int index
                             readonly property bool selected: Settings.barColorMode === modelData.id
                             readonly property string previewHex: Settings.previewBarColor(modelData.id)
-                            width: 34; height: 34
+                            width: Theme.listRowHeight; height: width
                             activeFocusOnTab: selected || (index === 0 && Settings.barColorMode === "")
                             Accessible.role: Accessible.RadioButton
                             Accessible.name: modelData.label + " menubar color"
@@ -348,11 +352,11 @@ SettingsPage {
                                 radius: width / 2
                                 color: "transparent"
                                 border.width: colorChoice.selected ? 2 : colorChoice.activeFocus ? 1 : 0
-                                border.color: colorChoice.selected ? Theme.accent : Theme.textHi
+                                border.color: colorChoice.selected ? Theme.accentText : Theme.textHi
                             }
                             Rectangle {
                                 anchors.centerIn: parent
-                                width: 22; height: 22; radius: 11
+                                width: Theme.scaled(22); height: width; radius: width / 2
                                 color: colorChoice.previewHex
                                 border.width: 1
                                 border.color: Theme.stroke
@@ -372,8 +376,9 @@ SettingsPage {
                 }
 
                 Item {
-                    width: parent.width
-                    height: 24
+                    x: Theme.settingsMarkInset
+                    width: parent.width - x
+                    height: Theme.settingsControlHeight
                     Text {
                         anchors.left: parent.left
                         anchors.right: colorValue.left
@@ -408,7 +413,7 @@ SettingsPage {
                     reveal: Settings.barColorMode === "custom"
                     Column {
                         width: customColorReveal.width
-                        spacing: 4
+                        spacing: Theme.settingsRowSpacing
                         SliderRow {
                             width: parent.width
                             label: "Hue"
@@ -526,7 +531,7 @@ SettingsPage {
                         radius: Theme.rowRadius
                         color: selected ? Theme.accentAlpha(0.14) : "transparent"
                         border.width: activeFocus ? 1 : 0
-                        border.color: Theme.accent
+                        border.color: Theme.accentText
                         activeFocusOnTab: selected
                         Accessible.role: Accessible.RadioButton
                         Accessible.name: modelData.label + " menu font"
@@ -570,7 +575,7 @@ SettingsPage {
                             width: 14; height: 14; radius: 7
                             color: "transparent"
                             border.width: 1.5
-                            border.color: fontRow.selected ? Theme.accent : Theme.dotDim
+                            border.color: fontRow.selected ? Theme.accentText : Theme.dotDim
                             Rectangle {
                                 anchors.centerIn: parent
                                 width: 6; height: 6; radius: 3

@@ -36,8 +36,9 @@ Revealer {
             refreshItems();
     }
 
-    Row {
-        spacing: 6
+    Flow {
+        width: root.width
+        spacing: Theme.iconTextSpacing
 
         Repeater {
             model: root.items
@@ -50,15 +51,15 @@ Revealer {
 
                 readonly property bool primary: index === 0
 
-                height: 24
-                width: Math.min(pillText.implicitWidth + 20, 160)
-                radius: 7
+                height: Math.max(Theme.chipInnerHeight, root.pixelSize + Theme.iconTextSpacing * 2)
+                width: Math.min(root.width, pillText.implicitWidth + Theme.controlSpacing * 2, Theme.scaled(160))
+                radius: Theme.chipRadius
                 color: primary
                     ? (pillMouse.containsMouse || activeFocus ? Theme.accentBg : Theme.accentBgSoft)
                     : (pillMouse.containsMouse || activeFocus ? Theme.hoverFillStrong : Theme.hoverFill)
                 activeFocusOnTab: root.keyboardEnabled && root.reveal
                 border.width: activeFocus ? 1 : 0
-                border.color: Theme.accent
+                border.color: Theme.accentText
                 Accessible.role: Accessible.Button
                 Accessible.name: pill.modelData.text
                 Accessible.onPressAction: Notifs.invoke(root.entry, pill.modelData)
@@ -92,7 +93,7 @@ Revealer {
                     font.family: root.face
                     font.pixelSize: root.pixelSize
                     font.weight: Theme.weightMedium
-                    color: pill.primary ? Theme.accent : Theme.textMid
+                    color: pill.primary ? Theme.accentText : Theme.textMid
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                 }

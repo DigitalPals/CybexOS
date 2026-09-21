@@ -254,7 +254,7 @@ Surface {
                             name: providerTab.modelData.glyph
                             size: Theme.fontSecondary
                             color: providerTab.active
-                                ? Theme.accent : Theme.textDim
+                                ? Theme.accentText : Theme.textDim
                         }
 
                         Text {

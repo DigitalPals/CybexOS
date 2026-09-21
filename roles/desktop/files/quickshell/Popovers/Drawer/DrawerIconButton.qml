@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as Controls
 import "../../Common"
 
 // A 32px glyph button for the drawer's footers and inline actions. A glyph
@@ -8,22 +9,24 @@ Rectangle {
 
     property string glyph: ""
     property real fill: 0
-    property real glyphSize: 17
+    property real glyphSize: Theme.iconMedium
     property color tint: Theme.textMid
     property string accessibleName: ""
     signal clicked()
+    Controls.ToolTip.visible: mouse.containsMouse || activeFocus
+    Controls.ToolTip.text: accessibleName
 
-    width: 32
-    height: 32
+    width: Theme.inlineActionHeight
+    height: Theme.inlineActionHeight
     radius: Theme.rowRadius
     color: "transparent"
     opacity: enabled ? 1 : 0.4
     activeFocusOnTab: enabled && visible
     border.width: activeFocus ? 1 : 0
-    border.color: Theme.accent
+    border.color: Theme.accentText
     Accessible.role: Accessible.Button
     Accessible.name: accessibleName
-    Accessible.onPressAction: root.clicked()
+    Accessible.onPressAction: if (root.enabled) root.clicked()
 
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -38,6 +41,7 @@ Rectangle {
         radius: parent.radius
         hovered: mouse.containsMouse
         pressed: mouse.pressed
+        focused: root.activeFocus
         tint: Theme.textHi
         pressPoint: Qt.point(mouse.mouseX, mouse.mouseY)
     }

@@ -16,16 +16,18 @@ SettingsRow {
 
     // A narrow segmented control may wrap to two or more lines. Let the row
     // grow with the Flow instead of painting the next row over those pills.
-    narrowHeight: Theme.scaled(29) + Math.max(Theme.settingsControlHeight,
-        pills.implicitHeight) + Theme.scaled(5)
-    narrowLabelInset: 130
+    narrowHeight: Theme.settingsStackOffset + Math.max(Theme.settingsControlHeight,
+        pills.implicitHeight) + (caption === "" ? Theme.settingsRowSpacing
+            : Theme.settingsContentSpacing + captionText.implicitHeight)
+    wideHeight: Math.max(Theme.panelRowHeight, pills.implicitHeight)
+    narrowLabelInset: root.undoWidth
 
     PillRow {
         id: pills
-        x: root.narrow ? 0 : root.labelWidth
-        y: root.narrow ? Theme.scaled(29) : (parent.height - height) / 2
-        width: root.narrow ? parent.width
-            : Math.max(100, parent.width - x - root.undoWidth
+        x: root.narrow ? root.markInset : root.labelWidth
+        y: root.narrow ? Theme.settingsStackOffset : (parent.height - height) / 2
+        width: root.narrow ? Math.max(0, root.contentRight - x)
+            : Math.max(0, parent.width - x - root.undoWidth
                 - root.captionWidth - (root.captionWidth > 0 ? 10 : 0))
         current: root.stored
         onPicked: value => {
@@ -36,17 +38,19 @@ SettingsRow {
 
     Text {
         id: captionText
-        y: root.narrow ? 0 : (parent.height - height) / 2
-        x: root.narrow
-            ? Math.max(root.labelTextWidth,
-                parent.width - implicitWidth - root.undoWidth - 6)
-            : root.contentRight - root.captionWidth
-        width: root.narrow ? Math.max(0, root.contentRight - x - 4) : root.captionWidth
-        horizontalAlignment: Text.AlignRight
+        visible: root.caption !== ""
+        y: root.narrow ? Theme.settingsStackOffset
+            + Math.max(Theme.settingsControlHeight, pills.implicitHeight)
+            + Theme.settingsContentSpacing : (parent.height - height) / 2
+        x: root.narrow ? root.markInset : root.contentRight - root.captionWidth
+        width: root.narrow ? Math.max(0, root.contentRight - x) : root.captionWidth
+        horizontalAlignment: root.narrow ? Text.AlignLeft : Text.AlignRight
+        wrapMode: root.narrow ? Text.Wrap : Text.NoWrap
+        maximumLineCount: root.narrow ? 2 : 1
         text: root.caption
         font.family: root.captionMono ? Theme.fontMono : Theme.fontMenu
         font.pixelSize: Theme.typography.control
         color: Theme.textFaint
-        elide: Text.ElideLeft
+        elide: root.narrow ? Text.ElideRight : Text.ElideLeft
     }
 }

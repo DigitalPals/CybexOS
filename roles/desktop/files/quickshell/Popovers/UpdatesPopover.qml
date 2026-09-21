@@ -100,7 +100,7 @@ Surface {
                 symWeight: 450
                 fill: root.mode === "done" || root.mode === "failed" ? 1 : 0
                 color: root.mode === "done" ? Theme.ok
-                    : root.mode === "failed" ? Theme.redText : Theme.accent
+                    : root.mode === "failed" ? Theme.redText : Theme.accentText
 
                 RotationAnimation on rotation {
                     running: root.mode === "running" && !Theme.reducedMotion
@@ -185,7 +185,7 @@ Surface {
                 anchors.centerIn: parent
                 name: "refresh"
                 size: Theme.iconSmall + 1
-                color: Updates.busy ? Theme.accent : Theme.textMid
+                color: Updates.busy ? Theme.accentText : Theme.textMid
             }
 
             MouseArea {
@@ -336,7 +336,7 @@ Surface {
                         font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightSemibold
                         font.features: Theme.tabularNumberFeatures
-                        color: Theme.accent
+                        color: Theme.accentText
                     }
                 }
             }
@@ -357,8 +357,8 @@ Surface {
                         : Updates.packageError !== "" ? "cloud_off" : "check_circle"
                     size: Theme.iconLarge
                     fill: Updates.busy || Updates.packageError !== "" ? 0 : 1
-                    color: Updates.busy ? Theme.accent
-                        : Updates.packageError !== "" ? Theme.textFaint : Theme.accent
+                    color: Updates.busy ? Theme.accentText
+                        : Updates.packageError !== "" ? Theme.textFaint : Theme.accentText
                     opacity: 0.9
                 }
 
@@ -422,7 +422,7 @@ Surface {
                 name: "arrow_circle_up"
                 size: Theme.iconSmall + 1
                 symWeight: 600
-                color: goMouse.containsMouse ? Theme.textOnAccent : Theme.accent
+                color: goMouse.containsMouse ? Theme.textOnAccent : Theme.accentText
             }
 
             Text {
@@ -431,7 +431,7 @@ Surface {
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
-                color: goMouse.containsMouse ? Theme.textOnAccent : Theme.accent
+                color: goMouse.containsMouse ? Theme.textOnAccent : Theme.accentText
             }
         }
 
@@ -865,7 +865,7 @@ Surface {
                             name: "add"
                             size: Theme.iconTiny
                             symWeight: 700
-                            color: Theme.accent
+                            color: Theme.accentText
                         }
 
                         Text {
@@ -875,7 +875,7 @@ Surface {
                             font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightBold
                             font.features: Theme.tabularNumberFeatures
-                            color: Theme.accent
+                            color: Theme.accentText
                         }
                     }
 
@@ -1080,7 +1080,7 @@ Surface {
                     name: "arrow_downward"
                     size: Theme.iconTiny + 1
                     symWeight: 600
-                    color: jumpMouse.containsMouse ? Theme.textOnAccent : Theme.accent
+                    color: jumpMouse.containsMouse ? Theme.textOnAccent : Theme.accentText
                 }
 
                 Text {
@@ -1089,7 +1089,7 @@ Surface {
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightMedium
-                    color: jumpMouse.containsMouse ? Theme.textOnAccent : Theme.accent
+                    color: jumpMouse.containsMouse ? Theme.textOnAccent : Theme.accentText
                 }
             }
 
@@ -1235,7 +1235,7 @@ Surface {
                 name: "arrow_circle_up"
                 size: Theme.iconSmall + 1
                 symWeight: 600
-                color: retryMouse.containsMouse ? Theme.textOnAccent : Theme.accent
+                color: retryMouse.containsMouse ? Theme.textOnAccent : Theme.accentText
             }
 
             Text {
@@ -1244,7 +1244,7 @@ Surface {
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
-                color: retryMouse.containsMouse ? Theme.textOnAccent : Theme.accent
+                color: retryMouse.containsMouse ? Theme.textOnAccent : Theme.accentText
             }
         }
 

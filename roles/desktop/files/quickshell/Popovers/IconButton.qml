@@ -24,8 +24,10 @@ Rectangle {
     Accessible.name: iconButton.accessibleName
     Accessible.description: iconButton.accessibleDescription
     Accessible.onPressAction: {
-        iconState.pulseCenter();
-        iconButton.triggered();
+        if (iconButton.enabled) {
+            iconState.pulseCenter();
+            iconButton.triggered();
+        }
     }
 
     width: controlSize

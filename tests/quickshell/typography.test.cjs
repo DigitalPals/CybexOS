@@ -379,14 +379,15 @@ test("default body size is shared by settings controls and plugin typography", (
     assert.equal(d.shellScale, 100);
     assert.equal(d.pluginScale, 100);
     const plugins = fs.readFileSync(path.join(shellDir, "Settings", "PluginsPage.qml"), "utf8");
-    for (const field of plugins.matchAll(/Controls\.TextField\s*\{([^}]+)\}/g)) {
+    for (const field of plugins.matchAll(/SettingsField\s*\{([^}]+)\}/g)) {
         assert.match(field[1], /font\.family: Theme\.fontMenu/);
         assert.match(field[1], /font\.pixelSize: Theme\.typography\.control/);
     }
+    assert.match(fs.readFileSync(path.join(shellDir, "Settings", "SettingsTextRow.qml"), "utf8"), /SettingsField \{/);
     const widgets = fs.readFileSync(path.join(shellDir, "Bar", "UserWidgets.qml"), "utf8");
     assert.match(widgets, /fontSize: Theme\.typography\.bar/);
     assert.equal(load("ShellMetrics.js").calculate(d).fontBase, 12);
-    for (const name of ["SettingsRow", "SettingsTextRow", "SettingsAction",
+    for (const name of ["SettingsRow", "SettingsField", "SettingsAction",
         "PickerRow", "PillRow", "SwitchRow", "SliderRow"]) {
         const source = fs.readFileSync(path.join(shellDir, "Settings", name + ".qml"), "utf8");
         assert.match(source, /font\.pixelSize: Theme\.typography\.control/, name);

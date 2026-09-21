@@ -50,7 +50,7 @@ Surface {
             name: "notifications_active"
             size: Theme.iconMedium
             fill: Reminders.count > 0 ? 1 : 0
-            color: Reminders.count > 0 ? Theme.accent : Theme.textMid
+            color: Reminders.count > 0 ? Theme.accentText : Theme.textMid
         }
 
         Text {
@@ -113,7 +113,7 @@ Surface {
             radius: Theme.rowRadius
             color: minutesInput.activeFocus ? Theme.chipHover : Theme.tile
             border.width: minutesInput.activeFocus ? 1 : 0
-            border.color: root.selectedMinutes > 0 ? Theme.accent : Theme.red
+            border.color: root.selectedMinutes > 0 ? Theme.accentText : Theme.red
 
             TextInput {
                 id: minutesInput
@@ -142,7 +142,7 @@ Surface {
             radius: Theme.rowRadius
             color: messageInput.activeFocus ? Theme.chipHover : Theme.tile
             border.width: messageInput.activeFocus ? 1 : 0
-            border.color: Theme.accent
+            border.color: Theme.accentText
 
             TextInput {
                 id: messageInput

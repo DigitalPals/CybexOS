@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls as Controls
 import "../../Common"
 import "../../Common/PanelRegistryData.js" as PanelRegistry
 
@@ -36,16 +37,48 @@ Rectangle {
             rotate: tabMeta[entry.id].rotate === true
         }))
 
-    height: 42
+    readonly property real tabPadding: Theme.controlSpacing
+    readonly property real tabIconSize: Theme.iconMedium
+    readonly property real usableWidth: Math.max(0, tabRow.width - tabRow.spacing * (tabs.length - 1))
+    readonly property real restingWidth: Math.min(Theme.scaled(28), usableWidth / Math.max(1, tabs.length))
+    readonly property real selectedWidth: Math.min(tabPadding * 2 + tabIconSize
+        + Theme.iconTextSpacing + selectedMetrics.width,
+        Math.max(0, usableWidth - restingWidth * (tabs.length - 1)))
+
+    function activateTab(index, focusTab) {
+        if (index < 0 || index >= tabs.length)
+            return;
+        const name = PanelRegistry.nameForTab(tabs[index].tab);
+        if (name !== "")
+            Popouts.openPanel(name, "right");
+        if (focusTab) {
+            Qt.callLater(() => {
+                const item = tabRepeater.itemAt(index);
+                if (item) item.forceActiveFocus();
+            });
+        }
+    }
+
+    TextMetrics {
+        id: selectedMetrics
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.navigation
+        font.weight: Theme.weightSemibold
+        text: root.tabMeta[root.current] ? root.tabMeta[root.current].label : ""
+    }
+
+    height: Math.max(Theme.scaled(42), Theme.typography.navigation + Theme.controlSpacing * 2)
     radius: 10
     color: Theme.chip
 
     Row {
+        id: tabRow
         anchors.fill: parent
         anchors.margins: 3
         spacing: 2
 
         Repeater {
+            id: tabRepeater
             model: root.tabs
 
             delegate: Rectangle {
@@ -53,48 +86,32 @@ Rectangle {
 
                 required property var modelData
                 readonly property bool on: modelData.tab === root.current
-                // Icon lane, its gap to the label, and the design's 12px of
-                // air either side of the pair.
-                readonly property real litWidth: 12 + 17 + 7
-                    + labelMetrics.width + 12
-                // The lit segment takes its natural width; the rest split
-                // what is left evenly.
-                readonly property real restWidth: {
-                    let lit = 0;
-                    for (const t of root.tabs) {
-                        if (t.tab === root.current)
-                            lit = 12 + 17 + 7 + litMetrics.width + 12;
-                    }
-                    return (parent.width - lit - 2 * (root.tabs.length - 1))
-                        / (root.tabs.length - 1);
-                }
-
-                TextMetrics {
-                    id: labelMetrics
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.navigation
-                    font.weight: Theme.weightSemibold
-                    text: segment.modelData.label
-                }
-
-                TextMetrics {
-                    id: litMetrics
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.navigation
-                    font.weight: Theme.weightSemibold
-                    text: {
-                        for (const t of root.tabs) {
-                            if (t.tab === root.current)
-                                return t.label;
-                        }
-                        return "";
-                    }
-                }
-
-                width: on ? litWidth : Math.max(28, restWidth)
+                required property int index
+                readonly property bool showLabel: on && width >= root.tabPadding * 2
+                    + root.tabIconSize + Theme.iconTextSpacing + Theme.typography.navigation
+                width: root.tabs.length === 1 ? root.usableWidth : on ? root.selectedWidth
+                    : Math.max(0, (root.usableWidth - root.selectedWidth) / (root.tabs.length - 1))
                 height: parent.height
                 radius: 8
                 color: on ? Theme.chipHover : "transparent"
+                border.width: activeFocus ? 1 : 0
+                border.color: Theme.accentText
+                activeFocusOnTab: on
+                Accessible.selected: on
+                Accessible.onPressAction: root.activateTab(index, true)
+                Controls.ToolTip.visible: segmentMouse.containsMouse || activeFocus
+                Controls.ToolTip.text: modelData.label
+                Keys.onPressed: event => {
+                    let next = index;
+                    if (event.key === Qt.Key_Left) next = Math.max(0, index - 1);
+                    else if (event.key === Qt.Key_Right) next = Math.min(root.tabs.length - 1, index + 1);
+                    else if (event.key === Qt.Key_Home) next = 0;
+                    else if (event.key === Qt.Key_End) next = root.tabs.length - 1;
+                    else if (event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter
+                            && event.key !== Qt.Key_Space) return;
+                    root.activateTab(next, true);
+                    event.accepted = true;
+                }
 
                 Behavior on width {
                     NumberAnimation {
@@ -110,17 +127,17 @@ Rectangle {
 
                 Row {
                     anchors.centerIn: parent
-                    spacing: 7
+                    spacing: Theme.iconTextSpacing
 
                     Item {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 17
-                        height: 17
+                        width: root.tabIconSize
+                        height: root.tabIconSize
 
                         Sym {
                             anchors.centerIn: parent
                             name: segment.modelData.glyph
-                            size: 17
+                            size: root.tabIconSize
                             fill: segment.on ? 1 : 0
                             rotation: segment.modelData.rotate === true ? 90 : 0
                             color: segment.on ? Theme.textHi : Theme.textFaint
@@ -128,7 +145,9 @@ Rectangle {
                     }
 
                     Text {
-                        visible: segment.on
+                        visible: segment.showLabel
+                        width: Math.max(0, segment.width - root.tabPadding * 2 - root.tabIconSize - Theme.iconTextSpacing)
+                        elide: Text.ElideRight
                         anchors.verticalCenter: parent.verticalCenter
                         text: segment.modelData.label
                         font.family: Theme.fontMenu
@@ -168,11 +187,7 @@ Rectangle {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        if (segment.on)
-                            return;
-                        const name = PanelRegistry.nameForTab(segment.modelData.tab);
-                        if (name !== "")
-                            Popouts.openPanel(name, "right");
+                        root.activateTab(segment.index, true);
                     }
                 }
 

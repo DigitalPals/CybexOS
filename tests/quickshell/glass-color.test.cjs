@@ -53,7 +53,7 @@ test("Appearance exposes live glass, wallpaper accents, and independent bar colo
         "the accent preset must visibly track the stored accent");
     assert.match(appearance, /Common\.Palette\.busy/);
     assert.match(appearance, /Common\.Palette\.error/);
-    assert.match(appearance, /SectionHeader \{ label:\s*"BAR BACKGROUND" \}/);
+    assert.match(appearance, /SettingsSubsection \{\s*id: barColorControls[\s\S]*?title: "Bar background"/);
     assert.match(appearance, /model:\s*Settings\.barColorChoices/);
     assert.match(appearance, /Accessible\.role:\s*Accessible\.RadioButton/);
     assert.match(appearance, /Accessible\.checked:\s*selected/);
@@ -62,7 +62,7 @@ test("Appearance exposes live glass, wallpaper accents, and independent bar colo
         assert.match(appearance, new RegExp(`settingKey: "${key}"`));
     assert.match(appearance, /hueTrack:\s*true/);
     assert.match(appearance, /colorTrack:\s*true/);
-    const barAt = appearance.indexOf('SectionHeader { label: "BAR BACKGROUND" }');
+    const barAt = appearance.indexOf('title: "Bar background"');
     const fixedAt = appearance.indexOf("id: fixedColorReveal");
     assert.ok(fixedAt > 0 && barAt > fixedAt,
         "fixed accent controls must appear before the independent bar colors");

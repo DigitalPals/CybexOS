@@ -15,9 +15,9 @@ SettingsRow {
 
     Text {
         id: descriptionText
-        x: root.narrow ? 0 : root.labelWidth
+        x: root.narrow ? root.markInset : root.labelWidth
         y: root.narrow ? Theme.scaled(24) : (parent.height - height) / 2
-        width: root.narrow ? parent.width - 4 : control.x - x - 10
+        width: Math.max(0, root.narrow ? root.contentRight - x : control.x - x - Theme.controlSpacing)
         text: root.description
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.control

@@ -21,6 +21,12 @@ Controls.Dialog {
     focus: true
     popupType: Controls.Popup.Item
     title: "Choose wallpaper folder"
+    font.family: Theme.fontMenu
+    font.pixelSize: Theme.typography.control
+    palette.buttonText: Theme.textHi
+    palette.button: Theme.popBg
+    palette.highlight: Theme.accent
+    palette.highlightedText: Theme.accentFg
     standardButtons: Controls.Dialog.Cancel | Controls.Dialog.Open
     closePolicy: Controls.Popup.CloseOnEscape
 
@@ -63,7 +69,7 @@ Controls.Dialog {
     }
 
     header: Item {
-        implicitHeight: 54
+        implicitHeight: Theme.panelHeaderHeight
 
         Text {
             anchors.left: parent.left
@@ -80,11 +86,14 @@ Controls.Dialog {
     }
 
     contentItem: Column {
-        spacing: 6
+        spacing: Theme.iconTextSpacing
 
         Rectangle {
+            id: upButton
             width: parent.width
-            height: 34
+            height: Theme.listRowHeight
+            border.width: activeFocus ? 1 : 0
+            border.color: Theme.accentText
             radius: Theme.rowRadius
             color: upMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
             activeFocusOnTab: true
@@ -100,11 +109,23 @@ Controls.Dialog {
                 }
             }
 
-            Text {
+            Sym {
+                id: upIcon
                 anchors.left: parent.left
-                anchors.leftMargin: 10
+                anchors.leftMargin: Theme.controlSpacing
                 anchors.verticalCenter: parent.verticalCenter
-                text: "arrow_upward  Parent folder"
+                name: "arrow_upward"
+                size: Theme.iconMedium
+                color: Theme.textMid
+            }
+            Text {
+                anchors.left: upIcon.right
+                anchors.leftMargin: Theme.iconTextSpacing
+                anchors.right: parent.right
+                anchors.rightMargin: Theme.controlSpacing
+                anchors.verticalCenter: parent.verticalCenter
+                elide: Text.ElideMiddle
+                text: "Parent folder"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.navigation
                 color: Theme.textMid
@@ -121,7 +142,7 @@ Controls.Dialog {
 
         Item {
             width: parent.width
-            height: parent.height - 40
+            height: Math.max(0, parent.height - upButton.height - parent.spacing)
 
             ListView {
                 id: folderList
@@ -146,7 +167,9 @@ Controls.Dialog {
                     readonly property bool selected: root.selectedPath === path
 
                     width: folderList.width
-                    height: 34
+                    height: Theme.listRowHeight
+                    border.width: activeFocus ? 1 : 0
+                    border.color: Theme.accentText
                     radius: Theme.rowRadius
                     color: selected ? Theme.chipHover
                         : rowMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
@@ -182,11 +205,23 @@ Controls.Dialog {
                         }
                     }
 
-                    Text {
+                    Sym {
+                        id: folderIcon
                         anchors.left: parent.left
-                        anchors.leftMargin: 10
+                        anchors.leftMargin: Theme.controlSpacing
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "folder  " + folderRow.fileName
+                        name: "folder"
+                        size: Theme.iconMedium
+                        color: Theme.textMid
+                    }
+                    Text {
+                        anchors.left: folderIcon.right
+                        anchors.leftMargin: Theme.iconTextSpacing
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.controlSpacing
+                        anchors.verticalCenter: parent.verticalCenter
+                        elide: Text.ElideMiddle
+                        text: folderRow.fileName
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.navigation
                         color: folderRow.selected ? Theme.textHi : Theme.textMid

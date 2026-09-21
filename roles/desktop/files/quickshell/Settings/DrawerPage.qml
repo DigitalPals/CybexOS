@@ -77,7 +77,7 @@ SettingsPage {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        spacing: 12
+        spacing: Theme.settingsGroupSpacing
 
         SettingsGroup {
             width: parent.width
@@ -124,7 +124,7 @@ SettingsPage {
                             color: "transparent"
                             opacity: tabRow.dragged ? 0.35 : 1
                             border.width: activeFocus ? 1 : 0
-                            border.color: Theme.accent
+                            border.color: Theme.accentText
                             activeFocusOnTab: index === 0
                             Accessible.role: Accessible.ListItem
                             Accessible.name: tabRow.meta.label + " tab"

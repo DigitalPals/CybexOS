@@ -31,7 +31,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: rotationGroup.top
-        anchors.bottomMargin: 12
+        anchors.bottomMargin: Theme.settingsGroupSpacing
         title: "Wallpaper"
         dirty: Settings.wall !== Settings.defaults.wall
             || Settings.wallDir !== Settings.defaults.wallDir
@@ -39,7 +39,7 @@ Item {
 
         GridView {
             id: wallGrid
-            readonly property int columnCount: width < 520 ? 1 : 2
+            readonly property int columnCount: width < Theme.settingsNarrowWidth ? 1 : 2
             width: parent.width
             height: galleryGroup.availableContentHeight
             clip: true
@@ -153,7 +153,7 @@ Item {
                         Sym {
                             anchors.horizontalCenter: parent.horizontalCenter
                             name: "shuffle"
-                            size: Theme.fontSecondary
+                            size: Theme.iconLarge
                             color: Theme.textLow
                         }
                         Text {
@@ -186,7 +186,7 @@ Item {
                             elide: Text.ElideMiddle
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.typography.primary
-                            color: Theme.textHi
+                            color: "#ffffff"
                         }
                     }
 
@@ -238,7 +238,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: folderGroup.top
-        anchors.bottomMargin: 12
+        anchors.bottomMargin: Theme.settingsGroupSpacing
         title: "Rotation"
         dirty: Settings.shuffle !== Settings.defaults.shuffle
         onResetRequested: Settings.resetKeys(["shuffle"], "Wallpaper rotation")

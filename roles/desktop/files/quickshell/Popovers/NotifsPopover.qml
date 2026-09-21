@@ -235,7 +235,7 @@ Surface {
                         radius: Theme.chipRadius
                         color: "transparent"
                         border.width: groupHeader.activeFocus ? 1 : 0
-                        border.color: Theme.accent
+                        border.color: Theme.accentText
                     }
 
                     HoverHandler {

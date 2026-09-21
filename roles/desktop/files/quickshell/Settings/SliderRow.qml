@@ -24,14 +24,14 @@ SettingsRow {
     property int valueWidth: 44
     signal moved(real value)
 
-    narrowHeight: Theme.scaled(52)
+    narrowHeight: Theme.settingsStackOffset + Theme.settingsControlHeight
     labelColor: slider.dimmed ? Theme.textDim : Theme.textMid
 
     HSlider {
         id: slider
-        x: root.narrow ? 0 : root.labelWidth
-        y: root.narrow ? Theme.scaled(23) : (parent.height - height) / 2
-        width: root.narrow ? parent.width : valueText.x - x - 10
+        x: root.narrow ? root.markInset : root.labelWidth
+        y: root.narrow ? Theme.settingsStackOffset : (parent.height - height) / 2
+        width: Math.max(0, root.narrow ? root.contentRight - x : valueText.x - x - Theme.controlSpacing)
         height: Theme.settingsControlHeight
         // Every settings row overrides this; the default matters only so a
         // row that forgets stays stepped rather than silently continuous.
@@ -48,7 +48,7 @@ SettingsRow {
         id: valueText
         x: root.contentRight - width
         y: root.narrow ? 0 : (parent.height - height) / 2
-        width: root.valueWidth
+        width: Math.max(root.valueWidth, implicitWidth)
         horizontalAlignment: Text.AlignRight
         text: root.valueLabel !== "" ? root.valueLabel
             : slider.value.toFixed(root.decimals) + " " + root.unit

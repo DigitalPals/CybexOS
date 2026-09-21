@@ -15,7 +15,7 @@ Item {
     signal moved(real value)
 
     width: parent ? parent.width : 0
-    height: 30
+    height: Theme.inlineActionHeight
     opacity: ready ? 1 : 0.4
 
     Sym {
@@ -24,16 +24,16 @@ Item {
         anchors.leftMargin: 4
         anchors.verticalCenter: parent.verticalCenter
         name: root.glyph
-        size: 18
+        size: Theme.iconLarge
         fill: 1
         color: Theme.textMid
     }
 
     HSlider {
-        anchors.left: parent.left
-        anchors.leftMargin: 36
+        anchors.left: mark.right
+        anchors.leftMargin: Theme.controlSpacing
         anchors.right: readout.visible ? readout.left : parent.right
-        anchors.rightMargin: readout.visible ? 10 : 4
+        anchors.rightMargin: readout.visible ? Theme.controlSpacing : 4
         anchors.verticalCenter: parent.verticalCenter
         height: parent.height
         value: root.value

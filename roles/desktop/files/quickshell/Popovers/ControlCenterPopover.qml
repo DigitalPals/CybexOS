@@ -202,7 +202,7 @@ Surface {
         scale: radioMouse.pressed ? 0.99 : 1
         activeFocusOnTab: true
         border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
 
         Accessible.role: Accessible.Button
         Accessible.name: radio.title
@@ -247,7 +247,7 @@ Surface {
                 name: radio.glyph
                 size: Theme.iconLarge
                 fill: radio.on ? 1 : 0
-                color: radio.on ? Theme.accent : Theme.icon
+                color: radio.on ? Theme.accentText : Theme.icon
             }
         }
 
@@ -456,7 +456,7 @@ Surface {
         color: armed ? Theme.amberBg
             : actionMouse.containsMouse ? Theme.chipHover : Theme.chip
         border.width: activeFocus || armed ? 1 : 0
-        border.color: armed ? Theme.amber : Theme.accent
+        border.color: armed ? Theme.amber : Theme.accentText
         scale: actionMouse.pressed ? 0.95 : 1
         activeFocusOnTab: true
 
@@ -689,7 +689,7 @@ Surface {
                     Accessible.description: Audio.outputName
                     Accessible.onPressAction: Popouts.openPanel("audio", "right")
                     border.width: activeFocus ? 1 : 0
-                    border.color: Theme.accent
+                    border.color: Theme.accentText
 
                     Behavior on color {
                         ColorAnimation { duration: Theme.chipFadeDuration }
@@ -895,7 +895,7 @@ Surface {
                                 : captureMouse.containsMouse || activeFocus ? Theme.tile : "transparent"
                             activeFocusOnTab: true
                             border.width: activeFocus ? 1 : 0
-                            border.color: Theme.accent
+                            border.color: Theme.accentText
 
                             Accessible.role: Accessible.Button
                             Accessible.name: capture.label
@@ -1016,7 +1016,7 @@ Surface {
             color: settingsMouse.containsMouse || activeFocus ? Theme.chip : "transparent"
             activeFocusOnTab: true
             border.width: activeFocus ? 1 : 0
-            border.color: Theme.accent
+            border.color: Theme.accentText
             Accessible.role: Accessible.Button
             Accessible.name: "Open shell settings"
             Accessible.onPressAction: Settings.showPanel()
@@ -1076,7 +1076,7 @@ Surface {
             color: keysMouse.containsMouse || activeFocus ? Theme.chip : "transparent"
             activeFocusOnTab: true
             border.width: activeFocus ? 1 : 0
-            border.color: Theme.accent
+            border.color: Theme.accentText
 
             Accessible.role: Accessible.Button
             Accessible.name: "Keyboard shortcuts"

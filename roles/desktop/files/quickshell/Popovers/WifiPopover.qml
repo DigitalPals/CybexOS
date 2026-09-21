@@ -370,7 +370,7 @@ Surface {
         Accessible.description: selected ? "Selected" : ""
         Accessible.onPressAction: pill.triggered()
         border.width: activeFocus ? 1 : 0
-        border.color: selected ? Theme.accentFg : Theme.accent
+        border.color: selected ? Theme.accentFg : Theme.accentText
 
         Keys.onPressed: event => {
             if (enabled && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -415,7 +415,7 @@ Surface {
         Accessible.name: accessibleName
         Accessible.onPressAction: action.triggered()
         border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
 
         Keys.onPressed: event => {
             if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -452,7 +452,7 @@ Surface {
         scale: summaryMouse.pressed ? 0.99 : 1
         activeFocusOnTab: true
         border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
 
         Accessible.role: Accessible.Button
         Accessible.name: "Tailscale"
@@ -577,7 +577,7 @@ Surface {
             + (expanded ? "Network list expanded" : "Network list collapsed")
         Accessible.onPressAction: picker.activated()
         border.width: activeFocus || expanded ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
 
         onActiveFocusChanged: if (activeFocus) root.ensureVisible(picker)
 
@@ -613,7 +613,7 @@ Surface {
             name: picker.glyph
             size: Theme.iconMedium
             fill: 1
-            color: picker.ready ? Theme.accent : Theme.textDim
+            color: picker.ready ? Theme.accentText : Theme.textDim
         }
 
         Column {
@@ -686,7 +686,7 @@ Surface {
         radius: Theme.rowRadius
         color: network.connected ? Theme.chip : rowMouse.containsMouse ? Theme.hoverFill : "transparent"
         border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
         activeFocusOnTab: true
         Accessible.role: Accessible.Button
         Accessible.name: network.ssid
@@ -730,7 +730,7 @@ Surface {
                     : row.network.signal >= 66 ? "wifi"
                     : row.network.signal >= 33 ? "network_wifi_2_bar" : "network_wifi_1_bar"
                 size: Theme.fontBody
-                color: row.network.connected ? Theme.accent : Theme.textMid
+                color: row.network.connected ? Theme.accentText : Theme.textMid
 
                 RotationAnimation on rotation {
                     running: row.working && !Theme.reducedMotion
@@ -843,7 +843,7 @@ Surface {
                 radius: 8
                 color: identityInput.activeFocus ? Theme.chipHover : Theme.tile
                 border.width: identityInput.activeFocus ? 1 : 0
-                border.color: Theme.accent
+                border.color: Theme.accentText
 
                 TextInput {
                     id: identityInput
@@ -876,7 +876,7 @@ Surface {
                 radius: 8
                 color: passwordInput.activeFocus ? Theme.chipHover : Theme.tile
                 border.width: passwordInput.activeFocus ? 1 : 0
-                border.color: Theme.accent
+                border.color: Theme.accentText
 
                 TextInput {
                     id: passwordInput
@@ -1019,7 +1019,7 @@ Surface {
                                 : NetworkHelpers.physicalType(root.primary) === "ethernet" ? "lan" : "wifi"
                             size: Theme.fontHero
                             fill: 1
-                            color: root.primary ? Theme.accent : Theme.textDim
+                            color: root.primary ? Theme.accentText : Theme.textDim
                         }
                     }
 
@@ -1037,7 +1037,7 @@ Surface {
                             font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightBold
                             font.letterSpacing: 1
-                            color: Theme.accent
+                            color: Theme.accentText
                         }
 
                         Text {
@@ -1213,7 +1213,7 @@ Surface {
                             radius: 8
                             color: customDnsInput.activeFocus ? Theme.chipHover : Theme.tile
                             border.width: customDnsInput.activeFocus ? 1 : 0
-                            border.color: Theme.accent
+                            border.color: Theme.accentText
 
                             TextInput {
                                 id: customDnsInput
@@ -1320,7 +1320,7 @@ Surface {
                             name: "lan"
                             size: Theme.fontBody
                             fill: ethernetRow.modelData.connected ? 1 : 0
-                            color: ethernetRow.modelData.connected ? Theme.accent : Theme.textDim
+                            color: ethernetRow.modelData.connected ? Theme.accentText : Theme.textDim
                         }
 
                         Column {

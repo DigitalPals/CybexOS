@@ -224,7 +224,7 @@ Rectangle {
                         anchors.centerIn: parent
                         name: "computer"
                         size: Theme.iconHero
-                        color: Theme.accent
+                        color: Theme.accentText
                     }
                 }
             }

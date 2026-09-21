@@ -16,20 +16,25 @@ Rectangle {
     radius: Theme.chipRadius
     color: "transparent"
     border.width: activeFocus ? 1 : 0
-    border.color: danger ? Theme.red : Theme.accent
-    activeFocusOnTab: true
+    border.color: danger ? Theme.red : Theme.accentText
+    opacity: enabled ? 1 : 0.4
+    activeFocusOnTab: enabled && visible
     Accessible.role: Accessible.Button
     Accessible.name: root.text
     Accessible.onPressAction: {
+        if (!root.enabled)
+            return;
         actionState.pulseCenter();
         root.triggered();
     }
-    Controls.ToolTip.visible: mouse.containsMouse && (root.compact || root.text.indexOf("Reset") === 0)
+    Controls.ToolTip.visible: (mouse.containsMouse || activeFocus) && (root.compact || root.text.indexOf("Reset") === 0)
     Controls.ToolTip.text: root.text
 
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                 || event.key === Qt.Key_Space) {
+            if (!root.enabled)
+                return;
             actionState.pulseCenter();
             root.triggered(); event.accepted = true;
         }
@@ -49,7 +54,7 @@ Rectangle {
     Row {
         id: actionRow
         anchors.centerIn: parent
-        spacing: 6
+        spacing: Theme.iconTextSpacing
 
         // One icon system. Undo, close and back used to be typographic arrows
         // drawn in the menu face, which only worked while that face happened
@@ -58,6 +63,7 @@ Rectangle {
         // offered. Material Symbols is a set the shell installs and checks.
         Sym {
             anchors.verticalCenter: parent.verticalCenter
+            visible: root.glyph !== ""
             name: root.glyph
             size: Theme.iconSmall
             symWeight: 450

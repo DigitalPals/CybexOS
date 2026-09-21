@@ -130,12 +130,12 @@ SettingsPage {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        spacing: 8
+        spacing: Theme.settingsContentSpacing
 
         Row {
             visible: !view.inlineMode
             height: visible ? implicitHeight : 0
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             SettingsAction {
                 id: backAction
@@ -204,7 +204,7 @@ SettingsPage {
         id: indicatorsOptions
 
         Column {
-            spacing: 12
+            spacing: Theme.settingsGroupSpacing
 
             SettingsGroup {
                 width: parent.width
@@ -271,7 +271,7 @@ SettingsPage {
                                 color: "transparent"
                                 opacity: dragged ? 0.35 : 1
                                 border.width: activeFocus ? 1 : 0
-                                border.color: Theme.accent
+                                border.color: Theme.accentText
                                 activeFocusOnTab: index === 0
                                 Accessible.role: Accessible.ListItem
                                 Accessible.name: meta.label + " indicator"
@@ -673,7 +673,7 @@ SettingsPage {
         id: wsOptions
 
         Column {
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             SliderRow {
                 width: parent.width
@@ -717,7 +717,7 @@ SettingsPage {
         id: mediaOptions
 
         Column {
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             PickerRow {
                 width: parent.width
@@ -751,7 +751,7 @@ SettingsPage {
         id: clockOptions
 
         Column {
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             SwitchRow {
                 width: parent.width
@@ -846,7 +846,7 @@ SettingsPage {
         id: weatherOptions
 
         Column {
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             SettingsTextRow {
                 width: parent.width
@@ -897,7 +897,7 @@ SettingsPage {
         id: notesOptions
 
         Column {
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             PickerRow {
                 width: parent.width
@@ -975,7 +975,7 @@ SettingsPage {
         id: t3Options
 
         Column {
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             SwitchRow {
                 width: parent.width
@@ -993,7 +993,7 @@ SettingsPage {
         id: usageOptions
 
         Column {
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             PickerRow {
                 width: parent.width
@@ -1229,7 +1229,7 @@ SettingsPage {
         id: hermesOptions
 
         Column {
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             SwitchRow {
                 width: parent.width
@@ -1268,7 +1268,7 @@ SettingsPage {
             // while reserving enough room that the label cannot cover a track.
             readonly property int optionLabelWidth: 156
 
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             PickerRow {
                 width: parent.width
@@ -1347,7 +1347,7 @@ SettingsPage {
         id: notificationsOptions
 
         Column {
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             PickerRow {
                 width: parent.width
@@ -1379,7 +1379,7 @@ SettingsPage {
         id: volOptions
 
         Column {
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             SliderRow {
                 width: parent.width
@@ -1423,7 +1423,7 @@ SettingsPage {
         id: battOptions
 
         Column {
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             SwitchRow {
                 width: parent.width
@@ -1467,7 +1467,7 @@ SettingsPage {
         id: updatesOptions
 
         Column {
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             SliderRow {
                 width: parent.width
@@ -1506,7 +1506,7 @@ SettingsPage {
         id: trayOptions
 
         Column {
-            spacing: 8
+            spacing: Theme.settingsContentSpacing
 
             SwitchRow {
                 width: parent.width

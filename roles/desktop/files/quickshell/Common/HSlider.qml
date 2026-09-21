@@ -134,7 +134,7 @@ Item {
         radius: width / 2
         color: Theme.textHi
         border.width: root.activeFocus ? 2 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
 
         Behavior on width {
             NumberAnimation {

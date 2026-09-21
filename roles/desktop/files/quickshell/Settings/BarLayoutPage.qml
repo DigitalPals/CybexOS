@@ -12,7 +12,7 @@ SettingsPage {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        spacing: 12
+        spacing: Theme.settingsGroupSpacing
 
         SettingsGroup {
             width: parent.width

@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import "Common" as Common
 import "Settings" as SettingsUi
+import "Popovers/Drawer" as DrawerUi
 
 // tests/run overlays this file on an isolated copy of the production config
 // before launching the real `qs` engine (never beside an existing live qs).
@@ -94,5 +95,137 @@ ShellRoot {
         height: 480
     }
 
-    Component.onCompleted: runLifecycle()
+    // Exercise production positioners after polish, not a duplicate formula.
+    function checkLayouts() {
+        const rows = [];
+        for (const size of [320, 540, 700]) {
+            rows.push(pickerComponent.createObject(harness, { width: size }));
+        }
+        const tabs = [160, 320, 400].map(size =>
+            tabsComponent.createObject(harness, { width: size }));
+        const fieldRow = fieldComponent.createObject(harness);
+        const collapsibleGroup = groupComponent.createObject(harness);
+        const subsection = subsectionComponent.createObject(harness);
+        const heading = headingComponent.createObject(harness);
+        Qt.callLater(() => {
+            for (const row of rows) {
+                root.check(row !== null, "picker did not construct");
+                if (!row)
+                    continue;
+                const pills = row.children.find(child => child.model !== undefined);
+                root.check(pills && pills.x >= Common.Theme.settingsMarkInset,
+                    "picker lost the label gutter");
+                if (pills) {
+                    root.check(pills.y + pills.height <= row.height + 1,
+                        "wrapped picker paints over the next row at " + row.width);
+                    root.check(pills.x + pills.width <= row.contentRight + 1,
+                        "picker paints under the reset lane at " + row.width);
+                }
+                row.destroy();
+            }
+            root.check(subsection !== null && subsection.height > 40,
+                "subsection failed to include header and content");
+            root.check(heading !== null && heading.height > Common.Theme.sectionHeaderHeight,
+                "long section heading did not grow");
+            for (const strip of tabs) {
+                root.check(strip !== null, "drawer tabs did not construct");
+                if (!strip) continue;
+                const lane = strip.children.find(child => child.children
+                    && child.children.some(item => item.modelData !== undefined));
+                root.check(lane !== undefined, "drawer tab lane missing");
+                if (lane) {
+                    const segments = lane.children.filter(item => item.modelData !== undefined);
+                    root.check(segments.every(item => item.width >= 0
+                        && item.x + item.width <= lane.width + 1),
+                        "drawer tabs exceed their host at " + strip.width);
+                }
+                strip.destroy();
+            }
+            root.check(fieldRow !== null, "settings field row did not construct");
+            const field = fieldRow ? fieldRow.children.find(child =>
+                child.placeholderText !== undefined) : null;
+            root.check(field !== null && field !== undefined, "shared settings field missing");
+            if (field) {
+                field.text = "  renamed  ";
+                field.editingFinished();
+                root.check(fieldRow.value === "renamed", "field commit/normalization regressed");
+            }
+            if (subsection) subsection.destroy();
+            if (heading) {
+                const dirtyHeight = heading.height;
+                heading.dirty = false;
+                root.check(heading.height === dirtyHeight, "group reset changed heading geometry");
+                heading.destroy();
+            }
+            const groupColumn = collapsibleGroup.children.find(child =>
+                typeof child.forceLayout === "function");
+            groupColumn.forceLayout();
+            const expandedHeight = collapsibleGroup.height;
+            collapsibleGroup.extraVisible = false;
+            groupColumn.forceLayout();
+            Qt.callLater(() => {
+                root.check(collapsibleGroup.height < expandedHeight - 30,
+                    "hidden trailing group content leaves stale whitespace: " + expandedHeight + " -> " + collapsibleGroup.height);
+                collapsibleGroup.destroy();
+                if (field) root.check(field.text === "renamed", "field did not reflect normalized value");
+                if (fieldRow) fieldRow.destroy();
+                root.runLifecycle();
+            });
+        });
+    }
+
+    Component {
+        id: pickerComponent
+        SettingsUi.PickerRow {
+            label: "Wrapping options"
+            caption: "A caption"
+            model: [
+                { value: "a", label: "First long option" },
+                { value: "b", label: "Second long option" },
+                { value: "c", label: "Third long option" }
+            ]
+        }
+    }
+    Component {
+        id: subsectionComponent
+        SettingsUi.SettingsSubsection {
+            width: 320
+            title: "Palette preview"
+            insetContent: true
+            Rectangle { width: parent.width; height: 40 }
+        }
+    }
+    Component {
+        id: headingComponent
+        SettingsUi.SectionHeader {
+            width: 260
+            dirty: true
+            label: "A LONG SECTION HEADING THAT MUST WRAP"
+        }
+    }
+    Component {
+        id: tabsComponent
+        DrawerUi.DrawerTabs { current: "notifications" }
+    }
+    Component {
+        id: fieldComponent
+        SettingsUi.SettingsTextRow {
+            width: 400
+            label: "Test field"
+            value: "original"
+            onCommitted: text => value = text.trim()
+        }
+    }
+    Component {
+        id: groupComponent
+        SettingsUi.SettingsGroup {
+            id: group
+            property bool extraVisible: true
+            width: 400
+            title: "Conditional content"
+            Rectangle { width: parent.width; height: 28 }
+            Rectangle { width: parent.width; height: 40; visible: group.extraVisible }
+        }
+    }
+    Component.onCompleted: checkLayouts()
 }

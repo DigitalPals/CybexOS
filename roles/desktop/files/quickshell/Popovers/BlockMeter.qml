@@ -84,7 +84,7 @@ Item {
         radius: 3
         color: "transparent"
         border.width: root.activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
     }
 
     Repeater {

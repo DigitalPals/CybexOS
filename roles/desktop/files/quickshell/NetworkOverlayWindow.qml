@@ -97,7 +97,7 @@ PanelWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     name: root.qrPageActive ? "qr_code_2" : "speed"
                     size: Theme.iconLarge
-                    color: Theme.accent
+                    color: Theme.accentText
                 }
 
                 Text {
@@ -123,7 +123,7 @@ PanelWindow {
                     Accessible.name: "Close network dialog"
                     Accessible.onPressAction: NetworkOverlayState.close()
                     border.width: activeFocus ? 1 : 0
-                    border.color: Theme.accent
+                    border.color: Theme.accentText
 
                     Keys.onPressed: event => {
                         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -186,7 +186,7 @@ PanelWindow {
         Accessible.name: label
         Accessible.onPressAction: button.triggered()
         border.width: activeFocus ? 1 : 0
-        border.color: primary ? Theme.accentFg : Theme.accent
+        border.color: primary ? Theme.accentFg : Theme.accentText
 
         Keys.onPressed: event => {
             if (button.enabled && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -489,7 +489,7 @@ PanelWindow {
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.primary
             font.weight: Theme.weightSemibold
-            color: dial.active ? Theme.accent : Theme.textMid
+            color: dial.active ? Theme.accentText : Theme.textMid
         }
     }
 

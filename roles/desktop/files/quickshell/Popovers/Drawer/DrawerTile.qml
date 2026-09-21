@@ -13,12 +13,12 @@ Rectangle {
     property bool on: false
     signal toggled()
 
-    height: 60
+    height: Math.max(Theme.scaled(60), tileContent.implicitHeight + Theme.controlSpacing * 2)
     radius: 10
     color: on ? Theme.accentAlpha(0.22) : Theme.chip
     activeFocusOnTab: true
     border.width: on || activeFocus ? 1 : 0
-    border.color: activeFocus ? Theme.accent : Theme.accentAlpha(0.52)
+    border.color: activeFocus ? Theme.accentText : Theme.accentAlpha(0.52)
     Accessible.role: Accessible.CheckBox
     Accessible.checked: on
     Accessible.name: label
@@ -37,24 +37,29 @@ Rectangle {
     }
 
     Column {
+        id: tileContent
         anchors.centerIn: parent
-        spacing: 5
+        width: Math.max(0, parent.width - Theme.controlSpacing * 2)
+        spacing: Theme.iconTextSpacing
 
         Sym {
             anchors.horizontalCenter: parent.horizontalCenter
             name: root.glyph
-            size: 18
+            size: Theme.iconLarge
             fill: root.on ? 1 : 0
-            color: root.on ? Theme.accent : Theme.textMid
+            color: root.on ? Theme.accentText : Theme.textMid
         }
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.Wrap
             text: root.label
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.control
             font.weight: Theme.weightSemibold
-            color: root.on ? Theme.accent : Theme.textMid
+            color: root.on ? Theme.accentText : Theme.textMid
         }
     }
 

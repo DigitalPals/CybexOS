@@ -147,7 +147,7 @@ Surface {
         Accessible.name: (muted ? "Unmute " : "Mute ") + channelName
         Accessible.onPressAction: muteButton.triggered()
         border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
 
         onActiveFocusChanged: if (activeFocus) root.ensureVisible(muteButton)
 
@@ -220,7 +220,7 @@ Surface {
             + (expanded ? "Device list expanded" : "Device list collapsed")
         Accessible.onPressAction: devicePicker.activated()
         border.width: activeFocus || expanded ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
 
         onActiveFocusChanged: if (activeFocus) root.ensureVisible(devicePicker)
 
@@ -256,7 +256,7 @@ Surface {
             name: devicePicker.glyph
             size: Theme.iconMedium
             fill: 1
-            color: devicePicker.ready ? Theme.accent : Theme.textDim
+            color: devicePicker.ready ? Theme.accentText : Theme.textDim
         }
 
         Column {
@@ -334,7 +334,7 @@ Surface {
         Accessible.checked: isDefault
         Accessible.onPressAction: root.selectOutput(sinkNode)
         border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
 
         onActiveFocusChanged: if (activeFocus) root.ensureVisible(sinkRow)
 
@@ -369,7 +369,7 @@ Surface {
             name: AudioHelpers.sinkGlyph(sinkRow.sinkNode)
             size: Theme.iconMedium
             fill: sinkRow.isDefault ? 1 : 0
-            color: sinkRow.isDefault ? Theme.accent : Theme.textLow
+            color: sinkRow.isDefault ? Theme.accentText : Theme.textLow
         }
 
         Text {
@@ -394,7 +394,7 @@ Surface {
             width: 18
             name: sinkRow.isDefault ? "check" : sinkRow.network ? "cast" : ""
             size: Theme.iconSmall
-            color: sinkRow.isDefault ? Theme.accent : Theme.textDim
+            color: sinkRow.isDefault ? Theme.accentText : Theme.textDim
         }
 
         MouseArea {
@@ -429,7 +429,7 @@ Surface {
         Accessible.checked: isDefault
         Accessible.onPressAction: root.selectInput(sourceNode)
         border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
 
         onActiveFocusChanged: if (activeFocus) root.ensureVisible(sourceRow)
 
@@ -464,7 +464,7 @@ Surface {
             name: AudioHelpers.sourceGlyph(sourceRow.sourceNode)
             size: Theme.iconMedium
             fill: sourceRow.isDefault ? 1 : 0
-            color: sourceRow.isDefault ? Theme.accent : Theme.textLow
+            color: sourceRow.isDefault ? Theme.accentText : Theme.textLow
         }
 
         Text {
@@ -490,7 +490,7 @@ Surface {
             width: 18
             name: sourceRow.isDefault ? "check" : ""
             size: Theme.iconSmall
-            color: Theme.accent
+            color: Theme.accentText
         }
 
         MouseArea {
@@ -641,7 +641,7 @@ Surface {
                             size: Theme.fontHero + 6
                             fill: Audio.muted ? 0 : 1
                             color: Audio.muted || !Audio.ready
-                                ? Theme.textDim : Theme.accent
+                                ? Theme.textDim : Theme.accentText
                         }
                     }
 

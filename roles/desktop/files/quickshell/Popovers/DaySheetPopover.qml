@@ -162,7 +162,7 @@ Surface {
                             font.weight: Theme.weightSemibold
                             font.letterSpacing: 0.5
                             color: dayCell.modelData.today
-                                ? Theme.accent : Theme.textFaint
+                                ? Theme.accentText : Theme.textFaint
                         }
 
                         Text {
@@ -173,7 +173,7 @@ Surface {
                             font.weight: Theme.weightSemibold
                             font.features: Theme.tabularNumberFeatures
                             color: dayCell.modelData.today
-                                ? Theme.accent : Theme.textHi
+                                ? Theme.accentText : Theme.textHi
                         }
 
                         Item {
@@ -325,7 +325,7 @@ Surface {
                     font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightSemibold
                     font.features: Theme.tabularNumberFeatures
-                    color: eventCard.ongoing ? Theme.accent : Theme.textHi
+                    color: eventCard.ongoing ? Theme.accentText : Theme.textHi
                 }
 
                 MouseArea {

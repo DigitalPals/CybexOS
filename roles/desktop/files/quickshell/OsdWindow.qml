@@ -71,8 +71,8 @@ PanelWindow {
         x: root.pad
         y: root.pad + (Osd.active ? 0 : root.atTop ? -16 : 16)
         opacity: Osd.active ? 1 : 0
-        implicitWidth: row.implicitWidth + 28
-        implicitHeight: Math.max(46, row.implicitHeight + Theme.scaled(20))
+        implicitWidth: row.implicitWidth + Theme.panelPadding * 2
+        implicitHeight: Math.max(Theme.controlHeight, row.implicitHeight + Theme.scaled(20))
         radius: height / 2
         color: Theme.panelSurface
         border.width: 1
@@ -97,25 +97,25 @@ PanelWindow {
 
         Row {
             id: row
-            x: 14
+            x: Theme.panelPadding
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 11
+            spacing: Theme.controlSpacing
 
             Sym {
                 anchors.verticalCenter: parent.verticalCenter
-                width: 18
+                width: Theme.iconMedium
                 horizontalAlignment: Text.AlignHCenter
                 name: root.volumeKind
                     ? (root.muted || root.value === 0 ? "volume_off" : root.value < 0.5 ? "volume_down" : "volume_up")
                     : "light_mode"
-                size: Theme.fontBody
+                size: Theme.iconMedium
                 color: root.muted ? Theme.redText : Theme.textHi
             }
 
             BlockMeter {
                 anchors.verticalCenter: parent.verticalCenter
-                width: 160
-                height: 8
+                width: Theme.scaled(160)
+                height: Theme.scaled(8)
                 fillColor: root.muted ? Qt.rgba(232 / 255, 131 / 255, 122 / 255, 0.45) : Theme.accent
                 value: Math.round(root.shown * width / (blockWidth + gap)) * (blockWidth + gap) / width
             }

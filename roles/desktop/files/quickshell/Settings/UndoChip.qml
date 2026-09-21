@@ -31,7 +31,7 @@ Item {
         color: mouse.pressed ? Theme.hoverFillStrong
             : mouse.containsMouse || root.activeFocus ? Theme.hoverFill : "transparent"
         border.width: root.activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
     }
 
     Sym {

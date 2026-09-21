@@ -4,7 +4,7 @@ import "../Common"
 Flickable {
     id: root
     default property alias content: contentRoot.data
-    property int spacing: Theme.panelSectionSpacing
+    property int spacing: Theme.settingsGroupSpacing
     readonly property bool scrollbarVisible: contentHeight > height + 1
     // Always reserved: tying the gutter to scrollbarVisible loops, because
     // the narrower content re-wraps taller, which flips scrollbarVisible.
@@ -56,13 +56,19 @@ Flickable {
     function revealFocus(item) {
         if (!item)
             return;
+        // Window focus also moves to navigation and search outside this page.
+        let ancestor = item;
+        while (ancestor && ancestor !== contentRoot)
+            ancestor = ancestor.parent;
+        if (!ancestor)
+            return;
         const point = item.mapToItem(contentRoot, 0, 0);
         const top = point.y;
         const bottom = top + item.height;
         if (top < contentY)
             contentY = Math.max(0, top - 4);
         else if (bottom > contentY + height)
-            contentY = Math.min(contentHeight - height, bottom - height + 4);
+            contentY = Math.max(0, Math.min(contentHeight - height, bottom - height + 4));
     }
 
     Connections {

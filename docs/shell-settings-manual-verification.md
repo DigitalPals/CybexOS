@@ -250,3 +250,59 @@ is manual.
 - [ ] `journalctl --user -u quickshell.service` free of QML errors and
       binding loops after exercising every page.
 - [ ] `tests/verify-system` passes.
+
+## Consistency regression checks (September 2026)
+
+- [ ] At 900px and 480px window widths, switch Wallpaper/Fixed and Custom bar
+      color. Subsection headings, swatches and status text follow the label
+      gutter; closed revealers leave no subsection spacer. Long palette errors
+      wrap rather than disappearing after two lines.
+- [ ] Picker captions stack below narrow controls. Long options can wrap in
+      wide rows too, without painting over the next row. Tab to a reset chip:
+      its announcement includes the setting name, and focus does not shift the
+      control or scroll the page when it moves into navigation/search.
+- [ ] Dirty/clean group headers keep their height and label width. Long titles
+      wrap within the reserved reset lane. Plugin install/clone fields follow
+      the shell palette and show a focus outline in light, dark and contrast
+      modes. Test Enter, blur, Escape and normalized/rejected text edits.
+- [ ] In the drawer, Tab reaches the current tab; Left/Right and Home/End select
+      adjacent/edge tabs. Labels elide before tabs overflow, and a single-tab
+      configuration fills the lane. Usage hides the provider selector when
+      there is no choice to make.
+- [ ] Pale fixed accents remain readable as text/icons/outlines in Light and
+      High contrast. The actual swatch/fill is unchanged. Test default, larger
+      text/comfortable density, and 80% UI scale/compact density.
+- [ ] Notification actions wrap inside their card. Shortcuts become one column
+      at narrow widths and scroll with arrows, Page Up/Down and Home/End.
+      Wallpaper filename overlays retain white copy over their dark scrim.
+
+### Scope and verification record
+
+The pass covers the Settings workspace and all eight pages, widget detail
+controls, wallpaper folder dialog, Bar and tooltip/menu components, launcher,
+notification cards/actions, OSD, shortcuts and network overlays, all six Drawer
+tabs, Day sheet, updates, notes, reminders, media, GitHub, T3 and Hermes. Legacy
+popover entry points and the configurable `Ui`/`Commons` plugin kit were
+reviewed through their shared controls and foreground roles. The standalone
+welcome UI was inspected separately: its installer typography, palette and
+minimum window size are deliberate and remain independent of the live shell.
+
+Rendered checks use the managed service and `tests/lib/quickshell-live` at
+both boundaries. Captures exercise each Settings page, the available popout
+entry points, launcher and shortcuts, plus wide/narrow appearance combinations.
+Runtime component tests additionally cover wrapping picker bounds, subsection
+sizing, hidden trailing group content, stable dirty headings, constrained drawer tabs, and text-field commit
+normalization. See `tests/qml-lifecycle/shell.qml` and
+`tests/quickshell/settings-layout.test.cjs`.
+
+Service-dependent states need an appropriate account/device: this workstation
+presents T3/Hermes authentication screens, no managed usage providers, and an
+updater endpoint error. Those data sources and commands were not changed for
+visual verification. Existing compatibility surfaces keep their separate
+cursor-navigation and theme APIs; dense transaction/transcript/list layouts
+were not forced into the settings row geometry.
+
+Generated wallpaper palettes were also checked in dark, light and high-contrast
+modes, including gallery captions and keyboard selection in Drawer tabs. The
+Widgets catalog switches to one column at the settings breakpoint, with inline
+settings beneath their owning row and secondary tags yielding to widget names.

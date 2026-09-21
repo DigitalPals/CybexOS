@@ -21,7 +21,7 @@ Text {
     font.family: Theme.fontMenu
     font.pixelSize: Theme.typography.control
     font.weight: Theme.weightMedium
-    color: linkMouse.containsMouse ? Theme.accentHover : Theme.accent
+    color: linkMouse.containsMouse ? Theme.accentHover : Theme.accentText
     font.underline: activeFocus
     activeFocusOnTab: enabled && visible
     Accessible.role: Accessible.Button

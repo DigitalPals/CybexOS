@@ -63,7 +63,7 @@ Column {
         radius: 5
         color: buttonMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
         border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
         activeFocusOnTab: true
         Accessible.role: Accessible.Button
         Accessible.name: button.action
@@ -252,7 +252,7 @@ Column {
             radius: 7
             color: addInput.activeFocus ? Theme.hoverFillStrong : Theme.cardFill
             border.width: addInput.activeFocus ? 1 : 0
-            border.color: root.addError !== "" ? Theme.red : Theme.accent
+            border.color: root.addError !== "" ? Theme.red : Theme.accentText
 
             TextInput {
                 id: addInput

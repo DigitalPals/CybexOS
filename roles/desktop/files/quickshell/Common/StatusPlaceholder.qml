@@ -18,7 +18,7 @@ Item {
     property string title: ""
     property string detail: ""
     property string fontFamily: Theme.fontMenu
-    property color accentColor: Theme.accent
+    property color accentColor: Theme.accentText
     property color accentFill: Theme.accentBgSoft
     property color outlineColor: Theme.hairlineSoft
     property color primaryTextColor: Theme.textMid
@@ -64,7 +64,7 @@ Item {
 
         anchors.centerIn: parent
         width: Math.min(parent.width, 320)
-        spacing: 6
+        spacing: Theme.iconTextSpacing
 
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -87,7 +87,7 @@ Item {
                 color: root.kind === "error" ? root.errorColor : root.accentColor
 
                 RotationAnimation on rotation {
-                    running: root.shown && root.kind === "loading"
+                    running: root.shown && root.visible && !Theme.reducedMotion && root.kind === "loading"
                     from: 0
                     to: 360
                     duration: root.loadingDuration

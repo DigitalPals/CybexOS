@@ -175,7 +175,7 @@ PopoutPanel {
         // mark rather than a field.
         color: current ? Theme.chip : "transparent"
         border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
         activeFocusOnTab: navItem.current
         Accessible.role: Accessible.PageTab
         Accessible.name: navItem.modelData.label
@@ -223,7 +223,7 @@ PopoutPanel {
             horizontalAlignment: Text.AlignHCenter
             name: navItem.modelData.glyph
             size: Theme.iconMedium
-            color: navItem.current ? Theme.accent : Theme.icon
+            color: navItem.current ? Theme.accentText : Theme.icon
         }
 
         Text {
@@ -399,7 +399,7 @@ PopoutPanel {
                 color: searchField.activeFocus || root.searchActive
                     ? Theme.chipHover : Theme.chip
                 border.width: searchField.activeFocus ? 1 : 0
-                border.color: Theme.accent
+                border.color: Theme.accentText
 
                 Sym {
                     id: searchGlyph

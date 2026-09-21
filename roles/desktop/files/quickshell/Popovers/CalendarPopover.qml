@@ -230,7 +230,7 @@ Surface {
                     : selected ? Theme.accentBgSoft
                     : dayMouse.containsMouse ? Theme.hoverFillStrong : "transparent"
                 border.width: selected && !isToday ? 1 : 0
-                border.color: Theme.accent
+                border.color: Theme.accentText
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
                 Accessible.name: Qt.formatDateTime(cell, "dddd, MMMM d")

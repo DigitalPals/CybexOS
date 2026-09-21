@@ -499,6 +499,32 @@ glass and detached panels. What that added, and what it needs:
   part of this migration. `SettingsHelpers.adoptRedesign` still gives a v3
   file the schema-4 geometry only where the user never moved it.
 
+## Layout and foreground roles
+
+- Settings use `settingsRowSpacing` for ordinary rows, `settingsContentSpacing`
+  for related rich content, `settingsSubsectionSpacing` before a subsection,
+  and `settingsGroupSpacing` between groups. Do not use a page's group gap
+  inside a compact run of controls.
+- `SettingsSubsection` owns its heading and leading separation. Put it **inside**
+  a `Revealer` so the separation collapses with the subsection. Keep full-width
+  content for `SettingsRow` children; set `insetContent` only for rich content
+  that does not already reserve `settingsMarkInset`.
+- Standard rows keep the modified-state gutter in wide and stacked layouts.
+  Picker height follows its wrapped pills at either width; narrow captions
+  sit below the control. Reset lanes remain reserved. Section headings reserve
+  reset geometry even when clean; non-resettable subsections opt out of the
+  trailing lane.
+- Use `SettingsField` for native settings text inputs, including standalone
+  forms. `SettingsTextRow` retains ownership of commit/reset/persistence wiring.
+  Plugin-kit fields continue using their configurable `Ui`/`Commons` styling.
+- `SectionLabel` owns the bounded label/count/rule layout used by ordinary
+  popovers and the T3/GitHub group headers. Product-specific colors remain
+  overrides; their list row implementations remain separate.
+- `Theme.accent` is the chosen fill/swatch color. `Theme.accentText` is its
+  contrast-adjusted foreground counterpart for native copy, icons and focus
+  outlines. Do not darken the stored accent to make a light-mode label legible.
+  T3 and Hermes retain their existing independently adjusted accent roles.
+
 ## Already decided against — do not pick these up
 
 - **qmlformat one-shot reformat**: most files would churn and the tool fights

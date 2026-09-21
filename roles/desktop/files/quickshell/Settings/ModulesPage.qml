@@ -8,7 +8,7 @@ import "../Common/WidgetCatalog.js" as WidgetCatalog
 
 // Widgets page (turn-3 settings design): the three lanes drawn as one bar
 // replica you drag chips along — the same edit the bar itself accepts — and
-// a two-column catalog of every widget whose settings expand inline under
+// a responsive catalog of every widget whose settings expand inline under
 // their row instead of swapping the whole page.
 //
 // Both drop paths commit through LayoutHelpers.moveWidget with the same
@@ -19,6 +19,7 @@ SettingsPage {
 
     readonly property var widgetMeta: WidgetCatalog.WIDGETS
     readonly property var catalogIds: SettingsHelpers.MODULE_IDS
+    readonly property int catalogColumns: width - scrollGutter < Theme.settingsNarrowWidth ? 1 : 2
     readonly property int enabledCount: {
         void Settings.revision;
         let count = 0;
@@ -60,9 +61,9 @@ SettingsPage {
         const index = catalogIds.indexOf(id);
         if (index === -1)
             return;
-        const pair = catalogRepeater.itemAt(Math.floor(index / 2)) as CatalogPair;
+        const pair = catalogRepeater.itemAt(Math.floor(index / catalogColumns)) as CatalogPair;
         if (pair)
-            pair.focusCell(index % 2);
+            pair.focusCell(index % catalogColumns);
     }
 
     function cancelDrag() {
@@ -182,7 +183,7 @@ SettingsPage {
         color: Theme.chip
         opacity: chip.dragged ? 0.35 : 1
         border.width: activeFocus ? 1 : 0
-        border.color: Theme.accent
+        border.color: Theme.accentText
         activeFocusOnTab: colId === "left" && index === 0
         Accessible.role: Accessible.ListItem
         Accessible.name: page.widgetMeta[chip.entryId].name
@@ -336,7 +337,7 @@ SettingsPage {
         readonly property bool expanded: page.subPage === entryId
 
         visible: entryId !== ""
-        height: 32
+        height: Theme.listRowHeight
         radius: Theme.rowRadius
         color: expanded ? Theme.chip
             : cellHover.hovered ? Theme.hoverFill : "transparent"
@@ -348,9 +349,9 @@ SettingsPage {
         Text {
             id: cellName
             anchors.left: parent.left
-            anchors.leftMargin: 10
+            anchors.leftMargin: Theme.settingsMarkInset
             anchors.right: cellTag.left
-            anchors.rightMargin: 8
+            anchors.rightMargin: Theme.controlSpacing
             anchors.verticalCenter: parent.verticalCenter
             text: cell.meta.name
             font.family: Theme.fontMenu
@@ -363,9 +364,13 @@ SettingsPage {
         Text {
             id: cellTag
             anchors.right: cellCog.visible ? cellCog.left : cellSwitch.left
-            anchors.rightMargin: 8
+            anchors.rightMargin: Theme.controlSpacing
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.min(implicitWidth, 110)
+            // Secondary tags yield space before the widget name does.
+            width: Math.min(implicitWidth, Math.max(0, cell.width
+                - cellName.implicitWidth - Theme.settingsMarkInset
+                - cellSwitch.width - (cellCog.visible ? cellCog.width + Theme.settingsRowSpacing : 0)
+                - 2 * Theme.controlSpacing - Theme.iconTextSpacing))
             text: cell.meta.tag ?? ""
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.metadata
@@ -377,19 +382,19 @@ SettingsPage {
             id: cellCog
             visible: cell.hasOptions
             anchors.right: cellSwitch.left
-            anchors.rightMargin: 3
+            anchors.rightMargin: Theme.settingsRowSpacing
             anchors.verticalCenter: parent.verticalCenter
-            width: 24
-            height: 24
-            radius: 6
+            width: Theme.chipInnerHeight
+            height: Theme.chipInnerHeight
+            radius: Theme.chipRadius
             color: cogMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
             border.width: activeFocus ? 1 : 0
-            border.color: Theme.accent
+            border.color: Theme.accentText
             activeFocusOnTab: visible
             Accessible.role: Accessible.Button
             Accessible.name: cell.meta.name + " settings"
             Accessible.onPressAction: page.openSubPage(cell.entryId)
-            Controls.ToolTip.visible: cogMouse.containsMouse
+            Controls.ToolTip.visible: cogMouse.containsMouse || activeFocus
             Controls.ToolTip.text: cell.expanded
                 ? "Collapse widget settings" : "Widget settings"
 
@@ -397,7 +402,7 @@ SettingsPage {
                 anchors.centerIn: parent
                 name: "tune"
                 size: Theme.iconSmall
-                color: cell.optsDirty ? Theme.accent
+                color: cell.optsDirty ? Theme.accentText
                     : cell.expanded ? Theme.textHi : Theme.textDim
             }
 
@@ -424,7 +429,7 @@ SettingsPage {
         Toggle {
             id: cellSwitch
             anchors.right: parent.right
-            anchors.rightMargin: 6
+            anchors.rightMargin: Theme.iconTextSpacing
             anchors.verticalCenter: parent.verticalCenter
             metrics: Theme.switchCompact
             checked: cell.entry.on
@@ -433,15 +438,16 @@ SettingsPage {
         }
     }
 
-    // One catalog grid row: two cells side by side, plus the inline
+    // One catalog grid row: one or two cells, plus the inline
     // widget-settings panel when one of its cells is expanded.
     component CatalogPair: Column {
                     id: catalogPair
 
                     required property int index
 
-                    readonly property string leftId: page.catalogIds[index * 2] ?? ""
-                    readonly property string rightId: page.catalogIds[index * 2 + 1] ?? ""
+                    readonly property string leftId: page.catalogIds[index * page.catalogColumns] ?? ""
+                    readonly property string rightId: page.catalogColumns === 2
+                        ? (page.catalogIds[index * 2 + 1] ?? "") : ""
                     readonly property bool holdsExpansion: page.subPageActive
                         && (page.subPage === leftId || page.subPage === rightId)
 
@@ -453,19 +459,22 @@ SettingsPage {
                     width: parent.width
                     spacing: 4
 
-                    Row {
+                    Grid {
+                        id: catalogGrid
                         width: parent.width
-                        spacing: 12
+                        columns: page.catalogColumns
+                        columnSpacing: Theme.settingsContentSpacing
+                        rowSpacing: Theme.settingsRowSpacing
 
                         CatalogCell {
                             id: leftCell
-                            width: (parent.width - 12) / 2
+                            width: (catalogGrid.width - catalogGrid.columnSpacing * (catalogGrid.columns - 1)) / catalogGrid.columns
                             entryId: catalogPair.leftId
                         }
 
                         CatalogCell {
                             id: rightCell
-                            width: (parent.width - 12) / 2
+                            width: (catalogGrid.width - catalogGrid.columnSpacing * (catalogGrid.columns - 1)) / catalogGrid.columns
                             entryId: catalogPair.rightId
                         }
                     }
@@ -494,11 +503,14 @@ SettingsPage {
 
                                 Item {
                                     width: parent.width
-                                    height: 22
+                                    height: Theme.settingsControlHeight
 
                                     Text {
                                         anchors.left: parent.left
                                         anchors.verticalCenter: parent.verticalCenter
+                                        anchors.right: collapseAction.left
+                                        anchors.rightMargin: Theme.controlSpacing
+                                        elide: Text.ElideRight
                                         text: (page.widgetMeta[page.subPage] ?? ({ name: page.subPage })).name.toUpperCase()
                                             + " · WIDGET SETTINGS"
                                         font.family: Theme.fontMenu
@@ -509,6 +521,7 @@ SettingsPage {
                                     }
 
                                     SettingsAction {
+                                        id: collapseAction
                                         anchors.right: parent.right
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: "Collapse"
@@ -539,7 +552,7 @@ SettingsPage {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        spacing: 12
+        spacing: Theme.settingsGroupSpacing
 
         SettingsGroup {
             width: parent.width
@@ -731,6 +744,7 @@ SettingsPage {
                 width: parent.width
                 leftPadding: Theme.settingsMarkInset
                 bottomPadding: 4
+                wrapMode: Text.Wrap
                 text: page.enabledCount + " of " + page.catalogIds.length
                     + " shown · switch off to remove from its lane"
                 font.family: Theme.fontMenu
@@ -740,7 +754,7 @@ SettingsPage {
 
             Repeater {
                 id: catalogRepeater
-                model: Math.ceil(page.catalogIds.length / 2)
+                model: Math.ceil(page.catalogIds.length / page.catalogColumns)
 
                 delegate: CatalogPair {}
             }
@@ -801,7 +815,7 @@ SettingsPage {
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.control
                     font.weight: Theme.weightSemibold
-                    color: Theme.accent
+                    color: Theme.accentText
                 }
 
                 MouseArea {

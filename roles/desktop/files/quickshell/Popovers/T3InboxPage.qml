@@ -76,53 +76,14 @@ Item {
         fadeDuration: T3Theme.fastDuration
     }
 
-    component GroupHeader: Item {
-        id: group
+    component GroupHeader: SectionLabel {
         property string label: ""
         property int count: 0
-        property color tint: T3Theme.textMuted
-        property color rule: T3Theme.border
-
-        width: parent ? parent.width : 0
-        height: Theme.sectionHeaderHeight + 8
-
-        // The same mark the settings pages draw: an uppercase micro label, its
-        // count, then a hairline to the edge. One section grammar across every
-        // dialog is the point of the pass.
-        Text {
-            id: groupLabel
-            anchors.left: parent.left
-            anchors.leftMargin: 2
-            anchors.verticalCenter: parent.verticalCenter
-            text: group.label.toUpperCase()
-            font.family: T3Theme.fontUi
-            font.pixelSize: Theme.typography.metadata
-            font.weight: Theme.weightSemibold
-            font.letterSpacing: 1
-            color: group.tint
-        }
-
-        Text {
-            id: groupCount
-            anchors.left: groupLabel.right
-            anchors.leftMargin: 7
-            anchors.verticalCenter: parent.verticalCenter
-            text: group.count
-            font.family: T3Theme.fontUi
-            font.pixelSize: Theme.typography.metadata
-            font.weight: Theme.weightMedium
-            font.features: T3Theme.tabularNumberFeatures
-            color: T3Theme.textFaint
-        }
-
-        Rectangle {
-            anchors.left: groupCount.right
-            anchors.leftMargin: 10
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            height: 1
-            color: group.rule
-        }
+        text: label.toUpperCase()
+        detail: String(count)
+        tint: T3Theme.textMuted
+        detailColor: T3Theme.textFaint
+        rule: T3Theme.border
     }
 
     component ThreadRow: Column {

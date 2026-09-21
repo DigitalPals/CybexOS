@@ -77,6 +77,7 @@ Column {
 
     // ---- provider switch -------------------------------------------------
     Rectangle {
+        visible: Usage.providerKeys.length > 1
         width: parent.width
         height: 36
         radius: 9

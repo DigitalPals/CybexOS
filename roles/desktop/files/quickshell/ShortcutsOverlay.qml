@@ -52,13 +52,25 @@ PanelWindow {
         focus: Session.keysOpen
 
         Keys.onEscapePressed: Session.closeKeys()
+        Keys.onPressed: event => {
+            let next = scroll.contentY;
+            if (event.key === Qt.Key_Down) next += Theme.listRowHeight;
+            else if (event.key === Qt.Key_Up) next -= Theme.listRowHeight;
+            else if (event.key === Qt.Key_PageDown) next += scroll.height;
+            else if (event.key === Qt.Key_PageUp) next -= scroll.height;
+            else if (event.key === Qt.Key_Home) next = 0;
+            else if (event.key === Qt.Key_End) next = scroll.contentHeight;
+            else return;
+            scroll.contentY = Math.max(0, Math.min(next, scroll.contentHeight - scroll.height));
+            event.accepted = true;
+        }
 
         Rectangle {
             id: card
 
             anchors.centerIn: parent
             width: Math.min(680, root.width - 48)
-            height: body.implicitHeight + 46
+            height: Math.min(root.height - Theme.surfacePadding * 2, body.implicitHeight + Theme.surfacePadding * 2)
             radius: Theme.popRadius
             color: Theme.panelSurface
             border.width: 1
@@ -94,12 +106,19 @@ PanelWindow {
                 anchors.fill: parent
             }
 
+            Flickable {
+                id: scroll
+                anchors.fill: parent
+                anchors.margins: Theme.surfacePadding
+                contentWidth: width
+                contentHeight: body.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
             Column {
                 id: body
-                x: 26
-                y: 23
-                width: parent.width - 52
-                spacing: 18
+                width: scroll.width - Theme.controlSpacing
+                spacing: Theme.panelSectionSpacing
 
                 Row {
                     width: parent.width
@@ -114,13 +133,14 @@ PanelWindow {
                             anchors.centerIn: parent
                             name: "keyboard"
                             size: Theme.iconLarge
-                            color: Theme.accent
+                            color: Theme.accentText
                         }
                     }
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 32 - hint.implicitWidth - parent.spacing * 2
+                        width: Math.max(0, parent.width - Theme.iconLarge - (hint.visible ? hint.width + parent.spacing : 0) - parent.spacing)
+                        elide: Text.ElideRight
                         text: "Keyboard shortcuts"
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.primary
@@ -130,6 +150,9 @@ PanelWindow {
 
                     Text {
                         id: hint
+                        visible: body.width >= Theme.settingsNarrowWidth
+                        width: Math.min(implicitWidth, body.width * 0.45)
+                        elide: Text.ElideRight
                         anchors.verticalCenter: parent.verticalCenter
                         text: "hyprland.conf · press Esc to close"
                         font.family: Theme.fontMenu
@@ -140,10 +163,11 @@ PanelWindow {
                 }
 
                 Grid {
+                    id: shortcutGrid
                     width: parent.width
-                    columns: 2
-                    columnSpacing: 30
-                    rowSpacing: 20
+                    columns: width < Theme.settingsNarrowWidth ? 1 : 2
+                    columnSpacing: Theme.panelSectionSpacing
+                    rowSpacing: Theme.panelSectionSpacing
 
                     Repeater {
                         model: Session.shortcutGroups
@@ -154,8 +178,8 @@ PanelWindow {
                             required property var modelData
                             required property int index
 
-                            width: (parent.width - 30) / 2
-                            spacing: 8
+                            width: (shortcutGrid.width - shortcutGrid.columnSpacing * (shortcutGrid.columns - 1)) / shortcutGrid.columns
+                            spacing: Theme.controlSpacing
                             opacity: Session.keysOpen ? 1 : 0
 
                             Behavior on opacity {
@@ -171,12 +195,12 @@ PanelWindow {
                                 font.pixelSize: Theme.typography.section
                                 font.weight: Theme.weightMedium
                                 font.letterSpacing: 1.2
-                                color: Theme.accent
+                                color: Theme.accentText
                             }
 
                             Column {
                                 width: parent.width
-                                spacing: 6
+                                spacing: Theme.iconTextSpacing
 
                                 Repeater {
                                     model: group.modelData.rows
@@ -187,13 +211,13 @@ PanelWindow {
                                         required property var modelData
 
                                         width: parent.width
-                                        height: Math.max(21, label.implicitHeight)
+                                        height: Math.max(Theme.settingsControlHeight, label.implicitHeight)
 
                                         Text {
                                             id: label
                                             anchors.left: parent.left
                                             anchors.verticalCenter: parent.verticalCenter
-                                            width: parent.width - keys.width - 10
+                                            width: Math.max(0, parent.width - keys.width - Theme.controlSpacing)
                                             text: shortcut.modelData.label
                                             font.family: Theme.fontMenu
                                             font.pixelSize: Theme.typography.primary
@@ -217,7 +241,7 @@ PanelWindow {
                                                     required property string modelData
 
                                                     width: capLabel.implicitWidth + 14
-                                                    height: 21
+                                                    height: Theme.settingsControlHeight
                                                     radius: 6
                                                     color: Theme.chip
                                                     border.width: 1
@@ -242,6 +266,8 @@ PanelWindow {
                     }
                 }
             }
+            }
+            ScrollChrome { anchors.fill: scroll; target: scroll }
         }
     }
 }
