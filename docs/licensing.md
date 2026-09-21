@@ -30,15 +30,11 @@ third-party materials.
 
 ## Repository assets
 
-The undocumented screenshot, avatar, and wallpaper collection previously in
-the repository have been removed. A public installation starts without a
-bundled wallpaper and lets the user select their own directory.
+The bundled wallpaper collection is installed into `~/Pictures/Wallpapers`.
+The installer selects the mountain wallpaper when no wallpaper is configured,
+while preserving existing wallpaper selections and custom folders.
 
-`assets/PROVENANCE.json` remains the machine-readable gate for every
-repository-distributed asset larger than 1 MiB. It is currently empty, and
-`tests/repository-policy.py` fails if a new large asset appears without a
-matching provenance record. Smaller brand artwork and third-party downloads
-remain covered by `assets/THIRD_PARTY_LICENSES.md`, their upstream notices, and
-the dependency policy. This technical check cannot establish legal rights;
-new redistributed artwork still needs a creator, source, and compatible
-license recorded before publication.
+`assets/PROVENANCE.json` records the bundled images, their checksums, and the
+available provenance. Unknown creator, source, and license fields remain
+explicitly unset. `tests/repository-policy.py` verifies the inventory, file
+sizes, and checksums; it does not establish or grant redistribution rights.

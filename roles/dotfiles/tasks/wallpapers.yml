@@ -1,0 +1,50 @@
+---
+- name: Create wallpaper and shell preference directories
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ primary_home }}/Pictures/Wallpapers"
+    - "{{ primary_home }}/.config/fedora-config"
+
+- name: Install bundled wallpapers
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "{{ config_repo }}/assets/wallpapers/"
+    dest: "{{ primary_home }}/Pictures/Wallpapers/"
+    mode: "0644"
+    force: false
+
+- name: Inspect existing shell preferences
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.stat:
+    path: "{{ primary_home }}/.config/fedora-config/shell.json"
+  register: wallpaper_settings_file
+
+- name: Read existing shell preferences
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.slurp:
+    src: "{{ primary_home }}/.config/fedora-config/shell.json"
+  register: wallpaper_settings_content
+  when: wallpaper_settings_file.stat.exists
+
+- name: Preserve existing shell preferences when choosing a default
+  ansible.builtin.set_fact:
+    wallpaper_settings: "{{ (wallpaper_settings_content.content | b64decode | from_json) if wallpaper_settings_file.stat.exists else {} }}"
+
+- name: Select the bundled mountain wallpaper when no selection exists
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.config/fedora-config/shell.json"
+    mode: "0600"
+    content: "{{ wallpaper_settings | combine({'wall': 'snow-capped-mountains-with-full-moon-lo.jpg', 'wallDir': '~/Pictures/Wallpapers'}) | to_nice_json }}\n"
+  when:
+    - wallpaper_settings.wall | default('') == ''
+    - wallpaper_settings.wallDir | default('~/Pictures/Wallpapers') in ['~/Pictures/Wallpapers', primary_home + '/Pictures/Wallpapers']

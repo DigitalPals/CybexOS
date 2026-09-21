@@ -76,9 +76,16 @@ under `~/.local/state/fedora-config/backups/initial/`. Existing Hyprland and
 Quickshell trees are always preserved; personal application files are added
 when the optional dotfiles integration is selected. Uninstall restores those
 pre-existing files. Managed Fish, Kitty, Git, and SSH settings use
-fragments/includes where those applications support them. No wallpapers or
-avatar are imposed; choose a wallpaper folder in Shell Settings after
-installation.
+fragments/includes where those applications support them. Bundled wallpapers
+are installed into `~/Pictures/Wallpapers`, and a mountain wallpaper is selected when no wallpaper is configured. Existing selections and
+custom folders are preserved. Change the image in Shell Settings → Wallpaper.
+No avatar is imposed.
+
+To install or refresh only the wallpapers using the saved configuration:
+
+```bash
+ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags wallpapers
+```
 
 Desktop runtime and user customization have a strict boundary. Verified
 releases reconcile `~/.local/share/fedora-config/runtime`, while shell

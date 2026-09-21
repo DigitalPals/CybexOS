@@ -1,11 +1,117 @@
 {
   "schemaVersion": 1,
-  "scope": "Repository-distributed assets larger than 1 MiB",
+  "scope": "Raster files under assets/wallpapers plus repository-distributed raster files larger than 1 MiB",
   "rightsPolicy": {
-    "status": "resolved-no-undocumented-large-assets",
-    "meaning": "No repository-distributed asset larger than 1 MiB currently requires an undocumented redistribution claim.",
-    "requiredOwnerAction": "Record verifiable provenance before adding any large redistributed asset.",
-    "documentedRecordOverride": "For a permitted asset, set rightsStatus to documented and record creator, sourceUrl, and license."
+    "status": "unknown-owner-action-required",
+    "meaning": "The repository history proves when these bytes were added, but does not identify their creator, source URL, or redistribution license. A commit author is not assumed to be the asset creator or rights holder.",
+    "requiredOwnerAction": "Record a verifiable creator, original source URL, and redistribution license for each asset, or replace/remove it before claiming redistribution rights.",
+    "documentedRecordOverride": "After retaining evidence, set rightsStatus to documented on that asset and replace creator, sourceUrl, and license with non-empty strings."
   },
-  "assets": []
+  "assets": [
+    {
+      "path": "assets/wallpapers/01-black-widow-warrior-with-katana-ks.jpg",
+      "sha256": "0c4164fbb0c3450c656fdc7cdb5582835282751f0dd5771c2ec3fd7ddeea10a5",
+      "bytes": 2136966,
+      "mediaType": "image/jpeg",
+      "dimensions": [
+        5120,
+        2880
+      ],
+      "creator": null,
+      "sourceUrl": null,
+      "license": null,
+      "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
+      "introducedAt": "2026-08-01T16:45:32+02:00"
+    },
+    {
+      "path": "assets/wallpapers/05-joker-chaos-in-a-purple-suit-nq.jpg",
+      "sha256": "e6e75459f3b2adc003c3f1747bc8c7fc62c0de6ab05437f0e7c351848183622d",
+      "bytes": 4651376,
+      "mediaType": "image/jpeg",
+      "dimensions": [
+        5120,
+        2880
+      ],
+      "creator": null,
+      "sourceUrl": null,
+      "license": null,
+      "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
+      "introducedAt": "2026-08-01T16:45:32+02:00"
+    },
+    {
+      "path": "assets/wallpapers/diana-prince-amazonian-legend-hn.jpg",
+      "sha256": "2e79f036cb559a82eabcf64410b554a93c28be1fc26356170020099a99b58440",
+      "bytes": 6352485,
+      "mediaType": "image/jpeg",
+      "dimensions": [
+        5120,
+        2880
+      ],
+      "creator": null,
+      "sourceUrl": null,
+      "license": null,
+      "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
+      "introducedAt": "2026-08-01T16:45:32+02:00"
+    },
+    {
+      "path": "assets/wallpapers/joker-ghost-in-dark-rt.jpg",
+      "sha256": "97419028812bc42b5fcb857148d2c367813beb61c9364a9e9751db2ae5eba54c",
+      "bytes": 7256499,
+      "mediaType": "image/jpeg",
+      "dimensions": [
+        5120,
+        2926
+      ],
+      "creator": null,
+      "sourceUrl": null,
+      "license": null,
+      "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
+      "introducedAt": "2026-08-01T16:45:32+02:00"
+    },
+    {
+      "path": "assets/wallpapers/snow-capped-mountains-with-full-moon-lo.jpg",
+      "sha256": "153bc7ea99ccd14e70203397a759dac0d89afb29937ad215ce7d31b1778c0217",
+      "bytes": 1838747,
+      "mediaType": "image/jpeg",
+      "dimensions": [
+        5120,
+        2880
+      ],
+      "creator": null,
+      "sourceUrl": null,
+      "license": null,
+      "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
+      "introducedAt": "2026-08-01T16:45:32+02:00"
+    },
+    {
+      "path": "assets/wallpapers/spider-man-guardian-of-the-skyline-yx.jpg",
+      "sha256": "552da492f93c7d2c7264467ac77fcc613a6210ab81c77f64a53992a3b8e8282a",
+      "bytes": 2082942,
+      "mediaType": "image/jpeg",
+      "dimensions": [
+        3840,
+        2160
+      ],
+      "creator": null,
+      "sourceUrl": null,
+      "license": null,
+      "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
+      "introducedAt": "2026-08-01T16:45:32+02:00"
+    },
+    {
+      "path": "assets/wallpapers/spider-man-the-hero-beyond-the-stars-cx.jpg",
+      "sha256": "be0feb0aa734196e445167369cfe3ec2ffb86bbf56ef8990557dd4227bcaedf6",
+      "bytes": 3963498,
+      "mediaType": "image/jpeg",
+      "dimensions": [
+        3840,
+        2156
+      ],
+      "creator": null,
+      "sourceUrl": null,
+      "license": null,
+      "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
+      "introducedAt": "2026-08-01T16:45:32+02:00"
+    }
+  ]
 }

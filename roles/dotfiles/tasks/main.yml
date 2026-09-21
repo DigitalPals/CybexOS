@@ -1,4 +1,8 @@
 ---
+- name: Install bundled wallpapers and initialize the selection
+  ansible.builtin.import_tasks: wallpapers.yml
+  tags: [wallpapers]
+
 - name: Create managed user directories
   become: true
   become_user: "{{ primary_user }}"
