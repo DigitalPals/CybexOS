@@ -14,6 +14,8 @@ import "Common"
 ShellRoot {
     id: shell
 
+    SettingsWindow {}
+
     // Hyprland dispatches this in-process. Super+Space no longer waits for a
     // new `qs ipc` client process to start and connect before opening.
     GlobalShortcut {

@@ -68,27 +68,22 @@ test("every connected output keeps a bar while popouts stay single-hosted", () =
         "settings must not advertise the removed single-monitor behavior");
 });
 
-test("settings uses the shared center popout rather than a modal window", () => {
+test("settings uses an independent floating window with compatibility routes", () => {
     const shell = read("shell.qml");
     const settings = read("Common/Settings.qml");
-    const registry = load("PanelRegistryData.js");
+    const window = read("SettingsWindow.qml");
+    const popouts = read("Common/Popouts.qml");
 
-    assert.equal(fs.existsSync(path.join(shellDir, "SettingsWindow.qml")), false);
-    assert.doesNotMatch(shell, /SettingsWindow\s*\{/);
-
-    // These used to be matched as literal text in Popouts.qml and
-    // PopoutHost.qml. Both derive from the registry now, so the registry is
-    // where the claim belongs — and asserting it here rather than on rendered
-    // source means reformatting those maps cannot fail this test.
-    const panel = registry.byName(registry.SETTINGS);
-    assert.ok(panel, "the settings panel must be registered");
-    assert.equal(panel.island, "center");
-    assert.equal(panel.source, "Settings/SettingsView.qml");
-    assert.equal(panel.centerAnchored, true);
-
-    // Opened through the popout host with no module anchor to inherit.
-    assert.match(settings,
-        /Popouts\.openPanel\(PanelRegistry\.SETTINGS,[\s\S]{0,120}?Qt\.rect\(0,\s*0,\s*0,\s*0\),\s*targetScreenName\)/);
+    assert.match(shell, /SettingsWindow\s*\{/);
+    assert.match(window, /FloatingWindow\s*\{/);
+    assert.match(window, /window\.visible = Settings\.panelOpen/);
+    assert.match(window, /onClosed: Settings\.closePanel\(\)/);
+    assert.match(window, /view\.handleEscape\(\)/);
+    assert.match(window, /startSystemMove\(\)/);
+    assert.doesNotMatch(settings, /Popouts\.openPanel/);
+    assert.doesNotMatch(settings, /target: Popouts/);
+    assert.match(popouts, /Settings\.showPanel\(undefined, targetScreenName\)/);
+    assert.match(popouts, /Settings\.togglePanel\(undefined, targetScreenName\)/);
 });
 
 test("the control dashboard uses a compact Settings action without a chevron", () => {

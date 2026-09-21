@@ -12,16 +12,22 @@ is manual.
 ## Opening and closing
 
 - [ ] `qs ipc call settings toggle` opens the centered window; again closes it.
-- [ ] On an output with at least 900×680 logical pixels available, the card
-      opens at 900×680 with the labeled sidebar. Below 860px available width,
+- [ ] On an output with at least 900×664 logical pixels available, the card
+      opens at 900×664 with the labeled sidebar. Below 860px available width,
       the same navigation becomes an icon rail with tooltips and 42px targets.
 - [ ] `qs ipc call settings open modules` lands on the Modules page.
 - [ ] Gear in the Control Panel footer opens it (and closes the popout).
 - [ ] Right-click anywhere on the bar slab opens it; left-clicks on modules
       still open their popouts.
 - [ ] `Super+,` opens Settings directly without making the menubar focusable.
-- [ ] Esc closes; clicking the scrim closes; opening the launcher closes it
-      (focus grab handover).
+- [ ] Drag the header to move the floating window; Super+right-drag resizes it.
+      The sidebar responds to the window width, and page contents scroll.
+- [ ] Esc first clears search or closes a widget subpage, then closes Settings.
+      The close button and the normal compositor close shortcut also work.
+- [ ] Clicking another application, opening the launcher, or opening a bar
+      popout leaves Settings open. It participates in normal window switching.
+- [ ] Repeated `settings open` calls focus the existing window without creating
+      duplicates. Closing and reopening works through every entry point.
 - [ ] Opening settings while a popout is open closes the popout first.
 
 ## Launcher keyboard path

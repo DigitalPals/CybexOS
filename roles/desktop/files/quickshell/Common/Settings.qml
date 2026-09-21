@@ -4,7 +4,6 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Notifications
 import "SettingsHelpers.js" as SettingsHelpers
-import "PanelRegistryData.js" as PanelRegistry
 import "ProcHelpers.js" as ProcHelpers
 
 // Shell settings store (design v2, "Shell settings"). Single source of truth
@@ -168,30 +167,28 @@ Singleton {
             "nightLight", "idleInhibitMode", "idleInhibitUntilMs"]
     })
 
-    // ---- Shared-popout lifecycle ----------------------------------------
+    // ---- Independent settings window -----------------------------------
+    property string panelScreenName: ""
+    signal presentPanel()
+
     function showPanel(targetPage, targetScreenName) {
         if (targetPage && validPages.indexOf(targetPage) !== -1)
             page = targetPage;
-        // Never inherit the Control Panel's right-side furniture anchor; this
-        // panel is centerAnchored, so it owns no module's position.
-        Popouts.openPanel(PanelRegistry.SETTINGS,
-            PanelRegistry.island(PanelRegistry.SETTINGS), Qt.rect(0, 0, 0, 0),
-            targetScreenName);
+        Popouts.close();
+        if (!panelOpen)
+            panelScreenName = targetScreenName || (Screens.focused ? Screens.focused.name : "");
         panelOpen = true;
+        presentPanel();
     }
 
     function togglePanel(targetPage, targetScreenName) {
-        if (panelOpen && Popouts.open
-                && Popouts.currentName === PanelRegistry.SETTINGS
-                && (!targetScreenName || Popouts.hostScreenName === targetScreenName))
+        if (panelOpen)
             closePanel();
         else
             showPanel(targetPage, targetScreenName);
     }
 
     function closePanel() {
-        if (Popouts.currentName === PanelRegistry.SETTINGS)
-            Popouts.close();
         panelOpen = false;
     }
 
@@ -771,14 +768,6 @@ Singleton {
         onLoadFailed: error => root.handleLoadFailure(error)
         onSaved: root.handleSaveSucceeded()
         onSaveFailed: error => root.handleSaveFailure(error)
-    }
-
-    Connections {
-        target: Popouts
-
-        function onChanged() {
-            root.panelOpen = Popouts.open && Popouts.currentName === PanelRegistry.SETTINGS;
-        }
     }
 
     // Force the load to complete during singleton construction so the first

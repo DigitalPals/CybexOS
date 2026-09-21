@@ -41,6 +41,10 @@ Singleton {
     }
 
     function openPanel(name, isle, anchor, targetScreenName) {
+        if (name === PanelRegistry.SETTINGS) {
+            Settings.showPanel(undefined, targetScreenName);
+            return;
+        }
         // IPC accepts an arbitrary string. Mapping a one-pixel focus-grabbing
         // layer for an unknown name leaves an invisible ghost surface because
         // the host has no component to present.
@@ -66,6 +70,10 @@ Singleton {
     }
 
     function toggle(name, isle, anchor, targetScreenName) {
+        if (name === PanelRegistry.SETTINGS) {
+            Settings.togglePanel(undefined, targetScreenName);
+            return;
+        }
         const nextHost = resolvedHostName(targetScreenName, open);
         if (open && currentName === name && hostScreenName === nextHost)
             close();

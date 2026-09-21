@@ -5,8 +5,7 @@ import "../Common"
 import "../Common/SettingsSearchData.js" as SearchData
 import "../Popovers"
 
-// Connected center-island settings workspace with a labeled sidebar that
-// collapses to an icon rail when the output cannot fit the preferred card.
+// Settings workspace with a sidebar that collapses as its window narrows.
 PopoutPanel {
     id: root
 
@@ -21,6 +20,7 @@ PopoutPanel {
     readonly property int preferredHeight: Theme.scaled(664)
     property bool moduleDragActive: false
     property bool moduleSubPageActive: false
+    signal moveRequested()
     signal cancelModuleDrag()
     signal closeModuleSubPage()
     readonly property int pageIndex: Math.max(0,
@@ -141,7 +141,7 @@ PopoutPanel {
         cancelModuleDrag();
     }
 
-    // Called by IslandPopout. An active search consumes the first Escape, a
+    // Called by the window host. An active search consumes the first Escape, a
     // module drag the next, an open inline widget panel the one after that;
     // otherwise the host closes the panel.
     function handleEscape(): bool {
@@ -290,6 +290,12 @@ PopoutPanel {
         id: header
         width: parent.width
         height: root.headerHeight
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.SizeAllCursor
+            onPressed: root.moveRequested()
+        }
 
         // One line, the way the clock reads: the subject, then what it is
         // about as a quieter qualifier after a middot. Two stacked lines made

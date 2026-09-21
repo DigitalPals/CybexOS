@@ -10,3 +10,4 @@ NotificationToasts NotificationToasts.qml
 NetworkOverlayWindow NetworkOverlayWindow.qml
 OsdWindow OsdWindow.qml
 ShortcutsOverlay ShortcutsOverlay.qml
+SettingsWindow SettingsWindow.qml

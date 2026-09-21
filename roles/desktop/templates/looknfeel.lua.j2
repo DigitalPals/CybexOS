@@ -100,6 +100,7 @@ quickshell_blur_rule = hl.layer_rule({
   ignore_alpha = 0.1,
 })
 
+hl.window_rule({ match = { title = [[^CybexOS Settings$]] }, float = true, center = true })
 hl.window_rule({ match = { class = [[xdg-desktop-portal-gtk]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Properties]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Open.*]] }, float = true })

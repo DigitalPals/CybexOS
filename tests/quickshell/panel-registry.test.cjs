@@ -212,8 +212,8 @@ test("the behaviour flags are carried deliberately", () => {
     // adopted centerAnchored so its two triggers share one centred surface.
     // A new carrier means a new deliberate entry here.
     const expected = {
-        centerAnchored: ["calendar", "settings", "weather"],
-        fillsBody: [R.SETTINGS]
+        centerAnchored: ["calendar", "weather"],
+        fillsBody: []
     };
     for (const [flag, carriers] of Object.entries(expected)) {
         const carrying = R.PANELS.filter(p => p[flag]).map(p => p.name).sort();
