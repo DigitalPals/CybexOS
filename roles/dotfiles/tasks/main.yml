@@ -518,12 +518,21 @@
     mode: "0644"
   loop:
     - { name: nvim-kitty.desktop, enabled: "{{ features.developer_tools }}" }
-    - { name: brave-browser.desktop, enabled: "{{ features.proprietary_apps }}" }
+    - { name: brave-origin.desktop, enabled: "{{ features.proprietary_apps }}" }
     - { name: chatgpt.desktop, enabled: "{{ features.proprietary_apps }}" }
     - { name: 1password.desktop, enabled: "{{ features.proprietary_apps }}" }
   loop_control:
     label: "{{ item.name }}"
   when: item.enabled | bool
+  tags: [browser]
+
+- name: Retire the standard Brave launcher after switching to Origin
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.local/share/applications/brave-browser.desktop"
+    state: absent
+  when: features.proprietary_apps | bool
   tags: [browser]
 
 - name: Install user-path-aware desktop launchers
@@ -591,7 +600,7 @@
   loop:
     - { name: nvim-kitty.desktop, feature: developer_tools }
     - { name: t3code-nightly.desktop, feature: connected_widgets }
-    - { name: brave-browser.desktop, feature: proprietary_apps }
+    - { name: brave-origin.desktop, feature: proprietary_apps }
     - { name: chatgpt.desktop, feature: proprietary_apps }
     - { name: 1password.desktop, feature: proprietary_apps }
   loop_control:

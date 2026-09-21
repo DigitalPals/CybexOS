@@ -6,7 +6,7 @@ recipient=${AGE_RECIPIENT:-}
 command -v age >/dev/null || { echo "age is required" >&2; exit 1; }
 
 paths=()
-for path in .config/mozilla/firefox .mozilla/firefox .config/BraveSoftware/Brave .config/google-chrome; do
+for path in .config/mozilla/firefox .mozilla/firefox .config/BraveSoftware/Brave .config/BraveSoftware/Brave-Browser .config/BraveSoftware/Brave-Origin .config/google-chrome; do
   [[ -e $HOME/$path ]] && paths+=("$path")
 done
 [[ ${paths[0]+set} ]] || { echo "No browser profiles found" >&2; exit 1; }

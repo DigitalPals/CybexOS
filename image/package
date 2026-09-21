@@ -105,7 +105,7 @@ def main():
     ):
         copy(f"roles/dotfiles/files/{source}", f"{seed}/{destination}")
     copy("assets/EDM115-newline2.omp.json", f"{seed}/.config/oh-my-posh/EDM115-newline2.omp.json")
-    for name in ("nvim-kitty", "brave-browser", "chatgpt", "1password"):
+    for name in ("nvim-kitty", "brave-origin", "chatgpt", "1password"):
         copy(f"roles/dotfiles/files/{name}.desktop", f"{seed}/.local/share/applications/{name}.desktop")
     t3_desktop = (ROOT / "roles/dotfiles/templates/t3code-nightly.desktop.j2").read_text()
     write(f"{seed}/.local/share/applications/t3code-nightly.desktop",

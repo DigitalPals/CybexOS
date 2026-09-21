@@ -74,6 +74,14 @@ currently exist for `browser`, `fonts`, `packages`, `quickshell`,
 narrow tags are development tools, not independent installation profiles;
 their prerequisites can live in an earlier role.
 
+The proprietary application group installs Brave Origin (`brave-origin`) from
+Brave's signed release repository. The `browser` tag updates the package,
+keyboard shortcut, launcher, default URL handlers, and managed policies, and
+removes standard Brave's package and old managed launcher. Browser profiles are
+preserved: Origin uses `~/.config/BraveSoftware/Brave-Origin`, while standard
+Brave uses `~/.config/BraveSoftware/Brave-Browser`. Existing profiles are not
+moved automatically; close both browsers before migrating profile data.
+
 Every invocation still executes tasks tagged `always`. That includes fresh
 fact gathering, the feature contract, Fedora/architecture/user validation,
 and precise XPS-role detection. A partial tag run is therefore not a way to

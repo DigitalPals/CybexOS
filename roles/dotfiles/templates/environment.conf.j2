@@ -5,7 +5,7 @@ ANDROID_SDK_ROOT={{ primary_home }}/Android/Sdk
 {% endif %}
 EDITOR=nvim
 VISUAL=nvim
-BROWSER={{ (features.proprietary_apps | bool) | ternary('brave-browser-stable', 'firefox') }}
+BROWSER={{ (features.proprietary_apps | bool) | ternary('brave-origin-stable', 'firefox') }}
 TERMINAL=kitty
 MOZ_ENABLE_WAYLAND=1
 QT_QPA_PLATFORM=wayland

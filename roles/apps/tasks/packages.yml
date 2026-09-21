@@ -144,7 +144,7 @@
 - name: Install signed vendor applications
   ansible.builtin.dnf:
     name:
-      - brave-browser
+      - brave-origin
       - 1password
       - 1password-cli
       - chatgpt
@@ -154,9 +154,20 @@
     - not ansible_check_mode
   tags: [browser]
 
+- name: Replace standard Brave with Brave Origin
+  ansible.builtin.dnf:
+    name: brave-browser
+    state: absent
+    autoremove: false
+  when:
+    - features.proprietary_apps | bool
+    - not ansible_check_mode
+  tags: [browser]
+
 - name: Remove optional signed vendor applications when disabled
   ansible.builtin.dnf:
     name:
+      - brave-origin
       - brave-browser
       - 1password
       - 1password-cli

@@ -111,7 +111,7 @@ def main():
     # Vendor RPM scriptlets can rewrite their installed repo files. Compose
     # from the reviewed definitions that reference our checksum-pinned keys.
     repo_files += [ROOT / "roles/apps/files" / (name + ".repo")
-                   for name in ("brave-browser", "1password", "chatgpt", "tailscale")]
+                   for name in ("brave-origin", "1password", "chatgpt", "tailscale")]
     policies.read(repo_files)
     for section in list(policies.sections()):
         if not policies[section].getboolean("enabled", fallback=True):

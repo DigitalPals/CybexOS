@@ -1,9 +1,9 @@
 [Default Applications]
-text/html={{ (features.proprietary_apps | bool) | ternary('brave-browser.desktop', 'firefox.desktop') }}
-x-scheme-handler/http={{ (features.proprietary_apps | bool) | ternary('brave-browser.desktop', 'firefox.desktop') }}
-x-scheme-handler/https={{ (features.proprietary_apps | bool) | ternary('brave-browser.desktop', 'firefox.desktop') }}
-x-scheme-handler/about={{ (features.proprietary_apps | bool) | ternary('brave-browser.desktop', 'firefox.desktop') }}
-x-scheme-handler/unknown={{ (features.proprietary_apps | bool) | ternary('brave-browser.desktop', 'firefox.desktop') }}
+text/html={{ (features.proprietary_apps | bool) | ternary('brave-origin.desktop', 'firefox.desktop') }}
+x-scheme-handler/http={{ (features.proprietary_apps | bool) | ternary('brave-origin.desktop', 'firefox.desktop') }}
+x-scheme-handler/https={{ (features.proprietary_apps | bool) | ternary('brave-origin.desktop', 'firefox.desktop') }}
+x-scheme-handler/about={{ (features.proprietary_apps | bool) | ternary('brave-origin.desktop', 'firefox.desktop') }}
+x-scheme-handler/unknown={{ (features.proprietary_apps | bool) | ternary('brave-origin.desktop', 'firefox.desktop') }}
 {% if features.connected_widgets | bool %}
 x-scheme-handler/t3code=t3code-nightly.desktop
 {% endif %}

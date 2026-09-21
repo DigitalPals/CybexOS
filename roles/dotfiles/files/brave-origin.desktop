@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Brave Origin
+Exec=/usr/bin/brave-origin-stable --enable-features=TouchpadOverscrollHistoryNavigation,PipeWireCamera --restore-last-session --hide-crash-restore-bubble %U
+Icon=brave-origin
+Terminal=false
+Type=Application
+Categories=Network;WebBrowser;
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;

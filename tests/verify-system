@@ -475,7 +475,7 @@ if $xps_2026; then
     check 'WirePlumber suppresses only the duplicate IPU7 paths' bash -c \
       'grep -q "monitor.libcamera.*disabled" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf && grep -Fq "pci-$1" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf' _ "$ipu7_bdf"
     check 'Brave enables PipeWire camera capture' bash -c \
-      'grep -q "PipeWireCamera" "$HOME/.local/share/fedora-config/runtime/hypr/bindings.lua" && grep -q "PipeWireCamera" "$HOME/.local/share/applications/brave-browser.desktop"'
+      'grep -q "PipeWireCamera" "$HOME/.local/share/fedora-config/runtime/hypr/bindings.lua" && grep -q "PipeWireCamera" "$HOME/.local/share/applications/brave-origin.desktop"'
 
     if mokutil --sb-state 2>/dev/null | grep -qi enabled; then
       check 'camera module signing key is enrolled for Secure Boot' \
@@ -565,7 +565,7 @@ required_commands=(cybex Hyprland start-hyprland hypridle hyprlock hyprpicker sa
 feature_enabled developer_tools && required_commands+=(lazygit lazydocker mdview bun balena \
   gcc g++ cmake rustup mold sccache node npm claude opencode codex)
 feature_enabled connected_widgets && required_commands+=(t3code-update)
-feature_enabled proprietary_apps && required_commands+=(brave-browser chatgpt)
+feature_enabled proprietary_apps && required_commands+=(brave-origin chatgpt)
 feature_enabled docker && required_commands+=(docker)
 feature_enabled podman && required_commands+=(podman distrobox)
 feature_enabled source_builds && required_commands+=(wayfreeze awww)
@@ -632,13 +632,13 @@ if feature_enabled proprietary_apps; then
   '.RestoreOnStartup == 1 and .SpellcheckLanguage == [($language | ascii_downcase)] and (.ExtensionInstallForcelist | length == 1)' \
   /etc/brave/policies/managed/fedora-config.json
   check 'Brave launchers automatically restore after an unclean exit' bash -c \
-  'grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.local/share/fedora-config/runtime/hypr/bindings.lua" && grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.local/share/applications/brave-browser.desktop"'
+  'grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.local/share/fedora-config/runtime/hypr/bindings.lua" && grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.local/share/applications/brave-origin.desktop"'
   check 'Firefox 1Password policy' jq -e '.policies.ExtensionSettings["{d634138d-c276-4fc8-924b-40a0ea21d284}"].installation_mode == "force_installed"' /usr/lib64/firefox/distribution/policies.json
   check 'Brave is the effective default HTTPS handler' bash -c \
-  '[[ $(xdg-mime query default x-scheme-handler/https) == brave-browser.desktop ]]'
+  '[[ $(xdg-mime query default x-scheme-handler/https) == brave-origin.desktop ]]'
 else
   check 'proprietary application packages are absent' bash -c \
-    '! rpm -q brave-browser 1password 1password-cli chatgpt >/dev/null 2>&1'
+    '! rpm -q brave-origin brave-browser 1password 1password-cli chatgpt >/dev/null 2>&1'
 fi
 check 'retired Google Chrome package is absent' bash -c '! rpm -q google-chrome-stable >/dev/null 2>&1'
 if feature_enabled connected_widgets; then

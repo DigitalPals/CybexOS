@@ -138,6 +138,7 @@
     - "{{ primary_home }}/.local/share/applications/t3code-nightly.desktop"
     - "{{ primary_home }}/.local/share/applications/chatgpt.desktop"
     - "{{ primary_home }}/.local/share/applications/brave-browser.desktop"
+    - "{{ primary_home }}/.local/share/applications/brave-origin.desktop"
     - "{{ primary_home }}/.local/share/applications/1password.desktop"
     - "{{ primary_home }}/.local/share/applications/nvim-kitty.desktop"
     - "{{ primary_home }}/.local/share/applications/localsend-share-clipboard.desktop"
@@ -468,6 +469,7 @@
       .local/share/nautilus-python/extensions/localsend.py
       .local/share/applications/nvim-kitty.desktop
       .local/share/applications/brave-browser.desktop
+      .local/share/applications/brave-origin.desktop
       .local/share/applications/chatgpt.desktop
       .local/share/applications/1password.desktop
       .local/share/applications/t3code-nightly.desktop

@@ -19,7 +19,8 @@ hl.config({
   input = {
     kb_layout = {{ machine_keyboard_layout | to_json }},
     kb_variant = {{ machine_keyboard_variant | to_json }},
-    kb_options = "compose:caps,lv3:alt_switch",
+    -- Keep left Alt available to applications (for example Codex Alt+Up).
+    kb_options = "compose:caps,lv3:ralt_switch",
     follow_mouse = 1,
     natural_scroll = true,
     repeat_rate = 40,

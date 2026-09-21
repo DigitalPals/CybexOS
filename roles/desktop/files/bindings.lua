@@ -5,7 +5,7 @@ local features = require("features")
 local browser = "firefox"
 local privateBrowser = "firefox --private-window"
 if features.proprietary_apps then
-  browser = "brave-browser-stable --enable-features=TouchpadOverscrollHistoryNavigation,PipeWireCamera --restore-last-session --hide-crash-restore-bubble"
+  browser = "brave-origin-stable --enable-features=TouchpadOverscrollHistoryNavigation,PipeWireCamera --restore-last-session --hide-crash-restore-bubble"
   privateBrowser = browser .. " --incognito"
 end
 

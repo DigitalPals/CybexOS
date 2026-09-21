@@ -58,6 +58,7 @@
       .local/share/nautilus-python/extensions/localsend.py
       .local/share/applications/nvim-kitty.desktop
       .local/share/applications/brave-browser.desktop
+      .local/share/applications/brave-origin.desktop
       .local/share/applications/chatgpt.desktop
       .local/share/applications/1password.desktop
       .local/share/applications/t3code-nightly.desktop

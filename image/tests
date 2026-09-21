@@ -54,7 +54,7 @@ class OfflineApplications(unittest.TestCase):
     def test_package_contract_contains_all_application_groups(self):
         packages, flatpaks = applications.package_names()
         for package in ("fastfetch", "pinta", "glow", "duf", "steam", "podman", "moby-engine",
-                        "brave-browser", "1password", "chatgpt", "tailscale", "java-25-openjdk-devel"):
+                        "brave-origin", "1password", "chatgpt", "tailscale", "java-25-openjdk-devel"):
             self.assertIn(package, packages)
         self.assertIn("org.localsend.localsend_app", flatpaks)
         self.assertIn("com.spotify.Client", flatpaks)
