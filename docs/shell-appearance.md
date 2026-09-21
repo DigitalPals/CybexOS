@@ -8,6 +8,19 @@ configurable; panel corners no longer inherit the bar radius. Attached drawers
 and sheets use the same radius on all four corners, without square edge
 overrides or concave bridges to the bar.
 
+The **Typography → Interface font** picker is near the top of Appearance and
+can also be reached by searching for “font”. It includes the current default,
+JetBrainsMono Nerd Font, and applies immediately across the shell. The installer
+ships every offered family: JetBrainsMono Nerd Font, Figtree, Google Sans Flex,
+Urbanist, OPPO Sans 4.0 and IBM Plex Sans. System/browser fallbacks include
+Liberation Sans, Serif and Mono, the full Noto family, CJK, emoji, Font Awesome
+and iA Writer (Mono, Duo, Quattro and Duospace), matching Omarchy’s base font
+coverage. These use the managed
+Fontconfig defaults independently of the shell font choice.
+
+Fresh installations leave **System tray** disabled. Enable it from Settings →
+Widgets when wanted; existing saved widget choices are preserved.
+
 `Common/ShellMetrics.js` calculates a rounded effective font size once from
 base size × UI scale × accessibility scale. Typography uses this size relative
 to a 12px reference. Geometry and padding additionally multiply by density

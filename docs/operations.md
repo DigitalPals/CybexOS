@@ -89,8 +89,10 @@ currently exist for `browser`, `onepassword`, `fonts`, `font-defaults`, `package
 narrow tags are development tools, not independent installation profiles;
 their prerequisites can live in an earlier role.
 
-The `font-defaults` tag installs Liberation Sans/Serif and Noto Color Emoji,
-then applies [Omarchy's font mappings](https://github.com/basecamp/omarchy/blob/master/config/fontconfig/fonts.conf)
+The `font-defaults` tag installs Liberation Sans/Serif/Mono, the full Noto
+collection, Noto CJK Sans/Serif/Mono, Noto Color Emoji, and Font Awesome
+(desktop and web fonts),
+then applies [Omarchy's font mappings](https://github.com/omacom/omarchy/blob/8f324c90b82790d31ab33565441e07cbdb8d2308/default/fontconfig/conf.avail/50-omarchy.conf)
 in `/etc/fonts/conf.d/49-fedora-config-defaults.conf`. Sans-serif and system UI
 aliases use Liberation Sans, serif uses Liberation Serif, and monospace uses
 JetBrainsMono Nerd Font. Strong UI aliases preserve these choices against
@@ -104,6 +106,18 @@ Apply just these defaults on an installed machine with:
 ```bash
 ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags font-defaults
 ```
+
+Font coverage mirrors [Omarchy's base manifest](https://github.com/omacom/omarchy/blob/8f324c90b82790d31ab33565441e07cbdb8d2308/install/omarchy-base.packages)
+checked on 2026-09-21. Fedora splits Noto into many packages; the required
+`google-noto-fonts-all` metapackage supplies its language, symbol and math
+families, with CJK and emoji installed separately. Our full JetBrainsMono Nerd
+Font includes the coverage of Omarchy's basic variant. The `fonts` tag also
+installs all 16 iA Writer static faces (Mono, Duo, Quattro and legacy Duospace),
+using Omarchy's upstream commits with SHA-256 pins and bundled OFL notices.
+Omarchy's private branding icon font is shell artwork; CybexOS uses its own
+Material Symbols and product icons. Existing additional font choices remain.
+Arabic and Urdu fallback ordering follows Omarchy, including Chromium requests
+without a language hint.
 
 Restart existing browsers to clear their cached font selection. These system
 defaults are separate from the Quickshell Appearance presets.

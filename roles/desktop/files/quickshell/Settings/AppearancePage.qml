@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Quickshell
 import QtQuick.Controls as Controls
 import "../Common"
 import "../Common" as Common
@@ -16,7 +15,6 @@ SettingsPage {
     // refresh cannot leave the active color without a selected swatch.
     readonly property var accentChoices: [Settings.defaults.accent,
         "#9ecbeb", "#a992e0", "#79b88b", "#d3b47e", "#e8837a"]
-    readonly property string tempPreview: Settings.unit === "f" ? "70°" : "21°"
     readonly property int accentHue: SettingsHelpers.hexHue(Settings.accent, 204)
     readonly property bool fixedPalette: Settings.paletteMode === "fixed"
     readonly property var paletteSwatches: [
@@ -50,20 +48,10 @@ SettingsPage {
         page.revealFocus(firstBarSwatch || lastSwatch || fixedColorReveal);
     }
 
-    Component.onCompleted: {
-        if (fixedPalette)
-            revealFixedColors();
-    }
-
     Timer {
         id: fixedColorScrollTimer
         interval: Theme.expandDuration
         onTriggered: page.revealFixedColorsNow()
-    }
-
-    SystemClock {
-        id: clock
-        precision: SystemClock.Minutes
     }
 
     Column {
@@ -105,6 +93,22 @@ SettingsPage {
                 label: "High contrast"
                 settingKey: "highContrast"
                 description: "Opaque surfaces, stronger borders, and no compositor blur"
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            title: "Typography"
+            dirty: Settings.font !== Settings.defaults.font
+            onResetRequested: Settings.resetKeys(["font"], "Typography")
+
+            PickerRow {
+                width: parent.width
+                label: "Interface font"
+                settingKey: "font"
+                model: Settings.fontChoices.map(choice => ({
+                    value: choice.id, label: choice.label
+                }))
             }
         }
 
@@ -506,122 +510,6 @@ SettingsPage {
                 label: "Panel corners"
                 settingKey: "surfaceCornerRadius"
                 min: 0; max: 30; step: 1
-            }
-        }
-
-        SettingsGroup {
-            width: parent.width
-            title: "Typography"
-            dirty: Settings.font !== Settings.defaults.font
-            onResetRequested: Settings.resetKeys(["font"], "Typography")
-
-            Column {
-                width: parent.width
-                spacing: 3
-                Repeater {
-                    id: fontRepeater
-                    model: Settings.fontChoices
-                    delegate: Rectangle {
-                        id: fontRow
-                        required property var modelData
-                        required property int index
-                        readonly property bool selected: Settings.font === modelData.id
-                        width: parent.width
-                        height: Theme.scaled(38)
-                        radius: Theme.rowRadius
-                        color: selected ? Theme.accentAlpha(0.14) : "transparent"
-                        border.width: activeFocus ? 1 : 0
-                        border.color: Theme.accentText
-                        activeFocusOnTab: selected
-                        Accessible.role: Accessible.RadioButton
-                        Accessible.name: modelData.label + " menu font"
-                        Accessible.checked: selected
-                        Accessible.onPressAction: {
-                            fontState.pulseCenter();
-                            Settings.set("font", modelData.id);
-                        }
-                        Keys.onPressed: event => {
-                            let next = -1;
-                            if (event.key === Qt.Key_Up || event.key === Qt.Key_Left)
-                                next = Math.max(0, index - 1);
-                            else if (event.key === Qt.Key_Down || event.key === Qt.Key_Right)
-                                next = Math.min(Settings.fontChoices.length - 1, index + 1);
-                            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                                    || event.key === Qt.Key_Space) {
-                                fontState.pulseCenter();
-                                Settings.set("font", modelData.id); event.accepted = true; return;
-                            }
-                            if (next >= 0) {
-                                Settings.set("font", Settings.fontChoices[next].id);
-                                fontRepeater.itemAt(next).forceActiveFocus();
-                                event.accepted = true;
-                            }
-                        }
-                        StateLayer {
-                            id: fontState
-                            anchors.fill: parent
-                            radius: parent.radius
-                            hovered: fontMouse.containsMouse
-                            pressed: fontMouse.pressed
-                            focused: fontRow.activeFocus
-                            tint: fontRow.selected ? Theme.accent : Theme.textHi
-                            pressPoint: Qt.point(fontMouse.mouseX, fontMouse.mouseY)
-                        }
-                        Rectangle {
-                            id: radioRing
-                            anchors.left: parent.left
-                            anchors.leftMargin: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 14; height: 14; radius: 7
-                            color: "transparent"
-                            border.width: 1.5
-                            border.color: fontRow.selected ? Theme.accentText : Theme.dotDim
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: 6; height: 6; radius: 3
-                                color: Theme.accent
-                                visible: fontRow.selected
-                            }
-                        }
-                        Text {
-                            id: fontName
-                            anchors.left: radioRing.right
-                            anchors.leftMargin: 9
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: Math.max(0, parent.width * 0.42 - x)
-                            text: fontRow.modelData.label
-                            font.family: fontRow.modelData.family
-                            font.pixelSize: Theme.typography.control
-                            font.weight: Theme.weightMedium
-                            color: fontRow.selected ? Theme.textHi : Theme.textMid
-                            elide: Text.ElideRight
-                        }
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: parent.width * 0.44
-                            anchors.right: parent.right
-                            anchors.rightMargin: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            horizontalAlignment: Text.AlignRight
-                            text: Qt.formatDateTime(clock.date, Settings.clock24 ? "HH:mm" : "h:mm AP")
-                                + " · Wed 06 · " + page.tempPreview
-                            font.family: fontRow.modelData.family
-                            font.pixelSize: Theme.typography.bar
-                            color: Theme.textLow
-                            elide: Text.ElideLeft
-                        }
-                        MouseArea {
-                            id: fontMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                fontRow.forceActiveFocus();
-                                Settings.set("font", fontRow.modelData.id);
-                            }
-                        }
-                    }
-                }
             }
         }
 

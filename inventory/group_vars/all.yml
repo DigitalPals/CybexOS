@@ -197,6 +197,135 @@ pinned_font_archives:
 # shell (Common/Sym.qml). Product identities are the audited SVGs behind
 # Common/BrandIcon.qml.
 pinned_font_files:
+  # Match Omarchy ttf-ia-writer, including its pinned legacy Duospace family.
+  - name: ia-writer-mono-bold
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Mono/Static/iAWriterMonoS-Bold.ttf
+    checksum: sha256:76aa5b5b4f9091a9c686a2a6fe5ff3495bb791994d7079857e5b24ae98063743
+    filename: iAWriterMonoS-Bold.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Mono/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-mono-bolditalic
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Mono/Static/iAWriterMonoS-BoldItalic.ttf
+    checksum: sha256:b0cf9571234528b0896aacf97eb3ec45712da40b8410c799fa43ea123bc19e35
+    filename: iAWriterMonoS-BoldItalic.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Mono/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-mono-italic
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Mono/Static/iAWriterMonoS-Italic.ttf
+    checksum: sha256:c7e7e36e8167bf50f27e46c9cab447d04cc570bd388b998044e2e29f4cebc216
+    filename: iAWriterMonoS-Italic.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Mono/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-mono-regular
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Mono/Static/iAWriterMonoS-Regular.ttf
+    checksum: sha256:929605302a57250e712908cb5f6e1ce80c7d0accd5fd2555345f29a5e8d4e30b
+    filename: iAWriterMonoS-Regular.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Mono/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-quattro-bold
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Quattro/Static/iAWriterQuattroS-Bold.ttf
+    checksum: sha256:40dbb1ffed472cdc96a0133073bc777a40782883678b80dfd31677d5963b72b9
+    filename: iAWriterQuattroS-Bold.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Quattro/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-quattro-bolditalic
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Quattro/Static/iAWriterQuattroS-BoldItalic.ttf
+    checksum: sha256:f61aa3c97d611dec01c7414e07b9212a164501b6d1a800af0dcda11acf4eabb0
+    filename: iAWriterQuattroS-BoldItalic.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Quattro/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-quattro-italic
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Quattro/Static/iAWriterQuattroS-Italic.ttf
+    checksum: sha256:84c19517be57e8c0521f43a1d5c29766b1f0cb9353300e819b193da1b02f47ac
+    filename: iAWriterQuattroS-Italic.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Quattro/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-quattro-regular
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Quattro/Static/iAWriterQuattroS-Regular.ttf
+    checksum: sha256:6e367e0e00e057d383680ffae7b64f520d06e1f96abd28bddd67d424fee8e8df
+    filename: iAWriterQuattroS-Regular.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Quattro/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-duo-bold
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Duo/Static/iAWriterDuoS-Bold.ttf
+    checksum: sha256:779963585007973753ba1c4aa85d67b21c29854c1f9730411d80dc0c879b0908
+    filename: iAWriterDuoS-Bold.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Duo/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-duo-bolditalic
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Duo/Static/iAWriterDuoS-BoldItalic.ttf
+    checksum: sha256:830443f3ec75a277ec00917a7ed0523a93869ea9a7ea5f8d9f1d643b25b6cd47
+    filename: iAWriterDuoS-BoldItalic.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Duo/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-duo-italic
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Duo/Static/iAWriterDuoS-Italic.ttf
+    checksum: sha256:8e15abab476026abd362d079fd519e9c1220e0ab32b3ce3e4c13695af53e7153
+    filename: iAWriterDuoS-Italic.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Duo/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-duo-regular
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Duo/Static/iAWriterDuoS-Regular.ttf
+    checksum: sha256:454a20d2b4569ba66810f0f710bb022065cbaac11c82fdcef677545ab27329f2
+    filename: iAWriterDuoS-Regular.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/f32c04c3058a75d7ce28919ce70fe8800817491b/iA%20Writer%20Duo/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-duospace-bold
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/b337fe1a4c93026268f70e4b2678371f3e89e2ce/iA%20Writer%20Duospace/TTF%20%28PC%29/iAWriterDuospace-Bold.ttf
+    checksum: sha256:a7d5781c76a42ef3a5b5666e19e694b8797fc9de0be60e6d6bbcfd6bb279420e
+    filename: iAWriterDuospace-Bold.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/b337fe1a4c93026268f70e4b2678371f3e89e2ce/iA%20Writer%20Duospace/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-duospace-bolditalic
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/b337fe1a4c93026268f70e4b2678371f3e89e2ce/iA%20Writer%20Duospace/TTF%20%28PC%29/iAWriterDuospace-BoldItalic.ttf
+    checksum: sha256:47ab6d0aa3f593bf71f0d5484fe919af245aec53ae9c7c4b51ad8e5256d0ae4b
+    filename: iAWriterDuospace-BoldItalic.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/b337fe1a4c93026268f70e4b2678371f3e89e2ce/iA%20Writer%20Duospace/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-duospace-italic
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/b337fe1a4c93026268f70e4b2678371f3e89e2ce/iA%20Writer%20Duospace/TTF%20%28PC%29/iAWriterDuospace-Italic.ttf
+    checksum: sha256:c34803c11866af27a10fa283df01b56b1a7980f1229795b3f7ca95ccb70e82d1
+    filename: iAWriterDuospace-Italic.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/b337fe1a4c93026268f70e4b2678371f3e89e2ce/iA%20Writer%20Duospace/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
+  - name: ia-writer-duospace-regular
+    version: "20230616"
+    url: https://raw.githubusercontent.com/iaolo/iA-Fonts/b337fe1a4c93026268f70e4b2678371f3e89e2ce/iA%20Writer%20Duospace/TTF%20%28PC%29/iAWriterDuospace-Regular.ttf
+    checksum: sha256:58faf7d444401ca5260a09cfbbe04b7acfe74e6d5a5512dd2163cb29947cae1a
+    filename: iAWriterDuospace-Regular.ttf
+    license_url: https://raw.githubusercontent.com/iaolo/iA-Fonts/b337fe1a4c93026268f70e4b2678371f3e89e2ce/iA%20Writer%20Duospace/LICENSE.md
+    license_checksum: sha256:2eb84d6d03a9af6e99816f82f50a77c26e7ff6681293f4619cd33a392a8c13b6
+    license_filename: LICENSE.md
   - name: figtree
     version: "1.2"
     url: https://raw.githubusercontent.com/erikdkennedy/figtree/032dfa7fe219ef3a02890d6d3add84eacc9aebfe/fonts/variable/Figtree%5Bwght%5D.ttf

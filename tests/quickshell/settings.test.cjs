@@ -452,7 +452,7 @@ test("schema twenty-three keeps safe defaults and exposes accessibility preferen
     assert.match(helpers, /claudeAutoRefresh:\s*true/);
     assert.match(helpers,
         /notes:\s*\{[\s\S]*?titleProvider:\s*"off"[\s\S]*?codexModel:\s*"gpt-5\.6-luna"[\s\S]*?codexEffort:\s*"none"[\s\S]*?claudeModel:\s*"fable"[\s\S]*?claudeEffort:\s*"low"/);
-    assert.match(helpers, /mod\("tray", true\), mod\("notifications", true\), mod\("vol", true\)/);
+    assert.match(helpers, /mod\("tray", false\), mod\("notifications", true\), mod\("vol", true\)/);
     assert.match(helpers, /notifications:\s*\{ group: "status" \}/);
     assert.match(helpers, /warmth:\s*3400/);
     assert.match(helpers, /osd:\s*"bottom"/);
@@ -696,11 +696,11 @@ test("progressive disclosure hides inactive controls without discarding latent v
     const fixedAt = appearance.indexOf("id: fixedColorReveal");
     const paletteAt = appearance.indexOf("id: paletteContent");
     const barAt = appearance.indexOf('title: "Bar background"');
-    const typeAt = appearance.indexOf('title: "Typography"');
-    assert.ok(fixedAt > 0 && paletteAt > fixedAt && barAt > paletteAt && typeAt > barAt,
+    const sizingAt = appearance.indexOf('title: "Shell sizing and surfaces"');
+    assert.ok(fixedAt > 0 && paletteAt > fixedAt && barAt > paletteAt && sizingAt > barAt,
         "Fixed must reveal its accent controls immediately below the mode picker");
     const fixed = appearance.slice(fixedAt, paletteAt);
-    const barColors = appearance.slice(barAt, typeAt);
+    const barColors = appearance.slice(barAt, sizingAt);
     assert.match(fixed, /reveal:\s*page\.fixedPalette/);
     assert.match(fixed, /\baccent\b/, "the manual accent choice belongs to fixed mode");
     assert.match(appearance,
@@ -712,9 +712,12 @@ test("progressive disclosure hides inactive controls without discarding latent v
     assert.match(appearance,
         /firstBarSwatch\s*=\s*barColorRepeater\.itemAt\(0\)[\s\S]{0,160}?page\.revealFocus\(firstBarSwatch/,
         "Fixed must reveal both the accent controls and the independent bar background");
-    assert.match(appearance,
-        /Component\.onCompleted:[\s\S]{0,100}?fixedPalette[\s\S]{0,100}?revealFixedColors\(\)/,
-        "reopening an already-Fixed page must also reveal its color controls");
+    assert.doesNotMatch(appearance, /Component\.onCompleted:/,
+        "opening Appearance must not scroll past typography or override a search jump");
+    assert.match(appearance, /label: "Interface font"\s+settingKey: "font"/,
+        "the interface font must support the shared settings search and persistence");
+    assert.ok(appearance.indexOf('title: "Typography"') < fixedAt,
+        "typography must be reachable before the long color controls");
     for (const key of ["barColorMode", "barCustomHue", "barCustomSaturation",
         "barCustomLightness"])
         assert.match(barColors, new RegExp(key),

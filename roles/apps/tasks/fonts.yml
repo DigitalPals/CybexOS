@@ -1,11 +1,20 @@
 ---
-- name: Install the distribution fonts used by Omarchy defaults
+# Fedora equivalents of Omarchy's base fonts (2026-09-21, commit 8f324c90).
+# JetBrainsMono Nerd Font and iA Writer are pinned in inventory/group_vars/all.yml.
+- name: Install shell and browser fallback fonts
   ansible.builtin.dnf:
     name:
       - fontconfig
       - liberation-sans-fonts
       - liberation-serif-fonts
+      - liberation-mono-fonts
+      - google-noto-fonts-all
+      - google-noto-sans-cjk-vf-fonts
+      - google-noto-sans-mono-cjk-vf-fonts
+      - google-noto-serif-cjk-vf-fonts
       - google-noto-color-emoji-fonts
+      - fontawesome-fonts-all
+      - fontawesome-fonts-web
     state: present
   register: apps_default_font_packages
 

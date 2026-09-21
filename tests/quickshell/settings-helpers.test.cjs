@@ -66,7 +66,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
     assert.equal(d.mods.right.find(m => m.id === "bt").on, false,
         "Bluetooth is opt-in; its auto-rule already hides it when nothing is connected");
-    assert.equal(d.mods.right.find(m => m.id === "tray").on, true);
+    assert.equal(d.mods.right.find(m => m.id === "tray").on, false);
     assert.equal(d.mods.right.find(m => m.id === "updates").on, true);
     assert.equal(d.mods.right.find(m => m.id === "notifications").on, true);
     for (const id of ["gh", "t3", "hermes", "usage"])

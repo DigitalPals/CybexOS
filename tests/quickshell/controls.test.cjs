@@ -151,7 +151,7 @@ test("state layers ripple from the pointer and keyboard activation stays visible
     for (const rel of [
         "Bar/BarIcon.qml", "Bar/BarChip.qml", "Bar/Workspaces.qml",
         "Common/Toggle.qml", "Popovers/ActionButton.qml", "Popovers/IconButton.qml",
-        "Settings/AppearancePage.qml", "Settings/PillRow.qml",
+        "Settings/PillRow.qml",
         "Settings/SettingsAction.qml", "Settings/SettingsView.qml"
     ])
         assert.match(read(rel), /pressPoint:\s*Qt\.point\(/,
@@ -159,7 +159,7 @@ test("state layers ripple from the pointer and keyboard activation stays visible
 
     for (const rel of [
         "Bar/Workspaces.qml", "Common/Toggle.qml", "Popovers/ActionButton.qml",
-        "Popovers/IconButton.qml", "Settings/AppearancePage.qml",
+        "Popovers/IconButton.qml",
         "Settings/PillRow.qml", "Settings/SettingsAction.qml", "Settings/SettingsView.qml"
     ])
         assert.match(read(rel), /\.pulseCenter\(\)/,
