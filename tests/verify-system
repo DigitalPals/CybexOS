@@ -62,6 +62,7 @@ if ! jq -e '
   (.primary_user | type == "string") and
   (.primary_home | type == "string") and
   (.gdm_autologin | type == "boolean") and
+  (.plymouth_theme | type == "string") and
   (.rust_toolchain | type == "string") and
   (.claude_code_version | type == "string") and
   (.opencode_version | type == "string") and
@@ -93,6 +94,7 @@ firewall_zone=$(jq -r .firewall_zone <<<"$inventory_json")
 manage_system_identity=$(jq -r .manage_system_identity <<<"$inventory_json")
 manage_personal_dotfiles=$(jq -r .manage_personal_dotfiles <<<"$inventory_json")
 gdm_autologin=$(jq -r .gdm_autologin <<<"$inventory_json")
+plymouth_theme=$(jq -r .plymouth_theme <<<"$inventory_json")
 feature_enabled() { jq -e --arg name "$1" '.features[$name] == true' >/dev/null <<<"$inventory_json"; }
 
 pass() { printf '\033[32mPASS\033[0m  %s\n' "$*"; }
@@ -507,9 +509,15 @@ else
   skip 'precise Dell XPS 2026 SKU gate not matched; new hardware-role checks'
 fi
 
-check 'Cybex Plymouth theme is selected' test "$(plymouth-set-default-theme 2>/dev/null)" = cybex
-check_root 'Cybex theme is embedded in the running-kernel initramfs' bash -c \
-  'lsinitrd "/boot/initramfs-$(uname -r).img" | grep -q "usr/share/plymouth/themes/cybex/cybex.script"'
+check "Configured Plymouth theme ($plymouth_theme) is selected" \
+  test "$(plymouth-set-default-theme 2>/dev/null)" = "$plymouth_theme"
+check_root "Configured Plymouth theme ($plymouth_theme) is embedded in the running-kernel initramfs" bash -c \
+  'lsinitrd "/boot/initramfs-$(uname -r).img" | grep -Fq "usr/share/plymouth/themes/$1/$1.plymouth"' \
+  _ "$plymouth_theme"
+if [[ $plymouth_theme == cybex ]]; then
+  check_root 'Cybex script is embedded in the running-kernel initramfs' bash -c \
+    'lsinitrd "/boot/initramfs-$(uname -r).img" | grep -Fq "usr/share/plymouth/themes/cybex/cybex.script"'
+fi
 check 'GDM retains GNOME session' bash -c 'compgen -G "/usr/share/wayland-sessions/*gnome*.desktop" >/dev/null'
 check 'Hyprland Quickshell GDM session exists' test -r /usr/share/wayland-sessions/hyprland-quickshell.desktop
 check 'Hyprland session launcher uses start-hyprland' grep -q '^start-hyprland --' /usr/local/bin/hyprland-quickshell
@@ -594,8 +602,8 @@ if feature_enabled developer_tools; then
   check 'inventory-pinned OpenCode' bash -c \
     'actual=$(opencode --version 2>/dev/null); [[ ${actual%% *} == "$1" ]]' \
     _ "$opencode_version"
-  check 'inventory-pinned Codex CLI' bash -c \
-    'actual=$(codex --version 2>/dev/null); [[ ${actual##* } == "$1" ]]' \
+  check 'Codex CLI matches the configured version policy (latest checked during updates)' bash -c \
+    'actual=$(codex --version 2>/dev/null) || exit; actual=${actual##* }; if [[ $1 == latest ]]; then [[ $actual =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; else [[ $actual == "$1" ]]; fi' \
     _ "$codex_cli_version"
   check 'Android sdkmanager' test -x "$HOME/Android/Sdk/cmdline-tools/latest/bin/sdkmanager"
   check 'Android platform-tools' test -x "$HOME/Android/Sdk/platform-tools/adb"

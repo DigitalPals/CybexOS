@@ -82,6 +82,49 @@ class ApplicationDefaults(unittest.TestCase):
             self.assertFalse((home / "absent.yml").exists())
             for key in ("passwordless_wheel", "passwordless_local_polkit", "gdm_autologin"):
                 self.assertIs(config[key], False)
+            # hostnamectl succeeds with empty output when no static hostname
+            # is configured; use the transient hostname in that case.
+            (binaries / "hostnamectl").write_text("#!/bin/sh\nexit 0\n")
+            hostname = binaries / "hostname"
+            hostname.write_text("#!/bin/sh\nprintf '%s\\n' transient-host\n")
+            hostname.chmod(0o755)
+            result = subprocess.check_output(
+                ["bash", str(installer), "--non-interactive", "--check"],
+                env=environment, text=True,
+            )
+            self.assertEqual(yaml.safe_load(result)["machine_hostname"], "transient-host")
+
+    def test_saved_install_accepts_passwordless_sudo_and_cleans_temporary_config(self):
+        with tempfile.TemporaryDirectory(prefix="cybex-saved-install.") as temporary:
+            home = Path(temporary)
+            binaries = home / "bin"
+            binaries.mkdir()
+            scratch = home / "tmp"
+            scratch.mkdir()
+            (home / "scripts").mkdir()
+            (home / "scripts/ui.sh").write_text("ui_header() { :; }\n")
+            source = (ROOT / "install").read_text().replace(
+                '[[ -r /etc/fedora-release ]]', 'true',
+            )
+            installer = home / "install"
+            installer.write_text(source)
+            config = home / "config.yml"
+            config.write_text("config_schema_version: 1\n")
+            probes = {
+                binaries / "sudo": '[ "$*" = "-n true" ]',
+                binaries / "ansible-playbook": 'printf "%s\\n" "$@"',
+                home / "scripts/migrate-config": 'cat -- "$1"',
+            }
+            for path, body in probes.items():
+                path.write_text("#!/bin/sh\n" + body + "\n")
+                path.chmod(0o755)
+            environment = dict(os.environ, FEDORA_CONFIG_FILE=str(config),
+                               TMPDIR=str(scratch), PATH=f"{binaries}:{os.environ['PATH']}")
+            result = subprocess.check_output(
+                ["bash", str(installer)], env=environment, text=True,
+            )
+            self.assertIn(f"site.yml\n-e\n@{config}\n", result)
+            self.assertEqual(list(scratch.iterdir()), [])
 
     def test_both_command_names_preserve_arguments_and_verification_scope(self):
         with tempfile.TemporaryDirectory(prefix="cybex-command.") as temporary:

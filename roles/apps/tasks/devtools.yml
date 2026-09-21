@@ -160,6 +160,7 @@
     - rust_toolchain not in (apps_rust_toolchain_existing.stdout | default(''))
 
 - name: Install user CLI updater
+  tags: [user-tools]
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
@@ -168,6 +169,7 @@
     mode: "0755"
 
 - name: Install or update user-managed CLIs
+  tags: [user-tools]
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.command: "{{ primary_home }}/.local/bin/update-user-tools"
@@ -177,6 +179,7 @@
   when: not ansible_check_mode
 
 - name: Report user-managed CLI update failures that retained installed versions
+  tags: [user-tools]
   ansible.builtin.debug:
     msg: >-
       User-managed CLI update failed; complete installed versions were retained:

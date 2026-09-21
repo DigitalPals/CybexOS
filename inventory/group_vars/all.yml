@@ -15,7 +15,7 @@ manage_system_identity: false
 manage_personal_dotfiles: false
 cleanup_legacy_xps_artifacts: false
 fedora_config_xps_2026: false
-plymouth_theme: bgrt
+plymouth_theme: cybex
 primary_user: "{{ lookup('env', 'SUDO_USER') | default(lookup('env', 'USER'), true) }}"
 primary_group: "{{ primary_user }}"
 primary_home: "{{ lookup('env', 'HOME') }}"
@@ -89,12 +89,11 @@ firewall_ports:
 # date is the explicit review point for a new nightly compiler.
 rust_toolchain: nightly-2026-08-23
 
-# User-managed developer tools are also deliberate pins. The apps role keeps a
-# working installed version when a network/update attempt fails; changing one
-# of these values is the explicit authorization to install different code.
+# User-managed developer tools retain a working version on update failure.
+# Claude/OpenCode are pinned; Codex follows the latest stable npm release.
 claude_code_version: "2.1.247"
 opencode_version: "1.18.27"
-codex_cli_version: "0.153.2"
+codex_cli_version: latest
 
 # The starter is copied only for a genuinely absent Neovim configuration. This
 # revision matches the starter already used by this machine; subsequent plugin

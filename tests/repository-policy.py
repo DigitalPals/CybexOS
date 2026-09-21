@@ -67,7 +67,7 @@ def verify_dependency_policy(values: dict) -> None:
     assert re.fullmatch(r"nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}", values["rust_toolchain"])
     assert SEMVER.fullmatch(values["claude_code_version"])
     assert SEMVER.fullmatch(values["opencode_version"])
-    assert SEMVER.fullmatch(values["codex_cli_version"])
+    assert values["codex_cli_version"] == "latest"
     assert not any(key.startswith("hermes_agent_") for key in values)
     assert "hermes_remote_url" not in values
 
@@ -116,7 +116,7 @@ def verify_dependency_policy(values: dict) -> None:
     updater = (ROOT / "roles/apps/templates/update-user-tools.j2").read_text()
     assert "claude update" not in updater
     assert "opencode-ai@latest" not in updater
-    assert "@openai/codex@latest" not in updater
+    assert "@openai/codex@latest version --json" in updater
     assert 'claude install "$claude_pin"' in updater
     assert '"opencode-ai@$opencode_pin"' in updater
     assert '"@openai/codex@$codex_pin"' in updater
@@ -227,13 +227,16 @@ def verify_dependency_policy(values: dict) -> None:
     assert "local connected-service runtimes are absent" in verifier
 
     fish = (ROOT / "roles/dotfiles/files/fish-config.fish").read_text()
-    assert "--dangerously-bypass-approvals-and-sandbox" not in fish
+    assert "alias codex='codex --dangerously-bypass-approvals-and-sandbox'" in fish
     assert "--dangerously-skip-permissions" not in fish
     assert "alias update='cybex update'" in fish
     assert "alias a='cybex agent'" in fish
 
 
 def verify_user_updater_runtime(values: dict) -> None:
+    # Keep the exact-version compatibility cases deterministic; latest-channel
+    # resolution and failure cases are exercised separately below.
+    values = dict(values, codex_cli_version="0.153.2")
     rendered = render_user_updater(values)
     claude_pin = values["claude_code_version"]
     opencode_pin = values["opencode_version"]
@@ -256,7 +259,7 @@ def verify_user_updater_runtime(values: dict) -> None:
         executable(home / ".local/bin/curl", 'echo "unexpected curl call" >&2; exit 99\n')
         result = run(home)
         assert result.returncode == 0, result.stderr
-        assert result.stdout.strip() == "UNCHANGED: user-managed CLI pins"
+        assert result.stdout.strip() == "UNCHANGED: user-managed CLI versions"
 
     # A failed native Claude switch restores the exact prior version symlink.
     with tempfile.TemporaryDirectory(prefix="fedora-config-user-tools.") as temporary:
@@ -374,6 +377,52 @@ def verify_user_updater_runtime(values: dict) -> None:
         assert installed == f"codex-cli {codex_pin}"
 
 
+def verify_codex_latest(values: dict) -> None:
+    rendered = render_user_updater(dict(values, codex_cli_version="latest"))
+    # Cover no-op, upgrade, offline, malformed metadata, missing first install,
+    # failed download, and a staged binary that disagrees with the registry.
+    for scenario in ("current", "upgrade", "offline", "invalid", "missing", "download", "mismatch"):
+        with tempfile.TemporaryDirectory(prefix="fedora-config-user-tools.") as temporary:
+            home = Path(temporary)
+            executable(home / ".local/bin/claude", f'echo "{values["claude_code_version"]}"\n')
+            executable(home / ".local/bin/opencode", f'echo "{values["opencode_version"]}"\n')
+            prior = "0.200.0" if scenario == "current" else "0.100.0"
+            if scenario != "missing":
+                executable(home / ".local/bin/codex", f'echo "codex-cli {prior}"\n')
+            lookup = 'echo \'"0.200.0"\''
+            if scenario in ("offline", "missing"):
+                lookup = "exit 1"
+            elif scenario == "invalid":
+                lookup = 'echo \'"not-a-version"\''
+            downloaded = "0.199.0" if scenario == "mismatch" else "0.200.0"
+            executable(
+                home / ".local/bin/npm",
+                f'if [[ $1 == view ]]; then {lookup}; exit; fi\n'
+                + ('exit 1\n' if scenario == "download" else '')
+                + '[[ " $* " == *" @openai/codex@0.200.0 "* ]]\n'
+                'printf "install\\n" >> "$HOME/npm-installs"\n'
+                '[[ $1 == --prefix ]]\n'
+                'mkdir -p "$2/node_modules/.bin"\n'
+                f'printf \'#!/usr/bin/env bash\\necho "codex-cli {downloaded}"\\n\' '
+                '> "$2/node_modules/.bin/codex"\n'
+                'chmod 0755 "$2/node_modules/.bin/codex"\n',
+            )
+            environment = dict(os.environ, HOME=str(home), PATH="/usr/bin:/bin")
+            result = subprocess.run(
+                ["bash"], input=rendered, text=True, capture_output=True, env=environment
+            )
+            expected = 0 if scenario in ("current", "upgrade") else 1 if scenario == "missing" else 75
+            assert result.returncode == expected, (scenario, result.stdout, result.stderr)
+            if scenario == "missing":
+                assert not (home / ".local/bin/codex").exists()
+            else:
+                actual = subprocess.check_output([str(home / ".local/bin/codex")], text=True).strip()
+                assert actual == f"codex-cli {'0.200.0' if scenario == 'upgrade' else prior}"
+            if scenario in ("current", "offline", "invalid", "missing"):
+                assert not (home / "npm-installs").exists()
+            assert not list(home.glob(".local/share/fedora-config-user-tools/codex/.stage.*"))
+
+
 def verify_asset_provenance() -> None:
     document = json.loads((ROOT / "assets/PROVENANCE.json").read_text())
     assert document["schemaVersion"] == 1
@@ -417,5 +466,6 @@ if __name__ == "__main__":
     values = inventory()
     verify_dependency_policy(values)
     verify_user_updater_runtime(values)
+    verify_codex_latest(values)
     verify_asset_provenance()
     print("dependency pins and large-asset provenance are internally consistent")

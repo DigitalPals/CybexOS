@@ -36,6 +36,20 @@ always supplies `--skip-tags boot`; public updates therefore do not rebuild
 Plymouth or initramfs unexpectedly. Apply reviewed boot-role changes directly
 with Ansible, then allow its handler to finish before rebooting.
 
+New installations select the Cybex Plymouth theme, including the LUKS unlock
+screen. To apply the boot theme and Fish defaults to an existing installation
+after running the source gate:
+
+```bash
+ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags boot,shell-defaults
+```
+
+The `shell-defaults` tag requires the existing installation's Fish configuration
+directory. New Fish shells launch `codex` with
+`--dangerously-bypass-approvals-and-sandbox` (YOLO: no approval prompts or sandbox).
+Use `command codex` to bypass that alias. This terminal default does not change
+the `cybex agent` dispatcher or the user's Codex configuration.
+
 `./verify --help` is the authoritative verification interface. Scope flags are
 mutually exclusive, unknown arguments fail before any check runs, and
 `--require-hyprland` is accepted only when system checks are in scope.
@@ -69,10 +83,15 @@ ansible-playbook site.yml --list-tags
 
 The stable role boundaries are `base`, `desktop`, `apps`, `xps-2026` (also
 `hardware`), `dotfiles`, `private-hooks`, `boot`, and `finalize`. Narrow tags
-currently exist for `browser`, `fonts`, `packages`, `quickshell`,
-`quickshell-lint`, `camera`, `fingerprint`, `speaker`, and `touchpad`. The
+currently exist for `browser`, `onepassword`, `fonts`, `packages`, `quickshell`,
+`quickshell-lint`, `shell-defaults`, `user-tools`, `camera`, `fingerprint`,
+`speaker`, and `touchpad`. The
 narrow tags are development tools, not independent installation profiles;
 their prerequisites can live in an earlier role.
+
+The `onepassword` tag installs the Wayland launcher under the upstream
+`com.onepassword.OnePassword.desktop` ID and removes the legacy user launcher
+so the application appears only once. New image seeds use the same desktop ID.
 
 The proprietary application group installs Brave Origin (`brave-origin`) from
 Brave's signed release repository. The `browser` tag updates the package,
@@ -81,6 +100,13 @@ removes standard Brave's package and old managed launcher. Browser profiles are
 preserved: Origin uses `~/.config/BraveSoftware/Brave-Origin`, while standard
 Brave uses `~/.config/BraveSoftware/Brave-Browser`. Existing profiles are not
 moved automatically; close both browsers before migrating profile data.
+
+`user-tools` deploys and runs the CLI updater on an existing developer-tools
+installation. Codex resolves npm's `latest` release each time this updater runs;
+it validates the downloaded version before activating it and retains the working
+installation if resolution or download fails. Claude Code and OpenCode retain
+their inventory pins. System verification checks Codex locally without requiring
+the npm registry; freshness is checked by the updater.
 
 Every invocation still executes tasks tagged `always`. That includes fresh
 fact gathering, the feature contract, Fedora/architecture/user validation,

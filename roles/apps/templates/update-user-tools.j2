@@ -5,7 +5,8 @@ set -uo pipefail
 
 claude_pin={{ claude_code_version | quote }}
 opencode_pin={{ opencode_version | quote }}
-codex_pin={{ codex_cli_version | quote }}
+codex_requested={{ codex_cli_version | quote }}
+codex_pin=$codex_requested
 changed=0
 failed=0
 cleanup_paths=()
@@ -205,7 +206,18 @@ fi
 
 before=$(codex_version "$HOME/.local/bin/codex" || true)
 initial_codex=$before
-if [[ $before != "$codex_pin" ]]; then
+if [[ $codex_requested == latest ]]; then
+  # Resolve once, then install and validate that exact release so a moving
+  # registry tag cannot race the staged activation check.
+  codex_pin=$(npm view --fetch-retries=0 --fetch-timeout=15000 \
+    @openai/codex@latest version --json | jq -er 'select(type == "string")') || codex_pin=''
+  if ! semver "$codex_pin" >/dev/null; then
+    echo "Could not resolve latest Codex; existing ${before:-installation} retained" >&2
+    codex_pin=''
+    failed=1
+  fi
+fi
+if [[ -n $codex_pin && $before != "$codex_pin" ]]; then
   if install_codex; then
     changed=1
   else
@@ -225,12 +237,12 @@ missing=()
 first_install_failure=0
 [[ $after_claude == "$claude_pin" ]] || missing+=("claude=$claude_pin")
 [[ $after_opencode == "$opencode_pin" ]] || missing+=("opencode-ai=$opencode_pin")
-[[ $after_codex == "$codex_pin" ]] || missing+=("@openai/codex=$codex_pin")
+[[ -n $codex_pin && $after_codex == "$codex_pin" ]] || missing+=("@openai/codex=$codex_requested")
 [[ $after_claude == "$claude_pin" || -n $initial_claude ]] || first_install_failure=1
 [[ $after_opencode == "$opencode_pin" || -n $initial_opencode ]] || first_install_failure=1
-[[ $after_codex == "$codex_pin" || -n $initial_codex ]] || first_install_failure=1
+[[ ( -n $codex_pin && $after_codex == "$codex_pin" ) || -n $initial_codex ]] || first_install_failure=1
 if [[ -n ${missing[0]:-} ]]; then
-  printf 'Required user-managed CLI pins are not installed: %s\n' "${missing[*]}" >&2
+  printf 'Required user-managed CLI versions are not installed: %s\n' "${missing[*]}" >&2
   (( first_install_failure == 0 && failed == 1 )) && exit 75
   exit 1
 fi
@@ -240,5 +252,5 @@ fi
 if (( changed )); then
   echo "CHANGED: user-managed CLI update"
 else
-  echo "UNCHANGED: user-managed CLI pins"
+  echo "UNCHANGED: user-managed CLI versions"
 fi

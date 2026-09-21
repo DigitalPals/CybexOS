@@ -53,7 +53,7 @@ if [[ -r $config_path && $reconfigure == false ]]; then
   fi
   ui_header 'CybexOS'
   printf 'Using saved installation choices from %s\n' "$config_path"
-  sudo -v
+  sudo -n true 2>/dev/null || sudo -v
   if ! command -v ansible-playbook >/dev/null 2>&1; then
     run_step 'Install ansible-core' /tmp/fedora-config-bootstrap-ansible.log \
       sudo dnf -y install ansible-core
@@ -65,6 +65,8 @@ if [[ -r $config_path && $reconfigure == false ]]; then
     sudo install -m 0644 "$migrated_config" "$config_path"
     printf 'Migrated saved installation choices to schema 1.\n'
   fi
+  rm -f -- "$migrated_config"
+  trap - EXIT
   exec ansible-playbook site.yml -e "@$config_path" "${ansible_args[@]}"
 fi
 
@@ -82,7 +84,8 @@ fi
   exit 1
 }
 
-detected_hostname=$(hostnamectl --static 2>/dev/null || hostname)
+detected_hostname=$(hostnamectl --static 2>/dev/null || true)
+detected_hostname=${detected_hostname:-$(hostname)}
 detected_timezone=$(timedatectl show --property=Timezone --value 2>/dev/null || true)
 detected_timezone=${detected_timezone:-UTC}
 detected_locale=$(locale | sed -n 's/^LANG=//p' | tr -d '"' | head -n1)
@@ -261,11 +264,13 @@ else
 fi
 [[ $confirmed == true ]] || { echo 'Installation cancelled.'; exit 0; }
 
-sudo -v
+sudo -n true 2>/dev/null || sudo -v
 sudo install -d -m 0755 /etc/fedora-config
 sudo install -m 0644 "$temporary_config" "$config_path"
 if ! command -v ansible-playbook >/dev/null 2>&1; then
   run_step 'Install ansible-core' /tmp/fedora-config-bootstrap-ansible.log \
     sudo dnf -y install ansible-core
 fi
+rm -f -- "$temporary_config"
+trap - EXIT
 exec ansible-playbook site.yml -e "@$config_path" "${ansible_args[@]}"

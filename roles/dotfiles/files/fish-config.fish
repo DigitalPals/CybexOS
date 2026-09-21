@@ -63,6 +63,8 @@ alias fedora-update='cybex update'
 alias fedora-verify='cybex verify'
 alias update='cybex update'
 alias a='cybex agent'
+# Product default for interactive Codex; `command codex` bypasses this alias.
+alias codex='codex --dangerously-bypass-approvals-and-sandbox'
 alias gs='git status'
 alias ga='git add'
 alias gc='git commit'

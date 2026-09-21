@@ -61,6 +61,7 @@
       .local/share/applications/brave-origin.desktop
       .local/share/applications/chatgpt.desktop
       .local/share/applications/1password.desktop
+      .local/share/applications/com.onepassword.OnePassword.desktop
       .local/share/applications/t3code-nightly.desktop
       .local/share/applications/localsend-share-clipboard.desktop
       .local/share/applications/localsend-share-file.desktop

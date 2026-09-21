@@ -341,7 +341,17 @@
     dest: "{{ primary_home }}/.local/share/nautilus-python/extensions/localsend.py"
     mode: "0644"
 
-- name: Install shell and application configuration
+- name: Install Fish shell configuration
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: fish-config.fish
+    dest: "{{ primary_home }}/.config/fish/conf.d/50-fedora-config.fish"
+    mode: "0644"
+  when: manage_personal_dotfiles | bool
+  tags: [shell-defaults]
+
+- name: Install application configuration
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
@@ -349,7 +359,6 @@
     dest: "{{ primary_home }}/{{ item.dest }}"
     mode: "{{ item.mode | default('0644') }}"
   loop:
-    - { src: fish-config.fish, dest: .config/fish/conf.d/50-fedora-config.fish }
     - { src: kitty.conf, dest: .config/kitty/fedora-config.conf }
     - { src: fastfetch.jsonc, dest: .config/fastfetch/config.jsonc }
   when: manage_personal_dotfiles | bool
@@ -520,11 +529,29 @@
     - { name: nvim-kitty.desktop, enabled: "{{ features.developer_tools }}" }
     - { name: brave-origin.desktop, enabled: "{{ features.proprietary_apps }}" }
     - { name: chatgpt.desktop, enabled: "{{ features.proprietary_apps }}" }
-    - { name: 1password.desktop, enabled: "{{ features.proprietary_apps }}" }
   loop_control:
     label: "{{ item.name }}"
   when: item.enabled | bool
   tags: [browser]
+
+- name: Install 1Password launcher using the current upstream desktop ID
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: com.onepassword.OnePassword.desktop
+    dest: "{{ primary_home }}/.local/share/applications/com.onepassword.OnePassword.desktop"
+    mode: "0644"
+  when: features.proprietary_apps | bool
+  tags: [browser, onepassword]
+
+- name: Retire the legacy 1Password launcher to avoid duplicate application entries
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.local/share/applications/1password.desktop"
+    state: absent
+  when: features.proprietary_apps | bool
+  tags: [browser, onepassword]
 
 - name: Retire the standard Brave launcher after switching to Origin
   become: true
@@ -603,6 +630,7 @@
     - { name: brave-origin.desktop, feature: proprietary_apps }
     - { name: chatgpt.desktop, feature: proprietary_apps }
     - { name: 1password.desktop, feature: proprietary_apps }
+    - { name: com.onepassword.OnePassword.desktop, feature: proprietary_apps }
   loop_control:
     label: "{{ item.name }}"
   when:
