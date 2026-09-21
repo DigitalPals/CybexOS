@@ -238,7 +238,7 @@ Surface {
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WordWrap
         font.family: T3Theme.fontUi
-        font.pixelSize: Theme.fontSecondary
+        font.pixelSize: Theme.typography.secondary
         color: T3Theme.textFaint
     }
 
@@ -291,7 +291,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: group.label.toUpperCase()
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             font.weight: Theme.weightSemibold
             font.letterSpacing: 1
             color: group.tint
@@ -304,7 +304,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: group.count
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             font.weight: Theme.weightMedium
             font.features: T3Theme.tabularNumberFeatures
             color: T3Theme.textFaint
@@ -367,7 +367,7 @@ Surface {
             anchors.centerIn: parent
             text: tab.label
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontSecondary
+            font.pixelSize: Theme.typography.navigation
             font.weight: tab.selected ? Theme.weightSemibold : Theme.weightRegular
             color: tab.selected ? T3Theme.textPrimary : T3Theme.textMuted
         }
@@ -481,7 +481,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: inboxCard.displayTitle
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontSecondary
+            font.pixelSize: Theme.typography.primary
             font.weight: inboxCard.subdued ? Theme.weightRegular : Theme.weightMedium
             color: inboxCard.subdued ? T3Theme.textSecondary : T3Theme.textPrimary
             elide: Text.ElideRight
@@ -557,7 +557,7 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "GitHub"
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontBody
+                        font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
                         font.letterSpacing: -0.2
                         color: T3Theme.textPrimary
@@ -599,7 +599,7 @@ Surface {
                             return account + " · " + age;
                         }
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: T3Theme.textFaint
                     }
                 }
@@ -787,7 +787,7 @@ Surface {
             }
             elide: Text.ElideRight
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.secondary
             color: T3Theme.textFaint
         }
 
@@ -807,7 +807,7 @@ Surface {
                         ? " · " + GitHub.pendingInboxCount + " pending" : "");
             }
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.secondary
             font.features: T3Theme.tabularNumberFeatures
             color: T3Theme.textFaint
         }
@@ -902,7 +902,7 @@ Surface {
                         + (GitHub.pendingInboxCount === 1 ? " item to review" : " items to review")
                     elide: Text.ElideRight
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     color: T3Theme.textFaint
                 }
 
@@ -983,7 +983,7 @@ Surface {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "Settled".toUpperCase()
                             font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightSemibold
                             font.letterSpacing: 1
                             color: T3Theme.textFaint
@@ -996,7 +996,7 @@ Surface {
                             anchors.verticalCenter: parent.verticalCenter
                             text: inboxSection.modelData.rows.length
                             font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightMedium
                             font.features: T3Theme.tabularNumberFeatures
                             color: T3Theme.textFaint
@@ -1091,7 +1091,7 @@ Surface {
                     clip: true
                     selectByMouse: true
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.control
                     color: T3Theme.textPrimary
 
                     Text {
@@ -1099,7 +1099,7 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Search repositories"
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.control
                         color: T3Theme.textFaint
                     }
                 }
@@ -1161,7 +1161,7 @@ Surface {
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
                 font.family: T3Theme.fontUi
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.secondary
                 color: T3Theme.textFaint
             }
 
@@ -1302,7 +1302,7 @@ Surface {
                             }
                             elide: Text.ElideRight
                             font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.secondary
                             color: T3Theme.textFaint
                         }
 
@@ -1341,7 +1341,7 @@ Surface {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: Helpers.relTime(repoRow.modelData.pushedAt, root.now)
                                     font.family: T3Theme.fontUi
-                                    font.pixelSize: Theme.fontMicro
+                                    font.pixelSize: Theme.typography.secondary
                                     font.features: T3Theme.tabularNumberFeatures
                                     color: repoRow.unread ? T3Theme.accent : T3Theme.textFaint
                                 }
@@ -1541,7 +1541,7 @@ Surface {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: commitRow.modelData.subject
                                 font.family: T3Theme.fontUi
-                                font.pixelSize: Theme.fontSecondary
+                                font.pixelSize: Theme.typography.primary
                                 font.weight: commitRow.unread
                                     ? Theme.weightMedium : Theme.weightRegular
                                 color: commitRow.unread ? T3Theme.textPrimary
@@ -1560,7 +1560,7 @@ Surface {
                                     + commitRow.modelData.author
                                 elide: Text.ElideRight
                                 font.family: T3Theme.fontUi
-                                font.pixelSize: Theme.fontMicro
+                                font.pixelSize: Theme.typography.secondary
                                 color: T3Theme.textFaint
                             }
 
@@ -1575,7 +1575,7 @@ Surface {
                                     text: Helpers.agoLabelIso(
                                         commitRow.modelData.date, root.now)
                                     font.family: T3Theme.fontUi
-                                    font.pixelSize: Theme.fontMicro
+                                    font.pixelSize: Theme.typography.secondary
                                     font.features: T3Theme.tabularNumberFeatures
                                     color: commitRow.unread
                                         ? T3Theme.accent : T3Theme.textFaint
@@ -1640,7 +1640,7 @@ Surface {
                                     width: parent.width - 17
                                     text: commitRow.modelData.subject
                                     font.family: T3Theme.fontUi
-                                    font.pixelSize: Theme.fontBody
+                                    font.pixelSize: Theme.typography.primary
                                     font.weight: Theme.weightMedium
                                     color: T3Theme.textPrimary
                                     wrapMode: Text.WordWrap
@@ -1654,7 +1654,7 @@ Surface {
                                 topPadding: 7
                                 text: commitRow.modelData.body
                                 font.family: T3Theme.fontUi
-                                font.pixelSize: Theme.fontSecondary
+                                font.pixelSize: Theme.typography.primary
                                 lineHeight: Theme.proseLineHeight
                                 color: T3Theme.textMuted
                                 wrapMode: Text.WordWrap
@@ -1692,7 +1692,7 @@ Surface {
                                     Text {
                                         text: commitRow.modelData.short
                                         font.family: T3Theme.fontMono
-                                        font.pixelSize: Theme.fontCaption
+                                        font.pixelSize: Theme.typography.secondary
                                         color: T3Theme.textFaint
                                     }
 
@@ -1703,7 +1703,7 @@ Surface {
                                                 + (commitRow.stats.files === 1 ? " file" : " files")
                                             : ""
                                         font.family: T3Theme.fontUi
-                                        font.pixelSize: Theme.fontCaption
+                                        font.pixelSize: Theme.typography.secondary
                                         color: T3Theme.textFaint
                                     }
 
@@ -1711,7 +1711,7 @@ Surface {
                                         visible: commitRow.stats !== null
                                         text: commitRow.stats ? "+" + commitRow.stats.additions : ""
                                         font.family: T3Theme.fontMono
-                                        font.pixelSize: Theme.fontCaption
+                                        font.pixelSize: Theme.typography.secondary
                                         font.weight: Theme.weightMedium
                                         color: T3Theme.success
                                     }
@@ -1720,7 +1720,7 @@ Surface {
                                         visible: commitRow.stats !== null
                                         text: commitRow.stats ? "−" + commitRow.stats.deletions : ""
                                         font.family: T3Theme.fontMono
-                                        font.pixelSize: Theme.fontCaption
+                                        font.pixelSize: Theme.typography.secondary
                                         font.weight: Theme.weightMedium
                                         color: T3Theme.red
                                     }
@@ -1729,7 +1729,7 @@ Surface {
                                         visible: commitRow.stats === null
                                         text: "counting…"
                                         font.family: T3Theme.fontUi
-                                        font.pixelSize: Theme.fontCaption
+                                        font.pixelSize: Theme.typography.secondary
                                         color: T3Theme.textFaint
                                     }
                                 }
@@ -1749,7 +1749,7 @@ Surface {
                                         + Helpers.agoLabelIso(commitRow.modelData.date, root.now)
                                     elide: Text.ElideRight
                                     font.family: T3Theme.fontUi
-                                    font.pixelSize: Theme.fontCaption
+                                    font.pixelSize: Theme.typography.secondary
                                     color: T3Theme.textFaint
                                 }
                             }

@@ -35,7 +35,7 @@ Surface {
             Text {
                 text: Weather.temp + "°"
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontDisplay
+                font.pixelSize: Theme.typography.display
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
             }
@@ -48,7 +48,7 @@ Surface {
                 Text {
                     text: Weather.condition + " · feels " + Weather.feels + "°"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.typography.primary
                     font.weight: Theme.weightMedium
                     color: Theme.textMid
                 }
@@ -56,7 +56,7 @@ Surface {
                 Text {
                     text: Weather.place + " · " + Weather.windDir + " " + Weather.windKmh + " km/h · " + Weather.humidity + "% humidity"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textDim
                 }
             }
@@ -94,7 +94,7 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         text: dayRow.modelData.day
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
                         color: Theme.textLow
                     }
@@ -143,7 +143,7 @@ Surface {
                         textFormat: Text.RichText
                         text: `${dayRow.modelData.lo}° <font color="${Theme.textDim}">/</font> ${dayRow.modelData.hi}°`
                         font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.primary
                         color: Theme.textMid
                     }
                 }
@@ -162,7 +162,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: "open-meteo"
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.metadata
             color: Theme.textDim
         }
 
@@ -183,7 +183,7 @@ Surface {
                     ? `updated <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(Weather.updatedAt), "HH:mm")}</font>`
                     : "loading…"
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
             color: Weather.offline ? Theme.redText : Theme.textDim
         }
     }

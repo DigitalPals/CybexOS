@@ -124,7 +124,7 @@ Surface {
                     ? (Updates.fpWarning !== "" ? "Updated with warnings" : "Up to date")
                     : root.mode === "failed" ? "Update failed" : "Updates"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
             }
@@ -144,7 +144,7 @@ Surface {
                     : Updates.checkedLabel() + " · every "
                         + Settings.modOpts.updates.pollMins + " m"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 font.weight: Theme.weightSemibold
                 font.features: Theme.tabularNumberFeatures
                 color: root.mode === "idle" && Updates.error !== ""
@@ -311,7 +311,7 @@ Surface {
                             width: parent.width
                             text: row.modelData.name
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.primary
                             font.weight: Theme.weightMedium
                             color: Theme.textHi
                             elide: Text.ElideRight
@@ -321,7 +321,7 @@ Surface {
                             width: parent.width
                             text: row.modelData.sub
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.secondary
                             font.weight: Theme.weightSemibold
                             color: Theme.textFaint
                             elide: Text.ElideRight
@@ -333,7 +333,7 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         text: row.modelData.count
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightSemibold
                         font.features: Theme.tabularNumberFeatures
                         color: Theme.accent
@@ -368,7 +368,7 @@ Surface {
                         : Updates.error !== "" ? "Could not check"
                         : Updates.wasPending ? "Updated · nothing pending" : "All up to date"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightBold
                     color: Theme.textMid
                 }
@@ -416,7 +416,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Update now"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontTiny
+                font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
                 color: goMouse.containsMouse ? Theme.textOnAccent : Theme.accent
             }
@@ -489,7 +489,7 @@ Surface {
                     - parent.spacing * 2
                 text: stepLine.label
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightMedium
                 color: Theme.textHi
                 elide: Text.ElideRight
@@ -506,7 +506,7 @@ Surface {
                         + Math.floor(stepLine.cur * 100 / stepLine.total) + "%"
                     : stepLine.idleText
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightSemibold
                 font.features: Theme.tabularNumberFeatures
                 color: stepLine.finished && stepLine.rc !== 0
@@ -623,7 +623,7 @@ Surface {
                         ? parts.join(" · ") + " updated" : "Already up to date";
                 }
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightSemibold
                 color: Theme.ok
                 elide: Text.ElideRight
@@ -643,7 +643,7 @@ Surface {
                         + (extra > 0 ? "  +" + extra + " more" : "");
                 }
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightSemibold
                 color: Updates.fpWarning !== "" ? Theme.amber : Theme.textFaint
                 elide: Text.ElideRight
@@ -654,7 +654,7 @@ Surface {
                 width: parent.width
                 text: "Recovery point · " + Updates.recoveryPointId
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textDim
                 elide: Text.ElideRight
             }
@@ -706,7 +706,7 @@ Surface {
                 text: UpdatesHelpers.rebootLabel(
                     Updates.rebootRecommendation, Updates.kernelPending)
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontTiny
+                font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightBold
                 color: rebootOutcome.notNeeded ? Theme.ok : Theme.amber
                 elide: Text.ElideRight
@@ -771,7 +771,7 @@ Surface {
                     text: "TRANSACTION" + (root.mode === "done"
                         ? " · " + root.clock(Updates.runStartedAt) : "")
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     font.weight: Theme.weightBold
                     font.letterSpacing: 1.1
                     color: Theme.textDim
@@ -805,7 +805,7 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "LIVE"
                         font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontMicro
+                        font.pixelSize: Theme.typography.metadata
                         font.weight: Theme.weightBold
                         font.letterSpacing: 0.5
                         color: Theme.ok
@@ -835,7 +835,7 @@ Surface {
                             anchors.verticalCenter: parent.verticalCenter
                             text: Updates.upCount
                             font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightBold
                             font.features: Theme.tabularNumberFeatures
                             color: Theme.ok
@@ -859,7 +859,7 @@ Surface {
                             anchors.verticalCenter: parent.verticalCenter
                             text: Updates.addCount
                             font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightBold
                             font.features: Theme.tabularNumberFeatures
                             color: Theme.accent
@@ -883,7 +883,7 @@ Surface {
                             anchors.verticalCenter: parent.verticalCenter
                             text: Updates.delCount
                             font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightBold
                             font.features: Theme.tabularNumberFeatures
                             color: Theme.redText
@@ -963,7 +963,7 @@ Surface {
                     TextMetrics {
                         id: nameMetrics
                         font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontTiny
+                        font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightSemibold
                         text: feedRow.model.name
                     }
@@ -971,7 +971,7 @@ Surface {
                     TextMetrics {
                         id: verMetrics
                         font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontTiny
+                        font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightMedium
                         text: feedRow.model.ver
                     }
@@ -981,7 +981,7 @@ Surface {
                         width: 26
                         text: feedRow.model.tag
                         font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontTiny
+                        font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightBold
                         color: feedRow.model.tag === "dnf"
                             ? Theme.feedDnf : Theme.feedFlatpak
@@ -1001,7 +1001,7 @@ Surface {
                         width: feedRow.nameWidth
                         text: feedRow.model.name
                         font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontTiny
+                        font.pixelSize: Theme.typography.primary
                         font.weight: feedRow.newest
                             ? Theme.weightSemibold : Theme.weightMedium
                         color: feedRow.newest ? Theme.textHi : Theme.textMid
@@ -1014,7 +1014,7 @@ Surface {
                         visible: feedRow.model.ver !== "" && feedRow.verWidth > 24
                         text: feedRow.model.ver
                         font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontTiny
+                        font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightMedium
                         color: feedRow.newest ? Theme.textMid : Theme.textFaint
                         elide: Text.ElideRight
@@ -1026,7 +1026,7 @@ Surface {
                     anchors.centerIn: parent
                     text: "waiting for the transaction…"
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontTiny
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightMedium
                     color: Theme.textFaint
                 }
@@ -1074,7 +1074,7 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Live"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontTiny
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightMedium
                     color: jumpMouse.containsMouse ? Theme.textOnAccent : Theme.accent
                 }
@@ -1114,7 +1114,7 @@ Surface {
                 width: parent.width
                 text: Updates.failHeadline
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontTiny
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightSemibold
                 color: Theme.redText
                 elide: Text.ElideRight
@@ -1135,7 +1135,7 @@ Surface {
                     return parts.join(" · ");
                 }
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightSemibold
                 color: Theme.textFaint
                 elide: Text.ElideRight
@@ -1163,7 +1163,7 @@ Surface {
                 width: parent.width
                 text: "DNF.LOG · LAST LINES"
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 font.weight: Theme.weightBold
                 font.letterSpacing: 1.1
                 color: Theme.textDim
@@ -1179,7 +1179,7 @@ Surface {
                     width: parent.width
                     text: modelData
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontTiny
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: /error|failed/i.test(modelData)
                         ? Theme.weightBold : Theme.weightMedium
                     color: /error|failed/i.test(modelData)
@@ -1229,7 +1229,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Retry update"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontTiny
+                font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
                 color: retryMouse.containsMouse ? Theme.textOnAccent : Theme.accent
             }
@@ -1263,7 +1263,7 @@ Surface {
             horizontalAlignment: Text.AlignRight
             text: Updates.runLogLabel
             font.family: Theme.fontMono
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.secondary
             font.weight: Theme.weightMedium
             font.features: Theme.tabularNumberFeatures
             color: Theme.textFaint
@@ -1288,7 +1288,7 @@ Surface {
                     ? " · flatpak update" : "") + " — streams live here"
                 : "checked against the dnf metadata cache"
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.secondary
             font.weight: Theme.weightSemibold
             color: Theme.textFaint
             elide: Text.ElideRight

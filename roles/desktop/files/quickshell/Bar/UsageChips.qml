@@ -165,7 +165,7 @@ Item {
                     text: Usage.loading && !Usage.anyOk ? "Models…"
                         : Usage.fetchError !== "" ? "unavailable" : "offline"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.barLabelSize
+                    font.pixelSize: Theme.typography.bar
                     font.weight: Theme.weightBold
                     color: Usage.fetchError !== "" ? Theme.barRedText : Theme.barTextFaint
                 }
@@ -268,7 +268,7 @@ Item {
                             text: chip.status === "error" || chip.remaining < 0
                                 ? "--" : String(chip.remaining)
                             font.family: Theme.fontNumeric
-                            font.pixelSize: Theme.barLabelSize
+                            font.pixelSize: Theme.typography.bar
                             font.weight: Theme.weightSemibold
                             font.features: Theme.tabularNumberFeatures
                             color: chipCol.reading

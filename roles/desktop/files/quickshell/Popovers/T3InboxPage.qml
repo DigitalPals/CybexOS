@@ -96,7 +96,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: group.label.toUpperCase()
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             font.weight: Theme.weightSemibold
             font.letterSpacing: 1
             color: group.tint
@@ -109,7 +109,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: group.count
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             font.weight: Theme.weightMedium
             font.features: T3Theme.tabularNumberFeatures
             color: T3Theme.textFaint
@@ -291,7 +291,7 @@ Item {
                     text: entry.thread.title
                     elide: Text.ElideRight
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: entry.subdued ? Theme.weightRegular : Theme.weightMedium
                     color: entry.subdued ? T3Theme.textSecondary : T3Theme.textPrimary
                 }
@@ -304,7 +304,7 @@ Item {
                     id: metaMetrics
                     text: meta.text
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                 }
 
                 Text {
@@ -340,7 +340,7 @@ Item {
                     }
                     elide: Text.ElideRight
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     color: entry.thread.cls === "error" ? T3Theme.red
                         : T3Theme.textFaint
                 }
@@ -375,7 +375,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: entry.statusWord
                             font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightMedium
                             font.features: T3Theme.tabularNumberFeatures
                             color: entry.statusColor
@@ -470,7 +470,7 @@ Item {
             maximumLineCount: 2
             elide: Text.ElideRight
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
             color: T3Theme.red
         }
     }
@@ -511,7 +511,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: drawer.label.toUpperCase()
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             font.weight: Theme.weightSemibold
             font.letterSpacing: 1
             color: drawer.subdued ? T3Theme.textFaint : T3Theme.textMuted
@@ -524,7 +524,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: drawer.count
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             font.weight: Theme.weightMedium
             font.features: T3Theme.tabularNumberFeatures
             color: T3Theme.textFaint
@@ -594,7 +594,7 @@ Item {
             clip: true
             selectByMouse: true
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontSecondary
+            font.pixelSize: Theme.typography.control
             color: T3Theme.textPrimary
 
             Text {
@@ -602,7 +602,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Search threads"
                 font.family: T3Theme.fontUi
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.control
                 color: T3Theme.textFaint
             }
         }
@@ -657,7 +657,7 @@ Item {
                     bottomPadding: 5
                     text: "Read-only access · actions are disabled"
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     color: T3Theme.amber
                 }
 
@@ -716,7 +716,7 @@ Item {
                     wrapMode: Text.WordWrap
                     lineHeight: Theme.proseLineHeight
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: T3Theme.textFaint
                 }
 
@@ -729,7 +729,7 @@ Item {
                     wrapMode: Text.WordWrap
                     lineHeight: Theme.proseLineHeight
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: T3Theme.textFaint
                 }
 
@@ -741,7 +741,7 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: T3Theme.red
                 }
 
@@ -767,7 +767,7 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     color: T3Theme.textFaint
                 }
 
@@ -865,7 +865,7 @@ Item {
                     leftPadding: 9
                     text: "+" + (root.snoozedThreads.length - 5) + " more in T3 Code"
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: T3Theme.textFaint
                 }
 
@@ -880,7 +880,7 @@ Item {
                     leftPadding: 9
                     text: "+" + (root.settledThreads.length - 5) + " more in T3 Code"
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: T3Theme.textFaint
                 }
             }

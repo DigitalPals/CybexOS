@@ -207,7 +207,7 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Code"
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.typography.primary
                     font.weight: Theme.weightSemibold
                     font.letterSpacing: -0.25
                     color: T3Theme.textPrimary
@@ -217,7 +217,7 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "·"
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     color: Theme.dotDim
                 }
 
@@ -226,7 +226,7 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Nightly"
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     color: T3Theme.textFaint
                 }
             }
@@ -259,7 +259,7 @@ Surface {
                             + (T3Code.readOnly ? " · read-only" : "");
                     }
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: T3Code.readOnly ? T3Theme.amber : T3Theme.textFaint
                 }
             }
@@ -324,7 +324,7 @@ Surface {
                     text: T3Code.environmentLabel || "T3 Code Nightly"
                     elide: Text.ElideRight
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightSemibold
                     color: T3Theme.textPrimary
                 }
@@ -338,7 +338,7 @@ Surface {
                     text: T3Code.host.replace(/^https?:\/\//, "")
                     elide: Text.ElideMiddle
                     font.family: T3Theme.fontMono
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     color: T3Theme.textFaint
                 }
 
@@ -373,7 +373,7 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Reconnect"
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.secondary
                         color: T3Theme.textSecondary
                     }
 
@@ -411,7 +411,7 @@ Surface {
             wrapMode: Text.WordWrap
             lineHeight: Theme.proseLineHeight
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
             color: T3Theme.red
         }
     }
@@ -457,7 +457,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: T3Code.environmentLabel || "Connected"
                 font.family: T3Theme.fontUi
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 color: T3Theme.textFaint
             }
         }
@@ -470,7 +470,7 @@ Surface {
             text: T3Code.runningCount + " active"
                 + (T3Code.attentionCount > 0 ? " · " + T3Code.attentionCount + " waiting" : "")
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             font.features: T3Theme.tabularNumberFeatures
             color: T3Theme.textFaint
         }

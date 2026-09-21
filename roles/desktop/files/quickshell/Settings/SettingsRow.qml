@@ -112,7 +112,7 @@ Item {
             : root.labelWidth) - root.markInset
         text: root.label
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.control
         color: root.dirty ? Theme.textHi : root.labelColor
         elide: Text.ElideRight
         verticalAlignment: Text.AlignVCenter

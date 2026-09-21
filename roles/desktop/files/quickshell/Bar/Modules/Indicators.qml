@@ -326,7 +326,7 @@ BarModule {
                 anchors.verticalCenter: parent.verticalCenter
                 text: button.actionLabel
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.barLabelSize
+                font.pixelSize: Theme.typography.bar
                 font.weight: Theme.weightSemibold
                 font.features: Theme.tabularNumberFeatures
                 color: button.ink

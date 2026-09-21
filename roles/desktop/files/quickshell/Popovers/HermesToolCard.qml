@@ -59,7 +59,7 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         text: root.running ? "running…" : root.toolStatus
         font.family: HermesTheme.fontUi
-        font.pixelSize: Theme.fontMicro
+        font.pixelSize: Theme.typography.metadata
         color: root.statusColor
     }
 
@@ -75,7 +75,7 @@ Rectangle {
         maximumLineCount: 1
         elide: Text.ElideRight
         font.family: HermesTheme.fontMono
-        font.pixelSize: Theme.fontMicro
+        font.pixelSize: Theme.typography.metadata
         color: root.failed ? HermesTheme.red : HermesTheme.textSecondary
     }
 }

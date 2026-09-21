@@ -145,7 +145,7 @@ Item {
         text: root.currentLabel() || root.triggerLabel || root.placeholderText
         color: (root.currentLabel() || root.triggerLabel) ? root.foreground : Qt.darker(root.foreground, 1.5)
         font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: Style.font.control
         elide: Text.ElideRight
       }
 
@@ -157,7 +157,7 @@ Item {
         text: "󰅀"
         color: Qt.darker(root.foreground, 1.2)
         font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: Style.font.control
       }
 
       MouseArea {
@@ -213,7 +213,7 @@ Item {
               foreground: root.foreground
               accent: root.accent
               font.family: root.fontFamily
-              font.pixelSize: Style.font.body
+              font.pixelSize: Style.font.control
 
               onTextChanged: {
                 root.recomputeFiltered()
@@ -257,7 +257,7 @@ Item {
               text: root.emptyText
               color: Qt.darker(root.foreground, 1.6)
               font.family: root.fontFamily
-              font.pixelSize: Style.font.body
+              font.pixelSize: Style.font.control
             }
 
             ListView {
@@ -324,7 +324,7 @@ Item {
                     text: root.optionLabel(optionDelegate.modelData)
                     color: optionDelegate.index === resultList.currentIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
                     font.family: root.fontFamily
-                    font.pixelSize: Style.font.body
+                    font.pixelSize: Style.font.control
                     elide: Text.ElideRight
                     width: parent.width
                   }

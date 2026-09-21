@@ -202,7 +202,7 @@ Item {
                                 text: timelineRow.fromUser ? "YOU"
                                     : timelineRow.fromSystem ? "SYSTEM" : "HERMES"
                                 font.family: HermesTheme.fontUi
-                                font.pixelSize: Theme.fontMicro
+                                font.pixelSize: Theme.typography.metadata
                                 font.weight: Theme.weightSemibold
                                 font.letterSpacing: 1
                                 color: timelineRow.fromUser || timelineRow.fromSystem
@@ -285,7 +285,7 @@ Item {
                                     : Hermes.relativeTime(timelineRow.message.updatedAt
                                         || timelineRow.message.createdAt)
                                 font.family: HermesTheme.fontUi
-                                font.pixelSize: Theme.fontMicro
+                                font.pixelSize: Theme.typography.metadata
                                 font.features: HermesTheme.tabularNumberFeatures
                                 color: HermesTheme.textFaint
                             }
@@ -307,7 +307,7 @@ Item {
                             elide: timelineRow.expanded || timelineRow.message.streaming
                                 ? Text.ElideNone : Text.ElideRight
                             font.family: HermesTheme.fontUi
-                            font.pixelSize: Theme.fontSecondary
+                            font.pixelSize: Theme.typography.secondary
                             color: timelineRow.message.error !== ""
                                 ? HermesTheme.red
                                 : timelineRow.fromUser ? HermesTheme.textPrimary
@@ -346,7 +346,7 @@ Item {
                                     wrapMode: TextEdit.Wrap
                                     selectByMouse: true
                                     font.family: HermesTheme.fontUi
-                                    font.pixelSize: Theme.fontSecondary
+                                    font.pixelSize: Theme.typography.control
                                     color: HermesTheme.textPrimary
                                     selectionColor: HermesTheme.accentSoft
                                     selectedTextColor: HermesTheme.textPrimary
@@ -453,7 +453,7 @@ Item {
                                             text: persistedAttachment.modelData.name
                                             elide: Text.ElideMiddle
                                             font.family: HermesTheme.fontUi
-                                            font.pixelSize: Theme.fontMicro
+                                            font.pixelSize: Theme.typography.metadata
                                             color: HermesTheme.textSecondary
                                         }
                                     }
@@ -523,7 +523,7 @@ Item {
                     text: root.conversation?.statusText || "Hermes is working…"
                     elide: Text.ElideRight
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: HermesTheme.textSecondary
                 }
             }
@@ -636,7 +636,7 @@ Item {
             elide: Text.ElideRight
             lineHeight: Theme.proseLineHeight
             font.family: HermesTheme.fontUi
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
             color: HermesTheme.red
         }
     }

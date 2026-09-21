@@ -133,7 +133,7 @@ Surface {
                 text: "Hermes Agent"
                 elide: Text.ElideRight
                 font.family: HermesTheme.fontUi
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
                 color: HermesTheme.textPrimary
             }
@@ -186,7 +186,7 @@ Surface {
                     }
                     elide: Text.ElideRight
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: HermesTheme.textFaint
                 }
             }
@@ -279,7 +279,7 @@ Surface {
                     : "Hermes reconnects automatically"
             elide: Text.ElideMiddle
             font.family: HermesTheme.fontMono
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             color: HermesTheme.textFaint
         }
 
@@ -292,7 +292,7 @@ Surface {
                 : Hermes.attentionCount > 0 ? Hermes.attentionCount + " waiting"
                     : Hermes.conversations.length + " conversations"
             font.family: HermesTheme.fontUi
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             font.features: HermesTheme.tabularNumberFeatures
             color: Hermes.attentionCount > 0 ? HermesTheme.amber
                 : HermesTheme.textFaint

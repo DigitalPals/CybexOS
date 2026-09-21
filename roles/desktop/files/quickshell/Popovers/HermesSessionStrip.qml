@@ -122,7 +122,7 @@ Item {
                     text: root.summary()
                     elide: Text.ElideRight
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: root.sessionState.warning !== "" ? HermesTheme.red
                         : HermesTheme.textSecondary
                 }
@@ -144,7 +144,7 @@ Item {
                 maximumLineCount: 10
                 elide: Text.ElideRight
                 font.family: HermesTheme.fontMono
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 color: HermesTheme.textFaint
             }
         }

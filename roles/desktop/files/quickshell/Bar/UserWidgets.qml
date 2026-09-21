@@ -14,7 +14,7 @@ Row {
     readonly property var themeValues: ({
         foreground: String(Theme.barTextHi), background: String(Theme.barChip),
         accent: String(Theme.barAccent), fontFamily: Theme.fontMenu,
-        fontSize: Theme.barLabelSize, reducedMotion: Settings.reducedMotion
+        fontSize: Theme.typography.bar, typography: Theme.typography, reducedMotion: Settings.reducedMotion
     })
     spacing: Theme.barSpacing
     visible: root.entries.length > 0 || (section === "right" && (UserPlugins.error !== "" || Object.keys(OmarchyPlugins.errors).length > 0))
@@ -56,7 +56,8 @@ Row {
         visible: root.hiddenWidgets.length > 0
         text: "+" + root.hiddenWidgets.length
         color: Theme.barTextHi
-        font.pixelSize: Theme.barLabelSize
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.bar
         height: Theme.chipHeight
         verticalAlignment: Text.AlignVCenter
         readonly property string description: "Widgets hidden for space: "
@@ -71,7 +72,8 @@ Row {
         visible: (root.section === "right" && (UserPlugins.error !== "" || Object.keys(OmarchyPlugins.errors).length > 0))
         text: "Plugins !"
         color: Theme.barTextHi
-        font.pixelSize: Theme.barLabelSize
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.bar
         height: Theme.chipHeight
         verticalAlignment: Text.AlignVCenter
         Accessible.name: UserPlugins.error || JSON.stringify(OmarchyPlugins.errors)

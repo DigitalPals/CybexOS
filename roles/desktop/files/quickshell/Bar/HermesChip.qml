@@ -131,7 +131,7 @@ BarChip {
         elide: Text.ElideRight
         maximumLineCount: 1
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.barLabelSize
+        font.pixelSize: Theme.typography.bar
         font.weight: root.stressed || root.failed
             ? Theme.weightBold : Theme.weightSemibold
         font.features: Theme.tabularNumberFeatures

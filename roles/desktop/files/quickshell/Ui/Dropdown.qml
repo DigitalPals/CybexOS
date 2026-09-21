@@ -123,7 +123,7 @@ Item {
         text: root.currentLabel()
         color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: Style.font.control
         elide: Text.ElideRight
       }
 
@@ -135,7 +135,7 @@ Item {
         text: "󰅀"
         color: Qt.darker(root.foreground, 1.2)
         font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: Style.font.control
       }
 
       MouseArea {
@@ -229,7 +229,7 @@ Item {
               text: root.optionLabel(optionDelegate.modelData)
               color: optionDelegate.index === optionList.currentIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
               font.family: root.fontFamily
-              font.pixelSize: Style.font.body
+              font.pixelSize: Style.font.control
               elide: Text.ElideRight
             }
 

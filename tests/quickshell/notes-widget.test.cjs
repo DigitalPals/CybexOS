@@ -150,7 +150,7 @@ test("the editor is adaptive, document-shaped, and keeps explicit actions", () =
     assert.doesNotMatch(panel, /id:\s*titleFrame/,
         "the prominent title must not be boxed as a separate form control");
     assert.match(panel,
-        /id:\s*titleEdit[\s\S]*?maximumLength:\s*NotesHelpers\.MAX_TITLE_LENGTH[\s\S]*?font\.pixelSize:\s*Theme\.fontProminent/);
+        /id:\s*titleEdit[\s\S]*?maximumLength:\s*NotesHelpers\.MAX_TITLE_LENGTH[\s\S]*?font\.pixelSize:\s*Theme\.typography\.title/);
     assert.match(panel, /Accessible\.role:\s*Accessible\.EditableText/);
     for (const action of ["bold", "italic", "bullet", "checklist", "link", "code"])
         assert.match(panel, new RegExp(`applyFormat\\("${action}"\\)`));

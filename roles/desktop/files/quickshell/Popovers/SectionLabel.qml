@@ -22,7 +22,7 @@ Item {
         anchors.leftMargin: 2
         anchors.verticalCenter: parent.verticalCenter
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontMicro
+        font.pixelSize: Theme.typography.section
         font.weight: Theme.weightSemibold
         font.letterSpacing: 1
         color: Theme.textFaint
@@ -35,7 +35,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         text: root.detail
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontMicro
+        font.pixelSize: Theme.typography.secondary
         font.weight: Theme.weightMedium
         font.features: Theme.tabularNumberFeatures
         color: Theme.textDim

@@ -123,7 +123,7 @@ PanelWindow {
                         width: parent.width - 32 - hint.implicitWidth - parent.spacing * 2
                         text: "Keyboard shortcuts"
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontBody
+                        font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
                         color: Theme.textHi
                     }
@@ -133,7 +133,7 @@ PanelWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "hyprland.conf · press Esc to close"
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontMicro
+                        font.pixelSize: Theme.typography.section
                         font.weight: Theme.weightBold
                         color: Theme.textFaint
                     }
@@ -168,7 +168,7 @@ PanelWindow {
                             Text {
                                 text: group.modelData.title
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontMicro
+                                font.pixelSize: Theme.typography.section
                                 font.weight: Theme.weightMedium
                                 font.letterSpacing: 1.2
                                 color: Theme.accent
@@ -196,7 +196,7 @@ PanelWindow {
                                             width: parent.width - keys.width - 10
                                             text: shortcut.modelData.label
                                             font.family: Theme.fontMenu
-                                            font.pixelSize: Theme.fontCaption
+                                            font.pixelSize: Theme.typography.primary
                                             font.weight: Theme.weightSemibold
                                             color: Theme.textMid
                                             elide: Text.ElideRight
@@ -228,7 +228,7 @@ PanelWindow {
                                                         anchors.centerIn: parent
                                                         text: cap.modelData
                                                         font.family: Theme.fontMono
-                                                        font.pixelSize: Theme.fontMicro
+                                                        font.pixelSize: Theme.typography.control
                                                         font.weight: Theme.weightBold
                                                         color: Theme.textHi
                                                     }

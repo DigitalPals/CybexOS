@@ -91,7 +91,7 @@ BarModule {
             anchors.verticalCenter: parent.verticalCenter
             text: GitHub.pendingInboxCount + " pending"
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.barLabelSize
+            font.pixelSize: Theme.typography.bar
             font.weight: Theme.weightMedium
             font.features: Theme.tabularNumberFeatures
             color: ghChip.badgeTone

@@ -13,12 +13,8 @@ import Quickshell.Services.Notifications
 // children — the toast's countdown bar, the centre's nested separator —
 // parent into it like any other child.
 //
-// `style` is one object rather than a dozen properties because the two
-// surfaces differ almost entirely in type. Toasts are an overlay on the
-// general UI face and legitimately use sizes below the popover scale's 12px
-// floor; the centre is menubar chrome on the settings font. Each caller
-// declares its own object rather than Theme carrying both, so
-// typography.test.cjs keeps checking that split per file.
+// Callers share Theme.typography.notification for message copy. The style
+// object carries presentation differences (stacking, timestamps, line limits).
 Rectangle {
     id: card
 

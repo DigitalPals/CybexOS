@@ -101,7 +101,7 @@ imports and assets within the package work. Do not import shell-private
 | `id` | Package ID |
 | `settings` | Current JSON settings object; treat as read-only |
 | `setSetting(key, value)` | Asynchronously merge one JSON-serializable setting; read back from `settings` after refresh |
-| `theme` | Read-only values: `foreground`, `background`, `accent` color strings, `fontFamily`, numeric `fontSize`, boolean `reducedMotion` |
+| `theme` | Read-only values: `foreground`, `background`, `accent` color strings, `fontFamily`, numeric `fontSize`, shared `typography` roles, boolean `reducedMotion` |
 | `width`, `height` | Allocated dimensions, updated with the host |
 | `screenName` | The output hosting this instance |
 | `packagePath` | Absolute package directory for assets/helpers |
@@ -150,3 +150,11 @@ reconciliation and current-invocation journal checks.
 
 For an agent-ready example, see the installed
 [user widget skill reference](../../agent-skills/fedora-config/references/user-widgets.md).
+
+### Shared typography
+
+`api.theme.fontSize` remains the bar text size for existing API 1 widgets.
+New widgets can select `api.theme.typography.bar`, `.control`, `.primary`,
+`.secondary`, `.section`, or `.title` according to the text's purpose. Use
+`api.theme.fontFamily` for text. These are live shared values, not constants
+for a plugin to copy. See [the typography contract](../shell-typography.md).

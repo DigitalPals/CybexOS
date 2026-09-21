@@ -43,7 +43,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: "Tailscale"
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: Theme.typography.primary
             font.weight: Theme.weightSemibold
             color: Theme.textHi
         }
@@ -101,7 +101,7 @@ Surface {
                     width: parent.width
                     text: Tailscale.host + (Tailscale.net !== "" ? " · " + Tailscale.net : "")
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.typography.primary
                     font.weight: Theme.weightMedium
                     color: Theme.textHi
                     elide: Text.ElideRight
@@ -113,7 +113,7 @@ Surface {
                         ? "Copied " + Tailscale.ip
                         : "Connected · " + Tailscale.ip + (Tailscale.exitNode ? " · exit node active" : "")
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     color: root.copiedIp === Tailscale.ip && Tailscale.ip !== "" ? Theme.accent : Theme.textLow
                     elide: Text.ElideRight
                 }
@@ -136,7 +136,7 @@ Surface {
         text: "Tailscale is stopped"
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontSecondary
+        font.pixelSize: Theme.typography.secondary
         color: Theme.textDim
     }
 
@@ -148,7 +148,7 @@ Surface {
         text: "Loading peers…"
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontSecondary
+        font.pixelSize: Theme.typography.secondary
         color: Theme.textDim
     }
 
@@ -161,7 +161,7 @@ Surface {
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WordWrap
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontSecondary
+        font.pixelSize: Theme.typography.secondary
         color: Theme.redText
     }
 
@@ -198,7 +198,7 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: peerRow.modelData.name
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.typography.primary
                     font.weight: peerRow.modelData.online ? Theme.weightMedium : Theme.weightRegular
                     color: peerRow.modelData.online ? Theme.textHi : Theme.textMid
                 }
@@ -208,7 +208,7 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: peerRow.modelData.os
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textDim
                 }
 
@@ -225,7 +225,7 @@ Surface {
                         anchors.centerIn: parent
                         text: peerRow.modelData.exit ? "EXIT" : "exit node"
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightSemibold
                         font.letterSpacing: 0.5
                         color: peerRow.modelData.exit ? Theme.accent : Theme.textDim
@@ -239,7 +239,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.copiedIp !== "" && root.copiedIp === peerRow.modelData.ip ? "copied" : peerRow.modelData.ip
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: root.copiedIp !== "" && root.copiedIp === peerRow.modelData.ip ? Theme.accent : Theme.textDim
             }
 
@@ -281,7 +281,7 @@ Surface {
                 return online + " of " + Tailscale.peers.length + " devices online · click to copy IP";
             }
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             color: Theme.textFaint
         }
 

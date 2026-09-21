@@ -25,7 +25,7 @@ test("battery popover keeps the hero, meter, telemetry, profile hierarchy", () =
     assert.match(battery,
         /statusText:\s*Battery\.full \? "Fully charged"[\s\S]{0,100}?"Charging"[\s\S]{0,80}?"On battery"/);
     assert.match(battery,
-        /id:\s*heroNumber[\s\S]{0,260}?font\.pixelSize:\s*Theme\.fontHero[\s\S]{0,160}?font\.features:\s*Theme\.tabularNumberFeatures/);
+        /id:\s*heroNumber[\s\S]{0,260}?font\.pixelSize:\s*Theme\.typography\.displayLarge[\s\S]{0,160}?font\.features:\s*Theme\.tabularNumberFeatures/);
 });
 
 test("battery health is a capability-driven accessible UPower control", () => {

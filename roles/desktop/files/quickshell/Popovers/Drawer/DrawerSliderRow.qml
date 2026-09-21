@@ -52,7 +52,7 @@ Item {
         horizontalAlignment: Text.AlignRight
         text: Math.round(root.value * 100) + "%"
         font.family: Theme.fontNumeric
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.metadata
         font.weight: Theme.weightSemibold
         font.features: Theme.tabularNumberFeatures
         color: Theme.textMid

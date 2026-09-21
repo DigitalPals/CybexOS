@@ -225,7 +225,7 @@ Item {
                 }
                 selectByMouse: true
                 font.family: HermesTheme.fontUi
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.control
                 color: HermesTheme.textPrimary
                 selectionColor: HermesTheme.accentSoft
                 selectedTextColor: HermesTheme.textPrimary
@@ -286,7 +286,7 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     text: "No models found"
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: HermesTheme.textFaint
                 }
 
@@ -355,7 +355,7 @@ Item {
                                 text: String(modelRow.modelData.label ?? "")
                                 elide: Text.ElideRight
                                 font.family: HermesTheme.fontUi
-                                font.pixelSize: Theme.fontSecondary
+                                font.pixelSize: Theme.typography.secondary
                                 font.weight: Theme.weightMedium
                                 color: HermesTheme.textPrimary
                             }
@@ -365,7 +365,7 @@ Item {
                                 text: String(modelRow.modelData.id ?? "")
                                 elide: Text.ElideRight
                                 font.family: HermesTheme.fontUi
-                                font.pixelSize: Theme.fontMicro
+                                font.pixelSize: Theme.typography.metadata
                                 color: HermesTheme.textFaint
                             }
                         }

@@ -93,7 +93,7 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Showing last known usage"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightMedium
                 color: Theme.textMid
             }
@@ -144,7 +144,7 @@ Column {
                             width: parent.width
                             text: windowCard.modelData.label
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontSecondary
+                            font.pixelSize: Theme.typography.primary
                             font.weight: Theme.weightSemibold
                             color: Theme.textHi
                             elide: Text.ElideRight
@@ -154,7 +154,7 @@ Column {
                             width: parent.width
                             text: root.windowSpan(windowCard.modelData)
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             color: Theme.textFaint
                             elide: Text.ElideRight
                         }
@@ -169,7 +169,7 @@ Column {
                         Text {
                             text: windowCard.hasUsage ? windowCard.remaining : "—"
                             font.family: Theme.fontNumeric
-                            font.pixelSize: Theme.fontProminent
+                            font.pixelSize: Theme.typography.title
                             font.weight: Theme.weightSemibold
                             font.letterSpacing: -0.5
                             font.features: Theme.tabularNumberFeatures
@@ -182,7 +182,7 @@ Column {
                             anchors.bottomMargin: 3
                             text: windowCard.hasUsage ? "% left" : "unavailable"
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             color: Theme.textFaint
                         }
                     }
@@ -217,7 +217,7 @@ Column {
                             ? "resets in " + Usage.formatReset(
                                 windowCard.modelData.resetsAt) : ""
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontMicro
+                        font.pixelSize: Theme.typography.metadata
                         color: Theme.textMid
                     }
 
@@ -227,7 +227,7 @@ Column {
                             ? Usage.formatResetAbs(
                                 windowCard.modelData.resetsAt) : ""
                         font.family: Theme.fontNumeric
-                        font.pixelSize: Theme.fontMicro
+                        font.pixelSize: Theme.typography.metadata
                         font.features: Theme.tabularNumberFeatures
                         color: Theme.textFaint
                     }
@@ -280,7 +280,7 @@ Column {
                 text: root.credits && root.credits.label
                     ? root.credits.label : "Extra usage"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightMedium
                 color: Theme.textHi
                 elide: Text.ElideRight
@@ -290,7 +290,7 @@ Column {
                 width: parent.width
                 text: creditsRow.hasMeter ? "beyond plan limits" : "available balance"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 color: Theme.textFaint
             }
         }
@@ -304,7 +304,7 @@ Column {
             text: "<b>" + creditsRow.displayValue + "</b>"
                 + creditsRow.displaySuffix
             font.family: Theme.fontNumeric
-            font.pixelSize: Theme.fontSecondary
+            font.pixelSize: Theme.typography.primary
             font.features: Theme.tabularNumberFeatures
             color: Theme.textHi
         }
@@ -338,7 +338,7 @@ Column {
                     anchors.verticalCenter: parent.verticalCenter
                     text: resetRow.modelData.label
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textMid
                 }
 
@@ -348,7 +348,7 @@ Column {
                     anchors.verticalCenter: parent.verticalCenter
                     text: Usage.formatResetAbs(resetRow.modelData.resetsAt)
                     font.family: Theme.fontNumeric
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightSemibold
                     font.features: Theme.tabularNumberFeatures
                     color: Theme.textHi

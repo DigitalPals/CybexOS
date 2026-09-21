@@ -47,7 +47,7 @@ var FONT_CHOICES = [
     { id: "urbanist", label: "Urbanist", family: "Urbanist" },
     { id: "oppo", label: "OPPO Sans 4.0", family: "OPPO Sans 4.0" },
     { id: "plex", label: "IBM Plex Sans", family: "IBM Plex Sans" },
-    { id: "mono", label: "JetBrains Mono", family: "JetBrains Mono" }
+    { id: "mono", label: "JetBrainsMono Nerd Font", family: "JetBrainsMono Nerd Font" }
 ];
 
 var FONT_IDS = FONT_CHOICES.map(function(choice) { return choice.id; });
@@ -306,7 +306,7 @@ function defaults() {
         glassEnabled: false,
         highContrast: false,
         reducedMotion: false,
-        shellFontSize: 14,
+        shellFontSize: 12,
         shellScale: 100,
         surfaceBorderMode: "accent",
         surfaceBorderColor: "#9ecbeb",
@@ -328,7 +328,7 @@ function defaults() {
         barCustomLightness: 9,
         barHeight: 36,
         barRadius: 11,
-        font: "figtree",
+        font: "mono",
         accent: "#d3d283",
         paletteMode: "wallpaper",
         position: "top",
@@ -372,8 +372,8 @@ function defaults() {
 // Presets are explicit, undoable patches; account, palette and layout stay intact.
 function appearancePreset(name) {
     if (name !== "omarchy" && name !== "cybex") return null;
-    return { font: name === "omarchy" ? "mono" : "figtree",
-        shellFontSize: name === "omarchy" ? 12 : 14, shellScale: 100,
+    return { font: "mono",
+        shellFontSize: 12, shellScale: 100,
         interfaceDensity: "default", surfaceCornerRadius: 16,
         surfaceBorderMode: "accent", surfaceBorderWidth: 2, surfaceBorderOpacity: 100,
         pluginScale: 100, pluginBorderMode: "inherit", pluginRadius: -1,

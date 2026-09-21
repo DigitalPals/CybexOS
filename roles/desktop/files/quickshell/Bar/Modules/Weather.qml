@@ -52,7 +52,7 @@ BarModule {
             // dash is not.
             text: Weather.ready ? Weather.temp + "°" : "—"
             font.family: Theme.fontNumeric
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.bar
             font.weight: Theme.weightBold
             font.features: Theme.tabularNumberFeatures
             // Dimmed while offline, so a forecast that has stopped being
@@ -66,7 +66,7 @@ BarModule {
             anchors.verticalCenter: parent.verticalCenter
             text: Weather.ready ? Weather.condition : "unavailable"
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.bar
             font.weight: Theme.weightSemibold
             color: Theme.barTextLow
         }

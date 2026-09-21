@@ -72,7 +72,7 @@ SettingsPage {
                 text: "100% follows the shell font size, UI scale and control spacing. Shell borders follow Appearance. Changes apply to plugins using the shared Omarchy components."
                 color: Theme.textMid
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
             }
         }
         Text {
@@ -81,10 +81,13 @@ SettingsPage {
             text: "Plugins run as your desktop user. Install only packages you trust. New packages start disabled."
             color: Theme.textMid
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
         }
         Controls.TextField {
             id: repository
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.typography.control
+            font.weight: Theme.weightRegular
             width: parent.width
             placeholderText: "Git repository URL or local path"
             Accessible.name: "Plugin repository"
@@ -102,7 +105,7 @@ SettingsPage {
             text: UserPlugins.error || UserPlugins.operationResult
             color: UserPlugins.error ? Theme.redText : Theme.textMid
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
         }
         Repeater {
             model: UserPlugins.plugins
@@ -117,7 +120,7 @@ SettingsPage {
                     text: row.modelData.name + " · " + row.modelData.id
                     color: Theme.textHi
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.primary
                     wrapMode: Text.WrapAnywhere
                 }
                 Text {
@@ -166,6 +169,9 @@ SettingsPage {
                 }
                 Controls.TextField {
                     id: cloneId
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.typography.control
+                    font.weight: Theme.weightRegular
                     width: parent.width
                     placeholderText: "New ID for a custom copy"
                     Accessible.name: "Clone ID for " + row.modelData.id

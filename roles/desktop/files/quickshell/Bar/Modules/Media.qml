@@ -161,7 +161,7 @@ BarModule {
                     ? artist + " · " + title : title + " · " + artist;
             }
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.bar
             font.weight: Theme.weightSemibold
             color: mediaChip.held || mediaChip.hovered ? Theme.barTextHi : Theme.barTextMid
             elide: Text.ElideRight

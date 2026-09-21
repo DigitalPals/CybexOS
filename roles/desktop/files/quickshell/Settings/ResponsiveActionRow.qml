@@ -28,7 +28,7 @@ Item {
             : Math.max(0, parent.width - actionRow.width - root.gap)
         text: root.description
         font.family: root.descriptionMono ? Theme.fontMono : Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.secondary
         color: Theme.textFaint
         wrapMode: root.stacked ? Text.Wrap : Text.NoWrap
         maximumLineCount: root.maximumLines

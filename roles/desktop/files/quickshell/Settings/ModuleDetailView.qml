@@ -149,7 +149,7 @@ SettingsPage {
                 anchors.verticalCenter: parent.verticalCenter
                 text: view.moduleName
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.title
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
             }
@@ -239,7 +239,7 @@ SettingsPage {
                     bottomPadding: 4
                     text: "Drag to reorder. Hidden recording and dictation controls still return while active so they can be stopped."
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textDim
                     wrapMode: Text.Wrap
                 }
@@ -351,7 +351,7 @@ SettingsPage {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: "⠿"
                                     font.family: Theme.fontMono
-                                    font.pixelSize: Theme.fontCaption
+                                    font.pixelSize: Theme.typography.metadata
                                     color: Theme.textDim
                                 }
 
@@ -373,7 +373,7 @@ SettingsPage {
                                     width: 130
                                     text: indicatorRow.meta.label
                                     font.family: Theme.fontMenu
-                                    font.pixelSize: Theme.fontSecondary
+                                    font.pixelSize: Theme.typography.control
                                     font.weight: Theme.weightMedium
                                     color: indicatorRow.shown ? Theme.textHi : Theme.textLow
                                     elide: Text.ElideRight
@@ -390,7 +390,7 @@ SettingsPage {
                                             || indicatorRow.modelData === "recording")
                                             ? "hidden at rest · shown while active" : "hidden"
                                     font.family: Theme.fontMenu
-                                    font.pixelSize: Theme.fontCaption
+                                    font.pixelSize: Theme.typography.secondary
                                     color: Theme.textDim
                                     elide: Text.ElideRight
                                 }
@@ -661,7 +661,7 @@ SettingsPage {
                     leftPadding: Theme.settingsMarkInset + Theme.settingsLabelWidth
                     text: "Sign-in policy applies after login or reboot. Restarting only the menubar resumes its current state and original deadline."
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textDim
                     wrapMode: Text.Wrap
                 }
@@ -835,7 +835,7 @@ SettingsPage {
                 leftPadding: Theme.settingsMarkInset + Theme.settingsLabelWidth
                 text: "12/24-hour time is set on the System page. Google sign-in is handled by GNOME Online Accounts; credentials never enter Quickshell."
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textDim
                 wrapMode: Text.Wrap
             }
@@ -964,7 +964,7 @@ SettingsPage {
                     ? "Titles stay local. Choose a CLI to enable Generate in the note editor."
                     : "Uses your existing CLI sign-in. Text is sent when you click Generate or leave a note untitled, up to 12,000 characters."
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textDim
                 wrapMode: Text.Wrap
             }
@@ -1056,7 +1056,7 @@ SettingsPage {
                         ? "Key stored privately; it is not saved in shell settings."
                         : "A CLIProxyAPI management key is required."
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.secondary
                 color: Usage.credentialError ? Theme.redText : Theme.textFaint
                 wrapMode: Text.Wrap
             }
@@ -1108,7 +1108,7 @@ SettingsPage {
                         ? "Key stored privately; it is not saved in shell settings."
                         : "A Sub2API admin API key is required."
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.secondary
                 color: Usage.credentialError ? Theme.redText : Theme.textFaint
                 wrapMode: Text.Wrap
             }
@@ -1131,7 +1131,7 @@ SettingsPage {
                 width: parent.width
                 text: Usage.connectionTestMessage
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Usage.connectionTestSucceeded ? Theme.textMid : Theme.redText
                 wrapMode: Text.Wrap
             }
@@ -1368,7 +1368,7 @@ SettingsPage {
                 rightPadding: Theme.chipHeight
                 text: "Groups only with adjacent Volume, Network, Bluetooth, or Battery widgets."
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textDim
                 wrapMode: Text.Wrap
             }

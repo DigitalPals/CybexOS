@@ -67,7 +67,7 @@ Rectangle {
             visible: !root.compact
             text: root.text
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.control
             font.weight: Theme.weightMedium
             color: root.danger ? Theme.redText : Theme.textMid
         }

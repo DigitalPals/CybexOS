@@ -104,7 +104,7 @@ SettingsPage {
                 text: "Tint applies while Night light is on in Control Panel — "
                     + (SysInfo.nightLight ? "currently on" : "currently off")
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textDim
                 wrapMode: Text.Wrap
                 maximumLineCount: 2
@@ -146,7 +146,7 @@ SettingsPage {
                     ? "Active · " + SysInfo.idleInhibitStatus
                     : "Off · default duration and sign-in behavior are configured under Widgets → Indicators."
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: SysInfo.idleInhibited ? Theme.amber : Theme.textDim
                 wrapMode: Text.Wrap
             }
@@ -216,7 +216,7 @@ SettingsPage {
                         anchors.verticalCenter: parent.verticalCenter
                         text: ShellHealth.busy ? "Checking…" : ShellHealth.statusLabel
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightMedium
                         color: Theme.textHi
                     }
@@ -235,7 +235,7 @@ SettingsPage {
                         ? "PID " + ShellHealth.servicePid + " · up " + ShellHealth.uptimeLabel()
                         : (ShellHealth.refreshError || "inactive")
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: ShellHealth.serviceActive ? Theme.textMid : Theme.redText
                     elide: Text.ElideRight
                 }
@@ -254,7 +254,7 @@ SettingsPage {
                         : ShellHealth.deploymentStatus + " · "
                             + ShellHealth.deploymentId.slice(0, 10)
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: ShellHealth.deploymentStatus === "failed"
                         ? Theme.redText : Theme.textMid
                     elide: Text.ElideRight
@@ -268,7 +268,7 @@ SettingsPage {
                     ? 0 : Theme.settingsMarkInset + Theme.settingsLabelWidth + 10
                 text: (ShellHealth.integrationIssues.concat(ShellHealth.recentWarnings))[0] || ""
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.amber
                 wrapMode: Text.Wrap
                 maximumLineCount: 2

@@ -4,6 +4,7 @@ import Quickshell
 import "." as Common
 import "SettingsHelpers.js" as SettingsHelpers
 import "ShellMetrics.js" as ShellMetrics
+import "Typography.js" as Typography
 
 // Design tokens for the glass menubar ("QuickShell Menubar" redesign).
 //
@@ -378,12 +379,12 @@ Singleton {
     // off it, the launcher, the toasts and the overlays. `fontSans` is the
     // shipped default that `fontMenu` falls back to, and nothing draws it
     // directly; a view that named it would be opting out of the setting.
-    readonly property string fontSans: "JetBrains Mono"
+    readonly property string fontSans: "JetBrainsMono Nerd Font"
     readonly property string fontMenu: {
         const choice = Settings.fontChoices.find(f => f.id === Settings.font);
         return choice ? choice.family : fontSans;
     }
-    readonly property string fontMono: "JetBrains Mono"
+    readonly property string fontMono: "JetBrainsMono Nerd Font"
     // Numeric readings — the clock, percentages, meters, resets. The
     // edge-drawer redesign sets these in Geist Mono against Figtree UI copy,
     // so a reading is recognisably an instrument value rather than prose.
@@ -394,30 +395,29 @@ Singleton {
     // setting for the icon to read at the intended optical weight.
     readonly property string fontIcon: "Material Symbols Rounded"
 
-    // Shared 12px reference scale, multiplied by the selected base font and
-    // accessibility/UI scaling. Plugin body and caption use the same roles.
-    readonly property int fontMicro: scaled(10, typeScale)
-    readonly property int fontTiny: scaled(11, typeScale)
-    readonly property int fontCaption: scaled(10, typeScale)
-    readonly property int fontSecondary: scaled(11, typeScale)
-    readonly property int fontBody: scaled(12, typeScale)
-    readonly property int fontHeading: scaled(16, typeScale)
-    readonly property int fontProminent: scaled(20, typeScale)
-    readonly property int fontDisplay: scaled(28, typeScale)
-    readonly property int fontHero: scaled(34, typeScale)
+    // One library owns the scale AND its usage by native and plugin surfaces.
+    readonly property var typography: Typography.resolve(fontBaseSize)
+    // Compatibility aliases; new views select a named typography usage role.
+    readonly property int fontMicro: typography.metadata
+    readonly property int fontTiny: typography.secondary
+    readonly property int fontCaption: typography.caption
+    readonly property int fontSecondary: typography.secondary
+    readonly property int fontBody: typography.primary
+    readonly property int fontHeading: typography.heading
+    readonly property int fontProminent: typography.title
+    readonly property int fontDisplay: typography.display
+    readonly property int fontHero: typography.displayLarge
     // Monospaced faces set wider than they are tall, so a measure that reads
     // comfortably at 1.45 in the proportional faces runs together in JetBrains
     // Mono. The step is per-face rather than global: raising it for everyone
     // would loosen prose that is already correct.
     readonly property real proseLineHeight: Settings.font === "mono" ? 1.55 : 1.45
 
-    // Google Sans Flex accepts continuous weights. The slightly inkier 450
-    // body and 550 heading steps mirror end-4 without making compact labels
-    // look bold; static fallback faces simply select their nearest instance.
-    readonly property int weightRegular: 450
+    // Standard font weights match Omarchy's regular copy and bold headings.
+    readonly property int weightRegular: 400
     readonly property int weightMedium: 500
-    readonly property int weightSemibold: 550
-    readonly property int weightBold: 650
+    readonly property int weightSemibold: 600
+    readonly property int weightBold: 700
     readonly property int weightHeavy: 750
 
     readonly property int iconTiny: scaled(11, typeScale)
@@ -426,10 +426,9 @@ Singleton {
     readonly property int iconLarge: scaled(20, typeScale)
     readonly property int iconHero: scaled(27, typeScale)
 
-    // Menubar typography. The bar sets its own optical size independently of
-    // the roomier panel scale.
-    readonly property int barTextSize: scaled(13, typeScale)
-    readonly property int barLabelSize: fontMicro
+    // Bar labels share the body baseline used by controls and plugins.
+    readonly property int barTextSize: typography.bar
+    readonly property int barLabelSize: typography.bar
     readonly property int barIconSize: scaled(15, typeScale)
     readonly property var tabularNumberFeatures: ({ "tnum": 1 })
 

@@ -104,7 +104,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: Qt.formatDateTime(root.now, Settings.clock24 ? "HH:mm" : "h:mm AP")
             font.family: Theme.fontMono
-            font.pixelSize: Theme.fontDisplay
+            font.pixelSize: Theme.typography.display
             font.weight: Theme.weightSemibold
             font.features: Theme.tabularNumberFeatures
             color: Theme.textHi
@@ -118,7 +118,7 @@ Surface {
             text: Qt.formatDateTime(root.now, "dddd, MMMM d")
             elide: Text.ElideRight
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: Theme.typography.primary
             color: Theme.textLow
         }
     }
@@ -137,7 +137,7 @@ Surface {
             text: Qt.formatDateTime(root.shownMonth, "MMMM yyyy")
             elide: Text.ElideRight
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: Theme.typography.primary
             font.weight: Theme.weightSemibold
             color: Theme.textMid
         }
@@ -195,7 +195,7 @@ Surface {
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightMedium
                 color: Theme.textFaint
             }
@@ -250,7 +250,7 @@ Surface {
                     y: day.matches.length > 0 ? 2 : 5
                     text: day.cell.getDate()
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.primary
                     font.weight: day.isToday || day.selected
                         ? Theme.weightSemibold : Theme.weightRegular
                     color: day.isToday ? Theme.accentFg
@@ -335,7 +335,7 @@ Surface {
                     : Qt.formatDateTime(root.selectedDate, "dddd, d MMMM").toUpperCase()
                 elide: Text.ElideRight
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontTiny
+                font.pixelSize: Theme.typography.section
                 font.weight: Theme.weightSemibold
                 color: Theme.textFaint
             }
@@ -478,7 +478,7 @@ Surface {
                                 text: eventRow.modelData.summary
                                 elide: Text.ElideRight
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontSecondary
+                                font.pixelSize: Theme.typography.primary
                                 font.weight: Theme.weightMedium
                                 color: Theme.textHi
                             }
@@ -492,7 +492,7 @@ Surface {
                                 text: root.eventMeta(eventRow.modelData)
                                 elide: Text.ElideRight
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontTiny
+                                font.pixelSize: Theme.typography.secondary
                                 color: Theme.textDim
                             }
 
@@ -526,7 +526,7 @@ Surface {
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontTiny
+            font.pixelSize: Theme.typography.secondary
             color: Theme.redText
         }
     }

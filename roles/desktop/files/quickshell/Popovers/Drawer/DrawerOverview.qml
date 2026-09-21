@@ -84,7 +84,7 @@ Column {
                 width: parent.width
                 text: Media.player ? Media.player.trackTitle : ""
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
                 elide: Text.ElideRight
@@ -101,7 +101,7 @@ Column {
                         ? artist + " · " + app : (artist || app);
                 }
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textFaint
                 elide: Text.ElideRight
             }
@@ -294,7 +294,7 @@ Column {
                         : Updates.total + (Updates.total === 1
                             ? " update" : " updates")
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.primary
                     font.weight: Theme.weightMedium
                     color: Updates.runState === "failed" ? Theme.redText : Theme.textHi
                     elide: Text.ElideRight
@@ -308,7 +308,7 @@ Column {
                                 ? " · " + Updates.flatpakCount + " flatpaks" : "")
                         : Updates.summary
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     color: Theme.textFaint
                     elide: Text.ElideRight
                 }

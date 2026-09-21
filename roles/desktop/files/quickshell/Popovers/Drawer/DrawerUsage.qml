@@ -122,7 +122,7 @@ Column {
                             anchors.verticalCenter: parent.verticalCenter
                             text: Usage.meta[providerChoice.modelData].name
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.control
                             font.weight: Theme.weightSemibold
                             color: providerChoice.on ? Theme.textHi : Theme.textFaint
                         }
@@ -164,7 +164,7 @@ Column {
                     return title;
                 }
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontHeading - 1
+                font.pixelSize: Theme.typography.title
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
                 elide: Text.ElideRight
@@ -187,7 +187,7 @@ Column {
                     return parts.join(" · ");
                 }
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: root.accountCount > 1
                     && root.availableCount < root.accountCount
                     ? Theme.amber : Theme.textFaint
@@ -215,7 +215,7 @@ Column {
         width: parent.width
         text: Usage.activityText(root.selected)
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.secondary
         color: Theme.textFaint
         wrapMode: Text.WordWrap
     }
@@ -247,7 +247,7 @@ Column {
                         || root.singleRecord.kind === "nocreds")
                     ? "Sign-in required" : "No usage data"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
             }
@@ -262,7 +262,7 @@ Column {
                     ? root.singleRecord.message
                     : Usage.loading ? "Fetching…" : "Nothing reported yet."
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textFaint
                 wrapMode: Text.WordWrap
             }
@@ -275,7 +275,7 @@ Column {
                 width: parent.width
                 text: "Run " + root.info.cmd + " in a terminal."
                 font.family: Theme.fontNumeric
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textLow
                 wrapMode: Text.WordWrap
             }

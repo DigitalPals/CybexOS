@@ -199,7 +199,7 @@ Item {
                 width: parent.width
                 text: card.heading
                 font.family: T3Theme.fontUi
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightSemibold
                 font.letterSpacing: 0.1
                 color: card.headingColor
@@ -213,7 +213,7 @@ Item {
                 maximumLineCount: 5
                 elide: Text.ElideRight
                 font.family: T3Theme.fontUi
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.primary
                 color: T3Theme.textSecondary
             }
         }
@@ -281,7 +281,7 @@ Item {
                     elide: Text.ElideRight
                     width: Math.min(implicitWidth, parent.width - 90)
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     font.weight: Theme.weightSemibold
                     font.letterSpacing: 1
                     color: T3Theme.textFaint
@@ -308,7 +308,7 @@ Item {
                         : T3Code.relTime(messageCard.message.updatedAt
                             ?? messageCard.message.createdAt)
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     font.features: T3Theme.tabularNumberFeatures
                     color: T3Theme.textFaint
                 }
@@ -324,7 +324,7 @@ Item {
                 maximumLineCount: messageCard.expanded ? 100000 : 12
                 elide: messageCard.expanded ? Text.ElideNone : Text.ElideRight
                 font.family: T3Theme.fontUi
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.secondary
                 color: messageCard.fromUser ? T3Theme.textPrimary : T3Theme.textSecondary
                 onLinkActivated: link => root.openMessageLink(link)
             }
@@ -383,7 +383,7 @@ Item {
             text: menuEntry.label
             elide: Text.ElideRight
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontSecondary
+            font.pixelSize: Theme.typography.secondary
             font.weight: Theme.weightMedium
             color: menuEntry.tint
         }
@@ -463,7 +463,7 @@ Item {
                         text: root.thread ? root.thread.title : "Thread"
                         elide: Text.ElideRight
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontBody
+                        font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
                         color: T3Theme.textPrimary
                     }
@@ -506,7 +506,7 @@ Item {
                             text: threadMetadata.projectName
                             elide: Text.ElideRight
                             font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.secondary
                             color: T3Theme.textFaint
                         }
 
@@ -517,7 +517,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "·"
                             font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.secondary
                             color: T3Theme.textFaint
                         }
 
@@ -791,7 +791,7 @@ Item {
             wrapMode: Text.WrapAtWordBoundaryOrAnywhere
             lineHeight: Theme.proseLineHeight
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
             color: root.gitFeedbackFailed ? T3Theme.red : T3Theme.textMuted
         }
 
@@ -898,7 +898,7 @@ Item {
                             text: root.workingTime !== ""
                                 ? "Working for " + root.workingTime : "Working…"
                             font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.secondary
                             font.weight: Theme.weightMedium
                             font.features: T3Theme.tabularNumberFeatures
                             color: T3Theme.textMuted
@@ -940,7 +940,7 @@ Item {
                         maximumLineCount: 3
                         elide: Text.ElideRight
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: T3Theme.red
                     }
                 }
@@ -988,7 +988,7 @@ Item {
                             + root.checkpoint.additions + " −" + root.checkpoint.deletions : ""
                         elide: Text.ElideRight
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightSemibold
                         color: T3Theme.textSecondary
                     }
@@ -1001,7 +1001,7 @@ Item {
                         text: T3Code.detailDiff.loading && root.changesExpanded ? "Loading…"
                             : root.changesExpanded ? "Hide diff" : "View diff"
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: T3Theme.textFaint
                     }
 
@@ -1029,7 +1029,7 @@ Item {
                         text: root.checkpoint ? root.checkpoint.filenames.join(" · ") : ""
                         elide: Text.ElideMiddle
                         font.family: T3Theme.fontMono
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: T3Theme.textSecondary
                     }
 
@@ -1056,7 +1056,7 @@ Item {
                                 textFormat: Text.PlainText
                                 wrapMode: Text.NoWrap
                                 font.family: T3Theme.fontMono
-                                font.pixelSize: Theme.fontCaption
+                                font.pixelSize: Theme.typography.secondary
                                 color: T3Theme.textMuted
                             }
                         }
@@ -1084,7 +1084,7 @@ Item {
                             visible: T3Code.detailDiff.truncated
                             text: "Preview truncated at 100,000 characters / 2,000 lines"
                             font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.secondary
                             color: T3Theme.amber
                         }
 
@@ -1114,7 +1114,7 @@ Item {
                         wrapMode: Text.WordWrap
                         lineHeight: Theme.proseLineHeight
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: T3Theme.red
                     }
 
@@ -1125,7 +1125,7 @@ Item {
                         wrapMode: Text.WordWrap
                         lineHeight: Theme.proseLineHeight
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: T3Theme.red
                     }
                 }
@@ -1205,7 +1205,7 @@ Item {
             text: root.backgroundStatus
             elide: Text.ElideRight
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: Theme.typography.primary
             font.weight: Theme.weightMedium
             color: T3Theme.textSecondary
         }
@@ -1316,7 +1316,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Ready plan"
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightSemibold
                         color: T3Theme.accent
                     }
@@ -1331,7 +1331,7 @@ Item {
                     maximumLineCount: 12
                     elide: Text.ElideRight
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.typography.primary
                     color: T3Theme.textSecondary
                 }
 
@@ -1443,7 +1443,7 @@ Item {
                     anchors.verticalCenter: taskProgressGlyph.verticalCenter
                     text: "Tasks"
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightSemibold
                     color: T3Theme.textMuted
                 }
@@ -1458,7 +1458,7 @@ Item {
                     text: root.taskProgress ? root.taskProgress.activeStep : ""
                     elide: Text.ElideRight
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightMedium
                     color: T3Theme.textPrimary
                 }
@@ -1471,7 +1471,7 @@ Item {
                     text: root.taskProgress ? root.taskProgress.completedCount + "/"
                         + root.taskProgress.total : ""
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightMedium
                     font.features: T3Theme.tabularNumberFeatures
                     color: T3Theme.textFaint
@@ -1563,7 +1563,7 @@ Item {
         maximumLineCount: 3
         elide: Text.ElideRight
         font.family: T3Theme.fontUi
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.secondary
         color: T3Theme.red
     }
     }

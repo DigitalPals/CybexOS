@@ -30,7 +30,7 @@ Row {
   property color background: Color.background
   property color accent: Color.accent
   property string fontFamily: Style.font.family
-  property real fontSize: Style.font.body
+  property real fontSize: Style.font.control
   property bool focusable: true
 
   // -1 disables the external cursor highlight (the panel-cursor case).

@@ -124,7 +124,7 @@ BarChip {
         anchors.verticalCenter: parent.verticalCenter
         text: root.label
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.barLabelSize
+        font.pixelSize: Theme.typography.bar
         font.weight: root.stressed ? Theme.weightBold : Theme.weightSemibold
         font.features: Theme.tabularNumberFeatures
         color: {

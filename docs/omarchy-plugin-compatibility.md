@@ -194,8 +194,8 @@ accessibility scale, spacing density, border and corner settings described in
 Cybex and Omarchy presets; applying a preset is undoable and preserves accounts,
 plugin enablement, accessibility text size, wallpaper and layout.
 
-The Cybex default uses a 14px base font; the Omarchy preset uses JetBrains Mono
-at 12px, standard spacing, a 2px accent border and 16px panel corners. At the
+The Cybex default and Omarchy preset use JetBrainsMono Nerd Font at 12px,
+standard spacing, a 2px accent border and 16px panel corners. At the
 Omarchy preset's default accessibility scale, Model Usage's `Style.space(420)`
 is 420 logical pixels (840 image pixels on a 200% output). Qt applies monitor
 scaling; the shell never multiplies geometry by monitor scale itself.

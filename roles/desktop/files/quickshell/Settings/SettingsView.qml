@@ -233,7 +233,7 @@ PopoutPanel {
             anchors.verticalCenter: parent.verticalCenter
             text: navItem.modelData.label
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontSecondary
+            font.pixelSize: Theme.typography.navigation
             font.weight: navItem.current ? Theme.weightSemibold : Theme.weightMedium
             color: navItem.current ? Theme.textHi : Theme.textLow
             width: parent.width - x - 10
@@ -279,7 +279,7 @@ PopoutPanel {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 2
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.section
             font.weight: Theme.weightSemibold
             font.letterSpacing: 1
             color: Theme.textFaint
@@ -308,7 +308,7 @@ PopoutPanel {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.searchActive ? "Search" : root.navItems[root.pageIndex].title
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.title
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
             }
@@ -318,7 +318,7 @@ PopoutPanel {
                 visible: !root.compactNav
                 text: "·"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.dotDim
             }
 
@@ -331,7 +331,7 @@ PopoutPanel {
                         + " for “" + root.searchQuery.trim() + "”"
                     : root.navItems[root.pageIndex].description.toLowerCase()
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textFaint
                 width: Math.max(0, parent.width - headerTitle.width - parent.spacing * 2 - 8)
                 elide: Text.ElideRight
@@ -416,7 +416,7 @@ PopoutPanel {
                     anchors.rightMargin: 6
                     anchors.verticalCenter: parent.verticalCenter
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.control
                     color: Theme.textHi
                     selectionColor: Theme.accentAlpha(0.4)
                     selectedTextColor: Theme.textHi
@@ -452,7 +452,7 @@ PopoutPanel {
                         verticalAlignment: Text.AlignVCenter
                         text: "Search"
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.control
                         color: Theme.textFaint
                     }
                 }
@@ -476,7 +476,7 @@ PopoutPanel {
                         anchors.centerIn: parent
                         text: "/"
                         font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontMicro
+                        font.pixelSize: Theme.typography.metadata
                         font.weight: Theme.weightSemibold
                         color: Theme.textFaint
                     }
@@ -598,7 +598,7 @@ PopoutPanel {
                         : Settings.savePending ? "Saving changes…"
                         : Settings.font === "mono" ? "Saved · live" : "Saved · applies live"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.secondary
                     color: Settings.persistenceError ? Theme.redText : Theme.textFaint
                     elide: Text.ElideRight
                     Accessible.role: Settings.persistenceError
@@ -698,7 +698,7 @@ PopoutPanel {
                                 text: resultRow.modelData.pageLabel
                                     + "  ›  " + resultRow.modelData.group
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontCaption
+                                font.pixelSize: Theme.typography.metadata
                                 color: Theme.textFaint
                                 elide: Text.ElideRight
                             }
@@ -711,7 +711,7 @@ PopoutPanel {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: resultRow.modelData.label
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontSecondary
+                                font.pixelSize: Theme.typography.primary
                                 font.weight: Theme.weightMedium
                                 color: resultRow.selected ? Theme.textHi : Theme.textMid
                                 elide: Text.ElideRight
@@ -724,7 +724,7 @@ PopoutPanel {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: resultRow.valueLabel
                                 font.family: Theme.fontMono
-                                font.pixelSize: Theme.fontCaption
+                                font.pixelSize: Theme.typography.control
                                 color: Theme.textFaint
                             }
 
@@ -749,7 +749,7 @@ PopoutPanel {
                         text: "Nothing matches “" + root.searchQuery.trim()
                             + "”. Try a setting's name, its group, or a page."
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.primary
                         color: Theme.textDim
                         wrapMode: Text.Wrap
                     }
@@ -775,13 +775,13 @@ PopoutPanel {
                             Text {
                                 text: parent.modelData.keys
                                 font.family: Theme.fontMono
-                                font.pixelSize: Theme.fontMicro
+                                font.pixelSize: Theme.typography.metadata
                                 color: Theme.textDim
                             }
                             Text {
                                 text: parent.modelData.verb
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontMicro
+                                font.pixelSize: Theme.typography.secondary
                                 color: Theme.textFaint
                             }
                         }

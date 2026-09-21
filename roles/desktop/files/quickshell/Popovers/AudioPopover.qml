@@ -272,7 +272,7 @@ Surface {
                 text: devicePicker.currentLabel
                 elide: Text.ElideRight
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
                 color: devicePicker.ready ? Theme.textHi : Theme.textDim
             }
@@ -282,7 +282,7 @@ Surface {
                 text: devicePicker.detailText
                 elide: Text.ElideRight
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightMedium
                 color: Theme.textDim
             }
@@ -381,7 +381,7 @@ Surface {
             text: AudioHelpers.sinkLabel(sinkRow.sinkNode)
             elide: Text.ElideRight
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: Theme.typography.primary
             font.weight: sinkRow.isDefault ? Theme.weightSemibold : Theme.weightRegular
             color: sinkRow.isDefault ? Theme.textHi : Theme.textLow
         }
@@ -476,7 +476,7 @@ Surface {
             text: AudioHelpers.sourceLabel(sourceRow.sourceNode)
             elide: Text.ElideRight
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: Theme.typography.primary
             font.weight: sourceRow.isDefault
                 ? Theme.weightSemibold : Theme.weightRegular
             color: sourceRow.isDefault ? Theme.textHi : Theme.textLow
@@ -557,7 +557,7 @@ Surface {
                     text: streamRow.streamName
                     elide: Text.ElideRight
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.typography.primary
                     font.weight: Theme.weightMedium
                     color: streamRow.streamMuted ? Theme.textDim : Theme.textHi
                 }
@@ -569,7 +569,7 @@ Surface {
                     horizontalAlignment: Text.AlignRight
                     text: Math.round(streamRow.streamLevel * 100) + "%"
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontTiny
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightSemibold
                     font.features: Theme.tabularNumberFeatures
                     color: streamRow.streamMuted ? Theme.textDim : Theme.textLow
@@ -658,7 +658,7 @@ Surface {
                             text: "Audio"
                             elide: Text.ElideRight
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontHeading
+                            font.pixelSize: Theme.typography.heading
                             font.weight: Theme.weightSemibold
                             color: Theme.textHi
                         }
@@ -668,7 +668,7 @@ Surface {
                             text: root.heroStatus
                             elide: Text.ElideRight
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontTiny
+                            font.pixelSize: Theme.typography.secondary
                             font.weight: Theme.weightMedium
                             color: Audio.muted ? Theme.textDim : Theme.textLow
                         }
@@ -833,7 +833,7 @@ Surface {
                             width: 58
                             text: "LIVE MIC"
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightSemibold
                             font.letterSpacing: 0.7
                             color: Theme.textDim

@@ -45,7 +45,7 @@ SettingsRow {
         horizontalAlignment: Text.AlignRight
         text: root.caption
         font.family: root.captionMono ? Theme.fontMono : Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.control
         color: Theme.textFaint
         elide: Text.ElideLeft
     }

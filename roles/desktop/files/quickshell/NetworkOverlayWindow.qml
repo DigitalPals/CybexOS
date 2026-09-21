@@ -106,7 +106,7 @@ PanelWindow {
                     text: NetworkOverlayState.page === "qr"
                         ? "Share Wi-Fi" : "Internet speed"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontHeading
+                    font.pixelSize: Theme.typography.heading
                     font.weight: Theme.weightSemibold
                     color: Theme.textHi
                 }
@@ -201,7 +201,7 @@ PanelWindow {
             anchors.centerIn: parent
             text: button.label
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.control
             font.weight: Theme.weightSemibold
             color: button.primary ? Theme.accentFg : Theme.textMid
         }
@@ -286,7 +286,7 @@ PanelWindow {
                             horizontalAlignment: Text.AlignHCenter
                             elide: Text.ElideRight
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontProminent
+                            font.pixelSize: Theme.typography.title
                             font.weight: Theme.weightSemibold
                             color: Theme.textHi
                         }
@@ -297,7 +297,7 @@ PanelWindow {
                                 + (qr.info.hidden ? " · hidden network" : "")
                             horizontalAlignment: Text.AlignHCenter
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontSecondary
+                            font.pixelSize: Theme.typography.secondary
                             color: Theme.textLow
                         }
                     }
@@ -345,7 +345,7 @@ PanelWindow {
                         wrapMode: Text.Wrap
                         horizontalAlignment: Text.AlignHCenter
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.secondary
                         color: Theme.red
                     }
 
@@ -355,7 +355,7 @@ PanelWindow {
                         text: "Building QR code…"
                         horizontalAlignment: Text.AlignHCenter
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.secondary
                         color: Theme.textDim
                     }
 
@@ -468,7 +468,7 @@ PanelWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: dial.value.toFixed(dial.value < 10 ? 1 : 0)
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontDisplay
+                font.pixelSize: Theme.typography.display
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
             }
@@ -477,7 +477,7 @@ PanelWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Mbps"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontTiny
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textDim
             }
         }
@@ -487,7 +487,7 @@ PanelWindow {
             anchors.bottom: parent.bottom
             text: dial.label
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: Theme.typography.primary
             font.weight: Theme.weightSemibold
             color: dial.active ? Theme.accent : Theme.textMid
         }
@@ -621,7 +621,7 @@ PanelWindow {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "TEST DEVICE"
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontMicro
+                        font.pixelSize: Theme.typography.metadata
                         font.weight: Theme.weightSemibold
                         color: Theme.textDim
                     }
@@ -654,7 +654,7 @@ PanelWindow {
                         : "Finding the nearest test endpoint…"
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textLow
                 }
 
@@ -684,7 +684,7 @@ PanelWindow {
                     wrapMode: Text.Wrap
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.red
                 }
 
@@ -694,7 +694,7 @@ PanelWindow {
                         : speed.selectedInterface
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontTiny
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textDim
                 }
 

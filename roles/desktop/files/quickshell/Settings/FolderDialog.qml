@@ -74,7 +74,7 @@ Controls.Dialog {
             text: root.localPath(folderModel.folder)
             elide: Text.ElideMiddle
             font.family: Theme.fontMono
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.navigation
             color: Theme.textMid
         }
     }
@@ -106,7 +106,7 @@ Controls.Dialog {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "arrow_upward  Parent folder"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.navigation
                 color: Theme.textMid
             }
 
@@ -188,7 +188,7 @@ Controls.Dialog {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "folder  " + folderRow.fileName
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.navigation
                         color: folderRow.selected ? Theme.textHi : Theme.textMid
                     }
 

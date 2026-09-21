@@ -48,7 +48,7 @@ BarModule {
             // The time is an instrument reading: Geist Mono, per the
             // edge-drawer design's numeric face.
             font.family: Theme.fontNumeric
-            font.pixelSize: Theme.barTextSize
+            font.pixelSize: Theme.typography.bar
             font.weight: Theme.weightBold
             font.letterSpacing: 0.3
             font.features: Theme.tabularNumberFeatures
@@ -67,7 +67,7 @@ BarModule {
             anchors.verticalCenter: parent.verticalCenter
             text: Qt.formatDateTime(clock.date, Settings.modOpts.clock.dateFormat)
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.bar
             font.weight: Theme.weightSemibold
             font.features: Theme.tabularNumberFeatures
             color: Theme.barTextMid

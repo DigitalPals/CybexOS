@@ -114,6 +114,7 @@ Item {
             text: root.descriptor.name + " !"
             elide: Text.ElideRight
             color: root.themeValues.foreground
+            font.family: root.themeValues.fontFamily
             font.pixelSize: root.themeValues.fontSize
         }
         Accessible.role: Accessible.StaticText

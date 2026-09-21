@@ -261,7 +261,7 @@ Item {
                             text: root.optionLabel(choice.modelData)
                             elide: Text.ElideRight
                             font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontSecondary
+                            font.pixelSize: Theme.typography.control
                             color: choice.chosen ? T3Theme.textPrimary : T3Theme.textSecondary
                         }
 
@@ -275,7 +275,7 @@ Item {
                             elide: Text.ElideRight
                             horizontalAlignment: Text.AlignRight
                             font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             color: T3Theme.textFaint
                         }
 

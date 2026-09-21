@@ -244,7 +244,7 @@ Item {
                             text: root.optionLabel(choice.modelData)
                             elide: Text.ElideRight
                             font.family: HermesTheme.fontUi
-                            font.pixelSize: Theme.fontSecondary
+                            font.pixelSize: Theme.typography.control
                             color: choice.chosen ? HermesTheme.textPrimary
                                 : HermesTheme.textSecondary
                         }

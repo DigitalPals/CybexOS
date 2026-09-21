@@ -72,7 +72,7 @@ Rectangle {
                 TextMetrics {
                     id: labelMetrics
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.navigation
                     font.weight: Theme.weightSemibold
                     text: segment.modelData.label
                 }
@@ -80,7 +80,7 @@ Rectangle {
                 TextMetrics {
                     id: litMetrics
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.navigation
                     font.weight: Theme.weightSemibold
                     text: {
                         for (const t of root.tabs) {
@@ -132,7 +132,7 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         text: segment.modelData.label
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.navigation
                         font.weight: Theme.weightSemibold
                         color: Theme.textHi
                     }

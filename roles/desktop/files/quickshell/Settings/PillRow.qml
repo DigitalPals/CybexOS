@@ -84,7 +84,7 @@ Flow {
                 anchors.centerIn: parent
                 text: pill.modelData.label
                 font.family: root.mono ? Theme.fontMono : Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
                 color: pill.selected ? Theme.textHi : Theme.textLow
             }

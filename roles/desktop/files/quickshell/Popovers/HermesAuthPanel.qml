@@ -184,7 +184,7 @@ Item {
             width: parent.width
             text: field.label
             font.family: HermesTheme.fontUi
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.control
             font.weight: Theme.weightSemibold
             color: HermesTheme.textSecondary
         }
@@ -212,7 +212,7 @@ Item {
                 inputMethodHints: field.inputHints
                 font.family: field.echoMode === TextInput.Password
                     ? HermesTheme.fontUi : HermesTheme.fontMono
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.control
                 color: HermesTheme.textPrimary
                 onAccepted: field.accepted()
                 onActiveFocusChanged: if (activeFocus) root.ensureVisible(input)
@@ -222,7 +222,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     text: field.placeholder
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.control
                     color: HermesTheme.textFaint
                 }
             }
@@ -294,7 +294,7 @@ Item {
                             : Hermes.remoteSessionExpired ? "Remote session expired"
                                 : "Connect to Hermes WebUI"
                         font.family: HermesTheme.fontUi
-                        font.pixelSize: Theme.fontHeading
+                        font.pixelSize: Theme.typography.heading
                         font.weight: Theme.weightSemibold
                         color: HermesTheme.textPrimary
                     }
@@ -306,7 +306,7 @@ Item {
                         wrapMode: Text.WordWrap
                         font.family: Hermes.remoteConnected
                             ? HermesTheme.fontMono : HermesTheme.fontUi
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: Hermes.remoteConnected ? HermesTheme.success
                             : HermesTheme.textMuted
                     }
@@ -331,7 +331,7 @@ Item {
                     text: "Session sign-in required. An HTTP 302 from Hermes WebUI means its browser session has expired or requires sign-in; it is not a usable API response. Enter the password again to renew this client session."
                     wrapMode: Text.WordWrap
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: HermesTheme.textSecondary
                 }
             }
@@ -354,7 +354,7 @@ Item {
                     text: "This signs in to a remote Hermes WebUI session. The password is sent once to the local bridge, is never retained or displayed by Quickshell, and is cleared from this form immediately."
                     wrapMode: Text.WordWrap
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: HermesTheme.textSecondary
                 }
             }
@@ -389,7 +389,7 @@ Item {
                     ? root.remoteErrorText : Hermes.remoteError
                 wrapMode: Text.WordWrap
                 font.family: HermesTheme.fontUi
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: HermesTheme.red
             }
 
@@ -399,7 +399,7 @@ Item {
                 text: root.remoteNoticeText
                 wrapMode: Text.WordWrap
                 font.family: HermesTheme.fontUi
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: HermesTheme.success
             }
 
@@ -500,7 +500,7 @@ Item {
                             width: parent.width
                             text: "ADVANCED · LOCAL MODEL PROVIDER"
                             font.family: HermesTheme.fontUi
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightSemibold
                             font.letterSpacing: 1
                             color: HermesTheme.textMuted
@@ -510,7 +510,7 @@ Item {
                             text: "Separate from remote WebUI sign-in. Use this only when Hermes runs on this machine."
                             wrapMode: Text.WordWrap
                             font.family: HermesTheme.fontUi
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.secondary
                             color: HermesTheme.textFaint
                         }
                     }
@@ -541,7 +541,7 @@ Item {
                         : "Configure an OpenAI-compatible inference endpoint for the local Hermes backend."
                     wrapMode: Text.WordWrap
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: Hermes.localProviderReady ? HermesTheme.success
                         : HermesTheme.textSecondary
                 }
@@ -577,7 +577,7 @@ Item {
                     text: root.localErrorText
                     wrapMode: Text.WordWrap
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: HermesTheme.red
                 }
 
@@ -587,7 +587,7 @@ Item {
                     text: root.localNoticeText
                     wrapMode: Text.WordWrap
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: HermesTheme.success
                 }
 
@@ -625,7 +625,7 @@ Item {
                     text: "Local provider credentials are stored by Hermes in ~/.hermes/.env. Remote WebUI passwords are never retained by the menubar."
                     wrapMode: Text.WordWrap
                     font.family: HermesTheme.fontMono
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     color: HermesTheme.textFaint
                 }
             }

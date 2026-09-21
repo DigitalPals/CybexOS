@@ -17,8 +17,8 @@ Column {
 
     readonly property var cardStyle: ({
         face: Theme.fontMenu,
-        header: Theme.fontSecondary,
-        body: Theme.fontSecondary,
+        header: Theme.typography.notification,
+        body: Theme.typography.notification,
         bodyColor: Theme.textLow,
         bodyLines: 2,
         bodyLeading: 1.25,
@@ -60,7 +60,7 @@ Column {
                     ? root.recent.length + " new"
                     : Notifs.count === 0 ? "All clear" : "Quiet hour"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontHeading - 1
+                font.pixelSize: Theme.typography.title
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
             }
@@ -70,7 +70,7 @@ Column {
                 visible: root.earlier.length > 0
                 text: root.earlier.length + " earlier"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textFaint
             }
         }
@@ -123,7 +123,7 @@ Column {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: modeChoice.modelData.label
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontMicro
+                                font.pixelSize: Theme.typography.control
                                 font.weight: Theme.weightSemibold
                                 color: modeChoice.on ? Theme.textHi : Theme.textFaint
                             }
@@ -191,7 +191,7 @@ Column {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "Nothing new"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.primary
                     color: Theme.textFaint
                 }
             }
@@ -209,7 +209,7 @@ Column {
                 anchors.bottomMargin: 4
                 text: "EARLIER"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.section
                 font.weight: Theme.weightSemibold
                 font.letterSpacing: 0.6
                 color: Theme.textFaint

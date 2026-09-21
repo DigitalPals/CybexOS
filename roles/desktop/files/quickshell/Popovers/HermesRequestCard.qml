@@ -330,7 +330,7 @@ Rectangle {
                 text: root.request.title
                 elide: Text.ElideRight
                 font.family: HermesTheme.fontUi
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightSemibold
                 color: HermesTheme.amber
             }
@@ -343,7 +343,7 @@ Rectangle {
                     : root.questions.length > 1 ? (root.questionIndex + 1) + "/"
                         + root.questions.length : "needs you"
                 font.family: HermesTheme.fontUi
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 color: HermesTheme.textFaint
             }
         }
@@ -361,7 +361,7 @@ Rectangle {
             lineHeight: Theme.proseLineHeight
             font.family: root.request.kind === "approval"
                 ? HermesTheme.fontMono : HermesTheme.fontUi
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: Theme.typography.primary
             color: HermesTheme.textSecondary
         }
 
@@ -408,7 +408,7 @@ Rectangle {
                         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                         lineHeight: Theme.proseLineHeight
                         font.family: HermesTheme.fontUi
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: HermesTheme.textSecondary
                     }
                 }
@@ -482,7 +482,7 @@ Rectangle {
                             text: option.modelData.label
                             wrapMode: Text.WordWrap
                             font.family: HermesTheme.fontUi
-                            font.pixelSize: Theme.fontSecondary
+                            font.pixelSize: Theme.typography.secondary
                             color: HermesTheme.textPrimary
                         }
 
@@ -494,7 +494,7 @@ Rectangle {
                             maximumLineCount: 2
                             elide: Text.ElideRight
                             font.family: HermesTheme.fontUi
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.secondary
                             color: HermesTheme.textFaint
                         }
                     }
@@ -534,7 +534,7 @@ Rectangle {
                     ? TextInput.Password : TextInput.Normal
                 text: root.typedValue
                 font.family: HermesTheme.fontUi
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.control
                 color: HermesTheme.textPrimary
                 selectionColor: HermesTheme.accentSoft
                 onActiveFocusChanged: if (activeFocus)
@@ -558,7 +558,7 @@ Rectangle {
                         : root.request.kind === "secret" ? "Secret value…"
                             : "Type an answer…"
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.control
                     color: HermesTheme.textFaint
                 }
             }
@@ -625,7 +625,7 @@ Rectangle {
             wrapMode: Text.WordWrap
             lineHeight: Theme.proseLineHeight
             font.family: HermesTheme.fontUi
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
             color: HermesTheme.amber
         }
 
@@ -635,7 +635,7 @@ Rectangle {
             text: root.failure
             wrapMode: Text.WordWrap
             font.family: HermesTheme.fontUi
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
             color: HermesTheme.red
         }
     }

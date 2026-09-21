@@ -92,7 +92,7 @@ SettingsPage {
                 bottomPadding: 4
                 text: "Drag to reorder — a bar glyph opens its tab in this order"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textDim
             }
 
@@ -196,7 +196,7 @@ SettingsPage {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "⠿"
                                 font.family: Theme.fontMono
-                                font.pixelSize: Theme.fontCaption
+                                font.pixelSize: Theme.typography.metadata
                                 color: Theme.textDim
                             }
 
@@ -219,7 +219,7 @@ SettingsPage {
                                 width: 110
                                 text: tabRow.meta.label
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontSecondary
+                                font.pixelSize: Theme.typography.control
                                 font.weight: Theme.weightMedium
                                 color: Theme.textHi
                                 elide: Text.ElideRight
@@ -235,7 +235,7 @@ SettingsPage {
                                     ? "opens from " + tabRow.meta.from + " · always on"
                                     : "opens from " + tabRow.meta.from
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontCaption
+                                font.pixelSize: Theme.typography.secondary
                                 color: Theme.textDim
                                 elide: Text.ElideRight
                             }

@@ -57,7 +57,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: "Reminders"
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontHeading
+            font.pixelSize: Theme.typography.heading
             font.weight: Theme.weightBold
             color: Theme.textHi
         }
@@ -86,7 +86,7 @@ Surface {
                     anchors.centerIn: parent
                     text: preset.modelData + "m"
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.control
                     font.weight: Theme.weightSemibold
                     color: root.selectedMinutes === preset.modelData
                         ? Theme.textOnAccent : Theme.textMid
@@ -125,7 +125,7 @@ Surface {
                 inputMethodHints: Qt.ImhDigitsOnly
                 validator: IntValidator { bottom: 1 }
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.control
                 color: Theme.textHi
                 selectionColor: Theme.accentBg
                 activeFocusOnTab: true
@@ -151,7 +151,7 @@ Surface {
                 anchors.rightMargin: 10
                 verticalAlignment: TextInput.AlignVCenter
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.control
                 color: Theme.textHi
                 selectionColor: Theme.accentBg
                 activeFocusOnTab: true
@@ -201,7 +201,7 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Add"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.control
                     font.weight: Theme.weightBold
                     color: addButton.enabled ? Theme.textOnAccent : Theme.textFaint
                 }
@@ -228,7 +228,7 @@ Surface {
             text: Reminders.count === 0 ? "No pending reminders"
                 : Reminders.count + (Reminders.count === 1 ? " pending" : " pending")
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
             font.weight: Theme.weightSemibold
             color: Theme.textLow
         }
@@ -289,7 +289,7 @@ Surface {
                             width: parent.width
                             text: reminderRow.modelData.message
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontBody
+                            font.pixelSize: Theme.typography.primary
                             font.weight: Theme.weightSemibold
                             color: Theme.textHi
                             elide: Text.ElideRight
@@ -301,7 +301,7 @@ Surface {
                                 + Qt.formatDateTime(new Date(Number(reminderRow.modelData.due) * 1000),
                                     Settings.clock24 ? "HH:mm" : "h:mm AP")
                             font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.secondary
                             color: Theme.textLow
                         }
                     }
@@ -348,7 +348,7 @@ Surface {
         width: parent.width
         text: Reminders.error
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.secondary
         color: Theme.redText
     }
 

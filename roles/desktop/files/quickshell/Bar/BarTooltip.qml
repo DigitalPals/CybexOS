@@ -96,7 +96,7 @@ Item {
             anchors.centerIn: parent
             text: root.text
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontTiny
+            font.pixelSize: Theme.typography.tooltip
             font.weight: Theme.weightSemibold
             color: Theme.textMid
         }

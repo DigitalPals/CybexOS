@@ -484,7 +484,7 @@ Surface {
                 text: root.player === null ? "MEDIA"
                     : root.playing ? "NOW PLAYING" : "PAUSED"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 font.weight: Theme.weightSemibold
                 font.letterSpacing: 1
                 color: Theme.textFaint
@@ -534,7 +534,7 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.player ? root.player.identity : "No player"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightSemibold
                     color: srcMouse.containsMouse ? Theme.textHi : Theme.textMid
                 }
@@ -611,7 +611,7 @@ Surface {
                 text: root.player && root.player.trackTitle !== ""
                     ? root.player.trackTitle : "Nothing playing"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontProminent
+                font.pixelSize: Theme.typography.title
                 font.weight: Theme.weightBold
                 font.letterSpacing: -0.4
                 color: Theme.textHi
@@ -627,7 +627,7 @@ Surface {
                 visible: text !== ""
                 text: root.player ? root.player.trackArtist : ""
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
                 color: Theme.textMid
                 elide: Text.ElideRight
@@ -638,7 +638,7 @@ Surface {
                 visible: text !== ""
                 text: root.player ? root.player.trackAlbum : ""
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightMedium
                 color: Theme.textDim
                 elide: Text.ElideRight
@@ -674,7 +674,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: Format.mmss(root.pos)
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightMedium
                 font.features: Theme.tabularNumberFeatures
                 color: Theme.textMid
@@ -686,7 +686,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.len > 0 ? Format.mmss(root.len) : "--:--"
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightMedium
                 font.features: Theme.tabularNumberFeatures
                 color: Theme.textDim
@@ -821,7 +821,7 @@ Surface {
                 horizontalAlignment: Text.AlignHCenter
                 text: "Nothing playing"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
                 color: Theme.textMid
             }
@@ -832,7 +832,7 @@ Surface {
                 horizontalAlignment: Text.AlignHCenter
                 text: "Controls appear as soon as a player starts."
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightRegular
                 color: Theme.textDim
                 wrapMode: Text.Wrap

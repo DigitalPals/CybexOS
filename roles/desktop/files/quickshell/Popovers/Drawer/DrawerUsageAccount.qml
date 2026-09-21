@@ -79,7 +79,7 @@ Column {
                 text: root.record && root.record.label
                     ? root.record.label : "Account"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
                 elide: Text.ElideRight
@@ -89,7 +89,7 @@ Column {
                 width: parent.width
                 text: root.stateText
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 color: root.ok ? Theme.textFaint : Theme.redText
                 elide: Text.ElideRight
             }
@@ -105,7 +105,7 @@ Column {
             Text {
                 text: root.remaining >= 0 ? root.remaining : "—"
                 font.family: Theme.fontNumeric
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
                 font.features: Theme.tabularNumberFeatures
                 color: root.tone
@@ -116,7 +116,7 @@ Column {
                 anchors.bottomMargin: 2
                 text: root.remaining >= 0 ? "% left" : ""
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 color: Theme.textFaint
             }
         }
@@ -185,7 +185,7 @@ Column {
             text: root.record && root.record.message
                 ? root.record.message : "This subscription has no usable reading."
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
             color: Theme.textLow
             wrapMode: Text.WordWrap
         }

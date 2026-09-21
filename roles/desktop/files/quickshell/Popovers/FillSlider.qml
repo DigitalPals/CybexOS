@@ -163,7 +163,7 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         text: root.label
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontTiny
+        font.pixelSize: Theme.typography.secondary
         font.weight: Theme.weightMedium
         color: Theme.textHi
     }

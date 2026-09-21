@@ -65,14 +65,15 @@ Surface {
         // ---- clock and sky ------------------------------------------------
         Column {
             id: clockColumn
-            width: Theme.scaled(190)
+            width: Math.max(Theme.scaled(190), clockText.implicitWidth)
             spacing: 6
 
             Text {
+                id: clockText
                 text: Qt.formatDateTime(clock.date,
                     Settings.clock24 ? "HH:mm" : "h:mm AP")
                 font.family: Theme.fontNumeric
-                font.pixelSize: Theme.scaled(40)
+                font.pixelSize: Theme.typography.clock
                 font.weight: Theme.weightSemibold
                 font.letterSpacing: -2
                 font.features: Theme.tabularNumberFeatures
@@ -82,7 +83,7 @@ Surface {
             Text {
                 text: Qt.formatDateTime(clock.date, "dddd d MMMM")
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textFaint
             }
 
@@ -104,7 +105,7 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: Weather.ready ? Weather.temp + "°" : "--"
                     font.family: Theme.fontNumeric
-                    font.pixelSize: Theme.fontHeading + 2
+                    font.pixelSize: Theme.typography.title
                     font.weight: Theme.weightSemibold
                     font.features: Theme.tabularNumberFeatures
                     color: Theme.textHi
@@ -121,7 +122,7 @@ Surface {
                             ? " · " + today.hi + "° / " + today.lo + "°" : "");
                     }
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textFaint
                 }
             }
@@ -157,7 +158,7 @@ Surface {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: dayCell.modelData.dow
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightSemibold
                             font.letterSpacing: 0.5
                             color: dayCell.modelData.today
@@ -168,7 +169,7 @@ Surface {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: dayCell.modelData.day
                             font.family: Theme.fontNumeric
-                            font.pixelSize: Theme.fontHeading
+                            font.pixelSize: Theme.typography.heading
                             font.weight: Theme.weightSemibold
                             font.features: Theme.tabularNumberFeatures
                             color: dayCell.modelData.today
@@ -283,7 +284,7 @@ Surface {
                         width: parent.width
                         text: eventCard.modelData.summary
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightMedium
                         color: Theme.textHi
                         elide: Text.ElideRight
@@ -306,7 +307,7 @@ Surface {
                             return day + " · " + eventCard.modelData.calendar;
                         }
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontMicro
+                        font.pixelSize: Theme.typography.secondary
                         color: Theme.textFaint
                         elide: Text.ElideRight
                     }
@@ -321,7 +322,7 @@ Surface {
                         : Qt.formatDateTime(new Date(eventCard.modelData.startMs),
                             Settings.clock24 ? "HH:mm" : "h:mm AP")
                     font.family: Theme.fontNumeric
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightSemibold
                     font.features: Theme.tabularNumberFeatures
                     color: eventCard.ongoing ? Theme.accent : Theme.textHi

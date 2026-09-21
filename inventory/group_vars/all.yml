@@ -191,9 +191,9 @@ pinned_font_archives:
 
 # Single-file fonts, which upstream publishes as bare variable TTFs rather than
 # archives. The URL is pinned to a commit and the checksum pins the bytes, so
-# the version below is only the directory label. Figtree is the Quickshell UI
-# default and Geist Mono its numeric-reading face (Theme.fontNumeric);
-# JetBrains Mono, Google Sans Flex and Urbanist remain appearance choices,
+# the version below is only the directory label. JetBrainsMono Nerd Font is
+# the Quickshell default (installed above); Figtree, Google Sans Flex and
+# Urbanist remain appearance choices, with Geist Mono for numeric readings,
 # and Material Symbols Rounded supplies every generic interface glyph in the
 # shell (Common/Sym.qml). Product identities are the audited SVGs behind
 # Common/BrandIcon.qml.

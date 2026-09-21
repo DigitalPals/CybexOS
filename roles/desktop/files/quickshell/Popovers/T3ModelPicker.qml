@@ -372,7 +372,7 @@ Item {
                                 text: String(railEntry.modelData.displayName ?? "?")
                                     .slice(0, 1).toUpperCase()
                                 font.family: T3Theme.fontUi
-                                font.pixelSize: Theme.fontMicro
+                                font.pixelSize: Theme.typography.metadata
                                 font.weight: Theme.weightSemibold
                                 color: T3Theme.textSecondary
                             }
@@ -441,7 +441,7 @@ Item {
                     }
                     selectByMouse: true
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.control
                     color: T3Theme.textPrimary
                     selectionColor: T3Theme.accentSoft
                     selectedTextColor: T3Theme.textPrimary
@@ -475,7 +475,7 @@ Item {
                         visible: searchInput.text === ""
                         text: "Search models…"
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.control
                         color: T3Theme.textFaint
                     }
                 }
@@ -502,7 +502,7 @@ Item {
                 anchors.centerIn: parent
                 text: root.searching ? "No models found" : "No models available"
                 font.family: T3Theme.fontUi
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.secondary
                 color: T3Theme.textFaint
             }
 
@@ -567,7 +567,7 @@ Item {
                                 anchors.topMargin: 6
                                 text: "Legacy models"
                                 font.family: T3Theme.fontUi
-                                font.pixelSize: Theme.fontSecondary
+                                font.pixelSize: Theme.typography.secondary
                                 font.weight: Theme.weightMedium
                                 color: T3Theme.textPrimary
                             }
@@ -580,7 +580,7 @@ Item {
                                 anchors.bottomMargin: 6
                                 text: pickerRow.modelData.count + " models"
                                 font.family: T3Theme.fontUi
-                                font.pixelSize: Theme.fontCaption
+                                font.pixelSize: Theme.typography.secondary
                                 color: T3Theme.textFaint
                             }
 
@@ -617,7 +617,7 @@ Item {
                                 text: pickerRow.modelData.label ?? ""
                                 elide: Text.ElideRight
                                 font.family: T3Theme.fontUi
-                                font.pixelSize: Theme.fontSecondary
+                                font.pixelSize: Theme.typography.secondary
                                 font.weight: Theme.weightMedium
                                 color: pickerRow.chosen ? T3Theme.textPrimary
                                     : T3Theme.textSecondary
@@ -648,7 +648,7 @@ Item {
                                     : (pickerRow.modelData.providerLabel ?? "")
                                 elide: Text.ElideRight
                                 font.family: T3Theme.fontUi
-                                font.pixelSize: Theme.fontCaption
+                                font.pixelSize: Theme.typography.secondary
                                 color: pickerRow.blocked ? T3Theme.amber : T3Theme.textFaint
                             }
 
@@ -671,7 +671,7 @@ Item {
                                     anchors.centerIn: parent
                                     text: "Ctrl+" + (pickerRow.modelData.shortcut ?? "")
                                     font.family: T3Theme.fontUi
-                                    font.pixelSize: Theme.fontMicro
+                                    font.pixelSize: Theme.typography.metadata
                                     font.features: T3Theme.tabularNumberFeatures
                                     color: T3Theme.textFaint
                                 }

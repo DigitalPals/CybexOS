@@ -25,6 +25,8 @@ function qmlFiles(directory) {
 }
 
 function intToken(name) {
+    const alias = theme.match(new RegExp(`readonly property int ${name}:\\s*typography\\.(\\w+)`));
+    if (alias) return load("Typography.js").resolve(12)[alias[1]];
     const match = theme.match(new RegExp(
         `readonly property int ${name}:\\s*(?:scaled\\(\\s*)?(\\d+)`));
     assert.ok(match, `Theme.${name} must be an integer token`);
@@ -68,11 +70,11 @@ test("semantic typography tokens retain the intended logical-pixel scale", () =>
         intToken("fontProminent"),
         intToken("fontDisplay"),
         intToken("fontHero"),
-    ], [10, 11, 10, 11, 12, 16, 20, 28, 34]);
+    ], [10, 11, 10, 11, 12, 16, 14, 24, 28]);
 });
 
 test("menu typography keeps the bar's own compact metrics", () => {
-    assert.equal(stringToken("fontSans"), "JetBrains Mono");
+    assert.equal(stringToken("fontSans"), "JetBrainsMono Nerd Font");
     assert.equal(stringToken("fontIcon"), "Material Symbols Rounded");
     assert.deepEqual([
         intToken("chipHeight"),
@@ -80,7 +82,7 @@ test("menu typography keeps the bar's own compact metrics", () => {
         intToken("tooltipHeight"),
         intToken("barTextSize"),
         intToken("barIconSize"),
-    ], [28, 24, 28, 13, 15]);
+    ], [28, 24, 28, 12, 15]);
     assert.match(theme, /readonly property var tabularNumberFeatures:\s*\(\{\s*"tnum":\s*1\s*\}\)/);
 });
 
@@ -96,7 +98,7 @@ test("settings-driven tokens default to the selected menu face", () => {
     assert.equal(d.barStyle, "hug");
     assert.equal(d.accent, "#d3d283");
     const menuChoice = H.FONT_CHOICES.find(choice => choice.id === d.font);
-    assert.equal(menuChoice.family, "Figtree");
+    assert.equal(menuChoice.family, "JetBrainsMono Nerd Font");
 
     assert.match(theme,
         /readonly property int barHeight:\s*Math\.max\(Settings\.barHeight, chipHeight \+ 8\)/);
@@ -213,13 +215,11 @@ test("all visible bar values use the menu face with tabular figures", () => {
     }
 });
 
-test("bar and popovers use semantic sizes with an eleven-pixel text floor", () => {
-    const files = [...qmlFiles("Bar"), ...qmlFiles("Popovers"), ...qmlFiles("Settings")];
-    const textTokens = [...theme.matchAll(
-        /readonly property int (font\w+):\s*(?:scaled\(\s*)?(\d+)/g)];
-    assert.ok(textTokens.length > 0);
-    for (const [, name, value] of textTokens)
-        assert.ok(Math.round(Number(value) * load("ShellMetrics.js").calculate(load("SettingsHelpers.js").defaults()).fontScale) >= 11, `Theme.${name} falls below the 11 px floor`);
+test("bar and popovers use semantic sizes with an Omarchy ten-pixel caption floor", () => {
+    const files = [...qmlFiles("Bar"), ...qmlFiles("Popovers"), ...qmlFiles("Settings"),
+        path.join(shellDir, "OsdWindow.qml")];
+    for (const [name, value] of Object.entries(load("Typography.js").resolve(12)))
+        assert.ok(value >= 10, `${name} falls below the 10 px caption floor`);
 
     for (const file of files) {
         const source = fs.readFileSync(file, "utf8");
@@ -370,4 +370,26 @@ test("no surface paints an accent field where a chip belongs", () => {
     }
     assert.deepEqual(offenders, [],
         "these paint an accent field; use Theme.chip / Theme.chipHover");
+});
+
+
+test("default body size is shared by settings controls and plugin typography", () => {
+    const d = load("SettingsHelpers.js").defaults();
+    assert.equal(d.shellFontSize, 12);
+    assert.equal(d.shellScale, 100);
+    assert.equal(d.pluginScale, 100);
+    const plugins = fs.readFileSync(path.join(shellDir, "Settings", "PluginsPage.qml"), "utf8");
+    for (const field of plugins.matchAll(/Controls\.TextField\s*\{([^}]+)\}/g)) {
+        assert.match(field[1], /font\.family: Theme\.fontMenu/);
+        assert.match(field[1], /font\.pixelSize: Theme\.typography\.control/);
+    }
+    const widgets = fs.readFileSync(path.join(shellDir, "Bar", "UserWidgets.qml"), "utf8");
+    assert.match(widgets, /fontSize: Theme\.typography\.bar/);
+    assert.equal(load("ShellMetrics.js").calculate(d).fontBase, 12);
+    for (const name of ["SettingsRow", "SettingsTextRow", "SettingsAction",
+        "PickerRow", "PillRow", "SwitchRow", "SliderRow"]) {
+        const source = fs.readFileSync(path.join(shellDir, "Settings", name + ".qml"), "utf8");
+        assert.match(source, /font\.pixelSize: Theme\.typography\.control/, name);
+        assert.doesNotMatch(source, /font\.pixelSize: Theme\.font(?:Caption|Tiny)/, name);
+    }
 });

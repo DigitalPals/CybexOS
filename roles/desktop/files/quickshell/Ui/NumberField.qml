@@ -14,7 +14,7 @@ Column {
   property color foreground: Color.foreground
   property color accent: Color.accent
   property string fontFamily: Style.font.family
-  property real fontSize: Style.font.body
+  property real fontSize: Style.font.control
   property real fieldWidth: Style.spacing.numberFieldWidth
   property bool hasCursor: false
   property bool _hovered: false

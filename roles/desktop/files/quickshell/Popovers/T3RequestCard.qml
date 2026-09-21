@@ -73,7 +73,7 @@ Rectangle {
                     : root.request.kind === "file-change" ? "Edit approval"
                     : root.request.kind === "file-read" ? "Read approval" : "Command approval"
                 font.family: T3Theme.fontUi
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightSemibold
                 color: T3Theme.amber
             }
@@ -86,7 +86,7 @@ Rectangle {
                     + (root.queuedCount > 0 ? "  ·  +" + root.queuedCount + " queued" : "")
                     : "needs you"
                 font.family: T3Theme.fontUi
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 font.features: T3Theme.tabularNumberFeatures
                 color: T3Theme.textFaint
             }
@@ -102,7 +102,7 @@ Rectangle {
             maximumLineCount: root.isInput ? 5 : 6
             elide: Text.ElideRight
             font.family: root.isInput ? T3Theme.fontUi : T3Theme.fontMono
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: Theme.typography.primary
             color: T3Theme.textSecondary
         }
 
@@ -112,7 +112,7 @@ Rectangle {
             width: parent.width
             text: "Select one or more options."
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
             color: T3Theme.textFaint
         }
 
@@ -194,7 +194,7 @@ Rectangle {
                             wrapMode: Text.WordWrap
                             lineHeight: Theme.proseLineHeight
                             font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontSecondary
+                            font.pixelSize: Theme.typography.secondary
                             color: option.chosen ? T3Theme.textPrimary : T3Theme.textSecondary
                         }
 
@@ -207,7 +207,7 @@ Rectangle {
                             wrapMode: Text.WordWrap
                             lineHeight: Theme.proseLineHeight
                             font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.secondary
                             color: T3Theme.textFaint
                         }
                     }
@@ -218,7 +218,7 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         text: option.index < 9 ? String(option.index + 1) : ""
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontMicro
+                        font.pixelSize: Theme.typography.metadata
                         font.features: T3Theme.tabularNumberFeatures
                         color: T3Theme.textFaint
                     }
@@ -274,7 +274,7 @@ Rectangle {
                 enabled: root.actionable
                 clip: true
                 font.family: T3Theme.fontUi
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.control
                 color: T3Theme.textPrimary
                 onDraftKeyChanged: syncDraft()
                 onTextChanged: {
@@ -289,7 +289,7 @@ Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Or type a custom answer…"
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.control
                     color: T3Theme.textFaint
                 }
 
@@ -387,7 +387,7 @@ Rectangle {
             maximumLineCount: 3
             elide: Text.ElideRight
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
             color: T3Theme.red
         }
     }

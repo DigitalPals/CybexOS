@@ -57,7 +57,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: row.modelData.label
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightMedium
                 color: Theme.textHi
             }

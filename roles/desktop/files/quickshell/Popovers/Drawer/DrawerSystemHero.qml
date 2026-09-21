@@ -126,7 +126,7 @@ Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     text: metric.label
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     font.weight: Theme.weightSemibold
                     font.letterSpacing: 0.7
                     color: Theme.textMid
@@ -145,7 +145,7 @@ Rectangle {
 
                         text: root.percentage(metric.known, metric.percent)
                         font.family: Theme.fontNumeric
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
                         font.features: Theme.tabularNumberFeatures
                         color: metric.known ? Theme.textHi : Theme.textFaint
@@ -156,7 +156,7 @@ Rectangle {
                         visible: metric.status !== ""
                         text: "· " + metric.status
                         font.family: Theme.fontNumeric
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
                         font.features: Theme.tabularNumberFeatures
                         color: metric.statusColor
@@ -170,7 +170,7 @@ Rectangle {
                 text: metric.detail
                 wrapMode: Text.Wrap
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightMedium
                 color: Theme.textMid
                 Accessible.ignored: true
@@ -242,7 +242,7 @@ Rectangle {
                     text: root.osTitle
                     wrapMode: Text.Wrap
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontProminent
+                    font.pixelSize: Theme.typography.title
                     font.weight: Theme.weightBold
                     color: Theme.textHi
                 }
@@ -252,7 +252,7 @@ Rectangle {
                     text: root.osReleaseLine
                     wrapMode: Text.Wrap
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightMedium
                     color: Theme.textMid
                 }
@@ -262,7 +262,7 @@ Rectangle {
                     text: root.machine
                     wrapMode: Text.Wrap
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     color: Theme.textMid
                 }
             }
@@ -273,7 +273,7 @@ Rectangle {
             text: root.kernelUptime
             wrapMode: Text.WrapAnywhere
             font.family: Theme.fontNumeric
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             font.features: Theme.tabularNumberFeatures
             color: Theme.textMid
         }

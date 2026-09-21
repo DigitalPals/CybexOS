@@ -65,7 +65,7 @@ Item {
             text: "New thread"
             elide: Text.ElideRight
             font.family: T3Theme.fontUi
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: Theme.typography.primary
             font.weight: Theme.weightSemibold
             color: T3Theme.textPrimary
         }
@@ -116,7 +116,7 @@ Item {
                         wrapMode: Text.WordWrap
                         lineHeight: Theme.proseLineHeight
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: T3Theme.amber
                     }
                 }
@@ -160,7 +160,7 @@ Item {
                     wrapMode: Text.WordWrap
                     lineHeight: Theme.proseLineHeight
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: T3Theme.textFaint
                 }
 
@@ -192,7 +192,7 @@ Item {
                     maximumLineCount: 3
                     elide: Text.ElideRight
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: T3Theme.red
                 }
 
@@ -203,7 +203,7 @@ Item {
                     text: T3Code.pendingNewThreadId !== ""
                         ? "Creating thread and waiting for shell confirmation…" : "Creating thread…"
                     font.family: T3Theme.fontUi
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: T3Theme.textFaint
                 }
 

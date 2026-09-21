@@ -32,7 +32,7 @@ Item {
         anchors.verticalCenterOffset: 4
         text: root.info
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.secondary
         font.weight: Theme.weightMedium
         color: Theme.textFaint
         elide: Text.ElideRight

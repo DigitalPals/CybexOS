@@ -72,7 +72,7 @@ BarModule {
             anchors.verticalCenter: parent.verticalCenter
             text: root.level + "%"
             font.family: Theme.fontNumeric
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.bar
             font.weight: Theme.weightBold
             font.features: Theme.tabularNumberFeatures
             color: root.critical ? Theme.barRedText

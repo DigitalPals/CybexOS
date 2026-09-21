@@ -247,7 +247,7 @@ Surface {
                 width: parent.width
                 text: root.info.title
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
                 elide: Text.ElideRight
@@ -264,7 +264,7 @@ Surface {
                     return root.p.plan || "";
                 }
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 color: Theme.textFaint
                 elide: Text.ElideRight
             }
@@ -295,7 +295,7 @@ Surface {
                 text: Usage.loading ? "Loading provider inventory…"
                     : "No managed usage providers"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightMedium
                 color: Theme.textHi
             }
@@ -305,7 +305,7 @@ Surface {
                 text: Usage.loading ? "Waiting for " + Usage.sourceName + "."
                     : Usage.sourceName + " did not return a supported enabled provider."
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textLow
                 wrapMode: Text.Wrap
                 lineHeight: Theme.proseLineHeight
@@ -344,7 +344,7 @@ Surface {
                     width: parent.width
                     text: root.p ? root.errorTitle(root.p) : ""
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.typography.primary
                     font.weight: Theme.weightMedium
                     color: Theme.textHi
                 }
@@ -354,7 +354,7 @@ Surface {
                     textFormat: Text.RichText
                     text: root.p ? root.errorBody(root.p) : ""
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textLow
                     wrapMode: Text.Wrap
                     lineHeight: Theme.proseLineHeight
@@ -394,7 +394,7 @@ Surface {
                     width: parent.width
                     text: "Showing last known usage"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.typography.primary
                     font.weight: Theme.weightMedium
                     color: Theme.textHi
                 }
@@ -403,7 +403,7 @@ Surface {
                     width: parent.width
                     text: root.p ? root.staleBody(root.p, Usage.countdownNow) : ""
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textLow
                     wrapMode: Text.Wrap
                     lineHeight: Theme.proseLineHeight
@@ -457,7 +457,7 @@ Surface {
                         width: parent.width
                         text: root.cardLabel(card.modelData.label)
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
                         font.letterSpacing: 0.6
                         color: Theme.textDim
@@ -477,7 +477,7 @@ Surface {
                             anchors.verticalCenter: parent.verticalCenter
                             text: card.hasUsage ? card.remaining : "—"
                             font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontProminent
+                            font.pixelSize: Theme.typography.title
                             font.weight: Theme.weightSemibold
                             color: card.hasUsage
                                 ? root.remainColor(card.remaining) : Theme.textHi
@@ -490,7 +490,7 @@ Surface {
                             anchors.baseline: remainingValue.baseline
                             text: card.hasUsage ? "% left" : "usage unavailable"
                             font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.secondary
                             color: Theme.textLow
                         }
 
@@ -509,7 +509,7 @@ Surface {
                                 anchors.centerIn: parent
                                 text: card.crit ? "CRITICAL" : "LOW"
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontCaption
+                                font.pixelSize: Theme.typography.secondary
                                 font.weight: Theme.weightSemibold
                                 font.letterSpacing: 0.5
                                 color: card.crit ? Theme.redText : Theme.amber
@@ -537,7 +537,7 @@ Surface {
                             text: card.hasReset
                                 ? "resets in " + Usage.formatReset(card.modelData.resetsAt) : ""
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.secondary
                             color: Theme.textLow
                             elide: Text.ElideRight
                         }
@@ -546,7 +546,7 @@ Surface {
                             width: parent.width
                             text: card.hasReset ? Usage.formatResetAbs(card.modelData.resetsAt) : ""
                             font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.secondary
                             color: Theme.textFaint
                             elide: Text.ElideRight
                         }
@@ -608,7 +608,7 @@ Surface {
                             ? String(creditsCard.c.label).toUpperCase()
                             : creditsCard.creditsStyle ? "CREDITS" : "EXTRA USAGE"
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
                         font.letterSpacing: 0.6
                         color: Theme.textDim
@@ -625,7 +625,7 @@ Surface {
                         anchors.top: parent.top
                         text: creditsCard.displayValue
                         font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontHeading
+                        font.pixelSize: Theme.typography.heading
                         font.weight: Theme.weightSemibold
                         color: Theme.textHi
                     }
@@ -637,7 +637,7 @@ Surface {
                         anchors.baseline: creditsValue.baseline
                         text: creditsCard.displaySuffix
                         font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.secondary
                         color: Theme.textLow
                     }
                 }
@@ -657,7 +657,7 @@ Surface {
                         : creditsCard.creditsStyle ? "use credits beyond plan limits"
                         : "pay-as-you-go beyond plan limits"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textDim
                     wrapMode: Text.Wrap
                     lineHeight: Theme.proseLineHeight
@@ -697,7 +697,7 @@ Surface {
                     ? `${root.p && root.p.stale === true ? "last live" : "updated"} <font color="${Theme.textLow}" face="${Theme.fontMono}">${Qt.formatTime(new Date(root.readingAt), "HH:mm:ss")}</font>`
                     : "Loading…"
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.secondary
             color: Usage.fetchError !== "" ? Theme.redText : Theme.textFaint
         }
 
@@ -712,7 +712,7 @@ Surface {
                 ? `retry in <font color="${Theme.textLow}" face="${Theme.fontMono}">${Usage.formatReset(root.p.retryAt)}</font>`
                 : `next poll <font color="${Theme.textLow}" face="${Theme.fontMono}">${Usage.formatCountdown(Usage.nextPollSecs)}</font>`
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.secondary
             color: Theme.textFaint
         }
     }

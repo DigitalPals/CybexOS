@@ -104,7 +104,7 @@ Item {
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
             font.family: root.fontFamily
-            font.pixelSize: Theme.fontSecondary
+            font.pixelSize: Theme.typography.secondary
             font.weight: Theme.weightSemibold
             color: root.kind === "error" ? root.errorColor : root.primaryTextColor
         }
@@ -120,7 +120,7 @@ Item {
             elide: Text.ElideRight
             lineHeight: Theme.proseLineHeight
             font.family: root.fontFamily
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.caption
             color: root.secondaryTextColor
         }
     }

@@ -10,7 +10,7 @@ Text {
 
   property color foreground: Color.foreground
   property string fontFamily: Style.font.family
-  property real fontSize: Style.font.caption
+  property real fontSize: Style.font.section
 
   // Callers bind `text` from outside this file, so the default has to be set
   // here. AutoText would let a section title that happens to carry a device or

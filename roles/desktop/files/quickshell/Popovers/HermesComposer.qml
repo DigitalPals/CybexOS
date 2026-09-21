@@ -162,7 +162,7 @@ Rectangle {
                         ? "Enter steers the active turn. Shift Enter inserts a newline."
                         : "Enter sends. Shift Enter inserts a newline."
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.typography.control
                     color: HermesTheme.textPrimary
                     selectionColor: HermesTheme.accentSoft
                     selectedTextColor: HermesTheme.textPrimary
@@ -204,7 +204,7 @@ Rectangle {
                                         ? "Message Hermes…"
                                         : "Continue this conversation…"
                         font.family: HermesTheme.fontUi
-                        font.pixelSize: Theme.fontBody
+                        font.pixelSize: Theme.typography.primary
                         color: HermesTheme.textFaint
                     }
                 }
@@ -262,7 +262,7 @@ Rectangle {
                             text: attachmentChip.modelData.name
                             elide: Text.ElideMiddle
                             font.family: HermesTheme.fontUi
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             color: HermesTheme.textSecondary
                         }
 
@@ -482,7 +482,7 @@ Rectangle {
             text: root.overLimit ? promptEdit.text.length + "/120000"
                 : "Slash command"
             font.family: root.overLimit ? HermesTheme.fontMono : HermesTheme.fontUi
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             color: root.overLimit ? HermesTheme.red : HermesTheme.accent
         }
     }

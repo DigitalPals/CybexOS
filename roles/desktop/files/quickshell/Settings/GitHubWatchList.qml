@@ -147,7 +147,7 @@ Column {
                     : connectionState.failed ? "Unavailable"
                     : GitHub.ready ? "Connected" : "Checking…"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textDim
             }
         }
@@ -165,7 +165,7 @@ Column {
                 text: GitHub.login !== "" ? "@" + GitHub.login
                     : GitHub.pollEnabled ? "Not signed in" : "gh CLI"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightMedium
                 color: Theme.textHi
                 elide: Text.ElideRight
@@ -186,7 +186,7 @@ Column {
                         + (orgs > 0 ? " across " + orgs + (orgs === 1 ? " org" : " orgs") : "");
                 }
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: GitHub.error !== "" ? Theme.redText : Theme.textLow
                 elide: Text.ElideRight
             }
@@ -211,7 +211,7 @@ Column {
             return parts.join("\n");
         }
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.secondary
         color: GitHub.inboxError !== "" ? Theme.redText : Theme.amber
         wrapMode: Text.Wrap
     }
@@ -262,7 +262,7 @@ Column {
                 anchors.rightMargin: 9
                 anchors.verticalCenter: parent.verticalCenter
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.control
                 color: Theme.textHi
                 selectionColor: Theme.accentBg
                 selectedTextColor: Theme.textHi
@@ -290,7 +290,7 @@ Column {
                     verticalAlignment: Text.AlignVCenter
                     text: "owner/repo"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.control
                     color: Theme.textFaint
                     elide: Text.ElideRight
                 }
@@ -310,7 +310,7 @@ Column {
         width: parent.width
         text: root.addError
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.secondary
         color: Theme.redText
         wrapMode: Text.Wrap
     }
@@ -357,7 +357,7 @@ Column {
                         + watchRow.modelData.split("/")[1]
                     textFormat: Text.StyledText
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.primary
                     color: Theme.textMid
                     elide: Text.ElideRight
                 }
@@ -371,7 +371,7 @@ Column {
                     y: 23
                     text: watchRow.errorText
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.amber
                     elide: Text.ElideRight
                 }
@@ -386,7 +386,7 @@ Column {
             + "the workflow-report scope. Repository refresh uses the interval above; "
             + "the Inbox checks repository events and GitHub notifications every minute."
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.secondary
         color: Theme.textFaint
         wrapMode: Text.Wrap
     }

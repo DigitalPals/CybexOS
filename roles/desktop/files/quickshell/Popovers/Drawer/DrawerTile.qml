@@ -52,7 +52,7 @@ Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             text: root.label
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.control
             font.weight: Theme.weightSemibold
             color: root.on ? Theme.accent : Theme.textMid
         }

@@ -77,7 +77,7 @@ Column {
                 Text {
                     text: Battery.isLaptop ? String(root.level) : "--"
                     font.family: Theme.fontNumeric
-                    font.pixelSize: Theme.fontHero
+                    font.pixelSize: Theme.typography.displayLarge
                     font.weight: Theme.weightSemibold
                     font.letterSpacing: -1.5
                     font.features: Theme.tabularNumberFeatures
@@ -89,7 +89,7 @@ Column {
                     anchors.bottomMargin: 5
                     text: "%"
                     font.family: Theme.fontNumeric
-                    font.pixelSize: Theme.fontSecondary + 2
+                    font.pixelSize: Theme.typography.subtitle
                     color: Theme.textFaint
                 }
             }
@@ -97,7 +97,7 @@ Column {
             Text {
                 text: root.statusLine
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textFaint
             }
         }
@@ -195,7 +195,7 @@ Column {
                             anchors.verticalCenter: parent.verticalCenter
                             text: profileChoice.modelData.label
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.secondary
                             font.weight: profileChoice.on
                                 ? Theme.weightSemibold : Theme.weightMedium
                             color: profileChoice.on ? Theme.textHi : Theme.textFaint
@@ -249,7 +249,7 @@ Column {
                     width: parent.width
                     text: "Preserve battery health"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.control
                     font.weight: Theme.weightMedium
                     color: Theme.textHi
                     elide: Text.ElideRight
@@ -269,7 +269,7 @@ Column {
                         return parts.join(" · ");
                     }
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     color: BatteryHealth.error !== ""
                         ? Theme.redText : Theme.textFaint
                     elide: Text.ElideRight
@@ -316,7 +316,7 @@ Column {
                     width: parent.width
                     text: "Stay awake"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.control
                     font.weight: Theme.weightMedium
                     color: Theme.textHi
                     elide: Text.ElideRight
@@ -328,7 +328,7 @@ Column {
                         ? SysInfo.idleInhibitError
                         : "Idle inhibit " + SysInfo.idleInhibitStatus.toLowerCase()
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     color: SysInfo.idleInhibitError !== ""
                         ? Theme.redText : Theme.textFaint
                     elide: Text.ElideRight

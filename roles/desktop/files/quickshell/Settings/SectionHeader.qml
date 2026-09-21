@@ -23,7 +23,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         text: root.label
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontMicro
+        font.pixelSize: Theme.typography.section
         font.weight: Theme.weightSemibold
         font.letterSpacing: 1
         color: Theme.textFaint
@@ -69,7 +69,7 @@ Item {
             anchors.centerIn: parent
             text: "Reset group"
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.control
             font.weight: Theme.weightSemibold
             color: Theme.accent
         }

@@ -267,7 +267,7 @@ SettingsPage {
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: parent.modelData.label
                                             font.family: Theme.fontMenu
-                                            font.pixelSize: Theme.fontCaption
+                                            font.pixelSize: Theme.typography.metadata
                                             color: Theme.textDim
                                         }
                                     }
@@ -283,7 +283,7 @@ SettingsPage {
                                     ? Common.Palette.error + " · using fixed colors"
                                     : "Waiting for the wallpaper palette"
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontCaption
+                                font.pixelSize: Theme.typography.secondary
                                 color: Common.Palette.error !== ""
                                     ? Theme.redText : Theme.textDim
                                 wrapMode: Text.Wrap
@@ -381,7 +381,7 @@ SettingsPage {
                         anchors.verticalCenter: parent.verticalCenter
                         text: page.barColorLabel
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightSemibold
                         color: Theme.textMid
                         elide: Text.ElideRight
@@ -396,7 +396,7 @@ SettingsPage {
                                 || Settings.barColorMode === "macos" ? "adapts to theme · " : "")
                             + Settings.effectiveBarColor.toUpperCase()
                         font.family: Theme.fontMono
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: Theme.textFaint
                         elide: Text.ElideLeft
                     }
@@ -586,7 +586,7 @@ SettingsPage {
                             width: Math.max(0, parent.width * 0.42 - x)
                             text: fontRow.modelData.label
                             font.family: fontRow.modelData.family
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.control
                             font.weight: Theme.weightMedium
                             color: fontRow.selected ? Theme.textHi : Theme.textMid
                             elide: Text.ElideRight
@@ -601,7 +601,7 @@ SettingsPage {
                             text: Qt.formatDateTime(clock.date, Settings.clock24 ? "HH:mm" : "h:mm AP")
                                 + " · Wed 06 · " + page.tempPreview
                             font.family: fontRow.modelData.family
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.bar
                             color: Theme.textLow
                             elide: Text.ElideLeft
                         }

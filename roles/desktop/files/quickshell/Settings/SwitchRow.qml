@@ -20,7 +20,7 @@ SettingsRow {
         width: root.narrow ? parent.width - 4 : control.x - x - 10
         text: root.description
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.control
         color: Theme.textDim
         elide: root.narrow ? Text.ElideNone : Text.ElideRight
         wrapMode: root.narrow ? Text.Wrap : Text.NoWrap

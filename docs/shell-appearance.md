@@ -22,15 +22,24 @@ plugin scale. Advanced Omarchy tokens can intentionally diverge from the shared
 settings. Existing explicit plugin border overrides remain valid; choose
 **Shell** under Settings → Plugins to inherit shared surface borders.
 
-The **Omarchy** preset selects JetBrains Mono, a 12px base font, 100% UI scale,
+The default and both **Omarchy** and **Cybex** presets select JetBrainsMono Nerd
+Font, a 12px base font, 100% UI scale,
 standard spacing, accent borders (2px, fully opaque) and 16px panel corners.
-The **Cybex** preset selects Figtree and a 14px base with the same surface rules.
 Both reset plugin appearance overrides and preserve text accessibility size,
 accounts, plugin enablement, wallpaper/palette and bar layout. The eight-second
 Undo action restores every preference changed by the preset.
 
+The shared library and usage rules are documented in [Shell typography](shell-typography.md).
+
+Typography follows [Omarchy's default scale](https://github.com/omacom/omarchy/blob/quattro/default/themed/shell.toml.tpl)
+and [default monospace family](https://github.com/omacom/omarchy/blob/quattro/default/fontconfig/conf.avail/50-omarchy.conf):
+10px captions, 11px secondary copy, 12px body/control/bar text, 14px titles,
+16px headings, and 24/28px display values. Settings labels, inputs, pickers,
+and actions use the same body role as plugin controls. Regular copy uses
+weight 400; headings can use medium, semibold or bold.
+
 Native body/caption and plugin body/caption share the same reference sizes.
-Other semantic roles (headings, hero values, bar labels) can have distinct sizes
+Other semantic roles (headings and hero values) can have distinct sizes
 while deriving from that common scale. Fixed-format numerical content follows
 the monospace family when the monospace preset is selected.
 
@@ -43,7 +52,9 @@ launcher, Settings and notification contracts check their scalable controls
 and bounds. Live checks use `tests/lib/quickshell-live` around the managed
 service and compare `shell debugPluginTheme` with screenshots of the same
 Model Usage tab/data, native Settings, popovers and a local test notification.
-No second live Quickshell process is needed.
+The diagnostic reports native and plugin body, caption, title, heading and
+display sizes so their equality can be checked directly. No second live
+Quickshell process is needed.
 
 Validated on 2026-09-21: the full repository gate passed, including 744 unit
 tests. Live checks passed all nine density/accessibility combinations, shared

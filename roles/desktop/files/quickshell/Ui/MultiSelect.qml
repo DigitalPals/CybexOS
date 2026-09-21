@@ -312,7 +312,7 @@ Item {
         text: root.selectionLabel() || root.triggerLabel || root.noSelectionText
         color: root.selectionLabel() ? root.foreground : Qt.darker(root.foreground, 1.5)
         font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: Style.font.control
         elide: Text.ElideRight
       }
 
@@ -324,7 +324,7 @@ Item {
         text: "󰅀"
         color: Qt.darker(root.foreground, 1.2)
         font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: Style.font.control
       }
 
       MouseArea {
@@ -416,7 +416,7 @@ Item {
                 foreground: root.foreground
                 accent: root.accent
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.body
+                font.pixelSize: Style.font.control
 
                 onTextChanged: {
                   root.recomputeFiltered()
@@ -462,7 +462,7 @@ Item {
                   text: root.loadingOptions ? "󰦖" : "󰑐"
                   color: root.foreground
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.body
+                  font.pixelSize: Style.font.control
 
                   RotationAnimator on rotation {
                     running: root.loadingOptions
@@ -499,7 +499,7 @@ Item {
               text: root.loadingOptions ? "Loading…" : (root.optionsError !== "" ? root.optionsError : root.emptyText)
               color: Qt.darker(root.foreground, 1.6)
               font.family: root.fontFamily
-              font.pixelSize: Style.font.body
+              font.pixelSize: Style.font.control
             }
 
             ListView {
@@ -594,7 +594,7 @@ Item {
                       text: optionDelegate.modelData.label
                       color: optionDelegate.index === resultList.currentIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
                       font.family: root.fontFamily
-                      font.pixelSize: Style.font.body
+                      font.pixelSize: Style.font.control
                       elide: Text.ElideRight
                       width: parent.width
                     }

@@ -262,7 +262,7 @@ Surface {
             Text {
                 text: radio.title
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
                 color: Theme.textHi
             }
@@ -271,7 +271,7 @@ Surface {
                 width: parent.width
                 text: radio.sub
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textDim
                 elide: Text.ElideRight
             }
@@ -406,7 +406,7 @@ Surface {
                 elide: Text.ElideRight
                 text: tile.title
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
                 color: tile.copy
             }
@@ -418,7 +418,7 @@ Surface {
                 elide: Text.ElideRight
                 text: tile.statusLabel
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontTiny
+                font.pixelSize: Theme.typography.secondary
                 color: tile.error !== "" ? Theme.redText
                     : tile.pending ? Theme.amber : tile.copy
                 Accessible.role: Accessible.StaticText
@@ -509,7 +509,7 @@ Surface {
                 elide: Text.ElideRight
                 text: action.visibleLabel
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
                 color: action.armed ? Theme.amber : Theme.textLow
             }
@@ -556,7 +556,7 @@ Surface {
             y: 9
             text: card.label
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.section
             font.weight: Theme.weightSemibold
             font.letterSpacing: 1
             color: Theme.textFaint
@@ -568,7 +568,7 @@ Surface {
             anchors.topMargin: 1
             text: card.display
             font.family: Theme.fontMono
-            font.pixelSize: Theme.fontProminent
+            font.pixelSize: Theme.typography.title
             font.weight: Theme.weightSemibold
             font.features: Theme.tabularNumberFeatures
             color: card.tone
@@ -840,7 +840,7 @@ Surface {
                         ? "Idle inhibit: " + SysInfo.idleInhibitError : "")
                 wrapMode: Text.WordWrap
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontTiny
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.redText
                 Accessible.role: Accessible.StaticText
                 Accessible.name: text
@@ -935,7 +935,7 @@ Surface {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: capture.label
                                     font.family: Theme.fontMenu
-                                    font.pixelSize: Theme.fontMicro
+                                    font.pixelSize: Theme.typography.control
                                     font.weight: Theme.weightMedium
                                     font.letterSpacing: 0.2
                                     color: capture.copy
@@ -994,7 +994,7 @@ Surface {
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.secondary
             color: root.pendingSessionKey !== "" ? Theme.amber : Theme.textDim
             Accessible.role: Accessible.AlertMessage
             Accessible.name: text
@@ -1050,7 +1050,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Settings"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
                 color: settingsMouse.containsMouse ? Theme.textHi : Theme.textLow
             }

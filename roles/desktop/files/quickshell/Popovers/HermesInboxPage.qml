@@ -364,7 +364,7 @@ Item {
             anchors.centerIn: parent
             text: badge.label
             font.family: HermesTheme.fontUi
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             font.weight: Theme.weightSemibold
             font.features: HermesTheme.tabularNumberFeatures
             color: badge.tint
@@ -449,7 +449,7 @@ Item {
                 text: String(activityRow.conversation.title ?? "Conversation")
                 elide: Text.ElideRight
                 font.family: HermesTheme.fontUi
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightSemibold
                 color: HermesTheme.textPrimary
             }
@@ -459,7 +459,7 @@ Item {
                 text: root.priorityDetail(activityRow.conversation)
                 elide: Text.ElideRight
                 font.family: HermesTheme.fontUi
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 color: activityRow.statusColor
             }
         }
@@ -493,7 +493,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: Hermes.relativeTime(activityRow.conversation.updatedAt)
                 font.family: HermesTheme.fontUi
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 font.features: HermesTheme.tabularNumberFeatures
                 color: HermesTheme.textFaint
             }
@@ -617,7 +617,7 @@ Item {
                         text: root.conversation?.title ?? "New chat"
                         elide: Text.ElideRight
                         font.family: HermesTheme.fontUi
-                        font.pixelSize: Theme.fontBody
+                        font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
                         color: HermesTheme.textPrimary
                     }
@@ -634,7 +634,7 @@ Item {
                         }
                         elide: Text.ElideRight
                         font.family: HermesTheme.fontUi
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: root.conversation?.status === "attention"
                             ? HermesTheme.amber
                             : root.conversation?.status === "error"
@@ -757,7 +757,7 @@ Item {
                         clip: true
                         selectByMouse: true
                         font.family: HermesTheme.fontUi
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.control
                         color: HermesTheme.textPrimary
                         Accessible.name: "Search Hermes conversation history"
                         Accessible.role: Accessible.EditableText
@@ -767,7 +767,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "Search conversations"
                             font.family: HermesTheme.fontUi
-                            font.pixelSize: Theme.fontSecondary
+                            font.pixelSize: Theme.typography.control
                             color: HermesTheme.textFaint
                         }
 
@@ -931,7 +931,7 @@ Item {
                                 text: conversationRow.modelData.title
                                 elide: Text.ElideRight
                                 font.family: HermesTheme.fontUi
-                                font.pixelSize: Theme.fontCaption
+                                font.pixelSize: Theme.typography.secondary
                                 font.weight: conversationRow.selected
                                     ? Theme.weightSemibold : Theme.weightMedium
                                 color: conversationRow.selected
@@ -946,7 +946,7 @@ Item {
                                     conversationRow.modelData)
                                 elide: Text.ElideRight
                                 font.family: HermesTheme.fontUi
-                                font.pixelSize: Theme.fontMicro
+                                font.pixelSize: Theme.typography.metadata
                                 color: conversationRow.priority === "attention"
                                     ? HermesTheme.amber
                                     : conversationRow.priority === "error"
@@ -995,7 +995,7 @@ Item {
                                 ? "NEW" : Hermes.relativeTime(
                                     conversationRow.modelData.updatedAt)
                             font.family: HermesTheme.fontUi
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             font.features: HermesTheme.tabularNumberFeatures
                             color: conversationRow.modelData.id === ""
                                 ? HermesTheme.accent : HermesTheme.textFaint
@@ -1029,7 +1029,7 @@ Item {
                                 : "No history matches “" + root.pickerQuery + "”"
                         elide: Text.ElideRight
                         font.family: HermesTheme.fontUi
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: Hermes.conversationsError !== ""
                             ? HermesTheme.red : HermesTheme.textFaint
                     }
@@ -1112,7 +1112,7 @@ Item {
                         text: entry.label
                         elide: Text.ElideRight
                         font.family: HermesTheme.fontUi
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: entry.tint
                     }
                     MouseArea {
@@ -1174,7 +1174,7 @@ Item {
                                 width: parent.width
                                 text: "CONNECTION"
                                 font.family: HermesTheme.fontUi
-                                font.pixelSize: Theme.fontMicro
+                                font.pixelSize: Theme.typography.metadata
                                 font.weight: Theme.weightSemibold
                                 font.letterSpacing: 1
                                 color: HermesTheme.textMuted
@@ -1188,7 +1188,7 @@ Item {
                                 elide: Text.ElideRight
                                 font.family: Hermes.remoteConnected
                                     ? HermesTheme.fontMono : HermesTheme.fontUi
-                                font.pixelSize: Theme.fontCaption
+                                font.pixelSize: Theme.typography.secondary
                                 color: HermesTheme.textSecondary
                             }
                         }
@@ -1313,7 +1313,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "ACTIVE CONVERSATIONS"
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     font.weight: Theme.weightSemibold
                     font.letterSpacing: 1
                     color: HermesTheme.textMuted
@@ -1326,7 +1326,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.allPriorityConversations.length
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     font.weight: Theme.weightMedium
                     font.features: HermesTheme.tabularNumberFeatures
                     color: HermesTheme.textFaint
@@ -1351,7 +1351,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "TOP 3"
                     font.family: HermesTheme.fontUi
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     font.weight: Theme.weightMedium
                     font.letterSpacing: 0.7
                     color: HermesTheme.textFaint
@@ -1395,7 +1395,7 @@ Item {
                 text: "1 shown · " + (root.requests.length - 1) + " more queued"
                 horizontalAlignment: Text.AlignRight
                 font.family: HermesTheme.fontUi
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 color: HermesTheme.textFaint
             }
 

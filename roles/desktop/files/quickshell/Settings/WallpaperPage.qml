@@ -128,7 +128,7 @@ Item {
                             horizontalAlignment: Text.AlignHCenter
                             text: wallImage.status === Image.Error ? "Could not load" : "Loading…"
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.secondary
                             color: Theme.textFaint
                             elide: Text.ElideRight
                         }
@@ -161,7 +161,7 @@ Item {
                             horizontalAlignment: Text.AlignHCenter
                             text: "Shuffle now"
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.control
                             font.weight: Theme.weightMedium
                             color: Theme.textLow
                             elide: Text.ElideRight
@@ -185,7 +185,7 @@ Item {
                             text: page.basename(cell.imagePath)
                             elide: Text.ElideMiddle
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontCaption
+                            font.pixelSize: Theme.typography.primary
                             color: Theme.textHi
                         }
                     }
@@ -269,7 +269,7 @@ Item {
             height: visible ? implicitHeight : 0
             text: Wallpaper.directoryError
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
             color: Theme.redText
             wrapMode: Text.Wrap
             maximumLineCount: 2

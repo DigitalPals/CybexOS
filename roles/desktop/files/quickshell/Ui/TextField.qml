@@ -39,7 +39,7 @@ TextField {
 
   echoMode: password ? TextInput.Password : TextInput.Normal
   font.family: Style.font.family
-  font.pixelSize: Style.font.body
+  font.pixelSize: Style.font.control
   color: foreground
   selectionColor: selectionTint
   selectedTextColor: foreground

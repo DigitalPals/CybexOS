@@ -53,7 +53,7 @@ SettingsRow {
         text: root.valueLabel !== "" ? root.valueLabel
             : slider.value.toFixed(root.decimals) + " " + root.unit
         font.family: Theme.fontMono
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.control
         color: Theme.textMid
     }
 }

@@ -83,7 +83,7 @@ Surface {
             text: pair.label
             elide: Text.ElideRight
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             font.weight: Theme.weightMedium
             color: Theme.textLow
         }
@@ -94,7 +94,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: pair.value
             font.family: Theme.fontMono
-            font.pixelSize: Theme.fontTiny
+            font.pixelSize: Theme.typography.secondary
             font.weight: Theme.weightSemibold
             font.features: Theme.tabularNumberFeatures
             color: Theme.textHi
@@ -161,7 +161,7 @@ Surface {
                 text: "Battery"
                 elide: Text.ElideRight
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontHeading
+                font.pixelSize: Theme.typography.heading
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
             }
@@ -182,7 +182,7 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.statusText
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontTiny
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightMedium
                     color: root.critical || root.warning
                         ? root.batteryTone : Theme.textLow
@@ -205,7 +205,7 @@ Surface {
                 anchors.top: parent.top
                 text: root.level
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontHero
+                font.pixelSize: Theme.typography.displayLarge
                 font.weight: Theme.weightBold
                 font.features: Theme.tabularNumberFeatures
                 color: root.critical || root.warning
@@ -220,7 +220,7 @@ Surface {
                 anchors.baseline: heroNumber.baseline
                 text: "%"
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightMedium
                 color: root.critical || root.warning
                     ? root.batteryTone : Theme.textLow
@@ -358,7 +358,7 @@ Surface {
                     text: "Preserve battery health"
                     elide: Text.ElideRight
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.typography.primary
                     font.weight: Theme.weightMedium
                     color: Theme.textHi
                 }
@@ -368,7 +368,7 @@ Surface {
                     text: root.healthDetail
                     elide: Text.ElideRight
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     color: BatteryHealth.error !== "" ? Theme.red : Theme.textLow
                 }
             }
@@ -506,7 +506,7 @@ Surface {
                             anchors.verticalCenter: parent.verticalCenter
                             text: profileSegment.modelData.label
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontTiny
+                            font.pixelSize: Theme.typography.secondary
                             font.weight: profileSegment.current
                                 ? Theme.weightSemibold : Theme.weightMedium
                             color: profileSegment.current

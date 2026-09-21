@@ -19,7 +19,7 @@ Text {
     signal clicked()
 
     font.family: Theme.fontMenu
-    font.pixelSize: Theme.fontSecondary
+    font.pixelSize: Theme.typography.control
     font.weight: Theme.weightMedium
     color: linkMouse.containsMouse ? Theme.accentHover : Theme.accent
     font.underline: activeFocus

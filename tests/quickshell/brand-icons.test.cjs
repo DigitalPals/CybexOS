@@ -100,7 +100,8 @@ test("product marks render through BrandIcon rather than ad-hoc asset paths", ()
 
 test("Quickshell no longer carries a parallel Nerd Font icon path", () => {
     const sources = codeFiles().map(file => fs.readFileSync(file, "utf8")).join("\n");
-    assert.doesNotMatch(sources, /fontNerd|JetBrainsMono Nerd Font|/);
+    // The default text face includes Nerd Font glyphs; icons still use Sym/BrandIcon.
+    assert.doesNotMatch(sources, /fontNerd|/);
 });
 
 test("every bundled product mark records pinned provenance and licensing", () => {

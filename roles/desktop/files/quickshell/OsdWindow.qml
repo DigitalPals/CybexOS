@@ -72,7 +72,7 @@ PanelWindow {
         y: root.pad + (Osd.active ? 0 : root.atTop ? -16 : 16)
         opacity: Osd.active ? 1 : 0
         implicitWidth: row.implicitWidth + 28
-        implicitHeight: 46
+        implicitHeight: Math.max(46, row.implicitHeight + Theme.scaled(20))
         radius: height / 2
         color: Theme.panelSurface
         border.width: 1
@@ -122,8 +122,8 @@ PanelWindow {
 
             Item {
                 anchors.verticalCenter: parent.verticalCenter
-                width: 36
-                height: 16
+                width: Math.max(Theme.scaled(48), pct.implicitWidth + unit.implicitWidth, muteLabel.implicitWidth)
+                height: Math.max(pct.implicitHeight, muteLabel.implicitHeight)
 
                 Text {
                     id: pct
@@ -134,7 +134,7 @@ PanelWindow {
                         ? Math.round(root.value * 100)
                         : (SysInfo.brightness >= 0 ? SysInfo.brightness : "--")
                     font.family: Theme.fontMono
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.osd
                     font.weight: Theme.weightSemibold
                     color: Theme.textHi
                 }
@@ -146,17 +146,18 @@ PanelWindow {
                     anchors.baseline: pct.baseline
                     text: "%"
                     font.family: Theme.fontMono
-                    font.pixelSize: 9
+                    font.pixelSize: Theme.typography.osd
                     color: Theme.textLow
                 }
 
                 Text {
+                    id: muteLabel
                     visible: root.muted
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     text: "MUTE"
                     font.family: Theme.fontMono
-                    font.pixelSize: 10
+                    font.pixelSize: Theme.typography.osd
                     font.weight: Theme.weightSemibold
                     color: Theme.redText
                 }

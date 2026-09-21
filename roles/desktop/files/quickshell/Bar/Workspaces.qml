@@ -208,7 +208,7 @@ Rectangle {
                     anchors.centerIn: parent
                     text: slot.wsId
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.barLabelSize
+                    font.pixelSize: Theme.typography.bar
                     font.weight: slot.focused || slot.urgent
                         ? Theme.weightSemibold : Theme.weightMedium
                     font.features: Theme.tabularNumberFeatures

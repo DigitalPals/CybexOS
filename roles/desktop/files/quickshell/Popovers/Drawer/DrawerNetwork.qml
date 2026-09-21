@@ -101,7 +101,7 @@ Column {
                     : !WifiState.enabled ? "Wi-Fi off"
                     : WifiState.connected ? WifiState.name : "Not connected"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontHeading - 1
+                font.pixelSize: Theme.typography.title
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
                 elide: Text.ElideRight
@@ -125,7 +125,7 @@ Column {
                     return parts.join(" · ");
                 }
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textFaint
                 elide: Text.ElideRight
             }
@@ -197,7 +197,7 @@ Column {
                         anchors.verticalCenter: parent.verticalCenter
                         text: netEntry.modelData.ssid
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.primary
                         font.weight: netEntry.current
                             ? Theme.weightSemibold : Theme.weightMedium
                         color: netEntry.current ? Theme.textHi : Theme.textMid
@@ -214,7 +214,7 @@ Column {
                             : NetworkHelpers.classifySecurity(
                                 netEntry.modelData.security).label
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontMicro
+                        font.pixelSize: Theme.typography.metadata
                         color: Theme.textFaint
                     }
 
@@ -268,7 +268,7 @@ Column {
                         anchors.rightMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.control
                         color: Theme.textHi
                         echoMode: TextInput.Password
                         clip: true
@@ -280,7 +280,7 @@ Column {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "Password"
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontSecondary
+                            font.pixelSize: Theme.typography.control
                             color: Theme.textFaint
                         }
                     }
@@ -303,7 +303,7 @@ Column {
                     text: netEntry.unfolded && root.credentialError !== ""
                         ? root.credentialError : netEntry.failure
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     color: Theme.redText
                     wrapMode: Text.WordWrap
                 }
@@ -337,7 +337,7 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Tailscale"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
                 color: Theme.textHi
             }
@@ -353,7 +353,7 @@ Column {
                     ? [Tailscale.host, Tailscale.ip].filter(s => s !== "").join(" · ")
                     : Tailscale.statusError !== "" ? "unavailable" : "off"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textFaint
                 elide: Text.ElideRight
             }
@@ -390,7 +390,7 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Bluetooth"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
                 color: Theme.textHi
             }
@@ -409,7 +409,7 @@ Column {
                         : BluetoothState.enabled ? "on" : "off";
                 }
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textFaint
                 elide: Text.ElideRight
             }
@@ -445,7 +445,7 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "DNS"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
                 color: Theme.textHi
             }
@@ -485,7 +485,7 @@ Column {
                                 text: dnsChoice.modelData === "Automatic"
                                     ? "Auto" : dnsChoice.modelData
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontMicro
+                                font.pixelSize: Theme.typography.control
                                 font.weight: Theme.weightSemibold
                                 color: dnsChoice.on ? Theme.textHi : Theme.textFaint
                             }
@@ -558,7 +558,7 @@ Column {
                     anchors.verticalCenter: parent.verticalCenter
                     text: metricCell.modelData.label
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     color: Theme.textFaint
                 }
 
@@ -568,7 +568,7 @@ Column {
                     anchors.verticalCenter: parent.verticalCenter
                     text: metricCell.modelData.value
                     font.family: Theme.fontNumeric
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightSemibold
                     font.features: Theme.tabularNumberFeatures
                     color: Theme.textHi

@@ -72,7 +72,7 @@ Rectangle {
         anchors.centerIn: parent
         text: root.label
         font.family: root.fontFamily
-        font.pixelSize: Theme.fontCaption
+        font.pixelSize: Theme.typography.control
         font.weight: Theme.weightSemibold
         color: root.tint
     }

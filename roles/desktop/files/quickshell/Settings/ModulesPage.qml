@@ -212,7 +212,7 @@ SettingsPage {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "⠿"
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 color: Theme.textDim
             }
 
@@ -220,7 +220,7 @@ SettingsPage {
                 anchors.verticalCenter: parent.verticalCenter
                 text: page.widgetMeta[chip.entryId].short
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.bar
                 font.weight: Theme.weightSemibold
                 color: Theme.textMid
             }
@@ -354,7 +354,7 @@ SettingsPage {
             anchors.verticalCenter: parent.verticalCenter
             text: cell.meta.name
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontSecondary
+            font.pixelSize: Theme.typography.primary
             font.weight: Theme.weightMedium
             color: cell.entry.on ? Theme.textHi : Theme.textLow
             elide: Text.ElideRight
@@ -368,7 +368,7 @@ SettingsPage {
             width: Math.min(implicitWidth, 110)
             text: cell.meta.tag ?? ""
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             color: Theme.textFaint
             elide: Text.ElideRight
         }
@@ -502,7 +502,7 @@ SettingsPage {
                                         text: (page.widgetMeta[page.subPage] ?? ({ name: page.subPage })).name.toUpperCase()
                                             + " · WIDGET SETTINGS"
                                         font.family: Theme.fontMenu
-                                        font.pixelSize: Theme.fontMicro
+                                        font.pixelSize: Theme.typography.section
                                         font.weight: Theme.weightSemibold
                                         font.letterSpacing: 1
                                         color: Theme.textFaint
@@ -557,7 +557,7 @@ SettingsPage {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Profile"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.control
                     color: Theme.textFaint
                 }
 
@@ -673,7 +673,7 @@ SettingsPage {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "⠿"
                             font.family: Theme.fontMono
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             color: Theme.textDim
                         }
 
@@ -681,7 +681,7 @@ SettingsPage {
                             anchors.verticalCenter: parent.verticalCenter
                             text: page.dragMod ? page.dragMod.name : ""
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.bar
                             font.weight: Theme.weightSemibold
                             color: Theme.textHi
                         }
@@ -698,7 +698,7 @@ SettingsPage {
                     anchors.leftMargin: 6
                     text: "LEFT"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.section
                     font.letterSpacing: 0.8
                     color: Theme.textFaint
                 }
@@ -706,7 +706,7 @@ SettingsPage {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "CENTER"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.section
                     font.letterSpacing: 0.8
                     color: Theme.textFaint
                 }
@@ -716,7 +716,7 @@ SettingsPage {
                     text: page.dragActive && page.dropAt !== null
                         ? "RIGHT · drop to place" : "RIGHT"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.section
                     font.letterSpacing: 0.8
                     color: page.dragActive ? Theme.textMid : Theme.textFaint
                 }
@@ -734,7 +734,7 @@ SettingsPage {
                 text: page.enabledCount + " of " + page.catalogIds.length
                     + " shown · switch off to remove from its lane"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textDim
             }
 
@@ -772,7 +772,7 @@ SettingsPage {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Widget profile applied"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textMid
             }
 
@@ -799,7 +799,7 @@ SettingsPage {
                     anchors.centerIn: parent
                     text: "Undo"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.control
                     font.weight: Theme.weightSemibold
                     color: Theme.accent
                 }

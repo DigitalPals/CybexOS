@@ -1124,7 +1124,7 @@ PanelWindow {
                 text: barWindow.dragWidget
                     ? WidgetCatalog.widgetName(barWindow.dragWidget.id) : ""
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.bar
                 font.weight: Theme.weightMedium
                 color: Theme.barTextHi
             }

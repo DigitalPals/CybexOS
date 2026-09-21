@@ -261,7 +261,7 @@ Surface {
                             anchors.verticalCenter: parent.verticalCenter
                             text: providerTab.label
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontTiny
+                            font.pixelSize: Theme.typography.secondary
                             font.weight: Theme.weightBold
                             color: providerTab.active
                                 ? Theme.textHi : Theme.textDim
@@ -312,7 +312,7 @@ Surface {
             x: 44
             width: parent.width - x - (modeChip.visible ? modeChip.width + 24 : 16)
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: Theme.typography.control
             font.weight: Theme.weightSemibold
             color: Theme.textHi
             clip: true
@@ -347,7 +347,7 @@ Surface {
                 anchors.centerIn: parent
                 text: root.mode !== "" ? root.provider.label : ""
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 font.weight: Theme.weightMedium
                 font.letterSpacing: 0.5
                 color: Theme.textHi
@@ -430,7 +430,7 @@ Surface {
                             visible: !!resultRow.modelData.iconText
                             text: resultRow.modelData.iconText || ""
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontProminent
+                            font.pixelSize: Theme.typography.title
                         }
                     }
                 }
@@ -442,7 +442,7 @@ Surface {
                     textFormat: Text.StyledText
                     text: root.titleFor(resultRow.modelData)
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightBold
                     color: Theme.textHi
                     elide: Text.ElideRight
@@ -492,7 +492,7 @@ Surface {
             horizontalAlignment: Text.AlignHCenter
             text: LauncherProviders.emptyText
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontTiny
+            font.pixelSize: Theme.typography.secondary
             font.weight: Theme.weightBold
             color: LauncherProviders.error !== "" ? Theme.redText : Theme.textDim
             elide: Text.ElideRight

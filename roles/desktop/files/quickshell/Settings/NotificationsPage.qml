@@ -101,7 +101,7 @@ SettingsPage {
                 leftPadding: page.footnotePad
                 text: "Critical alerts ignore the timer and stay until dismissed"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textDim
                 wrapMode: Text.Wrap
                 maximumLineCount: 2
@@ -238,7 +238,7 @@ SettingsPage {
                                         width: Math.max(0, parent.width - sampleTime.width - 6)
                                         text: "WhatsApp"
                                         font.family: Theme.fontMenu
-                                        font.pixelSize: Theme.fontMicro
+                                        font.pixelSize: Theme.typography.metadata
                                         font.weight: Theme.weightMedium
                                         color: Theme.textDim
                                         elide: Text.ElideRight
@@ -248,7 +248,7 @@ SettingsPage {
                                         anchors.right: parent.right
                                         text: "now"
                                         font.family: Theme.fontMono
-                                        font.pixelSize: Theme.fontMicro
+                                        font.pixelSize: Theme.typography.metadata
                                         color: Theme.textFaint
                                     }
                                 }
@@ -256,7 +256,7 @@ SettingsPage {
                                     width: parent.width
                                     text: "Sarah Jansen"
                                     font.family: Theme.fontMenu
-                                    font.pixelSize: Theme.fontSecondary
+                                    font.pixelSize: Theme.typography.notification
                                     font.weight: Theme.weightSemibold
                                     color: Theme.textHi
                                     elide: Text.ElideRight
@@ -266,7 +266,7 @@ SettingsPage {
                                     width: parent.width
                                     text: "Sure, see you at 12:30 tomorrow then! I'll bring the plans."
                                     font.family: Theme.fontMenu
-                                    font.pixelSize: Theme.fontCaption
+                                    font.pixelSize: Theme.typography.notification
                                     color: Theme.textMid
                                     wrapMode: Text.Wrap
                                     maximumLineCount: Settings.notifBodyLines
@@ -308,7 +308,7 @@ SettingsPage {
                             text: Settings.notifPosition.replace("-", " ") + " · "
                                 + Settings.notifDuration + " s · " + Settings.notifDensity
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             color: Theme.textFaint
                             elide: Text.ElideRight
                         }

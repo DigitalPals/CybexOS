@@ -358,7 +358,7 @@ Column {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Run settings"
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightSemibold
                         color: T3Theme.textPrimary
                     }
@@ -475,7 +475,7 @@ Column {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: root.traitLabel(traitRow.modelData)
                                 font.family: T3Theme.fontUi
-                                font.pixelSize: Theme.fontSecondary
+                                font.pixelSize: Theme.typography.secondary
                                 color: T3Theme.textSecondary
                             }
 
@@ -529,7 +529,7 @@ Column {
                 text: root.draft.traitError ?? ""
                 wrapMode: Text.WordWrap
                 font.family: T3Theme.fontUi
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: T3Theme.amber
             }
         }
@@ -587,7 +587,7 @@ Column {
                         selectByMouse: true
                         Accessible.description: "Enter to send. Control Enter inserts a newline."
                         font.family: T3Theme.fontUi
-                        font.pixelSize: Theme.fontBody
+                        font.pixelSize: Theme.typography.control
                         color: T3Theme.textPrimary
                         selectionColor: T3Theme.accentSoft
                         selectedTextColor: T3Theme.textPrimary
@@ -619,7 +619,7 @@ Column {
                             visible: promptEdit.text === ""
                             text: "Ask anything…"
                             font.family: T3Theme.fontUi
-                            font.pixelSize: Theme.fontBody
+                            font.pixelSize: Theme.typography.primary
                             color: T3Theme.textFaint
                         }
                     }
@@ -850,7 +850,7 @@ Column {
                 width: parent.width
                 text: "Prompt too long — open T3 Code"
                 font.family: T3Theme.fontUi
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: T3Theme.red
             }
         }

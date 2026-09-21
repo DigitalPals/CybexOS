@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import "../Common" as Host
+import "../Common/Typography.js" as Typography
 
 // Shared structural style tokens for the shell. Color is the palette
 // singleton; Style holds everything else themes can influence — corner
@@ -290,7 +291,7 @@ QtObject {
   readonly property real fontScale: Math.max(1 / 12, fontBaseSize / 12)
 
   function fontPx(mult) {
-    return Math.max(1, Math.round(fontBaseSize * mult))
+    return Typography.pixels(fontBaseSize, mult)
   }
 
   function fontToken(key, fallback) {
@@ -324,24 +325,37 @@ QtObject {
     return (override && override.length > 0) ? override : fontFamily
   }
 
+  readonly property var typography: Typography.resolve(fontBaseSize, fontOverrides)
+
   readonly property var font: QtObject {
     readonly property string family: root.fontFamily
     readonly property string resolvedFamily: root.resolvedFontFamily
     readonly property string menuFamily: root.menuFontFamily
     readonly property int baseSize: root.fontBaseSize
+    readonly property int bar: root.typography.bar
+    readonly property int control: root.typography.control
+    readonly property int navigation: root.typography.navigation
+    readonly property int primary: root.typography.primary
+    readonly property int secondary: root.typography.secondary
+    readonly property int section: root.typography.section
+    readonly property int metadata: root.typography.metadata
+    readonly property int tooltip: root.typography.tooltip
+    readonly property int notification: root.typography.notification
+    readonly property int osd: root.typography.osd
 
-    readonly property int caption:      root.fontToken("caption",       root.fontPx(0.833))   // 10
-    readonly property int bodySmall:    root.fontToken("body-small",    root.fontPx(0.917))   // 11
-    readonly property int body:         root.fontToken("body",          root.fontPx(1.0))     // 12
-    readonly property int subtitle:     root.fontToken("subtitle",      root.fontPx(1.083))   // 13
-    readonly property int title:        root.fontToken("title",         root.fontPx(1.167))   // 14
-    readonly property int heading:      root.fontToken("heading",       root.fontPx(1.333))   // 16
-    readonly property int display:      root.fontToken("display",       root.fontPx(2.0))     // 24
-    readonly property int displayLarge: root.fontToken("display-large", root.fontPx(2.333))   // 28
+    readonly property int caption: root.typography.caption
+    readonly property int bodySmall: root.typography.bodySmall
+    readonly property int body: root.typography.body
+    readonly property int subtitle: root.typography.subtitle
+    readonly property int title: root.typography.title
+    readonly property int heading: root.typography.heading
+    readonly property int display: root.typography.display
+    readonly property int displayLarge: root.typography.displayLarge
 
-    readonly property int iconSmall:    root.fontToken("icon-small",    bodySmall)
-    readonly property int icon:         root.fontToken("icon",          title)
-    readonly property int iconLarge:    root.fontToken("icon-large",    root.fontPx(1.5))     // 18
+    readonly property int iconSmall: root.typography.iconSmall
+    readonly property int icon: root.typography.icon
+    readonly property int iconLarge: root.typography.iconLarge
+    readonly property int clock: root.typography.clock
   }
 
   readonly property var bar: QtObject {

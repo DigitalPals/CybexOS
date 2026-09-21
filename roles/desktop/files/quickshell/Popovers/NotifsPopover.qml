@@ -102,8 +102,8 @@ Surface {
     // that differs between a toast and a centre row arrives through here.
     readonly property var cardStyle: ({
         face: Theme.fontMenu,
-        header: Theme.fontSecondary,
-        body: Theme.fontSecondary,
+        header: Theme.typography.notification,
+        body: Theme.typography.notification,
         bodyColor: Theme.textLow,
         bodyLines: 2,
         bodyLeading: 1.25,
@@ -270,7 +270,7 @@ Surface {
                         width: parent.width - 110
                         text: block.group.app
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
                         color: Theme.textHi
                         elide: Text.ElideRight
@@ -290,7 +290,7 @@ Surface {
                             anchors.centerIn: parent
                             text: block.group.items.length
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightMedium
                             font.features: Theme.tabularNumberFeatures
                             color: Theme.textMid
@@ -377,7 +377,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "NOTIFICATIONS"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.metadata
                 font.weight: Theme.weightSemibold
                 font.letterSpacing: 1
                 color: Theme.textFaint
@@ -396,7 +396,7 @@ Surface {
                     anchors.centerIn: parent
                     text: Notifs.count
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontMicro
+                    font.pixelSize: Theme.typography.metadata
                     font.weight: Theme.weightMedium
                     font.features: Theme.tabularNumberFeatures
                     color: Theme.textMid
@@ -459,7 +459,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "EARLIER"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.section
                 font.weight: Theme.weightSemibold
                 font.letterSpacing: 1.2
                 color: Theme.textFaint
@@ -500,7 +500,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: "Do Not Disturb"
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontSecondary
+            font.pixelSize: Theme.typography.control
             color: Theme.textDim
         }
 

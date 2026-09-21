@@ -39,7 +39,7 @@ BorderSurface {
 
   // Sizing.
   property string fontFamily: Style.font.family
-  property real fontSize: Style.font.body
+  property real fontSize: Style.font.control
   property real iconSize: Style.font.icon
   property real iconRotation: 0
   property bool iconSpinning: false

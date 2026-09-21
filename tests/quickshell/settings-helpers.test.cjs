@@ -26,7 +26,7 @@ test("defaults carry the design values", () => {
         [230, 14, 9]);
     assert.equal(d.barHeight, 36);
     assert.equal(d.barRadius, 11);
-    assert.equal(d.font, "figtree");
+    assert.equal(d.font, "mono");
     assert.equal(d.accent, "#d3d283");
     assert.equal(d.paletteMode, "wallpaper");
     assert.equal(d.position, "top");
@@ -503,7 +503,7 @@ test("merge clamps and snaps numeric ranges", () => {
 });
 
 test("merge falls back on invalid enums, colors and names", () => {
-    assert.equal(H.merge({ font: "comic-sans" }).font, "figtree");
+    assert.equal(H.merge({ font: "comic-sans" }).font, "mono");
     assert.equal(H.merge({ v: H.VERSION, font: "oppo" }).font, "oppo",
         "the previous menu face stays selectable");
     assert.equal(H.merge({ themeMode: "sepia" }).themeMode, "dark");

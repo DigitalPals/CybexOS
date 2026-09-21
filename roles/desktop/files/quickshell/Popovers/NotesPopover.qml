@@ -331,7 +331,7 @@ Surface {
             text: root.statusText
             elide: Text.ElideRight
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.secondary
             color: Notes.error !== "" ? Theme.redText : Theme.textLow
             Accessible.role: Notes.error !== ""
                 ? Accessible.AlertMessage : Accessible.StaticText
@@ -412,7 +412,7 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Notes"
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontHeading
+                        font.pixelSize: Theme.typography.heading
                         font.weight: Theme.weightBold
                         color: Theme.textHi
                     }
@@ -461,7 +461,7 @@ Surface {
                         horizontalAlignment: Text.AlignHCenter
                         text: "No notes yet"
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontBody
+                        font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
                         color: Theme.textMid
                     }
@@ -471,7 +471,7 @@ Surface {
                         horizontalAlignment: Text.AlignHCenter
                         text: "Use Add to start a note."
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontCaption
+                        font.pixelSize: Theme.typography.secondary
                         color: Theme.textFaint
                     }
                 }
@@ -577,7 +577,7 @@ Surface {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: noteCard.rowStatus
                                     font.family: Theme.fontMenu
-                                    font.pixelSize: Theme.fontMicro
+                                    font.pixelSize: Theme.typography.metadata
                                     font.weight: Theme.weightMedium
                                     font.features: Theme.tabularNumberFeatures
                                     color: noteCard.titleFailure !== ""
@@ -627,7 +627,7 @@ Surface {
                                 maximumLineCount: 1
                                 elide: Text.ElideRight
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontBody
+                                font.pixelSize: Theme.typography.primary
                                 font.weight: Theme.weightSemibold
                                 color: Theme.textHi
                             }
@@ -705,7 +705,7 @@ Surface {
                     anchors.centerIn: parent
                     text: root.editingId === "" ? "New note" : "Edit note"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontHeading
+                    font.pixelSize: Theme.typography.heading
                     font.weight: Theme.weightBold
                     color: Theme.textHi
                 }
@@ -786,7 +786,7 @@ Surface {
                             activeFocusOnTab: true
                             verticalAlignment: TextInput.AlignVCenter
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontProminent
+                            font.pixelSize: Theme.typography.title
                             font.weight: Theme.weightSemibold
                             color: Theme.textHi
                             selectionColor: Theme.accentBg
@@ -860,7 +860,7 @@ Surface {
                                 ? "Generating title…" : root.editorTitleError
                             elide: Text.ElideRight
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             color: root.editorTitleError !== ""
                                 ? Theme.redText : Theme.textLow
                             Accessible.role: root.editorTitleError !== ""
@@ -910,7 +910,7 @@ Surface {
                         persistentSelection: true
                         activeFocusOnTab: true
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontBody
+                        font.pixelSize: Theme.typography.control
                         color: Theme.textHi
                         selectionColor: Theme.accentBg
                         selectedTextColor: Theme.textHi

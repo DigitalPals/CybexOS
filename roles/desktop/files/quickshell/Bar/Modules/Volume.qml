@@ -40,7 +40,7 @@ BarModule {
             anchors.verticalCenter: parent.verticalCenter
             text: Audio.volume + "%"
             font.family: Theme.fontNumeric
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.bar
             font.weight: Theme.weightBold
             font.features: Theme.tabularNumberFeatures
             color: Audio.muted ? Theme.barRedText : Theme.barTextMid

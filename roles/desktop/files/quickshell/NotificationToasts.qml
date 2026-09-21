@@ -24,13 +24,11 @@ PanelWindow {
     readonly property int padH: Theme.scaled(Settings.notifDensity === "compact" ? 10
         : Settings.notifDensity === "roomy" ? 16 : 12)
 
-    // Toast type: an overlay surface, so it stays on the general UI face
-    // rather than the menu font, and it is free of the popover scale's 12px
-    // floor — the timestamp is deliberately small and monospaced.
+    // Toast and history messages use the shared notification role.
     readonly property var cardStyle: ({
         face: Theme.fontMenu,
-        header: Theme.fontCaption,
-        body: Theme.fontCaption,
+        header: Theme.typography.notification,
+        body: Theme.typography.notification,
         bodyColor: Theme.icon,
         bodyLines: Settings.notifBodyLines,
         bodyLeading: 1.15,

@@ -67,7 +67,7 @@ Column {
                 width: parent.width
                 text: Audio.ready ? Audio.outputName : "No output device"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontHeading - 1
+                font.pixelSize: Theme.typography.title
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
                 elide: Text.ElideRight
@@ -81,7 +81,7 @@ Column {
                             ? "muted" : Audio.sourceVolume + "%")
                         : "")
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.textFaint
                 elide: Text.ElideRight
             }
@@ -160,7 +160,7 @@ Column {
                     anchors.verticalCenter: parent.verticalCenter
                     text: AudioHelpers.sinkLabel(sinkRow.modelData)
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.primary
                     font.weight: sinkRow.current
                         ? Theme.weightSemibold : Theme.weightMedium
                     color: sinkRow.current ? Theme.textHi : Theme.textMid
@@ -222,7 +222,7 @@ Column {
                 text: root.networkOpen ? "Hide network outputs"
                     : root.networkSinks.length + " network outputs"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
                 color: Theme.textFaint
             }
@@ -287,7 +287,7 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 text: AudioHelpers.sourceLabel(Audio.source)
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
                 elide: Text.ElideRight
@@ -366,7 +366,7 @@ Column {
                     text: AudioHelpers.streamLabel(streamRow.modelData,
                         Media.players, root.readyStreams)
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.primary
                     font.weight: Theme.weightMedium
                     color: Theme.textHi
                     elide: Text.ElideRight
@@ -396,7 +396,7 @@ Column {
                     horizontalAlignment: Text.AlignRight
                     text: Math.round(streamRow.streamLevel * 100) + "%"
                     font.family: Theme.fontNumeric
-                    font.pixelSize: Theme.fontCaption
+                    font.pixelSize: Theme.typography.metadata
                     font.features: Theme.tabularNumberFeatures
                     color: Theme.textFaint
                 }

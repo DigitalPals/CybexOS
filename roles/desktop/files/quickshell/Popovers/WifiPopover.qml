@@ -335,7 +335,7 @@ Surface {
             text: metric.label
             elide: Text.ElideRight
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontMicro
+            font.pixelSize: Theme.typography.metadata
             color: Theme.textDim
         }
 
@@ -346,7 +346,7 @@ Surface {
             text: metric.value
             elide: Text.ElideRight
             font.family: Theme.fontMono
-            font.pixelSize: Theme.fontTiny
+            font.pixelSize: Theme.typography.secondary
             font.weight: Theme.weightSemibold
             color: Theme.textHi
         }
@@ -385,7 +385,7 @@ Surface {
             anchors.centerIn: parent
             text: pill.label
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontTiny
+            font.pixelSize: Theme.typography.control
             font.weight: Theme.weightSemibold
             color: pill.selected ? Theme.accentFg : Theme.textMid
         }
@@ -513,7 +513,7 @@ Surface {
                 text: "Tailscale"
                 elide: Text.ElideRight
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.primary
                 font.weight: Tailscale.connected
                     ? Theme.weightSemibold : Theme.weightMedium
                 color: Theme.textHi
@@ -524,7 +524,7 @@ Surface {
                 text: root.tailscaleDetail
                 elide: Text.ElideRight
                 font.family: Theme.fontMono
-                font.pixelSize: Theme.fontTiny
+                font.pixelSize: Theme.typography.secondary
                 color: Tailscale.statusError !== "" ? Theme.red : Theme.textDim
             }
         }
@@ -629,7 +629,7 @@ Surface {
                 text: picker.currentLabel
                 elide: Text.ElideRight
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontBody
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
                 color: picker.ready ? Theme.textHi : Theme.textDim
             }
@@ -639,7 +639,7 @@ Surface {
                 text: picker.detailText
                 elide: Text.ElideRight
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontMicro
+                font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightMedium
                 color: Theme.textDim
             }
@@ -752,7 +752,7 @@ Surface {
                     text: row.network.ssid
                     elide: Text.ElideRight
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.typography.primary
                     font.weight: row.network.connected ? Theme.weightSemibold : Theme.weightMedium
                     color: Theme.textHi
                 }
@@ -766,7 +766,7 @@ Surface {
                             + row.securityInfo.label + " · " + row.network.signal + "%"
                     elide: Text.ElideRight
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontTiny
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textDim
                 }
             }
@@ -854,7 +854,7 @@ Surface {
                     text: root.credentialIdentity
                     onTextEdited: root.credentialIdentity = text
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.typography.control
                     color: Theme.textHi
                     selectionColor: Theme.accent
                     selectedTextColor: Theme.accentFg
@@ -889,7 +889,7 @@ Surface {
                     echoMode: TextInput.Password
                     passwordCharacter: "•"
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontBody
+                    font.pixelSize: Theme.typography.control
                     color: Theme.textHi
                     selectionColor: Theme.accent
                     selectedTextColor: Theme.accentFg
@@ -913,7 +913,7 @@ Surface {
                 text: root.credentialInputError
                 wrapMode: Text.Wrap
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontTiny
+                font.pixelSize: Theme.typography.secondary
                 color: Theme.red
             }
 
@@ -949,7 +949,7 @@ Surface {
             text: row.actionError
             wrapMode: Text.Wrap
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontTiny
+            font.pixelSize: Theme.typography.secondary
             color: Theme.red
         }
     }
@@ -983,7 +983,7 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Network"
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontHeading
+                        font.pixelSize: Theme.typography.heading
                         font.weight: Theme.weightSemibold
                         color: Theme.textHi
                     }
@@ -1034,7 +1034,7 @@ Surface {
                             text: root.heroTitle
                             elide: Text.ElideRight
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontMicro
+                            font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightBold
                             font.letterSpacing: 1
                             color: Theme.accent
@@ -1045,7 +1045,7 @@ Surface {
                             text: root.heroName
                             elide: Text.ElideRight
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontProminent
+                            font.pixelSize: Theme.typography.title
                             font.weight: Theme.weightSemibold
                             color: Theme.textHi
                         }
@@ -1055,7 +1055,7 @@ Surface {
                             text: root.heroStatus
                             elide: Text.ElideRight
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontSecondary
+                            font.pixelSize: Theme.typography.secondary
                             color: Theme.textLow
                         }
                     }
@@ -1179,7 +1179,7 @@ Surface {
                             anchors.verticalCenter: parent.verticalCenter
                             text: NetworkDetails.dnsBusy ? "Applying…" : NetworkDetails.dnsProvider
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.fontTiny
+                            font.pixelSize: Theme.typography.secondary
                             color: NetworkDetails.dnsMixed ? Theme.red : Theme.textDim
                         }
                     }
@@ -1224,7 +1224,7 @@ Surface {
                                 text: root.customDnsText
                                 onTextEdited: root.customDnsText = text
                                 font.family: Theme.fontMono
-                                font.pixelSize: Theme.fontTiny
+                                font.pixelSize: Theme.typography.control
                                 color: Theme.textHi
                                 selectionColor: Theme.accent
                                 selectedTextColor: Theme.accentFg
@@ -1249,7 +1249,7 @@ Surface {
                         text: root.customDnsError || NetworkDetails.dnsError
                         wrapMode: Text.Wrap
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontTiny
+                        font.pixelSize: Theme.typography.secondary
                         color: Theme.red
                     }
 
@@ -1259,7 +1259,7 @@ Surface {
                         text: NetworkDetails.dnsNotice
                         wrapMode: Text.Wrap
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontTiny
+                        font.pixelSize: Theme.typography.secondary
                         color: Theme.textLow
                     }
                 }
@@ -1277,7 +1277,7 @@ Surface {
                     text: "Checking Ethernet…"
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textDim
                 }
 
@@ -1288,7 +1288,7 @@ Surface {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontTiny
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.red
                 }
 
@@ -1299,7 +1299,7 @@ Surface {
                     text: "No Ethernet ports"
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textDim
                 }
 
@@ -1334,7 +1334,7 @@ Surface {
                                 text: ethernetRow.modelData.connection || "No active profile"
                                 elide: Text.ElideRight
                                 font.family: Theme.fontMenu
-                                font.pixelSize: Theme.fontBody
+                                font.pixelSize: Theme.typography.primary
                                 font.weight: Theme.weightMedium
                                 color: Theme.textHi
                             }
@@ -1347,7 +1347,7 @@ Surface {
                                         ? " · " + ethernetRow.modelData.ipv4 : "")
                                 elide: Text.ElideRight
                                 font.family: Theme.fontMono
-                                font.pixelSize: Theme.fontTiny
+                                font.pixelSize: Theme.typography.secondary
                                 color: Theme.textDim
                             }
                         }
@@ -1364,7 +1364,7 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Wi-Fi networks"
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontBody
+                        font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
                         color: Theme.textHi
                     }
@@ -1375,7 +1375,7 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         text: WifiState.enabled && WifiState.scanning ? "Scanning…" : ""
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontTiny
+                        font.pixelSize: Theme.typography.secondary
                         color: Theme.textDim
                     }
 
@@ -1397,7 +1397,7 @@ Surface {
                     text: !WifiState.enabled ? "Wi-Fi is off" : "No Wi-Fi adapter"
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.fontSecondary
+                    font.pixelSize: Theme.typography.secondary
                     color: Theme.textDim
                 }
 
@@ -1473,7 +1473,7 @@ Surface {
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.Wrap
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.secondary
                         color: Theme.textDim
                     }
                 }
@@ -1490,7 +1490,7 @@ Surface {
                         text: NetworkDetails.known && NetworkDetails.error === ""
                             ? NetworkDetails.pollCadenceText : ""
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontMicro
+                        font.pixelSize: Theme.typography.secondary
                         color: Theme.textDim
                     }
 

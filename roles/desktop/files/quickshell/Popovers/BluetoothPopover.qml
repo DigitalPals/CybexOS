@@ -30,7 +30,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             text: "Bluetooth"
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.fontBody
+            font.pixelSize: Theme.typography.primary
             font.weight: Theme.weightSemibold
             color: Theme.textHi
         }
@@ -56,7 +56,7 @@ Surface {
         text: BluetoothState.adapter === null ? "No Bluetooth adapter" : "Bluetooth is off"
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontSecondary
+        font.pixelSize: Theme.typography.secondary
         color: Theme.textDim
     }
 
@@ -68,7 +68,7 @@ Surface {
         text: "No paired devices"
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.fontSecondary
+        font.pixelSize: Theme.typography.secondary
         color: Theme.textDim
     }
 
@@ -165,7 +165,7 @@ Surface {
                         width: parent.width
                         text: dev.modelData.deviceName
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontBody
+                        font.pixelSize: Theme.typography.primary
                         font.weight: dev.modelData.connected ? Theme.weightMedium : Theme.weightRegular
                         color: dev.modelData.connected ? Theme.textHi : Theme.textMid
                         elide: Text.ElideRight
@@ -176,7 +176,7 @@ Surface {
                         width: parent.width
                         text: "Connected" + (dev.modelData.batteryAvailable ? " · " + Math.round(dev.modelData.battery * 100) + "%" : "")
                         font.family: Theme.fontMenu
-                        font.pixelSize: Theme.fontSecondary
+                        font.pixelSize: Theme.typography.secondary
                         color: Theme.textLow
                     }
                 }
@@ -188,7 +188,7 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 text: dev.busy ? "…" : dev.modelData.connected ? "Disconnect" : dev.modelData.paired ? "Paired" : "Not connected"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontSecondary
+                font.pixelSize: Theme.typography.control
                 font.weight: dev.modelData.connected ? Theme.weightMedium : Theme.weightRegular
                 color: dev.modelData.connected && (btMouse.containsMouse || dev.activeFocus)
                     ? Theme.red : Theme.textDim

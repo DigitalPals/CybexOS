@@ -39,7 +39,7 @@ SettingsRow {
             anchors.rightMargin: 9
             anchors.verticalCenter: parent.verticalCenter
             font.family: root.numeric ? Theme.fontMono : Theme.fontMenu
-            font.pixelSize: Theme.fontCaption
+            font.pixelSize: Theme.typography.control
             color: Theme.textHi
             selectionColor: Theme.accentBg
             selectedTextColor: Theme.textHi
@@ -77,7 +77,7 @@ SettingsRow {
                 verticalAlignment: Text.AlignVCenter
                 text: root.placeholder
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.fontCaption
+                font.pixelSize: Theme.typography.control
                 color: Theme.textFaint
                 elide: Text.ElideRight
             }
