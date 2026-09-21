@@ -6,6 +6,7 @@ import "../Common"
 // Each section has its own bounded plugin area; native API 1 defaults right.
 Row {
     id: root
+    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
     property string section: "right"
     readonly property var entries: UserPlugins.enabledWidgets.filter(plugin => (plugin.section || "right") === section)
