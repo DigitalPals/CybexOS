@@ -105,10 +105,49 @@ hl.window_rule({ match = { class = [[xdg-desktop-portal-gtk]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Properties]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Open.*]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Save.*]] }, float = true })
-{% if fedora_config_xps_2026 | bool %}
-hl.workspace_rule({ workspace = "m[desc:GIGA-BYTE TECHNOLOGY CO. LTD. AORUS FO32U2] w[t1]", gaps_out = { top = 10, right = 480, bottom = 10, left = 480 } })
-hl.workspace_rule({ workspace = "m[desc:Apple Computer Inc Studio XDR] w[t1]", gaps_out = { top = 10, right = 320, bottom = 10, left = 320 } })
-{% endif %}
+-- A lone tiled window uses 70% of an external display's logical width.
+-- Laptop displays and workspaces with multiple tiled windows keep normal gaps.
+local previous = rawget(_G, "__fedora_single_window_width")
+if previous then
+  previous.subscription:remove()
+  for _, entry in pairs(previous.rules) do entry.rule:set_enabled(false) end
+end
+local policy = { rules = {} }
+_G.__fedora_single_window_width = policy
+
+local function update_single_window_width()
+  local connected = {}
+  for _, monitor in ipairs(hl.get_monitors()) do
+    if not monitor.name:match("^eDP%-") and not monitor.name:match("^LVDS%-")
+        and not monitor.is_mirror then
+      connected[monitor.name] = true
+      local rotated = monitor.transform % 2 == 1
+      local width = (rotated and monitor.height or monitor.width) / monitor.scale
+      local margin = math.floor(width * 0.15 + 0.5)
+      local entry = policy.rules[monitor.name]
+      if not entry or entry.margin ~= margin then
+        if entry then entry.rule:set_enabled(false) end
+        policy.rules[monitor.name] = {
+          margin = margin,
+          rule = hl.workspace_rule({
+            workspace = "m[" .. monitor.name .. "] w[t1]",
+            gaps_out = { top = 10, right = margin, bottom = 10, left = margin },
+          }),
+        }
+      end
+    end
+  end
+  for name, entry in pairs(policy.rules) do
+    if not connected[name] then
+      entry.rule:set_enabled(false)
+      policy.rules[name] = nil
+    end
+  end
+end
+
+policy.subscription = hl.on("monitor.layout_changed", update_single_window_width)
+update_single_window_width()
+
 hl.window_rule({ match = { class = [[.*]] }, suppress_event = "maximize" })
 hl.window_rule({ match = { class = [[.*]] }, opacity = "1.0 1.0" })
 hl.window_rule({ match = { class = [[1[pP]assword]] }, float = true, center = true, size = { 875, 600 }, no_screen_share = true })

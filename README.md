@@ -87,6 +87,10 @@ To install or refresh only the wallpapers using the saved configuration:
 ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags wallpapers
 ```
 
+A lone tiled window on an external monitor is centered at 70% of the display's
+width, adapting to resolution, scaling, and rotation. Laptop panels and
+workspaces with multiple tiled windows use the normal small edge gaps.
+
 Desktop runtime and user customization have a strict boundary. Verified
 releases reconcile `~/.local/share/fedora-config/runtime`, while shell
 settings, Hyprland overrides, themes, and plugins live in user-owned roots

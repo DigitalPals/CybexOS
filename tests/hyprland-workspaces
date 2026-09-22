@@ -125,3 +125,104 @@ assert(active_listeners == 1, "reload left stale monitor callbacks active")
 
 print("Hyprland workspace hotplug policy fixtures passed")
 LUA
+
+# Exercise the shared appearance policy for both generic and XPS installs.
+for xps in false true; do
+  sed "s/{{ (fedora_config_xps_2026 | bool) | ternary('true', 'false') }}/$xps/" \
+    roles/desktop/templates/looknfeel.lua.j2 >"$rendered"
+  FEDORA_APPEARANCE_CONFIG=$rendered luajit <<'LUA'
+local config = assert(os.getenv("FEDORA_APPEARANCE_CONFIG"))
+local monitors, rules, listeners = {}, {}, {}
+hl = {
+  config = function() end, curve = function() end, animation = function() end,
+  layer_rule = function() end, window_rule = function() end,
+  get_monitors = function() return monitors end,
+}
+function hl.workspace_rule(spec)
+  local rule = { spec = spec, enabled = true }
+  function rule:set_enabled(value) self.enabled = value end
+  table.insert(rules, rule)
+  return rule
+end
+function hl.on(event, callback)
+  assert(event == "monitor.layout_changed")
+  local listener = { active = true, callback = callback }
+  function listener:remove() self.active = false end
+  table.insert(listeners, listener)
+  return listener
+end
+local function update()
+  for _, listener in ipairs(listeners) do
+    if listener.active then listener.callback() end
+  end
+end
+local function active_rules()
+  local active = {}
+  for _, rule in ipairs(rules) do
+    if rule.enabled then
+      assert(not active[rule.spec.workspace], "duplicate active selector")
+      active[rule.spec.workspace] = rule.spec
+    end
+  end
+  return active
+end
+local function check_margin(name, expected)
+  local spec = assert(active_rules()["m[" .. name .. "] w[t1]"])
+  assert(spec.gaps_out.left == expected and spec.gaps_out.right == expected,
+    "wrong single-window side margin for " .. name)
+  assert(spec.gaps_out.top == 10 and spec.gaps_out.bottom == 10)
+end
+local function output(name, width, height, scale, transform)
+  return { name = name, width = width, height = height, scale = scale,
+    transform = transform or 0, is_mirror = false }
+end
+monitors = { output("eDP-1", 2880, 1800, 2), output("LVDS-1", 1920, 1080, 1) }
+dofile(config)
+assert(next(active_rules()) == nil, "laptop panels must retain normal gaps")
+
+local external = output("DP-1", 3840, 2160, 1.5)
+local second = output("HDMI-A-1", 2560, 1440, 1)
+table.insert(monitors, external)
+table.insert(monitors, second)
+update()
+check_margin("DP-1", 384) -- 2560 logical pixels, 1792 remaining (70%).
+check_margin("HDMI-A-1", 384)
+local rule_count = #rules
+update()
+assert(#rules == rule_count, "unchanged layout must not accumulate rules")
+
+external.scale = 2
+update()
+check_margin("DP-1", 288)
+external.width = 2560
+update()
+check_margin("DP-1", 192)
+external.transform = 1
+update()
+check_margin("DP-1", 162) -- Rotated logical width: 2160 / 2.
+external.transform = 5
+update()
+check_margin("DP-1", 162)
+
+second.is_mirror = true
+update()
+assert(not active_rules()["m[HDMI-A-1] w[t1]"], "mirrors must not get margins")
+monitors = { external }
+update()
+check_margin("DP-1", 162) -- Laptop lid closed / external-only desktop.
+dofile(config)
+check_margin("DP-1", 162)
+local active_listeners = 0
+for _, listener in ipairs(listeners) do
+  if listener.active then active_listeners = active_listeners + 1 end
+end
+assert(active_listeners == 1, "reload left stale callbacks")
+monitors = {}
+update()
+assert(next(active_rules()) == nil, "disconnect left stale rules")
+monitors = { external }
+update()
+check_margin("DP-1", 162)
+print("Hyprland single-window width fixtures passed")
+LUA
+done
