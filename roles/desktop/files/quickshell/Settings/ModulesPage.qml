@@ -538,7 +538,12 @@ Item {
                     text: "Reset widget"
                     glyph: "undo"
                     Accessible.name: "Reset " + (page.selected ? page.selected.name : "widget") + " options"
-                    onTriggered: Settings.resetModule(page.selected.id, page.selected.name)
+                    // The action hides once the widget is clean; hand focus
+                    // on first so it and its tooltip are not stranded.
+                    onTriggered: {
+                        closeAction.forceActiveFocus();
+                        Settings.resetModule(page.selected.id, page.selected.name);
+                    }
                 }
                 SettingsAction {
                     id: closeAction
@@ -558,8 +563,17 @@ Item {
                 Column {
                     width: parent.width
                     spacing: Theme.settingsGroupSpacing
-                    Caption { width: parent.width; text: page.selected ? page.selected.description : "" }
-                    Caption { width: parent.width; text: page.selected ? page.status(page.selected) : "" }
+                    // Indented to the rows' label column, past the modified-mark gutter.
+                    Caption {
+                        width: parent.width
+                        leftPadding: Theme.settingsMarkInset
+                        text: page.selected ? page.selected.description : ""
+                    }
+                    Caption {
+                        width: parent.width
+                        leftPadding: Theme.settingsMarkInset
+                        text: page.selected ? page.status(page.selected) : ""
+                    }
                     Loader {
                         id: optionsLoader
                         width: parent.width

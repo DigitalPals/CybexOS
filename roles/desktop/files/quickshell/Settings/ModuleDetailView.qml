@@ -536,10 +536,15 @@ SettingsPage {
                     onResetRequested: view.resetOpt("nightLightStartup")
                 }
 
-                SettingsAction {
-                    text: "Temperature settings"
-                    glyph: "arrow_forward"
-                    onTriggered: Settings.page = "system"
+                ResponsiveActionRow {
+                    width: parent.width
+                    description: "Temperature and schedule live on the System page"
+
+                    SettingsAction {
+                        text: "Temperature settings"
+                        glyph: "arrow_forward"
+                        onTriggered: Settings.page = "system"
+                    }
                 }
             }
 
@@ -575,10 +580,15 @@ SettingsPage {
                     onResetRequested: view.resetOpt("dndDefaultMode")
                 }
 
-                SettingsAction {
-                    text: "Quiet-hours settings"
-                    glyph: "arrow_forward"
-                    onTriggered: Settings.page = "notifications"
+                ResponsiveActionRow {
+                    width: parent.width
+                    description: "Quiet hours live on the Notifications page"
+
+                    SettingsAction {
+                        text: "Quiet-hours settings"
+                        glyph: "arrow_forward"
+                        onTriggered: Settings.page = "notifications"
+                    }
                 }
             }
 
@@ -787,16 +797,23 @@ SettingsPage {
                 step: 5
                 value: view.opts.pollMins
                 unit: "min"
+                // Match Look ahead so both tracks end at the same edge.
+                valueWidth: 62
                 dirty: view.optDirty("pollMins")
                 onMoved: value => view.setOpt("pollMins", value)
                 onResetRequested: view.resetOpt("pollMins")
             }
 
-            SettingsAction {
+            ResponsiveActionRow {
                 visible: view.opts.showEvents
-                text: "Online accounts"
-                glyph: "manage_accounts"
-                onTriggered: Calendar.manageAccounts()
+                width: parent.width
+                description: "Add or remove calendar accounts"
+
+                SettingsAction {
+                    text: "Online accounts"
+                    glyph: "manage_accounts"
+                    onTriggered: Calendar.manageAccounts()
+                }
             }
 
             Text {
@@ -1024,6 +1041,7 @@ SettingsPage {
                     : Usage.cliproxyKeyConfigured
                         ? "Key stored privately; it is not saved in shell settings."
                         : "A CLIProxyAPI management key is required."
+                leftPadding: Theme.settingsMarkInset
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.secondary
                 color: Usage.credentialError ? Theme.redText : Theme.textFaint
@@ -1076,6 +1094,7 @@ SettingsPage {
                     : Usage.sub2apiKeyConfigured
                         ? "Key stored privately; it is not saved in shell settings."
                         : "A Sub2API admin API key is required."
+                leftPadding: Theme.settingsMarkInset
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.secondary
                 color: Usage.credentialError ? Theme.redText : Theme.textFaint
@@ -1098,6 +1117,7 @@ SettingsPage {
             Text {
                 visible: view.opts.source !== "direct" && Usage.connectionTestMessage !== ""
                 width: parent.width
+                leftPadding: Theme.settingsMarkInset
                 text: Usage.connectionTestMessage
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.secondary
@@ -1465,7 +1485,7 @@ SettingsPage {
                 max: 240
                 step: 10
                 value: view.opts.pollMins
-                unit: " min"
+                unit: "min"
                 dirty: view.optDirty("pollMins")
                 onMoved: value => view.setOpt("pollMins", value)
                 onResetRequested: view.resetOpt("pollMins")

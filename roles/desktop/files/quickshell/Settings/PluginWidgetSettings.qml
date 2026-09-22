@@ -35,13 +35,14 @@ Column {
     SliderRow {
         width: parent.width
         label: "Width"
-        min: 24; max: 320; step: 1; unit: " px"
+        min: 24; max: 320; step: 1; unit: "px"
         value: root.descriptor.width || 120
         enabled: !UserPlugins.busy
         onMoved: value => UserPlugins.configureWidget(root.descriptor, { width: Math.round(value) })
     }
     Text {
         width: parent.width
+        leftPadding: Theme.settingsMarkInset
         text: "Plugin settings"
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.primary
@@ -50,6 +51,7 @@ Column {
     }
     Text {
         width: parent.width
+        leftPadding: Theme.settingsMarkInset
         text: "These settings are supplied by the plugin. Structured values use JSON; text fields use plain text."
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.secondary
@@ -83,6 +85,7 @@ Column {
                     spacing: 6
                     Text {
                         width: parent.width
+                        leftPadding: Theme.settingsMarkInset
                         text: setting.modelData
                         color: Theme.textMid
                         font.family: Theme.fontMenu
@@ -91,7 +94,8 @@ Column {
                     }
                     SettingsField {
                         id: input
-                        width: parent.width
+                        x: Theme.settingsMarkInset
+                        width: parent.width - x
                         readonly property string savedValue: typeof setting.value === "string" ? setting.value : JSON.stringify(setting.value)
                         Component.onCompleted: text = savedValue
                         onSavedValueChanged: { if (!activeFocus) text = savedValue; }
@@ -115,21 +119,27 @@ Column {
     Text {
         width: parent.width
         visible: Object.keys(root.settings).length === 0
+        leftPadding: Theme.settingsMarkInset
         text: "This plugin has no saved settings or declared defaults."
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.secondary
         color: Theme.textDim
         wrapMode: Text.Wrap
     }
-    SettingsAction {
-        id: advancedAction
-        property bool expanded: false
-        text: expanded ? "Hide advanced settings" : "Add a plugin setting"
-        glyph: "tune"
-        onTriggered: expanded = !expanded
+    ResponsiveActionRow {
+        width: parent.width
+        description: "Set a value the plugin documents but does not list here"
+        SettingsAction {
+            id: advancedAction
+            property bool expanded: false
+            text: expanded ? "Hide advanced settings" : "Add a plugin setting"
+            glyph: "tune"
+            onTriggered: expanded = !expanded
+        }
     }
     Column {
-        width: parent.width
+        x: Theme.settingsMarkInset
+        width: parent.width - x
         spacing: 8
         visible: advancedAction.expanded
         SettingsField {
@@ -160,6 +170,7 @@ Column {
     Text {
         width: parent.width
         visible: root.validationError !== ""
+        leftPadding: Theme.settingsMarkInset
         text: root.validationError
         color: Theme.redText
         font.family: Theme.fontMenu
@@ -167,9 +178,13 @@ Column {
         wrapMode: Text.Wrap
         Accessible.role: Accessible.AlertMessage
     }
-    SettingsAction {
-        text: "Manage this plugin"
-        glyph: "extension"
-        onTriggered: Settings.page = "plugins"
+    ResponsiveActionRow {
+        width: parent.width
+        description: "Update, disable, or remove it on the Plugins page"
+        SettingsAction {
+            text: "Manage this plugin"
+            glyph: "extension"
+            onTriggered: Settings.page = "plugins"
+        }
     }
 }
