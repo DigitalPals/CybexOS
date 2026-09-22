@@ -269,7 +269,7 @@ Item {
                     id: picker
                     x: group.stackedHeader ? 0 : parent.width - width
                     y: group.stackedHeader ? sectionLabel.height + 10 : 0
-                    width: Math.min(group.stackedHeader ? parent.width : parent.width - sectionLabel.width - 20, Theme.scaled(220, Theme.typeScale))
+                    width: Math.min(group.stackedHeader ? parent.width : parent.width - sectionLabel.width - 20, Theme.scaled(190, Theme.typeScale))
                     entries: page.entries
                     sectionName: group.title
                     busy: page.membershipBusy || page.dragActive

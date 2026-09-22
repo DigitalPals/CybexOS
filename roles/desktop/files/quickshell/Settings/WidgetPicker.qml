@@ -12,7 +12,7 @@ Item {
     property string selectedKey: ""
     readonly property var available: Editor.search(entries, "", "available")
     readonly property var selected: available.find(entry => entry.key === selectedKey) || null
-    readonly property real choiceHeight: Math.max(48, (Theme.typography.control + Theme.typography.secondary) * 1.3 + 16)
+    readonly property real choiceHeight: Math.max(Theme.settingsControlHeight, Theme.typography.control * 1.3 + 12)
     signal addRequested(string key)
     height: Theme.settingsControlHeight
     function focusPicker() { chooser.forceActiveFocus(); }
@@ -35,7 +35,17 @@ Item {
             color: chooser.enabled ? Theme.textHi : Theme.textDim
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
+            leftPadding: selectedIcon.visible ? selectedIcon.width + 6 : 0
             rightPadding: 24
+            Sym {
+                id: selectedIcon
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.selected !== null
+                name: root.selected ? root.selected.glyph || "extension" : "extension"
+                size: Theme.iconSmall
+                color: Theme.textMid
+            }
         }
         background: Rectangle {
             radius: Theme.chipRadius
@@ -72,7 +82,7 @@ Item {
         parent: chooser
         x: chooser.width - width
         y: chooser.height + 6
-        width: Math.min(Theme.scaled(280, Theme.typeScale), Controls.Overlay.overlay ? Controls.Overlay.overlay.width - 32 : 280)
+        width: Math.min(Theme.scaled(220, Theme.typeScale), Controls.Overlay.overlay ? Controls.Overlay.overlay.width - 32 : 220)
         height: Math.min(360, Controls.Overlay.overlay ? Controls.Overlay.overlay.height - 32 : 360,
             pickerHeader.height + search.height + 44 + Math.max(1, choices.count) * root.choiceHeight)
         margins: 16
@@ -144,23 +154,21 @@ Item {
                     enabled: !root.busy
                     Accessible.name: modelData.name
                     onClicked: choices.choose(index)
-                    contentItem: Column {
-                        id: labels
-                        Text {
-                            width: parent.width
-                            text: choice.modelData.name
-                            font.family: Theme.fontUi
-                            font.pixelSize: Theme.typography.control
-                            color: Theme.textHi
-                            elide: Text.ElideRight
-                        }
-                        Text {
-                            width: parent.width
-                            text: choice.modelData.plugin ? choice.modelData.origin : choice.modelData.description
-                            font.family: Theme.fontUi
-                            font.pixelSize: Theme.typography.secondary
-                            color: Theme.textDim
-                            elide: Text.ElideRight
+                    contentItem: Text {
+                        text: choice.modelData.name
+                        font.family: Theme.fontUi
+                        font.pixelSize: Theme.typography.control
+                        color: Theme.textHi
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                        leftPadding: choiceIcon.width + 6
+                        Sym {
+                            id: choiceIcon
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: choice.modelData.glyph || "extension"
+                            size: Theme.iconSmall
+                            color: Theme.textMid
                         }
                     }
                     background: Rectangle {
