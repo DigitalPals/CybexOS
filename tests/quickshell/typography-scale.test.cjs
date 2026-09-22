@@ -91,7 +91,12 @@ test("bar labels, navigation, controls and notification surfaces use their assig
             assert.match(read(file), new RegExp(`${key}: Theme\\.typography\\.notification`), file);
     for (const file of qmlFiles()) {
         const source = fs.readFileSync(file, "utf8");
-        for (const match of source.matchAll(/\b(?:TextInput|TextEdit|Controls\.TextField)\s*\{(?:(?!font\.pixelSize:)[\s\S]){0,2500}font\.pixelSize:\s*Theme\.typography\.(\w+)/g))
-            assert.ok(["control", "title"].includes(match[1]), `${file}: input uses ${match[1]}`);
+        for (const match of source.matchAll(/\b(?:TextInput|TextEdit|Controls\.TextField)\s*\{(?:(?!font\.pixelSize:)[\s\S]){0,2500}font\.pixelSize:\s*Theme\.typography\.(\w+)/g)) {
+            // The launcher query has the same prominence as its result labels.
+            if (path.relative(shellDir, file) === "LauncherView.qml")
+                assert.equal(match[1], "heading", `${file}: launcher query`);
+            else
+                assert.ok(["control", "title"].includes(match[1]), `${file}: input uses ${match[1]}`);
+        }
     }
 });

@@ -84,6 +84,13 @@ because the available row is short. Reserve `section` for group labels and
 wrapping, scrolling or elision when space is constrained; do not invent a
 local smaller size. New exceptional sizes need a documented shared token.
 
+The launcher deliberately uses `heading` (16px at the default base) for its
+search query and primary result labels, matching Omarchy v4.0.4's menu.
+The query is regular weight and result labels are medium weight. Provider tabs
+use `title` (14px) at medium weight with 16px icons. This prominent search field
+is an exception to the ordinary `control` input role and still follows the
+shared accessibility scale.
+
 ## Verification
 
 `tests/quickshell/typography-scale.test.cjs` checks reference values, usage

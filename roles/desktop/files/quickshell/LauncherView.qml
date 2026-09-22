@@ -252,7 +252,7 @@ Surface {
                         Sym {
                             anchors.verticalCenter: parent.verticalCenter
                             name: providerTab.modelData.glyph
-                            size: Theme.fontSecondary
+                            size: Theme.iconMedium
                             color: providerTab.active
                                 ? Theme.accentText : Theme.textDim
                         }
@@ -261,8 +261,8 @@ Surface {
                             anchors.verticalCenter: parent.verticalCenter
                             text: providerTab.label
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.typography.secondary
-                            font.weight: Theme.weightBold
+                            font.pixelSize: Theme.typography.title
+                            font.weight: Theme.weightMedium
                             color: providerTab.active
                                 ? Theme.textHi : Theme.textDim
                         }
@@ -312,8 +312,8 @@ Surface {
             x: 44
             width: parent.width - x - (modeChip.visible ? modeChip.width + 24 : 16)
             font.family: Theme.fontMenu
-            font.pixelSize: Theme.typography.control
-            font.weight: Theme.weightSemibold
+            font.pixelSize: Theme.typography.heading
+            font.weight: Theme.weightRegular
             color: Theme.textHi
             clip: true
             focus: Launcher.open
@@ -442,8 +442,8 @@ Surface {
                     textFormat: Text.StyledText
                     text: root.titleFor(resultRow.modelData)
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.secondary
-                    font.weight: Theme.weightBold
+                    font.pixelSize: Theme.typography.heading
+                    font.weight: Theme.weightMedium
                     color: Theme.textHi
                     elide: Text.ElideRight
                 }
