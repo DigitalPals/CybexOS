@@ -23,6 +23,26 @@ Item {
     property var dragRow: null
     property point dragViewportPoint: Qt.point(0, 0)
 
+    // SettingsView incubates pages asynchronously, and a Repeater nested in
+    // that incubation builds its delegates asynchronously too, in completion
+    // order: Center and Right would land before Left and then get shoved down,
+    // with pills popping in afterwards. Stay transparent until every section
+    // and pill exists so the page appears in one piece.
+    property bool built: false
+    opacity: built ? 1 : 0
+    function checkBuilt() {
+        if (built || sections.count !== 3)
+            return;
+        for (let i = 0; i < sections.count; i++) {
+            const group = sections.itemAt(i) as ArrangementSection;
+            if (!group || !group.complete())
+                return;
+        }
+        built = true;
+    }
+    // Never leave the page invisible if a delegate fails to incubate.
+    Timer { interval: 500; running: !page.built; onTriggered: page.built = true }
+
     readonly property var runtimeState: ({ media: Media.hasTrack, weather: Weather.ready || Weather.offline,
         bluetooth: BluetoothState.connected, battery: Battery.isLaptop,
         updates: Updates.total > 0 || Updates.error !== "" || Updates.runState !== "idle" || Updates.rebootRecommended,
@@ -49,7 +69,10 @@ Item {
         target: Settings
         function onWidgetRequestChanged() { page.takeWidgetRequest(); }
     }
-    Component.onCompleted: Qt.callLater(page.takeWidgetRequest)
+    Component.onCompleted: {
+        Qt.callLater(page.takeWidgetRequest);
+        page.checkBuilt();
+    }
     function closeSubPage() {
         if (presetsOpen) presetsOpen = false;
         else widgetDialog.close();
@@ -247,6 +270,11 @@ Item {
         border.color: Theme.accentText
 
         function focusPicker() { picker.focusPicker(); }
+        function complete() {
+            for (let i = 0; i < widgets.length; i++)
+                if (!rows.itemAt(i)) return false;
+            return true;
+        }
         function focusEntry(key) {
             for (let i = 0; i < rows.count; i++) {
                 const row = rows.itemAt(i) as WidgetPill;
@@ -300,6 +328,7 @@ Item {
                 Repeater {
                     id: rows
                     model: group.widgets
+                    onItemAdded: page.checkBuilt()
                     delegate: WidgetPill {
                         id: widgetRow
                         required property var modelData
@@ -425,6 +454,7 @@ Item {
                 id: sections
                 model: ["left", "center", "right"]
                 delegate: ArrangementSection {}
+                onItemAdded: page.checkBuilt()
             }
             Caption {
                 width: parent.width
