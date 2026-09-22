@@ -5,7 +5,7 @@ import "../../Common/NetworkHelpers.js" as NetworkHelpers
 import ".."
 
 // The drawer's Network tab: the active Wi-Fi connection and its vitals, the
-// in-range networks, the Tailscale and Bluetooth rows, the DNS selector, and
+// in-range networks, the Tailscale row, the DNS selector, and
 // the live throughput metrics. Share and Speed test hand off to the network
 // overlay, which already owns those two flows.
 Column {
@@ -311,7 +311,7 @@ Column {
         }
     }
 
-    // ---- tailscale · bluetooth · dns ------------------------------------
+    // ---- tailscale · dns ------------------------------------
     Column {
         width: parent.width
         spacing: 2
@@ -366,62 +366,6 @@ Column {
                 checked: Tailscale.running
                 accessibleName: "Tailscale"
                 onToggled: value => Tailscale.setRunning(value)
-            }
-        }
-
-        Item {
-            width: parent.width
-            height: 40
-
-            Sym {
-                id: btMark
-                anchors.left: parent.left
-                anchors.leftMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
-                name: BluetoothState.enabled ? "bluetooth" : "bluetooth_disabled"
-                size: 16
-                color: Theme.textMid
-            }
-
-            Text {
-                id: btLabel
-                anchors.left: btMark.right
-                anchors.leftMargin: 12
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Bluetooth"
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.control
-                font.weight: Theme.weightMedium
-                color: Theme.textHi
-            }
-
-            Text {
-                anchors.left: btLabel.right
-                anchors.leftMargin: 10
-                anchors.right: btToggle.left
-                anchors.rightMargin: 10
-                anchors.verticalCenter: parent.verticalCenter
-                horizontalAlignment: Text.AlignRight
-                text: {
-                    const names = BluetoothState.devices
-                        .filter(d => d.connected).map(d => d.deviceName);
-                    return names.length > 0 ? names.join(", ")
-                        : BluetoothState.enabled ? "on" : "off";
-                }
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Theme.textFaint
-                elide: Text.ElideRight
-            }
-
-            Toggle {
-                id: btToggle
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                metrics: Theme.switchCompact
-                checked: BluetoothState.enabled
-                accessibleName: "Bluetooth"
-                onToggled: value => BluetoothState.setEnabled(value)
             }
         }
 

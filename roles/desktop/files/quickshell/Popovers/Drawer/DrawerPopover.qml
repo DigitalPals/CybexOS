@@ -6,7 +6,7 @@ import ".."
 
 // The edge drawer: the one surface every status glyph opens, per the 2026-09
 // redesign (Claude Design project 8cf85161, direction 2). A tab strip —
-// Overview · Sound · Network · Power · Notifications · Usage — sits above the
+// Overview · Sound · Network · Bluetooth · Power · Notifications · Usage — sits above the
 // tab body; the popout host attaches the surface flush under the bar and pins
 // it to the right screen edge (PanelRegistryData `attached` + `edge`).
 //
@@ -123,6 +123,7 @@ Surface {
                 width: bodyFlick.width
                 sourceComponent: root.tab === "sound" ? soundTab
                     : root.tab === "network" ? networkTab
+                    : root.tab === "bluetooth" ? bluetoothTab
                     : root.tab === "power" ? powerTab
                     : root.tab === "notifications" ? notificationsTab
                     : root.tab === "usage" ? usageTab
@@ -162,6 +163,11 @@ Surface {
     Component {
         id: networkTab
         DrawerNetwork {}
+    }
+
+    Component {
+        id: bluetoothTab
+        DrawerBluetooth {}
     }
 
     Component {

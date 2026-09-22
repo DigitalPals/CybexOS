@@ -340,6 +340,7 @@ stage_python_helpers() {
   t0=$(now_ms)
   out=$({
     python3 tests/usage-fetch.py \
+      && python3 tests/bluetooth-tool.py \
       && python3 tests/shell-health.py \
       && python3 tests/repository-policy.py \
       && python3 tests/application-defaults.py \

@@ -552,3 +552,30 @@ now exercises helpers under `qmltestrunner-qt6` and constructs, mutates,
 signals, and destroys production controls under the real Quickshell engine in
 CI. The next targets are the Settings load/merge/save cycle and the
 `T3Connection` process/socket lifecycle against controlled test doubles.
+
+## Bluetooth drawer
+
+Bluetooth has its own tab immediately after Network by default. Existing drawer
+settings gain the new tab beside Network while retaining their saved order and
+visibility; it can then be hidden or reordered in Drawer settings. The Bluetooth
+bar button and `popouts open bluetooth` open this same tab.
+
+The tab lists connected and paired devices for the default adapter, with battery
+levels when available. Opening the tab while Bluetooth is on automatically starts
+a 60-second discovery session and shows named nearby devices. Unpaired discoveries
+with empty, address-only, UUID-like or hexadecimal identifier names are hidden;
+paired and connected devices remain visible even without a readable name.
+Turning Bluetooth on
+while the tab is open also starts discovery. **Stop scan** ends it early, and
+**Scan again** restarts it after it stops; revisiting the tab starts a fresh scan.
+Pairing supports PIN entry, passkey entry/display and code
+confirmation inline; successful pairing trusts and connects the selected device.
+Errors remain visible for retry. Closing the drawer, switching tabs or powering
+off Bluetooth terminates the tab's helper, rejects pending prompts, cancels its
+pairing attempt and releases its discovery session. Other applications' scan
+sessions and default pairing agent are left alone.
+
+`bluetooth-tool.py` uses the existing `python3-gobject` dependency and BlueZ's
+application-scoped agent API. `tests/bluetooth-tool.py` checks input validation,
+authorization, cancellation, action failures and discovery lifetime without
+operating the host radio.

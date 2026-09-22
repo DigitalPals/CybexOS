@@ -9,7 +9,7 @@ var PALETTE_MODES = ["wallpaper", "fixed"];
 // The edge drawer's tabs, in default strip order. Overview is the drawer's
 // front door — the Fedora button and the session footer live there — so it
 // can be reordered but never disabled.
-var DRAWER_TAB_IDS = ["overview", "sound", "network", "power",
+var DRAWER_TAB_IDS = ["overview", "sound", "network", "bluetooth", "power",
     "notifications", "usage"];
 
 // How hovering a status glyph treats the drawer. "open" is the desktop-menu
@@ -281,8 +281,15 @@ function normalizeDrawerTabs(raw) {
         });
     });
     DRAWER_TAB_IDS.forEach(function(id) {
-        if (!seen[id])
-            next.push({ id: id, on: true });
+        if (!seen[id]) {
+            // Introduce Bluetooth beside Network without disturbing saved order
+            // or visibility. An explicitly positioned Bluetooth stays put.
+            var networkIndex = next.findIndex(function(tab) { return tab.id === "network"; });
+            if (id === "bluetooth" && networkIndex !== -1)
+                next.splice(networkIndex + 1, 0, { id: id, on: true });
+            else
+                next.push({ id: id, on: true });
+        }
     });
     return next;
 }

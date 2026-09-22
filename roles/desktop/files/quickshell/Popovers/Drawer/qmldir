@@ -4,6 +4,7 @@
 DrawerFooter DrawerFooter.qml
 DrawerIconButton DrawerIconButton.qml
 DrawerNetwork DrawerNetwork.qml
+DrawerBluetooth DrawerBluetooth.qml
 DrawerNotifications DrawerNotifications.qml
 DrawerOverview DrawerOverview.qml
 DrawerPopover DrawerPopover.qml

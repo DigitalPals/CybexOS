@@ -47,7 +47,7 @@ var PANELS = [
     { name: "control", island: "right", moduleId: "", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "overview" },
     { name: "audio", island: "right", moduleId: "vol", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "sound" },
     { name: "wifi", island: "right", moduleId: "wifi", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "network" },
-    { name: "bluetooth", island: "right", moduleId: "bt", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "network" },
+    { name: "bluetooth", island: "right", moduleId: "bt", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "bluetooth" },
     { name: "tailscale", island: "right", moduleId: "", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "network" },
     { name: "battery", island: "right", moduleId: "batt", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "power" },
     { name: "notifications", island: "right", moduleId: "notifications", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "notifications" },

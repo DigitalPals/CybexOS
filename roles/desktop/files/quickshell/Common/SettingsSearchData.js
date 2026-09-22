@@ -56,7 +56,7 @@ var ROWS = [
     { page: "modules", pageLabel: "Widgets", group: "Notes", label: "AI note titles", key: "", terms: "codex claude model provider effort reasoning generate regenerate privacy" },
 
     // Drawer
-    { page: "drawer", pageLabel: "Drawer", group: "Tabs", label: "Tab order", key: "", terms: "reorder overview sound network power notifications usage" },
+    { page: "drawer", pageLabel: "Drawer", group: "Tabs", label: "Tab order", key: "", terms: "reorder overview sound network bluetooth power notifications usage" },
     { page: "drawer", pageLabel: "Drawer", group: "Overview", label: "Overview contents", key: "", terms: "now playing sliders tiles updates cpu ram temperature system stats" },
     { page: "drawer", pageLabel: "Drawer", group: "Behavior", label: "Open on hover", key: "drawerHover", terms: "hover switch glyph menu" },
     { page: "drawer", pageLabel: "Drawer", group: "Behavior", label: "Width", key: "drawerWidth", terms: "size wide" },

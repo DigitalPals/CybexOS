@@ -8,7 +8,7 @@ test("defaults carry the design values", () => {
     const d = H.defaults();
     assert.equal(H.VERSION, 23);
     assert.deepEqual(d.drawerTabs.map(t => t.id),
-        ["overview", "sound", "network", "power", "notifications", "usage"]);
+        ["overview", "sound", "network", "bluetooth", "power", "notifications", "usage"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
     assert.deepEqual(d.drawerOverview,
         { media: true, sliders: true, tiles: true, updates: true });
@@ -1180,4 +1180,18 @@ test("Sub2API connection settings round-trip independently of CLIProxyAPI", () =
     assert.equal(restored.modOpts.usage.gemini, false);
     assert.equal(restored.modOpts.usage.cliproxyUrl, "https://existing.test");
     assert.equal(H.defaults().modOpts.usage.source, "cliproxy");
+});
+
+test("Bluetooth migrates beside Network without changing existing drawer preferences", () => {
+    const old = [
+        { id: "usage", on: false }, { id: "network", on: false },
+        { id: "overview", on: true }, { id: "sound", on: true },
+        { id: "notifications", on: true }, { id: "power", on: false }
+    ];
+    const migrated = H.normalizeDrawerTabs(old);
+    assert.deepEqual(migrated.filter(t => t.id !== "bluetooth"), old);
+    assert.deepEqual(migrated[2], { id: "bluetooth", on: true });
+    const custom = [{ id: "bluetooth", on: false }, ...old];
+    assert.deepEqual(H.normalizeDrawerTabs(custom), custom);
+    assert.deepEqual(H.normalizeDrawerTabs(migrated), migrated);
 });

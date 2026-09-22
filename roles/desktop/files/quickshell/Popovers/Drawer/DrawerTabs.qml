@@ -19,6 +19,7 @@ Rectangle {
         overview: { glyph: "dashboard", label: "Overview" },
         sound: { glyph: "volume_down", label: "Sound" },
         network: { glyph: "wifi", label: "Network" },
+        bluetooth: { glyph: "bluetooth", label: "Bluetooth" },
         power: { glyph: "battery_5_bar", label: "Power", rotate: true },
         notifications: { glyph: "notifications", label: "Notifications" },
         usage: { glyph: "insights", label: "Usage" }
@@ -42,7 +43,7 @@ Rectangle {
     readonly property real usableWidth: Math.max(0, tabRow.width - tabRow.spacing * (tabs.length - 1))
     readonly property real restingWidth: Math.min(Theme.scaled(28), usableWidth / Math.max(1, tabs.length))
     readonly property real selectedWidth: Math.min(tabPadding * 2 + tabIconSize
-        + Theme.iconTextSpacing + selectedMetrics.width,
+        + Theme.iconTextSpacing + Math.ceil(selectedMetrics.advanceWidth) + 1,
         Math.max(0, usableWidth - restingWidth * (tabs.length - 1)))
 
     function activateTab(index, focusTab) {

@@ -181,7 +181,7 @@ test("the four status widgets each present their drawer tab", () => {
     const expected = {
         vol: ["audio", "Bar/Modules/Volume.qml", "sound"],
         wifi: ["wifi", "Bar/Modules/Wifi.qml", "network"],
-        bt: ["bluetooth", "Bar/Modules/Bluetooth.qml", "network"],
+        bt: ["bluetooth", "Bar/Modules/Bluetooth.qml", "bluetooth"],
         batt: ["battery", "Bar/Modules/Battery.qml", "power"]
     };
 
@@ -282,7 +282,7 @@ test("every drawer name carries a tab and the strip can route to each tab", () =
         assert.ok(typeof panel.tab === "string" && panel.tab !== "",
             `${panel.name} names no drawer tab`);
     }
-    const tabs = ["overview", "sound", "network", "power", "notifications", "usage"];
+    const tabs = ["overview", "sound", "network", "bluetooth", "power", "notifications", "usage"];
     assert.deepEqual([...new Set(drawerPanels.map(p => p.tab))].sort(),
         [...tabs].sort());
     for (const tab of tabs) {
