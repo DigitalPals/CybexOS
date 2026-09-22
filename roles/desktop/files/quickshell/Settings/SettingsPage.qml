@@ -42,17 +42,31 @@ Flickable {
             revealFocus(row);
     }
 
+    // A freshly loaded page is still growing when the jump first measures
+    // it: revealers open to their natural height over expandDuration. Measure
+    // once more after they settle so a row near the bottom is not left
+    // below the fold.
+    Timer {
+        id: highlightSettle
+        interval: Theme.expandDuration + 50
+        onTriggered: root.revealHighlight()
+    }
+
     Connections {
         target: Settings
         function onHighlightKeyChanged() {
             root.revealHighlight();
+            highlightSettle.restart();
         }
     }
 
     // Pages incubate after the jump has already set the key; one layout pass
     // later the rows have real geometry to scroll to.
     // A QObject-bound callback is canceled if a loader destroys this page first.
-    Component.onCompleted: Qt.callLater(root.revealHighlight)
+    Component.onCompleted: {
+        Qt.callLater(root.revealHighlight);
+        highlightSettle.restart();
+    }
 
     function revealFocus(item) {
         if (!item)
@@ -63,6 +77,15 @@ Flickable {
             ancestor = ancestor.parent;
         if (!ancestor)
             return;
+        // A focused control inside a settings row brings the whole row into
+        // view, hint line included, as long as the row fits the viewport.
+        for (let row = item; row && row !== contentRoot; row = row.parent) {
+            if (row.hintTone !== undefined && row.lineHeight !== undefined) {
+                if (row.height <= height - 8)
+                    item = row;
+                break;
+            }
+        }
         const point = item.mapToItem(contentRoot, 0, 0);
         const top = point.y;
         const bottom = top + item.height;
