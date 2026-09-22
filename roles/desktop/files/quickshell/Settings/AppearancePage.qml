@@ -554,36 +554,5 @@ SettingsPage {
             }
         }
 
-        SettingsGroup {
-            width: parent.width
-            title: "Preset"
-
-            ResponsiveActionRow {
-                width: parent.width
-                actionsFirst: true
-                description: "Shared typography, sizing and panel borders; keeps your accounts and layout"
-                SettingsAction {
-                    text: "Apply Omarchy"
-                    glyph: "text_fields"
-                    onTriggered: Settings.applyAppearancePreset("omarchy")
-                }
-                SettingsAction {
-                    text: "Apply Cybex"
-                    glyph: "text_fields"
-                    onTriggered: Settings.applyAppearancePreset("cybex")
-                }
-            }
-
-            ResponsiveActionRow {
-                width: parent.width
-                actionsFirst: true
-                description: "Keeps widget order and stored floating dimensions"
-                SettingsAction {
-                    text: "Apply Layered Hug"
-                    glyph: "auto_awesome"
-                    onTriggered: Settings.applyLayeredHugPreset()
-                }
-            }
-        }
     }
 }

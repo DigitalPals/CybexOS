@@ -317,7 +317,7 @@ function defaults() {
         shellScale: 100,
         surfaceBorderMode: "accent",
         surfaceBorderColor: "#9ecbeb",
-        surfaceBorderWidth: 2,
+        surfaceBorderWidth: 0,
         surfaceBorderOpacity: 100,
         surfaceCornerRadius: 16,
         pluginScale: 100,
@@ -374,17 +374,6 @@ function defaults() {
         mods: defaultMods(),
         modOpts: defaultModOpts()
     };
-}
-
-// Presets are explicit, undoable patches; account, palette and layout stay intact.
-function appearancePreset(name) {
-    if (name !== "omarchy" && name !== "cybex") return null;
-    return { font: "mono",
-        shellFontSize: 12, shellScale: 100,
-        interfaceDensity: "default", surfaceCornerRadius: 16,
-        surfaceBorderMode: "accent", surfaceBorderWidth: 2, surfaceBorderOpacity: 100,
-        pluginScale: 100, pluginBorderMode: "inherit", pluginRadius: -1,
-        pluginThemeOverrides: {} };
 }
 
 function pluginThemeOverridesIn(value) {
@@ -1434,7 +1423,6 @@ var exported = {
     DRAWER_TAB_IDS: DRAWER_TAB_IDS,
     DRAWER_HOVER_MODES: DRAWER_HOVER_MODES,
     DRAWER_OVERVIEW_KEYS: DRAWER_OVERVIEW_KEYS,
-    appearancePreset: appearancePreset,
     defaults: defaults,
     defaultMods: defaultMods,
     defaultModOpts: defaultModOpts,

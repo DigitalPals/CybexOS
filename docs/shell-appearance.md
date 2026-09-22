@@ -35,12 +35,11 @@ plugin scale. Advanced Omarchy tokens can intentionally diverge from the shared
 settings. Existing explicit plugin border overrides remain valid; choose
 **Shell** under Settings → Plugins to inherit shared surface borders.
 
-The default and both **Omarchy** and **Cybex** presets select JetBrainsMono Nerd
-Font, a 12px base font, 100% UI scale,
-standard spacing, accent borders (2px, fully opaque) and 16px panel corners.
-Both reset plugin appearance overrides and preserve text accessibility size,
-accounts, plugin enablement, wallpaper/palette and bar layout. The eight-second
-Undo action restores every preference changed by the preset.
+The defaults use Dark mode, a Hug bar, wallpaper colors, opaque surfaces and
+numbered workspaces. Typography uses JetBrainsMono Nerd Font at 12px, 100% UI
+scale and standard spacing. Panels have 16px corners and no border (width 0);
+plugins inherit the shared appearance. Appearance has no preset actions.
+Existing saved preferences remain in effect; section resets use these defaults.
 
 The shared library and usage rules are documented in [Shell typography](shell-typography.md).
 
@@ -54,12 +53,12 @@ weight 400; headings can use medium, semibold or bold.
 Native body/caption and plugin body/caption share the same reference sizes.
 Other semantic roles (headings and hero values) can have distinct sizes
 while deriving from that common scale. Fixed-format numerical content follows
-the monospace family when the monospace preset is selected.
+the monospace family when the monospace font is selected.
 
 ## Verification
 
 The appearance unit matrix covers all density/accessibility combinations,
-base-font and UI-scale boundaries, output width clamping, preset persistence,
+base-font and UI-scale boundaries, output width clamping, settings persistence,
 shared/plugin border precedence and one-time opacity application. Existing
 launcher, Settings and notification contracts check their scalable controls
 and bounds. Live checks use `tests/lib/quickshell-live` around the managed
@@ -71,7 +70,7 @@ Quickshell process is needed.
 
 Validated on 2026-09-21: the full repository gate passed, including 744 unit
 tests. Live checks passed all nine density/accessibility combinations, shared
-custom border color/opacity, light/dark updates and both presets against the
+custom border color/opacity, light/dark updates and the then-available presets against the
 same Model Usage data. Launcher, Settings, audio and notification surfaces
 were checked live, including enlarged text with comfortable spacing. Both
 connected outputs used 2× device scaling; fractional output scaling was not

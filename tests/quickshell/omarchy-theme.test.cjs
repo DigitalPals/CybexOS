@@ -8,10 +8,10 @@ const palette = { accent: "#123456", outline: "#456789", foreground: "#ffffff",
     background: "#000000", bar: "#111111", surfaceBorder: "#123456",
     surfaceBorderWidth: 2, surfaceBorderAlpha: 1 };
 const prefs = (patch = {}) => settings.merge({ ...settings.defaults(),
-    ...settings.appearancePreset("omarchy"), ...patch });
+    ...patch });
 const values = (p, colors = palette, session) => theme.values(p, colors, metrics.calculate(p), session);
 
-test("Omarchy preset restores the reference font, geometry and inherited accent border", () => {
+test("Omarchy adapter maps the default font, geometry and supplied palette border", () => {
     const p = prefs();
     assert.equal(p.font, "mono");
     assert.equal(p.surfaceCornerRadius, 16);
@@ -22,22 +22,6 @@ test("Omarchy preset restores the reference font, geometry and inherited accent 
         assert.equal(v[surface + ".border-width"], "2");
         assert.equal(v[surface + ".border-alpha"], "1");
     }
-});
-
-test("presets preserve accounts, layout and accessibility preferences", () => {
-    const original = prefs({ textScale: "larger", pluginBorderColor: "#abcdef" });
-    for (const name of ["omarchy", "cybex"]) {
-        const patch = settings.appearancePreset(name);
-        assert.ok(!("mods" in patch));
-        assert.ok(!("modOpts" in patch));
-        assert.ok(!("textScale" in patch));
-        const p = settings.merge({ ...original, ...patch });
-        assert.equal(p.textScale, "larger");
-        assert.deepEqual(p.mods, original.mods);
-        assert.deepEqual(p.modOpts, original.modOpts);
-        assert.deepEqual(settings.merge(JSON.parse(settings.serialize(p))), p);
-    }
-    assert.equal(settings.appearancePreset("unknown"), null);
 });
 
 test("all density and accessibility combinations share font and geometry scaling", () => {

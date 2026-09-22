@@ -42,7 +42,6 @@ var ROWS = [
     { page: "appearance", pageLabel: "Appearance", group: "Shell sizing and surfaces", label: "Panel border width", key: "surfaceBorderWidth", terms: "outline" },
     { page: "appearance", pageLabel: "Appearance", group: "Shell sizing and surfaces", label: "Panel opacity", key: "surfaceBorderOpacity", terms: "border transparency" },
     { page: "appearance", pageLabel: "Appearance", group: "Shell sizing and surfaces", label: "Panel corners", key: "surfaceCornerRadius", terms: "radius rounding" },
-    { page: "appearance", pageLabel: "Appearance", group: "Preset", label: "Omarchy appearance", key: "", terms: "preset monospace typography" },
     { page: "plugins", pageLabel: "Plugins", group: "Appearance", label: "Plugin UI scale", key: "pluginScale", terms: "size font zoom omarchy" },
     { page: "plugins", pageLabel: "Plugins", group: "Appearance", label: "Plugin border", key: "pluginBorderMode", terms: "accent subtle custom omarchy" },
     { page: "plugins", pageLabel: "Plugins", group: "Appearance", label: "Plugin border color", key: "pluginBorderColor", terms: "color omarchy" },

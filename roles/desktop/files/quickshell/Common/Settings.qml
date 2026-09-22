@@ -334,43 +334,6 @@ Singleton {
         resetKeys(Object.keys(defaults), "All settings");
     }
 
-    // A preset is one reversible transaction. It deliberately changes only
-    // visual modes and the workspace presentation; widget order and the
-    // user's stored floating dimensions remain untouched.
-    function applyAppearancePreset(name) {
-        const patch = SettingsHelpers.appearancePreset(name);
-        if (!patch) return;
-        migrationPending = false;
-        clearUndo();
-        const previous = {};
-        for (const key of Object.keys(patch)) previous[key] = SettingsHelpers.clone(root[key]);
-        resetSnapshot = previous;
-        resetLabel = name === "omarchy" ? "Omarchy appearance" : "Cybex appearance";
-        for (const key of Object.keys(patch)) root[key] = SettingsHelpers.clone(patch[key]);
-        announcement = resetLabel + " applied. Undo available for eight seconds.";
-        resetTimer.restart();
-    }
-
-    function applyLayeredHugPreset() {
-        migrationPending = false;
-        clearUndo();
-        resetSnapshot = {
-            barStyle: barStyle,
-            paletteMode: paletteMode,
-            glassEnabled: glassEnabled,
-            modOpts: SettingsHelpers.clone(modOpts)
-        };
-        resetLabel = "Layered Hug preset";
-        barStyle = "hug";
-        paletteMode = "wallpaper";
-        glassEnabled = true;
-        const nextOptions = SettingsHelpers.clone(modOpts);
-        nextOptions.ws.style = "dots";
-        modOpts = SettingsHelpers.normalizeModOpts(nextOptions);
-        announcement = "Layered Hug applied. Undo available for eight seconds.";
-        resetTimer.restart();
-    }
-
     function undoReset() {
         if (!resetSnapshot)
             return;

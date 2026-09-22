@@ -478,25 +478,10 @@ test("schema twenty-three keeps safe defaults and exposes accessibility preferen
     assert.match(helpers, /V9_CLASSIC_DEFAULTS = \{[\s\S]*?barHeight: 46/);
 });
 
-test("Layered Hug is one undoable preset and preserves layout dimensions", () => {
-    const settings = read("Common/Settings.qml");
-    const preset = settings.slice(settings.indexOf("function applyLayeredHugPreset()"),
-        settings.indexOf("function undoReset()"));
-    assert.match(preset, /resetSnapshot = \{[\s\S]*?barStyle:[\s\S]*?paletteMode:[\s\S]*?glassEnabled:[\s\S]*?modOpts:/);
-    assert.match(preset, /barStyle = "hug"/);
-    assert.match(preset, /paletteMode = "wallpaper"/);
-    assert.match(preset, /glassEnabled = true/);
-    assert.match(preset, /nextOptions\.ws\.style = "dots"/);
-    assert.doesNotMatch(preset, /\bmods\s*=/);
-    assert.doesNotMatch(preset, /barHeight\s*=/);
-    assert.doesNotMatch(preset, /barRadius\s*=/);
-    assert.doesNotMatch(preset, /gap\s*=/);
-});
-
 test("Connected enables integration widgets including auto-hiding Bluetooth", () => {
     const settings = read("Common/Settings.qml");
     const preset = settings.slice(settings.indexOf("function applyModulePreset(name)"),
-        settings.indexOf("function applyLayeredHugPreset()"));
+        settings.indexOf("function resetKeys("));
     assert.match(preset,
         /name === "connected"[\s\S]*?\["ws"[\s\S]*?"gh"[\s\S]*?"t3"[\s\S]*?"hermes"[\s\S]*?"usage"[\s\S]*?"bt"[\s\S]*?"batt"\]/,
         "Connected should enable every connection-driven widget; Bluetooth hides itself when idle");
@@ -648,7 +633,7 @@ test("settings workspace uses shared responsive groups and bounded header lanes"
     for (const page of ["AppearancePage", "BarLayoutPage", "NotificationsPage", "SystemPage"])
         assert.match(read(`Settings/${page}.qml`), /SettingsGroup \{/,
             `${page} must use grouped settings sections`);
-    for (const page of ["AppearancePage", "WallpaperPage", "SystemPage"])
+    for (const page of ["WallpaperPage", "SystemPage"])
         assert.match(read(`Settings/${page}.qml`), /ResponsiveActionRow \{/,
             `${page} must use bounded responsive action copy`);
 });

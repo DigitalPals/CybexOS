@@ -103,8 +103,9 @@ is manual.
       separate bounded lanes with no overlap.
 - [ ] Fixed accent swatches and hue recolor the whole shell in Fixed mode and
       are not focusable or exposed in Wallpaper mode.
-- [ ] "Apply Layered Hug" enables Hug, Wallpaper, Glass, and dot workspaces in
-      one undoable action without changing module order, height, radius, or gap.
+- [ ] Appearance has no preset actions. Fresh settings use Dark mode, Hug,
+      wallpaper colors, opaque surfaces, numbered workspaces, JetBrains Mono
+      at size 12 and 100% scale, and no panel borders.
 
 ## Bar page
 

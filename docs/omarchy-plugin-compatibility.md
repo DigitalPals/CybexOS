@@ -190,21 +190,19 @@ settings are saved in `plugins.json`; there is no second `shell.json` store.
 
 Native surfaces and Omarchy plugins share the font, logical-pixel sizing,
 accessibility scale, spacing density, border and corner settings described in
-[Shell appearance](shell-appearance.md). Settings → Appearance offers explicit
-Cybex and Omarchy presets; applying a preset is undoable and preserves accounts,
-plugin enablement, accessibility text size, wallpaper and layout.
+[Shell appearance](shell-appearance.md). Appearance settings apply individually;
+there are no appearance presets.
 
-The Cybex default and Omarchy preset use JetBrainsMono Nerd Font at 12px,
-standard spacing, a 2px accent border and 16px panel corners. At the
-Omarchy preset's default accessibility scale, Model Usage's `Style.space(420)`
+The defaults use JetBrainsMono Nerd Font at 12px, standard spacing, no panel
+border and 16px panel corners. At the default accessibility scale,
+Model Usage's `Style.space(420)`
 is 420 logical pixels (840 image pixels on a 200% output). Qt applies monitor
 scaling; the shell never multiplies geometry by monitor scale itself.
 
 Settings → Plugins provides an additional UI scale (75–200%). Border mode
 **Shell** inherits the shared border; Accent/Subtle/Custom use the plugin width
 and opacity overrides. Corner value -1 follows the shared panel corners; 0 is
-square. Existing explicit plugin overrides are preserved until changed or a
-preset is applied. Scaling affects shared Omarchy UI, including bar widgets.
+square. Existing explicit plugin overrides are preserved until changed or reset. Scaling affects shared Omarchy UI, including bar widgets.
 
 Advanced users can set `pluginThemeOverrides` in
 `~/.config/fedora-config/shell.json`, using flat Omarchy shell tokens:

@@ -120,7 +120,7 @@ Arabic and Urdu fallback ordering follows Omarchy, including Chromium requests
 without a language hint.
 
 Restart existing browsers to clear their cached font selection. These system
-defaults are separate from the Quickshell Appearance presets.
+defaults are separate from the Quickshell Appearance settings.
 
 The `onepassword` tag installs the Wayland launcher under the upstream
 `com.onepassword.OnePassword.desktop` ID and removes the legacy user launcher
