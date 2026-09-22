@@ -315,6 +315,21 @@ PanelWindow {
     property point dragPos: Qt.point(0, 0)
     readonly property bool rearranging: dragWidget !== null
 
+    function pluginsFor(col) {
+        return col === "left" ? leftPlugins
+            : col === "center" ? centerPlugins : rightPlugins;
+    }
+
+    function pluginDropIndex(col, x) {
+        const area = pluginsFor(col);
+        for (let i = 0; i < area.entries.length; i++) {
+            const slot = area.slotFor(area.entries[i].key);
+            if (slot && x < slot.mapToItem(contentFrame, slot.width / 2, 0).x)
+                return i;
+        }
+        return area.entries.length;
+    }
+
     function clusterFor(col) {
         return col === "left" ? leftCluster
             : col === "center" ? centerCluster : rightCluster;
@@ -347,6 +362,19 @@ PanelWindow {
     // rather than nothing at all.
     function widgetAtPoint(pos) {
         void slotRegistryRevision;
+        // Plugin keys include the instance name and live outside Settings.mods.
+        for (const col of ["left", "center", "right"]) {
+            const area = pluginsFor(col);
+            for (const entry of area.entries) {
+                const slot = area.slotFor(entry.key);
+                if (!slot)
+                    continue;
+                const local = slot.mapFromItem(contentFrame, pos.x, pos.y);
+                if (local.x >= 0 && local.x <= slot.width
+                        && local.y >= 0 && local.y <= slot.height)
+                    return { pluginKey: entry.key, name: entry.name, fromCol: col };
+            }
+        }
         let best = null;
         const tolerance = Theme.chipHeight / 2;
         let bestDistance = Infinity;
@@ -386,6 +414,12 @@ PanelWindow {
         // and it covers the very gap the drop is aiming for.
         if (Popouts.open)
             Popouts.close();
+        if (UserPlugins.activePopout) {
+            const owner = UserPlugins.activePopout;
+            if (typeof owner.close === "function")
+                owner.close();
+            UserPlugins.releasePopout(owner);
+        }
         dragWidget = found;
         dragPos = Qt.point(pos.x, pos.y);
         updateWidgetDrop(dragPos);
@@ -406,8 +440,9 @@ PanelWindow {
             centerEnd: centerCluster.x + centerCluster.width,
             rightStart: rightSection.x
         });
-        const idx = LayoutHelpers.barDropIndex(Settings.mods[col],
-            widgetCenters(col), pos.x);
+        const idx = dragWidget && dragWidget.pluginKey
+            ? pluginDropIndex(col, pos.x)
+            : LayoutHelpers.barDropIndex(Settings.mods[col], widgetCenters(col), pos.x);
         if (!dragDrop || dragDrop.col !== col || dragDrop.idx !== idx)
             dragDrop = { col: col, idx: idx };
     }
@@ -419,6 +454,20 @@ PanelWindow {
         void slotRegistryRevision;
         if (!dragDrop)
             return 0;
+        if (dragWidget && dragWidget.pluginKey) {
+            const area = pluginsFor(dragDrop.col);
+            for (let i = dragDrop.idx; i < area.entries.length; i++) {
+                const slot = area.slotFor(area.entries[i].key);
+                if (slot)
+                    return slot.mapToItem(contentFrame, 0, 0).x - Theme.barSpacing / 2;
+            }
+            for (let i = dragDrop.idx - 1; i >= 0; i--) {
+                const slot = area.slotFor(area.entries[i].key);
+                if (slot)
+                    return slot.mapToItem(contentFrame, slot.width, 0).x + Theme.barSpacing / 2;
+            }
+            return area.mapToItem(contentFrame, 0, 0).x;
+        }
         const list = Settings.mods[dragDrop.col];
         const gap = Theme.barSpacing / 2;
         for (let i = dragDrop.idx; i < list.length; i++) {
@@ -436,7 +485,9 @@ PanelWindow {
     }
 
     function commitWidgetDrag() {
-        if (dragWidget && dragDrop) {
+        if (dragWidget && dragDrop && dragWidget.pluginKey) {
+            UserPlugins.moveWidget(dragWidget.pluginKey, dragDrop.col, dragDrop.idx);
+        } else if (dragWidget && dragDrop) {
             const result = LayoutHelpers.moveWidget(Settings.mods,
                 dragWidget.fromCol, dragWidget.id, dragDrop.col, dragDrop.idx);
             if (result)
@@ -920,6 +971,8 @@ PanelWindow {
             }
 
             UserWidgets {
+                id: leftPlugins
+                barHost: barWindow
                 section: "left"
                 screenName: barWindow.outputName
                 availableWidth: Math.max(0, barWindow.width * 0.15)
@@ -955,6 +1008,8 @@ PanelWindow {
                 model: Settings.mods.center
             }
             UserWidgets {
+                id: centerPlugins
+                barHost: barWindow
                 section: "center"
                 screenName: barWindow.outputName
                 availableWidth: Math.max(0, barWindow.width * 0.15)
@@ -971,6 +1026,8 @@ PanelWindow {
             spacing: Theme.barSpacing
 
             UserWidgets {
+                id: rightPlugins
+                barHost: barWindow
                 screenName: barWindow.screen ? barWindow.screen.name : ""
                 availableWidth: Math.max(0, barWindow.width * 0.25)
                 onImplicitWidthChanged: barWindow.scheduleFit()
@@ -1122,7 +1179,7 @@ PanelWindow {
                 id: proxyRow
                 anchors.centerIn: parent
                 text: barWindow.dragWidget
-                    ? WidgetCatalog.widgetName(barWindow.dragWidget.id) : ""
+                    ? (barWindow.dragWidget.name || WidgetCatalog.widgetName(barWindow.dragWidget.id)) : ""
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.bar
                 font.weight: Theme.weightMedium

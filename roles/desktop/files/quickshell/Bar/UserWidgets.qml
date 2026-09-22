@@ -9,6 +9,7 @@ Row {
     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
     property string section: "right"
+    property var barHost: null
     readonly property var entries: UserPlugins.enabledWidgets.filter(plugin => (plugin.section || "right") === section)
     property string screenName: ""
     property real availableWidth: 320
@@ -32,7 +33,17 @@ Row {
         return used <= Math.max(0, availableWidth - 36);
     }
 
+    function slotFor(key) {
+        for (let i = 0; i < widgetRepeater.count; i++) {
+            const slot = widgetRepeater.itemAt(i) as UserWidgetHost;
+            if (slot && slot.descriptor.key === key && slot.visible && slot.width > 0)
+                return slot;
+        }
+        return null;
+    }
+
     Repeater {
+        id: widgetRepeater
         model: root.widgetIds
         delegate: UserWidgetHost {
             id: widgetHost
@@ -45,6 +56,8 @@ Row {
             width: descriptor.width
             height: Theme.chipHeight
             visible: root.fits(index)
+            opacity: root.barHost && root.barHost.dragWidget
+                && root.barHost.dragWidget.pluginKey === modelData ? 0.35 : 1
             onSettingRequested: (pluginId, key, value) => UserPlugins.setSetting(pluginId, key, value)
 
             HoverHandler { id: hover }

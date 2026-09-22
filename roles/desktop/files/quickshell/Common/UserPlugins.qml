@@ -61,6 +61,10 @@ Singleton {
             scanner.running = true;
     }
 
+    function moveWidget(key, section, index) {
+        enqueue(["python3", helper, "move-widget", key, section, String(index)]);
+    }
+
     function mergeSettings(id, settings, instanceName) {
         const command = ["python3", helper, "merge", id, JSON.stringify(settings)];
         if (instanceName) command.push("--instance", instanceName);

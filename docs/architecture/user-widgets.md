@@ -11,6 +11,17 @@ kinds and injects their host interface. It shares this user-owned storage but do
 not change native API 1. See [Omarchy compatibility](../omarchy-plugin-compatibility.md)
 for supported UI modules, installation, and limits.
 
+## Menubar placement
+
+Drag a visible plugin widget to move it between the left, center, and right
+sections, or reorder it within a section's plugin area. The insertion marker
+shows its destination; releasing outside the bar cancels the move. Plugins
+remain grouped in their section's plugin area rather than interleaving with
+built-in widgets. A normal click still goes to the plugin.
+
+Placement is saved in `plugins.json`, including separate placement for named
+Omarchy instances. Moving a widget preserves its settings and enablement.
+
 ## Storage and ownership
 
 Default paths below follow XDG config and data roots. The runtime

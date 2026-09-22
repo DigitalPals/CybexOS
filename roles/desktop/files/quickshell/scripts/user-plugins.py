@@ -398,6 +398,10 @@ def runtime_sources(result: dict, packages: Path, runtime: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    move = commands.add_parser("move-widget", help="Move a native bar plugin widget, preserving its settings")
+    move.add_argument("key")
+    move.add_argument("section", choices=("left", "center", "right"))
+    move.add_argument("index", type=int)
     layout_edit = commands.add_parser("layout-edit", help="Apply one atomic IPC layout mutation")
     layout_edit.add_argument("action", choices=("enable", "put", "move", "set"))
     layout_edit.add_argument("id")
@@ -543,6 +547,33 @@ def main() -> int:
                 import shlex
                 subprocess.run([*shlex.split(os.environ.get("EDITOR", "vi")),
                                 str(packages / args.new_id / "manifest.json")], check=True)
+            return 0
+        if args.command == "move-widget":
+            with locked(config):
+                snapshot = scan(config, packages, state)
+                if snapshot["error"]:
+                    raise ValueError(snapshot["error"])
+                widgets = [item for item in snapshot["widgets"] if item["enabled"]]
+                moving = next((item for item in widgets if item["key"] == args.key), None)
+                if moving is None:
+                    raise ValueError("Widget is no longer enabled")
+                destination = [item for item in widgets if item.get("section", "right") == args.section]
+                if not 0 <= args.index <= len(destination):
+                    raise ValueError("Invalid widget drop index")
+                index = args.index
+                if moving in destination:
+                    old_index = destination.index(moving)
+                    destination.remove(moving)
+                    if old_index < index:
+                        index -= 1
+                destination.insert(index, moving)
+                value = preferences(config)
+                for order, widget in enumerate(destination):
+                    entry = value["plugins"][widget["id"]]
+                    if widget["instanceName"]:
+                        entry = entry["instances"][widget["instanceName"]]
+                    entry.update(section=args.section, order=order)
+                write_preferences(config, value)
             return 0
         if args.command == "bar-config":
             incoming = json.loads(args.value)

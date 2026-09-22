@@ -83,6 +83,28 @@ Label {
         saved["plugins"]["example.good"]["futureField"] = [1, 2]
         saved["plugins"]["example.future"] = {"enabled": True, "settings": {"keep": True}}
         config.write_text(json.dumps(saved))
+
+        # Native plugin dragging uses pre-removal indices, just like built-ins.
+        before_drag = config.read_text()
+        cli("move-widget", "example.good", "right", "0")
+        assert ([item["key"] for item in json.loads(cli("list").stdout)["widgets"]
+                 if item["enabled"]][:2] == ["example.good", "example.broken"])
+        cli("move-widget", "example.good", "right", "2")
+        assert ([item["key"] for item in json.loads(cli("list").stdout)["widgets"]
+                 if item["enabled"]][:2] == ["example.broken", "example.good"])
+        cli("move-widget", "example.good", "left", "0")
+        moved = json.loads(config.read_text())
+        assert moved["plugins"]["example.good"]["section"] == "left"
+        assert moved["plugins"]["example.good"]["settings"] == saved["plugins"]["example.good"]["settings"]
+        assert moved["plugins"]["example.good"]["futureField"] == [1, 2]
+        assert moved["futureField"] == {"keep": True}
+        unchanged = config.read_text()
+        for key, section, index in (("missing", "left", "0"),
+                                    ("example.good", "left", "-1"),
+                                    ("example.good", "center", "9")):
+            assert cli("move-widget", key, section, index, check=False).returncode == 2
+            assert config.read_text() == unchanged
+        config.write_text(before_drag)
         cli("disable", "example.good")
         cli("enable", "example.good")
         saved = json.loads(config.read_text())
@@ -309,6 +331,14 @@ Label {
         cli("instance", "example.bundle", "two", "--section", "left", "--width", "60")
         cli("set", "example.bundle", "label", '"first"', "--instance", "one")
         cli("set", "example.bundle", "label", '"second"', "--instance", "two")
+
+        before_drag = config.read_text()
+        cli("move-widget", "example.bundle#two", "right", "0")
+        moved = json.loads(config.read_text())["plugins"]["example.bundle"]["instances"]
+        assert moved["one"]["section"] == "left"
+        assert moved["two"]["section"] == "right"
+        assert moved["two"]["settings"]["label"] == "second"
+        config.write_text(before_drag)
         info = json.loads(cli("list").stdout)
         bundle = next(item for item in info["plugins"] if item["id"] == "example.bundle")
         assert not bundle["manifest"]["__isFirstParty"]

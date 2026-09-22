@@ -237,3 +237,55 @@ test("the stable page id is untouched by the rename", () => {
     assert.match(settings, /validPages: \[[^\]]*"modules"/);
     assert.match(read("Settings/SettingsView.qml"), /\{ id: "modules"/);
 });
+
+// Run the actual QML methods with measured slots so plugin hit-testing and
+// cancellation are covered without taking over the live desktop.
+function barMethod(name, context) {
+    const vm = require("node:vm");
+    const source = read("Bar/Bar.qml");
+    const start = source.indexOf(`    function ${name}(`);
+    const end = source.indexOf("\n    }", start) + 6;
+    return vm.runInNewContext(`(${source.slice(start, end)})`, context);
+}
+
+test("plugin hit-testing identifies the instance and ignores hidden widgets", () => {
+    const slot = {
+        width: 80, height: 30,
+        mapFromItem: (_frame, x, y) => ({ x: x - 100, y }),
+        mapToItem: (_frame, x, y) => ({ x: x + 100, y }),
+    };
+    const area = {
+        entries: [{ key: "timer#one", name: "Timer" }, { key: "timer#two" }],
+        slotFor: key => key === "timer#one" ? slot : null,
+    };
+    const context = {
+        slotRegistryRevision: 0, contentFrame: {}, Theme: { chipHeight: 30 },
+        pluginsFor: col => col === "right" ? area : { entries: [] },
+        clusterFor: () => null,
+    };
+    const hit = barMethod("widgetAtPoint", context);
+    assert.equal(hit({ x: 120, y: 15 }).pluginKey, "timer#one");
+    assert.equal(hit({ x: 120, y: 40 }), null);
+    assert.equal(hit({ x: 220, y: 15 }), null);
+    const index = barMethod("pluginDropIndex", context);
+    assert.equal(index("right", 120), 0);
+    assert.equal(index("right", 150), 2);
+    assert.equal(index("left", 120), 0);
+});
+
+test("plugin drops persist instance keys and cancelled drags do not write", () => {
+    const writes = [];
+    const context = {
+        dragWidget: { pluginKey: "timer#two" },
+        dragDrop: { col: "left", idx: 1 },
+        UserPlugins: { moveWidget: (...args) => writes.push(args) },
+        cancelWidgetDrag: () => { context.dragWidget = context.dragDrop = null; },
+    };
+    const commit = barMethod("commitWidgetDrag", context);
+    commit();
+    assert.deepEqual(writes, [["timer#two", "left", 1]]);
+    assert.equal(context.dragWidget, null);
+    context.dragWidget = { pluginKey: "timer#two" };
+    commit();
+    assert.equal(writes.length, 1);
+});
