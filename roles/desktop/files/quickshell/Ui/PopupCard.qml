@@ -10,7 +10,8 @@ PopupWindow {
   required property Item anchorItem
   required property var bar
   property var owner: null
-  property int margin: Style.gapsOut
+  readonly property bool attachedToBar: !!bar && "popoutEdge" in bar && bar.popoutEdge >= 0
+  property int margin: attachedToBar ? bar.popoutGap : Style.gapsOut
   property int padding: Style.spacing.popupPadding
   property int contentWidth: Style.space(280)
   property int contentHeight: Style.space(200)
@@ -116,6 +117,18 @@ PopupWindow {
       var window = root.anchorWindow
       if (!window) return
 
+      if (root.attachedToBar) {
+        var attachedPoint = window.contentItem.mapFromItem(target, 0, 0)
+        var attachedX = root.centerOnBar ? window.width / 2 - popupWidth / 2
+          : attachedPoint.x + target.width / 2 - popupWidth / 2
+        root.anchor.rect.x = Math.round(Math.max(root.margin,
+          Math.min(attachedX, window.width - popupWidth - root.margin)))
+        root.anchor.rect.y = Math.round(root.bar.position === "bottom"
+          ? window.height - root.bar.popoutEdge - root.bar.popoutGap - popupHeight
+          : root.bar.popoutEdge + root.bar.popoutGap)
+        return
+      }
+
       if (root.centerOnBar) {
         var cx = 0;
         var cy = 0;
@@ -150,7 +163,7 @@ PopupWindow {
   BorderSurface {
     id: card
     anchors.fill: parent
-    color: Color.popups.background
+    color: Color.panelBackground
     borderSpec: root.borderSpec
     padding: root.padding
     radius: Style.cornerRadius

@@ -99,13 +99,13 @@ test("glass switches every shell surface through semantic fills", () => {
     // the tooltip and the folder picker keep the denser variant.
     const expected = {
         "Bar/Bar.qml": "barSurface",
-        "Bar/PopoutHost.qml": "panelSurface",
+        "Bar/PopoutHost.qml": "barSurface",
         "Bar/BarTooltip.qml": "surfaceMenu",
         "LauncherWindow.qml": "panelSurface",
         "NotificationToasts.qml": "panelSurface",
         "OsdWindow.qml": "panelSurface",
         "ShortcutsOverlay.qml": "panelSurface",
-        "Popovers/PopoutPanel.qml": "panelSurface",
+        "Popovers/PopoutPanel.qml": "barSurface",
         "Settings/FolderDialog.qml": "surfaceMenu"
     };
     for (const [file, token] of Object.entries(expected))
@@ -115,7 +115,7 @@ test("glass switches every shell surface through semantic fills", () => {
     assert.match(read("Popovers/Surface.qml"), /color:\s*root\.surfaceColor\b/,
         "shared surfaces must honor the panel-specific surface contract");
     assert.match(read("Bar/PopoutHost.qml"),
-        /host\.activePanel \? host\.activePanel\.surfaceColor : Theme\.panelSurface/,
+        /host\.activePanel \? host\.activePanel\.surfaceColor : Theme\.barSurface/,
         "the host must preserve global glass as the default while allowing product canvases");
 
     for (const file of qmlFiles(".")) {

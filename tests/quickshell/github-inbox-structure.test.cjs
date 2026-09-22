@@ -102,7 +102,7 @@ test("the popover defaults to Inbox and exposes accessible top-level tabs", () =
 test("the GitHub workspace follows the integrated T3 module hierarchy", () => {
     const source = read("Popovers/GitHubPopover.qml");
     assert.match(source, /padding:\s*T3Theme\.pagePadding/);
-    assert.match(source, /surfaceColor:\s*T3Theme\.canvas/);
+    assert.match(source, /surfaceColor:\s*Theme\.barSurface/);
     // The header stopped being a card when T3's did: copy over the panel,
     // closed by a hairline, with no branded wash behind the title.
     assert.match(source, /id:\s*moduleHeader[\s\S]{0,240}?color:\s*T3Theme\.border/);

@@ -11,7 +11,7 @@ Surface {
 
     spacing: 6
     padding: T3Theme.pagePadding
-    surfaceColor: T3Theme.canvas
+    surfaceColor: Theme.barSurface
     surfaceBorderColor: Theme.surfaceBorderColor
 
     implicitWidth: availableWidth > 0

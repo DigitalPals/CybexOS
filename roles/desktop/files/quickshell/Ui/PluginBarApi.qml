@@ -19,6 +19,10 @@ QtObject {
   property string fontFamily: ""
   property string position: "top"
   property bool vertical: false
+  // Distance from the screen edge to the visible bar edge; -1 uses the
+  // replacement bar window geometry. Native windows include invisible padding.
+  property real popoutEdge: -1
+  property real popoutGap: 0
   property int barSize: 0
   property bool transparent: false
   property bool foregroundAnimationEnabled: true

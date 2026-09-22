@@ -494,7 +494,7 @@ Singleton {
     readonly property int rowRadius: chipRadius
     readonly property int tileRadius: chipRadius
     // Gap between the bar's inner edge and the top of a panel hanging from it.
-    readonly property int popGap: 12
+    readonly property int popGap: 6
 
     // ---- dialog metrics ----------------------------------------------------
     // A dialog answers to the bar rather than to the card system above: it

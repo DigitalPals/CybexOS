@@ -14,6 +14,9 @@ QtObject {
   id: root
 
   property color foreground: sessionPalette.foreground || Host.Theme.barTextHi
+  // Outer bar panels share the native menubar fill, including its alpha.
+  // Keep popup palette roles independent for inner controls and menus.
+  readonly property color panelBackground: Host.Theme.barSurface
   property color background: sessionPalette.background || Host.Theme.popBg
   property color accent: sessionPalette.accent || Host.Theme.barAccent
   property color urgent: sessionPalette.urgent || Host.Theme.red

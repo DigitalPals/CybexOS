@@ -23,32 +23,25 @@ import qs.Commons
 // padding, margin, contentWidth/Height, centerOnBar, default contentItem.
 // Missing on purpose (for now): triggerMode ("hover"), containsMouse.
 //
-// Positioning: full-screen layer-shell with the card placed inside at
-// `cardOrigin`. We use the bar window's height/width for the perpendicular
-// axis (away-from-bar) because mapToItem on the anchor returns
-// bar-content-relative coords with internal layout offsets baked in
-// (e.g. ~13px from the bar's vertical centering of its widget row). The
-// parallel axis (along-the-bar) uses the anchor's content x/y since the
-// bar spans full screen on that axis.
-//
-// Outside-click dismissal: an overlay MouseArea catches clicks, with the
-// QsWindow.mask subtracting the bar strip so clicks on the bar still
-// reach the bar widgets (activePopout coordinator hands off to another
-// popup if the user clicks a different bar icon).
+// Positioning: full-screen layer-shell with the card placed at `cardOrigin`.
+// Native bars supply their visible edge; replacement bars use window bounds.
+// The parallel axis follows the widget so the card stays under its trigger.
+// Clicks in the bar strip are forwarded to registered plugin buttons.
 PanelWindow {
   id: root
 
   required property Item anchorItem
   required property var bar
   property var owner: null
-  property int margin: Style.gapsOut
+  property int margin: attachedToBar ? bar.popoutGap : Style.gapsOut
   property int padding: Style.spacing.popupPadding
   property int contentWidth: Style.space(280)
   property int contentHeight: Style.space(200)
   property var borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
   property bool centerOnBar: false
   property bool open: false
-  property int gap: Style.gapsOut  // distance between bar edge and panel
+  readonly property bool attachedToBar: !!bar && "popoutEdge" in bar && bar.popoutEdge >= 0
+  property int gap: attachedToBar ? bar.popoutGap : Style.gapsOut  // distance from visible bar edge
   property bool popoutSwitching: false
   property bool popoutSwitchClosing: false
   property bool focusPrimed: false
@@ -119,7 +112,7 @@ PanelWindow {
   // works in one click even when the overlay surface is above the bar.
   readonly property real _barStripSize: {
     if (!bar) return 0
-    var actual = (root.barPos === "top" || root.barPos === "bottom") ? root.barH : root.barW
+    var actual = root.barDepth
     return Math.max(bar.barSize, actual) + root.gap
   }
   mask: Region {
@@ -141,7 +134,7 @@ PanelWindow {
   // full-width top bar, the content x maps directly to screen x; the y
   // returned here has the bar's internal padding baked in (e.g. ~13px
   // from vertical centering of the widget row), which is why `cardOrigin`
-  // below uses `barH` for the perpendicular axis instead of this y.
+  // below uses `barDepth` for the perpendicular axis instead of this y.
   readonly property point anchorScreenPos: {
     anchorWatcher.transform  // reactive dependency
     if (!anchorItem || !anchorWindow) return Qt.point(0, 0)
@@ -152,10 +145,10 @@ PanelWindow {
   readonly property real screenW: screen ? screen.width : 0
   readonly property real screenH: screen ? screen.height : 0
   readonly property real availableCardWidth: screenW > 0
-    ? Math.max(120, screenW - ((barPos === "left" || barPos === "right") ? barW + gap + margin : margin * 2))
+    ? Math.max(120, screenW - ((barPos === "left" || barPos === "right") ? barDepth + gap + margin : margin * 2))
     : 0
   readonly property real availableCardHeight: screenH > 0
-    ? Math.max(120, screenH - ((barPos === "top" || barPos === "bottom") ? barH + gap + margin : margin * 2))
+    ? Math.max(120, screenH - ((barPos === "top" || barPos === "bottom") ? barDepth + gap + margin : margin * 2))
     : 0
   readonly property real verticalContentInset: padding * 2 + Border.top(borderSpec) + Border.bottom(borderSpec)
 
@@ -179,40 +172,33 @@ PanelWindow {
     return Math.round(Math.min(desired, maxHeight))
   }
 
-  // Desired top-left of the card in screen coordinates. For the
-  // perpendicular axis (away-from-bar) we anchor to the bar window's edge
-  // directly — not the anchor item's y/x — because mapToItem(barContent)
-  // returns coordinates in the bar's content space, which can be offset
-  // from the bar surface's screen-anchored corner by internal layout
-  // (centering wrappers, padding). The bar's surface IS aligned to its
-  // anchored screen edge, so using `barW`/`barH` gives the right edge
-  // regardless of how the bar's internal widgets are positioned. For the
-  // parallel axis (along the bar) the anchor item's reported position is
-  // still consistent with the bar content origin, so it's accurate for
-  // centering the card under the icon.
+  // Native bars expose their visible edge separately from the padded window.
+  // Replacement bars keep the upstream window-edge positioning.
   readonly property real barW: anchorWindow ? anchorWindow.width : screenW
   readonly property real barH: anchorWindow ? anchorWindow.height : 0
+  readonly property real barDepth: attachedToBar ? bar.popoutEdge
+    : ((barPos === "top" || barPos === "bottom") ? barH : barW)
   readonly property point cardOrigin: {
     if (!anchorItem || !bar) return Qt.point(margin, margin)
     var x = 0, y = 0
     if (centerOnBar && (barPos === "top" || barPos === "bottom")) {
       x = screenW / 2 - contentWidth / 2
-      y = barPos === "bottom" ? screenH - barH - contentHeight - gap : barH + gap
+      y = barPos === "bottom" ? screenH - barDepth - contentHeight - gap : barDepth + gap
     } else if (centerOnBar) {
-      x = barPos === "left" ? barW + gap : screenW - barW - contentWidth - gap
+      x = barPos === "left" ? barDepth + gap : screenW - barDepth - contentWidth - gap
       y = screenH / 2 - contentHeight / 2
     } else if (barPos === "bottom") {
       x = anchorScreenPos.x + anchorW / 2 - contentWidth / 2
-      y = screenH - barH - contentHeight - gap
+      y = screenH - barDepth - contentHeight - gap
     } else if (barPos === "left") {
-      x = barW + gap
+      x = barDepth + gap
       y = anchorScreenPos.y + anchorH / 2 - contentHeight / 2
     } else if (barPos === "right") {
-      x = screenW - barW - contentWidth - gap
+      x = screenW - barDepth - contentWidth - gap
       y = anchorScreenPos.y + anchorH / 2 - contentHeight / 2
     } else { // "top" (default)
       x = anchorScreenPos.x + anchorW / 2 - contentWidth / 2
-      y = barH + gap
+      y = barDepth + gap
     }
     x = Math.max(margin, Math.min(x, screenW - contentWidth - margin))
     y = Math.max(margin, Math.min(y, screenH - contentHeight - margin))
@@ -384,7 +370,7 @@ PanelWindow {
     y: root.cardOrigin.y
     width: root.contentWidth
     height: root.contentHeight
-    color: Color.popups.background
+    color: Color.panelBackground
     borderSpec: root.borderSpec
     padding: root.padding
     radius: Style.cornerRadius

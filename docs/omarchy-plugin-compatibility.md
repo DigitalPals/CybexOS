@@ -188,6 +188,19 @@ settings are saved in `plugins.json`; there is no second `shell.json` store.
 
 ## Plugin appearance
 
+Native widget panels and shared Omarchy popup outer backgrounds inherit the
+menubar's color and opacity, including glass mode. Inner cards, controls and
+menus retain their own palette roles for contrast. Plugins drawing custom
+windows still own their styling.
+
+On the native Cybex bar, shared Omarchy `KeyboardPanel` and `PopupCard`
+components share the native panels’ six-logical-pixel gap from the visible
+menubar edge and screen sides. They remain centred on their widget (or the bar when `centerOnBar`
+is set), including with a bottom bar. This applies to Model Usage without
+editing its package. Replacement bars retain their existing popup spacing;
+plugins that create their own windows control their own placement.
+
+
 Native surfaces and Omarchy plugins share the font, logical-pixel sizing,
 accessibility scale, spacing density, border and corner settings described in
 [Shell appearance](shell-appearance.md). Appearance settings apply individually;

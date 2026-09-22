@@ -13,6 +13,8 @@ Omarchy.PluginBarApi {
     background: host.themeValues.background
     urgent: Theme.red
     fontFamily: host.themeValues.fontFamily
+    popoutEdge: Theme.barTopMargin + Theme.barHeight
+    popoutGap: Theme.popGap
     barSize: host.height
     foregroundAnimationEnabled: !host.themeValues.reducedMotion
     activePopout: UserPlugins.activePopout

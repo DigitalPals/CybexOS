@@ -119,8 +119,8 @@ test("the panel card grows out of its trigger and never out of thin air", () => 
     assert.match(host, /duration:\s*Theme\.popoutMorphDuration/);
     assert.match(host, /bezierCurve:\s*Theme\.popoutMorphCurve/);
     assert.match(host,
-        /bodyTop:\s*barBottom \+ \(attachedPanel \? 0 : Theme\.popGap\)/,
-        "detached cards hang a fixed gap below the bar; attached surfaces sit flush");
+        /bodyTop:\s*barBottom \+ Theme\.popGap/,
+        "all cards share the same small gap from the bar");
     // The mask has to come from real geometry, not from the animating card.
     const mask = host.match(/Item \{\s*id: cardHitRegion[\s\S]*?\n    \}/)?.[0] ?? "";
     assert.ok(mask !== "", "the popout host must still publish an input region");
@@ -140,8 +140,8 @@ test("bar popouts use the quick detached motion profile", () => {
     assert.match(theme, /popoutInitialScale:\s*reducedMotion \? 1 : 0\.975/);
     assert.match(theme, /popoutTravel:\s*reducedMotion \? 0 : 10/);
     assert.match(host,
-        /bodyTop:\s*barBottom \+ \(attachedPanel \? 0 : Theme\.popGap\)/,
-        "the faster motion must retain the detached twelve-pixel gap");
+        /bodyTop:\s*barBottom \+ Theme\.popGap/,
+        "the faster motion must retain the shared panel gap");
     assert.match(host, /xScale:\s*Theme\.popoutInitialScale/);
     assert.match(host, /host\.bottomBar \? Theme\.popoutTravel : -Theme\.popoutTravel/);
 });

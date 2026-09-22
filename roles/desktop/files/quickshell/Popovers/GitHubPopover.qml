@@ -20,7 +20,7 @@ Surface {
     // still owns the outer shadow and opening motion.
     spacing: 6
     padding: T3Theme.pagePadding
-    surfaceColor: T3Theme.canvas
+    surfaceColor: Theme.barSurface
     surfaceBorderColor: Theme.surfaceBorderColor
 
     // The host hands us the usable envelope of the output it is drawn on; the

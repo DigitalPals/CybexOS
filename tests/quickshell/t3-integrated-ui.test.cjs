@@ -28,7 +28,7 @@ test("T3 adapts the shell palette inside a wider content-sized panel", () => {
     assert.match(theme, /readonly property color accentForeground:\s*SettingsHelpers\.ensureContrast\([\s\S]*?Theme\.accentFg\.toString\(\),\s*accent\.toString\(\), 4\.5\)/);
     assert.doesNotMatch(theme, /#346bf1|#1b4ed8/,
         "T3 must not retain a competing hard-coded blue accent");
-    assert.match(popover, /surfaceColor:\s*T3Theme\.canvas/);
+    assert.match(popover, /surfaceColor:\s*Theme\.barSurface/);
     assert.match(popover,
         /implicitWidth:\s*availableWidth > 0[\s\S]{0,100}?Math\.min\(Theme\.t3MaxWidth, availableWidth\)/);
     assert.match(popover,
@@ -43,7 +43,7 @@ test("T3 adapts the shell palette inside a wider content-sized panel", () => {
     assert.match(popover,
         /BrandIcon\s*\{[\s\S]{0,220}?name:\s*"t3"[\s\S]{0,220}?colorized:\s*true[\s\S]{0,220}?T3Theme\.textPrimary\s*:\s*T3Theme\.textFaint/,
         "the one wordmark asset must follow the connected canvas tone");
-    assert.match(panel, /property color surfaceColor:\s*Theme\.panelSurface/);
+    assert.match(panel, /property color surfaceColor:\s*Theme\.barSurface/);
     assert.match(host, /host\.activePanel\.surfaceColor/);
 });
 

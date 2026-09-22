@@ -57,7 +57,7 @@ Item {
     // against the bottom of the screen, and the margin it will not cross at
     // the sides.
     readonly property int shadowBudget: 20
-    readonly property int edgeMargin: Math.max(12, Theme.barSideMargin)
+    readonly property int edgeMargin: Theme.popGap
 
     // Island rects carry a position-independent distance from the bar's
     // anchored screen edge (see Bar.qml), so all geometry is computed in the
@@ -70,11 +70,8 @@ Item {
     readonly property rect effectiveAnchor: Popouts.anchorRect.width > 0
         ? Popouts.anchorRect : activeIslandRect
 
-    // Attached surfaces (the edge drawer, the Day sheet) sit flush against
-    // the bar while retaining the shared rounded panel outline. An edge of
-    // "right" pins the surface to the screen edge instead of centring it on
-    // its trigger.
-    readonly property bool attachedPanel: PanelRegistry.attached(Popouts.currentName)
+    // Right-edge panels keep their screen-edge alignment; all panels share
+    // the same small gap from the menubar and screen edges.
     readonly property bool rightEdgePanel: PanelRegistry.edge(Popouts.currentName) === "right"
     // Centre-anchored panels sit at the output's true centre, period: not on
     // the centre island, whose rect breathes when the clock discloses its
@@ -99,7 +96,7 @@ Item {
     // centre of the trigger, clamped inside the card.
     property real originX: renderedW / 2
 
-    readonly property real bodyTop: barBottom + (attachedPanel ? 0 : Theme.popGap)
+    readonly property real bodyTop: barBottom + Theme.popGap
     // The height the layer surface is asked for. Following the animating
     // renderedH would resize the Wayland surface — and recompute the
     // compositor blur — on every frame of a panel-switch morph. Shrinking it
@@ -187,11 +184,11 @@ Item {
         // than the room beside its trigger slides along the edge rather than
         // hanging off it, which is what the design's fixed right offsets do
         // for the panels that are wider than the chips that open them. The
-        // edge drawer skips all of that: it is pinned to the screen edge no
+        // edge drawer skips all of that: it keeps a small inset from the screen edge no
         // matter which glyph opened its tab.
         const centred = anchor.x + anchor.width / 2 - bodyW / 2;
         const bodyX = rightEdgePanel
-            ? Math.max(0, Math.round(host.width - bodyW))
+            ? Math.max(edgeMargin, Math.round(host.width - edgeMargin - bodyW))
             : Math.round(clamp(centred, edgeMargin,
                 Math.max(edgeMargin, host.width - edgeMargin - bodyW)));
 
@@ -668,7 +665,7 @@ Item {
             anchors.top: parent.top
             height: Math.max(1, host.renderedCardH)
             radius: Theme.popRadius
-            color: host.activePanel ? host.activePanel.surfaceColor : Theme.panelSurface
+            color: host.activePanel ? host.activePanel.surfaceColor : Theme.barSurface
             border.width: Theme.surfaceBorderWidth
             border.color: host.activePanel
                 ? host.activePanel.surfaceBorderColor : Theme.surfaceBorderColor
