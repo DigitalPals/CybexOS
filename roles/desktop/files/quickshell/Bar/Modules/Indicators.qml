@@ -210,10 +210,9 @@ BarModule {
         enabled: root.host !== null
 
         function onTooltipPointerInsideChanged() {
-            if (root.host.tooltipPointerInside) {
+            if (root.host.tooltipPointerInside || root.host.popoutActive) {
                 collapseDelay.stop();
-            } else if (!root.reminderOpen
-                    && Settings.modOpts.indicators.mode === "hover") {
+            } else if (Settings.modOpts.indicators.mode === "hover") {
                 collapseDelay.restart();
             }
         }
@@ -221,9 +220,14 @@ BarModule {
     Connections {
         target: Popouts
         function onChanged() {
-            if (root.reminderOpen) {
+            // A detached view can take hover away from the bar even with a
+            // stationary pointer. Preserve disclosure for the whole menu
+            // session so its targets cannot move underneath that pointer.
+            // Only Reminders needs to reveal an otherwise collapsed strip.
+            if (root.host !== null && root.host.popoutActive) {
                 collapseDelay.stop();
-                root.disclosureLatched = true;
+                if (root.reminderOpen)
+                    root.disclosureLatched = true;
             } else if (root.host !== null && !root.host.tooltipPointerInside
                     && Settings.modOpts.indicators.mode === "hover") {
                 collapseDelay.restart();
@@ -236,7 +240,7 @@ BarModule {
         interval: 180
         onTriggered: {
             if (root.host !== null && !root.host.tooltipPointerInside
-                    && !root.reminderOpen
+                    && !root.host.popoutActive
                     && Settings.modOpts.indicators.mode === "hover")
                 root.disclosureLatched = false;
         }

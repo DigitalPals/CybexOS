@@ -155,6 +155,12 @@ is manual.
       Screen recording action returns while running so it can always be stopped.
 - [ ] The OCR clock-side action starts region selection, copies recognized text
       to the clipboard, and remains hidden in Active only mode.
+- [ ] In Clock hover mode, reveal the indicators and click the clock without
+      moving the pointer. They stay expanded; moving into Calendar or switching
+      to another bar view causes no collapse or flicker. Close the view and
+      leave the bar: indicators collapse normally. A view on another output
+      does not hold them open, and opening an unrelated view with indicators
+      already collapsed does not expand them.
 - [ ] Indicator action options apply live: dictation languages/model, recording
       region/window/screen and elapsed label, reminder icon/count and quick-add
       duration, DND click lifetime, and Stay awake click duration/countdown.

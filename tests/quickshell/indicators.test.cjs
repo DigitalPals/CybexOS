@@ -10,6 +10,49 @@ function read(relative) {
 
 const indicators = read("Bar/Modules/Indicators.qml");
 
+test("open views preserve disclosure through hover loss and pending collapse", () => {
+    const vm = require("node:vm");
+    const changed = indicators.match(/function onChanged\(\) \{([\s\S]*?)\n        \}/)[1];
+    const timeout = indicators.match(/id: collapseDelay[\s\S]*?onTriggered: \{([\s\S]*?)\n        \}/)[1];
+    const context = {
+        root: {
+            host: { tooltipPointerInside: false, popoutActive: true },
+            reminderOpen: false,
+            disclosureLatched: true
+        },
+        Settings: { modOpts: { indicators: { mode: "hover" } } },
+        collapseDelay: {
+            running: true,
+            stop() { this.running = false; },
+            restart() { this.running = true; }
+        }
+    };
+    vm.createContext(context);
+    // Calendar and every other local view stop an already pending collapse.
+    vm.runInContext(changed, context);
+    assert.equal(context.collapseDelay.running, false);
+    vm.runInContext(timeout, context);
+    assert.equal(context.root.disclosureLatched, true);
+    // Opening an unrelated view does not reveal shortcuts on its own.
+    context.root.disclosureLatched = false;
+    vm.runInContext(changed, context);
+    assert.equal(context.root.disclosureLatched, false);
+    context.root.reminderOpen = true;
+    vm.runInContext(changed, context);
+    assert.equal(context.root.disclosureLatched, true);
+    // Closing or handing the view to another output permits normal collapse.
+    context.root.reminderOpen = false;
+    context.root.host.popoutActive = false;
+    vm.runInContext(changed, context);
+    assert.equal(context.collapseDelay.running, true);
+    context.root.host.tooltipPointerInside = true;
+    vm.runInContext(timeout, context);
+    assert.equal(context.root.disclosureLatched, true);
+    context.root.host.tooltipPointerInside = false;
+    vm.runInContext(timeout, context);
+    assert.equal(context.root.disclosureLatched, false);
+});
+
 test("indicators declares the seven canonical quick actions in order", () => {
     const helpers = load("SettingsHelpers.js");
     assert.deepEqual(helpers.INDICATOR_ACTION_IDS, [
