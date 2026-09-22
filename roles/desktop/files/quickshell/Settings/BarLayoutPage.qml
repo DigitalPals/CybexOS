@@ -3,10 +3,21 @@ import "../Common"
 
 // The persisted page id remains `bar`; only the visible name and grouping
 // change. There is no preview strip: the live bar directly above the sheet
-// is the preview (turn-3 design). Floating-only geometry stays stored while
-// its controls are dimmed.
+// is the preview (turn-3 design). Floating-only geometry stays on screen
+// while another style is active, disabled and saying why.
 SettingsPage {
     id: page
+
+    readonly property bool floating: Settings.barStyle === "floating"
+    readonly property var heightPresets: [
+        { value: 30, label: "Compact" },
+        { value: 34, label: "Classic" },
+        { value: 42, label: "Roomy" }
+    ]
+    readonly property string heightPresetLabel: {
+        const hit = heightPresets.find(preset => preset.value === Settings.barHeight);
+        return hit ? hit.label : "";
+    }
 
     Column {
         anchors.left: parent.left
@@ -16,9 +27,7 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Placement"
-            dirty: Settings.position !== Settings.defaults.position
-            onResetRequested: Settings.resetKeys(["position"], "Bar placement")
+            title: "Layout"
 
             PickerRow {
                 width: parent.width
@@ -29,23 +38,11 @@ SettingsPage {
                     { value: "bottom", label: "Bottom" }
                 ]
             }
-        }
-
-        SettingsGroup {
-            width: parent.width
-            title: "Shape"
-            dirty: Settings.barStyle !== Settings.defaults.barStyle
-                || Settings.gap !== Settings.defaults.gap
-                || Settings.barHeight !== Settings.defaults.barHeight
-                || Settings.barRadius !== Settings.defaults.barRadius
-            onResetRequested: Settings.resetKeys(["barStyle", "gap", "barHeight", "barRadius"], "Bar shape")
 
             PickerRow {
                 width: parent.width
                 label: "Style"
                 settingKey: "barStyle"
-                caption: "edge treatment"
-                captionMono: false
                 model: [
                     { value: "hug", label: "Hug" },
                     { value: "floating", label: "Floating" },
@@ -53,66 +50,52 @@ SettingsPage {
                 ]
             }
 
+            // One control for one value. The presets that used to be a
+            // second picker for the same key are ticks the drag settles on.
             SliderRow {
                 width: parent.width
                 label: "Height"
                 settingKey: "barHeight"
                 min: 28; max: 60; step: 1; unit: "px"
+                marks: page.heightPresets.map(preset => preset.value)
+                valueLabel: (page.heightPresetLabel !== "" ? page.heightPresetLabel + " " : "")
+                    + Settings.barHeight + " px"
+                valueWidth: 92
+                hint: "Ticks mark Compact 30, Classic 34 and Roomy 42"
             }
 
-            PickerRow {
-                width: parent.width
-                label: "Height presets"
-                settingKey: "barHeight"
-                model: [
-                    { value: 30, label: "Compact 30" },
-                    { value: 34, label: "Classic 34" },
-                    { value: 42, label: "Roomy 42" }
-                ]
-            }
-
-            // Floating-only geometry stays visible but dimmed when another
-            // style is active (turn-3 design), so the rows never jump.
             SliderRow {
                 width: parent.width
                 label: "Edge gap"
                 settingKey: "gap"
                 min: 4; max: 20; step: 1; unit: "px"
-                dimmed: Settings.barStyle !== "floating"
-                enabled: Settings.barStyle === "floating"
-                opacity: Settings.barStyle === "floating" ? 1 : 0.45
+                disabledReason: page.floating ? "" : "Only applies to the Floating style"
             }
             SliderRow {
                 width: parent.width
                 label: "Corner radius"
                 settingKey: "barRadius"
                 min: 0; max: 30; step: 1; unit: "px"
-                dimmed: Settings.barStyle !== "floating"
-                enabled: Settings.barStyle === "floating"
-                opacity: Settings.barStyle === "floating" ? 1 : 0.45
+                disabledReason: page.floating ? "" : "Only applies to the Floating style"
             }
         }
 
         SettingsGroup {
             width: parent.width
             title: "Behavior"
-            dirty: Settings.autoHide !== Settings.defaults.autoHide
-                || Settings.exclusive !== Settings.defaults.exclusive
-            onResetRequested: Settings.resetKeys(["autoHide", "exclusive"], "Bar behavior")
 
             SwitchRow {
                 width: parent.width
                 label: "Auto-hide"
                 settingKey: "autoHide"
-                description: "Bar slides away when idle — hover the screen edge to reveal"
+                description: "Hides when idle; point at the screen edge to bring it back"
             }
             SwitchRow {
                 width: parent.width
                 label: "Reserve space"
                 settingKey: "exclusive"
-                description: "Exclusive zone — tiled windows stop at the bar"
+                description: "Tiled windows stay clear of the bar instead of going under it"
             }
         }
-
     }
 }

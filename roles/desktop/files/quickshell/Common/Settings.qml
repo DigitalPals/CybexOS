@@ -122,6 +122,9 @@ Singleton {
     // The settings row the nav search jumped to. Rows watch it, flash, and
     // the view clears it after the highlight has had its moment.
     property string highlightKey: ""
+    // A widget whose settings dialog the Widgets page should open once it
+    // loads — how another page links to a widget's own options.
+    property string widgetRequest: ""
     // Change counter for dirty-state bindings; see scheduleSave().
     property int revision: 0
     property bool migrationPending: false
@@ -147,7 +150,7 @@ Singleton {
     readonly property bool modsModified:
         JSON.stringify(mods) !== JSON.stringify(defaults.mods)
 
-    readonly property var validPages: ["appearance", "wallpaper", "bar", "modules", "plugins", "drawer", "notifications", "system"]
+    readonly property var validPages: ["appearance", "wallpaper", "bar", "modules", "plugins", "drawer", "notifications", "system", "about"]
 
     // One dirty/reset key list per settings page (grouped-rail design 1c).
     readonly property var sectionKeys: ({
@@ -159,14 +162,17 @@ Singleton {
             "pluginScale", "pluginBorderMode", "pluginBorderColor", "pluginBorderWidth", "pluginBorderOpacity", "pluginRadius", "pluginThemeOverrides"],
         bar: ["position", "barStyle", "gap", "barHeight", "barRadius", "autoHide",
             "exclusive"],
-        modules: ["mods", "modOpts"],
+        // The usage poll interval is the Usage widget's own option; it is a
+        // top-level key only because the service predates modOpts.
+        modules: ["mods", "modOpts", "pollMax"],
         plugins: [],
         drawer: ["drawerTabs", "drawerOverview", "drawerHover", "drawerWidth"],
         notifications: ["notifDnd", "notifDndUntilMs", "notifQuiet", "notifQuietStart", "notifQuietEnd",
             "notifDuration", "notifPosition", "notifDensity", "notifIcons",
             "notifProgress", "notifBodyLines"],
-        system: ["clock24", "unit", "warmth", "osd", "pollMax", "scrollFactor",
-            "nightLight", "idleInhibitMode", "idleInhibitUntilMs"]
+        system: ["clock24", "unit", "warmth", "osd", "scrollFactor",
+            "nightLight", "idleInhibitMode", "idleInhibitUntilMs"],
+        about: []
     })
 
     // ---- Independent settings window -----------------------------------
@@ -192,6 +198,11 @@ Singleton {
 
     function closePanel() {
         panelOpen = false;
+    }
+
+    function openWidgetSettings(id) {
+        widgetRequest = id;
+        page = "modules";
     }
 
     function sectionDirty(section) {
@@ -325,6 +336,36 @@ Singleton {
                 : defaults[key];
         announcement = resetLabel + " reset. Undo available for eight seconds.";
         resetTimer.restart();
+    }
+
+    // One widget's options and detail policy, with the same undo window as
+    // every other reset. The page-level reset would take the whole bar
+    // layout with it.
+    function resetModule(id, label) {
+        migrationPending = false;
+        resetSnapshot = { mods: SettingsHelpers.clone(mods), modOpts: SettingsHelpers.clone(modOpts) };
+        resetLabel = label || "Widget";
+        const next = { left: [], center: [], right: [] };
+        for (const col of ["left", "center", "right"])
+            next[col] = mods[col].map(m => m.id === id
+                ? ({ id: m.id, on: m.on, detail: "auto" }) : m);
+        mods = next;
+        const options = SettingsHelpers.clone(modOpts);
+        if (options[id] !== undefined)
+            options[id] = SettingsHelpers.clone(defaults.modOpts[id]);
+        modOpts = SettingsHelpers.normalizeModOpts(options);
+        if (id === "usage")
+            pollMax = defaults.pollMax;
+        announcement = resetLabel + " reset. Undo available for eight seconds.";
+        resetTimer.restart();
+    }
+
+    function moduleDirty(id) {
+        const entry = ["left", "center", "right"]
+            .map(col => mods[col].find(m => m.id === id)).find(m => m !== undefined);
+        return (entry !== undefined && entry.detail !== "auto")
+            || JSON.stringify(modOpts[id]) !== JSON.stringify(defaults.modOpts[id])
+            || (id === "usage" && pollMax !== defaults.pollMax);
     }
 
     function resetSection(section) {

@@ -32,3 +32,7 @@ WidgetPill WidgetPill.qml
 WidgetPicker WidgetPicker.qml
 PluginWidgetSettings PluginWidgetSettings.qml
 PluginAppearance PluginAppearance.qml
+AboutPage AboutPage.qml
+SettingsHint SettingsHint.qml
+TimeRow TimeRow.qml
+CornerPickerRow CornerPickerRow.qml

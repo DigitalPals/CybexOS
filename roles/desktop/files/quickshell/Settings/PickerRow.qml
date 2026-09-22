@@ -1,7 +1,9 @@
 import QtQuick
 import "../Common"
 
-// [label 90][pills][caption fill, right][undo 18] (design v2 format rows).
+// [label][pills][caption, right][undo]. The caption is a short live readout
+// of the choice — the time it formats, the next poll — never a description;
+// explanatory copy goes on the row's hint line.
 SettingsRow {
     id: root
 
@@ -25,7 +27,8 @@ SettingsRow {
     PillRow {
         id: pills
         x: root.narrow ? root.markInset : root.labelWidth
-        y: root.narrow ? Theme.settingsStackOffset : (parent.height - height) / 2
+        y: root.narrow ? Theme.settingsStackOffset : (root.lineHeight - height) / 2
+        opacity: root.controlOpacity
         width: root.narrow ? Math.max(0, root.contentRight - x)
             : Math.max(0, parent.width - x - root.undoWidth
                 - root.captionWidth - (root.captionWidth > 0 ? 10 : 0))
@@ -41,7 +44,7 @@ SettingsRow {
         visible: root.caption !== ""
         y: root.narrow ? Theme.settingsStackOffset
             + Math.max(Theme.settingsControlHeight, pills.implicitHeight)
-            + Theme.settingsContentSpacing : (parent.height - height) / 2
+            + Theme.settingsContentSpacing : (root.lineHeight - height) / 2
         x: root.narrow ? root.markInset : root.contentRight - root.captionWidth
         width: root.narrow ? Math.max(0, root.contentRight - x) : root.captionWidth
         horizontalAlignment: root.narrow ? Text.AlignLeft : Text.AlignRight

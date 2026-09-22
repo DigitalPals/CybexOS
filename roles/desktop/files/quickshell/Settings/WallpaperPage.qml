@@ -33,9 +33,6 @@ Item {
         anchors.bottom: rotationGroup.top
         anchors.bottomMargin: Theme.settingsGroupSpacing
         title: "Wallpaper"
-        dirty: Settings.wall !== Settings.defaults.wall
-            || Settings.wallDir !== Settings.defaults.wallDir
-        onResetRequested: Settings.resetKeys(["wall", "wallDir"], "Wallpaper")
 
         GridView {
             id: wallGrid
@@ -240,8 +237,6 @@ Item {
         anchors.bottom: folderGroup.top
         anchors.bottomMargin: Theme.settingsGroupSpacing
         title: "Rotation"
-        dirty: Settings.shuffle !== Settings.defaults.shuffle
-        onResetRequested: Settings.resetKeys(["shuffle"], "Wallpaper rotation")
 
         PickerRow {
             width: parent.width

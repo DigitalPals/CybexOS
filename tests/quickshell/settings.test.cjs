@@ -539,13 +539,19 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     assert.match(base, /Theme\.settingsLabelWidth >= root\.minimumLabelWidth/);
     assert.match(picker, /narrowHeight:[\s\S]{0,100}?pills\.implicitHeight/,
         "wrapped narrow picker pills must grow their row");
-    assert.match(switchRow, /narrowHeight:[\s\S]{0,100}?descriptionText\.implicitHeight/,
-        "wrapped switch descriptions must grow their row");
+    assert.match(switchRow, /hint: description/,
+        "switch descriptions wrap on the shared hint line, which grows the row");
+    assert.match(base, /readonly property real lineHeight:/,
+        "controls centre on the control line, not on a row grown by its hint");
     for (const row of ["SliderRow", "PickerRow", "SwitchRow", "SettingsTextRow"])
         assert.match(read(`Settings/${row}.qml`), /^SettingsRow \{$/m,
             `${row} must build on SettingsRow`);
-    assert.doesNotMatch(system, /resetArmed|Confirm reset/);
-    assert.match(system, /onTriggered:\s*Settings\.resetAll\(\)/);
+    // Reset all keeps the rail's undo rather than a confirm step, and sits
+    // in its own group on About instead of beside Open.
+    const about = read("Settings/AboutPage.qml");
+    assert.doesNotMatch(about, /resetArmed|Confirm reset/);
+    assert.match(about, /title: "Reset"[\s\S]{0,400}?onTriggered:\s*Settings\.resetAll\(\)/);
+    assert.doesNotMatch(system, /resetAll/);
 });
 
 test("touchpad scroll speed defaults to Hyprland's factor and applies live", () => {
@@ -577,7 +583,8 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
         "the config path chip lives on the System page, not a bottom footer");
     assert.match(view, /case "notifications": return notificationsPage;/);
     assert.match(view, /case "drawer": return drawerPage;/);
-    assert.match(settings, /"notifications", "system"\]/);
+    assert.match(settings, /"notifications", "system", "about"\]/);
+    assert.match(view, /case "about": return aboutPage;/);
 
     // Turn-3 search: "/" focuses the nav field, results jump to and
     // highlight the row through Settings.highlightKey.
@@ -592,7 +599,7 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
     // key or page cannot leave a search row jumping nowhere.
     const schemaKeys = Object.keys(load("SettingsHelpers.js").defaults());
     const validPages = ["appearance", "wallpaper", "bar", "modules", "plugins", "drawer",
-        "notifications", "system"];
+        "notifications", "system", "about"];
     const rows = load("SettingsSearchData.js").ROWS;
     assert.ok(rows.length >= 30, "the search index must cover the workspace");
     for (const row of rows) {
@@ -623,8 +630,9 @@ test("settings workspace uses shared responsive groups and bounded header lanes"
         "header copy must be bounded before the action lane");
 
     assert.match(group, /default property alias content:/);
-    assert.match(group, /property bool dirty:/);
-    assert.match(group, /signal resetRequested\(\)/);
+    // Rows and pages reset; a third "Reset group" level between them is gone.
+    assert.doesNotMatch(group, /property bool dirty:|signal resetRequested/);
+    assert.doesNotMatch(read("Settings/SectionHeader.qml"), /Reset group|resetRequested/);
     assert.match(action, /readonly property bool stacked:\s*width < breakpoint/);
     assert.match(action, /maximumLineCount:\s*root\.maximumLines/);
     assert.match(qmldir, /^SettingsGroup SettingsGroup\.qml$/m);
@@ -633,7 +641,7 @@ test("settings workspace uses shared responsive groups and bounded header lanes"
     for (const page of ["AppearancePage", "BarLayoutPage", "NotificationsPage", "SystemPage"])
         assert.match(read(`Settings/${page}.qml`), /SettingsGroup \{/,
             `${page} must use grouped settings sections`);
-    for (const page of ["WallpaperPage", "SystemPage"])
+    for (const page of ["WallpaperPage", "SystemPage", "AboutPage"])
         assert.match(read(`Settings/${page}.qml`), /ResponsiveActionRow \{/,
             `${page} must use bounded responsive action copy`);
 });
@@ -681,7 +689,7 @@ test("progressive disclosure hides inactive controls without discarding latent v
     const fixedAt = appearance.indexOf("id: fixedColorReveal");
     const paletteAt = appearance.indexOf("id: paletteContent");
     const barAt = appearance.indexOf('title: "Bar background"');
-    const sizingAt = appearance.indexOf('title: "Shell sizing and surfaces"');
+    const sizingAt = appearance.indexOf('title: "Panels"');
     assert.ok(fixedAt > 0 && paletteAt > fixedAt && barAt > paletteAt && sizingAt > barAt,
         "Fixed must reveal its accent controls immediately below the mode picker");
     const fixed = appearance.slice(fixedAt, paletteAt);
@@ -701,7 +709,7 @@ test("progressive disclosure hides inactive controls without discarding latent v
         "opening Appearance must not scroll past typography or override a search jump");
     assert.match(appearance, /label: "Interface font"\s+settingKey: "font"/,
         "the interface font must support the shared settings search and persistence");
-    assert.ok(appearance.indexOf('title: "Typography"') < fixedAt,
+    assert.ok(appearance.indexOf('title: "Text & size"') < fixedAt,
         "typography must be reachable before the long color controls");
     for (const key of ["barColorMode", "barCustomHue", "barCustomSaturation",
         "barCustomLightness"])
@@ -712,17 +720,19 @@ test("progressive disclosure hides inactive controls without discarding latent v
 
     // Turn-3: floating-only geometry rows stay visible but dimmed and
     // disabled under other styles, so the page never reflows on a style
-    // change and the latent values stay on screen.
+    // change and the latent values stay on screen. A disabled row says why.
     const gapAt = bar.indexOf('settingKey: "gap"');
     const behaviorAt = bar.indexOf('title: "Behavior"');
     assert.ok(gapAt > 0 && behaviorAt > gapAt);
-    const floating = bar.slice(bar.indexOf('title: "Shape"'), behaviorAt);
+    const floating = bar.slice(bar.indexOf('title: "Layout"'), behaviorAt);
     assert.match(floating, /settingKey:\s*"gap"/);
     assert.match(floating, /settingKey:\s*"barRadius"/);
-    const dimmedRows = floating.match(/dimmed:\s*Settings\.barStyle !== "floating"/g) ?? [];
-    assert.equal(dimmedRows.length, 2, "both floating-only rows dim when inactive");
-    const disabledRows = floating.match(/enabled:\s*Settings\.barStyle === "floating"/g) ?? [];
-    assert.equal(disabledRows.length, 2, "dimmed rows must not accept input");
+    const explained = floating.match(/disabledReason:\s*page\.floating \? "" : "Only applies to the Floating style"/g) ?? [];
+    assert.equal(explained.length, 2, "both floating-only rows explain why they are disabled");
+    const row = read("Settings/SettingsRow.qml");
+    assert.match(row, /enabled: !unavailable/, "a disabled row must not accept input");
+    assert.match(row, /text: root\.unavailable \? root\.disabledReason : root\.hint/);
+    assert.match(read("Settings/SliderRow.qml"), /dimmed: root\.unavailable/);
     assert.equal((bar.match(/settingKey:\s*"(?:gap|barRadius)"/g) ?? []).length, 2,
         "floating-only controls must not have a second focusable copy");
 

@@ -1332,6 +1332,23 @@ function formatMinutes(total) {
     return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
 }
 
+// Typed clock time to minutes since midnight, snapped to `step` and wrapped
+// to one day: "7", "7:30", "07:30", "0730" and "19.45" all read. Returns -1
+// for text that names no time, so a field can flag it instead of guessing.
+function parseClockMinutes(text, step) {
+    var clean = String(text || "").trim();
+    var match = clean.match(/^(\d{1,2})(?:[:.h]?(\d{2}))?$/);
+    if (!match)
+        return -1;
+    var hours = Number(match[1]);
+    var minutes = match[2] === undefined ? 0 : Number(match[2]);
+    if (hours > 23 || minutes > 59)
+        return -1;
+    var grain = step > 0 ? step : 1;
+    var total = Math.round((hours * 60 + minutes) / grain) * grain;
+    return ((total % 1440) + 1440) % 1440;
+}
+
 function hueToHex(degrees) {
     return hslToHex(degrees, 50, 75);
 }
@@ -1443,6 +1460,7 @@ var exported = {
     quietRange: quietRange,
     quietActive: quietActive,
     formatMinutes: formatMinutes,
+    parseClockMinutes: parseClockMinutes,
     hueToHex: hueToHex,
     hexHue: hexHue,
     hslToHex: hslToHex,

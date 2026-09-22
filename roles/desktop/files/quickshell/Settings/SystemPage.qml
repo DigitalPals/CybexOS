@@ -1,36 +1,19 @@
 import QtQuick
-import Quickshell
 import "../Common"
-import "../Common/Format.js" as Format
 
+// Preferences for the machine as a whole. Diagnostics and the settings file
+// live on About; the usage poll interval lives with the Usage widget.
 SettingsPage {
     id: page
 
     property double nowSecs: Date.now() / 1000
     readonly property date nowDate: new Date(page.nowSecs * 1000)
-    readonly property int pollLeft: Usage.nextPollSecs
 
     Timer {
         interval: 1000
-        running: true
+        running: page.visible
         repeat: true
         onTriggered: page.nowSecs = Date.now() / 1000
-    }
-
-    Claim {
-        active: page.visible
-        onClaimed: Usage.acquireCountdown()
-        onReleased: Usage.releaseCountdown()
-    }
-
-    onVisibleChanged: {
-        if (visible)
-            ShellHealth.refresh();
-    }
-
-    function openConfig() {
-        Settings.saveNow();
-        Qt.callLater(() => Quickshell.execDetached(["xdg-open", Settings.filePath]));
     }
 
     Column {
@@ -41,11 +24,7 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "General"
-            dirty: Settings.clock24 !== Settings.defaults.clock24
-                || Settings.unit !== Settings.defaults.unit
-                || Math.abs(Settings.scrollFactor - Settings.defaults.scrollFactor) > 0.001
-            onResetRequested: Settings.resetKeys(["clock24", "unit", "scrollFactor"], "General")
+            title: "Formats"
 
             PickerRow {
                 width: parent.width
@@ -67,6 +46,12 @@ SettingsPage {
                 ]
                 caption: Weather.ready ? Weather.temp + "° outside" : ""
             }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            title: "Touchpad"
+
             SliderRow {
                 width: parent.width
                 label: "Scroll speed"
@@ -77,6 +62,8 @@ SettingsPage {
                 step: 0.1
                 decimals: 1
                 unit: "×"
+                marks: [1.0]
+                hint: "1.0× is Hyprland's default"
                 dirty: Math.abs(Settings.scrollFactor - Settings.defaults.scrollFactor) > 0.001
             }
         }
@@ -84,9 +71,17 @@ SettingsPage {
         SettingsGroup {
             width: parent.width
             title: "Night light"
-            dirty: Settings.warmth !== Settings.defaults.warmth
-            onResetRequested: Settings.resetKeys(["warmth"], "Night light")
 
+            SwitchRow {
+                width: parent.width
+                label: "Night light"
+                settingKey: "nightLight"
+                description: SysInfo.nightLightError !== "" ? SysInfo.nightLightError
+                    : SysInfo.nightLightPending
+                        ? (Settings.nightLight ? "Starting…" : "Stopping…")
+                    : "Warms the screen to reduce blue light"
+                hintTone: SysInfo.nightLightError !== "" ? "error" : "info"
+            }
             SliderRow {
                 width: parent.width
                 label: "Warmth"
@@ -96,19 +91,7 @@ SettingsPage {
                 step: 50
                 unit: "K"
                 gradientTrack: true
-            }
-            Text {
-                width: parent.width
-                leftPadding: page.width < Theme.settingsNarrowWidth
-                    ? Theme.settingsMarkInset : Theme.settingsMarkInset + Theme.settingsLabelWidth
-                text: "Tint applies while Night light is on in Control Panel — "
-                    + (SysInfo.nightLight ? "currently on" : "currently off")
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Theme.textDim
-                wrapMode: Text.Wrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
+                hint: "Lower is warmer"
             }
         }
 
@@ -130,181 +113,39 @@ SettingsPage {
                     { value: "unplugged", label: "Until unplugged" },
                     { value: "always", label: "Always" }
                 ]
+                hint: SysInfo.idleInhibited ? "Active · " + SysInfo.idleInhibitStatus
+                    : "Keeps the screen on and the computer from sleeping"
+                hintTone: SysInfo.idleInhibited ? "active" : "info"
                 onPicked: value => SysInfo.setIdleInhibitMode(value)
             }
 
-            Text {
+            ResponsiveActionRow {
                 width: parent.width
-                leftPadding: page.width < Theme.settingsNarrowWidth
-                    ? Theme.settingsMarkInset : Theme.settingsMarkInset + Theme.settingsLabelWidth
-                text: SysInfo.idleInhibited
-                    ? "Active · " + SysInfo.idleInhibitStatus
-                    : "Off · default duration and sign-in behavior are configured under Widgets → Indicators."
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: SysInfo.idleInhibited ? Theme.amber : Theme.textDim
-                wrapMode: Text.Wrap
+                description: "Defaults and sign-in behavior"
+
+                SettingsAction {
+                    text: "Indicator settings"
+                    glyph: "open_in_new"
+                    Accessible.name: "Open Indicators widget settings"
+                    onTriggered: Settings.openWidgetSettings("indicators")
+                }
             }
         }
 
         SettingsGroup {
             width: parent.width
-            title: "OSD"
-            dirty: Settings.osd !== Settings.defaults.osd
-            onResetRequested: Settings.resetKeys(["osd"], "OSD")
+            title: "On-screen display"
 
             PickerRow {
                 width: parent.width
                 label: "Placement"
                 settingKey: "osd"
+                resetLabel: "OSD placement"
                 model: [
                     { value: "top", label: "Top center" },
                     { value: "bottom", label: "Bottom center" }
                 ]
-                caption: "volume / brightness popup"
-                captionMono: false
-            }
-        }
-
-        SettingsGroup {
-            width: parent.width
-            title: "T3 usage"
-            dirty: Settings.pollMax !== Settings.defaults.pollMax
-            onResetRequested: Settings.resetKeys(["pollMax"], "T3 usage")
-
-            PickerRow {
-                width: parent.width
-                label: "Poll every"
-                settingKey: "pollMax"
-                model: [
-                    { value: 60, label: "1 min" },
-                    { value: 300, label: "5 min" },
-                    { value: 600, label: "10 min" }
-                ]
-                caption: "next " + Format.mmss(page.pollLeft)
-            }
-        }
-
-        SettingsGroup {
-            width: parent.width
-            title: "Shell health"
-
-            SettingsRow {
-                width: parent.width
-                label: "Status"
-
-                Row {
-                    x: parent.narrow ? parent.markInset : parent.labelWidth
-                    width: parent.contentRight - x
-                    y: parent.narrow ? Theme.settingsStackOffset : (parent.height - height) / 2
-                    spacing: Theme.iconTextSpacing
-
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 7
-                        height: 7
-                        radius: 4
-                        color: ShellHealth.healthy ? Theme.accent
-                            : ShellHealth.serviceActive ? Theme.amber : Theme.red
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: ShellHealth.busy ? "Checking…" : ShellHealth.statusLabel
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.typography.secondary
-                        font.weight: Theme.weightMedium
-                        color: Theme.textHi
-                    }
-                }
-            }
-
-            SettingsRow {
-                width: parent.width
-                label: "Service"
-
-                Text {
-                    x: parent.narrow ? parent.markInset : parent.labelWidth
-                    width: parent.contentRight - x
-                    y: parent.narrow ? Theme.settingsStackOffset : (parent.height - height) / 2
-                    text: ShellHealth.serviceActive
-                        ? "PID " + ShellHealth.servicePid + " · up " + ShellHealth.uptimeLabel()
-                        : (ShellHealth.refreshError || "inactive")
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.typography.secondary
-                    color: ShellHealth.serviceActive ? Theme.textMid : Theme.redText
-                    elide: Text.ElideRight
-                }
-            }
-
-            SettingsRow {
-                width: parent.width
-                label: "Deployment"
-
-                Text {
-                    x: parent.narrow ? parent.markInset : parent.labelWidth
-                    width: parent.contentRight - x
-                    y: parent.narrow ? Theme.settingsStackOffset : (parent.height - height) / 2
-                    text: ShellHealth.deploymentId === ""
-                        ? ShellHealth.deploymentDetail
-                        : ShellHealth.deploymentStatus + " · "
-                            + ShellHealth.deploymentId.slice(0, 10)
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.typography.secondary
-                    color: ShellHealth.deploymentStatus === "failed"
-                        ? Theme.redText : Theme.textMid
-                    elide: Text.ElideRight
-                }
-            }
-
-            Text {
-                visible: ShellHealth.issueCount > 0
-                width: parent.width
-                leftPadding: page.width < Theme.settingsNarrowWidth
-                    ? Theme.settingsMarkInset : Theme.settingsMarkInset + Theme.settingsLabelWidth
-                text: (ShellHealth.integrationIssues.concat(ShellHealth.recentWarnings))[0] || ""
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Theme.amber
-                wrapMode: Text.Wrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-            }
-
-            ResponsiveActionRow {
-                width: parent.width
-                description: ShellHealth.deploymentCheckedAt === ""
-                    ? "Live service and current-invocation warnings"
-                    : "Last deploy check " + ShellHealth.deploymentCheckedAt
-
-                SettingsAction {
-                    text: ShellHealth.busy ? "Checking" : "Refresh"
-                    glyph: "refresh"
-                    onTriggered: ShellHealth.refresh()
-                }
-            }
-        }
-
-        SettingsGroup {
-            width: parent.width
-            title: "Config"
-
-            ResponsiveActionRow {
-                width: parent.width
-                breakpoint: 560
-                descriptionMono: true
-                description: "~/.config/fedora-config/shell.json"
-
-                SettingsAction {
-                    text: "Open"
-                    glyph: "open_in_new"
-                    onTriggered: page.openConfig()
-                }
-                SettingsAction {
-                    text: "Reset all"
-                    glyph: "undo"
-                    danger: true
-                    onTriggered: Settings.resetAll()
-                }
+                hint: "Where the volume and brightness pop-up appears"
             }
         }
     }

@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import "Format.js" as Format
 
@@ -24,6 +25,10 @@ Item {
     property color trackStart: "#000000"
     property color trackMiddle: "#808080"
     property color trackEnd: "#ffffff"
+    // Recommended values, drawn as ticks under the track. A pointer drag
+    // that passes within a step of one settles on it, so a preset is easy
+    // to land on without taking over the rest of the range.
+    property var marks: []
     property string accessibleName: "Slider"
     signal moved(real value)
 
@@ -47,8 +52,17 @@ Item {
         return Math.max(root.min, Math.min(root.max, stepped));
     }
 
+    function snapToMark(v) {
+        const reach = Math.max(root.step, (root.max - root.min) / 60);
+        for (const mark of root.marks) {
+            if (Math.abs(v - mark) <= reach)
+                return mark;
+        }
+        return v;
+    }
+
     function apply(x) {
-        applyValue(root.min + (x / root.width) * (root.max - root.min));
+        applyValue(snapToMark(root.min + (x / root.width) * (root.max - root.min)));
     }
 
     function applyValue(next) {
@@ -120,6 +134,23 @@ Item {
             height: parent.height
             radius: 2
             color: root.dimmed ? Theme.textLow : Theme.accent
+        }
+    }
+
+    Repeater {
+        model: root.marks
+
+        delegate: Rectangle {
+            id: tick
+            required property real modelData
+            x: Math.round(Format.clamp01((tick.modelData - root.min) / (root.max - root.min))
+                * (root.width - 10) + 5 - width / 2)
+            y: root.height / 2 + 5
+            width: 2
+            height: 4
+            radius: 1
+            color: tick.modelData === root.value ? Theme.accentText : Theme.textFaint
+            opacity: root.dimmed ? 0.45 : 1
         }
     }
 

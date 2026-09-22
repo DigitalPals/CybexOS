@@ -4,16 +4,14 @@ import "../Common"
 // One coherent group of settings. Not a card: the menubar separates its
 // modules with a hairline and a gap rather than by giving each one a filled,
 // bordered container, and a settings page reads the same way. The group owns
-// its section label, the rule that runs from it to the page edge, and the
-// optional reset action; callers only supply the rows.
+// its section label and the rule that runs from it to the page edge; callers
+// only supply the rows.
 Item {
     id: root
 
     default property alias content: contentColumn.data
     property string title: ""
-    property bool dirty: false
     property int rowSpacing: Theme.settingsRowSpacing
-    signal resetRequested()
 
     readonly property real headingHeight: title === "" ? 0 : heading.height
     readonly property int headingGap: title === "" ? 0 : Theme.settingsContentSpacing
@@ -28,8 +26,6 @@ Item {
         visible: root.title !== ""
         width: parent.width
         label: root.title.toUpperCase()
-        dirty: root.dirty
-        onResetRequested: root.resetRequested()
     }
 
     Column {

@@ -6,7 +6,7 @@ const path = require("node:path");
 const shellRoot = path.resolve(__dirname,
     "../../roles/desktop/files/quickshell");
 const health = fs.readFileSync(path.join(shellRoot, "Common/ShellHealth.qml"), "utf8");
-const page = fs.readFileSync(path.join(shellRoot, "Settings/SystemPage.qml"), "utf8");
+const page = fs.readFileSync(path.join(shellRoot, "Settings/AboutPage.qml"), "utf8");
 const helper = fs.readFileSync(path.join(shellRoot, "scripts/shell-health.py"), "utf8");
 
 test("Shell Health is read-only, bounded, and refreshable", () => {

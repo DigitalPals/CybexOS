@@ -1,7 +1,7 @@
 import QtQuick
 import "../Common"
 
-// [label 90][slider][mono value 44][undo 18].
+// [label][slider][mono value][undo].
 SettingsRow {
     id: root
 
@@ -16,6 +16,7 @@ SettingsRow {
     property alias trackStart: slider.trackStart
     property alias trackMiddle: slider.trackMiddle
     property alias trackEnd: slider.trackEnd
+    property alias marks: slider.marks
     property string unit: "px"
     property int decimals: 0
     // Overrides the numeric readout when the value formats as something
@@ -30,9 +31,10 @@ SettingsRow {
     HSlider {
         id: slider
         x: root.narrow ? root.markInset : root.labelWidth
-        y: root.narrow ? Theme.settingsStackOffset : (parent.height - height) / 2
+        y: root.narrow ? Theme.settingsStackOffset : (root.lineHeight - height) / 2
         width: Math.max(0, root.narrow ? root.contentRight - x : valueText.x - x - Theme.controlSpacing)
         height: Theme.settingsControlHeight
+        dimmed: root.unavailable
         // Every settings row overrides this; the default matters only so a
         // row that forgets stays stepped rather than silently continuous.
         step: 1
@@ -47,7 +49,8 @@ SettingsRow {
     Text {
         id: valueText
         x: root.contentRight - width
-        y: root.narrow ? 0 : (parent.height - height) / 2
+        y: root.narrow ? 0 : (root.lineHeight - height) / 2
+        opacity: root.controlOpacity
         width: Math.max(root.valueWidth, implicitWidth)
         horizontalAlignment: Text.AlignRight
         text: root.valueLabel !== "" ? root.valueLabel

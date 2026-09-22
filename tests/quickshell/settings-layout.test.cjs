@@ -20,8 +20,13 @@ test('settings subsections own separation inside revealers and preserve the row 
 test('responsive controls and focus scrolling respect their content bounds', () => {
     const picker = read('Settings/PickerRow.qml');
     assert.match(picker, /wideHeight: Math.max\(Theme.panelRowHeight, pills.implicitHeight\)/);
-    for (const row of ['PickerRow', 'SliderRow', 'SwitchRow', 'SettingsTextRow'])
-        assert.match(read(`Settings/${row}.qml`), /root.narrow \? root.markInset : root.labelWidth/);
+    for (const row of ['PickerRow', 'SliderRow', 'SettingsTextRow', 'TimeRow', 'CornerPickerRow'])
+        assert.match(read(`Settings/${row}.qml`), /root\.narrow \? root\.markInset : root\.labelWidth/);
+    // A switch keeps its own line beside the label; its description is the
+    // shared hint line underneath, which wraps instead of eliding.
+    assert.match(read('Settings/SwitchRow.qml'), /hint: description/);
+    assert.match(read('Settings/SettingsRow.qml'),
+        /height: lineHeight \+ \(hintLine\.visible \? hintLine\.height/);
     assert.match(read('Settings/ResponsiveActionRow.qml'), /Flow \{/);
     assert.match(read('Settings/SettingsPage.qml'), /while \(ancestor && ancestor !== contentRoot\)/);
     assert.match(read('Settings/SettingsRow.qml'), /Accessible.name: "Reset " \+ root.resetLabel/);
@@ -47,7 +52,7 @@ test('accent ink remains readable without changing the chosen fill', () => {
     }
     assert.match(read('Common/Theme.qml'), /accentText: SettingsHelpers.ensureContrast\(\s*accent.toString\(\), copyReferenceBg.toString\(\), 4.5\)/);
     assert.match(read('Common/Theme.qml'), /accent: paletteActive \? Common.Palette.primary\s*: Settings.effectiveAccent/);
-    assert.match(read('Settings/SectionHeader.qml'), /color: Theme.accentText/);
+    assert.match(read('Settings/SettingsHint.qml'), /tone === "active" \? Theme\.accentText/);
 });
 
 test('native forms share field chrome and drawer tabs expose keyboard selection', () => {

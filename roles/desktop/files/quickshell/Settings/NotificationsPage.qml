@@ -8,8 +8,6 @@ SettingsPage {
 
     readonly property var quietRange: SettingsHelpers.quietRange(Settings.notifQuiet,
         Settings.notifQuietStart, Settings.notifQuietEnd)
-    readonly property int footnotePad: width < Theme.settingsNarrowWidth ? 0
-        : Theme.settingsMarkInset + Theme.settingsLabelWidth + 10
     property real previewProgress: 1
 
     function sendTest() {
@@ -27,21 +25,11 @@ SettingsPage {
         SettingsGroup {
             width: parent.width
             title: "Behavior"
-            dirty: Settings.notifDnd !== Settings.defaults.notifDnd
-                || Settings.notifDndUntilMs !== Settings.defaults.notifDndUntilMs
-                || Settings.notifQuiet !== Settings.defaults.notifQuiet
-                || Settings.notifQuietStart !== Settings.defaults.notifQuietStart
-                || Settings.notifQuietEnd !== Settings.defaults.notifQuietEnd
-                || Settings.notifDuration !== Settings.defaults.notifDuration
-                || Settings.notifPosition !== Settings.defaults.notifPosition
-            onResetRequested: Settings.resetKeys(["notifDnd", "notifDndUntilMs", "notifQuiet",
-                "notifQuietStart", "notifQuietEnd", "notifDuration", "notifPosition"],
-                "Notification behavior")
 
             SwitchRow {
                 width: parent.width
                 label: "Do Not Disturb"
-                description: "Silence toasts — everything still lands in the center"
+                description: "Mutes pop-ups; notifications still collect in the center"
                 checked: Notifs.dnd
                 dirty: Settings.notifDnd !== Settings.defaults.notifDnd
                     || Settings.notifDndUntilMs !== Settings.defaults.notifDndUntilMs
@@ -70,21 +58,19 @@ SettingsPage {
                 Column {
                     width: quietReveal.width
                     spacing: 4
-                    SliderRow {
+                    TimeRow {
                         width: parent.width
                         label: "Quiet from"
                         settingKey: "notifQuietStart"
                         resetLabel: "Quiet hours start"
-                        min: 0; max: 1425; step: 15
-                        valueLabel: SettingsHelpers.formatMinutes(Settings.notifQuietStart)
                     }
-                    SliderRow {
+                    TimeRow {
                         width: parent.width
                         label: "Quiet until"
                         settingKey: "notifQuietEnd"
                         resetLabel: "Quiet hours end"
-                        min: 0; max: 1425; step: 15
-                        valueLabel: SettingsHelpers.formatMinutes(Settings.notifQuietEnd)
+                        note: Settings.notifQuietEnd < Settings.notifQuietStart
+                            ? "Ends the next day" : ""
                     }
                 }
             }
@@ -95,41 +81,19 @@ SettingsPage {
                 settingKey: "notifDuration"
                 resetLabel: "Toast duration"
                 min: 4; max: 20; step: 1; unit: "s"
+                hint: "Critical alerts ignore the timer and stay until dismissed"
             }
-            Text {
-                width: parent.width
-                leftPadding: page.footnotePad
-                text: "Critical alerts ignore the timer and stay until dismissed"
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Theme.textDim
-                wrapMode: Text.Wrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-            }
-            PickerRow {
+            CornerPickerRow {
                 width: parent.width
                 label: "Position"
                 settingKey: "notifPosition"
                 resetLabel: "Toast position"
-                model: [
-                    { value: "top-left", label: "Top left" },
-                    { value: "top-right", label: "Top right" },
-                    { value: "bottom-left", label: "Bottom left" },
-                    { value: "bottom-right", label: "Bottom right" }
-                ]
             }
         }
 
         SettingsGroup {
             width: parent.width
             title: "Style"
-            dirty: Settings.notifDensity !== Settings.defaults.notifDensity
-                || Settings.notifIcons !== Settings.defaults.notifIcons
-                || Settings.notifProgress !== Settings.defaults.notifProgress
-                || Settings.notifBodyLines !== Settings.defaults.notifBodyLines
-            onResetRequested: Settings.resetKeys(["notifDensity", "notifIcons",
-                "notifProgress", "notifBodyLines"], "Notification style")
 
             // The one preview that stays (turn-3 design): a toast is not
             // otherwise on screen, so the style rows keep a live sample card
@@ -170,7 +134,7 @@ SettingsPage {
                         width: parent.width
                         label: "Timeout progress"
                         settingKey: "notifProgress"
-                        description: "Thin bar counting down a toast's remaining time"
+                        description: "A thin bar counts down the time a toast has left"
                     }
                     SliderRow {
                         width: parent.width

@@ -1,70 +1,107 @@
 import QtQuick
 import "../Common"
 
+// Plugin chrome follows the shell unless asked not to. One switch says so;
+// the overrides it hides are the same controls the Panels group has, so
+// showing both copies all the time repeated the whole border setup.
+//
+// "Matching" is derived from the stored values, never persisted: a plugin
+// scale of 100 %, the Shell border and the theme corner radius, with no
+// theme overrides. Switching it on resets the plugin keys (with the usual
+// undo); switching it off only reveals the overrides for editing.
 SettingsGroup {
     id: root
     readonly property var keys: ["pluginScale", "pluginBorderMode", "pluginBorderColor", "pluginBorderWidth", "pluginBorderOpacity", "pluginRadius", "pluginThemeOverrides"]
+    readonly property bool matchesShell: Settings.pluginScale === 100
+        && Settings.pluginBorderMode === "inherit"
+        && Settings.pluginRadius === -1
+        && Object.keys(Settings.pluginThemeOverrides || {}).length === 0
+    property bool customizing: false
+    readonly property bool showOverrides: customizing || !matchesShell
+
     width: parent.width
-    title: "Plugin appearance"
-    dirty: keys.some(key => JSON.stringify(Settings[key]) !== JSON.stringify(Settings.defaults[key]))
-    onResetRequested: Settings.resetKeys(root.keys, "Plugin appearance")
-    SliderRow {
+    title: "Plugins"
+
+    SwitchRow {
         width: parent.width
-        label: "UI scale"
-        settingKey: "pluginScale"
-        min: 75; max: 200; step: 5; unit: "%"
-    }
-    PickerRow {
-        width: parent.width
-        label: "Border"
-        settingKey: "pluginBorderMode"
-        model: [
-            { value: "inherit", label: "Shell" },
-            { value: "accent", label: "Accent" },
-            { value: "subtle", label: "Subtle" },
-            { value: "custom", label: "Custom" }
-        ]
-    }
-    SettingsTextRow {
-        width: parent.width
-        visible: Settings.pluginBorderMode === "custom"
-        label: "Border color"
-        value: Settings.pluginBorderColor
-        dirty: Settings.pluginBorderColor !== Settings.defaults.pluginBorderColor
-        resetKeys: ["pluginBorderColor"]
-        onCommitted: text => {
-            if (/^#[0-9a-fA-F]{6}$/.test(text)) Settings.set("pluginBorderColor", text);
+        label: "Match shell style"
+        checked: !root.showOverrides
+        description: "Plugins that use the shared components take the shell's size, borders and corners"
+        // Derived, not stored: the overrides below carry their own resets.
+        dirty: false
+        resetKeys: []
+        onToggled: value => {
+            root.customizing = !value;
+            if (value && !root.matchesShell)
+                Settings.resetKeys(root.keys, "Plugin appearance");
         }
-        placeholder: "#9ecbeb"
     }
-    SliderRow {
+
+    Revealer {
+        id: overrides
         width: parent.width
-        label: "Border width"
-        settingKey: "pluginBorderWidth"
-        visible: Settings.pluginBorderMode !== "inherit"
-        min: 0; max: 8; step: 1
-    }
-    SliderRow {
-        width: parent.width
-        label: "Border opacity"
-        settingKey: "pluginBorderOpacity"
-        visible: Settings.pluginBorderMode !== "inherit"
-        min: 0; max: 100; step: 5; unit: "%"
-    }
-    SliderRow {
-        width: parent.width
-        label: "Corners"
-        settingKey: "pluginRadius"
-        min: -1; max: 30; step: 1
-        valueLabel: Settings.pluginRadius < 0 ? "Theme" : Settings.pluginRadius + " px"
-    }
-    Text {
-        width: parent.width
-        leftPadding: Theme.settingsMarkInset
-        wrapMode: Text.WordWrap
-        text: "100% follows the shell font size, UI scale and control spacing. Shell borders follow Appearance. Changes apply to plugins using the shared Omarchy components."
-        color: Theme.textMid
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.typography.secondary
+        reveal: root.showOverrides
+
+        Column {
+            width: overrides.width
+            spacing: Theme.settingsRowSpacing
+
+            SliderRow {
+                width: parent.width
+                label: "UI scale"
+                settingKey: "pluginScale"
+                resetLabel: "Plugin UI scale"
+                min: 75; max: 200; step: 5; unit: "%"
+                marks: [100]
+                hint: "100% follows the shell's text and size settings"
+            }
+            PickerRow {
+                width: parent.width
+                label: "Border"
+                settingKey: "pluginBorderMode"
+                resetLabel: "Plugin border"
+                model: [
+                    { value: "inherit", label: "Shell" },
+                    { value: "accent", label: "Accent" },
+                    { value: "subtle", label: "Subtle" },
+                    { value: "custom", label: "Custom" }
+                ]
+            }
+            SettingsTextRow {
+                width: parent.width
+                visible: Settings.pluginBorderMode === "custom"
+                label: "Border color"
+                settingKey: "pluginBorderColor"
+                resetLabel: "Plugin border color"
+                hexColor: true
+                placeholder: "#9ecbeb"
+            }
+            SliderRow {
+                width: parent.width
+                label: "Border width"
+                settingKey: "pluginBorderWidth"
+                resetLabel: "Plugin border width"
+                visible: Settings.pluginBorderMode !== "inherit"
+                min: 0; max: 8; step: 1
+            }
+            SliderRow {
+                width: parent.width
+                label: "Border opacity"
+                settingKey: "pluginBorderOpacity"
+                resetLabel: "Plugin border opacity"
+                visible: Settings.pluginBorderMode !== "inherit"
+                min: 0; max: 100; step: 5; unit: "%"
+            }
+            SliderRow {
+                width: parent.width
+                label: "Corners"
+                settingKey: "pluginRadius"
+                resetLabel: "Plugin corners"
+                min: -1; max: 30; step: 1
+                valueLabel: Settings.pluginRadius < 0 ? "Shell" : Settings.pluginRadius + " px"
+                valueWidth: 52
+                hint: "All the way left follows the shell's corners"
+            }
+        }
     }
 }

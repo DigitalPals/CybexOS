@@ -1195,3 +1195,15 @@ test("Bluetooth migrates beside Network without changing existing drawer prefere
     assert.deepEqual(H.normalizeDrawerTabs(custom), custom);
     assert.deepEqual(H.normalizeDrawerTabs(migrated), migrated);
 });
+
+test("typed quiet-hour times parse, snap to the step, and reject non-times", () => {
+    for (const [text, minutes] of [["7", 420], ["7:30", 450], ["07:30", 450], ["0730", 450],
+        ["730", 450], ["19.45", 1185], ["22:07", 1320], ["23:59", 0], [" 6:00 ", 360]])
+        assert.equal(H.parseClockMinutes(text, 15), minutes, text);
+    assert.equal(H.parseClockMinutes("7:05", 1), 425, "a step of 1 keeps the exact minute");
+    for (const text of ["", "abc", "24:00", "7:60", "7:5", "12:345", null])
+        assert.equal(H.parseClockMinutes(text, 15), -1, String(text));
+    // Every accepted value round-trips through the stored grid.
+    for (let m = 0; m < 1440; m += 15)
+        assert.equal(H.parseClockMinutes(H.formatMinutes(m), 15), m);
+});

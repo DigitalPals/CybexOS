@@ -1,7 +1,9 @@
 import QtQuick
 import "../Common"
 
-// [label 90][description fill][switch][undo 18] (design v2 behavior rows).
+// [label][switch][undo] with the description on the row's hint line below.
+// Sharing the label's line made the description compete with the label and
+// elide at ordinary widths; underneath, it wraps instead.
 SettingsRow {
     id: root
 
@@ -9,28 +11,17 @@ SettingsRow {
     property bool checked: root.stored === true
     signal toggled(bool value)
 
-    narrowHeight: Math.max(Theme.scaled(48), Theme.scaled(24) + descriptionText.implicitHeight + Theme.scaled(3))
-    narrowLabelY: 2
-    narrowLabelInset: 82
-
-    Text {
-        id: descriptionText
-        x: root.narrow ? root.markInset : root.labelWidth
-        y: root.narrow ? Theme.scaled(24) : (parent.height - height) / 2
-        width: Math.max(0, root.narrow ? root.contentRight - x : control.x - x - Theme.controlSpacing)
-        text: root.description
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.typography.control
-        color: Theme.textDim
-        elide: root.narrow ? Text.ElideNone : Text.ElideRight
-        wrapMode: root.narrow ? Text.Wrap : Text.NoWrap
-        maximumLineCount: root.narrow ? 2 : 1
-    }
+    hint: description
+    // The switch keeps its own line beside the label at every width.
+    narrowHeight: Theme.settingsControlHeight
+    narrowLabelY: Math.max(0, Math.round((Theme.settingsControlHeight - root.labelTextHeight) / 2))
+    narrowLabelInset: control.width + root.undoWidth + Theme.controlSpacing
 
     Toggle {
         id: control
         x: root.contentRight - width - 2
-        y: root.narrow ? 0 : (parent.height - height) / 2
+        y: (root.lineHeight - height) / 2
+        opacity: root.controlOpacity
         metrics: Theme.switchRow
         checked: root.checked
         accessibleName: root.label

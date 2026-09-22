@@ -15,7 +15,6 @@ Column {
     id: root
 
     readonly property var watch: Settings.modOpts.gh.watch
-    readonly property bool watchDirty: watch.length > 0
     readonly property int accountRepoCount: GitHub.repos.filter(row => row.account !== false).length
     readonly property var workflowFailedRepos: Object.keys(GitHub.workflowRepoErrors)
     readonly property var eventFailedRepos: Object.keys(GitHub.eventRepoErrors)
@@ -219,11 +218,6 @@ Column {
     // ---- watched repositories ---------------------------------------------
     SectionHeader {
         label: "WATCHED REPOS"
-        dirty: root.watchDirty
-        onResetRequested: {
-            root.addError = "";
-            Settings.setModuleOption("gh", "watch", []);
-        }
     }
 
     Item {

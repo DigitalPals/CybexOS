@@ -22,6 +22,12 @@ import "../Common"
 // A row whose value does not live in Settings leaves `settingKey` empty and
 // wires `dirty` and `onResetRequested` itself. That is every row in
 // ModuleDetailView, which stores per-module options rather than settings.
+//
+// Every row shares one explanatory line, `hint`, drawn by SettingsHint under
+// the control line: a switch's description, a picker's note, a live status.
+// A row that cannot apply right now names why in `disabledReason`; the row
+// then stops taking input, dims its control, and shows the reason in place
+// of the hint, so a greyed-out control never has to be guessed at.
 Item {
     id: root
 
@@ -35,6 +41,13 @@ Item {
     // Usually just this row's key, but a mode picker whose companion values
     // only make sense under one mode restores them together.
     property var resetKeys: settingKey === "" ? [] : [settingKey]
+    property string hint: ""
+    // info | active | warning | error — see SettingsHint.
+    property string hintTone: "info"
+    property string disabledReason: ""
+    readonly property bool unavailable: disabledReason !== ""
+    // Subclasses fade their control, never the reason beside it.
+    readonly property real controlOpacity: unavailable ? 0.45 : 1
 
     // Reflow metrics. Each row reserves a different slice of the narrow line
     // for its own control, and the switch row's label sits 2px lower because
@@ -60,12 +73,17 @@ Item {
     // the row's control. Controls stop here rather than at the row's edge.
     readonly property real contentRight: width - undoWidth
     readonly property real labelTextWidth: labelText.width
+    readonly property real labelTextHeight: labelText.implicitHeight
     readonly property var stored: settingKey === "" ? undefined : Settings[settingKey]
     readonly property bool highlighted: settingKey !== ""
         && Settings.highlightKey === settingKey
 
     property real wideHeight: Theme.panelRowHeight
-    height: narrow ? narrowHeight : wideHeight
+    // The control line. Controls centre on it rather than on the row, which
+    // grows by the hint below.
+    readonly property real lineHeight: narrow ? narrowHeight : wideHeight
+    height: lineHeight + (hintLine.visible ? hintLine.height + Theme.scaled(2) : 0)
+    enabled: !unavailable
 
     function commit(value) {
         if (root.settingKey !== "")
@@ -96,7 +114,7 @@ Item {
 
     Rectangle {
         anchors.left: parent.left
-        y: root.narrow ? root.narrowLabelY + 5 : (parent.height - height) / 2
+        y: root.narrow ? root.narrowLabelY + 5 : (root.lineHeight - height) / 2
         width: 6
         height: 6
         radius: 3
@@ -108,20 +126,31 @@ Item {
         id: labelText
         anchors.left: parent.left
         anchors.leftMargin: root.markInset
-        y: root.narrow ? root.narrowLabelY : (parent.height - height) / 2
+        y: root.narrow ? root.narrowLabelY : (root.lineHeight - height) / 2
         width: (root.narrow ? parent.width - root.narrowLabelInset
             : root.labelWidth) - root.markInset
         text: root.label
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.control
-        color: root.dirty ? Theme.textHi : root.labelColor
+        color: root.unavailable ? Theme.textDim
+            : root.dirty ? Theme.textHi : root.labelColor
         elide: Text.ElideRight
         verticalAlignment: Text.AlignVCenter
     }
 
+    SettingsHint {
+        id: hintLine
+        // Tucked under the control line: the hint belongs to this row, not
+        // to the gap before the next one.
+        y: root.lineHeight - Theme.scaled(2)
+        width: root.contentRight
+        text: root.unavailable ? root.disabledReason : root.hint
+        tone: root.unavailable ? "info" : root.hintTone
+    }
+
     Item {
         anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
+        y: (root.lineHeight - height) / 2
         width: root.undoWidth
         height: root.undoWidth
 

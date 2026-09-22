@@ -18,7 +18,6 @@ Item {
         y: Theme.settingsSubsectionSpacing
         width: parent.width
         label: root.title.toUpperCase()
-        resettable: false
     }
     Column {
         id: contentColumn

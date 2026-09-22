@@ -36,6 +36,20 @@ Item {
         detailPage.contentY = 0;
         widgetDialog.open();
     }
+    // Another page asked for one widget's options (System's Stay awake links
+    // to Indicators). Honour it once the catalog knows the widget.
+    function takeWidgetRequest() {
+        const id = Settings.widgetRequest;
+        if (id === "" || !entries.some(entry => entry.key === id))
+            return;
+        Settings.widgetRequest = "";
+        openSubPage(id);
+    }
+    Connections {
+        target: Settings
+        function onWidgetRequestChanged() { page.takeWidgetRequest(); }
+    }
+    Component.onCompleted: Qt.callLater(page.takeWidgetRequest)
     function closeSubPage() {
         if (presetsOpen) presetsOpen = false;
         else widgetDialog.close();
@@ -473,11 +487,25 @@ Item {
             Row {
                 id: dialogHeader
                 width: parent.width
+                spacing: 4
                 Heading {
-                    width: parent.width - closeAction.width
+                    width: parent.width - closeAction.width - parent.spacing
+                        - (resetWidgetAction.visible ? resetWidgetAction.width + parent.spacing : 0)
                     text: page.selected ? page.selected.name : "Widget settings"
                     wrapMode: Text.Wrap
                     anchors.verticalCenter: parent.verticalCenter
+                }
+                // One widget's options back to defaults. The header's Reset
+                // page would take the whole bar layout with it.
+                SettingsAction {
+                    id: resetWidgetAction
+                    visible: page.selected !== null && !page.selected.plugin
+                        && Settings.revision >= 0 && Settings.moduleDirty(page.selected.id)
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Reset widget"
+                    glyph: "undo"
+                    Accessible.name: "Reset " + (page.selected ? page.selected.name : "widget") + " options"
+                    onTriggered: Settings.resetModule(page.selected.id, page.selected.name)
                 }
                 SettingsAction {
                     id: closeAction
@@ -582,7 +610,7 @@ Item {
         Column {
             width: parent.width
             spacing: 12
-            SettingsAction { text: "Back to your bar"; glyph: "arrow_back"; onTriggered: page.closeSubPage() }
+            SettingsAction { text: "Back to widgets"; glyph: "arrow_back"; onTriggered: page.closeSubPage() }
             Heading { text: "Preview a preset" }
             Caption { width: parent.width; text: "Presets change which built-in widgets are enabled. Placement, widget options, and plugins are preserved." }
             PillRow {

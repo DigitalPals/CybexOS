@@ -5,8 +5,10 @@ import "../Common"
 import "../Common" as Common
 import "../Common/SettingsHelpers.js" as SettingsHelpers
 
-// Appearance owns theme, palette, fixed colors, and typography. Bar geometry
-// lives on the Bar page so each page describes one coherent task.
+// Appearance owns theme, text and size, colors, and panel chrome. Every
+// control that changes how large the shell draws sits in one group, with the
+// size it produces spelled out, because the three multiply rather than
+// override one another. Bar geometry lives on the Bar page.
 SettingsPage {
     id: page
 
@@ -15,6 +17,12 @@ SettingsPage {
     // refresh cannot leave the active color without a selected swatch.
     readonly property var accentChoices: [Settings.defaults.accent,
         "#9ecbeb", "#a992e0", "#79b88b", "#d3b47e", "#e8837a"]
+    readonly property var accentNames: {
+        const names = { "#9ecbeb": "Sky", "#a992e0": "Lavender", "#79b88b": "Sage",
+            "#d3b47e": "Sand", "#e8837a": "Coral" };
+        names[Settings.defaults.accent] = "Default";
+        return names;
+    }
     readonly property int accentHue: SettingsHelpers.hexHue(Settings.accent, 204)
     readonly property bool fixedPalette: Settings.paletteMode === "fixed"
     readonly property var paletteSwatches: [
@@ -33,6 +41,15 @@ SettingsPage {
         return 0;
     }
     readonly property string barColorLabel: Settings.barColorChoices[barColorIndex].label
+    readonly property string textScaleLabel: Settings.textScale === "larger" ? "Larger (×1.3)"
+        : Settings.textScale === "large" ? "Large (×1.15)" : "Default"
+    readonly property string sizeSummary: "Text renders at " + Theme.metrics.fontBase
+        + " px — " + Settings.shellFontSize + " px base, " + page.textScaleLabel
+        + " text size, " + Settings.shellScale + "% UI scale"
+
+    function accentName(value) {
+        return page.accentNames[value] || value.toUpperCase();
+    }
 
     function pickAccent(value) {
         Settings.set("accent", value);
@@ -63,18 +80,11 @@ SettingsPage {
         SettingsGroup {
             width: parent.width
             title: "Theme"
-            dirty: Settings.themeMode !== Settings.defaults.themeMode
-                || Settings.glassEnabled !== Settings.defaults.glassEnabled
-                || Settings.highContrast !== Settings.defaults.highContrast
-            onResetRequested: Settings.resetKeys(["themeMode", "glassEnabled",
-                "highContrast"], "Theme")
 
             PickerRow {
                 width: parent.width
                 label: "Mode"
                 settingKey: "themeMode"
-                caption: "shell surfaces and text"
-                captionMono: false
                 model: [
                     { value: "dark", label: "Dark" },
                     { value: "light", label: "Light" }
@@ -85,22 +95,17 @@ SettingsPage {
                 label: "Glass effect"
                 settingKey: "glassEnabled"
                 description: Settings.glassApplyError
-                    ? "Surface changed, but the compositor blur rule could not be updated"
-                    : "Blurred translucent shell surfaces; off uses opaque surfaces"
-            }
-            SwitchRow {
-                width: parent.width
-                label: "High contrast"
-                settingKey: "highContrast"
-                description: "Opaque surfaces, stronger borders, and no compositor blur"
+                    ? "Panels changed, but the compositor blur could not be updated"
+                    : "Translucent panels with background blur"
+                hintTone: Settings.glassApplyError ? "error" : "info"
+                disabledReason: Settings.highContrast
+                    ? "Off while High contrast is on" : ""
             }
         }
 
         SettingsGroup {
             width: parent.width
-            title: "Typography"
-            dirty: Settings.font !== Settings.defaults.font
-            onResetRequested: Settings.resetKeys(["font"], "Typography")
+            title: "Text & size"
 
             PickerRow {
                 width: parent.width
@@ -110,31 +115,59 @@ SettingsPage {
                     value: choice.id, label: choice.label
                 }))
             }
+            SliderRow {
+                width: parent.width
+                label: "Base font"
+                settingKey: "shellFontSize"
+                min: 10; max: 24; step: 1
+            }
+            PickerRow {
+                width: parent.width
+                label: "Text size"
+                settingKey: "textScale"
+                model: [
+                    { value: "default", label: "Default" },
+                    { value: "large", label: "Large" },
+                    { value: "larger", label: "Larger" }
+                ]
+                hint: "Enlarges text for readability on top of the base font"
+            }
+            SliderRow {
+                width: parent.width
+                label: "UI scale"
+                settingKey: "shellScale"
+                min: 75; max: 200; step: 5; unit: "%"
+                marks: [100]
+                hint: "Scales text and spacing together"
+            }
+            PickerRow {
+                width: parent.width
+                label: "Control spacing"
+                settingKey: "interfaceDensity"
+                model: [
+                    { value: "compact", label: "Compact" },
+                    { value: "default", label: "Default" },
+                    { value: "comfortable", label: "Comfortable" }
+                ]
+                hint: "Row height and touch-target size"
+            }
+            SettingsHint {
+                width: parent.width
+                text: page.sizeSummary
+                tone: "active"
+            }
         }
 
         SettingsGroup {
             width: parent.width
             title: "Colors"
-            dirty: Settings.paletteMode !== Settings.defaults.paletteMode
-                || Settings.barColorMode !== Settings.defaults.barColorMode
-                || Settings.barCustomHue !== Settings.defaults.barCustomHue
-                || Settings.barCustomSaturation !== Settings.defaults.barCustomSaturation
-                || Settings.barCustomLightness !== Settings.defaults.barCustomLightness
-                || Settings.accent !== Settings.defaults.accent
-            onResetRequested: Settings.resetKeys(["paletteMode", "barColorMode",
-                "barCustomHue", "barCustomSaturation", "barCustomLightness", "accent"], "Colors")
 
             PickerRow {
                 width: parent.width
                 label: "Accent source"
                 settingKey: "paletteMode"
-                caption: Settings.paletteMode === "wallpaper"
-                    ? "current wallpaper" : "manual choices"
-                captionMono: false
-                // The group-level reset owns this compound choice and its
-                // latent fixed values; a second row reset reads as clutter.
-                dirty: false
-                resetKeys: []
+                hint: Settings.paletteMode === "wallpaper"
+                    ? "The accent follows the current wallpaper" : "Choose the accent yourself"
                 model: [
                     { value: "wallpaper", label: "Wallpaper" },
                     { value: "fixed", label: "Fixed" }
@@ -154,7 +187,7 @@ SettingsPage {
 
                 SettingsSubsection {
                     width: fixedColorReveal.width
-                    title: "ACCENT"
+                    title: "Accent"
                     insetContent: false
                     SliderRow {
                         width: parent.width
@@ -183,11 +216,11 @@ SettingsPage {
                                 activeFocusOnTab: selected || (index === 0
                                     && page.accentChoices.indexOf(Settings.accent) === -1)
                                 Accessible.role: Accessible.RadioButton
-                                Accessible.name: "Accent preset " + modelData
+                                Accessible.name: page.accentName(modelData) + " accent"
                                 Accessible.checked: selected
                                 Accessible.onPressAction: page.pickAccent(modelData)
                                 Controls.ToolTip.visible: swatchMouse.containsMouse
-                                Controls.ToolTip.text: "Use accent " + modelData
+                                Controls.ToolTip.text: page.accentName(modelData) + " · " + modelData.toUpperCase()
                                 Keys.onPressed: event => {
                                     let next = -1;
                                     if (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
@@ -244,7 +277,7 @@ SettingsPage {
 
                 SettingsSubsection {
                     width: wallpaperPaletteReveal.width
-                    title: "WALLPAPER PALETTE PREVIEW"
+                    title: "Wallpaper palette"
                     insetContent: true
 
                     Item {
@@ -282,20 +315,17 @@ SettingsPage {
                                     }
                                 }
                             }
-                            Text {
+                            SettingsHint {
                                 width: parent.width
+                                inset: false
                                 text: Common.Palette.busy
                                     ? "Generating colors from the current wallpaper…"
                                     : Common.Palette.ready
-                                    ? "Wallpaper palette ready · light and dark cached"
+                                    ? "Palette ready"
                                     : Common.Palette.error !== ""
-                                    ? Common.Palette.error + " · using fixed colors"
+                                    ? Common.Palette.error + " · using the fixed accent"
                                     : "Waiting for the wallpaper palette"
-                                font.family: Theme.fontMenu
-                                font.pixelSize: Theme.typography.secondary
-                                color: Common.Palette.error !== ""
-                                    ? Theme.redText : Theme.textDim
-                                wrapMode: Text.Wrap
+                                tone: Common.Palette.error !== "" ? "error" : "info"
                             }
                         }
                     }
@@ -452,33 +482,17 @@ SettingsPage {
                     }
                 }
             }
-
         }
 
         SettingsGroup {
             width: parent.width
-            title: "Shell sizing and surfaces"
-            dirty: ["shellFontSize", "shellScale", "surfaceBorderMode", "surfaceBorderColor",
-                "surfaceBorderWidth", "surfaceBorderOpacity", "surfaceCornerRadius"]
-                .some(key => Settings[key] !== Settings.defaults[key])
-            onResetRequested: Settings.resetKeys(["shellFontSize", "shellScale", "surfaceBorderMode",
-                "surfaceBorderColor", "surfaceBorderWidth", "surfaceBorderOpacity", "surfaceCornerRadius"], "Shell appearance")
-            SliderRow {
-                width: parent.width
-                label: "Base font"
-                settingKey: "shellFontSize"
-                min: 10; max: 24; step: 1
-            }
-            SliderRow {
-                width: parent.width
-                label: "UI scale"
-                settingKey: "shellScale"
-                min: 75; max: 200; step: 5; unit: "%"
-            }
+            title: "Panels"
+
             PickerRow {
                 width: parent.width
-                label: "Panel border"
+                label: "Border"
                 settingKey: "surfaceBorderMode"
+                resetLabel: "Panel border"
                 model: [{ value: "accent", label: "Accent" }, { value: "subtle", label: "Subtle" },
                     { value: "custom", label: "Custom" }]
             }
@@ -486,75 +500,53 @@ SettingsPage {
                 width: parent.width
                 visible: Settings.surfaceBorderMode === "custom"
                 label: "Border color"
-                value: Settings.surfaceBorderColor
-                dirty: Settings.surfaceBorderColor !== Settings.defaults.surfaceBorderColor
-                resetKeys: ["surfaceBorderColor"]
-                onCommitted: text => {
-                    if (/^#[0-9a-fA-F]{6}$/.test(text)) Settings.set("surfaceBorderColor", text);
-                }
+                settingKey: "surfaceBorderColor"
+                resetLabel: "Panel border color"
+                hexColor: true
+                placeholder: "#9ecbeb"
             }
             SliderRow {
                 width: parent.width
                 label: "Border width"
                 settingKey: "surfaceBorderWidth"
+                resetLabel: "Panel border width"
                 min: 0; max: 8; step: 1
             }
             SliderRow {
                 width: parent.width
                 label: "Border opacity"
                 settingKey: "surfaceBorderOpacity"
+                resetLabel: "Panel border opacity"
                 min: 0; max: 100; step: 5; unit: "%"
+                disabledReason: Settings.surfaceBorderWidth === 0 ? "No border at width 0" : ""
             }
             SliderRow {
                 width: parent.width
-                label: "Panel corners"
+                label: "Corners"
                 settingKey: "surfaceCornerRadius"
+                resetLabel: "Panel corners"
                 min: 0; max: 30; step: 1
-            }
-        }
-
-        SettingsGroup {
-            width: parent.width
-            title: "Accessibility"
-            dirty: Settings.reducedMotion !== Settings.defaults.reducedMotion
-                || Settings.textScale !== Settings.defaults.textScale
-                || Settings.interfaceDensity !== Settings.defaults.interfaceDensity
-            onResetRequested: Settings.resetKeys(["reducedMotion", "textScale",
-                "interfaceDensity"], "Accessibility")
-
-            SwitchRow {
-                width: parent.width
-                label: "Reduce motion"
-                settingKey: "reducedMotion"
-                description: "Remove panel, reveal, hover, and activity animations"
-            }
-            PickerRow {
-                width: parent.width
-                label: "Text size"
-                settingKey: "textScale"
-                caption: "applies across the shell"
-                captionMono: false
-                model: [
-                    { value: "default", label: "Default" },
-                    { value: "large", label: "Large" },
-                    { value: "larger", label: "Larger" }
-                ]
-            }
-            PickerRow {
-                width: parent.width
-                label: "Control spacing"
-                settingKey: "interfaceDensity"
-                caption: "touch targets and row height"
-                captionMono: false
-                model: [
-                    { value: "compact", label: "Compact" },
-                    { value: "default", label: "Default" },
-                    { value: "comfortable", label: "Comfortable" }
-                ]
             }
         }
 
         PluginAppearance { width: parent.width }
 
+        SettingsGroup {
+            width: parent.width
+            title: "Accessibility"
+
+            SwitchRow {
+                width: parent.width
+                label: "High contrast"
+                settingKey: "highContrast"
+                description: "Solid panels and stronger borders"
+            }
+            SwitchRow {
+                width: parent.width
+                label: "Reduce motion"
+                settingKey: "reducedMotion"
+                description: "Turns off panel, reveal and hover animations"
+            }
+        }
     }
 }

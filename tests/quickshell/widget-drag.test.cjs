@@ -218,12 +218,13 @@ test("the settings page still owns the keyboard path", () => {
 test("the settings surfaces call them widgets", () => {
     const view = read("Settings/SettingsView.qml");
     assert.match(view, /label: "Widgets"/);
-    assert.match(view, /title: "Your bar"/);
+    assert.match(view, /title: "Widgets"/);
+    assert.doesNotMatch(view, /title: "Your bar"/);
     assert.doesNotMatch(view, /label: "Modules"|title: "Modules"/);
 
     const detail = read("Settings/ModuleDetailView.qml");
-    assert.match(detail, /text: "Your bar"/);
-    assert.match(detail, /Accessible\.name: "Back to your bar"/);
+    assert.match(detail, /text: "Widgets"/);
+    assert.match(detail, /Accessible\.name: "Back to widgets"/);
 
     const page = read("Settings/ModulesPage.qml");
     assert.doesNotMatch(page, /"Module list\.""?|ToolTip\.text: "Module settings"/);

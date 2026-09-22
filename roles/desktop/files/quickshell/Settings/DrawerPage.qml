@@ -83,18 +83,10 @@ SettingsPage {
         SettingsGroup {
             width: parent.width
             title: "Tabs"
-            dirty: JSON.stringify(Settings.drawerTabs)
-                !== JSON.stringify(Settings.defaults.drawerTabs)
-            onResetRequested: Settings.resetKeys(["drawerTabs"], "Drawer tabs")
 
-            Text {
+            SettingsHint {
                 width: parent.width
-                leftPadding: Theme.settingsMarkInset
-                bottomPadding: 4
-                text: "Drag to reorder — a bar glyph opens its tab in this order"
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Theme.textDim
+                text: "Drag to reorder the drawer's tabs; switch one off to hide it"
             }
 
             Item {
@@ -277,9 +269,6 @@ SettingsPage {
         SettingsGroup {
             width: parent.width
             title: "Overview"
-            dirty: JSON.stringify(Settings.drawerOverview)
-                !== JSON.stringify(Settings.defaults.drawerOverview)
-            onResetRequested: Settings.resetKeys(["drawerOverview"], "Drawer overview")
 
             Repeater {
                 model: page.overviewRows
@@ -303,17 +292,16 @@ SettingsPage {
         SettingsGroup {
             width: parent.width
             title: "Behavior"
-            dirty: Settings.drawerHover !== Settings.defaults.drawerHover
-                || Settings.drawerWidth !== Settings.defaults.drawerWidth
-            onResetRequested: Settings.resetKeys(["drawerHover", "drawerWidth"],
-                "Drawer behavior")
 
             PickerRow {
                 width: parent.width
                 label: "Open on hover"
                 settingKey: "drawerHover"
-                caption: "hovering another glyph switches tabs while open"
-                captionMono: false
+                hint: Settings.drawerHover === "always"
+                    ? "Pointing at a bar icon opens its tab"
+                    : Settings.drawerHover === "open"
+                    ? "While the drawer is open, pointing at another bar icon switches to its tab"
+                    : "Click a bar icon to open its tab"
                 model: [
                     { value: "off", label: "Off" },
                     { value: "open", label: "While open" },

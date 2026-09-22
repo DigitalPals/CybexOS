@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 import "../Common/SettingsHelpers.js" as SettingsHelpers
+import "../Common/Format.js" as Format
 
 // Built-in options shared by the bar editor and standalone detail view.
 // The detail policy control lives here (storage stays in Settings.mods);
@@ -58,18 +59,6 @@ SettingsPage {
 
     function resetOpt(key) {
         Settings.setModuleOption(view.moduleId, key, view.optDefaults[key]);
-    }
-
-    function resetOpts(keys) {
-        const changes = {};
-        for (const key of keys)
-            changes[key] = view.optDefaults[key];
-        Settings.setModuleOptions(view.moduleId, changes);
-    }
-
-    function optsDirty(keys) {
-        return keys.some(key => JSON.stringify(view.opts[key])
-            !== JSON.stringify(view.optDefaults[key]));
     }
 
     function indicatorEnabled(id) {
@@ -141,9 +130,9 @@ SettingsPage {
 
             SettingsAction {
                 id: backAction
-                text: "Your bar"
+                text: "Widgets"
                 glyph: "arrow_back"
-                Accessible.name: "Back to your bar"
+                Accessible.name: "Back to widgets"
                 onTriggered: view.backRequested()
             }
 
@@ -211,8 +200,6 @@ SettingsPage {
             SettingsGroup {
                 width: parent.width
                 title: "Behavior"
-                dirty: view.optsDirty(["mode"])
-                onResetRequested: view.resetOpts(["mode"])
 
                 PickerRow {
                     width: parent.width
@@ -232,8 +219,6 @@ SettingsPage {
             SettingsGroup {
                 width: parent.width
                 title: "Actions"
-                dirty: view.optsDirty(["order", "enabled"])
-                onResetRequested: view.resetOpts(["order", "enabled"])
 
                 Text {
                     width: parent.width
@@ -430,10 +415,6 @@ SettingsPage {
             SettingsGroup {
                 width: parent.width
                 title: "Dictation"
-                dirty: view.optsDirty(["dictationPrimaryLanguage",
-                    "dictationSecondaryLanguage", "dictationModel"])
-                onResetRequested: view.resetOpts(["dictationPrimaryLanguage",
-                    "dictationSecondaryLanguage", "dictationModel"])
 
                 SettingsTextRow {
                     width: parent.width
@@ -469,8 +450,6 @@ SettingsPage {
             SettingsGroup {
                 width: parent.width
                 title: "Screen recording"
-                dirty: view.optsDirty(["recordingMode", "recordingShowElapsed"])
-                onResetRequested: view.resetOpts(["recordingMode", "recordingShowElapsed"])
 
                 PickerRow {
                     width: parent.width
@@ -500,10 +479,6 @@ SettingsPage {
             SettingsGroup {
                 width: parent.width
                 title: "Reminders"
-                dirty: view.optsDirty(["reminderDisplay", "reminderClick",
-                    "reminderMinutes"])
-                onResetRequested: view.resetOpts(["reminderDisplay", "reminderClick",
-                    "reminderMinutes"])
 
                 PickerRow {
                     width: parent.width
@@ -546,8 +521,6 @@ SettingsPage {
             SettingsGroup {
                 width: parent.width
                 title: "Night light"
-                dirty: view.optsDirty(["nightLightStartup"])
-                onResetRequested: view.resetOpts(["nightLightStartup"])
 
                 PickerRow {
                     width: parent.width
@@ -573,8 +546,6 @@ SettingsPage {
             SettingsGroup {
                 width: parent.width
                 title: "Do Not Disturb"
-                dirty: view.optsDirty(["dndStartup", "dndDefaultMode"])
-                onResetRequested: view.resetOpts(["dndStartup", "dndDefaultMode"])
 
                 PickerRow {
                     width: parent.width
@@ -614,10 +585,6 @@ SettingsPage {
             SettingsGroup {
                 width: parent.width
                 title: "Stay awake"
-                dirty: view.optsDirty(["idleStartup", "idleDefaultMode",
-                    "idleShowRemaining"])
-                onResetRequested: view.resetOpts(["idleStartup", "idleDefaultMode",
-                    "idleShowRemaining"])
 
                 PickerRow {
                     width: parent.width
@@ -1223,6 +1190,26 @@ SettingsPage {
                 dirty: view.optDirty("critAt")
                 onMoved: value => view.setOpt("critAt", value)
                 onResetRequested: view.resetOpt("critAt")
+            }
+
+            PickerRow {
+                id: usagePollRow
+                width: parent.width
+                label: "Refresh every"
+                settingKey: "pollMax"
+                resetLabel: "Usage refresh interval"
+                model: [
+                    { value: 60, label: "1 min" },
+                    { value: 300, label: "5 min" },
+                    { value: 600, label: "10 min" }
+                ]
+                caption: "next " + Format.mmss(Usage.nextPollSecs)
+
+                Claim {
+                    active: usagePollRow.visible
+                    onClaimed: Usage.acquireCountdown()
+                    onReleased: Usage.releaseCountdown()
+                }
             }
         }
     }

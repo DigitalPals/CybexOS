@@ -32,7 +32,7 @@ PopoutPanel {
             : "Could not read the settings file.") + " Retry is available."
         : Settings.saveError ? "Could not save settings. Retry is available."
         : Settings.savePending ? "Saving changes…"
-        : Settings.font === "mono" ? "Saved · live" : "Saved · applies live"
+        : "Saved · applies live"
 
     // ---- search (turn-3 design: "/" jumps to any row) --------------------
     property string searchQuery: ""
@@ -59,7 +59,10 @@ PopoutPanel {
             return;
         searchQuery = "";
         searchSelection = 0;
-        Settings.page = row.page;
+        if (row.widget)
+            Settings.openWidgetSettings(row.widget);
+        else
+            Settings.page = row.page;
         Settings.highlightKey = "";
         Settings.highlightKey = row.key;
         Settings.announcement = row.pageLabel + " page, " + row.label + " row.";
@@ -94,13 +97,13 @@ PopoutPanel {
 
     readonly property var navItems: [
         { id: "appearance", group: "SHELL", label: "Appearance", glyph: "palette",
-            title: "Appearance", description: "Theme, colors, and typography" },
+            title: "Appearance", description: "Theme, text and size, colors, and panels" },
         { id: "wallpaper", group: "SHELL", label: "Wallpaper", glyph: "image",
             title: "Wallpaper", description: "Desktop image and automatic rotation" },
         { id: "bar", group: "SHELL", label: "Bar", glyph: "space_dashboard",
             title: "Bar", description: "Placement, shape, and behavior" },
         { id: "modules", group: "SHELL", label: "Widgets", glyph: "widgets",
-            title: "Your bar", description: "Choose and arrange the bar’s contents" },
+            title: "Widgets", description: "Choose and arrange the bar’s contents" },
         { id: "plugins", group: "SHELL", label: "Plugins", glyph: "extension",
             title: "Plugins", description: "Install and manage trusted desktop plugins" },
         { id: "drawer", group: "SHELL", label: "Drawer", glyph: "right_panel_open",
@@ -108,7 +111,9 @@ PopoutPanel {
         { id: "notifications", group: "SYSTEM", label: "Notifications", glyph: "notifications",
             title: "Notifications", description: "Toasts, quiet hours, and the notification center" },
         { id: "system", group: "SYSTEM", label: "System", glyph: "settings",
-            title: "System", description: "Formats, night light, OSD, and storage" }
+            title: "System", description: "Formats, input, night light, and stay awake" },
+        { id: "about", group: "SYSTEM", label: "About", glyph: "info",
+            title: "About", description: "Shell health and the settings file" }
     ]
 
     function navDelegate(id) {
@@ -602,7 +607,7 @@ PopoutPanel {
                         : Settings.loadError ? "Could not read settings"
                         : Settings.saveError ? "Could not save settings"
                         : Settings.savePending ? "Saving changes…"
-                        : Settings.font === "mono" ? "Saved · live" : "Saved · applies live"
+                        : "Saved · applies live"
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
                     color: Settings.persistenceError ? Theme.redText : Theme.textFaint
@@ -645,6 +650,7 @@ PopoutPanel {
                 case "drawer": return drawerPage;
                 case "notifications": return notificationsPage;
                 case "system": return systemPage;
+                case "about": return aboutPage;
                 default: return appearancePage;
                 }
             }
@@ -824,6 +830,7 @@ PopoutPanel {
         Component { id: pluginsPage; PluginsPage {} }
         Component { id: drawerPage; DrawerPage {} }
         Component { id: systemPage; SystemPage {} }
+        Component { id: aboutPage; AboutPage {} }
     }
 
     Item {
