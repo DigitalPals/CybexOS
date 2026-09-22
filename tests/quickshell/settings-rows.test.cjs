@@ -112,6 +112,12 @@ test("rows that cannot use settingKey still wire themselves completely", () => {
         if (block.body.some(l => /^\s*settingKey:/.test(l)))
             continue;
         const text = block.body.join("\n");
+        // Layout commands and external plugin settings have no schema default.
+        // Their enable/remove controls preserve state, rather than inventing a reset.
+        if (block.at.startsWith("Settings/ModulesPage.qml:") || block.at.startsWith("Settings/PluginWidgetSettings.qml:")) {
+            assert.match(text, /on(?:Toggled|Picked|Moved|Committed):/, `${block.at}: missing write handler`);
+            continue;
+        }
         assert.match(text, /^\s*dirty:/m, `${block.at}: no dirty state`);
         assert.ok(/onResetRequested:/.test(text) || /^\s*resetKeys:/m.test(text),
             `${block.at}: nothing happens when its undo chip is clicked`);

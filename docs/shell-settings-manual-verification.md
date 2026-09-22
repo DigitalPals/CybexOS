@@ -15,7 +15,7 @@ is manual.
 - [ ] On an output with at least 900×664 logical pixels available, the card
       opens at 900×664 with the labeled sidebar. Below 860px available width,
       the same navigation becomes an icon rail with tooltips and 42px targets.
-- [ ] `qs ipc call settings open modules` lands on the Modules page.
+- [ ] `qs ipc call settings open modules` lands on the Widgets page.
 - [ ] Gear in the Control Panel footer opens it (and closes the popout).
 - [ ] Right-click anywhere on the bar slab opens it; left-clicks on modules
       still open their popouts.
@@ -132,18 +132,29 @@ is manual.
 - [ ] Opening a module or Shell settings from either bar shows exactly one
       panel, attached to the bar that was clicked.
 
-## Modules page
+## Widgets page
 
-- [ ] Mini preview mirrors order and enablement (disabled = dashed chip),
-      including all four independent status widgets.
-- [ ] The cog appears only on configurable modules (Workspaces, Media, Clock,
-      Weather, T3 Code, Model usage, Volume, Battery, Notifications) and turns
-      accent when that module's options or detail policy left their defaults.
-- [ ] The cog opens the module's settings sub-page in place (list hidden, back
-      button focused); Back or Esc returns to the list with the row refocused;
-      a second Esc closes the window as before.
-- [ ] Detail policy (Auto / Prefer detail / Always compact) is picked on the
-      sub-page; Prefer detail compacts only after Auto modules.
+- [ ] Left, Center and Right cards show enabled widgets as pills in bar order,
+      including widgets currently hidden by runtime conditions. There is no
+      duplicate preview, permanent inspector, or available-widget panel.
+- [ ] Each section's searchable selector lists only disabled built-ins and
+      installed plugin widget instances. Choose a result and press +: it appears
+      in that section with its existing settings retained.
+- [ ] The gear opens a dialog sized to its settings, with scrolling for longer
+      forms. Close or Esc returns focus to the pill without closing Settings.
+- [ ] Drag within and between cards; the ghost and insertion marker track both
+      axes, wrapped rows, empty sections and edge scrolling. Escape cancels
+      without writing. Alt+arrow keys and menu Earlier/Later also reorder.
+- [ ] Right-click, Menu, and Shift+F10 expose Move to Left/Center/Right and Remove.
+      Remove retains settings; Undo restores only that widget and its placement.
+- [ ] Plugin adds are atomic, and reported success waits for the saved registry.
+      Plugin ordering matches the bar's separate plugin block in each section.
+- [ ] At 480px window width, headers stack where needed, pills use fewer columns,
+      and pickers/dialogs remain inside the window with accessible controls.
+- [ ] Layout actions expose preset preview/application, Manage plugins, reset,
+      and Undo. Presets preserve placement and all plugin preferences.
+- [ ] Detail policy (Auto / Prefer detail / Always compact) is picked in the
+      dialog; Prefer detail compacts only after Auto widgets.
 - [ ] Notifications → Grouping switches live between Separate and Status
       group. It joins only adjacent Volume, Network, Bluetooth, or Battery
       widgets, and every glyph keeps its own click target inside the pill.
@@ -171,7 +182,7 @@ is manual.
 - [ ] Weather place/latitude/longitude edits commit on Enter or focus loss and
       refetch; Esc inside a text field restores the value without closing
       anything; junk input snaps back to the stored value.
-- [ ] Reset page on Modules resets layout, detail policies, and all module
+- [ ] Reset page on Widgets resets layout, detail policies, and all module
       options (with Undo); per-row undo chips reset one option.
 - [ ] Toggles apply to the bar instantly; auto-rules keep working (Media
       only while playing, Bluetooth only when connected, Battery on

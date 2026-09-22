@@ -554,5 +554,7 @@ SettingsPage {
             }
         }
 
+        PluginAppearance { width: parent.width }
+
     }
 }

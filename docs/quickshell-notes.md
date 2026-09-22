@@ -579,3 +579,44 @@ sessions and default pairing agent are left alone.
 application-scoped agent API. `tests/bluetooth-tool.py` checks input validation,
 authorization, cancellation, action failures and discovery lifetime without
 operating the host radio.
+
+## Widget editor
+
+Settings → Widgets opens **Your bar**, with Left, Center, and Right cards.
+Each card has a searchable widget selector and an Add button. Enabled widgets
+appear as compact pills with leading icons and the dark settings background, in a responsive
+grid (up to three columns). This includes widgets whose runtime conditions
+currently hide them from the bar. Plugins without a declared catalog icon use
+the extension symbol. The gear
+opens built-in or plugin settings in an embedded, scrollable dialog; closing it
+returns focus to the pill. The arrangement has no duplicate preview or permanent
+detail/browser pane. This interaction design follows Noctalia's legacy QML bar
+editor; our implementation uses Cybex components and storage.
+
+Drag a pill to reorder or move it between cards. The drag ghost and insertion
+marker follow wrapped grid positions and the arrangement scrolls near its edges.
+Alt+arrow keys reorder; right-click, Menu, or Shift+F10 exposes placement,
+earlier/later, settings, and removal actions. Plugin blocks match the native bar:
+before built-ins on the left and right, after them in the center. Drop indicators
+snap to those supported boundaries. `Common/WidgetEditor.js` translates visible
+gaps to stored indices without changing disabled entries or compaction preferences.
+
+Removal retains placement and settings and offers an eight-second Undo that
+restores only that widget. Plugin success is confirmed by both the write result
+and the refreshed membership/section before showing success. Section-specific
+plugin adds enable and place the instance in one atomic registry write. The settings
+writer skips already-persisted bytes before taking its in-flight guard: FileView
+does not emit `saved` for an identical `setText`, which would otherwise block
+subsequent edits after opening a form that re-applies an unchanged value.
+
+The layout actions menu contains presets, plugin management, built-in layout
+reset, and layout Undo. Presets preview their enabled built-ins before applying,
+preserve placement and plugin preferences, and use the existing eight-second undo.
+
+Plugin widget details expose width, saved/default setting values, and an
+advanced key/JSON-value field. `configure-widget` changes widget enablement,
+width, or the destination of a newly added widget atomically. Removing a widget
+does not disable its package services or sibling instances. Settings are merged
+through the plugin registry, never written into `shell.json`. The Plugins page
+retains package installation, updates, cloning and removal; shared plugin
+appearance controls live under Appearance.

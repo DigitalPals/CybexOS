@@ -16,23 +16,23 @@
 //   detail  whether it has detail text the bar may compact away
 
 var WIDGETS = {
-    ws: { name: "Workspaces", short: "Workspaces" },
-    media: { name: "Media", short: "Media", tag: "while playing", detail: true },
-    indicators: { name: "Indicators", short: "Actions", tag: "clock-side" },
-    clock: { name: "Clock", short: "Clock", detail: true },
-    weather: { name: "Weather", short: "Weather", detail: true },
-    notes: { name: "Notes", short: "Notes" },
-    t3: { name: "T3 Code", short: "T3", detail: true },
-    hermes: { name: "Hermes Agent", short: "Hermes", detail: true },
-    usage: { name: "Model usage", short: "Usage", detail: true },
-    gh: { name: "GitHub", short: "GH", detail: true },
-    updates: { name: "Updates", short: "Updates", tag: "when pending", detail: true },
-    tray: { name: "System tray", short: "Tray", tag: "when populated" },
-    notifications: { name: "Notifications", short: "Notifs", detail: true },
-    vol: { name: "Volume", short: "Vol", detail: true },
-    wifi: { name: "Network", short: "Network" },
-    bt: { name: "Bluetooth", short: "BT", tag: "when connected" },
-    batt: { name: "Battery", short: "Batt", tag: "on laptops", detail: true }
+    ws: { name: "Workspaces", short: "Workspaces", glyph: "view_quilt", description: "Switch between your workspaces." },
+    media: { name: "Media", short: "Media", tag: "while playing", detail: true, glyph: "music_note", description: "See the current track and control playback." },
+    indicators: { name: "Indicators", short: "Indicators", tag: "clock-side", glyph: "tune", description: "Quick actions and recording indicators beside the clock." },
+    clock: { name: "Clock", short: "Clock", detail: true, glyph: "schedule", description: "Time, date, and calendar." },
+    weather: { name: "Weather", short: "Weather", detail: true, glyph: "cloud", description: "Local conditions and forecast." },
+    notes: { name: "Notes", short: "Notes", glyph: "edit_note", description: "Capture and revisit your notes." },
+    t3: { name: "T3 Code", short: "T3 Code", detail: true, glyph: "code", description: "Follow T3 Code sessions." },
+    hermes: { name: "Hermes Agent", short: "Hermes Agent", detail: true, glyph: "smart_toy", description: "Follow Hermes Agent activity." },
+    usage: { name: "Model usage", short: "Model usage", detail: true, glyph: "monitoring", description: "Track model usage across your agents." },
+    gh: { name: "GitHub", short: "GitHub", detail: true, glyph: "code", description: "Watch GitHub repositories and activity." },
+    updates: { name: "Updates", short: "Updates", tag: "when pending", detail: true, glyph: "update", description: "Check software updates and installation progress." },
+    tray: { name: "System tray", short: "System tray", tag: "when populated", glyph: "apps", description: "Access background applications." },
+    notifications: { name: "Notifications", short: "Notifications", detail: true, glyph: "notifications", description: "Open notification history and unread messages." },
+    vol: { name: "Volume", short: "Volume", detail: true, glyph: "volume_up", description: "Adjust volume and audio devices." },
+    wifi: { name: "Network", short: "Network", glyph: "wifi", description: "Manage network connections." },
+    bt: { name: "Bluetooth", short: "Bluetooth", tag: "when connected", glyph: "bluetooth", description: "Manage connected Bluetooth devices." },
+    batt: { name: "Battery", short: "Battery", tag: "on laptops", detail: true, glyph: "battery_full", description: "Monitor battery charge and power status." }
 };
 
 // Never null: a widget id that outlived its catalog entry still has to draw a

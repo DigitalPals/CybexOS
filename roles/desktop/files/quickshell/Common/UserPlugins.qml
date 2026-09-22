@@ -15,6 +15,8 @@ Singleton {
     property var pendingWrites: []
     readonly property bool busy: writer.running || pendingWrites.length > 0
     property string operationResult: ""
+    property bool refreshPending: false
+    signal widgetMembershipFinished(string key, bool enabled, bool success, string message)
     // Registry across outputs for Omarchy broadcast and popup ownership.
     property var widgetHosts: []
     property var activePopout: null
@@ -59,10 +61,16 @@ Singleton {
     function refresh() {
         if (!scanner.running)
             scanner.running = true;
+        else
+            refreshPending = true;
     }
 
     function moveWidget(key, section, index) {
         enqueue(["python3", helper, "move-widget", key, section, String(index)]);
+    }
+
+    function configureWidget(descriptor, changes) {
+        enqueue(["python3", helper, "configure-widget", descriptor.key, JSON.stringify(changes)]);
     }
 
     function mergeSettings(id, settings, instanceName) {
@@ -113,6 +121,10 @@ Singleton {
         onExited: (code, status) => {
             if (code !== 0)
                 root.error = "Could not inspect user widgets";
+            if (root.refreshPending) {
+                root.refreshPending = false;
+                Qt.callLater(root.refresh);
+            }
         }
     }
 
@@ -128,6 +140,12 @@ Singleton {
             }
         }
         onExited: (code, status) => {
+            if (command[2] === "configure-widget") {
+                const changes = JSON.parse(command[4]);
+                if (typeof changes.enabled === "boolean")
+                    root.widgetMembershipFinished(command[3], changes.enabled, code === 0,
+                        code === 0 ? "" : root.error || "Could not save widget changes");
+            }
             root.refresh();
             Qt.callLater(root.nextWrite);
         }

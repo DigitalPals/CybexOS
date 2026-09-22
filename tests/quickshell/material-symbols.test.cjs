@@ -146,6 +146,9 @@ function collectNames() {
     for (const glyph of load("LauncherProviders.js").GLYPHS)
         found.set(glyph, "Common/LauncherProviders.js: GLYPHS");
 
+    for (const [id, widget] of Object.entries(load("WidgetCatalog.js").WIDGETS))
+        found.set(widget.glyph, "Common/WidgetCatalog.js: " + id);
+
     return found;
 }
 

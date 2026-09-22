@@ -181,8 +181,8 @@ test("settings exposes responsive output and keyboard contracts", () => {
         "the settings surface must not track the animating clip size");
     assert.match(host, /nameFor\(frontSlot\) !== Popouts\.currentName/,
         "an outgoing popover must not overwrite Settings geometry during a morph");
-    assert.match(modules, /Qt\.Key_Space/);
-    assert.match(modules, /Qt\.Key_Escape/);
+    assert.match(read("Settings/WidgetPill.qml"), /Qt\.Key_Space/);
+    assert.match(read("Settings/WidgetPill.qml"), /Qt\.Key_Escape/);
     assert.match(picker, /readonly property real captionWidth/);
     assert.doesNotMatch(picker, /width:\s*root\.narrow \? parent\.width : implicitWidth/,
         "picker flows need a concrete lane width or every pill wraps");
@@ -480,7 +480,7 @@ test("schema twenty-three keeps safe defaults and exposes accessibility preferen
 
 test("Connected enables integration widgets including auto-hiding Bluetooth", () => {
     const settings = read("Common/Settings.qml");
-    const preset = settings.slice(settings.indexOf("function applyModulePreset(name)"),
+    const preset = settings.slice(settings.indexOf("function modulePresetIds(name)"),
         settings.indexOf("function resetKeys("));
     assert.match(preset,
         /name === "connected"[\s\S]*?\["ws"[\s\S]*?"gh"[\s\S]*?"t3"[\s\S]*?"hermes"[\s\S]*?"usage"[\s\S]*?"bt"[\s\S]*?"batt"\]/,
@@ -497,10 +497,10 @@ test("settings improvements expose fitting, embedded folders, undo, and shortcut
 
     assert.match(bar, /LayoutHelpers\.fitBar/);
     assert.doesNotMatch(bar, /width\s*>=\s*Theme\.breakpoint/);
-    assert.match(modules, /LayoutHelpers\.barDropColumn/,
-        "the lane replica resolves drops with the bar's own column math");
-    assert.match(modules, /LayoutHelpers\.barDropIndex/,
-        "drop indices are measured against the full configured list");
+    assert.match(modules, /Editor\.dropPlan/,
+        "the editor maps visible gaps to configured indices");
+    assert.match(modules, /LayoutHelpers\.moveWidget/,
+        "both surfaces preserve the same move semantics");
     assert.match(wallpaper, /GridView\s*\{/);
     assert.match(folder, /popupType:\s*Controls\.Popup\.Item/);
     assert.match(settings, /interval:\s*8000/);
@@ -755,11 +755,9 @@ test("wallpaper and module layouts switch before content can collide", () => {
 
     assert.match(wallpaper, /columnCount:\s*width < Theme\.settingsNarrowWidth \? 1 : 2/);
     assert.match(wallpaper, /cellWidth:\s*Math\.floor\(width \/ columnCount\)/);
-    for (const lane of ["laneLeftBox", "laneCenterBox", "laneRightBox"])
-        assert.match(modules, new RegExp(`id:\\s*${lane}[\\s\\S]{0,220}?clip:\\s*true`),
-            `${lane} must clip its own lane chips`);
-    assert.match(modules, /elide:\s*Text\.ElideRight/,
-        "catalog names and tags must be bounded");
+    assert.match(modules, /columns: Math.max\(1, Math.min\(3/);
+    assert.match(read("Settings/WidgetPill.qml"), /elide:\s*Text\.ElideRight/);
+
 });
 
 test("notification settings drive the toasts and the notification center", () => {
@@ -806,7 +804,7 @@ test("per-module options live under one validated modOpts key", () => {
         "Weather must read its location from Settings, not the environment");
 });
 
-test("the module cog opens a per-module sub-page inside the Modules page", () => {
+test("the gear opens built-in options in the widget dialog", () => {
     const modules = read("Settings/ModulesPage.qml");
     const view = read("Settings/SettingsView.qml");
     const detail = read("Settings/ModuleDetailView.qml");
@@ -817,10 +815,9 @@ test("the module cog opens a per-module sub-page inside the Modules page", () =>
     assert.match(modules, /if \(dragActive\)\s*\n\s*return;/,
         "a drag in progress must not be interrupted by opening a sub-page");
     assert.match(modules, /ModuleDetailView \{/);
-    assert.match(modules, /id:\s*cellCog/);
     assert.match(modules, /inlineMode:\s*true/,
-        "widget settings expand inline under the catalog row (turn-3 design)");
-    assert.match(modules, /text:\s*"Collapse"/);
+        "the detail panel owns the heading and scrolling");
+    assert.match(modules, /onActivated: page.openSubPage\(modelData.key\)/);
     assert.match(view, /moduleSubPageActive[\s\S]{0,120}?closeModuleSubPage\(\)/,
         "Escape must close an open module sub-page before clearing search");
     assert.match(detail, /Settings\.setModuleDetail\(view\.moduleId/,
@@ -903,4 +900,42 @@ test("FileView failures cannot become empty settings or false save success", () 
         "starting a write is not evidence that it succeeded");
     assert.match(settings,
         /function handleSaveSucceeded\(\)[\s\S]*lastSavedAt = Date\.now\(\)/);
+});
+
+test("an unchanged save cannot block subsequent widget changes", () => {
+    const vm = require("node:vm");
+    const source = read("Common/Settings.qml");
+    let value = { mods: { left: [{ id: "ws", on: true }] } };
+    let disk = JSON.stringify(value);
+    let writes = 0;
+    const context = vm.createContext({
+        ready: true, migrationPending: false, corruptBackupPending: false, loadError: false,
+        writeInFlight: false, writeSnapshot: "", lastPersistedText: disk,
+        saveError: false, savePending: true, lastSavedAt: 0,
+        SettingsHelpers: { serialize: JSON.stringify }, snapshot: () => value,
+        saveTimer: { restart() {} }, FileViewError: { Unknown: 1 },
+        store: { setText(text) {
+            if (text === disk) return; // FileView emits no saved signal for a no-op.
+            writes++; disk = text; context.handleSaveSucceeded();
+        } }
+    });
+    for (const name of ["saveNow", "handleSaveSucceeded", "handleSaveFailure"]) {
+        const body = source.match(new RegExp("    function " + name + "\\([^]*?^    }", "m"))[0];
+        vm.runInContext(body, context);
+    }
+    context.saveNow();
+    assert.equal(context.writeInFlight, false);
+    assert.equal(context.savePending, false);
+    assert.equal(writes, 0);
+    for (const on of [false, true]) {
+        value = { mods: { left: [{ id: "ws", on }] } };
+        context.savePending = true;
+        context.saveNow();
+        assert.equal(context.writeInFlight, false);
+        assert.equal(context.savePending, false);
+        assert.equal(JSON.parse(disk).mods.left[0].on, on);
+        context.saveNow(); // Opening a form can schedule the same value again.
+        assert.equal(context.writeInFlight, false);
+    }
+    assert.equal(writes, 2);
 });

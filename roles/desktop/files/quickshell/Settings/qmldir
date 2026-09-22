@@ -27,3 +27,8 @@ WallpaperPage WallpaperPage.qml
 PluginsPage PluginsPage.qml
 SettingsSubsection SettingsSubsection.qml
 SettingsField SettingsField.qml
+WidgetEditorRow WidgetEditorRow.qml
+WidgetPill WidgetPill.qml
+WidgetPicker WidgetPicker.qml
+PluginWidgetSettings PluginWidgetSettings.qml
+PluginAppearance PluginAppearance.qml

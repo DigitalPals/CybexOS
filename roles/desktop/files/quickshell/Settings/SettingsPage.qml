@@ -51,7 +51,8 @@ Flickable {
 
     // Pages incubate after the jump has already set the key; one layout pass
     // later the rows have real geometry to scroll to.
-    Component.onCompleted: Qt.callLater(() => root.revealHighlight())
+    // A QObject-bound callback is canceled if a loader destroys this page first.
+    Component.onCompleted: Qt.callLater(root.revealHighlight)
 
     function revealFocus(item) {
         if (!item)

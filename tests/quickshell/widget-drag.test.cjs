@@ -208,9 +208,9 @@ test("a drag suppresses the hover transitions that would fight it", () => {
 
 test("the settings page still owns the keyboard path", () => {
     const page = read("Settings/ModulesPage.qml");
-    assert.match(page, /function keyboardToggle/);
+    assert.match(read("Settings/WidgetPill.qml"), /Qt\.Key_Space/);
     assert.match(page, /function keyboardMove/);
-    assert.match(page, /Qt\.Key_Escape/);
+    assert.match(read("Settings/WidgetPill.qml"), /Qt\.Key_Escape/);
 });
 
 // ---- the rename -------------------------------------------------------
@@ -218,12 +218,12 @@ test("the settings page still owns the keyboard path", () => {
 test("the settings surfaces call them widgets", () => {
     const view = read("Settings/SettingsView.qml");
     assert.match(view, /label: "Widgets"/);
-    assert.match(view, /title: "Widgets"/);
+    assert.match(view, /title: "Your bar"/);
     assert.doesNotMatch(view, /label: "Modules"|title: "Modules"/);
 
     const detail = read("Settings/ModuleDetailView.qml");
-    assert.match(detail, /text: "All widgets"/);
-    assert.match(detail, /Accessible\.name: "Back to all widgets"/);
+    assert.match(detail, /text: "Your bar"/);
+    assert.match(detail, /Accessible\.name: "Back to your bar"/);
 
     const page = read("Settings/ModulesPage.qml");
     assert.doesNotMatch(page, /"Module list\.""?|ToolTip\.text: "Module settings"/);

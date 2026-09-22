@@ -3,7 +3,7 @@ import QtQuick
 import "../Common"
 import "../Common/SettingsHelpers.js" as SettingsHelpers
 
-// Per-widget settings sub-page, opened by the cog on a Widgets-page row.
+// Built-in options shared by the bar editor and standalone detail view.
 // The detail policy control lives here (storage stays in Settings.mods);
 // everything else reads and writes Settings.modOpts through setModuleOption.
 SettingsPage {
@@ -12,9 +12,7 @@ SettingsPage {
     required property string moduleId
     required property string moduleName
     property bool hasDetail: false
-    // Embedded under a catalog row (turn-3 design): the inline panel draws
-    // its own header, so the back action and title stay hidden and the view
-    // reports its natural height for the panel to size against.
+    // The editor supplies the heading and scroll container when embedded.
     property bool inlineMode: false
     signal backRequested()
 
@@ -30,6 +28,10 @@ SettingsPage {
     readonly property int indicatorRowPitch: 36
 
     readonly property var opts: Settings.modOpts[moduleId] ?? ({})
+    // The old options component can survive one binding update while switching widgets.
+    readonly property var indicatorOrder: opts.order || []
+    readonly property var indicatorEnabledIds: opts.enabled || []
+    onModuleIdChanged: cancelIndicatorDrag()
     readonly property var optDefaults: Settings.defaults.modOpts[moduleId] ?? ({})
     readonly property var modEntry: {
         const mods = Settings.mods;
@@ -71,23 +73,23 @@ SettingsPage {
     }
 
     function indicatorEnabled(id) {
-        return view.opts.enabled.indexOf(id) !== -1;
+        return view.indicatorEnabledIds.indexOf(id) !== -1;
     }
 
     function setIndicatorEnabled(id, enabled) {
-        let next = view.opts.enabled.filter(candidate => candidate !== id);
+        let next = view.indicatorEnabledIds.filter(candidate => candidate !== id);
         if (enabled)
             next.push(id);
         // Store enablement in visual order so hand-edited settings remain
         // readable and deterministic.
-        next = view.opts.order.filter(candidate => next.indexOf(candidate) !== -1);
+        next = view.indicatorOrder.filter(candidate => next.indexOf(candidate) !== -1);
         view.setOpt("enabled", next);
     }
 
     function beginIndicatorDrag(index) {
         indicatorDragIndex = index;
         indicatorDropIndex = index;
-        const id = view.opts.order[index];
+        const id = view.indicatorOrder[index];
         Settings.announcement = view.indicatorMeta[id].label
             + " picked up. Use arrow keys to move.";
     }
@@ -95,7 +97,7 @@ SettingsPage {
     function moveIndicatorDrop(delta) {
         if (!indicatorDragActive)
             return;
-        indicatorDropIndex = Math.max(0, Math.min(view.opts.order.length - 1,
+        indicatorDropIndex = Math.max(0, Math.min(view.indicatorOrder.length - 1,
             indicatorDropIndex + delta));
     }
 
@@ -109,7 +111,7 @@ SettingsPage {
             return;
         const from = indicatorDragIndex;
         const to = indicatorDropIndex;
-        const ids = view.opts.order.slice();
+        const ids = view.indicatorOrder.slice();
         const moved = ids[from];
         cancelIndicatorDrag();
         if (from === to)
@@ -139,9 +141,9 @@ SettingsPage {
 
             SettingsAction {
                 id: backAction
-                text: "All widgets"
+                text: "Your bar"
                 glyph: "arrow_back"
-                Accessible.name: "Back to all widgets"
+                Accessible.name: "Back to your bar"
                 onTriggered: view.backRequested()
             }
 
@@ -246,7 +248,7 @@ SettingsPage {
 
                 Item {
                     width: parent.width
-                    height: view.opts.order.length * view.indicatorRowPitch
+                    height: view.indicatorOrder.length * view.indicatorRowPitch
 
                     Column {
                         width: parent.width
@@ -254,7 +256,7 @@ SettingsPage {
 
                         Repeater {
                             id: indicatorActionRepeater
-                            model: view.opts.order
+                            model: view.indicatorOrder
 
                             delegate: Rectangle {
                                 id: indicatorRow
@@ -333,7 +335,7 @@ SettingsPage {
                                         const local = indicatorDragArea.mapToItem(
                                             indicatorRow.parent, mouse.x, mouse.y);
                                         view.indicatorDropIndex = Math.max(0, Math.min(
-                                            view.opts.order.length - 1,
+                                            view.indicatorOrder.length - 1,
                                             Math.floor(local.y / view.indicatorRowPitch)));
                                     }
                                     onReleased: {

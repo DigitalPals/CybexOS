@@ -201,7 +201,7 @@ def scan(config: Path, packages: Path, state: Path) -> dict:
                             raise ValueError("Invalid instance section")
                         pending.append({**descriptor, **configured, "id": plugin_id,
                                         "key": plugin_id + "#" + name, "instanceName": name,
-                                        "enabled": descriptor["enabled"] and widget_enabled, "section": section,
+                                        "enabled": descriptor["enabled"] and widget_enabled and configured["enabled"], "section": section,
                                         "settings": {**descriptor["settings"], **configured["settings"]}})
                     widgets.extend(pending)
         except (OSError, ValueError) as error:
@@ -284,7 +284,7 @@ def apply_layout(registry: dict, layout: object, packages: Path) -> None:
                 previous = previous_instances.get(name, {})
                 if not isinstance(previous, dict):
                     raise ValueError("Instance must be an object")
-                instances[name] = {**previous, "section": section, "order": order, "settings": settings}
+                instances[name] = {**previous, "enabled": True, "section": section, "order": order, "settings": settings}
                 options({**saved, **instances[name]})
             else:
                 saved.update(section=section, order=order, settings=settings)
@@ -398,6 +398,9 @@ def runtime_sources(result: dict, packages: Path, runtime: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    configure = commands.add_parser("configure-widget", help="Change one widget without disabling its plugin services")
+    configure.add_argument("key")
+    configure.add_argument("value")
     move = commands.add_parser("move-widget", help="Move a native bar plugin widget, preserving its settings")
     move.add_argument("key")
     move.add_argument("section", choices=("left", "center", "right"))
@@ -547,6 +550,54 @@ def main() -> int:
                 import shlex
                 subprocess.run([*shlex.split(os.environ.get("EDITOR", "vi")),
                                 str(packages / args.new_id / "manifest.json")], check=True)
+            return 0
+        if args.command == "configure-widget":
+            changes = json.loads(args.value)
+            if not isinstance(changes, dict) or not changes or set(changes) - {"enabled", "width", "section"}:
+                raise ValueError("Widget changes must contain enabled, width or section")
+            if "section" in changes and (changes["section"] not in ("left", "center", "right") or changes.get("enabled") is not True):
+                raise ValueError("A section can only be chosen when adding a widget")
+            if "enabled" in changes and type(changes["enabled"]) is not bool:
+                raise ValueError("enabled must be a boolean")
+            if "width" in changes and (type(changes["width"]) is not int or not 24 <= changes["width"] <= 320):
+                raise ValueError("width must be an integer from 24 to 320")
+            with locked(config):
+                snapshot = scan(config, packages, state)
+                if snapshot["error"]:
+                    raise ValueError(snapshot["error"])
+                widget = next((item for item in snapshot["widgets"] if item["key"] == args.key), None)
+                if widget is None:
+                    raise ValueError("Widget is no longer installed")
+                if changes.get("enabled") and widget["error"]:
+                    raise ValueError(widget["error"])
+                value = preferences(config)
+                entry = value["plugins"].setdefault(widget["id"], {})
+                target = entry
+                if widget["instanceName"]:
+                    target = entry["instances"][widget["instanceName"]]
+                if "width" in changes:
+                    target["width"] = changes["width"]
+                if "section" in changes:
+                    # Enable and place atomically, including disabled instances.
+                    # Keep every existing destination widget in its current order.
+                    peers = [item for item in snapshot["widgets"] if item["enabled"]
+                             and item["key"] != widget["key"] and item.get("section", "right") == changes["section"]]
+                    for order, peer in enumerate(peers):
+                        peer_target = value["plugins"].setdefault(peer["id"], {})
+                        if peer["instanceName"]:
+                            peer_target = peer_target["instances"][peer["instanceName"]]
+                        peer_target["order"] = order
+                    target.update(section=changes["section"], order=len(peers))
+                if "enabled" in changes:
+                    if widget["instanceName"]:
+                        target["enabled"] = changes["enabled"]
+                    else:
+                        entry["widgetEnabled"] = changes["enabled"]
+                    if changes["enabled"]:
+                        entry["enabled"] = True
+                        entry["widgetEnabled"] = True
+                        (state / widget["id"]).mkdir(parents=True, exist_ok=True)
+                write_preferences(config, value)
             return 0
         if args.command == "move-widget":
             with locked(config):

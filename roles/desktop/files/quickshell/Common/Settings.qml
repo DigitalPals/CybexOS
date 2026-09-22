@@ -127,6 +127,7 @@ Singleton {
     property bool migrationPending: false
     property bool writeInFlight: false
     property string writeSnapshot: ""
+    property string lastPersistedText: ""
     property bool initialLoadHandled: false
     // Blocks every save while an unreadable settings file is being moved
     // aside, and stays set if that move fails — overwriting it then would
@@ -154,11 +155,12 @@ Singleton {
         appearance: ["themeMode", "glassEnabled", "highContrast", "reducedMotion",
             "textScale", "interfaceDensity", "shellFontSize", "shellScale", "surfaceBorderMode", "surfaceBorderColor", "surfaceBorderWidth", "surfaceBorderOpacity", "surfaceCornerRadius",
             "barColorMode", "barCustomHue",
-            "barCustomSaturation", "barCustomLightness", "font", "accent", "paletteMode"],
+            "barCustomSaturation", "barCustomLightness", "font", "accent", "paletteMode",
+            "pluginScale", "pluginBorderMode", "pluginBorderColor", "pluginBorderWidth", "pluginBorderOpacity", "pluginRadius", "pluginThemeOverrides"],
         bar: ["position", "barStyle", "gap", "barHeight", "barRadius", "autoHide",
             "exclusive"],
         modules: ["mods", "modOpts"],
-        plugins: ["pluginScale", "pluginBorderMode", "pluginBorderColor", "pluginBorderWidth", "pluginBorderOpacity", "pluginRadius", "pluginThemeOverrides"],
+        plugins: [],
         drawer: ["drawerTabs", "drawerOverview", "drawerHover", "drawerWidth"],
         notifications: ["notifDnd", "notifDndUntilMs", "notifQuiet", "notifQuietStart", "notifQuietEnd",
             "notifDuration", "notifPosition", "notifDensity", "notifIcons",
@@ -281,14 +283,18 @@ Singleton {
         drawerOverview = SettingsHelpers.normalizeDrawerOverview(next);
     }
 
-    function applyModulePreset(name) {
-        const enabled = name === "everything"
+    function modulePresetIds(name) {
+        return name === "everything"
             ? SettingsHelpers.MODULE_IDS
             : name === "connected"
             ? ["ws", "media", "indicators", "clock", "weather", "notes", "updates", "gh",
                 "t3", "hermes", "usage", "tray", "notifications", "vol", "wifi", "bt", "batt"]
             : ["ws", "media", "indicators", "clock", "weather", "notes", "updates", "tray",
                 "notifications", "vol", "wifi", "batt"];
+    }
+
+    function applyModulePreset(name) {
+        const enabled = modulePresetIds(name);
         clearUndo();
         migrationPending = false;
         resetSnapshot = { mods: SettingsHelpers.clone(mods) };
@@ -432,6 +438,8 @@ Singleton {
             backUpCorruptFile();
         const parsed = result.value;
         const merged = SettingsHelpers.merge(parsed);
+        if (result.status !== "corrupt")
+            lastPersistedText = rawText;
         // Skip echoes of our own atomic writes (watchChanges reports them)
         // and external edits that merge back to the current state.
         if (loaded && SettingsHelpers.serialize(merged) === SettingsHelpers.serialize(snapshot())) {
@@ -480,6 +488,7 @@ Singleton {
 
     function handleSaveSucceeded() {
         const completedSnapshot = writeSnapshot;
+        lastPersistedText = completedSnapshot;
         const wasRetry = saveError;
         writeInFlight = false;
         writeSnapshot = "";
@@ -507,7 +516,15 @@ Singleton {
         if (!ready || migrationPending || corruptBackupPending || loadError
                 || writeInFlight)
             return;
-        writeSnapshot = SettingsHelpers.serialize(snapshot());
+        const next = SettingsHelpers.serialize(snapshot());
+        // FileView.setText silently skips identical bytes: no saved signal is
+        // emitted. Do not acquire the write guard for a confirmed no-op, or
+        // all later widget edits would remain stuck at "Saving changes…".
+        if (!saveError && next === lastPersistedText) {
+            savePending = false;
+            return;
+        }
+        writeSnapshot = next;
         writeInFlight = true;
         try {
             // FileView reports completion through saved/saveFailed even when

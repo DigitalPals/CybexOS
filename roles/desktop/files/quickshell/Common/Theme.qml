@@ -388,6 +388,8 @@ Singleton {
         const choice = Settings.fontChoices.find(f => f.id === Settings.font);
         return choice ? choice.family : fontSans;
     }
+    // Proportional copy for the widget editor; technical values retain fontMono.
+    readonly property string fontUi: "Figtree"
     readonly property string fontMono: "JetBrainsMono Nerd Font"
     // Numeric readings — the clock, percentages, meters, resets. The
     // edge-drawer redesign sets these in Geist Mono against Figtree UI copy,

@@ -36,7 +36,8 @@ test("schema 23 enables Notes immediately after Weather with opt-in title settin
     assert.equal(migrated.titleProvider, "codex");
     assert.equal(migrated.codexModel, "gpt-5.6-terra");
     assert.equal(migrated.codexEffort, "none");
-    assert.deepEqual(Catalog.WIDGETS.notes, { name: "Notes", short: "Notes" });
+    assert.equal(Catalog.WIDGETS.notes.name, "Notes");
+    assert.equal(Catalog.WIDGETS.notes.short, "Notes");
 });
 
 test("schema-19 migration follows Weather without changing another widget", () => {

@@ -100,7 +100,7 @@ PopoutPanel {
         { id: "bar", group: "SHELL", label: "Bar", glyph: "space_dashboard",
             title: "Bar", description: "Placement, shape, and behavior" },
         { id: "modules", group: "SHELL", label: "Widgets", glyph: "widgets",
-            title: "Widgets", description: "Choose and arrange the bar’s contents" },
+            title: "Your bar", description: "Choose and arrange the bar’s contents" },
         { id: "plugins", group: "SHELL", label: "Plugins", glyph: "extension",
             title: "Plugins", description: "Install and manage trusted desktop plugins" },
         { id: "drawer", group: "SHELL", label: "Drawer", glyph: "right_panel_open",

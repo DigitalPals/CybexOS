@@ -64,12 +64,13 @@ test('native forms share field chrome and drawer tabs expose keyboard selection'
     assert.match(tabs, /Math.max\(0, usableWidth - restingWidth/);
 });
 
-test('widget catalog uses the same column count for layout, expansion and focus return', () => {
-    const catalog = read('Settings/ModulesPage.qml');
-    assert.match(catalog, /catalogColumns: width - scrollGutter < Theme.settingsNarrowWidth \? 1 : 2/);
-    assert.match(catalog, /columns: page.catalogColumns/);
-    assert.match(catalog, /Math.ceil\(page.catalogIds.length \/ page.catalogColumns\)/);
-    assert.match(catalog, /Math.floor\(index \/ catalogColumns\)/);
-    assert.match(catalog, /pair.focusCell\(index % catalogColumns\)/);
-    assert.match(catalog, /page.catalogIds\[index \* page.catalogColumns\]/);
+test('widget editor keeps section cards visible and opens options in an embedded dialog', () => {
+    const editor = read('Settings/ModulesPage.qml');
+    assert.match(editor, /model: \["left", "center", "right"\]/);
+    assert.match(editor, /WidgetPicker \{/);
+    assert.match(editor, /WidgetPill \{/);
+    assert.match(editor, /popupType: Controls.Popup.Item/);
+    assert.match(editor, /function focusEntry/);
+    assert.doesNotMatch(editor, /id: availablePanel|id: previewZone/);
+    assert.match(read('Settings/WidgetPicker.qml'), /Editor.search\(root.entries, search.text, "available"\)/);
 });

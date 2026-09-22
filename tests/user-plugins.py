@@ -192,6 +192,29 @@ Label {
         info = json.loads(cli("list").stdout)
         copies = [w for w in info["widgets"] if w["id"] == spacer.name]
         assert [(w["instanceName"], w["settings"]["size"]) for w in copies] == [("one", 31), ("two", 42)]
+        # Editing a widget must not disable its package or sibling instances.
+        cli("configure-widget", spacer.name + "#one", '{"enabled":false,"width":88}')
+        info = json.loads(cli("list").stdout)
+        copies = {w["instanceName"]: w for w in info["widgets"] if w["id"] == spacer.name}
+        assert not copies["one"]["enabled"] and copies["two"]["enabled"]
+        assert copies["one"]["width"] == 88 and copies["one"]["settings"]["size"] == 31
+        assert next(p for p in info["plugins"] if p["id"] == spacer.name)["enabled"]
+        cli("configure-widget", spacer.name + "#one", '{"enabled":true,"section":"right"}')
+        info = json.loads(cli("list").stdout)
+        copies = [w for w in info["widgets"] if w["id"] == spacer.name]
+        assert [w["instanceName"] for w in copies] == ["two", "one"]
+        assert all(w["section"] == "right" and w["enabled"] for w in copies)
+        assert copies[1]["width"] == 88 and copies[1]["settings"]["size"] == 31
+        before_invalid = config.read_bytes()
+        for changes in ('{"width":321}', '{"enabled":"yes"}', '{"settings":{}}', '{"enabled":true,"section":"invalid"}', '{"section":"left"}', '[]'):
+            assert cli("configure-widget", spacer.name + "#one", changes, check=False).returncode == 2
+            assert config.read_bytes() == before_invalid
+        cli("configure-widget", pomodoro.name, '{"enabled":false}')
+        info = json.loads(cli("list").stdout)
+        assert not next(w for w in info["widgets"] if w["id"] == pomodoro.name)["enabled"]
+        assert next(p for p in info["plugins"] if p["id"] == pomodoro.name)["enabled"]
+        cli("configure-widget", pomodoro.name, '{"enabled":true}')
+        cli("configure-widget", spacer.name + "#one", '{"enabled":false}')
         layout = {"left": [{"id": spacer.name, "__cybexInstance": "one", "size": 32}],
                   "center": [], "right": [{"id": spacer.name, "__cybexInstance": "two", "size": 43}]}
         cli("bar-config", json.dumps({"layout": layout, "transparent": True, "id": "ignored"}))
@@ -199,6 +222,7 @@ Label {
         assert "id" not in info["bar"]
         copies = [w for w in info["widgets"] if w["id"] == spacer.name]
         assert [(w["section"], w["settings"]["size"]) for w in copies] == [("left", 32), ("right", 43)]
+        assert all(w["enabled"] for w in copies)
         assert not next(w for w in info["widgets"] if w["id"] == pomodoro.name)["enabled"]
         assert next(p for p in info["plugins"] if p["id"] == pomodoro.name)["enabled"]
         before_invalid = config.read_bytes()
