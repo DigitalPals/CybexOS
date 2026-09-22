@@ -72,7 +72,7 @@ Item {
         parent: chooser
         x: chooser.width - width
         y: chooser.height + 6
-        width: Math.min(Theme.scaled(360, Theme.typeScale), Controls.Overlay.overlay ? Controls.Overlay.overlay.width - 32 : 360)
+        width: Math.min(Theme.scaled(280, Theme.typeScale), Controls.Overlay.overlay ? Controls.Overlay.overlay.width - 32 : 280)
         height: Math.min(360, Controls.Overlay.overlay ? Controls.Overlay.overlay.height - 32 : 360,
             pickerHeader.height + search.height + 44 + Math.max(1, choices.count) * root.choiceHeight)
         margins: 16
