@@ -116,7 +116,7 @@ Rectangle {
         Text {
             width: parent.width
             text: root.title
-            font.family: Theme.fontUi
+            font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.primary
             font.weight: Theme.weightMedium
             color: Theme.textHi
@@ -126,7 +126,7 @@ Rectangle {
             width: parent.width
             visible: text !== ""
             text: root.subtitle
-            font.family: Theme.fontUi
+            font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.secondary
             color: Theme.textDim
             elide: Text.ElideRight

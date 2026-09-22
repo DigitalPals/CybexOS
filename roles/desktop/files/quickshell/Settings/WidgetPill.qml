@@ -72,7 +72,7 @@ Rectangle {
         anchors.rightMargin: 4
         anchors.verticalCenter: parent.verticalCenter
         text: root.entry.name
-        font.family: Theme.fontUi
+        font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.control
         font.weight: Theme.weightMedium
         color: Theme.textHi
@@ -127,7 +127,7 @@ Rectangle {
         id: menu
         popupType: Controls.Popup.Item
         focus: true
-        font.family: Theme.fontUi
+        font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.control
         palette.window: Theme.popBg
         palette.base: Theme.popBg

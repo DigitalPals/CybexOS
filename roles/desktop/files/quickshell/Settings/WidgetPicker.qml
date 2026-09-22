@@ -30,7 +30,7 @@ Item {
         onClicked: picker.open()
         contentItem: Text {
             text: chooser.text
-            font.family: Theme.fontUi
+            font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.control
             color: chooser.enabled ? Theme.textHi : Theme.textDim
             verticalAlignment: Text.AlignVCenter
@@ -108,7 +108,7 @@ Item {
                     width: parent.width - closeAction.width
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Add to " + root.sectionName
-                    font.family: Theme.fontUi
+                    font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.primary
                     color: Theme.textHi
                 }
@@ -156,7 +156,7 @@ Item {
                     onClicked: choices.choose(index)
                     contentItem: Text {
                         text: choice.modelData.name
-                        font.family: Theme.fontUi
+                        font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.control
                         color: Theme.textHi
                         verticalAlignment: Text.AlignVCenter
@@ -180,7 +180,7 @@ Item {
                     width: parent.width
                     visible: choices.count === 0
                     text: "No widgets match your search."
-                    font.family: Theme.fontUi
+                    font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
                     color: Theme.textDim
                     wrapMode: Text.Wrap

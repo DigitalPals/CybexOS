@@ -161,9 +161,16 @@ test("every dialog shares the menubar's face, including T3", () => {
     for (const file of walk(shellDir)) {
         if (path.relative(shellDir, file) === path.join("Common", "Theme.qml"))
             continue;
-        assert.doesNotMatch(fs.readFileSync(file, "utf8"), /(?<!T3)Theme\.fontSans/,
+        const source = fs.readFileSync(file, "utf8");
+        assert.doesNotMatch(source, /(?<!T3)Theme\.fontSans/,
+            `${path.relative(shellDir, file)} bypasses Theme.fontMenu`);
+        // The widget editor once drew a fixed Figtree through Theme.fontUi,
+        // so Widgets read as a different face from every other settings page.
+        assert.doesNotMatch(source, /(?<![A-Za-z0-9])Theme\.fontUi/,
             `${path.relative(shellDir, file)} bypasses Theme.fontMenu`);
     }
+    assert.doesNotMatch(theme, /property string fontUi/,
+        "Theme must not offer a second, fixed UI face beside fontMenu");
 });
 
 test("the semantic copy ladder keeps a real step at every level", () => {

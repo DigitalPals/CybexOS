@@ -376,13 +376,13 @@ Item {
     }
 
     component Caption: Text {
-        font.family: Theme.fontUi
+        font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.secondary
         color: Theme.textDim
         wrapMode: Text.Wrap
     }
     component Heading: Text {
-        font.family: Theme.fontUi
+        font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.primary
         font.weight: Theme.weightSemibold
         color: Theme.textHi
@@ -390,9 +390,12 @@ Item {
 
     Row {
         id: toolbar
-        width: parent.width
+        // End flush with the section cards, which stop short of the page's
+        // scroll gutter, and centre the caption on the action beside it.
+        width: parent.width - arrangement.scrollGutter
         spacing: 8
         Caption {
+            anchors.verticalCenter: parent.verticalCenter
             width: parent.width - moreAction.width - 8
             text: "Drag widgets to change their order. Right-click to move or remove them."
         }
@@ -407,7 +410,7 @@ Item {
                 id: moreMenu
                 popupType: Controls.Popup.Item
                 focus: true
-                font.family: Theme.fontUi
+                font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.control
                 palette.window: Theme.popBg
                 palette.base: Theme.popBg
@@ -482,7 +485,7 @@ Item {
             anchors.fill: parent
             anchors.margins: 6
             text: page.dragMod ? page.dragMod.name : ""
-            font.family: Theme.fontUi
+            font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.control
             color: Theme.textHi
             elide: Text.ElideRight

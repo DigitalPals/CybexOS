@@ -43,7 +43,7 @@ Column {
     Text {
         width: parent.width
         text: "Plugin settings"
-        font.family: Theme.fontUi
+        font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.primary
         font.weight: Theme.weightSemibold
         color: Theme.textHi
@@ -51,7 +51,7 @@ Column {
     Text {
         width: parent.width
         text: "These settings are supplied by the plugin. Structured values use JSON; text fields use plain text."
-        font.family: Theme.fontUi
+        font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.secondary
         color: Theme.textDim
         wrapMode: Text.Wrap
@@ -85,7 +85,7 @@ Column {
                         width: parent.width
                         text: setting.modelData
                         color: Theme.textMid
-                        font.family: Theme.fontUi
+                        font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.control
                         wrapMode: Text.Wrap
                     }
@@ -116,7 +116,7 @@ Column {
         width: parent.width
         visible: Object.keys(root.settings).length === 0
         text: "This plugin has no saved settings or declared defaults."
-        font.family: Theme.fontUi
+        font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.secondary
         color: Theme.textDim
         wrapMode: Text.Wrap
@@ -162,7 +162,7 @@ Column {
         visible: root.validationError !== ""
         text: root.validationError
         color: Theme.redText
-        font.family: Theme.fontUi
+        font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.secondary
         wrapMode: Text.Wrap
         Accessible.role: Accessible.AlertMessage
