@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Quickshell
 import "../Common"
+import "../Common/CountdownHelpers.js" as Countdown
 
 // Native reminder manager: quick presets and a validated custom countdown on
 // top, followed by the canonical records sorted by the helper.
@@ -18,20 +18,45 @@ Surface {
         return Number.isInteger(value) && value > 0 ? value : 0;
     }
 
-    SystemClock {
-        id: clock
-        precision: SystemClock.Seconds
+    // Countdowns read in whole minutes until their final minute, then in
+    // seconds. A seconds clock re-read every row once a second for as long as
+    // the panel was open, hidden in the popout's back slot included; wake
+    // instead when the soonest label next changes, and only while visible.
+    property double nowMs: Date.now()
+
+    function scheduleTick() {
+        tick.stop();
+        nowMs = Date.now();
+        if (!visible)
+            return;
+        const wait = Countdown.soonestChangeMs(
+            Reminders.records.map(record => record.due), nowMs);
+        if (wait > 0) {
+            // Qt's coarse timers may fire a little early; the floor keeps an
+            // early wake from spinning before its label has changed.
+            tick.interval = Math.max(50, wait);
+            tick.start();
+        }
     }
 
     function remainingLabel(due) {
-        const seconds = Math.max(0, Math.ceil(Number(due) - clock.date.getTime() / 1000));
-        if (seconds < 60)
-            return seconds + "s";
-        const minutes = Math.ceil(seconds / 60);
-        if (minutes < 60)
-            return minutes + "m";
-        const hours = Math.floor(minutes / 60);
-        return hours + "h " + (minutes % 60) + "m";
+        return Countdown.remainingLabel(Number(due) * 1000 - nowMs);
+    }
+
+    onVisibleChanged: scheduleTick()
+    Component.onCompleted: scheduleTick()
+
+    Connections {
+        target: Reminders
+
+        function onRecordsChanged() {
+            root.scheduleTick();
+        }
+    }
+
+    Timer {
+        id: tick
+        onTriggered: root.scheduleTick()
     }
 
     function addReminder() {

@@ -105,3 +105,25 @@ test("roving keyboard pickers move focus before they commit", () => {
         /onClicked:\s*\{\s*navItem\.forceActiveFocus\(\);\s*Settings\.page = navItem\.modelData\.id;/,
         "settings rail clicks");
 });
+
+test("open views tick no faster than what they display", () => {
+    // Reminder countdowns wake when the soonest label changes: about once a
+    // minute, every second only inside a reminder's final minute, and never
+    // while the panel is hidden.
+    const reminders = read("Popovers/ReminderPopover.qml");
+    assert.doesNotMatch(reminders, /SystemClock|precision:/);
+    assert.match(reminders, /Countdown\.soonestChangeMs\(/);
+    assert.match(reminders,
+        /function scheduleTick\(\) \{\s*tick\.stop\(\);\s*nowMs = Date\.now\(\);\s*if \(!visible\)\s*return;/);
+    assert.match(reminders, /onVisibleChanged:\s*scheduleTick\(\)/);
+    assert.match(reminders, /function onRecordsChanged\(\) \{\s*root\.scheduleTick\(\);/);
+    assert.match(reminders, /id:\s*tick\s*onTriggered:\s*root\.scheduleTick\(\)/);
+    assert.match(reminders, /Countdown\.remainingLabel\(Number\(due\) \* 1000 - nowMs\)/);
+
+    // The System page's clock caption is HH:mm.
+    const system = read("Settings/SystemPage.qml");
+    assert.match(system,
+        /SystemClock \{\s*id:\s*clock\s*precision:\s*SystemClock\.Minutes\s*enabled:\s*page\.visible/);
+    assert.match(system, /Qt\.formatDateTime\(clock\.date, Settings\.clock24 \? "HH:mm" : "h:mm AP"\)/);
+    assert.doesNotMatch(system, /interval:\s*1000/);
+});

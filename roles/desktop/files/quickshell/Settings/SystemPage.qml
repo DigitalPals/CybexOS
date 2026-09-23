@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import "../Common"
 import "../Common/SettingsHelpers.js" as SettingsHelpers
 
@@ -7,7 +8,6 @@ import "../Common/SettingsHelpers.js" as SettingsHelpers
 SettingsPage {
     id: page
 
-    property double nowSecs: Date.now() / 1000
     // A user-owned hypridle.conf replaces the rendered idle configuration,
     // so these rows would change nothing while it exists.
     readonly property string idleOverrideReason: SysInfo.idleUserConfig
@@ -24,13 +24,13 @@ SettingsPage {
         if (visible)
             SysInfo.refreshIdleUserConfig();
     }
-    readonly property date nowDate: new Date(page.nowSecs * 1000)
 
-    Timer {
-        interval: 1000
-        running: page.visible
-        repeat: true
-        onTriggered: page.nowSecs = Date.now() / 1000
+    // The clock caption shows hours and minutes, so tick on the minute, and
+    // only while the page is on screen.
+    SystemClock {
+        id: clock
+        precision: SystemClock.Minutes
+        enabled: page.visible
     }
 
     Column {
@@ -51,7 +51,7 @@ SettingsPage {
                     { value: true, label: "24 h" },
                     { value: false, label: "12 h" }
                 ]
-                caption: Qt.formatDateTime(page.nowDate, Settings.clock24 ? "HH:mm" : "h:mm AP")
+                caption: Qt.formatDateTime(clock.date, Settings.clock24 ? "HH:mm" : "h:mm AP")
             }
             PickerRow {
                 width: parent.width
