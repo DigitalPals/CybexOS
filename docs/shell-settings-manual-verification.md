@@ -11,11 +11,12 @@ is manual.
 
 ## Opening and closing
 
-- [ ] `qs ipc call settings toggle` opens the centered window; again closes it.
+- [ ] `cybexos-runtime ipc settings toggle` opens the centered window; again
+      closes it.
 - [ ] On an output with at least 900×664 logical pixels available, the card
       opens at 900×664 with the labeled sidebar. Below 860px available width,
       the same navigation becomes an icon rail with tooltips and 42px targets.
-- [ ] `qs ipc call settings open modules` lands on the Widgets page.
+- [ ] `cybexos-runtime ipc settings open modules` lands on the Widgets page.
 - [ ] Gear in the Control Panel footer opens it (and closes the popout).
 - [ ] Right-click anywhere on the bar slab opens it; left-clicks on modules
       still open their popouts.
@@ -238,9 +239,9 @@ is manual.
 - [ ] The rightmost Fedora logo opens the Control Panel. Its SESSION row shows
       five equal controls in order: Lock, Suspend, Log out, Restart, and red
       Shut down. Each closes the panel before running its established action.
-- [ ] The launcher's Power action and `qs ipc call session power` open/toggle
-      the Control Panel on the focused output; `qs ipc call session lock`
-      remains a direct lock action.
+- [ ] The launcher's Power action and `cybexos-runtime ipc session power`
+      open/toggle the Control Panel on the focused output;
+      `cybexos-runtime ipc session lock` remains a direct lock action.
 - [ ] All popouts open/close/hover-switch as before at default settings;
       Calendar → Weather and other adjacent-module switches work without a
       second click; with Settings open, hovering a module also switches.
