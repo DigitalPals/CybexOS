@@ -23,9 +23,12 @@ import os from "node:os";
 import path from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
+// The shell configuration this helper ships in. Quickshell runs it by path
+// and does not pass that path to its children, so IPC must name it.
+const SHELL_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const { safeHttpUrl } = require("../Common/ExternalUrl.js");
 
 export const CLOUD_CONFIG = Object.freeze({
@@ -803,7 +806,10 @@ function decodeIdentity(idToken, fallbackToken = "") {
 
 function activatePanel() {
     try {
-        const child = spawn("qs", ["ipc", "call", "popouts", "open", "t3code"], {
+        const child = spawn("qs", [
+            "ipc", "--any-display", "-p", SHELL_DIR,
+            "call", "--", "popouts", "open", "t3code",
+        ], {
             detached: true,
             stdio: "ignore",
         });

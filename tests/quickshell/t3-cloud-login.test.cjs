@@ -99,7 +99,9 @@ test("the signed-out T3 panel presents T3 Connect login instead of pairing", () 
     assert.match(connection, /Quickshell\.env\("XDG_STATE_HOME"\)\s*\|\|/,
         "an unset XDG_STATE_HOME must fall back instead of producing an empty watcher path");
     assert.match(shell, /function open\(name: string\): void \{\s*Popouts\.openPanel\(name,/);
-    assert.match(helper, /qs", \["ipc", "call", "popouts", "open", "t3code"\]/);
+    assert.match(helper,
+        /spawn\("qs", \[\s*"ipc", "--any-display", "-p", SHELL_DIR,\s*"call", "--", "popouts", "open", "t3code",\s*\]/,
+        "the shell runs by path, so reopening the panel must name its config");
     assert.match(helper, /tokens\/t3-relay/);
     assert.match(helper, /Continue with Google/);
     assert.match(helper, /Continue with GitHub/);
@@ -741,7 +743,11 @@ require("node:fs").writeFileSync(
     process.argv.slice(2).join(" "),
 );
 `, { mode: 0o755 });
-    fs.writeFileSync(path.join(binDir, "qs"), "#!/usr/bin/env node\n", { mode: 0o755 });
+    const panelActivated = path.join(temporaryHome, "qs-argv.json");
+    fs.writeFileSync(path.join(binDir, "qs"), `#!/usr/bin/env node
+require("node:fs").writeFileSync(${JSON.stringify(panelActivated)},
+    JSON.stringify(process.argv.slice(2)));
+`, { mode: 0o755 });
 
     const script = path.join(shellDir, "scripts/t3-cloud.mjs");
     const env = {
@@ -773,6 +779,15 @@ require("node:fs").writeFileSync(
     assert.equal(opened.providerRedirect, "https://accounts.example.test/t3-connect");
     assert.equal(fs.readFileSync(mimeCalled, "utf8"),
         "default t3code-nightly.desktop x-scheme-handler/t3code");
+    const activation = await waitFor(() => {
+        try {
+            return JSON.parse(fs.readFileSync(panelActivated, "utf8"));
+        } catch {
+            return null;
+        }
+    }, "sign-in never asked the shell to reopen the panel");
+    assert.deepEqual(activation, ["ipc", "--any-display", "-p", fs.realpathSync(shellDir),
+        "call", "--", "popouts", "open", "t3code"]);
 
     const statePath = path.join(stateRoot, "t3code-bar.json");
     const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
