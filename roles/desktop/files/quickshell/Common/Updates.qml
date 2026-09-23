@@ -81,6 +81,23 @@ Singleton {
 
     readonly property int total: dnfCount + flatpakCount + firmwareCount + (projectAvailable ? 1 : 0)
     readonly property bool flatpakEnabled: Settings.modOpts.updates.flatpak
+    readonly property int pollMs: Math.max(10, Settings.modOpts.updates.pollMins) * 60000
+
+    // Background checks serve the menubar widget and the notification; with
+    // both off nothing reads a count until a view opens, and opening one
+    // checks then (see the Popouts connection below). Settings.mods is
+    // replaced wholesale on every edit, so this follows the widget list.
+    readonly property bool pollEnabled: {
+        if (Settings.modOpts.updates.notify)
+            return true;
+        const mods = Settings.mods;
+        for (const col of ["left", "center", "right"]) {
+            const hit = mods[col].find(m => m.id === "updates");
+            if (hit)
+                return hit.on;
+        }
+        return false;
+    }
 
     // Once the count has been non-zero and then falls to zero, the panel says
     // so rather than pretending nothing was ever pending.
@@ -805,6 +822,12 @@ Singleton {
         target: Popouts
 
         function onChanged() {
+            // A view that shows the count brings a stale one up to date: the
+            // only way it refreshes while background checks are off.
+            if (Popouts.open && (Popouts.currentName === "updates"
+                    || Popouts.currentName === "control"
+                        && Settings.drawerOverview.updates === true))
+                root.staleCheck();
             if (Popouts.open && Popouts.currentName === "updates") {
                 if (root.runState === "done")
                     root.runSeen = true;
@@ -1039,14 +1062,36 @@ Singleton {
             Math.max(0, root.checkFailureCount - 1)))
         running: root.error !== "" && root.checkFailureCount <= 4
             && NetworkStatus.online && !root.busy && !root.runActive
+            && !Activity.idle
         onTriggered: root.automaticCheck(false, true)
     }
 
+    // Nothing to notify about or to count in an idle or locked session; the
+    // first input afterwards checks at once if the last result is stale.
     Timer {
-        interval: Math.max(10, Settings.modOpts.updates.pollMins) * 60000
-        running: NetworkStatus.online
+        interval: root.pollMs
+        running: NetworkStatus.online && root.pollEnabled && !Activity.idle
         repeat: true
         onTriggered: root.automaticCheck(false, false)
+    }
+
+    function staleCheck() {
+        if (!busy && !UpdatesHelpers.checkIsFresh(lastChecked, Date.now(), pollMs))
+            automaticCheck(false, false);
+    }
+
+    Connections {
+        target: Activity
+
+        function onResumed() {
+            if (root.pollEnabled && !startupCheck.running)
+                root.staleCheck();
+        }
+    }
+
+    onPollEnabledChanged: {
+        if (pollEnabled && initialized && !startupCheck.running)
+            staleCheck();
     }
 
     // dnf check-update lists one package per line as "name.arch  version  repo"
@@ -1224,10 +1269,11 @@ Singleton {
         target: NetworkStatus
 
         function onOnlineChanged() {
-            // The session's first online edge belongs to startupCheck.
-            // A flapping link must not repeat a complete check that is
-            // only minutes old; a failed one is still retried at once.
-            if (startupCheck.running)
+            // The session's first online edge belongs to startupCheck, and
+            // one that lands while idle to the resume check. A flapping link
+            // must not repeat a complete check that is only minutes old; a
+            // failed one is still retried at once.
+            if (startupCheck.running || !root.pollEnabled || Activity.idle)
                 return;
             if (NetworkStatus.online && (root.error !== ""
                     || !UpdatesHelpers.checkIsFresh(root.lastChecked,
@@ -1242,7 +1288,11 @@ Singleton {
     Timer {
         id: startupCheck
         interval: 20000
-        onTriggered: root.automaticCheck(true, false)
+        // A view opened meanwhile may already have checked.
+        onTriggered: {
+            if (root.pollEnabled && !root.ran && !root.busy)
+                root.automaticCheck(true, false);
+        }
     }
 
     Component.onCompleted: {

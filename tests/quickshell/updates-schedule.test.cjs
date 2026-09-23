@@ -166,10 +166,37 @@ test("each source's first answer is silent, even after a failed first attempt", 
 test("only the online edge, startup and settings changes refill the retry budget", () => {
     assert.match(source, /checkFailureCount <= 4[\s\S]{0,200}?onTriggered: root\.automaticCheck\(false, true\)/,
         "the retry timer repeats only what failed");
-    assert.match(source, /Settings\.modOpts\.updates\.pollMins\) \* 60000[\s\S]{0,200}?onTriggered: root\.automaticCheck\(false, false\)/,
+    assert.match(source, /interval: root\.pollMs[\s\S]{0,200}?onTriggered: root\.automaticCheck\(false, false\)/,
         "the regular poll must not reset the failure count");
     assert.match(source, /function onOnlineChanged\(\)[\s\S]{0,600}?root\.automaticCheck\(true, false\)/);
     assert.match(functionSource("check"), /checkFailureCount = 0;/,
         "a manual refresh earns a fresh set of retries");
     assert.doesNotMatch(source, /hasBaseline/, "the baseline is tracked per source");
+});
+
+test("background checks run only for the widget or notifications, never while idle", () => {
+    const body = source.match(/readonly property bool pollEnabled: \{([\s\S]*?)\n    \}/)[1];
+    const enabled = (notify, on) => vm.runInNewContext("(() => {" + body + "})()", {
+        Settings: {
+            modOpts: { updates: { notify } },
+            mods: { left: [], center: [], right: on === undefined ? [] : [{ id: "updates", on }] }
+        }
+    });
+    assert.equal(enabled(true, false), true, "notifications need a background count");
+    assert.equal(enabled(false, true), true, "so does the menubar widget");
+    assert.equal(enabled(false, false), false);
+    assert.equal(enabled(false, undefined), false);
+
+    assert.match(source,
+        /interval: root\.pollMs\s*running: NetworkStatus\.online && root\.pollEnabled && !Activity\.idle/);
+    assert.match(source, /checkFailureCount <= 4[\s\S]{0,120}?!Activity\.idle/,
+        "retries wait for the session too");
+    assert.match(source,
+        /target: Activity[\s\S]{0,80}function onResumed\(\)[\s\S]{0,120}root\.staleCheck\(\)/);
+    assert.match(functionSource("staleCheck"),
+        /UpdatesHelpers\.checkIsFresh\(lastChecked, Date\.now\(\), pollMs\)/);
+    // The drawer and the Updates panel still count when background checks are off.
+    assert.match(source,
+        /Popouts\.currentName === "updates"\s*\|\| Popouts\.currentName === "control"\s*&& Settings\.drawerOverview\.updates === true\)\)\s*root\.staleCheck\(\)/);
+    assert.match(source, /id: startupCheck[\s\S]{0,200}?if \(root\.pollEnabled && !root\.ran && !root\.busy\)/);
 });
