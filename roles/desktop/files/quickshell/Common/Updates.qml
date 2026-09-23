@@ -68,6 +68,17 @@ Singleton {
     // failedParts); the others keep their last answer.
     property var checkParts: UpdatesHelpers.allParts()
     property bool checkAgain: false
+    property bool checkAgainForced: false
+    // dnf answers from repository metadata that dnf5-makecache.timer
+    // refreshes every few hours and an installed set that rarely changes,
+    // yet each read costs most of a CPU-second and 200 MB. While the
+    // signature of both (UpdatesHelpers.dnfSignature) matches the last
+    // successful read's, that answer stands. A manual refresh and the
+    // recount after a run force a real read.
+    property string dnfCacheSignature: ""
+    property var dnfCacheNames: []
+    property double dnfCacheAt: 0
+    property bool dnfForced: false
     property bool initialized: false
     property int checkFailureCount: 0
     // 0 = no post-run recount owed; 1 = the recount right after a run;
@@ -160,10 +171,10 @@ Singleton {
     // a fresh set of retries if something still fails.
     function check() {
         checkFailureCount = 0;
-        startCheck(UpdatesHelpers.allParts());
+        startCheck(UpdatesHelpers.allParts(), true);
     }
 
-    function startCheck(parts) {
+    function startCheck(parts, forced) {
         // A poll firing mid-transaction would read the cache while dnf is
         // rewriting the installed set; whatever it said would be wrong by the
         // time it landed. finishRun schedules the recount instead.
@@ -171,14 +182,17 @@ Singleton {
             return;
         if (busy) {
             checkAgain = true;
+            checkAgainForced = checkAgainForced || forced === true;
             return;
         }
         checkAgain = false;
+        checkAgainForced = false;
         checkParts = parts;
         if (parts.dnf) {
             dnfError = "";
             nextDnfNames = [];
             dnfDone = false;
+            dnfForced = forced === true;
         }
         if (parts.flatpak) {
             flatpakError = "";
@@ -205,7 +219,7 @@ Singleton {
             return;
         }
         if (parts.dnf)
-            dnfProc.running = true;
+            dnfSignatureProc.running = true;
         if (parts.flatpak && checkingFlatpak)
             flatpakProc.running = true;
         if (parts.project && projectUpdatesEnabled)
@@ -226,7 +240,20 @@ Singleton {
             checkFailureCount = 0;
         startCheck(failedOnly ? UpdatesHelpers.failedParts({ dnf: dnfError,
             flatpak: flatpakError, firmware: firmwareError, project: projectError })
-            : UpdatesHelpers.allParts());
+            : UpdatesHelpers.allParts(), false);
+    }
+
+    // The signature is in: reuse the last answer, or ask dnf for real.
+    function readDnf(signature) {
+        if (!dnfForced && UpdatesHelpers.dnfAnswerReusable(signature,
+                dnfCacheSignature, dnfCacheAt, Date.now())) {
+            nextDnfNames = dnfCacheNames;
+            dnfDone = true;
+            finishCheck();
+            return;
+        }
+        dnfProc.signature = signature;
+        dnfProc.running = true;
     }
 
     function logCheckError(reason) {
@@ -236,10 +263,14 @@ Singleton {
         lastLoggedCheckError = reason;
     }
 
-    function finishDnf(exitCode, body, errText) {
+    function finishDnf(exitCode, body, errText, signature) {
         if (exitCode === 0 || exitCode === 100) {
             nextDnfNames = UpdatesHelpers.dnfNames(body);
+            dnfCacheSignature = signature || "";
+            dnfCacheNames = nextDnfNames;
+            dnfCacheAt = Date.now();
         } else {
+            dnfCacheSignature = "";
             dnfError = ProcHelpers.commandError("dnf check-update", exitCode, errText,
                 ({ 124: "dnf check-update timed out" }));
             logCheckError(dnfError);
@@ -379,7 +410,7 @@ Singleton {
         }
 
         if (checkAgain)
-            Qt.callLater(root.startCheck, UpdatesHelpers.allParts());
+            Qt.callLater(root.startCheck, UpdatesHelpers.allParts(), checkAgainForced);
     }
 
     // ---- the native run ---------------------------------------------------
@@ -1097,12 +1128,50 @@ Singleton {
     // dnf check-update lists one package per line as "name.arch  version  repo"
     // under a plain-text section heading. Exit 100 is the "there are updates"
     // status, exit 0 means none, anything else is a real failure.
+    // One cheap process for the signature: each repository's repomd.xml
+    // (depth 3 under the libdnf5 cache), the repo files and the rpm
+    // database, as "path size mtime" lines.
+    Process {
+        id: dnfSignatureProc
+        property string body: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        command: ["timeout", "10s", "find", "/var/cache/libdnf5",
+            "/usr/lib/sysimage/rpm", "/etc/yum.repos.d", "-maxdepth", "3",
+            "(", "-name", "repomd.xml", "-o", "-name", "rpmdb.sqlite",
+            "-o", "-name", "rpmdb.sqlite-wal", "-o", "-name", "*.repo", ")",
+            "-printf", "%p %s %T@\\n"]
+
+        stdout: StdioCollector {
+            onStreamFinished: dnfSignatureProc.body = text
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            dnfSignatureProc.exitSeen = true;
+            dnfSignatureProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                exitSeen = false;
+                lastExit = 0;
+            } else {
+                // No signature just means a real read.
+                root.readDnf(exitSeen && lastExit === 0
+                    ? UpdatesHelpers.dnfSignature(body) : "");
+            }
+        }
+    }
+
     Process {
         id: dnfProc
         property string body: ""
         property string errText: ""
         property bool exitSeen: false
         property int lastExit: 0
+        // The signature taken before this read started.
+        property string signature: ""
 
         command: ["timeout", "45s", "env", "LC_ALL=C", "dnf", "--quiet",
             "--cacheonly", "check-update"]
@@ -1126,7 +1195,8 @@ Singleton {
                 exitSeen = false;
                 lastExit = 0;
             } else {
-                root.finishDnf(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
+                root.finishDnf(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText,
+                    signature);
             }
         }
     }

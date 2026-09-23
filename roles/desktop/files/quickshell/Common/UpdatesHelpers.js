@@ -275,6 +275,31 @@ function checkIsFresh(lastChecked, now, maxAgeMs) {
         && now - lastChecked < maxAgeMs;
 }
 
+// dnf's answer depends on its repository metadata and the installed set. This
+// is their signature, from `find … -printf '%p %s %T@\n'` over every
+// repository's repomd.xml, the repo files and the rpm database: sorted, so
+// directory order cannot matter, and "" when the listing does not include
+// the rpm database, because then it cannot vouch for what is installed.
+function dnfSignature(text) {
+    var lines = String(text || "").split("\n")
+        .map(function (line) { return line.trim(); })
+        .filter(function (line) { return line !== ""; });
+    var hasRpmdb = lines.some(function (line) {
+        return /\/rpmdb\.sqlite /.test(line);
+    });
+    return hasRpmdb ? lines.sort().join("\n") : "";
+}
+
+// However quiet the signature, a real dnf read still happens this often, so
+// an input it does not cover (dnf.conf, say) is picked up within hours.
+var DNF_ANSWER_MAX_AGE_MS = 6 * 3600 * 1000;
+
+function dnfAnswerReusable(signature, cachedSignature, cachedAt, now) {
+    return typeof signature === "string" && signature !== ""
+        && signature === cachedSignature
+        && checkIsFresh(cachedAt, now, DNF_ANSWER_MAX_AGE_MS);
+}
+
 // Application ids read as their most distinctive segment: org.signal.Signal
 // is "Signal", but com.spotify.Client must not become "Client".
 var FLATPAK_GENERIC_TAILS = ["client", "app", "desktop"];
@@ -431,6 +456,9 @@ var exported = {
     takePendingRow: takePendingRow,
     postRunRetryNeeded: postRunRetryNeeded,
     checkIsFresh: checkIsFresh,
+    dnfSignature: dnfSignature,
+    DNF_ANSWER_MAX_AGE_MS: DNF_ANSWER_MAX_AGE_MS,
+    dnfAnswerReusable: dnfAnswerReusable,
     flatpakRefName: flatpakRefName,
     parseFlatpakRunLine: parseFlatpakRunLine,
     runPercent: runPercent,
