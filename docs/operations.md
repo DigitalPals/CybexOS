@@ -147,8 +147,8 @@ it validates the downloaded version before activating it and retains the working
 installation if resolution or download fails. Claude Code's inventory pin is a
 minimum: an older or missing Claude Code is installed at the pin, while a newer
 one (Claude Code updates itself) is left alone rather than downgraded. OpenCode
-retains its exact inventory pin. System verification checks Codex locally without requiring
-the npm registry; freshness is checked by the updater.
+retains its exact inventory pin. System verification checks Codex locally
+without requiring the npm registry; freshness is checked by the updater.
 
 Every invocation still executes tasks tagged `always`. That includes fresh
 fact gathering, the feature contract, Fedora/architecture/user validation,
@@ -263,9 +263,9 @@ and sudo's default ticket (`timestamp_type=tty`) is tied to the terminal that
 authenticated, so a terminal invocation uses a user service only when sudo
 works without any terminal (for example passwordless sudo). Otherwise it
 authenticates once and starts a system service. Quickshell explicitly requests
-a system service; when authorization
-is needed, systemd's own Polkit action is handled by the graphical session
-agent, so no terminal is opened and progress remains in the Updates view.
+a system service; when authorization is needed, systemd's own Polkit action is
+handled by the graphical session agent, so no terminal is opened and progress
+remains in the Updates view.
 Release transactions also use a system service because their configuration
 migration and activation must outlive the client. Closing the view or pressing
 Ctrl+C while attached only detaches the observer. At most one worker can own
@@ -312,9 +312,8 @@ The twenty newest valid run directories are retained. For a worker that looks
 stuck, start with `cybexos-update-run status --json`, inspect `run.log`, then use
 the `unit` field with `systemctl --user status <unit>` and
 `journalctl --user -u <unit>` (without `--user` when `systemUnit` is true). If
-the unit disappeared without final status,
-the next status read marks the run failed with phase `abandoned` instead of
-blocking all future updates.
+the unit disappeared without final status, the next status read marks the run
+failed with phase `abandoned` instead of blocking all future updates.
 
 ## Update recovery points
 
