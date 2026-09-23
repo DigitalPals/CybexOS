@@ -12,7 +12,7 @@ table in the README links here instead of duplicating these details.
 | `./bootstrap` | Compatibility alias for `./install`. |
 | `./tests/run` | Runs all required source-tree checks without inspecting or changing the live machine. |
 | `./verify` | Runs complete source and non-destructive installed-system checks. Use `--source`, `--system`, or `--quick` for a narrower scope and `--json` for automation. |
-| `./update` | Resolves and verifies the selected GitHub release channel, applies a newer compatible release, then starts the durable Fedora/Flatpak worker. |
+| `./update` | Resolves and verifies the selected GitHub release channel, applies a newer compatible release, then starts the durable Fedora/Flatpak worker. If the release cannot be checked, verified, or staged, it still updates packages and exits 69. |
 | `./update --system-only` | Skips the project release check and updates Fedora packages and system Flatpaks only. |
 | `cybex agent` | Launches the selected AI coding agent in the current directory; an unset interactive session opens the picker. |
 | `cybex agent --pick` | Selects, persists, and launches an installed OpenCode, Claude Code, or Codex CLI. |
@@ -216,6 +216,17 @@ migration leaves the old one for manual review and says so.
 immutable, its release and asset attestations verify, the downloaded SHA-256
 matches GitHub metadata, and its manifest supports the current Fedora release,
 architecture, configuration schema, and updater version.
+
+Verifying the attestations uses `gh`, which needs a login: run
+`gh auth login` once (or provide `GH_TOKEN`). The updater checks this before
+downloading anything. Fedora and Flatpak updates never depend on GitHub: when
+the release cannot be checked (offline, an API error or rate limit), verified,
+or staged, the updater says why, removes any partial stage, and runs the
+package-only update. The terminal command then exits 69 after a successful
+package run; `--start --json` returns the started run with a `projectError`
+field, and `--check --json` reports an available release together with a
+`projectError` when it could not be verified yet. A request with
+`--no-packages` has nothing to fall back to and fails.
 
 The verified archive is extracted into a new versioned directory. A dedicated
 durable system worker owns configuration migration, candidate application,
