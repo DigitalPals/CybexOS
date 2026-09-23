@@ -118,8 +118,15 @@ Column {
         width: parent.width
         spacing: 2
 
+        // Both lists derive from every PipeWire node, so any stream coming or
+        // going — a notification sound, a browser tab, this tab's own mic
+        // monitor — produced a fresh array. The ScriptModels diff it by node
+        // identity: rows that survive keep their delegates, a slider mid-drag
+        // included.
         Repeater {
-            model: root.visibleSinks
+            model: ScriptModel {
+                values: root.visibleSinks
+            }
 
             delegate: Rectangle {
                 id: sinkRow
@@ -343,7 +350,9 @@ Column {
         }
 
         Repeater {
-            model: root.readyStreams
+            model: ScriptModel {
+                values: root.readyStreams
+            }
 
             delegate: Item {
                 id: streamRow

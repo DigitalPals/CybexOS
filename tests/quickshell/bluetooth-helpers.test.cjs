@@ -34,3 +34,13 @@ test("unnamed paired and connected devices remain available, without duplicates"
     nearby.deviceName = "Keyboard";
     assert.deepEqual(H.groupDevices([nearby]).nearby, [nearby]);
 });
+
+test("groups hold the live device objects the drawer diffs by identity", () => {
+    const connected = { deviceName: "Buds", paired: true, connected: true };
+    const nearby = { deviceName: "Speaker" };
+    const groups = H.groupDevices([nearby, connected]);
+    // The drawer's ScriptModels keep a row alive while its device object
+    // stays the same; a copied or rebuilt entry would recreate every row.
+    assert.strictEqual(groups.connected[0], connected);
+    assert.strictEqual(groups.nearby[0], nearby);
+});
