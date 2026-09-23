@@ -31,3 +31,25 @@ test("Ansible pipelines modules and keeps notified handlers after a failure", ()
         /Reconcile firewalld's runtime view with permanent configuration/,
         "an interrupted run still loses handlers, so the firewalld repair stays");
 });
+
+test("hypridle restarts when its configuration, unit, or renderer changes", () => {
+    const handlers = read("roles/desktop/handlers/main.yml");
+    const desktop = read("roles/desktop/tasks/main.yml");
+    const handler = task(handlers, "Restart hypridle");
+    assert.match(handler, /argv: \[systemctl, --user, try-restart, hypridle\.service\]/,
+        "try-restart must leave a stopped or headless idle daemon alone");
+    assert.match(handler, /become_user: "\{\{ primary_user \}\}"/);
+    assert.match(handler, /XDG_RUNTIME_DIR:/);
+    assert.ok(handlers.indexOf("- name: Reload user systemd")
+        < handlers.indexOf("- name: Restart hypridle"),
+    "a changed unit is reloaded before hypridle restarts");
+    for (const name of ["Install rendered Hyprland service configuration",
+        "Install the guarded desktop runtime resolver",
+        "Install restartable desktop user units",
+        "Queue a hypridle restart after its configuration renderer changes"])
+        assert.match(task(desktop, name), /Restart hypridle/, name);
+    assert.match(task(desktop, "Queue a hypridle restart after its configuration renderer changes"),
+        /selectattr\('item', 'equalto', 'scripts\/hypridle-config\.py'\)/);
+    assert.ok(desktop.indexOf("Install tracked Quickshell menubar files")
+        < desktop.indexOf("Queue a hypridle restart after its configuration renderer changes"));
+});

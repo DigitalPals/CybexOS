@@ -502,6 +502,7 @@
   loop:
     - { src: hypridle.conf.j2, dest: hypridle.conf }
     - { src: hyprlock.conf.j2, dest: hyprlock.conf }
+  notify: Restart hypridle
   when: not hypr_runtime_path_normalization_pending | bool
   tags: [browser]
 
@@ -539,6 +540,8 @@
     src: "{{ config_repo }}/assets/scripts/cybexos-runtime"
     dest: "{{ primary_home }}/.local/bin/cybexos-runtime"
     mode: "0755"
+  # hypridle starts through the resolver, which renders its configuration.
+  notify: Restart hypridle
   tags: [browser, quickshell]
 
 - name: Install the one-time ownership-layer migration helper
@@ -1001,6 +1004,18 @@
   register: quickshell_config
   tags: [quickshell]
 
+# hypridle runs the shell's timeout renderer only when it starts.
+- name: Queue a hypridle restart after its configuration renderer changes
+  ansible.builtin.command: /usr/bin/true
+  changed_when: true
+  notify: Restart hypridle
+  when: >-
+    quickshell_config.results | default([])
+    | selectattr('changed', 'defined') | selectattr('changed')
+    | selectattr('item', 'equalto', 'scripts/hypridle-config.py')
+    | list | length > 0
+  tags: [quickshell]
+
 - name: Create cybexos deployment state directory
   become: true
   become_user: "{{ primary_user }}"
@@ -1164,7 +1179,9 @@
   loop:
     - hypridle
     - hyprpolkitagent
-  notify: Reload user systemd
+  notify:
+    - Reload user systemd
+    - Restart hypridle
 
 - name: Install the restartable Voxtype user unit
   become: true
