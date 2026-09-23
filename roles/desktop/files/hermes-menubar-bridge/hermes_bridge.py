@@ -96,6 +96,9 @@ REMOTE_AUTH_VERSION = 1
 REMOTE_OBSERVER_HEALTHY_SECONDS = 60.0
 REMOTE_OBSERVER_RETRY_FLOOR = 3.0
 REMOTE_OBSERVER_RETRY_CAP = 120.0
+# Session-list invalidations arrive in bursts. They share one in-flight list
+# refresh plus at most one trailing refresh, started at least this far apart.
+REMOTE_REFRESH_SPACING = 1.0
 
 
 class RpcFault(Exception):
@@ -2002,6 +2005,8 @@ class HermesBridge:
         self.remote_observer_responses: dict[str, Any] = {}
         self.remote_observer_response_lock = threading.Lock()
         self.remote_observed_conversation_id = ""
+        self.remote_refresh_task: asyncio.Task[Any] | None = None
+        self.remote_refresh_pending = False
         self.remote_contract: dict[str, Any] = {
             "checked": False,
             "transport": "webui",
@@ -3460,6 +3465,47 @@ class HermesBridge:
         for key in keys:
             await self.stop_remote_observer(key)
         self.remote_observed_conversation_id = ""
+        refresh = self.remote_refresh_task
+        self.remote_refresh_task = None
+        self.remote_refresh_pending = False
+        if refresh is not None and not refresh.done():
+            refresh.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await refresh
+
+    def request_remote_refresh(self) -> None:
+        """Coalesce a session-list invalidation into a single-flight refresh.
+
+        Each refresh is a list request, a registry write, and a snapshot
+        broadcast to every shell. A burst of ``sessions_changed`` events marks
+        the list dirty; one worker serves it with at most one trailing refresh
+        per spacing window instead of one full refresh per event.
+        """
+
+        self.remote_refresh_pending = True
+        task = self.remote_refresh_task
+        if task is None or task.done():
+            task = asyncio.create_task(
+                self._remote_refresh_worker(), name="hermes-remote-list-refresh"
+            )
+            self.remote_refresh_task = task
+            task.add_done_callback(HermesGateway._log_background_failure)
+
+    async def _remote_refresh_worker(self) -> None:
+        try:
+            while self.remote_refresh_pending:
+                self.remote_refresh_pending = False
+                started = time.monotonic()
+                with suppress(RpcFault):
+                    await self.refresh_remote_conversations()
+                # Stay alive for the rest of the window so invalidations that
+                # arrive meanwhile fold into one trailing refresh.
+                await asyncio.sleep(
+                    max(0.0, REMOTE_REFRESH_SPACING - (time.monotonic() - started))
+                )
+        finally:
+            if self.remote_refresh_task is asyncio.current_task():
+                self.remote_refresh_task = None
 
     async def observe_remote_conversation(self, conversation_id: str) -> None:
         conversation_id = str(conversation_id or "")
@@ -3568,8 +3614,7 @@ class HermesBridge:
                     async def handle(event: str, _event_id: str, _data: dict[str, Any]) -> None:
                         if event.strip().lower().replace("-", "_") != "sessions_changed":
                             return
-                        with suppress(RpcFault):
-                            await self.refresh_remote_conversations()
+                        self.request_remote_refresh()
 
                     await self._consume_observer_sse(response, handle)
                 except asyncio.CancelledError:
@@ -3815,7 +3860,10 @@ class HermesBridge:
         self.conversation_by_remote_session = {
             session_id: session_id for session_id in incoming
         }
-        self.registry.save()
+        # The registry only caches the WebUI's authoritative list, so its
+        # fsync'd write joins the coalesced save window instead of running on
+        # the event loop once per refresh; shutdown still flushes it.
+        self.registry.save_later()
 
         for conversation in incoming.values():
             stream_id = str(conversation.get("active_stream_id") or "")

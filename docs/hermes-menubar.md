@@ -124,15 +124,16 @@ created by another client, background-task completions, and server-initiated
 turns without polling or replaying a prompt. A dropped observer stream
 reconnects after a jittered delay that starts near 3 seconds and doubles up to
 2 minutes; only a stream that stayed open for a minute resets that backoff, so
-a server or proxy that accepts and immediately closes is not hammered. Older
-WebUI versions degrade to manual/list refresh when a stream endpoint is
-genuinely unavailable. Advanced write routes are discovered with empty
-validation requests that contain no session ID, file, or prompt and therefore
-cannot mutate remote state. A 400 or 422 validation response confirms the
-route; a missing or retired route keeps the matching control hidden. Runtime
-404/405/410/501 responses downgrade the capability immediately. Model selection
-and reasoning effort are enabled only after their read-only discovery endpoints
-return a usable contract.
+a server or proxy that accepts and immediately closes is not hammered. A
+burst of list invalidations shares one list refresh plus at most one trailing
+refresh per second. Older WebUI versions degrade to manual/list refresh when a
+stream endpoint is genuinely unavailable. Advanced write routes are discovered
+with empty validation requests that contain no session ID, file, or prompt and
+therefore cannot mutate remote state. A 400 or 422 validation response confirms
+the route; a missing or retired route keeps the matching control hidden.
+Runtime 404/405/410/501 responses downgrade the capability immediately. Model
+selection and reasoning effort are enabled only after their read-only discovery
+endpoints return a usable contract.
 
 The small Python bridge remains loopback-only on `ws://127.0.0.1:9120/ws`. It
 owns the remote cookie and never exposes it to QML; it does not contain or run

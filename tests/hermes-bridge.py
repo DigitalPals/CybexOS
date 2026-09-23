@@ -8,10 +8,12 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import queue
 import stat
 import sys
 import tempfile
 import threading
+import time
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -441,13 +443,136 @@ async def observer_backoff_scenario() -> None:
         BRIDGE.REMOTE_OBSERVER_HEALTHY_SECONDS = real_healthy
 
 
+class ScriptedStream:
+    """An accepted SSE response whose lines the scenario pushes one by one."""
+
+    def __init__(self) -> None:
+        self.lines: queue.Queue[bytes] = queue.Queue()
+        self.reads = 0
+        self.pushed = 0
+
+    def emit(self, event: str) -> None:
+        for line in (f"event: {event}\n".encode(), b"data: {}\n", b"\n"):
+            self.pushed += 1
+            self.lines.put(line)
+
+    def readline(self, _limit: int) -> bytes:
+        self.reads += 1
+        return self.lines.get()
+
+    def close(self) -> None:
+        self.lines.put(b"")
+
+    def drained(self) -> bool:
+        # The reader dispatches each line before it asks for the next one, so
+        # a pending read past every pushed line means all were handled.
+        return self.reads > self.pushed
+
+
+async def eventually(condition: Any, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "condition not reached"
+        await asyncio.sleep(0.005)
+
+
+async def refresh_coalescing_scenario() -> None:
+    """A burst of list invalidations costs one in-flight and one trailing refresh."""
+
+    real_spacing = BRIDGE.REMOTE_REFRESH_SPACING
+    BRIDGE.REMOTE_REFRESH_SPACING = 0.25
+    try:
+        await _refresh_coalescing_scenario()
+    finally:
+        BRIDGE.REMOTE_REFRESH_SPACING = real_spacing
+
+
+async def _refresh_coalescing_scenario() -> None:
+    with tempfile.TemporaryDirectory(prefix="cybexos-hermes-refresh.") as temporary:
+        root = Path(temporary)
+        registry = BRIDGE.ConversationRegistry(root / "conversations.json")
+        bridge = BRIDGE.HermesBridge(
+            registry,
+            "http://127.0.0.1:1",
+            root / "remote-auth.json",
+            local_backend_enabled=False,
+        )
+        origin = "https://hermes.example.test"
+        connected_remote(bridge, origin)
+        stream = ScriptedStream()
+        bridge.remote_auth.open_sse = lambda _path, **_kwargs: stream
+
+        refresh_starts: list[float] = []
+        gates = [asyncio.Event(), asyncio.Event(), asyncio.Event()]
+
+        async def fake_remote_request(
+            method: str,
+            path: str,
+            payload: dict[str, Any] | None = None,
+            timeout: float = 30.0,
+        ) -> dict[str, Any]:
+            assert (method, path) == ("GET", "/api/sessions?exclude_hidden=1")
+            refresh_starts.append(time.monotonic())
+            await gates[len(refresh_starts) - 1].wait()
+            return {"sessions": [{"session_id": "live-1", "title": "Live"}]}
+
+        snapshots: list[dict[str, Any]] = []
+
+        async def capture_event(event_type: str, payload: dict[str, Any]) -> None:
+            if event_type == "conversations.snapshot":
+                snapshots.append(payload)
+
+        saves: list[float] = []
+        real_save = registry.save
+
+        def counting_save() -> None:
+            saves.append(time.monotonic())
+            real_save()
+
+        bridge.remote_request = fake_remote_request
+        bridge.broadcast_event = capture_event
+        registry.save = counting_save  # type: ignore[method-assign]
+        observer = asyncio.create_task(bridge._remote_global_events_loop(origin))
+        bridge.remote_observer_tasks["global"] = observer
+
+        # The first invalidation starts a refresh; twenty more arrive while it
+        # is still in flight and must fold into a single trailing refresh.
+        stream.emit("sessions_changed")
+        await eventually(lambda: len(refresh_starts) == 1)
+        for _ in range(20):
+            stream.emit("sessions_changed")
+        await eventually(stream.drained)
+        assert len(refresh_starts) == 1
+        gates[0].set()
+        await eventually(lambda: len(snapshots) == 1)
+        assert saves == [], "list refresh must not write the registry synchronously"
+        assert registry._save_handle is not None
+        gates[1].set()
+        await eventually(lambda: len(snapshots) == 2)
+        assert refresh_starts[1] - refresh_starts[0] >= BRIDGE.REMOTE_REFRESH_SPACING - 0.05
+        await eventually(lambda: bridge.remote_refresh_task is None)
+        assert len(refresh_starts) == 2, refresh_starts
+
+        # Stopping the observers (sign-out, shutdown) cancels a refresh that
+        # is still in flight instead of letting it land afterwards.
+        stream.emit("sessions_changed")
+        await eventually(lambda: len(refresh_starts) == 3)
+        await bridge.stop_remote_observers()
+        assert bridge.remote_refresh_task is None
+        assert observer.done()
+        assert len(snapshots) == 2
+        await bridge.stop()
+        assert saves, "the coalesced registry write must still land"
+
+
 if __name__ == "__main__":
     asyncio.run(scenario())
     asyncio.run(delivery_scenario())
     asyncio.run(observer_backoff_scenario())
+    asyncio.run(refresh_coalescing_scenario())
     print(
         "Hermes bridge exposes native WebUI history, starts on New chat, "
         "creates and deletes sessions, has no channel RPC contract, "
-        "coalesces status churn, isolates slow local clients, and backs off "
-        "observer streams that close early"
+        "coalesces status churn and list refreshes, isolates slow local "
+        "clients, and backs off observer streams that close early"
     )
