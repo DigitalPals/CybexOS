@@ -451,6 +451,17 @@ def prune_revisions(plugin_root: Path, keep: set) -> None:
             shutil.rmtree(old, ignore_errors=True)
 
 
+def shell_stamp(pid: str | int) -> str:
+    """The start time of `pid` if it is a running shell, else an empty string."""
+    try:
+        proc = Path(f"/proc/{int(pid)}")
+        if proc.joinpath("comm").read_text().strip() not in ("qs", "quickshell"):
+            return ""
+        return proc.joinpath("stat").read_text().rsplit(")", 1)[1].split()[19]
+    except (OSError, ValueError, IndexError):
+        return ""
+
+
 def runtime_sources(result: dict, packages: Path, runtime: Path) -> None:
     cache = read_revision_cache(runtime)
     before = json.dumps(cache, sort_keys=True)
@@ -570,21 +581,22 @@ def main() -> int:
             with locked(config):
                 result = scan(config, packages, state)
                 if args.live:
-                    owner = os.getppid()
-                    session = str(owner) + "-" + Path(f"/proc/{owner}/stat").read_text().rsplit(")", 1)[1].split()[19]
                     cache = Path(os.environ["XDG_RUNTIME_DIR"]) / "cybex-plugin-code"
                     cache.mkdir(mode=0o700, exist_ok=True)
                     for old in cache.iterdir():
                         if not old.is_dir() or old.is_symlink():
                             continue
                         pid, _, stamp = old.name.partition("-")
-                        try:
-                            current = Path(f"/proc/{int(pid)}/stat").read_text().rsplit(")", 1)[1].split()[19]
-                        except (OSError, ValueError):
-                            current = ""
-                        if current != stamp:
+                        if shell_stamp(pid) != stamp:
                             shutil.rmtree(old)
-                    args.runtime_root = cache / session
+                    # A scan orphaned by an exiting shell is reparented to init
+                    # or the user manager. Nobody is left to read its snapshot,
+                    # and one keyed to that long-lived parent would never be
+                    # pruned.
+                    owner = os.getppid()
+                    stamp = shell_stamp(owner)
+                    if stamp:
+                        args.runtime_root = cache / f"{owner}-{stamp}"
                 if args.runtime_root:
                     runtime_sources(result, packages, args.runtime_root)
             print(json.dumps(result, ensure_ascii=False))
