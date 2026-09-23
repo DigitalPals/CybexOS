@@ -26,9 +26,9 @@ threads whose project checkouts can be put into each git state below.
 - [ ] Verify pointer and keyboard focus, then press Escape repeatedly: close
   the active connection/picker/menu layer first, return from Thread or New
   Thread to Inbox second, and close the drawer through the host last.
-- [ ] Open with `qs ipc call popouts toggle t3code`, then hover between T3 and
-  status-drawer glyphs. T3 keeps its own source and navigation while the
-  existing hover transition and held-state behavior remain intact.
+- [ ] Open with `cybexos-runtime ipc popouts toggle t3code`, then hover
+  between T3 and status-drawer glyphs. T3 keeps its own source and navigation
+  while the existing hover transition and held-state behavior remain intact.
 
 ## Visibility (options must only appear when they apply)
 
@@ -91,4 +91,4 @@ threads whose project checkouts can be put into each git state below.
 - [ ] Deploy through the Quickshell Ansible tag, wrapping the entire live check
   with `qs_live_begin` / `qs_live_end`. Inspect that service invocation's
   journal for QML load failures, syntax errors, and binding loops; open the
-  drawer with `qs ipc call popouts toggle t3code`.
+  drawer with `cybexos-runtime ipc popouts toggle t3code`.

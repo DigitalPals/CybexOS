@@ -1,5 +1,7 @@
 """Explicitly invoked QEMU qualification support; safe to import in source checks."""
+import ctypes
 import os
+import signal
 from pathlib import Path
 import shlex
 import shutil
@@ -31,7 +33,9 @@ def audit_script():
 OFFLINE_APPLICATION_AUDIT = r"""
 import hashlib
 import json
+import ctypes
 import os
+import signal
 from pathlib import Path
 import shutil
 import subprocess
@@ -77,6 +81,12 @@ def require_test_iso(iso):
     return iso
 
 
+def stop_with_harness():
+    # QEMU has its own process group so cleanup can flush it after Ctrl-C.
+    # Linux still terminates it if the harness process is killed.
+    ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGTERM)
+
+
 class TestVM:
     """Own exactly one disposable virtual disk; never attach host block devices."""
     def __init__(self, work, firmware="uefi", memory=16384):
@@ -113,11 +123,11 @@ class TestVM:
             raise RuntimeError("Test VM is already running")
         self.qmp_path.unlink(missing_ok=True)
         self.ssh_ready = False
-        self.ssh = ["ssh", "-i", str(self.key), "-p", str(self.port), "-o", "BatchMode=yes", "-o", "ConnectTimeout=3",
+        self.ssh = ["ssh", "-i", str(self.key), "-p", str(self.port), "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=10", "-o", "BatchMode=yes", "-o", "ConnectTimeout=3",
                     "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={self.work / 'known_hosts'}", f"{user}@127.0.0.1"]
         firmware = prepare_firmware(self.work) if self.firmware == "uefi" else []
         args = ["qemu-system-x86_64", "-name", "cybexos-qualification", "-machine", "q35,accel=kvm", "-cpu", "host", "-smp", "4", "-m", str(self.memory),
-                "-drive", f"file={self.disk},format=qcow2,if=virtio,serial=CYBEXOS-QUALIFICATION", *firmware,
+                "-drive", f"file={self.disk},format=qcow2,if=virtio,serial=CYBEXOS-QUALIFICATION,werror=report,rerror=report", *firmware,
                 "-device", "virtio-vga", "-device", "qemu-xhci", "-device", "usb-tablet",
                 "-netdev", f"user,id=net,restrict=on,hostfwd=tcp:127.0.0.1:{self.port}-:22", "-device", "virtio-net-pci,netdev=net",
                 "-vnc", f"127.0.0.1:{self.vnc_port - 5900}", "-serial", f"file:{self.work / 'serial.log'}",
@@ -125,7 +135,8 @@ class TestVM:
         if iso is not None:
             args += ["-cdrom", str(require_test_iso(iso)), "-boot", "d"]
         self.console = (self.work / "qemu.log").open("a")
-        self.process = subprocess.Popen(args, stdout=self.console, stderr=subprocess.STDOUT)
+        self.process = subprocess.Popen(args, stdout=self.console, stderr=subprocess.STDOUT,
+                                        process_group=0, preexec_fn=stop_with_harness)
         atomic_json(self.work / "vm.json", {"pid": self.process.pid, "ssh": self.ssh, "vnc_port": self.vnc_port, "qmp": str(self.qmp_path), "disk": str(self.disk)})
 
     def alive(self):

@@ -1166,12 +1166,16 @@ function normalizeEventPollIntervals(value) {
     return out;
 }
 
-// ---- conditional Inbox requests ----------------------------------------
+// ---- conditional requests -----------------------------------------------
 // Every Inbox read (workflow runs, repository events, notifications) is
 // fetched with `--include` so its validators, poll interval, and rate-limit
 // headers are visible. A 304 does not count against the primary rate limit,
 // which is what makes a 60-second sweep over dozens of repositories cheap.
-var CONDITIONAL_KINDS = { runs: true, events: true, notifications: true };
+// Repository discovery (/user/repos and each outside watch) is conditional
+// too: its ETags are process-local, and a 304 reuses the rows it last parsed
+// instead of transferring the ~1.5 MB page again.
+var CONDITIONAL_KINDS = { runs: true, events: true, notifications: true,
+    repos: true, watch: true };
 
 // The `-H` arguments for a conditional read. An empty validator sends
 // nothing, so the first request after a restart (or after a malformed
@@ -1193,6 +1197,15 @@ function notModifiedResponse(response, exitCode, errText) {
     if (response !== null && typeof response === "object" && response.notModified === true)
         return true;
     return exitCode !== 0 && typeof errText === "string" && /\bHTTP 304\b/i.test(errText);
+}
+
+// How a conditional read ended: "not-modified" stands on the rows parsed
+// last time, "ok" carries a body worth parsing, and "failed" is an error.
+function conditionalOutcome(response, exitCode, errText) {
+    if (notModifiedResponse(response, exitCode, errText))
+        return "not-modified";
+    return response !== null && response.status >= 200 && response.status < 300
+        && exitCode === 0 ? "ok" : "failed";
 }
 
 // Primary-rate-limit headroom kept for everything else that uses the same
@@ -1254,6 +1267,38 @@ var POLL_SLACK_MS = 5000;
 function pollDue(nextAtMs, nowMs) {
     var next = typeof nextAtMs === "number" && isFinite(nextAtMs) ? nextAtMs : 0;
     return next - nowMs <= POLL_SLACK_MS;
+}
+
+// ---- workflow-run cadence -----------------------------------------------
+// Workflow runs have no X-Poll-Interval, so their cadence is the shell's own.
+// A repository is read every sweep only while something is happening there:
+// a run is active, or its events feed has just reported what starts runs
+// (a push, a pull request, a new branch or tag, a release). The boost keeps
+// it hot for a few minutes, long enough for a workflow to be created and seen
+// running. Every other repository is read once per repository refresh
+// interval, which used to be every sweep for every repository.
+var RUN_TRIGGER_EVENTS = { PushEvent: true, PullRequestEvent: true, CreateEvent: true,
+    ReleaseEvent: true };
+var RUN_BOOST_MS = 3 * MINUTE_MS;
+// The events API lags the activity it reports, so a trigger slightly older
+// than the last runs read may still name a run that read could not see.
+var RUN_TRIGGER_SLACK_MS = 2 * MINUTE_MS;
+
+function runPollDue(nextAtMs, boostUntilMs, active, nowMs) {
+    if (active === true)
+        return true;
+    if (typeof boostUntilMs === "number" && isFinite(boostUntilMs) && boostUntilMs > nowMs)
+        return true;
+    return pollDue(nextAtMs, nowMs);
+}
+
+// Whether a repository-event page reports run-starting activity newer than
+// `sinceMs` (the last runs read, less the slack).
+function runTriggerSince(rows, sinceMs) {
+    var since = typeof sinceMs === "number" && isFinite(sinceMs) ? sinceMs : 0;
+    return (Array.isArray(rows) ? rows : []).some(function (row) {
+        return row && RUN_TRIGGER_EVENTS[row.eventType] === true && atMs(row) > since;
+    });
 }
 
 // ---- gh watchdog ---------------------------------------------------------
@@ -1882,6 +1927,77 @@ function inboxSections(rows) {
     ];
 }
 
+// ---- keyed popover lists ------------------------------------------------
+// The popover's Repeaters read their model out of a JSON string of row keys:
+// a string property only notifies when the keys or their order really
+// change, so a changed status updates a delegate in place instead of
+// recreating it (and its hover and keyboard focus). Delegates look their live
+// row up by key.
+var INBOX_SECTION_IDS = ["active", "attention", "updates", "settled"];
+
+function listKey(rows, field) {
+    return JSON.stringify((Array.isArray(rows) ? rows : []).map(function (row) {
+        return row && typeof row[field] === "string" ? row[field] : "";
+    }));
+}
+
+// The keys a listKey names; a malformed key names none.
+function listIds(key) {
+    try {
+        var ids = JSON.parse(key);
+        return Array.isArray(ids) ? ids.filter(function (id) {
+            return typeof id === "string";
+        }) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function rowIndex(rows, field) {
+    var index = {};
+    (Array.isArray(rows) ? rows : []).forEach(function (row) {
+        if (row && typeof row[field] === "string" && index[row[field]] === undefined)
+            index[row[field]] = row;
+    });
+    return index;
+}
+
+function inboxSectionFor(sections, id) {
+    var list = Array.isArray(sections) ? sections : [];
+    for (var i = 0; i < list.length; i++) {
+        if (list[i] && list[i].id === id)
+            return list[i];
+    }
+    return { id: id, title: "", rows: [] };
+}
+
+// A delegate can briefly outlive its row between the rows and their key
+// updating, so a missing key reads as an inert, settled, unlinked row rather
+// than undefined.
+function inboxRowFor(index, key) {
+    var row = index && typeof index === "object" ? index[key] : undefined;
+    if (row)
+        return row;
+    return {
+        id: key, key: key, kind: "", repo: "", title: "", detail: "", status: "",
+        conclusion: "", active: false, attention: false, tone: "muted", unread: false,
+        lifecycle: "settled", noticedAt: "", settledAt: "", canSettle: false,
+        at: "", url: "", missing: true
+    };
+}
+
+function repoFor(index, slug) {
+    var row = index && typeof index === "object" ? index[slug] : undefined;
+    if (row)
+        return row;
+    var parts = typeof slug === "string" ? slug.split("/") : [];
+    return {
+        slug: typeof slug === "string" ? slug : "", owner: parts[0] || "",
+        name: parts[1] || "", pushedAt: "", isPrivate: false, archived: false,
+        branch: "", watched: false, account: true, missing: true
+    };
+}
+
 function inboxCounts(rows) {
     var counts = { running: 0, attention: 0, updates: 0, pending: 0, settled: 0,
         unread: 0 };
@@ -2159,12 +2275,18 @@ var exported = {
     CONDITIONAL_KINDS: CONDITIONAL_KINDS,
     conditionalArgs: conditionalArgs,
     notModifiedResponse: notModifiedResponse,
+    conditionalOutcome: conditionalOutcome,
     RATE_LIMIT_FLOOR: RATE_LIMIT_FLOOR,
     rateLimitPause: rateLimitPause,
     rateLimitMessage: rateLimitMessage,
     nextPollInterval: nextPollInterval,
     POLL_SLACK_MS: POLL_SLACK_MS,
     pollDue: pollDue,
+    RUN_TRIGGER_EVENTS: RUN_TRIGGER_EVENTS,
+    RUN_BOOST_MS: RUN_BOOST_MS,
+    RUN_TRIGGER_SLACK_MS: RUN_TRIGGER_SLACK_MS,
+    runPollDue: runPollDue,
+    runTriggerSince: runTriggerSince,
     GH_TIMEOUT_MS: GH_TIMEOUT_MS,
     GH_INTERACTIVE_TIMEOUT_MS: GH_INTERACTIVE_TIMEOUT_MS,
     GH_KILL_GRACE_MS: GH_KILL_GRACE_MS,
@@ -2198,6 +2320,13 @@ var exported = {
     removeInboxSources: removeInboxSources,
     inboxRows: inboxRows,
     inboxSections: inboxSections,
+    INBOX_SECTION_IDS: INBOX_SECTION_IDS,
+    listKey: listKey,
+    listIds: listIds,
+    rowIndex: rowIndex,
+    inboxSectionFor: inboxSectionFor,
+    inboxRowFor: inboxRowFor,
+    repoFor: repoFor,
     inboxCounts: inboxCounts,
     inboxBadgeTone: inboxBadgeTone,
     patchRunCache: patchRunCache,

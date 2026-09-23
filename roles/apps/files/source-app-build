@@ -9,6 +9,9 @@ tag=${4:?authorized source tag required}
 revision=${5:?authorized source commit required}
 build_image=${6:?immutable build container image required}
 root="/opt/cybexos-builds/$name"
+# Abort a stalled transfer rather than holding the build slot until Ansible's
+# async limit, and never wait on a credential prompt nobody can answer.
+export GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME=60 GIT_TERMINAL_PROMPT=0
 mkdir -p "$root/versions" "$root/logs"
 [[ $build_image =~ ^.+@sha256:[[:xdigit:]]{64}$ ]] || {
   echo "Source build image must be pinned by sha256 digest" >&2
@@ -46,16 +49,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Resolve only the inventory-authorized tag and reject a moved tag before clone.
 [[ $revision =~ ^[[:xdigit:]]{40}$ ]] || { echo "Authorized source commit is not a full SHA-1" >&2; exit 1; }
-ls_remote=$(git ls-remote --tags "$repo" "refs/tags/$tag" "refs/tags/$tag^{}")
-resolved=$(awk -v ref="refs/tags/$tag^{}" '$2 == ref {print $1}' <<<"$ls_remote")
-[[ -n $resolved ]] || resolved=$(awk -v ref="refs/tags/$tag" '$2 == ref {print $1}' <<<"$ls_remote")
-[[ $resolved == "$revision" ]] || {
-  echo "Authorized $repo tag $tag resolved to ${resolved:-nothing}, expected $revision" >&2
-  exit 1
-}
 
+# The authorized commit, image, and recipe identify the build completely. An
+# intact matching deployment needs no network: a routine converge makes no
+# remote round trip and an offline one reports no false update failure.
 recipe=$(sha256sum "$0" | awk '{print $1}')
 manifest="revision=$revision image=$build_image recipe=$recipe"
 if [[ -L $root/current && -r $root/current/.cybexos-build ]] \
@@ -70,8 +68,17 @@ if [[ -L $root/current && -r $root/current/.cybexos-build ]] \
   fi
 fi
 
+# Resolve only the inventory-authorized tag and reject a moved tag before clone.
+ls_remote=$(timeout 120 git ls-remote --tags "$repo" "refs/tags/$tag" "refs/tags/$tag^{}")
+resolved=$(awk -v ref="refs/tags/$tag^{}" '$2 == ref {print $1}' <<<"$ls_remote")
+[[ -n $resolved ]] || resolved=$(awk -v ref="refs/tags/$tag" '$2 == ref {print $1}' <<<"$ls_remote")
+[[ $resolved == "$revision" ]] || {
+  echo "Authorized $repo tag $tag resolved to ${resolved:-nothing}, expected $revision" >&2
+  exit 1
+}
+
 work=$(mktemp -d "$root/.build.XXXXXX")
-git clone --quiet --depth 1 --branch "$tag" "$repo" "$work/src"
+timeout 20m git clone --quiet --depth 1 --branch "$tag" "$repo" "$work/src"
 cloned=$(git -C "$work/src" rev-parse HEAD)
 [[ $cloned == "$revision" ]] || {
   echo "Clone of $repo tag $tag resolved to $cloned, expected $revision; previous version retained" >&2

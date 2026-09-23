@@ -14,7 +14,8 @@ import "../Common"
 // Three things this panel used to carry live elsewhere now. The battery
 // reading belongs to its own menubar widget and BatteryPopover, which also
 // owns the power profile; Tailscale keeps its detail view, reachable from
-// `qs ipc call popouts toggle tailscale`, but no longer holds a cell here.
+// `cybexos-runtime ipc popouts toggle tailscale`, but no longer holds a cell
+// here.
 // What is left is one shape per idea: a card, a full-width row, a grid tile,
 // a segmented track, separated by the SectionLabel the rest of the shell
 // already draws.

@@ -173,7 +173,7 @@ test("file-change reloads are debounced once settings are live", () => {
     const settings = read("Common/Settings.qml");
     assert.match(settings,
         /onFileChanged: \{\s*if \(root\.loaded\)\s*reloadTimer\.restart\(\);\s*else\s*reload\(\);\s*\}/);
-    assert.match(settings, /id: reloadTimer\s*interval: 250\s*onTriggered: store\.reload\(\)/);
+    assert.match(settings, /id: reloadTimer\s*interval: 250\s*onTriggered: root\.reloadStore\(\)/);
     assert.match(functionSource(settings, "set"), /SettingsHelpers\.normalizeKey\(key, value\)/);
 });
 
@@ -237,8 +237,23 @@ test("plugin discovery keeps the last good state and cannot wedge", () => {
     assert.ok(guard > 0, "a registry error must not be applied");
     assert.ok(guard < handler.indexOf("root.plugins = result.plugins"));
     assert.match(plugins, /id: scanWatchdog[^]*?scanner\.running = false;/);
-    assert.match(plugins, /interval: Settings\.panelOpen \? 2000 : 30000/);
+    assert.match(plugins, /interval: Settings\.panelOpen \? 2000 : 300000/);
+    // Package trees are polled only for an enabled plugin, never while idle.
+    assert.match(plugins,
+        /running: !Activity\.idle && \(Settings\.panelOpen \|\| root\.enabled\.length > 0\)/);
+    assert.match(plugins, /target: Activity[\s\S]{0,80}function onResumed\(\)[\s\S]{0,120}root\.refresh\(\)/);
+    assert.match(plugins, /Component\.onCompleted: refresh\(\)/,
+        "the first scan cannot wait for a poll that needs its result to run");
     assert.match(plugins, /FileView \{\s*path: root\.registryPath\s*watchChanges: true/);
+    // Neither process may wedge its queue when python3 cannot start.
+    for (const id of ["scanner", "writer"]) {
+        const block = plugins.slice(plugins.indexOf("id: " + id));
+        const exited = block.slice(block.indexOf("onExited:"));
+        assert.ok(block.indexOf("onRunningChanged:") >= 0, id + " settles on running");
+        assert.doesNotMatch(exited.slice(0, exited.indexOf("}")),
+            /refresh|nextWrite|widgetMembershipFinished/, id + " must not settle in onExited");
+    }
+    assert.match(plugins, /exitSeen \? lastExit : ProcHelpers\.NOT_STARTED[\s\S]{0,700}?Qt\.callLater\(root\.nextWrite\)/);
 });
 
 test("one plugin's exception cannot abort the registry sync", () => {

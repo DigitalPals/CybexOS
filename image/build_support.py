@@ -222,6 +222,7 @@ def select_firmware(directory=Path("/usr/share/qemu/firmware"), fallback_root=Pa
         ("OVMF", "OVMF_CODE_4M.fd", "OVMF_VARS_4M.fd"),
         ("OVMF", "OVMF_CODE.fd", "OVMF_VARS.fd"),
         ("edk2/ovmf", "OVMF_CODE.fd", "OVMF_VARS.fd"),
+        ("edk2/x64", "OVMF_CODE.4m.fd", "OVMF_VARS.4m.fd"),
     ):
         paths = [Path(fallback_root) / folder / name for name in (code, variables)]
         if all(path.is_file() for path in paths):

@@ -26,6 +26,7 @@ write_mock() {
 }
 
 write_mock hyprctl \
+  'printf "%s\n" "$*" >> "$BRIGHTNESS_TEST_LOG/hyprctl"' \
   'printf "%s\n" "{\"focused\": true, \"make\": \"$BRIGHTNESS_TEST_MAKE\"}" | sed "s/^/[/;s/$/]/"'
 
 write_mock asdcontrol \
@@ -54,7 +55,18 @@ write_mock brightnessctl \
   '[[ ${1:-} == -m ]] && printf "intel_backlight,backlight,317,62%%,512\n"' \
   'exit 0'
 
-# qs is absent on purpose: the OSD ping must stay optional.
+# The OSD ping goes through $HOME/.local/bin/cybexos-runtime. HOME is a
+# fixture so no run can reach the desktop running this suite, and it has no
+# resolver at all unless a case installs one: the ping must stay optional.
+home="$fixture/home"
+mkdir -p "$home"
+install_runtime() {
+  mkdir -p "$home/.local/bin"
+  printf '%s\n' '#!/usr/bin/env bash' \
+    'printf "%s\n" "$*" >> "$BRIGHTNESS_TEST_LOG/cybexos-runtime"' \
+    > "$home/.local/bin/cybexos-runtime"
+  chmod +x "$home/.local/bin/cybexos-runtime"
+}
 
 run() {
   local make=$1 runtime=$2
@@ -65,6 +77,7 @@ run() {
   BRIGHTNESS_TEST_RAW="${raw:-60000}" \
   BRIGHTNESS_HID_NODES="$nodes/hiddev*" \
   XDG_RUNTIME_DIR="$runtime" \
+  HOME="$home" \
   PATH="$mock_bin:$PATH" \
     bash "$script" "$@"
 }
@@ -138,5 +151,36 @@ printf '%s' "$nodes/hiddev0" > "$runtime/brightness-control.hiddev"
 [[ $(run 'Apple Computer Inc' "$runtime" get) == 100 ]] || fail 'a stale cache must recover'
 [[ $(<"$runtime/brightness-control.hiddev") == "$nodes/hiddev1" ]] \
   || fail 'recovery must rewrite the cache to the node that answered'
+
+# ---- without asdcontrol, a held key starts nothing it cannot use ----------
+# The keys repeat ~40 times a second. With no HID tool the answer is the
+# backlight whatever the focused monitor is, so hyprctl and jq never start.
+plain_bin="$fixture/plain-bin"
+mkdir -p "$plain_bin"
+cp "$mock_bin/hyprctl" "$mock_bin/brightnessctl" "$plain_bin/"
+fresh
+BRIGHTNESS_TEST_MAKE='Apple Computer Inc' \
+BRIGHTNESS_TEST_LOG="$log_dir" \
+XDG_RUNTIME_DIR="$fixture/run" \
+HOME="$home" \
+PATH="$plain_bin:/usr/bin:/bin" \
+  bash "$script" up 5
+grep -Fxq 'set 5%+' "$log_dir/brightnessctl" || fail 'without asdcontrol the backlight must still step'
+[[ ! -e $log_dir/hyprctl ]] || fail 'without asdcontrol, hyprctl must not run on every key repeat'
+
+# ---- the OSD hears about writes through the runtime resolver --------------
+# The shell runs by path, so a bare `qs ipc call` finds no configuration.
+install_runtime
+for verb in 'set 40' 'up 5' 'down 5'; do
+  fresh
+  # shellcheck disable=SC2086 # the verb and its argument are two words
+  run 'Dell Inc.' "$fixture/run" $verb
+  [[ -f $log_dir/cybexos-runtime \
+      && $(<"$log_dir/cybexos-runtime") == 'ipc osd brightness' ]] \
+    || fail "$verb must ping the OSD through cybexos-runtime ipc"
+done
+fresh
+run 'Dell Inc.' "$fixture/run" get > /dev/null
+[[ ! -e $log_dir/cybexos-runtime ]] || fail 'get must not ping the OSD: the shell calls it'
 
 printf 'Brightness routes by focused monitor: HID for Apple displays, sysfs backlight otherwise\n'

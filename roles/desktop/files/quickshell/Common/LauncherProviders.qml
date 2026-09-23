@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import "LauncherProviders.js" as ProviderHelpers
+import "ProcHelpers.js" as ProcHelpers
 
 // All command-palette data and side effects live here. LauncherView only
 // renders normalized rows, so adding a provider no longer expands the view's
@@ -241,7 +242,11 @@ Singleton {
             Launcher.close();
             break;
         case "windows":
-            Hyprland.dispatch("focuswindow address:" + row.win.address);
+            // Hyprland reads a dispatch as Lua, and its address selector
+            // matches the 0x-prefixed form that Quickshell's hex address
+            // leaves out.
+            Hyprland.dispatch('hl.dsp.focus({ window = "address:0x'
+                + row.win.address + '" })');
             Launcher.close();
             break;
         case "clipboard":
@@ -346,12 +351,27 @@ Singleton {
         }
     }
 
+    // The search processes settle on the falling edge of `running`: a binary
+    // that cannot start (fd or qalc not installed) emits no `exited`, and
+    // waiting for one would leave the launcher "Searching…" for good.
     Process {
         id: fileProc
         property string request: ""
+        property bool exitSeen: false
+        property int lastExit: 0
         onRunningChanged: {
-            if (running)
+            if (running) {
                 request = root.term;
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            if (request !== root.term || root.activeProviderId !== "files")
+                return;
+            root.fileLoading = false;
+            const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+            if (code !== 0 && root.fileError === "")
+                root.fileError = ProcHelpers.commandError("File search", code, "");
         }
         stdout: StdioCollector {
             onStreamFinished: {
@@ -369,11 +389,8 @@ Singleton {
             }
         }
         onExited: (exitCode, exitStatus) => {
-            if (request === root.term && root.activeProviderId === "files") {
-                root.fileLoading = false;
-                if (exitCode !== 0 && root.fileError === "")
-                    root.fileError = `File search exited with status ${exitCode}`;
-            }
+            fileProc.exitSeen = true;
+            fileProc.lastExit = exitCode;
         }
     }
 
@@ -404,9 +421,21 @@ Singleton {
     Process {
         id: calcProc
         property string request: ""
+        property bool exitSeen: false
+        property int lastExit: 0
         onRunningChanged: {
-            if (running)
+            if (running) {
                 request = root.term;
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            if (request !== root.term || root.activeProviderId !== "calculator")
+                return;
+            root.calcLoading = false;
+            const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+            if (code !== 0 && root.calcError === "")
+                root.calcError = ProcHelpers.commandError("Calculator", code, "");
         }
         stdout: StdioCollector {
             onStreamFinished: {
@@ -423,12 +452,8 @@ Singleton {
             }
         }
         onExited: (exitCode, exitStatus) => {
-            if (request === root.term
-                    && root.activeProviderId === "calculator") {
-                root.calcLoading = false;
-                if (exitCode !== 0 && root.calcError === "")
-                    root.calcError = `Calculator exited with status ${exitCode}`;
-            }
+            calcProc.exitSeen = true;
+            calcProc.lastExit = exitCode;
         }
     }
 
@@ -437,6 +462,8 @@ Singleton {
         property int generation: -1
         property var buffer: []
         property string errText: ""
+        property bool exitSeen: false
+        property int lastExit: 0
         command: ["sh", "-c", "command -v cliphist >/dev/null 2>&1"
             + " || exit 127; exec cliphist list"]
         stdout: SplitParser {
@@ -446,21 +473,31 @@ Singleton {
             onStreamFinished: clipboardListProc.errText = text.trim()
         }
         onExited: (exitCode, exitStatus) => {
+            clipboardListProc.exitSeen = true;
+            clipboardListProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
             if (generation !== root.clipboardRefreshGeneration) {
                 clipboardRefreshRestart.restart();
                 return;
             }
             root.clipboardLoading = false;
-            if (exitCode === 0) {
+            const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+            if (code === 0) {
                 root.clipboardEntries = clipboardListProc.buffer.slice();
                 root.clipboardError = "";
-            } else if (exitCode === 127) {
+            } else if (code === 127) {
                 root.clipboardEntries = [];
                 root.clipboardError = "cliphist is not installed";
             } else {
                 root.clipboardError = clipboardListProc.errText !== ""
                     ? clipboardListProc.errText
-                    : `Clipboard history exited with status ${exitCode}`;
+                    : ProcHelpers.commandError("Clipboard history", code, "");
             }
         }
     }

@@ -12,7 +12,7 @@ table in the README links here instead of duplicating these details.
 | `./bootstrap` | Compatibility alias for `./install`. |
 | `./tests/run` | Runs all required source-tree checks without inspecting or changing the live machine. |
 | `./verify` | Runs complete source and non-destructive installed-system checks. Use `--source`, `--system`, or `--quick` for a narrower scope and `--json` for automation. |
-| `./update` | Resolves and verifies the selected GitHub release channel, applies a newer compatible release, then starts the durable Fedora/Flatpak worker. |
+| `./update` | Resolves and verifies the selected GitHub release channel, applies a newer compatible release, then starts the durable Fedora/Flatpak worker. If the release cannot be checked, verified, or staged, it still updates packages and exits 69. |
 | `./update --system-only` | Skips the project release check and updates Fedora packages and system Flatpaks only. |
 | `cybex agent` | Launches the selected AI coding agent in the current directory; an unset interactive session opens the picker. |
 | `cybex agent --pick` | Selects, persists, and launches an installed OpenCode, Claude Code, or Codex CLI. |
@@ -20,6 +20,13 @@ table in the README links here instead of duplicating these details.
 | `cybex dev status` | Reports the active development or vendor runtime. |
 | `cybex dev disable` | Returns desktop components to the verified vendor runtime. |
 | `./uninstall` | Removes CybexOS-owned services and configuration, restores first-adoption backups, and retains installed applications. Pass `--keep-user-data` to retain backup/updater state after restoration. |
+
+`./install` and `./uninstall` pass `--ask-become-pass` to Ansible unless sudo
+works without a terminal. Ansible's workers detach from the terminal, so the
+ticket that `sudo -v` caches there cannot authorize their privileged tasks.
+Both take the durable updater's lock before changing the machine and exit
+with status 75 while an update is running, so a playbook never interleaves
+with an update's DNF transaction or configuration run.
 
 For repository development, run Ansible directly after the source gate. The
 saved installer configuration is deliberately supplied explicitly:
@@ -29,6 +36,12 @@ saved installer configuration is deliberately supplied explicitly:
 ansible-playbook site.yml -e @/etc/cybexos/config.yml --check --diff
 ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags desktop,dotfiles
 ```
+
+`ansible.cfg` pipelines modules to the Python interpreter instead of writing
+a temporary file for every task, and sets `force_handlers`. A handler notified
+before a later task failed (an initramfs rebuild, a daemon-reload, a service
+restart) therefore still runs; a retry would see its triggering task as
+unchanged and never notify it again.
 
 The public release updater applies a candidate through the lower-level durable
 worker with `--full --skip-tests --repo <verified-stage>`. That internal path
@@ -89,6 +102,13 @@ currently exist for `browser`, `onepassword`, `fonts`, `font-defaults`, `package
 narrow tags are development tools, not independent installation profiles;
 their prerequisites can live in an earlier role.
 
+The `quickshell` tag compares the deployed shell tree with the managed sources
+in one read-only pass and writes only the files that differ. An unchanged
+tree skips qmllint, and with an unchanged Quickshell unit also the live
+snapshot and the verified restart; `--tags quickshell-lint` still runs qmllint
+on its own. Bytecode caches written by the running shell's Python helpers do
+not count as a change; the next real deployment clears them.
+
 The `font-defaults` tag installs Liberation Sans/Serif/Mono, the full Noto
 collection, Noto CJK Sans/Serif/Mono, Noto Color Emoji, and Font Awesome
 (desktop and web fonts),
@@ -137,9 +157,11 @@ moved automatically; close both browsers before migrating profile data.
 `user-tools` deploys and runs the CLI updater on an existing developer-tools
 installation. Codex resolves npm's `latest` release each time this updater runs;
 it validates the downloaded version before activating it and retains the working
-installation if resolution or download fails. Claude Code and OpenCode retain
-their inventory pins. System verification checks Codex locally without requiring
-the npm registry; freshness is checked by the updater.
+installation if resolution or download fails. Claude Code's inventory pin is a
+minimum: an older or missing Claude Code is installed at the pin, while a newer
+one (Claude Code updates itself) is left alone rather than downgraded. OpenCode
+retains its exact inventory pin. System verification checks Codex locally
+without requiring the npm registry; freshness is checked by the updater.
 
 Every invocation still executes tasks tagged `always`. That includes fresh
 fact gathering, the feature contract, Fedora/architecture/user validation,
@@ -210,15 +232,31 @@ immutable, its release and asset attestations verify, the downloaded SHA-256
 matches GitHub metadata, and its manifest supports the current Fedora release,
 architecture, configuration schema, and updater version.
 
+Verifying the attestations uses `gh`, which needs a login: run
+`gh auth login` once (or provide `GH_TOKEN`). The updater checks this before
+downloading anything. Fedora and Flatpak updates never depend on GitHub: when
+the release cannot be checked (offline, an API error or rate limit), verified,
+or staged, the updater says why, removes any partial stage, and runs the
+package-only update. The terminal command then exits 69 after a successful
+package run; `--start --json` returns the started run with a `projectError`
+field, and `--check --json` reports an available release together with a
+`projectError` when it could not be verified yet. A request with
+`--no-packages` has nothing to fall back to and fails.
+
 The verified archive is extracted into a new versioned directory. A dedicated
 durable system worker owns configuration migration, candidate application,
 agent-skill reconciliation, rollback, and the atomic `current` symlink change.
 Detaching the terminal cannot split those steps, and an unrelated active
 update is never accepted as the candidate transaction. Apply failure restores
 the pre-migration configuration; activation failure also restores the prior
-`current` target and every agent-skill slot. The active release plus two recent
-release directories are retained as recovery material; filesystem rollback
-remains the supported way to reverse system package changes.
+`current` target and every agent-skill slot. Files that Ansible had already
+deployed from the candidate are not rolled back, so after a failed or
+abandoned apply the run's `status.json` records `mixedState: true`: the
+machine runs the previous release with some newer managed files. Retry
+`cybex update` once the cause is fixed, or converge the active release again
+with `~/.local/share/cybexos/current/install`. The active release plus two
+recent release directories are retained as recovery material; filesystem
+rollback remains the supported way to reverse system package changes.
 
 Useful release commands are:
 
@@ -233,15 +271,19 @@ cybex update --system-only
 
 ## Durable updater lifecycle
 
-The package/configuration worker is a transient service. Terminal invocations
-retain the sudo path and may use a user service while cached authorization is
-available. Quickshell explicitly requests a system service; when authorization
-is needed, systemd's own Polkit action is handled by the graphical session
-agent, so no terminal is opened and progress remains in the Updates view.
+The package/configuration worker is a transient service. It has no terminal,
+and sudo's default ticket (`timestamp_type=tty`) is tied to the terminal that
+authenticated, so a terminal invocation uses a user service only when sudo
+works without any terminal (for example passwordless sudo). Otherwise it
+authenticates once and starts a system service. Quickshell explicitly requests
+a system service; when authorization is needed, systemd's own Polkit action is
+handled by the graphical session agent, so no terminal is opened and progress
+remains in the Updates view.
 Release transactions also use a system service because their configuration
 migration and activation must outlive the client. Closing the view or pressing
 Ctrl+C while attached only detaches the observer. At most one worker can own
-the update lock.
+the update lock. The worker runs at nice 10 with a CPU and I/O weight of 20,
+so the desktop stays responsive while it works.
 
 Use the installed backend to inspect or control it:
 
@@ -255,16 +297,25 @@ cybexos-update-run dismiss
 ```
 
 Each command accepts a run ID where documented by `cybexos-update-run --help`.
-`cancel` is explicit and terminates an active worker; Ctrl+C during `attach`
-does not. `dismiss` only changes the completed status shown by the UI and does
-not delete its logs.
+`cancel` is explicit; Ctrl+C during `attach` never cancels. The stop request
+reaches only the worker process (`KillMode=mixed`), because interrupting
+DNF/RPM midway can leave duplicate or half-upgraded packages. A running
+package transaction, repository check, or Ansible play therefore finishes
+first, and the worker records `cancelled` at the next step boundary;
+`status --json` reports `cancelRequested: true` meanwhile. Once Ansible has
+started, the run completes or fails instead, so installed files and the active
+release stay coherent. A worker still running 30 minutes after the request is
+killed. A package phase started by an updater without this contract is not
+cancellable. `dismiss` only changes the completed status shown by the UI and
+does not delete its logs.
 
 Run state lives under `~/.local/state/cybexos/update/`. Each run has a private
 directory under `logs/<run-id>/` containing:
 
 - `status.json`: atomic machine-readable phase, result, component exit codes,
-  timestamps, transient unit name, and the pre-update `snapshotId` when one
-  was created;
+  timestamps, transient unit name, the pre-update `snapshotId` when one was
+  created, and `mixedState` when a release apply stopped after Ansible began
+  changing files;
 - `run.log`: the complete combined stream with `dnf`, `flatpak`, `tests`, and
   `ansible` prefixes;
 - component logs such as `dnf.log`, `flatpak.log`, `tests.log`, and
@@ -273,9 +324,9 @@ directory under `logs/<run-id>/` containing:
 The twenty newest valid run directories are retained. For a worker that looks
 stuck, start with `cybexos-update-run status --json`, inspect `run.log`, then use
 the `unit` field with `systemctl --user status <unit>` and
-`journalctl --user -u <unit>`. If the unit disappeared without final status,
-the next status read marks the run failed with phase `abandoned` instead of
-blocking all future updates.
+`journalctl --user -u <unit>` (without `--user` when `systemUnit` is true). If
+the unit disappeared without final status, the next status read marks the run
+failed with phase `abandoned` instead of blocking all future updates.
 
 ## Update recovery points
 
@@ -336,12 +387,72 @@ Do not shut down or reboot while `cybexos-update-run status` reports `queued` or
 not a machine power cycle. Wait for a terminal state (`done`, `failed`, or
 `cancelled`), or cancel deliberately and confirm the terminal state first.
 
+While it runs, the worker holds a logind block inhibitor for shutdown and
+sleep (`systemd-inhibit --list` shows `CybexOS`), so ordinary power-off,
+reboot, and suspend requests, including idle suspend, are refused until it
+finishes. `systemctl poweroff -i` overrides it deliberately. Closing a laptop
+lid still suspends, because logind's default `LidSwitchIgnoreInhibited=yes`
+ignores inhibitors; keep the lid open during an update. The protection is
+complete for a system-service worker (Quickshell and release updates). logind
+does not apply a user's own inhibitor to that user's requests, and Polkit may
+refuse it to a user-service worker altogether; `run.log` then records an
+`[inhibit]` line and the update continues unprotected.
+
 No repository command automatically reboots or powers off the machine.
 Ordinary package updates can install a new kernel for the next boot. A direct
 bootstrap can rebuild initramfs through the `boot` role. The IPU7 camera role
 can also leave `/var/lib/xps-hardware/ipu7/reboot-required` when new signed
 DKMS modules must be loaded in a clean boot. Let the play finish, inspect its
 result, then perform one normal reboot. `./verify` reports this camera state.
+
+## Idle, power, and background services
+
+hypridle runs the idle timeline from **Settings → System → Idle**, unless a
+regular file at `~/.config/cybexos/hypr/hypridle.conf` replaces it. A new
+installation locks after five idle minutes, turns the screen off after ten,
+and suspends after 30 minutes only on battery, so a machine on mains power,
+including every desktop, stays awake. A laptop that reaches the suspend
+timeout on mains power checks again every minute until the next input, and
+suspends if it is unplugged meanwhile. Existing installations keep their
+stored values: the shell writes every key to `shell.json`, so a stored Never
+cannot be told apart from a deliberate one.
+
+A locked screen turns off about a minute after the last input, whether it was
+locked by hand or by the idle lock; a Screen off setting of Never keeps it lit.
+Every suspend waits for the lock. For a lid close or any other sleep request,
+hypridle's `inhibit_sleep = 3` holds the sleep until the compositor reports
+the session locked, for as long as logind allows a delay. The shell's Suspend
+and idle suspend call `systemctl suspend` only after `hyprctl locked`
+confirms the lock. Without that confirmation within eight seconds the machine
+stays awake, and a lock screen that is still starting is left running rather
+than stopped.
+
+hypridle reads its configuration only when it starts. A converge that changes
+its configuration, its unit, the runtime resolver, or the timeout renderer
+restarts a running hypridle, so new timeouts apply without logging in again.
+hypridle only tracks idle time, so the restart neither locks nor unlocks the
+session.
+
+Docker is socket-activated: `docker.socket` starts dockerd, and with it
+containerd, on the first client request instead of at boot. Containers with a
+`restart=always` policy therefore wait for the first `docker` command after
+boot. A converge leaves a daemon that is already running alone.
+
+The weekly Btrfs scrub runs only on AC power and reads at most 200 MiB/s per
+device. A run skipped on battery is not caught up when the charger returns; it
+waits for the next weekly trigger.
+
+Dictation requires the `developer_tools` feature, which also downloads its
+model and binds its keys. Without it the Voxtype user unit is not installed,
+and a converge stops and removes one left by an earlier run. The daemon loads
+the model when a recording starts and releases it when idle, so the first
+dictation after an idle period has a short load delay.
+
+mpv prefers hardware decoding: a managed block at the top of
+`/etc/mpv/mpv.conf` sets `hwdec=auto-safe`, which uses only the decoders mpv
+considers reliable and falls back to software otherwise. Lines below the block
+and a personal `~/.config/mpv/mpv.conf` override it; uninstall removes only
+the block.
 
 ## The strict source gate
 
@@ -354,16 +465,29 @@ from the executable itself:
 ./tests/run --list
 ```
 
-The current sixteen stages cover whole-source/Ansible syntax, ShellCheck,
-ansible-lint, yamllint, Ruff, Node unit tests, Hyprland workspace fixtures, QML
-static analysis, offscreen helper contracts, real-Quickshell component
-lifecycle coverage in CI, Quickshell deployment integration, callback and
-Python fixtures, transactional agent-skill lifecycle coverage, XPS hardware
+The stages cover whole-source/Ansible syntax, ShellCheck, ansible-lint,
+yamllint, Ruff, Node unit tests, Hyprland workspace fixtures, QML static
+analysis, offscreen helper contracts, real-Quickshell component lifecycle
+coverage in CI, Quickshell deployment integration, callback and Python
+fixtures, transactional agent-skill lifecycle coverage, XPS hardware
 integration, Plymouth layout, the durable updater, screenshot/brightness
-workflows, and Btrfs snapshot retention.
+workflows, Btrfs snapshot retention, and the fedora-config name migration.
+QML static analysis also lints the three real-engine test harnesses, each over
+a scratch copy of the tree, so a harness that drifted from the components it
+drives fails locally even while the managed shell keeps the real-engine run
+itself CI-only. The deploy's own lint (`tests/qml-lint --shell-only`) checks
+the shell alone.
+
+Independent stages run side by side, longest first, and their results print
+in the fixed order with the verdict last. `--jobs N` bounds the concurrency
+(`--jobs 1` runs serially) and `--only STAGE` runs a single stage. Every stage
+has a time limit (300 seconds; 600 for static lint and the Python fixtures),
+and a stage that exceeds it fails with whatever it printed rather than holding
+the gate open.
 
 The GitHub workflow runs the same `./tests/run` command in a Fedora 44
-container. The lower-level worker stops before Ansible if this gate fails.
+container. The lower-level worker stops before Ansible if this gate fails or
+does not finish within 30 minutes.
 `--skip-tests` is reserved for an already verified release candidate and is
 not part of the public command interface.
 
@@ -392,3 +516,9 @@ Then run `systemctl --user daemon-reload` and restart the managed
 `quickshell.service` at a safe time. Remove the drop-in and repeat those two
 commands to restore motion. Repository runtime tests set the variable only in
 their isolated offscreen process.
+
+The power saver profile is a reduced-motion request too, for as long as it is
+on; it changes neither this variable nor **Settings → Appearance → Reduce
+motion**. The compositor follows it as well: blur drops to one pass and
+Hyprland animations turn off, and the values it replaced return when power
+saver ends.

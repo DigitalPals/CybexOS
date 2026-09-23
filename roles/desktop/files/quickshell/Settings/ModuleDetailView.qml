@@ -30,7 +30,10 @@ SettingsPage {
 
     readonly property var opts: Settings.modOpts[moduleId] ?? ({})
     // The old options component can survive one binding update while switching widgets.
-    readonly property var indicatorOrder: opts.order || []
+    // Actions this installation cannot run are not shown (and cannot be
+    // dragged), but keep their saved place; see mergeIndicatorOrder.
+    readonly property var indicatorOrder: SettingsHelpers.availableIndicatorIds(
+        opts.order || [], Dictation.available)
     readonly property var indicatorEnabledIds: opts.enabled || []
     onModuleIdChanged: {
         cancelIndicatorDrag();
@@ -121,9 +124,9 @@ SettingsPage {
         let next = view.indicatorEnabledIds.filter(candidate => candidate !== id);
         if (enabled)
             next.push(id);
-        // Store enablement in visual order so hand-edited settings remain
-        // readable and deterministic.
-        next = view.indicatorOrder.filter(candidate => next.indexOf(candidate) !== -1);
+        // Store enablement in the saved order, hidden actions included, so
+        // hand-edited settings remain readable and deterministic.
+        next = (view.opts.order || []).filter(candidate => next.indexOf(candidate) !== -1);
         view.setOpt("enabled", next);
     }
 
@@ -159,7 +162,7 @@ SettingsPage {
             return;
         ids.splice(from, 1);
         ids.splice(to, 0, moved);
-        view.setOpt("order", ids);
+        view.setOpt("order", SettingsHelpers.mergeIndicatorOrder(ids, view.opts.order || []));
         Settings.announcement = view.indicatorMeta[moved].label
             + " moved to position " + (to + 1) + ".";
     }
@@ -276,7 +279,9 @@ SettingsPage {
                     width: parent.width
                     leftPadding: Theme.settingsMarkInset
                     bottomPadding: 4
-                    text: "Drag to reorder. Hidden recording and dictation controls still return while active so they can be stopped."
+                    text: "Drag to reorder. Hidden recording"
+                        + (Dictation.available ? " and dictation" : "")
+                        + " controls still return while active so they can be stopped."
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
                     color: Theme.textDim
@@ -465,6 +470,7 @@ SettingsPage {
             }
 
             SettingsGroup {
+                visible: Dictation.available
                 width: parent.width
                 title: "Dictation"
 
@@ -1364,6 +1370,10 @@ SettingsPage {
                 width: parent.width
                 minimumLabelWidth: githubRows.optionLabelWidth
                 label: "Repo refresh"
+                // Helpers.runPollDue: a repository with a running workflow or
+                // a fresh push, pull request, branch or release is read on
+                // every one-minute Inbox sweep; the rest wait this long.
+                hint: "Also how often quiet repos' workflow runs are read; busy ones every minute"
                 min: 1
                 max: 30
                 step: 1

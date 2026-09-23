@@ -310,21 +310,6 @@ def parse_routes(output: str) -> list[dict[str, Any]]:
     return routes
 
 
-def choose_primary(devices: list[dict[str, Any]], routes: list[dict[str, Any]]) -> dict[str, Any] | None:
-    physical = [device for device in devices
-                if device.get("type") in ("ethernet", "wifi") and device.get("connected")]
-    by_interface = {device["interface"]: device for device in physical}
-    candidates = [(route.get("metric", 2**31 - 1),
-                   0 if by_interface.get(route.get("interface"), {}).get("type") == "ethernet" else 1,
-                   route.get("interface", ""), by_interface[route["interface"]])
-                  for route in routes if route.get("interface") in by_interface]
-    if candidates:
-        return sorted(candidates, key=lambda item: item[:3])[0][3]
-    physical.sort(key=lambda device: (0 if device["type"] == "ethernet" else 1,
-                                      device["interface"]))
-    return physical[0] if physical else None
-
-
 def counter_root() -> Path:
     return Path(os.environ.get("NETWORK_TOOL_SYS_CLASS_NET", "/sys/class/net"))
 
@@ -378,17 +363,6 @@ def link_info(interface: str) -> dict[str, Any]:
     return output
 
 
-def ping_once(target: str) -> float | None:
-    if not target:
-        return None
-    result = run(["ping", "-n", "-c", "1", "-W", "1", target],
-                 seconds=timeout("NETWORK_TOOL_PING_TIMEOUT", 1.4), label="ping", check=False)
-    if result.returncode != 0:
-        return None
-    match = re.search(r"time[=<]([0-9]+(?:\.[0-9]+)?)\s*ms", result.stdout)
-    return float(match.group(1)) if match else None
-
-
 def wifi_scan(interface: str) -> subprocess.CompletedProcess[str]:
     return run([
         "nmcli", "-t", "--escape", "yes", "-f",
@@ -398,11 +372,13 @@ def wifi_scan(interface: str) -> subprocess.CompletedProcess[str]:
 
 
 def snapshot() -> dict[str, Any]:
-    # The panel polls this every 1.5 seconds, so independent lookups run side
-    # by side: the three NetworkManager/ip reads first, then the Wi-Fi scan,
-    # link and both pings, which only need the first round's answers.
-    # Results are collected in the old sequential order, so the first failure
-    # reported, and the payload itself, are unchanged.
+    # The panel asks for this on NetworkManager events and a slow safety
+    # poll, so independent lookups run side by side: the three
+    # NetworkManager/ip reads first, then the Wi-Fi scan and link, which only
+    # need the first round's answers.  Results are collected in the old
+    # sequential order, so the first failure reported is unchanged.  Latency
+    # and live throughput are not measured here: NetworkDetails keeps
+    # long-lived pings and reads the byte counters itself.
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         return snapshot_with(executor)
 
@@ -446,15 +422,8 @@ def snapshot_with(executor: concurrent.futures.Executor) -> dict[str, Any]:
             device["gateway"] = device.get("gateway") or matching_route.get("gateway", "")
 
     wifi_device = next((device for device in devices if device["type"] == "wifi"), None)
-    # Nothing below changes a device's type, state or gateway, so the primary
-    # interface and both ping targets are already settled here.
-    primary = choose_primary(devices, routes)
-    gateway = primary.get("gateway", "") if primary else ""
-    internet_target = os.environ.get("NETWORK_TOOL_PING_TARGET", "1.1.1.1")
     scan_future = executor.submit(wifi_scan, wifi_device["interface"]) if wifi_device else None
     link_future = executor.submit(link_info, wifi_device["interface"]) if wifi_device else None
-    router_future = executor.submit(ping_once, gateway) if gateway else None
-    internet_future = executor.submit(ping_once, internet_target) if primary else None
 
     networks: list[dict[str, Any]] = []
     link: dict[str, Any] = {}
@@ -473,9 +442,6 @@ def snapshot_with(executor: concurrent.futures.Executor) -> dict[str, Any]:
             wifi_device["security"] = connected_ap["security"]
         wifi_device.update({key: value for key, value in link.items() if key != "ssid"})
 
-    router_ping = router_future.result() if router_future else None
-    internet_ping = internet_future.result() if internet_future else None
-
     return {
         "success": True,
         "timestamp": int(time.time() * 1000),
@@ -487,7 +453,6 @@ def snapshot_with(executor: concurrent.futures.Executor) -> dict[str, Any]:
             "networks": networks,
             "link": link,
         },
-        "diagnostics": {"routerPingMs": router_ping, "internetPingMs": internet_ping},
     }
 
 

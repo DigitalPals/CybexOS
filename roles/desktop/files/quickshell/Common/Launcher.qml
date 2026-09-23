@@ -35,6 +35,14 @@ Singleton {
         const next = Object.assign({}, usage);
         next[key] = { count: previous.count + 1, last: Date.now() };
         usage = next;
+        // The ranking is live in memory already. The file is written once a
+        // burst of launches settles, so no write lands on the frame an app
+        // starts.
+        usageSaveTimer.restart();
+    }
+
+    function saveUsage() {
+        usageSaveTimer.stop();
         usageView.setText(JSON.stringify(usage));
     }
 
@@ -62,12 +70,28 @@ Singleton {
         close();
     }
 
+    Timer {
+        id: usageSaveTimer
+        interval: 2000
+        onTriggered: root.saveUsage()
+    }
+
+    // A reload or exit inside the debounce still records the launch. The
+    // view goes with this singleton, so that last write blocks rather than
+    // outliving it.
+    Component.onDestruction: {
+        if (!usageSaveTimer.running)
+            return;
+        usageView.blockWrites = true;
+        saveUsage();
+    }
+
     FileView {
         id: usageView
         path: root.usageFile
         printErrors: false
         atomicWrites: true
-        blockWrites: true
+        blockWrites: false
         onLoaded: {
             try {
                 const parsed = JSON.parse(text());

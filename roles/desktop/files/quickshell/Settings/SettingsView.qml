@@ -149,10 +149,12 @@ PopoutPanel {
         if (navItems.length === 0)
             return;
         const clamped = Math.max(0, Math.min(navItems.length - 1, position));
-        Settings.page = navItems[clamped].id;
+        // Focus first: a nav row is a tab stop only while current, and Qt
+        // will not drop activeFocusOnTab from the row that still has focus.
         const item = navDelegate(navItems[clamped].id);
         if (item)
             item.forceActiveFocus();
+        Settings.page = navItems[clamped].id;
     }
 
     function selectOffset(delta) {
@@ -283,8 +285,8 @@ PopoutPanel {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-                Settings.page = navItem.modelData.id;
                 navItem.forceActiveFocus();
+                Settings.page = navItem.modelData.id;
             }
         }
     }

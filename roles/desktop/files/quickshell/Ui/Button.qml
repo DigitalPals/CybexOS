@@ -162,6 +162,7 @@ BorderSurface {
     spacing: Style.spacing.controlGap
 
     Text {
+      id: iconLabel
       textFormat: Text.PlainText
       visible: root.iconText !== ""
       text: root.iconText
@@ -177,7 +178,8 @@ BorderSurface {
         to: 360
         duration: 900
         loops: Animation.Infinite
-        running: root.iconSpinning
+        // A hidden button has nothing to show turning.
+        running: root.iconSpinning && iconLabel.visible
       }
     }
 

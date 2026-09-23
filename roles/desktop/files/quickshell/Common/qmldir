@@ -10,6 +10,7 @@
 # resolve a registered type. qmldir.test.cjs carries both exemptions.
 
 singleton Theme Theme.qml
+singleton Activity Activity.qml
 singleton T3Theme T3Theme.qml
 singleton Palette Palette.qml
 singleton Popouts Popouts.qml

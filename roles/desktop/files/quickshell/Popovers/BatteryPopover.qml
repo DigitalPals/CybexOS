@@ -62,8 +62,9 @@ Surface {
         const segment = profileRepeater.itemAt(index);
         if (!segment || !segment.visible)
             return;
-        PowerProfiles.profile = profileRepeater.model[index].profile;
+        // Focus before the pick: see Settings/PillRow.
         segment.forceActiveFocus();
+        PowerProfiles.profile = profileRepeater.model[index].profile;
     }
 
     component TelemetryPair: Item {

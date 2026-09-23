@@ -66,7 +66,7 @@ def main():
     parser.add_argument("--cache", type=Path, default=Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "cybexos/image")
     parser.add_argument("--memory", type=int, default=24576, help="Builder VM RAM in MiB")
     parser.add_argument("--cpus", type=int, default=min(8, os.cpu_count() or 1))
-    parser.add_argument("--compression", choices=("xz", "zstd"), default="xz", help="xz is the previously validated default; zstd requires new qualification")
+    parser.add_argument("--compression", "--compress", choices=("xz", "zstd"), default="xz", help="xz is the previously validated default; zstd requires new qualification")
     parser.add_argument("--preflight", action="store_true", help="Only validate host dependencies/resources; no downloads, files or VM")
     parser.add_argument("--update-channel", type=Path, help="Reviewed public RPM update channel JSON; key is validated before transfer")
     parser.add_argument("--debug-on-failure", action="store_true", help="Keep a failed builder available until interrupted")
@@ -134,13 +134,13 @@ def main():
                 with socket.socket() as sock:
                     sock.bind(("127.0.0.1", 0))
                     port = sock.getsockname()[1]
-                ssh_options = ["-i", str(key), "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={work / 'known_hosts'}"]
+                ssh_options = ["-i", str(key), "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=10", "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={work / 'known_hosts'}"]
                 ssh = ["ssh", *ssh_options, "-p", str(port), "builder@127.0.0.1"]
                 atomic_json(output / "builder.json", {"ssh": ssh, "work": str(work)})
             with (output / "builder-console.log").open("w") as console:
                 vm = subprocess.Popen([
                     "qemu-system-x86_64", "-name", "cybexos-image-builder", "-machine", "q35,accel=kvm", "-cpu", "host", "-smp", str(args.cpus), "-m", str(args.memory),
-                    "-drive", f"file={work / 'system.qcow2'},if=virtio,format=qcow2", "-drive", f"file={work / 'seed.iso'},if=virtio,format=raw,readonly=on",
+                    "-drive", f"file={work / 'system.qcow2'},if=virtio,format=qcow2,werror=report,rerror=report", "-drive", f"file={work / 'seed.iso'},if=virtio,format=raw,readonly=on",
                     "-netdev", f"user,id=net,hostfwd=tcp:127.0.0.1:{port}-:22", "-device", "virtio-net-pci,netdev=net", "-display", "none", "-serial", "stdio", "-monitor", "none"], stdout=console, stderr=subprocess.STDOUT)
                 try:
                     with phase("Wait for builder and restore verified downloads", phases):
@@ -209,12 +209,16 @@ def main():
 
 
 if __name__ == "__main__":
-    def interrupted(_signal, _frame):
-        raise KeyboardInterrupt
-    for name in (signal.SIGTERM, signal.SIGHUP):
+    def interrupted(number, _frame):
+        raise KeyboardInterrupt(number)
+    for name in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(name, interrupted)
     try:
         main()
-    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError, KeyboardInterrupt) as error:
+    except KeyboardInterrupt as error:
+        number = error.args[0] if error.args else signal.SIGINT
+        print(f"image/build: interrupted by {signal.Signals(number).name}", file=sys.stderr)
+        sys.exit(128 + number)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         print(f"image/build: {error}", file=sys.stderr)
         sys.exit(1)

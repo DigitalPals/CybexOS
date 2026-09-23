@@ -1,6 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { load } = require("./shell.cjs");
+const fs = require("node:fs");
+const path = require("node:path");
+const { load, shellDir } = require("./shell.cjs");
 
 const P = load("LauncherProviders.js");
 
@@ -106,4 +108,63 @@ test("user actions require a name and argv command and cannot inject glyphs", ()
         "subtitles remain searchable even though the view does not draw them");
     assert.notEqual(P.parseActions("{").error, "");
     assert.notEqual(P.parseActions("{}").error, "");
+});
+
+function qmlFiles(dir) {
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory())
+            return qmlFiles(full);
+        return entry.name.endsWith(".qml") ? [full] : [];
+    });
+}
+
+// Hyprland here reads every dispatch as Lua (`hl.dispatch(<request>)`), so a
+// plain dispatcher word such as `focuswindow address:…` is a syntax error
+// that fails silently from the shell's side.
+test("window activation dispatches a Lua focus with Hyprland's address form", () => {
+    const providers = fs.readFileSync(
+        path.join(shellDir, "Common/LauncherProviders.qml"), "utf8");
+    const call = providers.match(
+        /case "windows":\s*(?:\/\/.*\n\s*)*Hyprland\.dispatch\(([\s\S]*?)\);\n/);
+    assert.ok(call, "the windows provider must dispatch through Hyprland");
+    // Quickshell reports the address as bare hex; Hyprland's selector
+    // compares against the 0x-prefixed form.
+    const request = new Function("row", `return ${call[1]};`)(
+        { win: { address: "55a33dbecb20" } });
+    assert.equal(request,
+        'hl.dsp.focus({ window = "address:0x55a33dbecb20" })');
+
+    for (const file of qmlFiles(shellDir)) {
+        const source = fs.readFileSync(file, "utf8");
+        for (const match of source.matchAll(/Hyprland\.dispatch\(\s*(['"`])(.*)/g))
+            assert.ok(match[2].startsWith("hl.dsp."),
+                `${path.relative(shellDir, file)} dispatches a non-Lua request: ${match[0]}`);
+    }
+});
+
+// Quickshell emits no `exited` when a binary cannot be launched, only the
+// falling edge of `running`; a provider waiting for `exited` would stay
+// "Searching…" forever when fd, qalc or sh is missing.
+test("launcher searches settle even when their binary never starts", () => {
+    const providers = fs.readFileSync(
+        path.join(shellDir, "Common/LauncherProviders.qml"), "utf8");
+    for (const [id, loading] of [["fileProc", "fileLoading"],
+            ["calcProc", "calcLoading"], ["clipboardListProc", "clipboardLoading"]]) {
+        const start = providers.indexOf(`id: ${id}`);
+        assert.notEqual(start, -1, `${id} is missing`);
+        const next = providers.indexOf("\n    Process {", start);
+        const next2 = providers.indexOf("\n    Timer {", start);
+        const end = Math.min(...[next, next2].filter(i => i !== -1), providers.length);
+        const block = providers.slice(start, end);
+        const falling = block.slice(block.indexOf("onRunningChanged"));
+        assert.match(falling, /exitSeen \? lastExit : ProcHelpers\.NOT_STARTED/,
+            `${id} must settle on the falling edge of running`);
+        assert.match(falling, new RegExp(`root\\.${loading} = false`),
+            `${id} must clear its loading state on the falling edge`);
+        const exited = block.slice(block.indexOf("onExited"),
+            block.indexOf("}", block.indexOf("onExited")));
+        assert.doesNotMatch(exited, new RegExp(loading),
+            `${id} must not wait for an exited signal that may never come`);
+    }
 });

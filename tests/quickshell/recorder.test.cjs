@@ -46,3 +46,29 @@ test("the recording indicator validates a marker against the live process", () =
     assert.match(recorder, /root\.recorderName = "";[\s\S]*root\.recomputeActive\(\)/,
         "a process that dies after startup must clear the indicator on the next poll");
 });
+
+test("recording and dictation state is watched, not reloaded on a timer", () => {
+    const recorder = fs.readFileSync(path.join(shellDir, "Common/Recorder.qml"), "utf8");
+    const dictation = fs.readFileSync(path.join(shellDir, "Common/Dictation.qml"), "utf8");
+    const script = fs.readFileSync(path.resolve(__dirname, "../../assets/scripts/screen-record"),
+        "utf8");
+
+    // A FileView reload rebuilds its inotify watches; the directory watch
+    // already sees files appear, so nothing reloads the watched views
+    // on a schedule. The directory must exist for that watch.
+    assert.match(recorder,
+        /command: \["mkdir", "-p", "-m", "0700", root\.stateDir\]\s*running: true\s*onRunningChanged: \{\s*if \(!running\)\s*root\.refresh\(\);/);
+    assert.match(script, /STATE_DIR="\$\{XDG_RUNTIME_DIR:-\/tmp\}\/screen-record"/);
+    assert.match(recorder, /\(Quickshell\.env\("XDG_RUNTIME_DIR"\) \|\| "\/tmp"\) \+ "\/screen-record"/,
+        "the shell and the script must agree on the state directory");
+    // Liveness: only procfs, only while a published PID names a live process.
+    assert.match(recorder,
+        /id: liveness\s*interval: 4000\s*running: root\.recorderPid > 0 && root\.recorderName !== ""\s*repeat: true\s*onTriggered: procView\.reload\(\)/);
+    for (const [label, source] of [["Recorder", recorder], ["Dictation", dictation]])
+        assert.doesNotMatch(source, /running: true\s*repeat: true/, `${label} has no unconditional poll`);
+
+    assert.match(dictation, /onLoaded: \{\s*root\.stateMissing = false;/);
+    assert.match(dictation, /onLoadFailed: \{\s*root\.stateMissing = true;/);
+    assert.match(dictation, /interval: 3000\s*running: root\.available && root\.stateMissing && !Activity\.idle/,
+        "without developer tooling there is no daemon to wait for");
+});

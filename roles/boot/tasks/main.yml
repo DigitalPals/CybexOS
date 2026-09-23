@@ -1,27 +1,43 @@
 ---
-- name: Install Fedora BGRT Plymouth theme support
+# Fedora's bgrt.plymouth definition is shipped in plymouth-theme-spinner; the
+# rendering plugin alone is insufficient on a minimal/Cloud installation. The
+# Cybex script theme shares the transaction, since each dnf run reloads all
+# repository metadata.
+- name: Install Fedora BGRT and selected Plymouth theme support
   ansible.builtin.dnf:
-    name:
-      - plymouth-plugin-two-step
-      # Fedora's bgrt.plymouth definition is shipped here; the rendering
-      # plugin alone is insufficient on a minimal/Cloud installation.
-      - plymouth-theme-spinner
+    name: >-
+      {{ ['plymouth-plugin-two-step', 'plymouth-theme-spinner']
+         + ((plymouth_theme == 'cybex') | ternary(['plymouth-plugin-script'], [])) }}
     state: present
 
-- name: Install optional Cybex Plymouth script theme support
-  ansible.builtin.dnf:
-    name: plymouth-plugin-script
-    state: present
+# The git module asks the remote about the pinned revision on every run, so a
+# converged cache would still need the network. Check the local checkout
+# first; like the module's own forced update, ignore only untracked files.
+- name: Inspect the cached Cybex Plymouth artwork checkout
+  ansible.builtin.shell: |
+    set -euo pipefail
+    checkout=/var/cache/cybexos-upstream/omarchy-cybex
+    [[ $(git -C "$checkout" rev-parse HEAD) == {{ boot_cybex_commit | quote }} ]]
+    [[ -z $(git -C "$checkout" status --porcelain --untracked-files=no) ]]
+  args:
+    executable: /bin/bash
+  register: boot_cybex_checkout
+  changed_when: false
+  failed_when: false
+  check_mode: false
   when: plymouth_theme == 'cybex'
 
 - name: Checkout pinned Cybex Plymouth artwork
   ansible.builtin.git:
     repo: https://github.com/DigitalPals/omarchy-cybex.git
     dest: /var/cache/cybexos-upstream/omarchy-cybex
-    version: e76c323ed69baf0efae12b2e7afb42635920607a
+    version: "{{ boot_cybex_commit }}"
     force: true
   register: boot_cybex_source
-  when: plymouth_theme == 'cybex' and not ansible_check_mode
+  when:
+    - plymouth_theme == 'cybex'
+    - not ansible_check_mode
+    - boot_cybex_checkout.rc | default(1) != 0
 
 - name: Inspect the cached Cybex source tree
   ansible.builtin.stat:
@@ -34,7 +50,7 @@
   register: boot_cybex_revision
   changed_when: false
   check_mode: false
-  failed_when: boot_cybex_revision.stdout != 'e76c323ed69baf0efae12b2e7afb42635920607a'
+  failed_when: boot_cybex_revision.stdout != boot_cybex_commit
   when:
     - plymouth_theme == 'cybex'
     - boot_cybex_source_tree.stat.isdir | default(false)

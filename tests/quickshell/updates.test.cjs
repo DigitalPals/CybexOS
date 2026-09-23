@@ -30,15 +30,29 @@ test("Flatpak output drops blank rows without changing application names", () =>
     assert.deepEqual(H.flatpakNames(undefined), []);
 });
 
-test("only a complete post-baseline zero-to-positive transition notifies", () => {
-    assert.equal(H.shouldNotify(true, true, 0, 3, true), true);
-    assert.equal(H.shouldNotify(true, false, 0, 3, true), false,
-        "the first successful snapshot establishes the baseline silently");
-    assert.equal(H.shouldNotify(false, true, 0, 3, true), false,
-        "a partial failure cannot announce a half-result");
-    assert.equal(H.shouldNotify(true, true, 2, 3, true), false,
+test("only a post-baseline zero-to-positive transition of an answering source notifies", () => {
+    const dnf = count => ({ baseline: true, count });
+    assert.equal(H.shouldNotify(0, 3, [dnf(3)], true), true);
+    assert.equal(H.shouldNotify(0, 3, [{ baseline: false, count: 3 }], true), false,
+        "a source's first answer establishes its baseline silently");
+    assert.equal(H.shouldNotify(0, 3, [dnf(3), { baseline: false, count: 0 }], true), true,
+        "a source answering for the first time does not silence one that has");
+    assert.equal(H.shouldNotify(0, 5, [dnf(0), { baseline: false, count: 5 }], true), false,
+        "only a known source's count is news");
+    assert.equal(H.shouldNotify(2, 3, [dnf(3)], true), false,
         "a count that merely grows is not a new update event");
-    assert.equal(H.shouldNotify(true, true, 0, 3, false), false);
+    assert.equal(H.shouldNotify(0, 3, [dnf(3)], false), false);
+    assert.equal(H.shouldNotify(0, 3, [], true), false,
+        "nothing that answered, nothing to announce");
+});
+
+test("a retry repeats only the sources that failed", () => {
+    assert.deepEqual(H.allParts(), { dnf: true, flatpak: true, firmware: true, project: true });
+    assert.deepEqual(H.failedParts({ dnf: "", flatpak: "Flathub unreachable", firmware: "", project: "" }),
+        { dnf: false, flatpak: true, firmware: false, project: false });
+    assert.deepEqual(H.failedParts(null), { dnf: false, flatpak: false, firmware: false, project: false });
+    assert.equal(H.pendingSummary(3, 0, 1, false, ""), "dnf 3 · firmware 1");
+    assert.equal(H.pendingSummary(0, 2, 0, true, "1.4"), "flatpak 2 · CybexOS 1.4");
 });
 
 test("table sections map to feed verbs and reject prose", () => {
@@ -333,4 +347,68 @@ test("firmware completion distinguishes no updates, malformed output and failure
         assert.equal(state.firmwareError !== "", failed);
         assert.equal(state.nextFirmwareNames.length, failed ? 1 : 0);
     }
+});
+
+test("a skipped or blocked CybexOS release says why without stopping packages", () => {
+    assert.equal(H.projectErrorOf({ id: "run", projectError: "  the GitHub CLI is not logged in  " }),
+        "the GitHub CLI is not logged in");
+    assert.equal(H.projectErrorOf({ id: "run" }), "");
+    assert.equal(H.projectErrorOf({ projectError: 69 }), "");
+    assert.equal(H.projectErrorOf(null), "");
+    assert.equal(H.projectSkippedLabel("gh is missing", false),
+        "System update started · CybexOS skipped: gh is missing");
+    assert.equal(H.projectSkippedLabel("gh is missing", true), "CybexOS skipped: gh is missing");
+    assert.equal(H.projectSkippedLabel("", false), "");
+
+    const updates = read("Common/Updates.qml");
+    const popover = read("Popovers/UpdatesPopover.qml");
+    // The start record is the only place the reason travels; a status poll
+    // (which never carries it) must not be what sets it, and resetRun clears it.
+    assert.match(updates,
+        /root\.applyBackendStatus\(started\);\s*root\.runProjectSkipped = UpdatesHelpers\.projectErrorOf\(started\);/);
+    assert.match(updates, /function resetRun\([\s\S]*?runProjectSkipped = "";[\s\S]*?runState = "running";/);
+    assert.match(updates, /nextProjectApplyNote = UpdatesHelpers\.projectErrorOf\(data\);/);
+    assert.match(updates, /projectApplyNote = nextProjectAvailable \? nextProjectApplyNote : "";/);
+    assert.match(popover, /UpdatesHelpers\.projectSkippedLabel\(Updates\.runProjectSkipped,/);
+    assert.match(popover, /"To apply CybexOS " \+ Updates\.projectVersion \+ ": "\s*\+ Updates\.projectApplyNote/);
+});
+
+test("cancel waits for the current step and is offered only while one remains", () => {
+    for (const phase of ["queued", "snapshot", "tests", "migration"])
+        assert.equal(H.cancelAllowed(phase, true), true, phase);
+    assert.equal(H.cancelAllowed("packages", true), true,
+        "a deferred cancel lets dnf and flatpak finish first");
+    assert.equal(H.cancelAllowed("packages", false), false,
+        "a worker from before deferred cancellation refuses mid-transaction");
+    assert.equal(H.cancelAllowed("packages", undefined), false);
+    for (const phase of ["ansible", "activation", "reboot-check"])
+        assert.equal(H.cancelAllowed(phase, true), false, `${phase} has no stopping point left`);
+
+    const updates = read("Common/Updates.qml");
+    const popover = read("Popovers/UpdatesPopover.qml");
+    assert.match(updates, /cancelRequested = data\.cancelRequested === true;/);
+    assert.match(updates, /runDeferredCancel = data\.deferredCancel === true;/);
+    assert.match(updates,
+        /readonly property bool cancelPending: cancelRequested \|\| cancelProc\.running\s*\|\| cancelSettle\.running/);
+    assert.match(updates, /function cancelRun\(\) \{\s*if \(!cancelAllowed \|\| cancelPending\)\s*return;/);
+    // The cancel client settles on the falling edge, like every other process.
+    assert.match(updates,
+        /id: cancelProc\s*onRunningChanged: \{\s*if \(running\)\s*return;\s*cancelSettle\.restart\(\);\s*root\.refreshRunStatus\(\);/);
+    assert.match(popover,
+        /id: cancelButton\s*visible: root\.mode === "running" && Updates\.cancelAllowed\s*enabled: !Updates\.cancelPending/);
+    assert.match(popover, /Updates\.cancelPending \? "cancelling after the current step…"/);
+    assert.match(read("Popovers/Drawer/DrawerOverview.qml"),
+        /Updates\.cancelPending \? "Cancelling after the current step…"/);
+});
+
+test("a failed release apply that left newer files says how to recover", () => {
+    assert.equal(H.mixedStateAdvice(false), "");
+    assert.equal(H.mixedStateAdvice(undefined), "");
+    assert.match(H.mixedStateAdvice(true), /`cybex update` again/);
+    assert.match(H.mixedStateAdvice(true), /~\/\.local\/share\/cybexos\/current\/install/);
+
+    const updates = read("Common/Updates.qml");
+    assert.match(updates, /mixedState = data\.mixedState === true;/);
+    assert.match(read("Popovers/UpdatesPopover.qml"),
+        /visible: Updates\.mixedState[\s\S]{0,80}?text: UpdatesHelpers\.mixedStateAdvice\(Updates\.mixedState\)/);
 });

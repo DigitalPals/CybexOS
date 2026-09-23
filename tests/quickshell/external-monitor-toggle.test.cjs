@@ -26,7 +26,14 @@ function monitor(name, disabled, description = "") {
     };
 }
 
-async function runScenario({ initialMonitors, socatBody }) {
+// A logind PropertiesChanged line as `gdbus monitor` prints it.
+const LID_SIGNAL = "/org/freedesktop/login1: org.freedesktop.DBus.Properties."
+    + "PropertiesChanged ('org.freedesktop.login1.Manager', {'LidClosed': <false>}, @as [])";
+
+// Scenarios end when the socat stub exits (the helper then exits 75), so a
+// gdbus stub must outlive it or the helper stops on the lid stream instead.
+async function runScenario({ initialMonitors, socatBody, gdbusBody = "sleep 0.6\n",
+    pollSeconds = "30" }) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "monitor-toggle-state-"));
     const bin = path.join(tmp, "bin");
     const runtime = path.join(tmp, "runtime");
@@ -57,6 +64,7 @@ case "\${1:-}" in
 esac
 `);
     executable(path.join(bin, "socat"), socatBody);
+    executable(path.join(bin, "gdbus"), gdbusBody);
 
     const server = net.createServer();
     await new Promise((resolve, reject) => {
@@ -78,7 +86,7 @@ esac
                 EXTERNAL_MONITOR_TOGGLE_LID_ROOT: path.join(tmp, "lid"),
                 EXTERNAL_MONITOR_TOGGLE_DEBOUNCE_SECONDS: "0.05",
                 EXTERNAL_MONITOR_TOGGLE_STABILITY_SECONDS: "0.02",
-                EXTERNAL_MONITOR_TOGGLE_POLL_SECONDS: "0.01",
+                EXTERNAL_MONITOR_TOGGLE_POLL_SECONDS: pollSeconds,
                 MONITOR_TEST_STATE: state,
                 MONITOR_TEST_CALLS: calls,
                 MONITOR_TEST_DP_STATUS: path.join(dpDir, "status"),
@@ -121,8 +129,32 @@ sleep 0.30
 });
 
 test("opening the lid enables eDP once without reloading the config", async () => {
+    // The 30 s safety poll cannot fire inside this scenario: only the
+    // logind signal can have woken the helper.
     const { result, calls } = await runScenario({
         initialMonitors: [monitor("eDP-1", true, "Internal")],
+        socatBody: "sleep 0.45\n",
+        gdbusBody: `
+printf '%s\\n' 'Monitoring signals on object /org/freedesktop/login1 owned by org.freedesktop.login1'
+sleep 0.12
+printf 'state: open\\n' >"$MONITOR_TEST_LID_STATE"
+printf '%s\\n' "${LID_SIGNAL}"
+sleep 0.6
+`,
+    });
+
+    assert.equal(result.status, 75, result.stderr);
+    assert.equal(calls.split("\n").filter(Boolean).length, 1, calls);
+    assert.match(calls, /eval .*output = "eDP-1".*disabled = false/);
+    assert.doesNotMatch(calls, /reload|disabled = true/);
+    assert.match(result.stderr, /enabling eDP-1 after stable lid\/output state/);
+    assert.match(result.stderr, /Hyprland event stream disconnected/);
+});
+
+test("the safety poll still catches a lid change logind never announced", async () => {
+    const { result, calls } = await runScenario({
+        initialMonitors: [monitor("eDP-1", true, "Internal")],
+        pollSeconds: "0.01",
         socatBody: `
 sleep 0.12
 printf 'state: open\\n' >"$MONITOR_TEST_LID_STATE"
@@ -133,6 +165,25 @@ sleep 0.30
     assert.equal(result.status, 75, result.stderr);
     assert.equal(calls.split("\n").filter(Boolean).length, 1, calls);
     assert.match(calls, /eval .*output = "eDP-1".*disabled = false/);
-    assert.doesNotMatch(calls, /reload|disabled = true/);
-    assert.match(result.stderr, /enabling eDP-1 after stable lid\/output state/);
+});
+
+test("a closed lid event stream asks systemd to restart the watcher", async () => {
+    const { result, calls } = await runScenario({
+        initialMonitors: [monitor("eDP-1", false, "Internal")],
+        socatBody: "sleep 0.6\n",
+        gdbusBody: "exit 1\n",
+    });
+
+    assert.equal(result.status, 75, result.stderr);
+    assert.match(result.stderr, /logind lid event stream disconnected/);
+    assert.equal(calls, "");
+});
+
+test("only monitor events reach the helper's read loop", () => {
+    const source = fs.readFileSync(helper, "utf8");
+    assert.match(source,
+        /socat -U - "UNIX-CONNECT:\$socket" \\\n\s*\| grep --line-buffered -E '\^monitor\(added\|removed\)\(v2\)\?>>'/);
+    assert.match(source, /gdbus monitor --system --dest org\.freedesktop\.login1/);
+    assert.match(source, /poll_seconds=\$\{EXTERNAL_MONITOR_TOGGLE_POLL_SECONDS:-30\}/);
+    assert.doesNotMatch(source, /while sleep/, "the safety poll must not fork a sleep per sample");
 });

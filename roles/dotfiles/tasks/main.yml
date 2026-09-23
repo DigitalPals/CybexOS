@@ -219,12 +219,17 @@
     mode: "0755"
   when: features.podman | bool
 
+# Bounded like the other network-bound installers: a stalled download is
+# killed after the async limit instead of hanging the whole converge, and the
+# refusal below reports it because the killed job returns no exit code.
 - name: Install or update T3Code nightly
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.command: "{{ primary_home }}/.local/bin/t3code-update"
+  async: 900
+  poll: 1
   register: dotfiles_t3code_update
-  changed_when: (dotfiles_t3code_update.stdout | regex_search('(?m)^CHANGED:')) is not none
+  changed_when: (dotfiles_t3code_update.stdout | default('') | regex_search('(?m)^CHANGED:')) is not none
   failed_when: false
   environment:
     GH_TOKEN: "{{ lookup('env', 'GH_TOKEN') | default('', true) }}"
@@ -244,11 +249,12 @@
   ansible.builtin.fail:
     msg: >-
       T3Code nightly installation or rollback failed without a verified prior
-      AppImage to retain: {{ dotfiles_t3code_update.stderr | default('unknown failure') }}
+      AppImage to retain: {{ dotfiles_t3code_update.stderr
+      | default(dotfiles_t3code_update.msg) | default('unknown failure') }}
   when:
     - features.connected_widgets | bool
     - not ansible_check_mode
-    - dotfiles_t3code_update.rc | default(0) | int not in [0, 75]
+    - dotfiles_t3code_update.rc | default(1) | int not in [0, 75]
 
 - name: Remove CybexOS T3 helpers after connected widgets are deselected
   become: true

@@ -30,12 +30,59 @@ function firmwareNames(body) {
         typeof device.Name === "string" ? device.Name : "Firmware device");
 }
 
-// Only a complete zero -> positive transition after a known baseline is news.
-// A failed first attempt must not turn the first successful snapshot into a
-// notification for updates that may have been pending before login.
-function shouldNotify(complete, hasBaseline, previousTotal, nextTotal, enabled) {
-    return !!complete && !!hasBaseline && previousTotal === 0
-        && nextTotal > 0 && !!enabled;
+// The sources one check covers, as { dnf, flatpak, firmware, project }.
+var CHECK_SOURCES = ["dnf", "flatpak", "firmware", "project"];
+
+function allParts() {
+    var parts = {};
+    CHECK_SOURCES.forEach(function (source) {
+        parts[source] = true;
+    });
+    return parts;
+}
+
+// A retry repeats only the sources whose last attempt failed ({ source:
+// error text }, "" for one that answered). Rerunning dnf, a Flathub round
+// trip and fwupd because one of them is unreachable is what turned a single
+// blocked remote into five complete checks per poll.
+function failedParts(errors) {
+    var parts = {};
+    CHECK_SOURCES.forEach(function (source) {
+        parts[source] = !!errors && typeof errors[source] === "string"
+            && errors[source] !== "";
+    });
+    return parts;
+}
+
+// Only a zero -> positive transition of the published total is news, and only
+// a source that answered before can make it: each source's first answer of a
+// session is its baseline, since those updates may have been pending before
+// login. Tracking that per source is what lets dnf keep notifying while a
+// blocked Flathub or a masked fwupd never answers at all. `sources` lists
+// what this check answered: [{ baseline, count }], baseline meaning the
+// source had answered in an earlier check.
+function shouldNotify(previousTotal, nextTotal, sources, enabled) {
+    if (!enabled || previousTotal !== 0 || !(nextTotal > 0))
+        return false;
+    return (Array.isArray(sources) ? sources : []).some(function (source) {
+        return !!source && !!source.baseline && source.count > 0;
+    });
+}
+
+// The notification body: what is pending, never an error from a source that
+// did not answer (the menubar summary leads with those).
+function pendingSummary(dnfCount, flatpakCount, firmwareCount, projectAvailable,
+        projectVersion) {
+    var parts = [];
+    if (dnfCount > 0)
+        parts.push("dnf " + dnfCount);
+    if (flatpakCount > 0)
+        parts.push("flatpak " + flatpakCount);
+    if (firmwareCount > 0)
+        parts.push("firmware " + firmwareCount);
+    if (projectAvailable)
+        parts.push("CybexOS " + projectVersion);
+    return parts.join(" · ");
 }
 
 // ---- native run parsing ----------------------------------------------------
@@ -228,6 +275,31 @@ function checkIsFresh(lastChecked, now, maxAgeMs) {
         && now - lastChecked < maxAgeMs;
 }
 
+// dnf's answer depends on its repository metadata and the installed set. This
+// is their signature, from `find … -printf '%p %s %T@\n'` over every
+// repository's repomd.xml, the repo files and the rpm database: sorted, so
+// directory order cannot matter, and "" when the listing does not include
+// the rpm database, because then it cannot vouch for what is installed.
+function dnfSignature(text) {
+    var lines = String(text || "").split("\n")
+        .map(function (line) { return line.trim(); })
+        .filter(function (line) { return line !== ""; });
+    var hasRpmdb = lines.some(function (line) {
+        return /\/rpmdb\.sqlite /.test(line);
+    });
+    return hasRpmdb ? lines.sort().join("\n") : "";
+}
+
+// However quiet the signature, a real dnf read still happens this often, so
+// an input it does not cover (dnf.conf, say) is picked up within hours.
+var DNF_ANSWER_MAX_AGE_MS = 6 * 3600 * 1000;
+
+function dnfAnswerReusable(signature, cachedSignature, cachedAt, now) {
+    return typeof signature === "string" && signature !== ""
+        && signature === cachedSignature
+        && checkIsFresh(cachedAt, now, DNF_ANSWER_MAX_AGE_MS);
+}
+
 // Application ids read as their most distinctive segment: org.signal.Signal
 // is "Signal", but com.spotify.Client must not become "Client".
 var FLATPAK_GENERIC_TAILS = ["client", "app", "desktop"];
@@ -366,12 +438,60 @@ function projectCheckError(message) {
     return "CybexOS: " + message;
 }
 
+// Why the CybexOS release step cannot run while packages still can: the
+// start record carries it when the step was skipped and the package run went
+// ahead; `--check --json` carries it beside a release this machine cannot
+// verify yet (gh missing or not logged in). "" when there is none.
+function projectErrorOf(record) {
+    if (!record || typeof record.projectError !== "string")
+        return "";
+    return record.projectError.trim();
+}
+
+function projectSkippedLabel(reason, finished) {
+    if (reason === "")
+        return "";
+    return (finished ? "" : "System update started · ") + "CybexOS skipped: " + reason;
+}
+
+// The worker defers a cancellation to its next stopping point. Once Ansible
+// has started there is none: the apply and activation run to completion so
+// installed files and the active release stay coherent, and the reboot check
+// comes after the last one. A worker from before deferred cancellation
+// refuses a stop during its package transaction outright.
+var UNCANCELLABLE_PHASES = ["ansible", "activation", "reboot-check"];
+
+function cancelAllowed(phase, deferredCancel) {
+    if (UNCANCELLABLE_PHASES.indexOf(phase) !== -1)
+        return false;
+    return phase !== "packages" || deferredCancel === true;
+}
+
+// A release apply that stopped after Ansible began leaves newer managed files
+// under the previous release (`mixedState` in the run record).
+function mixedStateAdvice(mixedState) {
+    if (mixedState !== true)
+        return "";
+    return "Some newer CybexOS files are installed under the previous release. "
+        + "Run `cybex update` again once the cause is fixed, or "
+        + "~/.local/share/cybexos/current/install to restore the previous release's files.";
+}
+
 var exported = {
     firmwareNames: firmwareNames,
     projectCheckError: projectCheckError,
+    projectErrorOf: projectErrorOf,
+    projectSkippedLabel: projectSkippedLabel,
+    UNCANCELLABLE_PHASES: UNCANCELLABLE_PHASES,
+    cancelAllowed: cancelAllowed,
+    mixedStateAdvice: mixedStateAdvice,
     dnfNames: dnfNames,
     flatpakNames: flatpakNames,
+    CHECK_SOURCES: CHECK_SOURCES,
+    allParts: allParts,
+    failedParts: failedParts,
     shouldNotify: shouldNotify,
+    pendingSummary: pendingSummary,
     dnfSection: dnfSection,
     dnfTableRow: dnfTableRow,
     parseDnfRunLine: parseDnfRunLine,
@@ -380,6 +500,9 @@ var exported = {
     takePendingRow: takePendingRow,
     postRunRetryNeeded: postRunRetryNeeded,
     checkIsFresh: checkIsFresh,
+    dnfSignature: dnfSignature,
+    DNF_ANSWER_MAX_AGE_MS: DNF_ANSWER_MAX_AGE_MS,
+    dnfAnswerReusable: dnfAnswerReusable,
     flatpakRefName: flatpakRefName,
     parseFlatpakRunLine: parseFlatpakRunLine,
     runPercent: runPercent,

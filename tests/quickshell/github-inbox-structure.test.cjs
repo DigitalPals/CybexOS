@@ -21,8 +21,10 @@ test("the GitHub singleton publishes the persistent Inbox contract", () => {
     assert.match(source,
         /property string seenAt:[\s\S]*property string activitySeenAt:[\s\S]*property var lastPush:[\s\S]*property var runBaselines:[\s\S]*property var inboxItems:[\s\S]*property var inboxSourceRevisions:/,
         "Inbox state must append to every legacy state field");
-    assert.match(source, /stateData\.inboxItems = Helpers\.compactInboxItems\(root\.inboxState\)/);
-    assert.match(source, /stateData\.inboxSourceRevisions = root\.inboxSourceRevisions/);
+    assert.match(source, /inboxItems: Helpers\.compactInboxItems\(root\.inboxState\)/);
+    assert.match(source, /inboxSourceRevisions: root\.inboxSourceRevisions/);
+    assert.match(source, /stateData\.inboxItems = snapshot\.inboxItems/);
+    assert.match(source, /stateData\.inboxSourceRevisions = snapshot\.inboxSourceRevisions/);
     assert.match(source, /badgeVisible:[^\n]*pendingInboxCount > 0/);
     assert.doesNotMatch(source, /unreadRepoCount\s*\+/,
         "view-based repository dots must not enter the bar badge count");
@@ -37,11 +39,11 @@ test("full Inbox and active-workflow sweeps use independent fixed cadences", () 
     const full = source.match(/Timer \{\s*id: inboxTimer[\s\S]*?\n    \}/)?.[0] ?? "";
     const active = source.match(/Timer \{\s*id: activeInboxTimer[\s\S]*?\n    \}/)?.[0] ?? "";
     assert.match(full, /interval:\s*60000/);
-    assert.match(full, /running:\s*root\.pollEnabled/);
+    assert.match(full, /running:\s*root\.scheduleActive\b/);
     assert.match(full, /root\.refreshInbox\(false\)/);
     assert.match(active, /interval:\s*30000/);
     assert.match(active,
-        /running:\s*root\.pollEnabled && root\.ciReportsEnabled && root\.runningCount > 0/);
+        /running:\s*root\.scheduleActive && root\.ciReportsEnabled && root\.runningCount > 0/);
     assert.match(active, /root\.refreshActiveInbox\(\)/);
 
     const sweep = source.match(/function startInboxSweep[\s\S]*?\n    \}/)?.[0] ?? "";
@@ -60,7 +62,7 @@ test("Inbox reads use conditional HTTP polling and preserve partial caches", () 
     assert.match(pump, /Helpers\.conditionalArgs\(validator\.etag,\s*validator\.lastModified\)/);
     const helpers = load("GitHubHelpers.js");
     assert.deepEqual(Object.keys(helpers.CONDITIONAL_KINDS).sort(),
-        ["events", "notifications", "runs"]);
+        ["events", "notifications", "repos", "runs", "watch"]);
     const validator = source.match(/function conditionalValidator[\s\S]*?\n    \}/)?.[0] ?? "";
     assert.match(validator, /hasInboxSource\("events:" \+ slug\)[\s\S]*eventEtags\[slug\]/);
     assert.match(validator, /hasInboxSource\("workflows:" \+ slug\)[\s\S]*runEtags\[slug\]/);
@@ -74,7 +76,7 @@ test("Inbox reads use conditional HTTP polling and preserve partial caches", () 
         /const notModified = Helpers\.notModifiedResponse\(included, exitCode, errText\)/);
     const settleInbox = source.match(/function settleInbox\(job[\s\S]*?\n    \}/)?.[0] ?? "";
     assert.match(settleInbox,
-        /job\.kind === "runs"\) \{\s*if \(notModified\) \{\s*patchRunResult\(job\.slug, null, ""\)/,
+        /job\.kind === "runs"\) \{\s*scheduleRuns\(job\.slug, startedAt\);\s*if \(notModified\) \{\s*patchRunResult\(job\.slug, null, ""\)/,
         "a workflow 304 keeps the previous rows");
     assert.match(settleInbox,
         /if \(notModified\) \{\s*notificationError = "";\s*inboxSweep\.anySuccess = true;/,
@@ -264,6 +266,10 @@ test("settings explain repository refresh and Inbox polling separately", () => {
     const watches = read("Settings/GitHubWatchList.qml");
     assert.match(options, /label:\s*"Recent account repos"/);
     assert.match(options, /label:\s*"Repo refresh"/);
+    // The same interval paces quiet repositories' workflow-run reads
+    // (Helpers.runPollDue), which the row has to say.
+    assert.match(options,
+        /label:\s*"Repo refresh"[\s\S]{0,300}?hint:\s*"Also how often quiet repos' workflow runs are read; busy ones every minute"/);
     assert.match(options, /optionLabelWidth:\s*156/);
     assert.match(options, /label:\s*"CI reports"[\s\S]{0,220}?view\.opts\.ciActivity/);
     assert.match(options, /Workflow rows in the Inbox/);
@@ -274,4 +280,217 @@ test("settings explain repository refresh and Inbox polling separately", () => {
     const defaults = load("SettingsHelpers.js").defaultModOpts().gh;
     assert.deepEqual(Object.keys(defaults).sort(),
         ["badge", "ciActivity", "pollMins", "repos", "toasts", "watch"]);
+});
+
+// QML only anchors to a parent or a sibling; anything else is dropped at
+// runtime with one "Cannot anchor to an item that isn't a parent or sibling"
+// warning in the journal, which qmllint does not report. The refresh button
+// shipped anchored to its parent's sibling. This walks the object tree of the
+// popover (a Repeater's delegate is parented to the Repeater's parent, and a
+// Component or inline component starts a tree of its own) and checks each
+// `anchors.*` target by id.
+test("every anchor in the GitHub popover names its parent or a sibling", () => {
+    const source = read("Popovers/GitHubPopover.qml");
+    const stripped = source
+        .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, '""')
+        .replace(/\/\/[^\n]*/g, "");
+    const nodes = [];
+    const frames = [];
+    let line = 1;
+    let lineStart = 0;
+    let statementStart = 0;
+    for (let i = 0; i < stripped.length; i++) {
+        const ch = stripped[i];
+        if (ch === "\n") {
+            // An attribute line belongs to the innermost enclosing object.
+            const text = stripped.slice(lineStart, i);
+            const owner = frames.filter(frame => frame !== null).at(-1);
+            const top = frames.at(-1);
+            if (owner && top === owner) {
+                const id = text.match(/^\s*id:\s*(\w+)\s*$/);
+                if (id)
+                    owner.id = id[1];
+                const anchor = text.match(/^\s*anchors\.(\w+):\s*(.*)$/);
+                if (anchor) {
+                    const value = anchor[2];
+                    const targets = anchor[1] === "fill" || anchor[1] === "centerIn"
+                        ? [...value.matchAll(/\b([a-z]\w*)\b/g)].map(m => m[1])
+                        : [...value.matchAll(/\b(\w+)\.(?:left|right|top|bottom|horizontalCenter|verticalCenter|baseline)\b/g)]
+                            .map(m => m[1]);
+                    owner.anchors.push(...targets.filter(name => name !== "undefined")
+                        .map(name => ({ name, line })));
+                }
+            }
+            line++;
+            lineStart = i + 1;
+        } else if (ch === "{") {
+            const before = stripped.slice(lineStart, i);
+            const type = before.match(/(?:^|[\s:])([A-Z][\w.]*)\s*$/)?.[1] ?? null;
+            if (type === null) {
+                frames.push(null);
+                continue;
+            }
+            const owner = frames.filter(frame => frame !== null).at(-1) ?? null;
+            const standalone = type === "Component" || /\bcomponent\s+\w+\s*:/.test(before);
+            const node = { type, id: "", parent: standalone ? null : owner,
+                children: [], anchors: [], line };
+            if (node.parent)
+                node.parent.children.push(node);
+            nodes.push(node);
+            frames.push(node);
+        } else if (ch === "}") {
+            frames.pop();
+        }
+    }
+    // A delegate is parented to the Repeater's own parent at runtime.
+    const visualParent = node => {
+        let parent = node.parent;
+        while (parent && parent.type === "Repeater")
+            parent = parent.parent;
+        return parent;
+    };
+    const visualChildren = node => node.children.flatMap(child =>
+        child.type === "Repeater" ? visualChildren(child) : [child]);
+    const offences = [];
+    let checked = 0;
+    for (const node of nodes) {
+        const parent = visualParent(node);
+        for (const target of node.anchors) {
+            checked++;
+            if (target.name === "parent")
+                continue;
+            const siblings = parent ? visualChildren(parent) : [];
+            if ((parent && parent.id === target.name)
+                    || siblings.some(sibling => sibling !== node && sibling.id === target.name))
+                continue;
+            offences.push(`GitHubPopover.qml:${target.line} ${node.type}`
+                + `${node.id ? " " + node.id : ""} anchors to ${target.name}`);
+        }
+    }
+    assert.ok(checked > 50, "the walk must actually see the popover's anchors");
+    assert.deepEqual(offences, []);
+});
+
+test("an unchanged Inbox is not republished and the popover lists are keyed", () => {
+    const source = read("Common/GitHub.qml");
+    const publish = source.match(/function publishInbox\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(publish,
+        /if \(errorsSignature !== repoErrorsSignature\) \{[\s\S]*workflowRepoErrors = workflowErrors;[\s\S]*eventRepoErrors = repositoryEventErrors;[\s\S]*inboxRepoErrors = combined;/,
+        "the three error maps are assigned only when they change");
+    assert.match(publish,
+        /const rowsSignature = JSON\.stringify\(rows\);\s*if \(rowsSignature !== inboxItemsSignature\) \{[\s\S]*inboxItems = rows;/,
+        "a sweep of 304s must not reassign identical rows");
+    assert.equal((source.match(/(?<![.\w])inboxItems = /g) ?? []).length, 1,
+        "publishInbox is the only writer of inboxItems");
+    for (const name of ["workflowRepoErrors", "eventRepoErrors", "inboxRepoErrors"])
+        assert.equal((source.match(new RegExp(`(?<![.\\w])${name} = `, "g")) ?? []).length, 1,
+            name);
+
+    const popover = read("Popovers/GitHubPopover.qml");
+    assert.doesNotMatch(popover, /model:\s*root\.(?:inboxSections|inboxRows|filteredRepos|visibleRepos)\b/,
+        "a Repeater over a derived list recreates every delegate on each publish");
+    assert.match(popover, /model:\s*Helpers\.INBOX_SECTION_IDS/);
+    assert.match(popover,
+        /readonly property string rowKeys:\s*Helpers\.listKey\(section\.rows, "key"\)/);
+    assert.match(popover,
+        /\? Helpers\.listIds\(inboxSection\.rowKeys\) : \[\][\s\S]{0,120}?delegate: InboxRow \{\s*required property string modelData\s*row: Helpers\.inboxRowFor\(root\.inboxIndex, modelData\)/);
+    assert.match(popover, /model:\s*Helpers\.listIds\(root\.repoListKey\)/);
+    assert.match(popover,
+        /id: repoRow\s*required property string modelData\s*readonly property var repo: Helpers\.repoFor\(root\.repoIndex, modelData\)/);
+    assert.doesNotMatch(popover, /repoRow\.modelData\./);
+});
+
+test("an unchanged GitHub state is not rewritten after every sweep", () => {
+    const source = read("Common/GitHub.qml");
+    const persist = source.match(/function persist\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(persist,
+        /const text = JSON\.stringify\(snapshot\);\s*if \(text === persistedState\)\s*return;\s*persistedState = text;/);
+    assert.match(persist, /stateFile\.writeAdapter\(\)/);
+    // Every field the adapter persists is part of the comparison.
+    const adapter = source.match(/JsonAdapter \{\s*id: stateData([\s\S]*?)\n        \}/)?.[1] ?? "";
+    const fields = [...adapter.matchAll(/property \w+ (\w+):/g)].map(match => match[1]);
+    const snapshot = source.match(/function stateSnapshot\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.ok(fields.length >= 8);
+    for (const field of fields) {
+        assert.match(snapshot, new RegExp(`\\b${field}:`), field);
+        assert.match(persist, new RegExp(`stateData\\.${field} = snapshot\\.${field};`), field);
+    }
+    const loaded = source.match(/onLoaded: \{[\s\S]*?\n        \}/)?.[0] ?? "";
+    assert.match(loaded,
+        /root\.persistedState = JSON\.stringify\(root\.stateSnapshot\(\)\);\s*if \(!root\.ciReportsEnabled\)/,
+        "the loaded file is the baseline, so a reset applied on load is still written");
+    assert.match(source, /onSaveFailed: root\.persistedState = ""/,
+        "a failed write must not suppress the retry");
+});
+
+test("repository discovery is conditional and reuses its rows on a 304", () => {
+    const source = read("Common/GitHub.qml");
+    const validator = source.match(/function conditionalValidator[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(validator, /case "repos":\s*return \{ etag: reposCache !== null \? reposEtag : ""/,
+        "the /user/repos validator is only sent while its rows are known");
+    assert.match(validator, /case "watch":\s*return \{ etag: watchCache\[slug\] \? \(watchEtags\[slug\] \?\? ""\) : ""/);
+    const settle = source.match(/function settle\(exitCode, body, errText\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    const repos = settle.match(/case "repos": \{[\s\S]*?\n        \}/)?.[0] ?? "";
+    assert.match(repos, /Helpers\.parseIncludedResponse\(body\)\s*\?\? Helpers\.parseIncludedResponse\(errText\)/);
+    assert.match(repos, /noteRateLimit\(included\.headers\)/);
+    assert.match(repos, /outcome === "not-modified" \? reposCache/);
+    assert.match(repos, /Helpers\.parseRepos\(included\.body\)/,
+        "the header block must not reach the JSON parser");
+    assert.match(repos, /reposCache = rows;\s*reposEtag = included\.etag;/);
+    const watch = settle.match(/case "watch": \{[\s\S]*?\n        \}/)?.[0] ?? "";
+    assert.match(watch, /outcome === "not-modified"\s*\? \(watchCache\[job\.slug\.toLowerCase\(\)\] \?\? null\)/);
+    assert.match(watch, /Helpers\.parseRepo\(included\.body\)/);
+    assert.match(watch, /updateWatchCache\(job\.slug, row, row !== null \? included\.etag : ""\)/);
+    assert.match(source, /pruneWatchCache\(missing\)/,
+        "validators for dropped watches do not accumulate");
+    const publish = source.match(/function publishRepos\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(publish, /if \(signature !== reposSignature\) \{\s*reposSignature = signature;\s*repos = merged;/,
+        "an unchanged poll leaves the repository rows alone");
+    assert.match(publish, /if \(errorsSignature !== watchErrorsSignature\)/);
+    const refresh = source.match(/function refresh\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.doesNotMatch(refresh, /reposCache|watchCache/,
+        "a new poll keeps the rows its validators stand for");
+});
+
+test("scheduled GitHub polling rests while idle or offline and reads quiet runs less often", () => {
+    const source = read("Common/GitHub.qml");
+    assert.match(source,
+        /readonly property bool scheduleActive:\s*pollEnabled && !Activity\.idle\s*&& !\(NetworkStatus\.known && !NetworkStatus\.online\)/,
+        "cross-singleton state must be qualified, and an unknown network is not offline");
+    for (const id of ["pollTimer", "inboxTimer"]) {
+        const timer = source.match(new RegExp(`Timer \\{\\s*id: ${id}[\\s\\S]*?\\n    \\}`))?.[0] ?? "";
+        assert.match(timer, /running:\s*root\.scheduleActive\n/, id);
+        assert.match(timer, /triggeredOnStart:\s*true/,
+            `${id} fires on the edge that resumes it`);
+    }
+    const poll = source.match(/Timer \{\s*id: pollTimer[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(poll, /!root\.rateLimited\(\) && root\.repoPollDue\(\)/,
+        "resuming does not re-poll a repository list that is still fresh");
+    assert.match(source, /function refresh\(\)[\s\S]{0,120}?repoPollStartedAt = Date\.now\(\);/);
+
+    const sweep = source.match(/function startInboxSweep[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(sweep,
+        /if \(!full \|\| force \|\| runPollDue\(slug, now, active\)\)/,
+        "scheduled full sweeps read only due runs; manual and active sweeps read all");
+    assert.match(sweep, /Helpers\.activeRepositories\(inboxItems, slugs\.length\)/);
+    assert.match(source, /startInboxSweep\(monitoredRepos, true, force === true\)/);
+    assert.match(source, /startInboxSweep\(activeRepos, false, false\)/);
+
+    const settleInbox = source.match(/function settleInbox\(job[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(settleInbox, /job\.kind === "runs"\) \{\s*scheduleRuns\(job\.slug, startedAt\);/,
+        "every runs read reschedules its repository");
+    assert.match(settleInbox,
+        /reconcileInboxRows\("events:"[\s\S]{0,120}?noteRunTriggers\(job\.slug, rows\);/,
+        "only a usable events page can boost the runs cadence");
+    const triggers = source.match(/function noteRunTriggers[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(triggers, /Helpers\.runTriggerSince\(rows,\s*\(runPolledAt\[key\] \?\? 0\) - Helpers\.RUN_TRIGGER_SLACK_MS\)/);
+    assert.match(triggers, /sweep\.runs\[key\] === true/);
+    assert.match(triggers, /if \(enqueue\([\s\S]*?sweep: sweep\.id[\s\S]*?\)\)\s*sweep\.pending\+\+;/,
+        "a runs read added mid-sweep must hold the sweep open");
+    const schedule = source.match(/function scheduleRuns[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(schedule, /next\[key\] = startedAt \+ pollMins \* 60000;/);
+    assert.match(source, /function invalidateInboxScope\(\) \{\s*scopeGeneration\+\+;\s*pruneRunSchedule\(\);/,
+        "the schedule is bounded by the monitored scope");
+    assert.match(source,
+        /onCiReportsEnabledChanged:[\s\S]*?runPolledAt = \(\{\}\);\s*runNextPollAt = \(\{\}\);\s*runBoostUntil = \(\{\}\);/);
 });

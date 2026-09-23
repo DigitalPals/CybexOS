@@ -6,7 +6,10 @@ Wants=pipewire.service pipewire-pulse.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/voxtype daemon
+# voxtype.toml also asks for on-demand loading, but it is managed only with
+# the personal dotfiles. The option is global: it must precede the
+# subcommand, which rejects it.
+ExecStart=/usr/bin/voxtype --on-demand-loading daemon
 Restart=on-failure
 RestartSec=5
 

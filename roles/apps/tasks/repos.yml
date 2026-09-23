@@ -1,7 +1,10 @@
 ---
+# The keys are the ones rpmfusion-*-release ships, kept in-tree so an
+# already-imported key is recognized without a download. The fingerprint is
+# still required before rpm trusts either file.
 - name: Import RPM Fusion release-package signing keys
   ansible.builtin.rpm_key:
-    key: "https://download1.rpmfusion.org/{{ item.scope }}/fedora/RPM-GPG-KEY-rpmfusion-{{ item.scope }}-fedora-2020"
+    key: "{{ role_path }}/files/rpmfusion-{{ item.scope }}-fedora-2020.asc"
     fingerprint:
       - "{{ item.fingerprint }}"
     state: present
@@ -11,12 +14,21 @@
     - scope: nonfree
       fingerprint: 79BDB88F9BBF73910FD4095B6A2AF96194843C65
 
+# A URL never matches an installed package, so dnf would download the release
+# RPM on every run and an RPM Fusion outage would fail an unchanged converge.
+# Install it only while this Fedora release's package is missing.
 - name: Enable RPM Fusion free repository
   ansible.builtin.dnf:
     name: "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{{ fedora_release }}.noarch.rpm"
     state: present
     disable_gpg_check: false
   register: apps_rpmfusion_free
+  until: apps_rpmfusion_free is succeeded
+  retries: 3
+  delay: 10
+  when: >-
+    fedora_release not in ((ansible_facts.packages | default({}))['rpmfusion-free-release']
+    | default([]) | map(attribute='version') | list)
 
 - name: Enable RPM Fusion nonfree repository
   ansible.builtin.dnf:
@@ -24,6 +36,12 @@
     state: present
     disable_gpg_check: false
   register: apps_rpmfusion_nonfree
+  until: apps_rpmfusion_nonfree is succeeded
+  retries: 3
+  delay: 10
+  when: >-
+    fedora_release not in ((ansible_facts.packages | default({}))['rpmfusion-nonfree-release']
+    | default([]) | map(attribute='version') | list)
 
 - name: Download checksum-pinned vendor repository keys
   ansible.builtin.get_url:

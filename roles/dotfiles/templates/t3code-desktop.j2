@@ -3,10 +3,12 @@ set -euo pipefail
 
 # Clerk's native OAuth redirect uses T3 Code's production URI scheme. While
 # the Quickshell panel has a browser sign-in pending, deliver that redirect to
-# its loopback listener; every other URI still opens the desktop client.
+# its loopback listener; every other URI still opens the desktop client. The
+# helper ships with the active shell runtime (a development checkout included),
+# not under ~/.config, so cybexos-runtime names its directory.
 if [[ ${1-} == t3code://app/* ]] \
-        && runtime=$(cybexos-runtime path quickshell) \
-        && node "$runtime/scripts/t3-cloud.mjs" \
+        && shell_dir=$("$HOME/.local/bin/cybexos-runtime" path quickshell) \
+        && node "$shell_dir/scripts/t3-cloud.mjs" \
             oauth-callback "$1" >/dev/null 2>&1; then
     exit 0
 fi

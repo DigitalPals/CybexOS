@@ -17,12 +17,20 @@ Item {
 
     function focusThumbnail(index) {
         const clamped = Math.max(0, Math.min(wallGrid.count - 1, index));
-        wallGrid.currentIndex = clamped;
+        // Focus moves before currentIndex does: the tab stop follows it, and
+        // Qt will not drop activeFocusOnTab from the cell that still holds
+        // focus (see PillRow). Scrolling first creates the target's delegate.
         wallGrid.positionViewAtIndex(clamped, GridView.Contain);
-        Qt.callLater(() => {
-            if (wallGrid.currentItem)
-                wallGrid.currentItem.forceActiveFocus();
-        });
+        const target = wallGrid.itemAtIndex(clamped);
+        if (target)
+            target.forceActiveFocus();
+        wallGrid.currentIndex = clamped;
+        if (!target) {
+            Qt.callLater(() => {
+                if (wallGrid.currentItem)
+                    wallGrid.currentItem.forceActiveFocus();
+            });
+        }
     }
 
     SettingsGroup {

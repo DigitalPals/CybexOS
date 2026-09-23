@@ -13,6 +13,7 @@ usage() {
 Usage:
   cybexos-runtime path quickshell|hypr-source|hypr-generated|hypr-config
   cybexos-runtime exec quickshell|hypridle|hyprlock
+  cybexos-runtime ipc TARGET FUNCTION [ARGUMENT...]
   cybexos-runtime dev enable CHECKOUT
   cybexos-runtime dev disable
   cybexos-runtime dev status
@@ -20,6 +21,9 @@ Usage:
 
 The development switch only records a validated checkout. It never fetches,
 resets, merges, or otherwise changes that checkout.
+
+ipc calls an IpcHandler function on the running shell of the selected
+runtime. It never starts a shell.
 EOF
 }
 
@@ -235,6 +239,21 @@ exec_runtime() {
   esac
 }
 
+# The shell runs as `qs -p <runtime>`, not as a named configuration, so a bare
+# `qs ipc call` finds no "default" config and reaches nothing. Instances are
+# matched by config path, which must be the one exec_runtime selected, the
+# development checkout included. The timeout keeps a hung shell from
+# stranding one client per key press; with no shell running, qs fails at once.
+ipc_call() {
+  local selected
+  selected=$(runtime_path quickshell)
+  # --any-display: a caller started by systemd (a reminder timer) need not
+  # carry the session's display. The -- keeps function names that shadow qs
+  # subcommands (e.g. show) positional.
+  exec timeout --kill-after=1s 2s \
+    qs ipc --any-display -p "$selected" call -- "$@"
+}
+
 command_name=${1:-}
 [[ $# -eq 0 ]] || shift
 case $command_name in
@@ -245,6 +264,10 @@ case $command_name in
   exec)
     [[ $# -eq 1 ]] || { usage >&2; exit 2; }
     exec_runtime "$1"
+    ;;
+  ipc)
+    [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+    ipc_call "$@"
     ;;
   dev) dev_command "$@" ;;
   plugin)

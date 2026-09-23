@@ -2,6 +2,14 @@ general {
   lock_cmd = systemctl --user start cybexos-session-lock.service
   before_sleep_cmd = /usr/local/libexec/cybexos-session-action lock
   after_sleep_cmd = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "on" }))'
+  inhibit_sleep = 3
+}
+
+listener {
+  timeout = 60
+  condition_cmd = hyprctl locked | grep -qx true
+  on-timeout = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "off" }))'
+  on-resume = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "on" }))'
 }
 
 listener {
@@ -10,7 +18,21 @@ listener {
 }
 
 listener {
+  timeout = 360
+  condition_cmd = hyprctl locked | grep -qx true
+  on-timeout = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "off" }))'
+  on-resume = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "on" }))'
+}
+
+listener {
   timeout = 600
   on-timeout = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "off" }))'
   on-resume = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "on" }))'
+}
+
+listener {
+  timeout = 1800
+  condition_cmd = /usr/local/libexec/cybexos-session-action on-battery
+  condition_retry = 60
+  on-timeout = /usr/local/libexec/cybexos-session-action idle-suspend on-battery
 }

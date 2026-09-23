@@ -9,33 +9,16 @@ on:
 permissions:
   contents: read
 
+# Never cancel a release in flight; a second run for the same tag waits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   source:
     name: Source contract
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    container:
-      image: fedora:44
-    steps:
-      - name: Install source-test dependencies
-        run: |
-          dnf install -y \
-            ansible-core python3-ansible-lint python3-ruff ShellCheck yamllint \
-            curl dbus-daemon dnf5-plugins findutils git gnupg2 jq luajit \
-            nodejs24 python3 python3-websockets qt6-qtdeclarative-devel \
-            qt6-qtwebsockets-devel qt6-qtmultimedia ripgrep
-          dnf install -y sway
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Configure the fingerprint-verified Hyprland COPR
-        run: |
-          curl --fail --location --retry 3 --output /tmp/hyprland-copr.gpg \
-            https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
-          echo '581bd602d10705eb89003680335ffc3684b922c587073b6e52c371f949843fd7  /tmp/hyprland-copr.gpg' | sha256sum --check
-          install -m 0644 /tmp/hyprland-copr.gpg /etc/pki/rpm-gpg/CYBEXOS-sdegler-hyprland-copr.gpg
-          install -m 0644 roles/desktop/templates/hyprland-copr.repo.j2 \
-            '/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:sdegler:hyprland.repo'
-          dnf install -y quickshell
-      - run: ./tests/run
+    # The exact job that gates main: same packages, same verified COPR key.
+    uses: ./.github/workflows/tests.yml
 
   vm:
     name: Generic Fedora VM install
@@ -53,6 +36,7 @@ jobs:
     name: Build, attest, and publish release asset
     needs: [source, vm]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
       id-token: write

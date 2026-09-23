@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "Format.js" as Format
+import "ProcHelpers.js" as ProcHelpers
 
 // Canonical reminder state lives in the helper's atomic JSON records. This
 // singleton is a live read model for the bar and manager; systemd owns timing.
@@ -57,6 +58,8 @@ Singleton {
 
     Process {
         id: listProc
+        property bool exitSeen: false
+        property int lastExit: 0
         command: [root.helper, "list", "--json"]
         stdout: StdioCollector {
             onStreamFinished: {
@@ -69,9 +72,21 @@ Singleton {
                 }
             }
         }
-        onExited: exitCode => {
+        onExited: (exitCode, exitStatus) => {
+            listProc.exitSeen = true;
+            listProc.lastExit = exitCode;
+        }
+        // Settles on the falling edge of `running`: a helper that cannot be
+        // launched sends no exited(), and must not leave `loading` stuck or
+        // a queued refresh stranded.
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
             root.loading = false;
-            if (exitCode !== 0)
+            if ((exitSeen ? lastExit : ProcHelpers.NOT_STARTED) !== 0)
                 root.error = "Could not read reminders";
             if (root.refreshPending) {
                 root.refreshPending = false;

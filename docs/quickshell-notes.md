@@ -24,10 +24,11 @@ you need the reasoning behind a particular change; `git log --oneline
   runtime as "X is not a type". `tests/quickshell/qmldir.test.cjs` enforces it.
 - Pure logic goes in a `.js` module in `Common/` with a Node test in
   `tests/quickshell/` — that suite runs in under a second without Qt.
-- `tests/run` is the strict fifteen-stage source gate: language-aware static
-  analysis, Node tests, QML static/runtime checks, integration contracts, and
-  the repository's other fixtures. `update --full` runs it before deploying,
-  and the Ansible role lints the tree before copying it. See `./tests/run --list` and
+- `tests/run` is the strict source gate: language-aware static analysis, Node
+  tests, QML static/runtime checks, integration contracts, and the
+  repository's other fixtures. `update --full` runs it before deploying, and
+  the Ansible role lints the tree before copying a changed one. See
+  `./tests/run --list` and
   [the operations guide](operations.md#the-strict-source-gate).
 
 ## Testing without a GUI
@@ -215,6 +216,48 @@ blends with whatever is behind it, so `-shave 12x0` before comparing.
   `host` is `required` on `BarIcon`/`BarChip`/`BarTooltip` now and
   `RequiredProperty` is an error in `.qmllint.ini`; the general lesson is that
   a null-degrades default turns a loud failure into a silent one.
+- **Lock state comes from `hyprctl locked`, never logind's `LockedHint`.**
+  Nothing in this session sets the hint, so it reads "no" behind a working
+  lock screen. A lock helper that times out must leave a running locker alone:
+  stopping it unlocks the session with nobody at the keyboard, and staying
+  locked is the only safe failure (`cybexos-session-action`).
+- **`hyprctl` speaks the Lua config too.** `hyprctl dispatch X` runs
+  `hl.dispatch(X)`, so X must be an `hl.dsp.*` expression; a bare `exit` is
+  nil and does nothing. `hyprctl keyword` is refused under a Lua config and
+  still exits 0; set options with `hyprctl eval 'hl.config({ … })'`, which
+  fails loudly. `HyprlandToplevel.address` is bare hex, while the `address:`
+  selector needs the `0x` prefix.
+- **A bare `qs ipc call` reaches nothing.** The shell runs by path
+  (`qs -p <runtime>`), so there is no default configuration to find. Scripts,
+  bindings and docs use `cybexos-runtime ipc TARGET FUNCTION …`, which
+  resolves the path the service started with, development checkout included.
+- **`luajit` reading a script from stdin without `-` exits 0 after a failed
+  assertion**, so a heredoc fixture can never fail. Write `luajit - <<'LUA'`.
+- **FileView `setText` skips text it believes it already holds.** It compares
+  against the last bytes it read *or tried to write*, a failed attempt
+  included, and a match emits neither `saved` nor `saveFailed`, so a write
+  guard waiting for one never clears. Settings and Notes track that text
+  (`storeText`), settle without writing when the file already has the
+  content, and retry identical content with one extra trailing newline.
+  Quickshell logs a failed atomic commit (fsync or rename) and still emits
+  `saved`. Never call `setText` under a live async write; a `reload()` issued
+  under a write is dropped, which is why Settings' `reloadStore()` defers it.
+- **Qt refuses to clear `activeFocusOnTab` on the focused item.** A roving tab
+  stop that follows the selection must `forceActiveFocus()` the new target
+  before committing it, or the old item keeps a second tab stop.
+- **hypridle's `condition_cmd` runs synchronously in its loop** (0.1.8), so
+  keep it fast and bounded. A failing condition skips the listener's
+  `on-resume` as well as its `on-timeout`, and any input cancels pending
+  `condition_retry` attempts.
+- **Python retries `poll()` and `sleep()` after a signal handler runs**, so a
+  handler alone never ends an unbounded wait: register the loop's pipe with
+  `signal.set_wakeup_fd` and poll it too (`xps-haptic-touchpad`).
+- **`pactl` translates the headers of its long listings** ("Sink Input #" is
+  "Afvoer-invoer #" in Dutch). Parse them under `LC_ALL=C`.
+- **An EDS connect wait of 0 means "wait forever".** `calendar-events.py`
+  connects its sources in parallel with a one-second wait, and at its deadline
+  returns the calendars that answered plus a `sourceErrors` entry for each
+  that did not.
 
 ## Churn and lifetime invariants (2026-09 robustness pass)
 
@@ -230,28 +273,102 @@ them when changing the surrounding files.
   place: bind to `transcriptRevision`/`transcriptChanged`, not to
   `messagesByConversation`.
 - **Repeaters over derived lists take a structural key.** Bar clusters,
-  indicators, workspaces, usage chips and the drawer network list parse their
-  model from a JSON string of ids, and delegates look up live data by id, so a
-  value change flows through bindings instead of recreating delegates.
+  indicators, workspaces, usage chips, the drawer network list, and the
+  GitHub Inbox and repository rows parse their model from a JSON string of
+  ids, and delegates look up live data by id, so a value change flows through
+  bindings instead of recreating delegates. GitHub Inbox sections and drawer
+  Bluetooth sections are fixed models; drawer Bluetooth and Sound rows go
+  through `ScriptModel`, which diffs them by device and node identity.
 - **`Settings.applyLoaded` assigns only changed keys** (`assignChanged`) and
   ignores a reload whose bytes equal the last write. Reassigning an unchanged
   var key still notifies and rebuilds every bar module. A settings file from a
   newer schema is applied read-only and never saved over.
 - **Popout slots are visible only while fronted, fading or requested.** An
   outgoing panel turns invisible when its fade ends, which releases its
-  `Claim`s and visible-gated timers.
+  `Claim`s and visible-gated timers. A presented slot is fronted before its
+  card turns visible; otherwise the latched drawer counts as visible for one
+  turn, and its tab's claims start and release their pollers on every
+  unrelated open. A spinner's `running` includes its own `visible`, since the
+  outgoing panel stays alive until it closes.
 - **One `nmcli monitor`** lives in `NetworkStatus`; `EthernetState` listens to
   its `monitorEvent`. Both 30 s safety polls run only while it is down, and
-  restarts back off 5 s → 60 s. Tailscale polls every 120 s for plain
-  `acquire()` claims and every 30 s for `acquireLive()` views.
-- **Plugin discovery** watches `plugins.json`, polls every 30 s (2 s while
-  Settings is open), and rehashes a package only when its stat signature in
-  `<runtime-root>/.revisions.json` changes. A registry error keeps the last
-  good plugins.
+  restarts back off 5 s → 60 s. Battery health follows the same rule with
+  `upower --monitor-detail`: a safety poll runs only while its event stream is
+  down. Tailscale polls every 120 s for plain `acquire()` claims and every
+  30 s for `acquireLive()` views, neither while idle; a missing binary drops
+  it to an hourly probe, and a view that opens probes at once.
+- **The Network panel's live figures cost no process per sample.** Throughput
+  reads `/sys/class/net/<if>/statistics` through FileView on the 1.5 s tick,
+  and `primary` carries those live counters; latency comes from two
+  long-running `ping -n -O` processes. The device/route/profile/scan snapshot
+  runs on `NetworkStatus.monitorEvent` (debounced), on a change in the scanned
+  SSID set, after actions, and on a 10 s safety poll. All of it runs only
+  while a view holds the panel.
+- **Plugin discovery** watches `plugins.json`, which `plugin update` touches.
+  Package trees are polled every 5 min only while a plugin is enabled (2 s
+  while Settings is open), never while idle, and a package is rehashed only
+  when its stat signature in `<runtime-root>/.revisions.json` changes. A
+  registry error keeps the last good plugins.
 - **Long-lived helpers are bounded.** `gh` reads, brightness reads/writes,
-  matugen, `calendar-events.py`, wallpaper thumbnails and the plugin scanner
-  each have a timeout or watchdog, and settle on the falling edge of `running`
-  so a helper that never starts cannot wedge its queue.
+  matugen, `calendar-events.py`, `usage-fetch.py`, wallpaper thumbnails and
+  the plugin scanner each have a timeout or watchdog. `usage-fetch.py` ends
+  itself after 150 s and runs the Claude CLI in its own process group, which
+  goes with it, under Usage's 180 s watchdog. Helpers settle on the falling
+  edge of `running`, so one that never starts cannot wedge its queue; that
+  includes the Reminders list, the plugin writer, the launcher's search
+  processes and the brightness re-read a mid-read refresh leaves pending.
+- **Settings, Notes and launcher usage write asynchronously.** Settings and
+  Notes keep one write in flight (see the FileView trap); launcher usage is
+  written 2 s after a burst of launches, and synchronously if the shell goes
+  first.
+
+### Idle and energy (2026-09-23)
+
+- **`Common/Activity.qml` is the one idle and power signal.** `idle` comes
+  from an `IdleMonitor` (300 s, respecting inhibitors, off outside a Wayland
+  session); `onBattery` and `powerSaver` follow UPower and the power profile;
+  `resumed` fires on the first input after idle. Background pollers stop while
+  idle and refresh what went stale on `resumed`. A timer longer than an idle
+  spell (wallpaper rotation) keeps running, and work that falls due while idle
+  is owed to `resumed`.
+- **GitHub and Usage gate scheduled timers on `scheduleActive`**: the module
+  is on, the session is not idle, and the network is not known to be down.
+  Manual refreshes are never gated.
+- **Poll only for a consumer.** Updates checks in the background only for its
+  widget or its notifications; opening the Updates panel or the drawer
+  Overview refreshes a stale count. Weather fetches only for a set location
+  with its widget on or a Day sheet claim; the calendar polls only for a Day
+  sheet claim.
+- **Updates retries only what failed.** The retry budget resets on the online
+  edge, startup, a manual refresh or an all-success check, never on a
+  scheduled poll, and each source has its own notification baseline. dnf's
+  answer is reused while the repomd/repo/rpmdb signature is unchanged; manual
+  and post-run checks force a real read, and one happens at least every 6 h.
+- **Never reload a watched FileView on a timer.** Each reload rebuilds its
+  inotify watches, and the directory watch already sees creation and atomic
+  replacement. Poll only while the file is missing, and make sure its
+  directory exists (Recorder, Dictation).
+- **Parsed commands set `LC_ALL` through the Process `environment`**, not an
+  `env` process per run.
+- **Integration sockets exist only while wanted.** `T3Connection.enabled` and
+  `HermesConnection.enabled` follow their bar module, or their panel while it
+  is open, and `T3Connection.connect()` is the single gated entry. Naming a
+  connection singleton constructs it, so ShellHealth checks `Settings.mods`
+  first. Backoff starts over only once a link has proven healthy (T3: its
+  first shell snapshot via `markHealthy`, or 60 s connected; Hermes: 60 s),
+  never merely because a socket opened. T3 retries rest while the machine is
+  known offline (a loopback server is exempt) or idle, Hermes's only while
+  idle. An expired T3 Connect session is a state, not an error: the ticket
+  helper exits 3, the link goes signed-out without retrying, and the panel
+  offers Sign in.
+- **Nothing ticks faster than it reads.** The recording mark steps with
+  `Recorder.elapsed` instead of an infinite animation; the mic meter samples
+  at ~15 Hz into whole pixels; reminder countdowns wake at
+  `CountdownHelpers.soonestChangeMs`; HH:mm captions use a minutes clock that
+  runs only while visible.
+- **Power saver** is part of `Theme.reducedMotion` (`Activity.powerSaver`).
+  The compositor side is `cybexos_power_saver()` in `looknfeel.lua`, whose
+  state lives in `_G` so a config reload reapplies it.
 
 ## Layout
 
@@ -275,14 +392,19 @@ than as a dozen properties.
 ### Launcher providers and actions
 
 `Common/LauncherProviders.qml` owns command-palette routing, results and side
-effects; `LauncherView.qml` only renders its normalized rows. Every open resets
-to the Apps tab; Emoji, History (clipboard), and Actions are discoverable tabs
-beside it in a compact 460px card. The strip is 34px tall, the search field is
-44px, and an up-to-eight-row viewport uses 42px rows with 28px icons. The Apps
-tab keeps every visible desktop entry in its model and scrolls inside that
-fixed viewport; keyboard selection keeps the active row in view. Rows show one
-line only; action subtitles and keywords remain searchable metadata but do not
-add visual bulk.
+effects; `LauncherView.qml` only renders its normalized rows. Every open and
+every close resets to the Apps tab; Emoji, History (clipboard), and Actions
+are discoverable tabs beside it in a compact 460px card. The strip is 34px
+tall, the search field is 44px, and an up-to-eight-row viewport uses 42px rows
+with 28px icons. The Apps tab keeps every visible desktop entry in its model
+and scrolls inside that fixed viewport; keyboard selection keeps the active
+row in view. Rows show one line only; action subtitles and keywords remain
+searchable metadata but do not add visual bulk.
+
+The launcher's layer surface is the card's full-height envelope plus its
+entry travel, anchored top-left at offsets from the output edge, not the whole
+output: the compositor blurs every pixel of a blurred surface. Clicks outside
+it clear the `HyprlandFocusGrab`, which closes the launcher.
 
 `Left`/`Right` cycle tabs, as do `Ctrl+Tab` and `Ctrl+Shift+Tab`. `Up`, `Down`,
 and result-navigation `Tab` wrap at the list ends; `PageUp`/`PageDown` jump six
@@ -567,11 +689,14 @@ glass and detached panels. What that added, and what it needs:
 - **qmlformat one-shot reformat**: most files would churn and the tool fights
   the deliberate hand-wrapped style. Revisit only as a dedicated commit with a
   tuned `.qmlformat.ini`.
-- **Automatic shell restart on config deploy**: Quickshell hot-reloads; a
-  forced restart is more disruptive than the problem it solves. Installing a
-  new shell font is the narrow exception: Qt does not add a newly cached face
-  to an already-running process, so the apps role `try-restart`s Quickshell
-  after a font install and leaves an inactive service alone.
+- **Restarting the shell on every converge**: Quickshell hot-reloads, and a
+  restart is more disruptive than the problem it solves. A converge that
+  changes the deployed tree or unit restarts once from the complete tree,
+  because sequential copies can trip rejected intermediate hot reloads, and
+  verifies it; an unchanged converge leaves the shell alone. Installing a new
+  shell font is the other exception: Qt does not add a newly cached face to an
+  already-running process, so the apps role `try-restart`s Quickshell after a
+  font install and leaves an inactive service alone.
 - **The remaining perf items** (toast countdown timer, memoising
   `Notifs.iconSource`, a `Clock` singleton, a launcher token index): measured
   2026-08-08 and declined. Two premises were already false in the code, and the

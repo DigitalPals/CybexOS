@@ -3,7 +3,10 @@ set -euo pipefail
 
 cd -- "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
-FEDORA_BINDINGS_CONFIG=roles/desktop/files/bindings.lua luajit <<'LUA'
+# `luajit -`, never bare `luajit` on a heredoc: reading an unnamed stdin
+# script, LuaJIT prints a failed assertion and still exits 0, which let this
+# fixture report success while its Brave assertion had been failing.
+FEDORA_BINDINGS_CONFIG=roles/desktop/files/bindings.lua luajit - <<'LUA'
 local config = assert(os.getenv("FEDORA_BINDINGS_CONFIG"))
 local active = {}
 
@@ -77,10 +80,26 @@ for _, keys in ipairs(optional) do
 end
 assert(active["SUPER + CTRL + SHIFT + A"].dispatcher:match("cybex agent %-%-window$"),
   "default AI agent binding did not use the managed launcher")
-assert(active["SUPER + B"].dispatcher:match("^brave%-browser%-stable"),
+assert(active["SUPER + B"].dispatcher:match("^brave%-origin%-stable"),
   "proprietary browser selection did not use Brave")
 assert(active["XF86AudioRaiseVolume"].dispatcher:match("xps%-speaker%-tuning"),
   "XPS audio route omitted the hardware helper")
+-- The shell runs by path, so a bare `qs ipc call` reaches nothing.
+local runtime = os.getenv("HOME") .. "/.local/bin/cybexos-runtime ipc "
+for keys, call in pairs({
+  ["SUPER + comma"] = "settings toggle",
+  ["SUPER + N"] = "popouts toggle notifications",
+  ["SUPER + A"] = "popouts toggle control",
+  ["SUPER + K"] = "session keys",
+}) do
+  assert(active[keys].dispatcher == runtime .. call,
+    keys .. " did not reach the shell through cybexos-runtime ipc")
+end
+for keys, binding in pairs(active) do
+  assert(type(binding.dispatcher) ~= "string"
+      or not binding.dispatcher:match("^qs ipc"),
+    keys .. " calls qs ipc without the runtime path")
+end
 
 package.loaded.features = nil
 package.preload.features = function()
@@ -131,7 +150,7 @@ assert_hypr_tree_loadable() {
   HOME="$scenario_root/home" \
   XDG_CONFIG_HOME="$scenario_root/config" \
   XDG_DATA_HOME="$scenario_root/data" \
-    luajit <<'LUA'
+    luajit - <<'LUA'
 local boundary = assert(os.getenv("FEDORA_HYPR_BOUNDARY"))
 local config_home = assert(os.getenv("XDG_CONFIG_HOME"))
 local data_home = assert(os.getenv("XDG_DATA_HOME"))

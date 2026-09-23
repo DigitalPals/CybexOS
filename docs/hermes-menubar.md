@@ -121,18 +121,26 @@ probe and publishes the negotiated contract to QML. It also supervises the
 always-on `/api/sessions/events` list-invalidation stream and the selected
 conversation's `/api/session/stream` channel. These recover conversations
 created by another client, background-task completions, and server-initiated
-turns without polling or replaying a prompt. Older WebUI versions degrade to
-manual/list refresh when a stream endpoint is genuinely unavailable. Advanced
-write routes are discovered with empty validation requests that contain no
-session ID, file, or prompt and therefore cannot mutate remote state. A 400 or
-422 validation response confirms the route; a missing or retired route keeps
-the matching control hidden. Runtime 404/405/410/501 responses downgrade the
-capability immediately. Model selection and reasoning effort are enabled only
-after their read-only discovery endpoints return a usable contract.
+turns without polling or replaying a prompt. A dropped observer stream
+reconnects after a jittered delay that starts near 3 seconds and doubles up to
+2 minutes; only a stream that stayed open for a minute resets that backoff, so
+a server or proxy that accepts and immediately closes is not hammered. A
+burst of list invalidations shares one list refresh plus at most one trailing
+refresh per second. Older WebUI versions degrade to manual/list refresh when a
+stream endpoint is genuinely unavailable. Advanced write routes are discovered
+with empty validation requests that contain no session ID, file, or prompt and
+therefore cannot mutate remote state. A 400 or 422 validation response confirms
+the route; a missing or retired route keeps the matching control hidden.
+Runtime 404/405/410/501 responses downgrade the capability immediately. Model
+selection and reasoning effort are enabled only after their read-only discovery
+endpoints return a usable contract.
 
 The small Python bridge remains loopback-only on `ws://127.0.0.1:9120/ws`. It
 owns the remote cookie and never exposes it to QML; it does not contain or run
-the Hermes Agent model/runtime. Browser-originated turns are owned by the
+the Hermes Agent model/runtime. Remote requests never hold the bridge's
+credential lock while they wait on the network, so a slow or unreachable WebUI
+delays only its own request: local RPCs, other remote calls, and live stream
+relays stay responsive. Browser-originated turns are owned by the
 remote Hermes Gateway rather than imported into the long-running WebUI Python
 process. Updating the Agent checkout therefore cannot stale the WebUI process
 used by this widget.
@@ -144,6 +152,12 @@ systemctl --user status hermes-menubar-bridge.service
 journalctl --user -u hermes-menubar-bridge.service -b --no-pager
 curl -fsS "${HERMES_WEBUI_ORIGIN%/}/api/auth/status" | jq
 ```
+
+A bridge that crashes is restarted after 2 seconds at first; repeated failures
+stretch the delay to 5 minutes, so a startup fault such as a taken port 9120 or
+a missing `python3-websockets` does not loop for the whole session. After fixing
+the cause, `systemctl --user restart hermes-menubar-bridge.service` retries
+immediately.
 
 The public status request should be reachable even while signed out. A healthy
 password-protected server reports `auth_enabled: true`,

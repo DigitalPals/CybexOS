@@ -13,6 +13,7 @@ from pathlib import Path
 import sys
 import tempfile
 import threading
+import time
 from typing import Any
 
 
@@ -34,6 +35,11 @@ class Fixture:
         self.logout_cookie = ""
         self.cross_origin = ""
         self.cross_requests = 0
+        # A held request parks on ``slow_release`` so a scenario can observe
+        # the bridge while one remote call is still in flight.
+        self.slow_entered = threading.Event()
+        self.slow_release = threading.Event()
+        self.slow_status = 200
 
     @staticmethod
     def has_session(handler: BaseHTTPRequestHandler) -> bool:
@@ -114,6 +120,16 @@ class HermesHandler(BaseHTTPRequestHandler):
             return self.auth_status()
         if self.path == "/auth-status-final":
             return self.auth_status()
+        if self.path == "/api/held":
+            FIXTURE.slow_entered.set()
+            FIXTURE.slow_release.wait(timeout=10)
+            if FIXTURE.slow_status == 401:
+                return self.json_reply({"error": "unauthorized"}, status=401)
+            return self.json_reply({"ok": True, "held": True})
+        if self.path == "/api/quick":
+            if not FIXTURE.has_session(self):
+                return self.json_reply({"error": "unauthorized"}, status=401)
+            return self.json_reply({"ok": True, "held": False})
         if self.path == "/login":
             return self.reply(
                 200,
@@ -328,9 +344,91 @@ async def scenario() -> None:
             }
 
 
+async def hold_request(manager: Any) -> asyncio.Task[Any]:
+    FIXTURE.slow_entered.clear()
+    FIXTURE.slow_release.clear()
+    task = asyncio.create_task(manager.request_json("GET", "/api/held", timeout=10))
+    entered = await asyncio.to_thread(FIXTURE.slow_entered.wait, 5)
+    assert entered, "held request never reached the fixture"
+    return task
+
+
+async def concurrency_scenario() -> None:
+    """A request in flight must not stall the event loop or other requests."""
+
+    FIXTURE.mode = "normal"
+    FIXTURE.slow_status = 200
+    with RunningServer(HermesHandler) as remote, tempfile.TemporaryDirectory(
+        prefix="hermes-remote-auth-concurrency."
+    ) as temporary:
+        credential_path = Path(temporary) / "remote-webui-auth.json"
+        manager = BRIDGE.RemoteWebUIAuth(credential_path, environment_url="")
+        await manager.login(remote.url, FIXTURE.password)
+
+        # Release the held request after a bound, so a regression fails the
+        # timing assertions below instead of hanging the suite.
+        watchdog = threading.Timer(3.0, FIXTURE.slow_release.set)
+        watchdog.start()
+        try:
+            held = await hold_request(manager)
+            started = time.monotonic()
+            status = manager.status
+            assert time.monotonic() - started < 0.2, "status waited on a request"
+            assert status["state"] == "connected", status
+            started = time.monotonic()
+            manager.connecting_status("fixture")
+            assert time.monotonic() - started < 0.2, "status write waited on a request"
+            # A second request and a probe finish while the first is still
+            # parked: remote traffic is not serialized behind one slow call.
+            quick = await asyncio.wait_for(
+                manager.request_json("GET", "/api/quick"), timeout=2
+            )
+            assert quick == {"ok": True, "held": False}
+            assert (await asyncio.wait_for(manager.probe(), timeout=2))[
+                "state"
+            ] == "connected"
+            assert not held.done()
+            FIXTURE.slow_release.set()
+            assert (await held)["held"] is True
+        finally:
+            watchdog.cancel()
+            FIXTURE.slow_release.set()
+
+        # A challenge for a session that a newer sign-in replaced mid-request
+        # must not clear the replacement's cookie or report it expired.
+        FIXTURE.slow_status = 401
+        held = await hold_request(manager)
+        await manager.login(remote.url, FIXTURE.password)
+        FIXTURE.slow_release.set()
+        try:
+            await held
+            raise AssertionError("stale challenge unexpectedly succeeded")
+        except BRIDGE.RemoteLoginFault:
+            raise AssertionError("stale challenge expired the replacement session")
+        except BRIDGE.RpcFault as fault:
+            assert fault.code == -32042, fault.message
+        assert manager.status["state"] == "connected", manager.status
+        assert manager.status["hasSessionCredential"] is True
+        assert FIXTURE.cookie_value in credential_path.read_text(encoding="utf-8")
+
+        # The same challenge for the current session still expires it.
+        held = await hold_request(manager)
+        FIXTURE.slow_release.set()
+        try:
+            await held
+            raise AssertionError("current-session challenge was ignored")
+        except BRIDGE.RemoteLoginFault as fault:
+            assert fault.data["state"] == "expired"
+        assert manager.status["state"] == "expired"
+        assert FIXTURE.cookie_value not in credential_path.read_text(encoding="utf-8")
+        FIXTURE.slow_status = 200
+
+
 if __name__ == "__main__":
     asyncio.run(scenario())
+    asyncio.run(concurrency_scenario())
     print(
         "Hermes WebUI auth keeps passwords ephemeral, confines redirects, "
-        "persists 0600 cookies, and normalizes expired sessions"
+        "persists 0600 cookies, normalizes expired sessions, and never "
+        "blocks on a request in flight"
     )

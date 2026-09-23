@@ -70,16 +70,34 @@ Singleton {
             : elapsed + 1;
     }
 
-    // Cheap: small reads off tmpfs/procfs, no process spawned. The chip has to
-    // notice a recording the compositor keybind started, and there is no
-    // signal for that beyond the file appearing.
-    Timer {
-        id: poll
-        interval: 4000
+    // The chip has to notice a recording the compositor keybind started, and
+    // the only signal for that is the state files appearing. Each FileView
+    // below watches its file's directory as well, which catches a creation
+    // or an atomic replace with no polling; a reload rebuilds those inotify
+    // watches, so nothing reloads them on a timer. The directory watch needs
+    // the directory to exist before the first recording, so it is created
+    // here as the script creates it, and the views re-arm once it does.
+    Process {
+        id: stateDirProc
+        command: ["mkdir", "-p", "-m", "0700", root.stateDir]
         running: true
+        onRunningChanged: {
+            if (!running)
+                root.refresh();
+        }
+    }
+
+    // A PID file is only a ready marker, not proof the child is still alive:
+    // wf-recorder can fail after the launching script exits and leave the
+    // file behind. While the published PID names a live process, procfs is
+    // read again every four seconds (no process, no watch), so a stale file
+    // cannot pin the red chip on screen forever.
+    Timer {
+        id: liveness
+        interval: 4000
+        running: root.recorderPid > 0 && root.recorderName !== ""
         repeat: true
-        triggeredOnStart: true
-        onTriggered: root.refresh()
+        onTriggered: procView.reload()
     }
 
     Timer {
@@ -131,10 +149,7 @@ Singleton {
         }
     }
 
-    // A PID file is only a ready marker, not proof the child is still alive.
-    // wf-recorder can fail after the launching script exits; checking procfs on
-    // the existing four-second poll prevents a stale file pinning the red chip
-    // on screen forever, without spawning another process to do it.
+    // Read on each liveness tick; see `liveness` above.
     FileView {
         id: procView
         path: root.recorderPid > 0 ? "/proc/" + root.recorderPid + "/comm" : ""

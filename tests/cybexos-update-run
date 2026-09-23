@@ -8,9 +8,24 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 backend="$repo_root/assets/scripts/cybexos-update-run"
 fixture=$(mktemp -d)
 
+# Stop a process and every descendant. Background clients and the gated mocks
+# they launch inherit this script's stderr, so an orphan would keep the source
+# gate's output capture open forever after a failed assertion.
+kill_tree() {
+  local pid=$1 child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do
+    kill_tree "$child"
+  done
+  kill "$pid" 2>/dev/null || true
+}
+
 cleanup() {
-  local rc=$? file
+  local rc=$? file pid
   trap - EXIT
+  for pid in $(jobs -p); do
+    kill_tree "$pid"
+  done
+  wait 2>/dev/null || true
   if ((rc != 0)); then
     printf 'cybexos-update-run fixture failed; retained diagnostics follow\n' >&2
     while IFS= read -r -d '' file; do
@@ -49,11 +64,16 @@ apply_mock systemctl \
   '  [[ -n $unit && -e $MOCK_ACTIVE_DIR/$unit ]] && state=active' \
   '  if [[ -n ${MOCK_SHOW_GATE:-} && ! -e $MOCK_SHOW_GATE.used ]]; then' \
   '    : >"$MOCK_SHOW_GATE.used"; : >"$MOCK_SHOW_GATE.entered"' \
-  '    while [[ ! -e $MOCK_SHOW_GATE.release ]]; do sleep 0.01; done' \
+  '    while [[ ! -e $MOCK_SHOW_GATE.release ]]; do' \
+  '      [[ -d ${MOCK_SHOW_GATE%/*} ]] || exit 1' \
+  '      sleep 0.01' \
+  '    done' \
   '  fi' \
   '  printf "%s\n" "$state"' \
   'elif [[ " $* " == *" stop "* ]]; then' \
+  '  printf "%s\n" "$*" >>"$MOCK_STOP_LOG"' \
   '  [[ -z ${MOCK_STOP_FAIL:-} ]] || exit 1' \
+  '  [[ -z ${MOCK_STOP_DEFER:-} ]] || exit 0' \
   '  [[ -z $unit ]] || rm -f -- "$MOCK_ACTIVE_DIR/$unit"' \
   'fi'
 
@@ -64,15 +84,45 @@ apply_mock systemd-run \
   '[[ -n $unit ]]' \
   'if [[ -n ${MOCK_BLOCK_GATE:-} ]]; then' \
   '  : >"$MOCK_BLOCK_GATE.entered"' \
-  '  while [[ ! -e $MOCK_BLOCK_GATE.release ]]; do sleep 0.01; done' \
+  '  while [[ ! -e $MOCK_BLOCK_GATE.release ]]; do' \
+  '    [[ -d ${MOCK_BLOCK_GATE%/*} ]] || exit 1' \
+  '    sleep 0.01' \
+  '  done' \
   'fi' \
   ': >"$MOCK_ACTIVE_DIR/$unit"' \
+  'printf "%s\n" "$*" >>"$MOCK_SYSTEMD_ARGS_LOG"' \
   'printf "%s\n" "$unit" >>"$MOCK_SYSTEMD_LOG"'
 
+# The worker holds a logind inhibitor through this helper; never take a real
+# one from the fixture.
+apply_mock systemd-inhibit \
+  'set -euo pipefail' \
+  'printf "%s\n" "$*" >>"$MOCK_INHIBIT_LOG"' \
+  'if [[ -n ${MOCK_INHIBIT_FAIL:-} ]]; then' \
+  '  echo "Failed to inhibit: Access denied" >&2' \
+  '  exit 1' \
+  'fi' \
+  'while [[ ${1:-} == --* ]]; do shift; done' \
+  'exec "$@"'
+
+# MOCK_SUDO_TTY_ONLY models sudo's default tty-scoped timestamp: the cached
+# ticket does not apply to a process that has left the terminal's session.
 apply_mock sudo \
   'set -euo pipefail' \
   'printf "%s\n" "$*" >>"$MOCK_PACKAGE_LOG"' \
+  'if [[ -n ${MOCK_SUDO_V_TICKET:-} ]]; then' \
+  '  if [[ $* == -v ]]; then : >"$MOCK_SUDO_V_TICKET"; exit 0; fi' \
+  '  [[ -e $MOCK_SUDO_V_TICKET ]] || exit 1' \
+  '  read -r -a stat_fields </proc/$$/stat' \
+  '  [[ ${stat_fields[5]} != "$$" ]] || exit 1' \
+  '  [[ ${1:-} != -n ]] || shift' \
+  '  exec "$@"' \
+  'fi' \
   '[[ -n ${MOCK_PACKAGE_SUCCESS:-} ]] || exit 99' \
+  'if [[ -n ${MOCK_SUDO_TTY_ONLY:-} ]]; then' \
+  '  read -r -a stat_fields </proc/$$/stat' \
+  '  [[ ${stat_fields[5]} != "$$" ]] || exit 1' \
+  'fi' \
   '[[ ${1:-} != -n ]] || shift' \
   'exec "$@"'
 
@@ -81,13 +131,24 @@ apply_mock dnf \
   'printf "%s\n" "$*" >>"$MOCK_DNF_LOG"' \
   'if [[ " $* " == *" upgrade "* ]]; then' \
   '  umask >>"$MOCK_DNF_UMASK_LOG"' \
+  '  if [[ -n ${MOCK_DNF_GATE:-} ]]; then' \
+  '    : >"$MOCK_DNF_GATE.entered"' \
+  '    while [[ ! -e $MOCK_DNF_GATE.release ]]; do' \
+  '      [[ -d ${MOCK_DNF_GATE%/*} ]] || exit 1' \
+  '      sleep 0.01' \
+  '    done' \
+  '    : >"$MOCK_DNF_GATE.finished"' \
+  '  fi' \
   '  printf "Repositories loaded.\nNothing to do.\n"' \
   '  exit "${MOCK_DNF_UPGRADE_RC:-0}"' \
   'fi' \
   'if [[ " $* " == *" needs-restarting "* ]]; then' \
   '  if [[ -n ${MOCK_REBOOT_GATE:-} ]]; then' \
   '    : >"$MOCK_REBOOT_GATE.entered"' \
-  '    while [[ ! -e $MOCK_REBOOT_GATE.release ]]; do sleep 0.01; done' \
+  '    while [[ ! -e $MOCK_REBOOT_GATE.release ]]; do' \
+  '      [[ -d ${MOCK_REBOOT_GATE%/*} ]] || exit 1' \
+  '      sleep 0.01' \
+  '    done' \
   '  fi' \
   '  printf "%s\n" "${MOCK_REBOOT_JSON:-[]}"' \
   '  exit "${MOCK_REBOOT_RC:-2}"' \
@@ -117,6 +178,9 @@ export XDG_STATE_HOME="$fixture/state"
 export XDG_RUNTIME_DIR="$fixture/runtime"
 export MOCK_ACTIVE_DIR="$active_dir"
 export MOCK_SYSTEMD_LOG="$fixture/systemd.log"
+export MOCK_SYSTEMD_ARGS_LOG="$fixture/systemd-args.log"
+export MOCK_STOP_LOG="$fixture/stop.log"
+export MOCK_INHIBIT_LOG="$fixture/inhibit.log"
 export MOCK_PACKAGE_LOG="$fixture/package.log"
 export MOCK_DNF_LOG="$fixture/dnf.log"
 export MOCK_DNF_UMASK_LOG="$fixture/dnf-umask.log"
@@ -130,6 +194,8 @@ export CYBEXOS_UPDATE_TEST_LIBEXEC="$mock_libexec"
 export PATH="$mock_bin:$PATH"
 printf 'boot-a\n' >"$CYBEXOS_UPDATE_BOOT_ID_FILE"
 : >"$MOCK_PACKAGE_LOG"
+
+current_run_id() { cat "$XDG_STATE_HOME/cybexos/update/current"; }
 
 idle=$($backend status --json)
 [[ $(jq -r .state <<<"$idle") == idle ]]
@@ -151,6 +217,53 @@ expected_auth_probes=2
 ((EUID == 0)) && expected_auth_probes=0
 [[ $(grep -Fxc -- '-n true' "$MOCK_PACKAGE_LOG") -eq $expected_auth_probes ]]
 ! grep -Eq 'systemd-run|systemctl' "$MOCK_PACKAGE_LOG"
+# The worker yields CPU and I/O to the desktop, and a stop reaches only the
+# worker process so it can finish a running transaction first.
+for property in Type=exec KillMode=mixed TimeoutStopSec=30min Nice=10 \
+    IOWeight=20 CPUWeight=20; do
+  grep -Fq -- "--property=$property" "$MOCK_SYSTEMD_ARGS_LOG"
+done
+grep -Fq -- "stop --no-block $polkit_unit" "$MOCK_STOP_LOG"
+: >"$MOCK_PACKAGE_LOG"
+: >"$MOCK_SYSTEMD_LOG"
+
+# A terminal's sudo ticket is keyed to that terminal and cannot authorize a
+# detached user-unit worker. Only sudo that works without any terminal keeps
+# the user unit; otherwise the client launches a system unit while its own
+# ticket is still valid.
+unset CYBEXOS_UPDATE_ASSUME_USER_UNIT
+export MOCK_PACKAGE_SUCCESS=1 MOCK_SUDO_TTY_ONLY=1
+tty_ticket_start=$($backend start --json --no-flatpak)
+[[ $(jq -r .systemUnit <<<"$tty_ticket_start") == true ]]
+$backend cancel "$(jq -er .id <<<"$tty_ticket_start")" >/dev/null
+unset MOCK_SUDO_TTY_ONLY
+nopasswd_start=$($backend start --json --no-flatpak)
+[[ $(jq -r .systemUnit <<<"$nopasswd_start") == false ]]
+$backend cancel "$(jq -er .id <<<"$nopasswd_start")" >/dev/null
+unset MOCK_PACKAGE_SUCCESS
+set +e
+$backend start --json --no-flatpak >"$fixture/unauthenticated.json" \
+  2>"$fixture/unauthenticated.err"
+unauthenticated_rc=$?
+set -e
+[[ $unauthenticated_rc -eq 77 ]]
+# The terminal client cannot prompt from inside start_run's command
+# substitution, so it authenticates first and then launches a system unit.
+# A pty stands in for the terminal; attach is cut short by the timeout.
+: >"$MOCK_PACKAGE_LOG"
+set +e
+MOCK_SUDO_V_TICKET="$fixture/sudo-ticket" timeout 5 python3 -c \
+  'import pty, sys; pty.spawn(sys.argv[1:])' "$backend" run --no-flatpak \
+  </dev/null >"$fixture/terminal-run.out" 2>&1
+set -e
+grep -Fxq -- '-v' "$MOCK_PACKAGE_LOG"
+grep -Fq 'Authenticate once' "$fixture/terminal-run.out"
+terminal_id=$(current_run_id)
+[[ $(jq -r .systemUnit "$XDG_STATE_HOME/cybexos/update/logs/$terminal_id/status.json") == true ]]
+export MOCK_PACKAGE_SUCCESS=1
+$backend cancel "$terminal_id" >/dev/null
+unset MOCK_PACKAGE_SUCCESS
+export CYBEXOS_UPDATE_ASSUME_USER_UNIT=1
 : >"$MOCK_PACKAGE_LOG"
 : >"$MOCK_SYSTEMD_LOG"
 
@@ -160,14 +273,17 @@ expected_auth_probes=2
 export MOCK_BLOCK_GATE="$fixture/launch"
 $backend start --json --no-flatpak >"$fixture/first.json" &
 first_pid=$!
-for _ in {1..200}; do
+for _ in {1..1000}; do
   [[ -e $MOCK_BLOCK_GATE.entered ]] && break
   sleep 0.01
 done
 [[ -e $MOCK_BLOCK_GATE.entered ]]
 
+# The blocked first client never releases the lock by itself, so a second
+# client that waited instead of resolving the published run would still time
+# out. The bound only has to survive a loaded machine.
 set +e
-timeout 1 "$backend" start --json --no-flatpak \
+timeout 10 "$backend" start --json --no-flatpak \
   >"$fixture/second.json" 2>"$fixture/second.err"
 second_rc=$?
 set -e
@@ -183,7 +299,7 @@ export MOCK_SHOW_GATE="$fixture/show"
 $backend cancel "$first_id" >"$fixture/cancel-race.out" \
   2>"$fixture/cancel-race.err" &
 cancel_pid=$!
-for _ in {1..200}; do
+for _ in {1..1000}; do
   [[ -e $MOCK_SHOW_GATE.entered ]] && break
   sleep 0.01
 done
@@ -296,6 +412,108 @@ unlocked_status=$($backend status --json "$lock_race_id")
 [[ $(jq -r .state <<<"$unlocked_status") == failed ]]
 [[ $(jq -r .phase <<<"$unlocked_status") == abandoned ]]
 
+# A worker finishing its step keeps running after the stop request. The
+# client returns at once, and status reports the pending cancellation until
+# the worker records it at the next boundary.
+defer_status_start=$($backend start --json --no-flatpak)
+defer_status_id=$(jq -er .id <<<"$defer_status_start")
+defer_status_dir=$(jq -er .logDir <<<"$defer_status_start")
+defer_status_unit=$(jq -er .unit <<<"$defer_status_start")
+defer_status_file="$defer_status_dir/status.json"
+jq '.state = "running" | .phase = "packages"' "$defer_status_file" \
+  >"$defer_status_file.new"
+mv -f -- "$defer_status_file.new" "$defer_status_file"
+[[ $(jq -r .deferredCancel "$defer_status_file") == true ]]
+[[ $(jq -r .cancelRequested <<<"$($backend status --json "$defer_status_id")") == false ]]
+export MOCK_STOP_DEFER=1
+: >"$MOCK_STOP_LOG"
+deferred_out=$($backend cancel "$defer_status_id")
+grep -q 'finishes first' <<<"$deferred_out"
+grep -Fq -- "stop --no-block $defer_status_unit" "$MOCK_STOP_LOG"
+[[ -e $active_dir/$defer_status_unit ]]
+deferred_status=$($backend status --json "$defer_status_id")
+[[ $(jq -r .state <<<"$deferred_status") == running ]]
+[[ $(jq -r .cancelRequested <<<"$deferred_status") == true ]]
+unset MOCK_STOP_DEFER
+
+# A worker launched before deferred cancellation existed would be killed
+# together with dnf; refuse rather than interrupt its package transaction.
+jq 'del(.deferredCancel)' "$defer_status_file" >"$defer_status_file.new"
+mv -f -- "$defer_status_file.new" "$defer_status_file"
+rm -f -- "$defer_status_dir/cancel.requested"
+: >"$MOCK_STOP_LOG"
+set +e
+$backend cancel "$defer_status_id" >"$fixture/legacy-cancel.out" \
+  2>"$fixture/legacy-cancel.err"
+legacy_cancel_rc=$?
+set -e
+[[ $legacy_cancel_rc -eq 1 ]]
+grep -q 'cannot be interrupted safely' "$fixture/legacy-cancel.err"
+[[ ! -s $MOCK_STOP_LOG ]]
+[[ ! -e $defer_status_dir/cancel.requested ]]
+[[ -e $active_dir/$defer_status_unit ]]
+jq '.deferredCancel = true' "$defer_status_file" >"$defer_status_file.new"
+mv -f -- "$defer_status_file.new" "$defer_status_file"
+$backend cancel "$defer_status_id" >/dev/null
+[[ $(jq -r .state "$defer_status_file") == cancelled ]]
+[[ $(jq -r .cancelRequested <<<"$($backend status --json "$defer_status_id")") == false ]]
+
+# SIGTERM never interrupts the package transaction: dnf runs to completion,
+# then the worker records the cancellation instead of starting the test gate
+# or Ansible, and keeps the reboot advice for what was installed. The worker
+# holds a shutdown/sleep block inhibitor while it runs.
+export MOCK_PACKAGE_SUCCESS=1
+export MOCK_DNF_GATE="$fixture/dnf-gate"
+export MOCK_TESTS_RAN="$fixture/defer-tests-ran"
+defer_repo="$fixture/defer-repo"
+mkdir -p "$defer_repo/tests"
+printf '%s\n' '---' >"$defer_repo/site.yml"
+printf '%s\n' '#!/usr/bin/env bash' ': >"$MOCK_TESTS_RAN"' >"$defer_repo/tests/run"
+chmod 0755 "$defer_repo/tests/run"
+rm -f -- "$MOCK_ANSIBLE_ARGS_LOG"
+defer_start=$($backend start --json --full --no-flatpak --repo "$defer_repo")
+defer_id=$(jq -er .id <<<"$defer_start")
+$backend _worker "$defer_id" --full --no-flatpak --repo "$defer_repo" \
+  >"$fixture/defer-worker.out" 2>"$fixture/defer-worker.err" &
+defer_worker=$!
+for _ in {1..1000}; do
+  [[ -e $MOCK_DNF_GATE.entered ]] && break
+  sleep 0.01
+done
+[[ -e $MOCK_DNF_GATE.entered ]]
+# Signal again after a pause so at least one TERM arrives while the worker is
+# blocked in `wait`, which a trapped signal interrupts early.
+kill -TERM "$defer_worker"
+sleep 0.3
+kill -TERM "$defer_worker"
+sleep 0.3
+kill -0 "$defer_worker"
+[[ ! -e $MOCK_DNF_GATE.finished ]]
+[[ $(jq -r .phase <<<"$($backend status --json "$defer_id")") == packages ]]
+: >"$MOCK_DNF_GATE.release"
+set +e
+wait "$defer_worker"
+defer_worker_rc=$?
+set -e
+[[ $defer_worker_rc -eq 130 ]]
+[[ -e $MOCK_DNF_GATE.finished ]]
+unset MOCK_DNF_GATE
+deferred_run=$($backend status --json "$defer_id")
+[[ $(jq -r .state <<<"$deferred_run") == cancelled ]]
+[[ $(jq -r .dnfDone <<<"$deferred_run") == true ]]
+[[ $(jq -r .dnfRc <<<"$deferred_run") -eq 0 ]]
+[[ $(jq -r .message <<<"$deferred_run") \
+    == 'Update cancelled after the package transaction finished' ]]
+[[ $(jq -r .rebootRecommendation <<<"$deferred_run") != pending ]]
+[[ ! -e $MOCK_TESTS_RAN ]]
+[[ ! -e $MOCK_ANSIBLE_ARGS_LOG ]]
+grep -Fq -- '--what=shutdown:sleep --mode=block' "$MOCK_INHIBIT_LOG"
+grep -Fq '[inhibit] shutdown and sleep are blocked' \
+  "$XDG_STATE_HOME/cybexos/update/logs/$defer_id/run.log"
+[[ -z $(find "$XDG_STATE_HOME/cybexos/update/logs/$defer_id" -name '.inhibit.*') ]]
+grep -Fq 'timeout --kill-after=1m 30m ./tests/run' "$backend"
+unset MOCK_PACKAGE_SUCCESS
+
 printf 'abcdefghi' >"$next_dir/dnf.log"
 [[ $($backend read-log "$next_id" dnf 2 4) == cdef ]]
 [[ $($backend read-log "$next_id" dnf 2) == cdefghi ]]
@@ -320,7 +538,7 @@ recommended_id=$(jq -er .id <<<"$recommended_start")
 [[ $(jq -r .rebootRecommendation <<<"$recommended_start") == pending ]]
 $backend _worker "$recommended_id" --no-flatpak &
 recommended_worker=$!
-for _ in {1..200}; do
+for _ in {1..1000}; do
   [[ -e $MOCK_REBOOT_GATE.entered ]] && break
   sleep 0.01
 done
@@ -378,12 +596,17 @@ not_needed=$($backend status --json "$not_needed_id")
 # the already-completed update into a failed run.
 export MOCK_REBOOT_RC=0
 export MOCK_REBOOT_JSON='{"reboot_required":false}'
+# A refused inhibitor (Polkit denies a user unit) is logged, not fatal.
+export MOCK_INHIBIT_FAIL=1
 malformed_start=$($backend start --json --no-flatpak)
 malformed_id=$(jq -er .id <<<"$malformed_start")
 $backend _worker "$malformed_id" --no-flatpak
+unset MOCK_INHIBIT_FAIL
 malformed=$($backend status --json "$malformed_id")
 [[ $(jq -r .state <<<"$malformed") == done ]]
 [[ $(jq -r .rebootRecommendation <<<"$malformed") == unavailable ]]
+grep -Fq '[inhibit] could not block shutdown and sleep; continuing: Failed to inhibit' \
+  "$XDG_STATE_HOME/cybexos/update/logs/$malformed_id/run.log"
 
 export MOCK_REBOOT_RC=2
 export MOCK_REBOOT_JSON='[]'
@@ -485,6 +708,7 @@ done
 release_status=$($backend status --json "$release_id")
 [[ $(jq -r .state <<<"$release_status") == done ]]
 [[ $(jq -r .releaseVersion <<<"$release_status") == 2.0.0 ]]
+[[ $(jq -r .mixedState <<<"$release_status") == false ]]
 
 # A failure while reconciling adopted skill slots rolls every slot back to its
 # exact pre-call object, restores current, and triggers configuration rollback.
@@ -530,6 +754,9 @@ assert_unrelated_skills
 activation_failure=$($backend status --json "$activation_failure_id")
 [[ $(jq -r .state <<<"$activation_failure") == failed ]]
 [[ $(jq -r .phase <<<"$activation_failure") == activation ]]
+# Ansible already deployed the candidate's files while current names the prior
+# release; the record says so instead of implying a clean rollback.
+[[ $(jq -r .mixedState <<<"$activation_failure") == true ]]
 grep -F '[release] agent skill provisioning failed; restoring prior activation' \
   "$XDG_STATE_HOME/cybexos/update/logs/$activation_failure_id/run.log" \
   >/dev/null
@@ -557,6 +784,7 @@ unset MOCK_ANSIBLE_RC
 failed_release=$($backend status --json "$failed_release_id")
 [[ $(jq -r .state <<<"$failed_release") == failed ]]
 [[ $(jq -r .phase <<<"$failed_release") == ansible ]]
+[[ $(jq -r .mixedState <<<"$failed_release") == true ]]
 grep -F '[release] restored the pre-update installer configuration' \
   "$XDG_STATE_HOME/cybexos/update/logs/$failed_release_id/run.log" >/dev/null
 
@@ -574,4 +802,4 @@ assert_unrelated_skills
 
 ! grep -q 'set +e;.*set -e' "$backend"
 
-printf 'Durable updater serializes starts, owns release and agent-skill activation rollback, preserves boot-scoped reboot advice, and reads exact log windows\n'
+printf 'Durable updater serializes starts, defers cancellation past package transactions, inhibits shutdown, owns release and agent-skill activation rollback, preserves boot-scoped reboot advice, and reads exact log windows\n'

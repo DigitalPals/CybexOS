@@ -43,8 +43,9 @@ Item {
     // Never leave the page invisible if a delegate fails to incubate.
     Timer { interval: 500; running: !page.built; onTriggered: page.built = true }
 
-    readonly property var runtimeState: ({ media: Media.hasTrack, weather: Weather.ready || Weather.offline,
-        bluetooth: BluetoothState.connected, battery: Battery.isLaptop,
+    readonly property var runtimeState: ({ media: Media.hasTrack,
+        weather: Weather.ready || Weather.offline || !Weather.locationSet,
+        weatherLocation: Weather.locationSet, bluetooth: BluetoothState.connected, battery: Battery.isLaptop,
         updates: Updates.total > 0 || Updates.error !== "" || Updates.runState !== "idle" || Updates.rebootRecommended,
         tray: SystemTray.items.values.length > 0 })
 

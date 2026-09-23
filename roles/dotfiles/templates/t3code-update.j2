@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source /usr/local/libexec/cybexos-common.sh
+# A selective converge can deploy this script before the shared library that
+# defines the bounded download helper; keep the same limits in that window.
+declare -F cybexos_curl >/dev/null || cybexos_curl() {
+  curl --connect-timeout 15 --speed-limit 1024 --speed-time 60 \
+    --retry 3 --retry-connrefused "$@"
+}
 
 install_dir="${XDG_DATA_HOME:-$HOME/.local/share}/t3code-nightly"
 appimage="$install_dir/T3-Code-Nightly-x86_64.AppImage"
@@ -81,7 +87,7 @@ if [[ -x $appimage && -r $version_state && $(<"$version_state") == "$tag" \
 fi
 mkdir -p "$install_dir"
 tmp=$(mktemp "$install_dir/.T3-Code.XXXXXX")
-curl --fail --location --retry 3 --output "$tmp" "$url"
+cybexos_curl --fail --location --output "$tmp" "$url"
 verify_sha256 "$tmp" "$expected" || { echo "T3Code digest mismatch" >&2; exit 1; }
 chmod 0755 "$tmp"
 version_tmp="$install_dir/.version.new.$$"

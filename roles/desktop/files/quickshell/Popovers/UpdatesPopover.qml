@@ -90,7 +90,8 @@ Surface {
         spacing: 9
 
         readonly property real rightWidth: root.mode === "running"
-            ? cancelButton.width + hideButton.width + parent.spacing
+            ? hideButton.width + (cancelButton.visible
+                ? cancelButton.width + parent.spacing : 0)
             : Theme.chipHeight
 
         // The state is in the mark, not in a filled square behind it: the bar
@@ -101,6 +102,7 @@ Surface {
             height: Theme.iconLarge
 
             Sym {
+                id: headerMark
                 anchors.centerIn: parent
                 name: root.headerGlyph(root.mode === "running",
                     root.mode === "done", root.mode === "failed")
@@ -110,12 +112,18 @@ Surface {
                 color: root.mode === "done" ? Theme.ok
                     : root.mode === "failed" ? Theme.redText : Theme.accentText
 
+                // Gated on visibility too: the popout keeps an outgoing
+                // panel alive, hidden, until it closes. Stopping a value
+                // source leaves the angle where it landed, which would tilt
+                // the done or failed mark that replaces the arc.
                 RotationAnimation on rotation {
-                    running: root.mode === "running" && !Theme.reducedMotion
+                    running: root.mode === "running" && headerMark.visible
+                        && !Theme.reducedMotion
                     from: 0
                     to: 360
                     duration: 1400
                     loops: Animation.Infinite
+                    onRunningChanged: if (!running) headerMark.rotation = 0
                 }
             }
         }
@@ -141,7 +149,8 @@ Surface {
                 width: parent.width
                 text: root.mode === "running"
                     ? Format.mmss(Updates.runElapsed) + " · "
-                        + (Updates.flatpakEnabled ? "dnf and flatpak in parallel" : "dnf")
+                        + (Updates.cancelPending ? "cancelling after the current step…"
+                            : Updates.flatpakEnabled ? "dnf and flatpak in parallel" : "dnf")
                     : root.mode === "done"
                     ? "finished " + root.clock(Updates.runFinishedAt)
                         + " · took " + Format.mmss(Updates.runDuration)
@@ -149,8 +158,11 @@ Surface {
                     ? "dnf gave up " + Format.mmss(Updates.runDuration) + " in"
                     : Updates.busy ? "Checking…"
                     : Updates.packageError !== "" ? Updates.packageError
-                    : Updates.checkedLabel() + " · every "
-                        + Settings.modOpts.updates.pollMins + " m"
+                    // Background checks run only for the bar widget or the
+                    // notification; otherwise opening a view is the check.
+                    : Updates.checkedLabel() + (Updates.pollEnabled
+                        ? " · every " + Settings.modOpts.updates.pollMins + " m"
+                        : " · refreshes when opened")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.metadata
                 font.weight: Theme.weightSemibold
@@ -209,9 +221,13 @@ Surface {
             }
         }
 
+        // The worker stops at its next safe boundary, so a requested cancel
+        // stays pending while dnf or flatpak finish; once Ansible applies a
+        // release there is no boundary left and the button goes.
         ActionButton {
             id: cancelButton
-            visible: root.mode === "running"
+            visible: root.mode === "running" && Updates.cancelAllowed
+            enabled: !Updates.cancelPending
             anchors.verticalCenter: parent.verticalCenter
             label: "Cancel"
             revealed: visible
@@ -396,6 +412,30 @@ Surface {
     }
 
     Text {
+        visible: root.mode === "idle" && Updates.projectAvailable
+            && Updates.projectApplyNote !== ""
+        width: parent.width
+        text: "To apply CybexOS " + Updates.projectVersion + ": "
+            + Updates.projectApplyNote
+        wrapMode: Text.Wrap
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.metadata
+        color: Theme.amber
+    }
+
+    // The release step failed and the package run went ahead without it.
+    Text {
+        visible: root.mode !== "idle" && Updates.runProjectSkipped !== ""
+        width: parent.width
+        text: UpdatesHelpers.projectSkippedLabel(Updates.runProjectSkipped,
+            root.mode !== "running")
+        wrapMode: Text.Wrap
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.metadata
+        color: Theme.amber
+    }
+
+    Text {
         visible: root.mode === "idle" && Updates.firmwareError !== ""
         width: parent.width
         text: Updates.firmwareError
@@ -503,6 +543,7 @@ Surface {
                 height: 14
 
                 Sym {
+                    id: stepMark
                     anchors.centerIn: parent
                     name: !stepLine.finished ? "progress_activity"
                         : stepLine.rc === 0 ? "check_circle" : "error"
@@ -514,11 +555,12 @@ Surface {
 
                     RotationAnimation on rotation {
                         running: !stepLine.finished && root.mode === "running"
-                            && !Theme.reducedMotion
+                            && stepMark.visible && !Theme.reducedMotion
                         from: 0
                         to: 360
                         duration: 1400
                         loops: Animation.Infinite
+                        onRunningChanged: if (!running) stepMark.rotation = 0
                     }
                 }
             }
@@ -1179,6 +1221,16 @@ Surface {
                 font.weight: Theme.weightSemibold
                 color: Theme.textFaint
                 elide: Text.ElideRight
+            }
+
+            Text {
+                visible: Updates.mixedState
+                width: parent.width
+                text: UpdatesHelpers.mixedStateAdvice(Updates.mixedState)
+                wrapMode: Text.Wrap
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                color: Theme.amber
             }
         }
     }

@@ -65,7 +65,9 @@ function status(entry, state) {
     if (entry.plugin) return entry.descriptor.error || "On your bar · visibility controlled by plugin";
     switch (entry.id) {
     case "media": return state.media ? "Ready · media loaded" : "Hidden · no media loaded";
-    case "weather": return state.weather ? "Ready · weather loaded" : "Hidden · waiting for weather";
+    case "weather": return !state.weather ? "Hidden · waiting for weather"
+        : state.weatherLocation === false ? "On your bar · needs a location"
+        : "Ready · weather loaded";
     case "bt": return state.bluetooth ? "Ready · device connected" : "Hidden · no connected device";
     case "batt": return state.battery ? "Ready · battery detected" : "Hidden · no battery detected";
     case "updates": return state.updates ? "Ready · update activity" : "Hidden · no pending updates";

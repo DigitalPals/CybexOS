@@ -151,12 +151,7 @@ ShellRoot {
                 root.check(fieldRow.value === "renamed", "field commit/normalization regressed");
             }
             if (subsection) subsection.destroy();
-            if (heading) {
-                const dirtyHeight = heading.height;
-                heading.dirty = false;
-                root.check(heading.height === dirtyHeight, "group reset changed heading geometry");
-                heading.destroy();
-            }
+            if (heading) heading.destroy();
             const groupColumn = collapsibleGroup.children.find(child =>
                 typeof child.forceLayout === "function");
             groupColumn.forceLayout();
@@ -199,7 +194,6 @@ ShellRoot {
         id: headingComponent
         SettingsUi.SectionHeader {
             width: 260
-            dirty: true
             label: "A LONG SECTION HEADING THAT MUST WRAP"
         }
     }

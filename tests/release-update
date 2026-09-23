@@ -63,6 +63,11 @@ for ((i=1; i<=$#; i++)); do
   if [[ ${!i} == -o ]]; then ((i++)); output=${!i}; fi
 done
 [[ -n $output ]]
+printf '%s\n' "${@: -3:1}" >>"$MOCK_CURL_LOG"
+if [[ -n ${MOCK_CURL_OFFLINE:-} ]]; then
+  echo 'curl: (6) Could not resolve host: api.github.com' >&2
+  exit 6
+fi
 if [[ $* == *api.github.com* ]]; then
   cp -- "$MOCK_RELEASE_JSON" "$output"
 else
@@ -73,6 +78,13 @@ cat >"$fixture/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >>"$MOCK_GH_LOG"
+if [[ $* == 'auth token' && -n ${MOCK_GH_UNAUTHENTICATED:-} ]]; then
+  exit 1
+fi
+if [[ $* == 'release verify v'* && -n ${MOCK_GH_VERIFY_FAIL:-} ]]; then
+  echo 'attestation verification failed' >&2
+  exit 1
+fi
 EOF
 cat >"$fixture/bin/backend" <<'EOF'
 #!/usr/bin/env bash
@@ -85,6 +97,10 @@ case ${1:-} in
       exit 3
     fi
     printf '{"id":"20260903-120001-2-2","existing":false}\n'
+    ;;
+  run)
+    printf '%s\n' "$*" >"$MOCK_BACKEND_LOG"
+    echo 'package-only run finished'
     ;;
   attach)
     rc=${MOCK_BACKEND_ATTACH_RC:-0}
@@ -134,6 +150,7 @@ export MOCK_RELEASE_JSON="$fixture/release.json"
 export MOCK_RELEASE_ARCHIVE="$fixture/release.tar.zst"
 export MOCK_GH_LOG="$fixture/gh.log"
 export MOCK_BACKEND_LOG="$fixture/backend.log"
+export MOCK_CURL_LOG="$fixture/curl.log"
 
 check=$($updater --check --json)
 [[ $(jq -r .available <<<"$check") == true ]]
@@ -242,6 +259,75 @@ grep -F -- '--no-packages -- -e' "$fixture/backend.log" >/dev/null
 grep -F -- 'release verify v1.2.3 --repo example/cybexos' "$fixture/gh.log" >/dev/null
 grep -F -- 'release verify-asset v1.2.3' "$fixture/gh.log" >/dev/null
 
+# GitHub, gh, or a bad candidate must never block Fedora and Flatpak updates.
+# An unauthenticated gh is detected before the archive is downloaded, and the
+# package-only run carries the reason for the panel.
+no_stage() {
+  [[ -z $(find "$fixture/data/cybexos/releases" -maxdepth 1 -name '.stage.*') ]]
+}
+# Earlier detached/failed attaches deliberately leave worker-owned stages.
+find "$fixture/data/cybexos/releases" -maxdepth 1 -name '.stage.*' -exec rm -rf -- {} +
+export MOCK_GH_UNAUTHENTICATED=1
+check=$($updater --check --json)
+[[ $(jq -r .available <<<"$check") == true ]]
+jq -e '.projectError | test("gh auth login")' <<<"$check" >/dev/null
+: >"$MOCK_CURL_LOG"
+fallback_start=$($updater --start --no-flatpak 2>"$fixture/fallback-start.err")
+[[ $(<"$fixture/backend.log") == 'start --json --system-unit --no-flatpak' ]]
+[[ $(jq -r .id <<<"$fallback_start") == 20260903-120001-2-2 ]]
+jq -e '.projectError | test("gh auth login")' <<<"$fallback_start" >/dev/null
+! grep -Fq 'example.invalid/release.tar.zst' "$MOCK_CURL_LOG"
+no_stage
+set +e
+$updater --no-flatpak >"$fixture/fallback-run.out" 2>"$fixture/fallback-run.err"
+fallback_run_rc=$?
+set -e
+[[ $fallback_run_rc -eq 69 ]]
+[[ $(<"$fixture/backend.log") == 'run --no-flatpak' ]]
+grep -Fx 'package-only run finished' "$fixture/fallback-run.out" >/dev/null
+grep -F 'system packages were updated, but CybexOS was not' \
+  "$fixture/fallback-run.err" >/dev/null
+# A release-only request has nothing to fall back to.
+set +e
+$updater --no-packages >/dev/null 2>"$fixture/release-only.err"
+release_only_rc=$?
+set -e
+[[ $release_only_rc -eq 1 ]]
+grep -F 'gh auth login' "$fixture/release-only.err" >/dev/null
+# gh treats a token in the environment as a login.
+GH_TOKEN=fixture-token $updater --check --json | jq -e '.projectError == ""' >/dev/null
+unset MOCK_GH_UNAUTHENTICATED
+
+# Offline: the check keeps curl's own error last for the panel, while an
+# update still starts the package-only worker.
+export MOCK_CURL_OFFLINE=1
+set +e
+$updater --check >/dev/null 2>"$fixture/offline-check.err"
+offline_check_rc=$?
+set -e
+[[ $offline_check_rc -ne 0 ]]
+[[ $(tail -n 1 "$fixture/offline-check.err") \
+    == 'curl: (6) Could not resolve host: api.github.com' ]]
+offline_start=$($updater --start 2>/dev/null)
+jq -e '.projectError | test("could not fetch")' <<<"$offline_start" >/dev/null
+[[ $(<"$fixture/backend.log") == 'start --json --system-unit' ]]
+unset MOCK_CURL_OFFLINE
+
+# A failed attestation or an incompatible candidate is refused, its stage is
+# removed, and the package update still runs.
+export MOCK_GH_VERIFY_FAIL=1
+verify_start=$($updater --start 2>/dev/null)
+jq -e '.projectError | test("could not verify")' <<<"$verify_start" >/dev/null
+[[ $(<"$fixture/backend.log") == 'start --json --system-unit' ]]
+no_stage
+unset MOCK_GH_VERIFY_FAIL
+printf '%s\n' '---' 'config_schema_version: 2' 'primary_user: tester' >"$fixture/config.yml"
+incompatible_start=$($updater --start 2>/dev/null)
+jq -e '.projectError | test("incompatible")' <<<"$incompatible_start" >/dev/null
+[[ $(<"$fixture/backend.log") == 'start --json --system-unit' ]]
+no_stage
+cp -- "$fixture/config.original.yml" "$fixture/config.yml"
+
 release_json false
 if $updater --check >/dev/null 2>"$fixture/mutable.err"; then
   echo 'mutable release was accepted' >&2
@@ -249,4 +335,4 @@ if $updater --check >/dev/null 2>"$fixture/mutable.err"; then
 fi
 grep -F 'refusing mutable GitHub release' "$fixture/mutable.err" >/dev/null
 
-echo 'GitHub releases are compatibility-checked, verified, staged, and activated after apply'
+echo 'GitHub releases are compatibility-checked, verified, staged, and activated after apply; package updates never depend on GitHub'

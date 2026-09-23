@@ -41,12 +41,14 @@ if features.podman then
 end
 bind(mainMod .. " + SPACE", hl.dsp.global("quickshell:launcherToggle"))
 bind(mainMod .. " + CTRL + SHIFT + A", hl.dsp.exec_cmd(home .. "/.local/bin/cybex agent --window"))
-bind(mainMod .. " + comma", hl.dsp.exec_cmd("qs ipc call settings toggle"))
+-- The shell runs from the CybexOS runtime by path, where a bare
+-- `qs ipc call` finds no configuration; cybexos-runtime names the active one.
+bind(mainMod .. " + comma", hl.dsp.exec_cmd(home .. "/.local/bin/cybexos-runtime ipc settings toggle"))
 -- Shell surfaces the menubar also opens by click. Documented in the shell's
 -- own cheatsheet (Common/Session.qml), which is what Super+K raises.
-bind(mainMod .. " + N", hl.dsp.exec_cmd("qs ipc call popouts toggle notifications"))
-bind(mainMod .. " + A", hl.dsp.exec_cmd("qs ipc call popouts toggle control"))
-bind(mainMod .. " + K", hl.dsp.exec_cmd("qs ipc call session keys"))
+bind(mainMod .. " + N", hl.dsp.exec_cmd(home .. "/.local/bin/cybexos-runtime ipc popouts toggle notifications"))
+bind(mainMod .. " + A", hl.dsp.exec_cmd(home .. "/.local/bin/cybexos-runtime ipc popouts toggle control"))
+bind(mainMod .. " + K", hl.dsp.exec_cmd(home .. "/.local/bin/cybexos-runtime ipc session keys"))
 bind(mainMod .. " + E", hl.dsp.exec_cmd("nautilus --new-window"))
 bind(mainMod .. " + B", hl.dsp.exec_cmd(browser))
 bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd(privateBrowser))

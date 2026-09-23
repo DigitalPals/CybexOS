@@ -47,7 +47,26 @@ Column {
     PwNodePeakMonitor {
         id: inputPeak
         node: Audio.source
-        enabled: root.visible && !!Audio.source
+        // The monitor holds a capture stream open on the source while it is
+        // enabled; a muted microphone has nothing to meter.
+        enabled: root.visible && !!Audio.source && !Audio.sourceMuted
+    }
+
+    // The monitor's peak moves at the PipeWire buffer rate, and a meter bound
+    // straight to it redrew the popout at display rate for as long as the tab
+    // was open. Sample it at ~15 Hz instead; the meter rounds to whole pixels,
+    // so a quiet microphone draws nothing at all.
+    property real micPeak: 0
+
+    Timer {
+        interval: 66
+        repeat: true
+        running: inputPeak.enabled
+        onTriggered: root.micPeak = Format.clamp01(inputPeak.peak)
+        onRunningChanged: {
+            if (!running)
+                root.micPeak = 0;
+        }
     }
 
     // ---- output header ---------------------------------------------------
@@ -118,8 +137,15 @@ Column {
         width: parent.width
         spacing: 2
 
+        // Both lists derive from every PipeWire node, so any stream coming or
+        // going — a notification sound, a browser tab, this tab's own mic
+        // monitor — produced a fresh array. The ScriptModels diff it by node
+        // identity: rows that survive keep their delegates, a slider mid-drag
+        // included.
         Repeater {
-            model: root.visibleSinks
+            model: ScriptModel {
+                values: root.visibleSinks
+            }
 
             delegate: Rectangle {
                 id: sinkRow
@@ -307,7 +333,7 @@ Column {
                     anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
-                    width: parent.width * Format.clamp01(inputPeak.peak)
+                    width: Math.round(parent.width * root.micPeak)
                     radius: 2
                     color: Theme.ok
                 }
@@ -343,7 +369,9 @@ Column {
         }
 
         Repeater {
-            model: root.readyStreams
+            model: ScriptModel {
+                values: root.readyStreams
+            }
 
             delegate: Item {
                 id: streamRow

@@ -94,7 +94,7 @@ creator = CybexImageCreator(
     kickstart, "CybexOS-Live-44", fslabel="CYBEXOS-LIVE-44", releasever="44",
     tmpdir=str(build / "tmp"), title="CybexOS", product="CybexOS",
 )
-compression = os.environ.get("CYBEXOS_IMAGE_COMPRESSION", "xz")
+compression = os.environ.get("CYBEXOS_IMAGE_COMPRESSION", os.environ.get("CYBEXOS_SQUASHFS_COMPRESSION", "xz"))
 if compression not in ("xz", "zstd"):
     raise ValueError("Unsupported live image compression")
 creator.compress_args = compression

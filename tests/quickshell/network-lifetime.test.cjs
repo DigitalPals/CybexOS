@@ -73,6 +73,26 @@ test("an outgoing popout slot is hidden, not only transparent, after its fade", 
         assert.match(block, new RegExp(`visible: host\\.slotVisible\\(${slot}, opacity\\)`));
 });
 
+test("presenting a panel fronts its slot before the card turns visible", () => {
+    const host = read("Bar/PopoutHost.qml");
+    const present = host.slice(host.indexOf("function presentSlot("),
+        host.indexOf("function retargetFront("));
+    const fronted = present.indexOf("frontSlot = slot;");
+    const faded = present.indexOf("loaderFor(oldSlot).opacity = 0;");
+    const presented = present.indexOf("presented = true;");
+    assert.ok(fronted > 0 && faded > 0 && presented > 0);
+    // After a close frontSlot still names the latched drawer. Raising
+    // `presented` first made it visible for one turn, which started and
+    // stopped every poller its current tab claims on each unrelated open.
+    assert.ok(fronted < presented,
+        "the latched slot must stop being front before the card becomes visible");
+    assert.ok(faded < presented,
+        "the outgoing slot's fade must be requested before the card becomes visible");
+    // The close path mirrors it: the card hides before frontSlot moves back.
+    assert.match(host,
+        /host\.presented = false;[\s\S]*?host\.frontSlot = keep;/);
+});
+
 test("scan lists are not re-sorted while no Network view is using them", () => {
     const wifi = read("Common/WifiState.qml");
     assert.match(wifi, /readonly property var others:\s*\{\s*if \(!scanning \|\| !enabled\)\s*return \[\];/);

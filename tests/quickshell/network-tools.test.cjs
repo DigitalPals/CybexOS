@@ -257,9 +257,10 @@ test("snapshot subprocess failures are bounded", () => {
     }
 });
 
-// Every external lookup the 1.5 second snapshot makes, each deliberately slow.
-// Run one after another they take seven delays; the helper runs the three
-// NetworkManager/ip reads side by side and then the scan, link and pings.
+// Every external lookup the snapshot makes, each deliberately slow. Run one
+// after another they take five delays; the helper runs the three
+// NetworkManager/ip reads side by side and then the scan and link. Latency is
+// NetworkDetails' own long-lived ping now, so the snapshot must not ping.
 function snapshotStubs(base, delay) {
     const pause = `sleep ${delay}\n`;
     executable(base, "nmcli", `#!/usr/bin/env bash
@@ -287,13 +288,10 @@ ${pause}printf '%s\\n' '[{"dst":"default","gateway":"192.168.1.1","dev":"wlan0",
 ${pause}printf '%s\\n' 'Connected to aa:bb:cc:dd:ee:01 (on wlan0)' '	SSID: Home' \\
   '	freq: 5180' '	signal: -48 dBm' '	rx bitrate: 866.7 MBit/s' '	tx bitrate: 650.0 MBit/s'
 `);
+    base.env.STUB_PING_LOG = path.join(base.directory, "ping.log");
     executable(base, "ping", `#!/usr/bin/env bash
-${pause}case "$*" in
-  *192.168.1.1*) echo '64 bytes from 192.168.1.1: icmp_seq=1 ttl=64 time=2.5 ms' ;;
-  *) echo '64 bytes from 203.0.113.9: icmp_seq=1 ttl=57 time=14.0 ms' ;;
-esac
+printf '%s\\n' "$*" >>"$STUB_PING_LOG"
 `);
-    base.env.NETWORK_TOOL_PING_TARGET = "203.0.113.9";
     base.env.NETWORK_TOOL_SYS_CLASS_NET = path.join(base.directory, "no-sysfs");
 }
 
@@ -365,11 +363,12 @@ test("snapshot runs its independent lookups concurrently with an unchanged paylo
                     rxBitrateMbps: 866.7, txBitrateMbps: 650
                 }
             },
-            diagnostics: { routerPingMs: 2.5, internetPingMs: 14 }
         });
-        // Seven sequential 0.5 s lookups (the two pings already overlapped)
-        // took at least three seconds; two concurrent rounds take one.
-        assert.ok(elapsed < 2500, `snapshot took ${elapsed}ms`);
+        assert.equal(fs.existsSync(base.env.STUB_PING_LOG), false,
+            "the snapshot must not start a ping");
+        // Five sequential 0.5 s lookups took 2.5 seconds; two concurrent
+        // rounds take one.
+        assert.ok(elapsed < 2000, `snapshot took ${elapsed}ms`);
     } finally {
         base.cleanup();
     }
@@ -427,9 +426,39 @@ for _ in range(40):
         assert.ok(curlCalls.length >= 4, "parallel workers should sustain both phases");
         assert.ok(curlCalls.every(call => call.includes("--interface")
             && call[call.indexOf("--interface") + 1] === "eth0"));
+        // Uploads stream the scratch file; `--data-binary @file` made each
+        // parallel curl hold the whole 64 MB body in memory.
+        const uploads = curlCalls.filter(call => call.includes("POST"));
+        assert.ok(uploads.length > 0);
+        for (const call of uploads) {
+            assert.ok(!call.includes("--data-binary"), JSON.stringify(call));
+            const body = call[call.indexOf("--upload-file") + 1];
+            assert.match(body, /quickshell-speedtest-/);
+            assert.ok(call.includes("Content-Type: application/octet-stream"));
+        }
     } finally {
         base.cleanup();
     }
+});
+
+test("a signal arriving while the main thread holds the worker lock cannot deadlock", () => {
+    // Python runs the handler on the main thread between bytecodes, so it can
+    // land inside register()/worker_snapshot(). With a plain Lock the handler
+    // blocked on the lock its own thread held, and the helper never exited.
+    const script = [
+        "import importlib.util, signal",
+        `spec = importlib.util.spec_from_file_location("speedtest", ${JSON.stringify(speedHelper)})`,
+        "module = importlib.util.module_from_spec(spec)",
+        "spec.loader.exec_module(module)",
+        "with module.workers_lock:",
+        "    module.on_signal(signal.SIGTERM, None)",
+        "    module.on_signal(signal.SIGTERM, None)",
+        "print('canceled' if module.cancel_event.is_set() else 'running')",
+    ].join("\n");
+    const result = spawnSync("python3", ["-B", "-c", script], { encoding: "utf8", timeout: 5000 });
+    assert.equal(result.signal, null, "the signal handler deadlocked on the worker lock");
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), "canceled");
 });
 
 async function waitUntil(predicate, timeoutMs = 3000) {

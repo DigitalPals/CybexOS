@@ -235,9 +235,10 @@ SettingsPage {
                                             || event.key === Qt.Key_Space) {
                                         page.pickAccent(modelData); event.accepted = true; return;
                                     }
+                                    // Focus before the pick: see PillRow.
                                     if (next >= 0) {
-                                        page.pickAccent(page.accentChoices[next]);
                                         swatchRepeater.itemAt(next).forceActiveFocus();
+                                        page.pickAccent(page.accentChoices[next]);
                                         event.accepted = true;
                                     }
                                 }
@@ -375,9 +376,10 @@ SettingsPage {
                                     Settings.set("barColorMode", modelData.id);
                                     event.accepted = true; return;
                                 }
+                                // Focus before the pick: see PillRow.
                                 if (next >= 0) {
-                                    Settings.set("barColorMode", Settings.barColorChoices[next].id);
                                     barColorRepeater.itemAt(next).forceActiveFocus();
+                                    Settings.set("barColorMode", Settings.barColorChoices[next].id);
                                     event.accepted = true;
                                 }
                             }

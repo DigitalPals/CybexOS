@@ -112,10 +112,16 @@ Singleton {
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["timeout", "10s", "env", "LC_ALL=C", "nmcli", "--terse",
+        command: ["timeout", "10s", "nmcli", "--terse",
             "--mode", "multiline", "--fields",
             "GENERAL.DEVICE,GENERAL.TYPE,GENERAL.CONNECTION,GENERAL.STATE,IP4.ADDRESS",
             "device", "show"]
+        // Untranslated output, without an `env` process per event.
+        // QML object literals convert to QVariantHash at runtime; the shipped
+        // Quickshell type description reports them as QVariantMap to qmllint.
+        // qmllint disable incompatible-type
+        environment: ({ LC_ALL: "C" })
+        // qmllint enable incompatible-type
 
         stdout: StdioCollector {
             onStreamFinished: statusProc.body = text

@@ -47,12 +47,19 @@ Controls.Dialog {
 
     function focusFolder(index) {
         const clamped = Math.max(0, Math.min(folderList.count - 1, index));
-        folderList.currentIndex = clamped;
+        // Focus before currentIndex, which carries the tab stop: see
+        // WallpaperPage.focusThumbnail.
         folderList.positionViewAtIndex(clamped, ListView.Contain);
-        Qt.callLater(() => {
-            if (folderList.currentItem)
-                folderList.currentItem.forceActiveFocus();
-        });
+        const target = folderList.itemAtIndex(clamped);
+        if (target)
+            target.forceActiveFocus();
+        folderList.currentIndex = clamped;
+        if (!target) {
+            Qt.callLater(() => {
+                if (folderList.currentItem)
+                    folderList.currentItem.forceActiveFocus();
+            });
+        }
     }
 
     onAccepted: {
@@ -233,9 +240,9 @@ Controls.Dialog {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
+                            folderRow.forceActiveFocus();
                             root.selectedPath = folderRow.path;
                             folderList.currentIndex = folderRow.index;
-                            folderRow.forceActiveFocus();
                         }
                         onDoubleClicked: {
                             folderModel.folder = folderRow.fileUrl;

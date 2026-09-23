@@ -252,8 +252,8 @@ class T3Callback(unittest.TestCase):
     def test_oauth_redirect_uses_active_runtime_before_appimage(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
-            bindir = directory / "bin"
-            bindir.mkdir()
+            bindir = directory / ".local/bin"
+            bindir.mkdir(parents=True)
             record = directory / "node-args"
             runtime = bindir / "cybexos-runtime"
             runtime.write_text('#!/bin/sh\nprintf "%s\\n" "$FIXTURE_RUNTIME"\n')

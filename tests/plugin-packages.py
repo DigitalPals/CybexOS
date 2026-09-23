@@ -59,9 +59,17 @@ with tempfile.TemporaryDirectory(prefix="cybex-plugin-packages-") as temporary:
     (source / "Sibling.qml").write_text('import QtQuick\nItem { property int answer: 42 }\n')
     git("add", ".")
     git("commit", "-m", "valid update")
+    registry = base / "config/plugins.json"
+    registry_bytes = registry.read_bytes()
+    os.utime(registry, (1_000_000_000, 1_000_000_000))
     cli("update", "example.git", "--preview")
     assert "answer" not in (packages / "example.git/Sibling.qml").read_text()
+    assert registry.stat().st_mtime == 1_000_000_000, "a preview must not ask the shell to reload"
     cli("update", "example.git")
+    # The shell watches plugins.json, not package trees: an update touches it
+    # so a running shell reloads the new code without rewriting preferences.
+    assert registry.stat().st_mtime > 1_000_000_000
+    assert registry.read_bytes() == registry_bytes
     after = json.loads(cli("list", "--runtime-root", base / "runtime"))["plugins"][0]["source"]
     assert before != after, "Sibling edits must change the entrypoint's cache identity"
     installed_head = subprocess.check_output(["git", "-C", str(packages / "example.git"), "rev-parse", "HEAD"])

@@ -26,6 +26,43 @@ def run(*args, env, check=True):
                           capture_output=True, check=check)
 
 
+def live_group_members(pgid):
+    """PIDs still running in a process group; zombies no longer write."""
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return []
+    members = []
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            state, _, group = stat.read_text().rsplit(")", 1)[1].split()[:3]
+        except (OSError, ValueError):
+            continue
+        if int(group) == pgid and state != "Z":
+            members.append(int(stat.parent.name))
+    return members
+
+
+def end_session(process):
+    """Kill everything left in a qs session and wait until it has stopped.
+
+    qs can exit while a helper it started (a `user-plugins.py list --live`
+    scan) is still writing into XDG_RUNTIME_DIR; that orphan outlives the
+    session leader, so the group is killed even after a clean exit, and the
+    runtime directory is only removed once nothing in the group runs.
+    """
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    process.wait()
+    deadline = time.monotonic() + 3
+    while members := live_group_members(process.pid):
+        if time.monotonic() > deadline:
+            raise RuntimeError(f"qs session processes survived SIGKILL: {members}")
+        time.sleep(0.02)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="cybexos-user-widgets.") as temporary, ExitStack() as stack:
         base = Path(temporary)
@@ -313,9 +350,7 @@ Label {
                 output, _ = process.communicate(timeout=3)
                 raise AssertionError(output) from None
             finally:
-                if process.poll() is None:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    process.wait()
+                end_session(process)
             assert "USER_WIDGET_RESULT pass" in output, output
             assert "USER_WIDGET_RESULT fail" not in output, output
             assert not re.search(r"(?:Type|Reference|Range)Error|Binding loop|Failed to load configuration", output), output
@@ -378,9 +413,7 @@ Label {
             output, _ = process.communicate(timeout=3)
             raise AssertionError(output) from None
         finally:
-            if process.poll() is None:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
+            end_session(process)
         assert "OMARCHY_PARITY pass" in output, output
         assert "OMARCHY_PARITY fail" not in output, output
         assert not re.search(r"(?:Type|Reference|Range)Error|Binding loop|Failed to load configuration", output), output
@@ -392,4 +425,8 @@ if __name__ == "__main__":
         # wlroots refuses a privileged compositor. CI runs inside a root
         # container, so run this entire disposable fixture as nobody.
         raise SystemExit(subprocess.call(["runuser", "-u", "nobody", "--", sys.executable, __file__]))
+    # tests/run stops a fixture that overruns its limit with SIGTERM. Unwind
+    # instead of dying on the spot, so the compositor and qs sessions, each in
+    # a process group of its own, are still stopped.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     main()

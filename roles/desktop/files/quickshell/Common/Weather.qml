@@ -13,6 +13,43 @@ Singleton {
     readonly property string latitude: String(Settings.modOpts.weather.lat)
     readonly property string longitude: String(Settings.modOpts.weather.lon)
     readonly property string place: Settings.modOpts.weather.place
+    // The shipped default is 0°N 0°E, open sea in the Gulf of Guinea, and
+    // the place name is only a label: without coordinates there is no
+    // forecast worth fetching, and views say where to set them instead.
+    readonly property bool locationSet: Number(Settings.modOpts.weather.lat) !== 0
+        || Number(Settings.modOpts.weather.lon) !== 0
+
+    // The menubar widget needs a current sky all the time; an open Day
+    // sheet holds a claim for as long as it shows one. Nothing else polls.
+    readonly property bool widgetOn: {
+        const mods = Settings.mods;
+        for (const col of ["left", "center", "right"]) {
+            const hit = mods[col].find(m => m.id === "weather");
+            if (hit)
+                return hit.on;
+        }
+        return false;
+    }
+    property int watchers: 0
+    readonly property bool wanted: locationSet && (widgetOn || watchers > 0)
+
+    // A view arriving with nothing fresh to draw fetches at once.
+    function acquire() {
+        watchers++;
+        if (NetworkStatus.online && locationSet && stale(600000))
+            refresh();
+    }
+
+    function release() {
+        watchers = Math.max(0, watchers - 1);
+    }
+
+    // Whether the forecast on hand is missing, failed, for another request
+    // (location or unit), or older than `maxAgeMs`.
+    function stale(maxAgeMs) {
+        return !ready || fetchError !== "" || fetchedUrl !== url
+            || Date.now() - updatedAt >= maxAgeMs;
+    }
 
     readonly property int pollIntervalSecs: Settings.modOpts.weather.pollMins * 60
     property int consecutiveFailures: 0
@@ -56,14 +93,14 @@ Singleton {
         target: Settings
 
         function onUnitChanged() {
-            if (NetworkStatus.online)
+            if (NetworkStatus.online && root.wanted)
                 root.refresh(true);
         }
 
         // Any modOpts write lands here; only refetch when it moved the
         // request (location change), not on unrelated module options.
         function onModOptsChanged() {
-            if (NetworkStatus.online && root.url !== root.fetchedUrl)
+            if (NetworkStatus.online && root.wanted && root.url !== root.fetchedUrl)
                 root.refresh(true);
         }
     }
@@ -77,11 +114,45 @@ Singleton {
             root.consecutiveFailures = 0;
             // A flapping link should not refetch a forecast that is still
             // fresh; a failed, missing or relocated one is fetched at once.
-            if (root.ready && root.fetchError === "" && root.fetchedUrl === root.url
-                    && Date.now() - root.updatedAt < 600000)
+            // While idle, the resume check below does it instead.
+            if (!root.wanted || Activity.idle || !root.stale(600000))
                 return;
             root.refresh(true);
         }
+    }
+
+    Connections {
+        target: Activity
+
+        function onResumed() {
+            if (NetworkStatus.online && root.wanted
+                    && root.stale(root.pollIntervalSecs * 1000))
+                root.refresh();
+        }
+    }
+
+    onWantedChanged: {
+        if (wanted && NetworkStatus.online && !Activity.idle && stale(600000))
+            refresh();
+    }
+
+    // Coordinates cleared back to the default: the old sky belongs to a
+    // place that is no longer configured, so it goes rather than lingers.
+    onLocationSetChanged: {
+        if (locationSet)
+            return;
+        if (fetchProc.running) {
+            fetchProc.staleRuns++;
+            fetchProc.running = false;
+        }
+        ready = false;
+        fetchError = "";
+        consecutiveFailures = 0;
+        fetchedUrl = "";
+        updatedAt = 0;
+        code = -1;
+        condition = "";
+        days = [];
     }
 
     function describe(code) {
@@ -300,9 +371,10 @@ Singleton {
         }
     }
 
+    // Neither poll runs for a forecast nobody is shown, nor while idle.
     Timer {
         interval: root.pollIntervalSecs * 1000
-        running: NetworkStatus.online
+        running: NetworkStatus.online && root.wanted && !Activity.idle
         repeat: true
         onTriggered: root.refresh()
     }
@@ -311,13 +383,14 @@ Singleton {
     // avoid hammering a failing endpoint. The normal poll remains the ceiling.
     Timer {
         interval: root.retryIntervalSecs * 1000
-        running: NetworkStatus.online && (!root.ready || root.fetchError !== "")
+        running: NetworkStatus.online && root.wanted && !Activity.idle
+            && (!root.ready || root.fetchError !== "")
         repeat: true
         onTriggered: root.refresh()
     }
 
     Component.onCompleted: {
-        if (NetworkStatus.online)
+        if (NetworkStatus.online && wanted)
             refresh();
     }
 }

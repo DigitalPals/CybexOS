@@ -2,12 +2,21 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "NetworkDetailsHelpers.js" as NetworkDetailsHelpers
 import "NetworkHelpers.js" as NetworkHelpers
 import "ProcHelpers.js" as ProcHelpers
 
 // Ref-counted, view-lifetime network diagnostics and mutations.  The bar's
-// lightweight EthernetState remains independent; this richer 1.5 second poll
-// exists only while the Network panel is actually acquired.
+// lightweight EthernetState remains independent; everything here runs only
+// while the Network panel is actually acquired.
+//
+// The live figures cost no process per sample: throughput reads the kernel's
+// byte counters every 1.5 seconds through FileView, and latency comes from
+// two long-lived `ping -O` processes that report once per probe. The
+// device/route/profile/scan snapshot (network-tool.py, six processes) runs
+// on NetworkManager events from NetworkStatus's monitor, after an action,
+// and on a slow safety poll for what no event announces (scan results,
+// signal and bitrate drift).
 Singleton {
     id: root
 
@@ -15,6 +24,7 @@ Singleton {
     readonly property int pingHistoryWindow: 24
     readonly property int pingAverageWindow: 5
     readonly property int pollIntervalMs: 1500
+    readonly property int snapshotIntervalMs: 10000
     readonly property string pollCadenceText:
         "Updated live every " + (pollIntervalMs / 1000).toFixed(1) + " seconds"
 
@@ -31,11 +41,16 @@ Singleton {
         NetworkHelpers.physicalType(device) !== "")
     readonly property var ethernetDevices: physicalDevices.filter(device =>
         NetworkHelpers.physicalType(device) === "ethernet")
-    readonly property var primary: NetworkHelpers.selectPrimaryInterface(devices, routes)
-    readonly property string primaryInterface: primary
-        ? NetworkHelpers.interfaceName(primary) : ""
-    readonly property string primaryType: primary
-        ? NetworkHelpers.physicalType(primary) : ""
+    readonly property var snapshotPrimary:
+        NetworkHelpers.selectPrimaryInterface(devices, routes)
+    // Views read the primary device's rxBytes/txBytes as running totals, so
+    // they carry the live counters rather than the last snapshot's.
+    readonly property var primary: NetworkDetailsHelpers.withCounters(
+        snapshotPrimary, primaryInterface, liveCounters)
+    readonly property string primaryInterface: snapshotPrimary
+        ? NetworkHelpers.interfaceName(snapshotPrimary) : ""
+    readonly property string primaryType: snapshotPrimary
+        ? NetworkHelpers.physicalType(snapshotPrimary) : ""
     readonly property var activeWifi: physicalDevices.find(device =>
         NetworkHelpers.physicalType(device) === "wifi" && device.connected) ?? null
     readonly property string activeWifiInterface: activeWifi
@@ -66,6 +81,23 @@ Singleton {
     }
     readonly property var scanNetworks: helperNetworks.length > 0
         ? helperNetworks : fallbackNetworks
+    // An access point appearing or leaving the radio's scan refreshes the
+    // snapshot's list at scan speed; signal drift waits for the slow poll.
+    // Only names are read, so a strength change does not re-evaluate this.
+    // The first key after acquire() needs nothing: acquire() refreshes.
+    readonly property string scanKey: {
+        if (!root.acquired || !WifiState.device || !WifiState.enabled)
+            return "";
+        return WifiState.device.networks.values.map(network => network.name)
+            .sort().join("\n");
+    }
+    property string lastScanKey: ""
+    onScanKeyChanged: {
+        const previous = lastScanKey;
+        lastScanKey = scanKey;
+        if (acquired && previous !== "" && scanKey !== "")
+            snapshotDebounce.restart();
+    }
     readonly property var groupedNetworks: NetworkHelpers.groupWifiNetworks(
         scanNetworks, savedProfiles.length > 0 ? savedProfiles : snapshot.profiles)
     readonly property var knownNetworks: groupedNetworks.known
@@ -74,8 +106,16 @@ Singleton {
         network.connected) ?? null
 
     property var previousCounters: null
+    property var liveCounters: null
     property real downloadRate: 0
     property real uploadRate: 0
+    // Counters and pings follow the snapshot's primary device, and only
+    // while a view holds the controller.
+    readonly property string counterInterface: acquired ? primaryInterface : ""
+    readonly property string routerPingTarget: acquired && snapshotPrimary
+        ? NetworkDetailsHelpers.pingTarget(snapshotPrimary.gateway) : ""
+    readonly property string internetPingTarget: acquired && snapshotPrimary
+        ? "1.1.1.1" : ""
     property var routerPingHistory: []
     property var internetPingHistory: []
     readonly property var routerPing: NetworkHelpers.pingStats(
@@ -123,6 +163,7 @@ Singleton {
             return;
         syncScanner();
         resetSamples();
+        sampleCounters();
         refresh();
         refreshDns();
     }
@@ -132,6 +173,8 @@ Singleton {
         if (watchers !== 0)
             return;
         detailsPoll.stop();
+        snapshotPoll.stop();
+        snapshotDebounce.stop();
         snapshotAgain = false;
         syncScanner();
         resetSamples();
@@ -148,11 +191,99 @@ Singleton {
 
     function resetSamples() {
         previousCounters = null;
+        liveCounters = null;
         downloadRate = 0;
         uploadRate = 0;
         routerPingHistory = [];
         internetPingHistory = [];
     }
+
+    // One throughput sample from sysfs. The rate is taken between this
+    // tick's reads and the previous tick's, so it never depends on FileView
+    // signalling a reload whose text did not change.
+    function sampleCounters() {
+        const iface = counterInterface;
+        if (iface === "") {
+            liveCounters = null;
+            return;
+        }
+        rxCounterView.reload();
+        txCounterView.reload();
+        const sample = NetworkDetailsHelpers.counterSample(iface,
+            rxCounterView.text(), txCounterView.text(), Date.now());
+        const rate = NetworkHelpers.calculateRates(previousCounters, sample,
+            sample.timestamp);
+        previousCounters = rate.next;
+        downloadRate = rate.download;
+        uploadRate = rate.upload;
+        liveCounters = sample;
+    }
+
+    // A (re)started pinger begins a new icmp_seq run; "" stops it. Setting
+    // running false then true restarts it once the old ping has exited.
+    function restartPinger(pinger, target) {
+        pinger.lastSeq = -1;
+        pinger.lastSampleAt = Date.now();
+        pinger.running = false;
+        const command = NetworkDetailsHelpers.pingCommand(target, pollIntervalMs);
+        if (!command)
+            return;
+        pinger.command = command;
+        pinger.running = true;
+    }
+
+    function pingLine(pinger, router, line) {
+        const sample = NetworkDetailsHelpers.pingSample(pinger.lastSeq, line);
+        if (!sample)
+            return;
+        pinger.lastSeq = sample.seq;
+        pinger.lastSampleAt = Date.now();
+        recordPing(router, sample.ms);
+    }
+
+    // `ping -O` reports every probe it sends, but one that cannot send at
+    // all (no route) only prints errors. Each interval of silence beyond one
+    // counts as a lost probe, so a stale latency cannot outlive the path it
+    // measured. A long gap (a suspend) adds at most one window of losses.
+    function checkPinger(pinger, router) {
+        if (!pinger.running)
+            return;
+        const missed = NetworkDetailsHelpers.missedProbes(pinger.lastSampleAt,
+            Date.now(), pollIntervalMs);
+        if (missed === 0)
+            return;
+        pinger.lastSampleAt += missed * pollIntervalMs;
+        for (let i = 0; i < Math.min(missed, pingHistoryWindow); i++)
+            recordPing(router, null);
+    }
+
+    function recordPing(router, ms) {
+        if (router)
+            routerPingHistory = NetworkHelpers.updatePingHistory(routerPingHistory,
+                ms, pingHistoryWindow);
+        else
+            internetPingHistory = NetworkHelpers.updatePingHistory(internetPingHistory,
+                ms, pingHistoryWindow);
+    }
+
+    // A pinger that ended on its own (no route yet, the network went away)
+    // is retried at the sample cadence, and each interval without it counts
+    // as a lost probe, as the one-shot pings used to.
+    function retryPingers() {
+        if (!acquired)
+            return;
+        if (routerPingTarget !== "" && !routerPinger.running) {
+            recordPing(true, null);
+            restartPinger(routerPinger, routerPingTarget);
+        }
+        if (internetPingTarget !== "" && !internetPinger.running) {
+            recordPing(false, null);
+            restartPinger(internetPinger, internetPingTarget);
+        }
+    }
+
+    onRouterPingTargetChanged: restartPinger(routerPinger, routerPingTarget)
+    onInternetPingTargetChanged: restartPinger(internetPinger, internetPingTarget)
 
     property bool snapshotAgain: false
 
@@ -189,23 +320,13 @@ Singleton {
         known = true;
         error = "";
 
+        // A new primary device starts its rates and ping history afresh, from
+        // a baseline read straight away rather than at the next tick.
         const nextPrimary = NetworkHelpers.selectPrimaryInterface(result.devices, result.routes);
         const nextInterface = nextPrimary ? NetworkHelpers.interfaceName(nextPrimary) : "";
         if (oldInterface !== nextInterface) {
             resetSamples();
-        }
-        if (nextPrimary) {
-            const rate = NetworkHelpers.calculateRates(previousCounters,
-                nextPrimary, result.timestamp);
-            previousCounters = rate.next;
-            downloadRate = rate.download;
-            uploadRate = rate.upload;
-            routerPingHistory = NetworkHelpers.updatePingHistory(routerPingHistory,
-                result.diagnostics ? result.diagnostics.routerPingMs : null,
-                pingHistoryWindow);
-            internetPingHistory = NetworkHelpers.updatePingHistory(internetPingHistory,
-                result.diagnostics ? result.diagnostics.internetPingMs : null,
-                pingHistoryWindow);
+            sampleCounters();
         }
 
         const wifi = result.devices.find(device =>
@@ -309,7 +430,36 @@ Singleton {
         interval: root.pollIntervalMs
         repeat: true
         running: root.acquired
+        onTriggered: {
+            root.sampleCounters();
+            root.checkPinger(routerPinger, true);
+            root.checkPinger(internetPinger, false);
+        }
+    }
+
+    Timer {
+        id: snapshotPoll
+        interval: root.snapshotIntervalMs
+        repeat: true
+        running: root.acquired
         onTriggered: root.refresh()
+    }
+
+    // `nmcli monitor` prints a burst of lines per change; take one snapshot.
+    Timer {
+        id: snapshotDebounce
+        interval: 250
+        onTriggered: root.refresh()
+    }
+
+    Timer {
+        id: pingRetry
+        interval: root.pollIntervalMs
+        repeat: true
+        running: root.acquired
+            && ((root.routerPingTarget !== "" && !routerPinger.running)
+                || (root.internetPingTarget !== "" && !internetPinger.running))
+        onTriggered: root.retryPingers()
     }
 
     Connections {
@@ -318,6 +468,57 @@ Singleton {
         function onDeviceChanged() {
             root.syncScanner();
         }
+    }
+
+    Connections {
+        target: NetworkStatus
+
+        function onMonitorEvent(line) {
+            if (root.acquired)
+                snapshotDebounce.restart();
+        }
+
+        // Events are lost while the stream is down or reattaching, so each
+        // edge takes a fresh snapshot.
+        function onMonitorRunningChanged() {
+            if (root.acquired)
+                snapshotDebounce.restart();
+        }
+    }
+
+    FileView {
+        id: rxCounterView
+        path: NetworkDetailsHelpers.counterPath(root.counterInterface, "rx_bytes")
+        printErrors: false
+        blockAllReads: true
+    }
+
+    FileView {
+        id: txCounterView
+        path: NetworkDetailsHelpers.counterPath(root.counterInterface, "tx_bytes")
+        printErrors: false
+        blockAllReads: true
+    }
+
+    // Stopping or ending on their own needs no handler: pingRetry watches
+    // their falling edge. stderr is split and dropped rather than collected,
+    // since a long-lived ping may repeat "Network is unreachable" for hours.
+    Process {
+        id: routerPinger
+        property int lastSeq: -1
+        property real lastSampleAt: 0
+
+        stdout: SplitParser { onRead: line => root.pingLine(routerPinger, true, line) }
+        stderr: SplitParser {}
+    }
+
+    Process {
+        id: internetPinger
+        property int lastSeq: -1
+        property real lastSampleAt: 0
+
+        stdout: SplitParser { onRead: line => root.pingLine(internetPinger, false, line) }
+        stderr: SplitParser {}
     }
 
     Process {

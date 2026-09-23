@@ -21,6 +21,11 @@ Singleton {
     property bool writeInFlight: false
     property bool flushRequested: false
     property string writeSnapshot: ""
+    // The file's bytes as last read or saved, and what FileView compares
+    // the next setText against: the bytes it last read or tried to write,
+    // which after a failed save is not the file. See saveNow().
+    property string persistedText: ""
+    property string storeText: ""
     property string error: ""
     property string errorKind: ""
     property double lastSavedAt: 0
@@ -298,10 +303,29 @@ Singleton {
         saveNow();
     }
 
+    // A retried write may carry one extra trailing newline (see saveNow());
+    // it is still the same notes file.
+    function sameContent(text, written) {
+        return text === written || text + "\n" === written;
+    }
+
     function saveNow() {
         if (!ready || !dirty || writeInFlight || errorKind !== "")
             return;
-        writeSnapshot = NotesHelpers.serializeState(records);
+        const next = NotesHelpers.serializeState(records);
+        // Already on disk: undoing a delete inside the debounce lands here.
+        if (sameContent(next, persistedText)) {
+            dirty = false;
+            flushRequested = false;
+            return;
+        }
+        // FileView.setText compares against the bytes the view last read or
+        // tried to write, not against the file, and skips a match without
+        // emitting saved or saveFailed. After a failed save that is the
+        // attempt itself, so a Retry of the same notes would hold the write
+        // guard for the rest of the session. The same JSON with one more
+        // trailing newline makes it a real write.
+        writeSnapshot = next === storeText ? next + "\n" : next;
         writeInFlight = true;
         try {
             store.setText(writeSnapshot);
@@ -313,12 +337,15 @@ Singleton {
 
     function handleSaveSucceeded() {
         const completed = writeSnapshot;
+        persistedText = completed;
+        storeText = completed;
         writeSnapshot = "";
         writeInFlight = false;
         error = "";
         errorKind = "";
         lastSavedAt = Date.now();
-        const changedWhileSaving = NotesHelpers.serializeState(records) !== completed;
+        const changedWhileSaving = !sameContent(NotesHelpers.serializeState(records),
+            completed);
         dirty = changedWhileSaving;
         if (!changedWhileSaving) {
             flushRequested = false;
@@ -333,6 +360,9 @@ Singleton {
     }
 
     function handleSaveFailure(fileError) {
+        // FileView keeps the attempted bytes even though they never reached
+        // the file; saveNow() has to write around them.
+        storeText = writeSnapshot;
         writeSnapshot = "";
         writeInFlight = false;
         flushRequested = false;
@@ -344,6 +374,8 @@ Singleton {
 
     function applyLoaded(rawText) {
         initialLoadHandled = true;
+        persistedText = rawText;
+        storeText = rawText;
         const parsed = NotesHelpers.parseState(rawText);
         if (parsed.status === "corrupt") {
             ready = false;
@@ -367,6 +399,8 @@ Singleton {
 
     function handleLoadFailure(fileError) {
         initialLoadHandled = true;
+        persistedText = "";
+        storeText = "";
         if (fileError === FileViewError.FileNotFound) {
             records = [];
             ready = true;
@@ -439,7 +473,11 @@ Singleton {
         path: root.filePath
         printErrors: false
         atomicWrites: true
-        blockWrites: true
+        // The atomic write syncs to disk before its rename, which can take
+        // seconds under heavy IO; a save follows every typing pause, so it
+        // runs off the GUI thread. saveNow() never starts a write under
+        // another one.
+        blockWrites: false
         blockLoading: true
         onLoaded: root.applyLoaded(text())
         onLoadFailed: error => root.handleLoadFailure(error)

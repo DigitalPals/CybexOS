@@ -66,6 +66,28 @@ prune_release_cache() {
     -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
 }
 
+# installed_matches <manifest> <rpm|archive>
+# Succeeds when the recorded installation is exactly <manifest> and intact.
+installed_matches() {
+  local manifest=$1 mode=$2
+  if [[ $mode == rpm ]]; then
+    [[ -r $state_root/version && -r $state_root/nevra ]] \
+      && [[ $(<"$state_root/version") == "$manifest" ]] \
+      && [[ $(rpm -q --qf '%{NEVRA}' "$name" 2>/dev/null || true) == "$(<"$state_root/nevra")" ]]
+    return
+  fi
+  [[ -L $install_root/current && -r $install_root/current/.cybexos-release ]] \
+    && [[ $(<"$install_root/current/.cybexos-release") == "$manifest" ]] \
+    || return 1
+  if [[ $kind == font ]]; then
+    [[ -n $(find -L "$install_root/current" -type f \
+      \( -iname '*.ttf' -o -iname '*.otf' -o -iname '*.ttc' -o -iname '*.otc' \) \
+      -print -quit) ]]
+  else
+    [[ -x $install_root/current/bin/$name && -x /usr/local/bin/$name ]]
+  fi
+}
+
 if rpm -q "$name" >/dev/null 2>&1 || [[ -L $install_root/current ]]; then
   had_existing=true
 fi
@@ -74,6 +96,19 @@ if [[ $kind == rpm ]]; then
     echo "Root-installed RPM $name requires an inventory-pinned release tag and SHA-256" >&2
     exit 1
   }
+fi
+
+# The inventory pin is the complete identity of the payload. When the intact
+# installation already records it, converge without a GitHub round trip, so a
+# routine run makes no API calls and an offline run reports no false failure.
+if [[ $authorized_checksum =~ ^sha256:[[:xdigit:]]{64}$ ]]; then
+  authorized_manifest="tag=$authorized_tag checksum=$authorized_checksum"
+  if { [[ $kind == rpm || $kind == archive-auto ]] \
+         && installed_matches "$authorized_manifest" rpm; } \
+     || { [[ $kind != rpm ]] && installed_matches "$authorized_manifest" archive; }; then
+    emit_unchanged "$name $authorized_tag"
+    exit 0
+  fi
 fi
 
 gh_api_fetch "$api" "$cache_root/api" "$tmp_json"
@@ -133,7 +168,8 @@ else
     exit 1
   }
   sums="$cache_root/$safe_tag/checksums.txt"
-  curl --fail --silent --show-error --location "$checksum_url" -o "$sums"
+  cybexos_curl --max-time 60 --fail --silent --show-error --location \
+    "$checksum_url" -o "$sums"
   expected=$(awk -v file="$asset" '$0 ~ ("[ */]" file "$") {print $1; exit}' "$sums")
   [[ $expected =~ ^[[:xdigit:]]{64}$ ]] || {
     echo "No SHA-256 entry for $asset in release checksum file" >&2
@@ -142,33 +178,16 @@ else
 fi
 
 expected_manifest="tag=$tag checksum=sha256:$expected"
-if [[ $rpm_mode == true ]] \
-  && [[ -r $state_root/version && -r $state_root/nevra ]] \
-  && [[ $(<"$state_root/version") == "$expected_manifest" ]] \
-  && [[ $(rpm -q --qf '%{NEVRA}' "$name" 2>/dev/null || true) == "$(<"$state_root/nevra")" ]]; then
+installed_mode=archive
+[[ $rpm_mode == false ]] || installed_mode=rpm
+if installed_matches "$expected_manifest" "$installed_mode"; then
   emit_unchanged "$name $tag"
   exit 0
 fi
 
-if [[ $rpm_mode == false && -L $install_root/current ]] \
-  && [[ -r $install_root/current/.cybexos-release ]] \
-  && [[ $(<"$install_root/current/.cybexos-release") == "$expected_manifest" ]]; then
-  if [[ $kind == font ]]; then
-    if [[ -n $(find -L "$install_root/current" -type f \
-      \( -iname '*.ttf' -o -iname '*.otf' -o -iname '*.ttc' -o -iname '*.otc' \) \
-      -print -quit) ]]; then
-      emit_unchanged "$name $tag"
-      exit 0
-    fi
-  elif [[ -x $install_root/current/bin/$name && -x /usr/local/bin/$name ]]; then
-    emit_unchanged "$name $tag"
-    exit 0
-  fi
-fi
-
 if [[ ! -f $download ]]; then
   partial="$download.partial"
-  curl --fail --location --retry 3 --output "$partial" "$url"
+  cybexos_curl --fail --location --output "$partial" "$url"
   mv -f "$partial" "$download"
 fi
 
@@ -176,7 +195,7 @@ if ! verify_sha256 "$download" "$expected"; then
   # Heal a truncated or stale cached asset once from the authorized URL.
   unlink "$download"
   partial="$download.partial"
-  curl --fail --location --retry 3 --output "$partial" "$url"
+  cybexos_curl --fail --location --output "$partial" "$url"
   mv -f "$partial" "$download"
   verify_sha256 "$download" "$expected" || {
     unlink "$download"

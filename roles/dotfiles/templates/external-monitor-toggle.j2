@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-for command in hyprctl jq socat timeout mkfifo mktemp sleep; do
+for command in hyprctl jq socat gdbus grep timeout mkfifo mktemp sleep; do
   if ! command -v "$command" >/dev/null; then
     printf 'external-monitor-toggle: waiting for %s\n' "$command" >&2
     exit 75
@@ -10,11 +10,12 @@ done
 
 # The overrides make the state machine testable without touching live DRM or
 # lid state. Production uses the kernel paths and conservative settle times.
+# Lid and output changes arrive as events; the poll is only a safety net.
 drm_root=${EXTERNAL_MONITOR_TOGGLE_DRM_ROOT:-/sys/class/drm}
 lid_root=${EXTERNAL_MONITOR_TOGGLE_LID_ROOT:-/proc/acpi/button/lid}
 debounce_seconds=${EXTERNAL_MONITOR_TOGGLE_DEBOUNCE_SECONDS:-3}
 stability_seconds=${EXTERNAL_MONITOR_TOGGLE_STABILITY_SECONDS:-0.5}
-poll_seconds=${EXTERNAL_MONITOR_TOGGLE_POLL_SECONDS:-1}
+poll_seconds=${EXTERNAL_MONITOR_TOGGLE_POLL_SECONDS:-30}
 
 for duration in "$debounce_seconds" "$stability_seconds" "$poll_seconds"; do
   if [[ ! $duration =~ ^[0-9]+([.][0-9]+)?$ ]]; then
@@ -115,7 +116,8 @@ fi
 
 event_dir=$(mktemp -d "$XDG_RUNTIME_DIR/external-monitor-toggle.XXXXXX")
 event_pipe="$event_dir/events"
-mkfifo "$event_pipe"
+tick_pipe="$event_dir/tick"
+mkfifo "$event_pipe" "$tick_pipe"
 exec {event_fd}<>"$event_pipe"
 main_pid=$BASHPID
 watcher_pids=()
@@ -134,36 +136,66 @@ cleanup() {
     wait "$pid" 2>/dev/null || true
   done
   exec {event_fd}>&-
-  rm -f -- "$event_pipe"
+  rm -f -- "$event_pipe" "$tick_pipe"
   rmdir -- "$event_dir" 2>/dev/null || true
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+# socket2 also carries every focus and window-title change (several a second
+# while a terminal title ticks); grep drops them before bash's byte-at-a-time
+# read ever sees them.
 watch_hyprland_events() {
-  local line
-  while IFS= read -r line; do
-    case "$line" in
-      monitoradded'>>'*|monitorremoved'>>'*) emit_event monitor-changed ;;
-    esac
-  done < <(socat -U - "UNIX-CONNECT:$socket")
+  local _line
+  while IFS= read -r _line; do
+    emit_event monitor-changed
+  done < <(socat -U - "UNIX-CONNECT:$socket" \
+    | grep --line-buffered -E '^monitor(added|removed)(v2)?>>')
   emit_event socket-closed
 }
 
+# logind announces lid switches itself (LidClosed emits PropertiesChanged).
+# Waiting for that replaces a once-a-second read of /proc/acpi/button/lid,
+# each of which ran the firmware's ACPI _LID method. The event only wakes the
+# queue; reconcile_state still reads the lid state it acts on.
+watch_lid_events() {
+  local _line
+  while IFS= read -r _line; do
+    emit_event lid-changed
+  done < <(gdbus monitor --system --dest org.freedesktop.login1 \
+      --object-path /org/freedesktop/login1 2>/dev/null \
+    | grep --line-buffered -F "'LidClosed'")
+  emit_event lid-watch-closed
+}
+
 # UPower can announce dock power before DisplayPort exists, which caused the
-# old helper to reload eDP-1 immediately. Polling the actual lid/DRM state and
-# feeding changes into the same debounce queue avoids that independent path.
+# old helper to reload eDP-1 immediately. Lid and output events therefore
+# feed the same debounce queue, and this slow comparison of the actual lid/DRM
+# state catches whatever both streams miss. The wait is a builtin read on a
+# FIFO nobody writes, so no process is spawned between samples.
 watch_hardware_state() {
-  local previous current
+  local previous current _tick tick_fd
+  exec {tick_fd}<>"$tick_pipe"
   previous=$(hardware_signature)
-  while sleep "$poll_seconds"; do
+  while :; do
+    IFS= read -r -t "$poll_seconds" -u "$tick_fd" _tick || true
     current=$(hardware_signature)
     if [[ $current != "$previous" ]]; then
       previous=$current
       emit_event hardware-changed
     fi
   done
+}
+
+stream_closed() {
+  case "$1" in
+    socket-closed)
+      printf 'external-monitor-toggle: Hyprland event stream disconnected\n' >&2 ;;
+    lid-watch-closed)
+      printf 'external-monitor-toggle: logind lid event stream disconnected\n' >&2 ;;
+    *) return 1 ;;
+  esac
 }
 
 reconcile_state() {
@@ -182,7 +214,7 @@ reconcile_state() {
     external_second=$(active_external_names "$second") || return 1
     if IFS= read -r -t 0.01 pending <&"$event_fd"; then
       case "$pending" in
-        socket-closed) return 75 ;;
+        socket-closed|lid-watch-closed) return 75 ;;
         *) emit_event reconcile ; return 0 ;;
       esac
     fi
@@ -209,7 +241,7 @@ reconcile_state() {
   if [[ $current_lid == closed ]]; then
     # The dock may still be enumerating. Preserve the current panel state: in
     # particular, never turn a disabled eDP-1 on just to turn it off again when
-    # DP appears. Opening the lid is detected by the hardware watcher.
+    # DP appears. Opening the lid arrives as a logind event.
     return 0
   fi
 
@@ -220,21 +252,21 @@ reconcile_state() {
 
 watch_hyprland_events &
 watcher_pids+=("$!")
+watch_lid_events &
+watcher_pids+=("$!")
 watch_hardware_state &
 watcher_pids+=("$!")
 emit_event reconcile
 
 while IFS= read -r event <&"$event_fd"; do
-  if [[ $event == socket-closed ]]; then
-    printf 'external-monitor-toggle: Hyprland event stream disconnected\n' >&2
+  if stream_closed "$event"; then
     exit 75
   fi
 
   # Each new state event restarts the quiet period. Only one foreground worker
   # ever calls hyprctl, so monitor changes cannot overlap each other.
   while IFS= read -r -t "$debounce_seconds" event <&"$event_fd"; do
-    if [[ $event == socket-closed ]]; then
-      printf 'external-monitor-toggle: Hyprland event stream disconnected\n' >&2
+    if stream_closed "$event"; then
       exit 75
     fi
   done

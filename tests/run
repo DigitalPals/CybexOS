@@ -3,29 +3,66 @@
 # touching the running machine (that is tests/verify-system). Fast enough to gate
 # a deploy — `verify` runs it ahead of the machine checks and `update --full`
 # runs it before ansible-playbook. Every stage runs even if an earlier one
-# fails; the exit status is nonzero when any of them did.
+# fails; the exit status is nonzero when any of them did. Stages run side by
+# side, each in its own process under a hard time limit, so a hung check fails
+# its stage instead of wedging the gate and every deploy waiting on it; the
+# results are still reported in one fixed order.
 set -uo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
+# `wait -n -p` (bash 5.1) is how finished stages are collected.
+if ((BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] < 501)); then
+  printf 'tests/run: bash 5.1 or newer is required\n' >&2
+  exit 2
+fi
+
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd) || exit 1
 cd -- "$repo_root" || exit 1
+runner=$repo_root/tests/${BASH_SOURCE[0]##*/}
 
 shell_dir=roles/desktop/files/quickshell
 failed_stages=()
 test_scratch_dirs=()
+# Background jobs this process started (PID → start time in ms), so an
+# interrupted or timed-out run stops them instead of leaving them behind.
+declare -A live_jobs=()
 
 cleanup_test_scratch() {
   local directory
   for directory in "${test_scratch_dirs[@]}"; do
-    [[ $directory == "${TMPDIR:-/tmp}"/cybexos-qml.* ]] &&
+    [[ $directory == "${TMPDIR:-/tmp}"/cybexos-qml.* ||
+       $directory == "${TMPDIR:-/tmp}"/cybexos-tests.* ]] &&
       rm -rf -- "$directory"
   done
 }
-trap cleanup_test_scratch EXIT
+on_exit() {
+  local pid
+  for pid in "${!live_jobs[@]}"; do
+    kill -TERM "$pid" 2>/dev/null
+  done
+  # Every job is a timeout(1), which passes the signal on to its whole process
+  # group and SIGKILLs it ten seconds later, so this wait is bounded.
+  ((${#live_jobs[@]} == 0)) || wait 2>/dev/null
+  cleanup_test_scratch
+}
+trap on_exit EXIT
+# Stage workers run in process groups of their own, out of reach of the
+# terminal's signals, so every way this run can end has to pass through on_exit.
+trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [[ -t 1 ]]; then
+# Stage workers write to files; they take the terminal decision from the run
+# that started them.
+if [[ ${1:-} == --stage-worker ]]; then
+  color=${CYBEXOS_TESTS_RUN_COLOR:-0}
+elif [[ -t 1 ]]; then
+  color=1
+else
+  color=0
+fi
+export CYBEXOS_TESTS_RUN_COLOR=$color
+if [[ $color == 1 ]]; then
   C_GREEN=$'\033[32m' C_RED=$'\033[31m' C_YELLOW=$'\033[33m' C_OFF=$'\033[0m'
 else
   C_GREEN='' C_RED='' C_YELLOW='' C_OFF=''
@@ -52,6 +89,78 @@ excerpt() {
   return 0
 }
 
+# spawn LIMIT OUTPUT COMMAND... — start COMMAND in the background with a hard
+# LIMIT in seconds and all of its output in the file OUTPUT. timeout(1) puts
+# the command in its own process group, signals all of it on expiry, and
+# SIGKILLs whatever still ignores SIGTERM ten seconds later. Sets spawned_pid.
+spawn() {
+  local limit=$1 output=$2
+  shift 2
+  timeout --kill-after=10 "$limit" "$@" >"$output" 2>&1 </dev/null &
+  spawned_pid=$!
+  live_jobs[$spawned_pid]=$(now_ms)
+}
+
+# reap PID... — wait for whichever of these spawned jobs ends first. Sets
+# reaped_pid, its exit status reaped_rc, and its runtime reaped_ms. Bash's own
+# "Killed" notice for a job goes to /dev/null; the caller reports the job.
+reap() {
+  reaped_pid='' reaped_rc=0
+  wait -n -p reaped_pid "$@" 2>/dev/null || reaped_rc=$?
+  [[ -n $reaped_pid && -n ${live_jobs[$reaped_pid]:-} ]] || return 1
+  reaped_ms=$(( $(now_ms) - ${live_jobs[$reaped_pid]} ))
+  unset 'live_jobs[$reaped_pid]'
+}
+
+# reap_into PENDING STATUS RUNTIME — reap one job from the PID → index map
+# named PENDING, recording its exit status and runtime under its index.
+# shellcheck disable=SC2034 # the status and runtime namerefs write the caller's arrays
+reap_into() {
+  local -n pending_ref=$1 status_ref=$2 runtime_ref=$3
+  reap "${!pending_ref[@]}" || return 1
+  status_ref[${pending_ref[$reaped_pid]}]=$reaped_rc
+  runtime_ref[${pending_ref[$reaped_pid]}]=$reaped_ms
+  unset 'pending_ref[$reaped_pid]'
+}
+
+# How many jobs to run side by side: what the run was given with --jobs
+# (workers inherit it), else half the CPUs and at most eight. Several stages
+# fan out on their own, and a few unit tests assert on wall-clock time.
+default_jobs() {
+  local cpus
+  if [[ ${CYBEXOS_TESTS_RUN_JOBS:-} =~ ^[1-9][0-9]*$ ]]; then
+    printf '%d' "$CYBEXOS_TESTS_RUN_JOBS"
+    return
+  fi
+  cpus=$(nproc 2>/dev/null) || cpus=2
+  cpus=$((cpus / 2))
+  ((cpus > 8)) && cpus=8
+  ((cpus < 1)) && cpus=1
+  printf '%d' "$cpus"
+}
+
+# The qml runtime lifecycle test and the user-widget fixture (Python stage)
+# each start a real qs only while no other qs runs, and the lifecycle test
+# fails when one is left afterwards. Side by side they would see each other's
+# qs: CI would silently skip that coverage or fail spuriously. They share the
+# run's CYBEXOS_TESTS_RUN_QS_LOCK file; hold_qs_lock keeps it until the stage's
+# worker exits, and qs_lock_fd must not leak into a qs that might outlive it.
+qs_lock_fd=''
+hold_qs_lock() {
+  exec {qs_lock_fd}>>"$CYBEXOS_TESTS_RUN_QS_LOCK" && flock "$qs_lock_fd"
+}
+
+# exit_note STATUS RUNTIME_MS LIMIT — how a spawned job ended, for a report.
+# timeout(1) exits 124 on expiry, or 137 when it had to use SIGKILL.
+exit_note() {
+  local rc=$1 runtime_ms=$2 limit=$3
+  if ((rc == 124 || (rc == 137 && runtime_ms >= limit * 1000))); then
+    printf 'timed out after %ss' "$limit"
+  else
+    printf 'exited with status %s' "$rc"
+  fi
+}
+
 # ── Quickshell pure-logic unit tests ────────────────────────────────────────
 # `node --test <dir>` does not discover these (the runner tries to load the
 # directory as a module), so the files are expanded here instead.
@@ -75,7 +184,8 @@ stage_unit_tests() {
   fi
 
   t0=$(now_ms)
-  out=$(node --test "${files[@]}" 2>&1) || rc=$?
+  # A hung test fails on its own instead of holding the whole run.
+  out=$(node --test --test-timeout=60000 "${files[@]}" 2>&1) || rc=$?
   elapsed=$(( $(now_ms) - t0 ))
 
   passed=$(awk '$2 == "pass" { n = $3 } END { print n + 0 }' <<<"$out")
@@ -98,7 +208,7 @@ stage_unit_tests() {
 
 # ── Whole-source syntax and playbook parse gate ────────────────────────
 stage_source_syntax() {
-  local out='' rc=0 t0 elapsed file
+  local out='' rc=0 t0 elapsed scratch jobs ansible_pid
   local bash_files=() python_files=() node_files=()
 
   for command in bash python3 node ansible-playbook; do
@@ -124,14 +234,21 @@ stage_source_syntax() {
     return
   fi
 
+  scratch=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-tests.XXXXXX") || {
+    fail 'source syntax' 'could not create a scratch directory'
+    return
+  }
+  test_scratch_dirs+=("$scratch")
+  jobs=$(default_jobs)
+
   t0=$(now_ms)
-  for file in "${bash_files[@]}"; do
-    if ! out=$(bash -n "$file" 2>&1); then
-      rc=1
-      out="$file: $out"
-      break
-    fi
-  done
+  # The playbook parse is the slowest single check, so it runs while the
+  # sources are checked. bash -n and node --check take one file per process;
+  # those fan out too.
+  spawn 300 "$scratch/ansible" \
+    ansible-playbook -i inventory/hosts.yml site.yml --syntax-check
+  ansible_pid=$spawned_pid
+  out=$(printf '%s\0' "${bash_files[@]}" | xargs -0 -r -P "$jobs" -n 1 bash -n 2>&1) || rc=1
   if ((rc == 0)); then
     out=$(python3 - "${python_files[@]}" <<'PY' 2>&1
 from pathlib import Path
@@ -144,16 +261,14 @@ PY
 ) || rc=$?
   fi
   if ((rc == 0)); then
-    for file in "${node_files[@]}"; do
-      if ! out=$(node --check "$file" 2>&1); then
-        rc=1
-        break
-      fi
-    done
+    out=$(printf '%s\0' "${node_files[@]}" \
+      | xargs -0 -r -P "$jobs" -n 1 node --check 2>&1) || rc=1
   fi
-  if ((rc == 0)); then
-    out=$(ansible-playbook -i inventory/hosts.yml site.yml --syntax-check 2>&1) || rc=$?
+  if ! reap "$ansible_pid" || ((reaped_rc != 0)); then
+    rc=1
+    out=${out:+$out$'\n'}$(<"$scratch/ansible")
   fi
+  rm -rf -- "$scratch"
 
   elapsed=$(( $(now_ms) - t0 ))
   if ((rc == 0)); then
@@ -186,9 +301,12 @@ stage_hyprland_workspaces() {
     fail 'Hyprland' 'luajit is required for workspace policy fixtures'
     return
   fi
+  # A { } group reports only its last status; every command has to count.
   out=$({
-    bash tests/hyprland-workspaces
-    bash tests/hyprland-features
+    r=0
+    bash tests/hyprland-workspaces || r=1
+    bash tests/hyprland-features || r=1
+    exit "$r"
   } 2>&1) || rc=$?
   elapsed=$(( $(now_ms) - t0 ))
 
@@ -262,7 +380,10 @@ stage_qml_runtime() {
   # components. Run that lifecycle smoke test through the real engine only
   # where doing so cannot create a second qs beside the managed desktop shell.
   if ((rc == 0)); then
-    if pgrep -x qs >/dev/null 2>&1 \
+    if ! hold_qs_lock; then
+      rc=1
+      out+=$'\ncould not take the lock that keeps real-engine qs tests apart'
+    elif pgrep -x qs >/dev/null 2>&1 \
         || systemctl --user is-active --quiet quickshell.service 2>/dev/null; then
       skip 'qml lifecycle' 'active managed shell; real-engine smoke runs in CI'
     elif ! command -v qs >/dev/null 2>&1; then
@@ -281,7 +402,8 @@ stage_qml_runtime() {
         QT_QUICK_BACKEND=software \
         QS_REDUCED_MOTION=1 \
         timeout --signal=TERM --kill-after=2 15 \
-        dbus-run-session -- qs --no-color -v -p "$scratch/shell" 2>&1) || lifecycle_rc=$?
+        dbus-run-session -- qs --no-color -v -p "$scratch/shell" 2>&1 \
+        {qs_lock_fd}>&-) || lifecycle_rc=$?
       if ((lifecycle_rc != 0 && lifecycle_rc != 143)) \
           || ! grep -q 'LIFECYCLE_RESULT pass' <<<"$lifecycle_out" \
           || grep -q 'LIFECYCLE_FAIL' <<<"$lifecycle_out"; then
@@ -331,37 +453,86 @@ stage_callback_smoke() {
 }
 
 # ── Python helper concurrency/error contracts ──────────────────────────
+# Independent fixtures, run side by side and each to the end, so one failure
+# cannot hide the result of the others.
+python_fixtures=(
+  # The two Ansible-driven deployment fixtures take longest; start them first.
+  cybex-deployment
+  quickshell-deployment
+  user-plugins
+  usage-fetch
+  bluetooth-tool
+  shell-health
+  repository-policy
+  application-defaults
+  ownership-layering
+  plugin-packages
+  installer-convergence
+  user-adoption
+  firefox-policy
+  hermes-bridge
+  hermes-webui-auth
+  hermes-remote-runtime
+)
+python_fixture_limit=300
+
 stage_python_helpers() {
-  local out rc=0 t0 elapsed
-  if ! command -v python3 >/dev/null 2>&1; then
-    fail 'Python tests' 'python3 not installed'
+  local dir index command fixture out='' t0 elapsed jobs failed=()
+  local -A pending=()
+  local -a status=() runtime=()
+  for command in python3 flock timeout; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+      fail 'Python tests' "$command not installed"
+      return
+    fi
+  done
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-tests.XXXXXX") || {
+    fail 'Python tests' 'could not create a scratch directory'
     return
-  fi
+  }
+  test_scratch_dirs+=("$dir")
+  jobs=$(default_jobs)
+
   t0=$(now_ms)
-  out=$({
-    python3 tests/usage-fetch.py \
-      && python3 tests/bluetooth-tool.py \
-      && python3 tests/shell-health.py \
-      && python3 tests/repository-policy.py \
-      && python3 tests/application-defaults.py \
-      && python3 tests/ownership-layering.py \
-      && python3 tests/plugin-packages.py \
-      && python3 tests/user-plugins.py \
-      && python3 tests/installer-convergence.py \
-      && python3 tests/user-adoption.py \
-      && python3 tests/firefox-policy.py \
-      && python3 tests/quickshell-deployment.py \
-      && python3 tests/cybex-deployment.py \
-      && python3 tests/hermes-bridge.py \
-      && python3 tests/hermes-webui-auth.py \
-      && python3 tests/hermes-remote-runtime.py
-  } 2>&1) || rc=$?
+  for index in "${!python_fixtures[@]}"; do
+    while ((${#pending[@]} >= jobs)); do
+      reap_into pending status runtime || break
+    done
+    command=(python3 "tests/${python_fixtures[index]}.py")
+    if [[ ${python_fixtures[index]} == user-plugins ]]; then
+      command=(flock --close "$CYBEXOS_TESTS_RUN_QS_LOCK" "${command[@]}")
+    fi
+    spawn "$python_fixture_limit" "$dir/$index" "${command[@]}"
+    pending[$spawned_pid]=$index
+  done
+  while ((${#pending[@]})); do
+    reap_into pending status runtime || break
+  done
   elapsed=$(( $(now_ms) - t0 ))
-  if ((rc == 0)); then
-    pass 'Python tests' "helper isolation and repository policy $(took "$elapsed")"
+
+  # A failing fixture's diagnosis (a traceback, the failed assertion) is at
+  # the end of what it printed.
+  for index in "${!python_fixtures[@]}"; do
+    [[ ${status[index]:-} == 0 ]] && continue
+    fixture=${python_fixtures[index]}
+    failed+=("$fixture")
+    if [[ -z ${status[index]:-} ]]; then
+      out+="tests/$fixture.py: lost track of its process"$'\n'
+      continue
+    fi
+    out+="tests/$fixture.py $(exit_note "${status[index]}" "${runtime[index]}" "$python_fixture_limit")"
+    if [[ -s $dir/$index ]]; then
+      out+=$':\n'$(tail -n 40 -- "$dir/$index")
+    fi
+    out+=$'\n'
+  done
+  rm -rf -- "$dir"
+
+  if ((${#failed[@]} == 0)); then
+    pass 'Python tests' "${#python_fixtures[@]} helper-isolation and repository-policy fixtures $(took "$elapsed")"
   else
-    fail 'Python tests' 'helper or repository-policy fixtures failed'
-    excerpt "${out:-unknown failure}"
+    fail 'Python tests' "${#failed[@]} of ${#python_fixtures[@]} fixtures failed: $(IFS=, ; printf '%s' "${failed[*]}")"
+    excerpt "${out%$'\n'}" 120
   fi
 }
 
@@ -370,7 +541,7 @@ stage_quickshell_integration() {
   local out rc=0 t0 elapsed
   t0=$(now_ms)
 
-  out=$({ python3 - <<'PY'
+  out=$({ r=0; python3 - <<'PY' || r=1
 from pathlib import Path
 
 tasks = Path("roles/desktop/tasks/main.yml").read_text()
@@ -389,11 +560,12 @@ assert not Path("roles/desktop/files/noctalia").exists()
 assert "- quickshell" in tasks
 assert "Install tracked Quickshell menubar files" in tasks
 assert 'src: "quickshell/{{ item }}"' in tasks
-assert "loop: \"{{ quickshell_managed_manifest }}\"" in tasks
+assert "loop: \"{{ quickshell_deploy.install }}\"" in tasks
+assert 'stdin: "{{ quickshell_managed_manifest | sort | to_json }}"' in tasks
 assert tasks.index("Build the tracked Quickshell source manifest") < tasks.index("Install tracked Quickshell menubar files")
 assert "Calculate the content identity of the managed Quickshell tree" in tasks
 assert 'digest.update(payload + b"\\0")' in tasks
-assert tasks.count('"{{ quickshell_source_digest.stdout }}"') == 2
+assert tasks.count('"{{ quickshell_source.digest }}"') == 2
 assert tasks.index("Install rendered Hyprland Lua dependencies before their consumers") < tasks.index("Install Hyprland Lua configuration")
 lua_install = tasks[tasks.index("Install Hyprland Lua configuration"):tasks.index("Install ordered Hyprland session starter")]
 assert lua_install.index("- bindings.lua") < lua_install.index("- hyprland.lua")
@@ -412,7 +584,8 @@ assert "--exclude='__pycache__/'" in snapshot
 assert "--exclude='*.py[co]'" in snapshot
 print("Quickshell configuration and guarded Noctalia migration are wired")
 PY
-    bash tests/quickshell-deploy-health-fixture
+    bash tests/quickshell-deploy-health-fixture || r=1
+    exit "$r"
   } 2>&1) || rc=1
 
   elapsed=$(( $(now_ms) - t0 ))
@@ -426,7 +599,7 @@ PY
 
 # ── XPS 2026 hardware integration sanity checks ────────────────────────────
 stage_xps_hardware() {
-  local out rc=0 t0 elapsed biquads
+  local out rc=0 t0 elapsed biquads search_rc
   local shell_files=(
     roles/xps-2026/files/xps-speaker-tuning
     roles/xps-2026/files/xps-fingerprint-detect
@@ -664,10 +837,11 @@ PY
     rc=1
   fi
   if ((rc == 0)); then
-    if out=$(rg -n 'linux-ptl|fred=on|disable_11be|BUILT_MODULE_NAME.*intel-ipu7(-isys)?"' \
-      roles/xps-2026/tasks roles/xps-2026/defaults roles/xps-2026/templates 2>&1); then
-      rc=1
-    fi
+    # Only rg's "no match" (1) passes: 0 is a forbidden match, 2 a failed search.
+    search_rc=0
+    out=$(rg -n 'linux-ptl|fred=on|disable_11be|BUILT_MODULE_NAME.*intel-ipu7(-isys)?"' \
+      roles/xps-2026/tasks roles/xps-2026/defaults roles/xps-2026/templates 2>&1) || search_rc=$?
+    ((search_rc == 1)) || rc=1
   fi
 
   elapsed=$(( $(now_ms) - t0 ))
@@ -818,9 +992,11 @@ stage_agent_skills() {
   done
   t0=$(now_ms)
   out=$({
-    python3 tests/agent-skill.py
-    python3 tests/default-agent.py
-    bash tests/agent-skills
+    r=0
+    python3 tests/agent-skill.py || r=1
+    python3 tests/default-agent.py || r=1
+    bash tests/agent-skills || r=1
+    exit "$r"
   } 2>&1) || rc=$?
   elapsed=$(( $(now_ms) - t0 ))
 
@@ -884,34 +1060,199 @@ quick_stages=(
   stage_qml_runtime
 )
 
-selected_stages=("${stages[@]}")
+# The name each stage reports under, for failures only this runner sees: a
+# stage that ran out of time or whose process died.
+declare -A stage_labels=(
+  [stage_source_syntax]='source syntax'
+  [stage_static_analysis]='static lint'
+  [stage_unit_tests]='unit tests'
+  [stage_hyprland_workspaces]='Hyprland'
+  [stage_qml_lint]='qml lint'
+  [stage_qml_runtime]='qml runtime'
+  [stage_quickshell_integration]='Quickshell'
+  [stage_callback_smoke]='callback'
+  [stage_python_helpers]='Python tests'
+  [stage_xps_hardware]='XPS hardware'
+  [stage_plymouth_layout]='Plymouth'
+  [stage_agent_skills]='agent skills'
+  [stage_update_backend]='updater'
+  [stage_screenshot_workflow]='screenshot'
+  [stage_brightness_routing]='brightness'
+  [stage_system_snapshot]='snapshots'
+  [stage_legacy_names]='legacy'
+)
 
-case ${1:-} in
-  --list)
-    printf '%d required source-check stages (execution order):\n' "${#stages[@]}"
-    for stage in "${stages[@]}"; do
-      label=${stage#stage_}
-      printf '  %s\n' "${label//_/ }"
-    done
-    exit 0
-    ;;
-  --quick)
-    selected_stages=("${quick_stages[@]}")
-    ;;
-  -h|--help)
-    printf 'Usage: tests/run [--list | --quick]\n'
-    printf 'Run every required source-tree check, list the authoritative stage order, or run the short preflight.\n'
-    exit 0
-    ;;
-  '') ;;
-  *)
-    printf 'tests/run: unknown argument %s\n' "$1" >&2
+# Wall-clock limit per stage in seconds: many times the slowest run seen in CI
+# or on a loaded workstation, so only a hang ever reaches it.
+declare -A stage_limits=(
+  [stage_static_analysis]=600
+  [stage_python_helpers]=600
+)
+stage_limit() { printf '%s' "${stage_limits[$1]:-300}"; }
+
+# One stage per process: the loop at the end starts each stage as
+# `tests/run --stage-worker NAME` under its limit and reports what it printed.
+if [[ ${1:-} == --stage-worker ]]; then
+  stage=${2:-}
+  if (($# != 2)) || [[ -z $stage || -z ${stage_labels[$stage]:-} ]]; then
+    printf 'tests/run: --stage-worker takes one stage function name\n' >&2
     exit 2
-    ;;
-esac
-
-for stage in "${selected_stages[@]}"; do
+  fi
+  # Started by hand rather than by a run: there is nothing to keep apart from.
+  if [[ -z ${CYBEXOS_TESTS_RUN_QS_LOCK:-} ]]; then
+    CYBEXOS_TESTS_RUN_QS_LOCK=$(mktemp "${TMPDIR:-/tmp}/cybexos-tests.XXXXXX") || exit 1
+    test_scratch_dirs+=("$CYBEXOS_TESTS_RUN_QS_LOCK")
+  fi
   "$stage"
+  ((${#failed_stages[@]} == 0))
+  exit
+fi
+
+usage() {
+  cat <<'EOF'
+Usage: tests/run [--quick | --only STAGE...] [--jobs N]
+       tests/run --list
+
+Run every required source-tree check; exit nonzero when any stage fails.
+
+  --list        List the stages in the order their results are reported.
+  --quick       Run only the short preflight stages.
+  --only STAGE  Run just this stage, named as --list prints it; repeatable.
+  --jobs N      Run up to N stages, and N jobs within a stage, at once
+                (default: half the CPUs, at most eight; 1 runs everything
+                one after another).
+EOF
+}
+
+quick=false
+only=()
+jobs=''
+while (($#)); do
+  case $1 in
+    --list)
+      printf '%d required source-check stages (report order):\n' "${#stages[@]}"
+      for stage in "${stages[@]}"; do
+        label=${stage#stage_}
+        printf '  %s\n' "${label//_/ }"
+      done
+      exit 0
+      ;;
+    --quick) quick=true ;;
+    --only)
+      name=${2:-}
+      name=${name,,}
+      name=stage_${name#stage_}
+      name=${name//[ -]/_}
+      if [[ -z ${2:-} || -z ${stage_labels[$name]:-} ]]; then
+        printf 'tests/run: --only needs a stage from --list, not "%s"\n' "${2:-}" >&2
+        exit 2
+      fi
+      only+=("$name")
+      shift
+      ;;
+    -j|--jobs)
+      if [[ ! ${2:-} =~ ^[1-9][0-9]*$ ]]; then
+        printf 'tests/run: --jobs needs a positive number\n' >&2
+        exit 2
+      fi
+      jobs=$2
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'tests/run: unknown argument %s\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+if $quick && ((${#only[@]})); then
+  printf 'tests/run: choose either --quick or --only\n' >&2
+  exit 2
+fi
+selected_stages=("${stages[@]}")
+$quick && selected_stages=("${quick_stages[@]}")
+if ((${#only[@]})); then
+  selected_stages=()
+  for stage in "${stages[@]}"; do
+    [[ " ${only[*]} " == *" $stage "* ]] && selected_stages+=("$stage")
+  done
+fi
+jobs=${jobs:-$(default_jobs)}
+export CYBEXOS_TESTS_RUN_JOBS=$jobs
+
+run_dir=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-tests.XXXXXX") || {
+  printf 'tests/run: could not create a scratch directory\n' >&2
+  exit 1
+}
+test_scratch_dirs+=("$run_dir")
+export CYBEXOS_TESTS_RUN_QS_LOCK=$run_dir/qs.lock
+
+# A worker that failed its stage has printed the FAIL line already. Anything
+# else it can end with (its time limit, a crash) is reported here instead.
+report_stage() {
+  local index=$1 rc=$2 runtime_ms=$3 stage output
+  stage=${selected_stages[index]}
+  output=$run_dir/$index.out
+  if ((rc == 0)); then
+    cat -- "$output"
+  elif ((rc == 1)) && grep -q 'FAIL' -- "$output"; then
+    cat -- "$output"
+    failed_stages+=("${stage_labels[$stage]}")
+  else
+    fail "${stage_labels[$stage]}" \
+      "stage $(exit_note "$rc" "$runtime_ms" "$(stage_limit "$stage")")"
+    [[ -s $output ]] && excerpt "$(<"$output")"
+  fi
+}
+
+# The longest stages start first so the short ones fill in around them;
+# results still come out in the fixed order above, each as soon as every
+# stage before it has finished too.
+launch_first=(
+  stage_python_helpers
+  stage_static_analysis
+  stage_unit_tests
+  stage_qml_lint
+  stage_source_syntax
+  stage_update_backend
+)
+launch_order=()
+for stage in "${launch_first[@]}"; do
+  for index in "${!selected_stages[@]}"; do
+    [[ ${selected_stages[index]} == "$stage" ]] && launch_order+=("$index")
+  done
+done
+for index in "${!selected_stages[@]}"; do
+  [[ " ${launch_first[*]} " == *" ${selected_stages[index]} "* ]] ||
+    launch_order+=("$index")
+done
+
+declare -A running=()    # worker PID → index into selected_stages
+declare -a stage_rc=() stage_ms=()
+next=0
+reported=0
+while ((reported < ${#selected_stages[@]})); do
+  while ((${#running[@]} < jobs && next < ${#launch_order[@]})); do
+    index=${launch_order[next]}
+    stage=${selected_stages[index]}
+    spawn "$(stage_limit "$stage")" "$run_dir/$index.out" \
+      "$BASH" "$runner" --stage-worker "$stage"
+    running[$spawned_pid]=$index
+    next=$((next + 1))
+  done
+  if ! reap_into running stage_rc stage_ms; then
+    printf 'tests/run: lost track of a running stage\n' >&2
+    exit 1
+  fi
+  while ((reported < ${#selected_stages[@]})) && [[ -n ${stage_rc[reported]:-} ]]; do
+    report_stage "$reported" "${stage_rc[reported]}" "${stage_ms[reported]}"
+    reported=$((reported + 1))
+  done
 done
 
 # Keep the verdict on the last line: `update` tails this output into its own

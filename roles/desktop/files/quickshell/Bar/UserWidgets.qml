@@ -16,7 +16,7 @@ Row {
     readonly property var themeValues: ({
         foreground: String(Theme.barTextHi), background: String(Theme.barChip),
         accent: String(Theme.barAccent), fontFamily: Theme.fontMenu,
-        fontSize: Theme.typography.bar, typography: Theme.typography, reducedMotion: Settings.reducedMotion
+        fontSize: Theme.typography.bar, typography: Theme.typography, reducedMotion: Theme.reducedMotion
     })
     spacing: Theme.barSpacing
     visible: root.entries.length > 0 || (section === "right" && (UserPlugins.error !== "" || Object.keys(OmarchyPlugins.errors).length > 0))

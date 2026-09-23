@@ -55,6 +55,17 @@ Surface {
         });
     }
 
+    // A closed launcher shows nothing, but its query and tab still drive
+    // LauncherProviders: a `$` query kept the hidden list rebuilding on every
+    // window title and focus change, and the History tab re-read cliphist on
+    // every copy. Every open resets to Apps anyway, so the window drops both
+    // as soon as its fade-out has unmapped it.
+    function resetForClose(): void {
+        LauncherProviders.selectedProviderId = "apps";
+        search.text = "";
+        selected = 0;
+    }
+
     Component.onCompleted: {
         if (Launcher.open)
             prepareOpen();

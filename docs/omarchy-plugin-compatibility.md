@@ -101,9 +101,11 @@ saved value is hidden. The schema is presentation only: the CLI and IPC still
 accept any JSON value. Cybex's own `apiVersion` manifests can declare the same
 `barWidget.schema`; their defaults come only from each entry's `defaultValue`.
 
-Preferences and package code refresh within two seconds. `cybex plugin reload`
-requests an immediate scan through the running shell; `cybex plugin restart`
-explicitly restarts the managed `quickshell.service`.
+Preferences apply at once. Package code refreshes within two seconds while
+Settings is open and within five minutes otherwise; `cybex plugin update`
+reloads at once, and `cybex plugin reload` requests an immediate scan through
+the running shell. `cybex plugin restart` explicitly restarts the managed
+`quickshell.service`.
 Disable with `cybex plugin disable <id>`; files and preferences remain.
 Deploy the updated Quickshell role before using this on an older desktop.
 
@@ -199,7 +201,7 @@ upstream's third-party replacement-bar contract. Manifest-supplied internal
 flags cannot make an installed package first-party or grant host capabilities.
 These API boundaries do not sandbox trusted QML.
 
-Normal preference polling preserves running widget/service state. Changing
+A preference change preserves running widget/service state. Changing
 layout, enablement, or code can recreate objects; plugins must persist state
 needed across those events. Native-bar Omarchy popups coordinate ownership
 with Cybex popouts. Lifecycle failures are reported without intentionally

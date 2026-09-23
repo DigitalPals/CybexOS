@@ -73,21 +73,21 @@ class ClaudeRefreshTests(unittest.TestCase):
             }
             path.write_text(json.dumps({"claudeAiOauth": oauth}))
 
-            def run(command, **kwargs):
+            def run(command, environment):
                 self.assertEqual(command,
                                  ["/test/bin/claude", "auth", "login", "--claudeai"])
                 self.assertNotIn("private-refresh-token", " ".join(command))
-                self.assertEqual(kwargs["env"]["CLAUDE_CODE_OAUTH_REFRESH_TOKEN"],
+                self.assertEqual(environment["CLAUDE_CODE_OAUTH_REFRESH_TOKEN"],
                                  "private-refresh-token")
-                self.assertEqual(kwargs["env"]["CLAUDE_CODE_OAUTH_SCOPES"],
+                self.assertEqual(environment["CLAUDE_CODE_OAUTH_SCOPES"],
                                  "user:profile user:inference")
                 refreshed = dict(oauth, accessToken="fresh-access",
                                  expiresAt=(time.time() + 3600) * 1000)
                 path.write_text(json.dumps({"claudeAiOauth": refreshed}))
-                return mock.Mock(returncode=0, stdout=b"", stderr=b"")
+                return 0
 
             with mock.patch.object(MODULE.shutil, "which", return_value="/test/bin/claude"), \
-                    mock.patch.object(MODULE.subprocess, "run", side_effect=run):
+                    mock.patch.object(MODULE, "run_refresh_cli", side_effect=run):
                 refreshed, error = MODULE.refresh_claude_oauth(str(path), oauth)
 
             self.assertIsNone(error)
@@ -100,16 +100,36 @@ class ClaudeRefreshTests(unittest.TestCase):
             "refreshTokenExpiresAt": (time.time() + 3600) * 1000,
             "scopes": ["user:profile"],
         }
-        completed = mock.Mock(returncode=1, stdout=b"private-refresh-token",
-                              stderr=b"sensitive diagnostic")
         with mock.patch.object(MODULE.shutil, "which", return_value="/test/bin/claude"), \
-                mock.patch.object(MODULE.subprocess, "run", return_value=completed):
+                mock.patch.object(MODULE, "run_refresh_cli", return_value=1):
             refreshed, error = MODULE.refresh_claude_oauth("/unused", oauth)
 
         self.assertIsNone(refreshed)
         self.assertEqual(error["kind"], "refresh")
         self.assertNotIn("private-refresh-token", json.dumps(error))
-        self.assertNotIn("sensitive diagnostic", json.dumps(error))
+
+        for failure, message in (
+                (MODULE.subprocess.TimeoutExpired("claude", 30), "timed out"),
+                (FileNotFoundError("claude"), "could not start")):
+            with mock.patch.object(MODULE.shutil, "which", return_value="/test/bin/claude"), \
+                    mock.patch.object(MODULE, "run_refresh_cli", side_effect=failure):
+                refreshed, error = MODULE.refresh_claude_oauth("/unused", oauth)
+            self.assertIsNone(refreshed)
+            self.assertEqual(error["kind"], "refresh")
+            self.assertIn(message, error["message"])
+
+    def test_cli_output_is_never_captured(self):
+        # Nothing the CLI prints is read, so nothing it prints can leak, and
+        # no pipe is left for a straggling grandchild to hold open.
+        with mock.patch.object(MODULE.subprocess, "Popen") as popen:
+            popen.return_value.wait.return_value = 0
+            self.assertEqual(MODULE.run_refresh_cli(["claude"], {"A": "1"}), 0)
+        kwargs = popen.call_args.kwargs
+        for stream in ("stdin", "stdout", "stderr"):
+            self.assertIs(kwargs[stream], MODULE.subprocess.DEVNULL, stream)
+        self.assertTrue(kwargs["start_new_session"])
+        self.assertEqual(kwargs["env"], {"A": "1"})
+        popen.return_value.wait.assert_called_once_with(timeout=MODULE.REFRESH_TIMEOUT)
 
     def test_expiring_access_token_uses_refresh_before_usage_request(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -136,6 +156,176 @@ class ClaudeRefreshTests(unittest.TestCase):
             refresh.assert_called_once_with(str(path), expired)
             self.assertEqual(result["status"], "ok")
             self.assertEqual(result["plan"], "Claude Pro")
+
+
+FAKE_CLAUDE = """#!/bin/sh
+# Stands in for a Claude CLI that hangs, with a helper of its own.
+sleep 30 &
+echo "$$ $!" > "$USAGE_TEST_PIDFILE"
+wait
+"""
+
+
+def process_gone(pid, timeout=5.0):
+    """True once ``pid`` has exited (a zombie awaiting its reaper counts)."""
+    limit = time.monotonic() + timeout
+    while time.monotonic() < limit:
+        try:
+            state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+        except (FileNotFoundError, ProcessLookupError, IndexError):
+            return True
+        if state in ("Z", "X"):
+            return True
+        time.sleep(0.05)
+    return False
+
+
+class RunLifetimeTests(unittest.TestCase):
+    """A wedged run always answers, and leaves no Claude CLI behind."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="cybexos-usage-test-")
+        root = Path(self.temporary.name)
+        self.root = root
+        bin_dir = root / "bin"
+        bin_dir.mkdir()
+        claude = bin_dir / "claude"
+        claude.write_text(FAKE_CLAUDE)
+        claude.chmod(0o700)
+        self.pidfile = root / "claude.pids"
+        config = root / "claude-config"
+        config.mkdir()
+        (config / ".credentials.json").write_text(json.dumps({"claudeAiOauth": {
+            "accessToken": "expired", "expiresAt": 1,
+            "refreshToken": "private-refresh-token",
+            "refreshTokenExpiresAt": (time.time() + 3600) * 1000,
+            "scopes": ["user:profile"]}}))
+        self.environment = {
+            key: value for key, value in os.environ.items()
+            if key not in ("CODEX_HOME", "KIMI_CODE_HOME", "CYBEXOS_USAGE_FETCH_TEST_DEADLINE")
+        }
+        self.environment.update({
+            "HOME": str(root),
+            "XDG_CACHE_HOME": str(root / "cache"),
+            "XDG_STATE_HOME": str(root / "state"),
+            "CLAUDE_CONFIG_DIR": str(config),
+            "QUICKSHELL_USAGE_STATE_PATH": str(root / "cache" / "model-usage.json"),
+            "PATH": f"{bin_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}",
+            "USAGE_TEST_PIDFILE": str(self.pidfile),
+        })
+        self.stray = []
+
+    def tearDown(self):
+        for pid in self.stray:
+            try:
+                os.kill(pid, 9)
+            except (ProcessLookupError, PermissionError):
+                pass
+        self.temporary.cleanup()
+
+    def claude_pids(self, timeout=10.0):
+        limit = time.monotonic() + timeout
+        while time.monotonic() < limit:
+            try:
+                pids = [int(value) for value in self.pidfile.read_text().split()]
+            except (FileNotFoundError, ValueError):
+                pids = []
+            if len(pids) == 2:
+                self.stray.extend(pids)
+                return pids
+            time.sleep(0.05)
+        self.fail("the fake Claude CLI never started")
+
+    def start(self, *arguments, **environment):
+        return subprocess.Popen(
+            ["python3", str(PATH), *arguments],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env=dict(self.environment, **environment))
+
+    def test_refresh_timeout_kills_the_cli_and_everything_it_started(self):
+        oauth = {"accessToken": "expired", "refreshToken": "private-refresh-token",
+                 "refreshTokenExpiresAt": (time.time() + 3600) * 1000,
+                 "scopes": ["user:profile"]}
+        started = time.monotonic()
+        with mock.patch.dict(os.environ, {"USAGE_TEST_PIDFILE": str(self.pidfile)}), \
+                mock.patch.object(MODULE.shutil, "which",
+                                  return_value=str(self.root / "bin" / "claude")), \
+                mock.patch.object(MODULE, "REFRESH_TIMEOUT", 0.5):
+            refreshed, error = MODULE.refresh_claude_oauth("/unused", oauth)
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertIsNone(refreshed)
+        self.assertIn("timed out", error["message"])
+        cli, helper = self.claude_pids()
+        self.assertTrue(process_gone(cli))
+        self.assertTrue(process_gone(helper), "the CLI's own child must not outlive it")
+
+    def test_deadline_answers_a_wedged_fetch_and_ends_the_cli(self):
+        process = self.start("--source", "direct", "--refresh-claude",
+                             CYBEXOS_USAGE_FETCH_TEST_DEADLINE="2")
+        try:
+            stdout, stderr = process.communicate(timeout=15)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
+        self.assertEqual(process.returncode, 124)
+        self.assertEqual(stdout, b"")
+        self.assertIn(b"Usage fetch timed out after 2 s.", stderr)
+        for pid in self.claude_pids():
+            self.assertTrue(process_gone(pid), pid)
+
+    def test_sigterm_ends_the_cli_group_too(self):
+        process = self.start("--source", "direct", "--refresh-claude")
+        try:
+            pids = self.claude_pids()
+            process.terminate()
+            process.communicate(timeout=10)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
+        self.assertEqual(process.returncode, 143)
+        for pid in pids:
+            self.assertTrue(process_gone(pid), pid)
+
+    def test_connection_test_deadline_reports_a_timeout(self):
+        # Accepts the connection and never answers, so only the deadline ends it.
+        import socket
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        try:
+            key = self.root / "state" / "quickshell" / "model-usage-cliproxy.key"
+            key.parent.mkdir(parents=True)
+            key.write_text("private-management-key")
+            key.chmod(0o600)
+            process = self.start("--source", "cliproxy", "--test-connection",
+                                 "--cliproxy-url",
+                                 f"http://127.0.0.1:{listener.getsockname()[1]}",
+                                 CYBEXOS_USAGE_FETCH_TEST_DEADLINE="0.5")
+            try:
+                stdout, _stderr = process.communicate(timeout=15)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate()
+        finally:
+            listener.close()
+        self.assertEqual(process.returncode, 0)
+        self.assertEqual(json.loads(stdout), {
+            "success": False, "kind": "timeout",
+            "message": "The connection test timed out."})
+
+    def test_cache_lock_wait_is_bounded(self):
+        path = self.root / "held.lock"
+        path.write_text("")
+        with open(path, "r+") as holder, open(path, "r+") as waiter:
+            MODULE.fcntl.flock(holder.fileno(), MODULE.fcntl.LOCK_EX)
+            started = time.monotonic()
+            self.assertFalse(MODULE.acquire_lock(waiter.fileno(), wait=0.3))
+            self.assertLess(time.monotonic() - started, 2)
+            MODULE.fcntl.flock(holder.fileno(), MODULE.fcntl.LOCK_UN)
+            self.assertTrue(MODULE.acquire_lock(waiter.fileno(), wait=0.3))
 
 
 class ClaudeFableTests(unittest.TestCase):
@@ -337,6 +527,56 @@ class CliProxyTests(unittest.TestCase):
                         "full", "open", "broken"):
             self.assertNotIn(private, serialized)
 
+    def test_accounts_are_read_side_by_side_in_a_bounded_pool(self):
+        lock = threading.Lock()
+        running = [0, 0]  # current, peak
+        barrier = threading.Barrier(MODULE.ACCOUNT_WORKERS, timeout=2)
+
+        def slow(index):
+            with lock:
+                running[0] += 1
+                running[1] = max(running[1], running[0])
+            if index < MODULE.ACCOUNT_WORKERS:
+                barrier.wait()  # only passes if the first batch runs at once
+            time.sleep(0.02)
+            with lock:
+                running[0] -= 1
+            return {"status": "ok", "windows": [{"label": "5 hour limit", "used": index}],
+                    "credits": None}
+
+        entries = [{"provider": "codex", "auth_index": f"a{index}"} for index in range(7)]
+
+        def account(provider, entry, client):
+            return slow(int(entry["auth_index"][1:]))
+
+        with mock.patch.object(MODULE, "fetch_cliproxy_account", side_effect=account):
+            result = MODULE.fetch_cliproxy_provider("codex", entries, object())
+        self.assertEqual(running[1], MODULE.ACCOUNT_WORKERS)
+        self.assertEqual([row["windows"][0]["used"] for row in result["accounts"]],
+                         list(range(7)), "accounts keep their declared order")
+
+        running[1] = 0
+        barrier.reset()
+
+        class Client:
+            def api_json(self, path):
+                return {"five_hour": {"utilization": int(path.split("/")[2]),
+                                      "resets_at": "2999-01-01T00:00:00Z"}}, None
+
+        sub2api = [{"id": index + 1, "platform": "anthropic", "name": f"A{index}"}
+                   for index in range(7)]
+        original = MODULE.parse_sub2api_usage
+
+        def parse(data):
+            slow(data["five_hour"]["utilization"] - 1)
+            return original(data)
+
+        with mock.patch.object(MODULE, "parse_sub2api_usage", side_effect=parse):
+            result = MODULE.fetch_sub2api_provider("claude", sub2api, Client())
+        self.assertEqual(running[1], MODULE.ACCOUNT_WORKERS)
+        self.assertEqual([row["label"] for row in result["accounts"]],
+                         [f"A{index}" for index in range(7)])
+
     def test_account_pool_preserves_each_failure_when_all_accounts_fail(self):
         entries = [
             {"provider": "claude", "auth_index": "one",
@@ -509,10 +749,12 @@ class Sub2ApiTests(unittest.TestCase):
 
     def test_best_account_summary_keeps_failures_and_excludes_disabled(self):
         client = mock.Mock()
-        client.api_json.side_effect = [
-            ({"five_hour": {"utilization": 75}}, None),
-            (None, MODULE.err("expired", "Rejected")),
-            ({"five_hour": {"utilization": 20}}, None)]
+        # Accounts are read concurrently, so answer by path, not call order.
+        replies = {
+            "/accounts/1/usage": ({"five_hour": {"utilization": 75}}, None),
+            "/accounts/2/usage": (None, MODULE.err("expired", "Rejected")),
+            "/accounts/3/usage": ({"five_hour": {"utilization": 20}}, None)}
+        client.api_json.side_effect = replies.__getitem__
         entries = [{"id": n, "name": "Team", "platform": "anthropic",
                     "status": "disabled" if n == 4 else "active"}
                    for n in range(1, 5)]
@@ -708,6 +950,105 @@ class Sub2ApiTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(key.stat().st_mode), 0o600)
             self.assertEqual(MODULE.read_cliproxy_key(str(key)), ("sub2api-test-key", None))
             self.assertFalse((key.parent / "model-usage-cliproxy.key").exists())
+
+
+class RedirectTests(unittest.TestCase):
+    """Authenticated requests never follow a redirect.
+
+    urllib replays a request's headers, Authorization included, to wherever a
+    Location points, even on another host. A second local server stands in
+    for that other host and must never see a request.
+    """
+
+    @staticmethod
+    def serve(handler):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        worker = threading.Thread(target=server.serve_forever,
+                                  kwargs={"poll_interval": 0.05}, daemon=True)
+        worker.start()
+        return server, worker
+
+    def setUp(self):
+        self.captured = []
+        self.origin_requests = []
+        captured = self.captured
+        origin_requests = self.origin_requests
+
+        class Capture(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                captured.append((self.path, self.headers.get("Authorization")))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"files": []}')
+
+            do_POST = do_GET
+
+        self.capture, capture_worker = self.serve(Capture)
+        target = f"http://127.0.0.1:{self.capture.server_port}"
+
+        class Origin(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                origin_requests.append(self.path)
+                if self.path.startswith("/landing"):
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b"{}")
+                    return
+                self.send_response(307 if self.command == "POST" else 302)
+                location = ("/landing" if "same-origin" in self.path
+                            else target + "/stolen" + self.path)
+                self.send_header("Location", location)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                self.rfile.read(length)
+                self.do_GET()
+
+        self.origin, origin_worker = self.serve(Origin)
+        self.base = f"http://127.0.0.1:{self.origin.server_port}"
+        self.workers = (capture_worker, origin_worker)
+
+    def tearDown(self):
+        for server in (self.origin, self.capture):
+            server.shutdown()
+            server.server_close()
+        for worker in self.workers:
+            worker.join(timeout=5)
+
+    def test_direct_provider_token_is_not_replayed_to_another_host(self):
+        data, failure = MODULE.http_json("claude", self.base + "/api/oauth/usage", {
+            "Authorization": "Bearer private-provider-token"})
+        self.assertIsNone(data)
+        self.assertEqual(failure["kind"], "http")
+        self.assertIn("HTTP 302", failure["message"])
+        self.assertEqual(self.captured, [])
+
+    def test_same_origin_redirect_is_not_followed_either(self):
+        status, _body, _headers = MODULE.http_request(
+            self.base + "/same-origin", {"Authorization": "Bearer private"})
+        self.assertEqual(status, 302)
+        self.assertEqual(self.origin_requests, ["/same-origin"])
+
+    def test_cliproxy_management_key_is_not_replayed_to_another_host(self):
+        client = MODULE.CliProxyClient(self.base, "private-management-key")
+        files, failure = client.auth_files()
+        self.assertIsNone(files)
+        self.assertEqual(failure["kind"], "http")
+        self.assertIn("HTTP 302", failure["message"])
+        _response, failure = client.management_json(
+            "/v0/management/api-call", {"auth_index": "1", "method": "GET",
+                                        "url": "https://example.invalid", "header": {}})
+        self.assertIn("HTTP 307", failure["message"])
+        self.assertEqual(self.captured, [])
+        self.assertEqual(len(self.origin_requests), 2)
 
 
 class ResilientFetchTests(unittest.TestCase):

@@ -1,11 +1,13 @@
 """Reuse only inventory-checksummed downloads, never builder-installed state."""
 import argparse
+import http.client
 import json
 import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
 import tempfile
+import time
 import urllib.request
 import fcntl
 
@@ -127,11 +129,21 @@ def cached_download(url, checksum, directory):
         with tempfile.NamedTemporaryFile(dir=directory, prefix=".download-", delete=False) as stream:
             temporary = Path(stream.name)
         try:
-            with urllib.request.urlopen(url, timeout=60) as response, temporary.open("wb") as stream:
-                shutil.copyfileobj(response, stream)
-            if digest(temporary) != checksum:
-                raise ValueError("Downloaded builder image checksum mismatch")
-            temporary.replace(target)
+            for attempt in range(1, 5):
+                try:
+                    with urllib.request.urlopen(url, timeout=60) as response, temporary.open("wb") as stream:
+                        shutil.copyfileobj(response, stream, 1024 * 1024)
+                    if digest(temporary) == checksum:
+                        temporary.replace(target)
+                        break
+                    problem = "checksum mismatch"
+                except (OSError, http.client.HTTPException) as error:
+                    problem = str(error) or type(error).__name__
+                temporary.unlink(missing_ok=True)
+                print(f"Download attempt {attempt} of 4 failed: {problem}", flush=True)
+                if attempt == 4:
+                    raise RuntimeError(f"Could not download verified builder image: {problem}")
+                time.sleep(10 * attempt)
         finally:
             temporary.unlink(missing_ok=True)
     return target

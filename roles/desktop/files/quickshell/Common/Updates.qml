@@ -38,12 +38,16 @@ Singleton {
     readonly property bool projectUpdatesEnabled: false
     property bool projectAvailable: false
     property string projectVersion: ""
+    // Why an available release cannot be applied here yet (gh missing or
+    // not logged in); the release still counts as pending.
+    property string projectApplyNote: ""
     property var dnfNames: []
     property var flatpakNames: []
     property bool ran: false
-    // A failed first attempt is not a baseline: the first complete result of
-    // a session stays silent even if an earlier attempt could not run.
-    property bool hasBaseline: false
+    // Which sources have answered at least once this session. A source's
+    // first answer is its baseline and stays silent, even if an earlier
+    // attempt could not run; see UpdatesHelpers.shouldNotify.
+    property var baselines: ({})
     property double lastChecked: 0
     property string error: ""
 
@@ -59,11 +63,26 @@ Singleton {
     property var nextFlatpakNames: []
     property bool nextProjectAvailable: false
     property string nextProjectVersion: ""
+    property string nextProjectApplyNote: ""
     property string dnfError: ""
     property string flatpakError: ""
     property string projectError: ""
     property bool checkingFlatpak: false
+    // The sources the running check covers (UpdatesHelpers.allParts or
+    // failedParts); the others keep their last answer.
+    property var checkParts: UpdatesHelpers.allParts()
     property bool checkAgain: false
+    property bool checkAgainForced: false
+    // dnf answers from repository metadata that dnf5-makecache.timer
+    // refreshes every few hours and an installed set that rarely changes,
+    // yet each read costs most of a CPU-second and 200 MB. While the
+    // signature of both (UpdatesHelpers.dnfSignature) matches the last
+    // successful read's, that answer stands. A manual refresh and the
+    // recount after a run force a real read.
+    property string dnfCacheSignature: ""
+    property var dnfCacheNames: []
+    property double dnfCacheAt: 0
+    property bool dnfForced: false
     property bool initialized: false
     property int checkFailureCount: 0
     // 0 = no post-run recount owed; 1 = the recount right after a run;
@@ -77,6 +96,23 @@ Singleton {
 
     readonly property int total: dnfCount + flatpakCount + firmwareCount + (projectAvailable ? 1 : 0)
     readonly property bool flatpakEnabled: Settings.modOpts.updates.flatpak
+    readonly property int pollMs: Math.max(10, Settings.modOpts.updates.pollMins) * 60000
+
+    // Background checks serve the menubar widget and the notification; with
+    // both off nothing reads a count until a view opens, and opening one
+    // checks then (see the Popouts connection below). Settings.mods is
+    // replaced wholesale on every edit, so this follows the widget list.
+    readonly property bool pollEnabled: {
+        if (Settings.modOpts.updates.notify)
+            return true;
+        const mods = Settings.mods;
+        for (const col of ["left", "center", "right"]) {
+            const hit = mods[col].find(m => m.id === "updates");
+            if (hit)
+                return hit.on;
+        }
+        return false;
+    }
 
     // Once the count has been non-zero and then falls to zero, the panel says
     // so rather than pretending nothing was ever pending.
@@ -135,7 +171,14 @@ Singleton {
         return unique.length < count ? shown + " and more" : shown;
     }
 
+    // The panel's refresh, and the recount after a run: every source, and
+    // a fresh set of retries if something still fails.
     function check() {
+        checkFailureCount = 0;
+        startCheck(UpdatesHelpers.allParts(), true);
+    }
+
+    function startCheck(parts, forced) {
         // A poll firing mid-transaction would read the cache while dnf is
         // rewriting the installed set; whatever it said would be wrong by the
         // time it landed. finishRun schedules the recount instead.
@@ -143,41 +186,79 @@ Singleton {
             return;
         if (busy) {
             checkAgain = true;
+            checkAgainForced = checkAgainForced || forced === true;
             return;
         }
         checkAgain = false;
-        error = "";
-        dnfError = "";
-        flatpakError = "";
-        projectError = "";
-        firmwareError = "";
-        nextFirmwareNames = [];
-        nextDnfNames = [];
-        nextFlatpakNames = [];
-        nextProjectAvailable = false;
-        nextProjectVersion = "";
-        checkingFlatpak = flatpakEnabled;
-        dnfDone = false;
-        flatpakDone = !checkingFlatpak;
-        projectDone = !projectUpdatesEnabled;
-        firmwareDone = false;
-        dnfProc.running = true;
-        if (checkingFlatpak)
+        checkAgainForced = false;
+        checkParts = parts;
+        if (parts.dnf) {
+            dnfError = "";
+            nextDnfNames = [];
+            dnfDone = false;
+            dnfForced = forced === true;
+        }
+        if (parts.flatpak) {
+            flatpakError = "";
+            nextFlatpakNames = [];
+            checkingFlatpak = flatpakEnabled;
+            flatpakDone = !checkingFlatpak;
+        }
+        if (parts.project) {
+            projectError = "";
+            nextProjectAvailable = false;
+            nextProjectVersion = "";
+            nextProjectApplyNote = "";
+            projectDone = !projectUpdatesEnabled;
+        }
+        if (parts.firmware) {
+            firmwareError = "";
+            nextFirmwareNames = [];
+            firmwareDone = false;
+        }
+        error = [dnfError, flatpakError, projectError, firmwareError]
+            .filter(value => value !== "").join(" · ");
+        // Nothing left to ask (only a disabled source was due): settle now.
+        if (!busy) {
+            finishCheck();
+            return;
+        }
+        if (parts.dnf)
+            dnfSignatureProc.running = true;
+        if (parts.flatpak && checkingFlatpak)
             flatpakProc.running = true;
-        if (projectUpdatesEnabled)
+        if (parts.project && projectUpdatesEnabled)
             projectProc.running = true;
-        firmwareProc.running = true;
+        if (parts.firmware)
+            firmwareProc.running = true;
     }
 
     // Automatic work waits for NetworkManager's global connected state.
     // Manual refresh remains an explicit attempt, even on a network whose
-    // connectivity check is conservative or unavailable.
-    function automaticCheck(resetRetries) {
+    // connectivity check is conservative or unavailable. Only the online
+    // edge restarts the retry budget: a scheduled poll must not, or a source
+    // that always fails would be retried four more times after every poll.
+    function automaticCheck(resetRetries, failedOnly) {
         if (!NetworkStatus.online)
             return;
         if (resetRetries)
             checkFailureCount = 0;
-        check();
+        startCheck(failedOnly ? UpdatesHelpers.failedParts({ dnf: dnfError,
+            flatpak: flatpakError, firmware: firmwareError, project: projectError })
+            : UpdatesHelpers.allParts(), false);
+    }
+
+    // The signature is in: reuse the last answer, or ask dnf for real.
+    function readDnf(signature) {
+        if (!dnfForced && UpdatesHelpers.dnfAnswerReusable(signature,
+                dnfCacheSignature, dnfCacheAt, Date.now())) {
+            nextDnfNames = dnfCacheNames;
+            dnfDone = true;
+            finishCheck();
+            return;
+        }
+        dnfProc.signature = signature;
+        dnfProc.running = true;
     }
 
     function logCheckError(reason) {
@@ -187,10 +268,14 @@ Singleton {
         lastLoggedCheckError = reason;
     }
 
-    function finishDnf(exitCode, body, errText) {
+    function finishDnf(exitCode, body, errText, signature) {
         if (exitCode === 0 || exitCode === 100) {
             nextDnfNames = UpdatesHelpers.dnfNames(body);
+            dnfCacheSignature = signature || "";
+            dnfCacheNames = nextDnfNames;
+            dnfCacheAt = Date.now();
         } else {
+            dnfCacheSignature = "";
             dnfError = ProcHelpers.commandError("dnf check-update", exitCode, errText,
                 ({ 124: "dnf check-update timed out" }));
             logCheckError(dnfError);
@@ -243,6 +328,7 @@ Singleton {
                 nextProjectAvailable = data.available === true;
                 nextProjectVersion = typeof data.availableVersion === "string"
                     ? data.availableVersion : "";
+                nextProjectApplyNote = UpdatesHelpers.projectErrorOf(data);
             } catch (exception) {
                 projectError = "CybexOS update check returned invalid data";
             }
@@ -262,33 +348,44 @@ Singleton {
         if (!projectDone || !firmwareDone)
             return;
 
+        const parts = checkParts;
         const previousTotal = total;
-        const nextDnfCount = dnfError === "" ? nextDnfNames.length : dnfCount;
-        const nextFlatpakCount = !checkingFlatpak ? 0
-            : flatpakError === "" ? nextFlatpakNames.length : flatpakCount;
-        const nextFirmwareCount = firmwareError === "" ? nextFirmwareNames.length : firmwareCount;
-        const nextTotal = nextDnfCount + nextFlatpakCount + nextFirmwareCount
-            + (projectError === "" && nextProjectAvailable ? 1 : 0);
         const errors = [dnfError, flatpakError, projectError, firmwareError].filter(value => value !== "");
         const complete = errors.length === 0;
+        // What answered this check, and whether it had answered before.
+        const answered = [];
+        const known = Object.assign({}, baselines);
 
-        if (dnfError === "") {
+        if (parts.dnf && dnfError === "") {
             dnfNames = nextDnfNames;
-            dnfCount = nextDnfCount;
+            dnfCount = nextDnfNames.length;
+            answered.push({ baseline: !!known.dnf, count: dnfCount });
+            known.dnf = true;
         }
-        if (!checkingFlatpak || flatpakError === "") {
+        if (parts.flatpak && (!checkingFlatpak || flatpakError === "")) {
             flatpakNames = checkingFlatpak ? nextFlatpakNames : [];
-            flatpakCount = nextFlatpakCount;
+            flatpakCount = flatpakNames.length;
+            if (checkingFlatpak) {
+                answered.push({ baseline: !!known.flatpak, count: flatpakCount });
+                known.flatpak = true;
+            }
         }
-        if (projectError === "") {
+        if (parts.project && projectError === "") {
             projectAvailable = nextProjectAvailable;
             projectVersion = nextProjectVersion;
+            projectApplyNote = nextProjectAvailable ? nextProjectApplyNote : "";
+            if (projectUpdatesEnabled) {
+                answered.push({ baseline: !!known.project, count: projectAvailable ? 1 : 0 });
+                known.project = true;
+            }
         }
-
-        if (firmwareError === "") {
+        if (parts.firmware && firmwareError === "") {
             firmwareNames = nextFirmwareNames;
-            firmwareCount = nextFirmwareCount;
+            firmwareCount = nextFirmwareNames.length;
+            answered.push({ baseline: !!known.firmware, count: firmwareCount });
+            known.firmware = true;
         }
+        const nextTotal = dnfCount + flatpakCount + firmwareCount + (projectAvailable ? 1 : 0);
 
         error = errors.join(" · ");
         lastChecked = Date.now();
@@ -296,14 +393,15 @@ Singleton {
         if (nextTotal > 0)
             wasPending = true;
 
-        if (UpdatesHelpers.shouldNotify(complete, hasBaseline, previousTotal, nextTotal,
+        if (UpdatesHelpers.shouldNotify(previousTotal, nextTotal, answered,
                 Settings.modOpts.updates.notify)) {
             Quickshell.execDetached(["notify-send", "--app-name=Updates",
                 nextTotal + (nextTotal === 1 ? " update ready" : " updates ready"),
-                summary]);
+                UpdatesHelpers.pendingSummary(dnfCount, flatpakCount, firmwareCount,
+                    projectAvailable, projectVersion)]);
         }
+        baselines = known;
         if (complete) {
-            hasBaseline = true;
             checkFailureCount = 0;
             lastLoggedCheckError = "";
         } else {
@@ -319,7 +417,7 @@ Singleton {
         }
 
         if (checkAgain)
-            Qt.callLater(root.check);
+            Qt.callLater(root.startCheck, UpdatesHelpers.allParts(), checkAgainForced);
     }
 
     // ---- the native run ---------------------------------------------------
@@ -383,6 +481,19 @@ Singleton {
     property string backendPhase: ""
     property string recoveryPointId: ""
     property double backendFinishedAt: 0
+    // Why this run's CybexOS release step was skipped while its package
+    // update went ahead. Only the start record carries it, so a shell
+    // reload mid-run forgets it; the run log keeps it.
+    property string runProjectSkipped: ""
+    // The worker finishes its current step before it honours a cancel.
+    property bool cancelRequested: false
+    property bool runDeferredCancel: false
+    readonly property bool cancelPending: cancelRequested || cancelProc.running
+        || cancelSettle.running
+    readonly property bool cancelAllowed: runActive && runStamp !== ""
+        && UpdatesHelpers.cancelAllowed(backendPhase, runDeferredCancel)
+    // A release apply stopped after Ansible began (see mixedStateAdvice).
+    property bool mixedState: false
     // Status requests are deliberately subordinate to a local start. A retry
     // must not accept the old run's final status after the start client has
     // already returned the new durable run.
@@ -454,6 +565,11 @@ Singleton {
         backendPhase = "";
         recoveryPointId = "";
         backendFinishedAt = 0;
+        runProjectSkipped = "";
+        cancelRequested = false;
+        runDeferredCancel = false;
+        cancelSettle.stop();
+        mixedState = false;
         runState = "running";
         doneClear.stop();
     }
@@ -634,6 +750,9 @@ Singleton {
         }
         backendPhase = typeof data.phase === "string" ? data.phase : "";
         recoveryPointId = typeof data.snapshotId === "string" ? data.snapshotId : "";
+        cancelRequested = data.cancelRequested === true;
+        runDeferredCancel = data.deferredCancel === true;
+        mixedState = data.mixedState === true;
 
         wantedDnfBytes = Math.max(wantedDnfBytes, Number(data.dnfBytes || 0));
         wantedFlatpakBytes = Math.max(wantedFlatpakBytes,
@@ -720,7 +839,7 @@ Singleton {
     }
 
     function cancelRun() {
-        if (!runActive || runStamp === "" || cancelProc.running)
+        if (!cancelAllowed || cancelPending)
             return;
         cancelProc.command = [runBackend, "cancel", runStamp];
         cancelProc.running = true;
@@ -762,6 +881,12 @@ Singleton {
         target: Popouts
 
         function onChanged() {
+            // A view that shows the count brings a stale one up to date: the
+            // only way it refreshes while background checks are off.
+            if (Popouts.open && (Popouts.currentName === "updates"
+                    || Popouts.currentName === "control"
+                        && Settings.drawerOverview.updates === true))
+                root.staleCheck();
             if (Popouts.open && Popouts.currentName === "updates") {
                 if (root.runState === "done")
                     root.runSeen = true;
@@ -809,6 +934,7 @@ Singleton {
                 if (typeof started.id !== "string" || started.id === "")
                     throw new Error("missing durable run id");
                 root.applyBackendStatus(started);
+                root.runProjectSkipped = UpdatesHelpers.projectErrorOf(started);
             } catch (error) {
                 root.runDnfDone = true;
                 root.runFpDone = true;
@@ -947,9 +1073,24 @@ Singleton {
         }
     }
 
+    // The falling edge, so a cancel client that never started still asks
+    // for the run's state.
     Process {
         id: cancelProc
-        onExited: root.refreshRunStatus()
+        onRunningChanged: {
+            if (running)
+                return;
+            cancelSettle.restart();
+            root.refreshRunStatus();
+        }
+    }
+
+    // A status read already in flight predates the cancel. Hold the pending
+    // state until a later poll can report the worker's answer, so Cancel
+    // does not flash back on in between.
+    Timer {
+        id: cancelSettle
+        interval: 2000
     }
 
     function refreshRunStatus() {
@@ -990,20 +1131,78 @@ Singleton {
     // A transient endpoint failure after NetworkManager came online should
     // not survive until the ordinary (30 minute by default) poll. Four
     // bounded retries cover startup DNS/repository lag without hammering a
-    // permanently broken remote.
+    // permanently broken remote, and each repeats only what failed.
     Timer {
         interval: Math.min(120000, 15000 * Math.pow(2,
             Math.max(0, root.checkFailureCount - 1)))
         running: root.error !== "" && root.checkFailureCount <= 4
             && NetworkStatus.online && !root.busy && !root.runActive
-        onTriggered: root.automaticCheck(false)
+            && !Activity.idle
+        onTriggered: root.automaticCheck(false, true)
     }
 
+    // Nothing to notify about or to count in an idle or locked session; the
+    // first input afterwards checks at once if the last result is stale.
     Timer {
-        interval: Math.max(10, Settings.modOpts.updates.pollMins) * 60000
-        running: NetworkStatus.online
+        interval: root.pollMs
+        running: NetworkStatus.online && root.pollEnabled && !Activity.idle
         repeat: true
-        onTriggered: root.automaticCheck(true)
+        onTriggered: root.automaticCheck(false, false)
+    }
+
+    function staleCheck() {
+        if (!busy && !UpdatesHelpers.checkIsFresh(lastChecked, Date.now(), pollMs))
+            automaticCheck(false, false);
+    }
+
+    Connections {
+        target: Activity
+
+        function onResumed() {
+            if (root.pollEnabled && !startupCheck.running)
+                root.staleCheck();
+        }
+    }
+
+    onPollEnabledChanged: {
+        if (pollEnabled && initialized && !startupCheck.running)
+            staleCheck();
+    }
+
+    // One cheap process for the signature: each repository's repomd.xml
+    // (depth 3 under the libdnf5 cache), the repo files and the rpm
+    // database, as "path size mtime" lines.
+    Process {
+        id: dnfSignatureProc
+        property string body: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        command: ["timeout", "10s", "find", "/var/cache/libdnf5",
+            "/usr/lib/sysimage/rpm", "/etc/yum.repos.d", "-maxdepth", "3",
+            "(", "-name", "repomd.xml", "-o", "-name", "rpmdb.sqlite",
+            "-o", "-name", "rpmdb.sqlite-wal", "-o", "-name", "*.repo", ")",
+            "-printf", "%p %s %T@\\n"]
+
+        stdout: StdioCollector {
+            onStreamFinished: dnfSignatureProc.body = text
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            dnfSignatureProc.exitSeen = true;
+            dnfSignatureProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                exitSeen = false;
+                lastExit = 0;
+            } else {
+                // No signature just means a real read.
+                root.readDnf(exitSeen && lastExit === 0
+                    ? UpdatesHelpers.dnfSignature(body) : "");
+            }
+        }
     }
 
     // dnf check-update lists one package per line as "name.arch  version  repo"
@@ -1015,9 +1214,17 @@ Singleton {
         property string errText: ""
         property bool exitSeen: false
         property int lastExit: 0
+        // The signature taken before this read started.
+        property string signature: ""
 
-        command: ["timeout", "45s", "env", "LC_ALL=C", "dnf", "--quiet",
+        command: ["timeout", "45s", "dnf", "--quiet",
             "--cacheonly", "check-update"]
+        // Untranslated output, without an `env` process per check.
+        // QML object literals convert to QVariantHash at runtime; the shipped
+        // Quickshell type description reports them as QVariantMap to qmllint.
+        // qmllint disable incompatible-type
+        environment: ({ LC_ALL: "C" })
+        // qmllint enable incompatible-type
 
         stdout: StdioCollector {
             onStreamFinished: dnfProc.body = text
@@ -1038,7 +1245,8 @@ Singleton {
                 exitSeen = false;
                 lastExit = 0;
             } else {
-                root.finishDnf(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
+                root.finishDnf(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText,
+                    signature);
             }
         }
     }
@@ -1050,8 +1258,11 @@ Singleton {
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["timeout", "45s", "env", "LC_ALL=C", "flatpak", "remote-ls",
+        command: ["timeout", "45s", "flatpak", "remote-ls",
             "--updates", "--app", "--columns=name"]
+        // qmllint disable incompatible-type
+        environment: ({ LC_ALL: "C" })
+        // qmllint enable incompatible-type
 
         stdout: StdioCollector {
             onStreamFinished: flatpakProc.body = text
@@ -1085,8 +1296,11 @@ Singleton {
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["timeout", "45s", "env", "LC_ALL=C", "fwupdmgr",
+        command: ["timeout", "45s", "fwupdmgr",
             "get-updates", "--json"]
+        // qmllint disable incompatible-type
+        environment: ({ LC_ALL: "C" })
+        // qmllint enable incompatible-type
 
         stdout: StdioCollector {
             onStreamFinished: firmwareProc.body = text
@@ -1181,15 +1395,16 @@ Singleton {
         target: NetworkStatus
 
         function onOnlineChanged() {
-            // The session's first online edge belongs to startupCheck.
-            // A flapping link must not repeat a complete check that is
-            // only minutes old; a failed one is still retried at once.
-            if (startupCheck.running)
+            // The session's first online edge belongs to startupCheck, and
+            // one that lands while idle to the resume check. A flapping link
+            // must not repeat a complete check that is only minutes old; a
+            // failed one is still retried at once.
+            if (startupCheck.running || !root.pollEnabled || Activity.idle)
                 return;
             if (NetworkStatus.online && (root.error !== ""
                     || !UpdatesHelpers.checkIsFresh(root.lastChecked,
                         Date.now(), 600000)))
-                root.automaticCheck(true);
+                root.automaticCheck(true, false);
         }
     }
 
@@ -1199,7 +1414,11 @@ Singleton {
     Timer {
         id: startupCheck
         interval: 20000
-        onTriggered: root.automaticCheck(true)
+        // A view opened meanwhile may already have checked.
+        onTriggered: {
+            if (root.pollEnabled && !root.ran && !root.busy)
+                root.automaticCheck(true, false);
+        }
     }
 
     Component.onCompleted: {
@@ -1209,6 +1428,6 @@ Singleton {
     }
     onFlatpakEnabledChanged: {
         if (initialized && !startupCheck.running)
-            automaticCheck(true);
+            automaticCheck(true, false);
     }
 }

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Repository-wide language-aware lint. Tool absence is a failure: this stage is
 # both a local deployment gate and the exact CI contract.
+#
+# The four linters are independent, so they run side by side, and ShellCheck,
+# the slowest, over slices of the file list. Every job writes its own report;
+# they are printed in a fixed order once all have finished.
 set -uo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd) || exit 1
 cd -- "$repo_root" || exit 1
@@ -22,9 +26,47 @@ mapfile -t shell_files < <(rg -l '^#!.*(bash|sh)' -g '!*.j2' . | LC_ALL=C sort)
   exit 1
 }
 
+# tests/run passes its own --jobs; standalone, use the machine.
+jobs=${CYBEXOS_TESTS_RUN_JOBS:-}
+if [[ ! $jobs =~ ^[1-9][0-9]*$ ]]; then
+  jobs=$(nproc 2>/dev/null) || jobs=4
+  ((jobs > 16)) && jobs=16
+fi
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-static-analysis.XXXXXX") || exit 1
+lint_pids=()
+cleanup() {
+  ((${#lint_pids[@]})) && kill -- "${lint_pids[@]}" 2>/dev/null
+  wait
+  rm -rf -- "$work"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+reports=()
+lint() {
+  local report=$work/${#reports[@]}
+  "$@" >"$report" 2>&1 </dev/null &
+  lint_pids+=("$!")
+  reports+=("$report")
+}
+
+# Contiguous slices of at least four files keep ShellCheck's report in file
+# order while each slice still amortizes the tool's startup.
+per=$(( (${#shell_files[@]} + jobs - 1) / jobs ))
+((per < 4)) && per=4
+for ((first = 0; first < ${#shell_files[@]}; first += per)); do
+  lint shellcheck --severity=warning -x "${shell_files[@]:first:per}"
+done
+lint yamllint .
+lint ruff check .
+lint ansible-lint --offline site.yml roles/
+
 rc=0
-shellcheck --severity=warning -x "${shell_files[@]}" || rc=1
-yamllint . || rc=1
-ruff check . || rc=1
-ansible-lint --offline site.yml roles/ || rc=1
+for pid in "${lint_pids[@]}"; do
+  wait "$pid" || rc=1
+done
+lint_pids=()
+cat -- "${reports[@]}"
 exit "$rc"

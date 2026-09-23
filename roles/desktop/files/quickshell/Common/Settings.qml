@@ -24,6 +24,10 @@ Singleton {
 
     readonly property bool connectedWidgetsConfigured:
         Quickshell.env("CYBEXOS_CONNECTED_WIDGETS") === "1"
+    // The installer's developer tooling feature (quickshell.service sets
+    // it). Unset, as in a source-tree run, it counts as on: the default.
+    readonly property bool developerToolsConfigured:
+        Quickshell.env("CYBEXOS_DEVELOPER_TOOLS") !== "0"
     readonly property var defaults: {
         const value = SettingsHelpers.defaults();
         if (connectedWidgetsConfigured) {
@@ -135,6 +139,12 @@ Singleton {
     property bool writeInFlight: false
     property string writeSnapshot: ""
     property string lastPersistedText: ""
+    // What FileView compares the next setText against: the bytes it last
+    // read or tried to write, which after a failed save is not the file.
+    // See saveNow().
+    property string storeText: ""
+    // A reload that came due while a write was in flight; see reloadStore().
+    property bool reloadAfterWrite: false
     property bool initialLoadHandled: false
     // The file on disk came from a newer schema; see protectNewerFile().
     property bool newerSchema: false
@@ -192,10 +202,15 @@ Singleton {
         if (targetPage && validPages.indexOf(targetPage) !== -1)
             page = targetPage;
         Popouts.close();
-        if (!panelOpen)
-            panelScreenName = targetScreenName || (Screens.focused ? Screens.focused.name : "");
+        // Hyprland focuses a window as it maps; only one already open needs
+        // raising. A focus-by-title sent with the map would arrive before the
+        // window exists and only log "window not found".
+        if (panelOpen) {
+            presentPanel();
+            return;
+        }
+        panelScreenName = targetScreenName || (Screens.focused ? Screens.focused.name : "");
         panelOpen = true;
-        presentPanel();
     }
 
     // Opens a page scrolled to one row, which flashes as a search result does.
@@ -491,6 +506,7 @@ Singleton {
 
     function applyLoaded(rawText) {
         initialLoadHandled = true;
+        storeText = rawText;
         const result = SettingsHelpers.parse(rawText);
         // An editor that truncates before writing exposes an empty or partial
         // file for a moment. Once settings are live, read it once more before
@@ -571,6 +587,7 @@ Singleton {
 
     function handleLoadFailure(error) {
         initialLoadHandled = true;
+        storeText = "";
         if (error === FileViewError.FileNotFound) {
             loadError = false;
             loadErrorText = "";
@@ -592,16 +609,43 @@ Singleton {
         console.warn("settings load failed:", FileViewError.toString(error));
     }
 
+    // A retried write may carry one extra trailing newline (see saveNow());
+    // it is still the same settings file.
+    function sameContent(text, written) {
+        return text === written || text + "\n" === written;
+    }
+
+    // FileView reads nothing while its own write is in flight: a reload()
+    // under a write is dropped rather than queued. A reload that comes due
+    // then (an external edit, or our own write's echo) runs once the write
+    // has settled instead.
+    function reloadStore() {
+        if (writeInFlight) {
+            reloadAfterWrite = true;
+            return;
+        }
+        store.reload();
+    }
+
+    function releaseWriteGuard() {
+        writeInFlight = false;
+        writeSnapshot = "";
+        if (reloadAfterWrite) {
+            reloadAfterWrite = false;
+            reloadTimer.restart();
+        }
+    }
+
     function handleSaveSucceeded() {
         const completedSnapshot = writeSnapshot;
         lastPersistedText = completedSnapshot;
+        storeText = completedSnapshot;
         const wasRetry = saveError;
-        writeInFlight = false;
-        writeSnapshot = "";
+        releaseWriteGuard();
         saveError = false;
         lastSavedAt = Date.now();
-        const changedWhileSaving = SettingsHelpers.serialize(snapshot())
-            !== completedSnapshot;
+        const changedWhileSaving = !sameContent(SettingsHelpers.serialize(snapshot()),
+            completedSnapshot);
         savePending = changedWhileSaving;
         if (wasRetry)
             announcement = "Settings saved.";
@@ -610,8 +654,10 @@ Singleton {
     }
 
     function handleSaveFailure(error) {
-        writeInFlight = false;
-        writeSnapshot = "";
+        // FileView keeps the attempted bytes even though they never reached
+        // the file; saveNow() has to write around them.
+        storeText = writeSnapshot;
+        releaseWriteGuard();
         savePending = false;
         saveError = true;
         announcement = "Could not save settings. Retry is available.";
@@ -623,19 +669,30 @@ Singleton {
                 || writeInFlight)
             return;
         const next = SettingsHelpers.serialize(snapshot());
-        // FileView.setText silently skips identical bytes: no saved signal is
-        // emitted. Do not acquire the write guard for a confirmed no-op, or
-        // all later widget edits would remain stuck at "Saving changes…".
-        if (!saveError && next === lastPersistedText) {
+        // Already on disk: settle without writing. That includes a failed
+        // save whose change was undone before Retry — the atomic write left
+        // the previous file in place.
+        if (sameContent(next, lastPersistedText)) {
             savePending = false;
+            if (saveError) {
+                saveError = false;
+                announcement = "Settings saved.";
+            }
             return;
         }
-        writeSnapshot = next;
+        // FileView.setText compares against the bytes the view last read or
+        // tried to write, not against the file, and skips a match without
+        // emitting saved or saveFailed. After a failed save that is the
+        // attempt itself, so a Retry of the same content would hold the write
+        // guard for the rest of the session. The same JSON with one more
+        // trailing newline makes it a real write.
+        writeSnapshot = next === storeText ? next + "\n" : next;
         writeInFlight = true;
         try {
-            // FileView reports completion through saved/saveFailed even when
-            // blockWrites is enabled. Do not advertise success before that
-            // signal; a failed atomic rename is still a failed save.
+            // Completion arrives only through saved/saveFailed. Quickshell
+            // logs a failed atomic commit (the fsync or the rename) and still
+            // emits saved, so saved means the bytes were written, not that
+            // they replaced the file.
             store.setText(writeSnapshot);
         } catch (error) {
             handleSaveFailure(FileViewError.Unknown);
@@ -739,7 +796,7 @@ Singleton {
     Timer {
         id: reloadTimer
         interval: 250
-        onTriggered: store.reload()
+        onTriggered: root.reloadStore()
     }
 
     Timer {
@@ -765,8 +822,11 @@ Singleton {
             if (scrollFactorProc.running)
                 return;
             root.dispatchedScrollFactor = root.scrollFactor;
-            scrollFactorProc.command = ["hyprctl", "keyword",
-                "input:touchpad:scroll_factor", root.scrollFactor.toFixed(1)];
+            // A Lua-configured Hyprland refuses `hyprctl keyword`, and says
+            // so with exit status 0.
+            scrollFactorProc.command = ["hyprctl", "eval",
+                "hl.config({ input = { touchpad = { scroll_factor = "
+                    + root.scrollFactor.toFixed(1) + " } } })"];
             scrollFactorProc.running = true;
         }
     }
@@ -829,6 +889,58 @@ Singleton {
         }
     }
 
+    // Power saver takes the compositor's polish too: cybexos_power_saver() in
+    // looknfeel.lua drops blur to one pass and turns animations off, and
+    // holds that across a config reload. It is sent on startup as well, which
+    // also lifts a saver left behind by a shell that exited meanwhile.
+    property bool dispatchedPowerSaver: false
+
+    function applyPowerSaver() {
+        if (powerSaverProc.running)
+            return;
+        dispatchedPowerSaver = Activity.powerSaver;
+        powerSaverProc.command = ["hyprctl", "eval",
+            "cybexos_power_saver(" + (dispatchedPowerSaver ? "true" : "false") + ")"];
+        powerSaverProc.running = true;
+    }
+
+    Connections {
+        target: Activity
+
+        function onPowerSaverChanged() {
+            root.applyPowerSaver();
+        }
+    }
+
+    Timer {
+        id: powerSaverReplayTimer
+        interval: 0
+        onTriggered: root.applyPowerSaver()
+    }
+
+    Process {
+        id: powerSaverProc
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        onExited: exitCode => {
+            exitSeen = true;
+            lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+            if (code !== 0)
+                console.warn("could not apply power saver compositor effects:", code);
+            if (root.dispatchedPowerSaver !== Activity.powerSaver)
+                powerSaverReplayTimer.restart();
+        }
+    }
+
     Process {
         id: corruptBackupProc
 
@@ -856,7 +968,10 @@ Singleton {
         path: root.filePath
         printErrors: false
         atomicWrites: true
-        blockWrites: true
+        // The atomic write syncs to disk before its rename, which can take
+        // seconds under heavy IO; off the GUI thread the shell keeps drawing
+        // meanwhile. saveNow() never starts a write under another one.
+        blockWrites: false
         blockLoading: true
         watchChanges: true
         // Coalesce an editor's truncate-and-write into one reload once
@@ -884,5 +999,6 @@ Singleton {
             if (!initialLoadHandled && store.loaded)
                 applyLoaded(initialText);
         }
+        applyPowerSaver();
     }
 }

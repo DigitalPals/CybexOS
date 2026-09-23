@@ -3,6 +3,8 @@
 import argparse
 from pathlib import Path
 import signal
+import subprocess
+import sys
 import time
 
 from build_support import atomic_json, digest
@@ -35,8 +37,11 @@ def main():
         print('Live desktop smoke check passed. No installation was performed.', flush=True)
         if args.hold:
             print(f"VM ready for interaction: {args.output / 'vm.json'}", flush=True)
-            while vm.process.poll() is None:
-                time.sleep(1)
+            try:
+                while vm.process.poll() is None:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                pass  # A held, already-passing test ends by interruption.
     finally:
         if vm.owned:
             try:
@@ -49,8 +54,16 @@ def main():
 
 
 if __name__ == '__main__':
-    def interrupt(_signum, _frame):
-        raise KeyboardInterrupt
-    for name in (signal.SIGTERM, signal.SIGHUP):
+    def interrupt(number, _frame):
+        raise KeyboardInterrupt(number)
+    for name in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(name, interrupt)
-    main()
+    try:
+        main()
+    except KeyboardInterrupt as error:
+        number = error.args[0] if error.args else signal.SIGINT
+        print(f"image/test-live: interrupted by {signal.Signals(number).name}", file=sys.stderr)
+        sys.exit(128 + number)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        print(f"image/test-live: {error}", file=sys.stderr)
+        sys.exit(1)

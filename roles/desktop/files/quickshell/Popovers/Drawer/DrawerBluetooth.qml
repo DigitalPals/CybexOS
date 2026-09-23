@@ -187,28 +187,35 @@ Column {
         }
     }
 
+    // Fixed sections, and rows diffed by device identity. An array literal of
+    // the live lists was a new model on every BlueZ add, rename or expiry —
+    // continuous during the automatic discovery — and rebuilt every row, which
+    // dropped keyboard focus and any click that straddled the rebuild. Now a
+    // section only gains or loses the rows that changed.
     Repeater {
-        model: [
-            { title: "Connected devices", devices: root.connectedDevices, show: root.powered && root.connectedDevices.length > 0 },
-            { title: "Paired devices", devices: root.pairedDevices, show: root.powered && root.pairedDevices.length > 0 },
-            { title: "Nearby devices", devices: root.nearbyDevices, show: root.powered && root.showNearby }
-        ]
+        model: ["connected", "paired", "nearby"]
         delegate: Column {
             id: section
-            required property var modelData
+            required property string modelData
+            readonly property var devices: modelData === "connected" ? root.connectedDevices
+                : modelData === "paired" ? root.pairedDevices : root.nearbyDevices
             width: root.width
             spacing: 2
-            visible: modelData.show
+            visible: root.powered
+                && (modelData === "nearby" ? root.showNearby : devices.length > 0)
             Text {
                 x: 8
-                text: section.modelData.title
+                text: section.modelData === "connected" ? "Connected devices"
+                    : section.modelData === "paired" ? "Paired devices" : "Nearby devices"
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.metadata
                 color: Theme.textFaint
                 bottomPadding: 4
             }
             Repeater {
-                model: section.modelData.devices
+                model: ScriptModel {
+                    values: section.devices
+                }
                 delegate: Rectangle {
                     id: deviceRow
                     required property var modelData
@@ -302,7 +309,7 @@ Column {
                 }
             }
             Text {
-                visible: section.modelData.devices.length === 0
+                visible: section.devices.length === 0
                 width: parent.width
                 text: root.scanning ? "Searching… Put your device in pairing mode."
                     : "No nearby devices found. Try scanning again."
