@@ -98,6 +98,15 @@ example. Do not commit while a throwaway live copy is deployed.
   exercises the shipped code rather than a copy.
 - **Keyboard**: `wtype -k Tab` / `wtype -k space` sends real key events, which
   is how focus order and activation get tested end to end.
+- **Updates drawer states without updating anything**: write a run record
+  (`status.json`, `dnf.log`, `flatpak.log`, `firmware-events.log`) under
+  `~/.local/state/cybexos/update/logs/<id>/` and put the id in `../current`.
+  The id has the form `YYYYmmdd-HHMMSS-N-N`. Set the record's `unit` to a
+  disposable `systemd-run --user … sleep 900` unit, never a real service:
+  `status` treats an inactive unit as an abandoned run, and a stray Cancel
+  stops whatever unit the record names. Restart `quickshell.service` so it
+  attaches, rewrite the record with the same log prefixes to advance it, and
+  remove the run and `current` afterwards.
 - **Pointer**: `hyprctl dispatch 'hl.dsp.cursor.move({ x = …, y = … })'` takes
   absolute screen-logical coordinates. Call it in a loop until
   `hyprctl cursorpos` agrees — the first call after the pointer has been
