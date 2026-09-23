@@ -6,19 +6,12 @@ set -euo pipefail
 
 action=${1:-}
 
-session_id() {
-  if [[ -n ${XDG_SESSION_ID:-} ]]; then
-    printf '%s\n' "$XDG_SESSION_ID"
-    return
-  fi
-  loginctl show-user "$(id -u)" -p Display --value
-}
-
+# The compositor's own answer: true once the ext-session-lock is active.
+# logind's LockedHint is not consulted. Nothing in this session sets it, so it
+# reads "no" behind a working lock screen, and a stale "yes" would let a
+# suspend skip the lock.
 locked() {
-  local session
-  session=$(session_id)
-  [[ -n $session ]] &&
-    [[ $(loginctl show-session "$session" -p LockedHint --value 2>/dev/null) == yes ]]
+  [[ $(hyprctl locked 2>/dev/null) == true ]]
 }
 
 ensure_locked() {
@@ -30,9 +23,9 @@ ensure_locked() {
   systemctl --user reset-failed cybexos-session-lock.service >/dev/null 2>&1 || true
   systemctl --user start cybexos-session-lock.service
 
-  # Do not use a fixed sleep: suspend is allowed only after the compositor has
-  # told logind that the ext-session-lock is active. A failed locker therefore
-  # leaves the machine awake and returns an actionable error to the caller.
+  # Do not use a fixed sleep: suspend is allowed only after the compositor
+  # reports the ext-session-lock active. A failed locker therefore leaves the
+  # machine awake and returns an actionable error to the caller.
   for ((i = 0; i < 80; i++)); do
     if locked; then
       return 0
@@ -44,15 +37,20 @@ ensure_locked() {
     sleep 0.1
   done
 
+  # A locker that is still running is left running: it may lock a moment
+  # later, and stopping it would unlock the session with nobody at the
+  # keyboard. A lid close suspends while this loop waits, so its eight
+  # seconds can run out just after resume. Staying locked is the only safe
+  # failure; the caller just does not suspend.
   printf 'The lock screen did not secure the session within eight seconds.\n' >&2
-  systemctl --user stop cybexos-session-lock.service >/dev/null 2>&1 || true
   return 1
 }
 
 # UPower's aggregate answer, the same source the shell's battery state reads.
 # An unknown answer counts as mains power, so it never suspends by mistake.
+# The timeout bounds a hung UPower: hypridle waits for this as a condition.
 on_battery() {
-  [[ $(busctl --system get-property org.freedesktop.UPower \
+  [[ $(busctl --system --timeout=2 get-property org.freedesktop.UPower \
     /org/freedesktop/UPower org.freedesktop.UPower OnBattery 2>/dev/null) == 'b true' ]]
 }
 
@@ -78,8 +76,16 @@ case $action in
     ensure_locked
     systemctl suspend
     ;;
+  on-battery)
+    # hypridle's condition for battery-only idle suspend. While it fails,
+    # hypridle retries it until the next input, so a laptop unplugged after
+    # the timeout still suspends instead of waiting for another idle stretch.
+    on_battery
+    ;;
   logout)
-    hyprctl dispatch exit
+    # Hyprland's Lua config wraps the argument in hl.dispatch(), so the
+    # dispatcher is a Lua expression; a bare `exit` is nil there.
+    hyprctl dispatch 'hl.dsp.exit()'
     ;;
   reboot)
     systemctl reboot
@@ -88,7 +94,7 @@ case $action in
     systemctl poweroff
     ;;
   *)
-    printf 'Usage: cybexos-session-action <lock|suspend|idle-suspend|logout|reboot|shutdown>\n' >&2
+    printf 'Usage: cybexos-session-action <lock|suspend|idle-suspend|on-battery|logout|reboot|shutdown>\n' >&2
     exit 2
     ;;
 esac
