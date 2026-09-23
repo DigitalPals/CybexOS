@@ -76,11 +76,30 @@ def err(kind, message="", **details):
     return value
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse every redirect instead of following it.
+
+    urllib replays a request's headers to wherever a redirect points,
+    Authorization included and whatever the host, so following one could hand
+    a provider token or a management key to another server. Every request
+    this helper makes is authenticated, and none of its endpoints redirects:
+    a 3xx is reported as the HTTP status it is.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def open_url(request, ssl_context=None):
+    opener = urllib.request.build_opener(
+        NoRedirect(), urllib.request.HTTPSHandler(context=ssl_context))
+    return opener.open(request, timeout=TIMEOUT)
+
+
 def http_request(url, headers, method="GET", body=None, ssl_context=None):
     req = urllib.request.Request(url, headers=headers, method=method, data=body)
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT,
-                                    context=ssl_context) as resp:
+        with open_url(req, ssl_context) as resp:
             return resp.status, resp.read(), resp.headers
     except urllib.error.HTTPError as e:
         return e.code, e.read(), e.headers
@@ -1319,16 +1338,10 @@ class Sub2ApiClient:
 
     def api_json(self, path):
         # Admin keys must never be forwarded by an HTTP redirect.
-        class NoRedirect(urllib.request.HTTPRedirectHandler):
-            def redirect_request(self, req, fp, code, msg, headers, newurl):
-                return None
-
         request = urllib.request.Request(self.base + "/api/v1/admin" + path,
             headers={"x-api-key": self.key, "Accept": "application/json"})
-        opener = urllib.request.build_opener(NoRedirect(),
-            urllib.request.HTTPSHandler(context=self.ssl_context))
         try:
-            with opener.open(request, timeout=TIMEOUT) as response:
+            with open_url(request, self.ssl_context) as response:
                 payload = response.read()
         except urllib.error.HTTPError as failure:
             with failure:

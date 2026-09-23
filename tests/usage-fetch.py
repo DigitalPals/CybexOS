@@ -710,6 +710,105 @@ class Sub2ApiTests(unittest.TestCase):
             self.assertFalse((key.parent / "model-usage-cliproxy.key").exists())
 
 
+class RedirectTests(unittest.TestCase):
+    """Authenticated requests never follow a redirect.
+
+    urllib replays a request's headers, Authorization included, to wherever a
+    Location points, even on another host. A second local server stands in
+    for that other host and must never see a request.
+    """
+
+    @staticmethod
+    def serve(handler):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        worker = threading.Thread(target=server.serve_forever,
+                                  kwargs={"poll_interval": 0.05}, daemon=True)
+        worker.start()
+        return server, worker
+
+    def setUp(self):
+        self.captured = []
+        self.origin_requests = []
+        captured = self.captured
+        origin_requests = self.origin_requests
+
+        class Capture(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                captured.append((self.path, self.headers.get("Authorization")))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"files": []}')
+
+            do_POST = do_GET
+
+        self.capture, capture_worker = self.serve(Capture)
+        target = f"http://127.0.0.1:{self.capture.server_port}"
+
+        class Origin(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                origin_requests.append(self.path)
+                if self.path.startswith("/landing"):
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b"{}")
+                    return
+                self.send_response(307 if self.command == "POST" else 302)
+                location = ("/landing" if "same-origin" in self.path
+                            else target + "/stolen" + self.path)
+                self.send_header("Location", location)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                self.rfile.read(length)
+                self.do_GET()
+
+        self.origin, origin_worker = self.serve(Origin)
+        self.base = f"http://127.0.0.1:{self.origin.server_port}"
+        self.workers = (capture_worker, origin_worker)
+
+    def tearDown(self):
+        for server in (self.origin, self.capture):
+            server.shutdown()
+            server.server_close()
+        for worker in self.workers:
+            worker.join(timeout=5)
+
+    def test_direct_provider_token_is_not_replayed_to_another_host(self):
+        data, failure = MODULE.http_json("claude", self.base + "/api/oauth/usage", {
+            "Authorization": "Bearer private-provider-token"})
+        self.assertIsNone(data)
+        self.assertEqual(failure["kind"], "http")
+        self.assertIn("HTTP 302", failure["message"])
+        self.assertEqual(self.captured, [])
+
+    def test_same_origin_redirect_is_not_followed_either(self):
+        status, _body, _headers = MODULE.http_request(
+            self.base + "/same-origin", {"Authorization": "Bearer private"})
+        self.assertEqual(status, 302)
+        self.assertEqual(self.origin_requests, ["/same-origin"])
+
+    def test_cliproxy_management_key_is_not_replayed_to_another_host(self):
+        client = MODULE.CliProxyClient(self.base, "private-management-key")
+        files, failure = client.auth_files()
+        self.assertIsNone(files)
+        self.assertEqual(failure["kind"], "http")
+        self.assertIn("HTTP 302", failure["message"])
+        _response, failure = client.management_json(
+            "/v0/management/api-call", {"auth_index": "1", "method": "GET",
+                                        "url": "https://example.invalid", "header": {}})
+        self.assertIn("HTTP 307", failure["message"])
+        self.assertEqual(self.captured, [])
+        self.assertEqual(len(self.origin_requests), 2)
+
+
 class ResilientFetchTests(unittest.TestCase):
     @staticmethod
     def reading(reset=10_000):
