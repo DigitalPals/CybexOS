@@ -20,11 +20,13 @@ Singleton {
 
     // Qt does not currently expose the platform's reduced-motion preference
     // through QStyleHints. Honour an explicit service/session override instead
-    // and route every shared motion token through it.
+    // and route every shared motion token through it. Power saver asks for
+    // the same thing for the battery's sake: a transition that does not run
+    // is frames the bars never redraw.
     readonly property string reducedMotionValue:
         (Quickshell.env("QS_REDUCED_MOTION") || "").trim().toLowerCase()
     readonly property bool reducedMotion:
-        Settings.reducedMotion
+        Settings.reducedMotion || Activity.powerSaver
         || ["1", "true", "yes", "on"].includes(reducedMotionValue)
     readonly property var metrics: ShellMetrics.calculate(Settings)
     readonly property real typeScale: metrics.fontScale
