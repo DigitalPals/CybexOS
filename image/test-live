@@ -6,14 +6,24 @@ events. Neither the ISO nor its packaged root is edited.
 """
 import argparse
 import json
-import os
 from pathlib import Path
 import shlex
+import shutil
 import signal
 import socket
 import subprocess
 import sys
 import time
+
+# Matching CODE/VARS pairs without Secure Boot, as Debian/Ubuntu, Arch and
+# Fedora install them. All are raw, so the retained OVMF_VARS.fd stays usable
+# with the CODE image that vm.json records.
+UEFI_FIRMWARE = (
+    ("/usr/share/OVMF/OVMF_CODE_4M.fd", "/usr/share/OVMF/OVMF_VARS_4M.fd"),
+    ("/usr/share/edk2/x64/OVMF_CODE.4m.fd", "/usr/share/edk2/x64/OVMF_VARS.4m.fd"),
+    ("/usr/share/edk2/ovmf/OVMF_CODE.fd", "/usr/share/edk2/ovmf/OVMF_VARS.fd"),
+    ("/usr/share/OVMF/OVMF_CODE.fd", "/usr/share/OVMF/OVMF_VARS.fd"),
+)
 
 
 def run(args, **kwargs):
@@ -101,16 +111,25 @@ def main():
                         help="Seconds allowed for boot and offline first-login toolchain setup")
     parser.add_argument("--hold", action="store_true", help="Keep the VM open for interactive installer testing; Ctrl-C cleans up")
     args = parser.parse_args()
+    uefi = None
+    if args.firmware == "uefi":
+        uefi = next((pair for pair in UEFI_FIRMWARE if all(Path(path).is_file() for path in pair)), None)
+        if uefi is None:
+            tried = "; ".join(" + ".join(pair) for pair in UEFI_FIRMWARE)
+            parser.error(f"no UEFI firmware found (tried {tried}); install ovmf on Debian or "
+                         "edk2-ovmf on Fedora, or use --firmware bios")
+    if not args.iso.is_file():
+        parser.error(f"ISO not found: {args.iso}")
     iso = args.iso.resolve(strict=True)
     work = args.output.resolve()
     work.mkdir(parents=True, exist_ok=True)
     if any(work.iterdir()):
         parser.error("test output directory must be empty")
     firmware = []
-    if args.firmware == "uefi":
-        import shutil
-        shutil.copyfile("/usr/share/OVMF/OVMF_VARS_4M.fd", work / "OVMF_VARS.fd")
-        firmware = ["-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
+    if uefi:
+        code, variables = uefi
+        shutil.copyfile(variables, work / "OVMF_VARS.fd")
+        firmware = ["-drive", f"if=pflash,format=raw,readonly=on,file={code}",
                     "-drive", f"if=pflash,format=raw,file={work / 'OVMF_VARS.fd'}"]
     run(["qemu-img", "create", "-q", "-f", "qcow2", str(work / "installed.qcow2"), "100G"])
     run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(work / "id_ed25519")])
@@ -133,6 +152,8 @@ def main():
     ], stdout=(work / "qemu.log").open("w"), stderr=subprocess.STDOUT)
     state = {"pid": vm.pid, "ssh": ssh, "vnc_port": vnc_port, "qmp": str(work / "qmp.sock"),
              "disk": str(work / "installed.qcow2")}
+    if uefi:
+        state["uefi_code"] = uefi[0]
     (work / "vm.json").write_text(json.dumps(state, indent=2) + "\n")
     ssh_ready = False
     try:
