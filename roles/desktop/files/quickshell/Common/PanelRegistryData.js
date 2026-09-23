@@ -42,10 +42,7 @@ var DAY_SHEET_SOURCE = "Popovers/DaySheetPopover.qml";
 var PANELS = [
     // The Control Dashboard. One surface, six tabs; each established status
     // popout name stays a valid IPC target and presents its tab of the drawer.
-    // The Fedora button is fixed bar furniture rather than a configurable
-    // module. It still registers the panel's live anchor, but `control` stays
-    // ownerless so module enablement and movement never close it.
-    { name: "control", island: "right", moduleId: "", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "overview" },
+    { name: "control", island: "right", moduleId: "control", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "overview" },
     { name: "audio", island: "right", moduleId: "vol", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "sound" },
     { name: "wifi", island: "right", moduleId: "wifi", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "network" },
     { name: "bluetooth", island: "right", moduleId: "bt", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "bluetooth" },

@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 23;
+var VERSION = 24;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -32,15 +32,15 @@ var IDLE_SUSPEND_MINS = [0, 15, 30, 60, 120];
 // Schema 4 (the glass menubar) retired three ids. `bell` was absorbed by the
 // old combined centre pill; schema 11 deliberately introduces the distinct
 // `notifications` id rather than reviving that historical key. `idle` became
-// a Control Panel toggle, and `control` is fixed bar furniture rather than a
-// configurable widget, so neither historical id returns to the schema.
+// a Control Panel toggle. Schema 24 restores `control` as a configurable
+// widget, with the Fedora button's existing rightmost placement by default.
 var MODULE_IDS = [
     "ws", "media", "indicators", "clock", "weather", "notes", "updates", "gh", "t3", "hermes",
     "usage", "tray",
-    "notifications", "vol", "wifi", "bt", "batt"
+    "notifications", "vol", "wifi", "bt", "batt", "control"
 ];
 
-var RETIRED_MODULE_IDS = ["bell", "idle", "control"];
+var RETIRED_MODULE_IDS = ["bell", "idle"];
 
 var DETAIL_IDS = ["media", "weather", "clock", "t3", "hermes", "usage", "gh", "updates",
     "notifications", "vol", "batt"];
@@ -95,7 +95,7 @@ var MODULE_GROUPS = {
     ws: "solo", media: "solo", indicators: "solo", clock: "time", weather: "time",
     notes: "solo", updates: "solo", gh: "chip", t3: "chip", hermes: "chip", usage: "chip", tray: "solo",
     notifications: "status",
-    vol: "status", wifi: "status", bt: "status", batt: "status"
+    vol: "status", wifi: "status", bt: "status", batt: "status", control: "solo"
 };
 
 var NOTIFICATION_GROUPS = ["solo", "status"];
@@ -208,7 +208,7 @@ function defaultMods() {
         right: [
             mod("updates", true), mod("gh", false), mod("t3", false), mod("hermes", false),
             mod("usage", false), mod("tray", false), mod("notifications", true), mod("vol", true),
-            mod("wifi", true), mod("bt", true), mod("batt", true)
+            mod("wifi", true), mod("bt", true), mod("batt", true), mod("control", true)
         ]
     };
 }
@@ -254,7 +254,7 @@ function defaultModOpts() {
         t3: { showLabel: true },
         hermes: { showLabel: true, activityDetail: "verb" },
         usage: {
-            source: "cliproxy",
+            source: "direct",
             cliproxyUrl: "",
             cliproxyTlsVerify: true,
             sub2apiUrl: "",
@@ -909,6 +909,13 @@ function normalizeModOpts(raw) {
 // requires a schema-21-or-newer settings write made through the current UI.
 function migrateModOpts(raw, sourceVersion, rawSettings) {
     var next = normalizeModOpts(raw);
+    // Adopt the new source only for an unconfigured old default. Configured
+    // proxies and every source chosen under schema 24 remain untouched.
+    var usage = raw && typeof raw === "object" ? raw.usage : null;
+    if ((typeof sourceVersion !== "number" || sourceVersion < 24)
+            && usage && usage.source === "cliproxy"
+            && (usage.cliproxyUrl === undefined || usage.cliproxyUrl === ""))
+        next.usage.source = "direct";
     if (typeof sourceVersion !== "number" || sourceVersion < 21)
         next.notes.titleProvider = "off";
     // The old persistent boolean meant the user explicitly chose Always.
@@ -961,6 +968,11 @@ function migrateMods(raw, sourceVersion) {
     var migrated = { left: [], center: [], right: [] };
     ["left", "center", "right"].forEach(function(col) {
         var list = Array.isArray(raw[col]) ? raw[col] : [];
+        // Before schema 24 the old control entry was ignored and the Fedora
+        // button always lived on the right. Replace stale historical entries
+        // with that effective placement; later user moves/removals persist.
+        if (typeof sourceVersion !== "number" || sourceVersion < 24)
+            list = list.filter(function(entry) { return !entry || entry.id !== "control"; });
         migrated[col] = list.map(function(entry) {
             return entry && typeof entry === "object"
                 ? { id: entry.id, on: entry.on, detail: entry.detail }

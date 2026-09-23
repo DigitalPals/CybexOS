@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 23);
+    assert.equal(H.VERSION, 24);
     assert.deepEqual(d.drawerTabs.map(t => t.id),
         ["overview", "sound", "network", "bluetooth", "power", "notifications", "usage"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
@@ -62,7 +62,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.mods.center.find(m => m.id === "notes").on, true);
     assert.deepEqual(d.mods.right.map(m => m.id),
         ["updates", "gh", "t3", "hermes", "usage", "tray", "notifications",
-         "vol", "wifi", "bt", "batt"]);
+         "vol", "wifi", "bt", "batt", "control"]);
     assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
     assert.equal(d.mods.right.find(m => m.id === "bt").on, true,
         "Bluetooth matches the portable desktop; its auto-rule hides idle hardware");
@@ -133,7 +133,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.modOpts.usage.warnAt, 25);
     assert.equal(d.modOpts.usage.critAt, 10);
     assert.equal(d.modOpts.usage.claudeAutoRefresh, true);
-    assert.equal(d.modOpts.usage.source, "cliproxy");
+    assert.equal(d.modOpts.usage.source, "direct");
     assert.equal(d.modOpts.usage.cliproxyUrl, "");
     assert.equal(d.modOpts.usage.cliproxyTlsVerify, true);
     assert.equal(d.modOpts.usage.xai, true);
@@ -394,7 +394,7 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(next.usage.critAt, 25);
     assert.equal(next.usage.claude, true, "non-boolean falls back to default");
     assert.equal(next.usage.claudeAutoRefresh, false);
-    assert.equal(next.usage.source, "cliproxy");
+    assert.equal(next.usage.source, "direct");
     assert.equal(next.usage.cliproxyUrl, "https://proxy.test/management.html");
     assert.equal(next.usage.cliproxyTlsVerify, true);
     assert.equal(next.usage.xai, false);
@@ -576,6 +576,7 @@ test("schema-5 colors select wallpaper or fixed mode and remain stored", () => {
 test("schema-6 migration preserves module order and adds clock-side indicators", () => {
     const raw = H.defaultMods();
     raw.left = [raw.left[1], raw.left[0]];
+    raw.right = raw.right.filter(mod => mod.id !== "control");
     raw.right = [raw.right.at(-1), ...raw.right.slice(0, -1)];
     const migrated = H.merge({ v: 5, floating: true, mods: raw });
     assert.deepEqual(migrated.mods.left.map(entry => entry.id), ["media", "ws"]);
@@ -615,7 +616,7 @@ test("normalizeMods appends ids missing from the file at their default column", 
         ["indicators", "clock", "weather", "notes"]);
     assert.deepEqual(next.right.map(m => m.id),
         ["updates", "gh", "t3", "hermes", "usage", "tray", "notifications",
-         "wifi", "bt", "batt"]);
+         "wifi", "bt", "batt", "control"]);
     assert.ok(next.right.some(m => m.id === "bt" && m.on === true),
         "appended module keeps its default enable flag");
 });
@@ -763,7 +764,7 @@ test("the tray and the updates chip persist in any module column", () => {
 });
 
 test("schema-11 adds notifications without rewriting a custom layout", () => {
-    const oldIds = H.MODULE_IDS.filter(id => id !== "notifications");
+    const oldIds = H.MODULE_IDS.filter(id => !["notifications", "control"].includes(id));
     const entry = (id, index) => ({
         id,
         on: index % 3 !== 0,
@@ -777,7 +778,7 @@ test("schema-11 adds notifications without rewriting a custom layout", () => {
 
     const migrated = H.merge({ v: 10, mods: raw }).mods;
     for (const col of ["left", "center", "right"])
-        assert.deepEqual(migrated[col].filter(mod => mod.id !== "notifications"), raw[col],
+        assert.deepEqual(migrated[col].filter(mod => !["notifications", "control"].includes(mod.id)), raw[col],
             `${col} entries changed while adding notifications`);
     const added = migrated.right.filter(mod => mod.id === "notifications");
     assert.deepEqual(added, [{ id: "notifications", on: true, detail: "auto" }]);
@@ -796,7 +797,7 @@ test("schema-11 inserts notifications before the first right-side status widget"
     const migrated = H.merge({ v: 10, mods: raw }).mods.right;
     assert.deepEqual(migrated.map(mod => mod.id),
         ["updates", "tray", "gh", "notifications", "wifi", "t3",
-         "hermes", "usage", "vol", "bt", "batt"]);
+         "hermes", "usage", "vol", "bt", "batt", "control"]);
 });
 
 test("schema-11 appends notifications on the right when its status widgets moved", () => {
@@ -808,13 +809,13 @@ test("schema-11 appends notifications on the right when its status widgets moved
     raw.left = raw.left.concat(moved);
 
     const migrated = H.merge({ v: 10, mods: raw }).mods;
-    assert.equal(migrated.right.at(-1).id, "notifications");
+    assert.equal(migrated.right.at(-2).id, "notifications");
     assert.deepEqual(migrated.left, raw.left,
         "status widgets keep their custom column, order, flags and policies");
 });
 
 test("schema-14 inserts Hermes immediately after T3 without rewriting a custom layout", () => {
-    const oldIds = H.MODULE_IDS.filter(id => id !== "hermes");
+    const oldIds = H.MODULE_IDS.filter(id => !["hermes", "control"].includes(id));
     const entry = (id, index) => ({
         id,
         on: index % 2 === 0,
@@ -831,7 +832,7 @@ test("schema-14 inserts Hermes immediately after T3 without rewriting a custom l
 
     const migrated = H.merge({ v: 13, mods: raw }).mods;
     for (const col of ["left", "center", "right"])
-        assert.deepEqual(migrated[col].filter(mod => mod.id !== "hermes"), raw[col],
+        assert.deepEqual(migrated[col].filter(mod => !["hermes", "control"].includes(mod.id)), raw[col],
             `${col} entries changed while adding Hermes`);
     assert.deepEqual(migrated[t3Col][t3Index + 1],
         { id: "hermes", on: true, detail: "auto" });
@@ -851,9 +852,9 @@ test("an older layout that already places Hermes keeps that placement and flags"
         .filter(mod => mod.id === "hermes").length, 1);
 });
 
-test("schema 4 keeps its three retired ids retired", () => {
+test("bell and idle remain retired after Control Center returns", () => {
     // Schema 11 uses the new `notifications` id rather than resurrecting the
-    // historical bell key. The other two remain represented by shared UI.
+    // historical bell key. Stay awake remains an indicator action.
     for (const id of H.RETIRED_MODULE_IDS)
         assert.ok(!H.MODULE_IDS.includes(id), `${id} is still a module`);
     const next = H.normalizeMods({
@@ -1179,7 +1180,7 @@ test("Sub2API connection settings round-trip independently of CLIProxyAPI", () =
     assert.equal(restored.modOpts.usage.sub2apiTlsVerify, false);
     assert.equal(restored.modOpts.usage.gemini, false);
     assert.equal(restored.modOpts.usage.cliproxyUrl, "https://existing.test");
-    assert.equal(H.defaults().modOpts.usage.source, "cliproxy");
+    assert.equal(H.defaults().modOpts.usage.source, "direct");
 });
 
 test("Bluetooth migrates beside Network without changing existing drawer preferences", () => {
@@ -1206,4 +1207,59 @@ test("typed quiet-hour times parse, snap to the step, and reject non-times", () 
     // Every accepted value round-trips through the stored grid.
     for (let m = 0; m < 1440; m += 15)
         assert.equal(H.parseClockMinutes(H.formatMinutes(m), 15), m);
+});
+
+
+test("schema 24 replaces fixed Control Center without changing other widgets", () => {
+    const raw = H.defaultMods();
+    raw.right = raw.right.filter(m => m.id !== "control");
+    raw.left.reverse();
+    raw.right.find(m => m.id === "usage").detail = "compact";
+    const migrated = H.merge({ v: 23, mods: raw });
+    assert.deepEqual(migrated.mods.right.at(-1), { id: "control", on: true, detail: "auto" });
+    for (const col of ["left", "center", "right"])
+        assert.deepEqual(migrated.mods[col].filter(m => m.id !== "control"), raw[col]);
+    const stale = structuredClone(raw);
+    stale.left.unshift({ id: "control", on: false, detail: "prefer" });
+    assert.deepEqual(H.merge({ v: 3, mods: stale }).mods, migrated.mods);
+});
+
+test("Control Center and Model usage placement and visibility survive reload", () => {
+    const L = load("LayoutHelpers.js");
+    const E = load("WidgetEditor.js");
+    const C = load("WidgetCatalog.js");
+    const settings = H.defaults();
+    for (const id of ["control", "usage"]) {
+        settings.mods = L.moveWidget(settings.mods, "right", id, "left", 0).mods;
+        settings.mods.left[0].on = false;
+        const restored = H.merge(JSON.parse(H.serialize(settings)));
+        assert.deepEqual(restored.mods, settings.mods);
+        const entries = E.catalog(restored.mods, [], C.WIDGETS);
+        assert.ok(E.search(entries, C.widgetName(id), "available").some(e => e.key === id));
+        assert.ok(!E.sectionEntries(entries, "left").some(e => e.key === id));
+        settings.mods.left[0].on = true;
+        const added = H.merge(JSON.parse(H.serialize(settings)));
+        assert.ok(E.sectionEntries(E.catalog(added.mods, [], C.WIDGETS), "left").some(e => e.key === id));
+    }
+});
+
+test("Provider CLIs is the default without replacing configured or current source choices", () => {
+    assert.equal(H.defaults().modOpts.usage.source, "direct");
+    for (const usage of [{}, { source: "cliproxy" }, { source: "cliproxy", cliproxyUrl: "" }]) {
+        const raw = { v: 23, modOpts: { usage } };
+        const before = structuredClone(raw);
+        const migrated = H.merge(raw);
+        assert.equal(migrated.modOpts.usage.source, "direct");
+        assert.deepEqual(raw, before);
+        assert.deepEqual(H.merge(JSON.parse(H.serialize(migrated))), migrated);
+    }
+    for (const usage of [
+        { source: "cliproxy", cliproxyUrl: "https://proxy.test/management.html" },
+        { source: "sub2api", sub2apiUrl: "https://models.test" },
+        { source: "direct" }
+    ]) {
+        assert.equal(H.merge({ v: 23, modOpts: { usage } }).modOpts.usage.source, usage.source);
+    }
+    assert.equal(H.merge({ v: 24, modOpts: { usage: { source: "cliproxy", cliproxyUrl: "" } } })
+        .modOpts.usage.source, "cliproxy");
 });

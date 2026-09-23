@@ -32,7 +32,8 @@ var WIDGETS = {
     vol: { name: "Volume", short: "Volume", detail: true, glyph: "volume_up", description: "Adjust volume and audio devices." },
     wifi: { name: "Network", short: "Network", glyph: "wifi", description: "Manage network connections." },
     bt: { name: "Bluetooth", short: "Bluetooth", tag: "when connected", glyph: "bluetooth", description: "Manage connected Bluetooth devices." },
-    batt: { name: "Battery", short: "Battery", tag: "on laptops", detail: true, glyph: "battery_full", description: "Monitor battery charge and power status." }
+    batt: { name: "Battery", short: "Battery", tag: "on laptops", detail: true, glyph: "battery_full", description: "Monitor battery charge and power status." },
+    control: { name: "Control Center", short: "Control Center", glyph: "tune", description: "Open Control Center from the Fedora button. Configure its tabs, overview, and behavior." }
 };
 
 // Never null: a widget id that outlived its catalog entry still has to draw a

@@ -168,7 +168,7 @@ Singleton {
     readonly property bool modsModified:
         JSON.stringify(mods) !== JSON.stringify(defaults.mods)
 
-    readonly property var validPages: ["appearance", "wallpaper", "bar", "modules", "plugins", "drawer", "notifications", "system", "about"]
+    readonly property var validPages: ["appearance", "wallpaper", "bar", "modules", "plugins", "notifications", "system", "about"]
 
     // One dirty/reset key list per settings page (grouped-rail design 1c).
     readonly property var sectionKeys: ({
@@ -199,7 +199,9 @@ Singleton {
     signal presentPanel()
 
     function showPanel(targetPage, targetScreenName) {
-        if (targetPage && validPages.indexOf(targetPage) !== -1)
+        if (targetPage === "drawer")
+            openWidgetSettings("control");
+        else if (targetPage && validPages.indexOf(targetPage) !== -1)
             page = targetPage;
         Popouts.close();
         // Hyprland focuses a window as it maps; only one already open needs
@@ -330,9 +332,9 @@ Singleton {
             ? SettingsHelpers.MODULE_IDS
             : name === "connected"
             ? ["ws", "media", "indicators", "clock", "weather", "notes", "updates", "gh",
-                "t3", "hermes", "usage", "tray", "notifications", "vol", "wifi", "bt", "batt"]
+                "t3", "hermes", "usage", "tray", "notifications", "vol", "wifi", "bt", "batt", "control"]
             : ["ws", "media", "indicators", "clock", "weather", "notes", "updates", "tray",
-                "notifications", "vol", "wifi", "batt"];
+                "notifications", "vol", "wifi", "batt", "control"];
     }
 
     function applyModulePreset(name) {
@@ -373,8 +375,14 @@ Singleton {
     // every other reset. The page-level reset would take the whole bar
     // layout with it.
     function resetModule(id, label) {
+        if (id === "control") {
+            resetKeys(sectionKeys.drawer, label || "Control Center");
+            return;
+        }
         migrationPending = false;
         resetSnapshot = { mods: SettingsHelpers.clone(mods), modOpts: SettingsHelpers.clone(modOpts) };
+        if (id === "usage")
+            resetSnapshot.pollMax = pollMax;
         resetLabel = label || "Widget";
         const next = { left: [], center: [], right: [] };
         for (const col of ["left", "center", "right"])
@@ -392,6 +400,8 @@ Singleton {
     }
 
     function moduleDirty(id) {
+        if (id === "control")
+            return sectionKeys.drawer.some(key => JSON.stringify(root[key]) !== JSON.stringify(defaults[key]));
         const entry = ["left", "center", "right"]
             .map(col => mods[col].find(m => m.id === id)).find(m => m !== undefined);
         return (entry !== undefined && entry.detail !== "auto")
@@ -402,7 +412,7 @@ Singleton {
     function resetSection(section) {
         const labels = {
             wallpaper: "Wallpaper", appearance: "Appearance", bar: "Bar",
-            modules: "Widgets", drawer: "Drawer",
+            modules: "Widgets", drawer: "Control Center",
             notifications: "Notifications", system: "System"
         };
         resetKeys(sectionKeys[section] || [], labels[section] || "Settings");

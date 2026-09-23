@@ -57,11 +57,15 @@ var ROWS = [
     { page: "modules", pageLabel: "Widgets", group: "Notes", label: "AI note titles", key: "", terms: "codex claude model provider effort reasoning generate regenerate privacy" },
     { page: "modules", pageLabel: "Widgets", group: "Usage", label: "Usage refresh interval", key: "pollMax", widget: "usage", terms: "t3 model usage poll refresh interval" },
 
-    // Drawer
-    { page: "drawer", pageLabel: "Drawer", group: "Tabs", label: "Tab order", key: "", terms: "reorder overview sound network bluetooth power notifications usage" },
-    { page: "drawer", pageLabel: "Drawer", group: "Overview", label: "Overview contents", key: "", terms: "now playing sliders tiles updates cpu ram temperature system stats" },
-    { page: "drawer", pageLabel: "Drawer", group: "Behavior", label: "Open on hover", key: "drawerHover", terms: "hover switch glyph menu" },
-    { page: "drawer", pageLabel: "Drawer", group: "Behavior", label: "Width", key: "drawerWidth", terms: "size wide" },
+    { page: "modules", pageLabel: "Widgets", group: "Model usage", label: "Model usage", key: "", widget: "usage", terms: "providers accounts quota credentials api key direct cliproxy sub2api" },
+
+    { page: "modules", pageLabel: "Widgets", group: "Control Center", label: "Control Center widget", key: "", widget: "control", terms: "fedora button move drag reorder show hide drawer" },
+
+    // Control Center (also searchable by its former Drawer name)
+    { page: "modules", pageLabel: "Widgets", widget: "control", group: "Tabs", label: "Tab order", key: "", terms: "drawer reorder overview sound network bluetooth power notifications usage" },
+    { page: "modules", pageLabel: "Widgets", widget: "control", group: "Overview", label: "Overview contents", key: "", terms: "drawer now playing sliders tiles updates cpu ram temperature system stats" },
+    { page: "modules", pageLabel: "Widgets", widget: "control", group: "Behavior", label: "Open on hover", key: "drawerHover", terms: "drawer hover switch glyph menu" },
+    { page: "modules", pageLabel: "Widgets", widget: "control", group: "Behavior", label: "Width", key: "drawerWidth", terms: "drawer size wide" },
 
     // Notifications
     { page: "notifications", pageLabel: "Notifications", group: "Behavior", label: "Do Not Disturb", key: "notifDnd", terms: "dnd silence mute focus" },

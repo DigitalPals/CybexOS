@@ -13,6 +13,7 @@ Rectangle {
     property bool canMoveLater: false
     signal activated()
     signal removeRequested()
+    signal addRequested()
     signal moveRequested(string section)
     signal keyboardMove(int delta)
     signal dragStarted()
@@ -29,7 +30,9 @@ Rectangle {
     activeFocusOnTab: true
     Accessible.role: Accessible.Button
     Accessible.name: entry.name
-    Accessible.description: status + ". Alt+arrow keys to reorder. Menu key for move and remove actions."
+    Accessible.description: status + (entry.enabled
+        ? ". Alt+arrow keys to reorder. Menu key for move and remove actions."
+        : ". Menu key to add to the bar or open settings.")
     Accessible.onPressAction: root.activated()
     Controls.ToolTip.visible: !dragInProgress && (mouse.containsMouse || activeFocus)
     Controls.ToolTip.text: entry.name + "\n" + status
@@ -85,7 +88,7 @@ Rectangle {
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
         preventStealing: true
-        cursorShape: dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+        cursorShape: !root.draggable ? Qt.PointingHandCursor : dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
         property point startPoint
         property bool dragging: false
         property bool canceled: false
@@ -140,40 +143,47 @@ Rectangle {
         Controls.MenuSeparator {}
         Controls.MenuItem {
             text: "Move earlier"
+            visible: root.entry.enabled
+            height: visible ? implicitHeight : 0
             enabled: root.actionsEnabled && root.canMoveEarlier
             onTriggered: root.keyboardMove(-1)
         }
         Controls.MenuItem {
             text: "Move later"
+            visible: root.entry.enabled
+            height: visible ? implicitHeight : 0
             enabled: root.actionsEnabled && root.canMoveLater
             onTriggered: root.keyboardMove(1)
         }
         Controls.MenuItem {
-            text: "Move to Left"
-            visible: root.entry.section !== "left"
+            text: root.entry.enabled ? "Move to Left" : "Add to Left"
+            visible: !root.entry.enabled || root.entry.section !== "left"
             height: visible ? implicitHeight : 0
             enabled: root.actionsEnabled
             onTriggered: root.moveRequested("left")
         }
         Controls.MenuItem {
-            text: "Move to Center"
-            visible: root.entry.section !== "center"
+            text: root.entry.enabled ? "Move to Center" : "Add to Center"
+            visible: !root.entry.enabled || root.entry.section !== "center"
             height: visible ? implicitHeight : 0
             enabled: root.actionsEnabled
             onTriggered: root.moveRequested("center")
         }
         Controls.MenuItem {
-            text: "Move to Right"
-            visible: root.entry.section !== "right"
+            text: root.entry.enabled ? "Move to Right" : "Add to Right"
+            visible: !root.entry.enabled || root.entry.section !== "right"
             height: visible ? implicitHeight : 0
             enabled: root.actionsEnabled
             onTriggered: root.moveRequested("right")
         }
         Controls.MenuSeparator {}
         Controls.MenuItem {
-            text: "Remove from bar"
+            text: root.entry.enabled ? "Remove from bar" : "Add to bar"
             enabled: root.actionsEnabled
-            onTriggered: root.removeRequested()
+            onTriggered: {
+                if (root.entry.enabled) root.removeRequested();
+                else root.addRequested();
+            }
         }
     }
 }

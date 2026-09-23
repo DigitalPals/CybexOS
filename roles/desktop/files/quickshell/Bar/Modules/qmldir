@@ -5,6 +5,7 @@ BarModule BarModule.qml
 Battery Battery.qml
 Bluetooth Bluetooth.qml
 Clock Clock.qml
+Control Control.qml
 GitHub GitHub.qml
 Hermes Hermes.qml
 Indicators Indicators.qml

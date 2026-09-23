@@ -21,7 +21,7 @@ function barSources() {
 }
 
 // Every panel name the bar claims, whether from a configurable module or from
-// fixed bar furniture such as the Fedora Control Panel button.
+// fixed controls such as the overflow button.
 function claimedPanels() {
     const bar = barSources();
     return new Set([...bar.matchAll(/panelName:\s*"([a-z0-9]+)"/g)]
@@ -201,10 +201,8 @@ test("the four status widgets each present their drawer tab", () => {
 test("panels no module owns are exactly the ones the bar sweep must skip", () => {
     // The Tailscale bug in one assertion: an ownerless panel left in the
     // sweep gets closed by any unrelated module change.
-    // `control` is opened by fixed Fedora-button furniture rather than a
-    // configurable module, so module changes must leave it alone.
     assert.deepEqual(R.PANELS.filter(p => R.ownerless(p.name)).map(p => p.name).sort(),
-        ["control", "overflow", "settings", "tailscale"]);
+        ["overflow", "settings", "tailscale"]);
 });
 
 test("the behaviour flags are carried deliberately", () => {

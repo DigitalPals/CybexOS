@@ -10,6 +10,7 @@ import "../Common/WidgetEditor.js" as Editor
 Item {
     id: page
     readonly property var entries: Editor.catalog(Settings.mods, UserPlugins.widgets, WidgetCatalog.WIDGETS)
+    readonly property var availableEntries: Editor.search(entries, "", "available")
     readonly property var selected: entries.find(entry => entry.key === subPage) || null
     property string subPage: ""
     property bool presetsOpen: false
@@ -127,6 +128,7 @@ Item {
         property bool available: false
         interval: 16
         onTriggered: {
+            if (widgetDialog.visible) return;
             if (available) page.focusSection(section);
             else page.focusEntry(key);
         }
@@ -166,6 +168,10 @@ Item {
         Qt.callLater(() => focusEntry(entry.key));
     }
     function focusEntry(key) {
+        for (let i = 0; i < availableRows.count; i++) {
+            const row = availableRows.itemAt(i) as WidgetPill;
+            if (row && row.entry.key === key) row.forceActiveFocus();
+        }
         for (let i = 0; i < sections.count; i++) {
             const group = sections.itemAt(i) as ArrangementSection;
             if (group) group.focusEntry(key);
@@ -460,6 +466,36 @@ Item {
                 delegate: ArrangementSection {}
                 onItemAdded: page.checkBuilt()
             }
+            SettingsGroup {
+                width: parent.width
+                title: "Available widgets"
+                visible: page.availableEntries.length > 0
+                Caption {
+                    width: parent.width
+                    text: "Open settings to configure a widget and show it on the bar. Right-click to choose a section."
+                }
+                Grid {
+                    id: availableGrid
+                    width: parent.width
+                    columns: Math.max(1, Math.min(3, Math.floor((width + spacing) / (Theme.scaled(150, Theme.typeScale) + spacing))))
+                    spacing: 6
+                    Repeater {
+                        id: availableRows
+                        model: page.availableEntries
+                        delegate: WidgetPill {
+                            required property var modelData
+                            entry: modelData
+                            width: (availableGrid.width - (availableGrid.columns - 1) * availableGrid.spacing) / availableGrid.columns
+                            status: page.status(modelData)
+                            draggable: false
+                            actionsEnabled: !page.membershipBusy && !page.dragActive
+                            onActivated: page.openSubPage(modelData.key)
+                            onAddRequested: page.setEnabled(modelData, true)
+                            onMoveRequested: section => page.setEnabled(modelData, true, false, section)
+                        }
+                    }
+                }
+            }
             Caption {
                 width: parent.width
                 visible: UserPlugins.error !== "" || UserPlugins.busy
@@ -574,6 +610,13 @@ Item {
                         width: parent.width
                         leftPadding: Theme.settingsMarkInset
                         text: page.selected ? page.status(page.selected) : ""
+                    }
+                    SwitchRow {
+                        width: parent.width
+                        label: "Show on bar"
+                        checked: page.selected !== null && page.selected.enabled
+                        enabled: page.selected !== null && !page.membershipBusy
+                        onToggled: value => page.setEnabled(page.selected, value)
                     }
                     Loader {
                         id: optionsLoader

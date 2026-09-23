@@ -389,10 +389,8 @@ PanelWindow {
         const tolerance = Theme.chipHeight / 2;
         let bestDistance = Infinity;
         for (const col of ["left", "center", "right"]) {
-            // Stay within the cluster. The launcher and Fedora buttons share a
-            // Row with the left and right clusters but are the bar's own
-            // furniture, not widgets — dragging off one must not pick up
-            // whichever widget happens to sit next to it.
+            // Stay within the cluster so dragging off fixed controls such as
+            // the launcher cannot pick up a neighbouring widget.
             const cluster = clusterFor(col);
             if (!cluster || cluster.width <= 0)
                 continue;
@@ -648,7 +646,7 @@ PanelWindow {
             fitTimer.restart();
             // Every output runs this handler, but only the popout's host owns
             // the module whose detached panel is open.
-            // A panel no module owns (settings, control, tailscale) can never
+            // A panel no module owns (settings, tailscale) can never
             // fail this sweep honestly: moduleForPanel() is always null for it.
             if (!barWindow.popoutActive
                 || PanelRegistry.ownerless(Popouts.currentName))
@@ -673,7 +671,8 @@ PanelWindow {
         gh: "Modules/GitHub.qml", updates: "Modules/Updates.qml",
         tray: "Modules/Tray.qml", notifications: "Modules/Notifications.qml",
         vol: "Modules/Volume.qml", wifi: "Modules/Wifi.qml",
-        batt: "Modules/Battery.qml", bt: "Modules/Bluetooth.qml"
+        batt: "Modules/Battery.qml", bt: "Modules/Bluetooth.qml",
+        control: "Modules/Control.qml"
     })
 
     function sameAnchor(a, b) {
@@ -1026,7 +1025,7 @@ PanelWindow {
             }
         }
 
-        // RIGHT — configured modules, then the fixed Control Panel trigger.
+        // RIGHT — configured widgets and the overflow trigger.
         // Recording lives beside the clock with the other active quick actions.
         Row {
             id: rightSection
@@ -1073,24 +1072,6 @@ PanelWindow {
                 }
             }
 
-            BarChip {
-                id: controlButton
-
-                host: barWindow
-                panelName: "control"
-                isle: "right"
-                hPadding: 5
-                tooltip: "Control Panel"
-                tooltipAlign: 1
-
-                BarBrandIcon {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Theme.barIconSize
-                    height: Theme.barIconSize
-                    name: "fedora"
-                    highlighted: controlButton.held || controlButton.hovered
-                }
-            }
         }
     }
 

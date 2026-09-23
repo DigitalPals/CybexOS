@@ -12,8 +12,8 @@ function read(relative) {
     return fs.readFileSync(path.join(shellDir, relative), "utf8");
 }
 
-test("schema 23 enables Notes immediately after Weather with opt-in title settings", () => {
-    assert.equal(Settings.VERSION, 23);
+test("defaults enable Notes immediately after Weather with opt-in title settings", () => {
+    assert.equal(Settings.VERSION, 24);
     const center = Settings.defaultMods().center;
     const weather = center.findIndex(entry => entry.id === "weather");
     assert.equal(center[weather + 1].id, "notes");
@@ -41,7 +41,7 @@ test("schema 23 enables Notes immediately after Weather with opt-in title settin
 });
 
 test("schema-19 migration follows Weather without changing another widget", () => {
-    const oldIds = Settings.MODULE_IDS.filter(id => id !== "notes");
+    const oldIds = Settings.MODULE_IDS.filter(id => !["notes", "control"].includes(id));
     const entries = oldIds.map((id, index) => ({
         id,
         on: index % 2 === 0,
@@ -57,7 +57,7 @@ test("schema-19 migration follows Weather without changing another widget", () =
 
     const migrated = Settings.merge({ v: 19, mods: raw }).mods;
     for (const col of ["left", "center", "right"])
-        assert.deepEqual(migrated[col].filter(entry => entry.id !== "notes"), raw[col]);
+        assert.deepEqual(migrated[col].filter(entry => !["notes", "control"].includes(entry.id)), raw[col]);
     const weatherIndex = migrated.left.findIndex(entry => entry.id === "weather");
     assert.deepEqual(migrated.left[weatherIndex + 1],
         { id: "notes", on: true, detail: "auto" });

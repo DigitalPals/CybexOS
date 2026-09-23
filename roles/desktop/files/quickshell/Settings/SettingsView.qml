@@ -124,8 +124,6 @@ PopoutPanel {
             title: "Widgets", description: "Choose and arrange the bar’s contents" },
         { id: "plugins", group: "SHELL", label: "Plugins", glyph: "extension",
             title: "Plugins", description: "Install and manage trusted desktop plugins" },
-        { id: "drawer", group: "SHELL", label: "Drawer", glyph: "right_panel_open",
-            title: "Drawer", description: "Tabs, overview contents, and how it opens" },
         { id: "notifications", group: "SYSTEM", label: "Notifications", glyph: "notifications",
             title: "Notifications", description: "Toasts, quiet hours, and the notification center" },
         { id: "system", group: "SYSTEM", label: "System", glyph: "settings",
@@ -673,7 +671,6 @@ PopoutPanel {
                 case "bar": return barPage;
                 case "modules": return modulesPage;
                 case "plugins": return pluginsPage;
-                case "drawer": return drawerPage;
                 case "notifications": return notificationsPage;
                 case "system": return systemPage;
                 case "about": return aboutPage;
@@ -854,7 +851,6 @@ PopoutPanel {
         }
         Component { id: notificationsPage; NotificationsPage {} }
         Component { id: pluginsPage; PluginsPage {} }
-        Component { id: drawerPage; DrawerPage {} }
         Component { id: systemPage; SystemPage {} }
         Component { id: aboutPage; AboutPage {} }
     }

@@ -226,6 +226,7 @@ SettingsPage {
             sourceComponent: {
                 switch (view.moduleId) {
                 case "ws": return wsOptions;
+                case "control": return controlOptions;
                 case "media": return mediaOptions;
                 case "indicators": return indicatorsOptions;
                 case "clock": return clockOptions;
@@ -1034,6 +1035,14 @@ SettingsPage {
     }
 
     Component {
+        id: controlOptions
+        DrawerPage {
+            height: contentHeight
+            interactive: false
+        }
+    }
+
+    Component {
         id: usageOptions
 
         Column {
@@ -1043,9 +1052,9 @@ SettingsPage {
                 width: parent.width
                 label: "Usage source"
                 model: [
+                    { value: "direct", label: "Provider CLIs" },
                     { value: "cliproxy", label: "CLIProxyAPI" },
-                    { value: "sub2api", label: "Sub2API" },
-                    { value: "direct", label: "Provider CLIs" }
+                    { value: "sub2api", label: "Sub2API" }
                 ]
                 current: view.opts.source
                 dirty: view.optDirty("source")

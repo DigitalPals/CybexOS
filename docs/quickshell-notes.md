@@ -760,6 +760,20 @@ returns focus to the pill. The arrangement has no duplicate preview or permanent
 detail/browser pane. This interaction design follows Noctalia's legacy QML bar
 editor; our implementation uses Cybex components and storage.
 
+Disabled widgets remain visible in **Available widgets** below the three cards.
+Their gears open the same settings dialog, with a **Show on bar** toggle;
+the context menu can add them directly to Left, Center, or Right. Control Center
+is a normal widget: the Fedora button can move, be removed, and be restored.
+Its gear contains the tab, overview, and behavior controls. Settings search
+opens this widget dialog too; there is no separate Control Center sidebar entry. Model usage uses the same placement and
+visibility controls. An installed Model Usage plugin is a separate widget with
+its own preferences.
+
+Schema 24 adds the Fedora widget at the right edge of older layouts and keeps
+all other widget placements. Model usage defaults to Provider CLIs. An older
+CLIProxyAPI selection with no server URL adopts this default; configured proxies
+and source selections saved under schema 24 are preserved.
+
 Drag a pill to reorder or move it between cards. The drag ghost and insertion
 marker follow wrapped grid positions and the arrangement scrolls near its edges.
 Alt+arrow keys reorder; right-click, Menu, or Shift+F10 exposes placement,

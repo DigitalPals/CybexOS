@@ -277,12 +277,12 @@ test("the tray and the updates chip use the reorderable widget pipeline", () => 
     assert.match(bar, /case "tray": return SystemTray\.items\.values\.length > 0;/);
 });
 
-test("the three modules the redesign absorbed leave nothing behind", () => {
+test("the retired bell and idle modules leave nothing behind", () => {
     const helpers = read("Common/SettingsHelpers.js");
     const modules = read("Settings/ModulesPage.qml");
     const bar = read("Bar/Bar.qml");
 
-    for (const [id, file] of [["bell", "Bell"], ["idle", "Idle"], ["control", "Control"]]) {
+    for (const [id, file] of [["bell", "Bell"], ["idle", "Idle"]]) {
         assert.ok(!fs.existsSync(path.join(shellDir, `Bar/Modules/${file}.qml`)),
             `Bar/Modules/${file}.qml is still on disk`);
         assert.doesNotMatch(bar, new RegExp(`${id}:\\s*"Modules/`),
@@ -290,7 +290,7 @@ test("the three modules the redesign absorbed leave nothing behind", () => {
         assert.doesNotMatch(modules, new RegExp(`^\\s*${id}:\\s*\\{ name:`, "m"),
             `the settings module list still names ${id}`);
     }
-    assert.match(helpers, /RETIRED_MODULE_IDS = \["bell", "idle", "control"\]/);
+    assert.match(helpers, /RETIRED_MODULE_IDS = \["bell", "idle"\]/);
 });
 
 test("T3 Code, Hermes Agent, and grouped model usage are separate reorderable widgets", () => {
@@ -431,7 +431,7 @@ test("regression fixes keep asynchronous state identity-safe", () => {
 
 test("schema twenty-three keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 23/);
+    assert.match(helpers, /var VERSION = 24/);
     // Schema 17: the drawer becomes configurable (turn-3 settings design).
     assert.match(helpers, /drawerHover: "open"/);
     assert.match(helpers, /drawerWidth: 400/);
@@ -483,7 +483,7 @@ test("Connected enables integration widgets including auto-hiding Bluetooth", ()
     const preset = settings.slice(settings.indexOf("function modulePresetIds(name)"),
         settings.indexOf("function resetKeys("));
     assert.match(preset,
-        /name === "connected"[\s\S]*?\["ws"[\s\S]*?"gh"[\s\S]*?"t3"[\s\S]*?"hermes"[\s\S]*?"usage"[\s\S]*?"bt"[\s\S]*?"batt"\]/,
+        /name === "connected"[\s\S]*?\["ws"[\s\S]*?"gh"[\s\S]*?"t3"[\s\S]*?"hermes"[\s\S]*?"usage"[\s\S]*?"bt"[\s\S]*?"batt"[\s\S]*?"control"\]/,
         "Connected should enable every connection-driven widget; Bluetooth hides itself when idle");
 });
 
@@ -585,7 +585,7 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
     assert.doesNotMatch(view, /shell-settings\.json/,
         "the config path chip lives on the System page, not a bottom footer");
     assert.match(view, /case "notifications": return notificationsPage;/);
-    assert.match(view, /case "drawer": return drawerPage;/);
+    assert.doesNotMatch(view, /id: "drawer"|case "drawer"|id: drawerPage/);
     assert.match(settings, /"notifications", "system", "about"\]/);
     assert.match(view, /case "about": return aboutPage;/);
 
@@ -601,7 +601,7 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
     // The index is hand-maintained; hold it against the schema so a renamed
     // key or page cannot leave a search row jumping nowhere.
     const schemaKeys = Object.keys(load("SettingsHelpers.js").defaults());
-    const validPages = ["appearance", "wallpaper", "bar", "modules", "plugins", "drawer",
+    const validPages = ["appearance", "wallpaper", "bar", "modules", "plugins",
         "notifications", "system", "about"];
     const rows = load("SettingsSearchData.js").ROWS;
     assert.ok(rows.length >= 30, "the search index must cover the workspace");

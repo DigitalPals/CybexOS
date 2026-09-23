@@ -8,15 +8,18 @@ function read(relative) {
     return fs.readFileSync(path.join(shellDir, relative), "utf8");
 }
 
-test("the fixed Fedora button owns the ownerless Control Panel anchor", () => {
+test("the Fedora widget owns Control Center through the normal module pipeline", () => {
     const bar = read("Bar/Bar.qml");
     const registry = load("PanelRegistryData.js");
-    const button = bar.slice(bar.indexOf("id: controlButton"),
-        bar.indexOf("// ---- rearrange overlay"));
+    const button = read("Bar/Modules/Control.qml");
+    assert.match(bar, /control: "Modules\/Control.qml"/);
+    assert.doesNotMatch(bar, /id: controlButton/);
+    assert.match(button, /moduleId: "control"/);
+    assert.match(button, /isle: root.isle/);
 
-    assert.match(button, /BarChip|host:\s*barWindow/);
+    assert.match(button, /BarChip/);
     assert.match(button, /panelName:\s*"control"/);
-    assert.match(button, /tooltip:\s*"Control Panel"/);
+    assert.match(button, /tooltip:\s*"Control Center"/);
     assert.match(button, /BarBrandIcon\s*\{/);
     assert.match(button, /name:\s*"fedora"/);
     assert.match(button, /width:\s*Theme\.barIconSize/);
@@ -24,8 +27,8 @@ test("the fixed Fedora button owns the ownerless Control Panel anchor", () => {
     assert.match(button,
         /highlighted:\s*controlButton\.held \|\| controlButton\.hovered/,
         "the Fedora mark must switch to its exact white SVG on hover");
-    assert.equal(registry.byName("control").moduleId, "",
-        "fixed bar furniture must not become a configurable module owner");
+    assert.equal(registry.byName("control").moduleId, "control",
+        "Control Center must follow its movable widget");
 });
 
 test("the Control Panel exposes five equal session actions with guarded destructive controls", () => {
