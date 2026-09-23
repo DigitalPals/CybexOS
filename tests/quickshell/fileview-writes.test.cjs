@@ -148,7 +148,8 @@ function settingsHarness(disk, blockWrites) {
     vm.createContext(context);
     for (const name of ["snapshot", "seedWeatherFromEnv", "protectNewerFile", "assignChanged",
             "applyLoaded", "handleLoadFailure", "sameContent", "handleSaveSucceeded",
-            "handleSaveFailure", "saveNow", "scheduleSave", "retrySave", "set", "reloadStore"]
+            "handleSaveFailure", "saveNow", "scheduleSave", "retrySave", "set", "reloadStore",
+            "releaseWriteGuard"]
             .filter(name => hasFunction(source, name)))
         vm.runInContext(functionSource(source, name), context);
     store.on = {
@@ -273,6 +274,34 @@ for (const blockWrites of [true, false]) {
     });
 }
 
+test("settings: a reload that comes due under an async write runs after it", () => {
+    const settings = settingsHarness(settingsText({ barHeight: 40 }), false);
+    const store = settings.store;
+
+    settings.change("barHeight", 44);
+    settings.saveTimer.fire();
+    assert.equal(settings.writeInFlight, true);
+    // The watcher reports a change while our write is still in flight.
+    settings.reloadTimer.restart();
+    settings.reloadTimer.fire();
+    // A change made meanwhile waits for the write instead of joining it.
+    settings.change("gap", 6);
+    settings.saveTimer.fire();
+    store.settle();
+    assert.equal(store.swallowedReloads, 0, "FileView drops a reload issued under its write");
+    assert.equal(settings.reloadTimer.running, true, "the deferred reload is re-armed");
+    assert.equal(settings.saveTimer.running, true, "the change made while saving is queued");
+
+    // Someone edits the file after our write landed.
+    store.disk = settingsText({ barHeight: 44, gap: 6, clock24: false });
+    settings.reloadTimer.fire();
+    store.settle();
+    assert.equal(settings.clock24, false, "the external edit must still be read");
+    settings.flush();
+    assert.equal(settings.writeInFlight, false);
+    assert.equal(settings.savePending, false);
+});
+
 function notesHarness(disk, blockWrites) {
     const source = read("Common/Notes.qml");
     const store = fileView(disk, blockWrites);
@@ -395,6 +424,71 @@ for (const blockWrites of [true, false]) {
         assert.equal(NotesHelpers.parseState(store.disk).records.length, 1);
     });
 }
+
+test("notes: a flush during an async write saves the rest once it lands", () => {
+    const notes = notesHarness(notesText(["first"]), false);
+    const store = notes.store;
+
+    const id = notes.add("second");
+    notes.saveTimer.fire();
+    assert.equal(notes.writeInFlight, true);
+    notes.update(id, "second, edited");
+    // Closing the panel flushes; the store must not start a write under one.
+    notes.flush();
+    assert.equal(notes.flushRequested, true);
+    notes.settle();
+    assert.equal(notes.writeInFlight, false);
+    assert.equal(notes.dirty, false);
+    assert.equal(store.writes, 2);
+    assert.equal(NotesHelpers.findRecord(
+        NotesHelpers.parseState(store.disk).records, id).body, "second, edited");
+});
+
+test("settings and notes write off the GUI thread", () => {
+    const settings = read("Common/Settings.qml");
+    const notes = read("Common/Notes.qml");
+    for (const [file, source] of [["Settings", settings], ["Notes", notes]]) {
+        const view = source.slice(source.indexOf("    FileView {"));
+        assert.match(view, /atomicWrites: true/, file);
+        assert.match(view, /blockWrites: false/, file);
+        assert.match(functionSource(source, "saveNow"), /\|\| writeInFlight/,
+            `${file} must never start a write under another one`);
+    }
+    assert.match(settings, /id: reloadTimer\s*interval: 250\s*onTriggered: root\.reloadStore\(\)/);
+    assert.match(functionSource(settings, "reloadStore"),
+        /if \(writeInFlight\) \{\s*reloadAfterWrite = true;\s*return;\s*\}\s*store\.reload\(\);/);
+});
+
+test("launcher usage is written once a burst of launches settles", () => {
+    const source = read("Common/Launcher.qml");
+    const writes = [];
+    const context = {
+        usage: {}, Date,
+        usageView: { blockWrites: false, setText(text) { writes.push(text); } }
+    };
+    context.root = context;
+    context.usageSaveTimer = timer(context, c => c.saveUsage());
+    vm.createContext(context);
+    for (const name of ["recordLaunch", "saveUsage"])
+        vm.runInContext(functionSource(source, name), context);
+
+    context.recordLaunch({ id: "firefox.desktop" });
+    context.recordLaunch({ id: "kitty.desktop" });
+    context.recordLaunch({ id: "firefox.desktop" });
+    assert.equal(writes.length, 0, "a launch must not write on the frame the app starts");
+    assert.equal(context.usage["firefox.desktop"].count, 2, "the ranking updates at once");
+    context.usageSaveTimer.fire();
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0], JSON.stringify(context.usage));
+
+    assert.match(source, /id: usageSaveTimer\s*interval: 2000\s*onTriggered: root\.saveUsage\(\)/);
+    const view = source.slice(source.indexOf("    FileView {"));
+    assert.match(view, /atomicWrites: true\s*blockWrites: false/);
+    // Pending launches are flushed as the singleton goes, synchronously so
+    // the write does not outlive its view.
+    assert.match(source,
+        /Component\.onDestruction: \{\s*if \(!usageSaveTimer\.running\)\s*return;\s*usageView\.blockWrites = true;\s*saveUsage\(\);\s*\}/);
+});
 
 test("the persistence comments describe what FileView actually reports", () => {
     const settings = read("Common/Settings.qml");

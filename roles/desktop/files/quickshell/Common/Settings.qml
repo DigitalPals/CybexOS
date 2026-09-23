@@ -139,6 +139,8 @@ Singleton {
     // read or tried to write, which after a failed save is not the file.
     // See saveNow().
     property string storeText: ""
+    // A reload that came due while a write was in flight; see reloadStore().
+    property bool reloadAfterWrite: false
     property bool initialLoadHandled: false
     // The file on disk came from a newer schema; see protectNewerFile().
     property bool newerSchema: false
@@ -604,13 +606,33 @@ Singleton {
         return text === written || text + "\n" === written;
     }
 
+    // FileView reads nothing while its own write is in flight: a reload()
+    // under a write is dropped rather than queued. A reload that comes due
+    // then (an external edit, or our own write's echo) runs once the write
+    // has settled instead.
+    function reloadStore() {
+        if (writeInFlight) {
+            reloadAfterWrite = true;
+            return;
+        }
+        store.reload();
+    }
+
+    function releaseWriteGuard() {
+        writeInFlight = false;
+        writeSnapshot = "";
+        if (reloadAfterWrite) {
+            reloadAfterWrite = false;
+            reloadTimer.restart();
+        }
+    }
+
     function handleSaveSucceeded() {
         const completedSnapshot = writeSnapshot;
         lastPersistedText = completedSnapshot;
         storeText = completedSnapshot;
         const wasRetry = saveError;
-        writeInFlight = false;
-        writeSnapshot = "";
+        releaseWriteGuard();
         saveError = false;
         lastSavedAt = Date.now();
         const changedWhileSaving = !sameContent(SettingsHelpers.serialize(snapshot()),
@@ -626,8 +648,7 @@ Singleton {
         // FileView keeps the attempted bytes even though they never reached
         // the file; saveNow() has to write around them.
         storeText = writeSnapshot;
-        writeInFlight = false;
-        writeSnapshot = "";
+        releaseWriteGuard();
         savePending = false;
         saveError = true;
         announcement = "Could not save settings. Retry is available.";
@@ -766,7 +787,7 @@ Singleton {
     Timer {
         id: reloadTimer
         interval: 250
-        onTriggered: store.reload()
+        onTriggered: root.reloadStore()
     }
 
     Timer {
@@ -883,7 +904,10 @@ Singleton {
         path: root.filePath
         printErrors: false
         atomicWrites: true
-        blockWrites: true
+        // The atomic write syncs to disk before its rename, which can take
+        // seconds under heavy IO; off the GUI thread the shell keeps drawing
+        // meanwhile. saveNow() never starts a write under another one.
+        blockWrites: false
         blockLoading: true
         watchChanges: true
         // Coalesce an editor's truncate-and-write into one reload once

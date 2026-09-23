@@ -473,7 +473,11 @@ Singleton {
         path: root.filePath
         printErrors: false
         atomicWrites: true
-        blockWrites: true
+        // The atomic write syncs to disk before its rename, which can take
+        // seconds under heavy IO; a save follows every typing pause, so it
+        // runs off the GUI thread. saveNow() never starts a write under
+        // another one.
+        blockWrites: false
         blockLoading: true
         onLoaded: root.applyLoaded(text())
         onLoadFailed: error => root.handleLoadFailure(error)

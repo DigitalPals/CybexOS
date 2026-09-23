@@ -98,7 +98,8 @@ test("Notes persistence and title generation are independently queued and retrya
         assert.match(notes, new RegExp(`function ${fn}\\(`));
     assert.match(notes, /\.local\/state\/cybexos\/shell\/notes\.json/);
     assert.match(notes, /atomicWrites:\s*true/);
-    assert.match(notes, /blockWrites:\s*true/);
+    assert.match(notes, /blockWrites:\s*false/,
+        "a save follows every typing pause; its fsync must not stall the shell");
     assert.match(notes, /id:\s*saveTimer[\s\S]*?interval:\s*400/);
     assert.match(notes, /changedWhileSaving[\s\S]*?saveTimer\.restart\(\)/,
         "edits made during a write must queue another snapshot");
