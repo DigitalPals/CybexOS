@@ -90,7 +90,8 @@ firewall_ports:
 rust_toolchain: nightly-2026-08-23
 
 # User-managed developer tools retain a working version on update failure.
-# Claude/OpenCode are pinned; Codex follows the latest stable npm release.
+# Claude Code's pin is a minimum (a newer install is not downgraded); OpenCode
+# is pinned exactly; Codex follows the latest stable npm release.
 claude_code_version: "2.1.247"
 opencode_version: "1.18.27"
 codex_cli_version: latest
