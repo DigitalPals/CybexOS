@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import Quickshell
 import "../../Common"
 
 // The drawer's Notifications tab: the recent hour's cards, an EARLIER block
@@ -10,10 +11,17 @@ Column {
 
     property double nowMs: Date.now()
     readonly property var entries: Notifs.entries.slice(0, 12)
-    readonly property var recent: entries.filter(entry =>
-        root.nowMs - entry.arrived < 3600 * 1000)
-    readonly property var earlier: entries.filter(entry =>
-        root.nowMs - entry.arrived >= 3600 * 1000)
+    // Entries are newest first, so the recent hour is a prefix. The clock
+    // tick only moves this int; the lists below re-slice when it actually
+    // changes, not every 30 s, and the ScriptModels keep each surviving
+    // card (its expansion and focus) across a re-slice.
+    readonly property int recentCount: {
+        const index = entries.findIndex(entry =>
+            root.nowMs - entry.arrived >= 3600 * 1000);
+        return index === -1 ? entries.length : index;
+    }
+    readonly property var recent: entries.slice(0, recentCount)
+    readonly property var earlier: entries.slice(recentCount)
 
     readonly property var cardStyle: ({
         face: Theme.fontMenu,
@@ -150,7 +158,9 @@ Column {
         spacing: 4
 
         Repeater {
-            model: root.recent
+            model: ScriptModel {
+                values: root.recent
+            }
 
             delegate: NotifCard {
                 id: recentCard
@@ -217,7 +227,9 @@ Column {
         }
 
         Repeater {
-            model: root.earlier
+            model: ScriptModel {
+                values: root.earlier
+            }
 
             delegate: NotifCard {
                 id: earlierCard

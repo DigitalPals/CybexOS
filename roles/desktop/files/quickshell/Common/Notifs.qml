@@ -93,10 +93,7 @@ Singleton {
             else if (policy === "on")
                 setDnd(true);
         }
-        dndClockMs = Date.now();
-        if (dnd && Settings.notifDndUntilMs > 0
-                && Settings.notifDndUntilMs <= dndClockMs)
-            setDnd(false);
+        scheduleDndTick();
     }
 
     SystemClock {
@@ -104,20 +101,35 @@ Singleton {
         precision: SystemClock.Minutes
     }
 
-    Timer {
-        interval: 1000
-        running: root.dnd && Settings.notifDndUntilMs > 0
-        repeat: true
-        onTriggered: {
-            root.dndClockMs = Date.now();
-            if (root.dndClockMs >= Settings.notifDndUntilMs)
-                root.setDnd(false);
+    // dndStatus only speaks in whole minutes, so wake when that label next
+    // changes rather than every second. The last wait lands on the deadline
+    // itself, which is what ends a timed DND. Before the startup policy has
+    // run, an already-expired deadline is left to applyStartupPolicy so a
+    // half-loaded settings file is never written back.
+    function scheduleDndTick() {
+        dndClockMs = Date.now();
+        dndTimer.stop();
+        if (!dnd || Settings.notifDndUntilMs <= 0)
+            return;
+        const wait = Helpers.countdownTickMs(Settings.notifDndUntilMs, dndClockMs);
+        if (wait > 0) {
+            dndTimer.interval = wait;
+            dndTimer.start();
+        } else if (startupApplied) {
+            setDnd(false);
         }
+    }
+
+    Timer {
+        id: dndTimer
+        repeat: false
+        onTriggered: root.scheduleDndTick()
     }
 
     onDndChanged: {
         if (startupApplied && !dnd && Settings.notifDndUntilMs !== 0)
             Settings.set("notifDndUntilMs", 0);
+        scheduleDndTick();
     }
 
     Connections {
@@ -133,6 +145,10 @@ Singleton {
 
         function onLoadedChanged() {
             root.applyStartupPolicy();
+        }
+
+        function onNotifDndUntilMsChanged() {
+            root.scheduleDndTick();
         }
     }
 
@@ -211,39 +227,13 @@ Singleton {
     // already treats as an expired entry (see dismiss/hideToast/iconSource).
     function publish(source, notif) {
         const arrived = Date.now();
-        const hints = Object.assign({}, source.hints || {});
-        const presentation = Helpers.derivePresentation({
-            appName: source.appName,
-            desktopEntry: source.desktopEntry,
-            summary: source.summary,
-            body: source.body,
-            hints: hints
-        });
-        const requestedBrand = BrandIcons.has(source.brandIcon)
-            ? BrandIcons.key(source.brandIcon) : "";
-        const derivedBrand = BrandIcons.has(presentation.brandIcon)
-            ? BrandIcons.key(presentation.brandIcon) : "";
-        const entry = {
+        const entry = Object.assign({
             key: notif ? `${notif.id}-${arrived}` : `shell-${++localSerial}-${arrived}`,
             notif: notif ?? null,
             live: !!notif,
             arrived: arrived,
-            appName: source.appName ?? "",
-            appIcon: source.appIcon ?? "",
-            desktopEntry: source.desktopEntry ?? "",
-            hints: hints,
-            image: source.image ?? "",
-            summary: source.summary ?? "",
-            body: source.body ?? "",
-            displayAppName: presentation.displayAppName,
-            displaySummary: presentation.displaySummary,
-            displayBody: presentation.displayBody,
-            webOrigin: presentation.webOrigin,
-            brandIcon: requestedBrand !== "" ? requestedBrand : derivedBrand,
-            urgency: source.urgency ?? NotificationUrgency.Normal,
-            expireTimeout: source.expireTimeout ?? -1,
             actions: notif ? notif.actions : []
-        };
+        }, describe(source));
         const evicted = entries.slice(49);
         entries = [entry].concat(entries.slice(0, 49));
         for (const old of evicted) {
@@ -260,6 +250,61 @@ Singleton {
         }
         return entry;
     }
+
+    // The copied, presentable fields of an entry. Shared by publish and by a
+    // live notification's in-place replacement, so both derive them alike.
+    function describe(source) {
+        const hints = Object.assign({}, source.hints || {});
+        const presentation = Helpers.derivePresentation({
+            appName: source.appName,
+            desktopEntry: source.desktopEntry,
+            summary: source.summary,
+            body: source.body,
+            hints: hints
+        });
+        const requestedBrand = BrandIcons.has(source.brandIcon)
+            ? BrandIcons.key(source.brandIcon) : "";
+        const derivedBrand = BrandIcons.has(presentation.brandIcon)
+            ? BrandIcons.key(presentation.brandIcon) : "";
+        return {
+            appName: source.appName ?? "",
+            appIcon: source.appIcon ?? "",
+            desktopEntry: source.desktopEntry ?? "",
+            hints: hints,
+            image: source.image ?? "",
+            summary: source.summary ?? "",
+            body: source.body ?? "",
+            displayAppName: presentation.displayAppName,
+            displaySummary: presentation.displaySummary,
+            displayBody: presentation.displayBody,
+            webOrigin: presentation.webOrigin,
+            brandIcon: requestedBrand !== "" ? requestedBrand : derivedBrand,
+            urgency: source.urgency ?? NotificationUrgency.Normal,
+            expireTimeout: source.expireTimeout ?? -1
+        };
+    }
+
+    function remoteSource(notif) {
+        return {
+            appName: notif.appName,
+            appIcon: notif.appIcon,
+            desktopEntry: notif.desktopEntry,
+            hints: notif.hints,
+            image: notif.image,
+            summary: notif.summary,
+            body: notif.body,
+            urgency: notif.urgency,
+            expireTimeout: notif.expireTimeout
+        };
+    }
+
+    // Properties a sender can replace in place (`notify-send -r`, progress
+    // updates). A replacement reuses the Notification object and does not
+    // raise onNotification again, so without these the toast and the history
+    // would keep the first text.
+    readonly property var replaceableSignals: ["appNameChanged", "appIconChanged",
+        "desktopEntryChanged", "hintsChanged", "imageChanged", "summaryChanged",
+        "bodyChanged", "urgencyChanged", "expireTimeoutChanged", "actionsChanged"]
 
     // Single in-shell path for notifications the shell raises itself. Going
     // out to `notify-send` and back in over D-Bus costs a process per toast
@@ -294,18 +339,22 @@ Singleton {
             // Keep this: icon-resolution misses are impossible to diagnose
             // after the fact without knowing what the sender actually sent.
             console.log(`notification: app="${notif.appName}" desktop="${notif.desktopEntry}" icon="${notif.appIcon}" image="${notif.image}"`);
-            const entry = root.publish({
-                appName: notif.appName,
-                appIcon: notif.appIcon,
-                desktopEntry: notif.desktopEntry,
-                hints: notif.hints,
-                image: notif.image,
-                summary: notif.summary,
-                body: notif.body,
-                urgency: notif.urgency,
-                expireTimeout: notif.expireTimeout
-            }, notif);
+            const entry = root.publish(root.remoteSource(notif), notif);
+            let open = true;
+            // One replacement changes several properties back to back;
+            // Qt.callLater collapses them into a single rebuild.
+            const refresh = () => {
+                if (open)
+                    root.updateEntry(entry.key, Object.assign(
+                        { actions: notif.actions }, root.describe(root.remoteSource(notif))));
+            };
+            const changed = () => Qt.callLater(refresh);
+            for (const name of root.replaceableSignals)
+                notif[name].connect(changed);
             notif.closed.connect(() => {
+                open = false;
+                for (const name of root.replaceableSignals)
+                    notif[name].disconnect(changed);
                 root.updateEntry(entry.key, { live: false, notif: null, actions: [] });
                 root.toasts = root.toasts.filter(item => item.key !== entry.key);
             });

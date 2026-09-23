@@ -2,7 +2,12 @@
 // APIs out of this file so malformed-output and stale-result behavior can be
 // tested without starting the shell.
 
-var CACHE_VERSION = 1;
+// v2 holds a small most-recent-first list instead of a single wallpaper, so
+// shuffling back to a recent image is a cache hit, and keys each palette by
+// the file's mtime and size as well as its path, so a wallpaper replaced
+// under the same name is regenerated.
+var CACHE_VERSION = 2;
+var CACHE_LIMIT = 12;
 
 var ROLE_MAP = {
     background: "background",
@@ -88,22 +93,69 @@ function activeVariant(palette, themeMode) {
     return themeMode === "light" ? clean.light : clean.dark;
 }
 
-function makeCache(identity, palette) {
-    var clean = sanitizePalette(palette);
-    if (typeof identity !== "string" || identity === "" || !clean)
-        return null;
-    return { v: CACHE_VERSION, identity: identity, palette: clean };
+// The file half of a cache key from `stat -L -c "%Y %s"` output: "mtime
+// size", or "" when the file could not be read — which callers treat as
+// uncacheable rather than as a match for anything.
+function fingerprint(statText) {
+    if (typeof statText !== "string")
+        return "";
+    var text = statText.trim();
+    return /^\d+ \d+$/.test(text) ? text : "";
 }
 
-function readCache(value, identity) {
+function cacheEntries(value) {
     var parsed = parseObject(value);
-    if (!parsed || parsed.v !== CACHE_VERSION || parsed.identity !== identity)
-        return null;
-    return sanitizePalette(parsed.palette);
+    if (!parsed || parsed.v !== CACHE_VERSION || !Array.isArray(parsed.entries))
+        return [];
+    var out = [];
+    for (var i = 0; i < parsed.entries.length && out.length < CACHE_LIMIT; i++) {
+        var entry = parsed.entries[i];
+        if (!entry || typeof entry.identity !== "string" || entry.identity === ""
+                || typeof entry.fingerprint !== "string" || entry.fingerprint === "")
+            continue;
+        var palette = sanitizePalette(entry.palette);
+        if (palette)
+            out.push({ identity: entry.identity, fingerprint: entry.fingerprint, palette: palette });
+    }
+    return out;
 }
 
-function serializeCache(identity, palette) {
-    var cache = makeCache(identity, palette);
+function makeCache(identity, palette, stamp, previous, limit) {
+    var clean = sanitizePalette(palette);
+    if (typeof identity !== "string" || identity === "" || !clean
+            || typeof stamp !== "string" || stamp === "")
+        return null;
+    var max = limit === undefined ? CACHE_LIMIT : limit;
+    var entries = [{ identity: identity, fingerprint: stamp, palette: clean }];
+    var older = cacheEntries(previous);
+    for (var i = 0; i < older.length && entries.length < max; i++) {
+        // One entry per path: a replaced file supersedes its old palette.
+        if (older[i].identity !== identity)
+            entries.push(older[i]);
+    }
+    return { v: CACHE_VERSION, entries: entries };
+}
+
+// The cached palette for a wallpaper path. With a fingerprint the entry must
+// also match the file's current mtime and size; without one this is the
+// optimistic lookup that keeps a known palette on screen while that check
+// runs.
+function readCache(value, identity, stamp) {
+    var entries = cacheEntries(value);
+    for (var i = 0; i < entries.length; i++) {
+        if (entries[i].identity !== identity)
+            continue;
+        if (stamp !== undefined && entries[i].fingerprint !== stamp)
+            return null;
+        return entries[i].palette;
+    }
+    return null;
+}
+
+// Serialized cache with this result first, `previous` (the current cache
+// text) behind it, and the least recently generated entries dropped.
+function serializeCache(identity, palette, stamp, previous, limit) {
+    var cache = makeCache(identity, palette, stamp, previous, limit);
     return cache ? JSON.stringify(cache, null, 2) + "\n" : "";
 }
 
@@ -119,12 +171,15 @@ function selectOrFallback(palette, themeMode, fallback, enabled) {
 
 var exported = {
     CACHE_VERSION: CACHE_VERSION,
+    CACHE_LIMIT: CACHE_LIMIT,
     ROLE_MAP: ROLE_MAP,
     ROLE_KEYS: ROLE_KEYS,
     colorIn: colorIn,
     sanitizeMatugen: sanitizeMatugen,
     sanitizePalette: sanitizePalette,
     activeVariant: activeVariant,
+    fingerprint: fingerprint,
+    cacheEntries: cacheEntries,
     makeCache: makeCache,
     readCache: readCache,
     serializeCache: serializeCache,

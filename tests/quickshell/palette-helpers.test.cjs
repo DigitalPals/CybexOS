@@ -64,16 +64,51 @@ test("light and dark selection uses one validated palette", () => {
 test("cache reads require the exact version and wallpaper identity", () => {
     const palette = P.sanitizeMatugen(output());
     const identity = "/wallpapers/current.jpg";
-    const serialized = P.serializeCache(identity, palette);
+    const serialized = P.serializeCache(identity, palette, "100 2000");
     assert.deepEqual(P.readCache(serialized, identity), palette);
+    assert.deepEqual(P.readCache(serialized, identity, "100 2000"), palette);
     assert.equal(P.readCache(serialized, "/wallpapers/next.jpg"), null);
 
     const wrongVersion = JSON.parse(serialized);
     wrongVersion.v = P.CACHE_VERSION + 1;
     assert.equal(P.readCache(wrongVersion, identity), null);
     const malformed = JSON.parse(serialized);
-    malformed.palette.dark.primary = "blue";
+    malformed.entries[0].palette.dark.primary = "blue";
     assert.equal(P.readCache(malformed, identity), null);
+    assert.equal(P.readCache({ v: 1, identity, palette }, identity), null,
+        "a v1 single-entry cache is not read as a match");
+});
+
+test("a file replaced under the same path misses the cache", () => {
+    const palette = P.sanitizeMatugen(output());
+    const identity = "/wallpapers/current.jpg";
+    const serialized = P.serializeCache(identity, palette, "100 2000");
+    assert.equal(P.readCache(serialized, identity, "101 2000"), null, "mtime changed");
+    assert.equal(P.readCache(serialized, identity, "100 2001"), null, "size changed");
+    assert.equal(P.serializeCache(identity, palette, ""), "",
+        "an unreadable file has no key and is never cached");
+    assert.equal(P.fingerprint("1726000000 48213\n"), "1726000000 48213");
+    assert.equal(P.fingerprint(""), "");
+    assert.equal(P.fingerprint("stat: cannot statx"), "");
+    assert.equal(P.fingerprint(undefined), "");
+});
+
+test("the cache keeps recent wallpapers, newest first, one entry per path", () => {
+    const palette = P.sanitizeMatugen(output());
+    let text = "";
+    for (let i = 0; i < 5; i++)
+        text = P.serializeCache(`/w/${i}.jpg`, palette, `${i} 1`, text, 3);
+    assert.deepEqual(P.cacheEntries(text).map(entry => entry.identity),
+        ["/w/4.jpg", "/w/3.jpg", "/w/2.jpg"]);
+    assert.equal(P.readCache(text, "/w/1.jpg"), null, "the oldest entry was evicted");
+
+    text = P.serializeCache("/w/2.jpg", palette, "9 9", text, 3);
+    assert.deepEqual(P.cacheEntries(text).map(entry => entry.identity),
+        ["/w/2.jpg", "/w/4.jpg", "/w/3.jpg"]);
+    assert.equal(P.readCache(text, "/w/2.jpg", "2 1"), null,
+        "regenerating a path replaces its old fingerprint");
+    assert.deepEqual(P.readCache(text, "/w/2.jpg", "9 9"), palette);
+    assert.ok(P.CACHE_LIMIT >= 8);
 });
 
 test("stale results are rejected and fixed fallback remains selectable", () => {

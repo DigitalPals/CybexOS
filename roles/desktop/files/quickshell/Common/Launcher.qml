@@ -12,8 +12,6 @@ Singleton {
     property bool open: false
     property var screen: null
     property var usage: ({})
-    property string commandError: ""
-    property string pendingCommand: ""
 
     readonly property string usageFile: Quickshell.statePath("launcher-usage.json")
 
@@ -48,12 +46,19 @@ Singleton {
         return Math.log(1 + item.count) * 180 + 700 / (1 + ageDays);
     }
 
+    // A `>` command is started detached, like every other launcher row: a
+    // tracked Process would be SIGTERMed by the next command and by a shell
+    // reload, and a stderr collector would buffer a long-lived app's output
+    // for its whole lifetime. The typed text is handed to the wrapper as a
+    // positional argument, never spliced into it, so the only shell that
+    // parses it is the inner `sh -c "$1"` the user asked for. Its stderr goes
+    // to the journal with the shell's own; a failure still raises a
+    // notification carrying the exit status.
     function executeCommand(command) {
-        pendingCommand = command;
-        commandError = "";
-        commandProc.running = false;
-        commandProc.command = ["sh", "-c", command];
-        commandProc.running = true;
+        Quickshell.execDetached(["sh", "-c",
+            'sh -c "$1"; rc=$?; [ "$rc" -eq 0 ] || '
+            + 'notify-send "Launcher command failed" "$1 exited with status $rc"',
+            "sh", command]);
         close();
     }
 
@@ -70,19 +75,6 @@ Singleton {
                     root.usage = parsed;
             } catch (e) {
                 console.warn("launcher usage state is invalid:", e);
-            }
-        }
-    }
-
-    Process {
-        id: commandProc
-        stderr: StdioCollector {
-            onStreamFinished: root.commandError = text.trim()
-        }
-        onExited: (exitCode, exitStatus) => {
-            if (exitCode !== 0) {
-                const detail = root.commandError || `Command exited with status ${exitCode}`;
-                Quickshell.execDetached(["notify-send", "Launcher command failed", detail]);
             }
         }
     }

@@ -253,6 +253,21 @@ function iconPreference(entry) {
     return choices;
 }
 
+// Milliseconds until a "N min left" countdown to `untilMs` next reads
+// differently, or 0 once the deadline has passed. The label is
+// ceil(remaining / 1 min), so it steps exactly on whole minutes before the
+// deadline, and the last wait lands on the deadline itself — which is when
+// the caller ends the countdown. `minimumMs` keeps a timer that fired a
+// little early (Qt's coarse timers may) from spinning.
+function countdownTickMs(untilMs, nowMs, minimumMs) {
+    var remaining = untilMs - nowMs;
+    if (!(remaining > 0))
+        return 0;
+    var minute = 60000;
+    var wait = remaining - minute * (Math.ceil(remaining / minute) - 1);
+    return Math.max(minimumMs === undefined ? 50 : minimumMs, wait);
+}
+
 var exported = {
     MIN_TIMEOUT_MS: MIN_TIMEOUT_MS,
     MAX_TIMEOUT_MS: MAX_TIMEOUT_MS,
@@ -268,7 +283,8 @@ var exported = {
     secondaryActions: secondaryActions,
     visibleCharacterCount: visibleCharacterCount,
     timeoutMs: timeoutMs,
-    iconPreference: iconPreference
+    iconPreference: iconPreference,
+    countdownTickMs: countdownTickMs
 };
 
 if (typeof module !== "undefined" && module.exports)

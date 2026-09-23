@@ -40,6 +40,9 @@ Singleton {
     property int clipboardRefreshGeneration: 0
     property var emojiEntries: []
     property bool emojiLoading: true
+    // emoji-test.txt is ~600 KB parsed on the UI thread; nothing reads it
+    // until the Emoji provider is first shown.
+    property bool emojiRequested: false
     property string emojiError: ""
     property bool pastePending: false
     property var userActions: []
@@ -204,6 +207,12 @@ Singleton {
     onActiveProviderIdChanged: {
         if (root.activeProviderId === "clipboard")
             root.refreshClipboard();
+        else if (root.activeProviderId === "emoji" && !root.emojiRequested) {
+            // Whatever the pathless FileView reported before this is moot.
+            root.emojiLoading = true;
+            root.emojiError = "";
+            root.emojiRequested = true;
+        }
     }
 
     function activate(row): void {
@@ -474,23 +483,47 @@ Singleton {
 
     // The two MIME-specific watchers make clipboard history useful for both
     // text and images. Process lifetime follows Quickshell, preventing stale
-    // duplicate watchers after a shell restart.
-    Process {
+    // duplicate watchers after a shell restart. A watcher that dies (the
+    // compositor restarted, wl-paste crashed) is restarted on the falling
+    // edge of `running` — the only signal a failed launch sends — with a
+    // backoff that resets once a run has lasted a minute.
+    component ClipboardWatcher: Process {
+        id: watcher
+
+        // The wl-paste invocation this watcher keeps alive.
+        required property string watch
+        property double startedAt: 0
+        property int failures: 0
+        readonly property Timer restartTimer: Timer {
+            onTriggered: watcher.running = true
+        }
+
         command: ["sh", "-c", "command -v cliphist >/dev/null 2>&1"
             + " && command -v wl-paste >/dev/null 2>&1"
             + " || exec sleep infinity;"
-            + " exec wl-paste --type text --watch "
-            + Quickshell.env("HOME") + "/.local/bin/clipboard-history-store"]
+            + " exec " + watch]
         running: true
+        onRunningChanged: {
+            if (running) {
+                startedAt = Date.now();
+                return;
+            }
+            if (Date.now() - startedAt >= 60000)
+                failures = 0;
+            restartTimer.interval = ProviderHelpers.watcherRestartDelayMs(failures);
+            failures++;
+            restartTimer.restart();
+        }
     }
 
-    Process {
-        command: ["sh", "-c", "command -v cliphist >/dev/null 2>&1"
-            + " && command -v wl-paste >/dev/null 2>&1"
-            + " || exec sleep infinity;"
-            + " exec wl-paste --type image --watch "
-            + Quickshell.env("HOME") + "/.local/bin/clipboard-history-store"]
-        running: true
+    ClipboardWatcher {
+        watch: "wl-paste --type text --watch "
+            + Quickshell.env("HOME") + "/.local/bin/clipboard-history-store"
+    }
+
+    ClipboardWatcher {
+        watch: "wl-paste --type image --watch "
+            + Quickshell.env("HOME") + "/.local/bin/clipboard-history-store"
     }
 
     Connections {
@@ -509,7 +542,7 @@ Singleton {
 
     FileView {
         id: emojiFile
-        path: "/usr/share/unicode/emoji/emoji-test.txt"
+        path: root.emojiRequested ? "/usr/share/unicode/emoji/emoji-test.txt" : ""
         printErrors: false
         onLoaded: {
             root.emojiEntries = ProviderHelpers.parseEmojiData(text());

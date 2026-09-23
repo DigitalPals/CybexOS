@@ -294,6 +294,14 @@ function actionRows(actions, query, limit) {
     }).slice(0, max);
 }
 
+// Delay before restarting a clipboard watcher that has exited, doubling from
+// one second per consecutive failure up to a minute, so a watcher that
+// cannot start retries slowly instead of spinning.
+function watcherRestartDelayMs(failures) {
+    var count = Math.max(0, Math.floor(Number(failures) || 0));
+    return Math.min(60000, 1000 * Math.pow(2, Math.min(count, 6)));
+}
+
 var exported = {
     PROVIDERS: PROVIDERS,
     TAB_IDS: TAB_IDS,
@@ -312,7 +320,8 @@ var exported = {
     emojiRows: emojiRows,
     sanitizeActions: sanitizeActions,
     parseActions: parseActions,
-    actionRows: actionRows
+    actionRows: actionRows,
+    watcherRestartDelayMs: watcherRestartDelayMs
 };
 
 if (typeof module !== "undefined" && module.exports)
