@@ -354,7 +354,7 @@ test("Hermes history projects prose, one tool activity line, pagination, and com
     assert.match(conversations, /Helpers\.normalizeHistory/);
     assert.match(conversations, /function loadEarlier/);
     assert.match(conversations, /before:\s*Math\.max/);
-    assert.match(transcript, /model:\s*root\.shownItems/);
+    assert.match(transcript, /model:\s*transcriptModel/);
     assert.match(transcript, /Helpers\.transcriptItems\(allMessages, \[\]\)/,
         "persisted tool records must not become transcript rows");
     assert.match(transcript, /property var latestTool:/);
@@ -536,8 +536,9 @@ test("Hermes exposes capability-gated attachments, branches, editing, and regene
         "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py");
 
     assert.match(composer, /Hermes\.capabilities\.attachments === true/);
-    assert.match(composer, /"zenity", "--file-selection", "--multiple"/);
-    assert.match(composer, /Hermes\.stageAttachments/);
+    assert.match(facade, /"zenity", "--file-selection", "--multiple"/);
+    assert.match(composer, /Hermes\.pickAttachments\(conversationId\)/);
+    assert.match(facade, /stageAttachments\(conversationId, paths\)/);
     assert.match(facade,
         /"prompt\.submit"[\s\S]{0,300}?attachments:\s*staged\.map/);
     assert.match(bridge, /multipart\/form-data; boundary=/);

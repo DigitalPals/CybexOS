@@ -7,6 +7,11 @@ import "../Common/HermesHelpers.js" as Helpers
 // The transcript is prose-only. Tool protocol records are projected away from
 // chat and collapsed into one ephemeral activity line that follows the newest
 // call while Hermes is working.
+//
+// Rows live in a keyed ListModel updated in place: a streamed token bumps one
+// row's revision instead of rebuilding every delegate (and re-parsing its
+// Markdown), bursts are coalesced by syncTimer, and per-row UI state is keyed
+// by message id here so it survives any row that is re-created.
 Item {
     id: root
 
@@ -21,23 +26,25 @@ Item {
     readonly property var conversation: conversationId === ""
         ? HermesConversations.newConversation
         : HermesConversations.conversationById(conversationId)
-    readonly property var allMessages: HermesConversations.messagesFor(conversationId)
+    // Snapshot taken by syncTranscript(); HermesConversations mutates its
+    // transcripts in place and announces them through transcriptChanged.
+    property var allMessages: []
     readonly property var allTools: HermesConversations.toolsFor(conversationId)
-    readonly property var allItems: Helpers.transcriptItems(allMessages, [])
-    readonly property int hiddenCount: Math.max(0, allItems.length - visibleItems)
-    readonly property var shownItems: hiddenCount > 0
-        ? allItems.slice(hiddenCount) : allItems
+    property int itemCount: 0
+    readonly property int hiddenCount: Math.max(0, itemCount - visibleItems)
     readonly property var history: HermesConversations.historyFor(conversationId)
     readonly property var latestTool: allTools.length > 0
         ? allTools[allTools.length - 1] : null
     readonly property bool working: conversation !== null
         && conversation.status === "working"
-    readonly property string latestAssistantId: {
-        for (let index = allMessages.length - 1; index >= 0; index--)
-            if (allMessages[index].role === "assistant")
-                return String(allMessages[index].id ?? "");
-        return "";
-    }
+    property string latestAssistantId: ""
+    property bool streaming: false
+    // Row key -> the message object that row currently shows. Mutated in
+    // place; a row's `revision` role is what tells its delegate to re-read.
+    property var rowMessages: ({})
+    property var expandedById: ({})
+    property string editingId: ""
+    property string editDraft: ""
 
     width: parent ? parent.width : 0
     height: Math.max(minHeight, Math.min(maxHeight, transcriptColumn.implicitHeight
@@ -53,11 +60,90 @@ Item {
         });
     }
 
+    function scheduleSync() {
+        if (!syncTimer.running)
+            syncTimer.start();
+    }
+
+    function syncTranscript() {
+        syncTimer.stop();
+        allMessages = HermesConversations.messagesFor(conversationId);
+        const items = Helpers.transcriptItems(allMessages, []);
+        itemCount = items.length;
+        const hidden = Math.max(0, items.length - visibleItems);
+        const shown = hidden > 0 ? items.slice(hidden) : items;
+        const current = [];
+        for (let row = 0; row < transcriptModel.count; row++)
+            current.push(transcriptModel.get(row).rowKey);
+        const live = {};
+        for (const op of Helpers.listSyncOps(current, shown.map(item => item.id))) {
+            if (op.op === "remove") {
+                transcriptModel.remove(op.at, op.count);
+                continue;
+            }
+            const item = shown[op.index];
+            const continuation = op.index > 0
+                && shown[op.index - 1].message.role === item.message.role;
+            live[item.id] = true;
+            if (op.op === "insert") {
+                // The delegate is created synchronously and reads this.
+                rowMessages[item.id] = item.message;
+                transcriptModel.insert(op.at, {
+                    rowKey: item.id, revision: 0, continuation: continuation
+                });
+                continue;
+            }
+            if (rowMessages[item.id] !== item.message) {
+                rowMessages[item.id] = item.message;
+                transcriptModel.setProperty(op.at, "revision",
+                    transcriptModel.get(op.at).revision + 1);
+            }
+            if (transcriptModel.get(op.at).continuation !== continuation)
+                transcriptModel.setProperty(op.at, "continuation", continuation);
+        }
+        for (const key of Object.keys(rowMessages))
+            if (live[key] !== true)
+                delete rowMessages[key];
+
+        let assistantId = "";
+        let anyStreaming = false;
+        for (let index = allMessages.length - 1; index >= 0; index--) {
+            const message = allMessages[index];
+            if (assistantId === "" && message.role === "assistant")
+                assistantId = String(message.id ?? "");
+            if (message.streaming === true)
+                anyStreaming = true;
+        }
+        latestAssistantId = assistantId;
+        streaming = anyStreaming;
+
+        if (pendingPrependHeight >= 0) {
+            const oldHeight = pendingPrependHeight;
+            pendingPrependHeight = -1;
+            Qt.callLater(() => {
+                transcriptFlick.contentY = Math.max(0,
+                    transcriptFlick.contentY + transcriptFlick.contentHeight - oldHeight);
+            });
+            return;
+        }
+        scrollToEnd(false);
+    }
+
+    function setExpanded(messageId, value) {
+        const next = Object.assign({}, expandedById);
+        if (value === true)
+            next[messageId] = true;
+        else
+            delete next[messageId];
+        expandedById = next;
+    }
+
     function showEarlier() {
         followTail = false;
         if (hiddenCount > 0) {
             const oldHeight = transcriptFlick.contentHeight;
             visibleItems += 50;
+            syncTranscript();
             Qt.callLater(() => {
                 transcriptFlick.contentY = Math.max(0, transcriptFlick.contentY
                     + transcriptFlick.contentHeight - oldHeight);
@@ -74,25 +160,32 @@ Item {
         visibleItems = 50;
         followTail = true;
         pendingPrependHeight = -1;
+        transcriptModel.clear();
+        rowMessages = ({});
+        expandedById = ({});
+        editingId = "";
+        editDraft = "";
+        syncTranscript();
         scrollToEnd(true);
     }
     onHeightChanged: scrollToEnd(false)
+    Component.onCompleted: syncTranscript()
+
+    ListModel { id: transcriptModel }
+
+    // Throttle, not debounce: a long stream still repaints ~20 times a second.
+    Timer {
+        id: syncTimer
+        interval: 50
+        onTriggered: root.syncTranscript()
+    }
 
     Connections {
         target: HermesConversations
         function onTranscriptChanged(changedConversationId) {
-            if (changedConversationId !== root.conversationId)
-                return;
-            if (root.pendingPrependHeight >= 0) {
-                const oldHeight = root.pendingPrependHeight;
-                root.pendingPrependHeight = -1;
-                Qt.callLater(() => {
-                    transcriptFlick.contentY = Math.max(0,
-                        transcriptFlick.contentY + transcriptFlick.contentHeight - oldHeight);
-                });
-                return;
-            }
-            root.scrollToEnd(false);
+            // Background conversations stream without touching this view.
+            if (changedConversationId === root.conversationId)
+                root.scheduleSync();
         }
         function onToolsByConversationChanged() { root.scrollToEnd(false); }
     }
@@ -133,37 +226,51 @@ Item {
             }
 
             Repeater {
-                model: root.shownItems
+                model: transcriptModel
 
                 delegate: Item {
                     id: timelineRow
-                    required property var modelData
-                    required property int index
+                    required property string rowKey
+                    required property int revision
+                    required property bool continuation
 
-                    readonly property var message: modelData.message ?? ({})
+                    readonly property var message: revision >= 0
+                        ? root.rowMessages[rowKey] ?? ({}) : ({})
+                    readonly property string messageId: String(message.id ?? "")
                     readonly property string messageText: String(message.text ?? "")
                     readonly property bool fromUser: message.role === "user"
                     readonly property bool fromSystem: message.role === "system"
-                    readonly property bool continuation: index > 0
-                        && root.shownItems[index - 1].message.role === message.role
                     readonly property bool hovered: messageHover.hovered || activeFocus
-                    readonly property bool longMessage: messageText.length > 1200
-                        || messageText.split("\n").length > 12
+                    // Only a settled message can collapse; skip the scan mid-stream.
+                    readonly property bool longMessage: !message.streaming
+                        && (messageText.length > 1200
+                            || Helpers.exceedsLineCount(messageText, 12))
                     readonly property bool writable: root.conversationId !== ""
                         && root.conversation?.readOnly !== true && !root.working
                         && !message.streaming
                     readonly property bool editPending: Hermes.actionPending("edit",
-                        root.conversationId, String(message.id ?? ""))
+                        root.conversationId, messageId)
                     readonly property bool regenerationPending:
                         Hermes.actionPending("regenerate", root.conversationId, "")
-                    property bool expanded: false
-                    property bool editing: false
+                    readonly property bool expanded: root.expandedById[messageId] === true
+                    readonly property bool editing: root.editingId !== ""
+                        && root.editingId === messageId
 
                     function submitEdit() {
                         if (editPending || editArea.text.trim() === "")
                             return;
+                        const editedId = messageId;
                         Hermes.editMessage(root.conversationId, message,
-                            editArea.text, () => timelineRow.editing = false);
+                            editArea.text, () => {
+                                if (root.editingId === editedId)
+                                    root.editingId = "";
+                            });
+                    }
+
+                    // A row re-created mid-edit (history reload) keeps its draft.
+                    Component.onCompleted: {
+                        if (editing)
+                            editArea.text = root.editDraft;
                     }
 
                     width: parent.width
@@ -228,7 +335,8 @@ Item {
                                     enabled: timelineRow.writable
                                         && !timelineRow.editPending
                                     onTriggered: {
-                                        timelineRow.editing = true;
+                                        root.editDraft = timelineRow.messageText;
+                                        root.editingId = timelineRow.messageId;
                                         editArea.text = timelineRow.messageText;
                                         Qt.callLater(() => {
                                             editArea.forceActiveFocus();
@@ -351,10 +459,14 @@ Item {
                                     selectionColor: HermesTheme.accentSoft
                                     selectedTextColor: HermesTheme.textPrimary
                                     Accessible.name: "Edited Hermes message"
+                                    onTextChanged: {
+                                        if (timelineRow.editing)
+                                            root.editDraft = text;
+                                    }
 
                                     Keys.onPressed: event => {
                                         if (event.key === Qt.Key_Escape) {
-                                            timelineRow.editing = false;
+                                            root.editingId = "";
                                             event.accepted = true;
                                         } else if ((event.key === Qt.Key_Return
                                                 || event.key === Qt.Key_Enter)
@@ -384,7 +496,7 @@ Item {
                                     buttonRadius: HermesTheme.controlRadius
                                     tint: HermesTheme.textMuted
                                     fill: HermesTheme.hover
-                                    onTriggered: timelineRow.editing = false
+                                    onTriggered: root.editingId = ""
                                 }
 
                                 ActionButton {
@@ -471,7 +583,8 @@ Item {
                             buttonRadius: HermesTheme.controlRadius
                             tint: HermesTheme.textMuted
                             fill: Theme.chip
-                            onTriggered: timelineRow.expanded = !timelineRow.expanded
+                            onTriggered: root.setExpanded(timelineRow.messageId,
+                                !timelineRow.expanded)
                         }
                     }
                 }
@@ -488,7 +601,7 @@ Item {
             Rectangle {
                 id: workingCard
                 visible: root.working && root.latestTool === null
-                    && !root.allMessages.some(message => message.streaming)
+                    && !root.streaming
                 width: parent.width
                 height: 34
                 radius: HermesTheme.rowRadius
@@ -529,7 +642,7 @@ Item {
             }
 
             StatusPlaceholder {
-                visible: root.allItems.length === 0 && !root.working
+                visible: root.itemCount === 0 && !root.working
                 width: parent.width
                 kind: HermesConversations.selectedLoading ? "loading"
                     : Hermes.selectedError !== "" ? "error" : "empty"

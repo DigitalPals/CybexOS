@@ -12,7 +12,15 @@ Singleton {
 
     property var conversations: []
     property string selectedConversationId: ""
+    // Transcripts are mutated in place (a streamed token must not reassign the
+    // map every binding observes). transcriptChanged(id) is the notification;
+    // transcriptRevision lets a binding opt in when it really needs to.
     property var messagesByConversation: ({})
+    property int transcriptRevision: 0
+    // Most recently selected conversations, newest first. Only these keep a
+    // transcript in memory once they settle; others reload on selection.
+    property var transcriptLru: []
+    readonly property int retainedTranscripts: 3
     property var toolsByConversation: ({})
     property var sessionStateByConversation: ({})
     property var historyByConversation: ({})
@@ -29,6 +37,8 @@ Singleton {
     property string error: ""
     property bool panelVisible: false
     property bool stateLoaded: false
+    property bool listInFlight: false
+    property bool listQueued: false
 
     readonly property var newConversation: ({
         id: "",
@@ -52,7 +62,8 @@ Singleton {
     readonly property bool isNewChat: selectedConversationId === ""
     readonly property var selectedConversation: isNewChat
         ? newConversation : conversationById(selectedConversationId)
-    readonly property var selectedMessages: messagesFor(selectedConversationId)
+    readonly property var selectedMessages: transcriptRevision >= 0
+        ? messagesFor(selectedConversationId) : []
     readonly property var selectedTools: toolsFor(selectedConversationId)
     readonly property var selectedSessionState: sessionStateFor(selectedConversationId)
     readonly property var selectedHistory: historyFor(selectedConversationId)
@@ -97,6 +108,50 @@ Singleton {
     function messagesFor(conversationId) {
         const value = messagesByConversation[conversationId];
         return Array.isArray(value) ? value : [];
+    }
+
+    function storeMessages(conversationId, value) {
+        if (value === undefined)
+            delete messagesByConversation[conversationId];
+        else
+            messagesByConversation[conversationId] = value;
+        transcriptRevision++;
+    }
+
+    function touchTranscript(conversationId) {
+        if (conversationId === "")
+            return;
+        const index = transcriptLru.indexOf(conversationId);
+        if (index >= 0)
+            transcriptLru.splice(index, 1);
+        transcriptLru.unshift(conversationId);
+        if (transcriptLru.length > retainedTranscripts)
+            transcriptLru.length = retainedTranscripts;
+        evictTranscripts();
+    }
+
+    // Drop settled transcripts of conversations that are neither selected nor
+    // recently viewed. A live stream keeps its rows until it completes, and
+    // selecting an evicted conversation reloads its history as before.
+    function evictTranscripts() {
+        let evicted = false;
+        let tools = toolsByConversation;
+        let history = historyByConversation;
+        for (const conversationId of Object.keys(messagesByConversation)) {
+            if (conversationId === selectedConversationId
+                    || transcriptLru.indexOf(conversationId) >= 0
+                    || messagesFor(conversationId).some(item => item.streaming === true))
+                continue;
+            delete messagesByConversation[conversationId];
+            tools = copyMap(tools, conversationId, undefined);
+            history = copyMap(history, conversationId, undefined);
+            evicted = true;
+        }
+        if (!evicted)
+            return;
+        toolsByConversation = tools;
+        historyByConversation = history;
+        transcriptRevision++;
     }
 
     function toolsFor(conversationId) {
@@ -156,7 +211,14 @@ Singleton {
         if (draft(conversationId) === text)
             return;
         drafts = copyMap(drafts, conversationId, text === "" ? undefined : text);
-        persist();
+        // Typing updates the draft per keystroke; the state file is written
+        // once the burst settles, and flushed when the panel closes.
+        persistTimer.restart();
+    }
+
+    function flushDrafts() {
+        if (persistTimer.running)
+            persist();
     }
 
     function moveDraft(fromId, toId) {
@@ -249,9 +311,13 @@ Singleton {
             }
             if (conversation.unread === 0 && current.unread > 0)
                 patch.unread = current.unread;
-            return patch;
+            return Helpers.sameConversation(current, patch) ? current : patch;
         });
-        conversations = Helpers.sortedConversations(merged);
+        const sorted = Helpers.sortedConversations(merged);
+        if (sorted.length !== conversations.length
+                || sorted.some((conversation, index) =>
+                    conversation !== conversations[index]))
+            conversations = sorted;
         ready = true;
         loading = false;
         error = "";
@@ -268,6 +334,8 @@ Singleton {
         const current = conversationById(conversation.id);
         const merged = current ? Object.assign({}, current, conversation)
             : conversation;
+        if (current && Helpers.sameConversation(current, merged))
+            return current;
         conversations = Helpers.sortedConversations(
             conversations.filter(item => item.id !== merged.id).concat([merged]));
         return merged;
@@ -279,6 +347,10 @@ Singleton {
             return;
         const updated = Helpers.normalizeConversation(Object.assign({}, current,
             patch, { id: conversationId, sessionId: conversationId }), 0);
+        // Repeated status broadcasts are common; an identical row must not
+        // re-sort and reassign the list every conversation binding observes.
+        if (Helpers.sameConversation(current, updated))
+            return;
         conversations = Helpers.sortedConversations(conversations.map(conversation =>
             conversation.id === conversationId ? updated : conversation));
     }
@@ -286,8 +358,11 @@ Singleton {
     function removeConversationLocal(conversationId) {
         conversations = conversations.filter(conversation =>
             conversation.id !== conversationId);
-        messagesByConversation = copyMap(messagesByConversation,
-            conversationId, undefined);
+        storeMessages(conversationId, undefined);
+        const lruIndex = transcriptLru.indexOf(conversationId);
+        if (lruIndex >= 0)
+            transcriptLru.splice(lruIndex, 1);
+        HermesRpc.forgetConversation(conversationId);
         toolsByConversation = copyMap(toolsByConversation,
             conversationId, undefined);
         sessionStateByConversation = copyMap(sessionStateByConversation,
@@ -328,6 +403,7 @@ Singleton {
             return false;
         const changed = selectedConversationId !== conversationId;
         selectedConversationId = conversationId;
+        touchTranscript(conversationId);
         HermesRpc.notify("conversations.select", { sessionId: conversationId });
         if (panelVisible)
             markRead(conversationId);
@@ -384,8 +460,7 @@ Singleton {
         if (tools.length > 250)
             tools = tools.slice(tools.length - 250);
 
-        messagesByConversation = copyMap(messagesByConversation,
-            conversationId, snapshot);
+        storeMessages(conversationId, snapshot);
         toolsByConversation = copyMap(toolsByConversation,
             conversationId, tools);
         sessionStateByConversation = copyMap(sessionStateByConversation,
@@ -465,18 +540,45 @@ Singleton {
         return true;
     }
 
+    // Connect, remote sign-in and gateway events can each ask for the list in
+    // the same turn. Requests coalesce into one per event-loop turn, and at
+    // most one runs at a time: a request made meanwhile queues exactly one
+    // follow-up, so the last caller still sees a list fetched after its call.
     function refreshAll() {
         if (HermesConnection.state !== "connected")
             return;
         loading = true;
         error = "";
-        HermesRpc.request("conversations.list", {}, result =>
-            root.setConversations(result), reason => {
-                root.loading = false;
-                root.ready = true;
-                root.error = reason;
-            }, { timeoutMs: 30000,
-                fallback: "Could not load Hermes conversations" });
+        Qt.callLater(root.requestConversationList);
+    }
+
+    function requestConversationList() {
+        if (listInFlight) {
+            listQueued = true;
+            return;
+        }
+        if (HermesConnection.state !== "connected") {
+            loading = false;
+            return;
+        }
+        listInFlight = true;
+        const settle = () => {
+            root.listInFlight = false;
+            if (root.listQueued) {
+                root.listQueued = false;
+                root.refreshAll();
+            }
+        };
+        HermesRpc.request("conversations.list", {}, result => {
+            root.setConversations(result);
+            settle();
+        }, reason => {
+            root.loading = false;
+            root.ready = true;
+            root.error = reason;
+            settle();
+        }, { timeoutMs: 30000,
+            fallback: "Could not load Hermes conversations" });
     }
 
     function createConversation(options, onSuccess, onFailure) {
@@ -524,12 +626,19 @@ Singleton {
             : conversationById(conversationId)?.status ?? "idle";
         const statusText = Helpers.firstString(value.statusText, value.activity,
             value.detail, nested.text, nested.detail);
+        const current = conversationById(conversationId);
         const patch = {
             status: status,
-            rawStatus: statusValue,
-            updatedAt: Helpers.firstString(value.updatedAt, value.timestamp,
-                new Date().toISOString())
+            rawStatus: statusValue
         };
+        // Only a real transition moves the conversation in recency order; a
+        // repeated "working" broadcast is not new activity.
+        const timestamp = Helpers.firstString(value.updatedAt, value.timestamp);
+        if (timestamp !== "")
+            patch.updatedAt = timestamp;
+        else if (!current || current.status !== status
+                || (statusText !== "" && current.statusText !== statusText))
+            patch.updatedAt = new Date().toISOString();
         if (statusText !== "")
             patch.statusText = statusText;
         if (value.error !== undefined)
@@ -650,8 +759,7 @@ Singleton {
                     conversationId, undefined);
             if (next.length > 250)
                 next = next.slice(next.length - 250);
-            messagesByConversation = copyMap(messagesByConversation,
-                conversationId, next);
+            storeMessages(conversationId, next);
             if ((event.indexOf("complete") >= 0 || event === "message-created")
                     && (!panelVisible
                         || selectedConversationId !== conversationId)) {
@@ -661,6 +769,8 @@ Singleton {
                 });
             }
             transcriptChanged(conversationId);
+            if (event.indexOf("complete") >= 0)
+                evictTranscripts();
             return;
         }
         if (event.indexOf("tool-") === 0) {
@@ -673,9 +783,13 @@ Singleton {
                 conversationId, nextTools);
             const tool = nextTools.find(item => item.id
                 === Helpers.normalizeTool(toolPayload, 0).id);
-            if (tool && !tool.terminal)
+            const current = conversationById(conversationId);
+            const toolText = tool ? tool.label || tool.name : "";
+            // tool.progress repeats per chunk; only a new tool or label is news.
+            if (tool && !tool.terminal && current && (current.status !== "working"
+                    || current.statusText !== toolText))
                 updateConversation(conversationId, { status: "working",
-                    statusText: tool.label || tool.name,
+                    statusText: toolText,
                     updatedAt: new Date().toISOString() });
             transcriptChanged(conversationId);
             return;
@@ -708,6 +822,7 @@ Singleton {
     }
 
     function persist() {
+        persistTimer.stop();
         if (!stateLoaded)
             return;
         // qmllint disable unqualified
@@ -719,6 +834,16 @@ Singleton {
     onPanelVisibleChanged: {
         if (panelVisible && selectedConversationId !== "")
             markRead(selectedConversationId);
+        if (!panelVisible)
+            flushDrafts();
+    }
+
+    Component.onDestruction: flushDrafts()
+
+    Timer {
+        id: persistTimer
+        interval: 750
+        onTriggered: root.persist()
     }
 
     FileView {

@@ -251,9 +251,123 @@ async def scenario() -> None:
             os.environ["HERMES_REMOTE_URL"] = previous_remote
 
 
+class StalledSocket:
+    """A local client that never drains its socket."""
+
+    def __init__(self) -> None:
+        self.never = asyncio.Event()
+        self.closed_with: tuple[int, str] | None = None
+
+    async def send(self, _text: str) -> None:
+        await self.never.wait()
+
+    async def close(self, code: int = 1000, reason: str = "") -> None:
+        self.closed_with = (code, reason)
+
+
+class RecordingSocket:
+    def __init__(self) -> None:
+        self.frames: list[dict[str, Any]] = []
+
+    async def send(self, text: str) -> None:
+        self.frames.append(json.loads(text))
+
+    async def close(self, code: int = 1000, reason: str = "") -> None:
+        pass
+
+
+async def delivery_scenario() -> None:
+    with tempfile.TemporaryDirectory(prefix="cybexos-hermes-delivery.") as temporary:
+        root = Path(temporary)
+        state = root / "conversations.json"
+        state.write_text(
+            json.dumps({"conversations": [{"session_id": "live-1", "title": "Live"}]}),
+            encoding="utf-8",
+        )
+        registry = BRIDGE.ConversationRegistry(state)
+        bridge = BRIDGE.HermesBridge(
+            registry,
+            "http://127.0.0.1:1",
+            root / "remote-auth.json",
+            local_backend_enabled=False,
+        )
+        saves: list[str] = []
+        real_save = registry.save
+
+        def counting_save() -> None:
+            saves.append(registry.conversations["live-1"]["status_text"])
+            real_save()
+
+        registry.save = counting_save  # type: ignore[method-assign]
+
+        # Repeated thinking/tool-progress status is neither re-broadcast nor
+        # re-persisted; a real transition is, and writes are coalesced.
+        fast = BRIDGE.LocalClient(RecordingSocket())  # type: ignore[arg-type]
+        fast.start()
+        bridge.clients.add(fast)
+        conversation = registry.conversations["live-1"]
+        for _ in range(50):
+            await bridge.set_conversation_status(
+                conversation, "working", "Hermes is working…"
+            )
+        await bridge.set_conversation_status(
+            conversation, "working", "Hermes is reading…"
+        )
+        await bridge.set_conversation_status(
+            conversation, "working", "Hermes is reading…", unread=False
+        )
+        await asyncio.sleep(0.05)
+        kinds = [frame["params"]["type"] for frame in fast.websocket.frames]
+        assert kinds == [
+            "session.status",
+            "conversation.updated",
+            "session.status",
+            "conversation.updated",
+        ], kinds
+        assert saves == [], "status churn must not write synchronously"
+        assert registry._save_handle is not None
+        await asyncio.sleep(BRIDGE.REGISTRY_SAVE_DELAY + 0.2)
+        assert saves == ["Hermes is reading…"], saves
+        persisted = json.loads(state.read_text(encoding="utf-8"))
+        assert persisted["conversations"][0]["status_text"] == "Hermes is reading…"
+
+        # Shutdown flushes a pending coalesced write.
+        await bridge.set_conversation_status(conversation, "idle", "Ready")
+        assert len(saves) == 1
+        await bridge.stop()
+        assert saves[-1] == "Ready" and registry._save_handle is None
+
+        # A client that stops reading is dropped after its bounded backlog
+        # instead of blocking the broadcaster (and the upstream heartbeat).
+        stalled_socket = StalledSocket()
+        stalled = BRIDGE.LocalClient(stalled_socket, backlog=4)  # type: ignore[arg-type]
+        stalled.start()
+        healthy = BRIDGE.LocalClient(RecordingSocket())  # type: ignore[arg-type]
+        healthy.start()
+        bridge.clients = {stalled, healthy}
+        await asyncio.wait_for(
+            asyncio.gather(
+                *(bridge.broadcast_event("fixture.tick", {"n": n}) for n in range(20))
+            ),
+            timeout=1,
+        )
+        await asyncio.sleep(0.05)
+        assert stalled not in bridge.clients
+        assert stalled.closed is True
+        assert stalled_socket.closed_with == (1013, "client too slow")
+        assert healthy in bridge.clients
+        assert [
+            frame["params"]["payload"]["n"] for frame in healthy.websocket.frames
+        ] == list(range(20))
+        for client in (stalled, healthy, fast):
+            await client.stop()
+
+
 if __name__ == "__main__":
     asyncio.run(scenario())
+    asyncio.run(delivery_scenario())
     print(
         "Hermes bridge exposes native WebUI history, starts on New chat, "
-        "creates and deletes sessions, and has no channel RPC contract"
+        "creates and deletes sessions, has no channel RPC contract, "
+        "coalesces status churn, and isolates slow local clients"
     )

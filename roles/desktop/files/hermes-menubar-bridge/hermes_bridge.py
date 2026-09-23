@@ -76,6 +76,13 @@ DEFAULT_UPSTREAM = "http://127.0.0.1:9119"
 DEFAULT_LISTEN = "127.0.0.1"
 DEFAULT_PORT = 9120
 DEFAULT_PATH = "/ws"
+# Live status churn (thinking/tool progress) is coalesced into one registry
+# write per window; explicit saves and shutdown still write immediately.
+REGISTRY_SAVE_DELAY = 1.0
+# Frames buffered per local client. A shell that stops reading falls behind
+# by this many frames and is disconnected rather than stalling the event
+# fan-out that also carries the upstream heartbeat.
+MAX_CLIENT_BACKLOG = 2048
 TOKEN_PATTERN = re.compile(
     r"window\.__HERMES_SESSION_TOKEN__\s*=\s*(\"(?:\\.|[^\"\\])*\")"
 )
@@ -1363,6 +1370,7 @@ class ConversationRegistry:
         self.path = path
         self.conversations: dict[str, dict[str, Any]] = {}
         self.selected_conversation_id = ""
+        self._save_handle: asyncio.TimerHandle | None = None
         self._load()
 
     def _load(self) -> None:
@@ -1461,7 +1469,33 @@ class ConversationRegistry:
         except (TypeError, ValueError, OverflowError):
             return 0
 
+    def save_later(self, delay: float = REGISTRY_SAVE_DELAY) -> None:
+        """Coalesce frequent status writes into one atomic save per window."""
+        if self._save_handle is not None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.save()
+            return
+        self._save_handle = loop.call_later(delay, self._deferred_save)
+
+    def _deferred_save(self) -> None:
+        self._save_handle = None
+        try:
+            self.save()
+        except OSError as exc:
+            LOG.error("could not save conversation registry %s: %s", self.path, exc)
+
+    def flush(self) -> None:
+        """Write a pending coalesced save now (used on shutdown)."""
+        if self._save_handle is not None:
+            self.save()
+
     def save(self) -> None:
+        if self._save_handle is not None:
+            self._save_handle.cancel()
+            self._save_handle = None
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         with suppress(OSError):
             os.chmod(self.path.parent, 0o700)
@@ -1489,13 +1523,86 @@ class ConversationRegistry:
 
 @dataclass(eq=False)
 class LocalClient:
+    """One loopback shell connection with its own bounded outbound queue.
+
+    Producers never await the socket: a dedicated writer task drains the
+    queue, so one stalled client cannot block the upstream reader (and with
+    it the gateway heartbeat) or delay delivery to other clients. A client
+    that falls MAX_CLIENT_BACKLOG frames behind is disconnected; the shell
+    reconnects and reconciles through its normal hello/list/history path.
+    """
+
     websocket: ServerConnection
-    send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     tasks: set[asyncio.Task[Any]] = field(default_factory=set)
+    backlog: int = MAX_CLIENT_BACKLOG
+    closed: bool = False
+    queue: asyncio.Queue[str] = field(init=False)
+    writer: asyncio.Task[Any] | None = field(default=None, init=False)
+
+    def __post_init__(self) -> None:
+        self.queue = asyncio.Queue(maxsize=max(1, self.backlog))
+
+    def start(self) -> None:
+        if self.writer is None:
+            self.writer = asyncio.create_task(
+                self._write(), name="hermes-local-writer"
+            )
+
+    async def _write(self) -> None:
+        try:
+            while True:
+                text = await self.queue.get()
+                await self.websocket.send(text)
+        except ConnectionClosed:
+            pass
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            LOG.debug("local client write failed: %s", exc)
+        finally:
+            self.closed = True
+
+    def enqueue_text(self, text: str) -> bool:
+        if self.closed:
+            return False
+        try:
+            self.queue.put_nowait(text)
+        except asyncio.QueueFull:
+            LOG.warning(
+                "local Hermes client fell %d frames behind; disconnecting it",
+                self.queue.maxsize,
+            )
+            self.abort("client too slow")
+            return False
+        return True
+
+    def abort(self, reason: str) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        if self.writer is not None:
+            self.writer.cancel()
+        closer = asyncio.create_task(
+            self.websocket.close(code=1013, reason=reason),
+            name="hermes-local-close",
+        )
+        self.tasks.add(closer)
+        closer.add_done_callback(self._closed)
+
+    def _closed(self, task: asyncio.Task[Any]) -> None:
+        self.tasks.discard(task)
+        if not task.cancelled():
+            task.exception()
+
+    async def stop(self) -> None:
+        self.closed = True
+        if self.writer is not None:
+            self.writer.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await self.writer
 
     async def send(self, frame: dict[str, Any]) -> None:
-        async with self.send_lock:
-            await self.websocket.send(json_frame(frame))
+        self.enqueue_text(json_frame(frame))
 
 
 @dataclass
@@ -1931,6 +2038,7 @@ class HermesBridge:
         await self.stop_remote_observers()
         await self.stop_remote_streams()
         await self.gateway.stop()
+        self.registry.flush()
         for client in list(self.clients):
             with suppress(Exception):
                 await client.websocket.close(code=1001, reason="bridge stopping")
@@ -2065,6 +2173,7 @@ class HermesBridge:
             return
 
         client = LocalClient(websocket)
+        client.start()
         self.clients.add(client)
         try:
             async for raw in websocket:
@@ -2089,6 +2198,7 @@ class HermesBridge:
             self.clients.discard(client)
             for task in list(client.tasks):
                 task.cancel()
+            await client.stop()
 
     async def _serve_client_frame(self, client: LocalClient, frame: Any) -> None:
         if not isinstance(frame, dict):
@@ -6345,12 +6455,22 @@ class HermesBridge:
         text: str,
         unread: bool | None = None,
     ) -> None:
+        status_text = text[:240]
+        # Thinking/reasoning/tool-progress deltas repeat the same status many
+        # times per second. Only a real transition is persisted and broadcast;
+        # updated_at alone is not a change worth a write or two frames.
+        if (
+            conversation.get("status") == status
+            and conversation.get("status_text") == status_text
+            and (unread is None or bool(conversation.get("unread")) == unread)
+        ):
+            return
         conversation["status"] = status
-        conversation["status_text"] = text[:240]
+        conversation["status_text"] = status_text
         if unread is not None:
             conversation["unread"] = unread
         conversation["updated_at"] = utc_now()
-        self.registry.save()
+        self.registry.save_later()
         public = self.public_conversation(conversation)
         await self.broadcast_event(
             "session.status",
@@ -6377,15 +6497,13 @@ class HermesBridge:
             await self.broadcast_event("remote.session_expired", dict(status))
 
     async def broadcast_event(self, event_type: str, payload: dict[str, Any]) -> None:
-        frame = event_frame(event_type, payload)
+        # Serialize once and enqueue without awaiting any socket: delivery is
+        # each client's writer task, so a slow shell cannot stall this caller
+        # (often the upstream receive loop).
+        text = json_frame(event_frame(event_type, payload))
         stale: list[LocalClient] = []
         for client in list(self.clients):
-            try:
-                await client.send(frame)
-            except ConnectionClosed:
-                stale.append(client)
-            except Exception as exc:
-                LOG.debug("local event delivery failed: %s", exc)
+            if not client.enqueue_text(text):
                 stale.append(client)
         for client in stale:
             self.clients.discard(client)

@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import "HermesHelpers.js" as Helpers
 import "ExternalUrl.js" as ExternalUrl
 
@@ -50,6 +51,13 @@ Singleton {
     property var reasoningBySelection: ({})
     property var attachmentsByConversation: ({})
     property var commandCatalog: []
+    property bool modelCatalogInFlight: false
+    property bool modelCatalogQueued: false
+    // The file picker belongs to the singleton, not the composer: the popover
+    // (and its composer) is destroyed when it loses focus to the dialog, and a
+    // Process owned there would die with it and drop the selection.
+    readonly property bool attachmentPickerRunning: attachmentPicker.running
+    property string attachmentPickerConversationId: ""
 
     readonly property var opts: Settings.modOpts.hermes ?? ({})
     readonly property string activityDetail: ["full", "verb", "generic"]
@@ -116,11 +124,7 @@ Singleton {
     }
 
     function actionKindPending(kind, conversationId) {
-        const prefix = kind + "|" + (conversationId || "") + "|";
-        for (const key in actionStates)
-            if (key.indexOf(prefix) === 0 && actionStates[key]?.pending === true)
-                return true;
-        return false;
+        return HermesRpc.kindPending(kind, conversationId);
     }
 
     function openExternalUrl(value) {
@@ -155,9 +159,10 @@ Singleton {
             version: 1,
             capabilities: ["conversations", "streaming", "tools", "requests"]
         }, result => {
+            // bridge.hello already carries a provider status the bridge has
+            // just refreshed, so no second, forced provider probe follows.
             root.applyReady(result);
             root.refreshRemoteStatus();
-            root.refreshProviderStatus();
             root.loadCommandCatalog();
             root.loadModelCatalog();
             HermesConversations.refreshAll();
@@ -258,9 +263,14 @@ Singleton {
             return "";
         }
         return HermesRpc.request("remote.status", {}, result => {
+            const wasConnected = root.remoteConnected;
             root.applyRemoteStatus(result);
-            if (root.remoteConnected)
+            // Reload only when the session became usable; hello and sign-in
+            // already load the list for a session that was connected.
+            if (root.remoteConnected && !wasConnected) {
+                root.loadModelCatalog();
                 HermesConversations.refreshAll();
+            }
             onSuccess?.(result);
         }, reason => {
             root.applyRemoteFailure(reason);
@@ -413,10 +423,31 @@ Singleton {
         }, { timeoutMs: 15000, fallback: "Hermes command catalog unavailable" });
     }
 
+    // Coalesced like HermesConversations.refreshAll: one request per turn and
+    // at most one in flight, with a single queued follow-up.
     function loadModelCatalog() {
         if (!connected || !bridgeReady)
             return;
+        Qt.callLater(root.requestModelCatalog);
+    }
+
+    function requestModelCatalog() {
+        if (!connected || !bridgeReady)
+            return;
+        if (modelCatalogInFlight) {
+            modelCatalogQueued = true;
+            return;
+        }
+        modelCatalogInFlight = true;
+        const settle = () => {
+            root.modelCatalogInFlight = false;
+            if (root.modelCatalogQueued) {
+                root.modelCatalogQueued = false;
+                root.loadModelCatalog();
+            }
+        };
         HermesRpc.request("models.catalog", {}, result => {
+            settle();
             const value = Helpers.object(result);
             root.modelGroups = Array.isArray(value.groups) ? value.groups : [];
             root.defaultModel = Helpers.firstString(value.defaultModel,
@@ -434,6 +465,7 @@ Singleton {
             root.models = flattened;
             root.loadReasoning("", true);
         }, () => {
+            settle();
             root.modelGroups = [];
         }, { timeoutMs: 45000, fallback: "Hermes model catalog unavailable" });
     }
@@ -601,6 +633,30 @@ Singleton {
 
     function setDraft(conversationId, value) {
         HermesConversations.setDraft(conversationId, value);
+    }
+
+    function flushDrafts() {
+        HermesConversations.flushDrafts();
+    }
+
+    function pickAttachments(conversationId) {
+        if (attachmentPicker.running || capabilities.attachments !== true)
+            return false;
+        attachmentPickerConversationId = conversationId;
+        attachmentPicker.command = ["zenity", "--file-selection", "--multiple",
+            "--separator=\n", "--title=Attach files to Hermes"];
+        attachmentPicker.running = true;
+        return true;
+    }
+
+    function acceptPickedAttachments(exitCode) {
+        const conversationId = attachmentPickerConversationId;
+        attachmentPickerConversationId = "";
+        if (exitCode !== 0)
+            return;
+        const paths = attachmentPickerOutput.text.split("\n")
+            .map(value => value.trim()).filter(value => value !== "");
+        stageAttachments(conversationId, paths);
     }
 
     function attachments(conversationId) {
@@ -1061,6 +1117,15 @@ Singleton {
         return Helpers.relativeTime(value, Date.now());
     }
 
+    Process {
+        id: attachmentPicker
+
+        stdout: StdioCollector { id: attachmentPickerOutput }
+        stderr: StdioCollector {}
+        onExited: code => Qt.callLater(() =>
+            root.acceptPickedAttachments(code))
+    }
+
     Connections {
         target: HermesConnection
         function onOpened() { root.hello(); }
@@ -1078,7 +1143,6 @@ Singleton {
             if (normalized === "bridge-ready") {
                 root.applyReady(payload);
                 root.refreshRemoteStatus();
-                root.refreshProviderStatus();
                 root.loadCommandCatalog();
                 root.loadModelCatalog();
                 HermesConversations.refreshAll();
@@ -1101,8 +1165,9 @@ Singleton {
             } else if (normalized === "provider-status") {
                 root.applyProviderStatus(payload);
             } else if (normalized === "remote-status") {
+                const wasConnected = root.remoteConnected;
                 root.applyRemoteStatus(payload);
-                if (root.remoteConnected) {
+                if (root.remoteConnected && !wasConnected) {
                     root.loadModelCatalog();
                     HermesConversations.refreshAll();
                 }
