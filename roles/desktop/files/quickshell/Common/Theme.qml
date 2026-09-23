@@ -529,10 +529,14 @@ Singleton {
     // stack below their labels only when the page itself becomes narrow.
     // Settings distinguish compact rows, related content, subsections and
     // groups. A subsection owns its leading space, including inside revealers.
-    readonly property int settingsRowSpacing: panelRowSpacing
+    // A settings page is read top to bottom rather than glanced at like a
+    // popover, so it spaces its groups wider than the panels do: the gap alone
+    // separates them, and a heading sits visibly closer to its own rows than
+    // to the group above.
+    readonly property int settingsRowSpacing: scaled(4)
     readonly property int settingsContentSpacing: scaled(8)
-    readonly property int settingsSubsectionSpacing: scaled(12)
-    readonly property int settingsGroupSpacing: panelSectionSpacing
+    readonly property int settingsSubsectionSpacing: scaled(20)
+    readonly property int settingsGroupSpacing: scaled(28)
     readonly property int controlSpacing: scaled(8)
     readonly property int iconTextSpacing: scaled(6)
     readonly property int settingsStackOffset: typography.control + settingsContentSpacing
