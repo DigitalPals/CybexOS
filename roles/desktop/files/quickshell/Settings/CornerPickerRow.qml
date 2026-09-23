@@ -92,8 +92,9 @@ SettingsRow {
                     event.accepted = true;
                     if (target === modelData)
                         return;
-                    root.pick(target);
+                    // Focus before the pick: see PillRow.
                     cornerRepeater.itemAt(root.corners.indexOf(target)).forceActiveFocus();
+                    root.pick(target);
                 }
 
                 MouseArea {

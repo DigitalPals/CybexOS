@@ -62,8 +62,12 @@ Flow {
                     root.picked(modelData.value); event.accepted = true; return;
                 }
                 if (next >= 0) {
-                    root.picked(root.model[next].value);
+                    // Focus moves before the value does. activeFocusOnTab
+                    // follows the selection, and Qt refuses to clear it on
+                    // the item that still holds focus — which left the old
+                    // pill behind as a second, stale tab stop.
                     pillRepeater.itemAt(next).forceActiveFocus();
+                    root.picked(root.model[next].value);
                     event.accepted = true;
                 }
             }

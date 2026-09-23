@@ -72,3 +72,36 @@ test("spinners stop while their view is hidden", () => {
         assert.match(read(file),
             new RegExp(`onRunningChanged: if \\(!running\\) ${id}\\.rotation = 0`), `${file} ${id}`);
 });
+
+test("roving keyboard pickers move focus before they commit", () => {
+    // activeFocusOnTab follows the selection. Committing first asked Qt to
+    // clear it on the item that still held focus, which it refuses ("Cannot
+    // set activeFocusOnTab to false once item is the active focus item"),
+    // leaving a stale second tab stop behind.
+    const order = (source, focus, commit, label) => {
+        const at = source.indexOf(focus);
+        assert.ok(at > 0, `${label}: focus call not found`);
+        const next = source.indexOf(commit, at);
+        assert.ok(next > at, `${label}: the commit must follow the focus move`);
+        assert.ok(next - at < 160, `${label}: the commit must be the focus move's own`);
+    };
+    order(read("Settings/PillRow.qml"),
+        "pillRepeater.itemAt(next).forceActiveFocus();",
+        "root.picked(root.model[next].value);", "PillRow");
+    const appearance = read("Settings/AppearancePage.qml");
+    order(appearance, "swatchRepeater.itemAt(next).forceActiveFocus();",
+        "page.pickAccent(page.accentChoices[next]);", "accent swatches");
+    order(appearance, "barColorRepeater.itemAt(next).forceActiveFocus();",
+        'Settings.set("barColorMode", Settings.barColorChoices[next].id);', "bar colours");
+    order(read("Settings/CornerPickerRow.qml"),
+        "cornerRepeater.itemAt(root.corners.indexOf(target)).forceActiveFocus();",
+        "root.pick(target);", "corner picker");
+    const view = read("Settings/SettingsView.qml");
+    const select = view.slice(view.indexOf("function selectVisible("),
+        view.indexOf("function selectOffset("));
+    order(select, "item.forceActiveFocus();", "Settings.page = navItems[clamped].id;",
+        "settings rail keys");
+    assert.match(view,
+        /onClicked:\s*\{\s*navItem\.forceActiveFocus\(\);\s*Settings\.page = navItem\.modelData\.id;/,
+        "settings rail clicks");
+});
