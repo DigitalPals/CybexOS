@@ -132,7 +132,10 @@ after their read-only discovery endpoints return a usable contract.
 
 The small Python bridge remains loopback-only on `ws://127.0.0.1:9120/ws`. It
 owns the remote cookie and never exposes it to QML; it does not contain or run
-the Hermes Agent model/runtime. Browser-originated turns are owned by the
+the Hermes Agent model/runtime. Remote requests never hold the bridge's
+credential lock while they wait on the network, so a slow or unreachable WebUI
+delays only its own request: local RPCs, other remote calls, and live stream
+relays stay responsive. Browser-originated turns are owned by the
 remote Hermes Gateway rather than imported into the long-running WebUI Python
 process. Updating the Agent checkout therefore cannot stale the WebUI process
 used by this widget.
