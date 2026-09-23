@@ -36,9 +36,13 @@ the archive checksum is otherwise correct.
 
 Do not edit an existing release. Immutability makes correction explicit: fix
 forward, increment the version, and publish a new tag. If rollout must stop,
-remove the bad release from channel discovery and publish a corrected release;
-users whose system apply failed remain on their previous active source and
-retain their prior configuration automatically.
+remove the bad release from channel discovery and publish a corrected release.
+Users whose system apply failed keep their previous active release (`current`)
+and their prior saved configuration, but files that Ansible had already
+deployed from the failed candidate stay in place; the run records
+`mixedState: true`. The corrected release converges them, and
+`~/.local/share/cybexos/current/install` restores the previous release's files
+in the meantime.
 
 ## What the workflow publishes
 

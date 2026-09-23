@@ -261,6 +261,25 @@ def verify_user_updater_runtime(values: dict) -> None:
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == "UNCHANGED: user-managed CLI versions"
 
+    # The Claude pin is a floor. A newer self-updated version is left alone
+    # instead of being downgraded to the pin on every converge.
+    major, minor, patch = claude_pin.split("-")[0].split("+")[0].split(".")[:3]
+    for newer in (f"{major}.{minor}.{int(patch) + 33}", f"{major}.{int(minor) + 1}.0"):
+        with tempfile.TemporaryDirectory(prefix="cybexos-user-tools.") as temporary:
+            home = Path(temporary)
+            executable(
+                home / ".local/bin/claude",
+                f'if [[ ${{1:-}} == --version ]]; then echo "{newer} (Claude Code)"; '
+                'else echo "unexpected claude $*" >&2; exit 99; fi\n',
+            )
+            executable(home / ".local/bin/opencode", f'echo "{opencode_pin}"\n')
+            executable(home / ".local/bin/codex", f'echo "codex-cli {codex_pin}"\n')
+            executable(home / ".local/bin/npm", 'echo "unexpected npm call" >&2; exit 99\n')
+            executable(home / ".local/bin/curl", 'echo "unexpected curl call" >&2; exit 99\n')
+            result = run(home)
+            assert result.returncode == 0, (newer, result.stderr)
+            assert result.stdout.strip() == "UNCHANGED: user-managed CLI versions"
+
     # A failed native Claude switch restores the exact prior version symlink.
     with tempfile.TemporaryDirectory(prefix="cybexos-user-tools.") as temporary:
         home = Path(temporary)
@@ -288,7 +307,7 @@ def verify_user_updater_runtime(values: dict) -> None:
         executable(home / ".local/bin/curl", 'exit 1\n')
         result = run(home)
         assert result.returncode == 1, (result.stdout, result.stderr)
-        assert f"claude={claude_pin}" in result.stderr
+        assert f"claude>={claude_pin}" in result.stderr
 
     # OpenCode is built off to the side. A failed npm operation leaves the
     # legacy global installation untouched and reports the recoverable status.

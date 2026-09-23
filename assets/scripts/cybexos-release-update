@@ -27,7 +27,10 @@ Usage: cybex update [--check] [--channel stable|beta] [--system-only]
                             [--no-packages] [--no-flatpak] [--start] [--json]
 
 By default, check GitHub for a verified CybexOS release, stage and apply
-it when newer, and then update Fedora packages and system Flatpaks.
+it when newer, and then update Fedora packages and system Flatpaks. When the
+release cannot be checked, verified, or staged (offline, a GitHub error, or no
+`gh auth login`), packages are still updated and the command exits 69 after a
+successful package run; --start reports the reason as projectError.
 
   --check        Only report whether a compatible project release is available
   --channel      Save and use the stable or beta release channel
@@ -75,7 +78,9 @@ if [[ $command_name == system-only ]]; then
   exec "$backend" "${args[@]}" "${backend_args[@]}"
 fi
 
-for required_command in curl gh jq python3 sha256sum tar; do
+# The project release needs GitHub and a logged-in gh; Fedora and Flatpak
+# updates must not. Only tools every path needs are hard requirements here.
+for required_command in curl jq python3 sha256sum tar; do
   command -v "$required_command" >/dev/null 2>&1 || {
     printf 'update: required command is missing: %s\n' "$required_command" >&2
     exit 2
@@ -83,10 +88,6 @@ for required_command in curl gh jq python3 sha256sum tar; do
 done
 [[ -x $semver_helper ]] || {
   printf 'update: Semantic Version helper is missing: %s\n' "$semver_helper" >&2
-  exit 2
-}
-gh release verify --help >/dev/null 2>&1 && gh release verify-asset --help >/dev/null 2>&1 || {
-  echo 'update: this GitHub CLI is too old; upgrade gh before project updates' >&2
   exit 2
 }
 [[ -r $config_file ]] || {
@@ -117,38 +118,89 @@ current_version=0.0.0
 
 release_json=$(mktemp)
 archive=$(mktemp --suffix=.tar.zst)
-cleanup() { rm -f -- "$release_json" "$archive"; }
+stage=
+cleanup() {
+  rm -f -- "$release_json" "$archive"
+  [[ -z $stage ]] || rm -rf -- "$stage"
+}
 trap cleanup EXIT
 
+# Bound the connection and abort a stalled transfer. The installed release
+# tree does not ship the system helper library, so the limits are local here.
+release_curl() {
+  curl --connect-timeout 15 --speed-limit 1024 --speed-time 60 \
+    --retry 3 --retry-connrefused --fail --silent --show-error --location "$@"
+}
+
+# Every step that depends on GitHub or on the downloaded candidate records why
+# it could not continue instead of exiting, so that being offline, an API
+# error, or a missing `gh auth login` still leaves package updates working.
+# These functions run in conditional context, where `set -e` does not apply;
+# each step checks its own status.
+project_error=
+project_unavailable() {
+  project_error=$1
+  return 1
+}
+
 fetch_release() {
-  local api="https://api.github.com/repos/$github_repo/releases"
+  local api="https://api.github.com/repos/$github_repo/releases" rc=0
   if [[ $channel == stable ]]; then
     api+="/latest"
-    curl --fail --silent --show-error --location --retry 3 \
-      -H 'Accept: application/vnd.github+json' "$api" -o "$release_json"
+    release_curl --max-time 60 \
+      -H 'Accept: application/vnd.github+json' "$api" -o "$release_json" || rc=$?
   else
-    curl --fail --silent --show-error --location --retry 3 \
-      -H 'Accept: application/vnd.github+json' "$api?per_page=30" -o "$release_json"
-    jq -e '[.[] | select(.draft == false and .prerelease == true)] | first' \
-      "$release_json" >"$release_json.selected"
-    mv -f -- "$release_json.selected" "$release_json"
+    release_curl --max-time 60 \
+      -H 'Accept: application/vnd.github+json' "$api?per_page=30" -o "$release_json" \
+      || rc=$?
+    ((rc != 0)) || jq -e '[.[] | select(.draft == false and .prerelease == true)] | first' \
+      "$release_json" >"$release_json.selected" || rc=$?
+    ((rc != 0)) || mv -f -- "$release_json.selected" "$release_json" || rc=$?
+  fi
+  if ((rc != 0)); then
+    project_unavailable "could not fetch the $channel release from GitHub"
+    return "$rc"
   fi
 
-  tag=$(jq -er '.tag_name | strings | select(startswith("v"))' "$release_json")
+  tag=$(jq -er '.tag_name | strings | select(startswith("v"))' "$release_json") \
+    || { project_unavailable 'GitHub returned no usable release tag'; return; }
   release_version=${tag#v}
   "$semver_helper" validate "$release_version" || {
     printf 'update: release tag is not strict SemVer: %s\n' "$tag" >&2
-    return 1
+    project_unavailable "release tag is not strict SemVer: $tag"
+    return
   }
   asset_name="cybexos-$release_version.tar.zst"
   asset_url=$(jq -er --arg name "$asset_name" \
-    '.assets[] | select(.name == $name) | .browser_download_url' "$release_json")
+    '.assets[] | select(.name == $name) | .browser_download_url' "$release_json") \
+    || { project_unavailable "release $tag has no $asset_name asset"; return; }
   asset_digest=$(jq -er --arg name "$asset_name" \
-    '.assets[] | select(.name == $name) | .digest | select(test("^sha256:[0-9a-f]{64}$"))' "$release_json")
+    '.assets[] | select(.name == $name) | .digest | select(test("^sha256:[0-9a-f]{64}$"))' "$release_json") \
+    || { project_unavailable "release $tag publishes no SHA-256 digest for $asset_name"; return; }
   immutable=$(jq -r '.immutable // false' "$release_json")
   [[ $immutable == true ]] || {
     printf 'update: refusing mutable GitHub release %s\n' "$tag" >&2
-    return 1
+    project_unavailable "refusing mutable GitHub release $tag"
+    return
+  }
+}
+
+# gh verifies the release and asset attestations. Every gh API command needs a
+# login (or a token in the environment); without one `gh release verify` fails
+# only after the archive has been downloaded, so check up front.
+gh_verification_ready() {
+  command -v gh >/dev/null 2>&1 || {
+    project_unavailable 'the GitHub CLI (gh) is not installed; it verifies CybexOS releases'
+    return
+  }
+  gh release verify --help >/dev/null 2>&1 && gh release verify-asset --help >/dev/null 2>&1 || {
+    project_unavailable 'this GitHub CLI is too old to verify CybexOS releases; upgrade gh'
+    return
+  }
+  [[ -z ${GH_TOKEN:-} && -z ${GITHUB_TOKEN:-} ]] || return 0
+  timeout 10 gh auth token >/dev/null 2>&1 || {
+    project_unavailable 'the GitHub CLI is not logged in; run `gh auth login` to verify CybexOS releases'
+    return
   }
 }
 
@@ -160,7 +212,8 @@ compatible_manifest() {
   local tree=$1 expected_version=$2 fedora architecture schema minimum_updater
   fedora=$(source /etc/os-release; printf '%s' "$VERSION_ID")
   architecture=$(uname -m)
-  schema=$(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1])).get("config_schema_version", 0))' "$config_file")
+  schema=$(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1])).get("config_schema_version", 0))' "$config_file") \
+    || return 1
   jq -e --arg version "$expected_version" --arg fedora "$fedora" \
     --arg architecture "$architecture" --argjson schema "$schema" \
     '.product == "cybexos"
@@ -176,18 +229,81 @@ compatible_manifest() {
     || version_newer "$updater_version" "$minimum_updater"
 }
 
-fetch_release
+# Download, verify, and extract the candidate into a hidden stage directory.
+stage_release() {
+  local actual_digest
+  gh_verification_ready || return
+  if [[ $start_only == true ]]; then
+    printf 'Downloading CybexOS %s...\n' "$release_version" >&2
+  else
+    printf 'Downloading CybexOS %s...\n' "$release_version"
+  fi
+  release_curl "$asset_url" -o "$archive" \
+    || { project_unavailable "could not download CybexOS $release_version"; return; }
+  actual_digest=sha256:$(sha256sum "$archive" | awk '{print $1}')
+  [[ $actual_digest == "$asset_digest" ]] || {
+    project_unavailable "the downloaded CybexOS $release_version archive does not match GitHub's digest"
+    return
+  }
+  timeout 120 gh release verify "$tag" --repo "$github_repo" >/dev/null \
+    && timeout 120 gh release verify-asset "$tag" "$archive" --repo "$github_repo" >/dev/null \
+    || {
+      project_unavailable "GitHub could not verify the CybexOS $release_version release attestations"
+      return
+    }
+
+  stage=$(mktemp -d "$releases_root/.stage.$release_version.XXXXXX") \
+    || { project_unavailable 'could not create a release staging directory'; return; }
+  tar --extract --zstd --file "$archive" --directory "$stage" --strip-components=1 \
+    || { project_unavailable "could not extract CybexOS $release_version"; return; }
+  [[ -x $stage/install && -x $stage/verify \
+      && -x $stage/scripts/manage-agent-skills \
+      && -r $stage/agent-skills/cybexos/SKILL.md \
+      && -r $stage/release-manifest.json ]] || {
+    project_unavailable "the CybexOS $release_version archive is incomplete"
+    return
+  }
+  [[ $(tr -d '[:space:]' <"$stage/VERSION") == "$release_version" ]] || {
+    project_unavailable "the CybexOS $release_version archive does not match its tag"
+    return
+  }
+  compatible_manifest "$stage" "$release_version" || {
+    project_unavailable "CybexOS $release_version is incompatible with this system or saved configuration"
+    return
+  }
+  [[ $stage == "$releases_root/.stage.$release_version."* ]] \
+    && "$semver_helper" validate "$release_version" || {
+    project_unavailable 'unsafe release staging path'
+    return
+  }
+}
+
 available=false
-version_newer "$release_version" "$current_version" && available=true
+fetch_rc=0
+fetch_release || fetch_rc=$?
+if ((fetch_rc == 0)); then
+  version_newer "$release_version" "$current_version" && available=true
+fi
 
 if [[ $command_name == check ]]; then
+  # A failed check keeps the tool's own error as its last stderr line; the
+  # panel maps curl's HTTP errors to friendlier text.
+  ((fetch_rc == 0)) || exit "$fetch_rc"
+  # A release that this machine cannot verify is still reported, with the
+  # reason, so the panel can say what is needed before it can be applied.
+  if [[ $available == true ]]; then
+    gh_verification_ready || true
+  fi
   if [[ $json == true ]]; then
     jq -cn --arg current "$current_version" --arg availableVersion "$release_version" \
       --arg channel "$channel" --argjson available "$available" \
-      '{currentVersion:$current,availableVersion:$availableVersion,channel:$channel,available:$available}'
+      --arg projectError "$project_error" \
+      '{currentVersion:$current,availableVersion:$availableVersion,channel:$channel,
+        available:$available,projectError:$projectError}'
   elif [[ $available == true ]]; then
     printf 'CybexOS %s is available (installed: %s, channel: %s).\n' \
       "$release_version" "$current_version" "$channel"
+    [[ -z $project_error ]] || printf 'To apply it: %s.\n' "$project_error"
   else
     printf 'CybexOS %s is current on the %s channel.\n' "$current_version" "$channel"
   fi
@@ -195,52 +311,22 @@ if [[ $command_name == check ]]; then
 fi
 
 candidate=
-if [[ $available == true ]]; then
-  if [[ $start_only == true ]]; then
-    printf 'Downloading CybexOS %s...\n' "$release_version" >&2
-  else
-    printf 'Downloading CybexOS %s...\n' "$release_version"
-  fi
-  curl --fail --silent --show-error --location --retry 3 \
-    "$asset_url" -o "$archive"
-  actual_digest=sha256:$(sha256sum "$archive" | awk '{print $1}')
-  [[ $actual_digest == "$asset_digest" ]] || {
-    echo 'update: downloaded release digest does not match GitHub metadata' >&2
-    exit 1
-  }
-  gh release verify "$tag" --repo "$github_repo" >/dev/null
-  gh release verify-asset "$tag" "$archive" --repo "$github_repo" >/dev/null
-
-  stage=$(mktemp -d "$releases_root/.stage.$release_version.XXXXXX")
-  trap 'rm -f -- "$release_json" "$archive"; [[ -z ${stage:-} ]] || rm -rf -- "$stage"' EXIT
-  tar --extract --zstd --file "$archive" --directory "$stage" --strip-components=1
-  [[ -x $stage/install && -x $stage/verify \
-      && -x $stage/scripts/manage-agent-skills \
-      && -r $stage/agent-skills/cybexos/SKILL.md \
-      && -r $stage/release-manifest.json ]] || {
-    echo 'update: release archive is incomplete' >&2
-    exit 1
-  }
-  [[ $(tr -d '[:space:]' <"$stage/VERSION") == "$release_version" ]] || {
-    echo 'update: release version does not match its tag' >&2
-    exit 1
-  }
-  compatible_manifest "$stage" "$release_version" || {
-    printf 'update: CybexOS %s is incompatible with this system or saved configuration\n' "$release_version" >&2
-    exit 1
-  }
+if [[ $available == true ]] && stage_release; then
   candidate=$stage
-  [[ $candidate == "$releases_root/.stage.$release_version."* ]] \
-    && "$semver_helper" validate "$release_version" || {
-    echo 'update: unsafe release staging path' >&2
-    exit 1
-  }
   # Transfer cleanup ownership before asking the backend to launch. The worker
   # promotes this unique verified tree to its canonical version path while it
   # owns the global update lock; no competing client can replace a tree already
   # being applied. An interruption during launch may leave a harmless hidden
   # stage for explicit maintenance, but can never remove a worker-owned tree.
   stage=
+fi
+if [[ -n $stage ]]; then
+  rm -rf -- "$stage"
+  stage=
+fi
+
+if [[ -n $project_error ]]; then
+  printf 'update: CybexOS release skipped: %s\n' "$project_error" >&2
 fi
 
 if [[ -n $candidate ]]; then
@@ -251,6 +337,8 @@ if [[ -n $candidate ]]; then
   [[ $with_flatpak == true ]] || update_args+=(--no-flatpak)
   update_args+=(-- -e "@$config_file")
 elif [[ $with_packages == true ]]; then
+  [[ -z $project_error ]] \
+    || printf 'update: updating Fedora packages and system Flatpaks only\n' >&2
   if [[ $start_only == true ]]; then
     update_args=(start --json --system-unit)
   else
@@ -258,6 +346,7 @@ elif [[ $with_packages == true ]]; then
   fi
   [[ $with_flatpak == true ]] || update_args+=(--no-flatpak)
 else
+  [[ -z $project_error ]] || exit 1
   if [[ $start_only == true ]]; then
     echo 'update: no project or package work was requested' >&2
     exit 4
@@ -265,14 +354,40 @@ else
   echo 'CybexOS is already current.'
   exit 0
 fi
+
+if [[ -z $candidate ]]; then
+  if [[ $start_only == true ]]; then
+    set +e
+    backend_output=$("$backend" "${update_args[@]}" "${backend_args[@]}")
+    backend_rc=$?
+    set -e
+    # The panel reads one JSON record. Carry the skipped release's reason in
+    # it, so a started package-only run can say why CybexOS was not updated.
+    if [[ -n $project_error ]] \
+        && merged=$(jq -c --arg projectError "$project_error" \
+          '. + {projectError: $projectError}' <<<"$backend_output" 2>/dev/null); then
+      backend_output=$merged
+    fi
+    printf '%s\n' "$backend_output"
+    exit "$backend_rc"
+  fi
+  # Stream the attached package run directly to the terminal.
+  set +e
+  "$backend" "${update_args[@]}" "${backend_args[@]}"
+  backend_rc=$?
+  set -e
+  if [[ -n $project_error ]] && ((backend_rc == 0)); then
+    printf 'update: system packages were updated, but CybexOS was not: %s\n' \
+      "$project_error" >&2
+    exit 69
+  fi
+  exit "$backend_rc"
+fi
+
 set +e
 backend_output=$("$backend" "${update_args[@]}" "${backend_args[@]}")
 backend_rc=$?
 set -e
-if [[ -z $candidate ]]; then
-  printf '%s\n' "$backend_output"
-  exit "$backend_rc"
-fi
 if ((backend_rc == 3)); then
   active_id=$(jq -r '.id // empty' <<<"$backend_output" 2>/dev/null || true)
   printf 'update: another update is active%s; retry after it finishes\n' \

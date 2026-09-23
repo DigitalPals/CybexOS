@@ -36,6 +36,31 @@ claude_version() {
   semver "$(claude --version 2>/dev/null)"
 }
 
+# version_at_least VERSION MINIMUM
+# Succeeds when VERSION has at least MINIMUM's precedence. The Claude Code pin
+# is a floor: its native updater moves ahead of it, and reinstalling the exact
+# pin downgraded the user on every converge until the next self-update.
+version_at_least() {
+  local left=${1%%+*} right=${2%%+*} left_core right_core
+  local left_pre="" right_pre="" index
+  local -a left_parts right_parts
+  [[ -n $left && -n $right ]] || return 1
+  left_core=${left%%-*}
+  right_core=${right%%-*}
+  [[ $left == "$left_core" ]] || left_pre=${left#*-}
+  [[ $right == "$right_core" ]] || right_pre=${right#*-}
+  IFS=. read -r -a left_parts <<<"$left_core"
+  IFS=. read -r -a right_parts <<<"$right_core"
+  for index in 0 1 2; do
+    ((10#${left_parts[index]:-0} > 10#${right_parts[index]:-0})) && return 0
+    ((10#${left_parts[index]:-0} < 10#${right_parts[index]:-0})) && return 1
+  done
+  # Equal cores: the release itself outranks any of its prereleases.
+  [[ -z $left_pre ]] && return 0
+  [[ -n $right_pre ]] || return 1
+  [[ $(printf '%s\n%s\n' "$left_pre" "$right_pre" | sort -V | tail -n 1) == "$left_pre" ]]
+}
+
 restore_claude() {
   local previous_path=$1 temporary
   [[ -x $previous_path && $previous_path == "$HOME/.local/share/claude/versions/"* ]] \
@@ -46,11 +71,11 @@ restore_claude() {
 
 before=$(claude_version || true)
 initial_claude=$before
-if [[ $before != "$claude_pin" ]]; then
+if ! version_at_least "$before" "$claude_pin"; then
   before_path=$(command -v claude 2>/dev/null || true)
   [[ -z $before_path ]] || before_path=$(readlink -f -- "$before_path")
   if [[ -n $before ]]; then
-    if ! claude install "$claude_pin" >/dev/null 2>&1; then
+    if ! timeout 15m claude install "$claude_pin" >/dev/null 2>&1; then
       restore_claude "$before_path"
       echo "Claude Code $claude_pin install failed; existing $before retained" >&2
       failed=1
@@ -58,10 +83,15 @@ if [[ $before != "$claude_pin" ]]; then
   else
     if installer=$(mktemp "${TMPDIR:-/tmp}/cybexos-user-tools.XXXXXX"); then
       cleanup_paths+=("$installer")
-      if curl --fail --silent --show-error --location https://claude.ai/install.sh -o "$installer"; then
+      # Bound the connection and abort a stalled transfer: this runs inside a
+      # synchronous Ansible task, which would otherwise wait forever.
+      if curl --connect-timeout 15 --speed-limit 1024 --speed-time 60 \
+          --max-time 60 --retry 3 --retry-connrefused \
+          --fail --silent --show-error --location https://claude.ai/install.sh \
+          -o "$installer"; then
         # The official bootstrap accepts an exact VERSION argument, downloads a
         # manifest, and verifies the selected native artifact before installing.
-        bash "$installer" "$claude_pin" >/dev/null 2>&1 \
+        timeout 15m bash "$installer" "$claude_pin" >/dev/null 2>&1 \
           || { echo "Claude Code $claude_pin install failed" >&2; failed=1; }
       else
         echo "Claude Code bootstrap download failed" >&2
@@ -74,11 +104,11 @@ if [[ $before != "$claude_pin" ]]; then
     fi
   fi
   after=$(claude_version || true)
-  if [[ $after == "$claude_pin" ]]; then
+  if version_at_least "$after" "$claude_pin"; then
     [[ $before == "$after" ]] || changed=1
   else
     restore_claude "$before_path"
-    echo "Claude Code pin is $claude_pin but installed version is ${after:-absent}" >&2
+    echo "Claude Code must be at least $claude_pin but installed version is ${after:-absent}" >&2
     failed=1
   fi
 fi
@@ -235,10 +265,11 @@ fi
 after_codex=$(codex_version "$HOME/.local/bin/codex" || true)
 missing=()
 first_install_failure=0
-[[ $after_claude == "$claude_pin" ]] || missing+=("claude=$claude_pin")
+version_at_least "$after_claude" "$claude_pin" || missing+=("claude>=$claude_pin")
 [[ $after_opencode == "$opencode_pin" ]] || missing+=("opencode-ai=$opencode_pin")
 [[ -n $codex_pin && $after_codex == "$codex_pin" ]] || missing+=("@openai/codex=$codex_requested")
-[[ $after_claude == "$claude_pin" || -n $initial_claude ]] || first_install_failure=1
+version_at_least "$after_claude" "$claude_pin" || [[ -n $initial_claude ]] \
+  || first_install_failure=1
 [[ $after_opencode == "$opencode_pin" || -n $initial_opencode ]] || first_install_failure=1
 [[ ( -n $codex_pin && $after_codex == "$codex_pin" ) || -n $initial_codex ]] || first_install_failure=1
 if [[ -n ${missing[0]:-} ]]; then

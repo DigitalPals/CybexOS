@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise installer defaults, saved opt-outs, and both public command names."""
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -111,8 +112,15 @@ class ApplicationDefaults(unittest.TestCase):
             installer.write_text(source)
             config = home / "config.yml"
             config.write_text("config_schema_version: 1\n")
+            runtime = home / "runtime"
+            runtime.mkdir()
+            # MOCK_SUDO_TTY_ONLY models sudo's default tty-scoped ticket, which
+            # does not reach a process that left the terminal's session.
             probes = {
-                binaries / "sudo": '[ "$*" = "-n true" ]',
+                binaries / "sudo": '[ "$*" = "-n true" ] || exit 1\n'
+                'if [ -n "${MOCK_SUDO_TTY_ONLY:-}" ]; then\n'
+                '  set -- $(cat /proc/$$/stat); [ "$6" != "$$" ] || exit 1\n'
+                'fi',
                 binaries / "ansible-playbook": 'printf "%s\\n" "$@"',
                 home / "scripts/migrate-config": 'cat -- "$1"',
             }
@@ -120,12 +128,83 @@ class ApplicationDefaults(unittest.TestCase):
                 path.write_text("#!/bin/sh\n" + body + "\n")
                 path.chmod(0o755)
             environment = dict(os.environ, CYBEXOS_CONFIG_FILE=str(config),
-                               TMPDIR=str(scratch), PATH=f"{binaries}:{os.environ['PATH']}")
+                               TMPDIR=str(scratch), XDG_RUNTIME_DIR=str(runtime),
+                               PATH=f"{binaries}:{os.environ['PATH']}")
+            environment.pop("MOCK_SUDO_TTY_ONLY", None)
             result = subprocess.check_output(
                 ["bash", str(installer)], env=environment, text=True,
             )
             self.assertIn(f"site.yml\n-e\n@{config}\n", result)
+            self.assertNotIn("--ask-become-pass", result)
             self.assertEqual(list(scratch.iterdir()), [])
+
+            # A terminal-scoped ticket cannot reach Ansible's detached become
+            # processes, so the playbook asks for the password itself.
+            result = subprocess.check_output(
+                ["bash", str(installer)], text=True,
+                env=dict(environment, MOCK_SUDO_TTY_ONLY="1"),
+            )
+            self.assertIn("--ask-become-pass", result.splitlines())
+
+            # A running durable update owns the lock; never converge beside it.
+            with open(runtime / "update.lock", "w") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                blocked = subprocess.run(
+                    ["bash", str(installer)], env=environment, text=True,
+                    capture_output=True,
+                )
+            self.assertEqual(blocked.returncode, 75, blocked.stderr)
+            self.assertIn("update is running", blocked.stderr)
+            self.assertNotIn("site.yml", blocked.stdout)
+
+    def test_uninstall_honors_update_lock_and_detached_become(self):
+        with tempfile.TemporaryDirectory(prefix="cybex-uninstall.") as temporary:
+            home = Path(temporary)
+            binaries = home / "bin"
+            binaries.mkdir()
+            runtime = home / "runtime"
+            runtime.mkdir()
+            source = (ROOT / "uninstall").read_text().replace(
+                'repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)',
+                "repo_dir=" + shlex.quote(str(home)),
+            )
+            uninstaller = home / "uninstall"
+            uninstaller.write_text(source)
+            config = home / "config.yml"
+            config.write_text("config_schema_version: 1\n")
+            probes = {
+                binaries / "sudo": 'if [ "$*" = "-n true" ] && [ -n "${MOCK_SUDO_TTY_ONLY:-}" ]; then\n'
+                '  set -- $(cat /proc/$$/stat); [ "$6" != "$$" ] || exit 1\n'
+                'fi\n'
+                'exit 0',
+                binaries / "ansible-playbook": 'printf "%s\\n" "$@"',
+            }
+            for path, body in probes.items():
+                path.write_text("#!/bin/sh\n" + body + "\n")
+                path.chmod(0o755)
+            (home / "uninstall.yml").write_text("---\n")
+            environment = dict(os.environ, CYBEXOS_CONFIG_FILE=str(config),
+                               XDG_RUNTIME_DIR=str(runtime),
+                               PATH=f"{binaries}:{os.environ['PATH']}")
+            environment.pop("MOCK_SUDO_TTY_ONLY", None)
+            result = subprocess.check_output(
+                ["bash", str(uninstaller), "--yes"], env=environment, text=True,
+            )
+            self.assertIn("uninstall.yml", result.splitlines())
+            self.assertNotIn("--ask-become-pass", result.splitlines())
+            result = subprocess.check_output(
+                ["bash", str(uninstaller), "--yes"], text=True,
+                env=dict(environment, MOCK_SUDO_TTY_ONLY="1"),
+            )
+            self.assertIn("--ask-become-pass", result.splitlines())
+            with open(runtime / "update.lock", "w") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                blocked = subprocess.run(
+                    ["bash", str(uninstaller), "--yes"], env=environment,
+                    text=True, capture_output=True,
+                )
+            self.assertEqual(blocked.returncode, 75, blocked.stderr)
+            self.assertNotIn("uninstall.yml", blocked.stdout)
 
     def test_both_command_names_preserve_arguments_and_verification_scope(self):
         with tempfile.TemporaryDirectory(prefix="cybex-command.") as temporary:

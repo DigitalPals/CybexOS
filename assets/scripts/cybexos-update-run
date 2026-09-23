@@ -26,8 +26,10 @@ Usage:
   cybexos-update-run log-dir [RUN_ID]
 
 Update Fedora packages and system Flatpaks. The worker runs as a transient
-user service, so closing a terminal or reloading Quickshell does not abandon
-the transaction. Only one CLI or panel update can run at a time.
+service, so closing a terminal or reloading Quickshell does not abandon the
+transaction. Only one CLI or panel update can run at a time. `cancel` never
+interrupts a running package transaction or Ansible play: the worker stops at
+the next safe step boundary.
 
 Options for run/start:
   -f, --full        Also run site.yml with --skip-tags boot
@@ -246,10 +248,16 @@ json_status() {
   [[ ! -r $log_shelf/$id/dnf.log ]] || dnf_bytes=$(wc -c < "$log_shelf/$id/dnf.log")
   [[ ! -r $log_shelf/$id/flatpak.log ]] || flatpak_bytes=$(wc -c < "$log_shelf/$id/flatpak.log")
   recommendation=$(status_reboot_recommendation "$file" "$boot_id")
+  # A deferred cancellation is visible while the worker finishes its step.
+  local cancel_pending=false
+  [[ ! -e $log_shelf/$id/cancel.pending ]] || cancel_pending=true
   jq --argjson dnfBytes "$dnf_bytes" --argjson flatpakBytes "$flatpak_bytes" \
     --arg bootId "$boot_id" --arg rebootRecommendation "$recommendation" \
+    --argjson cancelPending "$cancel_pending" \
     '. + {dnfBytes: $dnfBytes, flatpakBytes: $flatpakBytes,
-      bootId: $bootId, rebootRecommendation: $rebootRecommendation}' "$file"
+      bootId: $bootId, rebootRecommendation: $rebootRecommendation,
+      cancelRequested: ($cancelPending
+        and (.state == "queued" or .state == "running"))}' "$file"
 }
 
 human_status() {
@@ -274,13 +282,15 @@ write_status() {
     --argjson flatpakDone "$flatpak_done" --argjson dnfRc "$dnf_rc" \
     --argjson flatpakRc "$flatpak_rc" --argjson testsRc "$tests_rc" \
     --argjson ansibleRc "$ansible_rc" --arg snapshotId "${snapshot_id:-}" \
+    --argjson mixedState "${mixed_state:-false}" \
     '{id: $id, state: $state, phase: $phase, message: $message,
       logDir: $logDir, unit: $unit, systemUnit: $systemUnit, startedAt: $startedAt,
       finishedAt: $finishedAt, exitCode: $exitCode, full: $full,
       flatpak: $flatpak, dnfDone: $dnfDone, flatpakDone: $flatpakDone,
       dnfRc: $dnfRc, flatpakRc: $flatpakRc, testsRc: $testsRc,
       ansibleRc: $ansibleRc, snapshotId: $snapshotId, bootId: $bootId,
-      releaseVersion: $releaseVersion,
+      releaseVersion: $releaseVersion, mixedState: $mixedState,
+      deferredCancel: true,
       rebootRecommendation: $rebootRecommendation}' > "$temporary"
   mv -f -- "$temporary" "$run_dir/status.json"
   if [[ -n ${CYBEXOS_UPDATE_OWNER_UID:-} ]]; then
@@ -372,18 +382,30 @@ parse_options() {
   fi
 }
 
+# A transient unit has no terminal. sudo's default timestamp_type=tty keys a
+# cached authorization to the terminal, so a ticket this client holds does not
+# reach a user-unit worker; only sudo that works without any terminal (NOPASSWD
+# or a global timestamp) does. Probe exactly that condition.
+detached_sudo_available() {
+  setsid -w sudo -n true </dev/null >/dev/null 2>&1
+}
+
 start_run() {
   parse_options "$@"
   local parse_rc=$?
   [[ $parse_rc -eq 0 ]] || { [[ $parse_rc -eq 10 ]] && return 0; return "$parse_rc"; }
   if [[ ${CYBEXOS_UPDATE_ASSUME_USER_UNIT:-0} != 1 \
-        && $system_unit != true ]] && ! sudo -n true >/dev/null 2>&1; then
-    if [[ $json == true || ! -t 0 ]]; then
-      printf 'cybexos-update-run: authentication is required; run `cybex update` in a terminal\n' >&2
-      return 77
+        && $system_unit != true ]] && ! detached_sudo_available; then
+    if ! sudo -n true >/dev/null 2>&1; then
+      if [[ $json == true || ! -t 0 ]]; then
+        printf 'cybexos-update-run: authentication is required; run `cybex update` in a terminal\n' >&2
+        return 77
+      fi
+      printf 'Authenticate once to start the durable system update worker.\n'
+      sudo -v || return
     fi
-    printf 'Authenticate once to start the durable system update worker.\n'
-    sudo -v || return
+    # The terminal's ticket authorizes launching a root system unit now; the
+    # worker itself then needs no further authentication.
     system_unit=true
   fi
   exec 9>"$lock_file"
@@ -402,7 +424,8 @@ start_run() {
       report_existing_run "$active_id" "$active_state" "$json"
       return 3
     fi
-    printf 'cybexos-update-run: update lock is held but no active run is readable\n' >&2
+    # install and uninstall hold the same lock for their whole playbook.
+    printf 'cybexos-update-run: the update lock is held by another CybexOS operation (install, uninstall, or a launching update); retry after it finishes\n' >&2
     return 4
   fi
 
@@ -448,11 +471,23 @@ start_run() {
   [[ $with_packages == true ]] || worker_args+=(--no-packages)
   [[ $with_flatpak == true ]] || worker_args+=(--no-flatpak)
   (( ${#ansible_args[@]} == 0 )) || worker_args+=(-- "${ansible_args[@]}")
+  # KillMode=mixed sends a stop's SIGTERM to the worker alone. It lets a
+  # running dnf transaction or Ansible play finish and records the
+  # cancellation at the next step boundary; everything left is killed only
+  # after TimeoutStopSec. The worker also yields CPU and I/O to the desktop.
+  local -a unit_properties=(
+    --property=Type=exec
+    --property=KillMode=mixed
+    --property=TimeoutStopSec=30min
+    --property=Nice=10
+    --property=IOWeight=20
+    --property=CPUWeight=20
+  )
   local launch_rc=0
   if [[ $system_unit == true ]]; then
     system_manager_command systemd-run --system --quiet --collect \
       --unit="$unit_name" \
-      --property=Type=exec \
+      "${unit_properties[@]}" \
       --setenv="HOME=$HOME" \
       --setenv="XDG_STATE_HOME=${XDG_STATE_HOME:-$HOME/.local/state}" \
       --setenv="XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
@@ -461,7 +496,7 @@ start_run() {
       -- "${worker_args[@]}" || launch_rc=$?
   else
     systemd-run --user --quiet --collect --unit="$unit_name" \
-      --property=Type=exec -- "${worker_args[@]}" || launch_rc=$?
+      "${unit_properties[@]}" -- "${worker_args[@]}" || launch_rc=$?
   fi
   if ((launch_rc != 0)); then
     write_status failed launch "Could not start the update worker" 125
@@ -487,6 +522,74 @@ worker_finalized=false
 release_config_changed=false
 release_activated=false
 release_backup=""
+cancel_requested=false
+packages_ran=false
+mixed_state=false
+inhibitor_pid=""
+
+# SIGTERM from `cybexos-update-run cancel` (systemctl stop) only records the
+# request. Interrupting dnf/rpm or an Ansible play midway can leave duplicate
+# packages or a half-applied configuration, so the worker lets the running
+# step finish and stops at the next boundary through honor_cancellation.
+request_cancellation() { cancel_requested=true; }
+
+honor_cancellation() {
+  [[ $cancel_requested == true ]] || return 0
+  worker_cancelled
+}
+
+# wait_for_job PID
+# A trapped signal makes `wait` return early while the job is still running;
+# keep waiting until it has really exited.
+wait_for_job() {
+  local pid=$1
+  until wait "$pid"; do
+    kill -0 "$pid" 2>/dev/null || return 0
+  done
+}
+
+# Hold a logind block inhibitor for the worker's lifetime so shutdown and
+# sleep requests are refused while packages or configuration change. The
+# worker must stay the unit's main process (it alone receives a stop's
+# SIGTERM), so a child holds the lock and exits together with the worker. A
+# user unit may be refused by Polkit; the update then continues unprotected.
+# logind's default LidSwitchIgnoreInhibited=yes still suspends on lid close.
+acquire_inhibitor() {
+  local ready="$run_dir/.inhibit.$$.ready" error_file="$run_dir/inhibit.err"
+  if ! command -v systemd-inhibit >/dev/null 2>&1; then
+    printf '[inhibit] systemd-inhibit is unavailable; shutdown and sleep are not blocked\n' \
+      >>"$run_dir/run.log"
+    return 0
+  fi
+  rm -f -- "$ready"
+  systemd-inhibit --no-ask-password --what=shutdown:sleep --mode=block \
+    --who=CybexOS --why='Applying updates' \
+    sh -c ': >"$1" && exec tail --pid="$2" -f /dev/null' \
+    cybexos-update-inhibit "$ready" "$$" \
+    </dev/null >/dev/null 2>"$error_file" &
+  inhibitor_pid=$!
+  for _ in {1..100}; do
+    if [[ -e $ready ]]; then
+      rm -f -- "$ready"
+      printf '[inhibit] shutdown and sleep are blocked until the update finishes\n' \
+        >>"$run_dir/run.log"
+      return 0
+    fi
+    kill -0 "$inhibitor_pid" 2>/dev/null || break
+    sleep 0.05
+  done
+  release_inhibitor
+  rm -f -- "$ready"
+  printf '[inhibit] could not block shutdown and sleep; continuing: %s\n' \
+    "$(tr -s '\n' ' ' <"$error_file" 2>/dev/null | cut -c1-200)" >>"$run_dir/run.log"
+}
+
+release_inhibitor() {
+  [[ -n $inhibitor_pid ]] || return 0
+  kill "$inhibitor_pid" 2>/dev/null || true
+  wait "$inhibitor_pid" 2>/dev/null || true
+  inhibitor_pid=""
+}
 
 restore_release_configuration() {
   [[ ${release_transaction:-false} == true && $release_config_changed == true \
@@ -630,6 +733,11 @@ promote_release_candidate() {
 
 worker_cancelled() {
   local state=cancelled phase=cancelled message="Update cancelled" rc=130
+  if [[ $packages_ran == true ]]; then
+    # The finished transaction may still need a reboot; keep that advice.
+    check_reboot_recommendation
+    message="Update cancelled after the package transaction finished"
+  fi
   if ! restore_release_configuration; then
     state=failed
     phase=rollback
@@ -643,6 +751,7 @@ worker_cancelled() {
 
 worker_exit_fallback() {
   local rc=$?
+  release_inhibitor
   [[ $worker_finalized == true ]] && return
   # This catches interpreter/tool failures and SIGKILL's next status read
   # repairs the one case in which no shell trap can run.
@@ -713,7 +822,8 @@ worker() {
     "$run_dir/status.json" "$boot_id")
   [[ $reboot_recommendation == recommended ]] \
     || reboot_recommendation="pending"
-  trap worker_cancelled INT TERM
+  cancel_requested=false; packages_ran=false; mixed_state=false
+  trap request_cancellation INT TERM
   trap worker_exit_fallback EXIT
   exec 9>"$lock_file"
   # start_run publishes the queued state while holding this same lock. Wait for
@@ -740,10 +850,12 @@ worker() {
     exit 125
   fi
 
+  honor_cancellation
   if [[ $release_transaction == true ]] && ! promote_release_candidate; then
     worker_failed staging "Could not promote the verified release candidate" 1
   fi
 
+  acquire_inhibitor
   write_status running snapshot "Creating a pre-update recovery point" 0
   printf 'CybexOS update %s started at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
   # Keep run state and logs private, but do not pass that 0077 umask through
@@ -786,6 +898,7 @@ worker() {
     printf '[snapshot] non-Btrfs root; no filesystem recovery point created\n' \
       >>"$run_dir/run.log"
   fi
+  honor_cancellation
   local dnf_pid="" flatpak_pid=""
   if [[ $with_packages == true ]]; then
     write_status running packages "Updating system packages and Flatpaks" 0
@@ -799,11 +912,12 @@ worker() {
     else
       printf '0\n' > "$run_dir/flatpak.rc"; flatpak_done=true
     fi
-    wait "$dnf_pid" || true
+    wait_for_job "$dnf_pid"
     dnf_rc=$(<"$run_dir/dnf.rc"); dnf_done=true
+    packages_ran=true
     write_status running packages "System package update finished" 0
     if [[ -n $flatpak_pid ]]; then
-      wait "$flatpak_pid" || true
+      wait_for_job "$flatpak_pid"
       flatpak_rc=$(<"$run_dir/flatpak.rc"); flatpak_done=true
       write_status running packages "Package phase finished" 0
     fi
@@ -816,6 +930,7 @@ worker() {
   if (( dnf_rc != 0 )); then
     worker_failed packages "dnf exited with status $dnf_rc" "$dnf_rc"
   fi
+  honor_cancellation
 
   if [[ $full == true ]]; then
     cd -- "$repo" || {
@@ -825,11 +940,16 @@ worker() {
       printf '[tests] repository checks skipped (--skip-tests)\n' >> "$run_dir/run.log"
     else
       write_status running tests "Running repository checks" 0
-      tagged_command tests "$run_dir/tests.log" "$run_dir/tests.rc" ./tests/run
+      # A wedged check must not hold the update lock indefinitely.
+      tagged_command tests "$run_dir/tests.log" "$run_dir/tests.rc" \
+        timeout --kill-after=1m 30m ./tests/run
       tests_rc=$(<"$run_dir/tests.rc")
-      if (( tests_rc != 0 )); then
+      if (( tests_rc == 124 )); then
+        worker_failed tests "Repository checks did not finish within 30 minutes" "$tests_rc"
+      elif (( tests_rc != 0 )); then
         worker_failed tests "Repository checks exited with status $tests_rc" "$tests_rc"
       fi
+      honor_cancellation
     fi
     if [[ $release_transaction == true ]]; then
       write_status running migration "Migrating the saved installer configuration" 0
@@ -837,6 +957,12 @@ worker() {
         worker_failed migration "Could not migrate the saved installer configuration" 1
       fi
     fi
+    # Last boundary: once Ansible starts, the transaction runs to completion
+    # (or failure) so installed files and the active release stay coherent.
+    honor_cancellation
+    # From here until activation, installed files can be newer than the
+    # active release; a failure or abandonment leaves that recorded.
+    [[ $release_transaction != true ]] || mixed_state=true
     write_status running ansible "Applying the managed configuration" 0
     # Keep the complete stream even when the configured callback is compact.
     tagged_command ansible "$run_dir/ansible.log" "$run_dir/ansible.rc" \
@@ -850,6 +976,7 @@ worker() {
       if ! activate_release; then
         worker_failed activation "Could not activate the applied CybexOS release" 1
       fi
+      mixed_state=false
     fi
   fi
 
@@ -857,6 +984,8 @@ worker() {
 
   local message="Update completed"
   (( flatpak_rc == 0 )) || message="Update completed; Flatpak reported status $flatpak_rc"
+  [[ $cancel_requested != true ]] \
+    || message="$message; cancellation arrived after its last stopping point"
   printf 'CybexOS update %s finished at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
   write_status done complete "$message" 0
   worker_finalized=true
@@ -906,17 +1035,30 @@ load_status_globals() {
   release_version=$(jq -r '.releaseVersion // empty' "$file")
   [[ -z $release_version ]] && release_transaction=false || release_transaction=true
   snapshot_id=$(jq -r '.snapshotId // empty' "$file")
+  mixed_state=$(jq -r '.mixedState // false' "$file")
+  [[ $mixed_state == true ]] || mixed_state=false
   boot_id=$(current_boot_id || true)
   reboot_recommendation=$(status_reboot_recommendation "$file" "$boot_id")
 }
 
 cancel_run() {
   local id state unit active_state next_active_state intent system_unit
+  local phase deferred
   id=$(resolve_id "${1:-}") || return; state=$(status_state "$id" || true)
   is_active "$state" || { printf 'cybexos-update-run: %s is not active (%s)\n' "$id" "${state:-unknown}" >&2; return 1; }
   unit=$(jq -r '.unit // empty' "$(status_path "$id")")
   system_unit=$(jq -r '.systemUnit // false' "$(status_path "$id")")
+  phase=$(jq -r '.phase // empty' "$(status_path "$id")")
+  deferred=$(jq -r '.deferredCancel // false' "$(status_path "$id")")
   [[ -n $unit ]] || unit="cybexos-update-$id.service"
+
+  # A worker launched before deferred cancellation existed is stopped with
+  # SIGTERM to its whole control group, which would interrupt dnf/rpm.
+  if [[ $phase == packages && $deferred != true ]]; then
+    printf 'cybexos-update-run: %s is applying a package transaction that cannot be interrupted safely; wait for it to finish\n' \
+      "$id" >&2
+    return 1
+  fi
 
   # Publish intent before inspecting the unit. If start_run has not registered
   # it yet, the eventual worker observes this marker under the transaction
@@ -932,18 +1074,22 @@ cancel_run() {
   fi
   case $active_state in
     active|activating|reloading|deactivating)
+      # Queue the stop without waiting for it: with KillMode=mixed the worker
+      # alone receives SIGTERM and may first finish a package transaction or
+      # Ansible play, and a blocking stop would hold this client that long.
       if [[ $system_unit == true ]]; then
-        system_manager_command systemctl stop "$unit" >/dev/null 2>&1 || {
+        system_manager_command systemctl stop --no-block "$unit" >/dev/null 2>&1 || {
           printf 'cybexos-update-run: could not stop %s; update remains active\n' "$unit" >&2
           return 1
         }
-      elif ! systemctl --user stop "$unit" >/dev/null 2>&1; then
+      elif ! systemctl --user stop --no-block "$unit" >/dev/null 2>&1; then
           printf 'cybexos-update-run: could not stop %s; update remains active\n' "$unit" >&2
           return 1
       fi
-      # systemctl stop is synchronous, but verify the ownership boundary before
-      # publishing a terminal record. A worker proven stopped can no longer
-      # overwrite the synthetic status if its TERM trap did not get to run.
+      # Verify the ownership boundary before publishing a terminal record. A
+      # worker proven stopped can no longer overwrite the synthetic status if
+      # its TERM trap did not get to run. One still finishing its step records
+      # the cancellation itself.
       for _ in {1..20}; do
         if ! next_active_state=$(unit_active_state "$unit" "$system_unit"); then
           printf 'cybexos-update-run: could not verify %s stopped\n' "$unit" >&2
@@ -956,6 +1102,12 @@ cancel_run() {
       done
       case $next_active_state in
         inactive|failed) ;;
+        active|activating|reloading|deactivating)
+          atomic_text "$log_shelf/$id/cancel.pending" "$(date +%s)"
+          printf 'Cancellation requested for update %s. A running package transaction or configuration step finishes first; `cybexos-update-run attach %s` follows it.\n' \
+            "$id" "$id"
+          return 0
+          ;;
         *)
           printf 'cybexos-update-run: %s is still %s; update remains active\n' \
             "$unit" "${next_active_state:-unknown}" >&2
@@ -1027,6 +1179,15 @@ run_client() {
       return 0
     fi
   done
+  # start_run runs inside a command substitution and cannot prompt. Unless
+  # sudo already works for it, authenticate here in the terminal, so that it
+  # can launch the system unit instead of failing with "authentication is
+  # required" in the very terminal it asks for.
+  if [[ ${CYBEXOS_UPDATE_ASSUME_USER_UNIT:-0} != 1 && -t 0 ]] \
+      && ! detached_sudo_available && ! sudo -n true >/dev/null 2>&1; then
+    printf 'Authenticate once to start the durable system update worker.\n'
+    sudo -v || return
+  fi
   if output=$(start_run --json "$@"); then
     rc=0
   else

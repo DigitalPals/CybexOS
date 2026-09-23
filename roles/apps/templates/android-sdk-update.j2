@@ -100,7 +100,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-curl --fail --silent --show-error --location \
+cybexos_curl --max-time 300 --fail --silent --show-error --location \
   https://dl.google.com/android/repository/repository2-1.xml -o "$metadata.new"
 python3 - "$metadata.new" <<'PY'
 import sys
@@ -164,7 +164,7 @@ if [[ ! -r $sdk/cmdline-tools/.version \
     unlink "$archive"
   fi
   if [[ ! -f $archive ]]; then
-    curl --fail --location --retry 3 \
+    cybexos_curl --fail --location \
       --output "$archive.partial" "https://dl.google.com/android/repository/$url"
     mv "$archive.partial" "$archive"
   fi

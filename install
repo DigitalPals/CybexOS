@@ -46,6 +46,36 @@ done
   exit 1
 }
 
+# The durable updater (cybexos-update-run) holds this lock for its whole
+# package/Ansible lifetime. A concurrent playbook would interleave with its dnf
+# transaction and configuration run, so take the same lock; fd 9 survives the
+# final exec, and the playbook keeps it until it exits.
+acquire_update_lock() {
+  local state_root=${XDG_STATE_HOME:-$HOME/.local/state}/cybexos/update
+  local runtime_root=${XDG_RUNTIME_DIR:-$state_root/runtime}
+  mkdir -p -- "$runtime_root"
+  exec 9>"$runtime_root/update.lock"
+  flock -n 9 || {
+    echo 'install: a CybexOS update is running; retry after it finishes (cybexos-update-run status).' >&2
+    exit 75
+  }
+}
+
+# Ansible's workers detach from the terminal (setsid), and sudo's default
+# timestamp_type=tty keys the ticket warmed below to that terminal, so become
+# cannot use it. Unless sudo works without any terminal (NOPASSWD), let
+# Ansible ask for the password itself.
+request_become_password() {
+  local argument
+  for argument in "${ansible_args[@]}"; do
+    case $argument in
+      -K|--ask-become-pass|--become-password-file|--become-password-file=*) return 0 ;;
+    esac
+  done
+  setsid -w sudo -n true </dev/null >/dev/null 2>&1 \
+    || ansible_args+=(--ask-become-pass)
+}
+
 # An installation made under the former fedora-config name keeps its saved
 # answers in /etc/fedora-config until it is moved to the CybexOS paths. An
 # explicit configuration file or a dry run never touches the system.
@@ -64,6 +94,7 @@ if [[ -r $config_path && $reconfigure == false ]]; then
   fi
   ui_header 'CybexOS'
   printf 'Using saved installation choices from %s\n' "$config_path"
+  acquire_update_lock
   sudo -n true 2>/dev/null || sudo -v
   if ! command -v ansible-playbook >/dev/null 2>&1; then
     run_step 'Install ansible-core' /tmp/cybexos-bootstrap-ansible.log \
@@ -78,6 +109,7 @@ if [[ -r $config_path && $reconfigure == false ]]; then
   fi
   rm -f -- "$migrated_config"
   trap - EXIT
+  request_become_password
   exec ansible-playbook site.yml -e "@$config_path" "${ansible_args[@]}"
 fi
 
@@ -275,6 +307,7 @@ else
 fi
 [[ $confirmed == true ]] || { echo 'Installation cancelled.'; exit 0; }
 
+acquire_update_lock
 sudo -n true 2>/dev/null || sudo -v
 sudo install -d -m 0755 /etc/cybexos
 sudo install -m 0644 "$temporary_config" "$config_path"
@@ -284,4 +317,5 @@ if ! command -v ansible-playbook >/dev/null 2>&1; then
 fi
 rm -f -- "$temporary_config"
 trap - EXIT
+request_become_password
 exec ansible-playbook site.yml -e "@$config_path" "${ansible_args[@]}"
