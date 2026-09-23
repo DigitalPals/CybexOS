@@ -425,4 +425,8 @@ if __name__ == "__main__":
         # wlroots refuses a privileged compositor. CI runs inside a root
         # container, so run this entire disposable fixture as nobody.
         raise SystemExit(subprocess.call(["runuser", "-u", "nobody", "--", sys.executable, __file__]))
+    # tests/run stops a fixture that overruns its limit with SIGTERM. Unwind
+    # instead of dying on the spot, so the compositor and qs sessions, each in
+    # a process group of its own, are still stopped.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     main()
