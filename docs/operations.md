@@ -300,14 +300,21 @@ Each command accepts a run ID where documented by `cybexos-update-run --help`.
 `cancel` is explicit; Ctrl+C during `attach` never cancels. The stop request
 reaches only the worker process (`KillMode=mixed`), because interrupting
 DNF/RPM midway can leave duplicate or half-upgraded packages. A running
-package transaction, repository check, or Ansible play therefore finishes
-first, and the worker records `cancelled` at the next step boundary;
-`status --json` reports `cancelRequested: true` meanwhile. Once Ansible has
-started, the run completes or fails instead, so installed files and the active
-release stay coherent. A worker still running 30 minutes after the request is
-killed. A package phase started by an updater without this contract is not
-cancellable. `dismiss` only changes the completed status shown by the UI and
-does not delete its logs.
+package transaction, firmware update, repository check, or Ansible play
+therefore finishes first, and the worker records `cancelled` at the next step
+boundary; `status --json` reports `cancelRequested: true` meanwhile. Once
+Ansible has started, the run completes or fails instead, so installed files
+and the active release stay coherent. A worker still running 30 minutes after
+the request is killed. A package phase started by an updater without this
+contract is not cancellable. `dismiss` only changes the completed status shown
+by the UI and does not delete its logs.
+
+`--firmware` (also accepted by `cybex update`) installs available fwupd device
+firmware in the same worker after the package phase, through
+`cybexos-firmware-update`. A firmware failure never fails the run; the final
+message notes the helper's status, and a capsule staged for the next boot
+recommends a restart for the rest of that boot. With `--no-packages`,
+`cybexos-update-run --firmware` is a firmware-only run.
 
 Run state lives under `~/.local/state/cybexos/update/`. Each run has a private
 directory under `logs/<run-id>/` containing:
@@ -316,10 +323,14 @@ directory under `logs/<run-id>/` containing:
   timestamps, transient unit name, the pre-update `snapshotId` when one was
   created, and `mixedState` when a release apply stopped after Ansible began
   changing files;
-- `run.log`: the complete combined stream with `dnf`, `flatpak`, `tests`, and
-  `ansible` prefixes;
-- component logs such as `dnf.log`, `flatpak.log`, `tests.log`, and
-  `ansible.log`, plus their exit-code files when that phase ran.
+- `run.log`: the complete combined stream with `dnf`, `flatpak`, `firmware`,
+  `tests`, and `ansible` prefixes;
+- component logs such as `dnf.log`, `flatpak.log`, `firmware.log`,
+  `tests.log`, and `ansible.log`, plus their exit-code files when that phase
+  ran;
+- `firmware-events.log`: one JSON object per line (`plan`, `device`,
+  `progress`, `request`, `installed`, `skipped`, `failed`, and a final
+  `summary`) that the Updates view renders.
 
 The twenty newest valid run directories are retained. For a worker that looks
 stuck, start with `cybexos-update-run status --json`, inspect `run.log`, then use

@@ -188,6 +188,18 @@ printf '1.2.3\n' >"$fixture/source/VERSION"
 machine_packages=$($updater --start --no-flatpak)
 [[ $(jq -r .id <<<"$machine_packages") == 20260903-120001-2-2 ]]
 [[ $(<"$fixture/backend.log") == 'start --json --system-unit --no-flatpak' ]]
+# Firmware is forwarded on every path that forwards the package options.
+$updater --start --no-flatpak --firmware >/dev/null
+[[ $(<"$fixture/backend.log") == 'start --json --system-unit --no-flatpak --firmware' ]]
+: >"$fixture/backend.log"
+$updater --firmware >/dev/null
+[[ $(<"$fixture/backend.log") == 'run --firmware' ]]
+: >"$fixture/backend.log"
+$updater --system-only --start --no-flatpak --firmware >/dev/null
+[[ $(<"$fixture/backend.log") == 'start --json --system-unit --no-flatpak --firmware' ]]
+: >"$fixture/backend.log"
+$updater --system-only --firmware >/dev/null
+[[ $(<"$fixture/backend.log") == 'run --firmware' ]]
 printf '0.0.0\n' >"$fixture/source/VERSION"
 
 machine_release=$($updater --start --no-packages 2>"$fixture/machine-start.err")
@@ -203,6 +215,12 @@ machine_candidate=$(sed -n 's/.*--repo \([^ ]*\).*/\1/p' \
 cmp -s "$fixture/config.yml" "$fixture/config.original.yml"
 [[ ! -e $fixture/data/cybexos/current ]]
 rm -rf -- "$machine_candidate"
+$updater --start --no-packages --firmware >/dev/null 2>&1
+grep -F -- '--release-config '"$fixture/config.yml"' --no-packages --firmware -- -e' \
+  "$fixture/backend.log" >/dev/null
+firmware_candidate=$(sed -n 's/.*--repo \([^ ]*\).*/\1/p' "$fixture/backend.log")
+[[ $firmware_candidate == "$fixture/data/cybexos/releases/.stage.1.2.3."* ]]
+rm -rf -- "$firmware_candidate"
 
 export MOCK_BACKEND_ATTACH_RC=42
 if $updater --no-packages >/dev/null 2>"$fixture/apply-failed.err"; then

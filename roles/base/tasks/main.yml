@@ -39,6 +39,7 @@
       .local/bin/localsend-share
       .local/bin/cybex
       .local/bin/cybexos-update-run
+      .local/bin/cybexos-firmware-update
       .local/bin/brightness-control
       .local/bin/portal-launcher
       .local/bin/t3code-update

@@ -106,6 +106,7 @@
     - "{{ primary_home }}/.local/bin/cybex"
     - "{{ primary_home }}/.local/bin/cybexos-agent"
     - "{{ primary_home }}/.local/bin/cybexos-update-run"
+    - "{{ primary_home }}/.local/bin/cybexos-firmware-update"
     - "{{ primary_home }}/.local/bin/cybexos-runtime"
     - "{{ primary_home }}/.local/bin/brightness-control"
     - "{{ primary_home }}/.local/bin/portal-launcher"
@@ -458,6 +459,7 @@
       .local/bin/cybex
       .local/bin/cybexos-agent
       .local/bin/cybexos-update-run
+      .local/bin/cybexos-firmware-update
       .local/bin/brightness-control
       .local/bin/portal-launcher
       .local/bin/t3code-update

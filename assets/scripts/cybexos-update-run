@@ -28,14 +28,17 @@ Usage:
 Update Fedora packages and system Flatpaks. The worker runs as a transient
 service, so closing a terminal or reloading Quickshell does not abandon the
 transaction. Only one CLI or panel update can run at a time. `cancel` never
-interrupts a running package transaction or Ansible play: the worker stops at
-the next safe step boundary.
+interrupts a running package transaction, firmware update, or Ansible play:
+the worker stops at the next safe step boundary.
 
 Options for run/start:
   -f, --full        Also run site.yml with --skip-tags boot
       --skip-tests  Skip repository checks before a full configuration run
-      --no-packages Skip Fedora and Flatpak updates (requires --full)
+      --no-packages Skip Fedora and Flatpak updates (requires --full or
+                    --firmware)
       --no-flatpak  Skip the system Flatpak update
+      --firmware    Also install available device firmware through fwupd
+                    after the package phase
       --release-version VERSION
       --release-data-root PATH
       --release-config PATH
@@ -105,6 +108,22 @@ status_reboot_recommendation() {
     fi
   fi
   printf '%s\n' "$recommendation"
+}
+
+# A capsule staged by fwupd waits for the next boot, and dnf's
+# needs-restarting knows nothing about it. Carry that fact to every later run
+# of the same boot so a package-only run cannot downgrade the advice to
+# not-needed; a record from an earlier boot no longer applies.
+status_firmware_reboot() {
+  local file=$1 expected_boot=$2 recorded_boot staged=false
+  if [[ -n $expected_boot && -r $file ]]; then
+    recorded_boot=$(jq -r '.bootId // empty' "$file" 2>/dev/null || true)
+    if [[ $recorded_boot == "$expected_boot" ]] \
+        && jq -e '.firmwareReboot == true' "$file" >/dev/null 2>&1; then
+      staged=true
+    fi
+  fi
+  printf '%s\n' "$staged"
 }
 
 status_state() {
@@ -228,7 +247,8 @@ atomic_text() {
 }
 
 json_status() {
-  local id=${1:-} file dnf_bytes=0 flatpak_bytes=0 boot_id recommendation
+  local id=${1:-} file dnf_bytes=0 flatpak_bytes=0 firmware_event_bytes=0 boot_id
+  local recommendation firmware_reboot
   boot_id=$(current_boot_id || true)
   [[ -n $id ]] || id=$(current_id || true)
   if ! valid_id "$id"; then
@@ -247,14 +267,22 @@ json_status() {
   fi
   [[ ! -r $log_shelf/$id/dnf.log ]] || dnf_bytes=$(wc -c < "$log_shelf/$id/dnf.log")
   [[ ! -r $log_shelf/$id/flatpak.log ]] || flatpak_bytes=$(wc -c < "$log_shelf/$id/flatpak.log")
+  [[ ! -r $log_shelf/$id/firmware-events.log ]] \
+    || firmware_event_bytes=$(wc -c < "$log_shelf/$id/firmware-events.log")
   recommendation=$(status_reboot_recommendation "$file" "$boot_id")
+  # Like the recommendation, a staged capsule belongs to the boot it waits
+  # for: once that boot has ended, the firmware has been applied.
+  firmware_reboot=$(status_firmware_reboot "$file" "$boot_id")
   # A deferred cancellation is visible while the worker finishes its step.
   local cancel_pending=false
   [[ ! -e $log_shelf/$id/cancel.pending ]] || cancel_pending=true
   jq --argjson dnfBytes "$dnf_bytes" --argjson flatpakBytes "$flatpak_bytes" \
+    --argjson firmwareEventBytes "$firmware_event_bytes" \
     --arg bootId "$boot_id" --arg rebootRecommendation "$recommendation" \
+    --argjson firmwareReboot "$firmware_reboot" \
     --argjson cancelPending "$cancel_pending" \
     '. + {dnfBytes: $dnfBytes, flatpakBytes: $flatpakBytes,
+      firmwareEventBytes: $firmwareEventBytes, firmwareReboot: $firmwareReboot,
       bootId: $bootId, rebootRecommendation: $rebootRecommendation,
       cancelRequested: ($cancelPending
         and (.state == "queued" or .state == "running"))}' "$file"
@@ -283,12 +311,18 @@ write_status() {
     --argjson flatpakRc "$flatpak_rc" --argjson testsRc "$tests_rc" \
     --argjson ansibleRc "$ansible_rc" --arg snapshotId "${snapshot_id:-}" \
     --argjson mixedState "${mixed_state:-false}" \
+    --argjson firmware "${with_firmware:-false}" \
+    --argjson firmwareDone "${firmware_done:-false}" \
+    --argjson firmwareRc "${firmware_rc:-0}" \
+    --argjson firmwareReboot "${firmware_reboot:-false}" \
     '{id: $id, state: $state, phase: $phase, message: $message,
       logDir: $logDir, unit: $unit, systemUnit: $systemUnit, startedAt: $startedAt,
       finishedAt: $finishedAt, exitCode: $exitCode, full: $full,
       flatpak: $flatpak, dnfDone: $dnfDone, flatpakDone: $flatpakDone,
       dnfRc: $dnfRc, flatpakRc: $flatpakRc, testsRc: $testsRc,
-      ansibleRc: $ansibleRc, snapshotId: $snapshotId, bootId: $bootId,
+      ansibleRc: $ansibleRc, firmware: $firmware, firmwareDone: $firmwareDone,
+      firmwareRc: $firmwareRc, firmwareReboot: $firmwareReboot,
+      snapshotId: $snapshotId, bootId: $bootId,
       releaseVersion: $releaseVersion, mixedState: $mixedState,
       deferredCancel: true,
       rebootRecommendation: $rebootRecommendation}' > "$temporary"
@@ -301,6 +335,7 @@ write_status() {
 
 parse_options() {
   full=false; skip_tests=false; with_packages=true; with_flatpak=true; json=false; repo=""
+  with_firmware=false
   release_version=""; release_data_root=""; release_config=""; release_target=""
   release_transaction=false
   system_unit=${CYBEXOS_UPDATE_SYSTEM_UNIT:-false}
@@ -311,6 +346,7 @@ parse_options() {
       --skip-tests) skip_tests=true ;;
       --no-packages) with_packages=false; with_flatpak=false ;;
       --no-flatpak) with_flatpak=false ;;
+      --firmware) with_firmware=true ;;
       --json) json=true ;;
       --system-unit) system_unit=true ;;
       --release-version|--release-data-root|--release-config)
@@ -342,8 +378,10 @@ parse_options() {
     usage >&2
     return 2
   fi
-  if [[ $with_packages == false && $full != true ]]; then
-    printf 'cybexos-update-run: --no-packages requires --full\n' >&2
+  # A run needs some work: skipping packages leaves the configuration run or
+  # a firmware-only update.
+  if [[ $with_packages == false && $full != true && $with_firmware != true ]]; then
+    printf 'cybexos-update-run: --no-packages requires --full or --firmware\n' >&2
     return 2
   fi
   if [[ $full == true ]]; then
@@ -441,6 +479,7 @@ start_run() {
 
   local run_id unit_name run_dir started_at dnf_done=false flatpak_done=false
   local dnf_rc=0 flatpak_rc=0 tests_rc=0 ansible_rc=0
+  local firmware_done=false firmware_rc=0 firmware_reboot=false
   local boot_id reboot_recommendation snapshot_id=""
   boot_id=$(current_boot_id || true)
   reboot_recommendation="pending"
@@ -449,12 +488,17 @@ start_run() {
       "$(status_path "$active_id")" "$boot_id")
     [[ $reboot_recommendation == recommended ]] \
       || reboot_recommendation="pending"
+    firmware_reboot=$(status_firmware_reboot \
+      "$(status_path "$active_id")" "$boot_id")
   fi
   run_id="$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"
   unit_name="cybexos-update-$run_id.service"
   run_dir="$log_shelf/$run_id"
   mkdir -p -- "$run_dir"
   : > "$run_dir/dnf.log"; : > "$run_dir/flatpak.log"; : > "$run_dir/run.log"
+  # Root appends to the firmware logs; creating them here keeps them owned by
+  # this user, so the unprivileged panel can still read them with read-log.
+  : > "$run_dir/firmware.log"; : > "$run_dir/firmware-events.log"
   started_at=$(date +%s)
   write_status queued queued "Waiting for the update worker" 0
   atomic_text "$current_file" "$run_id"
@@ -470,6 +514,7 @@ start_run() {
   [[ $skip_tests == true ]] && worker_args+=(--skip-tests)
   [[ $with_packages == true ]] || worker_args+=(--no-packages)
   [[ $with_flatpak == true ]] || worker_args+=(--no-flatpak)
+  [[ $with_firmware != true ]] || worker_args+=(--firmware)
   (( ${#ansible_args[@]} == 0 )) || worker_args+=(-- "${ansible_args[@]}")
   # KillMode=mixed sends a stop's SIGTERM to the worker alone. It lets a
   # running dnf transaction or Ansible play finish and records the
@@ -525,6 +570,9 @@ release_backup=""
 cancel_requested=false
 packages_ran=false
 mixed_state=false
+firmware_done=false
+firmware_rc=0
+firmware_reboot=false
 inhibitor_pid=""
 
 # SIGTERM from `cybexos-update-run cancel` (systemctl stop) only records the
@@ -607,6 +655,8 @@ restore_release_configuration() {
 
 worker_failed() {
   local phase=$1 message=$2 rc=$3
+  # A capsule staged before a later step failed still waits for a restart.
+  apply_firmware_reboot_recommendation
   if ! restore_release_configuration; then
     phase=rollback
     message="$message; restoring the previous installer configuration also failed"
@@ -738,6 +788,10 @@ worker_cancelled() {
     check_reboot_recommendation
     message="Update cancelled after the package transaction finished"
   fi
+  if [[ $firmware_done == true ]]; then
+    message="Update cancelled after the firmware update finished"
+  fi
+  apply_firmware_reboot_recommendation
   if ! restore_release_configuration; then
     state=failed
     phase=rollback
@@ -753,6 +807,7 @@ worker_exit_fallback() {
   local rc=$?
   release_inhibitor
   [[ $worker_finalized == true ]] && return
+  apply_firmware_reboot_recommendation
   # This catches interpreter/tool failures and SIGKILL's next status read
   # repairs the one case in which no shell trap can run.
   local message="Update worker exited unexpectedly (status $rc)"
@@ -805,6 +860,74 @@ check_reboot_recommendation() {
   fi
 }
 
+# dnf's needs-restarting knows nothing about a staged capsule, so a firmware
+# update that waits for the next boot always recommends the restart.
+apply_firmware_reboot_recommendation() {
+  [[ ${firmware_reboot:-false} != true ]] || reboot_recommendation="recommended"
+}
+
+firmware_helper_path() {
+  if [[ ${CYBEXOS_UPDATE_TESTING:-0} == 1 \
+        && -n ${CYBEXOS_UPDATE_FIRMWARE_HELPER:-} ]]; then
+    printf '%s\n' "$CYBEXOS_UPDATE_FIRMWARE_HELPER"
+  else
+    printf '%s/cybexos-firmware-update\n' "$(dirname -- "$script_path")"
+  fi
+}
+
+# start_run creates the run's logs as the update owner. A worker launched by
+# an older client can find the firmware logs missing: create them and hand
+# them to that owner, because root appends to them while the panel reads them
+# unprivileged through read-log.
+ensure_owner_log() {
+  local file=$1
+  [[ ! -e $file ]] || return 0
+  : >"$file" || return 0
+  if [[ -n ${CYBEXOS_UPDATE_OWNER_UID:-} ]]; then
+    chown "${CYBEXOS_UPDATE_OWNER_UID}:${CYBEXOS_UPDATE_OWNER_GID}" \
+      "$file" 2>/dev/null || true
+  fi
+}
+
+# Firmware follows the package phase, so a failed or cancelled package
+# transaction never leaves a capsule staged behind it. It never fails the run:
+# each device's outcome (on battery, already scheduled, a download error) is
+# in firmware-events.log for the panel, and a nonzero helper status is added
+# to the final message like Flatpak's. The helper runs to completion even when
+# a cancellation arrives, because fwupd owns a flash once it has started.
+run_firmware_phase() {
+  local helper events="$run_dir/firmware-events.log"
+  helper=$(firmware_helper_path)
+  ensure_owner_log "$run_dir/firmware.log"
+  ensure_owner_log "$events"
+  write_status running firmware "Updating device firmware" 0
+  if [[ -x $helper ]]; then
+    tagged_command firmware "$run_dir/firmware.log" "$run_dir/firmware.rc" \
+      "${privileged_package[@]}" "$helper" install --events "$events"
+    firmware_rc=$(<"$run_dir/firmware.rc")
+  else
+    firmware_rc=127
+    printf '%s\n' "$firmware_rc" >"$run_dir/firmware.rc"
+    printf '[firmware] the firmware updater is not installed: %s\n' "$helper" \
+      >>"$run_dir/run.log"
+    {
+      jq -cn '{event: "failed", id: "", reason: "unavailable",
+        message: "The firmware updater is not installed"}'
+      jq -cn '{event: "summary", installed: 0, failed: 1, needsReboot: false}'
+    } >>"$events"
+  fi
+  [[ $firmware_rc =~ ^[0-9]+$ ]] || firmware_rc=1
+  firmware_done=true
+  # A malformed line (say, from a helper killed mid-write) is skipped rather
+  # than hiding the capsules staged before it.
+  if jq -Rne 'any(inputs | fromjson? | objects;
+        .event == "installed" and .needsReboot == true)' \
+      "$events" >/dev/null 2>&1; then
+    firmware_reboot=true
+  fi
+  write_status running firmware "Device firmware update finished" 0
+}
+
 worker() {
   run_id=${1:-}; shift || true
   valid_id "$run_id" || exit 2
@@ -816,12 +939,14 @@ worker() {
   started_at=$(jq -r '.startedAt // 0' "$run_dir/status.json" 2>/dev/null || printf 0)
   [[ $started_at =~ ^[0-9]+$ ]] || started_at=$(date +%s)
   dnf_done=false; flatpak_done=false; dnf_rc=0; flatpak_rc=0; tests_rc=0; ansible_rc=0
+  firmware_done=false; firmware_rc=0
   snapshot_id=""
   boot_id=$(current_boot_id || true)
   reboot_recommendation=$(status_reboot_recommendation \
     "$run_dir/status.json" "$boot_id")
   [[ $reboot_recommendation == recommended ]] \
     || reboot_recommendation="pending"
+  firmware_reboot=$(status_firmware_reboot "$run_dir/status.json" "$boot_id")
   cancel_requested=false; packages_ran=false; mixed_state=false
   trap request_cancellation INT TERM
   trap worker_exit_fallback EXIT
@@ -932,6 +1057,11 @@ worker() {
   fi
   honor_cancellation
 
+  if [[ $with_firmware == true ]]; then
+    run_firmware_phase
+    honor_cancellation
+  fi
+
   if [[ $full == true ]]; then
     cd -- "$repo" || {
       worker_failed tests "Could not enter repository directory" 1
@@ -981,9 +1111,11 @@ worker() {
   fi
 
   check_reboot_recommendation
+  apply_firmware_reboot_recommendation
 
   local message="Update completed"
   (( flatpak_rc == 0 )) || message="Update completed; Flatpak reported status $flatpak_rc"
+  (( firmware_rc == 0 )) || message="$message; firmware reported status $firmware_rc"
   [[ $cancel_requested != true ]] \
     || message="$message; cancellation arrived after its last stopping point"
   printf 'CybexOS update %s finished at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
@@ -1031,6 +1163,15 @@ load_status_globals() {
   flatpak_done=$(jq -r '.flatpakDone // false' "$file"); dnf_rc=$(jq -r '.dnfRc // 0' "$file")
   flatpak_rc=$(jq -r '.flatpakRc // 0' "$file"); tests_rc=$(jq -r '.testsRc // 0' "$file")
   ansible_rc=$(jq -r '.ansibleRc // 0' "$file")
+  # Records written before the firmware phase existed have none of these.
+  with_firmware=$(jq -r '.firmware // false' "$file")
+  [[ $with_firmware == true ]] || with_firmware=false
+  firmware_done=$(jq -r '.firmwareDone // false' "$file")
+  [[ $firmware_done == true ]] || firmware_done=false
+  firmware_rc=$(jq -r '.firmwareRc // 0' "$file")
+  [[ $firmware_rc =~ ^[0-9]+$ ]] || firmware_rc=0
+  firmware_reboot=$(jq -r '.firmwareReboot // false' "$file")
+  [[ $firmware_reboot == true ]] || firmware_reboot=false
   system_unit=$(jq -r '.systemUnit // false' "$file")
   release_version=$(jq -r '.releaseVersion // empty' "$file")
   [[ -z $release_version ]] && release_transaction=false || release_transaction=true
@@ -1158,7 +1299,10 @@ dismiss_run() {
 read_log() {
   local id=${1:-} name=${2:-} offset=${3:-0} count=${4:-} file
   valid_id "$id" || return 2
-  [[ $name == dnf || $name == flatpak || $name == run || $name == tests || $name == ansible ]] || return 2
+  case $name in
+    dnf|flatpak|run|tests|ansible|firmware|firmware-events) ;;
+    *) return 2 ;;
+  esac
   [[ $offset =~ ^[0-9]+$ ]] || return 2
   [[ -z $count || $count =~ ^[0-9]+$ ]] || return 2
   file="$log_shelf/$id/$name.log"; [[ -r $file ]] || return 0

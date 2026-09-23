@@ -33,7 +33,8 @@ cleanup() {
       sed -n '1,160p' "$file" >&2
     done < <(find "$fixture" -type f \
       \( -name 'status.json' -o -name '*.err' -o -name '*.rc' \
-         -o -name 'run.log' -o -name 'snapshot.log' -o -name 'dnf.log' \) \
+         -o -name 'run.log' -o -name 'snapshot.log' -o -name 'dnf.log' \
+         -o -name 'firmware.log' -o -name 'firmware-events.log' \) \
       -print0 | LC_ALL=C sort -z)
   fi
   rm -rf -- "$fixture"
@@ -173,6 +174,28 @@ printf '%s\n' '#!/usr/bin/env bash' \
   >"$mock_libexec/xps-system-snapshot"
 chmod 0755 "$mock_libexec/xps-system-snapshot"
 
+# The firmware helper drives fwupd; the fixture never reaches the real daemon.
+# This stub records how it was invoked, appends the events a case supplies,
+# and exits with the status it is given.
+firmware_helper="$fixture/firmware-helper"
+printf '%s\n' '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'printf "%s\n" "$*" >>"$MOCK_FIRMWARE_LOG"' \
+  'umask >>"$MOCK_FIRMWARE_UMASK_LOG"' \
+  '[[ ${1:-} == install && ${2:-} == --events && -n ${3:-} ]] || exit 64' \
+  'if [[ -n ${MOCK_FIRMWARE_GATE:-} ]]; then' \
+  '  : >"$MOCK_FIRMWARE_GATE.entered"' \
+  '  while [[ ! -e $MOCK_FIRMWARE_GATE.release ]]; do' \
+  '    [[ -d ${MOCK_FIRMWARE_GATE%/*} ]] || exit 1' \
+  '    sleep 0.01' \
+  '  done' \
+  'fi' \
+  '[[ -z ${MOCK_FIRMWARE_EVENTS:-} ]] || printf "%s\n" "$MOCK_FIRMWARE_EVENTS" >>"$3"' \
+  'printf "System Firmware 0x01060200 → 0x01070000: writing 40%%\n"' \
+  'exit "${MOCK_FIRMWARE_RC:-0}"' \
+  >"$firmware_helper"
+chmod 0755 "$firmware_helper"
+
 export HOME="$fixture/home"
 export XDG_STATE_HOME="$fixture/state"
 export XDG_RUNTIME_DIR="$fixture/runtime"
@@ -187,6 +210,9 @@ export MOCK_DNF_UMASK_LOG="$fixture/dnf-umask.log"
 export MOCK_ANSIBLE_CONFIG_LOG="$fixture/ansible-config.log"
 export MOCK_ANSIBLE_ARGS_LOG="$fixture/ansible-args.log"
 export MOCK_LEGACY_SNAPSHOT_LOG="$fixture/legacy-snapshot.log"
+export MOCK_FIRMWARE_LOG="$fixture/firmware-helper.log"
+export MOCK_FIRMWARE_UMASK_LOG="$fixture/firmware-umask.log"
+export CYBEXOS_UPDATE_FIRMWARE_HELPER="$firmware_helper"
 export CYBEXOS_UPDATE_BOOT_ID_FILE="$fixture/boot-id"
 export CYBEXOS_UPDATE_ASSUME_USER_UNIT=1
 export CYBEXOS_UPDATE_TESTING=1
@@ -556,7 +582,15 @@ recommended=$($backend status --json "$recommended_id")
 [[ $(jq -r .rebootRecommendation <<<"$recommended") == recommended ]]
 [[ $(tail -n 1 "$MOCK_DNF_UMASK_LOG") =~ ^0?022$ ]]
 [[ $(stat -c %a "$XDG_STATE_HOME/cybexos/update/logs/$recommended_id/dnf.log") == 600 ]]
-[[ $(grep -Fc '"${privileged_package[@]}"' "$backend") -eq 4 ]]
+# Release migration, snapshot, dnf, Flatpak, and firmware all run through
+# the umask wrapper.
+[[ $(grep -Fc '"${privileged_package[@]}"' "$backend") -eq 5 ]]
+# A run without --firmware records that and never starts the helper.
+[[ $(jq -r .firmware <<<"$recommended") == false ]]
+[[ $(jq -r .firmwareDone <<<"$recommended") == false ]]
+[[ $(jq -r .firmwareRc <<<"$recommended") -eq 0 ]]
+[[ $(jq -r .firmwareReboot <<<"$recommended") == false ]]
+[[ $(jq -r .firmwareEventBytes <<<"$recommended") -eq 0 ]]
 grep -q -- '--quiet --cacheonly needs-restarting --json' "$MOCK_DNF_LOG"
 grep -Fxq 'create update '"$recommended_id" "$MOCK_LEGACY_SNAPSHOT_LOG"
 
@@ -616,6 +650,180 @@ $backend _worker "$failed_check_id" --no-flatpak
 failed_check=$($backend status --json "$failed_check_id")
 [[ $(jq -r .state <<<"$failed_check") == done ]]
 [[ $(jq -r .rebootRecommendation <<<"$failed_check") == unavailable ]]
+
+# Firmware installs in the durable worker after the package phase. The
+# helper's events stay readable by the unprivileged panel, a staged capsule
+# recommends the restart that dnf cannot see, and firmware trouble never fails
+# the run. No earlier run in this fixture passed --firmware.
+[[ ! -e $MOCK_FIRMWARE_LOG ]]
+export MOCK_PACKAGE_SUCCESS=1
+export MOCK_REBOOT_RC=0
+export MOCK_REBOOT_JSON='[{"type":"reboot","reboot_required":false,"packages":[]}]'
+: >"$MOCK_PACKAGE_LOG"
+firmware_start=$($backend start --json --no-flatpak --firmware)
+firmware_id=$(jq -er .id <<<"$firmware_start")
+firmware_dir=$(jq -er .logDir <<<"$firmware_start")
+[[ $(jq -r .firmware <<<"$firmware_start") == true ]]
+[[ $(jq -r .firmwareDone <<<"$firmware_start") == false ]]
+[[ $(jq -r .firmwareEventBytes <<<"$firmware_start") -eq 0 ]]
+grep -Fq -- "_worker $firmware_id --no-flatpak --firmware" "$MOCK_SYSTEMD_ARGS_LOG"
+# Created by the starting user, so root's appends keep them readable.
+[[ -f $firmware_dir/firmware.log && ! -s $firmware_dir/firmware.log ]]
+[[ -f $firmware_dir/firmware-events.log && ! -s $firmware_dir/firmware-events.log ]]
+[[ $(stat -c %u "$firmware_dir/firmware-events.log") == "$(id -u)" ]]
+firmware_events=$(printf '%s\n' \
+  '{"event":"plan","devices":[{"id":"sysfw","name":"System Firmware","vendor":"HP","from":"0x01060200","to":"0x01070000","needsReboot":true,"affectsFde":false}]}' \
+  '{"event":"device","id":"sysfw","index":1,"count":1}' \
+  '{"event":"progress","id":"sysfw","status":"scheduling","percent":0}' \
+  '{"event":"installed","id":"sysfw","needsReboot":true,"message":""}' \
+  '{"event":"summary","installed":1,"failed":0,"needsReboot":true}')
+export MOCK_FIRMWARE_EVENTS=$firmware_events
+$backend _worker "$firmware_id" --no-flatpak --firmware
+firmware_run=$($backend status --json "$firmware_id")
+[[ $(jq -r .state <<<"$firmware_run") == done ]]
+[[ $(jq -r .message <<<"$firmware_run") == 'Update completed' ]]
+[[ $(jq -r .firmware <<<"$firmware_run") == true ]]
+[[ $(jq -r .firmwareDone <<<"$firmware_run") == true ]]
+[[ $(jq -r .firmwareRc <<<"$firmware_run") -eq 0 ]]
+[[ $(jq -r .firmwareReboot <<<"$firmware_run") == true ]]
+# dnf reported no reboot; the capsule staged for the next boot still needs one.
+[[ $(jq -r .rebootRecommendation <<<"$firmware_run") == recommended ]]
+[[ $(jq -r .firmwareEventBytes <<<"$firmware_run") \
+    -eq $(wc -c <"$firmware_dir/firmware-events.log") ]]
+[[ $($backend read-log "$firmware_id" firmware-events) == "$firmware_events" ]]
+[[ $($backend read-log "$firmware_id" firmware-events 0 16) == '{"event":"plan",' ]]
+[[ $($backend read-log "$firmware_id" firmware) \
+    == 'System Firmware 0x01060200 → 0x01070000: writing 40%' ]]
+grep -Fq '[firmware] System Firmware 0x01060200' "$firmware_dir/run.log"
+set +e
+$backend read-log "$firmware_id" firmware-bogus >/dev/null
+bogus_log_rc=$?
+set -e
+[[ $bogus_log_rc -eq 2 ]]
+# One invocation, as root through the package umask wrapper, after dnf.
+[[ $(<"$MOCK_FIRMWARE_LOG") == "install --events $firmware_dir/firmware-events.log" ]]
+[[ $(tail -n 1 "$MOCK_FIRMWARE_UMASK_LOG") =~ ^0?022$ ]]
+dnf_line=$(grep -n -- 'cybexos-update-package dnf -y upgrade' "$MOCK_PACKAGE_LOG" \
+  | cut -d: -f1)
+firmware_line=$(grep -nF -- "cybexos-update-package $firmware_helper install --events" \
+  "$MOCK_PACKAGE_LOG" | cut -d: -f1)
+((dnf_line < firmware_line))
+
+# A later package-only run in the same boot keeps the restart advice although
+# dnf still reports none, and does not run the helper again. A new boot
+# clears it.
+firmware_carry_start=$($backend start --json --no-flatpak)
+firmware_carry_id=$(jq -er .id <<<"$firmware_carry_start")
+[[ $(jq -r .firmware <<<"$firmware_carry_start") == false ]]
+[[ $(jq -r .firmwareReboot <<<"$firmware_carry_start") == true ]]
+$backend _worker "$firmware_carry_id" --no-flatpak
+firmware_carry=$($backend status --json "$firmware_carry_id")
+[[ $(jq -r .rebootRecommendation <<<"$firmware_carry") == recommended ]]
+[[ $(jq -r .firmwareReboot <<<"$firmware_carry") == true ]]
+[[ $(jq -r .firmwareDone <<<"$firmware_carry") == false ]]
+[[ $(wc -l <"$MOCK_FIRMWARE_LOG") -eq 1 ]]
+printf 'boot-c\n' >"$CYBEXOS_UPDATE_BOOT_ID_FILE"
+[[ $(jq -r .rebootRecommendation <<<"$($backend status --json "$firmware_carry_id")") \
+    == unavailable ]]
+[[ $(jq -r .firmwareReboot <<<"$($backend status --json "$firmware_id")") == false ]]
+[[ $(jq -r .firmwareReboot "$firmware_dir/status.json") == true ]]
+firmware_boot_start=$($backend start --json --no-flatpak)
+firmware_boot_id=$(jq -er .id <<<"$firmware_boot_start")
+[[ $(jq -r .firmwareReboot <<<"$firmware_boot_start") == false ]]
+$backend _worker "$firmware_boot_id" --no-flatpak
+[[ $(jq -r .rebootRecommendation <<<"$($backend status --json "$firmware_boot_id")") \
+    == not-needed ]]
+
+# A device failure is the helper's nonzero status: reported on the final
+# message like Flatpak's, while the run itself completes.
+export MOCK_FIRMWARE_RC=1
+export MOCK_FIRMWARE_EVENTS='{"event":"failed","id":"sysfw","reason":"ac-power","message":"Connect the power adapter to install this firmware."}'
+firmware_failed_start=$($backend start --json --no-flatpak --firmware)
+firmware_failed_id=$(jq -er .id <<<"$firmware_failed_start")
+$backend _worker "$firmware_failed_id" --no-flatpak --firmware
+firmware_failed=$($backend status --json "$firmware_failed_id")
+[[ $(jq -r .state <<<"$firmware_failed") == done ]]
+[[ $(jq -r .exitCode <<<"$firmware_failed") -eq 0 ]]
+[[ $(jq -r .message <<<"$firmware_failed") \
+    == 'Update completed; firmware reported status 1' ]]
+[[ $(jq -r .firmwareRc <<<"$firmware_failed") -eq 1 ]]
+[[ $(jq -r .firmwareReboot <<<"$firmware_failed") == false ]]
+[[ $(jq -r .rebootRecommendation <<<"$firmware_failed") == not-needed ]]
+unset MOCK_FIRMWARE_RC MOCK_FIRMWARE_EVENTS
+
+# A missing helper is an unavailable device update, not a failed run.
+export CYBEXOS_UPDATE_FIRMWARE_HELPER="$fixture/missing-firmware-helper"
+firmware_missing_start=$($backend start --json --no-flatpak --firmware)
+firmware_missing_id=$(jq -er .id <<<"$firmware_missing_start")
+$backend _worker "$firmware_missing_id" --no-flatpak --firmware
+firmware_missing=$($backend status --json "$firmware_missing_id")
+[[ $(jq -r .state <<<"$firmware_missing") == done ]]
+[[ $(jq -r .message <<<"$firmware_missing") \
+    == 'Update completed; firmware reported status 127' ]]
+[[ $(jq -r .firmwareDone <<<"$firmware_missing") == true ]]
+[[ $(jq -r .firmwareRc <<<"$firmware_missing") -eq 127 ]]
+$backend read-log "$firmware_missing_id" firmware-events | jq -se '
+  . == [{event: "failed", id: "", reason: "unavailable",
+         message: "The firmware updater is not installed"},
+        {event: "summary", installed: 0, failed: 1, needsReboot: false}]' >/dev/null
+[[ $(jq -r .firmwareEventBytes <<<"$firmware_missing") -gt 0 ]]
+grep -Fq '[firmware] the firmware updater is not installed' \
+  "$XDG_STATE_HOME/cybexos/update/logs/$firmware_missing_id/run.log"
+[[ $(wc -l <"$MOCK_FIRMWARE_LOG") -eq 2 ]]
+export CYBEXOS_UPDATE_FIRMWARE_HELPER="$firmware_helper"
+
+# Skipping packages needs other work: a configuration run or firmware.
+set +e
+$backend start --json --no-packages >/dev/null 2>"$fixture/no-work.err"
+no_work_rc=$?
+set -e
+[[ $no_work_rc -eq 2 ]]
+grep -Fq -- '--no-packages requires --full or --firmware' "$fixture/no-work.err"
+: >"$MOCK_DNF_LOG"
+firmware_only_start=$($backend start --json --no-packages --firmware)
+firmware_only_id=$(jq -er .id <<<"$firmware_only_start")
+$backend _worker "$firmware_only_id" --no-packages --firmware
+firmware_only=$($backend status --json "$firmware_only_id")
+[[ $(jq -r .state <<<"$firmware_only") == done ]]
+[[ $(jq -r .firmwareDone <<<"$firmware_only") == true ]]
+! grep -q upgrade "$MOCK_DNF_LOG"
+[[ $(wc -l <"$MOCK_FIRMWARE_LOG") -eq 3 ]]
+
+# A stop during the firmware phase waits for the helper, since fwupd owns a
+# flash once it has started, and is recorded at the next boundary. A capsule
+# staged by then still recommends a restart.
+export MOCK_FIRMWARE_GATE="$fixture/firmware-gate"
+export MOCK_FIRMWARE_EVENTS='{"event":"installed","id":"sysfw","needsReboot":true,"message":""}'
+firmware_cancel_start=$($backend start --json --no-flatpak --firmware)
+firmware_cancel_id=$(jq -er .id <<<"$firmware_cancel_start")
+$backend _worker "$firmware_cancel_id" --no-flatpak --firmware \
+  >"$fixture/firmware-cancel.out" 2>"$fixture/firmware-cancel.err" &
+firmware_cancel_worker=$!
+for _ in {1..1000}; do
+  [[ -e $MOCK_FIRMWARE_GATE.entered ]] && break
+  sleep 0.01
+done
+[[ -e $MOCK_FIRMWARE_GATE.entered ]]
+[[ $(jq -r .phase <<<"$($backend status --json "$firmware_cancel_id")") == firmware ]]
+kill -TERM "$firmware_cancel_worker"
+sleep 0.3
+kill -TERM "$firmware_cancel_worker"
+sleep 0.3
+kill -0 "$firmware_cancel_worker"
+: >"$MOCK_FIRMWARE_GATE.release"
+set +e
+wait "$firmware_cancel_worker"
+firmware_cancel_rc=$?
+set -e
+[[ $firmware_cancel_rc -eq 130 ]]
+unset MOCK_FIRMWARE_GATE MOCK_FIRMWARE_EVENTS
+firmware_cancelled=$($backend status --json "$firmware_cancel_id")
+[[ $(jq -r .state <<<"$firmware_cancelled") == cancelled ]]
+[[ $(jq -r .message <<<"$firmware_cancelled") \
+    == 'Update cancelled after the firmware update finished' ]]
+[[ $(jq -r .firmwareDone <<<"$firmware_cancelled") == true ]]
+[[ $(jq -r .firmwareReboot <<<"$firmware_cancelled") == true ]]
+[[ $(jq -r .rebootRecommendation <<<"$firmware_cancelled") == recommended ]]
 
 # Release migration, apply, activation, agent-skill adoption, and pruning
 # belong to the durable worker. Failed apply or activation restores the prior
@@ -801,5 +1009,7 @@ grep -F '[release] restored the pre-update installer configuration' \
 assert_unrelated_skills
 
 ! grep -q 'set +e;.*set -e' "$backend"
+# Only the four --firmware runs above ever started the helper.
+[[ $(wc -l <"$MOCK_FIRMWARE_LOG") -eq 4 ]]
 
-printf 'Durable updater serializes starts, defers cancellation past package transactions, inhibits shutdown, owns release and agent-skill activation rollback, preserves boot-scoped reboot advice, and reads exact log windows\n'
+printf 'Durable updater serializes starts, defers cancellation past package and firmware transactions, inhibits shutdown, owns release and agent-skill activation rollback, preserves boot-scoped reboot advice including staged firmware, and reads exact log windows\n'
