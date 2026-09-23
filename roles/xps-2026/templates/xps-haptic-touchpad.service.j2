@@ -9,6 +9,8 @@ StartLimitBurst=5
 [Service]
 Type=simple
 ExecStart=/usr/local/libexec/xps-haptic-touchpad
+# The daemon rereads /etc/xps-haptic-touchpad.conf and reapplies it on SIGHUP.
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=3
 NoNewPrivileges=true

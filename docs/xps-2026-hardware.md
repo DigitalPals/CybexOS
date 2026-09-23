@@ -247,9 +247,11 @@ fragile module unload/reprobe operations.
 The existing Fedora controller power rules are retained. The hardware-specific
 daemon now pairs the matching 06CB input and hidraw devices, applies both the
 surface/physical-button feature and a configurable intensity, retries across
-device disappearance/re-enumeration, responds to config changes, and reapplies
-after physical clicks. It reads HID features back when the transport supports
-that operation; this XPS firmware may expose them as write-only.
+device disappearance/re-enumeration, and reapplies after physical clicks. It
+rereads its configuration on SIGHUP (`systemctl reload xps-haptic-touchpad`)
+or a restart; a converge that changes the configuration restarts it. It reads
+HID features back when the transport supports that operation; this XPS
+firmware may expose them as write-only.
 
 Set `xps_2026_haptic_intensity` to `low`, `mid`, or `high` in inventory. These
 map to the controller's values 10, 50, and 100. Check it with:
