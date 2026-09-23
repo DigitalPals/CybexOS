@@ -133,7 +133,14 @@ test("Tailscale polling follows Network consumers and refreshes new views", () =
     assert.match(singleton, /readonly property int livePollMs:\s*30000/);
     assert.match(singleton, /readonly property int idlePollMs:\s*120000/);
     assert.match(singleton,
-        /interval:\s*root\.liveWatchers > 0 \? root\.livePollMs : root\.idlePollMs/);
+        /interval:\s*root\.missing \? root\.missingPollMs\s*: root\.liveWatchers > 0 \? root\.livePollMs : root\.idlePollMs/);
+    // Nothing polls an idle or locked session; the first input refreshes.
+    assert.match(singleton, /running:\s*root\.watchers > 0 && !Activity\.idle/);
+    assert.match(singleton,
+        /target: Activity[\s\S]{0,80}function onResumed\(\)[\s\S]{0,120}root\.refresh\(\)/);
+    // A missing binary is probed hourly, not forked every poll.
+    assert.match(singleton, /readonly property int missingPollMs:\s*3600000/);
+    assert.match(singleton, /missing = exitCode === ProcHelpers\.NOT_STARTED;/);
     assert.match(singleton,
         /function acquireLive\(\)\s*\{\s*liveWatchers\+\+;\s*acquire\(\);/);
     assert.match(singleton,

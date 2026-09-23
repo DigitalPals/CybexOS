@@ -51,6 +51,11 @@ Singleton {
     property int liveWatchers: 0
     readonly property int livePollMs: 30000
     readonly property int idlePollMs: 120000
+    // No `tailscale` binary: every run would fork only for Quickshell to log
+    // that it could not start. Probe hourly instead, and whenever a view
+    // opens, so installing it later is still noticed.
+    property bool missing: false
+    readonly property int missingPollMs: 3600000
 
     function acquire() {
         watchers++;
@@ -73,11 +78,23 @@ Singleton {
         release();
     }
 
+    // Nobody reads the tailnet from an idle or locked session; the first
+    // input afterwards takes one fresh snapshot instead.
     Timer {
-        interval: root.liveWatchers > 0 ? root.livePollMs : root.idlePollMs
-        running: root.watchers > 0
+        interval: root.missing ? root.missingPollMs
+            : root.liveWatchers > 0 ? root.livePollMs : root.idlePollMs
+        running: root.watchers > 0 && !Activity.idle
         repeat: true
         onTriggered: root.refresh()
+    }
+
+    Connections {
+        target: Activity
+
+        function onResumed() {
+            if (root.watchers > 0 && !root.missing && !statusProc.running)
+                root.refresh();
+        }
     }
 
     function refresh() {
@@ -105,6 +122,7 @@ Singleton {
 
     function apply(exitCode, body, errText) {
         statusKnown = true;
+        missing = exitCode === ProcHelpers.NOT_STARTED;
         const self = exitCode === 0 ? ProcHelpers.tailscaleSelf(body) : null;
         const list = exitCode === 0 ? ProcHelpers.tailscalePeers(body) : null;
         if (self !== null && list !== null) {
