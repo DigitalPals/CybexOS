@@ -2,11 +2,22 @@ name: Repository checks
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
+  # release.yml gates a release on this same job.
+  workflow_call:
 
 permissions:
   contents: read
+
+# A newer push to the same branch or pull request supersedes a running check;
+# a release's run is never cancelled. The prefix keeps this group apart from
+# the caller's own when release.yml calls this workflow, where github.workflow
+# names the caller.
+concurrency:
+  group: source-checks-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   fedora-44:
