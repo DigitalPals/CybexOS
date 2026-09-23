@@ -3,6 +3,7 @@
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 IMAGE = "Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2"
 IMAGE_URL = "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/" + IMAGE
 IMAGE_SHA256 = "28680fe5b371a5a82ebf43a31926e086a168e59949d03969c5093e7071f90b7f"
+# The sparse overlay grows with the complete application build (see README).
+FREE_SPACE_GIB = 180
+DOWNLOAD_ATTEMPTS = 4
 
 
 def run(args, **kwargs):
@@ -29,6 +33,28 @@ def run(args, **kwargs):
 def digest(path):
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def download(url, destination, expected):
+    """Fetch with stall timeouts and bounded retries; keep only a verified file."""
+    partial = destination.with_name(destination.name + ".download")
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        try:
+            # The timeout bounds connecting and every read, so a stalled
+            # mirror is retried instead of blocking the build indefinitely.
+            with urllib.request.urlopen(url, timeout=60) as response, partial.open("wb") as output:
+                shutil.copyfileobj(response, output, 1024 * 1024)
+            if digest(partial) == expected:
+                partial.replace(destination)
+                return
+            problem = "checksum mismatch"
+        except (OSError, http.client.HTTPException) as error:
+            problem = str(error) or type(error).__name__
+        partial.unlink(missing_ok=True)
+        print(f"Download attempt {attempt} of {DOWNLOAD_ATTEMPTS} failed: {problem}", flush=True)
+        if attempt < DOWNLOAD_ATTEMPTS:
+            time.sleep(10 * attempt)
+    raise RuntimeError(f"could not download a verified {destination.name}: {problem}")
 
 
 def source_archive(destination):
@@ -53,6 +79,8 @@ def main():
     parser.add_argument("--memory", type=int, default=24576, help="Builder VM RAM in MiB")
     parser.add_argument("--cpus", type=int, default=8)
     parser.add_argument("--debug-on-failure", action="store_true", help="Keep a failed builder running for inspection until interrupted")
+    parser.add_argument("--compress", choices=("xz", "zstd"), default="xz",
+                        help="Live root compression; zstd builds faster, larger development images")
     args = parser.parse_args()
     for command in ("qemu-img", "qemu-system-x86_64", "cloud-localds", "ssh", "ssh-keygen", "scp"):
         if not shutil.which(command):
@@ -65,15 +93,14 @@ def main():
         parser.error("output must be empty; use a new output directory for each build")
     cache = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "cybexos"
     cache.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(cache).free / 2**30
+    if free < FREE_SPACE_GIB:
+        parser.error(f"{cache} has {free:.0f} GiB free; the builder overlay and artifacts "
+                     f"need about {FREE_SPACE_GIB} GiB")
     base = cache / IMAGE
     if not base.exists() or digest(base) != IMAGE_SHA256:
         print("Downloading and verifying the Fedora builder image…", flush=True)
-        partial = cache / (IMAGE + ".download")
-        urllib.request.urlretrieve(IMAGE_URL, partial)
-        if digest(partial) != IMAGE_SHA256:
-            partial.unlink()
-            raise RuntimeError("Fedora builder image checksum mismatch")
-        partial.replace(base)
+        download(IMAGE_URL, base, IMAGE_SHA256)
     with tempfile.TemporaryDirectory(prefix="cybexos-image-", dir=cache) as temporary:
         work = Path(temporary)
         key = work / "id_ed25519"
@@ -90,7 +117,10 @@ def main():
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
+        # Keepalives end a session whose builder stopped answering after five
+        # minutes, instead of blocking on its output forever.
         ssh_options = ["-i", str(key), "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+                       "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=10",
                        "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={work / 'known_hosts'}"]
         ssh = ["ssh", *ssh_options, "-p", str(port), "builder@127.0.0.1"]
         (output / "builder.json").write_text(json.dumps({"ssh": ssh, "work": str(work)}, indent=2) + "\n")
@@ -98,7 +128,9 @@ def main():
         vm = subprocess.Popen([
             "qemu-system-x86_64", "-name", "cybexos-image-builder", "-machine", "q35,accel=kvm",
             "-cpu", "host", "-smp", str(args.cpus), "-m", str(args.memory),
-            "-drive", f"file={work / 'system.qcow2'},if=virtio,format=qcow2",
+            # Report host write errors such as a full disk to the guest, so the
+            # build fails. QEMU's default pauses the VM on ENOSPC indefinitely.
+            "-drive", f"file={work / 'system.qcow2'},if=virtio,format=qcow2,werror=report,rerror=report",
             "-drive", f"file={work / 'seed.iso'},if=virtio,format=raw,readonly=on",
             "-netdev", f"user,id=net,hostfwd=tcp:127.0.0.1:{port}-:22",
             "-device", "virtio-net-pci,netdev=net", "-display", "none", "-serial", "stdio", "-monitor", "none",
@@ -118,7 +150,8 @@ def main():
                 run([*ssh, "tar xzf - -C /home/builder/source"], stdin=archive)
             print("Building desktop RPMs and the live ISO in Fedora…", flush=True)
             with (output / "build.log").open("w") as log:
-                build = subprocess.Popen([*ssh, "sudo bash /home/builder/source/image/build-in-guest"],
+                build = subprocess.Popen([*ssh, f"sudo env CYBEXOS_SQUASHFS_COMPRESSION={args.compress} "
+                                          "bash /home/builder/source/image/build-in-guest"],
                                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 for line in build.stdout:
                     print(line, end="", flush=True)
@@ -143,12 +176,19 @@ def main():
 
 
 if __name__ == "__main__":
-    def interrupted(_signal, _frame):
-        raise KeyboardInterrupt
+    def interrupted(number, _frame):
+        raise KeyboardInterrupt(number)
 
-    signal.signal(signal.SIGTERM, interrupted)
+    # A closed terminal must also stop the builder and remove its overlay;
+    # the default SIGHUP action skips that cleanup.
+    for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(number, interrupted)
     try:
         main()
-    except (RuntimeError, subprocess.CalledProcessError, KeyboardInterrupt) as error:
+    except KeyboardInterrupt as error:
+        number = error.args[0] if error.args else signal.SIGINT
+        print(f"image/build: interrupted by {signal.Signals(number).name}", file=sys.stderr)
+        sys.exit(128 + number)
+    except (RuntimeError, subprocess.CalledProcessError) as error:
         print(f"image/build: {error}", file=sys.stderr)
         sys.exit(1)

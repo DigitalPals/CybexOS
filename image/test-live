@@ -5,15 +5,31 @@ The test types setup commands into the live desktop through QEMU keyboard
 events. Neither the ISO nor its packaged root is edited.
 """
 import argparse
+import ctypes
 import json
-import os
 from pathlib import Path
 import shlex
+import shutil
 import signal
 import socket
 import subprocess
 import sys
 import time
+
+# Matching CODE/VARS pairs without Secure Boot, as Debian/Ubuntu, Arch and
+# Fedora install them. All are raw, so the retained OVMF_VARS.fd stays usable
+# with the CODE image that vm.json records.
+UEFI_FIRMWARE = (
+    ("/usr/share/OVMF/OVMF_CODE_4M.fd", "/usr/share/OVMF/OVMF_VARS_4M.fd"),
+    ("/usr/share/edk2/x64/OVMF_CODE.4m.fd", "/usr/share/edk2/x64/OVMF_VARS.4m.fd"),
+    ("/usr/share/edk2/ovmf/OVMF_CODE.fd", "/usr/share/edk2/ovmf/OVMF_VARS.fd"),
+    ("/usr/share/OVMF/OVMF_CODE.fd", "/usr/share/OVMF/OVMF_VARS.fd"),
+)
+# Seconds after VM start before typing first (GRUB waits 5 s), between typing
+# attempts while SSH stays down, and allowed beyond --boot-wait overall.
+FIRST_ATTEMPT = 60
+ATTEMPT_WINDOW = 60
+SSH_ALLOWANCE = 240
 
 
 def run(args, **kwargs):
@@ -24,6 +40,16 @@ def free_port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
+
+
+LIBC = ctypes.CDLL(None, use_errno=True)
+
+
+def stop_with_harness():
+    # Runs in the forked VM process. Its own process group keeps a terminal
+    # Ctrl-C from killing the VM before the harness has flushed the guest;
+    # PR_SET_PDEATHSIG still stops the VM if the harness itself is killed.
+    LIBC.prctl(1, signal.SIGTERM)
 
 
 AUDIT = r"""
@@ -98,19 +124,29 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--firmware", choices=("bios", "uefi"), default="uefi")
     parser.add_argument("--boot-wait", type=int, default=150,
-                        help="Seconds allowed for boot and offline first-login toolchain setup")
+                        help="Seconds allowed for boot and offline first-login toolchain setup; "
+                             f"typing starts earlier and is retried, and SSH gets {SSH_ALLOWANCE} more")
     parser.add_argument("--hold", action="store_true", help="Keep the VM open for interactive installer testing; Ctrl-C cleans up")
     args = parser.parse_args()
+    uefi = None
+    if args.firmware == "uefi":
+        uefi = next((pair for pair in UEFI_FIRMWARE if all(Path(path).is_file() for path in pair)), None)
+        if uefi is None:
+            tried = "; ".join(" + ".join(pair) for pair in UEFI_FIRMWARE)
+            parser.error(f"no UEFI firmware found (tried {tried}); install ovmf on Debian or "
+                         "edk2-ovmf on Fedora, or use --firmware bios")
+    if not args.iso.is_file():
+        parser.error(f"ISO not found: {args.iso}")
     iso = args.iso.resolve(strict=True)
     work = args.output.resolve()
     work.mkdir(parents=True, exist_ok=True)
     if any(work.iterdir()):
         parser.error("test output directory must be empty")
     firmware = []
-    if args.firmware == "uefi":
-        import shutil
-        shutil.copyfile("/usr/share/OVMF/OVMF_VARS_4M.fd", work / "OVMF_VARS.fd")
-        firmware = ["-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
+    if uefi:
+        code, variables = uefi
+        shutil.copyfile(variables, work / "OVMF_VARS.fd")
+        firmware = ["-drive", f"if=pflash,format=raw,readonly=on,file={code}",
                     "-drive", f"if=pflash,format=raw,file={work / 'OVMF_VARS.fd'}"]
     run(["qemu-img", "create", "-q", "-f", "qcow2", str(work / "installed.qcow2"), "100G"])
     run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(work / "id_ed25519")])
@@ -130,32 +166,47 @@ def main():
         "-device", "virtio-net-pci,netdev=net", "-vnc", f"127.0.0.1:{vnc_port - 5900}",
         "-serial", f"file:{work / 'serial.log'}",
         "-qmp", f"unix:{work / 'qmp.sock'},server=on,wait=off", "-monitor", "none",
-    ], stdout=(work / "qemu.log").open("w"), stderr=subprocess.STDOUT)
+    ], stdout=(work / "qemu.log").open("w"), stderr=subprocess.STDOUT,
+        process_group=0, preexec_fn=stop_with_harness)
     state = {"pid": vm.pid, "ssh": ssh, "vnc_port": vnc_port, "qmp": str(work / "qmp.sock"),
              "disk": str(work / "installed.qcow2")}
+    if uefi:
+        state["uefi_code"] = uefi[0]
     (work / "vm.json").write_text(json.dumps(state, indent=2) + "\n")
     ssh_ready = False
     try:
         # Boot the ISO's real firmware/menu path, then open the normal live
         # user's terminal. No debug console or special guest agent is shipped.
-        time.sleep(args.boot_wait)
+        # Keys sent before the desktop is up are lost, so repeat the idempotent
+        # terminal setup until SSH answers. The overall limit stays --boot-wait
+        # plus the SSH allowance that used to follow a single fixed wait.
         control = [str(Path(__file__).with_name("vm-control")), str(work)]
-        run([*control, "key", "meta_l+ret"])
-        time.sleep(4)
         public = (work / "id_ed25519.pub").read_text().strip()
         setup = "mkdir -p ~/.ssh; printf '%s\\n' " + shlex.quote(public)
         setup += " > ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys; "
         setup += "sudo restorecon -RF ~/.ssh; sudo systemctl start sshd; sudo firewall-cmd --add-service=ssh; exit\n"
-        run([*control, "type", setup])
-        for _ in range(120):
+        started = time.monotonic()
+        deadline = started + args.boot_wait + SSH_ALLOWANCE
+        attempt_at = started + min(args.boot_wait, FIRST_ATTEMPT)
+        attempts = 0
+        while True:
             if vm.poll() is not None:
                 raise RuntimeError("VM exited before SSH was ready")
-            if subprocess.run([*ssh, "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+            now = time.monotonic()
+            if now >= deadline:
+                raise RuntimeError(f"test SSH did not start after {attempts} terminal attempts")
+            if now >= attempt_at:
+                attempts += 1
+                print(f"Opening the live terminal for test SSH (attempt {attempts})…", flush=True)
+                run([*control, "key", "meta_l+ret"])
+                time.sleep(4)
+                run([*control, "type", setup])
+                attempt_at = time.monotonic() + ATTEMPT_WINDOW
+            elif attempts and subprocess.run([*ssh, "true"], stdout=subprocess.DEVNULL,
+                                             stderr=subprocess.DEVNULL).returncode == 0:
                 ssh_ready = True
                 break
             time.sleep(2)
-        else:
-            raise RuntimeError("test SSH did not start")
         for _ in range(90):
             result = subprocess.run([*ssh, "XDG_RUNTIME_DIR=/run/user/1000 systemctl --user is-active --quiet quickshell.service"],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -173,8 +224,12 @@ def main():
         print(f"Live desktop and welcome passed. Test connection details: {work / 'vm.json'}", flush=True)
         if args.hold:
             print("VM is available for installer testing; interrupt this command to stop it.", flush=True)
-            while vm.poll() is None:
-                time.sleep(1)
+            try:
+                while vm.poll() is None:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                # Its checks passed; an interrupt is how a held test ends.
+                pass
     finally:
         try:
             if ssh_ready and vm.poll() is None:
@@ -195,16 +250,21 @@ def main():
                 (work / name).unlink(missing_ok=True)
 
 
-def interrupted(_signal, _frame):
-    raise KeyboardInterrupt
+def interrupted(number, _frame):
+    raise KeyboardInterrupt(number)
 
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGTERM, interrupted)
+    # A closed terminal also cleans up; the default SIGHUP action skips it.
+    for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(number, interrupted)
     try:
         main()
-    except KeyboardInterrupt:
-        pass
-    except (RuntimeError, subprocess.CalledProcessError) as error:
+    except KeyboardInterrupt as error:
+        # An interrupted test did not pass. Report it the way a shell would.
+        number = error.args[0] if error.args else signal.SIGINT
+        print(f"image/test-live: interrupted by {signal.Signals(number).name}", file=sys.stderr)
+        sys.exit(128 + number)
+    except (RuntimeError, subprocess.SubprocessError) as error:
         print(f"image/test-live: {error}", file=sys.stderr)
         sys.exit(1)
