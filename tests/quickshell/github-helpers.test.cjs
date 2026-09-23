@@ -950,3 +950,41 @@ test("workflow failure toasts coalesce and global retry backoff is bounded", () 
     assert.equal(H.inboxBackoffMs(1), MINUTE);
     assert.equal(H.inboxBackoffMs(99), 15 * MINUTE);
 });
+
+test("keyed popover lists read their order from a key and rows from an index", () => {
+    const rows = [{ key: "run:a/b:1", title: "one" }, { key: "push:a/b:main", title: "two" },
+        null, { key: 7 }];
+    const key = H.listKey(rows, "key");
+    assert.equal(key, '["run:a/b:1","push:a/b:main","",""]');
+    // A value change that keeps keys and order keeps the key byte-identical,
+    // which is what lets a Repeater keep its delegates.
+    assert.equal(H.listKey([{ key: "run:a/b:1", title: "changed" },
+        { key: "push:a/b:main", title: "two" }, null, { key: 7 }], "key"), key);
+    assert.deepEqual(H.listIds(key), ["run:a/b:1", "push:a/b:main", "", ""]);
+    assert.deepEqual(H.listIds("not json"), []);
+    assert.deepEqual(H.listIds('{"a":1}'), []);
+    assert.deepEqual(H.listIds('["x",3,null]'), ["x"]);
+
+    const index = H.rowIndex(rows, "key");
+    assert.equal(index["run:a/b:1"].title, "one");
+    assert.equal(H.inboxRowFor(index, "push:a/b:main").title, "two");
+    const missing = H.inboxRowFor(index, "gone");
+    assert.equal(missing.missing, true);
+    assert.equal(missing.key, "gone");
+    assert.equal(missing.canSettle, false, "a vanished row offers no action");
+    assert.equal(missing.url, "", "and opens nothing");
+    assert.equal(H.inboxRowFor(null, "gone").missing, true);
+
+    const repos = H.rowIndex([{ slug: "a/b", branch: "main" }], "slug");
+    assert.equal(H.repoFor(repos, "a/b").branch, "main");
+    assert.deepEqual([H.repoFor(repos, "c/d").owner, H.repoFor(repos, "c/d").name,
+        H.repoFor(repos, "c/d").missing], ["c", "d", true]);
+});
+
+test("the inbox's fixed section ids match the sections it derives", () => {
+    const sections = H.inboxSections([]);
+    assert.deepEqual(sections.map(section => section.id), H.INBOX_SECTION_IDS);
+    assert.equal(H.inboxSectionFor(sections, "settled").title, "Settled");
+    assert.deepEqual(H.inboxSectionFor(sections, "unknown").rows, []);
+    assert.deepEqual(H.inboxSectionFor(null, "active"), { id: "active", title: "", rows: [] });
+});

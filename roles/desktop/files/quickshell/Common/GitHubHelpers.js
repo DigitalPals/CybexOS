@@ -1882,6 +1882,77 @@ function inboxSections(rows) {
     ];
 }
 
+// ---- keyed popover lists ------------------------------------------------
+// The popover's Repeaters read their model out of a JSON string of row keys:
+// a string property only notifies when the keys or their order really
+// change, so a changed status updates a delegate in place instead of
+// recreating it (and its hover and keyboard focus). Delegates look their live
+// row up by key.
+var INBOX_SECTION_IDS = ["active", "attention", "updates", "settled"];
+
+function listKey(rows, field) {
+    return JSON.stringify((Array.isArray(rows) ? rows : []).map(function (row) {
+        return row && typeof row[field] === "string" ? row[field] : "";
+    }));
+}
+
+// The keys a listKey names; a malformed key names none.
+function listIds(key) {
+    try {
+        var ids = JSON.parse(key);
+        return Array.isArray(ids) ? ids.filter(function (id) {
+            return typeof id === "string";
+        }) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function rowIndex(rows, field) {
+    var index = {};
+    (Array.isArray(rows) ? rows : []).forEach(function (row) {
+        if (row && typeof row[field] === "string" && index[row[field]] === undefined)
+            index[row[field]] = row;
+    });
+    return index;
+}
+
+function inboxSectionFor(sections, id) {
+    var list = Array.isArray(sections) ? sections : [];
+    for (var i = 0; i < list.length; i++) {
+        if (list[i] && list[i].id === id)
+            return list[i];
+    }
+    return { id: id, title: "", rows: [] };
+}
+
+// A delegate can briefly outlive its row between the rows and their key
+// updating, so a missing key reads as an inert, settled, unlinked row rather
+// than undefined.
+function inboxRowFor(index, key) {
+    var row = index && typeof index === "object" ? index[key] : undefined;
+    if (row)
+        return row;
+    return {
+        id: key, key: key, kind: "", repo: "", title: "", detail: "", status: "",
+        conclusion: "", active: false, attention: false, tone: "muted", unread: false,
+        lifecycle: "settled", noticedAt: "", settledAt: "", canSettle: false,
+        at: "", url: "", missing: true
+    };
+}
+
+function repoFor(index, slug) {
+    var row = index && typeof index === "object" ? index[slug] : undefined;
+    if (row)
+        return row;
+    var parts = typeof slug === "string" ? slug.split("/") : [];
+    return {
+        slug: typeof slug === "string" ? slug : "", owner: parts[0] || "",
+        name: parts[1] || "", pushedAt: "", isPrivate: false, archived: false,
+        branch: "", watched: false, account: true, missing: true
+    };
+}
+
 function inboxCounts(rows) {
     var counts = { running: 0, attention: 0, updates: 0, pending: 0, settled: 0,
         unread: 0 };
@@ -2198,6 +2269,13 @@ var exported = {
     removeInboxSources: removeInboxSources,
     inboxRows: inboxRows,
     inboxSections: inboxSections,
+    INBOX_SECTION_IDS: INBOX_SECTION_IDS,
+    listKey: listKey,
+    listIds: listIds,
+    rowIndex: rowIndex,
+    inboxSectionFor: inboxSectionFor,
+    inboxRowFor: inboxRowFor,
+    repoFor: repoFor,
     inboxCounts: inboxCounts,
     inboxBadgeTone: inboxBadgeTone,
     patchRunCache: patchRunCache,

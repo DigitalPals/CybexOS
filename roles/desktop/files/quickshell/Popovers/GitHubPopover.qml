@@ -58,6 +58,12 @@ Surface {
     }
     readonly property var inboxRows: GitHub.inboxItems
     readonly property var inboxSections: Helpers.inboxSections(root.inboxRows)
+    // Both lists are keyed (see Helpers.listKey): a Repeater recreates its
+    // delegates only when the keys change, and each row reads its live entry
+    // from these indexes.
+    readonly property var inboxIndex: Helpers.rowIndex(root.inboxRows, "key")
+    readonly property var repoIndex: Helpers.rowIndex(root.filteredRepos, "slug")
+    readonly property string repoListKey: Helpers.listKey(root.filteredRepos, "slug")
     readonly property var selectedRepo: GitHub.repos.find(r => r.slug === root.selectedSlug)
         ?? null
     readonly property var commitEntry: GitHub.commitCache[root.selectedSlug] ?? null
@@ -886,36 +892,41 @@ Surface {
 
             // Active, Attention, Updates, Settled. Only the retained settled
             // history starts collapsed; every pending entity stays visible.
+            // The four sections are fixed, so their delegates live as long as
+            // the page; each one looks its rows up by id.
             Repeater {
-                model: root.inboxSections
+                model: Helpers.INBOX_SECTION_IDS
 
                 delegate: Column {
                     id: inboxSection
 
-                    required property var modelData
+                    required property string modelData
+                    readonly property var section: Helpers.inboxSectionFor(
+                        root.inboxSections, modelData)
+                    readonly property string rowKeys: Helpers.listKey(section.rows, "key")
 
-                    visible: modelData.rows.length > 0
+                    visible: section.rows.length > 0
                     width: inboxList.width
                     spacing: 4
 
                     GroupHeader {
-                        visible: inboxSection.modelData.id !== "settled"
+                        visible: inboxSection.modelData !== "settled"
                         width: parent.width
-                        label: inboxSection.modelData.id === "active" ? "Working"
-                            : inboxSection.modelData.id === "attention" ? "Needs you"
-                            : inboxSection.modelData.title
-                        count: inboxSection.modelData.rows.length
-                        tint: inboxSection.modelData.id === "attention" ? T3Theme.amber
-                            : inboxSection.modelData.id === "active" ? T3Theme.accent
+                        label: inboxSection.modelData === "active" ? "Working"
+                            : inboxSection.modelData === "attention" ? "Needs you"
+                            : inboxSection.section.title
+                        count: inboxSection.section.rows.length
+                        tint: inboxSection.modelData === "attention" ? T3Theme.amber
+                            : inboxSection.modelData === "active" ? T3Theme.accent
                             : T3Theme.textMuted
-                        rule: inboxSection.modelData.id === "attention" ? T3Theme.amberBorder
-                            : inboxSection.modelData.id === "active" ? T3Theme.accentSoft
+                        rule: inboxSection.modelData === "attention" ? T3Theme.amberBorder
+                            : inboxSection.modelData === "active" ? T3Theme.accentSoft
                             : T3Theme.border
                     }
 
                     Rectangle {
                         id: settledDrawer
-                        visible: inboxSection.modelData.id === "settled"
+                        visible: inboxSection.modelData === "settled"
                         width: parent.width
                         height: visible ? Theme.sectionHeaderHeight + 8 : 0
                         radius: T3Theme.controlRadius
@@ -925,7 +936,7 @@ Surface {
                         border.color: T3Theme.focus
                         activeFocusOnTab: visible
                         Accessible.role: Accessible.Button
-                        Accessible.name: "Settled, " + inboxSection.modelData.rows.length
+                        Accessible.name: "Settled, " + inboxSection.section.rows.length
                             + " items, " + (root.settledExpanded ? "expanded" : "collapsed")
                         Accessible.onPressAction: root.settledExpanded = !root.settledExpanded
 
@@ -959,7 +970,7 @@ Surface {
                             anchors.left: settledLabel.right
                             anchors.leftMargin: 7
                             anchors.verticalCenter: parent.verticalCenter
-                            text: inboxSection.modelData.rows.length
+                            text: inboxSection.section.rows.length
                             font.family: T3Theme.fontUi
                             font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightMedium
@@ -1001,12 +1012,12 @@ Surface {
                     }
 
                     Repeater {
-                        model: inboxSection.modelData.id !== "settled" || root.settledExpanded
-                            ? inboxSection.modelData.rows : []
+                        model: inboxSection.modelData !== "settled" || root.settledExpanded
+                            ? Helpers.listIds(inboxSection.rowKeys) : []
 
                         delegate: InboxRow {
-                            required property var modelData
-                            row: modelData
+                            required property string modelData
+                            row: Helpers.inboxRowFor(root.inboxIndex, modelData)
                         }
                     }
                 }
@@ -1137,15 +1148,16 @@ Surface {
             }
 
             Repeater {
-                model: root.filteredRepos
+                model: Helpers.listIds(root.repoListKey)
 
                 delegate: Rectangle {
                     id: repoRow
 
-                    required property var modelData
+                    required property string modelData
+                    readonly property var repo: Helpers.repoFor(root.repoIndex, modelData)
 
-                    readonly property bool unread: modelData.pushedAt !== ""
-                        && GitHub.seenAt !== "" && modelData.pushedAt > GitHub.seenAt
+                    readonly property bool unread: repo.pushedAt !== ""
+                        && GitHub.seenAt !== "" && repo.pushedAt > GitHub.seenAt
                     readonly property bool actionsRevealed: repoHover.hovered || activeFocus
                         || openRepoAction.activeFocus
 
@@ -1157,17 +1169,17 @@ Surface {
                     border.color: activeFocus ? T3Theme.focus : T3Theme.border
                     activeFocusOnTab: true
                     Accessible.role: Accessible.Button
-                    Accessible.name: repoRow.modelData.slug
+                    Accessible.name: repoRow.repo.slug
                         + (repoRow.unread ? ", updated" : "")
-                        + (GitHub.watchError(repoRow.modelData.slug) !== ""
+                        + (GitHub.watchError(repoRow.repo.slug) !== ""
                             ? ", Inbox data unavailable" : "")
                     Accessible.description: "Show commits"
-                    Accessible.onPressAction: root.showCommits(repoRow.modelData.slug)
+                    Accessible.onPressAction: root.showCommits(repoRow.repo.slug)
 
                     Keys.onPressed: event => {
                         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                                 || event.key === Qt.Key_Space) {
-                            root.showCommits(repoRow.modelData.slug);
+                            root.showCommits(repoRow.repo.slug);
                             event.accepted = true;
                         }
                     }
@@ -1179,7 +1191,7 @@ Surface {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             repoRow.forceActiveFocus();
-                            root.showCommits(repoRow.modelData.slug);
+                            root.showCommits(repoRow.repo.slug);
                         }
                     }
 
@@ -1243,8 +1255,8 @@ Surface {
                             anchors.right: repoContext.left
                             anchors.verticalCenter: parent.verticalCenter
                             height: parent.height
-                            owner: repoRow.modelData.owner
-                            name: repoRow.modelData.name
+                            owner: repoRow.repo.owner
+                            name: repoRow.repo.name
                             strong: repoRow.unread
                             textSize: Theme.fontSecondary
                         }
@@ -1259,9 +1271,9 @@ Surface {
                                 : Math.min(implicitWidth, parent.width * 0.36)
                             text: {
                                 const parts = [];
-                                if (repoRow.modelData.branch)
-                                    parts.push(repoRow.modelData.branch);
-                                if (repoRow.modelData.watched)
+                                if (repoRow.repo.branch)
+                                    parts.push(repoRow.repo.branch);
+                                if (repoRow.repo.watched)
                                     parts.push("watched");
                                 return parts.join(" · ");
                             }
@@ -1287,7 +1299,7 @@ Surface {
                                 spacing: 5
 
                                 Sym {
-                                    visible: GitHub.watchError(repoRow.modelData.slug) !== ""
+                                    visible: GitHub.watchError(repoRow.repo.slug) !== ""
                                     anchors.verticalCenter: parent.verticalCenter
                                     name: "warning"
                                     size: Theme.iconTiny
@@ -1295,7 +1307,7 @@ Surface {
                                 }
 
                                 Sym {
-                                    visible: repoRow.modelData.isPrivate
+                                    visible: repoRow.repo.isPrivate
                                     anchors.verticalCenter: parent.verticalCenter
                                     name: "lock"
                                     size: Theme.iconTiny
@@ -1304,7 +1316,7 @@ Surface {
 
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: Helpers.relTime(repoRow.modelData.pushedAt, root.now)
+                                    text: Helpers.relTime(repoRow.repo.pushedAt, root.now)
                                     font.family: T3Theme.fontUi
                                     font.pixelSize: Theme.typography.secondary
                                     font.features: T3Theme.tabularNumberFeatures
@@ -1336,7 +1348,7 @@ Surface {
                             accessibleName: "Open repository on GitHub"
                             tint: T3Theme.accent
                             onTriggered: {
-                                GitHub.open(GitHub.repoUrl(repoRow.modelData.slug));
+                                GitHub.open(GitHub.repoUrl(repoRow.repo.slug));
                                 Popouts.close();
                             }
                         }

@@ -470,6 +470,12 @@ Singleton {
     // ---- Inbox discovery ------------------------------------------------
     property int inboxSweepSeq: 0
     property var inboxSweep: null
+    // What publishInbox last handed out. Every job of a sweep republishes, and
+    // a sweep of 304s rebuilds identical rows: reassigning them anyway
+    // re-derived every count and rebuilt each popover row, dropping its hover
+    // and keyboard focus, up to 17 times a minute.
+    property string inboxItemsSignature: ""
+    property string repoErrorsSignature: ""
 
     function publishInbox() {
         const workflowErrors = {};
@@ -489,10 +495,19 @@ Singleton {
             combined[slug] = combined[slug]
                 ? combined[slug] + " · " + repositoryEventErrors[slug]
                 : repositoryEventErrors[slug];
-        workflowRepoErrors = workflowErrors;
-        eventRepoErrors = repositoryEventErrors;
-        inboxRepoErrors = combined;
-        inboxItems = Helpers.inboxRows(inboxState, activitySeenAt);
+        const errorsSignature = JSON.stringify([workflowErrors, repositoryEventErrors]);
+        if (errorsSignature !== repoErrorsSignature) {
+            repoErrorsSignature = errorsSignature;
+            workflowRepoErrors = workflowErrors;
+            eventRepoErrors = repositoryEventErrors;
+            inboxRepoErrors = combined;
+        }
+        const rows = Helpers.inboxRows(inboxState, activitySeenAt);
+        const rowsSignature = JSON.stringify(rows);
+        if (rowsSignature !== inboxItemsSignature) {
+            inboxItemsSignature = rowsSignature;
+            inboxItems = rows;
+        }
     }
 
     function dropStaleActiveItems() {

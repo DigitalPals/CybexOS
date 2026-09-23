@@ -364,3 +364,32 @@ test("every anchor in the GitHub popover names its parent or a sibling", () => {
     assert.ok(checked > 50, "the walk must actually see the popover's anchors");
     assert.deepEqual(offences, []);
 });
+
+test("an unchanged Inbox is not republished and the popover lists are keyed", () => {
+    const source = read("Common/GitHub.qml");
+    const publish = source.match(/function publishInbox\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(publish,
+        /if \(errorsSignature !== repoErrorsSignature\) \{[\s\S]*workflowRepoErrors = workflowErrors;[\s\S]*eventRepoErrors = repositoryEventErrors;[\s\S]*inboxRepoErrors = combined;/,
+        "the three error maps are assigned only when they change");
+    assert.match(publish,
+        /const rowsSignature = JSON\.stringify\(rows\);\s*if \(rowsSignature !== inboxItemsSignature\) \{[\s\S]*inboxItems = rows;/,
+        "a sweep of 304s must not reassign identical rows");
+    assert.equal((source.match(/(?<![.\w])inboxItems = /g) ?? []).length, 1,
+        "publishInbox is the only writer of inboxItems");
+    for (const name of ["workflowRepoErrors", "eventRepoErrors", "inboxRepoErrors"])
+        assert.equal((source.match(new RegExp(`(?<![.\\w])${name} = `, "g")) ?? []).length, 1,
+            name);
+
+    const popover = read("Popovers/GitHubPopover.qml");
+    assert.doesNotMatch(popover, /model:\s*root\.(?:inboxSections|inboxRows|filteredRepos|visibleRepos)\b/,
+        "a Repeater over a derived list recreates every delegate on each publish");
+    assert.match(popover, /model:\s*Helpers\.INBOX_SECTION_IDS/);
+    assert.match(popover,
+        /readonly property string rowKeys:\s*Helpers\.listKey\(section\.rows, "key"\)/);
+    assert.match(popover,
+        /\? Helpers\.listIds\(inboxSection\.rowKeys\) : \[\][\s\S]{0,120}?delegate: InboxRow \{\s*required property string modelData\s*row: Helpers\.inboxRowFor\(root\.inboxIndex, modelData\)/);
+    assert.match(popover, /model:\s*Helpers\.listIds\(root\.repoListKey\)/);
+    assert.match(popover,
+        /id: repoRow\s*required property string modelData\s*readonly property var repo: Helpers\.repoFor\(root\.repoIndex, modelData\)/);
+    assert.doesNotMatch(popover, /repoRow\.modelData\./);
+});
