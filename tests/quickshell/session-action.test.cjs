@@ -8,32 +8,45 @@ const { shellDir } = require("./shell.cjs");
 
 const helper = path.resolve(shellDir, "../cybexos-session-action");
 
-function fixture({ initiallyLocked = false, lockStarts = true, onBattery = "b false" } = {}) {
+// `locker` is what the lock unit does once started: "locks" (hyprctl reports
+// the session locked after `lockDelay` more queries), "hangs" (the unit stays
+// active and never locks), or "exits" (the unit is not active).
+function fixture({ initiallyLocked = false, locker = "locks", lockDelay = 0,
+        onBattery = "b false", lockedHint = "no" } = {}) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-session-action."));
     const bin = path.join(root, "bin");
     const state = path.join(root, "locked");
+    const pending = path.join(root, "pending");
+    const queries = path.join(root, "queries");
     const log = path.join(root, "calls");
     fs.mkdirSync(bin);
-    if (initiallyLocked) fs.writeFileSync(state, "yes\n");
+    if (initiallyLocked) fs.writeFileSync(state, "");
 
-    fs.writeFileSync(path.join(bin, "loginctl"), `#!/usr/bin/env bash
-if [[ $1 == show-session ]]; then
-  [[ -f $TEST_STATE ]] && cat "$TEST_STATE" || printf 'no\\n'
-elif [[ $1 == show-user ]]; then
-  printf 'test-session\\n'
+    // Queries are counted apart from the call log, so tests can assert that
+    // nothing with an effect ran without listing every poll.
+    fs.writeFileSync(path.join(bin, "hyprctl"), `#!/usr/bin/env bash
+if [[ $1 == locked ]]; then
+  printf 'x' >> "$TEST_QUERIES"
+  if [[ ! -f $TEST_STATE && -f $TEST_PENDING ]]; then
+    left=$(<"$TEST_PENDING")
+    if ((left <= 0)); then : > "$TEST_STATE"; else printf '%s\\n' $((left - 1)) > "$TEST_PENDING"; fi
+  fi
+  [[ -f $TEST_STATE ]] && printf 'true\\n' || printf 'false\\n'
+  exit 0
 fi
+printf 'hyprctl %s\\n' "$*" >> "$TEST_LOG"
+`);
+    fs.writeFileSync(path.join(bin, "loginctl"), `#!/usr/bin/env bash
+printf '%s\\n' "$TEST_LOCKED_HINT"
 `);
     fs.writeFileSync(path.join(bin, "systemctl"), `#!/usr/bin/env bash
 printf 'systemctl %s\\n' "$*" >> "$TEST_LOG"
-if [[ $* == *'start cybexos-session-lock.service'* && $TEST_LOCK_STARTS == yes ]]; then
-  printf 'yes\\n' > "$TEST_STATE"
+if [[ $* == *'start cybexos-session-lock.service'* && $TEST_LOCKER == locks ]]; then
+  printf '%s\\n' "$TEST_LOCK_DELAY" > "$TEST_PENDING"
 fi
 if [[ $* == *'is-active'* ]]; then
-  [[ $TEST_LOCK_STARTS == yes ]]
+  [[ $TEST_LOCKER != exits ]]
 fi
-`);
-    fs.writeFileSync(path.join(bin, "hyprctl"), `#!/usr/bin/env bash
-printf 'hyprctl %s\\n' "$*" >> "$TEST_LOG"
 `);
     fs.writeFileSync(path.join(bin, "busctl"), `#!/usr/bin/env bash
 printf 'busctl %s\\n' "$*" >> "$TEST_LOG"
@@ -51,15 +64,20 @@ printf '%s\\n' "$TEST_ON_BATTERY"
                 env: {
                     ...process.env,
                     PATH: `${bin}:${process.env.PATH}`,
-                    XDG_SESSION_ID: "test-session",
                     TEST_STATE: state,
+                    TEST_PENDING: pending,
+                    TEST_QUERIES: queries,
                     TEST_LOG: log,
-                    TEST_LOCK_STARTS: lockStarts ? "yes" : "no",
+                    TEST_LOCKER: locker,
+                    TEST_LOCK_DELAY: String(lockDelay),
+                    TEST_LOCKED_HINT: lockedHint,
                     TEST_ON_BATTERY: onBattery
                 }
             });
         },
-        calls() { return fs.existsSync(log) ? fs.readFileSync(log, "utf8") : ""; }
+        calls() { return fs.existsSync(log) ? fs.readFileSync(log, "utf8") : ""; },
+        queries() { return fs.existsSync(queries) ? fs.readFileSync(queries, "utf8").length : 0; },
+        locked() { return fs.existsSync(state); }
     };
 }
 
@@ -81,13 +99,48 @@ test("suspend happens only after the singleton locker reports ready", t => {
     assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start cybexos-session-lock.service"));
 });
 
+test("suspend waits for hyprctl to report the session locked", t => {
+    const f = fixture({ lockDelay: 5 });
+    t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+    const result = f.run("suspend");
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(f.locked());
+    assert.ok(f.queries() >= 7, "the helper polled until the lock was reported");
+    const calls = f.calls();
+    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start cybexos-session-lock.service"));
+});
+
+test("a stale logind LockedHint does not skip the lock before suspend", t => {
+    const f = fixture({ lockedHint: "yes" });
+    t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+    const result = f.run("suspend");
+    assert.equal(result.status, 0, result.stderr);
+    const calls = f.calls();
+    assert.ok(calls.indexOf("start cybexos-session-lock.service") >= 0);
+    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start cybexos-session-lock.service"));
+});
+
 test("a failed lock leaves the machine awake", t => {
-    const f = fixture({ lockStarts: false });
+    const f = fixture({ locker: "exits" });
     t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
     const result = f.run("suspend");
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /lock screen exited/);
     assert.doesNotMatch(f.calls(), /systemctl suspend/);
+});
+
+test("a lock screen that never confirms is left running and the machine stays awake", t => {
+    for (const action of ["lock", "suspend"]) {
+        const f = fixture({ locker: "hangs" });
+        t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+        const result = f.run(action);
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /did not secure the session/);
+        const calls = f.calls();
+        assert.match(calls, /start cybexos-session-lock\.service/);
+        assert.doesNotMatch(calls, /stop|kill/, "the only safe failure is to stay locked");
+        assert.doesNotMatch(calls, /systemctl suspend/);
+    }
 });
 
 test("unknown actions fail without invoking a session command", t => {
