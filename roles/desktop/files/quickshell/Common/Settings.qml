@@ -813,8 +813,11 @@ Singleton {
             if (scrollFactorProc.running)
                 return;
             root.dispatchedScrollFactor = root.scrollFactor;
-            scrollFactorProc.command = ["hyprctl", "keyword",
-                "input:touchpad:scroll_factor", root.scrollFactor.toFixed(1)];
+            // A Lua-configured Hyprland refuses `hyprctl keyword`, and says
+            // so with exit status 0.
+            scrollFactorProc.command = ["hyprctl", "eval",
+                "hl.config({ input = { touchpad = { scroll_factor = "
+                    + root.scrollFactor.toFixed(1) + " } } })"];
             scrollFactorProc.running = true;
         }
     }
