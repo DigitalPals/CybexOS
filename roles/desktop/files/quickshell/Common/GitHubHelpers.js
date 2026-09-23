@@ -1166,12 +1166,16 @@ function normalizeEventPollIntervals(value) {
     return out;
 }
 
-// ---- conditional Inbox requests ----------------------------------------
+// ---- conditional requests -----------------------------------------------
 // Every Inbox read (workflow runs, repository events, notifications) is
 // fetched with `--include` so its validators, poll interval, and rate-limit
 // headers are visible. A 304 does not count against the primary rate limit,
 // which is what makes a 60-second sweep over dozens of repositories cheap.
-var CONDITIONAL_KINDS = { runs: true, events: true, notifications: true };
+// Repository discovery (/user/repos and each outside watch) is conditional
+// too: its ETags are process-local, and a 304 reuses the rows it last parsed
+// instead of transferring the ~1.5 MB page again.
+var CONDITIONAL_KINDS = { runs: true, events: true, notifications: true,
+    repos: true, watch: true };
 
 // The `-H` arguments for a conditional read. An empty validator sends
 // nothing, so the first request after a restart (or after a malformed
@@ -1193,6 +1197,15 @@ function notModifiedResponse(response, exitCode, errText) {
     if (response !== null && typeof response === "object" && response.notModified === true)
         return true;
     return exitCode !== 0 && typeof errText === "string" && /\bHTTP 304\b/i.test(errText);
+}
+
+// How a conditional read ended: "not-modified" stands on the rows parsed
+// last time, "ok" carries a body worth parsing, and "failed" is an error.
+function conditionalOutcome(response, exitCode, errText) {
+    if (notModifiedResponse(response, exitCode, errText))
+        return "not-modified";
+    return response !== null && response.status >= 200 && response.status < 300
+        && exitCode === 0 ? "ok" : "failed";
 }
 
 // Primary-rate-limit headroom kept for everything else that uses the same
@@ -2230,6 +2243,7 @@ var exported = {
     CONDITIONAL_KINDS: CONDITIONAL_KINDS,
     conditionalArgs: conditionalArgs,
     notModifiedResponse: notModifiedResponse,
+    conditionalOutcome: conditionalOutcome,
     RATE_LIMIT_FLOOR: RATE_LIMIT_FLOOR,
     rateLimitPause: rateLimitPause,
     rateLimitMessage: rateLimitMessage,

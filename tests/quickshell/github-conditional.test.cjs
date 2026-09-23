@@ -42,9 +42,29 @@ test("conditional arguments carry each validator exactly and nothing when empty"
         ["-H", "If-Modified-Since: " + LAST_MODIFIED]);
     assert.deepEqual(H.conditionalArgs("bad", "bad"), []);
     assert.deepEqual(Object.keys(H.CONDITIONAL_KINDS).sort(),
-        ["events", "notifications", "runs"]);
+        ["events", "notifications", "repos", "runs", "watch"]);
     assert.equal(H.CONDITIONAL_KINDS.commits, undefined,
         "interactive reads stay unconditional");
+    assert.equal(H.CONDITIONAL_KINDS.login, undefined);
+});
+
+test("a conditional read is not-modified, usable, or failed", () => {
+    const included = text => H.parseIncludedResponse(text);
+    assert.equal(H.conditionalOutcome(
+        included('HTTP/2.0 304 Not Modified\r\nETag: W/"a"\r\n\r\n'), 1,
+        "failed to parse jq expression"), "not-modified",
+        "gh --jq exits nonzero on a 304's empty body");
+    assert.equal(H.conditionalOutcome(null, 1, "gh: HTTP 304"), "not-modified");
+    assert.equal(H.conditionalOutcome(
+        included('HTTP/2.0 200 OK\r\nETag: W/"b"\r\n\r\n[]'), 0, ""), "ok");
+    assert.equal(H.conditionalOutcome(
+        included("HTTP/2.0 200 OK\r\n\r\n[]"), 1, "jq error"), "failed");
+    assert.equal(H.conditionalOutcome(
+        included("HTTP/2.0 404 Not Found\r\n\r\n{}"), 1, "gh: Not Found (HTTP 404)"),
+        "failed");
+    assert.equal(H.conditionalOutcome(null, 0, ""), "failed",
+        "a header-less body cannot pass for a response");
+    assert.equal(H.conditionalOutcome(null, -1, ""), "failed");
 });
 
 test("304 is recognised from headers or from gh's own message", () => {

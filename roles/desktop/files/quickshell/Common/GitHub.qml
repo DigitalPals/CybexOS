@@ -340,6 +340,10 @@ Singleton {
         case "notifications":
             return { etag: "", lastModified: hasInboxSource("notifications")
                 ? notificationLastModified : "" };
+        case "repos":
+            return { etag: reposCache !== null ? reposEtag : "", lastModified: "" };
+        case "watch":
+            return { etag: watchCache[slug] ? (watchEtags[slug] ?? "") : "", lastModified: "" };
         default:
             return { etag: "", lastModified: "" };
         }
@@ -396,6 +400,17 @@ Singleton {
     property int pendingWatch: 0
     property var nextWatchErrors: ({})
     property string lastLogged: ""
+    // Conditional discovery: the rows each validator stands for. Both are
+    // process-local, so the first poll after a restart is unconditional; a
+    // validator is only sent while its rows are known.
+    property var reposCache: null
+    property string reposEtag: ""
+    property var watchCache: ({})
+    property var watchEtags: ({})
+    // What publishRepos last handed out; an unchanged poll leaves the
+    // repository rows (and every binding on them) alone.
+    property string reposSignature: ""
+    property string watchErrorsSignature: ""
 
     function refresh() {
         if (!pollEnabled || polling)
@@ -438,12 +453,45 @@ Singleton {
         const known = {};
         ownRepos.forEach(row => known[row.slug.toLowerCase()] = true);
         const missing = watch.filter(slug => !known[slug.toLowerCase()]);
+        pruneWatchCache(missing);
         pendingWatch = missing.length;
         if (pendingWatch === 0) {
             publishRepos();
             return;
         }
         missing.forEach(slug => enqueue({ kind: "watch", slug: slug }));
+    }
+
+    // Only watches that are still fetched on their own keep a validator.
+    function pruneWatchCache(slugs) {
+        const wanted = {};
+        slugs.forEach(slug => wanted[slug.toLowerCase()] = true);
+        const rows = {};
+        const etags = {};
+        for (const key of Object.keys(watchCache)) {
+            if (!wanted[key])
+                continue;
+            rows[key] = watchCache[key];
+            if (watchEtags[key])
+                etags[key] = watchEtags[key];
+        }
+        watchCache = rows;
+        watchEtags = etags;
+    }
+
+    function updateWatchCache(slug, row, etag) {
+        const key = slug.toLowerCase();
+        const rows = Object.assign({}, watchCache);
+        const etags = Object.assign({}, watchEtags);
+        if (row === null || etag === "") {
+            delete rows[key];
+            delete etags[key];
+        } else {
+            rows[key] = row;
+            etags[key] = etag;
+        }
+        watchCache = rows;
+        watchEtags = etags;
     }
 
     function patchNextWatchError(slug, message) {
@@ -455,8 +503,17 @@ Singleton {
     }
 
     function publishRepos() {
-        repos = Helpers.mergeRepos(ownRepos, extraRepos, watch);
-        watchErrors = nextWatchErrors;
+        const merged = Helpers.mergeRepos(ownRepos, extraRepos, watch);
+        const signature = JSON.stringify(merged);
+        if (signature !== reposSignature) {
+            reposSignature = signature;
+            repos = merged;
+        }
+        const errorsSignature = JSON.stringify(nextWatchErrors);
+        if (errorsSignature !== watchErrorsSignature) {
+            watchErrorsSignature = errorsSignature;
+            watchErrors = nextWatchErrors;
+        }
         orgCount = Helpers.orgCount(ownRepos, login);
         checkedAt = Date.now();
         error = "";
@@ -912,17 +969,40 @@ Singleton {
                 login = Helpers.parseLogin(body);
             break;
         case "repos": {
-            const rows = failed ? null : Helpers.parseRepos(body);
+            // Conditional, so the header block leads stdout (or stderr, when
+            // gh's --jq trips over a 304's empty body).
+            const included = Helpers.parseIncludedResponse(body)
+                ?? Helpers.parseIncludedResponse(errText);
+            if (included !== null)
+                noteRateLimit(included.headers);
+            const outcome = Helpers.conditionalOutcome(included, exitCode, errText);
+            const rows = outcome === "not-modified" ? reposCache
+                : outcome === "ok" ? Helpers.parseRepos(included.body) : null;
             if (rows === null) {
+                if (outcome === "ok")
+                    reposEtag = "";
                 failPoll("gh api /user/repos", exitCode, errText);
                 break;
+            }
+            if (outcome === "ok") {
+                reposCache = rows;
+                reposEtag = included.etag;
             }
             ownRepos = rows;
             fanOutWatched();
             break;
         }
         case "watch": {
-            const row = failed ? null : Helpers.parseRepo(body);
+            const included = Helpers.parseIncludedResponse(body)
+                ?? Helpers.parseIncludedResponse(errText);
+            if (included !== null)
+                noteRateLimit(included.headers);
+            const outcome = Helpers.conditionalOutcome(included, exitCode, errText);
+            const row = outcome === "not-modified"
+                ? (watchCache[job.slug.toLowerCase()] ?? null)
+                : outcome === "ok" ? Helpers.parseRepo(included.body) : null;
+            if (outcome === "ok")
+                updateWatchCache(job.slug, row, row !== null ? included.etag : "");
             if (row !== null) {
                 extraRepos = extraRepos.concat([row]);
                 patchNextWatchError(job.slug, "");

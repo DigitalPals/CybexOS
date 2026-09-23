@@ -62,7 +62,7 @@ test("Inbox reads use conditional HTTP polling and preserve partial caches", () 
     assert.match(pump, /Helpers\.conditionalArgs\(validator\.etag,\s*validator\.lastModified\)/);
     const helpers = load("GitHubHelpers.js");
     assert.deepEqual(Object.keys(helpers.CONDITIONAL_KINDS).sort(),
-        ["events", "notifications", "runs"]);
+        ["events", "notifications", "repos", "runs", "watch"]);
     const validator = source.match(/function conditionalValidator[\s\S]*?\n    \}/)?.[0] ?? "";
     assert.match(validator, /hasInboxSource\("events:" \+ slug\)[\s\S]*eventEtags\[slug\]/);
     assert.match(validator, /hasInboxSource\("workflows:" \+ slug\)[\s\S]*runEtags\[slug\]/);
@@ -417,4 +417,33 @@ test("an unchanged GitHub state is not rewritten after every sweep", () => {
         "the loaded file is the baseline, so a reset applied on load is still written");
     assert.match(source, /onSaveFailed: root\.persistedState = ""/,
         "a failed write must not suppress the retry");
+});
+
+test("repository discovery is conditional and reuses its rows on a 304", () => {
+    const source = read("Common/GitHub.qml");
+    const validator = source.match(/function conditionalValidator[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(validator, /case "repos":\s*return \{ etag: reposCache !== null \? reposEtag : ""/,
+        "the /user/repos validator is only sent while its rows are known");
+    assert.match(validator, /case "watch":\s*return \{ etag: watchCache\[slug\] \? \(watchEtags\[slug\] \?\? ""\) : ""/);
+    const settle = source.match(/function settle\(exitCode, body, errText\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    const repos = settle.match(/case "repos": \{[\s\S]*?\n        \}/)?.[0] ?? "";
+    assert.match(repos, /Helpers\.parseIncludedResponse\(body\)\s*\?\? Helpers\.parseIncludedResponse\(errText\)/);
+    assert.match(repos, /noteRateLimit\(included\.headers\)/);
+    assert.match(repos, /outcome === "not-modified" \? reposCache/);
+    assert.match(repos, /Helpers\.parseRepos\(included\.body\)/,
+        "the header block must not reach the JSON parser");
+    assert.match(repos, /reposCache = rows;\s*reposEtag = included\.etag;/);
+    const watch = settle.match(/case "watch": \{[\s\S]*?\n        \}/)?.[0] ?? "";
+    assert.match(watch, /outcome === "not-modified"\s*\? \(watchCache\[job\.slug\.toLowerCase\(\)\] \?\? null\)/);
+    assert.match(watch, /Helpers\.parseRepo\(included\.body\)/);
+    assert.match(watch, /updateWatchCache\(job\.slug, row, row !== null \? included\.etag : ""\)/);
+    assert.match(source, /pruneWatchCache\(missing\)/,
+        "validators for dropped watches do not accumulate");
+    const publish = source.match(/function publishRepos\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(publish, /if \(signature !== reposSignature\) \{\s*reposSignature = signature;\s*repos = merged;/,
+        "an unchanged poll leaves the repository rows alone");
+    assert.match(publish, /if \(errorsSignature !== watchErrorsSignature\)/);
+    const refresh = source.match(/function refresh\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.doesNotMatch(refresh, /reposCache|watchCache/,
+        "a new poll keeps the rows its validators stand for");
 });
