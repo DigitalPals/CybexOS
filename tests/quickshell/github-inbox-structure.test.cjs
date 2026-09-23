@@ -275,3 +275,92 @@ test("settings explain repository refresh and Inbox polling separately", () => {
     assert.deepEqual(Object.keys(defaults).sort(),
         ["badge", "ciActivity", "pollMins", "repos", "toasts", "watch"]);
 });
+
+// QML only anchors to a parent or a sibling; anything else is dropped at
+// runtime with one "Cannot anchor to an item that isn't a parent or sibling"
+// warning in the journal, which qmllint does not report. The refresh button
+// shipped anchored to its parent's sibling. This walks the object tree of the
+// popover (a Repeater's delegate is parented to the Repeater's parent, and a
+// Component or inline component starts a tree of its own) and checks each
+// `anchors.*` target by id.
+test("every anchor in the GitHub popover names its parent or a sibling", () => {
+    const source = read("Popovers/GitHubPopover.qml");
+    const stripped = source
+        .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, '""')
+        .replace(/\/\/[^\n]*/g, "");
+    const nodes = [];
+    const frames = [];
+    let line = 1;
+    let lineStart = 0;
+    let statementStart = 0;
+    for (let i = 0; i < stripped.length; i++) {
+        const ch = stripped[i];
+        if (ch === "\n") {
+            // An attribute line belongs to the innermost enclosing object.
+            const text = stripped.slice(lineStart, i);
+            const owner = frames.filter(frame => frame !== null).at(-1);
+            const top = frames.at(-1);
+            if (owner && top === owner) {
+                const id = text.match(/^\s*id:\s*(\w+)\s*$/);
+                if (id)
+                    owner.id = id[1];
+                const anchor = text.match(/^\s*anchors\.(\w+):\s*(.*)$/);
+                if (anchor) {
+                    const value = anchor[2];
+                    const targets = anchor[1] === "fill" || anchor[1] === "centerIn"
+                        ? [...value.matchAll(/\b([a-z]\w*)\b/g)].map(m => m[1])
+                        : [...value.matchAll(/\b(\w+)\.(?:left|right|top|bottom|horizontalCenter|verticalCenter|baseline)\b/g)]
+                            .map(m => m[1]);
+                    owner.anchors.push(...targets.filter(name => name !== "undefined")
+                        .map(name => ({ name, line })));
+                }
+            }
+            line++;
+            lineStart = i + 1;
+        } else if (ch === "{") {
+            const before = stripped.slice(lineStart, i);
+            const type = before.match(/(?:^|[\s:])([A-Z][\w.]*)\s*$/)?.[1] ?? null;
+            if (type === null) {
+                frames.push(null);
+                continue;
+            }
+            const owner = frames.filter(frame => frame !== null).at(-1) ?? null;
+            const standalone = type === "Component" || /\bcomponent\s+\w+\s*:/.test(before);
+            const node = { type, id: "", parent: standalone ? null : owner,
+                children: [], anchors: [], line };
+            if (node.parent)
+                node.parent.children.push(node);
+            nodes.push(node);
+            frames.push(node);
+        } else if (ch === "}") {
+            frames.pop();
+        }
+    }
+    // A delegate is parented to the Repeater's own parent at runtime.
+    const visualParent = node => {
+        let parent = node.parent;
+        while (parent && parent.type === "Repeater")
+            parent = parent.parent;
+        return parent;
+    };
+    const visualChildren = node => node.children.flatMap(child =>
+        child.type === "Repeater" ? visualChildren(child) : [child]);
+    const offences = [];
+    let checked = 0;
+    for (const node of nodes) {
+        const parent = visualParent(node);
+        for (const target of node.anchors) {
+            checked++;
+            if (target.name === "parent")
+                continue;
+            const siblings = parent ? visualChildren(parent) : [];
+            if ((parent && parent.id === target.name)
+                    || siblings.some(sibling => sibling !== node && sibling.id === target.name))
+                continue;
+            offences.push(`GitHubPopover.qml:${target.line} ${node.type}`
+                + `${node.id ? " " + node.id : ""} anchors to ${target.name}`);
+        }
+    }
+    assert.ok(checked > 50, "the walk must actually see the popover's anchors");
+    assert.deepEqual(offences, []);
+});

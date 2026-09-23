@@ -488,10 +488,16 @@ Surface {
             color: T3Theme.border
         }
 
+        // Stops short of the workspace toggle, which the commit page shares:
+        // the refresh button inside can only anchor to its own parent.
         Item {
             id: topLevelHeader
             visible: root.page !== "commits"
-            anchors.fill: parent
+            anchors.left: parent.left
+            anchors.right: workspaceButton.left
+            anchors.rightMargin: 2
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
 
             Column {
                 anchors.left: parent.left
@@ -585,8 +591,7 @@ Surface {
 
             IconButton {
                 id: refreshButton
-                anchors.right: workspaceButton.left
-                anchors.rightMargin: 2
+                anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 symbol: "refresh"
                 accessibleName: "Refresh GitHub repositories and Inbox"
