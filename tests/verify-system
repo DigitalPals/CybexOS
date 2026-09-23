@@ -596,9 +596,10 @@ if feature_enabled developer_tools && command_exists node; then
 fi
 if feature_enabled developer_tools; then
   check 'pinned nightly Rust toolchain with rustfmt/rust-analyzer' bash -c 'toolchain=$1; rustup toolchain list | grep -q "$toolchain" && rustup component list --toolchain "$toolchain" | grep -q "rustfmt.*installed" && rustup component list --toolchain "$toolchain" | grep -q "rust-analyzer.*installed"' _ "$rust_toolchain"
-  check 'inventory-pinned Claude Code' bash -c \
-    'actual=$(claude --version 2>/dev/null); [[ ${actual%% *} == "$1" ]]' \
-    _ "$claude_code_version"
+  # The Claude Code pin is a floor; the tool updates itself past it.
+  check 'Claude Code at or above its inventory pin' bash -c \
+    'actual=$(claude --version 2>/dev/null); actual=${actual%% *}; [[ $actual == "$1" ]] || "$2" newer "$actual" "$1"' \
+    _ "$claude_code_version" "$repo_root/scripts/semver"
   check 'inventory-pinned OpenCode' bash -c \
     'actual=$(opencode --version 2>/dev/null); [[ ${actual%% *} == "$1" ]]' \
     _ "$opencode_version"

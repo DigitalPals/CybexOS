@@ -144,8 +144,10 @@ moved automatically; close both browsers before migrating profile data.
 `user-tools` deploys and runs the CLI updater on an existing developer-tools
 installation. Codex resolves npm's `latest` release each time this updater runs;
 it validates the downloaded version before activating it and retains the working
-installation if resolution or download fails. Claude Code and OpenCode retain
-their inventory pins. System verification checks Codex locally without requiring
+installation if resolution or download fails. Claude Code's inventory pin is a
+minimum: an older or missing Claude Code is installed at the pin, while a newer
+one (Claude Code updates itself) is left alone rather than downgraded. OpenCode
+retains its exact inventory pin. System verification checks Codex locally without requiring
 the npm registry; freshness is checked by the updater.
 
 Every invocation still executes tasks tagged `always`. That includes fresh
