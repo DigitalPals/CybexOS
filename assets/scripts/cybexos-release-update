@@ -17,6 +17,7 @@ backend=${CYBEXOS_UPDATE_BACKEND:-$HOME/.local/bin/cybexos-update-run}
 command_name=run
 with_packages=true
 with_flatpak=true
+with_firmware=false
 json=false
 start_only=false
 backend_args=()
@@ -24,7 +25,8 @@ backend_args=()
 usage() {
   cat <<'EOF'
 Usage: cybex update [--check] [--channel stable|beta] [--system-only]
-                            [--no-packages] [--no-flatpak] [--start] [--json]
+                            [--no-packages] [--no-flatpak] [--firmware]
+                            [--start] [--json]
 
 By default, check GitHub for a verified CybexOS release, stage and apply
 it when newer, and then update Fedora packages and system Flatpaks. When the
@@ -37,6 +39,8 @@ successful package run; --start reports the reason as projectError.
   --system-only  Skip the project release check and update system packages only
   --no-packages  Apply only a project release; do not update Fedora/Flatpak
   --no-flatpak   Skip system Flatpak updates
+  --firmware     Also install available device firmware through fwupd after
+                 the package phase
   --start        Start the durable worker and return without attaching
   --json         Emit machine-readable output for --check/--start
 EOF
@@ -54,6 +58,7 @@ while (($#)); do
     --system-only) command_name=system-only ;;
     --no-packages) with_packages=false ;;
     --no-flatpak) with_flatpak=false ;;
+    --firmware) with_firmware=true ;;
     --start) start_only=true; json=true ;;
     --json) json=true ;;
     -h|--help) usage; exit 0 ;;
@@ -75,6 +80,7 @@ if [[ $command_name == system-only ]]; then
     args=(run)
   fi
   [[ $with_flatpak == true ]] || args+=(--no-flatpak)
+  [[ $with_firmware != true ]] || args+=(--firmware)
   exec "$backend" "${args[@]}" "${backend_args[@]}"
 fi
 
@@ -335,6 +341,7 @@ if [[ -n $candidate ]]; then
     --release-config "$config_file")
   [[ $with_packages == true ]] || update_args+=(--no-packages)
   [[ $with_flatpak == true ]] || update_args+=(--no-flatpak)
+  [[ $with_firmware != true ]] || update_args+=(--firmware)
   update_args+=(-- -e "@$config_file")
 elif [[ $with_packages == true ]]; then
   [[ -z $project_error ]] \
@@ -345,6 +352,7 @@ elif [[ $with_packages == true ]]; then
     update_args=(run)
   fi
   [[ $with_flatpak == true ]] || update_args+=(--no-flatpak)
+  [[ $with_firmware != true ]] || update_args+=(--firmware)
 else
   [[ -z $project_error ]] || exit 1
   if [[ $start_only == true ]]; then
