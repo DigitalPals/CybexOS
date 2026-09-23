@@ -53,13 +53,15 @@ clamp() {
   printf '%s' "$value"
 }
 
-# Is the screen being looked at an Apple display we can drive at all?
+# Is the screen being looked at an Apple display we can drive at all? The
+# tool check comes first: a held key runs this ~40 times a second, and without
+# asdcontrol the answer is no before hyprctl and jq are worth starting.
 apple_display() {
   local make
+  command -v asdcontrol >/dev/null 2>&1 || return 1
   make=$(hyprctl monitors -j 2>/dev/null \
     | jq -r '.[] | select(.focused == true) | .make // ""') || return 1
-  grep -qi apple <<<"$make" || return 1
-  command -v asdcontrol >/dev/null 2>&1
+  grep -qi apple <<<"$make"
 }
 
 # Walk every HID device asking which one is a display. This is the expensive
@@ -112,7 +114,8 @@ asd_percent() {
 # backlight attributes deliver no inotify events and a HID write emits none —
 # so the pill is shown, and the percentage re-read, over IPC instead. The
 # shell runs by path, so a bare `qs ipc call` reaches nothing; cybexos-runtime
-# names the active runtime.
+# names the active runtime. Every step is pinged, never rate-limited: a skipped
+# last step would leave the pill showing the level before it.
 ping_osd() {
   local runtime=${HOME:-}/.local/bin/cybexos-runtime
   [[ -x $runtime ]] && "$runtime" ipc osd brightness >/dev/null 2>&1 || true
