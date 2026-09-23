@@ -84,6 +84,22 @@ assert(active["SUPER + B"].dispatcher:match("^brave%-origin%-stable"),
   "proprietary browser selection did not use Brave")
 assert(active["XF86AudioRaiseVolume"].dispatcher:match("xps%-speaker%-tuning"),
   "XPS audio route omitted the hardware helper")
+-- The shell runs by path, so a bare `qs ipc call` reaches nothing.
+local runtime = os.getenv("HOME") .. "/.local/bin/cybexos-runtime ipc "
+for keys, call in pairs({
+  ["SUPER + comma"] = "settings toggle",
+  ["SUPER + N"] = "popouts toggle notifications",
+  ["SUPER + A"] = "popouts toggle control",
+  ["SUPER + K"] = "session keys",
+}) do
+  assert(active[keys].dispatcher == runtime .. call,
+    keys .. " did not reach the shell through cybexos-runtime ipc")
+end
+for keys, binding in pairs(active) do
+  assert(type(binding.dispatcher) ~= "string"
+      or not binding.dispatcher:match("^qs ipc"),
+    keys .. " calls qs ipc without the runtime path")
+end
 
 package.loaded.features = nil
 package.preload.features = function()
