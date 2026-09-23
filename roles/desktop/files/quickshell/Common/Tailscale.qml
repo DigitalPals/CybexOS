@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "Format.js" as Format
 import "ProcHelpers.js" as ProcHelpers
 
 // One `tailscale status --json` for the whole shell. The Network menubar
@@ -55,7 +56,7 @@ Singleton {
     // that it could not start. Probe hourly instead, and whenever a view
     // opens, so installing it later is still noticed.
     property bool missing: false
-    readonly property int missingPollMs: 3600000
+    readonly property int missingPollMs: Format.MS_HOUR
 
     function acquire() {
         watchers++;

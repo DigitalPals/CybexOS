@@ -139,7 +139,7 @@ test("Tailscale polling follows Network consumers and refreshes new views", () =
     assert.match(singleton,
         /target: Activity[\s\S]{0,80}function onResumed\(\)[\s\S]{0,120}root\.refresh\(\)/);
     // A missing binary is probed hourly, not forked every poll.
-    assert.match(singleton, /readonly property int missingPollMs:\s*3600000/);
+    assert.match(singleton, /readonly property int missingPollMs:\s*Format\.MS_HOUR/);
     assert.match(singleton, /missing = exitCode === ProcHelpers\.NOT_STARTED;/);
     assert.match(singleton,
         /function acquireLive\(\)\s*\{\s*liveWatchers\+\+;\s*acquire\(\);/);
