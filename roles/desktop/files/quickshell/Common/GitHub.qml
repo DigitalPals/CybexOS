@@ -73,6 +73,17 @@ Singleton {
     property var eventEtags: ({})
     property var eventPollIntervals: ({})
     property var eventNextPollAt: ({})
+    // Workflow-run ETags and the notification Last-Modified validator are
+    // process-local: the first sweep after a restart is unconditional and
+    // re-establishes them. A validator is only sent while its Inbox source is
+    // known, so a 304 always has a reconciled snapshot to stand on.
+    property var runEtags: ({})
+    property string notificationLastModified: ""
+    property double notificationNextPollAt: 0
+    property int notificationPollInterval: 60000
+    // Set from x-ratelimit-* headers when the primary quota runs low; the
+    // scheduled sweeps and repository polls stand down until GitHub's reset.
+    property double rateLimitUntil: 0
 
     readonly property var monitoredRepos: Helpers.monitoredScope(repos, opts.repos, watch)
     readonly property string monitoredKey: monitoredRepos.join(",")
@@ -271,17 +282,85 @@ Singleton {
         const path = query.path.replace("{repo}", job.slug ?? "")
             .replace("{sha}", job.sha ?? "");
         let command = ["gh", "api", path];
-        if (job.kind === "events") {
+        if (Helpers.CONDITIONAL_KINDS[job.kind] === true) {
             command.push("--include");
-            const source = "events:" + job.slug.toLowerCase();
-            const etag = Object.prototype.hasOwnProperty.call(inboxSourceRevisions, source)
-                ? (eventEtags[job.slug.toLowerCase()] ?? "") : "";
-            if (etag !== "")
-                command.push("-H", "If-None-Match: " + etag);
+            const validator = conditionalValidator(job);
+            command = command.concat(Helpers.conditionalArgs(validator.etag,
+                validator.lastModified));
         }
         command.push("--jq", query.jq);
         ghProc.command = command;
+        // Armed before the launch: a binary that cannot start reports its
+        // falling edge at once, and that edge is what stops the watchdog.
+        ghWatchdog.interval = Helpers.ghTimeoutMs(job);
+        ghWatchdog.restart();
         ghProc.running = true;
+    }
+
+    function hasInboxSource(source) {
+        return Object.prototype.hasOwnProperty.call(inboxSourceRevisions, source);
+    }
+
+    function conditionalValidator(job) {
+        const slug = (job.slug ?? "").toLowerCase();
+        switch (job.kind) {
+        case "events":
+            return { etag: hasInboxSource("events:" + slug) ? (eventEtags[slug] ?? "") : "",
+                lastModified: "" };
+        case "runs":
+            return { etag: hasInboxSource("workflows:" + slug) ? (runEtags[slug] ?? "") : "",
+                lastModified: "" };
+        case "notifications":
+            return { etag: "", lastModified: hasInboxSource("notifications")
+                ? notificationLastModified : "" };
+        default:
+            return { etag: "", lastModified: "" };
+        }
+    }
+
+    // A stalled `gh api` would otherwise hold `active` forever: the queue
+    // stops, and `polling`/`inboxPolling` never fall, so no refresh can start.
+    // First firing: SIGTERM, reported through the normal falling edge as a
+    // timeout. If that edge still has not arrived after the grace period,
+    // SIGKILL and settle the job here so the flags are released regardless.
+    function ghWatchdogFired() {
+        if (active === null)
+            return;
+        if (ghProc.running && !ghProc.timedOut) {
+            ghProc.timedOut = true;
+            ghProc.timeoutText = Helpers.ghTimeoutMessage(active);
+            console.warn("github:", ghProc.timeoutText + ":", jobKey(active));
+            ghWatchdog.interval = Helpers.GH_KILL_GRACE_MS;
+            ghWatchdog.restart();
+            ghProc.running = false;
+            return;
+        }
+        const message = ghProc.timeoutText !== "" ? ghProc.timeoutText
+            : Helpers.ghTimeoutMessage(active);
+        if (ghProc.running)
+            ghProc.signal(9);
+        ghProc.abandoned = true;
+        settle(Helpers.GH_TIMEOUT_EXIT, "", message);
+    }
+
+    // Rate-limit headers arrive on every included response, 304s too.
+    function noteRateLimit(headers) {
+        const pause = Helpers.rateLimitPause(headers, Date.now());
+        if (!pause.known)
+            return;
+        if (pause.until === 0) {
+            rateLimitUntil = 0;
+            return;
+        }
+        if (pause.until > rateLimitUntil) {
+            rateLimitUntil = pause.until;
+            console.warn("github:", pause.remaining, "API requests left;",
+                Helpers.rateLimitMessage(pause.until, Date.now()));
+        }
+    }
+
+    function rateLimited() {
+        return rateLimitUntil > Date.now();
     }
 
     // ---- repository discovery -------------------------------------------
@@ -443,14 +522,15 @@ Singleton {
     function refreshInbox(force) {
         if (!pollEnabled || !ready || inboxPolling)
             return;
-        if (!force && inboxBackoffUntil > Date.now())
+        // A manual refresh overrides both pauses; the timers honour them.
+        if (!force && (inboxBackoffUntil > Date.now() || rateLimited()))
             return;
         startInboxSweep(monitoredRepos, true);
     }
 
     function refreshActiveInbox() {
         if (!pollEnabled || !ciReportsEnabled || inboxPolling
-                || inboxBackoffUntil > Date.now())
+                || inboxBackoffUntil > Date.now() || rateLimited())
             return;
         const activeRepos = Helpers.activeRepositories(inboxItems, Helpers.MAX_ACTIVE_REPOS);
         if (activeRepos.length > 0)
@@ -458,7 +538,7 @@ Singleton {
     }
 
     function eventPollDue(slug, now) {
-        return (eventNextPollAt[slug.toLowerCase()] ?? 0) <= now;
+        return Helpers.pollDue(eventNextPollAt[slug.toLowerCase()] ?? 0, now);
     }
 
     function startInboxSweep(slugs, full) {
@@ -469,7 +549,8 @@ Singleton {
             pending: 0,
             transitions: [],
             anySuccess: false,
-            full: full
+            full: full,
+            startedAt: Date.now()
         };
         inboxSweep = sweep;
         inboxPolling = true;
@@ -484,7 +565,8 @@ Singleton {
                 if (eventPollDue(slug, now))
                     jobs.push({ kind: "events", slug: slug });
             }
-            jobs.push({ kind: "notifications" });
+            if (Helpers.pollDue(notificationNextPollAt, now))
+                jobs.push({ kind: "notifications" });
         }
         for (const job of jobs) {
             if (enqueue(Object.assign({}, job, { sweep: sweep.id,
@@ -512,7 +594,7 @@ Singleton {
         inboxCheckedAt = Date.now();
         if (sweep.anySuccess)
             inboxReady = true;
-        inboxError = "";
+        inboxError = rateLimited() ? Helpers.rateLimitMessage(rateLimitUntil, Date.now()) : "";
         lastInboxLogged = "";
         inboxFailureCount = 0;
         inboxBackoffUntil = 0;
@@ -564,66 +646,95 @@ Singleton {
         publishInbox();
     }
 
-    function updateEventPolling(slug, response) {
+    // `etag` is the validator to keep: the response's own after a 200 or
+    // 304, "" to forget it after a body that could not be used (so the next
+    // read is unconditional), or null to leave it alone after an error.
+    function updateEventPolling(slug, response, etag, startedAt) {
         const key = slug.toLowerCase();
         const etags = Helpers.normalizeEventEtags(eventEtags);
         const intervals = Helpers.normalizeEventPollIntervals(eventPollIntervals);
         const nextPolls = Object.assign({}, eventNextPollAt);
-        if (response.etag !== "")
-            etags[key] = response.etag;
-        const interval = response.pollIntervalMs > 0 ? response.pollIntervalMs
-            : (intervals[key] ?? 60000);
+        if (etag === "")
+            delete etags[key];
+        else if (etag !== null)
+            etags[key] = etag;
+        const interval = Helpers.nextPollInterval(response, intervals[key], 60000);
         intervals[key] = interval;
-        nextPolls[key] = Date.now() + interval;
+        nextPolls[key] = startedAt + interval;
         eventEtags = etags;
         eventPollIntervals = intervals;
         eventNextPollAt = nextPolls;
     }
 
+    function updateRunEtag(slug, etag) {
+        const next = Object.assign({}, runEtags);
+        if (etag === "")
+            delete next[slug.toLowerCase()];
+        else
+            next[slug.toLowerCase()] = etag;
+        runEtags = next;
+    }
+
     function settleInbox(job, exitCode, body, errText) {
+        // With --include, gh writes the header block to stdout on success and
+        // alongside its error otherwise. Quota is noted even for stale jobs.
+        const included = Helpers.parseIncludedResponse(body)
+            ?? Helpers.parseIncludedResponse(errText);
+        if (included !== null)
+            noteRateLimit(included.headers);
         if (job.generation !== scopeGeneration || inboxSweep === null
                 || job.sweep !== inboxSweep.id) {
             return;
         }
         const commandFailed = exitCode !== 0;
-        const included = job.kind === "events"
-            ? (Helpers.parseIncludedResponse(body)
-                ?? Helpers.parseIncludedResponse(errText)) : null;
-        const notModified = job.kind === "events" && ((included !== null
-            && included.notModified) || (commandFailed && /\bHTTP 304\b/i.test(errText)));
+        // A 304 keeps the previous rows: `gh --jq` exits nonzero on its empty
+        // body, so the status (or gh's "HTTP 304" message) is what decides.
+        const notModified = Helpers.notModifiedResponse(included, exitCode, errText);
         const failureText = errText + (included !== null ? " HTTP " + included.status : "");
         if (!notModified && commandFailed
                 && Helpers.globalInboxFailure(exitCode, failureText)) {
             failInboxSweep("gh api Inbox", exitCode, failureText);
             return;
         }
+        const usable = !notModified && Helpers.includedResponseOk(included, exitCode);
+        const startedAt = inboxSweep.startedAt;
 
         if (job.kind === "runs") {
-            const rows = commandFailed ? null : Helpers.parseRuns(body, job.slug);
+            if (notModified) {
+                patchRunResult(job.slug, null, "");
+                inboxSweep.anySuccess = true;
+                finishInboxJob();
+                return;
+            }
+            const rows = usable ? Helpers.parseRuns(included.body, job.slug) : null;
             if (rows === null) {
                 const message = commandFailed
                     ? ProcHelpers.commandError("gh api Actions", exitCode, errText)
                     : "GitHub returned malformed workflow data";
+                if (!commandFailed)
+                    updateRunEtag(job.slug, "");
                 patchRunResult(job.slug, null, message);
             } else {
                 const source = "workflows:" + job.slug.toLowerCase();
-                const sourceWasKnown = Object.prototype.hasOwnProperty.call(
-                    inboxSourceRevisions, source);
+                const sourceWasKnown = hasInboxSource(source);
                 patchRunResult(job.slug, rows, "");
                 const advanced = Helpers.advanceRunBaselines(runBaselines, rows,
                     !sourceWasKnown);
                 runBaselines = advanced.baselines;
                 inboxSweep.transitions = inboxSweep.transitions.concat(advanced.transitions);
                 reconcileInboxRows(source, rows);
+                updateRunEtag(job.slug, included.etag);
                 inboxSweep.anySuccess = true;
             }
         } else if (job.kind === "events") {
-            if (included !== null)
-                updateEventPolling(job.slug, included);
             if (notModified) {
+                if (included !== null)
+                    updateEventPolling(job.slug, included, included.etag || null, startedAt);
                 patchEventResult(job.slug, null, "");
                 inboxSweep.anySuccess = true;
-            } else if (!Helpers.includedResponseOk(included, exitCode)) {
+            } else if (!usable) {
+                if (included !== null)
+                    updateEventPolling(job.slug, included, null, startedAt);
                 const message = commandFailed
                     ? ProcHelpers.commandError("gh api repository events", exitCode, failureText)
                     : "GitHub returned malformed repository-event headers";
@@ -631,24 +742,40 @@ Singleton {
             } else {
                 const rows = Helpers.parseEvents(included.body, job.slug);
                 if (rows === null) {
+                    updateEventPolling(job.slug, included, "", startedAt);
                     patchEventResult(job.slug, null,
                         "GitHub returned malformed repository-event data");
                 } else {
+                    updateEventPolling(job.slug, included, included.etag, startedAt);
                     patchEventResult(job.slug, rows, "");
                     reconcileInboxRows("events:" + job.slug.toLowerCase(), rows);
                     inboxSweep.anySuccess = true;
                 }
             }
         } else {
-            const rows = commandFailed ? null : Helpers.parseNotifications(body);
+            // /notifications is polled at most as often as its X-Poll-Interval.
+            if (included !== null)
+                notificationPollInterval = Helpers.nextPollInterval(included,
+                    notificationPollInterval, 60000);
+            notificationNextPollAt = startedAt + notificationPollInterval;
+            if (notModified) {
+                notificationError = "";
+                inboxSweep.anySuccess = true;
+                finishInboxJob();
+                return;
+            }
+            const rows = usable ? Helpers.parseNotifications(included.body) : null;
             if (rows === null) {
                 notificationError = commandFailed
                     ? ProcHelpers.commandError("gh api notifications", exitCode, errText)
                     : "GitHub returned malformed notification data";
+                if (!commandFailed)
+                    notificationLastModified = "";
             } else {
                 notificationRows = rows;
                 notificationError = "";
                 reconcileInboxRows("notifications", rows);
+                notificationLastModified = included.lastModified;
                 inboxSweep.anySuccess = true;
             }
         }
@@ -818,6 +945,10 @@ Singleton {
         property string errText: ""
         property bool exitSeen: false
         property int lastExit: 0
+        // Watchdog state for the current run; see root.ghWatchdogFired().
+        property bool timedOut: false
+        property bool abandoned: false
+        property string timeoutText: ""
 
         stdout: StdioCollector {
             onStreamFinished: ghProc.body = text
@@ -835,10 +966,31 @@ Singleton {
                 errText = "";
                 exitSeen = false;
                 lastExit = 0;
+                timedOut = false;
+                abandoned = false;
+                timeoutText = "";
                 return;
             }
-            root.settle(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
+            ghWatchdog.stop();
+            if (abandoned) {
+                // The watchdog already settled this job as timed out.
+                abandoned = false;
+                root.pump();
+                return;
+            }
+            // A terminated run's partial output is not a response, and its
+            // exit status is whatever the signal left — it may even read as 0.
+            if (timedOut)
+                root.settle(Helpers.GH_TIMEOUT_EXIT, "", timeoutText);
+            else
+                root.settle(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
         }
+    }
+
+    Timer {
+        id: ghWatchdog
+        interval: Helpers.GH_TIMEOUT_MS
+        onTriggered: root.ghWatchdogFired()
     }
 
     Timer {
@@ -847,7 +999,10 @@ Singleton {
         running: root.pollEnabled
         repeat: true
         triggeredOnStart: true
-        onTriggered: root.refresh()
+        onTriggered: {
+            if (!root.rateLimited())
+                root.refresh();
+        }
     }
 
     Timer {
@@ -894,6 +1049,7 @@ Singleton {
         // is enabled again; opting back in must not emit retroactive toasts.
         if (!ciReportsEnabled) {
             runCache = ({});
+            runEtags = ({});
             runBaselines = ({});
             const reset = Helpers.removeInboxSources(inboxState,
                 inboxSourceRevisions, "workflows:");

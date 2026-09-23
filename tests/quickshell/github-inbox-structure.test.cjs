@@ -52,23 +52,71 @@ test("full Inbox and active-workflow sweeps use independent fixed cadences", () 
         "turning the module off discards queued background reads");
 });
 
-test("repository events use conditional HTTP polling and preserve partial caches", () => {
+test("Inbox reads use conditional HTTP polling and preserve partial caches", () => {
     const source = read("Common/GitHub.qml");
     const pump = source.match(/function pump\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
-    assert.match(pump, /job\.kind === "events"[\s\S]*command\.push\("--include"\)/);
-    assert.match(pump, /If-None-Match:/);
+    assert.match(pump,
+        /Helpers\.CONDITIONAL_KINDS\[job\.kind\] === true[\s\S]*command\.push\("--include"\)/);
+    assert.match(pump, /Helpers\.conditionalArgs\(validator\.etag,\s*validator\.lastModified\)/);
+    const helpers = load("GitHubHelpers.js");
+    assert.deepEqual(Object.keys(helpers.CONDITIONAL_KINDS).sort(),
+        ["events", "notifications", "runs"]);
+    const validator = source.match(/function conditionalValidator[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(validator, /hasInboxSource\("events:" \+ slug\)[\s\S]*eventEtags\[slug\]/);
+    assert.match(validator, /hasInboxSource\("workflows:" \+ slug\)[\s\S]*runEtags\[slug\]/);
+    assert.match(validator, /hasInboxSource\("notifications"\)[\s\S]*notificationLastModified/,
+        "a validator is only sent while its source has a reconciled snapshot");
     assert.match(source, /eventPollDue\(slug, now\)/);
-    assert.match(source, /response\.pollIntervalMs/);
+    assert.match(source, /Helpers\.pollDue\(notificationNextPollAt, now\)/,
+        "notifications honour X-Poll-Interval");
+    assert.match(source, /Helpers\.nextPollInterval\(response, intervals\[key\], 60000\)/);
     assert.match(source,
-        /const notModified = job\.kind === "events"[\s\S]*included\.notModified[\s\S]*HTTP 304/);
+        /const notModified = Helpers\.notModifiedResponse\(included, exitCode, errText\)/);
+    const settleInbox = source.match(/function settleInbox\(job[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(settleInbox,
+        /job\.kind === "runs"\) \{\s*if \(notModified\) \{\s*patchRunResult\(job\.slug, null, ""\)/,
+        "a workflow 304 keeps the previous rows");
+    assert.match(settleInbox,
+        /if \(notModified\) \{\s*notificationError = "";\s*inboxSweep\.anySuccess = true;/,
+        "a notification 304 keeps the previous rows");
+    assert.match(settleInbox, /noteRateLimit\(included\.headers\)/);
     assert.match(source, /if \(notModified\)[\s\S]*patchEventResult\(job\.slug, null, ""\)/,
         "304 is successful even though it has no jq body");
     assert.match(source, /patchEventResult\(job\.slug, null, message\)/,
         "a partial repository failure must retain cached rows");
     assert.match(source, /globalInboxFailure/);
     assert.match(source, /inboxBackoffMs/);
-    const helpers = load("GitHubHelpers.js");
     assert.match(helpers.GITHUB_QUERIES.events.path, /events\?per_page=30/);
+    const refreshInbox = source.match(/function refreshInbox[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(refreshInbox, /!force && \(inboxBackoffUntil > Date\.now\(\) \|\| rateLimited\(\)\)/,
+        "timers stand down while the API quota is low");
+    const active = source.match(/function refreshActiveInbox[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(active, /rateLimited\(\)/);
+});
+
+test("a stalled gh read is bounded by a watchdog that releases the queue", () => {
+    const source = read("Common/GitHub.qml");
+    const pump = source.match(/function pump\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(pump,
+        /ghWatchdog\.interval = Helpers\.ghTimeoutMs\(job\);\s*ghWatchdog\.restart\(\);\s*ghProc\.running = true;/,
+        "the watchdog is armed before launch so a synchronous failed start disarms it");
+    const fired = source.match(/function ghWatchdogFired\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(fired, /ghProc\.timedOut = true[\s\S]*ghProc\.running = false/,
+        "first firing terminates through the normal falling edge");
+    assert.match(fired, /ghProc\.signal\(9\)[\s\S]*ghProc\.abandoned = true;\s*settle\(Helpers\.GH_TIMEOUT_EXIT/,
+        "a process that ignores SIGTERM is killed and its job settled directly");
+    const proc = source.match(/Process \{\s*id: ghProc[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(proc, /ghWatchdog\.stop\(\)/);
+    assert.match(proc, /if \(abandoned\) \{[\s\S]*root\.pump\(\);\s*return;/,
+        "an abandoned job must not settle twice");
+    assert.match(proc, /if \(timedOut\)\s*root\.settle\(Helpers\.GH_TIMEOUT_EXIT, "", timeoutText\)/);
+    assert.match(proc, /ProcHelpers\.NOT_STARTED/,
+        "a never-started gh still settles through the falling edge");
+    assert.match(source, /Timer \{\s*id: ghWatchdog[\s\S]*?onTriggered: root\.ghWatchdogFired\(\)/);
+    const helpers = load("GitHubHelpers.js");
+    assert.equal(helpers.globalInboxFailure(helpers.GH_TIMEOUT_EXIT,
+        helpers.ghTimeoutMessage({ interactive: false })), true,
+        "a timed-out Inbox read pauses the sweep with backoff");
 });
 
 test("interactive reads outrank polling and stale Inbox scopes are rejected", () => {

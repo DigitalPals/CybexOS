@@ -90,9 +90,9 @@ var GITHUB_QUERIES = {
     },
     events: {
         path: "/repos/{repo}/events?per_page=30",
-        // Repository events are the one conditional request in this module.
-        // `--include` is added by the singleton so the ETag and poll interval
-        // remain available next to this deliberately small projection.
+        // Like runs and notifications, a conditional request: `--include` is
+        // added by the singleton so the ETag and poll interval remain
+        // available next to this deliberately small projection.
         jq: "[.[] | {i: (.id | tostring), ty: (.type // \"\"),"
             + " at: (.created_at // \"\"), a: (.actor.login // \"\"),"
             + " ac: (.payload.action // \"\"), ref: (.payload.ref // \"\"),"
@@ -1110,11 +1110,28 @@ function parseIncludedResponse(text) {
         status: last.status,
         headers: headers,
         body: body.trim(),
-        etag: headers.etag || "",
+        etag: normalizeEtag(headers.etag),
+        lastModified: normalizeHttpDate(headers["last-modified"]),
         pollIntervalMs: isFinite(seconds) && seconds > 0
             ? Math.floor(seconds * 1000) : 0,
         notModified: last.status === 304
     };
+}
+
+// Entity tags are quoted; the optional W/ prefix must survive exactly, since
+// If-None-Match compares it byte-for-byte.
+function normalizeEtag(value) {
+    var etag = typeof value === "string" ? value.trim() : "";
+    return /^(?:W\/)?"[^"\r\n]+"$/.test(etag) ? etag : "";
+}
+
+// Last-Modified is echoed back verbatim as If-Modified-Since, so only the
+// IMF-fixdate form HTTP servers emit is accepted — nothing that could smuggle
+// a second header line into the gh argument.
+function normalizeHttpDate(value) {
+    var stamp = typeof value === "string" ? value.trim() : "";
+    return /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(stamp)
+        && isFinite(Date.parse(stamp)) ? stamp : "";
 }
 
 function includedResponseOk(response, exitCode) {
@@ -1128,9 +1145,8 @@ function normalizeEventEtags(value) {
         return out;
     Object.keys(value).slice(0, MAX_INBOX_SOURCES).forEach(function (repo) {
         var slug = repoSlug(repo);
-        var etag = typeof value[repo] === "string" ? value[repo].trim() : "";
-        // Entity tags are quoted; the optional W/ prefix must survive exactly.
-        if (slug !== "" && /^(?:W\/)?"[^"\r\n]+"$/.test(etag))
+        var etag = normalizeEtag(value[repo]);
+        if (slug !== "" && etag !== "")
             out[slug.toLowerCase()] = etag;
     });
     return out;
@@ -1148,6 +1164,115 @@ function normalizeEventPollIntervals(value) {
             out[slug.toLowerCase()] = Math.max(1000, Math.floor(interval));
     });
     return out;
+}
+
+// ---- conditional Inbox requests ----------------------------------------
+// Every Inbox read (workflow runs, repository events, notifications) is
+// fetched with `--include` so its validators, poll interval, and rate-limit
+// headers are visible. A 304 does not count against the primary rate limit,
+// which is what makes a 60-second sweep over dozens of repositories cheap.
+var CONDITIONAL_KINDS = { runs: true, events: true, notifications: true };
+
+// The `-H` arguments for a conditional read. An empty validator sends
+// nothing, so the first request after a restart (or after a malformed
+// response) is always unconditional.
+function conditionalArgs(etag, lastModified) {
+    var args = [];
+    var tag = normalizeEtag(etag);
+    var since = normalizeHttpDate(lastModified);
+    if (tag !== "")
+        args.push("-H", "If-None-Match: " + tag);
+    if (since !== "")
+        args.push("-H", "If-Modified-Since: " + since);
+    return args;
+}
+
+// `gh api --jq` exits nonzero on a 304 because the empty body is not JSON, so
+// the header block — or, failing that, gh's own "HTTP 304" message — decides.
+function notModifiedResponse(response, exitCode, errText) {
+    if (response !== null && typeof response === "object" && response.notModified === true)
+        return true;
+    return exitCode !== 0 && typeof errText === "string" && /\bHTTP 304\b/i.test(errText);
+}
+
+// Primary-rate-limit headroom kept for everything else that uses the same
+// token (the user's own `gh`, other tools). Below it the Inbox stands down
+// until GitHub's reset instead of spending the remainder one repository at a
+// time.
+var RATE_LIMIT_FLOOR = 200;
+var RATE_LIMIT_MIN_PAUSE_MS = 60000;
+var RATE_LIMIT_MAX_PAUSE_MS = 3600000;
+var RATE_LIMIT_DEFAULT_PAUSE_MS = 900000;
+
+// What an included response says about the token's primary rate limit.
+// `known` is false when the headers are absent, so a header-less response
+// (a proxy error, a gh failure) neither pauses nor lifts a pause. `until` is
+// 0 while there is headroom, otherwise the absolute time the Inbox may resume.
+function rateLimitPause(headers, nowMs) {
+    var source = headers && typeof headers === "object" ? headers : {};
+    var raw = typeof source["x-ratelimit-remaining"] === "string"
+        ? source["x-ratelimit-remaining"].trim() : "";
+    if (!/^\d+$/.test(raw))
+        return { known: false, remaining: -1, until: 0 };
+    var remaining = Number(raw);
+    if (remaining >= RATE_LIMIT_FLOOR)
+        return { known: true, remaining: remaining, until: 0 };
+    var now = typeof nowMs === "number" && isFinite(nowMs) ? nowMs : Date.now();
+    var reset = Number(source["x-ratelimit-reset"]);
+    var wait = isFinite(reset) && reset > 0 ? reset * 1000 - now
+        : RATE_LIMIT_DEFAULT_PAUSE_MS;
+    wait = Math.min(RATE_LIMIT_MAX_PAUSE_MS, Math.max(RATE_LIMIT_MIN_PAUSE_MS, wait));
+    return { known: true, remaining: remaining, until: now + wait };
+}
+
+function rateLimitMessage(untilMs, nowMs) {
+    var now = typeof nowMs === "number" && isFinite(nowMs) ? nowMs : Date.now();
+    var minutes = Math.max(1, Math.ceil((untilMs - now) / 60000));
+    return "GitHub API quota is low; Inbox checks resume in "
+        + minutes + (minutes === 1 ? " minute" : " minutes");
+}
+
+// How long until a conditional source may be read again. GitHub's
+// X-Poll-Interval can only lengthen the Inbox cadence, never shorten it; a
+// response without the header keeps whatever interval was last announced.
+function nextPollInterval(response, previousMs, floorMs) {
+    var floor = typeof floorMs === "number" && isFinite(floorMs) && floorMs > 0
+        ? floorMs : 60000;
+    var announced = response && typeof response === "object"
+        && typeof response.pollIntervalMs === "number" && response.pollIntervalMs > 0
+        ? response.pollIntervalMs
+        : (typeof previousMs === "number" && isFinite(previousMs) && previousMs > 0
+            ? previousMs : floor);
+    return Math.max(floor, Math.floor(announced));
+}
+
+// Poll times are stamped from the sweep's start, and the sweep timer itself
+// is coarse (Qt may fire it a few percent early). Without slack an interval
+// equal to the sweep cadence would miss every other sweep and silently double.
+var POLL_SLACK_MS = 5000;
+
+function pollDue(nextAtMs, nowMs) {
+    var next = typeof nextAtMs === "number" && isFinite(nextAtMs) ? nextAtMs : 0;
+    return next - nowMs <= POLL_SLACK_MS;
+}
+
+// ---- gh watchdog ---------------------------------------------------------
+// One queued `gh` process serves every read, so a stalled request would hold
+// the queue — and every polling flag — forever. Interactive reads are the
+// ones someone is watching a spinner for, so they give up sooner.
+var GH_TIMEOUT_MS = 60000;
+var GH_INTERACTIVE_TIMEOUT_MS = 30000;
+// After SIGTERM, how long to wait for the falling edge before SIGKILL.
+var GH_KILL_GRACE_MS = 5000;
+// timeout(1)'s status, so a timed-out read reads like one in the logs.
+var GH_TIMEOUT_EXIT = 124;
+
+function ghTimeoutMs(job) {
+    return job && job.interactive === true ? GH_INTERACTIVE_TIMEOUT_MS : GH_TIMEOUT_MS;
+}
+
+function ghTimeoutMessage(job) {
+    return "gh api timed out after " + Math.round(ghTimeoutMs(job) / 1000) + " s";
 }
 
 function atMs(row) {
@@ -2029,6 +2154,23 @@ var exported = {
     includedResponseOk: includedResponseOk,
     normalizeEventEtags: normalizeEventEtags,
     normalizeEventPollIntervals: normalizeEventPollIntervals,
+    normalizeEtag: normalizeEtag,
+    normalizeHttpDate: normalizeHttpDate,
+    CONDITIONAL_KINDS: CONDITIONAL_KINDS,
+    conditionalArgs: conditionalArgs,
+    notModifiedResponse: notModifiedResponse,
+    RATE_LIMIT_FLOOR: RATE_LIMIT_FLOOR,
+    rateLimitPause: rateLimitPause,
+    rateLimitMessage: rateLimitMessage,
+    nextPollInterval: nextPollInterval,
+    POLL_SLACK_MS: POLL_SLACK_MS,
+    pollDue: pollDue,
+    GH_TIMEOUT_MS: GH_TIMEOUT_MS,
+    GH_INTERACTIVE_TIMEOUT_MS: GH_INTERACTIVE_TIMEOUT_MS,
+    GH_KILL_GRACE_MS: GH_KILL_GRACE_MS,
+    GH_TIMEOUT_EXIT: GH_TIMEOUT_EXIT,
+    ghTimeoutMs: ghTimeoutMs,
+    ghTimeoutMessage: ghTimeoutMessage,
     toneSeverity: toneSeverity,
     dedupeActivities: dedupeActivities,
     withActivityUnread: withActivityUnread,
