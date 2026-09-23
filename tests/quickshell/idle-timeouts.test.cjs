@@ -9,16 +9,16 @@ const { shellDir, load } = require("./shell.cjs");
 const H = load("SettingsHelpers.js");
 const repoRoot = path.resolve(shellDir, "../../../..");
 const generator = path.join(shellDir, "scripts/hypridle-config.py");
-const resolver = path.join(repoRoot, "assets/scripts/fedora-config-runtime");
+const resolver = path.join(repoRoot, "assets/scripts/cybexos-runtime");
 const template = path.join(repoRoot, "roles/desktop/templates/hypridle.conf.j2");
-const action = "/usr/local/libexec/fedora-config-session-action";
+const action = "/usr/local/libexec/cybexos-session-action";
 
 function read(relative) {
     return fs.readFileSync(path.join(shellDir, relative), "utf8");
 }
 
 function scratch(t) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fedora-config-idle."));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-idle."));
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
     return root;
 }
@@ -70,7 +70,7 @@ test("chosen timeouts render in seconds and Never drops the listener", t => {
     assert.doesNotMatch(output, /on-timeout = systemctl --user start/);
     assert.match(output, /timeout = 120\n  on-timeout = hyprctl eval .*"off"/);
     assert.match(output, new RegExp(`timeout = 1800\\n  on-timeout = ${action} idle-suspend on-battery\\n`));
-    assert.match(output, /lock_cmd = systemctl --user start fedora-config-session-lock\.service/);
+    assert.match(output, /lock_cmd = systemctl --user start cybexos-session-lock\.service/);
 
     const always = render(t, { idleSuspendMins: 60 });
     assert.match(always, new RegExp(`timeout = 3600\\n  on-timeout = ${action} idle-suspend\\n`));
@@ -82,8 +82,8 @@ function resolverFixture(t) {
     const config = path.join(root, "config");
     const data = path.join(root, "data");
     const run = path.join(root, "run");
-    const runtime = path.join(data, "fedora-config/runtime");
-    fs.mkdirSync(path.join(config, "fedora-config/hypr"), { recursive: true });
+    const runtime = path.join(data, "cybexos/runtime");
+    fs.mkdirSync(path.join(config, "cybexos/hypr"), { recursive: true });
     fs.mkdirSync(path.join(runtime, "hypr"), { recursive: true });
     fs.mkdirSync(path.join(runtime, "quickshell/scripts"), { recursive: true });
     fs.mkdirSync(run, { mode: 0o700 });
@@ -91,11 +91,11 @@ function resolverFixture(t) {
     fs.copyFileSync(generator, path.join(runtime, "quickshell/scripts/hypridle-config.py"));
     const hypridle = path.join(root, "hypridle");
     fs.writeFileSync(hypridle, "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\"\n", { mode: 0o755 });
-    const script = path.join(root, "fedora-config-runtime");
+    const script = path.join(root, "cybexos-runtime");
     fs.writeFileSync(script, fs.readFileSync(resolver, "utf8")
         .replace("exec /usr/bin/hypridle", `exec ${hypridle}`));
     return {
-        config: path.join(config, "fedora-config"),
+        config: path.join(config, "cybexos"),
         runtime,
         run,
         exec() {
@@ -114,7 +114,7 @@ test("the runtime resolver starts hypridle with the rendered shell timeouts", t 
     const f = resolverFixture(t);
     fs.writeFileSync(path.join(f.config, "shell.json"), JSON.stringify({ idleLockMins: 15 }));
     const started = f.exec();
-    assert.equal(started.config, path.join(f.run, "fedora-config/hypridle.conf"));
+    assert.equal(started.config, path.join(f.run, "cybexos/hypridle.conf"));
     assert.match(fs.readFileSync(started.config, "utf8"), /timeout = 900\n/);
 });
 
@@ -130,7 +130,7 @@ test("a user hypridle.conf wins and a failed render falls back to the vendor fil
     const fallback = f.exec();
     assert.equal(fallback.config, path.join(f.runtime, "hypr/hypridle.conf"));
     assert.match(fallback.stderr, /using defaults/);
-    assert.deepEqual(fs.readdirSync(path.join(f.run, "fedora-config")), []);
+    assert.deepEqual(fs.readdirSync(path.join(f.run, "cybexos")), []);
 });
 
 test("saved idle changes restart hypridle and the power drawer links to them", () => {

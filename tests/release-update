@@ -2,46 +2,46 @@
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-updater=$repo_root/assets/scripts/fedora-config-release-update
+updater=$repo_root/assets/scripts/cybexos-release-update
 fixture=$(mktemp -d)
 trap 'rm -rf -- "$fixture"' EXIT
 mkdir -p "$fixture/bin" "$fixture/source/scripts" "$fixture/data" \
-  "$fixture/release/fedora-config-1.2.3/tests" \
-  "$fixture/release/fedora-config-1.2.3/scripts"
+  "$fixture/release/cybexos-1.2.3/tests" \
+  "$fixture/release/cybexos-1.2.3/scripts"
 
 printf '0.0.0\n' >"$fixture/source/VERSION"
 cp "$repo_root/scripts/semver" "$fixture/source/scripts/semver"
 printf '%s\n' '---' 'config_schema_version: 0' 'primary_user: tester' >"$fixture/config.yml"
 cp -- "$fixture/config.yml" "$fixture/config.original.yml"
-printf '%s\n' '---' >"$fixture/release/fedora-config-1.2.3/site.yml"
-printf '#!/usr/bin/env bash\n' >"$fixture/release/fedora-config-1.2.3/install"
-printf '#!/usr/bin/env bash\n' >"$fixture/release/fedora-config-1.2.3/verify"
-printf '#!/usr/bin/env bash\n' >"$fixture/release/fedora-config-1.2.3/tests/run"
-cp -a "$repo_root/agent-skills" "$fixture/release/fedora-config-1.2.3/"
+printf '%s\n' '---' >"$fixture/release/cybexos-1.2.3/site.yml"
+printf '#!/usr/bin/env bash\n' >"$fixture/release/cybexos-1.2.3/install"
+printf '#!/usr/bin/env bash\n' >"$fixture/release/cybexos-1.2.3/verify"
+printf '#!/usr/bin/env bash\n' >"$fixture/release/cybexos-1.2.3/tests/run"
+cp -a "$repo_root/agent-skills" "$fixture/release/cybexos-1.2.3/"
 cp "$repo_root/scripts/manage-agent-skills" \
-  "$fixture/release/fedora-config-1.2.3/scripts/manage-agent-skills"
-chmod 0755 "$fixture/release/fedora-config-1.2.3/install" \
-  "$fixture/release/fedora-config-1.2.3/verify" \
-  "$fixture/release/fedora-config-1.2.3/tests/run" \
-  "$fixture/release/fedora-config-1.2.3/scripts/manage-agent-skills"
+  "$fixture/release/cybexos-1.2.3/scripts/manage-agent-skills"
+chmod 0755 "$fixture/release/cybexos-1.2.3/install" \
+  "$fixture/release/cybexos-1.2.3/verify" \
+  "$fixture/release/cybexos-1.2.3/tests/run" \
+  "$fixture/release/cybexos-1.2.3/scripts/manage-agent-skills"
 cp "$repo_root/scripts/migrate-config" \
-  "$fixture/release/fedora-config-1.2.3/scripts/migrate-config"
+  "$fixture/release/cybexos-1.2.3/scripts/migrate-config"
 cp "$repo_root/scripts/semver" \
-  "$fixture/release/fedora-config-1.2.3/scripts/semver"
-printf '1.2.3\n' >"$fixture/release/fedora-config-1.2.3/VERSION"
+  "$fixture/release/cybexos-1.2.3/scripts/semver"
+printf '1.2.3\n' >"$fixture/release/cybexos-1.2.3/VERSION"
 fedora_release=$(source /etc/os-release; printf '%s' "$VERSION_ID")
 jq -n --arg fedora "$fedora_release" --arg architecture "$(uname -m)" \
-  '{product:"fedora-config",version:"1.2.3",configSchema:1,
+  '{product:"cybexos",version:"1.2.3",configSchema:1,
     supportedFedora:[$fedora],architectures:[$architecture],minimumUpdater:"0.1.0"}' \
-  >"$fixture/release/fedora-config-1.2.3/release-manifest.json"
+  >"$fixture/release/cybexos-1.2.3/release-manifest.json"
 tar --create --zstd --file "$fixture/release.tar.zst" \
-  --directory "$fixture/release" fedora-config-1.2.3
+  --directory "$fixture/release" cybexos-1.2.3
 digest=$(sha256sum "$fixture/release.tar.zst" | awk '{print $1}')
 
 release_json() {
   jq -n --arg digest "sha256:$digest" --argjson immutable "$1" \
     '{tag_name:"v1.2.3",draft:false,prerelease:false,immutable:$immutable,
-      assets:[{name:"fedora-config-1.2.3.tar.zst",
+      assets:[{name:"cybexos-1.2.3.tar.zst",
       browser_download_url:"https://example.invalid/release.tar.zst",digest:$digest}]}' \
     >"$fixture/release.json"
 }
@@ -126,10 +126,10 @@ chmod 0755 "$fixture/bin/curl" "$fixture/bin/gh" "$fixture/bin/backend" \
 
 export PATH="$fixture/bin:$PATH"
 export XDG_DATA_HOME="$fixture/data"
-export FEDORA_CONFIG_SOURCE_DIR="$fixture/source"
-export FEDORA_CONFIG_FILE="$fixture/config.yml"
-export FEDORA_CONFIG_UPDATE_BACKEND="$fixture/bin/backend"
-export FEDORA_CONFIG_GITHUB_REPO=example/fedora-config
+export CYBEXOS_SOURCE_DIR="$fixture/source"
+export CYBEXOS_CONFIG_FILE="$fixture/config.yml"
+export CYBEXOS_UPDATE_BACKEND="$fixture/bin/backend"
+export CYBEXOS_GITHUB_REPO=example/cybexos
 export MOCK_RELEASE_JSON="$fixture/release.json"
 export MOCK_RELEASE_ARCHIVE="$fixture/release.tar.zst"
 export MOCK_GH_LOG="$fixture/gh.log"
@@ -151,7 +151,7 @@ release_json true
 # SemVer precedence, rather than version-sort punctuation rules, determines
 # whether a prerelease is actually newer than the installed source.
 jq '.tag_name = "v1.2.3-beta.1" |
-    .assets[0].name = "fedora-config-1.2.3-beta.1.tar.zst"' \
+    .assets[0].name = "cybexos-1.2.3-beta.1.tar.zst"' \
   "$fixture/release.json" >"$fixture/release-prerelease.json"
 mv -- "$fixture/release-prerelease.json" "$fixture/release.json"
 printf '1.2.3\n' >"$fixture/source/VERSION"
@@ -181,10 +181,10 @@ grep -F -- 'start --json --system-unit --full --skip-tests --repo' \
   "$fixture/backend.log" >/dev/null
 machine_candidate=$(sed -n 's/.*--repo \([^ ]*\).*/\1/p' \
   "$fixture/backend.log")
-[[ $machine_candidate == "$fixture/data/fedora-config/releases/.stage.1.2.3."* ]]
+[[ $machine_candidate == "$fixture/data/cybexos/releases/.stage.1.2.3."* ]]
 [[ -d $machine_candidate ]]
 cmp -s "$fixture/config.yml" "$fixture/config.original.yml"
-[[ ! -e $fixture/data/fedora-config/current ]]
+[[ ! -e $fixture/data/cybexos/current ]]
 rm -rf -- "$machine_candidate"
 
 export MOCK_BACKEND_ATTACH_RC=42
@@ -193,7 +193,7 @@ if $updater --no-packages >/dev/null 2>"$fixture/apply-failed.err"; then
   exit 1
 fi
 cmp -s "$fixture/config.yml" "$fixture/config.original.yml"
-[[ ! -e $fixture/data/fedora-config/current ]]
+[[ ! -e $fixture/data/cybexos/current ]]
 
 # Detaching the client must leave configuration and activation to the durable
 # worker instead of attempting either operation in this terminal process.
@@ -204,7 +204,7 @@ detached_rc=$?
 set -e
 [[ $detached_rc -eq 130 ]]
 cmp -s "$fixture/config.yml" "$fixture/config.original.yml"
-[[ ! -e $fixture/data/fedora-config/current ]]
+[[ ! -e $fixture/data/cybexos/current ]]
 
 # A release transaction never attaches to an unrelated active worker.
 unset MOCK_BACKEND_ATTACH_RC
@@ -216,30 +216,30 @@ set -e
 [[ $existing_rc -eq 75 ]]
 grep -F 'another update is active' "$fixture/existing.err" >/dev/null
 cmp -s "$fixture/config.yml" "$fixture/config.original.yml"
-[[ ! -e $fixture/data/fedora-config/current ]]
+[[ ! -e $fixture/data/cybexos/current ]]
 unset MOCK_BACKEND_EXISTING
 
 # A staged candidate is untrusted cache: the next attempt must replace it from
 # the newly verified archive instead of accepting locally modified contents.
-mkdir -p "$fixture/data/fedora-config/releases/1.2.3"
-touch "$fixture/data/fedora-config/releases/1.2.3/UNTRUSTED"
-mkdir -p "$fixture/data/fedora-config/releases/1.2.3-beta.1" \
-  "$fixture/data/fedora-config/releases/1.2.2" \
-  "$fixture/data/fedora-config/releases/1.2.1" \
-  "$fixture/data/fedora-config/releases/not-a-version"
+mkdir -p "$fixture/data/cybexos/releases/1.2.3"
+touch "$fixture/data/cybexos/releases/1.2.3/UNTRUSTED"
+mkdir -p "$fixture/data/cybexos/releases/1.2.3-beta.1" \
+  "$fixture/data/cybexos/releases/1.2.2" \
+  "$fixture/data/cybexos/releases/1.2.1" \
+  "$fixture/data/cybexos/releases/not-a-version"
 $updater --no-packages >/dev/null
-[[ -d $fixture/data/fedora-config/releases/1.2.3 ]]
-[[ ! -e $fixture/data/fedora-config/releases/1.2.3/UNTRUSTED ]]
-[[ -d $fixture/data/fedora-config/releases/1.2.3-beta.1 ]]
-[[ -d $fixture/data/fedora-config/releases/1.2.2 ]]
-[[ ! -e $fixture/data/fedora-config/releases/1.2.1 ]]
-[[ -d $fixture/data/fedora-config/releases/not-a-version ]]
-[[ $(readlink "$fixture/data/fedora-config/current") == releases/1.2.3 ]]
+[[ -d $fixture/data/cybexos/releases/1.2.3 ]]
+[[ ! -e $fixture/data/cybexos/releases/1.2.3/UNTRUSTED ]]
+[[ -d $fixture/data/cybexos/releases/1.2.3-beta.1 ]]
+[[ -d $fixture/data/cybexos/releases/1.2.2 ]]
+[[ ! -e $fixture/data/cybexos/releases/1.2.1 ]]
+[[ -d $fixture/data/cybexos/releases/not-a-version ]]
+[[ $(readlink "$fixture/data/cybexos/current") == releases/1.2.3 ]]
 [[ $(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["config_schema_version"])' "$fixture/config.yml") == 1 ]]
 grep -F -- 'start --json --system-unit --full --skip-tests --repo' "$fixture/backend.log" >/dev/null
 grep -F -- '--release-version 1.2.3 --release-data-root' "$fixture/backend.log" >/dev/null
 grep -F -- '--no-packages -- -e' "$fixture/backend.log" >/dev/null
-grep -F -- 'release verify v1.2.3 --repo example/fedora-config' "$fixture/gh.log" >/dev/null
+grep -F -- 'release verify v1.2.3 --repo example/cybexos' "$fixture/gh.log" >/dev/null
 grep -F -- 'release verify-asset v1.2.3' "$fixture/gh.log" >/dev/null
 
 release_json false

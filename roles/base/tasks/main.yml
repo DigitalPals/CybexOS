@@ -3,7 +3,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.stat:
-    path: "{{ primary_home }}/.local/state/fedora-config/backups/initial-core.complete"
+    path: "{{ primary_home }}/.local/state/cybexos/backups/initial-core.complete"
   register: base_initial_backup_marker
 
 - name: Preserve core user paths before any role can adopt them
@@ -11,12 +11,12 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.shell: |
     set -euo pipefail
-    backup={{ (primary_home + '/.local/state/fedora-config/backups/initial') | quote }}
-    marker={{ (primary_home + '/.local/state/fedora-config/backups/initial-core.complete') | quote }}
+    backup={{ (primary_home + '/.local/state/cybexos/backups/initial') | quote }}
+    marker={{ (primary_home + '/.local/state/cybexos/backups/initial-core.complete') | quote }}
     mkdir -p "$backup"
     items=(
       .config/xdg-desktop-portal/hyprland-portals.conf
-      .config/environment.d/10-fedora-config.conf
+      .config/environment.d/10-cybexos.conf
       .config/systemd/user/hyprland-session.target
       .config/systemd/user/hyprland-session.target.wants
       .config/systemd/user/quickshell.service
@@ -25,7 +25,7 @@
       .config/systemd/user/voxtype.service
       .config/systemd/user/external-monitor-toggle.service
       .config/systemd/user/hermes-menubar-bridge.service
-      .config/systemd/user/fedora-config-session-lock.service
+      .config/systemd/user/cybexos-session-lock.service
       .config/systemd/user/xps-speaker-tuning.service
       .config/distrobox/distrobox.conf
       .local/bin/screenshot
@@ -38,8 +38,7 @@
       .local/bin/localsend
       .local/bin/localsend-share
       .local/bin/cybex
-      .local/bin/fedora-config
-      .local/bin/fedora-config-update-run
+      .local/bin/cybexos-update-run
       .local/bin/brightness-control
       .local/bin/portal-launcher
       .local/bin/t3code-update
@@ -87,15 +86,15 @@
 
 - name: Inspect the first-adoption shared-system backup marker
   ansible.builtin.stat:
-    path: /var/lib/fedora-config/backups/initial-system.complete
+    path: /var/lib/cybexos/backups/initial-system.complete
   register: base_initial_system_backup_marker
 
 - name: Preserve shared system paths before CybexOS can adopt them
   ansible.builtin.shell: |
     set -euo pipefail
-    backup=/var/lib/fedora-config/backups/system
-    marker=/var/lib/fedora-config/backups/initial-system.complete
-    absent=/var/lib/fedora-config/backups/initial-system.absent
+    backup=/var/lib/cybexos/backups/system
+    marker=/var/lib/cybexos/backups/initial-system.complete
+    absent=/var/lib/cybexos/backups/initial-system.absent
     install -d -m 0700 "$backup"
     temporary="$absent.new"
     : >"$temporary"
@@ -159,8 +158,8 @@
 
 - name: Install transactional Btrfs recovery helper
   ansible.builtin.copy:
-    src: fedora-config-system-snapshot
-    dest: /usr/local/libexec/fedora-config-system-snapshot
+    src: cybexos-system-snapshot
+    dest: /usr/local/libexec/cybexos-system-snapshot
     owner: root
     group: root
     mode: "0755"
@@ -171,8 +170,8 @@
 # refresh remains self-contained on an already provisioned host.
 - name: Install shared upstream installer helper prerequisite
   ansible.builtin.copy:
-    src: "{{ config_repo }}/roles/apps/files/fedora-config-common.sh"
-    dest: /usr/local/libexec/fedora-config-common.sh
+    src: "{{ config_repo }}/roles/apps/files/cybexos-common.sh"
+    dest: /usr/local/libexec/cybexos-common.sh
     owner: root
     group: root
     mode: "0644"
@@ -184,7 +183,7 @@
 
 - name: Create the CybexOS system-state directory
   ansible.builtin.file:
-    path: /var/lib/fedora-config/features
+    path: /var/lib/cybexos/features
     state: directory
     owner: root
     group: root
@@ -192,7 +191,7 @@
 
 - name: Create the firewall first-adoption state directory
   ansible.builtin.file:
-    path: /var/lib/fedora-config/firewall/profiles
+    path: /var/lib/cybexos/firewall/profiles
     state: directory
     owner: root
     group: root
@@ -200,7 +199,7 @@
 
 - name: Inspect CybexOS ownership of Docker
   ansible.builtin.stat:
-    path: /var/lib/fedora-config/features/docker
+    path: /var/lib/cybexos/features/docker
   register: base_docker_marker
 
 - name: Stop and disable Docker socket activation before removing its packages
@@ -285,7 +284,7 @@
 
 - name: Configure portable kernel hardening
   ansible.builtin.copy:
-    dest: /etc/sysctl.d/60-fedora-config-hardening.conf
+    dest: /etc/sysctl.d/60-cybexos-hardening.conf
     owner: root
     group: root
     mode: "0644"
@@ -302,13 +301,13 @@
       net.ipv6.conf.default.accept_redirects = 0
 
 - name: Apply portable kernel hardening
-  ansible.builtin.command: sysctl --load /etc/sysctl.d/60-fedora-config-hardening.conf
+  ansible.builtin.command: sysctl --load /etc/sysctl.d/60-cybexos-hardening.conf
   changed_when: false
   when: not ansible_check_mode
 
 - name: Configure strict firewalld zone
   ansible.builtin.template:
-    src: fedora-config-zone.xml.j2
+    src: cybexos-zone.xml.j2
     dest: "/etc/firewalld/zones/{{ firewall_zone }}.xml"
     owner: root
     group: root
@@ -363,7 +362,7 @@
 
 - name: Preserve the default firewall zone before first adoption
   ansible.builtin.copy:
-    dest: /var/lib/fedora-config/firewall/default-zone
+    dest: /var/lib/cybexos/firewall/default-zone
     content: >-
       {{ ((base_current_firewall_zone.stdout | trim) == firewall_zone)
          | ternary('public', base_current_firewall_zone.stdout | trim) }}
@@ -399,7 +398,7 @@
   ansible.builtin.shell: |
     set -euo pipefail
     [[ $PROFILE_UUID =~ ^[0-9A-Fa-f-]{36}$ ]]
-    marker="/var/lib/fedora-config/firewall/profiles/$PROFILE_UUID"
+    marker="/var/lib/cybexos/firewall/profiles/$PROFILE_UUID"
     temporary="$marker.$$.tmp"
     zone=$(nmcli -g connection.zone connection show "$PROFILE_UUID")
     printf '%s\n' "$zone" >"$temporary"
@@ -407,7 +406,7 @@
     mv -f -- "$temporary" "$marker"
   args:
     executable: /bin/bash
-    creates: "/var/lib/fedora-config/firewall/profiles/{{ item }}"
+    creates: "/var/lib/cybexos/firewall/profiles/{{ item }}"
   environment:
     PROFILE_UUID: "{{ item }}"
   loop: "{{ base_network_profiles_outside_zone.stdout_lines }}"
@@ -483,7 +482,7 @@
 
 - name: Record CybexOS ownership of Docker
   ansible.builtin.copy:
-    dest: /var/lib/fedora-config/features/docker
+    dest: /var/lib/cybexos/features/docker
     content: "managed\n"
     owner: root
     group: root
@@ -492,7 +491,7 @@
 
 - name: Retire CybexOS Docker ownership after removal
   ansible.builtin.file:
-    path: /var/lib/fedora-config/features/docker
+    path: /var/lib/cybexos/features/docker
     state: absent
   when:
     - not features.docker | bool
@@ -547,7 +546,7 @@
 
 - name: Install weekly Btrfs scrub unit
   ansible.builtin.copy:
-    dest: /etc/systemd/system/fedora-config-btrfs-scrub.service
+    dest: /etc/systemd/system/cybexos-btrfs-scrub.service
     owner: root
     group: root
     mode: "0644"
@@ -566,7 +565,7 @@
 
 - name: Install weekly Btrfs scrub timer
   ansible.builtin.copy:
-    dest: /etc/systemd/system/fedora-config-btrfs-scrub.timer
+    dest: /etc/systemd/system/cybexos-btrfs-scrub.timer
     owner: root
     group: root
     mode: "0644"
@@ -586,7 +585,7 @@
 
 - name: Enable weekly Btrfs scrub
   ansible.builtin.systemd_service:
-    name: fedora-config-btrfs-scrub.timer
+    name: cybexos-btrfs-scrub.timer
     enabled: true
     state: started
     daemon_reload: true
@@ -594,7 +593,7 @@
 
 - name: Stop and disable the Btrfs scrub timer on other filesystems
   ansible.builtin.systemd_service:
-    name: fedora-config-btrfs-scrub.timer
+    name: cybexos-btrfs-scrub.timer
     enabled: false
     state: stopped
     daemon_reload: true
@@ -608,7 +607,7 @@
     path: "/etc/systemd/system/{{ item }}"
     state: absent
   loop:
-    - fedora-config-btrfs-scrub.service
-    - fedora-config-btrfs-scrub.timer
+    - cybexos-btrfs-scrub.service
+    - cybexos-btrfs-scrub.timer
   notify: Reload systemd
   when: base_root_filesystem.stdout | trim != 'btrfs'

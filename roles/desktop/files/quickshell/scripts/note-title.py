@@ -124,7 +124,7 @@ def command_for(provider: str, model: str, effort: str) -> list[str]:
 def timeout_seconds() -> float:
     # The override exists only so the source suite can exercise the real
     # process-group timeout path without making every run wait 30 seconds.
-    raw = os.environ.get("FEDORA_CONFIG_NOTE_TITLE_TEST_TIMEOUT", "")
+    raw = os.environ.get("CYBEXOS_NOTE_TITLE_TEST_TIMEOUT", "")
     if not raw:
         return TIMEOUT_SECONDS
     try:

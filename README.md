@@ -9,10 +9,10 @@ separate, precisely gated role preserves extra support for the 2026 Dell XPS
 The current release target is Fedora 44 on x86_64. Fedora remains responsible
 for the kernel, drivers, SELinux, and base operating system.
 
-The application command is `cybex`. The old `fedora-config` command remains
-available for compatibility. Package and service identifiers, configuration
-and data paths, and the agent skill name remain stable for existing systems.
-The source repository is currently hosted at `DigitalPals/fedora-config`.
+The application command is `cybex`; paths, services, and packages use the
+`cybexos` name. The project was previously called `fedora-config`. Running
+`./install` from a CybexOS checkout moves such an installation to the new names;
+see [the operations guide](docs/operations.md#migrating-from-fedora-config).
 
 ## What it installs
 
@@ -42,8 +42,8 @@ Start with Fedora 44 and a user that can run `sudo`:
 
 ```bash
 sudo dnf install -y git
-git clone https://github.com/DigitalPals/fedora-config.git
-cd fedora-config
+git clone https://github.com/DigitalPals/CybexOS.git
+cd CybexOS
 ./install
 ```
 
@@ -56,23 +56,23 @@ The installer explicitly asks whether to enable passwordless sudo, passwordless
 local Polkit authorization, and GDM autologin. The two passwordless choices
 have no implicit answer.
 
-Answers are saved in `/etc/fedora-config/config.yml`, outside versioned release
+Answers are saved in `/etc/cybexos/config.yml`, outside versioned release
 trees, and are reused by later installs and updates. Existing explicit
 application opt-outs are preserved; missing choices receive the full defaults. Run
 `cybex configure` to ask the questions again. `./bootstrap` remains a
 compatibility alias for `./install`. The first successful install snapshots
-the runtime source under `~/.local/share/fedora-config/releases/`, so the
+the runtime source under `~/.local/share/cybexos/releases/`, so the
 cloned checkout can then be moved or removed.
 
-That active release also owns the canonical `fedora-config` agent skill.
-Installation always links it at `~/.agents/skills/fedora-config`,
-`~/.claude/skills/fedora-config`, and `~/.codex/skills/fedora-config`, whether
+That active release also owns the canonical `cybexos` agent skill.
+Installation always links it at `~/.agents/skills/cybexos`,
+`~/.claude/skills/cybexos`, and `~/.codex/skills/cybexos`, whether
 or not a corresponding agent is currently installed. Invoke it explicitly as
-`$fedora-config` in Codex or `/fedora-config` in Claude Code; its focused
+`$cybexos` in Codex or `/cybexos` in Claude Code; its focused
 description also supports automatic selection.
 
 Before any role adopts configuration, the installer creates a one-time backup
-under `~/.local/state/fedora-config/backups/initial/`. Existing Hyprland and
+under `~/.local/state/cybexos/backups/initial/`. Existing Hyprland and
 Quickshell trees are always preserved; personal application files are added
 when the optional dotfiles integration is selected. Uninstall restores those
 pre-existing files. Managed Fish, Kitty, Git, and SSH settings use
@@ -84,7 +84,7 @@ No avatar is imposed.
 To install or refresh only the wallpapers using the saved configuration:
 
 ```bash
-ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags wallpapers
+ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags wallpapers
 ```
 
 A lone tiled window on an external monitor is centered at 70% of the display's
@@ -92,7 +92,7 @@ width, adapting to resolution, scaling, and rotation. Laptop panels and
 workspaces with multiple tiled windows use the normal small edge gaps.
 
 Desktop runtime and user customization have a strict boundary. Verified
-releases reconcile `~/.local/share/fedora-config/runtime`, while shell
+releases reconcile `~/.local/share/cybexos/runtime`, while shell
 settings, Hyprland overrides, themes, and plugins live in user-owned roots
 that updates never prune. An upgrade from the legacy layout emits a migration
 report and preserves customized QML/Lua without trying to translate it. See
@@ -101,7 +101,7 @@ path and migration contract.
 
 Personal bar widgets use a versioned API and live outside the distro runtime.
 Codex/Claude can create a package in
-`~/.local/share/fedora-config/plugins/<id>/` and enable it with
+`~/.local/share/cybexos/plugins/<id>/` and enable it with
 `cybex plugin enable <id>`. Its preferences and data survive updates;
 no edits to built-in shell modules are needed. See the
 [widget contract and commands](docs/architecture/user-widgets.md). The
@@ -109,7 +109,7 @@ ownership guide also identifies remaining application-configuration gaps.
 The Omarchy compatibility adapter supports widgets, shared services, panels,
 overlays, menus, and replacement bars, with representative unchanged plugins tested. See [installation and limits](docs/omarchy-plugin-compatibility.md).
 
-Each pre-existing `fedora-config` skill slot is backed up independently before
+Each pre-existing `cybexos` skill slot is backed up independently before
 first adoption. Updates retarget all three paths through the atomic active
 release link, and uninstall restores the exact original file, directory, or
 symlink without changing neighboring skills.
@@ -119,7 +119,7 @@ symlink without changing neighboring skills.
 Developer tooling installs pinned Claude Code, OpenCode, and Codex CLI
 versions. CybexOS does not silently prefer one provider: the first
 interactive invocation asks which installed agent to use and stores that
-per-user choice at `~/.config/fedora-config/defaults/agent`.
+per-user choice at `~/.config/cybexos/defaults/agent`.
 
 ```bash
 cybex agent                 # launch the default in this directory

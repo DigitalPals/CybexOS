@@ -8,7 +8,7 @@ table in the README links here instead of duplicating these details.
 
 | Command | Behavior |
 | --- | --- |
-| `./install` | Detects machine defaults, asks first-run questions, saves `/etc/fedora-config/config.yml`, installs `ansible-core` when needed, and applies `site.yml`. Later runs reuse the saved answers. |
+| `./install` | Detects machine defaults, asks first-run questions, saves `/etc/cybexos/config.yml`, installs `ansible-core` when needed, and applies `site.yml`. Later runs reuse the saved answers. |
 | `./bootstrap` | Compatibility alias for `./install`. |
 | `./tests/run` | Runs all required source-tree checks without inspecting or changing the live machine. |
 | `./verify` | Runs complete source and non-destructive installed-system checks. Use `--source`, `--system`, or `--quick` for a narrower scope and `--json` for automation. |
@@ -26,8 +26,8 @@ saved installer configuration is deliberately supplied explicitly:
 
 ```bash
 ./tests/run
-ansible-playbook site.yml -e @/etc/fedora-config/config.yml --check --diff
-ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags desktop,dotfiles
+ansible-playbook site.yml -e @/etc/cybexos/config.yml --check --diff
+ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags desktop,dotfiles
 ```
 
 The public release updater applies a candidate through the lower-level durable
@@ -41,7 +41,7 @@ screen. To apply the boot theme and Fish defaults to an existing installation
 after running the source gate:
 
 ```bash
-ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags boot,shell-defaults
+ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags boot,shell-defaults
 ```
 
 The `shell-defaults` tag requires the existing installation's Fish configuration
@@ -58,8 +58,8 @@ The installed `cybex verify` and `doctor` commands default to
 installed.
 
 The default-agent dispatcher stores only an allowlisted command name under
-`$XDG_CONFIG_HOME/fedora-config/defaults/agent`, or
-`~/.config/fedora-config/defaults/agent` when `XDG_CONFIG_HOME` is unset. It
+`$XDG_CONFIG_HOME/cybexos/defaults/agent`, or
+`~/.config/cybexos/defaults/agent` when `XDG_CONFIG_HOME` is unset. It
 changes that file atomically only after confirming the selected command
 exists. Agent login tokens, API keys, models, permissions, and configuration
 are deliberately not copied into CybexOS. A desktop launch begins in
@@ -67,7 +67,7 @@ are deliberately not copied into CybexOS. A desktop launch begins in
 Use `cybex agent unset` to clear the preference.
 
 The development-source switch stores one canonical path at
-`~/.config/fedora-config/dev-source`. The resolver accepts only a user-owned,
+`~/.config/cybexos/dev-source`. The resolver accepts only a user-owned,
 non-world-writable Git worktree with the required desktop sources. Enabling or
 disabling it restarts the managed Quickshell service and reloads Hyprland when
 one is active. Rendered machine-specific Hyprland modules still come from the
@@ -93,7 +93,7 @@ The `font-defaults` tag installs Liberation Sans/Serif/Mono, the full Noto
 collection, Noto CJK Sans/Serif/Mono, Noto Color Emoji, and Font Awesome
 (desktop and web fonts),
 then applies [Omarchy's font mappings](https://github.com/omacom/omarchy/blob/8f324c90b82790d31ab33565441e07cbdb8d2308/default/fontconfig/conf.avail/50-omarchy.conf)
-in `/etc/fonts/conf.d/49-fedora-config-defaults.conf`. Sans-serif and system UI
+in `/etc/fonts/conf.d/49-cybexos-defaults.conf`. Sans-serif and system UI
 aliases use Liberation Sans, serif uses Liberation Serif, and monospace uses
 JetBrainsMono Nerd Font. Strong UI aliases preserve these choices against
 Fedora's generic rules, and the system UI rule replaces Fedora's pre-expanded
@@ -104,7 +104,7 @@ application tasks. Personal Fontconfig files remain separate and load afterward.
 Apply just these defaults on an installed machine with:
 
 ```bash
-ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags font-defaults
+ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags font-defaults
 ```
 
 Font coverage mirrors [Omarchy's base manifest](https://github.com/omacom/omarchy/blob/8f324c90b82790d31ab33565441e07cbdb8d2308/install/omarchy-base.packages)
@@ -150,18 +150,18 @@ bypass the Fedora 44 and architecture support contract. Do not add
 ## Agent skill lifecycle
 
 CybexOS ships one canonical skill in the active release at
-`~/.local/share/fedora-config/current/agent-skills/fedora-config`. Provisioning
+`~/.local/share/cybexos/current/agent-skills/cybexos`. Provisioning
 always creates these discovery links, independently of whether each agent is
 installed:
 
-- `~/.agents/skills/fedora-config`
-- `~/.claude/skills/fedora-config`
-- `~/.codex/skills/fedora-config`
+- `~/.agents/skills/cybexos`
+- `~/.claude/skills/cybexos`
+- `~/.codex/skills/cybexos`
 
 The internal `scripts/manage-agent-skills` helper adopts only those three
 named slots. Before first replacement it records each existing file,
 directory, symlink, or absence separately under
-`~/.local/state/fedora-config/backups/agent-skills/`. If any backup or
+`~/.local/state/cybexos/backups/agent-skills/`. If any backup or
 replacement fails, the invocation restores every affected slot. Later runs
 treat an adopted slot as project-owned and converge it without rewriting the
 first-adoption record; unrelated skills and parent directories are untouched.
@@ -173,10 +173,38 @@ uses the same helper before removing project state and unconditionally
 restores each recorded original. `--keep-user-data` retains those records only
 after restoration; it does not leave the CybexOS links installed.
 
+## Migrating from fedora-config
+
+The project was called `fedora-config` before it became CybexOS. An
+installation made under that name moves to the CybexOS names when `./install`
+runs from a CybexOS checkout; releases published under the old name cannot
+update it. `scripts/migrate-legacy-names` runs first in `install`, `uninstall`,
+and every playbook, and is idempotent. It:
+
+- moves `/etc/fedora-config`, `/var/lib/fedora-config`, the
+  `fedora-config-upstream` cache and state, `/opt/fedora-config-apps`, and
+  `/opt/fedora-config-builds` to their `cybexos` paths, keeping install
+  markers and retargeting `/usr/local/bin` links so nothing is rebuilt;
+- renames the `fedora-config` firewalld zone to `cybexos`, including the
+  default zone and NetworkManager profile bindings, and replaces the Btrfs
+  scrub timer;
+- moves the `fedora-config` directories in `~/.config`, `~/.local/share`,
+  `~/.local/state`, and `~/.cache` to `cybexos`, plus the user-tool
+  directory, and retargets `~/.local/bin` links;
+- restores the former `fedora-config` agent skill slots so that provisioning
+  adopts the `cybexos` slots afresh.
+
+The `legacy-names` role then removes the remaining `fedora-config` helpers,
+units, fragments, and managed include blocks after their replacements are in
+place, and restarts a running Quickshell and hypridle. Links at the three
+former home paths keep the current desktop session working. The next Hyprland
+login removes them. If both an old and a new path already exist, the
+migration leaves the old one for manual review and says so.
+
 ## Release updater lifecycle
 
 `cybex update` follows the channel saved in
-`~/.local/share/fedora-config/channel` (`stable` by default, or `beta` after
+`~/.local/share/cybexos/channel` (`stable` by default, or `beta` after
 `--channel beta`). A project release is accepted only when GitHub marks it
 immutable, its release and asset attestations verify, the downloaded SHA-256
 matches GitHub metadata, and its manifest supports the current Fedora release,
@@ -218,20 +246,20 @@ the update lock.
 Use the installed backend to inspect or control it:
 
 ```bash
-fedora-config-update-run status
-fedora-config-update-run status --json
-fedora-config-update-run attach
-fedora-config-update-run log-dir
-fedora-config-update-run cancel
-fedora-config-update-run dismiss
+cybexos-update-run status
+cybexos-update-run status --json
+cybexos-update-run attach
+cybexos-update-run log-dir
+cybexos-update-run cancel
+cybexos-update-run dismiss
 ```
 
-Each command accepts a run ID where documented by `fedora-config-update-run --help`.
+Each command accepts a run ID where documented by `cybexos-update-run --help`.
 `cancel` is explicit and terminates an active worker; Ctrl+C during `attach`
 does not. `dismiss` only changes the completed status shown by the UI and does
 not delete its logs.
 
-Run state lives under `~/.local/state/fedora-config/update/`. Each run has a private
+Run state lives under `~/.local/state/cybexos/update/`. Each run has a private
 directory under `logs/<run-id>/` containing:
 
 - `status.json`: atomic machine-readable phase, result, component exit codes,
@@ -243,7 +271,7 @@ directory under `logs/<run-id>/` containing:
   `ansible.log`, plus their exit-code files when that phase ran.
 
 The twenty newest valid run directories are retained. For a worker that looks
-stuck, start with `fedora-config-update-run status --json`, inspect `run.log`, then use
+stuck, start with `cybexos-update-run status --json`, inspect `run.log`, then use
 the `unit` field with `systemctl --user status <unit>` and
 `journalctl --user -u <unit>`. If the unit disappeared without final status,
 the next status read marks the run failed with phase `abandoned` instead of
@@ -252,7 +280,7 @@ blocking all future updates.
 ## Update recovery points
 
 Before package work starts, the updater requires
-`/usr/local/libexec/fedora-config-system-snapshot` on the managed Btrfs layout. It saves a
+`/usr/local/libexec/cybexos-system-snapshot` on the managed Btrfs layout. It saves a
 read-only snapshot of the `root` subvolume and a matching archive of `/boot`
 (including the mounted EFI tree), then retains the five newest pairs. `/home`
 is a separate subvolume and is intentionally outside system rollback. A
@@ -262,8 +290,8 @@ root the step records that no filesystem recovery point was required.
 List retained IDs and descriptions with:
 
 ```bash
-sudo fedora-config-system-snapshot list
-fedora-config-update-run status --json | jq -r .snapshotId
+sudo cybexos-system-snapshot list
+cybexos-update-run status --json | jq -r .snapshotId
 ```
 
 Rollback is deliberately a rescue operation, never an automatic action from a
@@ -275,15 +303,15 @@ names are placeholders and must be replaced with the values from `lsblk`:
 ```bash
 mount -o subvolid=5 /dev/mapper/ROOT_CRYPT /mnt
 ID=20260903T120000Z-1234
-test -d "/mnt/fedora-config-snapshots/root/$ID"
-test -f "/mnt/fedora-config-snapshots/boot/$ID.tar"
-btrfs subvolume snapshot "/mnt/fedora-config-snapshots/root/$ID" /mnt/root.recovered
+test -d "/mnt/cybexos-snapshots/root/$ID"
+test -f "/mnt/cybexos-snapshots/boot/$ID.tar"
+btrfs subvolume snapshot "/mnt/cybexos-snapshots/root/$ID" /mnt/root.recovered
 mv /mnt/root "/mnt/root.failed-$ID"
 mv /mnt/root.recovered /mnt/root
 mount /dev/BOOT_PARTITION /mnt/root/boot
 mount /dev/EFI_PARTITION /mnt/root/boot/efi
 tar --acls --xattrs --selinux --numeric-owner \
-  --extract --file "/mnt/fedora-config-snapshots/boot/$ID.tar" --directory /mnt/root
+  --extract --file "/mnt/cybexos-snapshots/boot/$ID.tar" --directory /mnt/root
 sync
 ```
 
@@ -293,7 +321,7 @@ and user session are confirmed healthy; deleting it is a separate, explicit
 space-reclamation decision. These recovery points do not replace backups:
 they share the same physical Btrfs filesystem and cannot survive device loss.
 
-Ansible's `fedora_config` callback is intentionally compact: unchanged and skipped tasks
+Ansible's `cybexos` callback is intentionally compact: unchanged and skipped tasks
 are quiet, changes are one line, and failures include a bounded diagnostic.
 Pass `-v` to use the stock verbose callback behavior. A full updater run keeps
 the callback's complete emitted stream in `ansible.log`; it does not recreate
@@ -303,7 +331,7 @@ compatibility with callback event objects.
 
 ## Shutdown and reboot expectations
 
-Do not shut down or reboot while `fedora-config-update-run status` reports `queued` or
+Do not shut down or reboot while `cybexos-update-run status` reports `queued` or
 `running`. A durable transient service survives a terminal or shell restart,
 not a machine power cycle. Wait for a terminal state (`done`, `failed`, or
 `cancelled`), or cancel deliberately and confirm the terminal state first.

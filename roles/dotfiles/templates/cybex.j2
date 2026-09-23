@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source_dir={{ (primary_home + '/.local/share/fedora-config/current') | quote }}
-agent_command={{ (primary_home + '/.local/bin/fedora-config-agent') | quote }}
+source_dir={{ (primary_home + '/.local/share/cybexos/current') | quote }}
+agent_command={{ (primary_home + '/.local/bin/cybexos-agent') | quote }}
 command_name=${1:-help}
 [[ $# -eq 0 ]] || shift
 
@@ -20,10 +20,10 @@ case $command_name in
     exec "$agent_command" "$@"
     ;;
   dev)
-    exec {{ (primary_home + '/.local/bin/fedora-config-runtime') | quote }} dev "$@"
+    exec {{ (primary_home + '/.local/bin/cybexos-runtime') | quote }} dev "$@"
     ;;
   plugin)
-    exec {{ (primary_home + '/.local/bin/fedora-config-runtime') | quote }} plugin "$@"
+    exec {{ (primary_home + '/.local/bin/cybexos-runtime') | quote }} plugin "$@"
     ;;
   verify|doctor)
     verify_scope=false

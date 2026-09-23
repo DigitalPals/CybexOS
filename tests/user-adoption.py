@@ -24,13 +24,13 @@ def task_script(path: Path, name: str) -> str:
 def render_core_backup(script: str, home: Path) -> str:
     return (
         script.replace(
-            "{{ (primary_home + '/.local/state/fedora-config/backups/initial') | quote }}",
-            shlex.quote(str(home / ".local/state/fedora-config/backups/initial")),
+            "{{ (primary_home + '/.local/state/cybexos/backups/initial') | quote }}",
+            shlex.quote(str(home / ".local/state/cybexos/backups/initial")),
         )
         .replace(
-            "{{ (primary_home + '/.local/state/fedora-config/backups/initial-core.complete') | quote }}",
+            "{{ (primary_home + '/.local/state/cybexos/backups/initial-core.complete') | quote }}",
             shlex.quote(
-                str(home / ".local/state/fedora-config/backups/initial-core.complete")
+                str(home / ".local/state/cybexos/backups/initial-core.complete")
             ),
         )
         .replace("{{ primary_home | quote }}", shlex.quote(str(home)))
@@ -40,13 +40,13 @@ def render_core_backup(script: str, home: Path) -> str:
 def render_personal_backup(script: str, home: Path) -> str:
     return (
         script.replace(
-            "{{ (primary_home + '/.local/state/fedora-config/backups/initial') | quote }}",
-            shlex.quote(str(home / ".local/state/fedora-config/backups/initial")),
+            "{{ (primary_home + '/.local/state/cybexos/backups/initial') | quote }}",
+            shlex.quote(str(home / ".local/state/cybexos/backups/initial")),
         )
         .replace(
-            "{{ (primary_home + '/.local/state/fedora-config/backups/initial-personal.complete') | quote }}",
+            "{{ (primary_home + '/.local/state/cybexos/backups/initial-personal.complete') | quote }}",
             shlex.quote(
-                str(home / ".local/state/fedora-config/backups/initial-personal.complete")
+                str(home / ".local/state/cybexos/backups/initial-personal.complete")
             ),
         )
         .replace("{{ primary_home | quote }}", shlex.quote(str(home)))
@@ -55,8 +55,8 @@ def render_personal_backup(script: str, home: Path) -> str:
 
 def render_restore(script: str, home: Path) -> str:
     return script.replace(
-        "{{ (primary_home + '/.local/state/fedora-config/backups/initial') | quote }}",
-        shlex.quote(str(home / ".local/state/fedora-config/backups/initial")),
+        "{{ (primary_home + '/.local/state/cybexos/backups/initial') | quote }}",
+        shlex.quote(str(home / ".local/state/cybexos/backups/initial")),
     ).replace("{{ primary_home | quote }}", shlex.quote(str(home)))
 
 
@@ -64,8 +64,8 @@ def render_bootstrap_snapshot(script: str, source: Path, home: Path) -> str:
     return script.replace(
         "{{ config_repo | quote }}", shlex.quote(str(source))
     ).replace(
-        "{{ (primary_home + '/.local/share/fedora-config/releases') | quote }}",
-        shlex.quote(str(home / ".local/share/fedora-config/releases")),
+        "{{ (primary_home + '/.local/share/cybexos/releases') | quote }}",
+        shlex.quote(str(home / ".local/share/cybexos/releases")),
     )
 
 
@@ -99,7 +99,7 @@ def main() -> None:
         "Snapshot the initial checkout into the managed release store",
     )
 
-    with tempfile.TemporaryDirectory(prefix="fedora-config-adoption.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-adoption.") as temporary:
         home = Path(temporary)
         quickshell = home / ".config/quickshell"
         hyprland = home / ".config/hypr"
@@ -116,7 +116,7 @@ def main() -> None:
         (home / ".gitconfig").write_text("[user]\n\tname = Existing User\n")
 
         run_bash(render_core_backup(core_backup, home))
-        saved = home / ".local/state/fedora-config/backups/initial"
+        saved = home / ".local/state/cybexos/backups/initial"
         assert not (saved / ".config/quickshell").exists()
         assert not (saved / ".config/hypr").exists()
         assert (saved / ".local/bin/spotify").read_text() == "original command\n"
@@ -140,7 +140,7 @@ def main() -> None:
         assert (local_bin / "spotify").read_text() == "original command\n"
         assert (wants / "existing.service").readlink() == Path("../existing.service")
 
-    with tempfile.TemporaryDirectory(prefix="fedora-config-personal.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-personal.") as temporary:
         home = Path(temporary)
         # Core adoption happens with personal dotfiles disabled. Enabling that
         # option later must still preserve the then-current personal files.
@@ -150,18 +150,18 @@ def main() -> None:
         (home / ".config/mimeapps.list").write_text("[Default Applications]\n")
         (home / ".gitconfig").write_text("[user]\n\tname = Existing User\n")
         run_bash(render_personal_backup(personal_backup, home))
-        saved = home / ".local/state/fedora-config/backups/initial"
+        saved = home / ".local/state/cybexos/backups/initial"
         assert (saved / ".config/kitty/kitty.conf").read_text() == "font_size 13\n"
         assert (saved / ".config/mimeapps.list").read_text().startswith("[Default")
         assert (saved / ".gitconfig").read_text().startswith("[user]")
-        assert (home / ".local/state/fedora-config/backups/initial-core.complete").exists()
-        assert (home / ".local/state/fedora-config/backups/initial-personal.complete").exists()
+        assert (home / ".local/state/cybexos/backups/initial-core.complete").exists()
+        assert (home / ".local/state/cybexos/backups/initial-personal.complete").exists()
 
-    with tempfile.TemporaryDirectory(prefix="fedora-config-bootstrap.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-bootstrap.") as temporary:
         root = Path(temporary)
         home = root / "home"
         source = root / "checkout"
-        (home / ".local/share/fedora-config/releases").mkdir(parents=True)
+        (home / ".local/share/cybexos/releases").mkdir(parents=True)
         (source / "scripts").mkdir(parents=True)
         (source / "scripts/update").write_text("version one\n")
         (source / "local-secret").write_text("do not install\n")
@@ -172,7 +172,7 @@ def main() -> None:
         run("git", "commit", "--quiet", "-m", "version one", cwd=source)
         first_snapshot = run_bash(render_bootstrap_snapshot(snapshot, source, home))
         assert first_snapshot.startswith("CHANGED:")
-        installed = home / ".local/share/fedora-config/releases/bootstrap"
+        installed = home / ".local/share/cybexos/releases/bootstrap"
         assert (installed / "scripts/update").read_text() == "version one\n"
         assert not (installed / ".git").exists()
         assert not (installed / "local-secret").exists()

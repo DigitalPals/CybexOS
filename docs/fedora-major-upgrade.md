@@ -11,7 +11,7 @@ branch for all compatibility changes.
 
 ## 1. Establish a recoverable baseline
 
-1. Finish or cancel any updater run. `fedora-config-update-run status` must be terminal,
+1. Finish or cancel any updater run. `cybexos-update-run status` must be terminal,
    not `queued` or `running`.
 2. Fast-forward the current-release branch, run `./update`, reboot into the
    newest current-release kernel, and run `./verify --require-hyprland`.

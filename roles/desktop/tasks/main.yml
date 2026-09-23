@@ -2,7 +2,7 @@
 - name: Download the pinned Hyprland COPR signing key
   ansible.builtin.get_url:
     url: https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
-    dest: /etc/pki/rpm-gpg/FEDORA-CONFIG-sdegler-hyprland-copr.gpg
+    dest: /etc/pki/rpm-gpg/CYBEXOS-sdegler-hyprland-copr.gpg
     checksum: sha256:581bd602d10705eb89003680335ffc3684b922c587073b6e52c371f949843fd7
     owner: root
     group: root
@@ -11,7 +11,7 @@
 
 - name: Import the fingerprint-verified Hyprland COPR package key
   ansible.builtin.rpm_key:
-    key: /etc/pki/rpm-gpg/FEDORA-CONFIG-sdegler-hyprland-copr.gpg
+    key: /etc/pki/rpm-gpg/CYBEXOS-sdegler-hyprland-copr.gpg
     fingerprint:
       - 64BBBF013D1CA5E4BE5B0552C043104207862204
     state: present
@@ -81,7 +81,7 @@
 
 - name: Inspect the package-provided GDM configuration fallback
   ansible.builtin.stat:
-    path: /var/lib/fedora-config/backups/system/etc/gdm/custom.conf
+    path: /var/lib/cybexos/backups/system/etc/gdm/custom.conf
   register: desktop_gdm_fallback_backup
 
 - name: Inspect the installed GDM configuration
@@ -95,7 +95,7 @@
       - grep
       - -Fqx
       - etc/gdm/custom.conf
-      - /var/lib/fedora-config/backups/initial-system.absent
+      - /var/lib/cybexos/backups/initial-system.absent
   register: desktop_gdm_initially_absent
   changed_when: false
   failed_when: false
@@ -104,7 +104,7 @@
 - name: Preserve GDM's package default when CybexOS installed it
   ansible.builtin.copy:
     src: /etc/gdm/custom.conf
-    dest: /var/lib/fedora-config/backups/system/etc/gdm/custom.conf
+    dest: /var/lib/cybexos/backups/system/etc/gdm/custom.conf
     remote_src: true
     owner: root
     group: root
@@ -162,7 +162,7 @@
 
 - name: Inspect CybexOS ownership of connected widgets
   ansible.builtin.stat:
-    path: /var/lib/fedora-config/features/connected_widgets
+    path: /var/lib/cybexos/features/connected_widgets
   register: desktop_connected_widgets_marker
 
 - name: Install the remote Hermes WebUI menubar client
@@ -246,7 +246,7 @@
     - /usr/share/wayland-sessions/hyprland-lumen.desktop
     - /usr/local/libexec/xps-lumen-compat-build
     - /usr/local/libexec/xps-lumen-launch
-    - /opt/fedora-config-builds/lumen-compat
+    - /opt/cybexos-builds/lumen-compat
     - "{{ primary_home }}/.config/systemd/user/lumen.service"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/lumen.service"
     - "{{ primary_home }}/.config/lumen"
@@ -307,16 +307,16 @@
     # missing directory under the user's umask without changing permissions
     # the user selected on an existing directory.
   loop:
-    - "{{ fedora_config_user_config_root }}"
-    - "{{ fedora_config_user_config_root }}/hypr"
+    - "{{ cybexos_user_config_root }}"
+    - "{{ cybexos_user_config_root }}/hypr"
     - "{{ primary_home }}/.config/xdg-desktop-portal"
     - "{{ primary_home }}/.config/systemd/user"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants"
     - "{{ primary_home }}/.local/bin"
     - "{{ primary_home }}/.local/libexec"
-    - "{{ fedora_config_data_root }}"
-    - "{{ fedora_config_data_root }}/themes"
-    - "{{ fedora_config_data_root }}/plugins"
+    - "{{ cybexos_data_root }}"
+    - "{{ cybexos_data_root }}/themes"
+    - "{{ cybexos_data_root }}/plugins"
     - "{{ primary_home }}/.local/state/hyprland"
   tags: [browser]
 
@@ -328,15 +328,15 @@
     state: directory
     mode: "0700"
   loop:
-    - "{{ fedora_config_state_root }}"
-    - "{{ fedora_config_state_root }}/shell"
+    - "{{ cybexos_state_root }}"
+    - "{{ cybexos_state_root }}/shell"
   tags: [browser, quickshell]
 
 - name: Inspect the vendor runtime root without following links
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.stat:
-    path: "{{ fedora_config_runtime_root }}"
+    path: "{{ cybexos_runtime_root }}"
     follow: false
   register: desktop_runtime_root_stat
   tags: [browser, quickshell]
@@ -353,7 +353,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ fedora_config_runtime_root }}"
+    path: "{{ cybexos_runtime_root }}"
     state: absent
   when: desktop_runtime_root_unsafe | bool
   tags: [browser, quickshell]
@@ -362,7 +362,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ fedora_config_runtime_root }}"
+    path: "{{ cybexos_runtime_root }}"
     state: directory
     mode: "0755"
     follow: false
@@ -373,7 +373,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.stat:
-    path: "{{ fedora_config_runtime_root }}/hypr"
+    path: "{{ cybexos_runtime_root }}/hypr"
     follow: false
   register: hypr_runtime_root_stat
   when: not (ansible_check_mode and desktop_runtime_root_unsafe | bool)
@@ -397,7 +397,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ fedora_config_runtime_root }}/hypr"
+    path: "{{ cybexos_runtime_root }}/hypr"
     state: absent
   when:
     - not (ansible_check_mode and desktop_runtime_root_unsafe | bool)
@@ -408,7 +408,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ fedora_config_runtime_root }}/hypr"
+    path: "{{ cybexos_runtime_root }}/hypr"
     state: directory
     mode: "0755"
     follow: false
@@ -424,7 +424,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
     src: "{{ item }}.j2"
-    dest: "{{ fedora_config_runtime_root }}/hypr/{{ item }}"
+    dest: "{{ cybexos_runtime_root }}/hypr/{{ item }}"
     mode: "0644"
   loop:
     - features.lua
@@ -439,7 +439,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
     src: "{{ item }}"
-    dest: "{{ fedora_config_runtime_root }}/hypr/{{ item }}"
+    dest: "{{ cybexos_runtime_root }}/hypr/{{ item }}"
     mode: "0644"
   loop:
     - bindings.lua
@@ -453,7 +453,7 @@
 - name: Install ordered Hyprland session starter
   ansible.builtin.copy:
     src: hyprland-session-start
-    dest: /usr/local/libexec/fedora-config-hyprland-session-start
+    dest: /usr/local/libexec/cybexos-hyprland-session-start
     owner: root
     group: root
     mode: "0755"
@@ -461,8 +461,8 @@
 
 - name: Install verified desktop session action helper
   ansible.builtin.copy:
-    src: fedora-config-session-action
-    dest: /usr/local/libexec/fedora-config-session-action
+    src: cybexos-session-action
+    dest: /usr/local/libexec/cybexos-session-action
     owner: root
     group: root
     mode: "0755"
@@ -472,8 +472,8 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
-    src: fedora-config-session-lock.service.j2
-    dest: "{{ primary_home }}/.config/systemd/user/fedora-config-session-lock.service"
+    src: cybexos-session-lock.service.j2
+    dest: "{{ primary_home }}/.config/systemd/user/cybexos-session-lock.service"
     mode: "0644"
   register: session_lock_unit
   notify: Reload user systemd
@@ -497,7 +497,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
     src: "{{ item.src }}"
-    dest: "{{ fedora_config_runtime_root }}/hypr/{{ item.dest }}"
+    dest: "{{ cybexos_runtime_root }}/hypr/{{ item.dest }}"
     mode: "0644"
   loop:
     - { src: hypridle.conf.j2, dest: hypridle.conf }
@@ -509,7 +509,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.find:
-    paths: "{{ fedora_config_runtime_root }}/hypr"
+    paths: "{{ cybexos_runtime_root }}/hypr"
     recurse: false
     hidden: true
     file_type: any
@@ -536,8 +536,8 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    src: "{{ config_repo }}/assets/scripts/fedora-config-runtime"
-    dest: "{{ primary_home }}/.local/bin/fedora-config-runtime"
+    src: "{{ config_repo }}/assets/scripts/cybexos-runtime"
+    dest: "{{ primary_home }}/.local/bin/cybexos-runtime"
     mode: "0755"
   tags: [browser, quickshell]
 
@@ -545,8 +545,8 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    src: "{{ config_repo }}/assets/scripts/fedora-config-migrate-layering"
-    dest: "{{ primary_home }}/.local/libexec/fedora-config-migrate-layering"
+    src: "{{ config_repo }}/assets/scripts/cybexos-migrate-layering"
+    dest: "{{ primary_home }}/.local/libexec/cybexos-migrate-layering"
     mode: "0755"
   tags: [browser, quickshell]
 
@@ -579,7 +579,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ primary_home }}/.local/share/fedora-config/paseo-bridge"
+    path: "{{ primary_home }}/.local/share/cybexos/paseo-bridge"
     state: absent
   when: cleanup_legacy_xps_artifacts | bool
   tags: [quickshell]
@@ -588,8 +588,8 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    src: "{{ config_repo }}/assets/scripts/fedora-config-update-run"
-    dest: "{{ primary_home }}/.local/bin/fedora-config-update-run"
+    src: "{{ config_repo }}/assets/scripts/cybexos-update-run"
+    dest: "{{ primary_home }}/.local/bin/cybexos-update-run"
     mode: "0755"
   tags: [quickshell]
 
@@ -722,7 +722,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.stat:
-    path: "{{ fedora_config_runtime_root }}/quickshell"
+    path: "{{ cybexos_runtime_root }}/quickshell"
     follow: false
   register: quickshell_root_stat
   tags: [quickshell]
@@ -739,7 +739,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ fedora_config_runtime_root }}/quickshell"
+    path: "{{ cybexos_runtime_root }}/quickshell"
     state: absent
   when: quickshell_root_unsafe | bool
   register: quickshell_root_normalized
@@ -749,7 +749,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ fedora_config_runtime_root }}/quickshell"
+    path: "{{ cybexos_runtime_root }}/quickshell"
     state: directory
     mode: "0755"
     follow: false
@@ -763,7 +763,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.find:
-    paths: "{{ fedora_config_runtime_root }}/quickshell"
+    paths: "{{ cybexos_runtime_root }}/quickshell"
     recurse: true
     hidden: true
     file_type: any
@@ -786,7 +786,7 @@
     label: "{{ item.path }}"
   vars:
     quickshell_relative_path: >-
-      {{ item.path | regex_replace('^' + (fedora_config_runtime_root + '/quickshell/') | regex_escape, '') }}
+      {{ item.path | regex_replace('^' + (cybexos_runtime_root + '/quickshell/') | regex_escape, '') }}
   when: >-
     quickshell_relative_path not in quickshell_managed_manifest
     or item.islnk | default(false)
@@ -807,7 +807,7 @@
     label: "{{ item.path }}"
   vars:
     quickshell_relative_directory: >-
-      {{ item.path | regex_replace('^' + (fedora_config_runtime_root + '/quickshell/') | regex_escape, '') }}
+      {{ item.path | regex_replace('^' + (cybexos_runtime_root + '/quickshell/') | regex_escape, '') }}
   when: quickshell_relative_directory not in quickshell_managed_directories
   register: quickshell_removed_directories
   tags: [quickshell]
@@ -826,7 +826,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ fedora_config_runtime_root }}/quickshell/{{ item }}"
+    path: "{{ cybexos_runtime_root }}/quickshell/{{ item }}"
     state: directory
     mode: "0755"
     follow: false
@@ -842,7 +842,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
     src: "quickshell/{{ item }}"
-    dest: "{{ fedora_config_runtime_root }}/quickshell/{{ item }}"
+    dest: "{{ cybexos_runtime_root }}/quickshell/{{ item }}"
     mode: "{{ '0755' if item.startswith('compat/omarchy/bin/') else '0644' }}"
     follow: false
     local_follow: false
@@ -853,11 +853,11 @@
   register: quickshell_config
   tags: [quickshell]
 
-- name: Create fedora-config deployment state directory
+- name: Create cybexos deployment state directory
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ fedora_config_state_root }}"
+    path: "{{ cybexos_state_root }}"
     state: directory
     mode: "0700"
   tags: [quickshell]
@@ -867,13 +867,13 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.command:
     argv:
-      - "{{ primary_home }}/.local/libexec/fedora-config-migrate-layering"
+      - "{{ primary_home }}/.local/libexec/cybexos-migrate-layering"
       - --home
       - "{{ primary_home }}"
       - --previous-source
-      - "{{ fedora_config_data_root }}/current"
+      - "{{ cybexos_data_root }}/current"
       - --runtime-root
-      - "{{ fedora_config_runtime_root }}"
+      - "{{ cybexos_runtime_root }}"
   register: desktop_layering_migration
   changed_when: >-
     (desktop_layering_migration.stdout | default('')) is match('(?s)^CHANGED:')
@@ -892,7 +892,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    dest: "{{ fedora_config_state_root }}/quickshell-manifest.txt"
+    dest: "{{ cybexos_state_root }}/quickshell-manifest.txt"
     mode: "0600"
     content: "{{ quickshell_managed_manifest | sort | join('\n') }}\n"
   tags: [quickshell]
@@ -1036,7 +1036,7 @@
   notify:
     - Reload user systemd
     - Restart external monitor watcher
-  when: fedora_config_xps_2026 | default(false) | bool
+  when: cybexos_xps_2026 | default(false) | bool
 
 - name: Enable desktop units for the Hyprland target
   become: true
@@ -1062,7 +1062,7 @@
     state: link
     force: true
   notify: Reload user systemd
-  when: fedora_config_xps_2026 | default(false) | bool
+  when: cybexos_xps_2026 | default(false) | bool
 
 - name: Preserve SELinux labels on local session executable
   ansible.builtin.command: restorecon -F /usr/local/bin/hyprland-quickshell

@@ -1,14 +1,16 @@
-Name:           fedora-config-desktop
+Name:           cybexos-desktop
 Version:        0.1.0
 Release:        0.1.alpha%{?dist}
 Summary:        CybexOS Hyprland and Quickshell desktop
 # No repository license has been selected. These are private evaluation
 # artifacts; this label does not grant redistribution rights.
 License:        LicenseRef-Not-Licensed
-URL:            https://github.com/DigitalPals/fedora-config
+URL:            https://github.com/DigitalPals/CybexOS
 Source0:        desktop.tar
 BuildArch:      x86_64
 AutoReqProv:    no
+# Replaces the alpha package published under the project's former name.
+Obsoletes:      fedora-config-desktop <= %{version}-%{release}
 # This RPM is an intermediate container; the live ISO compresses the installed
 # filesystem separately. Avoid spending minutes recompressing user toolchains.
 %global _binary_payload w3.zstdio
@@ -47,25 +49,25 @@ mkdir -p %{buildroot}
 cp -a usr opt %{buildroot}/
 
 %files
-/opt/fedora-config-apps/
-/opt/fedora-config-builds/
+/opt/cybexos-apps/
+/opt/cybexos-builds/
 /usr/local/bin/*
 /usr/local/libexec/*
 /usr/local/share/fonts/*
 /usr/bin/cybex
-/usr/bin/fedora-config*
+/usr/bin/cybexos-*
 /usr/bin/hyprland-quickshell
-/usr/libexec/fedora-config-*
+/usr/libexec/cybexos-*
 /usr/lib/systemd/user/*.service
 /usr/lib/systemd/user/hypridle.service.d/
 /usr/lib/systemd/user/hyprpolkitagent.service.d/
 /usr/lib/systemd/user/hyprland-session.target
-/usr/share/fedora-config/
+/usr/share/cybexos/
 /usr/share/applications/cybex.desktop
 /usr/share/wayland-sessions/hyprland-quickshell.desktop
-/usr/share/fonts/fedora-config/
-/usr/share/licenses/fedora-config-fonts/
+/usr/share/fonts/cybexos/
+/usr/share/licenses/cybexos-fonts/
 
 %changelog
-* Sat Sep 05 2026 Fedora Config <noreply@localhost> - 0.1.0-0.1.alpha
+* Sat Sep 05 2026 CybexOS <noreply@localhost> - 0.1.0-0.1.alpha
 - Initial private live-image desktop package.

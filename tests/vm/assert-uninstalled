@@ -14,10 +14,10 @@ assert_content() {
 
 assert_content /home/fedora/.config/hypr/bindings.lua 'original Hyprland bindings'
 assert_content /home/fedora/.config/quickshell/shell.qml 'original Quickshell root'
-assert_content /home/fedora/.config/fedora-config/shell.json 'original shell settings'
-assert_content /home/fedora/.config/fedora-config/hypr/user.lua 'original user override'
-assert_content /home/fedora/.local/share/fedora-config/themes/personal.theme 'original user theme'
-assert_content /home/fedora/.local/share/fedora-config/plugins/personal.qml 'original user plugin'
+assert_content /home/fedora/.config/cybexos/shell.json 'original shell settings'
+assert_content /home/fedora/.config/cybexos/hypr/user.lua 'original user override'
+assert_content /home/fedora/.local/share/cybexos/themes/personal.theme 'original user theme'
+assert_content /home/fedora/.local/share/cybexos/plugins/personal.qml 'original user plugin'
 assert_content /home/fedora/.local/bin/spotify 'original Spotify helper'
 assert_content /home/fedora/.config/systemd/user/quickshell.service 'original user unit'
 assert_content /etc/gdm/custom.conf $'[daemon]\n# original GDM configuration'
@@ -33,19 +33,19 @@ assert_content /usr/local/bin/awww-daemon 'original awww daemon'
 assert_content /usr/local/bin/wayfreeze 'original wayfreeze command'
 assert_content /usr/local/bin/hyprland-noctalia 'original Noctalia launcher'
 assert_content /usr/share/wayland-sessions/hyprland-noctalia.desktop 'original Noctalia session'
-[[ -f /home/fedora/.agents/skills/fedora-config \
-    && ! -L /home/fedora/.agents/skills/fedora-config ]] ||
+[[ -f /home/fedora/.agents/skills/cybexos \
+    && ! -L /home/fedora/.agents/skills/cybexos ]] ||
   fail 'original agents skill file was not restored'
-assert_content /home/fedora/.agents/skills/fedora-config \
+assert_content /home/fedora/.agents/skills/cybexos \
   'original agents skill'
-[[ -d /home/fedora/.claude/skills/fedora-config \
-    && ! -L /home/fedora/.claude/skills/fedora-config ]] ||
+[[ -d /home/fedora/.claude/skills/cybexos \
+    && ! -L /home/fedora/.claude/skills/cybexos ]] ||
   fail 'original Claude skill directory was not restored'
-assert_content /home/fedora/.claude/skills/fedora-config/nested/value \
+assert_content /home/fedora/.claude/skills/cybexos/nested/value \
   'original claude skill'
-[[ -L /home/fedora/.codex/skills/fedora-config ]] ||
+[[ -L /home/fedora/.codex/skills/cybexos ]] ||
   fail 'original Codex skill symlink was not restored'
-[[ $(readlink -- /home/fedora/.codex/skills/fedora-config) \
+[[ $(readlink -- /home/fedora/.codex/skills/cybexos) \
     == /home/fedora/original-codex-skill ]] ||
   fail 'original Codex skill symlink text changed'
 assert_content /home/fedora/.agents/skills/unrelated/SKILL.md \
@@ -60,16 +60,15 @@ assert_content /home/fedora/.codex/skills/unrelated/SKILL.md \
 for path in \
   /usr/local/bin/hyprland-quickshell \
   /usr/share/wayland-sessions/hyprland-quickshell.desktop \
-  /usr/local/libexec/fedora-config-session-action \
-  /usr/local/libexec/fedora-config-system-snapshot \
-  /etc/sysctl.d/60-fedora-config-hardening.conf \
+  /usr/local/libexec/cybexos-session-action \
+  /usr/local/libexec/cybexos-system-snapshot \
+  /etc/sysctl.d/60-cybexos-hardening.conf \
   /home/fedora/.config/hypr/features.lua \
-  /home/fedora/.local/share/fedora-config/runtime \
+  /home/fedora/.local/share/cybexos/runtime \
   /home/fedora/.local/bin/cybex \
-  /home/fedora/.local/bin/fedora-config \
-  /home/fedora/.local/bin/fedora-config-agent \
-  /home/fedora/.local/state/fedora-config \
-  /var/lib/fedora-config; do
+  /home/fedora/.local/bin/cybexos-agent \
+  /home/fedora/.local/state/cybexos \
+  /var/lib/cybexos; do
   [[ ! -e $path && ! -L $path ]] || fail "$path remains after uninstall"
 done
 
@@ -92,7 +91,7 @@ while IFS=: read -r uuid type; do
       ;;
   esac
 done < <(nmcli -t -f UUID,TYPE connection show)
-firewall-cmd --permanent --get-zones | tr ' ' '\n' | grep -Fxq fedora-config &&
+firewall-cmd --permanent --get-zones | tr ' ' '\n' | grep -Fxq cybexos &&
   fail 'the CybexOS firewall zone remains after uninstall'
 
 printf 'Fedora VM uninstall restored adopted files and removed project state\n'

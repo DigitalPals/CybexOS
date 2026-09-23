@@ -32,7 +32,7 @@ def main():
     subprocess.run(["runuser", "-u", "cybex-seed", "--", "env",
                     f"HOME={seed_home}", f"PATH={seed_home}/.cargo/bin:{seed_home}/.local/bin:/usr/local/bin:/usr/bin",
                     "nvim", "--headless", "+Lazy! install", "+qa"], check=True, timeout=600)
-    seed_root = build / "applications-root/usr/share/fedora-config/user-seed"
+    seed_root = build / "applications-root/usr/share/cybexos/user-seed"
     nvim_payload = seed_root / ".local/share/nvim"
     if nvim_payload.exists():
         shutil.rmtree(nvim_payload)
@@ -43,7 +43,7 @@ def main():
     environment = jinja2.Environment(undefined=jinja2.StrictUndefined, keep_trailing_newline=True)
     environment.filters.update(bool=bool, ternary=lambda value, yes, no: yes if value else no,
                                to_json=json.dumps, quote=shlex.quote)
-    values = {"features": inventory["features"], "fedora_config_xps_2026": False,
+    values = {"features": inventory["features"], "cybexos_xps_2026": False,
               "machine_keyboard_layout": "us", "machine_keyboard_variant": ""}
 
     def write(relative, content, executable=False):
@@ -58,7 +58,7 @@ def main():
         shutil.copyfile(ROOT / source, target)
         target.chmod(0o755 if executable else 0o644)
 
-    runtime = "usr/share/fedora-config/runtime"
+    runtime = "usr/share/cybexos/runtime"
     quickshell = ROOT / "roles/desktop/files/quickshell"
     for source in sorted(quickshell.rglob("*")):
         if not source.is_file() or source.is_symlink() or "__pycache__" in source.parts or source.suffix == ".pyc":
@@ -67,36 +67,36 @@ def main():
         copy(source.relative_to(ROOT), relative, source.parent.name == "scripts" and source.suffix != ".py")
         if source.suffix in (".qml", ".js"):
             target = payload / relative
-            target.write_text(target.read_text().replace("/usr/local/libexec/fedora-config-", "/usr/libexec/fedora-config-"))
+            target.write_text(target.read_text().replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))
     for name in ("hyprland.lua", "bindings.lua", "autostart.lua"):
         content = (ROOT / "roles/desktop/files" / name).read_text()
-        content = content.replace("/usr/local/libexec/fedora-config-", "/usr/libexec/fedora-config-")
+        content = content.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-")
         write(f"{runtime}/hypr/{name}", content)
     for name in ("features.lua", "monitors.lua", "input.lua", "looknfeel.lua", "hypridle.conf", "hyprlock.conf"):
         content = environment.from_string((ROOT / "roles/desktop/templates" / (name + ".j2")).read_text()).render(**values)
-        content = content.replace("/usr/local/libexec/fedora-config-", "/usr/libexec/fedora-config-")
+        content = content.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-")
         if name == "input.lua":
-            content = content.replace('kb_layout = "us"', 'kb_layout = os.getenv("FEDORA_CONFIG_KEYBOARD_LAYOUT") or "us"')
-            content = content.replace('kb_variant = ""', 'kb_variant = os.getenv("FEDORA_CONFIG_KEYBOARD_VARIANT") or ""')
+            content = content.replace('kb_layout = "us"', 'kb_layout = os.getenv("CYBEXOS_KEYBOARD_LAYOUT") or "us"')
+            content = content.replace('kb_variant = ""', 'kb_variant = os.getenv("CYBEXOS_KEYBOARD_VARIANT") or ""')
         if name == "looknfeel.lua":
             content += '\nhl.window_rule({ match = { class = [[^cybex$]] }, float = true, center = true, size = { 920, 620 } })\n'
         write(f"{runtime}/hypr/{name}", content)
     helpers = ("screenshot", "screen-record", "screen-ocr", "quickshell-reminder", "clipboard-copy-image",
-               "clipboard-image-to-file", "clipboard-history-store", "fedora-config-agent", "fedora-config-runtime",
-               "fedora-config-update-run", "localsend", "localsend-share")
+               "clipboard-image-to-file", "clipboard-history-store", "cybexos-agent", "cybexos-runtime",
+               "cybexos-update-run", "localsend", "localsend-share")
     for name in helpers:
-        copy(f"assets/scripts/{name}", f"usr/share/fedora-config/bin/{name}", True)
-    copy("roles/dotfiles/files/dev-distrobox-init", "usr/share/fedora-config/bin/dev-distrobox-init", True)
-    updater = payload / "usr/share/fedora-config/bin/fedora-config-update-run"
+        copy(f"assets/scripts/{name}", f"usr/share/cybexos/bin/{name}", True)
+    copy("roles/dotfiles/files/dev-distrobox-init", "usr/share/cybexos/bin/dev-distrobox-init", True)
+    updater = payload / "usr/share/cybexos/bin/cybexos-update-run"
     updater.write_text(updater.read_text().replace("snapshot_helper_root=/usr/local/libexec", "snapshot_helper_root=/usr/libexec"))
-    copy("roles/dotfiles/templates/brightness-control.j2", "usr/share/fedora-config/bin/brightness-control", True)
+    copy("roles/dotfiles/templates/brightness-control.j2", "usr/share/cybexos/bin/brightness-control", True)
     for name in ("fastfetch-link-speed", "t3code-update", "t3code-desktop", "spotify"):
-        copy(f"roles/dotfiles/templates/{name}.j2", f"usr/share/fedora-config/bin/{name}", True)
-    seed = "usr/share/fedora-config/user-seed"
+        copy(f"roles/dotfiles/templates/{name}.j2", f"usr/share/cybexos/bin/{name}", True)
+    seed = "usr/share/cybexos/user-seed"
     # Managed updater scripts follow the RPM; application binaries and their
     # version stores remain writable per-user after offline initialization.
     copy_target = payload / seed / ".local/bin/update-user-tools"
-    shutil.move(copy_target, payload / "usr/share/fedora-config/bin/update-user-tools")
+    shutil.move(copy_target, payload / "usr/share/cybexos/bin/update-user-tools")
     (payload / seed / ".local/bin/t3code-update").unlink()
     for source, destination in (
         ("fastfetch.jsonc", ".config/fastfetch/config.jsonc"),
@@ -112,7 +112,7 @@ def main():
           t3_desktop.replace("{{ primary_home }}/.local/bin/", ""))
     for box in inventory["distrobox_images"]:
         launcher = environment.from_string((ROOT / "roles/dotfiles/templates/distrobox-shell.j2").read_text()).render(item=box)
-        write(f"usr/share/fedora-config/bin/dev-{box['name']}-shell", launcher, True)
+        write(f"usr/share/cybexos/bin/dev-{box['name']}-shell", launcher, True)
         desktop = (ROOT / f"roles/dotfiles/templates/dev-{box['name']}.desktop.j2").read_text()
         write(f"{seed}/.local/share/applications/dev-{box['name']}.desktop",
               desktop.replace("{{ primary_home }}/.local/bin/", ""))
@@ -123,10 +123,10 @@ def main():
     # Voxtype's RPM owns its system user unit. The session target starts that
     # unit; do not collide with it by packaging our per-user Ansible template.
     write(f"{seed}/.npmrc", "prefix=${HOME}/.npm-global\n")
-    write("usr/share/fedora-config/applications.json", json.dumps(applications, indent=2) + "\n")
-    copy("roles/base/files/fedora-config-system-snapshot", "usr/libexec/fedora-config-system-snapshot", True)
-    for name in ("fedora-config-session-action", "hyprland-session-start"):
-        output_name = name if name.startswith("fedora-config") else "fedora-config-" + name
+    write("usr/share/cybexos/applications.json", json.dumps(applications, indent=2) + "\n")
+    copy("roles/base/files/cybexos-system-snapshot", "usr/libexec/cybexos-system-snapshot", True)
+    for name in ("cybexos-session-action", "hyprland-session-start"):
+        output_name = name if name.startswith("cybexos") else "cybexos-" + name
         copy(f"roles/desktop/files/{name}", f"usr/libexec/{output_name}", True)
     for source in sorted((ROOT / "image/rootfs").rglob("*")):
         if source.is_file() and "__pycache__" not in source.parts and source.suffix != ".pyc":
@@ -136,8 +136,8 @@ def main():
     # license texts and fail the build on any mismatch.
     for font in inventory["pinned_font_files"]:
         for url_key, checksum_key, target in (
-            ("url", "checksum", "usr/share/fonts/fedora-config/" + font["filename"]),
-            ("license_url", "license_checksum", "usr/share/licenses/fedora-config-fonts/" + font["name"] + "-" + font["license_filename"]),
+            ("url", "checksum", "usr/share/fonts/cybexos/" + font["filename"]),
+            ("license_url", "license_checksum", "usr/share/licenses/cybexos-fonts/" + font["name"] + "-" + font["license_filename"]),
         ):
             destination = payload / target
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -159,7 +159,7 @@ def main():
     (build / "package-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     sources = build / "rpmbuild/SOURCES"
     sources.mkdir(parents=True)
-    spec = (ROOT / "image/fedora-config-desktop.spec").read_text()
+    spec = (ROOT / "image/cybexos-desktop.spec").read_text()
     (build / "desktop.spec").write_text(spec)
     (build / "live.ks").write_text(include_applications(
         (ROOT / "image/live.ks").read_text(), applications["packages"],

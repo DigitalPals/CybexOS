@@ -16,8 +16,8 @@ class Welcome(QObject):
 
     def __init__(self):
         super().__init__()
-        self.live = Path("/run/fedora-config-live").exists()
-        self.marker = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "fedora-config/welcome-complete"
+        self.live = Path("/run/cybexos-live").exists()
+        self.marker = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "cybexos/welcome-complete"
         self.message = ""
         self.process = QProcess(self)
         self.process.finished.connect(self.finished)
@@ -63,7 +63,7 @@ class Welcome(QObject):
     def openSettings(self, page):
         if page not in ("appearance", "shortcuts"):
             return
-        runtime = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share"))) / "fedora-config/runtime/quickshell"
+        runtime = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share"))) / "cybexos/runtime/quickshell"
         arguments = ["ipc", "--path", str(runtime), "call"]
         arguments += (["settings", "open", "appearance"] if page == "appearance"
                       else ["session", "keys"])
@@ -89,7 +89,7 @@ def main():
     backend = Welcome()
     if "--autostart" in sys.argv and not backend.live and backend.marker.exists():
         return 0
-    socket_name = str(Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "fedora-config-welcome")
+    socket_name = str(Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "cybexos-welcome")
     client = QLocalSocket()
     client.connectToServer(socket_name)
     if client.waitForConnected(300):
@@ -112,7 +112,7 @@ def main():
     server.newConnection.connect(activate)
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("welcome", backend)
-    engine.load(QUrl.fromLocalFile("/usr/share/fedora-config/welcome/Main.qml"))
+    engine.load(QUrl.fromLocalFile("/usr/share/cybexos/welcome/Main.qml"))
     if not engine.rootObjects():
         return 1
     return app.exec()

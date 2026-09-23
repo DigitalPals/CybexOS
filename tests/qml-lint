@@ -35,7 +35,7 @@ qml_import_path=$(qtpaths6 --query QT_INSTALL_QML 2>/dev/null \
 
 # Quickshell provides qs.* as a virtual import of the configuration root.
 # Reproduce that mapping for Qt's standalone linter without modifying source.
-qs_import_root=$(mktemp -d "${TMPDIR:-/tmp}/fedora-config-qml-imports.XXXXXX") || exit 1
+qs_import_root=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-qml-imports.XXXXXX") || exit 1
 trap 'rm -rf -- "$qs_import_root"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM

@@ -689,7 +689,7 @@ class Sub2ApiTests(unittest.TestCase):
                             for path, key in requests))
 
     def test_sub2api_key_storage_is_separate_and_newline_does_not_wait_for_eof(self):
-        with tempfile.TemporaryDirectory(prefix="fedora-config-sub2api-test-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="cybexos-sub2api-test-") as temporary:
             environment = dict(os.environ, XDG_STATE_HOME=temporary)
             process = subprocess.Popen([str(CREDENTIAL_PATH), "store", "--source", "sub2api"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,

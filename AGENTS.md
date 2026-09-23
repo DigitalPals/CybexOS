@@ -45,7 +45,7 @@
 - Clean up disposable artifacts created during your task before final handoff,
   including failed/retried image builds, test ISOs, VM disks, extracted root
   filesystems, temporary logs, and screenshots. This includes outputs outside
-  the checkout, especially `~/.local/share/fedora-config/images/`.
+  the checkout, especially `~/.local/share/cybexos/images/`.
 - Use a unique task-specific output directory and track what you create.
   Arrange cleanup with traps or `finally` blocks where practical so failures
   and interruptions also clean up. Stop task-owned VMs/processes and unmount
@@ -58,7 +58,7 @@
 - Delete only artifacts you created or have verified are disposable and within
   the user's authorized cleanup scope. Do not infer that another task's files
   are stale from their name or age alone. Never blanket-delete
-  `~/.local/share/fedora-config`: it can also contain active releases, runtime
+  `~/.local/share/cybexos`: it can also contain active releases, runtime
   configuration, user themes/plugins, and persistent data.
 - Verify cleanup at the end of the task by checking the output directories
   and their disk usage. Do not leave orphaned build/test processes or mounts.

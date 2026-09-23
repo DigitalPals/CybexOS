@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-helper=$repo_root/roles/base/files/fedora-config-system-snapshot
+helper=$repo_root/roles/base/files/cybexos-system-snapshot
 fixture=$(mktemp -d)
 trap 'rm -rf -- "$fixture"' EXIT
 mock_bin=$fixture/bin
@@ -30,14 +30,14 @@ write_mock btrfs \
   'exit 2'
 
 export PATH="$mock_bin:$PATH"
-export FEDORA_CONFIG_SYSTEM_SNAPSHOT_TESTING=1
-export FEDORA_CONFIG_SNAPSHOT_TOPLEVEL=$top
+export CYBEXOS_SYSTEM_SNAPSHOT_TESTING=1
+export CYBEXOS_SNAPSHOT_TOPLEVEL=$top
 for index in {1..7}; do
-  export FEDORA_CONFIG_SNAPSHOT_ID="2026090${index}T120000Z-$index"
-  [[ $($helper create "fixture $index") == "$FEDORA_CONFIG_SNAPSHOT_ID" ]]
+  export CYBEXOS_SNAPSHOT_ID="2026090${index}T120000Z-$index"
+  [[ $($helper create "fixture $index") == "$CYBEXOS_SNAPSHOT_ID" ]]
 done
 
-store=$top/fedora-config-snapshots
+store=$top/cybexos-snapshots
 [[ $(find "$store/root" -mindepth 1 -maxdepth 1 -type d | wc -l) -eq 5 ]]
 [[ $(find "$store/boot" -type f -name '*.tar' | wc -l) -eq 5 ]]
 [[ $(<"$store/latest") == 20260907T120000Z-7 ]]

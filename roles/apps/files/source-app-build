@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-source /usr/local/libexec/fedora-config-common.sh
+source /usr/local/libexec/cybexos-common.sh
 
 name=${1:?name required}
 repo=${2:?repository URL required}
@@ -8,7 +8,7 @@ IFS=, read -r -a binaries <<<"${3:?comma separated binaries required}"
 tag=${4:?authorized source tag required}
 revision=${5:?authorized source commit required}
 build_image=${6:?immutable build container image required}
-root="/opt/fedora-config-builds/$name"
+root="/opt/cybexos-builds/$name"
 mkdir -p "$root/versions" "$root/logs"
 [[ $build_image =~ ^.+@sha256:[[:xdigit:]]{64}$ ]] || {
   echo "Source build image must be pinned by sha256 digest" >&2
@@ -58,8 +58,8 @@ resolved=$(awk -v ref="refs/tags/$tag^{}" '$2 == ref {print $1}' <<<"$ls_remote"
 
 recipe=$(sha256sum "$0" | awk '{print $1}')
 manifest="revision=$revision image=$build_image recipe=$recipe"
-if [[ -L $root/current && -r $root/current/.fedora-config-build ]] \
-  && [[ $(<"$root/current/.fedora-config-build") == "$manifest" ]]; then
+if [[ -L $root/current && -r $root/current/.cybexos-build ]] \
+  && [[ $(<"$root/current/.cybexos-build") == "$manifest" ]]; then
   healthy=true
   for binary in "${binaries[@]}"; do
     [[ -x $root/current/bin/$binary && -x /usr/local/bin/$binary ]] || healthy=false
@@ -108,7 +108,7 @@ for binary in "${binaries[@]}"; do
   [[ -x $candidate ]] || { echo "Build produced no $binary; previous version retained" >&2; exit 1; }
   install -m 0755 "$candidate" "$stage/bin/$binary"
 done
-printf '%s\n' "$manifest" >"$stage/.fedora-config-build"
+printf '%s\n' "$manifest" >"$stage/.cybexos-build"
 for binary in "${binaries[@]}"; do
   command_link="/usr/local/bin/$binary"
   if [[ ! -e $command_link && ! -L $command_link ]]; then
@@ -121,7 +121,7 @@ deploy_stage=""
 committed=true
 change_description="built $name $tag ($revision)"
 emit_changed "$change_description"
-fedora_config_restorecon "$root" /usr/local/bin
+cybexos_restorecon "$root" /usr/local/bin
 prune_version_dirs "$root" 3 \
   || echo "Built $name $tag, but could not prune older versions" >&2
 if ! find "$root/logs" -maxdepth 1 -type f -name '*.log' -printf '%T@ %p\n' \

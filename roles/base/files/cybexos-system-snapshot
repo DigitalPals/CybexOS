@@ -5,8 +5,8 @@ set -euo pipefail
 umask 077
 
 usage() {
-  printf 'Usage: fedora-config-system-snapshot create [DESCRIPTION]\n' >&2
-  printf '       fedora-config-system-snapshot list\n' >&2
+  printf 'Usage: cybexos-system-snapshot create [DESCRIPTION]\n' >&2
+  printf '       cybexos-system-snapshot list\n' >&2
   exit 2
 }
 
@@ -14,8 +14,8 @@ action=${1:-}
 shift || true
 [[ $action == create || $action == list ]] || usage
 [[ $# -le 1 ]] || usage
-if [[ ${FEDORA_CONFIG_SYSTEM_SNAPSHOT_TESTING:-0} != 1 && $EUID -ne 0 ]]; then
-  printf 'fedora-config-system-snapshot must run as root\n' >&2
+if [[ ${CYBEXOS_SYSTEM_SNAPSHOT_TESTING:-0} != 1 && $EUID -ne 0 ]]; then
+  printf 'cybexos-system-snapshot must run as root\n' >&2
   exit 1
 fi
 
@@ -56,19 +56,19 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-top=${FEDORA_CONFIG_SNAPSHOT_TOPLEVEL:-}
+top=${CYBEXOS_SNAPSHOT_TOPLEVEL:-}
 if [[ -z $top ]]; then
   uuid=$(findmnt --noheadings --output UUID --target / | xargs)
   [[ $uuid =~ ^[0-9A-Fa-f-]{16,}$ ]] || {
     printf 'could not resolve the root Btrfs UUID\n' >&2
     exit 1
   }
-  temporary_mount=$(mktemp -d /run/fedora-config-snapshot.XXXXXX)
+  temporary_mount=$(mktemp -d /run/cybexos-snapshot.XXXXXX)
   mount -t btrfs -o subvolid=5 "UUID=$uuid" "$temporary_mount"
   top=$temporary_mount
 fi
 
-store=$top/fedora-config-snapshots
+store=$top/cybexos-snapshots
 if [[ ! -e $store ]]; then
   btrfs subvolume create "$store" >/dev/null
 elif ! btrfs subvolume show "$store" >/dev/null 2>&1; then
@@ -94,7 +94,7 @@ fi
 description=${1:-manual recovery point}
 description=${description//$'\n'/ }
 description=${description:0:120}
-id=${FEDORA_CONFIG_SNAPSHOT_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}
+id=${CYBEXOS_SNAPSHOT_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}
 [[ $id =~ ^[0-9]{8}T[0-9]{6}Z-[0-9]+$ ]] || {
   printf 'invalid snapshot identifier\n' >&2
   exit 1

@@ -380,7 +380,7 @@ test("starred models persist in shell state, not in the thread draft", () => {
     const favorites = fs.readFileSync(path.join(shellDir, "Common/T3Favorites.qml"), "utf8");
     const drafts = fs.readFileSync(path.join(shellDir, "Common/T3Drafts.qml"), "utf8");
 
-    assert.match(favorites, /state\/fedora-config\/shell\/t3-model-favorites\.json/);
+    assert.match(favorites, /state\/cybexos\/shell\/t3-model-favorites\.json/);
     assert.doesNotMatch(favorites, /property string statePath:\s*\n?\s*Quickshell\.statePath\(/,
         "by-shell paths fork the list per config directory");
     assert.match(favorites, /FileView[\s\S]*?atomicWrites:\s*true/);

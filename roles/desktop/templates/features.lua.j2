@@ -5,5 +5,5 @@ return {
   developer_tools = {{ (features.developer_tools | bool) | ternary('true', 'false') }},
   connected_widgets = {{ (features.connected_widgets | bool) | ternary('true', 'false') }},
   proprietary_apps = {{ (features.proprietary_apps | bool) | ternary('true', 'false') }},
-  xps_2026 = {{ (fedora_config_xps_2026 | bool) | ternary('true', 'false') }},
+  xps_2026 = {{ (cybexos_xps_2026 | bool) | ternary('true', 'false') }},
 }

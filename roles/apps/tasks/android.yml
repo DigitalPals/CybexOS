@@ -2,7 +2,7 @@
 - name: Install Android SDK update helper
   ansible.builtin.template:
     src: android-sdk-update.j2
-    dest: /usr/local/libexec/fedora-config-android-sdk-update
+    dest: /usr/local/libexec/cybexos-android-sdk-update
     owner: root
     group: root
     mode: "0755"
@@ -10,7 +10,7 @@
 - name: Install or update command-line Android SDK
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.command: /usr/local/libexec/fedora-config-android-sdk-update
+  ansible.builtin.command: /usr/local/libexec/cybexos-android-sdk-update
   register: apps_android_update
   changed_when: (apps_android_update.stdout | regex_search('(?m)^CHANGED:')) is not none
   failed_when: false

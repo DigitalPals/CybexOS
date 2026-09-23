@@ -28,7 +28,7 @@
     - voxtype.service
     - external-monitor-toggle.service
     - hermes-menubar-bridge.service
-    - fedora-config-session-lock.service
+    - cybexos-session-lock.service
     - xps-speaker-tuning.service
   changed_when: false
   failed_when: false
@@ -39,7 +39,7 @@
     enabled: false
     state: stopped
   loop:
-    - fedora-config-btrfs-scrub.timer
+    - cybexos-btrfs-scrub.timer
     - xps-haptic-touchpad.service
     - xps-ipu7-camera-init.service
     - xps-ipu7-camera.service
@@ -51,7 +51,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.blockinfile:
     path: "{{ primary_home }}/.config/kitty/kitty.conf"
-    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
+    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
     state: absent
   failed_when: false
 
@@ -60,7 +60,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.blockinfile:
     path: "{{ primary_home }}/.gitconfig"
-    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
+    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
     state: absent
   failed_when: false
 
@@ -69,7 +69,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.blockinfile:
     path: "{{ primary_home }}/.ssh/config"
-    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
+    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
     state: absent
   failed_when: false
 
@@ -80,17 +80,17 @@
     path: "{{ item }}"
     state: absent
   loop:
-    - "{{ primary_home }}/.config/fish/conf.d/50-fedora-config.fish"
-    - "{{ primary_home }}/.config/kitty/fedora-config.conf"
+    - "{{ primary_home }}/.config/fish/conf.d/50-cybexos.fish"
+    - "{{ primary_home }}/.config/kitty/cybexos.conf"
     - "{{ primary_home }}/.config/fastfetch/config.jsonc"
     - "{{ primary_home }}/.config/voxtype/config.toml"
     - "{{ primary_home }}/.config/oh-my-posh/EDM115-newline2.omp.json"
     - "{{ primary_home }}/.config/mimeapps.list"
     - "{{ primary_home }}/.config/user-dirs.dirs"
     - "{{ primary_home }}/.npmrc"
-    - "{{ primary_home }}/.config/fedora-config/gitconfig"
-    - "{{ primary_home }}/.ssh/config.d/fedora-config.conf"
-    - "{{ primary_home }}/.config/environment.d/10-fedora-config.conf"
+    - "{{ primary_home }}/.config/cybexos/gitconfig"
+    - "{{ primary_home }}/.ssh/config.d/cybexos.conf"
+    - "{{ primary_home }}/.config/environment.d/10-cybexos.conf"
     - "{{ primary_home }}/.config/environment.d/10-xps.conf"
     - "{{ primary_home }}/.config/xdg-desktop-portal/hyprland-portals.conf"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target"
@@ -100,14 +100,13 @@
     - "{{ primary_home }}/.config/systemd/user/voxtype.service"
     - "{{ primary_home }}/.config/systemd/user/external-monitor-toggle.service"
     - "{{ primary_home }}/.config/systemd/user/hermes-menubar-bridge.service"
-    - "{{ primary_home }}/.config/systemd/user/fedora-config-session-lock.service"
+    - "{{ primary_home }}/.config/systemd/user/cybexos-session-lock.service"
     - "{{ primary_home }}/.config/systemd/user/xps-speaker-tuning.service"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants"
     - "{{ primary_home }}/.local/bin/cybex"
-    - "{{ primary_home }}/.local/bin/fedora-config"
-    - "{{ primary_home }}/.local/bin/fedora-config-agent"
-    - "{{ primary_home }}/.local/bin/fedora-config-update-run"
-    - "{{ primary_home }}/.local/bin/fedora-config-runtime"
+    - "{{ primary_home }}/.local/bin/cybexos-agent"
+    - "{{ primary_home }}/.local/bin/cybexos-update-run"
+    - "{{ primary_home }}/.local/bin/cybexos-runtime"
     - "{{ primary_home }}/.local/bin/brightness-control"
     - "{{ primary_home }}/.local/bin/portal-launcher"
     - "{{ primary_home }}/.local/bin/t3code-update"
@@ -132,7 +131,7 @@
     - "{{ primary_home }}/.local/bin/dev-arch-shell"
     - "{{ primary_home }}/.local/bin/dev-debian-shell"
     - "{{ primary_home }}/.local/libexec/hermes-menubar-bridge"
-    - "{{ primary_home }}/.local/libexec/fedora-config-migrate-layering"
+    - "{{ primary_home }}/.local/libexec/cybexos-migrate-layering"
     - "{{ primary_home }}/.local/share/nautilus-python/extensions/localsend.py"
     - "{{ primary_home }}/.config/distrobox/distrobox.conf"
     - "{{ primary_home }}/.local/share/applications/t3code-nightly.desktop"
@@ -153,7 +152,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ fedora_config_runtime_root }}"
+    path: "{{ cybexos_runtime_root }}"
     state: absent
 
 - name: Remove project-owned system files
@@ -163,20 +162,20 @@
   loop:
     - /usr/local/bin/hyprland-quickshell
     - /usr/share/wayland-sessions/hyprland-quickshell.desktop
-    - /usr/local/libexec/fedora-config-hyprland-session-start
-    - /usr/local/libexec/fedora-config-session-action
-    - /usr/local/libexec/fedora-config-system-snapshot
-    - /usr/local/libexec/fedora-config-common.sh
-    - /etc/sysctl.d/60-fedora-config-hardening.conf
-    - /etc/systemd/system/fedora-config-btrfs-scrub.service
-    - /etc/systemd/system/fedora-config-btrfs-scrub.timer
+    - /usr/local/libexec/cybexos-hyprland-session-start
+    - /usr/local/libexec/cybexos-session-action
+    - /usr/local/libexec/cybexos-system-snapshot
+    - /usr/local/libexec/cybexos-common.sh
+    - /etc/sysctl.d/60-cybexos-hardening.conf
+    - /etc/systemd/system/cybexos-btrfs-scrub.service
+    - /etc/systemd/system/cybexos-btrfs-scrub.timer
     - /etc/sudoers.d/10-wheel-nopasswd
     - /etc/polkit-1/rules.d/49-wheel-local.rules
-    - /etc/brave/policies/managed/fedora-config.json
-    - /etc/fonts/conf.d/49-fedora-config-defaults.conf
-    - /usr/local/libexec/fedora-config-github-release-install
-    - /usr/local/libexec/fedora-config-source-app-build
-    - /usr/local/libexec/fedora-config-android-sdk-update
+    - /etc/brave/policies/managed/cybexos.json
+    - /etc/fonts/conf.d/49-cybexos-defaults.conf
+    - /usr/local/libexec/cybexos-github-release-install
+    - /usr/local/libexec/cybexos-source-app-build
+    - /usr/local/libexec/cybexos-android-sdk-update
     - /etc/tuned/profiles/xps-performance
     - /usr/local/share/xps-2026
     - /usr/local/libexec/xps-speaker-tuning
@@ -205,7 +204,7 @@
 
 - name: Inspect system configuration preserved before XPS adoption
   ansible.builtin.stat:
-    path: "/var/lib/fedora-config/backups/system/{{ item }}"
+    path: "/var/lib/cybexos/backups/system/{{ item }}"
   loop:
     - etc/tuned/ppd.conf
     - etc/v4l2-relayd.d/icamerasrc.conf
@@ -213,7 +212,7 @@
 
 - name: Restore system configuration preserved before XPS adoption
   ansible.builtin.copy:
-    src: "/var/lib/fedora-config/backups/system/{{ item.item }}"
+    src: "/var/lib/cybexos/backups/system/{{ item.item }}"
     dest: "/{{ item.item }}"
     remote_src: true
     owner: root
@@ -236,9 +235,9 @@
 - name: Restore shared system configuration preserved before first adoption
   ansible.builtin.shell: |
     set -euo pipefail
-    backup=/var/lib/fedora-config/backups/system
-    marker=/var/lib/fedora-config/backups/initial-system.complete
-    absent=/var/lib/fedora-config/backups/initial-system.absent
+    backup=/var/lib/cybexos/backups/system
+    marker=/var/lib/cybexos/backups/initial-system.complete
+    absent=/var/lib/cybexos/backups/initial-system.absent
     [[ -f $marker ]] || exit 0
     items=(
       etc/gdm/custom.conf
@@ -262,7 +261,7 @@
 - name: Restore first-adoption NetworkManager profile zones
   ansible.builtin.shell: |
     set -euo pipefail
-    state=/var/lib/fedora-config/firewall/profiles
+    state=/var/lib/cybexos/firewall/profiles
     [[ -d $state ]] || exit 0
     while IFS= read -r -d '' marker; do
       uuid=${marker##*/}
@@ -340,7 +339,7 @@
     uninstall_remaining_firewall_profiles.stdout_lines | default([]) | length > 0
 
 - name: Read the first-adoption default firewalld zone
-  ansible.builtin.command: cat /var/lib/fedora-config/firewall/default-zone
+  ansible.builtin.command: cat /var/lib/cybexos/firewall/default-zone
   register: uninstall_saved_default_firewall_zone
   changed_when: false
   failed_when: false
@@ -379,9 +378,9 @@
 
 - name: Remove CybexOS system state when it is not retained
   ansible.builtin.file:
-    path: /var/lib/fedora-config
+    path: /var/lib/cybexos
     state: absent
-  when: not fedora_config_keep_user_data | bool
+  when: not cybexos_keep_user_data | bool
 
 - name: Remove the project-built XPS camera package
   ansible.builtin.dnf:
@@ -406,17 +405,17 @@
     state: absent
   loop:
     - /usr/share/plymouth/themes/cybex
-    - /var/cache/fedora-config-upstream/omarchy-cybex
-    - /var/lib/fedora-config-upstream/omarchy-cybex
+    - /var/cache/cybexos-upstream/omarchy-cybex
+    - /var/lib/cybexos-upstream/omarchy-cybex
 
 - name: Remove only the CybexOS Firefox policy entry
-  ansible.builtin.command: /usr/local/libexec/fedora-config-firefox-policy disable
+  ansible.builtin.command: /usr/local/libexec/cybexos-firefox-policy disable
   changed_when: false
   failed_when: false
 
 - name: Remove the Firefox policy editor after cleanup
   ansible.builtin.file:
-    path: /usr/local/libexec/fedora-config-firefox-policy
+    path: /usr/local/libexec/cybexos-firefox-policy
     state: absent
 
 - name: Restore user configuration preserved before first adoption
@@ -424,11 +423,11 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.shell: |
     set -euo pipefail
-    backup={{ (primary_home + '/.local/state/fedora-config/backups/initial') | quote }}
+    backup={{ (primary_home + '/.local/state/cybexos/backups/initial') | quote }}
     [[ -d $backup ]] || exit 0
     items=(
       .config/xdg-desktop-portal/hyprland-portals.conf
-      .config/environment.d/10-fedora-config.conf
+      .config/environment.d/10-cybexos.conf
       .config/systemd/user/hyprland-session.target
       .config/systemd/user/hyprland-session.target.wants
       .config/systemd/user/quickshell.service
@@ -437,7 +436,7 @@
       .config/systemd/user/voxtype.service
       .config/systemd/user/external-monitor-toggle.service
       .config/systemd/user/hermes-menubar-bridge.service
-      .config/systemd/user/fedora-config-session-lock.service
+      .config/systemd/user/cybexos-session-lock.service
       .config/systemd/user/xps-speaker-tuning.service
       .config/distrobox/distrobox.conf
       .local/bin/screenshot
@@ -450,9 +449,8 @@
       .local/bin/localsend
       .local/bin/localsend-share
       .local/bin/cybex
-      .local/bin/fedora-config
-      .local/bin/fedora-config-agent
-      .local/bin/fedora-config-update-run
+      .local/bin/cybexos-agent
+      .local/bin/cybexos-update-run
       .local/bin/brightness-control
       .local/bin/portal-launcher
       .local/bin/t3code-update
@@ -488,10 +486,10 @@
       .config/voxtype/config.toml
       .config/oh-my-posh/EDM115-newline2.omp.json
       .config/mimeapps.list
-      .config/fish/conf.d/50-fedora-config.fish
-      .config/kitty/fedora-config.conf
-      .config/fedora-config/gitconfig
-      .ssh/config.d/fedora-config.conf
+      .config/fish/conf.d/50-cybexos.fish
+      .config/kitty/cybexos.conf
+      .config/cybexos/gitconfig
+      .ssh/config.d/cybexos.conf
       .gitconfig
       .ssh/config
       .config/user-dirs.dirs
@@ -517,9 +515,9 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ primary_home }}/.local/state/fedora-config"
+    path: "{{ primary_home }}/.local/state/cybexos"
     state: absent
-  when: not fedora_config_keep_user_data | bool
+  when: not cybexos_keep_user_data | bool
 
 - name: Remove staged CybexOS source artifacts when user data is not retained
   become: true
@@ -528,10 +526,10 @@
     path: "{{ item }}"
     state: absent
   loop:
-    - "{{ fedora_config_data_root }}/current"
-    - "{{ fedora_config_data_root }}/releases"
-    - "{{ fedora_config_data_root }}/channel"
-  when: not fedora_config_keep_user_data | bool
+    - "{{ cybexos_data_root }}/current"
+    - "{{ cybexos_data_root }}/releases"
+    - "{{ cybexos_data_root }}/channel"
+  when: not cybexos_keep_user_data | bool
 
 - name: Reload systemd after unit removal
   ansible.builtin.systemd_service:

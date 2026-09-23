@@ -164,7 +164,7 @@ test("a timed-out CLI process is killed and reported", () => {
 sleep 2
 printf '%s\n' 'Too late'
 `);
-        base.env.FEDORA_CONFIG_NOTE_TITLE_TEST_TIMEOUT = "0.1";
+        base.env.CYBEXOS_NOTE_TITLE_TEST_TIMEOUT = "0.1";
         const started = Date.now();
         const result = invoke({
             provider: "claude", model: "fable", effort: "low", body: "Body"

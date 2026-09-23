@@ -2,7 +2,7 @@
 
 The Shell settings workspace makes bar geometry, appearance,
 modules, wallpaper, and system behavior live-configurable, persisted to
-`~/.config/fedora-config/shell.json`. Automated coverage:
+`~/.config/cybexos/shell.json`. Automated coverage:
 `tests/run` — the Node suite (store merge/clamp rules, schema/property
 agreement, qmldir completeness, IPC single-declaration, typography lint) plus
 `tests/qml-lint`, a qmllint sweep over every shell QML file — and

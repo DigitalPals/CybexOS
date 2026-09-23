@@ -21,7 +21,7 @@ def load(name, path):
     return module
 
 
-user_init = load("user_init", ROOT / "rootfs/usr/libexec/fedora-config-user-init")
+user_init = load("user_init", ROOT / "rootfs/usr/libexec/cybexos-user-init")
 live_install = load("live_install", ROOT / "install-live-rootfs")
 applications = load("applications", ROOT / "applications")
 
@@ -133,9 +133,9 @@ class AccountIsolation(unittest.TestCase):
             for name in ("alice", "bob"):
                 home = base / name
                 user_init.initialize(home, vendor)
-                self.assertEqual((home / ".local/share/fedora-config/runtime").resolve(), vendor / "runtime")
-                self.assertTrue((home / ".config/fedora-config/hypr").is_dir())
-            settings = base / "alice/.config/fedora-config/shell.json"
+                self.assertEqual((home / ".local/share/cybexos/runtime").resolve(), vendor / "runtime")
+                self.assertTrue((home / ".config/cybexos/hypr").is_dir())
+            settings = base / "alice/.config/cybexos/shell.json"
             settings.write_text('{"themeMode":"light","futureSetting":42}')
             personal_tool = base / "alice/.local/bin/tool"
             personal_tool.unlink()
@@ -145,7 +145,7 @@ class AccountIsolation(unittest.TestCase):
             self.assertEqual(personal_tool.read_text(), "personal tool")
             self.assertEqual(settings.read_text(), '{"themeMode":"light","futureSetting":42}')
             self.assertEqual((base / "bob/.local/bin/tool").read_text(), "version two")
-            self.assertFalse((base / "bob/.config/fedora-config/shell.json").exists())
+            self.assertFalse((base / "bob/.config/cybexos/shell.json").exists())
 
     def test_existing_runtime_and_dangling_links_are_preserved(self):
         with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {}, clear=True):
@@ -154,7 +154,7 @@ class AccountIsolation(unittest.TestCase):
             (vendor / "bin").mkdir(parents=True)
             (vendor / "bin/tool").write_text("vendor")
             home = base / "user"
-            runtime = home / ".local/share/fedora-config/runtime"
+            runtime = home / ".local/share/cybexos/runtime"
             runtime.mkdir(parents=True)
             (runtime / "sentinel").write_text("keep")
             (home / ".local/bin").mkdir(parents=True)
@@ -169,7 +169,7 @@ class WelcomeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-        cls.module = load("welcome_app", ROOT / "rootfs/usr/bin/fedora-config-welcome")
+        cls.module = load("welcome_app", ROOT / "rootfs/usr/bin/cybexos-welcome")
         cls.app = cls.module.QGuiApplication.instance() or cls.module.QGuiApplication([])
 
     def test_installed_system_cannot_launch_disk_installer(self):
@@ -193,7 +193,7 @@ class WelcomeTests(unittest.TestCase):
             backend.live = live
             engine = self.module.QQmlApplicationEngine()
             engine.rootContext().setContextProperty("welcome", backend)
-            engine.load(self.module.QUrl.fromLocalFile(str(ROOT / "rootfs/usr/share/fedora-config/welcome/Main.qml")))
+            engine.load(self.module.QUrl.fromLocalFile(str(ROOT / "rootfs/usr/share/cybexos/welcome/Main.qml")))
             self.assertTrue(engine.rootObjects(), f"welcome failed to load in live={live}")
             window = engine.rootObjects()[0]
             window.close()

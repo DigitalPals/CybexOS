@@ -44,7 +44,7 @@ async def scenario() -> None:
     previous_remote = os.environ.pop("HERMES_REMOTE_URL", None)
     try:
         with tempfile.TemporaryDirectory(
-            prefix="fedora-config-hermes-conversations."
+            prefix="cybexos-hermes-conversations."
         ) as temporary:
             root = Path(temporary)
             state = root / "conversations.json"

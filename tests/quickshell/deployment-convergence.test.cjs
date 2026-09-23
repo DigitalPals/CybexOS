@@ -26,13 +26,13 @@ test("Cybex deployment prunes files outside its source-plus-override manifest", 
         /Inspect the installed Cybex directory tree[\s\S]{0,300}?- -depth/,
         "stale directories must be enumerated child-first before removal");
     assert.match(tasks,
-        /dest:\s*\/var\/lib\/fedora-config-upstream\/omarchy-cybex\/installed-theme\.manifest/,
+        /dest:\s*\/var\/lib\/cybexos-upstream\/omarchy-cybex\/installed-theme\.manifest/,
         "the manifest must live outside the tree it reconciles");
     assert.match(tasks,
         /boot_cybex_source_files\.stdout_lines[\s\S]{0,180}?difference\(boot_cybex_override_files\)/,
         "the upstream copy must not overwrite files managed by the local override layer");
     assert.doesNotMatch(tasks,
-        /src:\s*\/var\/cache\/fedora-config-upstream\/omarchy-cybex\/config\/plymouth\/themes\/cybex\/$/m,
+        /src:\s*\/var\/cache\/cybexos-upstream\/omarchy-cybex\/config\/plymouth\/themes\/cybex\/$/m,
         "a recursive source-tree copy would make every customized file change twice on each run");
     for (const manifestTask of ["Inspect the pinned Cybex source manifest",
         "Inspect the pinned Cybex source directory manifest", "Inspect the installed Cybex theme tree",
@@ -70,7 +70,7 @@ test("Podman inventory controls packages, helpers, keybindings, and desktop entr
     assert.ok(featureInstallAt > 0 && featureInstallAt < luaConsumersAt,
         "the rendered feature module must exist before a live reload can evaluate bindings");
     assert.match(desktopTasks.slice(featureInstallAt, luaConsumersAt),
-        /src:\s*"\{\{ item \}\}\.j2"[\s\S]{0,220}?dest:\s*"\{\{ fedora_config_runtime_root \}\}\/hypr\/\{\{ item \}\}"[\s\S]{0,220}?- features\.lua[\s\S]{0,260}?tags:\s*\[browser\]/,
+        /src:\s*"\{\{ item \}\}\.j2"[\s\S]{0,220}?dest:\s*"\{\{ cybexos_runtime_root \}\}\/hypr\/\{\{ item \}\}"[\s\S]{0,220}?- features\.lua[\s\S]{0,260}?tags:\s*\[browser\]/,
         "partial browser/config deploys must install the feature dependency first");
     const luaInstallBlock = desktopTasks.slice(luaConsumersAt,
         desktopTasks.indexOf("Install ordered Hyprland session starter", luaConsumersAt));
@@ -131,7 +131,7 @@ test("ChatGPT launcher follows portable desktop scaling", () => {
     assert.match(repository,
         /^gpgkey=file:\/\/\/etc\/pki\/rpm-gpg\/RPM-GPG-KEY-chatgpt$/m);
     assert.match(lookAndFeel,
-        /force_zero_scaling = \{\{ \(fedora_config_xps_2026 \| bool\) \| ternary\('true', 'false'\) \}\}/,
+        /force_zero_scaling = \{\{ \(cybexos_xps_2026 \| bool\) \| ternary\('true', 'false'\) \}\}/,
         "XWayland scaling keeps the XPS behavior behind the hardware gate");
     assert.match(dotfileTasks,
         /Install MIME defaults and desktop launchers[\s\S]{0,1200}?name: chatgpt\.desktop[\s\S]{0,120}?features\.proprietary_apps/,
@@ -256,7 +256,7 @@ test("the retired Paseo shell widget leaves no bridge runtime behind", () => {
     assert.ok(cleanupAt > 0, "Paseo retirement must be part of desktop convergence");
     const cleanup = tasks.slice(cleanupAt, nextTaskAt);
     assert.match(cleanup,
-        /path:\s*"\{\{ primary_home \}\}\/\.local\/share\/fedora-config\/paseo-bridge"/);
+        /path:\s*"\{\{ primary_home \}\}\/\.local\/share\/cybexos\/paseo-bridge"/);
     assert.match(cleanup, /state:\s*absent/);
     assert.match(cleanup, /tags:\s*\[quickshell\]/,
         "a targeted Quickshell deployment must remove the retired bridge too");

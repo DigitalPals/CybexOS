@@ -8,7 +8,7 @@
     mode: "0755"
   loop:
     - "{{ primary_home }}/Pictures/Wallpapers"
-    - "{{ primary_home }}/.config/fedora-config"
+    - "{{ primary_home }}/.config/cybexos"
 
 - name: Install bundled wallpapers
   become: true
@@ -23,14 +23,14 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.stat:
-    path: "{{ primary_home }}/.config/fedora-config/shell.json"
+    path: "{{ primary_home }}/.config/cybexos/shell.json"
   register: wallpaper_settings_file
 
 - name: Read existing shell preferences
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.slurp:
-    src: "{{ primary_home }}/.config/fedora-config/shell.json"
+    src: "{{ primary_home }}/.config/cybexos/shell.json"
   register: wallpaper_settings_content
   when: wallpaper_settings_file.stat.exists
 
@@ -42,7 +42,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    dest: "{{ primary_home }}/.config/fedora-config/shell.json"
+    dest: "{{ primary_home }}/.config/cybexos/shell.json"
     mode: "0600"
     content: "{{ wallpaper_settings | combine({'wall': 'snow-capped-mountains-with-full-moon-lo.jpg', 'wallDir': '~/Pictures/Wallpapers'}) | to_nice_json }}\n"
   when:

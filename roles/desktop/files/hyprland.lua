@@ -1,14 +1,14 @@
 local home = assert(os.getenv("HOME"), "HOME is required")
 local config_home = os.getenv("XDG_CONFIG_HOME") or (home .. "/.config")
 local data_home = os.getenv("XDG_DATA_HOME") or (home .. "/.local/share")
-local generated_dir = data_home .. "/fedora-config/runtime/hypr"
+local generated_dir = data_home .. "/cybexos/runtime/hypr"
 local source_dir = generated_dir
-local user_dir = config_home .. "/fedora-config/hypr"
+local user_dir = config_home .. "/cybexos/hypr"
 
 -- Development mode substitutes only source-controlled modules. Rendered
 -- machine facts remain in the installed runtime, so selecting a checkout can
 -- never make the compositor consume an unrendered Jinja template.
-local source_file = io.open(config_home .. "/fedora-config/dev-source", "r")
+local source_file = io.open(config_home .. "/cybexos/dev-source", "r")
 if source_file then
   local checkout = source_file:read("*l")
   local trailing = source_file:read("*l")

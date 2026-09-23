@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Migration of a fedora-config installation to the CybexOS names, run against
+# a fixture root and home. Every host-changing command is mocked to fail.
+set -euo pipefail
+
+repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+migrate=$repo_root/scripts/migrate-legacy-names
+fixture=$(mktemp -d)
+trap 'rm -rf -- "$fixture"' EXIT
+root=$fixture/root
+home=$fixture/home
+mock_bin=$fixture/bin
+mkdir -p "$root" "$home" "$mock_bin"
+
+for command_name in firewall-cmd nmcli runuser sudo systemctl; do
+  printf '#!/bin/sh\necho "%s must not run in the fixture" >&2\nexit 97\n' \
+    "$command_name" >"$mock_bin/$command_name"
+  chmod 0755 "$mock_bin/$command_name"
+done
+export PATH="$mock_bin:$PATH"
+export CYBEXOS_MIGRATION_ROOT=$root
+
+fail() { printf 'legacy-names: %s\n' "$*" >&2; exit 1; }
+assert_dir() { [[ -d $1 && ! -L $1 ]] || fail "expected directory $1"; }
+assert_absent() { [[ ! -e $1 && ! -L $1 ]] || fail "expected $1 to be absent"; }
+assert_link() {
+  [[ -L $1 && $(readlink -- "$1") == "$2" ]] ||
+    fail "expected $1 -> $2, found $(readlink -- "$1" 2>/dev/null || echo nothing)"
+}
+
+# System state as the former name left it.
+mkdir -p "$root/etc/fedora-config" "$root/var/lib/fedora-config/firewall" \
+  "$root/var/cache/fedora-config-upstream/walker" "$root/var/lib/fedora-config-upstream" \
+  "$root/opt/fedora-config-apps/lazygit/versions/v1/bin" \
+  "$root/opt/fedora-config-builds/awww/versions/k1/bin" \
+  "$root/usr/local/bin" "$root/usr/local/share/fonts/oppo-sans/4.0" \
+  "$root/etc/pki/rpm-gpg" "$root/etc/firewalld/zones" "$root/etc/systemd/system"
+printf 'primary_user: tester\n' >"$root/etc/fedora-config/config.yml"
+printf 'public' >"$root/var/lib/fedora-config/firewall/default-zone"
+printf 'manifest\n' >"$root/opt/fedora-config-apps/lazygit/versions/v1/.fedora-config-release"
+ln -s versions/v1 "$root/opt/fedora-config-apps/lazygit/current"
+printf 'manifest\n' >"$root/opt/fedora-config-builds/awww/versions/k1/.fedora-config-build"
+ln -s /opt/fedora-config-apps/lazygit/current/bin/lazygit "$root/usr/local/bin/lazygit"
+ln -s /opt/fedora-config-builds/awww/current/bin/awww "$root/usr/local/bin/awww"
+ln -s /usr/bin/true "$root/usr/local/bin/unrelated"
+: >"$root/usr/local/share/fonts/oppo-sans/4.0/.fedora-config-archive-abc123"
+printf 'key\n' >"$root/etc/pki/rpm-gpg/FEDORA-CONFIG-tailscale.asc"
+printf '<zone target="DROP"/>\n' >"$root/etc/firewalld/zones/fedora-config.xml"
+printf 'DefaultZone=fedora-config\nLogDenied=off\n' >"$root/etc/firewalld/firewalld.conf"
+: >"$root/etc/systemd/system/fedora-config-btrfs-scrub.service"
+: >"$root/etc/systemd/system/fedora-config-btrfs-scrub.timer"
+
+# Home state, including skill slots adopted under the former name: one
+# pre-existing user file and two slots that were absent before adoption.
+mkdir -p "$home/.config/fedora-config" "$home/.local/share/fedora-config/releases/bootstrap" \
+  "$home/.local/share/fedora-config-user-tools/codex/current/bin" "$home/.local/bin" \
+  "$home/.cache/fedora-config" "$home/.agents/skills" "$home/.claude/skills" \
+  "$home/.codex/skills"
+printf '{}\n' >"$home/.config/fedora-config/shell.json"
+ln -s releases/bootstrap "$home/.local/share/fedora-config/current"
+ln -s "$home/.local/share/fedora-config-user-tools/codex/current/bin/codex" "$home/.local/bin/codex"
+skill=$home/.local/share/fedora-config/current/agent-skills/fedora-config
+backups=$home/.local/state/fedora-config/backups/agent-skills
+for slot in agents claude codex; do
+  mkdir -p "$backups/$slot"
+  printf '%s\n' "$home/.$slot/skills/fedora-config" >"$backups/$slot/destination"
+  : >"$backups/$slot/complete"
+  ln -s "$skill" "$home/.$slot/skills/fedora-config"
+done
+printf 'original agents skill\n' >"$backups/agents/original"
+: >"$backups/claude/absent"
+: >"$backups/codex/absent"
+
+output=$("$migrate" --user tester --home "$home")
+grep -q '^CHANGED: ' <<<"$output" || fail 'the first run reported no change'
+
+for directory in etc/cybexos var/lib/cybexos var/lib/cybexos-upstream \
+    var/cache/cybexos-upstream opt/cybexos-apps opt/cybexos-builds; do
+  assert_dir "$root/$directory"
+done
+for legacy in etc/fedora-config var/lib/fedora-config var/lib/fedora-config-upstream \
+    var/cache/fedora-config-upstream opt/fedora-config-apps opt/fedora-config-builds; do
+  assert_absent "$root/$legacy"
+done
+[[ -f $root/opt/cybexos-apps/lazygit/versions/v1/.cybexos-release ]] ||
+  fail 'the release marker was not renamed'
+[[ -f $root/opt/cybexos-builds/awww/versions/k1/.cybexos-build ]] ||
+  fail 'the build marker was not renamed'
+[[ -f $root/usr/local/share/fonts/oppo-sans/4.0/.cybexos-archive-abc123 ]] ||
+  fail 'the font archive marker was not renamed'
+assert_link "$root/usr/local/bin/lazygit" /opt/cybexos-apps/lazygit/current/bin/lazygit
+assert_link "$root/usr/local/bin/awww" /opt/cybexos-builds/awww/current/bin/awww
+assert_link "$root/usr/local/bin/unrelated" /usr/bin/true
+[[ -f $root/etc/pki/rpm-gpg/CYBEXOS-tailscale.asc ]] || fail 'the signing key was not renamed'
+assert_absent "$root/etc/pki/rpm-gpg/FEDORA-CONFIG-tailscale.asc"
+[[ -f $root/etc/firewalld/zones/cybexos.xml ]] || fail 'the firewalld zone was not renamed'
+assert_absent "$root/etc/firewalld/zones/fedora-config.xml"
+grep -qx 'DefaultZone=cybexos' "$root/etc/firewalld/firewalld.conf" ||
+  fail 'the default firewalld zone was not renamed'
+assert_absent "$root/etc/systemd/system/fedora-config-btrfs-scrub.timer"
+assert_absent "$root/etc/systemd/system/fedora-config-btrfs-scrub.service"
+
+assert_dir "$home/.config/cybexos"
+assert_dir "$home/.local/share/cybexos"
+assert_dir "$home/.local/state/cybexos"
+assert_dir "$home/.local/share/cybexos-user-tools"
+assert_dir "$home/.cache/cybexos"
+assert_link "$home/.config/fedora-config" cybexos
+assert_link "$home/.local/share/fedora-config" cybexos
+assert_link "$home/.local/state/fedora-config" cybexos
+assert_absent "$home/.local/share/fedora-config-user-tools"
+assert_absent "$home/.cache/fedora-config"
+assert_link "$home/.local/share/cybexos/current" releases/bootstrap
+assert_link "$home/.local/bin/codex" \
+  "$home/.local/share/cybexos-user-tools/codex/current/bin/codex"
+
+[[ -f $home/.agents/skills/fedora-config && ! -L $home/.agents/skills/fedora-config \
+    && $(<"$home/.agents/skills/fedora-config") == 'original agents skill' ]] ||
+  fail 'the pre-existing agents skill slot was not restored'
+assert_absent "$home/.claude/skills/fedora-config"
+assert_absent "$home/.codex/skills/fedora-config"
+assert_absent "$home/.local/state/cybexos/backups/agent-skills"
+assert_absent "$home/.local/state/cybexos/backups/agent-skills-fedora-config"
+
+output=$("$migrate" --user tester --home "$home")
+[[ -z $output ]] || fail "the second run was not idempotent: $output"
+
+# An unrecorded former skill link is removed; unrelated skills stay.
+ln -s "$skill" "$home/.codex/skills/fedora-config"
+ln -s /elsewhere "$home/.claude/skills/fedora-config"
+"$migrate" --user tester --home "$home" >/dev/null
+assert_absent "$home/.codex/skills/fedora-config"
+assert_link "$home/.claude/skills/fedora-config" /elsewhere
+
+# Populated old and new trees are never merged.
+rm -f -- "$home/.config/fedora-config"
+mkdir -p "$home/.config/fedora-config"
+printf 'old\n' >"$home/.config/fedora-config/shell.json"
+warning=$("$migrate" --user tester --home "$home" 2>&1 >/dev/null)
+grep -q 'leaving .*/.config/fedora-config for manual review' <<<"$warning" ||
+  fail 'a conflicting tree did not produce a warning'
+[[ $(<"$home/.config/fedora-config/shell.json") == old \
+    && $(<"$home/.config/cybexos/shell.json") == '{}' ]] ||
+  fail 'a conflicting tree was modified'
+
+printf 'fedora-config installations migrate to the CybexOS names\n'

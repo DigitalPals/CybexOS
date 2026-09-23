@@ -12,7 +12,7 @@ Singleton {
     id: root
 
     readonly property string cachePath:
-        Quickshell.env("HOME") + "/.local/state/fedora-config/shell/wallpaper-palette.json"
+        Quickshell.env("HOME") + "/.local/state/cybexos/shell/wallpaper-palette.json"
     readonly property string wallpaperIdentity: Wallpaper.currentIdentity
     property var variants: null
     readonly property var active: PaletteHelpers.activeVariant(variants,

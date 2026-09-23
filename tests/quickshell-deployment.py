@@ -86,7 +86,7 @@ PLAY = r"""
 
 def scenario(base: Path, name: str, source: Path) -> tuple[Path, list[Path], str]:
     home = base / name / "home"
-    root = home / ".local/share/fedora-config/runtime/quickshell"
+    root = home / ".local/share/cybexos/runtime/quickshell"
     external = base / name / "external"
     external.mkdir(parents=True)
     sentinels: list[Path] = []
@@ -144,7 +144,7 @@ SCENARIOS = (
 )
 
 
-with tempfile.TemporaryDirectory(prefix="fedora-config-quickshell-deploy.") as temporary:
+with tempfile.TemporaryDirectory(prefix="cybexos-quickshell-deploy.") as temporary:
     base = Path(temporary)
     source = base / "managed-Theme.qml"
     source.write_text("managed\n")

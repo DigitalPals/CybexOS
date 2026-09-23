@@ -23,7 +23,7 @@ set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 shell_src="$repo/roles/desktop/files/quickshell"
-deployed="${QS_CONFIG_DIR:-$HOME/.local/share/fedora-config/runtime/quickshell}"
+deployed="${QS_CONFIG_DIR:-$HOME/.local/share/cybexos/runtime/quickshell}"
 snapshot_timeout=${T3_SNAPSHOT_TIMEOUT:-30}
 
 # shellcheck source=tests/lib/quickshell-live

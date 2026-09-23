@@ -27,8 +27,8 @@ ensure_locked() {
     return 0
   fi
 
-  systemctl --user reset-failed fedora-config-session-lock.service >/dev/null 2>&1 || true
-  systemctl --user start fedora-config-session-lock.service
+  systemctl --user reset-failed cybexos-session-lock.service >/dev/null 2>&1 || true
+  systemctl --user start cybexos-session-lock.service
 
   # Do not use a fixed sleep: suspend is allowed only after the compositor has
   # told logind that the ext-session-lock is active. A failed locker therefore
@@ -37,7 +37,7 @@ ensure_locked() {
     if locked; then
       return 0
     fi
-    if ! systemctl --user is-active --quiet fedora-config-session-lock.service; then
+    if ! systemctl --user is-active --quiet cybexos-session-lock.service; then
       printf 'The lock screen exited before the session was secured.\n' >&2
       return 1
     fi
@@ -45,7 +45,7 @@ ensure_locked() {
   done
 
   printf 'The lock screen did not secure the session within eight seconds.\n' >&2
-  systemctl --user stop fedora-config-session-lock.service >/dev/null 2>&1 || true
+  systemctl --user stop cybexos-session-lock.service >/dev/null 2>&1 || true
   return 1
 }
 
@@ -71,7 +71,7 @@ case $action in
       '') ;;
       on-battery) on_battery || exit 0 ;;
       *)
-        printf 'Usage: fedora-config-session-action idle-suspend [on-battery]\n' >&2
+        printf 'Usage: cybexos-session-action idle-suspend [on-battery]\n' >&2
         exit 2
         ;;
     esac
@@ -88,7 +88,7 @@ case $action in
     systemctl poweroff
     ;;
   *)
-    printf 'Usage: fedora-config-session-action <lock|suspend|idle-suspend|logout|reboot|shutdown>\n' >&2
+    printf 'Usage: cybexos-session-action <lock|suspend|idle-suspend|logout|reboot|shutdown>\n' >&2
     exit 2
     ;;
 esac

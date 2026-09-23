@@ -6,10 +6,10 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { shellDir } = require("./shell.cjs");
 
-const helper = path.resolve(shellDir, "../fedora-config-session-action");
+const helper = path.resolve(shellDir, "../cybexos-session-action");
 
 function fixture({ initiallyLocked = false, lockStarts = true, onBattery = "b false" } = {}) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fedora-config-session-action."));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-session-action."));
     const bin = path.join(root, "bin");
     const state = path.join(root, "locked");
     const log = path.join(root, "calls");
@@ -25,7 +25,7 @@ fi
 `);
     fs.writeFileSync(path.join(bin, "systemctl"), `#!/usr/bin/env bash
 printf 'systemctl %s\\n' "$*" >> "$TEST_LOG"
-if [[ $* == *'start fedora-config-session-lock.service'* && $TEST_LOCK_STARTS == yes ]]; then
+if [[ $* == *'start cybexos-session-lock.service'* && $TEST_LOCK_STARTS == yes ]]; then
   printf 'yes\\n' > "$TEST_STATE"
 fi
 if [[ $* == *'is-active'* ]]; then
@@ -77,8 +77,8 @@ test("suspend happens only after the singleton locker reports ready", t => {
     const result = f.run("suspend");
     assert.equal(result.status, 0, result.stderr);
     const calls = f.calls();
-    assert.ok(calls.indexOf("start fedora-config-session-lock.service") >= 0);
-    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start fedora-config-session-lock.service"));
+    assert.ok(calls.indexOf("start cybexos-session-lock.service") >= 0);
+    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start cybexos-session-lock.service"));
 });
 
 test("a failed lock leaves the machine awake", t => {
@@ -106,7 +106,7 @@ test("idle suspend locks first and ignores the power source by default", t => {
     assert.equal(result.status, 0, result.stderr);
     const calls = f.calls();
     assert.doesNotMatch(calls, /busctl/);
-    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start fedora-config-session-lock.service"));
+    assert.ok(calls.indexOf("systemctl suspend") > calls.indexOf("start cybexos-session-lock.service"));
 });
 
 test("battery-only idle suspend stays awake on mains or an unknown source", t => {

@@ -7,7 +7,7 @@ set -uo pipefail
 umask 077
 
 config_home=${XDG_CONFIG_HOME:-${HOME:?HOME is required}/.config}
-defaults_dir="$config_home/fedora-config/defaults"
+defaults_dir="$config_home/cybexos/defaults"
 preference_file="$defaults_dir/agent"
 window_child=false
 temporary=
@@ -192,11 +192,11 @@ launch_agent() {
 launch_window() {
   local workspace launcher
   agent_available kitty || fail 127 "Kitty is not installed"
-  launcher=$(command -v cybex || command -v fedora-config) \
+  launcher=$(command -v cybex) \
     || fail 127 "the cybex command is not installed"
-  workspace=${FEDORA_CONFIG_AGENT_WORKSPACE:-$HOME/Code}
+  workspace=${CYBEXOS_AGENT_WORKSPACE:-$HOME/Code}
   [[ -d $workspace ]] || workspace=$HOME
-  exec kitty --class fedora-config-agent --directory "$workspace" \
+  exec kitty --class cybexos-agent --directory "$workspace" \
     -e "$launcher" agent --window-child "$@"
   fail 127 "could not open the AI agent terminal"
 }

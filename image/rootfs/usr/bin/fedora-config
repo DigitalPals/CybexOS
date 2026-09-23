@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-# Compatibility entry point for existing installations and scripts.
-exec /usr/bin/cybex "$@"

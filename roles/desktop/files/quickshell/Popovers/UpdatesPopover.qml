@@ -54,7 +54,7 @@ Surface {
             });
         if (Updates.projectAvailable)
             out.push({
-                key: "fedora-config",
+                key: "cybexos",
                 glyph: "deployed_code_update",
                 name: "CybexOS",
                 sub: "Release " + Updates.projectVersion,

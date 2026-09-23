@@ -73,7 +73,7 @@ def verify_dependency_policy(values: dict) -> None:
 
     hermes_tasks = (ROOT / "roles/desktop/tasks/hermes-menubar.yml").read_text()
     assert "hermes-agent-removed-v1" in hermes_tasks
-    assert '"{{ primary_home }}/.local/share/fedora-config-user-tools/hermes"' in hermes_tasks
+    assert '"{{ primary_home }}/.local/share/cybexos-user-tools/hermes"' in hermes_tasks
     assert '"{{ primary_home }}/.hermes"' in hermes_tasks
     assert '"{{ primary_home }}/.local/bin/hermes"' in hermes_tasks
     assert "raw.githubusercontent.com/NousResearch/hermes-agent" not in hermes_tasks
@@ -154,14 +154,14 @@ def verify_dependency_policy(values: dict) -> None:
         "Remove CybexOS system state when it is not retained"
     )
 
-    command_wrapper = (ROOT / "roles/dotfiles/templates/fedora-config.j2").read_text()
+    command_wrapper = (ROOT / "roles/dotfiles/templates/cybex.j2").read_text()
     assert '$verify_scope || set -- --system "$@"' in command_wrapper
     assert 'exec "$agent_command" "$@"' in command_wrapper
-    assert "    - fedora-config-agent" in dotfiles
-    assert uninstall.count(".local/bin/fedora-config-agent") == 2
-    assert ".config/fedora-config/defaults/agent" not in uninstall
+    assert "    - cybexos-agent" in dotfiles
+    assert uninstall.count(".local/bin/cybexos-agent") == 2
+    assert ".config/cybexos/defaults/agent" not in uninstall
 
-    agent_launcher = (ROOT / "assets/scripts/fedora-config-agent").read_text()
+    agent_launcher = (ROOT / "assets/scripts/cybexos-agent").read_text()
     for dangerous_flag in (
         "--auto",
         "--approve-for-me",
@@ -175,8 +175,8 @@ def verify_dependency_policy(values: dict) -> None:
 
     release_workflow = (ROOT / ".github/workflows/release.yml").read_text()
     assert 'scripts/semver validate "$version"' in release_workflow
-    assert 'sha256sum "fedora-config-$version.tar.zst" >SHA256SUMS' in release_workflow
-    assert 'sha256sum "dist/fedora-config-$version.tar.zst"' not in release_workflow
+    assert 'sha256sum "cybexos-$version.tar.zst" >SHA256SUMS' in release_workflow
+    assert 'sha256sum "dist/cybexos-$version.tar.zst"' not in release_workflow
 
     workflow = (ROOT / ".github/workflows/tests.yml").read_text()
     for package, purpose in (
@@ -250,7 +250,7 @@ def verify_user_updater_runtime(values: dict) -> None:
         )
 
     # Exact installed pins must be a true no-op and must not touch the network.
-    with tempfile.TemporaryDirectory(prefix="fedora-config-user-tools.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-user-tools.") as temporary:
         home = Path(temporary)
         executable(home / ".local/bin/claude", f'echo "{claude_pin} (Claude Code)"\n')
         executable(home / ".local/bin/opencode", f'echo "{opencode_pin}"\n')
@@ -262,7 +262,7 @@ def verify_user_updater_runtime(values: dict) -> None:
         assert result.stdout.strip() == "UNCHANGED: user-managed CLI versions"
 
     # A failed native Claude switch restores the exact prior version symlink.
-    with tempfile.TemporaryDirectory(prefix="fedora-config-user-tools.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-user-tools.") as temporary:
         home = Path(temporary)
         old = home / ".local/share/claude/versions/2.1.246"
         executable(
@@ -281,7 +281,7 @@ def verify_user_updater_runtime(values: dict) -> None:
 
     # A missing required tool is not a recoverable update failure merely
     # because the other tool already exists.
-    with tempfile.TemporaryDirectory(prefix="fedora-config-user-tools.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-user-tools.") as temporary:
         home = Path(temporary)
         executable(home / ".local/bin/opencode", f'echo "{opencode_pin}"\n')
         executable(home / ".local/bin/codex", f'echo "codex-cli {codex_pin}"\n')
@@ -292,7 +292,7 @@ def verify_user_updater_runtime(values: dict) -> None:
 
     # OpenCode is built off to the side. A failed npm operation leaves the
     # legacy global installation untouched and reports the recoverable status.
-    with tempfile.TemporaryDirectory(prefix="fedora-config-user-tools.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-user-tools.") as temporary:
         home = Path(temporary)
         executable(home / ".local/bin/claude", f'echo "{claude_pin} (Claude Code)"\n')
         executable(home / ".local/bin/codex", f'echo "codex-cli {codex_pin}"\n')
@@ -314,7 +314,7 @@ def verify_user_updater_runtime(values: dict) -> None:
 
     # A successful staged install becomes visible only after its reported
     # version matches the pin; the legacy prefix remains available for rollback.
-    with tempfile.TemporaryDirectory(prefix="fedora-config-user-tools.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-user-tools.") as temporary:
         home = Path(temporary)
         executable(home / ".local/bin/claude", f'echo "{claude_pin} (Claude Code)"\n')
         executable(home / ".local/bin/codex", f'echo "codex-cli {codex_pin}"\n')
@@ -349,7 +349,7 @@ def verify_user_updater_runtime(values: dict) -> None:
 
     # Codex uses the same off-to-the-side activation boundary and validates
     # its distinct `codex-cli VERSION` output before replacing a working link.
-    with tempfile.TemporaryDirectory(prefix="fedora-config-user-tools.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-user-tools.") as temporary:
         home = Path(temporary)
         executable(home / ".local/bin/claude", f'echo "{claude_pin} (Claude Code)"\n')
         executable(home / ".local/bin/opencode", f'echo "{opencode_pin}"\n')
@@ -382,7 +382,7 @@ def verify_codex_latest(values: dict) -> None:
     # Cover no-op, upgrade, offline, malformed metadata, missing first install,
     # failed download, and a staged binary that disagrees with the registry.
     for scenario in ("current", "upgrade", "offline", "invalid", "missing", "download", "mismatch"):
-        with tempfile.TemporaryDirectory(prefix="fedora-config-user-tools.") as temporary:
+        with tempfile.TemporaryDirectory(prefix="cybexos-user-tools.") as temporary:
             home = Path(temporary)
             executable(home / ".local/bin/claude", f'echo "{values["claude_code_version"]}"\n')
             executable(home / ".local/bin/opencode", f'echo "{values["opencode_version"]}"\n')
@@ -420,7 +420,7 @@ def verify_codex_latest(values: dict) -> None:
                 assert actual == f"codex-cli {'0.200.0' if scenario == 'upgrade' else prior}"
             if scenario in ("current", "offline", "invalid", "missing"):
                 assert not (home / "npm-installs").exists()
-            assert not list(home.glob(".local/share/fedora-config-user-tools/codex/.stage.*"))
+            assert not list(home.glob(".local/share/cybexos-user-tools/codex/.stage.*"))
 
 
 def verify_asset_provenance() -> None:

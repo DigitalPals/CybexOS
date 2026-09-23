@@ -43,23 +43,23 @@ for unit in quickshell.service hypridle.service hyprpolkitagent.service; do
     fail "$unit is not enabled for fedora"
 done
 
-[[ -x /usr/local/libexec/fedora-config-system-snapshot ]] || fail 'snapshot helper is not executable'
-[[ -x /usr/local/libexec/fedora-config-session-action ]] || fail 'session action helper is not executable'
-[[ -r /usr/local/libexec/fedora-config-common.sh ]] || fail 'shared installer helper is missing'
-[[ -x /home/fedora/.local/bin/fedora-config-agent ]] || fail 'default AI agent helper is missing'
-runtime=/home/fedora/.local/share/fedora-config/runtime
+[[ -x /usr/local/libexec/cybexos-system-snapshot ]] || fail 'snapshot helper is not executable'
+[[ -x /usr/local/libexec/cybexos-session-action ]] || fail 'session action helper is not executable'
+[[ -r /usr/local/libexec/cybexos-common.sh ]] || fail 'shared installer helper is missing'
+[[ -x /home/fedora/.local/bin/cybexos-agent ]] || fail 'default AI agent helper is missing'
+runtime=/home/fedora/.local/share/cybexos/runtime
 [[ -f $runtime/quickshell/shell.qml ]] || fail 'vendor shell.qml is missing'
 [[ -f $runtime/hypr/hyprland.lua ]] || fail 'vendor Hyprland entry point is missing'
-[[ -f /home/fedora/.config/systemd/user/fedora-config-session-lock.service ]] || fail 'lock unit is missing'
+[[ -f /home/fedora/.config/systemd/user/cybexos-session-lock.service ]] || fail 'lock unit is missing'
 [[ -f /usr/share/wayland-sessions/hyprland-quickshell.desktop ]] || fail 'GDM session is missing'
 [[ $(plymouth-set-default-theme) == bgrt ]] || fail 'BGRT is not the selected Plymouth theme'
 
 assert_content /home/fedora/.config/hypr/bindings.lua 'original Hyprland bindings'
 assert_content /home/fedora/.config/quickshell/shell.qml 'original Quickshell root'
-assert_content /home/fedora/.config/fedora-config/shell.json 'original shell settings'
-assert_content /home/fedora/.config/fedora-config/hypr/user.lua 'original user override'
-assert_content /home/fedora/.local/share/fedora-config/themes/personal.theme 'original user theme'
-assert_content /home/fedora/.local/share/fedora-config/plugins/personal.qml 'original user plugin'
+assert_content /home/fedora/.config/cybexos/shell.json 'original shell settings'
+assert_content /home/fedora/.config/cybexos/hypr/user.lua 'original user override'
+assert_content /home/fedora/.local/share/cybexos/themes/personal.theme 'original user theme'
+assert_content /home/fedora/.local/share/cybexos/plugins/personal.qml 'original user plugin'
 assert_content /home/fedora/.local/bin/sccache 'original sccache helper'
 assert_content /home/fedora/.config/distrobox/distrobox.conf 'original Distrobox configuration'
 assert_content /home/fedora/.config/noctalia/config.json 'original Noctalia configuration'
@@ -71,16 +71,16 @@ assert_content /usr/local/bin/wayfreeze 'original wayfreeze command'
 assert_content /usr/local/bin/hyprland-noctalia 'original Noctalia launcher'
 assert_content /usr/share/wayland-sessions/hyprland-noctalia.desktop 'original Noctalia session'
 
-agent_skill=/home/fedora/.local/share/fedora-config/current/agent-skills/fedora-config
+agent_skill=/home/fedora/.local/share/cybexos/current/agent-skills/cybexos
 [[ -r $agent_skill/SKILL.md ]] || fail 'canonical CybexOS skill is missing'
 for root in .agents .claude .codex; do
-  discovery=/home/fedora/$root/skills/fedora-config
+  discovery=/home/fedora/$root/skills/cybexos
   [[ -L $discovery ]] || fail "$discovery is not a symlink"
   [[ $(readlink -- "$discovery") == "$agent_skill" ]] ||
     fail "$discovery does not name the active-release skill"
   [[ $(readlink -f -- "$discovery") == $(readlink -f -- "$agent_skill") ]] ||
     fail "$discovery does not resolve to the active-release skill"
-  [[ -f /home/fedora/.local/state/fedora-config/backups/agent-skills/${root#.}/complete ]] ||
+  [[ -f /home/fedora/.local/state/cybexos/backups/agent-skills/${root#.}/complete ]] ||
     fail "$root skill adoption record is missing"
 done
 assert_content /home/fedora/.agents/skills/unrelated/SKILL.md \
@@ -90,12 +90,12 @@ assert_content /home/fedora/.claude/skills/unrelated/SKILL.md \
 assert_content /home/fedora/.codex/skills/unrelated/SKILL.md \
   'unrelated codex skill'
 
-[[ $(firewall-cmd --get-default-zone) == fedora-config ]] ||
+[[ $(firewall-cmd --get-default-zone) == cybexos ]] ||
   fail 'CybexOS is not the active default firewall zone'
 while IFS=: read -r uuid type; do
   case "$type" in
     802-3-ethernet|802-11-wireless)
-      [[ $(nmcli -g connection.zone connection show "$uuid") == fedora-config ]] ||
+      [[ $(nmcli -g connection.zone connection show "$uuid") == cybexos ]] ||
         fail "$uuid is not bound to the CybexOS firewall zone"
       ;;
   esac
@@ -106,7 +106,7 @@ if find "$runtime/quickshell" \
   fail 'generated Python bytecode leaked into the deployed shell'
 fi
 if grep -Eq '(^|/)__pycache__/|\.py[co]$' \
-    /home/fedora/.local/state/fedora-config/quickshell-manifest.txt; then
+    /home/fedora/.local/state/cybexos/quickshell-manifest.txt; then
   fail 'generated Python bytecode leaked into the managed shell manifest'
 fi
 
@@ -121,7 +121,7 @@ import json
 from pathlib import Path
 
 health = json.loads(Path(
-    "/home/fedora/.local/state/fedora-config/quickshell-health.json"
+    "/home/fedora/.local/state/cybexos/quickshell-health.json"
 ).read_text(encoding="utf-8"))
 assert health["status"] == "skipped", health
 assert health["detail"] == "No live shell was active before deployment", health

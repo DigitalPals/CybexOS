@@ -1,5 +1,5 @@
 # Shared helpers for CybexOS upstream installer scripts.
-# Source this file; do not execute it. Installed at /usr/local/libexec/fedora-config-common.sh.
+# Source this file; do not execute it. Installed at /usr/local/libexec/cybexos-common.sh.
 # shellcheck shell=bash
 
 # gh_api_fetch <url> <cache_dir> <out_file>
@@ -82,4 +82,4 @@ verify_sha256() {
 emit_changed() { echo "CHANGED: $*"; }
 emit_unchanged() { echo "UNCHANGED: $*"; }
 
-fedora_config_restorecon() { restorecon -RF "$@" 2>/dev/null || true; }
+cybexos_restorecon() { restorecon -RF "$@" 2>/dev/null || true; }

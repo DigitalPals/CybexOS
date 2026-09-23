@@ -105,7 +105,7 @@ def main() -> int:
     if not home.is_dir() or home.stat().st_uid != os.getuid():
         raise SystemExit("layering migration: home is not owned by the current user")
 
-    state_root = home / ".local/state/fedora-config"
+    state_root = home / ".local/state/cybexos"
     marker = state_root / "migrations/ownership-v1.complete"
     legacy_manifest = state_root / "quickshell-manifest.txt"
     for guarded in (state_root, state_root / "migrations"):
@@ -144,7 +144,7 @@ def main() -> int:
     backed_up: set[str] = set()
 
     legacy_state_moves = (
-        (home / ".local/state/quickshell/shell-settings.json", home / ".config/fedora-config/shell.json"),
+        (home / ".local/state/quickshell/shell-settings.json", home / ".config/cybexos/shell.json"),
         (home / ".local/state/quickshell/notes.json", state_root / "shell/notes.json"),
         (home / ".local/state/quickshell/t3-model-favorites.json", state_root / "shell/t3-model-favorites.json"),
         (home / ".local/state/quickshell/wallpaper-palette.json", state_root / "shell/wallpaper-palette.json"),

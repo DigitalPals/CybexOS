@@ -1,5 +1,8 @@
 # Private alpha validation — 2026-09-05
 
+This record predates the rename to CybexOS and keeps the former
+`fedora-config` names of the artifacts that were validated.
+
 Validated ISO: `FC-LIVE-44.iso`, Fedora 44, desktop RPM
 `fedora-config-desktop-0.1.0-0.1.alpha.fc44.noarch`.
 

@@ -6,7 +6,7 @@ Before=display-manager.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/libexec/fedora-config-live-setup
+ExecStart=/usr/libexec/cybexos-live-setup
 RemainAfterExit=yes
 
 [Install]

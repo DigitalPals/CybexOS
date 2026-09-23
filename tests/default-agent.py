@@ -12,7 +12,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LAUNCHER = ROOT / "assets/scripts/fedora-config-agent"
+LAUNCHER = ROOT / "assets/scripts/cybexos-agent"
 
 
 def executable(path: Path, content: str) -> None:
@@ -95,7 +95,7 @@ def run_picker_in_pty(environment: dict[str, str], cwd: Path) -> tuple[int, str]
 def main() -> None:
     assert LAUNCHER.is_file()
 
-    with tempfile.TemporaryDirectory(prefix="fedora-config-default-agent.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-default-agent.") as temporary:
         root = Path(temporary)
         home = root / "home"
         binaries = root / "bin"
@@ -111,7 +111,7 @@ def main() -> None:
         executable(binaries / "cybex", "#!/usr/bin/env bash\nexit 99\n")
 
         environment = test_environment(home, binaries, log)
-        preference = home / "xdg-config/fedora-config/defaults/agent"
+        preference = home / "xdg-config/cybexos/defaults/agent"
 
         result = run_launcher(environment, "set", "opencode", cwd=working)
         assert result.returncode == 0, result.stderr
@@ -173,7 +173,7 @@ def main() -> None:
         assert window["program"] == "kitty"
         assert window["argv"] == [
             "--class",
-            "fedora-config-agent",
+            "cybexos-agent",
             "--directory",
             str(home / "Code"),
             "-e",

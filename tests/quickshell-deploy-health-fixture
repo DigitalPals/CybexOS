@@ -5,7 +5,7 @@
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-scratch=$(mktemp -d "${TMPDIR:-/tmp}/fedora-config-quickshell-deploy.XXXXXX")
+scratch=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-quickshell-deploy.XXXXXX")
 service_pid=''
 
 cleanup() {
@@ -13,12 +13,12 @@ cleanup() {
     kill "$service_pid" 2>/dev/null || true
     wait "$service_pid" 2>/dev/null || true
   fi
-  [[ $scratch == "${TMPDIR:-/tmp}"/fedora-config-quickshell-deploy.* ]] &&
+  [[ $scratch == "${TMPDIR:-/tmp}"/cybexos-quickshell-deploy.* ]] &&
     rm -rf -- "$scratch"
 }
 trap cleanup EXIT
 
-runtime="$scratch/.local/share/fedora-config/runtime/quickshell"
+runtime="$scratch/.local/share/cybexos/runtime/quickshell"
 mkdir -p "$runtime" "$scratch/bin" "$scratch/control"
 printf 'known good\n' >"$runtime/shell.qml"
 sleep 60 &
@@ -60,7 +60,7 @@ cat >"$scratch/bin/qs" <<'SH'
 set -euo pipefail
 [[ ${1:-} == ipc && ${2:-} == --pid && ${3:-} == "$(cat "${QS_DEPLOY_FIXTURE_CONTROL:?}/pid")" && ${4:-} == call ]] || exit 2
 if grep -q '^broken deployment$' \
-    "${QS_DEPLOY_FIXTURE_HOME:?}/.local/share/fedora-config/runtime/quickshell/shell.qml"; then
+    "${QS_DEPLOY_FIXTURE_HOME:?}/.local/share/cybexos/runtime/quickshell/shell.qml"; then
   exit 1
 fi
 printf 'ok\n'
@@ -84,7 +84,7 @@ export QS_LIVE_TIMEOUT=1
 helper="$repo_root/tests/quickshell-deploy-health"
 "$helper" snapshot "$scratch" healthy-1 >/dev/null
 "$helper" verify-or-rollback "$scratch" healthy-1 >/dev/null
-python3 - "$scratch/.local/state/fedora-config/quickshell-health.json" <<'PY'
+python3 - "$scratch/.local/state/cybexos/quickshell-health.json" <<'PY'
 import json
 import sys
 
@@ -103,7 +103,7 @@ if "$helper" verify-or-rollback "$scratch" broken-2 >/dev/null 2>&1; then
 fi
 [[ $(<"$runtime/shell.qml") == 'known good' ]]
 [[ ! -e $runtime/stale.qml ]]
-python3 - "$scratch/.local/state/fedora-config/quickshell-health.json" <<'PY'
+python3 - "$scratch/.local/state/cybexos/quickshell-health.json" <<'PY'
 import json
 import sys
 
@@ -116,10 +116,10 @@ PY
 # A fresh headless install is healthy without a running graphical shell. Its
 # empty pending marker must select the explicit skipped state under errexit.
 printf '0\n' >"$scratch/control/active"
-rm -f -- "$scratch/.local/state/fedora-config/quickshell-last-good.tar"
+rm -f -- "$scratch/.local/state/cybexos/quickshell-last-good.tar"
 "$helper" snapshot "$scratch" headless-3 >/dev/null
 "$helper" verify-or-rollback "$scratch" headless-3 >/dev/null
-python3 - "$scratch/.local/state/fedora-config/quickshell-health.json" <<'PY'
+python3 - "$scratch/.local/state/cybexos/quickshell-health.json" <<'PY'
 import json
 import sys
 

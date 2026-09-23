@@ -12,7 +12,7 @@ import tempfile
 
 POLICY = Path(
     os.environ.get(
-        "FEDORA_CONFIG_FIREFOX_POLICY",
+        "CYBEXOS_FIREFOX_POLICY",
         "/usr/lib64/firefox/distribution/policies.json",
     )
 )

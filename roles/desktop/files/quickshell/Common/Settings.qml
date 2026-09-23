@@ -20,10 +20,10 @@ Singleton {
     id: root
 
     readonly property string filePath:
-        Quickshell.env("HOME") + "/.config/fedora-config/shell.json"
+        Quickshell.env("HOME") + "/.config/cybexos/shell.json"
 
     readonly property bool connectedWidgetsConfigured:
-        Quickshell.env("FEDORA_CONFIG_CONNECTED_WIDGETS") === "1"
+        Quickshell.env("CYBEXOS_CONNECTED_WIDGETS") === "1"
     readonly property var defaults: {
         const value = SettingsHelpers.defaults();
         if (connectedWidgetsConfigured) {

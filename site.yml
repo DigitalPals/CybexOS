@@ -7,16 +7,16 @@
     - name: Read the Dell product SKU for portable desktop defaults
       ansible.builtin.slurp:
         src: /sys/class/dmi/id/product_sku
-      register: fedora_config_product_sku_file
+      register: cybexos_product_sku_file
       failed_when: false
       check_mode: false
       tags: [always]
 
     - name: Detect the supported XPS 2026 desktop policy
       ansible.builtin.set_fact:
-        fedora_config_xps_2026: >-
+        cybexos_xps_2026: >-
           {{ ansible_facts.system_vendor | default('') == 'Dell Inc.'
-             and (fedora_config_product_sku_file.content | default('') | b64decode | trim) in ['0DB9', '0DBA']
+             and (cybexos_product_sku_file.content | default('') | b64decode | trim) in ['0DB9', '0DBA']
              and ansible_facts.product_name | default('') is regex('(?i)(XPS (14|16)|DA14260|DA16260)')
              and ansible_facts.processor | default([]) | join(' ') is regex('(?i)(Intel.*(Ultra|X7)|Panther Lake)') }}
       tags: [always]
@@ -95,6 +95,19 @@
         key: "{{ primary_user }}"
       tags: [always]
 
+    - name: Move a fedora-config installation to the CybexOS names
+      ansible.builtin.command:
+        argv:
+          - "{{ config_repo }}/scripts/migrate-legacy-names"
+          - --user
+          - "{{ primary_user }}"
+          - --home
+          - "{{ primary_home }}"
+      register: cybexos_legacy_migration
+      changed_when: "'CHANGED:' in cybexos_legacy_migration.stdout"
+      when: not ansible_check_mode
+      tags: [always]
+
   roles:
     - { role: base, tags: [base] }
     - { role: desktop, tags: [desktop] }
@@ -107,4 +120,6 @@
     # The role also removes its managed privileges/artifacts when disabled.
     - { role: private-hooks, tags: [private-hooks] }
     - { role: boot, tags: [boot] }
+    # Retires files still named fedora-config once their replacements exist.
+    - { role: legacy-names, tags: [legacy-names] }
     - { role: finalize, tags: [finalize] }

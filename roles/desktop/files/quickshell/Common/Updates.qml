@@ -357,7 +357,7 @@ Singleton {
     // The finished panel has been opened; closing it then retires `done`.
     property bool runSeen: false
     readonly property string runBackend:
-        Quickshell.env("HOME") + "/.local/bin/fedora-config-update-run"
+        Quickshell.env("HOME") + "/.local/bin/cybexos-update-run"
     readonly property string updateClient:
         Quickshell.shellDir + "/scripts/update-client"
     property bool runIncludedFlatpak: true
@@ -383,7 +383,7 @@ Singleton {
     readonly property int runPercent: UpdatesHelpers.runPercent(
         dnfCur, dnfTotal, fpCur, fpTotal)
     readonly property int runPkgCount: upCount + addCount + delCount
-    readonly property string runLogLabel: "fedora-config/update/logs/" + runStamp
+    readonly property string runLogLabel: "cybexos/update/logs/" + runStamp
 
     ListModel {
         id: feedModel
@@ -718,7 +718,7 @@ Singleton {
     function openLog(file) {
         Quickshell.execDetached(["kitty", "--title", "Update log", "bash",
             "-c", "exec less -R \"${XDG_STATE_HOME:-$HOME/.local/state}/"
-            + "fedora-config/update/logs/" + runStamp + "/" + file + "\""]);
+            + "cybexos/update/logs/" + runStamp + "/" + file + "\""]);
     }
 
     Timer {

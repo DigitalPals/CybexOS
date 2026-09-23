@@ -12,7 +12,15 @@ export QT_QPA_PLATFORM=wayland
 mkdir -p "$XDG_RUNTIME_DIR" "${XDG_STATE_HOME:-$HOME/.local/state}/hyprland"
 printf '%s\n' quickshell > "$XDG_RUNTIME_DIR/desktop-shell"
 session_log="${XDG_STATE_HOME:-$HOME/.local/state}/hyprland/session.log"
-hypr_config={{ (fedora_config_runtime_root + '/hypr/hyprland.lua') | quote }}
+hypr_config={{ (cybexos_runtime_root + '/hypr/hyprland.lua') | quote }}
+
+# Renaming a fedora-config installation leaves links at the former paths so
+# the session that ran the migration keeps working. A new session never uses
+# them. Remove this loop once no fedora-config installation remains.
+for legacy_path in "$HOME/.config/fedora-config" "$HOME/.local/share/fedora-config" \
+    "$HOME/.local/state/fedora-config"; do
+  [[ ! -L $legacy_path ]] || rm -f -- "$legacy_path"
+done
 
 if [[ ! -f $hypr_config ]]; then
   printf 'CybexOS Hyprland runtime is missing: %s\n' "$hypr_config" >&2

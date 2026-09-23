@@ -1,5 +1,5 @@
 From 9a37ac0b0dd9f7ab751e4456cdb728ee8f03a7ed Mon Sep 17 00:00:00 2001
-From: Fedora Config <fedora-config@localhost>
+From: CybexOS <cybexos@localhost>
 Date: Wed, 19 Aug 2026 12:15:00 +0200
 Subject: [PATCH] media: intel/ipu7: build PSYS for the stock 7.1 core ABI
 

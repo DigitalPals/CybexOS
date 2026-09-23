@@ -26,9 +26,9 @@ function fixture() {
             ...process.env,
             HOME: root,
             XDG_DATA_HOME: path.join(root, "data"),
-            FEDORA_CONFIG_FILE: config,
-            FEDORA_CONFIG_RELEASE_UPDATE: release,
-            FEDORA_CONFIG_UPDATE_BACKEND: backend,
+            CYBEXOS_CONFIG_FILE: config,
+            CYBEXOS_RELEASE_UPDATE: release,
+            CYBEXOS_UPDATE_BACKEND: backend,
         },
     };
 }

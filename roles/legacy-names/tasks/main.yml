@@ -1,0 +1,81 @@
+---
+# The project was renamed from fedora-config to CybexOS. scripts/migrate-legacy-names
+# moves data and state before any role runs; this role retires what remains
+# under the former name once the other roles have installed the replacements,
+# so a failed run never leaves the session without its lock or power helpers.
+# Remove this role once no fedora-config installation remains.
+- name: Remove managed includes written under the former project name
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ primary_home }}/{{ item }}"
+    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
+    state: absent
+  loop:
+    - .config/kitty/kitty.conf
+    - .gitconfig
+    - .ssh/config
+  failed_when: false
+
+- name: Remove user files installed under the former project name
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/{{ item }}"
+    state: absent
+  loop:
+    - .local/bin/fedora-config
+    - .local/bin/fedora-config-agent
+    - .local/bin/fedora-config-runtime
+    - .local/bin/fedora-config-update-run
+    - .local/libexec/fedora-config-migrate-layering
+    - .config/systemd/user/fedora-config-session-lock.service
+    - .config/environment.d/10-fedora-config.conf
+    - .config/fish/conf.d/50-fedora-config.fish
+    - .config/kitty/fedora-config.conf
+    - .ssh/config.d/fedora-config.conf
+  register: legacy_names_user_files
+
+- name: Remove system files installed under the former project name
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/local/libexec/fedora-config-android-sdk-update
+    - /usr/local/libexec/fedora-config-build-asdcontrol
+    - /usr/local/libexec/fedora-config-common.sh
+    - /usr/local/libexec/fedora-config-firefox-policy
+    - /usr/local/libexec/fedora-config-github-release-install
+    - /usr/local/libexec/fedora-config-hyprland-session-start
+    - /usr/local/libexec/fedora-config-session-action
+    - /usr/local/libexec/fedora-config-source-app-build
+    - /usr/local/libexec/fedora-config-system-snapshot
+    - /etc/sysctl.d/60-fedora-config-hardening.conf
+    - /etc/fonts/conf.d/49-fedora-config-defaults.conf
+    - /etc/brave/policies/managed/fedora-config.json
+
+- name: Reload the user manager after removing the former lock unit
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  failed_when: false
+  when: legacy_names_user_files is changed
+
+# A shell or idle daemon started before the rename still holds the former
+# helper paths and environment; restart only the ones already running.
+- name: Restart running desktop services that predate the rename
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv: [systemctl, --user, try-restart, quickshell.service, hypridle.service]
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  changed_when: true
+  failed_when: false
+  when:
+    - legacy_names_user_files is changed
+    - not ansible_check_mode

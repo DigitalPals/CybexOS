@@ -1,0 +1,8 @@
+[Unit]
+Description=Singleton session lock
+PartOf=hyprland-session.target
+ConditionPathExists=!/run/cybexos-live
+
+[Service]
+ExecStart=/usr/share/cybexos/bin/cybexos-runtime exec hyprlock
+TimeoutStopSec=5

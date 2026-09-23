@@ -4,16 +4,16 @@ set -euo pipefail
 umask 077
 
 readonly updater_version=0.1.0
-github_repo=${FEDORA_CONFIG_GITHUB_REPO:-DigitalPals/fedora-config}
-channel=${FEDORA_CONFIG_CHANNEL:-stable}
+github_repo=${CYBEXOS_GITHUB_REPO:-DigitalPals/CybexOS}
+channel=${CYBEXOS_CHANNEL:-stable}
 channel_explicit=false
-[[ -n ${FEDORA_CONFIG_CHANNEL:-} ]] && channel_explicit=true
-source_dir=${FEDORA_CONFIG_SOURCE_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)}
-semver_helper=${FEDORA_CONFIG_SEMVER_HELPER:-$source_dir/scripts/semver}
-config_file=${FEDORA_CONFIG_FILE:-/etc/fedora-config/config.yml}
-data_root=${XDG_DATA_HOME:-$HOME/.local/share}/fedora-config
+[[ -n ${CYBEXOS_CHANNEL:-} ]] && channel_explicit=true
+source_dir=${CYBEXOS_SOURCE_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)}
+semver_helper=${CYBEXOS_SEMVER_HELPER:-$source_dir/scripts/semver}
+config_file=${CYBEXOS_CONFIG_FILE:-/etc/cybexos/config.yml}
+data_root=${XDG_DATA_HOME:-$HOME/.local/share}/cybexos
 releases_root=$data_root/releases
-backend=${FEDORA_CONFIG_UPDATE_BACKEND:-$HOME/.local/bin/fedora-config-update-run}
+backend=${CYBEXOS_UPDATE_BACKEND:-$HOME/.local/bin/cybexos-update-run}
 command_name=run
 with_packages=true
 with_flatpak=true
@@ -91,6 +91,8 @@ gh release verify --help >/dev/null 2>&1 && gh release verify-asset --help >/dev
 }
 [[ -r $config_file ]] || {
   printf 'update: saved installer configuration is missing: %s\n' "$config_file" >&2
+  [[ ! -d /etc/fedora-config ]] ||
+    printf 'update: run ./install from a CybexOS checkout to migrate this fedora-config installation\n' >&2
   exit 2
 }
 
@@ -138,7 +140,7 @@ fetch_release() {
     printf 'update: release tag is not strict SemVer: %s\n' "$tag" >&2
     return 1
   }
-  asset_name="fedora-config-$release_version.tar.zst"
+  asset_name="cybexos-$release_version.tar.zst"
   asset_url=$(jq -er --arg name "$asset_name" \
     '.assets[] | select(.name == $name) | .browser_download_url' "$release_json")
   asset_digest=$(jq -er --arg name "$asset_name" \
@@ -161,7 +163,7 @@ compatible_manifest() {
   schema=$(python3 -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1])).get("config_schema_version", 0))' "$config_file")
   jq -e --arg version "$expected_version" --arg fedora "$fedora" \
     --arg architecture "$architecture" --argjson schema "$schema" \
-    '.product == "fedora-config"
+    '.product == "cybexos"
      and .version == $version
      and (.configSchema | type == "number") and .configSchema >= $schema
      and (.supportedFedora | index($fedora)) != null
@@ -214,7 +216,7 @@ if [[ $available == true ]]; then
   tar --extract --zstd --file "$archive" --directory "$stage" --strip-components=1
   [[ -x $stage/install && -x $stage/verify \
       && -x $stage/scripts/manage-agent-skills \
-      && -r $stage/agent-skills/fedora-config/SKILL.md \
+      && -r $stage/agent-skills/cybexos/SKILL.md \
       && -r $stage/release-manifest.json ]] || {
     echo 'update: release archive is incomplete' >&2
     exit 1

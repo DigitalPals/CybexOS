@@ -10,7 +10,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.stat:
     path: >-
-      {{ primary_home }}/.local/state/fedora-config/migrations/hermes-agent-removed-v1
+      {{ primary_home }}/.local/state/cybexos/migrations/hermes-agent-removed-v1
   register: hermes_agent_removal_marker
   tags: [quickshell, hermes-menubar]
 
@@ -68,7 +68,7 @@
         - "{{ primary_home }}/.local/bin/hermes"
         - "{{ primary_home }}/.local/bin/hermes-agent"
         - "{{ primary_home }}/.local/bin/hermes-acp"
-        - "{{ primary_home }}/.local/share/fedora-config-user-tools/hermes"
+        - "{{ primary_home }}/.local/share/cybexos-user-tools/hermes"
         - "{{ primary_home }}/.hermes"
       notify: Reload user systemd
 
@@ -76,7 +76,7 @@
       become: true
       become_user: "{{ primary_user }}"
       ansible.builtin.find:
-        paths: "{{ primary_home }}/.cache/fedora-config"
+        paths: "{{ primary_home }}/.cache/cybexos"
         patterns: hermes-install-*.sh
         file_type: file
       register: hermes_agent_installer_cache
@@ -93,7 +93,7 @@
       become: true
       become_user: "{{ primary_user }}"
       ansible.builtin.file:
-        path: "{{ primary_home }}/.local/state/fedora-config/migrations"
+        path: "{{ primary_home }}/.local/state/cybexos/migrations"
         state: directory
         mode: "0700"
 
@@ -102,7 +102,7 @@
       become_user: "{{ primary_user }}"
       ansible.builtin.copy:
         dest: >-
-          {{ primary_home }}/.local/state/fedora-config/migrations/hermes-agent-removed-v1
+          {{ primary_home }}/.local/state/cybexos/migrations/hermes-agent-removed-v1
         content: "remote-only Hermes menubar migration complete\n"
         mode: "0600"
 

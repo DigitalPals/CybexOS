@@ -17,7 +17,7 @@
 - name: Checkout pinned Cybex Plymouth artwork
   ansible.builtin.git:
     repo: https://github.com/DigitalPals/omarchy-cybex.git
-    dest: /var/cache/fedora-config-upstream/omarchy-cybex
+    dest: /var/cache/cybexos-upstream/omarchy-cybex
     version: e76c323ed69baf0efae12b2e7afb42635920607a
     force: true
   register: boot_cybex_source
@@ -25,12 +25,12 @@
 
 - name: Inspect the cached Cybex source tree
   ansible.builtin.stat:
-    path: /var/cache/fedora-config-upstream/omarchy-cybex/config/plymouth/themes/cybex
+    path: /var/cache/cybexos-upstream/omarchy-cybex/config/plymouth/themes/cybex
   register: boot_cybex_source_tree
   when: plymouth_theme == 'cybex'
 
 - name: Verify pinned Cybex source revision # noqa command-instead-of-module
-  ansible.builtin.command: git -C /var/cache/fedora-config-upstream/omarchy-cybex rev-parse HEAD
+  ansible.builtin.command: git -C /var/cache/cybexos-upstream/omarchy-cybex rev-parse HEAD
   register: boot_cybex_revision
   changed_when: false
   check_mode: false
@@ -43,7 +43,7 @@
   ansible.builtin.command:
     argv:
       - find
-      - /var/cache/fedora-config-upstream/omarchy-cybex/config/plymouth/themes/cybex
+      - /var/cache/cybexos-upstream/omarchy-cybex/config/plymouth/themes/cybex
       - -mindepth
       - "1"
       - "("
@@ -66,7 +66,7 @@
   ansible.builtin.command:
     argv:
       - find
-      - /var/cache/fedora-config-upstream/omarchy-cybex/config/plymouth/themes/cybex
+      - /var/cache/cybexos-upstream/omarchy-cybex/config/plymouth/themes/cybex
       - -depth
       - -mindepth
       - "1"
@@ -189,7 +189,7 @@
 - name: Install non-overridden Cybex Plymouth theme files
   ansible.builtin.copy:
     remote_src: true
-    src: "/var/cache/fedora-config-upstream/omarchy-cybex/config/plymouth/themes/cybex/{{ item }}"
+    src: "/var/cache/cybexos-upstream/omarchy-cybex/config/plymouth/themes/cybex/{{ item }}"
     dest: "/usr/share/plymouth/themes/cybex/{{ item }}"
     owner: root
     group: root
@@ -220,7 +220,7 @@
 
 - name: Create Cybex deployment state directory
   ansible.builtin.file:
-    path: /var/lib/fedora-config-upstream/omarchy-cybex
+    path: /var/lib/cybexos-upstream/omarchy-cybex
     state: directory
     owner: root
     group: root
@@ -229,7 +229,7 @@
 
 - name: Record the installed Cybex source and override manifest
   ansible.builtin.copy:
-    dest: /var/lib/fedora-config-upstream/omarchy-cybex/installed-theme.manifest
+    dest: /var/lib/cybexos-upstream/omarchy-cybex/installed-theme.manifest
     owner: root
     group: root
     mode: "0644"

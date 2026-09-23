@@ -28,7 +28,7 @@
 - name: Download checksum-pinned vendor repository keys
   ansible.builtin.get_url:
     url: "{{ item.url }}"
-    dest: "/etc/pki/rpm-gpg/FEDORA-CONFIG-{{ item.name }}.asc"
+    dest: "/etc/pki/rpm-gpg/CYBEXOS-{{ item.name }}.asc"
     checksum: "{{ item.checksum }}"
     owner: root
     group: root
@@ -44,7 +44,7 @@
 
 - name: Import fingerprint-verified vendor package keys
   ansible.builtin.rpm_key:
-    key: "/etc/pki/rpm-gpg/FEDORA-CONFIG-{{ item.name }}.asc"
+    key: "/etc/pki/rpm-gpg/CYBEXOS-{{ item.name }}.asc"
     fingerprint:
       - "{{ item.fingerprint }}"
     state: present
@@ -102,8 +102,8 @@
     - /etc/yum.repos.d/brave-browser.repo
     - /etc/yum.repos.d/1password.repo
     - /etc/yum.repos.d/chatgpt.repo
-    - /etc/pki/rpm-gpg/FEDORA-CONFIG-brave-browser.asc
-    - /etc/pki/rpm-gpg/FEDORA-CONFIG-1password.asc
+    - /etc/pki/rpm-gpg/CYBEXOS-brave-browser.asc
+    - /etc/pki/rpm-gpg/CYBEXOS-1password.asc
     - /etc/pki/rpm-gpg/RPM-GPG-KEY-chatgpt
   register: apps_retired_proprietary_repos
   when:
@@ -162,7 +162,7 @@
     state: absent
   loop:
     - /etc/yum.repos.d/tailscale.repo
-    - /etc/pki/rpm-gpg/FEDORA-CONFIG-tailscale.asc
+    - /etc/pki/rpm-gpg/CYBEXOS-tailscale.asc
   when:
     - not features.tailscale | bool
     - apps_feature_owned.tailscale | bool

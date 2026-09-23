@@ -27,18 +27,18 @@ def run(*args, env, check=True):
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix="fedora-config-user-widgets.") as temporary, ExitStack() as stack:
+    with tempfile.TemporaryDirectory(prefix="cybexos-user-widgets.") as temporary, ExitStack() as stack:
         base = Path(temporary)
         env = dict(os.environ, HOME=str(base / "home"),
                    XDG_CONFIG_HOME=str(base / "config"),
                    XDG_DATA_HOME=str(base / "data"), XDG_STATE_HOME=str(base / "state"),
                    XDG_RUNTIME_DIR=str(base / "run"), QT_QPA_PLATFORM="offscreen",
                    QT_QUICK_BACKEND="software")
-        for key in ("FEDORA_CONFIG_USER_CONFIG_ROOT", "FEDORA_CONFIG_PLUGIN_ROOT"):
+        for key in ("CYBEXOS_USER_CONFIG_ROOT", "CYBEXOS_PLUGIN_ROOT"):
             env.pop(key, None)
         (base / "run").mkdir(mode=0o700)
-        packages = base / "data/fedora-config/plugins"
-        config = base / "config/fedora-config/plugins.json"
+        packages = base / "data/cybexos/plugins"
+        config = base / "config/cybexos/plugins.json"
         for plugin_id, api in (("example.good", 1), ("example.broken", 1), ("example.future", 2)):
             directory = packages / plugin_id
             directory.mkdir(parents=True)
@@ -287,7 +287,7 @@ Label {
         env["WAYLAND_DISPLAY"] = sockets[0].name
 
         protected = {path: path.read_bytes() for path in packages.rglob("*") if path.is_file()}
-        plugin_data = base / "data/fedora-config/plugin-data/example.good/history.json"
+        plugin_data = base / "data/cybexos/plugin-data/example.good/history.json"
         plugin_data.write_text('{"userData":"preserved"}')
         protected[plugin_data] = plugin_data.read_bytes()
         protected[config] = config.read_bytes()

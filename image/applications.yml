@@ -29,7 +29,7 @@
 
     - name: Create application ownership state
       ansible.builtin.file:
-        path: /var/lib/fedora-config/features
+        path: /var/lib/cybexos/features
         state: directory
         mode: "0755"
 

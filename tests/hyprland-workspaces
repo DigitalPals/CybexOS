@@ -5,7 +5,7 @@ cd -- "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 rendered=$(mktemp)
 trap 'rm -f -- "$rendered"' EXIT
-awk '/^{% if fedora_config_xps_2026 \| bool %}$/ { next }
+awk '/^{% if cybexos_xps_2026 \| bool %}$/ { next }
      /^{% else %}$/ { exit }
      { print }' roles/desktop/templates/monitors.lua.j2 >"$rendered"
 
@@ -128,7 +128,7 @@ LUA
 
 # Exercise the shared appearance policy for both generic and XPS installs.
 for xps in false true; do
-  sed "s/{{ (fedora_config_xps_2026 | bool) | ternary('true', 'false') }}/$xps/" \
+  sed "s/{{ (cybexos_xps_2026 | bool) | ternary('true', 'false') }}/$xps/" \
     roles/desktop/templates/looknfeel.lua.j2 >"$rendered"
   FEDORA_APPEARANCE_CONFIG=$rendered luajit <<'LUA'
 local config = assert(os.getenv("FEDORA_APPEARANCE_CONFIG"))

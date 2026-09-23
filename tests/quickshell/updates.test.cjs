@@ -264,14 +264,14 @@ test("the menu routes checks and runs through its deployment-aware client", () =
     assert.match(updates,
         /runStartProc\.command = command;\s*runStartProc\.running = true;/,
         "the panel owns the short-lived start request and its JSON response");
-    assert.doesNotMatch(updates, /"--class", "fedora-config-update"/,
+    assert.doesNotMatch(updates, /"--class", "cybexos-update"/,
         "starting an update must not open an external terminal");
     assert.match(updates,
         /command: \["timeout", "45s", "bash", root\.updateClient, "check"\]/);
-    assert.doesNotMatch(updates, /"fedora-config", "update"/,
+    assert.doesNotMatch(updates, /"cybexos", "update"/,
         "Quickshell-only deployments do not install the public CLI");
     assert.doesNotMatch(updates,
-        /Quickshell\.env\("HOME"\) \+ "\/\.local\/share\/fedora-config\/current\/update"/,
+        /Quickshell\.env\("HOME"\) \+ "\/\.local\/share\/cybexos\/current\/update"/,
         "the optional release runtime must not be an unconditional process");
 });
 

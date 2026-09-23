@@ -570,7 +570,7 @@ class RemoteWebUIAuth:
         body = encoded_body
         headers = {
             "Accept": "application/json",
-            "User-Agent": "fedora-config-hermes-menubar-bridge/1",
+            "User-Agent": "cybexos-hermes-menubar-bridge/1",
         }
         if encoded_body is not None:
             if not content_type:
@@ -1280,7 +1280,7 @@ class RemoteWebUIAuth:
             headers = {
                 "Accept": "text/event-stream",
                 "Cache-Control": "no-cache",
-                "User-Agent": "fedora-config-hermes-menubar-bridge/1",
+                "User-Agent": "cybexos-hermes-menubar-bridge/1",
             }
             if last_event_id:
                 headers["Last-Event-ID"] = str(last_event_id)[:1024]
@@ -1624,7 +1624,7 @@ class HermesGateway:
         )
         headers = {
             "Accept": "application/json",
-            "User-Agent": "fedora-config-hermes-menubar-bridge/1",
+            "User-Agent": "cybexos-hermes-menubar-bridge/1",
             "X-Hermes-Session-Token": token,
         }
         if body is not None:
@@ -1737,7 +1737,7 @@ class HermesGateway:
             return configured
         request = Request(
             f"{self.base_url}/",
-            headers={"User-Agent": "fedora-config-hermes-menubar-bridge/1"},
+            headers={"User-Agent": "cybexos-hermes-menubar-bridge/1"},
         )
         with urlopen(request, timeout=10) as response:
             body = response.read(1024 * 1024).decode("utf-8", errors="replace")
@@ -2128,7 +2128,7 @@ class HermesBridge:
             provider_status = await self.refresh_provider_status()
             return {
                 **self.snapshot(),
-                "server": "fedora-config-hermes-menubar-bridge",
+                "server": "cybexos-hermes-menubar-bridge",
                 "bridgeVersion": str(BRIDGE_VERSION),
                 "backendStatus": self.connection,
                 "capabilities": self.bridge_capabilities(),

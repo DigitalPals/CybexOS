@@ -6,25 +6,25 @@ for the transitional, pre-RPM layout.
 
 | Owner | Path | Update behavior |
 | --- | --- | --- |
-| Vendor | `~/.local/share/fedora-config/runtime/quickshell/` | Reconciled exactly from a verified release |
-| Vendor | `~/.local/share/fedora-config/runtime/hypr/` | Reconciled from rendered defaults in a verified release |
-| Vendor | `~/.local/share/fedora-config/releases/` and `current` | Staged and atomically selected by the release updater |
-| User | `~/.config/fedora-config/shell.json` | Read and written by the shell; never written by Ansible after a one-time, non-overwriting legacy copy |
-| User | `~/.config/fedora-config/hypr/` | Optional `user.lua`, `hypridle.conf`, and `hyprlock.conf` overrides |
-| User | `~/.local/share/fedora-config/themes/` | Reserved user theme packages; never reconciled or pruned |
-| User | `~/.local/share/fedora-config/plugins/` | API 1 widget packages; never reconciled or pruned |
-| User | `~/.config/fedora-config/plugins.json` | Separate widget enablement and preferences; never written by Ansible |
-| User | `~/.local/share/fedora-config/plugin-data/` | Persistent widget data; retained on update and uninstall |
-| State | `~/.local/state/fedora-config/` | Health, update, migration, and shell runtime state |
+| Vendor | `~/.local/share/cybexos/runtime/quickshell/` | Reconciled exactly from a verified release |
+| Vendor | `~/.local/share/cybexos/runtime/hypr/` | Reconciled from rendered defaults in a verified release |
+| Vendor | `~/.local/share/cybexos/releases/` and `current` | Staged and atomically selected by the release updater |
+| User | `~/.config/cybexos/shell.json` | Read and written by the shell; never written by Ansible after a one-time, non-overwriting legacy copy |
+| User | `~/.config/cybexos/hypr/` | Optional `user.lua`, `hypridle.conf`, and `hyprlock.conf` overrides |
+| User | `~/.local/share/cybexos/themes/` | Reserved user theme packages; never reconciled or pruned |
+| User | `~/.local/share/cybexos/plugins/` | API 1 widget packages; never reconciled or pruned |
+| User | `~/.config/cybexos/plugins.json` | Separate widget enablement and preferences; never written by Ansible |
+| User | `~/.local/share/cybexos/plugin-data/` | Persistent widget data; retained on update and uninstall |
+| State | `~/.local/state/cybexos/` | Health, update, migration, and shell runtime state |
 
 The session always starts Hyprland with the vendor entry point. Vendor modules
-load first; `~/.config/fedora-config/hypr/user.lua`, when present, loads last.
+load first; `~/.config/cybexos/hypr/user.lua`, when present, loads last.
 The idle and lock services prefer their same-named user configuration files
 and otherwise use vendor defaults. A bad user override may break that component
 but is never silently replaced by an update. Without a user `hypridle.conf`,
 the idle service applies the timeouts from Settings → System → Idle: the
 runtime resolver renders them from `shell.json` into
-`$XDG_RUNTIME_DIR/fedora-config/hypridle.conf` at each start (falling back to
+`$XDG_RUNTIME_DIR/cybexos/hypridle.conf` at each start (falling back to
 the vendor file), and the shell restarts `hypridle.service` after a change is
 saved.
 

@@ -69,7 +69,7 @@ def main():
     for app in inventory["github_release_apps"]:
         if app["kind"] != "rpm":
             continue
-        matches = list((Path("/var/cache/fedora-config-upstream") / app["name"]).rglob("*.rpm"))
+        matches = list((Path("/var/cache/cybexos-upstream") / app["name"]).rglob("*.rpm"))
         expected = app["checksum"].removeprefix("sha256:")
         matches = [file for file in matches if hashlib.file_digest(file.open("rb"), "sha256").hexdigest() == expected]
         if len(matches) != 1:
@@ -84,15 +84,15 @@ def main():
     payload.mkdir(exist_ok=False)
     # An explicit allowlist prevents builder accounts, keys, caches, logs,
     # container storage and other disposable state from reaching the image.
-    for relative in ("opt/fedora-config-apps", "opt/fedora-config-builds", "usr/local/bin",
+    for relative in ("opt/cybexos-apps", "opt/cybexos-builds", "usr/local/bin",
                      "usr/local/libexec", "usr/local/share/fonts"):
         source = Path("/") / relative
         if source.exists():
             copy_tree(source, payload / relative)
-    for log_dir in (payload / "opt/fedora-config-builds").glob("*/logs"):
+    for log_dir in (payload / "opt/cybexos-builds").glob("*/logs"):
         shutil.rmtree(log_dir)
-    seed = payload / "usr/share/fedora-config/user-seed"
-    for relative in (".local/bin", ".local/share/claude", ".local/share/fedora-config-user-tools",
+    seed = payload / "usr/share/cybexos/user-seed"
+    for relative in (".local/bin", ".local/share/claude", ".local/share/cybexos-user-tools",
                      ".local/share/voxtype", ".local/share/t3code-nightly", ".cargo/bin",
                      ".cargo/env", ".rustup/toolchains", ".rustup/settings.toml", ".rustup/update-hashes",
                      "Android/Sdk", ".config/nvim", ".config/voxtype", ".npm-global"):
@@ -103,7 +103,7 @@ def main():
     # Native installers use absolute HOME links. Relativize only seed-owned
     # links, so the same payload works for every account without downloads.
     relativize_seed_links(seed, SEED)
-    android = payload / "usr/local/libexec/fedora-config-android-sdk-update"
+    android = payload / "usr/local/libexec/cybexos-android-sdk-update"
     android.write_text(android.read_text().replace(f"sdk={SEED}/Android/Sdk", 'sdk="$HOME/Android/Sdk"'))
     # Existing repo definitions keep native RPM updates working after install.
     policies = configparser.ConfigParser(interpolation=None)

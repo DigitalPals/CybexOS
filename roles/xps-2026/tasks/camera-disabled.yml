@@ -1,13 +1,13 @@
 ---
 - name: Inspect the generic camera relay configuration backup
   ansible.builtin.stat:
-    path: /var/lib/fedora-config/backups/system/etc/v4l2-relayd.d/icamerasrc.conf
+    path: /var/lib/cybexos/backups/system/etc/v4l2-relayd.d/icamerasrc.conf
   register: xps_2026_disabled_camera_relay_backup
   tags: [xps-2026, hardware, camera]
 
 - name: Restore Fedora's generic camera relay configuration
   ansible.builtin.copy:
-    src: /var/lib/fedora-config/backups/system/etc/v4l2-relayd.d/icamerasrc.conf
+    src: /var/lib/cybexos/backups/system/etc/v4l2-relayd.d/icamerasrc.conf
     dest: /etc/v4l2-relayd.d/icamerasrc.conf
     remote_src: true
     owner: root

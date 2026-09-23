@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-state_dir="${QUICKSHELL_REMINDER_STATE_DIR:-$HOME/.local/state/fedora-config/shell/reminders}"
+state_dir="${QUICKSHELL_REMINDER_STATE_DIR:-$HOME/.local/state/cybexos/shell/reminders}"
 script_path="$(readlink -f -- "$0")"
 
 usage() {

@@ -1087,7 +1087,7 @@ async def scenario() -> None:
     previous_remote_url = os.environ.get("HERMES_REMOTE_URL")
     try:
         with RunningServer() as remote, tempfile.TemporaryDirectory(
-            prefix="fedora-config-hermes-native-runtime."
+            prefix="cybexos-hermes-native-runtime."
         ) as temporary:
             os.environ["HERMES_REMOTE_URL"] = remote.url
             temporary_path = Path(temporary)

@@ -6,24 +6,24 @@ authoritative API reference; read it before implementing behavior.
 
 ## Ownership and workflow
 
-1. Inspect `fedora-config plugin list`. Use a unique lowercase ID such as
+1. Inspect `cybex plugin list`. Use a unique lowercase ID such as
    `personal.focus`; preserve an existing package with that ID.
-2. Create `~/.local/share/fedora-config/plugins/<id>/manifest.json` and its QML
+2. Create `~/.local/share/cybexos/plugins/<id>/manifest.json` and its QML
    entrypoint. Use an ordinary QtQuick Item and declare
    `required property var pluginApi`. Declare `apiVersion: 1` in the manifest.
 3. Use `pluginApi.settings`, `pluginApi.theme`, and `pluginApi.setSetting()`.
    Keep helper code/assets in the package and persistent data under
    `pluginApi.dataPath`. Do not import private Common/Bar components or
    hardcode a release path. Widgets run as trusted code with the user's access.
-4. Enable with `fedora-config plugin enable <id> --width 120 --order 0`.
+4. Enable with `cybex plugin enable <id> --width 120 --order 0`.
    New packages are disabled until explicitly enabled. Enablement and settings
    refresh within two seconds. QML code edits require a Quickshell restart.
-5. Set preferences with `fedora-config plugin set <id> <key> '<JSON value>'`.
+5. Set preferences with `cybex plugin set <id> <key> '<JSON value>'`.
    This merges one key under a lock. Never replace the whole registry or edit
    built-in `shell.json` module lists to register a plugin.
-6. Verify the widget in the bar and run `fedora-config plugin list` again.
+6. Verify the widget in the bar and run `cybex plugin list` again.
    API/manifest problems appear there; QML load errors appear on the widget's
-   error tooltip. Use `fedora-config plugin disable <id>` to recover without
+   error tooltip. Use `cybex plugin disable <id>` to recover without
    deleting code, preferences, or data.
 
 V1 places widgets before the right-hand built-in modules. Width is 24–320
@@ -72,8 +72,8 @@ Rectangle {
 After creating the package:
 
 ```bash
-fedora-config plugin set personal.focus label '"Deep work"'
-fedora-config plugin enable personal.focus --width 120
+cybex plugin set personal.focus label '"Deep work"'
+cybex plugin enable personal.focus --width 120
 ```
 
 An API mismatch preserves the package and its settings but does not execute

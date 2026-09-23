@@ -3,20 +3,20 @@
 set -euo pipefail
 umask 077
 
-config_root=${XDG_CONFIG_HOME:-$HOME/.config}/fedora-config
-data_root=${XDG_DATA_HOME:-$HOME/.local/share}/fedora-config
+config_root=${XDG_CONFIG_HOME:-$HOME/.config}/cybexos
+data_root=${XDG_DATA_HOME:-$HOME/.local/share}/cybexos
 runtime_root=$data_root/runtime
 dev_source_file=$config_root/dev-source
 
 usage() {
   cat <<'EOF'
 Usage:
-  fedora-config-runtime path quickshell|hypr-source|hypr-generated|hypr-config
-  fedora-config-runtime exec quickshell|hypridle|hyprlock
-  fedora-config-runtime dev enable CHECKOUT
-  fedora-config-runtime dev disable
-  fedora-config-runtime dev status
-  fedora-config-runtime plugin add|update|clone|remove|list|enable|disable|set|reload|restart [arguments]
+  cybexos-runtime path quickshell|hypr-source|hypr-generated|hypr-config
+  cybexos-runtime exec quickshell|hypridle|hyprlock
+  cybexos-runtime dev enable CHECKOUT
+  cybexos-runtime dev disable
+  cybexos-runtime dev status
+  cybexos-runtime plugin add|update|clone|remove|list|enable|disable|set|reload|restart [arguments]
 
 The development switch only records a validated checkout. It never fetches,
 resets, merges, or otherwise changes that checkout.
@@ -63,7 +63,7 @@ active_source() {
     return 0
   fi
   if [[ -e $dev_source_file || -L $dev_source_file ]]; then
-    printf 'fedora-config-runtime: ignoring invalid development source: %s\n' \
+    printf 'cybexos-runtime: ignoring invalid development source: %s\n' \
       "$dev_source_file" >&2
   fi
   return 1
@@ -88,19 +88,19 @@ runtime_path() {
       ;;
     hypr-generated) printf '%s/hypr\n' "$runtime_root" ;;
     hypr-config) printf '%s/hypr/hyprland.lua\n' "$runtime_root" ;;
-    *) printf 'fedora-config-runtime: unknown runtime path %s\n' "$kind" >&2; return 2 ;;
+    *) printf 'cybexos-runtime: unknown runtime path %s\n' "$kind" >&2; return 2 ;;
   esac
 }
 
 restart_desktop() {
-  [[ ${FEDORA_CONFIG_RUNTIME_TESTING:-0} == 1 ]] && return 0
+  [[ ${CYBEXOS_RUNTIME_TESTING:-0} == 1 ]] && return 0
   systemctl --user try-restart quickshell.service || {
-    printf 'fedora-config-runtime: Quickshell could not be restarted\n' >&2
+    printf 'cybexos-runtime: Quickshell could not be restarted\n' >&2
     return 1
   }
   if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] && command -v hyprctl >/dev/null; then
     hyprctl reload >/dev/null || {
-      printf 'fedora-config-runtime: Hyprland could not reload the selected source\n' >&2
+      printf 'cybexos-runtime: Hyprland could not reload the selected source\n' >&2
       return 1
     }
   fi
@@ -173,15 +173,15 @@ dev_command() {
 render_hypridle_config() {
   local vendor=$1 script output_dir output temporary session_action
   script=$(runtime_path quickshell)/scripts/hypridle-config.py
-  session_action=/usr/local/libexec/fedora-config-session-action
-  [[ -x $session_action || ! -x /usr/libexec/fedora-config-session-action ]] ||
-    session_action=/usr/libexec/fedora-config-session-action
-  output_dir=${XDG_RUNTIME_DIR:-}/fedora-config
+  session_action=/usr/local/libexec/cybexos-session-action
+  [[ -x $session_action || ! -x /usr/libexec/cybexos-session-action ]] ||
+    session_action=/usr/libexec/cybexos-session-action
+  output_dir=${XDG_RUNTIME_DIR:-}/cybexos
   output=$output_dir/hypridle.conf
   if [[ -z ${XDG_RUNTIME_DIR:-} || ! -f $script ]] ||
       ! mkdir -p -- "$output_dir" ||
       ! temporary=$(mktemp "$output_dir/.hypridle.conf.XXXXXX"); then
-    printf 'fedora-config-runtime: using default idle timeouts\n' >&2
+    printf 'cybexos-runtime: using default idle timeouts\n' >&2
     printf '%s\n' "$vendor"
     return 0
   fi
@@ -190,7 +190,7 @@ render_hypridle_config() {
     printf '%s\n' "$output"
   else
     rm -f -- "$temporary"
-    printf 'fedora-config-runtime: could not apply idle settings; using defaults\n' >&2
+    printf 'cybexos-runtime: could not apply idle settings; using defaults\n' >&2
     printf '%s\n' "$vendor"
   fi
 }
@@ -201,13 +201,13 @@ exec_runtime() {
     quickshell)
       selected=$(runtime_path quickshell)
       [[ -f $selected/shell.qml ]] || {
-        printf 'fedora-config-runtime: Quickshell runtime is incomplete: %s\n' \
+        printf 'cybexos-runtime: Quickshell runtime is incomplete: %s\n' \
           "$selected" >&2
         return 1
       }
-      export FEDORA_CONFIG_USER_CONFIG_ROOT=$config_root
-      export FEDORA_CONFIG_THEME_ROOT=$data_root/themes
-      export FEDORA_CONFIG_PLUGIN_ROOT=$data_root/plugins
+      export CYBEXOS_USER_CONFIG_ROOT=$config_root
+      export CYBEXOS_THEME_ROOT=$data_root/themes
+      export CYBEXOS_PLUGIN_ROOT=$data_root/plugins
       export OMARCHY_PATH=$selected/compat/omarchy
       export PATH=$OMARCHY_PATH/bin:$PATH
       exec /usr/bin/qs -p "$selected"
@@ -217,7 +217,7 @@ exec_runtime() {
       selected=$runtime_root/hypr/$kind.conf
       [[ ! -f $user_config || -L $user_config ]] || selected=$user_config
       [[ -f $selected ]] || {
-        printf 'fedora-config-runtime: %s configuration is missing: %s\n' \
+        printf 'cybexos-runtime: %s configuration is missing: %s\n' \
           "$kind" "$selected" >&2
         return 1
       }
@@ -231,7 +231,7 @@ exec_runtime() {
           --immediate-render --no-fade-in --quiet
       fi
       ;;
-    *) printf 'fedora-config-runtime: unknown executable %s\n' "$kind" >&2; return 2 ;;
+    *) printf 'cybexos-runtime: unknown executable %s\n' "$kind" >&2; return 2 ;;
   esac
 }
 

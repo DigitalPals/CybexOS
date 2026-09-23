@@ -1,5 +1,5 @@
 {
-  "product": "fedora-config",
+  "product": "cybexos",
   "configSchema": 1,
   "supportedFedora": ["44"],
   "architectures": ["x86_64"],

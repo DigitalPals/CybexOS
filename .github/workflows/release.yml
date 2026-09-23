@@ -31,7 +31,7 @@ jobs:
           curl --fail --location --retry 3 --output /tmp/hyprland-copr.gpg \
             https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
           echo '581bd602d10705eb89003680335ffc3684b922c587073b6e52c371f949843fd7  /tmp/hyprland-copr.gpg' | sha256sum --check
-          install -m 0644 /tmp/hyprland-copr.gpg /etc/pki/rpm-gpg/FEDORA-CONFIG-sdegler-hyprland-copr.gpg
+          install -m 0644 /tmp/hyprland-copr.gpg /etc/pki/rpm-gpg/CYBEXOS-sdegler-hyprland-copr.gpg
           install -m 0644 roles/desktop/templates/hyprland-copr.repo.j2 \
             '/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:sdegler:hyprland.repo'
           dnf install -y quickshell
@@ -71,32 +71,32 @@ jobs:
           version=${RELEASE_TAG#v}
           [[ $RELEASE_TAG == v$version ]]
           scripts/semver validate "$version"
-          root="dist/fedora-config-$version"
+          root="dist/cybexos-$version"
           mkdir -p "$root"
           git archive HEAD | tar -x -C "$root"
           printf '%s\n' "$version" >"$root/VERSION"
           jq --arg version "$version" '. + {version:$version}' \
             "$root/release-manifest.json" >"$root/release-manifest.json.new"
           mv "$root/release-manifest.json.new" "$root/release-manifest.json"
-          tar --create --zstd --file "dist/fedora-config-$version.tar.zst" \
-            --directory dist "fedora-config-$version"
+          tar --create --zstd --file "dist/cybexos-$version.tar.zst" \
+            --directory dist "cybexos-$version"
           (
             cd dist
-            sha256sum "fedora-config-$version.tar.zst" >SHA256SUMS
+            sha256sum "cybexos-$version.tar.zst" >SHA256SUMS
           )
           mkdir dist/verify
-          tar --extract --zstd --file "dist/fedora-config-$version.tar.zst" \
+          tar --extract --zstd --file "dist/cybexos-$version.tar.zst" \
             --directory dist/verify --strip-components=1
           test "$(tr -d '[:space:]' <dist/verify/VERSION)" = "$version"
           test -x dist/verify/install
           test -x dist/verify/scripts/manage-agent-skills
-          test -r dist/verify/agent-skills/fedora-config/SKILL.md
+          test -r dist/verify/agent-skills/cybexos/SKILL.md
           ansible-playbook dist/verify/site.yml --syntax-check
       - name: Attest the exact release archive
         # actions/attest v4.2.2
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: dist/fedora-config-*.tar.zst
+          subject-path: dist/cybexos-*.tar.zst
       - name: Publish the completed release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -109,7 +109,7 @@ jobs:
           gh release create "$RELEASE_TAG" --verify-tag --draft \
             --generate-notes --title "CybexOS $version" "${prerelease[@]}"
           gh release upload "$RELEASE_TAG" \
-            "dist/fedora-config-$version.tar.zst" dist/SHA256SUMS
+            "dist/cybexos-$version.tar.zst" dist/SHA256SUMS
           gh release edit "$RELEASE_TAG" --draft=false
           for attempt in $(seq 1 12); do
             if test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .immutable)" = true; then

@@ -20,7 +20,7 @@ Singleton {
     // would silently fork the list. Settings and the wallpaper palette are
     // pinned for the same reason.
     readonly property string statePath:
-        Quickshell.env("HOME") + "/.local/state/fedora-config/shell/t3-model-favorites.json"
+        Quickshell.env("HOME") + "/.local/state/cybexos/shell/t3-model-favorites.json"
 
     function isFavorite(instanceId, model) {
         return indexOf(instanceId, model) >= 0;

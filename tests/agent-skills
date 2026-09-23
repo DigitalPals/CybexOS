@@ -4,7 +4,7 @@ set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 helper=$repo_root/scripts/manage-agent-skills
-fixture=$(mktemp -d "${TMPDIR:-/tmp}/fedora-config-agent-skills.XXXXXX")
+fixture=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-agent-skills.XXXXXX")
 trap 'rm -rf -- "$fixture"' EXIT
 
 fail() {
@@ -24,7 +24,7 @@ assert_absent() {
 assert_no_transactions() {
   local home=$1 leaked
   leaked=$(find "$home" -type d \
-    \( -name '.fedora-config-agent-skill.*' -o -name '.transaction.*' \) \
+    \( -name '.cybexos-agent-skill.*' -o -name '.transaction.*' \) \
     -print -quit)
   [[ -z $leaked ]] || fail "transaction directory leaked: $leaked"
 }
@@ -38,11 +38,11 @@ assert_link() {
 
 make_home() {
   local home=$fixture/$1 canonical
-  canonical=$home/.local/share/fedora-config/releases/1.0.0/agent-skills/fedora-config
+  canonical=$home/.local/share/cybexos/releases/1.0.0/agent-skills/cybexos
   mkdir -p -- "$canonical"
-  printf '%s\n' '---' 'name: fedora-config' 'description: fixture' '---' \
+  printf '%s\n' '---' 'name: cybexos' 'description: fixture' '---' \
     >"$canonical/SKILL.md"
-  ln -s releases/1.0.0 "$home/.local/share/fedora-config/current"
+  ln -s releases/1.0.0 "$home/.local/share/cybexos/current"
   printf '%s\n' "$home"
 }
 
@@ -64,51 +64,51 @@ assert_unrelated() {
 
 assert_discovery_links() {
   local home=$1 canonical
-  canonical=$home/.local/share/fedora-config/current/agent-skills/fedora-config
-  assert_link "$home/.agents/skills/fedora-config" "$canonical"
-  assert_link "$home/.claude/skills/fedora-config" "$canonical"
-  assert_link "$home/.codex/skills/fedora-config" "$canonical"
+  canonical=$home/.local/share/cybexos/current/agent-skills/cybexos
+  assert_link "$home/.agents/skills/cybexos" "$canonical"
+  assert_link "$home/.claude/skills/cybexos" "$canonical"
+  assert_link "$home/.codex/skills/cybexos" "$canonical"
   for slot in agents claude codex; do
-    [[ -f $home/.local/state/fedora-config/backups/agent-skills/$slot/complete ]] ||
+    [[ -f $home/.local/state/cybexos/backups/agent-skills/$slot/complete ]] ||
       fail "$slot has no independent adoption record"
   done
 }
 
 seed_originals() {
   local home=$1
-  mkdir -p -- "$home/.agents/skills" "$home/.claude/skills/fedora-config/nested" \
+  mkdir -p -- "$home/.agents/skills" "$home/.claude/skills/cybexos/nested" \
     "$home/.codex/skills" "$home/original-skill"
-  printf 'original agents file\n' >"$home/.agents/skills/fedora-config"
-  chmod 0640 "$home/.agents/skills/fedora-config"
-  touch -d '@1577934245' "$home/.agents/skills/fedora-config"
+  printf 'original agents file\n' >"$home/.agents/skills/cybexos"
+  chmod 0640 "$home/.agents/skills/cybexos"
+  touch -d '@1577934245' "$home/.agents/skills/cybexos"
   printf 'original claude directory\n' \
-    >"$home/.claude/skills/fedora-config/nested/value"
-  chmod 0750 "$home/.claude/skills/fedora-config"
-  chmod 0600 "$home/.claude/skills/fedora-config/nested/value"
+    >"$home/.claude/skills/cybexos/nested/value"
+  chmod 0750 "$home/.claude/skills/cybexos"
+  chmod 0600 "$home/.claude/skills/cybexos/nested/value"
   printf 'normal symlink target\n' >"$home/original-skill/SKILL.md"
-  ln -s "$home/original-skill" "$home/.codex/skills/fedora-config"
+  ln -s "$home/original-skill" "$home/.codex/skills/cybexos"
 }
 
 assert_originals() {
   local home=$1
-  [[ -f $home/.agents/skills/fedora-config \
-      && ! -L $home/.agents/skills/fedora-config ]] ||
+  [[ -f $home/.agents/skills/cybexos \
+      && ! -L $home/.agents/skills/cybexos ]] ||
     fail 'regular-file skill was not restored'
-  [[ $(<"$home/.agents/skills/fedora-config") == 'original agents file' ]] ||
+  [[ $(<"$home/.agents/skills/cybexos") == 'original agents file' ]] ||
     fail 'regular-file skill content changed'
-  [[ $(stat -c %a "$home/.agents/skills/fedora-config") == 640 ]] ||
+  [[ $(stat -c %a "$home/.agents/skills/cybexos") == 640 ]] ||
     fail 'regular-file skill mode changed'
-  [[ $(stat -c %Y "$home/.agents/skills/fedora-config") == 1577934245 ]] ||
+  [[ $(stat -c %Y "$home/.agents/skills/cybexos") == 1577934245 ]] ||
     fail 'regular-file skill timestamp changed'
-  [[ -d $home/.claude/skills/fedora-config \
-      && ! -L $home/.claude/skills/fedora-config ]] ||
+  [[ -d $home/.claude/skills/cybexos \
+      && ! -L $home/.claude/skills/cybexos ]] ||
     fail 'directory skill was not restored'
-  [[ $(<"$home/.claude/skills/fedora-config/nested/value") \
+  [[ $(<"$home/.claude/skills/cybexos/nested/value") \
       == 'original claude directory' ]] ||
     fail 'directory skill content changed'
-  [[ $(stat -c %a "$home/.claude/skills/fedora-config") == 750 ]] ||
+  [[ $(stat -c %a "$home/.claude/skills/cybexos") == 750 ]] ||
     fail 'directory skill mode changed'
-  assert_link "$home/.codex/skills/fedora-config" "$home/original-skill"
+  assert_link "$home/.codex/skills/cybexos" "$home/original-skill"
 }
 
 # Uninstall on a system that was never adopted is a true no-op and does not
@@ -117,7 +117,7 @@ never_adopted_home=$(make_home never-adopted)
 never_adopted_output=$($helper uninstall --home "$never_adopted_home")
 [[ $never_adopted_output == UNCHANGED:* ]] ||
   fail 'never-adopted uninstall reported a change'
-assert_absent "$never_adopted_home/.local/state/fedora-config"
+assert_absent "$never_adopted_home/.local/state/cybexos"
 
 # Entirely absent slots are recorded independently, converge twice, disappear
 # on uninstall, and never disturb neighboring skills.
@@ -127,15 +127,15 @@ first_output=$($helper provision --home "$absent_home")
 [[ $first_output == CHANGED:* ]] || fail 'first absent-target adoption was unchanged'
 assert_discovery_links "$absent_home"
 for slot in agents claude codex; do
-  [[ -f $absent_home/.local/state/fedora-config/backups/agent-skills/$slot/absent ]] ||
+  [[ -f $absent_home/.local/state/cybexos/backups/agent-skills/$slot/absent ]] ||
     fail "$slot did not record an absent original"
 done
 second_output=$($helper provision --home "$absent_home")
 [[ $second_output == UNCHANGED:* ]] || fail 'repeat convergence reported a change'
 $helper uninstall --home "$absent_home" >/dev/null
-assert_absent "$absent_home/.agents/skills/fedora-config"
-assert_absent "$absent_home/.claude/skills/fedora-config"
-assert_absent "$absent_home/.codex/skills/fedora-config"
+assert_absent "$absent_home/.agents/skills/cybexos"
+assert_absent "$absent_home/.claude/skills/cybexos"
+assert_absent "$absent_home/.codex/skills/cybexos"
 assert_unrelated "$absent_home"
 
 # Files, directories, and normal symlinks survive strict later ownership and
@@ -145,7 +145,7 @@ seed_unrelated "$objects_home"
 seed_originals "$objects_home"
 $helper provision --home "$objects_home" >/dev/null
 assert_discovery_links "$objects_home"
-backup_root=$objects_home/.local/state/fedora-config/backups/agent-skills
+backup_root=$objects_home/.local/state/cybexos/backups/agent-skills
 [[ $(<"$backup_root/agents/original") == 'original agents file' ]] ||
   fail 'regular-file first-adoption backup is wrong'
 [[ $(<"$backup_root/claude/original/nested/value") \
@@ -153,14 +153,14 @@ backup_root=$objects_home/.local/state/fedora-config/backups/agent-skills
   fail 'directory first-adoption backup is wrong'
 assert_link "$backup_root/codex/original" "$objects_home/original-skill"
 
-rm -f -- "$objects_home/.agents/skills/fedora-config"
-rm -f -- "$objects_home/.codex/skills/fedora-config"
-rm -rf -- "$objects_home/.claude/skills/fedora-config"
-printf 'later agents collision\n' >"$objects_home/.agents/skills/fedora-config"
-mkdir -p -- "$objects_home/.claude/skills/fedora-config"
+rm -f -- "$objects_home/.agents/skills/cybexos"
+rm -f -- "$objects_home/.codex/skills/cybexos"
+rm -rf -- "$objects_home/.claude/skills/cybexos"
+printf 'later agents collision\n' >"$objects_home/.agents/skills/cybexos"
+mkdir -p -- "$objects_home/.claude/skills/cybexos"
 printf 'later claude collision\n' \
-  >"$objects_home/.claude/skills/fedora-config/value"
-ln -s missing-later "$objects_home/.codex/skills/fedora-config"
+  >"$objects_home/.claude/skills/cybexos/value"
+ln -s missing-later "$objects_home/.codex/skills/cybexos"
 strict_output=$($helper provision --home "$objects_home")
 [[ $strict_output == CHANGED:* ]] || fail 'strict overwrite reported no change'
 assert_discovery_links "$objects_home"
@@ -177,20 +177,20 @@ assert_unrelated "$objects_home"
 # A dangling symlink is an object, not an absent path, and is restored exactly.
 dangling_home=$(make_home dangling)
 mkdir -p -- "$dangling_home/.codex/skills"
-ln -s ../../never-created "$dangling_home/.codex/skills/fedora-config"
+ln -s ../../never-created "$dangling_home/.codex/skills/cybexos"
 $helper provision --home "$dangling_home" >/dev/null
 assert_link \
-  "$dangling_home/.local/state/fedora-config/backups/agent-skills/codex/original" \
+  "$dangling_home/.local/state/cybexos/backups/agent-skills/codex/original" \
   ../../never-created
 $helper uninstall --home "$dangling_home" >/dev/null
-assert_link "$dangling_home/.codex/skills/fedora-config" ../../never-created
+assert_link "$dangling_home/.codex/skills/cybexos" ../../never-created
 
 # Backup failure is preflighted before any target changes or adoption records.
 backup_failure_home=$(make_home backup-failure)
 seed_originals "$backup_failure_home"
 set +e
-env FEDORA_CONFIG_AGENT_SKILLS_TESTING=1 \
-  FEDORA_CONFIG_AGENT_SKILLS_TEST_FAIL=backup:claude \
+env CYBEXOS_AGENT_SKILLS_TESTING=1 \
+  CYBEXOS_AGENT_SKILLS_TEST_FAIL=backup:claude \
   "$helper" provision --home "$backup_failure_home" >/dev/null 2>&1
 backup_failure_rc=$?
 set -e
@@ -198,7 +198,7 @@ set -e
 assert_originals "$backup_failure_home"
 for slot in agents claude codex; do
   assert_absent \
-    "$backup_failure_home/.local/state/fedora-config/backups/agent-skills/$slot"
+    "$backup_failure_home/.local/state/cybexos/backups/agent-skills/$slot"
 done
 
 # A failure during the first replacement restores every pre-call target and
@@ -206,8 +206,8 @@ done
 replace_failure_home=$(make_home replace-failure)
 seed_originals "$replace_failure_home"
 set +e
-env FEDORA_CONFIG_AGENT_SKILLS_TESTING=1 \
-  FEDORA_CONFIG_AGENT_SKILLS_TEST_FAIL=install:agents \
+env CYBEXOS_AGENT_SKILLS_TESTING=1 \
+  CYBEXOS_AGENT_SKILLS_TEST_FAIL=install:agents \
   "$helper" provision --home "$replace_failure_home" >/dev/null 2>&1
 replace_failure_rc=$?
 set -e
@@ -215,7 +215,7 @@ set -e
 assert_originals "$replace_failure_home"
 for slot in agents claude codex; do
   assert_absent \
-    "$replace_failure_home/.local/state/fedora-config/backups/agent-skills/$slot"
+    "$replace_failure_home/.local/state/cybexos/backups/agent-skills/$slot"
 done
 
 # Uninstall is transactional too. Its failed first restoration rolls back to
@@ -223,25 +223,25 @@ done
 uninstall_failure_home=$(make_home uninstall-failure)
 seed_originals "$uninstall_failure_home"
 $helper provision --home "$uninstall_failure_home" >/dev/null
-rm -f -- "$uninstall_failure_home/.agents/skills/fedora-config"
+rm -f -- "$uninstall_failure_home/.agents/skills/cybexos"
 printf 'owned replacement before uninstall\n' \
-  >"$uninstall_failure_home/.agents/skills/fedora-config"
+  >"$uninstall_failure_home/.agents/skills/cybexos"
 set +e
-env FEDORA_CONFIG_AGENT_SKILLS_TESTING=1 \
-  FEDORA_CONFIG_AGENT_SKILLS_TEST_FAIL=after:agents \
+env CYBEXOS_AGENT_SKILLS_TESTING=1 \
+  CYBEXOS_AGENT_SKILLS_TEST_FAIL=after:agents \
   "$helper" uninstall --home "$uninstall_failure_home" >/dev/null 2>&1
 uninstall_failure_rc=$?
 set -e
 [[ $uninstall_failure_rc -eq 97 ]] || fail 'uninstall failure did not propagate'
-[[ $(<"$uninstall_failure_home/.agents/skills/fedora-config") \
+[[ $(<"$uninstall_failure_home/.agents/skills/cybexos") \
     == 'owned replacement before uninstall' ]] ||
   fail 'failed uninstall did not restore its pre-call file'
 assert_link \
-  "$uninstall_failure_home/.claude/skills/fedora-config" \
-  "$uninstall_failure_home/.local/share/fedora-config/current/agent-skills/fedora-config"
+  "$uninstall_failure_home/.claude/skills/cybexos" \
+  "$uninstall_failure_home/.local/share/cybexos/current/agent-skills/cybexos"
 assert_link \
-  "$uninstall_failure_home/.codex/skills/fedora-config" \
-  "$uninstall_failure_home/.local/share/fedora-config/current/agent-skills/fedora-config"
+  "$uninstall_failure_home/.codex/skills/cybexos" \
+  "$uninstall_failure_home/.local/share/cybexos/current/agent-skills/cybexos"
 $helper uninstall --home "$uninstall_failure_home" >/dev/null
 assert_originals "$uninstall_failure_home"
 

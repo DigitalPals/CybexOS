@@ -1,15 +1,15 @@
-%post --erroronfail --log=/var/log/anaconda/fedora-config-cleanup.log
+%post --erroronfail --log=/var/log/anaconda/cybexos-cleanup.log
 set -eu
 # These are exact live-image-owned paths, not user customization directories.
 if getent passwd liveuser >/dev/null; then
   userdel --remove liveuser
 fi
-rm -f /etc/sudoers.d/fedora-config-live
-rm -f /etc/polkit-1/rules.d/49-fedora-config-live.rules
+rm -f /etc/sudoers.d/cybexos-live
+rm -f /etc/polkit-1/rules.d/49-cybexos-live.rules
 rm -f /var/lib/AccountsService/users/liveuser
-rm -f /etc/systemd/system/multi-user.target.wants/fedora-config-live.service
-rm -f /usr/lib/systemd/system/fedora-config-live.service
-rm -f /usr/libexec/fedora-config-live-setup
+rm -f /etc/systemd/system/multi-user.target.wants/cybexos-live.service
+rm -f /usr/lib/systemd/system/cybexos-live.service
+rm -f /usr/libexec/cybexos-live-setup
 rm -f /etc/dracut.conf.d/99-live.conf
 rm -f /etc/dracut.conf.d/99-liveos.conf
 rm -f /etc/ssh/ssh_host_*

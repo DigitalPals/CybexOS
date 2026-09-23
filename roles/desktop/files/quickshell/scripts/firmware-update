@@ -14,9 +14,9 @@ finish() {
 }
 
 # Also prevent duplicate installers after a shell reload.
-lock_root=${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/fedora-config}
+lock_root=${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/cybexos}
 mkdir -p -- "$lock_root" || finish 1
-exec 9>"$lock_root/fedora-config-firmware.lock" || finish 1
+exec 9>"$lock_root/cybexos-firmware.lock" || finish 1
 flock -n 9 || { printf 'A firmware updater is already open.\n'; finish 1; }
 
 fwupdmgr refresh

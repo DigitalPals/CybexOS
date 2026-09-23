@@ -19,7 +19,7 @@ enabled=1
 gpgcheck=1
 gpgkey=file:///home/builder/build/hyprland.gpg
 
-[fedora-config-local]
+[cybexos-local]
 name=Locally built private alpha desktop
 baseurl=file:///home/builder/build/repo
 enabled=1

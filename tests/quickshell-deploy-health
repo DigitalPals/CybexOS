@@ -32,7 +32,7 @@ if [[ ${QUICKSHELL_DEPLOY_TESTING:-0} == 1 ]]; then
   resolved_test_root=$(cd -- "$test_root" && pwd -P)
   [[ $resolved_home == "$resolved_test_root" &&
       $(stat -c %u -- "$resolved_home") == "$(id -u)" &&
-      $resolved_home == "${TMPDIR:-/tmp}"/fedora-config-quickshell-deploy.* ]] || {
+      $resolved_home == "${TMPDIR:-/tmp}"/cybexos-quickshell-deploy.* ]] || {
     printf 'refusing an unbounded Quickshell deployment test root\n' >&2
     exit 2
   }
@@ -41,10 +41,10 @@ elif [[ $resolved_home != "$resolved_account_home" ]]; then
   exit 2
 fi
 
-config_dir=$resolved_home/.local/share/fedora-config/runtime/quickshell
+config_dir=$resolved_home/.local/share/cybexos/runtime/quickshell
 legacy_config_dir=$resolved_home/.config/quickshell
-dev_source_file=$resolved_home/.config/fedora-config/dev-source
-state_dir=$resolved_home/.local/state/fedora-config
+dev_source_file=$resolved_home/.config/cybexos/dev-source
+state_dir=$resolved_home/.local/state/cybexos
 archive=$state_dir/quickshell-last-good.tar
 pending=$state_dir/quickshell-deploy-pending
 health=$state_dir/quickshell-health.json

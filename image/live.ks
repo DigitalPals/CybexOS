@@ -45,7 +45,7 @@ lvm2
 mdadm
 cryptsetup
 gdm
-fedora-config-desktop
+cybexos-desktop
 selinux-policy-targeted
 policycoreutils
 firewalld
@@ -81,13 +81,13 @@ plymouth-system-theme
 %post --nochroot --erroronfail
 set -eu
 python3 /home/builder/source/image/install-live-rootfs "$INSTALL_ROOT"
-install -Dm0644 /home/builder/build/hyprland.gpg "$INSTALL_ROOT/etc/pki/rpm-gpg/FEDORA-CONFIG-sdegler-hyprland-copr.gpg"
-install -Dm0644 /home/builder/source/roles/desktop/templates/hyprland-copr.repo.j2 "$INSTALL_ROOT/etc/yum.repos.d/fedora-config-hyprland.repo"
+install -Dm0644 /home/builder/build/hyprland.gpg "$INSTALL_ROOT/etc/pki/rpm-gpg/CYBEXOS-sdegler-hyprland-copr.gpg"
+install -Dm0644 /home/builder/source/roles/desktop/templates/hyprland-copr.repo.j2 "$INSTALL_ROOT/etc/yum.repos.d/cybexos-hyprland.repo"
 %end
 
 %post --erroronfail
 set -eu
-systemctl enable fedora-config-live.service
+systemctl enable cybexos-live.service
 systemctl set-default graphical.target
 mkdir -p /etc/gdm
 cat > /etc/gdm/custom.conf <<'GDM'

@@ -18,8 +18,8 @@ Singleton {
         Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE")
         || Quickshell.env("XDG_SESSION_ID") || "runtime"
     readonly property string markerPath: runtimeDir !== ""
-        ? runtimeDir + "/fedora-config-quickshell-started"
-        : "/tmp/fedora-config-quickshell-"
+        ? runtimeDir + "/cybexos-quickshell-started"
+        : "/tmp/cybexos-quickshell-"
             + (Quickshell.env("USER") || "user") + "-started"
     property bool ready: false
     property bool firstStart: false

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-source /usr/local/libexec/fedora-config-common.sh
+source /usr/local/libexec/cybexos-common.sh
 
 name=${1:?name required}
 repo=${2:?owner/repository required}
@@ -14,14 +14,14 @@ authorized_checksum=${6:-}
 }
 encoded_tag=$(jq -rn --arg tag "$authorized_tag" '$tag | @uri')
 api="https://api.github.com/repos/$repo/releases/tags/$encoded_tag"
-cache_root="/var/cache/fedora-config-upstream/$name"
-state_root="/var/lib/fedora-config-upstream/$name"
-install_root="/opt/fedora-config-apps/$name"
+cache_root="/var/cache/cybexos-upstream/$name"
+state_root="/var/lib/cybexos-upstream/$name"
+install_root="/opt/cybexos-apps/$name"
 if [[ $kind == font ]]; then
   install_root="/usr/local/share/fonts/$name"
 fi
 # Serializes dnf/rpm transactions when several installers run concurrently.
-dnf_lock="/var/lib/fedora-config-upstream/.dnf.lock"
+dnf_lock="/var/lib/cybexos-upstream/.dnf.lock"
 
 tmp_json=$(mktemp)
 stage=""
@@ -151,8 +151,8 @@ if [[ $rpm_mode == true ]] \
 fi
 
 if [[ $rpm_mode == false && -L $install_root/current ]] \
-  && [[ -r $install_root/current/.fedora-config-release ]] \
-  && [[ $(<"$install_root/current/.fedora-config-release") == "$expected_manifest" ]]; then
+  && [[ -r $install_root/current/.cybexos-release ]] \
+  && [[ $(<"$install_root/current/.cybexos-release") == "$expected_manifest" ]]; then
   if [[ $kind == font ]]; then
     if [[ -n $(find -L "$install_root/current" -type f \
       \( -iname '*.ttf' -o -iname '*.otf' -o -iname '*.ttc' -o -iname '*.otc' \) \
@@ -212,7 +212,7 @@ if [[ $rpm_mode == true ]]; then
     rm -f "$state_root/version.tmp" "$state_root/nevra.tmp"
     echo "Installed $name $tag, but could not persist its convergence manifest" >&2
   fi
-  fedora_config_restorecon /usr/bin /usr/lib /usr/lib64 /usr/share/applications
+  cybexos_restorecon /usr/bin /usr/lib /usr/lib64 /usr/share/applications
   prune_release_cache || echo "Installed $name $tag, but could not prune its release cache" >&2
   exit 0
 fi
@@ -228,7 +228,7 @@ if [[ $kind == binary ]]; then
   mkdir -p "$version_dir/bin"
   install -m 0755 "$download" "$version_dir/bin/$name.new"
   mv -f "$version_dir/bin/$name.new" "$version_dir/bin/$name"
-  printf '%s\n' "$expected_manifest" >"$version_dir/.fedora-config-release"
+  printf '%s\n' "$expected_manifest" >"$version_dir/.cybexos-release"
   command_link="/usr/local/bin/$name"
   if [[ ! -e $command_link && ! -L $command_link ]]; then
     new_command_links+=("$command_link")
@@ -239,7 +239,7 @@ if [[ $kind == binary ]]; then
   committed=true
   change_description="installed $name $tag"
   emit_changed "$change_description"
-  fedora_config_restorecon "$install_root" /usr/local/bin
+  cybexos_restorecon "$install_root" /usr/local/bin
   prune_version_dirs "$install_root" 3 \
     || echo "Installed $name $tag, but could not prune older versions" >&2
   prune_release_cache \
@@ -289,7 +289,7 @@ else
 fi
 
 mkdir -p "$install_root/versions"
-printf '%s\n' "$expected_manifest" >"$stage/payload/.fedora-config-release"
+printf '%s\n' "$expected_manifest" >"$stage/payload/.cybexos-release"
 mv "$stage/payload" "$version_dir"
 
 if [[ $kind != font ]]; then
@@ -305,7 +305,7 @@ atomic_current_swap "$install_root" "versions/$version_key"
 committed=true
 change_description="installed $name $tag"
 emit_changed "$change_description"
-fedora_config_restorecon "$install_root" /usr/local/bin
+cybexos_restorecon "$install_root" /usr/local/bin
 prune_version_dirs "$install_root" 3 \
   || echo "Installed $name $tag, but could not prune older versions" >&2
 prune_release_cache \

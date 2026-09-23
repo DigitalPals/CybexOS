@@ -28,17 +28,17 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Build Fedora test environment
-        run: docker build -f image/Containerfile.tests -t fedora-config-image-tests:44 image
+        run: docker build -f image/Containerfile.tests -t cybexos-image-tests:44 image
       - name: Exercise account isolation and both welcome modes
-        run: docker run --rm -v "$PWD:/source:ro" fedora-config-image-tests:44
+        run: docker run --rm -v "$PWD:/source:ro" cybexos-image-tests:44
       - name: Validate installer configuration and launchers
         run: |
           docker run --rm -v "$PWD:/source:ro" \
             -v "$PWD/image/live-rootfs/usr/share/anaconda:/usr/share/anaconda:ro" \
-            fedora-config-image-tests:44 bash -euc '
+            cybexos-image-tests:44 bash -euc '
             ksvalidator --version F44 image/live.ks
             ksvalidator -i --version F44 /usr/share/anaconda/interactive-defaults.ks
             shellcheck image/build-in-guest image/rootfs/usr/bin/hyprland-quickshell \
-              image/rootfs/usr/bin/cybex image/rootfs/usr/bin/fedora-config image/live-rootfs/usr/libexec/fedora-config-live-setup
+              image/rootfs/usr/bin/cybex image/live-rootfs/usr/libexec/cybexos-live-setup
             desktop-file-validate image/rootfs/usr/share/applications/*.desktop
           '

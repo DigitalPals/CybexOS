@@ -83,7 +83,7 @@ bind(mainMod .. " + F", hl.dsp.window.float({ action = "toggle" }))
 bind(mainMod .. " + J", hl.dsp.layout("togglesplit"))
 bind(mainMod .. " + BACKSPACE", hl.dsp.window.set_prop({ prop = "alpha", value = "0.85 toggle" }))
 bind(mainMod .. " + SHIFT + M", hl.dsp.exit())
-bind(mainMod .. " + L", hl.dsp.exec_cmd("systemctl --user start fedora-config-session-lock.service"))
+bind(mainMod .. " + L", hl.dsp.exec_cmd("systemctl --user start cybexos-session-lock.service"))
 
 for _, direction in ipairs({ "left", "right", "up", "down" }) do
   bind(mainMod .. " + " .. direction, hl.dsp.focus({ direction = direction }))

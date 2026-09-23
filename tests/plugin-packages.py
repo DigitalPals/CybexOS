@@ -12,8 +12,8 @@ HELPER = ROOT / "roles/desktop/files/quickshell/scripts/user-plugins.py"
 with tempfile.TemporaryDirectory(prefix="cybex-plugin-packages-") as temporary:
     base = Path(temporary)
     packages = base / "plugins"
-    env = {**os.environ, "FEDORA_CONFIG_PLUGIN_ROOT": str(packages),
-           "FEDORA_CONFIG_USER_CONFIG_ROOT": str(base / "config"),
+    env = {**os.environ, "CYBEXOS_PLUGIN_ROOT": str(packages),
+           "CYBEXOS_USER_CONFIG_ROOT": str(base / "config"),
            "XDG_DATA_HOME": str(base / "data"), "PYTHONDONTWRITEBYTECODE": "1"}
     source = base / "source"
     source.mkdir()

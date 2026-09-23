@@ -1,7 +1,7 @@
 ---
 - name: Inspect CybexOS ownership of optional application groups
   ansible.builtin.stat:
-    path: "/var/lib/fedora-config/features/{{ item }}"
+    path: "/var/lib/cybexos/features/{{ item }}"
   loop:
     - developer_tools
     - connected_widgets
@@ -47,7 +47,7 @@
 
 - name: Record CybexOS ownership of selected optional application groups
   ansible.builtin.copy:
-    dest: "/var/lib/fedora-config/features/{{ item }}"
+    dest: "/var/lib/cybexos/features/{{ item }}"
     content: "managed\n"
     owner: root
     group: root
@@ -64,7 +64,7 @@
 
 - name: Retire optional application ownership after deselection
   ansible.builtin.file:
-    path: "/var/lib/fedora-config/features/{{ item }}"
+    path: "/var/lib/cybexos/features/{{ item }}"
     state: absent
   loop:
     - developer_tools

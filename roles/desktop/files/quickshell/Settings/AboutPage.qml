@@ -128,7 +128,7 @@ SettingsPage {
                 width: parent.width
                 breakpoint: 560
                 descriptionMono: true
-                description: "~/.config/fedora-config/shell.json"
+                description: "~/.config/cybexos/shell.json"
 
                 SettingsAction {
                     text: "Open"

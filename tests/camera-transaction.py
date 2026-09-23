@@ -217,7 +217,7 @@ esac
 
 
 def run(scenario: str) -> subprocess.CompletedProcess[str]:
-    with tempfile.TemporaryDirectory(prefix="fedora-config-camera-transaction.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-camera-transaction.") as temporary:
         environment = os.environ.copy()
         environment.update(FIXTURE_ROOT=temporary, SCENARIO=scenario)
         return subprocess.run(

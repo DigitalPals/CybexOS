@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+# Move an installation made under the project's former fedora-config name to
+# the CybexOS names. Every step is idempotent, so install, update, and the
+# playbooks run it unconditionally; on a migrated or fresh system it only
+# inspects a few paths. Stale files that the running session may still use are
+# removed later by the legacy-names role, after their replacements exist.
+set -euo pipefail
+umask 022
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/migrate-legacy-names [--user USER] [--home PATH] [--home-only]
+
+Move fedora-config configuration, state, caches, and installed trees to their
+CybexOS paths. As root, the system paths are migrated first and the user's home
+is then migrated as that user; the user and home default to the saved
+installer configuration. Without root, or with --home-only, only the invoking
+user's home is migrated. Prints CHANGED: lines for each migrated object.
+EOF
+}
+
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+# Test-only prefix for every absolute system path.
+root=${CYBEXOS_MIGRATION_ROOT:-}
+testing=false
+[[ -z $root ]] || testing=true
+user=
+home=
+home_only=false
+
+while (($#)); do
+  case $1 in
+    --user) shift; user=${1:?--user needs a name} ;;
+    --home) shift; home=${1:?--home needs a path} ;;
+    --home-only) home_only=true ;;
+    -h|--help) usage; exit 0 ;;
+    *) printf 'migrate-legacy-names: unknown option %s\n' "$1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+changed() { printf 'CHANGED: %s\n' "$*"; }
+warn() { printf 'migrate-legacy-names: %s\n' "$*" >&2; }
+
+# Rename one tree. A leftover empty destination is replaced; a populated one is
+# never merged, so both copies stay for manual review. With a compatibility
+# link, processes started before the rename keep resolving the old path until
+# the next desktop login removes it (see hyprland-quickshell).
+move_tree() {
+  local old=$1 new=$2 compat=${3:-false}
+  [[ -L $old ]] && return 0
+  [[ -e $old ]] || return 0
+  if [[ -e $new || -L $new ]]; then
+    if [[ -d $new && ! -L $new ]] && rmdir -- "$new" 2>/dev/null; then
+      :
+    else
+      warn "both $old and $new exist; leaving $old for manual review"
+      return 0
+    fi
+  fi
+  mkdir -p -- "$(dirname -- "$new")"
+  mv -T -- "$old" "$new"
+  [[ $compat == false ]] || ln -s -- "$(basename -- "$new")" "$old"
+  changed "moved $old to $new"
+}
+
+# Point absolute symlinks at the renamed trees. Relative links move intact.
+retarget_links() {
+  local directory=$1 depth=$2 link target updated
+  shift 2
+  [[ -d $directory ]] || return 0
+  while IFS= read -r -d '' link; do
+    target=$(readlink -- "$link")
+    updated=$target
+    local pair
+    for pair in "$@"; do
+      updated=${updated//"${pair%%=*}"/"${pair#*=}"}
+    done
+    [[ $updated != "$target" ]] || continue
+    ln -sfn -- "$updated" "$link"
+    changed "retargeted $link"
+  done < <(find "$directory" -maxdepth "$depth" -type l -print0)
+}
+
+rename_markers() {
+  local directory=$1 old=$2 new=$3 marker
+  [[ -d $directory ]] || return 0
+  while IFS= read -r -d '' marker; do
+    mv -f -- "$marker" "$(dirname -- "$marker")/$new${marker##*/"$old"}"
+    changed "renamed $marker"
+  done < <(find "$directory" -mindepth 1 -maxdepth 4 -name "$old*" -type f -print0)
+}
+
+migrate_firewall() {
+  local zones=$root/etc/firewalld/zones conf=$root/etc/firewalld/firewalld.conf
+  local old_zone=fedora-config new_zone=cybexos uuid
+  [[ -f $zones/$old_zone.xml ]] || return 0
+  if [[ -e $zones/$new_zone.xml ]]; then
+    rm -f -- "$zones/$old_zone.xml" "$zones/$old_zone.xml.old"
+  else
+    mv -T -- "$zones/$old_zone.xml" "$zones/$new_zone.xml"
+    rm -f -- "$zones/$old_zone.xml.old"
+  fi
+  # Edit the permanent default directly: firewall-cmd cannot select a zone
+  # that the running daemon has not loaded yet.
+  [[ ! -f $conf ]] || sed -i "s/^DefaultZone=$old_zone\$/DefaultZone=$new_zone/" "$conf"
+  changed "renamed firewalld zone $old_zone to $new_zone"
+  $testing && return 0
+  firewall-cmd --reload >/dev/null 2>&1 || warn 'firewalld reload failed; the base role reconciles it'
+  command -v nmcli >/dev/null 2>&1 || return 0
+  while IFS=: read -r uuid _; do
+    [[ $(nmcli -g connection.zone connection show "$uuid" 2>/dev/null) == "$old_zone" ]] || continue
+    nmcli connection modify "$uuid" connection.zone "$new_zone"
+    changed "bound NetworkManager profile $uuid to $new_zone"
+  done < <(nmcli -t -f UUID,TYPE connection show 2>/dev/null)
+  while IFS=: read -r device type state; do
+    [[ ($type == ethernet || $type == wifi) && $state == connected ]] || continue
+    nmcli device reapply "$device" >/dev/null 2>&1 || true
+  done < <(LC_ALL=C nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null)
+}
+
+migrate_system_units() {
+  local units=$root/etc/systemd/system old=fedora-config-btrfs-scrub
+  [[ -e $units/$old.timer || -e $units/$old.service ]] || return 0
+  $testing || systemctl disable --now "$old.timer" >/dev/null 2>&1 || true
+  rm -f -- "$units/$old.timer" "$units/$old.service"
+  $testing || systemctl daemon-reload
+  changed "removed $old units; the base role installs cybexos-btrfs-scrub"
+}
+
+migrate_system() {
+  move_tree "$root/etc/fedora-config" "$root/etc/cybexos"
+  move_tree "$root/var/lib/fedora-config" "$root/var/lib/cybexos"
+  move_tree "$root/var/lib/fedora-config-upstream" "$root/var/lib/cybexos-upstream"
+  move_tree "$root/var/cache/fedora-config-upstream" "$root/var/cache/cybexos-upstream"
+  move_tree "$root/opt/fedora-config-apps" "$root/opt/cybexos-apps"
+  move_tree "$root/opt/fedora-config-builds" "$root/opt/cybexos-builds"
+  rename_markers "$root/opt/cybexos-apps" .fedora-config-release .cybexos-release
+  rename_markers "$root/opt/cybexos-builds" .fedora-config-build .cybexos-build
+  rename_markers "$root/usr/local/share/fonts" .fedora-config-archive- .cybexos-archive-
+  retarget_links "$root/usr/local/bin" 1 \
+    /opt/fedora-config-apps/=/opt/cybexos-apps/ \
+    /opt/fedora-config-builds/=/opt/cybexos-builds/
+  local key
+  for key in "$root"/etc/pki/rpm-gpg/FEDORA-CONFIG-*; do
+    [[ -f $key && ! -L $key ]] || continue
+    if [[ -e ${key%/*}/CYBEXOS-${key##*/FEDORA-CONFIG-} ]]; then
+      rm -f -- "$key"
+    else
+      mv -- "$key" "${key%/*}/CYBEXOS-${key##*/FEDORA-CONFIG-}"
+    fi
+    changed "renamed $key"
+  done
+  migrate_firewall
+  migrate_system_units
+}
+
+# Hand each former fedora-config skill slot back to its pre-adoption object,
+# then let provisioning adopt the cybexos slots afresh.
+migrate_agent_skills() {
+  local backups=$home/.local/state/cybexos/backups
+  local legacy_backups=$backups/agent-skills-fedora-config record slot
+  if [[ -d $backups/agent-skills ]]; then
+    for record in "$backups"/agent-skills/*/destination; do
+      [[ -f $record ]] || continue
+      if [[ $(<"$record") == */skills/fedora-config ]]; then
+        mv -T -- "$backups/agent-skills" "$legacy_backups"
+        break
+      fi
+    done
+  fi
+  if [[ -d $legacy_backups ]]; then
+    "$script_dir/manage-agent-skills" uninstall --home "$home" \
+      --name fedora-config --backup-root "$legacy_backups" >/dev/null
+    rm -rf -- "$legacy_backups"
+    changed 'restored the former fedora-config agent skill slots'
+  fi
+  for slot in "$home"/.agents/skills "$home"/.claude/skills "$home"/.codex/skills; do
+    [[ -L $slot/fedora-config ]] || continue
+    [[ $(readlink -- "$slot/fedora-config") == */agent-skills/fedora-config ]] || continue
+    rm -f -- "$slot/fedora-config"
+    changed "removed $slot/fedora-config"
+  done
+}
+
+migrate_home() {
+  [[ $home == /* && $home != / && -d $home ]] || {
+    warn "home is not an existing absolute directory: $home"
+    return 1
+  }
+  move_tree "$home/.config/fedora-config" "$home/.config/cybexos" true
+  move_tree "$home/.local/share/fedora-config" "$home/.local/share/cybexos" true
+  move_tree "$home/.local/state/fedora-config" "$home/.local/state/cybexos" true
+  move_tree "$home/.local/share/fedora-config-user-tools" "$home/.local/share/cybexos-user-tools"
+  move_tree "$home/.cache/fedora-config" "$home/.cache/cybexos"
+  move_tree "$home/.cache/fedora-config-upstream" "$home/.cache/cybexos-upstream"
+  local legacy_pairs=(
+    "$home/.local/share/fedora-config-user-tools/=$home/.local/share/cybexos-user-tools/"
+    "$home/.local/share/fedora-config/=$home/.local/share/cybexos/"
+  )
+  retarget_links "$home/.local/bin" 1 "${legacy_pairs[@]}"
+  retarget_links "$home/.local/share/cybexos-user-tools" 3 "${legacy_pairs[@]}"
+  migrate_agent_skills
+}
+
+if [[ $EUID -ne 0 && $testing == false ]] || [[ $home_only == true ]]; then
+  home=${home:-$HOME}
+  migrate_home
+  exit 0
+fi
+
+migrate_system
+if [[ -z $user && -r $root/etc/cybexos/config.yml ]]; then
+  user=$(python3 -c 'import sys, yaml; print(yaml.safe_load(open(sys.argv[1])).get("primary_user") or "")' \
+    "$root/etc/cybexos/config.yml")
+fi
+[[ -n $user ]] || exit 0
+if [[ -z $home ]]; then
+  home=$(getent passwd "$user" | cut -d: -f6) || {
+    warn "unknown user $user"
+    exit 1
+  }
+fi
+if $testing || [[ $user == root ]]; then
+  migrate_home
+else
+  # Keep ownership of every moved or created home object with the user.
+  exec runuser -u "$user" -- "${BASH_SOURCE[0]}" --home-only --home "$home"
+fi

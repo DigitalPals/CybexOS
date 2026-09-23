@@ -61,7 +61,7 @@ jobs:
             | awk -F: '$1 == "fpr" { print $10; exit }')" \
             = 64BBBF013D1CA5E4BE5B0552C043104207862204
           install -m 0644 /tmp/hyprland-copr.gpg \
-            /etc/pki/rpm-gpg/FEDORA-CONFIG-sdegler-hyprland-copr.gpg
+            /etc/pki/rpm-gpg/CYBEXOS-sdegler-hyprland-copr.gpg
           install -m 0644 roles/desktop/templates/hyprland-copr.repo.j2 \
             '/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:sdegler:hyprland.repo'
           dnf install -y quickshell

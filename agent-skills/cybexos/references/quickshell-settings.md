@@ -1,7 +1,7 @@
 # Quickshell settings
 
 Use this guide only for values persisted in
-`~/.config/fedora-config/shell.json`. Personal widget packages and their
+`~/.config/cybexos/shell.json`. Personal widget packages and their
 separate preferences use [the user widget API](user-widgets.md).
 
 ## Inspect the active schema
@@ -9,8 +9,8 @@ separate preferences use [the user widget API](user-widgets.md).
 Do not assume a schema version or copy defaults from another release. Read:
 
 ```text
-~/.local/share/fedora-config/current/roles/desktop/files/quickshell/Common/SettingsHelpers.js
-~/.local/share/fedora-config/current/roles/desktop/files/quickshell/Common/Settings.qml
+~/.local/share/cybexos/current/roles/desktop/files/quickshell/Common/SettingsHelpers.js
+~/.local/share/cybexos/current/roles/desktop/files/quickshell/Common/Settings.qml
 ```
 
 `SettingsHelpers.js` is authoritative for `VERSION`, `defaults()`, accepted
@@ -20,7 +20,7 @@ be loaded with Node because it exports its pure helpers:
 
 ```bash
 node -e 'const s=require(process.argv[1]); console.log(JSON.stringify({version:s.VERSION,defaults:s.defaults(),modules:s.MODULE_IDS},null,2))' \
-  "$HOME/.local/share/fedora-config/current/roles/desktop/files/quickshell/Common/SettingsHelpers.js"
+  "$HOME/.local/share/cybexos/current/roles/desktop/files/quickshell/Common/SettingsHelpers.js"
 ```
 
 The stable top-level setting families are:

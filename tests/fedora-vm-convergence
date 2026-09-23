@@ -6,9 +6,9 @@ set -euo pipefail
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 image_url=${FEDORA_VM_IMAGE_URL:-https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2}
 image_sha256=${FEDORA_VM_IMAGE_SHA256:-28680fe5b371a5a82ebf43a31926e086a168e59949d03969c5093e7071f90b7f}
-image_cache=${FEDORA_VM_IMAGE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/fedora-config/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2}
+image_cache=${FEDORA_VM_IMAGE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/cybexos/Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2}
 convergence_tags=${FEDORA_VM_TAGS:-all}
-scratch=$(mktemp -d "${TMPDIR:-/tmp}/fedora-config-vm.XXXXXX")
+scratch=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-vm.XXXXXX")
 qemu_pid=''
 temporary_image=''
 
@@ -20,7 +20,7 @@ cleanup() {
   if [[ -n $temporary_image && $temporary_image == "$image_cache".download.* ]]; then
     rm -f -- "$temporary_image"
   fi
-  [[ $scratch == "${TMPDIR:-/tmp}"/fedora-config-vm.* ]] && rm -rf -- "$scratch"
+  [[ $scratch == "${TMPDIR:-/tmp}"/cybexos-vm.* ]] && rm -rf -- "$scratch"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -65,8 +65,8 @@ runcmd:
   - [systemctl, enable, --now, sshd.service]
 EOF
 cat >"$scratch/meta-data" <<'EOF'
-instance-id: fedora-config-convergence
-local-hostname: fedora-config-ci
+instance-id: cybexos-convergence
+local-hostname: cybexos-ci
 EOF
 cloud-localds "$scratch/seed.iso" "$scratch/user-data" "$scratch/meta-data"
 qemu-img create -q -f qcow2 -F qcow2 -b "$image_cache" "$scratch/system.qcow2" 40G
@@ -89,7 +89,7 @@ else
 fi
 
 qemu-system-x86_64 \
-  -name fedora-config-convergence \
+  -name cybexos-convergence \
   -machine q35 -accel "$accelerator" \
   -cpu "$cpu" -smp 4 -m 6144 \
   -smbios type=1,manufacturer=QEMU,product='Fedora Convergence' \
@@ -131,7 +131,7 @@ $ready || {
 }
 
 ssh "${ssh_args[@]}" fedora@127.0.0.1 \
-  'cloud-init status --wait >/dev/null; mkdir -p /home/fedora/fedora-config'
+  'cloud-init status --wait >/dev/null; mkdir -p /home/fedora/cybexos'
 # Transfer precisely the checked-out and intentional untracked source set.
 # Besides avoiding generated caches, this respects future .gitignore entries
 # for local credentials instead of copying an arbitrary working directory into
@@ -148,7 +148,7 @@ ssh "${ssh_args[@]}" fedora@127.0.0.1 \
     tar --create --file=- --null --verbatim-files-from --files-from=-
 ) | \
   ssh "${ssh_args[@]}" fedora@127.0.0.1 \
-    'tar -C /home/fedora/fedora-config -xf -'
+    'tar -C /home/fedora/cybexos -xf -'
 
 # Base convergence intentionally disables sshd. Both passes and all assertions
 # therefore run inside this one already-established session.
@@ -157,7 +157,7 @@ timeout --signal=TERM --kill-after=30 100m \
 set -euo pipefail
 tags=$1
 sudo dnf install -y ansible-core firewalld git
-cd /home/fedora/fedora-config
+cd /home/fedora/cybexos
 export ANSIBLE_FORCE_COLOR=0
 export PYTHONDONTWRITEBYTECODE=1
 
@@ -166,23 +166,23 @@ export PYTHONDONTWRITEBYTECODE=1
 # adopted integration files must be recovered byte-for-byte on uninstall.
 install -d -m 0755 /home/fedora/.config/hypr \
   /home/fedora/.config/quickshell /home/fedora/.config/distrobox \
-  /home/fedora/.config/fedora-config/hypr \
-  /home/fedora/.local/share/fedora-config/themes \
-  /home/fedora/.local/share/fedora-config/plugins \
+  /home/fedora/.config/cybexos/hypr \
+  /home/fedora/.local/share/cybexos/themes \
+  /home/fedora/.local/share/cybexos/plugins \
   /home/fedora/.config/noctalia /home/fedora/.local/state/noctalia \
   /home/fedora/.cache/noctalia /home/fedora/.local/bin \
   /home/fedora/.config/systemd/user \
   /home/fedora/.agents/skills/unrelated \
-  /home/fedora/.claude/skills/fedora-config/nested \
+  /home/fedora/.claude/skills/cybexos/nested \
   /home/fedora/.claude/skills/unrelated \
   /home/fedora/.codex/skills/unrelated \
   /home/fedora/original-codex-skill
 printf 'original Hyprland bindings\n' >/home/fedora/.config/hypr/bindings.lua
 printf 'original Quickshell root\n' >/home/fedora/.config/quickshell/shell.qml
-printf 'original shell settings\n' >/home/fedora/.config/fedora-config/shell.json
-printf 'original user override\n' >/home/fedora/.config/fedora-config/hypr/user.lua
-printf 'original user theme\n' >/home/fedora/.local/share/fedora-config/themes/personal.theme
-printf 'original user plugin\n' >/home/fedora/.local/share/fedora-config/plugins/personal.qml
+printf 'original shell settings\n' >/home/fedora/.config/cybexos/shell.json
+printf 'original user override\n' >/home/fedora/.config/cybexos/hypr/user.lua
+printf 'original user theme\n' >/home/fedora/.local/share/cybexos/themes/personal.theme
+printf 'original user plugin\n' >/home/fedora/.local/share/cybexos/plugins/personal.qml
 printf 'original Spotify helper\n' >/home/fedora/.local/bin/spotify
 printf 'original user unit\n' >/home/fedora/.config/systemd/user/quickshell.service
 printf 'original sccache helper\n' >/home/fedora/.local/bin/sccache
@@ -190,12 +190,12 @@ printf 'original Distrobox configuration\n' >/home/fedora/.config/distrobox/dist
 printf 'original Noctalia configuration\n' >/home/fedora/.config/noctalia/config.json
 printf 'original Noctalia state\n' >/home/fedora/.local/state/noctalia/state.json
 printf 'original Noctalia cache\n' >/home/fedora/.cache/noctalia/cache
-printf 'original agents skill\n' >/home/fedora/.agents/skills/fedora-config
+printf 'original agents skill\n' >/home/fedora/.agents/skills/cybexos
 printf 'original claude skill\n' \
-  >/home/fedora/.claude/skills/fedora-config/nested/value
+  >/home/fedora/.claude/skills/cybexos/nested/value
 printf 'original codex target\n' >/home/fedora/original-codex-skill/SKILL.md
 ln -s /home/fedora/original-codex-skill \
-  /home/fedora/.codex/skills/fedora-config
+  /home/fedora/.codex/skills/cybexos
 printf 'unrelated agents skill\n' \
   >/home/fedora/.agents/skills/unrelated/SKILL.md
 printf 'unrelated claude skill\n' \
@@ -226,16 +226,16 @@ done < <(nmcli -t -f UUID,TYPE connection show)
 
 playbook=(ansible-playbook -i inventory/hosts.yml site.yml
   -e @tests/vm/convergence-vars.yml --tags "$tags")
-"${playbook[@]}" | tee /tmp/fedora-config-first.log
-"${playbook[@]}" | tee /tmp/fedora-config-second.log
-grep -F 'no configuration changes' /tmp/fedora-config-second.log >/dev/null || {
+"${playbook[@]}" | tee /tmp/cybexos-first.log
+"${playbook[@]}" | tee /tmp/cybexos-second.log
+grep -F 'no configuration changes' /tmp/cybexos-second.log >/dev/null || {
   printf 'Second Fedora VM convergence pass was not idempotent\n' >&2
-  tail -n 120 /tmp/fedora-config-second.log >&2
+  tail -n 120 /tmp/cybexos-second.log >&2
   exit 1
 }
 sudo tests/vm/assert-converged
 ansible-playbook -i inventory/hosts.yml uninstall.yml \
-  -e @tests/vm/convergence-vars.yml | tee /tmp/fedora-config-uninstall.log
+  -e @tests/vm/convergence-vars.yml | tee /tmp/cybexos-uninstall.log
 sudo tests/vm/assert-uninstalled
 GUEST
 

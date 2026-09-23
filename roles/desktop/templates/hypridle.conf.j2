@@ -1,12 +1,12 @@
 general {
-  lock_cmd = systemctl --user start fedora-config-session-lock.service
-  before_sleep_cmd = /usr/local/libexec/fedora-config-session-action lock
+  lock_cmd = systemctl --user start cybexos-session-lock.service
+  before_sleep_cmd = /usr/local/libexec/cybexos-session-action lock
   after_sleep_cmd = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "on" }))'
 }
 
 listener {
   timeout = 300
-  on-timeout = systemctl --user start fedora-config-session-lock.service
+  on-timeout = systemctl --user start cybexos-session-lock.service
 }
 
 listener {

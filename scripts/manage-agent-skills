@@ -7,10 +7,12 @@ usage() {
   cat <<'EOF'
 Usage: scripts/manage-agent-skills provision [--home PATH] [--canonical PATH]
        scripts/manage-agent-skills uninstall [--home PATH]
+                                   [--name SKILL --backup-root PATH]
 
-Internal lifecycle helper. Provision records each pre-existing fedora-config
+Internal lifecycle helper. Provision records each pre-existing cybexos
 skill slot once, then points all supported discovery paths at the canonical
-skill in the active release. Uninstall restores those recorded objects.
+skill in the active release. Uninstall restores those recorded objects;
+--name and --backup-root select the records of a former skill name.
 EOF
 }
 
@@ -24,6 +26,8 @@ esac
 
 managed_home=${HOME:-}
 canonical=
+skill_name=cybexos
+backup_root=
 while (($#)); do
   case $1 in
     --home)
@@ -42,6 +46,22 @@ while (($#)); do
       }
       canonical=$1
       ;;
+    --name)
+      shift
+      [[ ${1:-} =~ ^[a-z0-9][a-z0-9-]*$ ]] || {
+        printf 'manage-agent-skills: --name needs a skill name\n' >&2
+        exit 2
+      }
+      skill_name=$1
+      ;;
+    --backup-root)
+      shift
+      [[ ${1:-} == /* ]] || {
+        printf 'manage-agent-skills: --backup-root needs an absolute path\n' >&2
+        exit 2
+      }
+      backup_root=$1
+      ;;
     -h|--help)
       usage
       exit 0
@@ -58,18 +78,18 @@ done
   printf 'manage-agent-skills: home must be an absolute non-root path\n' >&2
   exit 2
 }
-canonical=${canonical:-$managed_home/.local/share/fedora-config/current/agent-skills/fedora-config}
+canonical=${canonical:-$managed_home/.local/share/cybexos/current/agent-skills/cybexos}
 [[ $canonical == /* ]] || {
   printf 'manage-agent-skills: canonical skill must be an absolute path\n' >&2
   exit 2
 }
 
-backup_root=$managed_home/.local/state/fedora-config/backups/agent-skills
+backup_root=${backup_root:-$managed_home/.local/state/cybexos/backups/agent-skills}
 slot_names=(agents claude codex)
 destinations=(
-  "$managed_home/.agents/skills/fedora-config"
-  "$managed_home/.claude/skills/fedora-config"
-  "$managed_home/.codex/skills/fedora-config"
+  "$managed_home/.agents/skills/$skill_name"
+  "$managed_home/.claude/skills/$skill_name"
+  "$managed_home/.codex/skills/$skill_name"
 )
 
 object_exists() {
@@ -81,6 +101,11 @@ remove_object() {
   object_exists "$path" || return 0
   rm -rf -- "$path"
 }
+
+if [[ $action == provision && $skill_name != cybexos ]]; then
+  printf 'manage-agent-skills: only the cybexos skill can be provisioned\n' >&2
+  exit 2
+fi
 
 if [[ $action == uninstall ]] && ! object_exists "$backup_root"; then
   printf 'UNCHANGED: CybexOS agent skill discovery slots\n'
@@ -187,8 +212,8 @@ validate_slot() {
 
 test_fail() {
   local point=$1
-  [[ ${FEDORA_CONFIG_AGENT_SKILLS_TESTING:-0} == 1 \
-      && ${FEDORA_CONFIG_AGENT_SKILLS_TEST_FAIL:-} == "$point" ]] || return 0
+  [[ ${CYBEXOS_AGENT_SKILLS_TESTING:-0} == 1 \
+      && ${CYBEXOS_AGENT_SKILLS_TEST_FAIL:-} == "$point" ]] || return 0
   printf 'manage-agent-skills: injected failure at %s\n' "$point" >&2
   return 97
 }
@@ -248,7 +273,7 @@ if [[ $action == provision ]]; then
     destination=${destinations[index]}
     parent=${destination%/*}
     mkdir -p -- "$parent"
-    work=$(mktemp -d "$parent/.fedora-config-agent-skill.XXXXXX")
+    work=$(mktemp -d "$parent/.cybexos-agent-skill.XXXXXX")
     transaction_dirs[index]=$work
     ln -s -- "$canonical" "$work/desired"
 
@@ -286,7 +311,7 @@ else
     adopted=true
     parent=${destination%/*}
     mkdir -p -- "$parent"
-    work=$(mktemp -d "$parent/.fedora-config-agent-skill.XXXXXX")
+    work=$(mktemp -d "$parent/.cybexos-agent-skill.XXXXXX")
     transaction_dirs[index]=$work
     if object_exists "$slot_dir/original"; then
       cp -a -- "$slot_dir/original" "$work/desired"

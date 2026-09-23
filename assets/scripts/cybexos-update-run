@@ -4,12 +4,12 @@
 set -uo pipefail
 umask 077
 
-state_root="${XDG_STATE_HOME:-$HOME/.local/state}/fedora-config/update"
+state_root="${XDG_STATE_HOME:-$HOME/.local/state}/cybexos/update"
 log_shelf="$state_root/logs"
 current_file="$state_root/current"
 runtime_root="${XDG_RUNTIME_DIR:-$state_root/runtime}"
 lock_file="$runtime_root/update.lock"
-boot_id_file="${FEDORA_CONFIG_UPDATE_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}"
+boot_id_file="${CYBEXOS_UPDATE_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}"
 script_path="$(readlink -f -- "$0")"
 mkdir -p -- "$log_shelf" "$runtime_root"
 chmod 0700 -- "$state_root" "$log_shelf" "$runtime_root" 2>/dev/null || true
@@ -17,13 +17,13 @@ chmod 0700 -- "$state_root" "$log_shelf" "$runtime_root" 2>/dev/null || true
 usage() {
   cat <<'EOF'
 Usage:
-  fedora-config-update-run run [OPTIONS] [ANSIBLE_ARGS...]
-  fedora-config-update-run start [--json] [OPTIONS] [ANSIBLE_ARGS...]
-  fedora-config-update-run status [--json] [RUN_ID]
-  fedora-config-update-run attach [RUN_ID]
-  fedora-config-update-run cancel [RUN_ID]
-  fedora-config-update-run dismiss [RUN_ID]
-  fedora-config-update-run log-dir [RUN_ID]
+  cybexos-update-run run [OPTIONS] [ANSIBLE_ARGS...]
+  cybexos-update-run start [--json] [OPTIONS] [ANSIBLE_ARGS...]
+  cybexos-update-run status [--json] [RUN_ID]
+  cybexos-update-run attach [RUN_ID]
+  cybexos-update-run cancel [RUN_ID]
+  cybexos-update-run dismiss [RUN_ID]
+  cybexos-update-run log-dir [RUN_ID]
 
 Update Fedora packages and system Flatpaks. The worker runs as a transient
 user service, so closing a terminal or reloading Quickshell does not abandon
@@ -46,9 +46,9 @@ Examples:
   ./update
   ./update --full
   ./update --full --check --diff
-  fedora-config-update-run status
-  fedora-config-update-run attach
-  fedora-config-update-run cancel
+  cybexos-update-run status
+  cybexos-update-run attach
+  cybexos-update-run cancel
 EOF
 }
 
@@ -64,7 +64,7 @@ resolve_id() {
   local id=${1:-}
   [[ -n $id ]] || id=$(current_id)
   valid_id "$id" || {
-    printf 'fedora-config-update-run: no update run is available\n' >&2
+    printf 'cybexos-update-run: no update run is available\n' >&2
     return 1
   }
   printf '%s\n' "$id"
@@ -126,9 +126,9 @@ unit_active_state() {
 system_manager_command() {
   local command_name=$1 command_path
   shift
-  if [[ ${FEDORA_CONFIG_UPDATE_TESTING:-0} == 1 ]]; then
+  if [[ ${CYBEXOS_UPDATE_TESTING:-0} == 1 ]]; then
     command_path=$(command -v -- "$command_name") || {
-      printf 'fedora-config-update-run: required command is missing: %s\n' \
+      printf 'cybexos-update-run: required command is missing: %s\n' \
         "$command_name" >&2
       return 127
     }
@@ -178,7 +178,7 @@ repair_stale_status() (
   system_unit=$(jq -r '.systemUnit // false' "$file" 2>/dev/null || printf false)
   active_state=""
   if [[ -n $unit ]] && ! active_state=$(unit_active_state "$unit" "$system_unit"); then
-    printf 'fedora-config-update-run: cannot inspect %s; preserving %s status\n' \
+    printf 'cybexos-update-run: cannot inspect %s; preserving %s status\n' \
       "$unit" "$state" >&2
     return 0
   fi
@@ -283,8 +283,8 @@ write_status() {
       releaseVersion: $releaseVersion,
       rebootRecommendation: $rebootRecommendation}' > "$temporary"
   mv -f -- "$temporary" "$run_dir/status.json"
-  if [[ -n ${FEDORA_CONFIG_UPDATE_OWNER_UID:-} ]]; then
-    chown "${FEDORA_CONFIG_UPDATE_OWNER_UID}:${FEDORA_CONFIG_UPDATE_OWNER_GID}" \
+  if [[ -n ${CYBEXOS_UPDATE_OWNER_UID:-} ]]; then
+    chown "${CYBEXOS_UPDATE_OWNER_UID}:${CYBEXOS_UPDATE_OWNER_GID}" \
       "$run_dir/status.json" 2>/dev/null || true
   fi
 }
@@ -293,7 +293,7 @@ parse_options() {
   full=false; skip_tests=false; with_packages=true; with_flatpak=true; json=false; repo=""
   release_version=""; release_data_root=""; release_config=""; release_target=""
   release_transaction=false
-  system_unit=${FEDORA_CONFIG_UPDATE_SYSTEM_UNIT:-false}
+  system_unit=${CYBEXOS_UPDATE_SYSTEM_UNIT:-false}
   ansible_args=()
   while (( $# )); do
     case $1 in
@@ -307,7 +307,7 @@ parse_options() {
         option=$1
         shift
         [[ $# -gt 0 ]] || {
-          printf 'fedora-config-update-run: %s needs a value\n' "$option" >&2
+          printf 'cybexos-update-run: %s needs a value\n' "$option" >&2
           return 2
         }
         case $option in
@@ -318,7 +318,7 @@ parse_options() {
         ;;
       --repo)
         shift
-        [[ $# -gt 0 ]] || { printf 'fedora-config-update-run: --repo needs a path\n' >&2; return 2; }
+        [[ $# -gt 0 ]] || { printf 'cybexos-update-run: --repo needs a path\n' >&2; return 2; }
         repo=$1
         ;;
       -h|--help) usage; return 10 ;;
@@ -328,26 +328,26 @@ parse_options() {
     shift
   done
   if (( ${#ansible_args[@]} > 0 )) && [[ $full != true ]]; then
-    printf 'fedora-config-update-run: Ansible arguments require --full\n\n' >&2
+    printf 'cybexos-update-run: Ansible arguments require --full\n\n' >&2
     usage >&2
     return 2
   fi
   if [[ $with_packages == false && $full != true ]]; then
-    printf 'fedora-config-update-run: --no-packages requires --full\n' >&2
+    printf 'cybexos-update-run: --no-packages requires --full\n' >&2
     return 2
   fi
   if [[ $full == true ]]; then
     [[ -n $repo ]] || repo=$PWD
     repo=$(readlink -f -- "$repo")
     if [[ ! -f $repo/site.yml || ! -x $repo/tests/run ]]; then
-      printf 'fedora-config-update-run: --full requires the configuration repository path\n' >&2
+      printf 'cybexos-update-run: --full requires the configuration repository path\n' >&2
       return 2
     fi
   fi
   if [[ -n $release_version || -n $release_data_root || -n $release_config ]]; then
     if [[ $full != true || -z $release_version || -z $release_data_root \
           || -z $release_config ]]; then
-      printf 'fedora-config-update-run: a release transaction requires --full and all release options\n' >&2
+      printf 'cybexos-update-run: a release transaction requires --full and all release options\n' >&2
       return 2
     fi
     release_data_root=$(readlink -f -- "$release_data_root") || return 2
@@ -356,7 +356,7 @@ parse_options() {
     release_parent=$(readlink -f -- "$(dirname -- "$repo")") || return 2
     release_name=${repo##*/}
     if [[ ! -d $release_data_root/releases || ! -f $release_config \
-          || ! -r $repo/agent-skills/fedora-config/SKILL.md \
+          || ! -r $repo/agent-skills/cybexos/SKILL.md \
           || ! -x $repo/scripts/manage-agent-skills \
           || ! -x $repo/scripts/migrate-config || ! -x $repo/scripts/semver \
           || ! -r $repo/VERSION ]] \
@@ -365,7 +365,7 @@ parse_options() {
       || { [[ $repo != "$release_target" ]] \
            && [[ $release_parent != "$release_data_root/releases" \
                  || $release_name != ".stage.$release_version."* ]]; }; then
-      printf 'fedora-config-update-run: invalid staged release transaction\n' >&2
+      printf 'cybexos-update-run: invalid staged release transaction\n' >&2
       return 2
     fi
     release_transaction=true
@@ -376,10 +376,10 @@ start_run() {
   parse_options "$@"
   local parse_rc=$?
   [[ $parse_rc -eq 0 ]] || { [[ $parse_rc -eq 10 ]] && return 0; return "$parse_rc"; }
-  if [[ ${FEDORA_CONFIG_UPDATE_ASSUME_USER_UNIT:-0} != 1 \
+  if [[ ${CYBEXOS_UPDATE_ASSUME_USER_UNIT:-0} != 1 \
         && $system_unit != true ]] && ! sudo -n true >/dev/null 2>&1; then
     if [[ $json == true || ! -t 0 ]]; then
-      printf 'fedora-config-update-run: authentication is required; run `cybex update` in a terminal\n' >&2
+      printf 'cybexos-update-run: authentication is required; run `cybex update` in a terminal\n' >&2
       return 77
     fi
     printf 'Authenticate once to start the durable system update worker.\n'
@@ -402,7 +402,7 @@ start_run() {
       report_existing_run "$active_id" "$active_state" "$json"
       return 3
     fi
-    printf 'fedora-config-update-run: update lock is held but no active run is readable\n' >&2
+    printf 'cybexos-update-run: update lock is held but no active run is readable\n' >&2
     return 4
   fi
 
@@ -428,7 +428,7 @@ start_run() {
       || reboot_recommendation="pending"
   fi
   run_id="$(date +%Y%m%d-%H%M%S)-$$-$RANDOM"
-  unit_name="fedora-config-update-$run_id.service"
+  unit_name="cybexos-update-$run_id.service"
   run_dir="$log_shelf/$run_id"
   mkdir -p -- "$run_dir"
   : > "$run_dir/dnf.log"; : > "$run_dir/flatpak.log"; : > "$run_dir/run.log"
@@ -456,8 +456,8 @@ start_run() {
       --setenv="HOME=$HOME" \
       --setenv="XDG_STATE_HOME=${XDG_STATE_HOME:-$HOME/.local/state}" \
       --setenv="XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
-      --setenv="FEDORA_CONFIG_UPDATE_OWNER_UID=$(id -u)" \
-      --setenv="FEDORA_CONFIG_UPDATE_OWNER_GID=$(id -g)" \
+      --setenv="CYBEXOS_UPDATE_OWNER_UID=$(id -u)" \
+      --setenv="CYBEXOS_UPDATE_OWNER_GID=$(id -g)" \
       -- "${worker_args[@]}" || launch_rc=$?
   else
     systemd-run --user --quiet --collect --unit="$unit_name" \
@@ -466,7 +466,7 @@ start_run() {
   if ((launch_rc != 0)); then
     write_status failed launch "Could not start the update worker" 125
     [[ $json == true ]] && json_status "$run_id" | jq '. + {existing: false}' \
-      || printf 'fedora-config-update-run: could not start the update worker\n' >&2
+      || printf 'cybexos-update-run: could not start the update worker\n' >&2
     return 1
   fi
   [[ $json == true ]] && json_status "$run_id" | jq '. + {existing: false}' \
@@ -536,10 +536,10 @@ prepare_release_configuration() {
 }
 
 run_as_update_owner() {
-  local owner_uid=${FEDORA_CONFIG_UPDATE_OWNER_UID:-$EUID}
-  local owner_gid=${FEDORA_CONFIG_UPDATE_OWNER_GID:-$(id -g)}
+  local owner_uid=${CYBEXOS_UPDATE_OWNER_UID:-$EUID}
+  local owner_gid=${CYBEXOS_UPDATE_OWNER_GID:-$(id -g)}
   [[ $owner_uid =~ ^[0-9]+$ && $owner_gid =~ ^[0-9]+$ ]] || {
-    printf 'fedora-config-update-run: invalid update-owner identity\n' >&2
+    printf 'cybexos-update-run: invalid update-owner identity\n' >&2
     return 1
   }
   if [[ $owner_uid == "$EUID" && $owner_gid == "$(id -g)" ]]; then
@@ -547,7 +547,7 @@ run_as_update_owner() {
     return
   fi
   if ((EUID != 0)) || [[ ! -x /usr/bin/sudo ]]; then
-    printf 'fedora-config-update-run: cannot become update owner %s:%s\n' \
+    printf 'cybexos-update-run: cannot become update owner %s:%s\n' \
       "$owner_uid" "$owner_gid" >&2
     return 1
   fi
@@ -582,7 +582,7 @@ activate_release() {
   # release transaction as well.
   if ! run_as_update_owner \
       "$repo/scripts/manage-agent-skills" provision --home "$HOME" \
-      --canonical "$current_link/agent-skills/fedora-config" \
+      --canonical "$current_link/agent-skills/cybexos" \
       >>"$run_dir/run.log" 2>&1; then
     printf '[release] agent skill provisioning failed; restoring prior activation\n' \
       >>"$run_dir/run.log"
@@ -700,7 +700,7 @@ worker() {
   run_id=${1:-}; shift || true
   valid_id "$run_id" || exit 2
   parse_options "$@" || exit $?
-  run_dir="$log_shelf/$run_id"; unit_name="fedora-config-update-$run_id.service"
+  run_dir="$log_shelf/$run_id"; unit_name="cybexos-update-$run_id.service"
   release_config_changed=false
   release_activated=false
   release_backup="$run_dir/config.before.yml"
@@ -735,7 +735,7 @@ worker() {
   if [[ $published_state != queued ]]; then
     worker_finalized=true
     [[ $published_state == cancelled ]] && exit 130
-    printf 'fedora-config-update-run: refusing worker for run %s in state %s\n' \
+    printf 'cybexos-update-run: refusing worker for run %s in state %s\n' \
       "$run_id" "${published_state:-unknown}" >&2
     exit 125
   fi
@@ -751,17 +751,17 @@ worker() {
   # umask; making them root-only breaks every later unprivileged dnf query.
   local -a privileged_package
   if ((EUID == 0)); then
-    privileged_package=(sh -c 'umask 022; exec "$@"' fedora-config-update-package)
+    privileged_package=(sh -c 'umask 022; exec "$@"' cybexos-update-package)
   else
     privileged_package=(sudo -n sh -c \
-      'umask 022; exec "$@"' fedora-config-update-package)
+      'umask 022; exec "$@"' cybexos-update-package)
   fi
   local snapshot_helper_root=/usr/local/libexec
-  if [[ ${FEDORA_CONFIG_UPDATE_TESTING:-0} == 1 \
-        && -n ${FEDORA_CONFIG_UPDATE_TEST_LIBEXEC:-} ]]; then
-    snapshot_helper_root=$FEDORA_CONFIG_UPDATE_TEST_LIBEXEC
+  if [[ ${CYBEXOS_UPDATE_TESTING:-0} == 1 \
+        && -n ${CYBEXOS_UPDATE_TEST_LIBEXEC:-} ]]; then
+    snapshot_helper_root=$CYBEXOS_UPDATE_TEST_LIBEXEC
   fi
-  local snapshot_helper="$snapshot_helper_root/fedora-config-system-snapshot"
+  local snapshot_helper="$snapshot_helper_root/cybexos-system-snapshot"
   local legacy_snapshot_helper="$snapshot_helper_root/xps-system-snapshot"
   local snapshot_rc=0
   # Existing installations can receive the renamed updater before Ansible has
@@ -913,10 +913,10 @@ load_status_globals() {
 cancel_run() {
   local id state unit active_state next_active_state intent system_unit
   id=$(resolve_id "${1:-}") || return; state=$(status_state "$id" || true)
-  is_active "$state" || { printf 'fedora-config-update-run: %s is not active (%s)\n' "$id" "${state:-unknown}" >&2; return 1; }
+  is_active "$state" || { printf 'cybexos-update-run: %s is not active (%s)\n' "$id" "${state:-unknown}" >&2; return 1; }
   unit=$(jq -r '.unit // empty' "$(status_path "$id")")
   system_unit=$(jq -r '.systemUnit // false' "$(status_path "$id")")
-  [[ -n $unit ]] || unit="fedora-config-update-$id.service"
+  [[ -n $unit ]] || unit="cybexos-update-$id.service"
 
   # Publish intent before inspecting the unit. If start_run has not registered
   # it yet, the eventual worker observes this marker under the transaction
@@ -926,7 +926,7 @@ cancel_run() {
   atomic_text "$intent" "$(date +%s)"
 
   if ! active_state=$(unit_active_state "$unit" "$system_unit"); then
-    printf 'fedora-config-update-run: cancellation intent recorded, but %s could not be inspected; outcome is not yet verified\n' \
+    printf 'cybexos-update-run: cancellation intent recorded, but %s could not be inspected; outcome is not yet verified\n' \
       "$unit" >&2
     return 1
   fi
@@ -934,11 +934,11 @@ cancel_run() {
     active|activating|reloading|deactivating)
       if [[ $system_unit == true ]]; then
         system_manager_command systemctl stop "$unit" >/dev/null 2>&1 || {
-          printf 'fedora-config-update-run: could not stop %s; update remains active\n' "$unit" >&2
+          printf 'cybexos-update-run: could not stop %s; update remains active\n' "$unit" >&2
           return 1
         }
       elif ! systemctl --user stop "$unit" >/dev/null 2>&1; then
-          printf 'fedora-config-update-run: could not stop %s; update remains active\n' "$unit" >&2
+          printf 'cybexos-update-run: could not stop %s; update remains active\n' "$unit" >&2
           return 1
       fi
       # systemctl stop is synchronous, but verify the ownership boundary before
@@ -946,7 +946,7 @@ cancel_run() {
       # overwrite the synthetic status if its TERM trap did not get to run.
       for _ in {1..20}; do
         if ! next_active_state=$(unit_active_state "$unit" "$system_unit"); then
-          printf 'fedora-config-update-run: could not verify %s stopped\n' "$unit" >&2
+          printf 'cybexos-update-run: could not verify %s stopped\n' "$unit" >&2
           return 1
         fi
         case $next_active_state in
@@ -957,7 +957,7 @@ cancel_run() {
       case $next_active_state in
         inactive|failed) ;;
         *)
-          printf 'fedora-config-update-run: %s is still %s; update remains active\n' \
+          printf 'cybexos-update-run: %s is still %s; update remains active\n' \
             "$unit" "${next_active_state:-unknown}" >&2
           return 1
           ;;
@@ -967,7 +967,7 @@ cancel_run() {
       if [[ $state != queued ]]; then
         repair_stale_status "$id"
         state=$(status_state "$id" || true)
-        printf 'fedora-config-update-run: %s has no active worker (%s)\n' \
+        printf 'cybexos-update-run: %s has no active worker (%s)\n' \
           "$id" "${state:-unknown}" >&2
         return 1
       fi
@@ -976,7 +976,7 @@ cancel_run() {
       # the status under the transaction lock and refuses package work.
       ;;
     *)
-      printf 'fedora-config-update-run: unexpected unit state for %s: %s\n' \
+      printf 'cybexos-update-run: unexpected unit state for %s: %s\n' \
         "$unit" "${active_state:-unknown}" >&2
       return 1
       ;;
@@ -987,7 +987,7 @@ cancel_run() {
     load_status_globals "$id"
     write_status cancelled cancelled "Update cancelled" 130
   elif [[ $state != cancelled ]]; then
-    printf 'fedora-config-update-run: %s finished as %s before cancellation\n' \
+    printf 'cybexos-update-run: %s finished as %s before cancellation\n' \
       "$id" "${state:-unknown}" >&2
     return 1
   fi
@@ -998,7 +998,7 @@ dismiss_run() {
   local id state file temporary
   id=$(resolve_id "${1:-}") || return; file=$(status_path "$id")
   state=$(status_state "$id" || true)
-  is_active "$state" && { printf 'fedora-config-update-run: an active run cannot be dismissed\n' >&2; return 1; }
+  is_active "$state" && { printf 'cybexos-update-run: an active run cannot be dismissed\n' >&2; return 1; }
   temporary="$file.$$.tmp"; jq '.state = "dismissed"' "$file" > "$temporary"
   mv -f -- "$temporary" "$file"
 }
@@ -1037,7 +1037,7 @@ run_client() {
   existing=$(jq -r '.existing // false' <<< "$output")
   [[ $existing == true ]] \
     && printf 'An update is already active; attaching to %s.\n' "$id" \
-    || printf 'Started durable update %s. Ctrl+C detaches; `fedora-config-update-run cancel` cancels.\n' "$id"
+    || printf 'Started durable update %s. Ctrl+C detaches; `cybexos-update-run cancel` cancels.\n' "$id"
   attach_run "$id"
 }
 
@@ -1056,5 +1056,5 @@ case $command in
   read-log) read_log "${1:-}" "${2:-}" "${3:-0}" "${4:-}" ;;
   _worker) worker "$@" ;;
   -h|--help|help) usage ;;
-  *) printf 'fedora-config-update-run: unknown command %s\n\n' "$command" >&2; usage >&2; exit 2 ;;
+  *) printf 'cybexos-update-run: unknown command %s\n\n' "$command" >&2; usage >&2; exit 2 ;;
 esac

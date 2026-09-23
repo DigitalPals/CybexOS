@@ -846,7 +846,7 @@ test("the gear opens built-in options in the widget dialog", () => {
 test("the settings store keeps its fixed user-owned config path", () => {
     const settings = read("Common/Settings.qml");
     assert.match(settings,
-        /Quickshell\.env\("HOME"\) \+ "\/\.config\/fedora-config\/shell\.json"/);
+        /Quickshell\.env\("HOME"\) \+ "\/\.config\/cybexos\/shell\.json"/);
     assert.match(settings, /path:\s*root\.filePath/);
     assert.doesNotMatch(settings, /:\s*Quickshell\.statePath\(/,
         "Settings must not use statePath — it forks per config directory");

@@ -47,8 +47,8 @@ done
 systemctl --user is-active --quiet quickshell.service
 [[ $(pgrep -x qs) == "$main" && $main != 0 ]]
 invocation=$(systemctl --user show quickshell.service -p InvocationID --value)
-journalctl --user _SYSTEMD_INVOCATION_ID="$invocation" --no-pager > /tmp/fedora-config-shell-test.log
-if grep -Ei 'failed to load|qml.*(error|not installed)|ReferenceError:|TypeError:|SyntaxError:' /tmp/fedora-config-shell-test.log; then
+journalctl --user _SYSTEMD_INVOCATION_ID="$invocation" --no-pager > /tmp/cybexos-shell-test.log
+if grep -Ei 'failed to load|qml.*(error|not installed)|ReferenceError:|TypeError:|SyntaxError:' /tmp/cybexos-shell-test.log; then
   exit 1
 fi
 echo "Quickshell is healthy; sole PID $main."
@@ -66,7 +66,7 @@ home = Path.home()
 os.environ['PATH'] = ':'.join(str(home / path) for path in (
     '.cargo/bin', '.local/bin', '.npm-global/bin', 'Android/Sdk/platform-tools',
 )) + ':/usr/local/bin:/usr/bin'
-manifest = json.loads(Path('/usr/share/fedora-config/applications.json').read_text())
+manifest = json.loads(Path('/usr/share/cybexos/applications.json').read_text())
 subprocess.run(['rpm', '-q', *manifest['packages']], check=True, stdout=subprocess.DEVNULL)
 for app in manifest['flatpaks']:
     subprocess.run(['flatpak', 'info', '--system', app], check=True, stdout=subprocess.DEVNULL)
@@ -87,7 +87,7 @@ t3 = home / '.local/share/t3code-nightly'
 with (t3 / 'T3-Code-Nightly-x86_64.AppImage').open('rb') as stream:
     assert hashlib.file_digest(stream, 'sha256').hexdigest() == (t3 / 'digest').read_text().strip()
 assert (home / '.local/share/voxtype/models/ggml-base.bin').is_file()
-assert (home / '.local/state/fedora-config/offline-apps-seeded').is_file()
+assert (home / '.local/state/cybexos/offline-apps-seeded').is_file()
 print('Complete application manifest and offline user toolchains passed.')
 """
 
@@ -120,7 +120,7 @@ def main():
            "-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=accept-new",
            "-o", f"UserKnownHostsFile={work / 'known_hosts'}", "liveuser@127.0.0.1"]
     vm = subprocess.Popen([
-        "qemu-system-x86_64", "-name", "fedora-config-live-test", "-machine", "q35,accel=kvm",
+        "qemu-system-x86_64", "-name", "cybexos-live-test", "-machine", "q35,accel=kvm",
         "-cpu", "host", "-smp", "4", "-m", "16384",
         "-drive", f"file={work / 'installed.qcow2'},format=qcow2,if=virtio",
         "-cdrom", str(iso), "-boot", "d",
@@ -167,8 +167,8 @@ def main():
              "test \"$(stat -c '%u:%g:%a' /usr)\" = 0:0:755 && "
              "test \"$(stat -c '%u:%g:%a' /etc)\" = 0:0:755"])
         run([*ssh, "bash -s"], input=AUDIT, text=True)
-        run([*ssh, "test -f /run/fedora-config-live && test -x /usr/bin/liveinst && command -v cybex && fastfetch --version && "
-             "XDG_RUNTIME_DIR=/run/user/1000 systemctl --user is-active fedora-config-welcome.service"])
+        run([*ssh, "test -f /run/cybexos-live && test -x /usr/bin/liveinst && command -v cybex && fastfetch --version && "
+             "XDG_RUNTIME_DIR=/run/user/1000 systemctl --user is-active cybexos-welcome.service"])
         run([*ssh, "python3 -"], input=OFFLINE_APPLICATION_AUDIT, text=True)
         print(f"Live desktop and welcome passed. Test connection details: {work / 'vm.json'}", flush=True)
         if args.hold:

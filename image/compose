@@ -45,21 +45,21 @@ class VerifiedDnf(DnfLiveCD):
             repository.gpgcheck = entry.getboolean("gpgcheck")
             repository.repo_gpgcheck = entry.getboolean("repo_gpgcheck", fallback=False)
             repository.skip_if_unavailable = False
-            if repository_id == "fedora-config-local":
+            if repository_id == "cybexos-local":
                 repository.metadata_expire = 0
             if repository.gpgcheck:
                 repository.gpgkey = [key.replace("$releasever", "44").replace("$basearch", "x86_64")
                                      for key in entry["gpgkey"].split()]
-            elif repository_id != "fedora-config-local":
+            elif repository_id != "cybexos-local":
                 raise RuntimeError("Only the locally built RPM may be unsigned")
         return self.repos[name]
 
     def do_transaction(self, *args, **kwargs):
         for package in self.transaction.install_set:
             if not package.repo.gpgcheck:
-                if package.reponame != "fedora-config-local":
+                if package.reponame != "cybexos-local":
                     raise RuntimeError(f"Unexpected unsigned package: {package}")
-                if package.name != "fedora-config-desktop":
+                if package.name != "cybexos-desktop":
                     pinned = json.loads((build / "pinned-rpms.json").read_text())
                     path = Path(package.localPkg())
                     with path.open("rb") as stream:
@@ -131,7 +131,7 @@ try:
         "for tool in cybex fastfetch anaconda liveinst efibootmgr grubby grub2-mkconfig cryptsetup btrfs mkfs.vfat mkfs.ext4; "
         'do command -v "$tool" >/dev/null || exit 1; done',
     ], check=True)
-    for relative in ("", "usr", "etc", "usr/libexec/fedora-config-live-setup"):
+    for relative in ("", "usr", "etc", "usr/libexec/cybexos-live-setup"):
         metadata = (Path(creator._instroot) / relative).stat()
         if metadata.st_uid != 0 or metadata.st_gid != 0 or metadata.st_mode & 0o022:
             raise RuntimeError(f"Unsafe image ownership or permissions: /{relative}")

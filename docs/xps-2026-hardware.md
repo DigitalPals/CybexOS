@@ -206,7 +206,7 @@ Choose a temporary password, reboot, and use the firmware MOK manager to enroll
 the key. Then rerun the role from the active release:
 
 ```bash
-ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags xps-2026
+ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags xps-2026
 ```
 
 The role does not disable Secure Boot. A DKMS update made while old camera

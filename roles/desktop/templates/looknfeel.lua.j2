@@ -6,7 +6,7 @@ local function persisted_glass_enabled()
   local home = os.getenv("HOME")
   if not home then return true end
 
-  local file = io.open(home .. "/.config/fedora-config/shell.json", "r")
+  local file = io.open(home .. "/.config/cybexos/shell.json", "r")
   if not file then
     file = io.open(home .. "/.local/state/quickshell/shell-settings.json", "r")
   end
@@ -46,7 +46,7 @@ hl.config({
   animations = { enabled = true },
   misc = { force_default_wallpaper = 0, disable_hyprland_logo = true, focus_on_activate = false },
   xwayland = {
-    force_zero_scaling = {{ (fedora_config_xps_2026 | bool) | ternary('true', 'false') }},
+    force_zero_scaling = {{ (cybexos_xps_2026 | bool) | ternary('true', 'false') }},
   },
   group = {
     col = {

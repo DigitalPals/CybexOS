@@ -4,11 +4,24 @@
   gather_facts: true
   become: true
   vars:
-    fedora_config_keep_user_data: false
+    cybexos_keep_user_data: false
   pre_tasks:
     - name: Verify the selected user exists
       ansible.builtin.getent:
         database: passwd
         key: "{{ primary_user }}"
+
+    - name: Move a fedora-config installation to the CybexOS names
+      ansible.builtin.command:
+        argv:
+          - "{{ config_repo }}/scripts/migrate-legacy-names"
+          - --user
+          - "{{ primary_user }}"
+          - --home
+          - "{{ primary_home }}"
+      register: cybexos_legacy_migration
+      changed_when: "'CHANGED:' in cybexos_legacy_migration.stdout"
+      when: not ansible_check_mode
   roles:
+    - role: legacy-names
     - role: uninstall

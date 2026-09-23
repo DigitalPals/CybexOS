@@ -1,21 +1,21 @@
 # Commands and desktop helpers
 
 Prefer installed commands over reconstructed shell pipelines. Read their
-active source under `~/.local/share/fedora-config/current` or run their help
+active source under `~/.local/share/cybexos/current` or run their help
 before using an unfamiliar option.
 
 ## CybexOS
 
-- `fedora-config version` reports the active release.
-- `fedora-config verify` and `fedora-config doctor` run non-destructive
+- `cybex version` reports the active release.
+- `cybex verify` and `cybex doctor` run non-destructive
   installed-system checks. Add `--source` only when repository/developer checks
   are intended.
-- `fedora-config update --check` checks the configured release channel.
-- `fedora-config-update-run status --json`, `log-dir`, and `read-log` inspect a
+- `cybex update --check` checks the configured release channel.
+- `cybexos-update-run status --json`, `log-dir`, and `read-log` inspect a
   durable update without starting one.
 
-An actual `fedora-config update`, `configure`, `install`, or `uninstall` needs
-explicit user intent. So do `fedora-config-update-run cancel`, reboot,
+An actual `cybex update`, `configure`, `install`, or `uninstall` needs
+explicit user intent. So do `cybexos-update-run cancel`, reboot,
 shutdown, and recovery/reset operations. Do not infer authorization from a
 request to diagnose or check status.
 

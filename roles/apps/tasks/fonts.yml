@@ -22,8 +22,8 @@
 # Keep this separate from personal fonts.conf and load before 50-user.conf.
 - name: Install Omarchy font family mappings
   ansible.builtin.copy:
-    src: 49-fedora-config-defaults.conf
-    dest: /etc/fonts/conf.d/49-fedora-config-defaults.conf
+    src: 49-cybexos-defaults.conf
+    dest: /etc/fonts/conf.d/49-cybexos-defaults.conf
     owner: root
     group: root
     mode: "0644"

@@ -4,5 +4,5 @@ PartOf=hyprland-session.target
 After=quickshell.service
 
 [Service]
-ExecStart=/usr/bin/fedora-config-welcome --autostart
+ExecStart=/usr/bin/cybexos-welcome --autostart
 Restart=no

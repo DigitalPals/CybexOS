@@ -60,7 +60,7 @@ pipeline or physical desktop qualification. That audit changed only this documen
 
 Install a trusted package with `cybex plugin add <git-url-or-local-repository>`,
 then enable it, or put a complete plugin checkout in
-`~/.local/share/fedora-config/plugins/<manifest-id>/`. The directory must match
+`~/.local/share/cybexos/plugins/<manifest-id>/`. The directory must match
 its manifest ID. Preserve the manifest, QML, relative imports, scripts, and
 assets. No manifest conversion or Omarchy installation is required. Packages
 are trusted executable QML running as the desktop user; they are not sandboxed.
@@ -242,7 +242,7 @@ and opacity overrides. Corner value -1 follows the shared panel corners; 0 is
 square. Existing explicit plugin overrides are preserved until changed or reset. Scaling affects shared Omarchy UI, including bar widgets.
 
 Advanced users can set `pluginThemeOverrides` in
-`~/.config/fedora-config/shell.json`, using flat Omarchy shell tokens:
+`~/.config/cybexos/shell.json`, using flat Omarchy shell tokens:
 
 ```json
 {

@@ -18,7 +18,7 @@ EXTENSION_ID = "{d634138d-c276-4fc8-924b-40a0ea21d284}"
 
 def invoke(policy: Path, operation: str) -> subprocess.CompletedProcess[str]:
     environment = os.environ.copy()
-    environment["FEDORA_CONFIG_FIREFOX_POLICY"] = str(policy)
+    environment["CYBEXOS_FIREFOX_POLICY"] = str(policy)
     return subprocess.run(
         [sys.executable, str(EDITOR), operation],
         env=environment,
@@ -29,7 +29,7 @@ def invoke(policy: Path, operation: str) -> subprocess.CompletedProcess[str]:
 
 
 def main() -> None:
-    with tempfile.TemporaryDirectory(prefix="fedora-config-firefox.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-firefox.") as temporary:
         policy = Path(temporary) / "distribution/policies.json"
         policy.parent.mkdir(parents=True)
         original = {

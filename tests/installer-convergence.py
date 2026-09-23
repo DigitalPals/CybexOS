@@ -77,21 +77,21 @@ prune_version_dirs() {
 }
 emit_changed() { echo "CHANGED: $*"; }
 emit_unchanged() { echo "UNCHANGED: $*"; }
-fedora_config_restorecon() { return 0; }
+cybexos_restorecon() { return 0; }
 ''',
     )
 
 
 def render_installer(source: Path, destination: Path, root: Path, common: Path) -> None:
     rendered = source.read_text().replace(
-        "source /usr/local/libexec/fedora-config-common.sh",
+        "source /usr/local/libexec/cybexos-common.sh",
         f"source {shlex.quote(str(common))}",
     )
     replacements = {
-        "/var/cache/fedora-config-upstream": str(root / "cache"),
-        "/var/lib/fedora-config-upstream": str(root / "state"),
-        "/opt/fedora-config-apps": str(root / "apps"),
-        "/opt/fedora-config-builds": str(root / "builds"),
+        "/var/cache/cybexos-upstream": str(root / "cache"),
+        "/var/lib/cybexos-upstream": str(root / "state"),
+        "/opt/cybexos-apps": str(root / "apps"),
+        "/opt/cybexos-builds": str(root / "builds"),
         "/usr/local/share/fonts": str(root / "fonts"),
         "/usr/local/bin": str(root / "bin"),
     }
@@ -152,13 +152,13 @@ exit 2
 
 
 def test_prune_count() -> None:
-    common = ROOT / "roles/apps/files/fedora-config-common.sh"
+    common = ROOT / "roles/apps/files/cybexos-common.sh"
     for current_name, expected in (
         ("v5", {"v3", "v4", "v5"}),
         ("v1", {"v1", "v4", "v5"}),
         (None, {"v3", "v4", "v5"}),
     ):
-        with tempfile.TemporaryDirectory(prefix="fedora-config-prune.") as temporary:
+        with tempfile.TemporaryDirectory(prefix="cybexos-prune.") as temporary:
             root = Path(temporary)
             versions = root / "versions"
             versions.mkdir()
@@ -181,7 +181,7 @@ def test_prune_count() -> None:
 
 
 def test_github_rpm_convergence_and_tag_endpoint() -> None:
-    with tempfile.TemporaryDirectory(prefix="fedora-config-github-rpm.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-github-rpm.") as temporary:
         root = Path(temporary)
         common = root / "common.sh"
         installer = root / "github-release-install"
@@ -253,7 +253,7 @@ def make_zip(path: Path, files: dict[str, bytes], executable_names: set[str] | N
 
 
 def test_github_font_payload_and_post_commit_warning() -> None:
-    with tempfile.TemporaryDirectory(prefix="fedora-config-github-font.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-github-font.") as temporary:
         root = Path(temporary)
         common = root / "common.sh"
         installer = root / "github-release-install"
@@ -276,7 +276,7 @@ def test_github_font_payload_and_post_commit_warning() -> None:
         make_zip(asset, {"LICENSE.txt": b"license only\n"})
         digest = hashlib.sha256(asset.read_bytes()).hexdigest()
         manifest = f"tag=v1 checksum=sha256:{digest}"
-        (old / ".fedora-config-release").write_text(manifest + "\n")
+        (old / ".cybexos-release").write_text(manifest + "\n")
         release_json(release, "v1", "fonts.zip", digest)
         argv = [
             str(installer),
@@ -301,7 +301,7 @@ def test_github_font_payload_and_post_commit_warning() -> None:
         assert "CHANGED: installed demo-font v1" in result.stdout
         assert (font_root / "current/Demo.ttf").is_file()
 
-    with tempfile.TemporaryDirectory(prefix="fedora-config-github-binary.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-github-binary.") as temporary:
         root = Path(temporary)
         common = root / "common.sh"
         installer = root / "github-release-install"
@@ -338,7 +338,7 @@ def test_github_font_payload_and_post_commit_warning() -> None:
 
 
 def test_source_build_post_commit_warning() -> None:
-    with tempfile.TemporaryDirectory(prefix="fedora-config-source-build.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-source-build.") as temporary:
         root = Path(temporary)
         common = root / "common.sh"
         installer = root / "source-app-build"
@@ -407,7 +407,7 @@ chmod 0755 "$output/$MOCK_BINARY"
 
 
 def test_android_command_tools_rollback() -> None:
-    with tempfile.TemporaryDirectory(prefix="fedora-config-android.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-android.") as temporary:
         root = Path(temporary)
         home = root / "home"
         sdk = home / "Android/Sdk"
@@ -415,7 +415,7 @@ def test_android_command_tools_rollback() -> None:
         common_stub(common)
         template = (ROOT / "roles/apps/templates/android-sdk-update.j2").read_text()
         rendered = template.replace("{{ primary_home }}", str(home)).replace(
-            "source /usr/local/libexec/fedora-config-common.sh",
+            "source /usr/local/libexec/cybexos-common.sh",
             f"source {shlex.quote(str(common))}",
         )
         installer = root / "android-sdk-update"
@@ -491,7 +491,7 @@ fi
 
 
 def android_legacy_layout_fixture(*, fail_after_activation: bool) -> None:
-    with tempfile.TemporaryDirectory(prefix="fedora-config-android-legacy.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-android-legacy.") as temporary:
         root = Path(temporary)
         home = root / "home"
         sdk = home / "Android/Sdk"
@@ -499,7 +499,7 @@ def android_legacy_layout_fixture(*, fail_after_activation: bool) -> None:
         common_stub(common)
         template = (ROOT / "roles/apps/templates/android-sdk-update.j2").read_text()
         rendered = template.replace("{{ primary_home }}", str(home)).replace(
-            "source /usr/local/libexec/fedora-config-common.sh",
+            "source /usr/local/libexec/cybexos-common.sh",
             f"source {shlex.quote(str(common))}",
         )
         installer = root / "android-sdk-update"
@@ -614,14 +614,14 @@ def test_android_legacy_layout_rollback() -> None:
 
 
 def test_t3code_metadata_rollback() -> None:
-    with tempfile.TemporaryDirectory(prefix="fedora-config-t3code.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-t3code.") as temporary:
         root = Path(temporary)
         home = root / "home"
         common = root / "common.sh"
         common_stub(common)
         installer = root / "t3code-update"
         rendered = (ROOT / "roles/dotfiles/templates/t3code-update.j2").read_text().replace(
-            "source /usr/local/libexec/fedora-config-common.sh",
+            "source /usr/local/libexec/cybexos-common.sh",
             f"source {shlex.quote(str(common))}",
         )
         executable(installer, rendered.removeprefix("#!/usr/bin/env bash\n"))
@@ -711,7 +711,7 @@ def test_font_archive_checksum_contract() -> None:
     assert "apps_pinned_font_archive_marker:" in health_block
     assert "apps_pinned_font_archive_payload:" in health_block
     assert "item.version\n      ~" not in health_block
-    assert ".fedora-config-archive-{{ item.checksum | regex_replace('^sha256:', '') }}" in tasks
+    assert ".cybexos-archive-{{ item.checksum | regex_replace('^sha256:', '') }}" in tasks
     assert 'creates: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}/{{ item.expected_font }}"' not in tasks
 
 

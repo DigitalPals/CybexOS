@@ -5,14 +5,14 @@
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-backend="$repo_root/assets/scripts/fedora-config-update-run"
+backend="$repo_root/assets/scripts/cybexos-update-run"
 fixture=$(mktemp -d)
 
 cleanup() {
   local rc=$? file
   trap - EXIT
   if ((rc != 0)); then
-    printf 'fedora-config-update-run fixture failed; retained diagnostics follow\n' >&2
+    printf 'cybexos-update-run fixture failed; retained diagnostics follow\n' >&2
     while IFS= read -r -d '' file; do
       printf '%s\n' "--- ${file#"$fixture"/}" >&2
       sed -n '1,160p' "$file" >&2
@@ -123,12 +123,12 @@ export MOCK_DNF_UMASK_LOG="$fixture/dnf-umask.log"
 export MOCK_ANSIBLE_CONFIG_LOG="$fixture/ansible-config.log"
 export MOCK_ANSIBLE_ARGS_LOG="$fixture/ansible-args.log"
 export MOCK_LEGACY_SNAPSHOT_LOG="$fixture/legacy-snapshot.log"
-export FEDORA_CONFIG_UPDATE_BOOT_ID_FILE="$fixture/boot-id"
-export FEDORA_CONFIG_UPDATE_ASSUME_USER_UNIT=1
-export FEDORA_CONFIG_UPDATE_TESTING=1
-export FEDORA_CONFIG_UPDATE_TEST_LIBEXEC="$mock_libexec"
+export CYBEXOS_UPDATE_BOOT_ID_FILE="$fixture/boot-id"
+export CYBEXOS_UPDATE_ASSUME_USER_UNIT=1
+export CYBEXOS_UPDATE_TESTING=1
+export CYBEXOS_UPDATE_TEST_LIBEXEC="$mock_libexec"
 export PATH="$mock_bin:$PATH"
-printf 'boot-a\n' >"$FEDORA_CONFIG_UPDATE_BOOT_ID_FILE"
+printf 'boot-a\n' >"$CYBEXOS_UPDATE_BOOT_ID_FILE"
 : >"$MOCK_PACKAGE_LOG"
 
 idle=$($backend status --json)
@@ -188,7 +188,7 @@ for _ in {1..200}; do
   sleep 0.01
 done
 [[ -e $MOCK_SHOW_GATE.entered ]]
-[[ -e $XDG_STATE_HOME/fedora-config/update/logs/$first_id/cancel.requested ]]
+[[ -e $XDG_STATE_HOME/cybexos/update/logs/$first_id/cancel.requested ]]
 : >"$MOCK_BLOCK_GATE.release"
 wait "$first_pid"
 [[ $(jq -r .existing "$fixture/first.json") == false ]]
@@ -203,7 +203,7 @@ wait "$cancel_pid"
 [[ $cancelled_worker_rc -eq 130 ]]
 [[ $(jq -r .state <<<"$($backend status --json "$first_id")") == cancelled ]]
 [[ ! -s $MOCK_PACKAGE_LOG ]]
-rm -f -- "$active_dir/fedora-config-update-$first_id.service"
+rm -f -- "$active_dir/cybexos-update-$first_id.service"
 unset MOCK_SHOW_GATE
 
 # A just-published unit gets a short registration grace. Once the same record
@@ -216,7 +216,7 @@ unit=$(jq -er .unit <<<"$stale_run")
 rm -f -- "$active_dir/$unit"
 grace=$($backend status --json "$stale_id")
 [[ $(jq -r .state <<<"$grace") == queued ]]
-status_file="$XDG_STATE_HOME/fedora-config/update/logs/$stale_id/status.json"
+status_file="$XDG_STATE_HOME/cybexos/update/logs/$stale_id/status.json"
 jq '.startedAt = 0' "$status_file" >"$status_file.old"
 mv -f -- "$status_file.old" "$status_file"
 stale=$($backend status --json "$stale_id")
@@ -337,7 +337,7 @@ recommended=$($backend status --json "$recommended_id")
 [[ $(jq -r .bootId <<<"$recommended") == boot-a ]]
 [[ $(jq -r .rebootRecommendation <<<"$recommended") == recommended ]]
 [[ $(tail -n 1 "$MOCK_DNF_UMASK_LOG") =~ ^0?022$ ]]
-[[ $(stat -c %a "$XDG_STATE_HOME/fedora-config/update/logs/$recommended_id/dnf.log") == 600 ]]
+[[ $(stat -c %a "$XDG_STATE_HOME/cybexos/update/logs/$recommended_id/dnf.log") == 600 ]]
 [[ $(grep -Fc '"${privileged_package[@]}"' "$backend") -eq 4 ]]
 grep -q -- '--quiet --cacheonly needs-restarting --json' "$MOCK_DNF_LOG"
 grep -Fxq 'create update '"$recommended_id" "$MOCK_LEGACY_SNAPSHOT_LOG"
@@ -360,7 +360,7 @@ carried=$($backend status --json "$carry_id")
 
 # A new boot clears the positive at the JSON boundary. The next valid exit
 # 0/false result records an explicit no-reboot confirmation for that boot.
-printf 'boot-b\n' >"$FEDORA_CONFIG_UPDATE_BOOT_ID_FILE"
+printf 'boot-b\n' >"$CYBEXOS_UPDATE_BOOT_ID_FILE"
 after_boot=$($backend status --json "$carry_id")
 [[ $(jq -r .bootId <<<"$after_boot") == boot-b ]]
 [[ $(jq -r .rebootRecommendation <<<"$after_boot") == unavailable ]]
@@ -397,33 +397,33 @@ failed_check=$($backend status --json "$failed_check_id")
 # Release migration, apply, activation, agent-skill adoption, and pruning
 # belong to the durable worker. Failed apply or activation restores the prior
 # configuration and active release.
-release_data="$HOME/.local/share/fedora-config"
-release_config="$fixture/fedora-config.yml"
+release_data="$HOME/.local/share/cybexos"
+release_config="$fixture/cybexos.yml"
 mkdir -p "$release_data/releases/1.0.0" "$release_data/releases/1.1.0" \
   "$release_data/releases/1.2.0"
 ln -s releases/1.2.0 "$release_data/current"
 printf 'schema: old\n' >"$release_config"
 export MOCK_RELEASE_CONFIG="$release_config"
 
-agent_skill_canonical="$release_data/current/agent-skills/fedora-config"
-agent_backup_root="$HOME/.local/state/fedora-config/backups/agent-skills"
+agent_skill_canonical="$release_data/current/agent-skills/cybexos"
+agent_backup_root="$HOME/.local/state/cybexos/backups/agent-skills"
 mkdir -p "$HOME/.agents/skills" \
-  "$HOME/.claude/skills/fedora-config/nested" \
+  "$HOME/.claude/skills/cybexos/nested" \
   "$HOME/.codex/skills" "$HOME/original-codex-skill"
 for root in .agents .claude .codex; do
   mkdir -p "$HOME/$root/skills/unrelated"
   printf 'unrelated %s\n' "$root" >"$HOME/$root/skills/unrelated/SKILL.md"
 done
-printf 'original agents skill\n' >"$HOME/.agents/skills/fedora-config"
+printf 'original agents skill\n' >"$HOME/.agents/skills/cybexos"
 printf 'original claude skill\n' \
-  >"$HOME/.claude/skills/fedora-config/nested/value"
+  >"$HOME/.claude/skills/cybexos/nested/value"
 printf 'original codex target\n' >"$HOME/original-codex-skill/SKILL.md"
-ln -s "$HOME/original-codex-skill" "$HOME/.codex/skills/fedora-config"
+ln -s "$HOME/original-codex-skill" "$HOME/.codex/skills/cybexos"
 
 assert_agent_skill_links() {
   local root path
   for root in .agents .claude .codex; do
-    path=$HOME/$root/skills/fedora-config
+    path=$HOME/$root/skills/cybexos
     [[ -L $path ]]
     [[ $(readlink -- "$path") == "$agent_skill_canonical" ]]
     [[ $(readlink -f -- "$path") == $(readlink -f -- "$agent_skill_canonical") ]]
@@ -473,7 +473,7 @@ $backend _worker "$release_id" --full --skip-tests --no-packages \
 assert_agent_skill_links
 assert_unrelated_skills
 for root in .agents .claude .codex; do
-  [[ $(stat -c %u "$HOME/$root/skills/fedora-config") == "$(id -u)" ]]
+  [[ $(stat -c %u "$HOME/$root/skills/cybexos") == "$(id -u)" ]]
 done
 [[ $(stat -c %u "$agent_backup_root") == "$(id -u)" ]]
 [[ $(<"$agent_backup_root/agents/original") == 'original agents skill' ]]
@@ -488,20 +488,20 @@ release_status=$($backend status --json "$release_id")
 
 # A failure while reconciling adopted skill slots rolls every slot back to its
 # exact pre-call object, restores current, and triggers configuration rollback.
-rm -f -- "$HOME/.agents/skills/fedora-config" \
-  "$HOME/.codex/skills/fedora-config"
-rm -rf -- "$HOME/.claude/skills/fedora-config"
+rm -f -- "$HOME/.agents/skills/cybexos" \
+  "$HOME/.codex/skills/cybexos"
+rm -rf -- "$HOME/.claude/skills/cybexos"
 printf 'owned agents before failed activation\n' \
-  >"$HOME/.agents/skills/fedora-config"
-mkdir -p "$HOME/.claude/skills/fedora-config"
+  >"$HOME/.agents/skills/cybexos"
+mkdir -p "$HOME/.claude/skills/cybexos"
 printf 'owned claude before failed activation\n' \
-  >"$HOME/.claude/skills/fedora-config/value"
+  >"$HOME/.claude/skills/cybexos/value"
 ln -s missing-before-failed-activation \
-  "$HOME/.codex/skills/fedora-config"
+  "$HOME/.codex/skills/cybexos"
 make_candidate 2.1.0
 export MOCK_MIGRATED_CONFIG='schema: activation-must-rollback'
-export FEDORA_CONFIG_AGENT_SKILLS_TESTING=1
-export FEDORA_CONFIG_AGENT_SKILLS_TEST_FAIL=after:agents
+export CYBEXOS_AGENT_SKILLS_TESTING=1
+export CYBEXOS_AGENT_SKILLS_TEST_FAIL=after:agents
 activation_failure_start=$($backend start --json --full --skip-tests --no-packages \
   --repo "$release_data/releases/2.1.0" --release-version 2.1.0 \
   --release-data-root "$release_data" --release-config "$release_config")
@@ -512,29 +512,29 @@ $backend _worker "$activation_failure_id" --full --skip-tests --no-packages \
   --release-data-root "$release_data" --release-config "$release_config"
 activation_failure_rc=$?
 set -e
-unset FEDORA_CONFIG_AGENT_SKILLS_TESTING \
-  FEDORA_CONFIG_AGENT_SKILLS_TEST_FAIL
+unset CYBEXOS_AGENT_SKILLS_TESTING \
+  CYBEXOS_AGENT_SKILLS_TEST_FAIL
 [[ $activation_failure_rc -eq 1 ]]
 [[ $(<"$release_config") == 'schema: committed' ]]
 [[ $(readlink "$release_data/current") == releases/2.0.0 ]]
-[[ -f $HOME/.agents/skills/fedora-config \
-    && ! -L $HOME/.agents/skills/fedora-config ]]
-[[ $(<"$HOME/.agents/skills/fedora-config") \
+[[ -f $HOME/.agents/skills/cybexos \
+    && ! -L $HOME/.agents/skills/cybexos ]]
+[[ $(<"$HOME/.agents/skills/cybexos") \
     == 'owned agents before failed activation' ]]
-[[ $(<"$HOME/.claude/skills/fedora-config/value") \
+[[ $(<"$HOME/.claude/skills/cybexos/value") \
     == 'owned claude before failed activation' ]]
-[[ -L $HOME/.codex/skills/fedora-config ]]
-[[ $(readlink -- "$HOME/.codex/skills/fedora-config") \
+[[ -L $HOME/.codex/skills/cybexos ]]
+[[ $(readlink -- "$HOME/.codex/skills/cybexos") \
     == missing-before-failed-activation ]]
 assert_unrelated_skills
 activation_failure=$($backend status --json "$activation_failure_id")
 [[ $(jq -r .state <<<"$activation_failure") == failed ]]
 [[ $(jq -r .phase <<<"$activation_failure") == activation ]]
 grep -F '[release] agent skill provisioning failed; restoring prior activation' \
-  "$XDG_STATE_HOME/fedora-config/update/logs/$activation_failure_id/run.log" \
+  "$XDG_STATE_HOME/cybexos/update/logs/$activation_failure_id/run.log" \
   >/dev/null
 grep -F '[release] restored the pre-update installer configuration' \
-  "$XDG_STATE_HOME/fedora-config/update/logs/$activation_failure_id/run.log" \
+  "$XDG_STATE_HOME/cybexos/update/logs/$activation_failure_id/run.log" \
   >/dev/null
 
 make_candidate 2.2.0
@@ -558,17 +558,17 @@ failed_release=$($backend status --json "$failed_release_id")
 [[ $(jq -r .state <<<"$failed_release") == failed ]]
 [[ $(jq -r .phase <<<"$failed_release") == ansible ]]
 grep -F '[release] restored the pre-update installer configuration' \
-  "$XDG_STATE_HOME/fedora-config/update/logs/$failed_release_id/run.log" >/dev/null
+  "$XDG_STATE_HOME/cybexos/update/logs/$failed_release_id/run.log" >/dev/null
 
 # Uninstall remains authoritative even after adopted slots drifted between
 # releases: restore the immutable first-adoption objects, not later collisions.
 "$release_data/releases/2.0.0/scripts/manage-agent-skills" uninstall \
   --home "$HOME" >/dev/null
-[[ $(<"$HOME/.agents/skills/fedora-config") == 'original agents skill' ]]
-[[ $(<"$HOME/.claude/skills/fedora-config/nested/value") \
+[[ $(<"$HOME/.agents/skills/cybexos") == 'original agents skill' ]]
+[[ $(<"$HOME/.claude/skills/cybexos/nested/value") \
     == 'original claude skill' ]]
-[[ -L $HOME/.codex/skills/fedora-config ]]
-[[ $(readlink -- "$HOME/.codex/skills/fedora-config") \
+[[ -L $HOME/.codex/skills/cybexos ]]
+[[ $(readlink -- "$HOME/.codex/skills/cybexos") \
     == "$HOME/original-codex-skill" ]]
 assert_unrelated_skills
 

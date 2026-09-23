@@ -17,7 +17,7 @@ test_scratch_dirs=()
 cleanup_test_scratch() {
   local directory
   for directory in "${test_scratch_dirs[@]}"; do
-    [[ $directory == "${TMPDIR:-/tmp}"/fedora-config-qml.* ]] &&
+    [[ $directory == "${TMPDIR:-/tmp}"/cybexos-qml.* ]] &&
       rm -rf -- "$directory"
   done
 }
@@ -234,7 +234,7 @@ stage_qml_runtime() {
   qml_import_path=$(qtpaths6 --query QT_INSTALL_QML 2>/dev/null \
     || qtpaths --query QT_INSTALL_QML 2>/dev/null || true)
   [[ -d ${qml_import_path:-} ]] || qml_import_path=/usr/lib64/qt6/qml
-  scratch=$(mktemp -d "${TMPDIR:-/tmp}/fedora-config-qml.XXXXXX") || {
+  scratch=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-qml.XXXXXX") || {
     fail 'qml runtime' 'could not create an isolated runtime directory'
     return
   }
@@ -779,6 +779,20 @@ stage_system_snapshot() {
   fi
 }
 
+stage_legacy_names() {
+  local out rc=0 t0 elapsed
+  t0=$(now_ms)
+  out=$(bash tests/legacy-names 2>&1) || rc=$?
+  elapsed=$(( $(now_ms) - t0 ))
+
+  if ((rc == 0)); then
+    pass 'legacy' "fedora-config to CybexOS migration $(took "$elapsed")"
+  else
+    fail 'legacy' 'fedora-config migration fixture failed'
+    excerpt "${out:-unknown failure}"
+  fi
+}
+
 stage_screenshot_workflow() {
   local out rc=0 t0 elapsed
   t0=$(now_ms)
@@ -827,7 +841,7 @@ stage_update_backend() {
     fi
   done
   t0=$(now_ms)
-  out=$(bash tests/fedora-config-update-run 2>&1) || rc=$?
+  out=$(bash tests/cybexos-update-run 2>&1) || rc=$?
   if ((rc == 0)); then
     out=$(bash tests/release-update 2>&1) || rc=$?
   fi
@@ -858,6 +872,7 @@ stages=(
   stage_screenshot_workflow
   stage_brightness_routing
   stage_system_snapshot
+  stage_legacy_names
 )
 
 quick_stages=(

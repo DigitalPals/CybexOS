@@ -7,10 +7,10 @@ set -euo pipefail
 command_name=${1:-}
 [[ $# -eq 0 ]] || shift
 
-data_root=${XDG_DATA_HOME:-$HOME/.local/share}/fedora-config
-config_file=${FEDORA_CONFIG_FILE:-/etc/fedora-config/config.yml}
-release_updater=${FEDORA_CONFIG_RELEASE_UPDATE:-$data_root/current/update}
-backend=${FEDORA_CONFIG_UPDATE_BACKEND:-$HOME/.local/bin/fedora-config-update-run}
+data_root=${XDG_DATA_HOME:-$HOME/.local/share}/cybexos
+config_file=${CYBEXOS_CONFIG_FILE:-/etc/cybexos/config.yml}
+release_updater=${CYBEXOS_RELEASE_UPDATE:-$data_root/current/update}
+backend=${CYBEXOS_UPDATE_BACKEND:-$HOME/.local/bin/cybexos-update-run}
 
 managed=false
 [[ -x $release_updater && -r $config_file ]] && managed=true

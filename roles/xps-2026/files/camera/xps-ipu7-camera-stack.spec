@@ -6,7 +6,7 @@ Version:        @BUNDLE_VERSION@
 Release:        1.xps@INPUT_RELEASE@%{?dist}
 Summary:        Pinned Panther Lake IPU7 PSYS/CVS and camera userspace extension
 License:        GPL-2.0-only AND Apache-2.0 AND LGPL-2.1-or-later AND LicenseRef-Intel-Binary
-URL:            https://github.com/DigitalPals/fedora-config
+URL:            https://github.com/DigitalPals/CybexOS
 Source0:        xps-ipu7-camera-stack.tar.gz
 BuildArch:      x86_64
 AutoReqProv:    no

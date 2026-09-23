@@ -18,8 +18,8 @@ for variable in "${required_environment[@]}"; do
 done
 
 runtime_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
-mkdir -p "$runtime_dir/fedora-config"
-exec 9>"$runtime_dir/fedora-config/hyprland-session.lock"
+mkdir -p "$runtime_dir/cybexos"
+exec 9>"$runtime_dir/cybexos/hyprland-session.lock"
 flock 9
 
 systemctl --user import-environment "${required_environment[@]}"

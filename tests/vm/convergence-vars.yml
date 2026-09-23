@@ -3,7 +3,7 @@
 primary_user: fedora
 primary_group: fedora
 primary_home: /home/fedora
-machine_hostname: fedora-config-ci
+machine_hostname: cybexos-ci
 machine_timezone: UTC
 machine_locale: en_US.UTF-8
 regional_locale: en_US.UTF-8

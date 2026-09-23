@@ -25,15 +25,15 @@ Omarchy instances. Moving a widget preserves its settings and enablement.
 ## Storage and ownership
 
 Default paths below follow XDG config and data roots. The runtime
-exports `FEDORA_CONFIG_PLUGIN_ROOT` and `FEDORA_CONFIG_USER_CONFIG_ROOT` for
+exports `CYBEXOS_PLUGIN_ROOT` and `CYBEXOS_USER_CONFIG_ROOT` for
 the shell; the command helper honors these when present too.
 
 | Contents | Default path | Update/rollback behavior |
 | --- | --- | --- |
-| Package source and assets | `~/.local/share/fedora-config/plugins/<id>/` | Never reconciled with vendor files |
-| Enablement, order, width, settings | `~/.config/fedora-config/plugins.json` | Never written by deployment or shell-settings migrations |
-| Plugin data | `~/.local/share/fedora-config/plugin-data/<id>/` | Retained; plugin controls its own format |
-| Loader and API adapter | `~/.local/share/fedora-config/runtime/quickshell/` | Replaced by distro updates |
+| Package source and assets | `~/.local/share/cybexos/plugins/<id>/` | Never reconciled with vendor files |
+| Enablement, order, width, settings | `~/.config/cybexos/plugins.json` | Never written by deployment or shell-settings migrations |
+| Plugin data | `~/.local/share/cybexos/plugin-data/<id>/` | Retained; plugin controls its own format |
+| Loader and API adapter | `~/.local/share/cybexos/runtime/quickshell/` | Replaced by distro updates |
 
 Uninstall retains user widget packages and data. Disabling a widget changes
 only its enablement flag. Existing releases before API 1 cannot display these
@@ -160,7 +160,7 @@ On an installed desktop, follow `tests/lib/quickshell-live` for service/PID
 reconciliation and current-invocation journal checks.
 
 For an agent-ready example, see the installed
-[user widget skill reference](../../agent-skills/fedora-config/references/user-widgets.md).
+[user widget skill reference](../../agent-skills/cybexos/references/user-widgets.md).
 
 ### Shared typography
 

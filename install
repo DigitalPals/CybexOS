@@ -7,7 +7,7 @@ cd -- "$repo_dir"
 # shellcheck source=scripts/ui.sh
 source scripts/ui.sh
 
-config_path=${FEDORA_CONFIG_FILE:-/etc/fedora-config/config.yml}
+config_path=${CYBEXOS_CONFIG_FILE:-/etc/cybexos/config.yml}
 non_interactive=false
 reconfigure=false
 check_only=false
@@ -19,7 +19,7 @@ Usage: ./install [--reconfigure] [--non-interactive] [--check] [-- ANSIBLE_ARGS.
 
 Configure and install CybexOS (Cybex Opinionated System), a Hyprland/Quickshell
 desktop. A normal first run asks questions and writes the answers to
-/etc/fedora-config/config.yml.
+/etc/cybexos/config.yml.
 Later runs reuse those answers unless --reconfigure is supplied.
 
   --reconfigure      Ask the installation questions again
@@ -46,6 +46,17 @@ done
   exit 1
 }
 
+# An installation made under the former fedora-config name keeps its saved
+# answers in /etc/fedora-config until it is moved to the CybexOS paths. An
+# explicit configuration file or a dry run never touches the system.
+if [[ $check_only == false && -z ${CYBEXOS_CONFIG_FILE:-} ]] && {
+      [[ -d /etc/fedora-config && ! -L /etc/fedora-config ]] \
+        || [[ -d $HOME/.local/share/fedora-config && ! -L $HOME/.local/share/fedora-config ]]
+    }; then
+  sudo -n true 2>/dev/null || sudo -v
+  sudo "$repo_dir/scripts/migrate-legacy-names"
+fi
+
 if [[ -r $config_path && $reconfigure == false ]]; then
   if [[ $check_only == true ]]; then
     cat -- "$config_path"
@@ -55,7 +66,7 @@ if [[ -r $config_path && $reconfigure == false ]]; then
   printf 'Using saved installation choices from %s\n' "$config_path"
   sudo -n true 2>/dev/null || sudo -v
   if ! command -v ansible-playbook >/dev/null 2>&1; then
-    run_step 'Install ansible-core' /tmp/fedora-config-bootstrap-ansible.log \
+    run_step 'Install ansible-core' /tmp/cybexos-bootstrap-ansible.log \
       sudo dnf -y install ansible-core
   fi
   migrated_config=$(mktemp)
@@ -265,10 +276,10 @@ fi
 [[ $confirmed == true ]] || { echo 'Installation cancelled.'; exit 0; }
 
 sudo -n true 2>/dev/null || sudo -v
-sudo install -d -m 0755 /etc/fedora-config
+sudo install -d -m 0755 /etc/cybexos
 sudo install -m 0644 "$temporary_config" "$config_path"
 if ! command -v ansible-playbook >/dev/null 2>&1; then
-  run_step 'Install ansible-core' /tmp/fedora-config-bootstrap-ansible.log \
+  run_step 'Install ansible-core' /tmp/cybexos-bootstrap-ansible.log \
     sudo dnf -y install ansible-core
 fi
 rm -f -- "$temporary_config"

@@ -37,7 +37,7 @@ def source_archive(destination):
     roots = ["image", "roles/desktop", "assets/scripts", "assets/EDM115-newline2.omp.json",
              "inventory/group_vars/all.yml", "VERSION",
              "roles/dotfiles", "roles/apps", "roles/base/tasks/main.yml",
-             "roles/base/files/fedora-config-system-snapshot"]
+             "roles/base/files/cybexos-system-snapshot"]
     with tarfile.open(destination, "w:gz") as archive:
         for name in roots:
             path = ROOT / name
@@ -49,7 +49,7 @@ def source_archive(destination):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=Path.home() / ".local/share/fedora-config/images")
+    parser.add_argument("--output", type=Path, default=Path.home() / ".local/share/cybexos/images")
     parser.add_argument("--memory", type=int, default=24576, help="Builder VM RAM in MiB")
     parser.add_argument("--cpus", type=int, default=8)
     parser.add_argument("--debug-on-failure", action="store_true", help="Keep a failed builder running for inspection until interrupted")
@@ -63,7 +63,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     if any(output.iterdir()):
         parser.error("output must be empty; use a new output directory for each build")
-    cache = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "fedora-config"
+    cache = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "cybexos"
     cache.mkdir(parents=True, exist_ok=True)
     base = cache / IMAGE
     if not base.exists() or digest(base) != IMAGE_SHA256:
@@ -74,7 +74,7 @@ def main():
             partial.unlink()
             raise RuntimeError("Fedora builder image checksum mismatch")
         partial.replace(base)
-    with tempfile.TemporaryDirectory(prefix="fedora-config-image-", dir=cache) as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-image-", dir=cache) as temporary:
         work = Path(temporary)
         key = work / "id_ed25519"
         run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)])
@@ -84,7 +84,7 @@ def main():
                        "sudo": "ALL=(ALL) NOPASSWD:ALL", "ssh_authorized_keys": [public]}],
             "ssh_pwauth": False, "disable_root": True,
         }))
-        (work / "meta-data").write_text("instance-id: fedora-config-image-builder\nlocal-hostname: image-builder\n")
+        (work / "meta-data").write_text("instance-id: cybexos-image-builder\nlocal-hostname: image-builder\n")
         run(["cloud-localds", str(work / "seed.iso"), str(work / "user-data"), str(work / "meta-data")])
         run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2", "-b", str(base), str(work / "system.qcow2"), "220G"])
         with socket.socket() as sock:
@@ -96,7 +96,7 @@ def main():
         (output / "builder.json").write_text(json.dumps({"ssh": ssh, "work": str(work)}, indent=2) + "\n")
         console = (output / "builder-console.log").open("w")
         vm = subprocess.Popen([
-            "qemu-system-x86_64", "-name", "fedora-config-image-builder", "-machine", "q35,accel=kvm",
+            "qemu-system-x86_64", "-name", "cybexos-image-builder", "-machine", "q35,accel=kvm",
             "-cpu", "host", "-smp", str(args.cpus), "-m", str(args.memory),
             "-drive", f"file={work / 'system.qcow2'},if=virtio,format=qcow2",
             "-drive", f"file={work / 'seed.iso'},if=virtio,format=raw,readonly=on",

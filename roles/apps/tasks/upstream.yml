@@ -1,8 +1,8 @@
 ---
 - name: Install shared installer helper library
   ansible.builtin.copy:
-    src: fedora-config-common.sh
-    dest: /usr/local/libexec/fedora-config-common.sh
+    src: cybexos-common.sh
+    dest: /usr/local/libexec/cybexos-common.sh
     owner: root
     group: root
     mode: "0644"
@@ -10,14 +10,14 @@
 - name: Install verified upstream release helper
   ansible.builtin.copy:
     src: github-release-install
-    dest: /usr/local/libexec/fedora-config-github-release-install
+    dest: /usr/local/libexec/cybexos-github-release-install
     owner: root
     group: root
     mode: "0755"
 
 - name: Create pinned font cache directories
   ansible.builtin.file:
-    path: "/var/cache/fedora-config-upstream/{{ item.name }}"
+    path: "/var/cache/cybexos-upstream/{{ item.name }}"
     state: directory
     owner: root
     group: root
@@ -30,7 +30,7 @@
 - name: Download verified pinned font archives
   ansible.builtin.get_url:
     url: "{{ item.url }}"
-    dest: "/var/cache/fedora-config-upstream/{{ item.name }}/{{ item.version }}.zip"
+    dest: "/var/cache/cybexos-upstream/{{ item.name }}/{{ item.version }}.zip"
     checksum: "{{ item.checksum }}"
     owner: root
     group: root
@@ -53,7 +53,7 @@
     apps_pinned_font_archive_root: >-
       /usr/local/share/fonts/{{ item.name }}/{{ item.version }}
     apps_pinned_font_archive_marker: >-
-      {{ apps_pinned_font_archive_root }}/.fedora-config-archive-{{ item.checksum | regex_replace('^sha256:', '') }}
+      {{ apps_pinned_font_archive_root }}/.cybexos-archive-{{ item.checksum | regex_replace('^sha256:', '') }}
     apps_pinned_font_archive_payload: >-
       {{ apps_pinned_font_archive_root }}/{{ item.expected_font }}
   register: apps_pinned_font_archive_health
@@ -91,10 +91,10 @@
 
 - name: Install pinned fonts with their bundled license notices
   ansible.builtin.unarchive:
-    src: "/var/cache/fedora-config-upstream/{{ item.name }}/{{ item.version }}.zip"
+    src: "/var/cache/cybexos-upstream/{{ item.name }}/{{ item.version }}.zip"
     dest: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}"
     remote_src: true
-    creates: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}/.fedora-config-archive-{{ item.checksum | regex_replace('^sha256:', '') }}"
+    creates: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}/.cybexos-archive-{{ item.checksum | regex_replace('^sha256:', '') }}"
   register: apps_pinned_font_install
   loop: "{{ pinned_font_archives }}"
   loop_control:
@@ -131,7 +131,7 @@
 - name: Record checksum-addressed pinned font extraction state
   ansible.builtin.copy:
     content: "{{ item.checksum }}\n"
-    dest: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}/.fedora-config-archive-{{ item.checksum | regex_replace('^sha256:', '') }}"
+    dest: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}/.cybexos-archive-{{ item.checksum | regex_replace('^sha256:', '') }}"
     owner: root
     group: root
     mode: "0644"
@@ -219,19 +219,19 @@
     - /usr/local/bin/walker
     - /usr/local/bin/elephant
     - /usr/local/libexec/xps-elephant-install
-    - /opt/fedora-config-apps/walker
-    - /opt/fedora-config-apps/elephant
-    - /var/cache/fedora-config-upstream/walker
-    - /var/cache/fedora-config-upstream/elephant
-    - /var/lib/fedora-config-upstream/walker
-    - /var/lib/fedora-config-upstream/elephant
+    - /opt/cybexos-apps/walker
+    - /opt/cybexos-apps/elephant
+    - /var/cache/cybexos-upstream/walker
+    - /var/cache/cybexos-upstream/elephant
+    - /var/lib/cybexos-upstream/walker
+    - /var/lib/cybexos-upstream/elephant
     - /tmp/elephant.sock
   when: cleanup_legacy_xps_artifacts | bool
 
 - name: Install source build helper
   ansible.builtin.copy:
     src: source-app-build
-    dest: /usr/local/libexec/fedora-config-source-app-build
+    dest: /usr/local/libexec/cybexos-source-app-build
     owner: root
     group: root
     mode: "0755"
@@ -266,7 +266,7 @@
 - name: Launch upstream application installs
   ansible.builtin.command:
     argv:
-      - /usr/local/libexec/fedora-config-github-release-install
+      - /usr/local/libexec/cybexos-github-release-install
       - "{{ item.name }}"
       - "{{ item.repo }}"
       - "{{ item.asset_regex }}"
@@ -289,7 +289,7 @@
 - name: Launch source-only application builds
   ansible.builtin.command:
     argv:
-      - /usr/local/libexec/fedora-config-source-app-build
+      - /usr/local/libexec/cybexos-source-app-build
       - "{{ item.name }}"
       - "{{ item.repo_url }}"
       - "{{ item.binary_names | join(',') }}"
@@ -402,7 +402,7 @@
     - item.stat.islnk | default(false)
     - >-
       item.stat.lnk_source ==
-      '/opt/fedora-config-builds/' ~ item.item.0.name ~ '/current/bin/' ~ item.item.1
+      '/opt/cybexos-builds/' ~ item.item.0.name ~ '/current/bin/' ~ item.item.1
 
 - name: Remove developer-only upstream applications when developer tooling is disabled
   ansible.builtin.file:
@@ -414,18 +414,18 @@
     - /usr/local/bin/mdview
     - /usr/local/bin/bun
     - /usr/local/bin/balena
-    - /opt/fedora-config-apps/lazygit
-    - /opt/fedora-config-apps/lazydocker
-    - /opt/fedora-config-apps/mdview
-    - /opt/fedora-config-apps/bun
-    - /opt/fedora-config-apps/balena
+    - /opt/cybexos-apps/lazygit
+    - /opt/cybexos-apps/lazydocker
+    - /opt/cybexos-apps/mdview
+    - /opt/cybexos-apps/bun
+    - /opt/cybexos-apps/balena
   when:
     - not features.developer_tools | bool
     - apps_feature_owned.developer_tools | bool
 
 - name: Remove source-build deployments when source builds are disabled
   ansible.builtin.file:
-    path: "/opt/fedora-config-builds/{{ item.name }}"
+    path: "/opt/cybexos-builds/{{ item.name }}"
     state: absent
   loop: "{{ source_apps }}"
   loop_control:

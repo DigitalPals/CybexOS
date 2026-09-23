@@ -12,8 +12,8 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATOR = ROOT / "assets/scripts/fedora-config-migrate-layering"
-RUNTIME = ROOT / "assets/scripts/fedora-config-runtime"
+MIGRATOR = ROOT / "assets/scripts/cybexos-migrate-layering"
+RUNTIME = ROOT / "assets/scripts/cybexos-runtime"
 
 
 def run(
@@ -37,18 +37,18 @@ def snapshot(paths: list[Path]) -> dict[str, bytes]:
 
 
 def migration_contract() -> None:
-    with tempfile.TemporaryDirectory(prefix="fedora-config-layering.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-layering.") as temporary:
         root = Path(temporary)
         home = root / "home"
         previous = root / "previous"
-        runtime = home / ".local/share/fedora-config/runtime"
+        runtime = home / ".local/share/cybexos/runtime"
         legacy_qs = home / ".config/quickshell"
         legacy_hypr = home / ".config/hypr"
-        state = home / ".local/state/fedora-config"
-        user_config = home / ".config/fedora-config"
-        themes = home / ".local/share/fedora-config/themes"
-        plugins = home / ".local/share/fedora-config/plugins"
-        plugin_data = home / ".local/share/fedora-config/plugin-data/personal"
+        state = home / ".local/state/cybexos"
+        user_config = home / ".config/cybexos"
+        themes = home / ".local/share/cybexos/themes"
+        plugins = home / ".local/share/cybexos/plugins"
+        plugin_data = home / ".local/share/cybexos/plugin-data/personal"
 
         for directory in (
             previous / "roles/desktop/files/quickshell",
@@ -163,7 +163,7 @@ def migration_contract() -> None:
 
 
 def dev_source_contract() -> None:
-    with tempfile.TemporaryDirectory(prefix="fedora-config-dev-source.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="cybexos-dev-source.") as temporary:
         root = Path(temporary)
         home = root / "home"
         checkout = root / "checkout"
@@ -190,7 +190,7 @@ def dev_source_contract() -> None:
             "HOME": str(home),
             "XDG_CONFIG_HOME": str(home / ".config"),
             "XDG_DATA_HOME": str(home / ".local/share"),
-            "FEDORA_CONFIG_RUNTIME_TESTING": "1",
+            "CYBEXOS_RUNTIME_TESTING": "1",
         })
         enabled = run(RUNTIME, "dev", "enable", checkout, env=env)
         assert str(checkout.resolve()) in enabled.stdout
@@ -206,7 +206,7 @@ def dev_source_contract() -> None:
 
         # A user-created object cannot turn the atomic switch write into a
         # move through a directory or symlink.
-        switch = home / ".config/fedora-config/dev-source"
+        switch = home / ".config/cybexos/dev-source"
         switch.mkdir()
         refused = run(RUNTIME, "dev", "enable", checkout, env=env, check=False)
         assert refused.returncode == 2
@@ -225,8 +225,8 @@ def repository_contract() -> None:
     ).read_text(encoding="utf-8")
     hypr = (ROOT / "roles/desktop/files/hyprland.lua").read_text(encoding="utf-8")
 
-    assert 'dest: "{{ fedora_config_runtime_root }}/quickshell/{{ item }}"' in tasks
-    assert 'dest: "{{ fedora_config_runtime_root }}/hypr/{{ item }}"' in tasks
+    assert 'dest: "{{ cybexos_runtime_root }}/quickshell/{{ item }}"' in tasks
+    assert 'dest: "{{ cybexos_runtime_root }}/hypr/{{ item }}"' in tasks
     assert 'path: "{{ primary_home }}/.config/quickshell"' not in tasks
     assert 'dest: "{{ primary_home }}/.config/hypr/' not in tasks
     directory_creation = tasks[
@@ -236,7 +236,7 @@ def repository_contract() -> None:
     assert "mode:" not in directory_creation
     assert ".config/quickshell" not in uninstall
     assert ".config/hypr" not in uninstall
-    assert "fedora-config-runtime exec quickshell" in quickshell_unit
+    assert "cybexos-runtime exec quickshell" in quickshell_unit
     assert 'start-hyprland -- --config "$hypr_config"' in launcher
     assert 'dofile(user_dir .. "/user.lua")' in hypr
     assert (ROOT / "docs/architecture/ownership.md").is_file()

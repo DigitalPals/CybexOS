@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
-    "fedora_config_callback", ROOT / "plugins" / "callback" / "fedora_config.py"
+    "cybexos_callback", ROOT / "plugins" / "callback" / "cybexos.py"
 )
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)

@@ -11,7 +11,7 @@ you need the reasoning behind a particular change; `git log --oneline
 ## Ground rules
 
 - The Ansible role is the vendor source of truth. Its deployed runtime is
-  `~/.local/share/fedora-config/runtime/quickshell`; never edit that generated
+  `~/.local/share/cybexos/runtime/quickshell`; never edit that generated
   copy expecting the change to survive. User settings and overrides live in
   the paths documented by `docs/architecture/ownership.md`.
 - Match the surrounding style. **Do not run qmlformat** (see "Already decided
@@ -53,7 +53,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 qs_live_begin
-ansible-playbook site.yml -e @/etc/fedora-config/config.yml --tags quickshell
+ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags quickshell
 qs_live_wait_ipc 20 popouts close >/dev/null
 qs_live_wait_ipc 20 popouts toggle t3code # or: audio, control, wifi, notifications, …
 qs_live_wait_ipc 20 settings open notifications
@@ -460,7 +460,7 @@ glass and detached panels. What that added, and what it needs:
 - **Wallpaper mode is one validated Material palette.** `Common/Palette.qml`
   runs Matugen's tonal-spot scheme for the selected wallpaper, whitelists the
   semantic roles in `PaletteHelpers.js`, and atomically caches both light and
-  dark variants at `~/.local/state/fedora-config/shell/wallpaper-palette.json`. Theme
+  dark variants at `~/.local/state/cybexos/shell/wallpaper-palette.json`. Theme
   changes select the cached variant. The menubar background remains the user's
   independent bar-color choice while its accents follow this palette. Missing
   or malformed Matugen output leaves the user's mode unchanged and renders the

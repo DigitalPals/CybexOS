@@ -1,6 +1,6 @@
 ---
 # Opinionated product defaults. The interactive installer records machine-specific
-# answers in /etc/fedora-config/config.yml and passes that file as extra vars.
+# answers in /etc/cybexos/config.yml and passes that file as extra vars.
 # Direct developer runs use the current account and avoid changing identity or
 # relaxing security unless explicitly requested.
 fedora_release: "44"
@@ -14,7 +14,7 @@ machine_keyboard_variant: ""
 manage_system_identity: false
 manage_personal_dotfiles: false
 cleanup_legacy_xps_artifacts: false
-fedora_config_xps_2026: false
+cybexos_xps_2026: false
 plymouth_theme: cybex
 primary_user: "{{ lookup('env', 'SUDO_USER') | default(lookup('env', 'USER'), true) }}"
 primary_group: "{{ primary_user }}"
@@ -25,10 +25,10 @@ config_repo: "{{ playbook_dir }}"
 # Strict vendor/user layering. Only the runtime root is reconciled by desktop
 # convergence; the namespaced config, theme, and plugin roots belong to the
 # user and are never pruned by an update.
-fedora_config_data_root: "{{ primary_home }}/.local/share/fedora-config"
-fedora_config_runtime_root: "{{ fedora_config_data_root }}/runtime"
-fedora_config_user_config_root: "{{ primary_home }}/.config/fedora-config"
-fedora_config_state_root: "{{ primary_home }}/.local/state/fedora-config"
+cybexos_data_root: "{{ primary_home }}/.local/share/cybexos"
+cybexos_runtime_root: "{{ cybexos_data_root }}/runtime"
+cybexos_user_config_root: "{{ primary_home }}/.config/cybexos"
+cybexos_state_root: "{{ primary_home }}/.local/state/cybexos"
 
 # XPS 2026 hardware-role preferences. The camera stack is attempted only when
 # both OVTI08F4 and Intel 8086:b05d are detected; build failure is diagnostic,
@@ -74,7 +74,7 @@ private_services:
   # The token itself is never read by Ansible. This hook merely tests for this file.
   sccache_token_file: /etc/sccache/client-token
 
-firewall_zone: fedora-config
+firewall_zone: cybexos
 firewall_ports:
   - { port: "53317", protocol: tcp, comment: LocalSend }
   - { port: "53317", protocol: udp, comment: LocalSend }

@@ -64,13 +64,14 @@ class ApplicationDefaults(unittest.TestCase):
                 "hostnamectl": "printf '%s\\n' cybex-test",
                 "timedatectl": "printf '%s\\n' UTC",
                 "localectl": "exit 0",
+                "sudo": "echo 'sudo must not run during --check' >&2; exit 97",
             }
             for name, body in probes.items():
                 path = binaries / name
                 path.write_text("#!/bin/sh\n" + body + "\n")
                 path.chmod(0o755)
             environment = dict(os.environ, HOME=str(home), SUDO_USER="cybex-test",
-                               FEDORA_CONFIG_FILE=str(home / "absent.yml"),
+                               CYBEXOS_CONFIG_FILE=str(home / "absent.yml"),
                                PATH=f"{binaries}:{os.environ['PATH']}")
             result = subprocess.check_output(
                 ["bash", str(installer), "--non-interactive", "--check"],
@@ -118,7 +119,7 @@ class ApplicationDefaults(unittest.TestCase):
             for path, body in probes.items():
                 path.write_text("#!/bin/sh\n" + body + "\n")
                 path.chmod(0o755)
-            environment = dict(os.environ, FEDORA_CONFIG_FILE=str(config),
+            environment = dict(os.environ, CYBEXOS_CONFIG_FILE=str(config),
                                TMPDIR=str(scratch), PATH=f"{binaries}:{os.environ['PATH']}")
             result = subprocess.check_output(
                 ["bash", str(installer)], env=environment, text=True,
@@ -129,7 +130,7 @@ class ApplicationDefaults(unittest.TestCase):
     def test_both_command_names_preserve_arguments_and_verification_scope(self):
         with tempfile.TemporaryDirectory(prefix="cybex-command.") as temporary:
             home = Path(temporary)
-            release = home / ".local/share/fedora-config/current"
+            release = home / ".local/share/cybexos/current"
             release.mkdir(parents=True)
             (release / "VERSION").write_text("1.2.3\n")
             verifier = release / "verify"
@@ -138,9 +139,9 @@ class ApplicationDefaults(unittest.TestCase):
             environment = jinja2.Environment(undefined=jinja2.StrictUndefined)
             environment.filters["quote"] = shlex.quote
             source = environment.from_string(
-                (ROOT / "roles/dotfiles/templates/fedora-config.j2").read_text(),
+                (ROOT / "roles/dotfiles/templates/cybex.j2").read_text(),
             ).render(primary_home=str(home))
-            for name in ("cybex", "fedora-config"):
+            for name in ("cybex",):
                 command = home / name
                 command.write_text(source)
                 command.chmod(0o755)

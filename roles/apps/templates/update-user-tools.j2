@@ -16,9 +16,9 @@ export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
 cleanup() {
   local path
   for path in "${cleanup_paths[@]}"; do
-    if [[ $path == "${TMPDIR:-/tmp}"/fedora-config-user-tools.* \
-        || $path == "$HOME/.local/share/fedora-config-user-tools/opencode"/.stage.* \
-        || $path == "$HOME/.local/share/fedora-config-user-tools/codex"/.stage.* ]]; then
+    if [[ $path == "${TMPDIR:-/tmp}"/cybexos-user-tools.* \
+        || $path == "$HOME/.local/share/cybexos-user-tools/opencode"/.stage.* \
+        || $path == "$HOME/.local/share/cybexos-user-tools/codex"/.stage.* ]]; then
       [[ ! -e $path ]] || rm -rf -- "$path"
     fi
   done
@@ -56,7 +56,7 @@ if [[ $before != "$claude_pin" ]]; then
       failed=1
     fi
   else
-    if installer=$(mktemp "${TMPDIR:-/tmp}/fedora-config-user-tools.XXXXXX"); then
+    if installer=$(mktemp "${TMPDIR:-/tmp}/cybexos-user-tools.XXXXXX"); then
       cleanup_paths+=("$installer")
       if curl --fail --silent --show-error --location https://claude.ai/install.sh -o "$installer"; then
         # The official bootstrap accepts an exact VERSION argument, downloads a
@@ -91,7 +91,7 @@ opencode_version() {
 
 install_opencode() {
   local root versions stage key target temporary after path retained
-  root="$HOME/.local/share/fedora-config-user-tools/opencode"
+  root="$HOME/.local/share/cybexos-user-tools/opencode"
   versions="$root/versions"
   mkdir -p "$versions"
   stage=$(mktemp -d "$root/.stage.XXXXXX") || return 1
@@ -145,7 +145,7 @@ codex_version() {
 
 install_codex() {
   local root versions stage key target temporary after path retained
-  root="$HOME/.local/share/fedora-config-user-tools/codex"
+  root="$HOME/.local/share/cybexos-user-tools/codex"
   versions="$root/versions"
   mkdir -p "$versions"
   stage=$(mktemp -d "$root/.stage.XXXXXX") || return 1

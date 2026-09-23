@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-source /usr/local/libexec/fedora-config-common.sh
+source /usr/local/libexec/cybexos-common.sh
 
 install_dir="${XDG_DATA_HOME:-$HOME/.local/share}/t3code-nightly"
 appimage="$install_dir/T3-Code-Nightly-x86_64.AppImage"
 version_state="$install_dir/version"
 digest_state="$install_dir/digest"
-api_cache="${XDG_CACHE_HOME:-$HOME/.cache}/fedora-config-upstream/t3code/api"
+api_cache="${XDG_CACHE_HOME:-$HOME/.cache}/cybexos-upstream/t3code/api"
 json=$(mktemp)
 tmp=""
 version_tmp=""

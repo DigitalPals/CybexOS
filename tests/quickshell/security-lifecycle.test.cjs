@@ -51,7 +51,7 @@ test("Hyprland session publication is serialized before target activation", () =
     const autostart = readRepo("roles/desktop/files/autostart.lua");
     const starter = path.join(repoDir, "roles/desktop/files/hyprland-session-start");
     assert.equal((autostart.match(/hl\.exec_cmd/g) || []).length, 1);
-    assert.match(autostart, /fedora-config-hyprland-session-start/);
+    assert.match(autostart, /cybexos-hyprland-session-start/);
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hypr-session-test-"));
     try {

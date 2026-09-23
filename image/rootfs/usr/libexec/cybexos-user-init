@@ -39,15 +39,15 @@ def seed_applications(source, destination):
                 raise
 
 
-def initialize(home, vendor=Path("/usr/share/fedora-config")):
+def initialize(home, vendor=Path("/usr/share/cybexos")):
     seed = vendor / "user-seed"
-    marker = home / ".local/state/fedora-config/offline-apps-seeded"
+    marker = home / ".local/state/cybexos/offline-apps-seeded"
     if seed.is_dir() and not marker.exists():
         seed_applications(seed, home)
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.touch()
-    config = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config"))) / "fedora-config"
-    data = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))) / "fedora-config"
+    config = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config"))) / "cybexos"
+    data = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))) / "cybexos"
     for directory in (config / "hypr", data / "themes", data / "plugins", home / ".local/bin"):
         directory.mkdir(parents=True, exist_ok=True)
     links = {data / "runtime": vendor / "runtime"}
@@ -55,7 +55,6 @@ def initialize(home, vendor=Path("/usr/share/fedora-config")):
         if helper.is_file():
             links[home / ".local/bin" / helper.name] = helper
     links[home / ".local/bin/cybex"] = Path("/usr/bin/cybex")
-    links[home / ".local/bin/fedora-config"] = Path("/usr/bin/fedora-config")
     for destination, source in links.items():
         try:
             destination.symlink_to(source)

@@ -2,7 +2,7 @@ local function persisted_scroll_factor()
   local home = os.getenv("HOME")
   if not home then return 1.0 end
 
-  local file = io.open(home .. "/.config/fedora-config/shell.json", "r")
+  local file = io.open(home .. "/.config/cybexos/shell.json", "r")
   if not file then
     file = io.open(home .. "/.local/state/quickshell/shell-settings.json", "r")
   end

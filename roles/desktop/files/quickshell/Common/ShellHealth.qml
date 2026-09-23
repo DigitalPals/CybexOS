@@ -88,7 +88,7 @@ Singleton {
 
     FileView {
         id: deploymentFile
-        path: root.stateHome + "/fedora-config/quickshell-health.json"
+        path: root.stateHome + "/cybexos/quickshell-health.json"
         printErrors: false
         watchChanges: true
         onFileChanged: reload()

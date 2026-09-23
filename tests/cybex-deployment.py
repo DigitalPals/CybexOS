@@ -130,7 +130,7 @@ def run_play(
 assert shutil.which("ansible-playbook"), "ansible-playbook is required"
 override_files = role_contract()
 
-with tempfile.TemporaryDirectory(prefix="fedora-config-cybex-deploy.") as temporary:
+with tempfile.TemporaryDirectory(prefix="cybexos-cybex-deploy.") as temporary:
     root = Path(temporary)
     source = root / "source"
     overrides = root / "overrides"

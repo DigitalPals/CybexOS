@@ -1,8 +1,0 @@
-[Unit]
-Description=Singleton session lock
-PartOf=hyprland-session.target
-ConditionPathExists=!/run/fedora-config-live
-
-[Service]
-ExecStart=/usr/share/fedora-config/bin/fedora-config-runtime exec hyprlock
-TimeoutStopSec=5

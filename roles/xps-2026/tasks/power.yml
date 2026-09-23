@@ -6,12 +6,12 @@
 
 - name: Inspect the preserved vendor TuneD PPD configuration
   ansible.builtin.stat:
-    path: /var/lib/fedora-config/backups/system/etc/tuned/ppd.conf
+    path: /var/lib/cybexos/backups/system/etc/tuned/ppd.conf
   register: xps_2026_vendor_ppd_backup
 
 - name: Create the XPS system-configuration backup directory
   ansible.builtin.file:
-    path: /var/lib/fedora-config/backups/system/etc/tuned
+    path: /var/lib/cybexos/backups/system/etc/tuned
     state: directory
     owner: root
     group: root
@@ -20,7 +20,7 @@
 - name: Preserve the vendor TuneD PPD configuration before adoption
   ansible.builtin.copy:
     src: /etc/tuned/ppd.conf
-    dest: /var/lib/fedora-config/backups/system/etc/tuned/ppd.conf
+    dest: /var/lib/cybexos/backups/system/etc/tuned/ppd.conf
     remote_src: true
     owner: root
     group: root

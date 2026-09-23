@@ -25,7 +25,7 @@
     - "{{ primary_home }}/.config/oh-my-posh"
     - "{{ primary_home }}/.config/voxtype"
     - "{{ primary_home }}/.config/distrobox"
-    - "{{ primary_home }}/.config/fedora-config"
+    - "{{ primary_home }}/.config/cybexos"
     - "{{ primary_home }}/.ssh"
     - "{{ primary_home }}/.ssh/config.d"
   tags: [browser]
@@ -34,7 +34,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.stat:
-    path: "{{ primary_home }}/.local/state/fedora-config/backups/initial-personal.complete"
+    path: "{{ primary_home }}/.local/state/cybexos/backups/initial-personal.complete"
   register: dotfiles_initial_backup_marker
   when: manage_personal_dotfiles | bool
 
@@ -43,7 +43,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.shell: |
     set -euo pipefail
-    backup={{ (primary_home + '/.local/state/fedora-config/backups/initial') | quote }}
+    backup={{ (primary_home + '/.local/state/cybexos/backups/initial') | quote }}
     mkdir -p "$backup"
     for relative in \
       .config/fish/config.fish \
@@ -52,10 +52,10 @@
       .config/voxtype/config.toml \
       .config/oh-my-posh/EDM115-newline2.omp.json \
       .config/mimeapps.list \
-      .config/fish/conf.d/50-fedora-config.fish \
-      .config/kitty/fedora-config.conf \
-      .config/fedora-config/gitconfig \
-      .ssh/config.d/fedora-config.conf \
+      .config/fish/conf.d/50-cybexos.fish \
+      .config/kitty/cybexos.conf \
+      .config/cybexos/gitconfig \
+      .ssh/config.d/cybexos.conf \
       .gitconfig \
       .ssh/config \
       .config/user-dirs.dirs \
@@ -66,7 +66,7 @@
       mkdir -p "$backup/$parent"
       cp -a -- "$source_path" "$backup/$relative"
     done
-    touch {{ (primary_home + '/.local/state/fedora-config/backups/initial-personal.complete') | quote }}
+    touch {{ (primary_home + '/.local/state/cybexos/backups/initial-personal.complete') | quote }}
   args:
     executable: /bin/bash
   when:
@@ -91,24 +91,21 @@
     - clipboard-history-store
     - localsend
     - localsend-share
-    - fedora-config-agent
+    - cybexos-agent
 
 - name: Install the CybexOS command
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
-    src: fedora-config.j2
-    dest: "{{ primary_home }}/.local/bin/{{ item }}"
+    src: cybex.j2
+    dest: "{{ primary_home }}/.local/bin/cybex"
     mode: "0755"
-  loop:
-    - cybex
-    - fedora-config
 
 - name: Create the CybexOS release store
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ primary_home }}/.local/share/fedora-config/releases"
+    path: "{{ primary_home }}/.local/share/cybexos/releases"
     state: directory
     mode: "0755"
 
@@ -118,7 +115,7 @@
   ansible.builtin.shell: |
     set -euo pipefail
     source_tree={{ config_repo | quote }}
-    release_store={{ (primary_home + '/.local/share/fedora-config/releases') | quote }}
+    release_store={{ (primary_home + '/.local/share/cybexos/releases') | quote }}
     staging=$(mktemp -d "$release_store/.bootstrap.XXXXXX")
     cleanup() { rm -rf -- "$staging"; }
     trap cleanup EXIT
@@ -151,7 +148,7 @@
   args:
     executable: /bin/bash
   when:
-    - not (config_repo | regex_search('/[.]local/share/fedora-config/releases/'))
+    - not (config_repo | regex_search('/[.]local/share/cybexos/releases/'))
     - not ansible_check_mode
   changed_when: "'CHANGED:' in dotfiles_bootstrap_snapshot.stdout"
   register: dotfiles_bootstrap_snapshot
@@ -161,17 +158,17 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
     src: releases/bootstrap
-    dest: "{{ primary_home }}/.local/share/fedora-config/current"
+    dest: "{{ primary_home }}/.local/share/cybexos/current"
     state: link
     force: true
   when: >-
-    not (config_repo | regex_search('/[.]local/share/fedora-config/releases/'))
+    not (config_repo | regex_search('/[.]local/share/cybexos/releases/'))
 
 - name: Inspect the canonical skill in the active CybexOS release
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.stat:
-    path: "{{ primary_home }}/.local/share/fedora-config/current/agent-skills/fedora-config"
+    path: "{{ primary_home }}/.local/share/cybexos/current/agent-skills/cybexos"
     follow: true
   register: dotfiles_active_agent_skill
 
@@ -185,7 +182,7 @@
       - --home
       - "{{ primary_home }}"
       - --canonical
-      - "{{ primary_home }}/.local/share/fedora-config/current/agent-skills/fedora-config"
+      - "{{ primary_home }}/.local/share/cybexos/current/agent-skills/cybexos"
   register: dotfiles_agent_skill_provision
   changed_when: >-
     (dotfiles_agent_skill_provision.stdout | default('')) is match('^CHANGED:')
@@ -221,7 +218,7 @@
     dest: "{{ primary_home }}/.local/bin/external-monitor-toggle"
     mode: "0755"
   notify: Restart external monitor watcher after helper updates
-  when: fedora_config_xps_2026 | default(false) | bool
+  when: cybexos_xps_2026 | default(false) | bool
 
 - name: Install Distrobox container initialization hook
   become: true
@@ -350,7 +347,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
     src: fish-config.fish
-    dest: "{{ primary_home }}/.config/fish/conf.d/50-fedora-config.fish"
+    dest: "{{ primary_home }}/.config/fish/conf.d/50-cybexos.fish"
     mode: "0644"
   when: manage_personal_dotfiles | bool
   tags: [shell-defaults]
@@ -363,7 +360,7 @@
     dest: "{{ primary_home }}/{{ item.dest }}"
     mode: "{{ item.mode | default('0644') }}"
   loop:
-    - { src: kitty.conf, dest: .config/kitty/fedora-config.conf }
+    - { src: kitty.conf, dest: .config/kitty/cybexos.conf }
     - { src: fastfetch.jsonc, dest: .config/fastfetch/config.jsonc }
   when: manage_personal_dotfiles | bool
 
@@ -375,8 +372,8 @@
     create: true
     backup: true
     mode: "0644"
-    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
-    block: "include fedora-config.conf"
+    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
+    block: "include cybexos.conf"
   when: manage_personal_dotfiles | bool
 
 - name: Install Voxtype configuration
@@ -403,7 +400,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.template:
     src: environment.conf.j2
-    dest: "{{ primary_home }}/.config/environment.d/10-fedora-config.conf"
+    dest: "{{ primary_home }}/.config/environment.d/10-cybexos.conf"
     mode: "0644"
   tags: [browser]
 
@@ -420,7 +417,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    dest: "{{ primary_home }}/.config/fedora-config/gitconfig"
+    dest: "{{ primary_home }}/.config/cybexos/gitconfig"
     mode: "0644"
     content: |
       [core]
@@ -446,17 +443,17 @@
     create: true
     backup: true
     mode: "0644"
-    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
+    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
     block: |
       [include]
-        path = ~/.config/fedora-config/gitconfig
+        path = ~/.config/cybexos/gitconfig
   when: manage_personal_dotfiles | bool
 
 - name: Configure SSH to use the 1Password agent without private key references
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
-    dest: "{{ primary_home }}/.ssh/config.d/fedora-config.conf"
+    dest: "{{ primary_home }}/.ssh/config.d/cybexos.conf"
     mode: "0600"
     content: |
       Host *
@@ -476,8 +473,8 @@
     backup: true
     mode: "0600"
     insertbefore: BOF
-    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
-    block: "Include ~/.ssh/config.d/fedora-config.conf"
+    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
+    block: "Include ~/.ssh/config.d/cybexos.conf"
   when:
     - manage_personal_dotfiles | bool
     - features.proprietary_apps | bool
@@ -487,7 +484,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.blockinfile:
     path: "{{ primary_home }}/.ssh/config"
-    marker: "# {mark} FEDORA CONFIG MANAGED INCLUDE"
+    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
     state: absent
   failed_when: false
   when:
@@ -498,7 +495,7 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ primary_home }}/.ssh/config.d/fedora-config.conf"
+    path: "{{ primary_home }}/.ssh/config.d/cybexos.conf"
     state: absent
   when:
     - not features.proprietary_apps | bool
@@ -686,7 +683,7 @@
 
 - name: Configure Brave managed policies
   ansible.builtin.copy:
-    dest: /etc/brave/policies/managed/fedora-config.json
+    dest: /etc/brave/policies/managed/cybexos.json
     owner: root
     group: root
     mode: "0644"
@@ -705,7 +702,7 @@
 
 - name: Remove CybexOS Brave policy when it is not selected
   ansible.builtin.file:
-    path: /etc/brave/policies/managed/fedora-config.json
+    path: /etc/brave/policies/managed/cybexos.json
     state: absent
   when: not (features.proprietary_apps | bool and manage_personal_dotfiles | bool)
   tags: [browser]
@@ -727,7 +724,7 @@
 - name: Install the scoped Firefox policy editor
   ansible.builtin.copy:
     src: manage-firefox-policy
-    dest: /usr/local/libexec/fedora-config-firefox-policy
+    dest: /usr/local/libexec/cybexos-firefox-policy
     owner: root
     group: root
     mode: "0755"
@@ -736,7 +733,7 @@
 - name: Converge only the CybexOS Firefox policy entry
   ansible.builtin.command:
     argv:
-      - /usr/local/libexec/fedora-config-firefox-policy
+      - /usr/local/libexec/cybexos-firefox-policy
       - "{{ (features.proprietary_apps | bool and manage_personal_dotfiles | bool) | ternary('enable', 'disable') }}"
   changed_when: false
   tags: [browser]

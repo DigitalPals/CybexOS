@@ -30,14 +30,14 @@ def valid_id(plugin_id: str) -> bool:
 
 def roots() -> tuple[Path, Path, Path]:
     home = Path.home()
-    config = Path(os.environ.get("FEDORA_CONFIG_USER_CONFIG_ROOT") or
-                  Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "fedora-config")
-    packages = Path(os.environ.get("FEDORA_CONFIG_PLUGIN_ROOT") or
+    config = Path(os.environ.get("CYBEXOS_USER_CONFIG_ROOT") or
+                  Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "cybexos")
+    packages = Path(os.environ.get("CYBEXOS_PLUGIN_ROOT") or
                     Path(os.environ.get("XDG_DATA_HOME") or home / ".local/share") /
-                    "fedora-config/plugins")
+                    "cybexos/plugins")
     # Persistent plugin data is not disposable updater/diagnostic state. The
     # uninstaller may remove the latter while retaining user customizations.
-    state = Path(os.environ.get("XDG_DATA_HOME") or home / ".local/share") / "fedora-config/plugin-data"
+    state = Path(os.environ.get("XDG_DATA_HOME") or home / ".local/share") / "cybexos/plugin-data"
     return config / "plugins.json", packages, state
 
 

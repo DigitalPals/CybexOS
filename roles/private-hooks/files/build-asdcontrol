@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-source_dir=/var/cache/fedora-config-upstream/asdcontrol/source
+source_dir=/var/cache/cybexos-upstream/asdcontrol/source
 expected=0ee8bd576d4e93513027d713e688988cb0d827ef
-state=/var/lib/fedora-config-upstream/asdcontrol
+state=/var/lib/cybexos-upstream/asdcontrol
 recipe=$(sha256sum "$0" | awk '{print $1}')
 [[ $(git -C "$source_dir" rev-parse HEAD) == "$expected" ]] || {
   echo "asdcontrol source revision mismatch" >&2

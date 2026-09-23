@@ -2,7 +2,7 @@
 set -euo pipefail
 # This runs in the writable live overlay, never during image construction.
 grep -qw rd.live.image /proc/cmdline || exit 0
-touch /run/fedora-config-live
+touch /run/cybexos-live
 if ! id liveuser >/dev/null 2>&1; then
   useradd --create-home --uid 1000 --groups wheel,docker --shell /bin/bash liveuser
   passwd --delete liveuser
@@ -22,11 +22,11 @@ DefaultSession=hyprland-quickshell.desktop
 GDM
 # The permission exists only in this boot's live overlay. It is explicitly
 # removed by the Anaconda post-install script as an additional safeguard.
-cat > /etc/sudoers.d/fedora-config-live <<'SUDO'
+cat > /etc/sudoers.d/cybexos-live <<'SUDO'
 liveuser ALL=(ALL) NOPASSWD: ALL
 SUDO
-chmod 0440 /etc/sudoers.d/fedora-config-live
-cat > /etc/polkit-1/rules.d/49-fedora-config-live.rules <<'POLKIT'
+chmod 0440 /etc/sudoers.d/cybexos-live
+cat > /etc/polkit-1/rules.d/49-cybexos-live.rules <<'POLKIT'
 polkit.addRule(function(action, subject) {
     if (subject.user == "liveuser" && subject.local && subject.active &&
         action.id == "org.fedoraproject.pkexec.liveinst") {

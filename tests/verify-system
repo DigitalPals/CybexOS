@@ -31,7 +31,7 @@ cleanup_verify() {
     quickshell_live_safe=false
   fi
   for directory in "${verify_scratch_dirs[@]}"; do
-    [[ $directory == "${TMPDIR:-/tmp}"/fedora-config-manifest.* ]] &&
+    [[ $directory == "${TMPDIR:-/tmp}"/cybexos-manifest.* ]] &&
       rm -rf -- "$directory"
   done
 }
@@ -39,8 +39,8 @@ trap cleanup_verify EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-inventory_host=${FEDORA_CONFIG_INVENTORY_HOST:-workstation}
-config_file=${FEDORA_CONFIG_FILE:-/etc/fedora-config/config.yml}
+inventory_host=${CYBEXOS_INVENTORY_HOST:-workstation}
+config_file=${CYBEXOS_CONFIG_FILE:-/etc/cybexos/config.yml}
 if ! command -v ansible-inventory >/dev/null 2>&1; then
   printf 'FAIL  ansible-inventory is required to read the machine contract (dnf install ansible-core)\n' >&2
   exit 2
@@ -154,8 +154,8 @@ check_root() {
 }
 
 check_managed_quickshell_tree() {
-  local deployed="$primary_home/.local/share/fedora-config/runtime/quickshell" scratch expected actual
-  scratch=$(mktemp -d "${TMPDIR:-/tmp}/fedora-config-manifest.XXXXXX") || return 1
+  local deployed="$primary_home/.local/share/cybexos/runtime/quickshell" scratch expected actual
+  scratch=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-manifest.XXXXXX") || return 1
   verify_scratch_dirs+=("$scratch")
   expected="$scratch/expected"
   actual="$scratch/actual"
@@ -250,11 +250,11 @@ else
 fi
 check 'weekly TRIM is enabled' unit_enabled fstrim.timer
 if [[ $(findmnt --noheadings --output FSTYPE --target / 2>/dev/null | xargs) == btrfs ]]; then
-  check 'weekly Btrfs scrub is enabled' unit_enabled fedora-config-btrfs-scrub.timer
+  check 'weekly Btrfs scrub is enabled' unit_enabled cybexos-btrfs-scrub.timer
   check 'transactional Btrfs recovery helper is installed' \
-    test -x /usr/local/libexec/fedora-config-system-snapshot
+    test -x /usr/local/libexec/cybexos-system-snapshot
 else
-  check 'Btrfs scrub is disabled on a non-Btrfs root' bash -c '! systemctl is-enabled --quiet fedora-config-btrfs-scrub.timer'
+  check 'Btrfs scrub is disabled on a non-Btrfs root' bash -c '! systemctl is-enabled --quiet cybexos-btrfs-scrub.timer'
 fi
 check 'zram is active' bash -c 'swapon --show=NAME | grep -q zram'
 
@@ -400,7 +400,7 @@ if $xps_2026; then
   check 'XPS speaker tuning user unit is active' user_unit_active xps-speaker-tuning.service
   check '13-biquad/limiter graph targets only the internal speaker' /usr/local/libexec/xps-speaker-tuning check
   check 'desktop volume controls resolve the tuned physical sink' \
-    grep -q '/usr/local/libexec/xps-speaker-tuning control' "$HOME/.local/share/fedora-config/runtime/hypr/bindings.lua"
+    grep -q '/usr/local/libexec/xps-speaker-tuning control' "$HOME/.local/share/cybexos/runtime/hypr/bindings.lua"
 
   if [[ -e /sys/bus/i2c/devices/i2c-VEN_06CB:00 ]]; then
     check_root 'XPS touchpad is visible to libinput' bash -c \
@@ -477,7 +477,7 @@ if $xps_2026; then
     check 'WirePlumber suppresses only the duplicate IPU7 paths' bash -c \
       'grep -q "monitor.libcamera.*disabled" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf && grep -Fq "pci-$1" /etc/wireplumber/wireplumber.conf.d/90-xps-ipu7-v4l2.conf' _ "$ipu7_bdf"
     check 'Brave enables PipeWire camera capture' bash -c \
-      'grep -q "PipeWireCamera" "$HOME/.local/share/fedora-config/runtime/hypr/bindings.lua" && grep -q "PipeWireCamera" "$HOME/.local/share/applications/brave-origin.desktop"'
+      'grep -q "PipeWireCamera" "$HOME/.local/share/cybexos/runtime/hypr/bindings.lua" && grep -q "PipeWireCamera" "$HOME/.local/share/applications/brave-origin.desktop"'
 
     if mokutil --sb-state 2>/dev/null | grep -qi enabled; then
       check 'camera module signing key is enrolled for Secure Boot' \
@@ -540,23 +540,23 @@ else
 fi
 check 'no Hyprland git packages are installed' bash -c "! rpm -qa | grep -Eq '^(hyprland|hypridle|hyprlock|hyprpicker|hyprpolkitagent).*[-.]git([-.]|$)'"
 check 'portal preference exists' test -r "$HOME/.config/xdg-desktop-portal/hyprland-portals.conf"
-check 'Hyprland Lua entry point is a regular vendor-runtime file' bash -c '[[ -f $HOME/.local/share/fedora-config/runtime/hypr/hyprland.lua && ! -L $HOME/.local/share/fedora-config/runtime/hypr/hyprland.lua ]]'
+check 'Hyprland Lua entry point is a regular vendor-runtime file' bash -c '[[ -f $HOME/.local/share/cybexos/runtime/hypr/hyprland.lua && ! -L $HOME/.local/share/cybexos/runtime/hypr/hyprland.lua ]]'
 check_diagnostic 'deployed Quickshell tree exactly matches tracked source files' check_managed_quickshell_tree
 
-agent_skill_canonical="$primary_home/.local/share/fedora-config/current/agent-skills/fedora-config"
+agent_skill_canonical="$primary_home/.local/share/cybexos/current/agent-skills/cybexos"
 check 'active-release CybexOS agent skill exists' \
   test -r "$agent_skill_canonical/SKILL.md"
 for agent_root in .agents .claude .codex; do
   check "$agent_root discovers the active CybexOS skill" \
     agent_skill_link_valid \
-    "$primary_home/$agent_root/skills/fedora-config" "$agent_skill_canonical"
+    "$primary_home/$agent_root/skills/cybexos" "$agent_skill_canonical"
 done
 
 agent_config_home=${XDG_CONFIG_HOME:-$primary_home/.config}
-default_agent_file="$agent_config_home/fedora-config/defaults/agent"
+default_agent_file="$agent_config_home/cybexos/defaults/agent"
 if [[ -e $default_agent_file ]]; then
   selected_agent=$(env HOME="$primary_home" XDG_CONFIG_HOME="$agent_config_home" \
-    "$primary_home/.local/bin/fedora-config-agent" get 2>/dev/null || true)
+    "$primary_home/.local/bin/cybexos-agent" get 2>/dev/null || true)
   if [[ $selected_agent =~ ^(opencode|claude|codex)$ ]] \
       && command_exists "$selected_agent"; then
     pass "default AI agent: $selected_agent"
@@ -568,7 +568,7 @@ else
 fi
 
 required_commands=(cybex Hyprland start-hyprland hypridle hyprlock hyprpicker satty qs qalc cliphist \
-  voxtype localsend fedora-config-agent git gh python3 oh-my-posh kitty nvim fish zoxide fzf eza jq rg fd \
+  voxtype localsend cybexos-agent git gh python3 oh-my-posh kitty nvim fish zoxide fzf eza jq rg fd \
   dust bat btop fastfetch ffmpeg mpv yt-dlp imv)
 feature_enabled developer_tools && required_commands+=(lazygit lazydocker mdview bun balena \
   gcc g++ cmake rustup mold sccache node npm claude opencode codex)
@@ -615,7 +615,7 @@ if ! feature_enabled connected_widgets; then
   home=$1
   ! command -v hermes >/dev/null 2>&1 &&
     [[ ! -e $home/.hermes ]] &&
-    [[ ! -e $home/.local/share/fedora-config-user-tools/hermes ]] &&
+    [[ ! -e $home/.local/share/cybexos-user-tools/hermes ]] &&
     [[ ! -e $home/.config/systemd/user/hermes-backend.service ]] &&
     ! systemctl --user is-active --quiet hermes-backend.service &&
     ! systemctl --user is-enabled --quiet hermes-backend.service
@@ -638,9 +638,9 @@ if feature_enabled proprietary_apps; then
   check 'Brave restore, locale spellcheck, and 1Password policy is valid JSON' \
   jq -e --arg language "${regional_locale%%_*}" \
   '.RestoreOnStartup == 1 and .SpellcheckLanguage == [($language | ascii_downcase)] and (.ExtensionInstallForcelist | length == 1)' \
-  /etc/brave/policies/managed/fedora-config.json
+  /etc/brave/policies/managed/cybexos.json
   check 'Brave launchers automatically restore after an unclean exit' bash -c \
-  'grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.local/share/fedora-config/runtime/hypr/bindings.lua" && grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.local/share/applications/brave-origin.desktop"'
+  'grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.local/share/cybexos/runtime/hypr/bindings.lua" && grep -q -- "--restore-last-session --hide-crash-restore-bubble" "$HOME/.local/share/applications/brave-origin.desktop"'
   check 'Firefox 1Password policy' jq -e '.policies.ExtensionSettings["{d634138d-c276-4fc8-924b-40a0ea21d284}"].installation_mode == "force_installed"' /usr/lib64/firefox/distribution/policies.json
   check 'Brave is the effective default HTTPS handler' bash -c \
   '[[ $(xdg-mime query default x-scheme-handler/https) == brave-origin.desktop ]]'

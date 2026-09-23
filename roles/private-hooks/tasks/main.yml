@@ -1,7 +1,7 @@
 ---
 - name: Create private-hook ownership state directory
   ansible.builtin.file:
-    path: /var/lib/fedora-config/features
+    path: /var/lib/cybexos/features
     state: directory
     owner: root
     group: root
@@ -9,7 +9,7 @@
 
 - name: Inspect CybexOS ownership of private-hook features
   ansible.builtin.stat:
-    path: "/var/lib/fedora-config/features/{{ item }}"
+    path: "/var/lib/cybexos/features/{{ item }}"
   loop:
     - private_hooks
     - apple_display
@@ -30,7 +30,7 @@
     state: absent
   loop:
     - "{{ primary_home }}/.local/bin/sccache"
-    - /var/cache/fedora-config-upstream/conthrax.zip
+    - /var/cache/cybexos-upstream/conthrax.zip
     - /usr/local/share/fonts/conthrax
   notify:
     - Refresh fonts
@@ -44,10 +44,10 @@
     state: absent
   loop:
     - /etc/udev/rules.d/70-apple-studio-display.rules
-    - /usr/local/libexec/fedora-config-build-asdcontrol
+    - /usr/local/libexec/cybexos-build-asdcontrol
     - /usr/local/bin/asdcontrol
-    - /var/cache/fedora-config-upstream/asdcontrol
-    - /var/lib/fedora-config-upstream/asdcontrol
+    - /var/cache/cybexos-upstream/asdcontrol
+    - /var/lib/cybexos-upstream/asdcontrol
   notify: Reload udev
   when:
     - not features.private_hooks | bool
@@ -55,7 +55,7 @@
 
 - name: Retire private-hook ownership after the feature is disabled
   ansible.builtin.file:
-    path: "/var/lib/fedora-config/features/{{ item }}"
+    path: "/var/lib/cybexos/features/{{ item }}"
     state: absent
   loop:
     - private_hooks
@@ -101,10 +101,10 @@
     state: absent
   loop:
     - /etc/udev/rules.d/70-apple-studio-display.rules
-    - /usr/local/libexec/fedora-config-build-asdcontrol
+    - /usr/local/libexec/cybexos-build-asdcontrol
     - /usr/local/bin/asdcontrol
-    - /var/cache/fedora-config-upstream/asdcontrol
-    - /var/lib/fedora-config-upstream/asdcontrol
+    - /var/cache/cybexos-upstream/asdcontrol
+    - /var/lib/cybexos-upstream/asdcontrol
   notify: Reload udev
   when:
     - not features.apple_display | bool
@@ -113,7 +113,7 @@
 - name: Checkout pinned asdcontrol source
   ansible.builtin.git:
     repo: https://github.com/nikosdion/asdcontrol.git
-    dest: /var/cache/fedora-config-upstream/asdcontrol/source
+    dest: /var/cache/cybexos-upstream/asdcontrol/source
     version: 0ee8bd576d4e93513027d713e688988cb0d827ef
     force: true
   when: features.apple_display | bool and not ansible_check_mode
@@ -121,14 +121,14 @@
 - name: Install patched asdcontrol build helper
   ansible.builtin.copy:
     src: build-asdcontrol
-    dest: /usr/local/libexec/fedora-config-build-asdcontrol
+    dest: /usr/local/libexec/cybexos-build-asdcontrol
     owner: root
     group: root
     mode: "0755"
   when: features.apple_display | bool
 
 - name: Build patched asdcontrol only when revision changes
-  ansible.builtin.command: /usr/local/libexec/fedora-config-build-asdcontrol
+  ansible.builtin.command: /usr/local/libexec/cybexos-build-asdcontrol
   register: asdcontrol_build
   changed_when: (asdcontrol_build.stdout | regex_search('(?m)^CHANGED:')) is not none
   when: features.apple_display | bool and not ansible_check_mode
@@ -136,7 +136,7 @@
 - name: Download licensed redistributable Conthrax archive
   ansible.builtin.get_url:
     url: https://dl.dafont.com/dl/?f=conthrax
-    dest: /var/cache/fedora-config-upstream/conthrax.zip
+    dest: /var/cache/cybexos-upstream/conthrax.zip
     checksum: sha256:73363dc8e4b816bad704f4c9b7b96103751203fdf191c574d96da21517af7f13
     owner: root
     group: root
@@ -150,7 +150,7 @@
 
 - name: Install Conthrax font and its desktop EULA # noqa command-instead-of-module
   ansible.builtin.command: >-
-    unzip -o /var/cache/fedora-config-upstream/conthrax.zip
+    unzip -o /var/cache/cybexos-upstream/conthrax.zip
     Conthrax-SemiBold.otf 'Typodermic Desktop EULA 2026.pdf'
     -d /usr/local/share/fonts/conthrax
   args:
@@ -159,7 +159,7 @@
 
 - name: Record CybexOS ownership of private hooks
   ansible.builtin.copy:
-    dest: /var/lib/fedora-config/features/private_hooks
+    dest: /var/lib/cybexos/features/private_hooks
     content: "managed\n"
     owner: root
     group: root
@@ -167,7 +167,7 @@
 
 - name: Record CybexOS ownership of Apple display integration
   ansible.builtin.copy:
-    dest: /var/lib/fedora-config/features/apple_display
+    dest: /var/lib/cybexos/features/apple_display
     content: "managed\n"
     owner: root
     group: root
@@ -176,7 +176,7 @@
 
 - name: Retire Apple display ownership after deselection
   ansible.builtin.file:
-    path: /var/lib/fedora-config/features/apple_display
+    path: /var/lib/cybexos/features/apple_display
     state: absent
   when:
     - not features.apple_display | bool

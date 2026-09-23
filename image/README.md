@@ -35,7 +35,7 @@ Python 3.11 or later is required. The host does not need Anaconda, RPM build
 tools, privileged containers, loop devices, or Fedora installed.
 
 ```bash
-./image/build --output "$HOME/.local/share/fedora-config/images/alpha-01"
+./image/build --output "$HOME/.local/share/cybexos/images/alpha-01"
 ```
 
 Use a new, empty output directory for each build. Allow approximately 180 GiB
@@ -69,13 +69,13 @@ their package and metadata signature policies.
 
 ## Runtime and accounts
 
-`fedora-config-desktop` owns shared files under `/usr/share/fedora-config`,
+`cybexos-desktop` owns shared files under `/usr/share/cybexos`,
 session units under `/usr/lib/systemd/user`, and commands under `/usr/bin` and
 `/usr/libexec`. It reuses the existing QML, Hyprland modules, helper scripts,
 and checksum-pinned fonts. The image packaging step adapts system helper paths
 in its staging directory; the Ansible installation is unchanged.
 
-At login, `fedora-config-user-init` copies absent application defaults from
+At login, `cybexos-user-init` copies absent application defaults from
 the offline seed, using filesystem reflinks when available, and creates
 absent runtime/helper links. Seed-owned symlinks are relative, so every
 account gets working toolchains and independent writable application state.
@@ -138,12 +138,12 @@ recorded in [VALIDATION.md](VALIDATION.md).
 QT_QPA_PLATFORM=offscreen python3 image/tests
 
 # Or use the isolated test container on Debian:
-docker build -f image/Containerfile.tests -t fedora-config-image-tests:44 image
-docker run --rm -v "$PWD:/source:ro" fedora-config-image-tests:44
+docker build -f image/Containerfile.tests -t cybexos-image-tests:44 image
+docker run --rm -v "$PWD:/source:ro" cybexos-image-tests:44
 
 # Boot and check an image (UEFI testing on Debian also requires ovmf):
-./image/test-live "$HOME/.local/share/fedora-config/images/alpha-01/CybexOS-Live-44.iso" \
-  --output "$HOME/.local/share/fedora-config/images/test-01"
+./image/test-live "$HOME/.local/share/cybexos/images/alpha-01/CybexOS-Live-44.iso" \
+  --output "$HOME/.local/share/cybexos/images/test-01"
 ```
 
 These exercise two-user isolation, preservation during vendor updates,

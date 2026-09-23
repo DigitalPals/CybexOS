@@ -75,7 +75,7 @@ test("the Control Panel exposes five equal session actions with guarded destruct
 test("session actions use the installed helper and report observed failures", () => {
     const session = read("Common/Session.qml");
     assert.match(session,
-        /sessionAction\.command = \["\/usr\/local\/libexec\/fedora-config-session-action", action\]/);
+        /sessionAction\.command = \["\/usr\/local\/libexec\/cybexos-session-action", action\]/);
     assert.match(session, /readonly property bool actionBusy:\s*sessionAction\.running/);
     assert.match(session, /Process \{[\s\S]*id:\s*sessionAction/);
     assert.match(session, /ProcHelpers\.NOT_STARTED/);

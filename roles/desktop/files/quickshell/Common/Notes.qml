@@ -12,7 +12,7 @@ Singleton {
     id: root
 
     readonly property string filePath:
-        Quickshell.env("HOME") + "/.local/state/fedora-config/shell/notes.json"
+        Quickshell.env("HOME") + "/.local/state/cybexos/shell/notes.json"
 
     property var records: []
     readonly property int count: records.length
