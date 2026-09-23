@@ -223,10 +223,10 @@ PanelWindow {
 
     // Whether a module is on screen at all, beyond the user having enabled it:
     // media only while something is playing, Bluetooth only when connected,
-    // battery only on laptops, weather once there is either a forecast or a
-    // reason there is not, and the two modules that are their own reason to
-    // exist — the updates chip and the tray — only while they have something
-    // to show.
+    // battery only on laptops, weather once there is a forecast, a reason
+    // there is not, or a location to ask for, and the two modules that are
+    // their own reason to exist — the updates chip and the tray — only while
+    // they have something to show.
     //
     // Every such rule belongs here and nowhere else. The bar's dividers and its
     // group pills read the same function, so a module that hid itself by some
@@ -235,7 +235,7 @@ PanelWindow {
     function autoRule(id) {
         switch (id) {
         case "media": return Media.hasTrack;
-        case "weather": return Weather.ready || Weather.offline;
+        case "weather": return Weather.ready || Weather.offline || !Weather.locationSet;
         case "bt": return BluetoothState.connected;
         case "batt": return Battery.isLaptop;
         case "updates": return Updates.total > 0 || Updates.error !== ""

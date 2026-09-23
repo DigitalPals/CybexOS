@@ -103,7 +103,40 @@ test("weather is fetched only for a set location someone is shown", () => {
 
     assert.match(sheet, /onClaimed: \{[^}]*Weather\.acquire\(\);/);
     assert.match(sheet, /onReleased: \{[^}]*Weather\.release\(\);/);
-    assert.match(sheet, /if \(!Weather\.locationSet\)\s*return "Set a location in Settings";/);
+    assert.match(sheet,
+        /LinkText \{\s*visible: !Weather\.locationSet[\s\S]{0,120}?text: "Set a location in Settings"[\s\S]{0,160}?Settings\.openWidgetSettings\("weather"\);\s*Settings\.showPanel\("modules"/,
+        "the sheet links to where the location is set");
+});
+
+test("an enabled weather widget with no location stays on the bar and says so", () => {
+    const vm = require("node:vm");
+    const bar = read("Bar/Bar.qml");
+    const chip = read("Bar/Modules/Weather.qml");
+    const page = read("Settings/ModulesPage.qml");
+    const E = load("WidgetEditor.js");
+
+    const rule = bar.match(/case "weather": return ([^;]*);/)[1];
+    const shown = (ready, offline, locationSet) => vm.runInNewContext(rule,
+        { Weather: { ready, offline, locationSet } });
+    assert.equal(shown(false, false, true), false, "the gap before the first forecast stays blank");
+    assert.equal(shown(false, false, false), true, "no location is a reason to show the hint");
+    assert.equal(shown(true, false, true), true);
+    assert.equal(shown(false, true, true), true);
+    assert.match(page, /weather: Weather\.ready \|\| Weather\.offline \|\| !Weather\.locationSet,\s*weatherLocation: Weather\.locationSet/,
+        "the widget editor agrees with the bar");
+
+    assert.match(chip, /name: !Weather\.locationSet \? "add_location"/);
+    assert.match(chip, /visible: Weather\.locationSet\s*anchors\.verticalCenter: parent\.verticalCenter\s*\/\/ Weather\.temp/,
+        "compact, the location mark stands alone");
+    assert.match(chip, /text: !Weather\.locationSet \? "Set location"/);
+    assert.match(chip, /tooltip: !Weather\.locationSet \? "Weather · set a location in Settings"/);
+
+    const weather = { key: "weather", id: "weather", enabled: true, plugin: false };
+    assert.equal(E.status(weather, { weather: true, weatherLocation: false }),
+        "On your bar · needs a location");
+    assert.equal(E.status(weather, { weather: true, weatherLocation: true }), "Ready · weather loaded");
+    assert.equal(E.status(weather, { weather: false, weatherLocation: true }),
+        "Hidden · waiting for weather");
 });
 
 test("the idle-inhibit countdown ticks on minute boundaries", () => {
