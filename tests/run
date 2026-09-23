@@ -3,9 +3,17 @@
 # touching the running machine (that is tests/verify-system). Fast enough to gate
 # a deploy — `verify` runs it ahead of the machine checks and `update --full`
 # runs it before ansible-playbook. Every stage runs even if an earlier one
-# fails; the exit status is nonzero when any of them did.
+# fails; the exit status is nonzero when any of them did. Each stage runs in
+# its own process under a hard time limit, so a hung check fails its stage
+# instead of wedging the gate and every deploy waiting on it.
 set -uo pipefail
 export PYTHONDONTWRITEBYTECODE=1
+
+# `wait -n -p` (bash 5.1) is how finished stages are collected.
+if ((BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] < 501)); then
+  printf 'tests/run: bash 5.1 or newer is required\n' >&2
+  exit 2
+fi
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd) || exit 1
 cd -- "$repo_root" || exit 1
@@ -13,19 +21,43 @@ cd -- "$repo_root" || exit 1
 shell_dir=roles/desktop/files/quickshell
 failed_stages=()
 test_scratch_dirs=()
+# Background jobs this process started (PID → start time in ms), so an
+# interrupted or timed-out run stops them instead of leaving them behind.
+declare -A live_jobs=()
 
 cleanup_test_scratch() {
   local directory
   for directory in "${test_scratch_dirs[@]}"; do
-    [[ $directory == "${TMPDIR:-/tmp}"/cybexos-qml.* ]] &&
+    [[ $directory == "${TMPDIR:-/tmp}"/cybexos-qml.* ||
+       $directory == "${TMPDIR:-/tmp}"/cybexos-tests.* ]] &&
       rm -rf -- "$directory"
   done
 }
-trap cleanup_test_scratch EXIT
+on_exit() {
+  local pid
+  for pid in "${!live_jobs[@]}"; do
+    kill -TERM "$pid" 2>/dev/null
+  done
+  # Every job is a timeout(1), which passes the signal on to its whole process
+  # group and SIGKILLs it ten seconds later, so this wait is bounded.
+  ((${#live_jobs[@]} == 0)) || wait 2>/dev/null
+  cleanup_test_scratch
+}
+trap on_exit EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [[ -t 1 ]]; then
+# Stage workers write to files; they take the terminal decision from the run
+# that started them.
+if [[ ${1:-} == --stage-worker ]]; then
+  color=${CYBEXOS_TESTS_RUN_COLOR:-0}
+elif [[ -t 1 ]]; then
+  color=1
+else
+  color=0
+fi
+export CYBEXOS_TESTS_RUN_COLOR=$color
+if [[ $color == 1 ]]; then
   C_GREEN=$'\033[32m' C_RED=$'\033[31m' C_YELLOW=$'\033[33m' C_OFF=$'\033[0m'
 else
   C_GREEN='' C_RED='' C_YELLOW='' C_OFF=''
@@ -50,6 +82,40 @@ excerpt() {
   printf '%s\n' "$text" | head -n "$max" | sed 's/^/      /'
   ((n > max)) && printf '      … %d more lines\n' "$((n - max))"
   return 0
+}
+
+# spawn LIMIT OUTPUT COMMAND... — start COMMAND in the background with a hard
+# LIMIT in seconds and all of its output in the file OUTPUT. timeout(1) puts
+# the command in its own process group, signals all of it on expiry, and
+# SIGKILLs whatever still ignores SIGTERM ten seconds later. Sets spawned_pid.
+spawn() {
+  local limit=$1 output=$2
+  shift 2
+  timeout --kill-after=10 "$limit" "$@" >"$output" 2>&1 </dev/null &
+  spawned_pid=$!
+  live_jobs[$spawned_pid]=$(now_ms)
+}
+
+# reap PID... — wait for whichever of these spawned jobs ends first. Sets
+# reaped_pid, its exit status reaped_rc, and its runtime reaped_ms. Bash's own
+# "Killed" notice for a job goes to /dev/null; the caller reports the job.
+reap() {
+  reaped_pid='' reaped_rc=0
+  wait -n -p reaped_pid "$@" 2>/dev/null || reaped_rc=$?
+  [[ -n $reaped_pid && -n ${live_jobs[$reaped_pid]:-} ]] || return 1
+  reaped_ms=$(( $(now_ms) - ${live_jobs[$reaped_pid]} ))
+  unset 'live_jobs[$reaped_pid]'
+}
+
+# exit_note STATUS RUNTIME_MS LIMIT — how a spawned job ended, for a report.
+# timeout(1) exits 124 on expiry, or 137 when it had to use SIGKILL.
+exit_note() {
+  local rc=$1 runtime_ms=$2 limit=$3
+  if ((rc == 124 || (rc == 137 && runtime_ms >= limit * 1000))); then
+    printf 'timed out after %ss' "$limit"
+  else
+    printf 'exited with status %s' "$rc"
+  fi
 }
 
 # ── Quickshell pure-logic unit tests ────────────────────────────────────────
@@ -892,11 +958,54 @@ quick_stages=(
   stage_qml_runtime
 )
 
+# The name each stage reports under, for failures only this runner sees: a
+# stage that ran out of time or whose process died.
+declare -A stage_labels=(
+  [stage_source_syntax]='source syntax'
+  [stage_static_analysis]='static lint'
+  [stage_unit_tests]='unit tests'
+  [stage_hyprland_workspaces]='Hyprland'
+  [stage_qml_lint]='qml lint'
+  [stage_qml_runtime]='qml runtime'
+  [stage_quickshell_integration]='Quickshell'
+  [stage_callback_smoke]='callback'
+  [stage_python_helpers]='Python tests'
+  [stage_xps_hardware]='XPS hardware'
+  [stage_plymouth_layout]='Plymouth'
+  [stage_agent_skills]='agent skills'
+  [stage_update_backend]='updater'
+  [stage_screenshot_workflow]='screenshot'
+  [stage_brightness_routing]='brightness'
+  [stage_system_snapshot]='snapshots'
+  [stage_legacy_names]='legacy'
+)
+
+# Wall-clock limit per stage in seconds: many times the slowest run seen in CI
+# or on a loaded workstation, so only a hang ever reaches it.
+declare -A stage_limits=(
+  [stage_static_analysis]=600
+  [stage_python_helpers]=600
+)
+stage_limit() { printf '%s' "${stage_limits[$1]:-300}"; }
+
+# One stage per process: the loop at the end starts each stage as
+# `tests/run --stage-worker NAME` under its limit and reports what it printed.
+if [[ ${1:-} == --stage-worker ]]; then
+  stage=${2:-}
+  if (($# != 2)) || [[ -z $stage || -z ${stage_labels[$stage]:-} ]]; then
+    printf 'tests/run: --stage-worker takes one stage function name\n' >&2
+    exit 2
+  fi
+  "$stage"
+  ((${#failed_stages[@]} == 0))
+  exit
+fi
+
 selected_stages=("${stages[@]}")
 
 case ${1:-} in
   --list)
-    printf '%d required source-check stages (execution order):\n' "${#stages[@]}"
+    printf '%d required source-check stages (report order):\n' "${#stages[@]}"
     for stage in "${stages[@]}"; do
       label=${stage#stage_}
       printf '  %s\n' "${label//_/ }"
@@ -918,8 +1027,57 @@ case ${1:-} in
     ;;
 esac
 
-for stage in "${selected_stages[@]}"; do
-  "$stage"
+run_dir=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-tests.XXXXXX") || {
+  printf 'tests/run: could not create a scratch directory\n' >&2
+  exit 1
+}
+test_scratch_dirs+=("$run_dir")
+
+# A worker that failed its stage has printed the FAIL line already. Anything
+# else it can end with (its time limit, a crash) is reported here instead.
+report_stage() {
+  local index=$1 rc=$2 runtime_ms=$3 stage output
+  stage=${selected_stages[index]}
+  output=$run_dir/$index.out
+  if ((rc == 0)); then
+    cat -- "$output"
+  elif ((rc == 1)) && grep -q 'FAIL' -- "$output"; then
+    cat -- "$output"
+    failed_stages+=("${stage_labels[$stage]}")
+  else
+    fail "${stage_labels[$stage]}" \
+      "stage $(exit_note "$rc" "$runtime_ms" "$(stage_limit "$stage")")"
+    [[ -s $output ]] && excerpt "$(<"$output")"
+  fi
+}
+
+jobs=1
+declare -A running=()    # worker PID → index into selected_stages
+declare -a stage_rc=() stage_ms=()
+next=0
+reported=0
+while ((reported < ${#selected_stages[@]})); do
+  while ((${#running[@]} < jobs && next < ${#selected_stages[@]})); do
+    stage=${selected_stages[next]}
+    spawn "$(stage_limit "$stage")" "$run_dir/$next.out" \
+      "$BASH" "$repo_root/tests/run" --stage-worker "$stage"
+    running[$spawned_pid]=$next
+    next=$((next + 1))
+  done
+  if ! reap "${!running[@]}"; then
+    printf 'tests/run: lost track of a running stage\n' >&2
+    exit 1
+  fi
+  index=${running[$reaped_pid]}
+  unset 'running[$reaped_pid]'
+  stage_rc[index]=$reaped_rc
+  stage_ms[index]=$reaped_ms
+  # Results come out in the fixed stage order, each as soon as every stage
+  # before it has finished too.
+  while ((reported < ${#selected_stages[@]})) && [[ -n ${stage_rc[reported]:-} ]]; do
+    report_stage "$reported" "${stage_rc[reported]}" "${stage_ms[reported]}"
+    reported=$((reported + 1))
+  done
 done
 
 # Keep the verdict on the last line: `update` tails this output into its own
