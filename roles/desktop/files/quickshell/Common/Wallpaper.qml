@@ -228,12 +228,38 @@ Singleton {
     // ---- rotate wallpaper -------------------------------------------------
     readonly property int shuffleMs: Settings.shuffle === "15m" ? 900000
         : Settings.shuffle === "1h" ? Format.MS_HOUR : Format.MS_DAY
+    // A rotation that fell due while nobody was looking.
+    property bool shuffleOwed: false
 
+    // A change is a 4K decode plus a Matugen run, so an idle or locked
+    // session does not rotate; the first input afterwards takes the one
+    // rotation it missed. The timer keeps running through idle, because
+    // restarting a daily interval at every idle spell would never fire.
     Timer {
         running: Settings.shuffle !== "Off"
         repeat: true
         interval: root.shuffleMs
-        onTriggered: root.shuffle()
+        onTriggered: {
+            if (Activity.idle)
+                root.shuffleOwed = true;
+            else
+                root.shuffle();
+        }
+        onRunningChanged: {
+            if (!running)
+                root.shuffleOwed = false;
+        }
+    }
+
+    Connections {
+        target: Activity
+
+        function onResumed() {
+            if (!root.shuffleOwed)
+                return;
+            root.shuffleOwed = false;
+            root.shuffle();
+        }
     }
 
     Process {

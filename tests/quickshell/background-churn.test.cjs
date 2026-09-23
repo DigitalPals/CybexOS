@@ -212,3 +212,14 @@ test("non-critical singletons stay out of the session-start burst", () => {
     assert.match(reminders, /id: startupRestore[\s\S]{0,80}?interval: 8000/);
     assert.match(reminders, /Component\.onCompleted: \{\s*refresh\(\);\s*startupRestore\.start\(\);/);
 });
+
+test("wallpaper rotation skips an idle session and catches up once on return", () => {
+    const wallpaper = read("Common/Wallpaper.qml");
+    assert.match(wallpaper,
+        /running: Settings\.shuffle !== "Off"\s*repeat: true\s*interval: root\.shuffleMs/,
+        "the interval keeps running: a daily rotation must survive idle spells");
+    assert.match(wallpaper,
+        /onTriggered: \{\s*if \(Activity\.idle\)\s*root\.shuffleOwed = true;\s*else\s*root\.shuffle\(\);/);
+    assert.match(wallpaper,
+        /target: Activity[\s\S]{0,80}function onResumed\(\) \{\s*if \(!root\.shuffleOwed\)\s*return;\s*root\.shuffleOwed = false;\s*root\.shuffle\(\);/);
+});
