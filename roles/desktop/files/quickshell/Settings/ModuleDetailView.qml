@@ -1364,6 +1364,10 @@ SettingsPage {
                 width: parent.width
                 minimumLabelWidth: githubRows.optionLabelWidth
                 label: "Repo refresh"
+                // Helpers.runPollDue: a repository with a running workflow or
+                // a fresh push, pull request, branch or release is read on
+                // every one-minute Inbox sweep; the rest wait this long.
+                hint: "Also how often quiet repos' workflow runs are read; busy ones every minute"
                 min: 1
                 max: 30
                 step: 1
