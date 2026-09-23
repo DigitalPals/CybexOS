@@ -136,7 +136,7 @@ test("the launcher uses the compact single-line geometry", () => {
     assert.match(view,
         /fullHeight:\s*padding \* 2 \+ tabHeight \+ searchHeight\s*\+ maxResults \* rowHeight \+ spacing \* 2/);
     assert.match(window,
-        /\(root\.height - launcherView\.fullHeight\) \/ 2/);
+        /\(root\.outputHeight - launcherView\.fullHeight\) \/ 2/);
 
     assert.match(resultSection, /height:\s*root\.rowHeight/);
     assert.match(resultSection,
@@ -171,6 +171,36 @@ test("the launcher defaults to Apps and exposes the discoverable provider tabs",
         /Qt\.NoModifier[\s\S]{0,80}Qt\.Key_(?:Left|Right)/,
         "arrow tab navigation must tolerate compositor keyboard flags");
     assert.match(view, /Accessible\.role:\s*Accessible\.PageTab/);
+});
+
+test("the launcher's layer surface is the card's envelope, not the output", () => {
+    const window = read("LauncherWindow.qml");
+
+    // The compositor blurs every pixel of the layer surface: a full-output
+    // overlay blurred ~8 MP on a 4K output each frame for a 460 px card.
+    const anchors = window.match(/anchors \{([^}]*)\}/)?.[1] ?? "";
+    assert.match(anchors, /top: true/);
+    assert.match(anchors, /left: true/);
+    assert.doesNotMatch(anchors, /right|bottom/,
+        "anchoring opposite edges stretches the surface across the output");
+    assert.match(window, /exclusionMode:\s*ExclusionMode\.Ignore/,
+        "margins must count from the output edge, not from the bar's zone");
+    assert.match(window, /implicitWidth:\s*launcherView\.implicitWidth/);
+    // A fixed envelope: the surface must not follow the card's animated
+    // height, or every result-count change reconfigures and reblurs it.
+    assert.match(window, /implicitHeight:\s*root\.travel \+ launcherView\.fullHeight/);
+    assert.match(window, /top:\s*root\.cardTop - root\.travel/);
+    assert.match(window,
+        /left:\s*Math\.round\(\(root\.outputWidth - launcherView\.implicitWidth\) \/ 2\)/);
+    assert.match(window, /y:\s*root\.travel/);
+    // The view's envelope comes from the output: the window is sized from the
+    // view, so reading the window back would shrink the card on every pass.
+    assert.match(window, /outputWidth:\s*root\.screen \? root\.screen\.width : 0/);
+    assert.match(window, /availableWidth:\s*root\.outputWidth > 0/);
+    assert.match(window, /availableHeight:\s*root\.outputHeight > 0/);
+    assert.doesNotMatch(window, /root\.(?:width|height)\b/);
+    // Outside clicks now land on other surfaces; the focus grab closes.
+    assert.match(window, /HyprlandFocusGrab \{[\s\S]*?onCleared:\s*Launcher\.close\(\)/);
 });
 
 test("a closed launcher stops feeding its query to the providers", () => {

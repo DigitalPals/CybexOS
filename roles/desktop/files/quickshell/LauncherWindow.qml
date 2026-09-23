@@ -6,9 +6,15 @@ import Quickshell.Wayland
 import Quickshell.Widgets
 import "Common"
 
-// Full-screen overlay hosting the launcher: a centred glass card that
-// springs in over an undimmed desktop — the compositor blurs only the card
-// itself — and any click outside it closes it.
+// The launcher: a centred glass card that springs in over an undimmed
+// desktop, and any click outside it closes it.
+//
+// The layer surface is the card's full-height envelope plus its entry travel,
+// not the whole output. The compositor blurs every pixel of a blurred layer
+// surface, transparent or not, so a full-output overlay paid for ~8 MP of
+// blur on a 4K output — every open frame, keystroke and cursor blink — to
+// show a ~460 px card. Clicks outside the surface reach whatever is under
+// them and clear the focus grab, which closes the launcher.
 PanelWindow {
     id: root
 
@@ -19,9 +25,39 @@ PanelWindow {
             launcherView.resetForClose();
     }
     screen: Launcher.screen
-    anchors { top: true; left: true; right: true; bottom: true }
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
+
+    // Logical output size. The card's envelope derives from it, never from
+    // the window's own size, which is now derived from the card.
+    readonly property real outputWidth: root.screen ? root.screen.width : 0
+    readonly property real outputHeight: root.screen ? root.screen.height : 0
+    readonly property int travel: Theme.launcherTravel
+    // The card's top edge stays put while the result list grows and
+    // shrinks; it sits where the fully populated compact launcher would
+    // centre (tabs, search tile and eight single-line rows).
+    readonly property real cardTop: Math.max(24,
+        Math.round((root.outputHeight - launcherView.fullHeight) / 2))
+
+    // Placed from the output's top-left corner rather than centred by the
+    // compositor, so the card lands exactly where the full-output overlay
+    // drew it. With ExclusionMode.Ignore the margins count from the output's
+    // edges, not from the bar's reserved zone. None of this follows the
+    // card's animating height, so the surface never reconfigures while
+    // mapped.
+    anchors {
+        top: true
+        left: true
+    }
+    // PanelWindow.margins is a Quickshell group qmllint cannot resolve.
+    // qmllint disable unqualified
+    margins {
+        top: root.cardTop - root.travel
+        left: Math.round((root.outputWidth - launcherView.implicitWidth) / 2)
+    }
+    // qmllint enable unqualified
+    implicitWidth: launcherView.implicitWidth
+    implicitHeight: root.travel + launcherView.fullHeight
 
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "qs-launcher"
@@ -49,6 +85,8 @@ PanelWindow {
         }
     }
 
+    // The travel strip above the card, and the card's own gaps, still close
+    // on a press; everything beyond the surface is the focus grab's.
     MouseArea {
         anchors.fill: parent
         onPressed: Launcher.close()
@@ -64,17 +102,13 @@ PanelWindow {
                 event.accepted = launcherView.handleEarlyKey(event);
         }
 
-        // The card's top edge stays put while the result list grows and
-        // shrinks; it sits where the fully populated compact launcher would
-        // centre (tabs, search tile and eight single-line rows).
-        readonly property real anchorY: Math.max(24,
-            Math.round((root.height - launcherView.fullHeight) / 2))
-
         ClippingRectangle {
             id: panel
 
-            x: Math.round((root.width - width) / 2)
-            y: stage.anchorY
+            // The entry travel slides the card down into place from `-travel`,
+            // which is what the strip above it is reserved for.
+            x: 0
+            y: root.travel
             width: launcherView.implicitWidth
             height: launcherView.implicitHeight
             radius: Theme.popRadius
@@ -131,8 +165,13 @@ PanelWindow {
                 id: launcherView
                 width: implicitWidth
                 height: implicitHeight
-                availableWidth: Math.max(1, root.width - Theme.panelPadding * 2)
-                availableHeight: Math.max(1, root.height - Theme.panelPadding * 2)
+                // From the output, not the window: the window is sized from
+                // this view, so reading it back here would shrink the card by
+                // the padding on every pass.
+                availableWidth: root.outputWidth > 0
+                    ? Math.max(1, root.outputWidth - Theme.panelPadding * 2) : 0
+                availableHeight: root.outputHeight > 0
+                    ? Math.max(1, root.outputHeight - Theme.panelPadding * 2) : 0
                 drawBackground: false
                 focus: Launcher.open
             }
