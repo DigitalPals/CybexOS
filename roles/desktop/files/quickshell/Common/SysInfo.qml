@@ -864,10 +864,12 @@ Singleton {
         brightnessRead.running = true;
     }
 
+    // Not read at login: nothing shows brightness until the Overview claims
+    // SysInfo or brightness-control pings the OSD, and both read it then.
+    // Until then it stays -1, which every view draws as unknown.
     Process {
         id: brightnessRead
         command: [root.brightnessTool, "get"]
-        running: true
         stdout: StdioCollector {
             onStreamFinished: {
                 const value = parseInt(text.trim());

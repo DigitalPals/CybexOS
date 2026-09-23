@@ -130,6 +130,14 @@ test("brightness processes are bounded and a failed write reads back", () => {
     assert.match(sys, /running: brightnessSet\.running\s*onTriggered: brightnessSet\.running = false/);
     assert.match(sys, /id: brightnessSet[\s\S]{0,700}?Qt\.callLater\(root\.refreshBrightness\)/);
     assert.match(sys, /id: brightnessSettle\s*interval: 400\s*onTriggered: root\.refreshBrightness\(\)/);
+    // The DDC/HID helper runs when something shows brightness, not at login.
+    const read_ = sys.slice(sys.indexOf("id: brightnessRead"));
+    assert.doesNotMatch(read_.slice(0, read_.indexOf("stdout:")), /running: true/);
+    assert.match(sys, /function acquire\(\)[\s\S]{0,900}?refreshBrightness\(\);/,
+        "the Overview's claim reads it");
+    assert.match(read("Common/Osd.qml"),
+        /function brightnessChanged\(\) \{\s*SysInfo\.refreshBrightness\(\);/,
+        "and so does the OSD when brightness-control pings it");
     const cpuinfo = sys.slice(sys.indexOf('path: "/proc/cpuinfo"'));
     assert.doesNotMatch(cpuinfo.slice(0, cpuinfo.indexOf("}")), /blockLoading/);
 });
