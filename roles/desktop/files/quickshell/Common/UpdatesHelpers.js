@@ -20,14 +20,96 @@ function flatpakNames(body) {
         .filter(function (line) { return line !== ""; });
 }
 
-// Count devices, not alternative releases for the same device.
-function firmwareNames(body) {
+// The kernel a pending transaction would bring, as "7.2.7" — the one package
+// name worth saying out loud, because it means a restart. check-update lists
+// "kernel-core.x86_64  7.2.7-200.fc44  updates".
+function dnfKernelVersion(body) {
+    var version = "";
+    String(body || "").split("\n").some(function (line) {
+        var match = line.match(/^kernel(?:-core)?\.[a-z0-9_]+\s+(?:[0-9]+:)?([^\s-]+)/);
+        if (match)
+            version = match[1];
+        return !!match;
+    });
+    return version;
+}
+
+// `dnf advisory list --security --updates --json`: one row per package an
+// advisory touches. What matters is whether there are any, and whether one of
+// them is serious enough to say so.
+function securityAdvisories(body) {
+    var rows = JSON.parse(body);
+    if (!Array.isArray(rows))
+        throw new Error("expected an advisory list");
+    var names = [];
+    var severe = false;
+    rows.forEach(function (row) {
+        if (!row || typeof row.name !== "string")
+            return;
+        if (names.indexOf(row.name) === -1)
+            names.push(row.name);
+        if (/^(critical|important)$/i.test(String(row.severity || "")))
+            severe = true;
+    });
+    return { count: names.length, severe: severe };
+}
+
+// The System row's one line: only what changes what a person does next.
+function systemDetail(kernelVersion, securityCount, securitySevere) {
+    var parts = [];
+    if (kernelVersion)
+        parts.push("New kernel " + kernelVersion);
+    if (securityCount > 0)
+        parts.push(securitySevere ? "Important security fixes" : "Security fixes");
+    return parts.join(" · ");
+}
+
+// fwupd names Secure Boot key databases after their certificates ("KEK CA",
+// "Windows UEFI CA", "UEFI dbx"); nobody recognises those.
+function firmwareDisplayName(name) {
+    var text = String(name || "").trim();
+    if (/^UEFI dbx$/i.test(text))
+        return "Secure Boot database";
+    if (/^(KEK CA|UEFI CA|Windows UEFI CA|Option ROM UEFI CA)$/i.test(text))
+        return "Secure Boot certificates";
+    if (/^UEFI Device Firmware$/i.test(text))
+        return "Device firmware";
+    if (/^System Firmware$/i.test(text))
+        return "System firmware";
+    return text !== "" ? text : "Firmware";
+}
+
+// One device per pending upgrade, from `fwupdmgr get-updates --json`. Counts
+// devices, not alternative releases for the same device.
+function firmwareDevices(body) {
     const data = JSON.parse(body);
     if (!data || !Array.isArray(data.Devices))
         throw new Error("missing firmware device list");
     return data.Devices.filter(device => Array.isArray(device.Releases)
-        && device.Releases.length > 0).map(device =>
-        typeof device.Name === "string" ? device.Name : "Firmware device");
+        && device.Releases.length > 0).map(device => {
+        const flags = Array.isArray(device.Flags) ? device.Flags : [];
+        const release = device.Releases[0] || {};
+        return {
+            id: typeof device.DeviceId === "string" ? device.DeviceId : "",
+            name: firmwareDisplayName(device.Name),
+            from: typeof device.Version === "string" ? device.Version : "",
+            to: typeof release.Version === "string" ? release.Version : "",
+            needsReboot: flags.indexOf("needs-reboot") !== -1
+                || flags.indexOf("needs-shutdown") !== -1,
+            requireAc: flags.indexOf("require-ac") !== -1
+        };
+    });
+}
+
+// "System firmware · Secure Boot certificates", each name once.
+function firmwareLabel(devices) {
+    var names = [];
+    (Array.isArray(devices) ? devices : []).forEach(function (device) {
+        var name = firmwareDisplayName(device && device.name);
+        if (names.indexOf(name) === -1)
+            names.push(name);
+    });
+    return names.join(" · ");
 }
 
 // The sources one check covers, as { dnf, flatpak, firmware, project }.
@@ -69,20 +151,44 @@ function shouldNotify(previousTotal, nextTotal, sources, enabled) {
     });
 }
 
-// The notification body: what is pending, never an error from a source that
-// did not answer (the menubar summary leads with those).
+// The notification body and the overview line: what is pending, by the names
+// the panel's rows use, never an error from a source that did not answer.
 function pendingSummary(dnfCount, flatpakCount, firmwareCount, projectAvailable,
         projectVersion) {
     var parts = [];
     if (dnfCount > 0)
-        parts.push("dnf " + dnfCount);
+        parts.push("System " + dnfCount);
     if (flatpakCount > 0)
-        parts.push("flatpak " + flatpakCount);
+        parts.push("Apps " + flatpakCount);
     if (firmwareCount > 0)
-        parts.push("firmware " + firmwareCount);
+        parts.push("Firmware " + firmwareCount);
     if (projectAvailable)
         parts.push("CybexOS " + projectVersion);
     return parts.join(" · ");
+}
+
+// Which sources could not be checked, as one sentence. The raw reasons stay
+// in the panel's details; the header only needs to say what is unknown.
+var SOURCE_NOUNS = {
+    dnf: "system updates",
+    flatpak: "apps",
+    firmware: "firmware",
+    project: "CybexOS releases"
+};
+
+function checkErrorLabel(errors) {
+    var failed = [];
+    CHECK_SOURCES.forEach(function (source) {
+        if (errors && typeof errors[source] === "string" && errors[source] !== "")
+            failed.push(SOURCE_NOUNS[source]);
+    });
+    if (failed.length === 0)
+        return "";
+    if (failed.length >= 3)
+        return "Couldn’t check for updates";
+    var last = failed.pop();
+    return "Couldn’t check " + (failed.length > 0
+        ? failed.join(", ") + " or " + last : last);
 }
 
 // ---- native run parsing ----------------------------------------------------
@@ -338,15 +444,188 @@ function parseFlatpakRunLine(line) {
     return null;
 }
 
-// Combined chip percentage across both package streams; -1 until either
-// stream has a real denominator, which the chip renders as indeterminate.
-function runPercent(dnfCur, dnfTotal, fpCur, fpTotal) {
-    var total = Math.max(0, dnfTotal || 0) + Math.max(0, fpTotal || 0);
-    if (total <= 0)
+// One percentage for the whole run — the chip, the header and the drawer all
+// show this number. -1 until any stream has made measurable progress, which
+// the chip renders as indeterminate.
+//
+// Each stream contributes its own fraction, weighted by how much work it
+// holds. dnf counts its downloads and then restarts the counter for the
+// install, so the two passes are mapped onto one 0–1 range rather than
+// letting the chip run to 100% twice. A firmware device is worth several
+// packages: writing flash is slow, and it should not flash by as a sliver.
+var DNF_DOWNLOAD_SHARE = 0.3;
+var FIRMWARE_DEVICE_WEIGHT = 8;
+
+function clampFraction(value) {
+    var number = Number(value) || 0;
+    return number < 0 ? 0 : number > 1 ? 1 : number;
+}
+
+function dnfFraction(state) {
+    if (state.dnfDone)
+        return 1;
+    if (!(state.dnfTotal > 0))
+        return 0;
+    var pass = clampFraction(state.dnfCur / state.dnfTotal);
+    return state.dnfPhase === "installing"
+        ? DNF_DOWNLOAD_SHARE + (1 - DNF_DOWNLOAD_SHARE) * pass
+        : state.dnfPhase === "downloading" ? DNF_DOWNLOAD_SHARE * pass : 0;
+}
+
+function runProgress(state) {
+    var s = state || {};
+    var parts = [];
+    if (s.dnfIncluded !== false)
+        parts.push({ weight: Math.max(1, s.dnfTotal || 0, s.dnfPlanned || 0),
+            fraction: dnfFraction(s) });
+    if (s.fpIncluded)
+        parts.push({ weight: Math.max(1, s.fpTotal || 0, s.fpPlanned || 0),
+            fraction: s.fpDone ? 1 : s.fpTotal > 0 ? clampFraction(s.fpCur / s.fpTotal) : 0 });
+    if (s.fwIncluded) {
+        var devices = Math.max(1, s.fwTotal || 0, s.fwPlanned || 0);
+        parts.push({ weight: devices * FIRMWARE_DEVICE_WEIGHT,
+            fraction: s.fwDone ? 1 : clampFraction(((s.fwCur || 0)
+                + clampFraction(s.fwFraction)) / devices) });
+    }
+    var weight = 0;
+    var done = 0;
+    parts.forEach(function (part) {
+        weight += part.weight;
+        done += part.weight * part.fraction;
+    });
+    if (weight <= 0 || done <= 0)
         return -1;
-    var cur = Math.min(dnfCur || 0, dnfTotal || 0)
-        + Math.min(fpCur || 0, fpTotal || 0);
-    return Math.max(0, Math.min(100, Math.round(cur * 100 / total)));
+    // Floor, so 100% means finished; the epsilon absorbs 0.65 * 100 = 64.99….
+    return Math.max(0, Math.min(100, Math.floor(done * 100 / weight + 1e-9)));
+}
+
+// ---- firmware run ----------------------------------------------------------
+// The worker's firmware phase streams one JSON event per line (see
+// assets/scripts/cybexos-firmware-update). Anything else is ignored.
+function parseFirmwareEvent(line) {
+    var text = String(line || "").trim();
+    if (text === "" || text.charAt(0) !== "{")
+        return null;
+    try {
+        var event = JSON.parse(text);
+        return event && typeof event.event === "string" ? event : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+// fwupd's status names (Fwupd.status_to_string) as the row says them.
+var FIRMWARE_STATUS_WORDS = {
+    "downloading": "Downloading",
+    "decompressing": "Preparing",
+    "loading": "Preparing",
+    "scheduling": "Scheduling",
+    "device-read": "Reading",
+    "device-erase": "Installing",
+    "device-write": "Installing",
+    "device-verify": "Verifying",
+    "device-restart": "Restarting device",
+    "device-busy": "Waiting for the device",
+    "waiting-for-auth": "Waiting for authorization",
+    "waiting-for-user": "Waiting for you",
+    "shutdown": "Finishing"
+};
+
+// fwupd restarts its percentage for every stage of one device, so each stage
+// owns a slice of that device's bar: the download a fifth, the write most of
+// it, verification the end. A status it does not name holds the bar still.
+var FIRMWARE_STAGES = {
+    "downloading": [0, 0.2],
+    "decompressing": [0.2, 0],
+    "loading": [0.2, 0],
+    "scheduling": [0.2, 0],
+    "device-read": [0.2, 0],
+    "device-erase": [0.2, 0.1],
+    "device-write": [0.3, 0.6],
+    "device-verify": [0.9, 0.1],
+    "device-restart": [0.9, 0],
+    "shutdown": [0.9, 0]
+};
+
+function firmwareDeviceFraction(status, percent) {
+    if (!FIRMWARE_STAGES.hasOwnProperty(status))
+        return 0;
+    var stage = FIRMWARE_STAGES[status];
+    return stage[0] + stage[1] * clampFraction((Number(percent) || 0) / 100);
+}
+
+function firmwareStatusLabel(status, percent) {
+    var word = FIRMWARE_STATUS_WORDS.hasOwnProperty(status)
+        ? FIRMWARE_STATUS_WORDS[status] : "Starting";
+    var withPercent = status === "downloading" || status === "device-write"
+        || status === "device-erase" || status === "device-verify";
+    return word + (withPercent && percent > 0 ? " · " + Math.round(percent) + "%" : "");
+}
+
+// What the header says while the worker runs, from its published phase and
+// the package streams' own milestones.
+function runPhaseLabel(state) {
+    var s = state || {};
+    if (s.cancelPending)
+        return "Cancelling after this step…";
+    switch (s.phase) {
+    case "snapshot":
+        return "Creating a restore point…";
+    case "packages":
+        if (!s.dnfDone)
+            return s.dnfPhase === "installing" ? "Installing system updates…"
+                : s.dnfPhase === "downloading" ? "Downloading system updates…"
+                : "Preparing system updates…";
+        return s.fpIncluded && !s.fpDone ? "Updating apps…" : "Finishing packages…";
+    case "firmware":
+        return s.fwStatus === "waiting-for-user" ? "Waiting for you…"
+            : "Updating " + (s.fwName ? s.fwName : "firmware") + "…";
+    case "tests":
+    case "migration":
+    case "ansible":
+    case "activation":
+        return "Applying CybexOS…";
+    case "reboot-check":
+        return "Finishing up…";
+    default:
+        return "Starting…";
+    }
+}
+
+// ---- failure, in words ------------------------------------------------------
+// The header of a failed run says what happened and what it means, in one
+// sentence. dnf's own words stay one tap away in the details.
+var FAILURE_RULES = [
+    [/No space left|not enough (free )?(disk )?space|Disk requirements|need .* more space/i,
+        "There isn’t enough free disk space."],
+    [/not authori[sz]ed|Interactive authentication required|Authentication (failed|required)|Access denied|polkit/i,
+        "Authorization was cancelled."],
+    [/Could not resolve host|Cannot download|Failed to download|Curl error|Network is unreachable|Cannot load repo|timed out|Timeout was reached/i,
+        "Couldn’t reach the update servers. Check your connection."],
+    [/GPG|OpenPGP|public key|signature (check|verification)|key import/i,
+        "A package signing key couldn’t be verified."],
+    [/Problem:|conflicts with|nothing provides|cannot install both|broken dependencies|Transaction test error|Transaction check error/i,
+        "Some updates conflict with installed packages. Try again later."],
+    [/waiting for (process|lock)|another .* is running|lock.*held|already running/i,
+        "Another update is already running."]
+];
+
+function friendlyFailure(lines, message, exitCode, phase, notStarted) {
+    if (phase === "snapshot")
+        return "Couldn’t create a restore point, so nothing was changed.";
+    if (exitCode === notStarted)
+        return "The updater couldn’t be started.";
+    if (exitCode === 126 || exitCode === 127)
+        return "Authorization was cancelled.";
+    var text = (Array.isArray(lines) ? lines : []).concat([String(message || "")])
+        .join("\n");
+    for (var i = 0; i < FAILURE_RULES.length; i++) {
+        if (FAILURE_RULES[i][0].test(text))
+            return FAILURE_RULES[i][1];
+    }
+    return phase === "ansible" || phase === "tests" || phase === "migration"
+        || phase === "activation"
+        ? "CybexOS couldn’t be applied." : "The system update stopped unexpectedly.";
 }
 
 // The version worth a reboot hint, short enough to say out loud: the first
@@ -372,14 +651,11 @@ function normalizedRebootRecommendation(value) {
 
 function rebootLabel(recommendation, kernelVersion) {
     var state = normalizedRebootRecommendation(recommendation);
-    if (state === "recommended") {
-        var kernel = String(kernelVersion || "");
-        return "Reboot recommended"
-            + (kernel !== "" ? " · Kernel " + kernel + " installed" : "");
-    }
+    if (state === "recommended")
+        return "Restart to finish updating";
     if (state === "not-needed")
-        return "No reboot recommended";
-    return "Couldn’t determine whether a reboot is recommended";
+        return "No restart needed";
+    return "Couldn’t tell whether a restart is needed";
 }
 
 // The line a failure banner leads with: the last line of the tail that names
@@ -454,12 +730,13 @@ function projectSkippedLabel(reason, finished) {
     return (finished ? "" : "System update started · ") + "CybexOS skipped: " + reason;
 }
 
-// The worker defers a cancellation to its next stopping point. Once Ansible
-// has started there is none: the apply and activation run to completion so
+// The worker defers a cancellation to its next stopping point. Firmware that
+// is being written cannot be stopped either. Once Ansible has started there
+// is none: the apply and activation run to completion so
 // installed files and the active release stay coherent, and the reboot check
 // comes after the last one. A worker from before deferred cancellation
 // refuses a stop during its package transaction outright.
-var UNCANCELLABLE_PHASES = ["ansible", "activation", "reboot-check"];
+var UNCANCELLABLE_PHASES = ["firmware", "ansible", "activation", "reboot-check"];
 
 function cancelAllowed(phase, deferredCancel) {
     if (UNCANCELLABLE_PHASES.indexOf(phase) !== -1)
@@ -478,7 +755,13 @@ function mixedStateAdvice(mixedState) {
 }
 
 var exported = {
-    firmwareNames: firmwareNames,
+    dnfKernelVersion: dnfKernelVersion,
+    securityAdvisories: securityAdvisories,
+    systemDetail: systemDetail,
+    firmwareDisplayName: firmwareDisplayName,
+    firmwareDevices: firmwareDevices,
+    firmwareLabel: firmwareLabel,
+    checkErrorLabel: checkErrorLabel,
     projectCheckError: projectCheckError,
     projectErrorOf: projectErrorOf,
     projectSkippedLabel: projectSkippedLabel,
@@ -505,7 +788,13 @@ var exported = {
     dnfAnswerReusable: dnfAnswerReusable,
     flatpakRefName: flatpakRefName,
     parseFlatpakRunLine: parseFlatpakRunLine,
-    runPercent: runPercent,
+    runProgress: runProgress,
+    dnfFraction: dnfFraction,
+    parseFirmwareEvent: parseFirmwareEvent,
+    firmwareStatusLabel: firmwareStatusLabel,
+    firmwareDeviceFraction: firmwareDeviceFraction,
+    runPhaseLabel: runPhaseLabel,
+    friendlyFailure: friendlyFailure,
     kernelHint: kernelHint,
     normalizedRebootRecommendation: normalizedRebootRecommendation,
     rebootLabel: rebootLabel,

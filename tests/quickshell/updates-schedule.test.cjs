@@ -21,7 +21,8 @@ function functionSource(name) {
 }
 
 const FUNCTIONS = ["check", "startCheck", "automaticCheck", "readDnf", "logCheckError",
-    "finishDnf", "finishFlatpak", "finishFirmware", "finishProject", "finishCheck"];
+    "finishDnf", "finishDnfSecurity", "finishFlatpak", "finishFirmware", "finishProject",
+    "finishCheck"];
 
 // `find -printf '%p %s %T@\n'` output for the dnf signature.
 function signature(repomdMtime, rpmdbSize) {
@@ -51,16 +52,21 @@ function coordinator() {
         console: { warn() {} },
         dnfProc: proc("dnf"),
         dnfSignatureProc: proc("signature"),
+        dnfSecurityProc: proc("security"),
         flatpakProc: proc("flatpak"),
         firmwareProc: proc("firmware"),
         projectProc: proc("project"),
         recheck: { restart() {}, stop() {} },
 
         dnfCount: 0, dnfNames: [], nextDnfNames: [], dnfError: "", dnfDone: true,
+        dnfKernel: "", nextDnfKernel: "", dnfCacheKernel: "",
+        dnfSecurityCount: 0, dnfSecuritySevere: false,
+        nextDnfSecurity: { count: 0, severe: false },
+        dnfCacheSecurity: { count: 0, severe: false },
         flatpakCount: 0, flatpakNames: [], nextFlatpakNames: [], flatpakError: "",
         flatpakDone: true, checkingFlatpak: false, flatpakEnabled: true,
-        firmwareCount: 0, firmwareNames: [], nextFirmwareNames: [], firmwareError: "",
-        firmwareDone: true, firmwareInstalling: false,
+        firmwareDevices: [], nextFirmwareDevices: [], firmwareError: "",
+        firmwareDone: true,
         projectUpdatesEnabled: false, projectAvailable: false, projectVersion: "",
         nextProjectAvailable: false, nextProjectVersion: "", projectError: "", projectDone: true,
         ran: false, baselines: {}, lastChecked: 0, error: "", wasPending: false,
@@ -72,6 +78,9 @@ function coordinator() {
     };
     Object.defineProperty(ctx, "busy", {
         get() { return !ctx.dnfDone || !ctx.flatpakDone || !ctx.projectDone || !ctx.firmwareDone; }
+    });
+    Object.defineProperty(ctx, "firmwareCount", {
+        get() { return ctx.firmwareDevices.length; }
     });
     Object.defineProperty(ctx, "total", {
         get() {
@@ -94,6 +103,11 @@ function coordinator() {
             round.push(name);
             if (name === "signature") {
                 ctx.readDnf(H.dnfSignature(results.signature || signature(1, 100)));
+                continue;
+            }
+            if (name === "security") {
+                const [code, body] = results.security || [0, "[]"];
+                ctx.finishDnfSecurity(code, body);
                 continue;
             }
             const [code, body, err] = results[name];
@@ -171,7 +185,7 @@ test("dnf keeps notifying while Flathub never answers", () => {
         firmware: FIRMWARE_NONE });
     assert.equal(notes.length, 1, "a known dnf going from zero to three is news");
     assert.equal(notes[0][2], "3 updates ready");
-    assert.equal(notes[0][3], "dnf 3", "the body lists what is pending, not the Flathub error");
+    assert.equal(notes[0][3], "System 3", "the body lists what is pending, not the Flathub error");
 });
 
 test("each source's first answer is silent, even after a failed first attempt", () => {
@@ -221,10 +235,10 @@ test("background checks run only for the widget or notifications, never while id
     assert.match(source,
         /Popouts\.currentName === "updates"\s*\|\| Popouts\.currentName === "control"\s*&& Settings\.drawerOverview\.updates === true\)\)\s*root\.staleCheck\(\)/);
     assert.match(source, /id: startupCheck[\s\S]{0,200}?if \(root\.pollEnabled && !root\.ran && !root\.busy\)/);
-    // The panel names a cadence only while one is running.
+    // The panel says when it last checked, not how the poller is configured.
     const panel = fs.readFileSync(path.join(shellDir, "Popovers/UpdatesPopover.qml"), "utf8");
-    assert.match(panel,
-        /Updates\.checkedLabel\(\) \+ \(Updates\.pollEnabled\s*\? " · every " \+ Settings\.modOpts\.updates\.pollMins \+ " m"\s*: " · refreshes when opened"\)/);
+    assert.match(panel, /return Updates\.checkedLabel\(\);/);
+    assert.doesNotMatch(panel, /pollMins|refreshes when opened/);
 });
 
 test("dnf reruns only when its metadata or the installed set moved", () => {
@@ -288,4 +302,45 @@ test("the dnf signature is order-free, needs the rpmdb, and expires", () => {
     assert.match(source, /id: dnfSignatureProc[\s\S]{0,400}?command: \["timeout", "10s", "find", "\/var\/cache\/libdnf5",\s*"\/usr\/lib\/sysimage\/rpm"/);
     assert.match(source, /"-name", "repomd\.xml"/);
     assert.match(source, /"-printf", "%p %s %T@\\\\n"\]/);
+});
+
+test("pending packages bring their kernel and security advisories along", () => {
+    const { ctx, answer } = coordinator();
+    ctx.automaticCheck(true, false);
+    const kernel = [100, [
+        "kernel.x86_64       7.2.7-200.fc44  updates",
+        "kernel-core.x86_64  7.2.7-200.fc44  updates",
+        "less.x86_64         704-4.fc44      updates"
+    ].join("\n")];
+    const advisories = [0, JSON.stringify([
+        { name: "FEDORA-2026-1", type: "security", severity: "Moderate",
+            nevra: "kernel-7.2.7-200.fc44.x86_64" },
+        { name: "FEDORA-2026-1", type: "security", severity: "Moderate",
+            nevra: "kernel-core-7.2.7-200.fc44.x86_64" }
+    ])];
+    assert.deepEqual(answer({ dnf: kernel, security: advisories, flatpak: [0, ""],
+        firmware: FIRMWARE_NONE }), ["signature", "flatpak", "firmware", "dnf", "security"],
+        "the advisory read follows a dnf answer with pending packages");
+    assert.equal(ctx.dnfKernel, "7.2.7");
+    assert.equal(ctx.dnfSecurityCount, 1);
+    assert.equal(ctx.dnfSecuritySevere, false);
+
+    // A reused answer keeps its details without reading either again.
+    ctx.automaticCheck(false, false);
+    assert.deepEqual(answer({ flatpak: [0, ""], firmware: FIRMWARE_NONE }),
+        ["signature", "flatpak", "firmware"]);
+    assert.equal(ctx.dnfKernel, "7.2.7");
+    assert.equal(ctx.dnfSecurityCount, 1);
+
+    // Nothing pending: no advisory read at all. A failing advisory read is
+    // only a missing detail, never a check error.
+    ctx.check();
+    assert.ok(!answer({ dnf: DNF_NONE, flatpak: [0, ""], firmware: FIRMWARE_NONE })
+        .includes("security"));
+    assert.equal(ctx.dnfSecurityCount, 0);
+    ctx.check();
+    answer({ dnf: dnfPending(2), security: [1, ""], flatpak: [0, ""], firmware: FIRMWARE_NONE });
+    assert.equal(ctx.dnfCount, 2);
+    assert.equal(ctx.dnfSecurityCount, 0);
+    assert.equal(ctx.error, "");
 });

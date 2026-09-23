@@ -536,6 +536,23 @@ The 2026-09-03 redesign ("Quickshell Menubar", Claude Design project
   widget and `updates` IPC name open its full pending, running, completed, and
   failed views rather than deep-linking to Overview. It still carries the new
   drawer template's width, attached geometry, Hug corners, palette, and type.
+  Every state uses one layout. A one-line header states what is happening.
+  Fixed System, Apps, Firmware and CybexOS rows move from a count to progress
+  to a result. There is one primary action (Update, Restart now or Try again).
+  A collapsed **Details** section holds package names, the live transaction,
+  dnf's own error and the recovery point. Keep backend vocabulary (dnf,
+  Flatpak, poll cadence, log paths) and negative results ("no restart
+  needed") out of the rows and header.
+- **Firmware installs inside the update run, never in a terminal.** When
+  firmware is pending, `Updates.run()` passes `--firmware`. The durable worker
+  then runs `cybexos-firmware-update` (libfwupd over D-Bus, as root) after
+  the packages and streams JSON events to `firmware-events.log`, which the
+  panel reads like the dnf and Flatpak logs. fwupd's device requests (such as
+  replugging a dock) appear as a card under the Firmware row. Capsules staged
+  for the next boot turn the run's restart recommendation on. On battery, a
+  device that requires AC power is left out of the run, and the row asks for
+  power instead of letting fwupd fail the flash. A firmware failure never
+  fails the package update; the row explains it.
 - **T3 Code is a separate attached panel**, not a seventh status tab. Its
   existing `t3code` panel name, bar ownership, source, and IPC route are
   unchanged; unlike the status drawer, it is not pinned to a screen edge, so

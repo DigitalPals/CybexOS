@@ -4,99 +4,133 @@ import "../Common"
 import "../Common/Format.js" as Format
 import "../Common/UpdatesHelpers.js" as UpdatesHelpers
 
-// The dedicated Updates drawer: pending updates, the native run that installs
-// them, and the transcript it leaves behind. PanelRegistryData attaches this
-// surface to the right edge; using the shared drawer width keeps it on the
-// current edge-drawer template without folding it into Control Dashboard.
+// The dedicated Updates drawer. PanelRegistryData attaches this surface to the
+// right edge; using the shared drawer width keeps it on the current
+// edge-drawer template without folding it into Control Dashboard.
 //
-// Four faces of one surface, keyed by Updates.runState: the pending list with
-// the one button that starts the run; the live view — two step rows over a
-// scrolling typeset transaction feed, the popover translation of ./update's
-// terminal dashboard; the finished summary with the full transcript kept
-// scrollable; and the failure, led by what went wrong with the log tail
-// inline. All state lives in Common/Updates.qml — closing this panel mid-run
-// interrupts nothing, which is what the footnote tells the user.
+// One layout for every state, so the panel never rearranges itself under the
+// person using it: a header that says what is happening in one line, the
+// categories being updated as fixed rows whose right-hand side moves from a
+// count to progress to a result, one primary action, and a Details
+// disclosure for everything else — package names, the live transaction, the
+// raw error. All state lives in Common/Updates.qml; closing this panel
+// mid-run interrupts nothing, and the bar chip carries the progress.
 Surface {
     id: root
 
     readonly property string mode: Updates.runState
+    readonly property bool idle: mode === "idle"
+    readonly property bool running: mode === "running"
+    readonly property bool finished: mode === "done"
+    readonly property bool failed: mode === "failed"
+    // The first check of a session, before there is anything to show.
+    readonly property bool checking: idle && Updates.busy
+    readonly property bool spinning: running || checking
+    readonly property bool rebootNeeded: Updates.rebootRecommended
+    // Pending updates lead while there are any; a restart owns the mark
+    // once nothing else is waiting.
+    readonly property bool rebootMark: rebootNeeded && !running && !failed
+        && (finished || Updates.total === 0)
+    readonly property bool finishedWithIssues: finished
+        && (Updates.fpWarning !== "" || Updates.fwFailMessage !== "")
+    readonly property var plan: Updates.runPlan
+    // The run's phase before any package work: the rows are still waiting.
+    readonly property bool preparing: running && (Updates.backendPhase === ""
+        || Updates.backendPhase === "queued" || Updates.backendPhase === "snapshot")
+    readonly property int updateCategories: (Updates.dnfCount > 0 ? 1 : 0)
+        + (Updates.flatpakCount > 0 ? 1 : 0) + (Updates.firmwareInRun ? 1 : 0)
+        + (Updates.projectAvailable ? 1 : 0)
+    readonly property bool canUpdate: updateCategories > 0
+
+    // idle: "update" | "restart" | ""; done: "restart" | ""; failed: "retry".
+    readonly property string primaryAction: failed ? "retry"
+        : idle && canUpdate ? "update"
+        : (idle || finished) && rebootNeeded ? "restart" : ""
 
     // Match the current edge-drawer template in every state. Keeping one width
     // also prevents the surface shifting when a check turns into a live run.
     implicitWidth: Theme.drawerWidth
-    spacing: 10
-
-    readonly property var rows: {
-        const out = [];
-        if (Updates.dnfCount > 0)
-            out.push({
-                key: "dnf",
-                glyph: "terminal",
-                name: "System · dnf",
-                sub: Updates.namesLabel(Updates.dnfNames, Updates.dnfCount),
-                count: Updates.dnfCount
-            });
-        if (Updates.flatpakCount > 0)
-            out.push({
-                key: "flatpak",
-                glyph: "widgets",
-                name: "Flatpak",
-                sub: Updates.namesLabel(Updates.flatpakNames, Updates.flatpakCount),
-                count: Updates.flatpakCount
-            });
-        if (Updates.firmwareCount > 0)
-            out.push({
-                key: "firmware",
-                glyph: "memory",
-                name: "Firmware",
-                sub: Updates.namesLabel(Updates.firmwareNames, Updates.firmwareCount),
-                count: Updates.firmwareCount
-            });
-        if (Updates.projectAvailable)
-            out.push({
-                key: "cybexos",
-                glyph: "deployed_code_update",
-                name: "CybexOS",
-                sub: "Release " + Updates.projectVersion,
-                count: 1
-            });
-        return out;
-    }
+    spacing: 14
 
     function clock(stamp) {
         return Qt.formatTime(new Date(stamp), Settings.clock24 ? "HH:mm" : "h:mm ap");
     }
 
-    function verbIcon(verb) {
-        return verb === "add" ? "add" : verb === "del" ? "remove"
+    // Only icon-name literals may appear in here: the icon-name test reads
+    // every string in a *glyph* helper as a Tabler icons name.
+    function headerGlyph(spin, issues, reboot, broken, cancelled, pending, trouble) {
+        return spin ? "progress_activity"
+            : broken ? (cancelled ? "cancel" : "error")
+            : reboot ? "restart_alt"
+            : issues || trouble ? "warning"
+            : pending ? "deployed_code_update"
+            : "check_circle";
+    }
+
+    function verbIcon(verb, failed) {
+        return failed ? "error" : verb === "add" ? "add" : verb === "del" ? "remove"
             : verb === "down" ? "arrow_downward" : "arrow_upward";
     }
 
-    function verbColor(verb) {
-        return verb === "add" ? Theme.accent : verb === "del" ? Theme.redText
+    function rowGlyph(active, done, failed, attention) {
+        return active ? "progress_activity" : done ? "check_circle"
+            : failed ? "error" : attention ? "warning" : "radio_button_unchecked";
+    }
+
+    function verbColor(verb, failed) {
+        return failed ? Theme.redText : verb === "add" ? Theme.accent
+            : verb === "del" ? Theme.redText
             : verb === "down" ? Theme.amber : Theme.ok;
     }
 
-    // Only icon-name literals may appear in here: the icon-name test reads
-    // every string in a *glyph* helper as a Tabler icons name.
-    function headerGlyph(running, done, failed) {
-        return running ? "progress_activity" : done ? "check_circle"
-            : failed ? "error" : "deployed_code_update";
+    readonly property string title: {
+        if (running)
+            return "Updating" + (Updates.runPercent >= 0
+                ? " · " + Updates.runPercent + "%" : "");
+        if (finished)
+            return finishedWithIssues ? "Updated with issues" : "Updates installed";
+        if (failed)
+            return Updates.runCancelled ? "Update cancelled" : "Update didn’t finish";
+        if (Updates.total > 0)
+            return Updates.total + (Updates.total === 1 ? " update" : " updates");
+        if (rebootNeeded)
+            return "Restart required";
+        if (checking)
+            return "Checking for updates";
+        return Updates.checkError !== "" ? "Updates" : "Up to date";
     }
 
-    // ---- header ----------------------------------------------------------
-    Row {
+    readonly property string status: {
+        if (running)
+            return Updates.runPhaseLabel + " · " + Format.mmss(Updates.runElapsed);
+        if (finished)
+            return rebootNeeded ? "Restart to finish updating"
+                : "Finished at " + clock(Updates.runFinishedAt);
+        if (failed)
+            return Updates.failMessage;
+        if (Updates.busy)
+            return "Checking…";
+        if (Updates.checkError !== "")
+            return Updates.checkError;
+        if (rebootNeeded && Updates.total === 0)
+            return "Restart to finish updating";
+        return Updates.checkedLabel();
+    }
+
+    readonly property color statusColor: failed && !Updates.runCancelled ? Theme.redText
+        : idle && !Updates.busy && Updates.checkError !== "" ? Theme.amber
+        : Theme.textLow
+
+    // ---- header -----------------------------------------------------------
+    Item {
+        id: header
+
         width: parent.width
-        spacing: 9
+        height: Math.max(Theme.iconLarge + 8, headerText.implicitHeight)
 
-        readonly property real rightWidth: root.mode === "running"
-            ? hideButton.width + (cancelButton.visible
-                ? cancelButton.width + parent.spacing : 0)
-            : Theme.chipHeight
-
-        // The state is in the mark, not in a filled square behind it: the bar
-        // says "T3 • 1 running" the same way.
         Item {
+            id: markBox
+            anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             width: Theme.iconLarge
             height: Theme.iconLarge
@@ -104,19 +138,24 @@ Surface {
             Sym {
                 id: headerMark
                 anchors.centerIn: parent
-                name: root.headerGlyph(root.mode === "running",
-                    root.mode === "done", root.mode === "failed")
+                name: root.headerGlyph(root.spinning, root.finishedWithIssues,
+                    root.rebootMark, root.failed, Updates.runCancelled,
+                    Updates.total > 0, Updates.checkError !== "")
                 size: Theme.iconLarge
                 symWeight: 450
-                color: root.mode === "done" ? Theme.ok
-                    : root.mode === "failed" ? Theme.redText : Theme.accentText
+                color: root.failed ? (Updates.runCancelled ? Theme.textMid : Theme.redText)
+                    : root.rebootMark || root.finishedWithIssues ? Theme.amber
+                    : root.finished ? Theme.ok
+                    : root.idle && !Updates.busy && Updates.checkError !== ""
+                        && Updates.total === 0 ? Theme.amber
+                    : Theme.accentText
 
                 // Gated on visibility too: the popout keeps an outgoing
                 // panel alive, hidden, until it closes. Stopping a value
                 // source leaves the angle where it landed, which would tilt
-                // the done or failed mark that replaces the arc.
+                // the mark that replaces the arc.
                 RotationAnimation on rotation {
-                    running: root.mode === "running" && headerMark.visible
+                    running: root.spinning && headerMark.visible
                         && !Theme.reducedMotion
                     from: 0
                     to: 360
@@ -128,347 +167,591 @@ Surface {
         }
 
         Column {
+            id: headerText
+            anchors.left: markBox.right
+            anchors.leftMargin: 11
+            anchors.right: headerAction.left
+            anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - Theme.iconLarge - parent.rightWidth - parent.spacing * 2
-            spacing: 1
+            spacing: 2
 
             Text {
                 width: parent.width
-                text: root.mode === "running" ? "Updating"
-                    : root.mode === "done"
-                    ? (Updates.fpWarning !== "" ? "Updated with warnings" : "Up to date")
-                    : root.mode === "failed" ? "Update failed" : "Updates"
+                text: root.title
+                elide: Text.ElideRight
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
+                font.pixelSize: Theme.typography.heading
                 font.weight: Theme.weightSemibold
+                font.features: Theme.tabularNumberFeatures
                 color: Theme.textHi
             }
 
             Text {
                 width: parent.width
-                text: root.mode === "running"
-                    ? Format.mmss(Updates.runElapsed) + " · "
-                        + (Updates.cancelPending ? "cancelling after the current step…"
-                            : Updates.flatpakEnabled ? "dnf and flatpak in parallel" : "dnf")
-                    : root.mode === "done"
-                    ? "finished " + root.clock(Updates.runFinishedAt)
-                        + " · took " + Format.mmss(Updates.runDuration)
-                    : root.mode === "failed"
-                    ? "dnf gave up " + Format.mmss(Updates.runDuration) + " in"
-                    : Updates.busy ? "Checking…"
-                    : Updates.packageError !== "" ? Updates.packageError
-                    // Background checks run only for the bar widget or the
-                    // notification; otherwise opening a view is the check.
-                    : Updates.checkedLabel() + (Updates.pollEnabled
-                        ? " · every " + Settings.modOpts.updates.pollMins + " m"
-                        : " · refreshes when opened")
+                visible: text !== ""
+                text: root.status
+                wrapMode: root.failed ? Text.Wrap : Text.NoWrap
+                elide: root.failed ? Text.ElideNone : Text.ElideRight
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.metadata
+                font.pixelSize: Theme.typography.secondary
+                font.weight: Theme.weightMedium
+                font.features: Theme.tabularNumberFeatures
+                color: root.statusColor
+            }
+        }
+
+        // One control on the right, whichever this state has: a refresh, the
+        // run's Cancel, or the failure's dismiss.
+        Item {
+            id: headerAction
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            width: cancelButton.visible ? cancelButton.width
+                : refreshButton.visible || dismissButton.visible ? 32 : 0
+            height: 32
+
+            // The worker stops at its next safe boundary, so a requested
+            // cancel stays pending while dnf or flatpak finish; once firmware
+            // is being written or Ansible applies a release there is no
+            // boundary left and the button goes.
+            ActionButton {
+                id: cancelButton
+                visible: root.mode === "running" && Updates.cancelAllowed
+                enabled: !Updates.cancelPending
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                label: "Cancel"
+                hPadding: 22
+                revealed: visible
+                onTriggered: Updates.cancelRun()
+            }
+
+            HeaderIcon {
+                id: refreshButton
+                visible: root.idle || root.finished
+                enabled: !Updates.busy
+                glyph: "refresh"
+                accessibleName: Updates.busy ? "Checking for updates" : "Check for updates"
+                onTriggered: Updates.check()
+            }
+
+            HeaderIcon {
+                id: dismissButton
+                visible: root.failed
+                glyph: "close"
+                accessibleName: "Dismiss"
+                onTriggered: Updates.dismissRun()
+            }
+        }
+    }
+
+    // 32 px square header control, shared by refresh and dismiss.
+    component HeaderIcon: Rectangle {
+        id: headerIcon
+
+        property string glyph: ""
+        property string accessibleName: ""
+
+        signal triggered()
+
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        width: 32
+        height: 32
+        radius: 10
+        opacity: enabled ? 1 : 0.45
+        color: headerIconMouse.containsMouse && enabled ? Theme.hoverFillStrong : Theme.chip
+        border.width: activeFocus ? 1 : 0
+        border.color: Theme.accentText
+        activeFocusOnTab: visible && enabled
+        Accessible.role: Accessible.Button
+        Accessible.name: headerIcon.accessibleName
+        Accessible.onPressAction: {
+            if (headerIcon.enabled)
+                headerIcon.triggered();
+        }
+
+        Keys.onPressed: event => {
+            if (headerIcon.enabled && (event.key === Qt.Key_Return
+                    || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)) {
+                headerIcon.triggered();
+                event.accepted = true;
+            }
+        }
+
+        Sym {
+            anchors.centerIn: parent
+            name: headerIcon.glyph
+            size: Theme.iconSmall + 1
+            color: Theme.textMid
+        }
+
+        MouseArea {
+            id: headerIconMouse
+            anchors.fill: parent
+            enabled: headerIcon.enabled
+            hoverEnabled: true
+            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: {
+                headerIcon.forceActiveFocus();
+                headerIcon.triggered();
+            }
+        }
+    }
+
+    // ---- the rows -----------------------------------------------------------
+    // One row per kind of update. Four fixed rows rather than a Repeater over
+    // a computed array: that array would re-evaluate on every transcript line
+    // and rebuild its delegates, restarting their spinners mid-turn.
+    //
+    // rowState: "pending" (a count) | "waiting" | "active" | "done"
+    //           | "attention" | "failed" | "skipped"
+    component UpdateRow: Item {
+        id: updateRow
+
+        property string glyph: ""
+        property string label: ""
+        property string detail: ""
+        property color detailColor: Theme.textLow
+        property string rowState: "pending"
+        property string count: ""
+        // 0–1 while active; below zero hides the bar.
+        property real progress: -1
+
+        readonly property bool showBar: rowState === "active" && progress >= 0
+
+        width: parent ? parent.width : 0
+        height: Math.max(40, rowText.implicitHeight + 8) + (showBar ? 8 : 0)
+        Accessible.role: Accessible.StaticText
+        Accessible.name: updateRow.label + (updateRow.detail !== ""
+            ? ", " + updateRow.detail : "")
+            + (updateRow.count !== "" ? ", " + updateRow.count : "")
+
+        Rectangle {
+            id: rowMark
+            x: 0
+            y: (updateRow.height - (updateRow.showBar ? 8 : 0) - height) / 2
+            width: 30
+            height: 30
+            radius: 9
+            color: Theme.chip
+
+            Sym {
+                anchors.centerIn: parent
+                name: updateRow.glyph
+                size: Theme.iconSmall + 1
+                color: updateRow.rowState === "skipped" ? Theme.textFaint : Theme.textMid
+            }
+        }
+
+        Column {
+            id: rowText
+            anchors.left: rowMark.right
+            anchors.leftMargin: 11
+            anchors.right: rowEnd.left
+            anchors.rightMargin: 8
+            y: (updateRow.height - (updateRow.showBar ? 8 : 0) - implicitHeight) / 2
+            spacing: 1
+
+            Text {
+                width: parent.width
+                text: updateRow.label
+                elide: Text.ElideRight
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.primary
+                font.weight: Theme.weightMedium
+                color: updateRow.rowState === "skipped" ? Theme.textLow : Theme.textHi
+            }
+
+            Text {
+                width: parent.width
+                visible: text !== ""
+                text: updateRow.detail
+                elide: Text.ElideRight
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                font.weight: Theme.weightMedium
+                font.features: Theme.tabularNumberFeatures
+                color: updateRow.detailColor
+            }
+        }
+
+        // The right-hand end: a count before the run, a result after it.
+        Item {
+            id: rowEnd
+            anchors.right: parent.right
+            y: (updateRow.height - (updateRow.showBar ? 8 : 0) - height) / 2
+            width: Math.max(18, countText.visible ? countText.implicitWidth : 18)
+            height: 18
+
+            Text {
+                id: countText
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                visible: updateRow.rowState === "pending" && updateRow.count !== ""
+                text: updateRow.count
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
                 font.features: Theme.tabularNumberFeatures
-                color: root.mode === "idle" && Updates.packageError !== ""
-                    ? Theme.redText : Theme.textFaint
-                elide: Text.ElideRight
+                color: Theme.accentText
+            }
+
+            Sym {
+                id: stepMark
+                anchors.centerIn: parent
+                visible: updateRow.rowState !== "pending"
+                name: root.rowGlyph(updateRow.rowState === "active",
+                    updateRow.rowState === "done", updateRow.rowState === "failed",
+                    updateRow.rowState === "attention")
+                size: Theme.iconSmall + 2
+                symWeight: 600
+                color: updateRow.rowState === "active" ? Theme.accentText
+                    : updateRow.rowState === "done" ? Theme.ok
+                    : updateRow.rowState === "failed" ? Theme.redText
+                    : updateRow.rowState === "attention" ? Theme.amber
+                    : Theme.textFaint
+
+                RotationAnimation on rotation {
+                    running: updateRow.rowState === "active" && root.mode === "running"
+                        && stepMark.visible && !Theme.reducedMotion
+                    from: 0
+                    to: 360
+                    duration: 1400
+                    loops: Animation.Infinite
+                    onRunningChanged: if (!running) stepMark.rotation = 0
+                }
             }
         }
 
         Rectangle {
-            id: refreshButton
+            visible: updateRow.showBar
+            anchors.left: rowText.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 2
+            height: 3
+            radius: 1.5
+            color: Theme.hairlineSoft
 
-            visible: root.mode === "idle" || root.mode === "done"
-            anchors.verticalCenter: parent.verticalCenter
-            width: 32
-            height: 32
-            radius: 10
-            enabled: !Updates.busy && !Updates.firmwareInstalling
-            opacity: enabled ? 1 : 0.45
-            color: refreshMouse.containsMouse && enabled
-                ? Theme.hoverFillStrong : Theme.chip
-            activeFocusOnTab: visible
-            Accessible.role: Accessible.Button
-            Accessible.name: Updates.busy ? "Checking for updates" : "Check for updates"
-            Accessible.onPressAction: {
-                if (enabled)
-                    Updates.check();
-            }
+            Rectangle {
+                width: parent.width * Format.clamp01(updateRow.progress)
+                height: parent.height
+                radius: parent.radius
+                color: Theme.accent
 
-            Keys.onPressed: event => {
-                if (enabled && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                        || event.key === Qt.Key_Space)) {
-                    Updates.check();
-                    event.accepted = true;
+                Behavior on width {
+                    NumberAnimation {
+                        duration: Theme.chipFadeDuration
+                        easing.type: Easing.OutCubic
+                    }
                 }
-            }
-
-            Sym {
-                anchors.centerIn: parent
-                name: "refresh"
-                size: Theme.iconSmall + 1
-                color: Updates.busy ? Theme.accentText : Theme.textMid
-            }
-
-            MouseArea {
-                id: refreshMouse
-                anchors.fill: parent
-                enabled: parent.enabled
-                hoverEnabled: true
-                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                onClicked: {
-                    refreshButton.forceActiveFocus();
-                    Updates.check();
-                }
-            }
-        }
-
-        // The worker stops at its next safe boundary, so a requested cancel
-        // stays pending while dnf or flatpak finish; once Ansible applies a
-        // release there is no boundary left and the button goes.
-        ActionButton {
-            id: cancelButton
-            visible: root.mode === "running" && Updates.cancelAllowed
-            enabled: !Updates.cancelPending
-            anchors.verticalCenter: parent.verticalCenter
-            label: "Cancel"
-            revealed: visible
-            onTriggered: Updates.cancelRun()
-        }
-
-        ActionButton {
-            id: hideButton
-            visible: root.mode === "running"
-            anchors.verticalCenter: parent.verticalCenter
-            label: "Hide"
-            revealed: visible
-            onTriggered: Popouts.close()
-        }
-
-        Rectangle {
-            id: dismissButton
-
-            visible: root.mode === "failed"
-            anchors.verticalCenter: parent.verticalCenter
-            width: 32
-            height: 32
-            radius: 10
-            color: dismissMouse.containsMouse ? Theme.hoverFillStrong : Theme.chip
-            activeFocusOnTab: visible
-            Accessible.role: Accessible.Button
-            Accessible.name: "Dismiss failed update"
-            Accessible.onPressAction: Updates.dismissRun()
-
-            Keys.onPressed: event => {
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                        || event.key === Qt.Key_Space) {
-                    Updates.dismissRun();
-                    event.accepted = true;
-                }
-            }
-
-            Sym {
-                anchors.centerIn: parent
-                name: "close"
-                size: Theme.iconSmall + 1
-                color: Theme.textMid
-            }
-
-            MouseArea {
-                id: dismissMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: Updates.dismissRun()
             }
         }
     }
 
-    // ---- what is pending --------------------------------------------------
     Column {
-        visible: root.mode === "idle"
+        id: rows
+
+        visible: systemRow.visible || appsRow.visible || firmwareRow.visible
+            || projectRow.visible
         width: parent.width
-        spacing: 6
+        spacing: 4
 
+        UpdateRow {
+            id: systemRow
+
+            // Every run upgrades the system (`dnf upgrade --refresh` can find
+            // more than the cached check did), so outside idle it always shows.
+            visible: root.idle ? Updates.dnfCount > 0 : true
+            glyph: "computer"
+            label: "System"
+            count: String(Updates.dnfCount)
+            rowState: root.idle ? "pending"
+                : root.preparing ? "waiting"
+                : !Updates.runDnfDone ? "active"
+                : Updates.runDnfRc === 0 ? "done"
+                : Updates.runCancelled ? "skipped" : "failed"
+            progress: UpdatesHelpers.dnfFraction({ dnfDone: Updates.runDnfDone,
+                dnfPhase: Updates.dnfPhase, dnfCur: Updates.dnfCur,
+                dnfTotal: Updates.dnfTotal })
+            detail: {
+                if (root.idle)
+                    return Updates.systemDetail;
+                if (rowState === "waiting")
+                    return "Waiting";
+                if (rowState === "active")
+                    return Updates.dnfPhase === "installing" && Updates.dnfTotal > 0
+                        ? "Installing " + Updates.dnfCur + " of " + Updates.dnfTotal
+                        : Updates.dnfPhase === "downloading" && Updates.dnfTotal > 0
+                        ? "Downloading " + Updates.dnfCur + " of " + Updates.dnfTotal
+                        : "Preparing…";
+                if (rowState === "done")
+                    return Updates.runPkgCount > 0
+                        ? Updates.runPkgCount + " updated" : "Already up to date";
+                if (rowState === "skipped")
+                    return "Cancelled";
+                return Updates.dnfPhase === "installing" && Updates.dnfCur > 0
+                    ? "Stopped partway" : "Nothing was changed";
+            }
+            detailColor: rowState === "failed" ? Theme.redText : Theme.textLow
+        }
+
+        UpdateRow {
+            id: appsRow
+
+            visible: root.idle ? Updates.flatpakCount > 0
+                : Updates.runIncludedFlatpak && (root.plan === null
+                    || root.plan.flatpak > 0 || Updates.appCount > 0
+                    || Updates.fpWarning !== "")
+            glyph: "apps"
+            label: "Apps"
+            count: String(Updates.flatpakCount)
+            rowState: root.idle ? "pending"
+                : root.preparing ? "waiting"
+                : !Updates.runFpDone ? (root.failed ? "skipped" : "active")
+                : Updates.runFpRc !== 0 ? (root.failed ? "failed" : "attention")
+                : "done"
+            progress: Updates.fpTotal > 0 ? Updates.fpCur / Updates.fpTotal : -1
+            detail: {
+                if (root.idle)
+                    return Updates.namesLabel(Updates.flatpakNames, Updates.flatpakCount);
+                if (rowState === "waiting")
+                    return "Waiting";
+                if (rowState === "active")
+                    return Updates.fpTotal > 0
+                        ? "Updating " + Math.min(Updates.fpCur + 1, Updates.fpTotal)
+                            + " of " + Updates.fpTotal
+                        : "Checking…";
+                if (rowState === "attention" || rowState === "failed")
+                    return "Couldn’t update apps";
+                if (rowState === "skipped")
+                    return "Not started";
+                return Updates.appCount > 0 ? Updates.appCount + " updated" : "Up to date";
+            }
+            detailColor: rowState === "attention" ? Theme.amber
+                : rowState === "failed" ? Theme.redText : Theme.textLow
+        }
+
+        UpdateRow {
+            id: firmwareRow
+
+            visible: root.idle ? Updates.firmwareCount > 0
+                : Updates.runIncludedFirmware
+            glyph: "memory"
+            label: "Firmware"
+            count: String(Updates.firmwareCount)
+            rowState: {
+                if (root.idle)
+                    return "pending";
+                if (!Updates.runFwDone)
+                    return Updates.backendPhase === "firmware" ? "active"
+                        : root.failed ? "skipped" : "waiting";
+                if (Updates.fwFailed > 0 || Updates.runFwRc !== 0)
+                    return "attention";
+                return Updates.fwInstalled > 0 || Updates.fwTotal > 0
+                    || root.finished ? "done" : "skipped";
+            }
+            progress: Updates.fwTotal > 0
+                ? (Updates.fwCur + Updates.fwFraction) / Updates.fwTotal : -1
+            detail: {
+                if (root.idle) {
+                    if (Updates.firmwareNeedsPower)
+                        return "Connect power to install";
+                    return UpdatesHelpers.firmwareLabel(Updates.firmwareDevices)
+                        + (Updates.firmwareDevices.some(device => device.needsReboot)
+                            ? " · installs on restart" : "");
+                }
+                if (rowState === "waiting")
+                    return "Waiting";
+                if (rowState === "active")
+                    return Updates.fwRequest !== "" ? "Waiting for you"
+                        : UpdatesHelpers.firmwareStatusLabel(Updates.fwStatus,
+                            Updates.fwPercent)
+                            + (Updates.fwTotal > 1 ? " · " + Math.min(Updates.fwCur + 1,
+                                Updates.fwTotal) + " of " + Updates.fwTotal : "");
+                if (rowState === "attention")
+                    return Updates.fwFailMessage;
+                if (rowState === "skipped")
+                    return root.failed ? "Not started" : "Up to date";
+                return Updates.fwNeedsReboot ? "Installs when you restart"
+                    : Updates.fwInstalled > 0 ? "Updated" : "Up to date";
+            }
+            detailColor: rowState === "attention" || root.idle && Updates.firmwareNeedsPower
+                ? Theme.amber : Theme.textLow
+        }
+
+        // What fwupd needs the person to do right now — replug a dock, press
+        // a button — in place of the terminal prompt it would otherwise use.
+        Rectangle {
+            visible: root.running && Updates.fwRequest !== ""
+            width: parent.width
+            height: requestText.implicitHeight + 20
+            radius: Theme.tileRadius
+            color: Theme.amberBgSoft
+            border.width: 1
+            border.color: Theme.amberBorder
+
+            Sym {
+                id: requestMark
+                x: 12
+                y: 10
+                name: "info"
+                size: Theme.iconSmall + 1
+                color: Theme.amber
+            }
+
+            Text {
+                id: requestText
+                anchors.left: requestMark.right
+                anchors.leftMargin: 9
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                y: 10
+                text: Updates.fwRequest
+                wrapMode: Text.Wrap
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                font.weight: Theme.weightSemibold
+                color: Theme.textHi
+            }
+        }
+
+        // fwupd's advice for after an update ("Unplug the dock to finish").
         Repeater {
-            model: root.mode === "idle" ? root.rows : []
+            model: root.finished ? Updates.fwNotes : []
 
-            delegate: Rectangle {
-                id: row
-
+            delegate: Text {
                 required property var modelData
 
-                width: parent.width
-                height: 50
-                radius: Theme.tileRadius
-                color: Theme.tile
-
-                Behavior on color {
-                    ColorAnimation { duration: Theme.surfaceDuration }
-                }
-
-                Row {
-                    anchors.fill: parent
-                    anchors.leftMargin: 12
-                    anchors.rightMargin: 12
-                    spacing: 10
-
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 28
-                        height: 28
-                        radius: 9
-                        color: Theme.chip
-
-                        Sym {
-                            anchors.centerIn: parent
-                            name: row.modelData.glyph
-                            size: Theme.iconSmall + 1
-                            color: Theme.textMid
-                        }
-                    }
-
-                    Column {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 28 - countText.implicitWidth - parent.spacing * 2
-                        spacing: 1
-
-                        Text {
-                            width: parent.width
-                            text: row.modelData.name
-                            font.family: Theme.fontMenu
-                            font.pixelSize: Theme.typography.primary
-                            font.weight: Theme.weightMedium
-                            color: Theme.textHi
-                            elide: Text.ElideRight
-                        }
-
-                        Text {
-                            width: parent.width
-                            text: row.modelData.sub
-                            font.family: Theme.fontMenu
-                            font.pixelSize: Theme.typography.secondary
-                            font.weight: Theme.weightSemibold
-                            color: Theme.textFaint
-                            elide: Text.ElideRight
-                        }
-                    }
-
-                    Text {
-                        id: countText
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: row.modelData.count
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.typography.secondary
-                        font.weight: Theme.weightSemibold
-                        font.features: Theme.tabularNumberFeatures
-                        color: Theme.accentText
-                    }
-                }
+                x: 41
+                width: parent.width - 41
+                text: modelData
+                wrapMode: Text.Wrap
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                font.weight: Theme.weightMedium
+                color: Theme.textMid
             }
         }
 
-        Item {
-            visible: root.rows.length === 0
-            width: parent.width
-            height: 74
+        UpdateRow {
+            id: projectRow
 
-            Column {
-                anchors.centerIn: parent
-                spacing: 7
-
-                Sym {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    name: Updates.busy ? "refresh"
-                        : Updates.packageError !== "" ? "cloud_off" : "check_circle"
-                    size: Theme.iconLarge
-                    color: Updates.busy ? Theme.accentText
-                        : Updates.packageError !== "" ? Theme.textFaint : Theme.accentText
-                    opacity: 0.9
-                }
-
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: Updates.busy ? "Checking for updates…"
-                        : Updates.packageError !== "" || Updates.firmwareError !== "" ? "Could not check"
-                        : Updates.packagesOnly ? "Packages up to date"
-                        : Updates.wasPending ? "Updated · nothing pending" : "All up to date"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.secondary
-                    font.weight: Theme.weightBold
-                    color: Theme.textMid
-                }
-            }
+            visible: root.idle && Updates.projectAvailable
+            glyph: "deployed_code_update"
+            label: "CybexOS"
+            count: Updates.projectVersion
+            detail: Updates.projectApplyNote !== ""
+                ? "To apply CybexOS " + Updates.projectVersion + ": "
+                    + Updates.projectApplyNote : ""
+            detailColor: Theme.amber
         }
     }
 
+    // A release apply that stopped after Ansible began: the one failure
+    // detail that belongs outside Details, because it needs an action.
     Text {
-        visible: root.mode === "idle" && Updates.projectError !== ""
+        visible: Updates.mixedState && root.failed
         width: parent.width
-        text: Updates.projectError + "\nPackage and firmware updates remain available."
+        text: UpdatesHelpers.mixedStateAdvice(Updates.mixedState)
         wrapMode: Text.Wrap
         font.family: Theme.fontMenu
-        font.pixelSize: Theme.typography.metadata
+        font.pixelSize: Theme.typography.secondary
         color: Theme.amber
     }
 
-    Text {
-        visible: root.mode === "idle" && Updates.projectAvailable
-            && Updates.projectApplyNote !== ""
+    // An earlier run's restart advice while more updates are waiting: the
+    // primary action is the update, so the restart stays one step quieter.
+    Row {
+        visible: root.idle && root.rebootNeeded && root.primaryAction === "update"
         width: parent.width
-        text: "To apply CybexOS " + Updates.projectVersion + ": "
-            + Updates.projectApplyNote
-        wrapMode: Text.Wrap
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.typography.metadata
-        color: Theme.amber
+        spacing: 9
+
+        Sym {
+            anchors.verticalCenter: parent.verticalCenter
+            name: "restart_alt"
+            size: Theme.iconSmall + 1
+            color: Theme.amber
+        }
+
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - Theme.iconSmall - 1 - restartLater.width
+                - parent.spacing * 2
+            text: UpdatesHelpers.rebootLabel(Updates.rebootRecommendation,
+                Updates.kernelPending)
+            elide: Text.ElideRight
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.typography.secondary
+            font.weight: Theme.weightMedium
+            color: Theme.amber
+        }
+
+        ActionButton {
+            id: restartLater
+            visible: Updates.rebootRecommended
+            anchors.verticalCenter: parent.verticalCenter
+            label: "Restart"
+            tint: Theme.amber
+            fill: Theme.amberBg
+            hPadding: 14
+            revealed: parent.visible
+            onTriggered: Session.reboot()
+        }
     }
 
-    // The release step failed and the package run went ahead without it.
-    Text {
-        visible: root.mode !== "idle" && Updates.runProjectSkipped !== ""
-        width: parent.width
-        text: UpdatesHelpers.projectSkippedLabel(Updates.runProjectSkipped,
-            root.mode !== "running")
-        wrapMode: Text.Wrap
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.typography.metadata
-        color: Theme.amber
-    }
-
-    Text {
-        visible: root.mode === "idle" && Updates.firmwareError !== ""
-        width: parent.width
-        text: Updates.firmwareError
-        wrapMode: Text.Wrap
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.typography.metadata
-        color: Theme.amber
-    }
-
-    ActionButton {
-        visible: root.mode === "idle" && (Updates.firmwareCount > 0 || Updates.firmwareInstalling)
-        enabled: !Updates.busy && !Updates.firmwareInstalling
-        revealed: visible
-        label: Updates.firmwareInstalling ? "Firmware updater open…" : "Install firmware in terminal…"
-        onTriggered: Updates.installFirmware()
-    }
-
-    // ---- act --------------------------------------------------------------
+    // ---- the one action -------------------------------------------------------
     Rectangle {
-        id: goButton
+        id: primaryButton
 
-        visible: root.mode === "idle" && (Updates.dnfCount > 0 || Updates.flatpakCount > 0
-            || Updates.projectAvailable || Updates.packagesOnly)
+        readonly property string label: root.primaryAction === "update"
+            ? (root.updateCategories > 1 ? "Update all" : "Update")
+            : root.primaryAction === "restart" ? "Restart now"
+            : root.primaryAction === "retry" ? "Try again" : ""
+        readonly property bool restarts: root.primaryAction === "restart"
+        readonly property bool retries: root.primaryAction === "retry"
+        readonly property string glyph: restarts ? "restart_alt"
+            : retries ? "refresh" : "arrow_circle_up"
+
+        function activate() {
+            if (!enabled)
+                return;
+            // Restart is gated on Fedora's own needs-restarting result and
+            // fwupd's staged capsules, never on the parsed kernel name.
+            if (root.primaryAction === "restart")
+                Session.reboot();
+            else
+                Updates.run(Updates.packagesOnly);
+        }
+
+        visible: root.primaryAction !== ""
+        enabled: root.primaryAction !== "update" || !Updates.busy
         width: parent.width
-        height: 38
+        height: 40
         radius: 14
-        enabled: !Updates.busy && !Updates.firmwareInstalling
         opacity: enabled ? 1 : 0.45
-        color: goMouse.containsMouse ? Theme.accent : Theme.accentSoft
+        color: primaryMouse.containsMouse && enabled ? Theme.accent : Theme.accentSoft
+        border.width: activeFocus ? 1 : 0
+        border.color: Theme.accentText
+        activeFocusOnTab: visible && enabled
+        Accessible.role: Accessible.Button
+        Accessible.name: primaryButton.label
+        Accessible.onPressAction: primaryButton.activate()
+
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space) {
+                primaryButton.activate();
+                event.accepted = true;
+            }
+        }
 
         Behavior on color {
             ColorAnimation { duration: Theme.chipFadeDuration }
         }
 
-        scale: goMouse.pressed ? 0.98 : 1
+        scale: primaryMouse.pressed ? 0.98 : 1
 
         Behavior on scale {
             NumberAnimation {
@@ -484,505 +767,223 @@ Surface {
 
             Sym {
                 anchors.verticalCenter: parent.verticalCenter
-                name: "arrow_circle_up"
+                name: primaryButton.glyph
                 size: Theme.iconSmall + 1
                 symWeight: 600
-                color: goMouse.containsMouse ? Theme.textOnAccent : Theme.accentText
+                color: primaryMouse.containsMouse && primaryButton.enabled
+                    ? Theme.textOnAccent : Theme.accentText
             }
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: Updates.packagesOnly ? "Update packages only" : "Update now"
+                text: primaryButton.label
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
-                color: goMouse.containsMouse ? Theme.textOnAccent : Theme.accentText
+                color: primaryMouse.containsMouse && primaryButton.enabled
+                    ? Theme.textOnAccent : Theme.accentText
             }
         }
 
         MouseArea {
-            id: goMouse
+            id: primaryMouse
             anchors.fill: parent
+            enabled: primaryButton.enabled
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: Updates.run(Updates.packagesOnly)
+            onClicked: {
+                primaryButton.forceActiveFocus();
+                primaryButton.activate();
+            }
         }
     }
 
-    // ---- the run, live ----------------------------------------------------
-    // Two fixed step rows rather than a Repeater over a computed array: the
-    // array literal would re-evaluate on every feed line and rebuild both
-    // delegates, restarting their spinners mid-turn.
-    component StepLine: Column {
-        id: stepLine
+    // ---- details --------------------------------------------------------------
+    // Everything a person does not need to decide what to do next: the names
+    // behind the counts, the live transaction, dnf's own error, the log.
+    Item {
+        id: detailsToggle
 
-        property string label
-        property color tint
-        property int cur: 0
-        property int total: 0
-        property bool finished: false
-        property int rc: 0
-        property string idleText
-        property string doneText
-        // "downloading" / "installing" beside the dnf counter — the two
-        // counters count different things, so the word is load-bearing.
-        property string phaseWord: ""
+        readonly property bool hasDetails: !root.idle || Updates.total > 0
+            || Updates.error !== ""
 
+        visible: hasDetails
         width: parent.width
-        spacing: 7
+        height: 22
 
         Row {
-            width: parent.width
-            spacing: 8
-
-            Item {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 14
-                height: 14
-
-                Sym {
-                    id: stepMark
-                    anchors.centerIn: parent
-                    name: !stepLine.finished ? "progress_activity"
-                        : stepLine.rc === 0 ? "check_circle" : "error"
-                    size: 13
-                    symWeight: 600
-                    color: !stepLine.finished ? stepLine.tint
-                        : stepLine.rc === 0 ? Theme.ok : Theme.redText
-
-                    RotationAnimation on rotation {
-                        running: !stepLine.finished && root.mode === "running"
-                            && stepMark.visible && !Theme.reducedMotion
-                        from: 0
-                        to: 360
-                        duration: 1400
-                        loops: Animation.Infinite
-                        onRunningChanged: if (!running) stepMark.rotation = 0
-                    }
-                }
-            }
+            id: toggleRow
+            anchors.left: parent.left
+            anchors.leftMargin: 2
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 4
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 14 - stepMeta.implicitWidth
-                    - parent.spacing * 2
-                text: stepLine.label
+                text: "Details"
                 font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.primary
-                font.weight: Theme.weightMedium
-                color: Theme.textHi
-                elide: Text.ElideRight
-            }
-
-            Text {
-                id: stepMeta
-                anchors.verticalCenter: parent.verticalCenter
-                text: stepLine.finished
-                    ? (stepLine.rc === 0 ? stepLine.doneText : "failed")
-                    : stepLine.total > 0
-                    ? (stepLine.phaseWord !== "" ? stepLine.phaseWord + " " : "")
-                        + stepLine.cur + " / " + stepLine.total + " · "
-                        + Math.floor(stepLine.cur * 100 / stepLine.total) + "%"
-                    : stepLine.idleText
-                font.family: Theme.fontMono
                 font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightSemibold
-                font.features: Theme.tabularNumberFeatures
-                color: stepLine.finished && stepLine.rc !== 0
-                    ? Theme.redText : Theme.textMid
+                font.underline: toggleFocus.activeFocus
+                color: toggleMouse.containsMouse ? Theme.textHi : Theme.textLow
             }
-        }
 
-        Rectangle {
-            width: parent.width
-            height: 4
-            radius: 2
-            color: Theme.hairlineSoft
+            Sym {
+                anchors.verticalCenter: parent.verticalCenter
+                name: "expand_more"
+                size: Theme.iconSmall
+                color: toggleMouse.containsMouse ? Theme.textHi : Theme.textLow
+                rotation: Updates.detailsOpen ? 180 : 0
 
-            Rectangle {
-                width: stepLine.finished && stepLine.rc === 0 ? parent.width
-                    : stepLine.total > 0
-                    ? parent.width * Math.min(1, stepLine.cur / stepLine.total)
-                    : 0
-                height: 4
-                radius: 2
-                color: stepLine.tint
-
-                Behavior on width {
+                Behavior on rotation {
                     NumberAnimation {
-                        duration: Theme.chipFadeDuration
+                        duration: Theme.reducedMotion ? 0 : Theme.chipFadeDuration
                         easing.type: Easing.OutCubic
                     }
                 }
             }
         }
-    }
 
-    Rectangle {
-        visible: root.mode === "running"
-        width: parent.width
-        height: stepsColumn.implicitHeight + 24
-        radius: Theme.tileRadius
-        color: Theme.tile
+        Item {
+            id: toggleFocus
+            anchors.fill: toggleRow
+            activeFocusOnTab: detailsToggle.visible
+            Accessible.role: Accessible.Button
+            Accessible.name: Updates.detailsOpen ? "Hide details" : "Show details"
+            Accessible.onPressAction: Updates.detailsOpen = !Updates.detailsOpen
 
-        Column {
-            id: stepsColumn
-            x: 12
-            y: 12
-            width: parent.width - 24
-            spacing: 11
-
-            StepLine {
-                label: "Recovery point"
-                tint: Theme.amber
-                finished: Updates.backendPhase !== "snapshot"
-                rc: 0
-                idleText: "snapshotting root & /boot…"
-                doneText: Updates.recoveryPointId !== ""
-                    ? Updates.recoveryPointId.slice(0, 16) : "not required"
-            }
-
-            StepLine {
-                label: "System packages"
-                tint: Theme.accent
-                cur: Updates.dnfCur
-                total: Updates.dnfTotal
-                finished: Updates.runDnfDone
-                rc: Updates.runDnfRc
-                phaseWord: Updates.dnfPhase === "installing"
-                    ? "installing" : "downloading"
-                idleText: Updates.dnfPhase === "installing"
-                    ? "preparing…" : "downloading & resolving…"
-                doneText: Updates.runPkgCount > 0
-                    ? Updates.runPkgCount + " packages" : "completed"
-            }
-
-            StepLine {
-                visible: Updates.flatpakEnabled
-                label: "Flatpaks"
-                tint: Theme.feedFlatpak
-                cur: Updates.fpCur
-                total: Updates.fpTotal
-                finished: Updates.runFpDone
-                rc: Updates.runFpRc
-                idleText: "looking for updates…"
-                doneText: Updates.appCount > 0
-                    ? Updates.appCount + " apps" : "up to date"
-            }
-        }
-    }
-
-    // ---- finished ---------------------------------------------------------
-    Rectangle {
-        visible: root.mode === "done"
-        width: parent.width
-        height: doneColumn.implicitHeight + 24
-        radius: Theme.tileRadius
-        color: Theme.okBgSoft
-        border.width: 1
-        border.color: Theme.okBorder
-
-        Column {
-            id: doneColumn
-            x: 12
-            y: 12
-            width: parent.width - 24
-            spacing: 4
-
-            Text {
-                width: parent.width
-                text: {
-                    const parts = [];
-                    if (Updates.runPkgCount > 0)
-                        parts.push(Updates.runPkgCount + " packages");
-                    if (Updates.appCount > 0)
-                        parts.push(Updates.appCount
-                            + (Updates.appCount === 1 ? " app" : " apps"));
-                    return parts.length > 0
-                        ? parts.join(" · ") + " updated" : "Already up to date";
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                        || event.key === Qt.Key_Space) {
+                    Updates.detailsOpen = !Updates.detailsOpen;
+                    event.accepted = true;
                 }
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                font.weight: Theme.weightSemibold
-                color: Theme.ok
-                elide: Text.ElideRight
-            }
-
-            Text {
-                visible: text !== ""
-                width: parent.width
-                text: {
-                    if (Updates.fpWarning !== "")
-                        return Updates.fpWarning;
-                    if (Updates.topNames.length === 0)
-                        return "";
-                    const extra = Updates.upCount + Updates.addCount
-                        - Updates.topNames.length;
-                    return Updates.topNames.join(" · ")
-                        + (extra > 0 ? "  +" + extra + " more" : "");
-                }
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                font.weight: Theme.weightSemibold
-                color: Updates.fpWarning !== "" ? Theme.amber : Theme.textFaint
-                elide: Text.ElideRight
-            }
-
-            Text {
-                visible: Updates.recoveryPointId !== ""
-                width: parent.width
-                text: "Recovery point · " + Updates.recoveryPointId
-                font.family: Theme.fontMono
-                font.pixelSize: Theme.typography.secondary
-                color: Theme.textDim
-                elide: Text.ElideRight
-            }
-        }
-    }
-
-    Rectangle {
-        id: rebootOutcome
-
-        readonly property bool recommended: Updates.rebootRecommendation
-            === "recommended"
-        readonly property bool notNeeded: Updates.rebootRecommendation
-            === "not-needed"
-
-        // Negative and unavailable confirmations retire with the completed
-        // transcript. A positive remains actionable after that transcript is
-        // dismissed, until the backend observes a different boot ID.
-        visible: root.mode === "done"
-            || (root.mode === "idle" && recommended)
-        width: parent.width
-        height: 40
-        radius: Theme.tileRadius
-        color: notNeeded ? Theme.okBgSoft : Theme.amberBgSoft
-        border.width: 1
-        border.color: notNeeded ? Theme.okBorder : Theme.amberBorder
-
-        Row {
-            anchors.fill: parent
-            anchors.leftMargin: 12
-            anchors.rightMargin: 6
-            spacing: 9
-
-            Sym {
-                id: rebootIcon
-                anchors.verticalCenter: parent.verticalCenter
-                name: rebootOutcome.recommended ? "restart_alt"
-                    : rebootOutcome.notNeeded ? "check_circle" : "warning"
-                size: Theme.iconSmall + 2
-                symWeight: 600
-                color: rebootOutcome.notNeeded ? Theme.ok : Theme.amber
-            }
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 15
-                    - (restartButton.visible ? restartButton.width
-                        + parent.spacing * 2 : parent.spacing)
-                text: UpdatesHelpers.rebootLabel(
-                    Updates.rebootRecommendation, Updates.kernelPending)
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.control
-                font.weight: Theme.weightBold
-                color: rebootOutcome.notNeeded ? Theme.ok : Theme.amber
-                elide: Text.ElideRight
-            }
-
-            ActionButton {
-                id: restartButton
-                visible: rebootOutcome.recommended
-                anchors.verticalCenter: parent.verticalCenter
-                label: "Restart"
-                tint: Theme.amber
-                fill: Theme.amberBg
-                hPadding: 12
-                revealed: visible
-                onTriggered: Session.reboot()
-            }
-        }
-    }
-
-    // ---- transaction feed -------------------------------------------------
-    // One console for the live run and the finished transcript, so the scroll
-    // position survives the moment the run completes — which is the whole
-    // point of keeping the feed around.
-    Rectangle {
-        id: consoleTile
-
-        visible: root.mode === "running" || root.mode === "done"
-        width: parent.width
-        // The live view holds a steady frame; the finished transcript takes
-        // only the height its rows need, up to the same scrollback window.
-        height: root.mode === "running" ? 300
-            : Math.min(252, Updates.feed.count * 21 + 48)
-        radius: Theme.tileRadius
-        color: Theme.well
-        border.width: 1
-        border.color: Theme.hairlineSoft
-
-        Behavior on height {
-            NumberAnimation {
-                duration: Theme.popoutMorphDuration
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: Theme.easeOutCurve
             }
         }
 
-        Column {
-            x: 14
-            y: 12
-            width: parent.width - 28
-            spacing: 8
-
-            Row {
-                width: parent.width
-                height: 16
-                spacing: 10
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width
-                        - (liveBadge.visible ? liveBadge.width + parent.spacing : 0)
-                        - (verbChips.visible ? verbChips.width + parent.spacing : 0)
-                    text: "TRANSACTION" + (root.mode === "done"
-                        ? " · " + root.clock(Updates.runStartedAt) : "")
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.typography.metadata
-                    font.weight: Theme.weightBold
-                    font.letterSpacing: 1.1
-                    color: Theme.textDim
-                    elide: Text.ElideRight
-                }
-
-                Row {
-                    id: liveBadge
-                    visible: root.mode === "running"
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 5
-
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 6
-                        height: 6
-                        radius: 3
-                        color: Theme.ok
-
-                        SequentialAnimation on opacity {
-                            running: liveBadge.visible && !Theme.reducedMotion
-                            loops: Animation.Infinite
-                            alwaysRunToEnd: false
-
-                            NumberAnimation { to: 0.3; duration: 700; easing.type: Easing.InOutSine }
-                            NumberAnimation { to: 1.0; duration: 700; easing.type: Easing.InOutSine }
-                        }
-                    }
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "LIVE"
-                        font.family: Theme.fontMono
-                        font.pixelSize: Theme.typography.metadata
-                        font.weight: Theme.weightBold
-                        font.letterSpacing: 0.5
-                        color: Theme.ok
-                    }
-                }
-
-                Row {
-                    id: verbChips
-                    visible: root.mode === "done"
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 10
-
-                    Row {
-                        visible: Updates.upCount > 0
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 3
-
-                        Sym {
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: "arrow_upward"
-                            size: Theme.iconTiny
-                            symWeight: 700
-                            color: Theme.ok
-                        }
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Updates.upCount
-                            font.family: Theme.fontMono
-                            font.pixelSize: Theme.typography.metadata
-                            font.weight: Theme.weightBold
-                            font.features: Theme.tabularNumberFeatures
-                            color: Theme.ok
-                        }
-                    }
-
-                    Row {
-                        visible: Updates.addCount > 0
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 3
-
-                        Sym {
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: "add"
-                            size: Theme.iconTiny
-                            symWeight: 700
-                            color: Theme.accentText
-                        }
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Updates.addCount
-                            font.family: Theme.fontMono
-                            font.pixelSize: Theme.typography.metadata
-                            font.weight: Theme.weightBold
-                            font.features: Theme.tabularNumberFeatures
-                            color: Theme.accentText
-                        }
-                    }
-
-                    Row {
-                        visible: Updates.delCount > 0
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 3
-
-                        Sym {
-                            anchors.verticalCenter: parent.verticalCenter
-                            name: "remove"
-                            size: Theme.iconTiny
-                            symWeight: 700
-                            color: Theme.redText
-                        }
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: Updates.delCount
-                            font.family: Theme.fontMono
-                            font.pixelSize: Theme.typography.metadata
-                            font.weight: Theme.weightBold
-                            font.features: Theme.tabularNumberFeatures
-                            color: Theme.redText
-                        }
-                    }
-                }
+        MouseArea {
+            id: toggleMouse
+            anchors.fill: toggleRow
+            anchors.margins: -4
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                toggleFocus.forceActiveFocus();
+                Updates.detailsOpen = !Updates.detailsOpen;
             }
+        }
+
+        LinkText {
+            anchors.right: parent.right
+            anchors.rightMargin: 2
+            anchors.verticalCenter: parent.verticalCenter
+            visible: Updates.detailsOpen && !root.idle && Updates.runStamp !== ""
+            text: "Open full log"
+            font.pixelSize: Theme.typography.secondary
+            onClicked: Updates.openLog()
+        }
+    }
+
+    component DetailBlock: Column {
+        id: detailBlock
+
+        property string heading: ""
+        property string body: ""
+        property color bodyColor: Theme.textMid
+        property bool mono: false
+        property int lines: 6
+
+        width: parent ? parent.width : 0
+        spacing: 3
+        visible: body !== ""
+
+        Text {
+            width: parent.width
+            visible: detailBlock.heading !== ""
+            text: detailBlock.heading
+            elide: Text.ElideRight
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.typography.metadata
+            font.weight: Theme.weightSemibold
+            font.letterSpacing: 0.4
+            color: Theme.textFaint
+        }
+
+        Text {
+            width: parent.width
+            text: detailBlock.body
+            wrapMode: Text.Wrap
+            maximumLineCount: detailBlock.lines
+            elide: Text.ElideRight
+            font.family: detailBlock.mono ? Theme.fontMono : Theme.fontMenu
+            font.pixelSize: Theme.typography.secondary
+            font.weight: Theme.weightMedium
+            color: detailBlock.bodyColor
+        }
+    }
+
+    Column {
+        id: details
+
+        visible: detailsToggle.visible && Updates.detailsOpen
+        width: parent.width
+        spacing: 12
+
+        // Before a run: the names behind each count.
+        DetailBlock {
+            visible: root.idle && body !== ""
+            heading: "SYSTEM · " + Updates.dnfCount
+            body: root.idle ? Updates.uniqueNames(Updates.dnfNames).join(", ") : ""
+            lines: 8
+        }
+
+        DetailBlock {
+            visible: root.idle && body !== ""
+            heading: "APPS · " + Updates.flatpakCount
+            body: root.idle ? Updates.uniqueNames(Updates.flatpakNames).join(", ") : ""
+        }
+
+        DetailBlock {
+            visible: root.idle && body !== ""
+            heading: "FIRMWARE · " + Updates.firmwareCount
+            body: root.idle ? Updates.firmwareDevices.map(device => device.name
+                + (device.from !== "" && device.to !== ""
+                    ? "  " + device.from + " → " + device.to : "")).join("\n") : ""
+        }
+
+        DetailBlock {
+            visible: root.idle && body !== ""
+            heading: "COULDN’T CHECK"
+            body: root.idle ? Updates.error : ""
+            bodyColor: Theme.amber
+        }
+
+        // The run: the transaction, planned rows at half strength until the
+        // worker reaches them, kept after it finishes as the transcript.
+        Rectangle {
+            id: feedTile
+
+            visible: !root.idle && Updates.feed.count > 0
+            width: parent.width
+            height: Math.min(236, Updates.feed.count * 21 + 16)
+            radius: Theme.tileRadius
+            color: Theme.well
+            border.width: 1
+            border.color: Theme.hairlineSoft
 
             ListView {
                 id: feedView
 
                 // Tracks the row the transaction is working through; scrolling
-                // away parks it and the pill below offers the way back. The
-                // plan itself lands top-down, so appends never scroll.
+                // away parks it until the view is back at its end.
                 property bool following: true
 
-                width: parent.width
-                height: consoleTile.height - 24 - 16 - parent.spacing
+                x: 12
+                y: 8
+                width: parent.width - 24
+                height: parent.height - 16
                 clip: true
                 model: Updates.feed
-                interactive: true
                 boundsBehavior: Flickable.StopAtBounds
 
                 onMovementStarted: following = false
@@ -995,7 +996,7 @@ Surface {
                     target: Updates
 
                     function onLastDoneIndexChanged() {
-                        if (feedView.following && root.mode === "running"
+                        if (feedView.following && root.running
                                 && Updates.lastDoneIndex >= 0)
                             feedView.positionViewAtIndex(Updates.lastDoneIndex,
                                 ListView.Contain);
@@ -1008,26 +1009,11 @@ Surface {
                     required property var model
                     required property int index
 
-                    readonly property bool newest: root.mode === "running"
-                        && index === Updates.lastDoneIndex
-
-                    // Planned rows wait at half strength and light up as the
-                    // transaction reaches them — the whole plan is readable
-                    // from the start, nothing truncated to make it "stream".
-                    opacity: root.mode === "running" && !model.done ? 0.45 : 1
-
-                    Behavior on opacity {
-                        NumberAnimation { duration: Theme.chipFadeDuration }
-                    }
-
                     // Widths come from TextMetrics, never from an elided
                     // Text's own implicitWidth — binding width to that loops,
                     // because eliding re-lays the text out. The name is the
-                    // identity, so it is never the part that gives way: the
-                    // version yields, down to hiding entirely on the rare row
-                    // where the name alone fills the line.
-                    readonly property real textBudget: width - 26 - 11
-                        - spacing * 3
+                    // identity, so it is never the part that gives way.
+                    readonly property real textBudget: width - 12 - spacing * 2
                     readonly property real nameWidth: Math.min(
                         nameMetrics.advanceWidth + 2, textBudget)
                     readonly property real verWidth: model.ver === "" ? 0
@@ -1037,12 +1023,17 @@ Surface {
                     width: feedView.width
                     height: 21
                     spacing: 8
+                    opacity: root.running && !model.done ? 0.45 : 1
+
+                    Behavior on opacity {
+                        NumberAnimation { duration: Theme.chipFadeDuration }
+                    }
 
                     TextMetrics {
                         id: nameMetrics
                         font.family: Theme.fontMono
                         font.pixelSize: Theme.typography.secondary
-                        font.weight: Theme.weightSemibold
+                        font.weight: Theme.weightMedium
                         text: feedRow.model.name
                     }
 
@@ -1054,36 +1045,24 @@ Surface {
                         text: feedRow.model.ver
                     }
 
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 26
-                        text: feedRow.model.tag
-                        font.family: Theme.fontMono
-                        font.pixelSize: Theme.typography.secondary
-                        font.weight: Theme.weightBold
-                        color: feedRow.model.tag === "dnf"
-                            ? Theme.feedDnf : Theme.feedFlatpak
-                    }
-
                     Sym {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 11
-                        name: root.verbIcon(feedRow.model.verb)
+                        width: 12
+                        name: root.verbIcon(feedRow.model.verb, feedRow.model.failed)
                         size: Theme.iconTiny
                         symWeight: 700
-                        color: root.verbColor(feedRow.model.verb)
+                        color: root.verbColor(feedRow.model.verb, feedRow.model.failed)
                     }
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         width: feedRow.nameWidth
                         text: feedRow.model.name
-                        font.family: Theme.fontMono
-                        font.pixelSize: Theme.typography.primary
-                        font.weight: feedRow.newest
-                            ? Theme.weightSemibold : Theme.weightMedium
-                        color: feedRow.newest ? Theme.textHi : Theme.textMid
                         elide: Text.ElideRight
+                        font.family: Theme.fontMono
+                        font.pixelSize: Theme.typography.secondary
+                        font.weight: Theme.weightMedium
+                        color: Theme.textMid
                     }
 
                     Text {
@@ -1091,297 +1070,61 @@ Surface {
                         width: feedRow.verWidth
                         visible: feedRow.model.ver !== "" && feedRow.verWidth > 24
                         text: feedRow.model.ver
+                        elide: Text.ElideRight
                         font.family: Theme.fontMono
                         font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightMedium
-                        color: feedRow.newest ? Theme.textMid : Theme.textFaint
-                        elide: Text.ElideRight
+                        color: Theme.textFaint
                     }
                 }
-
-                Text {
-                    visible: feedView.count === 0
-                    anchors.centerIn: parent
-                    text: "waiting for the transaction…"
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.typography.secondary
-                    font.weight: Theme.weightMedium
-                    color: Theme.textFaint
-                }
-            }
-        }
-
-        ScrollChrome {
-            anchors.fill: parent
-            anchors.topMargin: 36
-            anchors.bottomMargin: 2
-            target: feedView
-            edgeColor: Qt.rgba(Theme.background.r, Theme.background.g,
-                Theme.background.b, 0.9)
-        }
-
-        // The way back to the tail after scrolling into the history mid-run.
-        Rectangle {
-            visible: root.mode === "running" && !feedView.following
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 10
-            width: jumpRow.implicitWidth + 22
-            height: 26
-            radius: 13
-            color: jumpMouse.containsMouse ? Theme.accent : Theme.accentSoft
-
-            Behavior on color {
-                ColorAnimation { duration: Theme.chipFadeDuration }
             }
 
-            Row {
-                id: jumpRow
-                anchors.centerIn: parent
-                spacing: 5
-
-                Sym {
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: "arrow_downward"
-                    size: Theme.iconTiny + 1
-                    symWeight: 600
-                    color: jumpMouse.containsMouse ? Theme.textOnAccent : Theme.accentText
-                }
-
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Live"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.secondary
-                    font.weight: Theme.weightMedium
-                    color: jumpMouse.containsMouse ? Theme.textOnAccent : Theme.accentText
-                }
-            }
-
-            MouseArea {
-                id: jumpMouse
+            ScrollChrome {
                 anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    feedView.following = true;
-                    feedView.positionViewAtEnd();
-                }
+                anchors.topMargin: 2
+                anchors.bottomMargin: 2
+                target: feedView
+                edgeColor: Qt.rgba(Theme.background.r, Theme.background.g,
+                    Theme.background.b, 0.9)
             }
-        }
-    }
-
-    // ---- failed -----------------------------------------------------------
-    Rectangle {
-        visible: root.mode === "failed"
-        width: parent.width
-        height: failColumn.implicitHeight + 24
-        radius: Theme.tileRadius
-        color: Theme.redBgSoft
-        border.width: 1
-        border.color: Theme.redBorder
-
-        Column {
-            id: failColumn
-            x: 12
-            y: 12
-            width: parent.width - 24
-            spacing: 4
-
-            Text {
-                width: parent.width
-                text: Updates.failHeadline
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                font.weight: Theme.weightSemibold
-                color: Theme.redText
-                elide: Text.ElideRight
-            }
-
-            Text {
-                width: parent.width
-                text: {
-                    const parts = [];
-                    parts.push(Updates.dnfCur > 0
-                        ? "transaction interrupted — check the log"
-                        : "system packages unchanged");
-                    if (Updates.flatpakEnabled && Updates.runFpDone
-                            && Updates.runFpRc === 0)
-                        parts.push(Updates.appCount > 0
-                            ? "flatpaks finished (" + Updates.appCount + " apps)"
-                            : "flatpaks up to date");
-                    return parts.join(" · ");
-                }
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                font.weight: Theme.weightSemibold
-                color: Theme.textFaint
-                elide: Text.ElideRight
-            }
-
-            Text {
-                visible: Updates.mixedState
-                width: parent.width
-                text: UpdatesHelpers.mixedStateAdvice(Updates.mixedState)
-                wrapMode: Text.Wrap
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Theme.amber
-            }
-        }
-    }
-
-    Rectangle {
-        visible: root.mode === "failed" && Updates.failTail.length > 0
-        width: parent.width
-        height: tailColumn.implicitHeight + 24
-        radius: Theme.tileRadius
-        color: Theme.well
-        border.width: 1
-        border.color: Theme.hairlineSoft
-
-        Column {
-            id: tailColumn
-            x: 14
-            y: 12
-            width: parent.width - 28
-            spacing: 8
-
-            Text {
-                width: parent.width
-                text: "DNF.LOG · LAST LINES"
-                font.family: Theme.fontMono
-                font.pixelSize: Theme.typography.metadata
-                font.weight: Theme.weightBold
-                font.letterSpacing: 1.1
-                color: Theme.textDim
-                elide: Text.ElideRight
-            }
-
-            Repeater {
-                model: Updates.failTail
-
-                delegate: Text {
-                    required property var modelData
-
-                    width: parent.width
-                    text: modelData
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.typography.secondary
-                    font.weight: /error|failed/i.test(modelData)
-                        ? Theme.weightBold : Theme.weightMedium
-                    color: /error|failed/i.test(modelData)
-                        ? Theme.redText : Theme.textLow
-                    elide: Text.ElideRight
-                }
-            }
-        }
-    }
-
-    Rectangle {
-        id: retryButton
-
-        visible: root.mode === "failed"
-        width: parent.width
-        height: 38
-        radius: 14
-        color: retryMouse.containsMouse ? Theme.accent : Theme.accentSoft
-
-        Behavior on color {
-            ColorAnimation { duration: Theme.chipFadeDuration }
-        }
-
-        scale: retryMouse.pressed ? 0.98 : 1
-
-        Behavior on scale {
-            NumberAnimation {
-                duration: Theme.pressDuration
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: Theme.springCurve
-            }
-        }
-
-        Row {
-            anchors.centerIn: parent
-            spacing: 7
-
-            Sym {
-                anchors.verticalCenter: parent.verticalCenter
-                name: "arrow_circle_up"
-                size: Theme.iconSmall + 1
-                symWeight: 600
-                color: retryMouse.containsMouse ? Theme.textOnAccent : Theme.accentText
-            }
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: Updates.packagesOnly ? "Retry packages only" : "Retry update"
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.control
-                font.weight: Theme.weightMedium
-                color: retryMouse.containsMouse ? Theme.textOnAccent : Theme.accentText
-            }
-        }
-
-        MouseArea {
-            id: retryMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: Updates.run(Updates.packagesOnly)
-        }
-    }
-
-    // ---- footer -----------------------------------------------------------
-    Row {
-        visible: root.mode === "done" || root.mode === "failed"
-        width: parent.width
-        spacing: 10
-
-        LinkText {
-            id: logLink
-            anchors.verticalCenter: parent.verticalCenter
-            text: "Open full log"
-            onClicked: Updates.openLog("dnf.log")
         }
 
         Text {
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - logLink.width - parent.spacing
-            horizontalAlignment: Text.AlignRight
-            text: Updates.runLogLabel
-            font.family: Theme.fontMono
-            font.pixelSize: Theme.typography.secondary
-            font.weight: Theme.weightMedium
-            font.features: Theme.tabularNumberFeatures
-            color: Theme.textFaint
-            elide: Text.ElideLeft
-        }
-    }
-
-    Item {
-        visible: root.mode === "idle" || root.mode === "running"
-        width: parent.width
-        height: footnote.implicitHeight + 2
-
-        Text {
-            id: footnote
-            x: 4
-            width: parent.width - 8
-            text: root.mode === "running"
-                ? "keeps running if you close this panel — the bar chip tracks progress"
-                : Updates.busy ? "checking packages and firmware"
-                : Updates.firmwareInstalling ? "Follow the firmware updater’s instructions in the terminal"
-                : Updates.firmwareCount > 0 ? "Firmware installs separately with device and reboot prompts"
-                : root.rows.length > 0
-                ? "sudo dnf upgrade" + (Settings.modOpts.updates.flatpak
-                    ? " · flatpak update" : "") + " — streams live here"
-                : "Package and firmware metadata are refreshed by system timers"
+            visible: root.running && Updates.feed.count === 0
+            width: parent.width
+            text: "Waiting for the transaction…"
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.secondary
-            font.weight: Theme.weightSemibold
+            font.weight: Theme.weightMedium
             color: Theme.textFaint
-            elide: Text.ElideRight
+        }
+
+        // A failure: dnf's own last words.
+        DetailBlock {
+            visible: root.failed && body !== ""
+            heading: "WHAT DNF SAID"
+            body: root.failed ? (Updates.failTail.length > 0
+                ? Updates.failTail.join("\n") : Updates.failHeadline) : ""
+            bodyColor: Theme.textLow
+            mono: true
+            lines: 10
+        }
+
+        // The release step failed and the package run went ahead without it.
+        DetailBlock {
+            visible: !root.idle && body !== ""
+            body: UpdatesHelpers.projectSkippedLabel(Updates.runProjectSkipped,
+                root.mode !== "running")
+            bodyColor: Theme.amber
+        }
+
+        DetailBlock {
+            visible: !root.idle && body !== ""
+            heading: "RECOVERY POINT"
+            body: Updates.recoveryPointId
+            bodyColor: Theme.textLow
+            mono: true
+            lines: 1
         }
     }
 }

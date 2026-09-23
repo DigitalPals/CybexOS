@@ -48,7 +48,7 @@ case $command_name in
     exec "$backend" run "$@"
     ;;
   -h|--help|help)
-    printf 'usage: update-client check | start | run [--no-flatpak]\n'
+    printf 'usage: update-client check | start | run [--no-flatpak] [--firmware]\n'
     ;;
   *)
     printf 'update-client: unknown command: %s\n' "${command_name:-<empty>}" >&2

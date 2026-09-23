@@ -51,8 +51,8 @@ test("a retry repeats only the sources that failed", () => {
     assert.deepEqual(H.failedParts({ dnf: "", flatpak: "Flathub unreachable", firmware: "", project: "" }),
         { dnf: false, flatpak: true, firmware: false, project: false });
     assert.deepEqual(H.failedParts(null), { dnf: false, flatpak: false, firmware: false, project: false });
-    assert.equal(H.pendingSummary(3, 0, 1, false, ""), "dnf 3 · firmware 1");
-    assert.equal(H.pendingSummary(0, 2, 0, true, "1.4"), "flatpak 2 · CybexOS 1.4");
+    assert.equal(H.pendingSummary(3, 0, 1, false, ""), "System 3 · Firmware 1");
+    assert.equal(H.pendingSummary(0, 2, 0, true, "1.4"), "Apps 2 · CybexOS 1.4");
 });
 
 test("table sections map to feed verbs and reject prose", () => {
@@ -125,13 +125,103 @@ test("flatpak lines separate the plan from the work and name apps sensibly", () 
     assert.equal(H.parseFlatpakRunLine("Looking for updates…"), null);
 });
 
-test("the chip percentage stays honest across both streams", () => {
-    assert.equal(H.runPercent(0, 0, 0, 0), -1,
-        "no denominator yet means indeterminate, not 0%");
-    assert.equal(H.runPercent(76, 120, 0, 0), 63);
-    assert.equal(H.runPercent(60, 120, 1, 2), 50);
-    assert.equal(H.runPercent(500, 120, 9, 2), 100,
+test("one percentage covers every stream without running to 100% twice", () => {
+    assert.equal(H.runProgress({}), -1, "nothing measurable yet means indeterminate, not 0%");
+    assert.equal(H.runProgress({ dnfPhase: "resolving", dnfCur: 0, dnfTotal: 0 }), -1);
+    // dnf's download pass fills the first share and its install pass the rest.
+    const downloaded = H.runProgress({ dnfPhase: "downloading", dnfCur: 120, dnfTotal: 120 });
+    const installStart = H.runProgress({ dnfPhase: "installing", dnfCur: 0, dnfTotal: 120 });
+    assert.equal(downloaded, 30);
+    assert.equal(installStart, 30, "the install pass resumes where the download ended");
+    assert.equal(H.runProgress({ dnfPhase: "installing", dnfCur: 60, dnfTotal: 120 }), 65);
+    assert.equal(H.runProgress({ dnfDone: true }), 100);
+    // Streams weigh what they hold; a firmware device counts for several packages.
+    assert.equal(H.runProgress({ dnfDone: true, dnfPlanned: 8, fpIncluded: true,
+        fpPlanned: 8, fpCur: 0, fpTotal: 8 }), 50);
+    assert.equal(H.runProgress({ dnfDone: true, dnfPlanned: 8, fwIncluded: true,
+        fwPlanned: 1, fwCur: 0, fwFraction: 0.5 }), 75);
+    // fwupd's stages each restart at 0%; the device's share only moves forward.
+    const stages = [["downloading", 100], ["decompressing", 0], ["device-write", 0],
+        ["device-write", 50], ["device-write", 100], ["device-restart", 0],
+        ["device-verify", 0], ["device-verify", 100]]
+        .map(([status, percent]) => H.firmwareDeviceFraction(status, percent));
+    for (let i = 1; i < stages.length; i++)
+        assert.ok(stages[i] >= stages[i - 1], `stage ${i} moved backwards`);
+    assert.equal(H.firmwareDeviceFraction("idle", 80), 0);
+    assert.equal(H.runProgress({ dnfPhase: "installing", dnfCur: 500, dnfTotal: 120 }), 100,
         "overshoot clamps rather than exceeding 100");
+});
+
+test("firmware events parse strictly and read as plain words", () => {
+    assert.deepEqual(H.parseFirmwareEvent('{"event":"progress","id":"a","status":"device-write","percent":40}'),
+        { event: "progress", id: "a", status: "device-write", percent: 40 });
+    assert.equal(H.parseFirmwareEvent("System firmware: writing 40%"), null,
+        "human progress lines are not events");
+    assert.equal(H.parseFirmwareEvent('{"event":'), null);
+    assert.equal(H.parseFirmwareEvent('{"id":"a"}'), null);
+    assert.equal(H.firmwareStatusLabel("device-write", 40), "Installing · 40%");
+    assert.equal(H.firmwareStatusLabel("downloading", 0), "Downloading");
+    assert.equal(H.firmwareStatusLabel("waiting-for-user", 0), "Waiting for you");
+    assert.equal(H.firmwareStatusLabel("something-new", 10), "Starting");
+});
+
+test("the running header says what the worker is doing now", () => {
+    assert.equal(H.runPhaseLabel({ phase: "queued" }), "Starting…");
+    assert.equal(H.runPhaseLabel({ phase: "snapshot" }), "Creating a restore point…");
+    assert.equal(H.runPhaseLabel({ phase: "packages", dnfPhase: "downloading" }),
+        "Downloading system updates…");
+    assert.equal(H.runPhaseLabel({ phase: "packages", dnfPhase: "installing" }),
+        "Installing system updates…");
+    assert.equal(H.runPhaseLabel({ phase: "packages", dnfDone: true, fpIncluded: true,
+        fpDone: false }), "Updating apps…");
+    assert.equal(H.runPhaseLabel({ phase: "firmware", fwName: "System firmware" }),
+        "Updating System firmware…");
+    assert.equal(H.runPhaseLabel({ phase: "firmware", fwStatus: "waiting-for-user" }),
+        "Waiting for you…");
+    assert.equal(H.runPhaseLabel({ phase: "ansible" }), "Applying CybexOS…");
+    assert.equal(H.runPhaseLabel({ phase: "packages", cancelPending: true }),
+        "Cancelling after this step…");
+});
+
+test("a failed run explains itself in one sentence", () => {
+    const NS = -2;
+    assert.match(H.friendlyFailure(["Error: No space left on device"], "", 1, "packages", NS),
+        /disk space/);
+    assert.match(H.friendlyFailure(["Curl error (6): Couldn't resolve host name",
+        "Could not resolve host: mirrors.fedoraproject.org"], "", 1, "packages", NS),
+        /update servers/);
+    assert.match(H.friendlyFailure(["Problem: package foo conflicts with bar"], "", 1,
+        "packages", NS), /conflict/);
+    assert.match(H.friendlyFailure(["GPG check FAILED"], "", 1, "packages", NS), /signing key/);
+    assert.equal(H.friendlyFailure([], "", 126, "packages", NS), "Authorization was cancelled.");
+    assert.equal(H.friendlyFailure([], "", NS, "", NS), "The updater couldn’t be started.");
+    assert.match(H.friendlyFailure([], "Could not create the pre-update recovery point", 1,
+        "snapshot", NS), /restore point/);
+    assert.equal(H.friendlyFailure(["something odd"], "", 1, "packages", NS),
+        "The system update stopped unexpectedly.");
+    assert.equal(H.friendlyFailure([], "Ansible exited with status 2", 2, "ansible", NS),
+        "CybexOS couldn’t be applied.");
+});
+
+test("pending system packages name only a kernel and security fixes", () => {
+    assert.equal(H.dnfKernelVersion("kernel-core.x86_64  7.2.7-200.fc44  updates"), "7.2.7");
+    assert.equal(H.dnfKernelVersion("kernel-headers.x86_64  7.2.7-200.fc44  updates"), "");
+    assert.equal(H.dnfKernelVersion(""), "");
+    assert.deepEqual(H.securityAdvisories(JSON.stringify([
+        { name: "A", severity: "Moderate" }, { name: "A", severity: "Moderate" },
+        { name: "B", severity: "Important" }
+    ])), { count: 2, severe: true });
+    assert.deepEqual(H.securityAdvisories("[]"), { count: 0, severe: false });
+    assert.throws(() => H.securityAdvisories("{}"));
+    assert.equal(H.systemDetail("7.2.7", 1, false), "New kernel 7.2.7 · Security fixes");
+    assert.equal(H.systemDetail("", 2, true), "Important security fixes");
+    assert.equal(H.systemDetail("", 0, false), "");
+    assert.equal(H.checkErrorLabel({ flatpak: "x" }), "Couldn’t check apps");
+    assert.equal(H.checkErrorLabel({ flatpak: "x", firmware: "y" }),
+        "Couldn’t check apps or firmware");
+    assert.equal(H.checkErrorLabel({ dnf: "x", flatpak: "y", firmware: "z" }),
+        "Couldn’t check for updates");
+    assert.equal(H.checkErrorLabel({ dnf: "" }), "");
 });
 
 test("only an incoming kernel earns the reboot hint", () => {
@@ -150,13 +240,12 @@ test("authoritative reboot states are normalized and presented explicitly", () =
     assert.equal(H.normalizedRebootRecommendation("legacy-guess"), "unavailable",
         "an older status must never become a false recommendation");
 
-    assert.equal(H.rebootLabel("recommended", "7.1.9"),
-        "Reboot recommended · Kernel 7.1.9 installed");
-    assert.equal(H.rebootLabel("recommended", ""), "Reboot recommended");
+    assert.equal(H.rebootLabel("recommended", "7.1.9"), "Restart to finish updating");
+    assert.equal(H.rebootLabel("recommended", ""), "Restart to finish updating");
     assert.equal(H.rebootLabel("not-needed", "7.1.9"),
-        "No reboot recommended", "the kernel parser is detail, not authority");
+        "No restart needed", "the kernel parser is detail, not authority");
     assert.equal(H.rebootLabel("unavailable", ""),
-        "Couldn’t determine whether a reboot is recommended");
+        "Couldn’t tell whether a restart is needed");
 });
 
 test("the completed widget gates reboot action and retains only positive advice", () => {
@@ -170,19 +259,22 @@ test("the completed widget gates reboot action and retains only positive advice"
     assert.match(updates,
         /recoveryPointId = typeof data\.snapshotId === "string" \? data\.snapshotId : ""/);
     assert.match(popover,
-        /label:\s*"Recovery point"[\s\S]{0,300}?Updates\.recoveryPointId/);
+        /heading: "RECOVERY POINT"\s*body: Updates\.recoveryPointId/,
+        "the recovery point is a detail, not a step row");
     assert.match(updates,
         /property string rebootRecommendation:\s*"unavailable"/);
     assert.match(updates,
         /normalizedRebootRecommendation\(\s*data\.rebootRecommendation\)/);
+    // Only a positive recommendation earns an action; "not needed" and
+    // "unknown" are not shown at all.
+    assert.match(popover, /readonly property bool rebootNeeded: Updates\.rebootRecommended/);
     assert.match(popover,
-        /visible:\s*root\.mode === "done"[\s\S]{0,100}root\.mode === "idle" && recommended/,
-        "only a positive survives the completed transcript");
-    assert.match(popover, /visible:\s*rebootOutcome\.recommended/,
-        "the Restart action is controlled by Fedora's result");
+        /primaryAction: failed \? "retry"\s*: idle && canUpdate \? "update"\s*: \(idle \|\| finished\) && rebootNeeded \? "restart" : ""/);
+    assert.match(popover, /visible: Updates\.rebootRecommended/,
+        "the quieter Restart action is controlled by Fedora's result");
     assert.match(popover, /onTriggered:\s*Session\.reboot\(\)/);
-    assert.doesNotMatch(popover,
-        /visible:\s*root\.mode === "done" && Updates\.kernelPending !== ""/,
+    assert.doesNotMatch(popover, /No reboot recommended|No restart needed/);
+    assert.doesNotMatch(popover, /kernelPending !== ""/,
         "a parsed kernel must not gate the outcome or action");
 
     assert.match(barHost,
@@ -264,8 +356,8 @@ test("the QML coordinator settles every check and backend command", () => {
         "intermediate per-process totals must not drive notifications");
     assert.match(updates, /command: \["timeout", "45s"/,
         "a background poll must have a finite upper bound");
-    assert.match(popover, /Accessible\.name:[\s\S]{0,100}?Check for updates/);
-    assert.match(popover, /onClicked:[\s\S]{0,100}?Updates\.check\(\)/);
+    assert.match(popover, /accessibleName:[\s\S]{0,100}?Check for updates/);
+    assert.match(popover, /onTriggered: Updates\.check\(\)/);
 });
 
 test("the menu routes checks and runs through its deployment-aware client", () => {
@@ -295,35 +387,43 @@ test("release errors identify GitHub rejection without hiding other causes", () 
     assert.equal(H.projectCheckError("network offline"), "CybexOS: network offline");
 });
 
-test("a failed project check preserves a usable package summary and explicit action", () => {
+test("the one-line summary says what is pending, else what could not be checked", () => {
     const vm = require("node:vm");
     const source = read("Common/Updates.qml");
     const summary = source.match(/readonly property string summary: \{([\s\S]*?)\n    \}/)[1];
-    const state = {busy: false, packageError: "", packagesOnly: true, total: 0,
-        dnfCount: 0, flatpakCount: 0, firmwareCount: 0, firmwareError: "", projectAvailable: false};
-    assert.equal(vm.runInNewContext("(() => {" + summary + "})()", state),
-        "Packages up to date · CybexOS check unavailable");
-    state.dnfCount = state.total = 2;
-    assert.equal(vm.runInNewContext("(() => {" + summary + "})()", state),
-        "dnf 2 · CybexOS check unavailable");
-    state.packageError = "dnf failed";
-    assert.equal(vm.runInNewContext("(() => {" + summary + "})()", state),
-        "Package updates unavailable");
+    const state = { busy: false, total: 0, checkError: "" };
+    const run = () => vm.runInNewContext("(() => {" + summary + "})()", state);
+    assert.equal(run(), "Up to date");
+    state.checkError = "Couldn’t check CybexOS releases";
+    assert.equal(run(), "Couldn’t check CybexOS releases");
+    state.total = 2;
+    assert.equal(run(), "2 updates available", "pending updates lead over a failed source");
+    state.busy = true;
+    assert.equal(run(), "Checking for updates…");
     const panel = read("Popovers/UpdatesPopover.qml");
-    assert.match(panel, /Update packages only/);
-    assert.match(panel, /onClicked: Updates.run\(Updates.packagesOnly\)/);
+    assert.match(panel, /Updates\.run\(Updates\.packagesOnly\)/);
 });
 
-
 test("firmware counts devices once and rejects malformed successful responses", () => {
-    assert.deepEqual(H.firmwareNames(JSON.stringify({ Devices: [
-        { Name: "UEFI dbx", Releases: [{Version: "2"}, {Version: "3"}] },
-        { Name: "System Firmware", Releases: [{Version: "5"}] },
+    assert.deepEqual(H.firmwareDevices(JSON.stringify({ Devices: [
+        { Name: "UEFI dbx", DeviceId: "d1", Version: "1", Flags: ["needs-reboot"],
+            Releases: [{Version: "2"}, {Version: "3"}] },
+        { Name: "System Firmware", DeviceId: "d2", Version: "0x0106",
+            Flags: ["require-ac", "needs-reboot"], Releases: [{Version: "0x0107"}] },
+        { Name: "Dock", DeviceId: "d3", Version: "4", Releases: [{Version: "5"}] },
         { Name: "Current device", Releases: [] }
-    ] })), ["UEFI dbx", "System Firmware"]);
-    assert.deepEqual(H.firmwareNames('{"Devices":[]}'), []);
-    assert.throws(() => H.firmwareNames('{}'));
-    assert.throws(() => H.firmwareNames('not json'));
+    ] })), [
+        { id: "d1", name: "Secure Boot database", from: "1", to: "2",
+            needsReboot: true, requireAc: false },
+        { id: "d2", name: "System firmware", from: "0x0106", to: "0x0107",
+            needsReboot: true, requireAc: true },
+        { id: "d3", name: "Dock", from: "4", to: "5", needsReboot: false, requireAc: false }
+    ]);
+    assert.deepEqual(H.firmwareDevices('{"Devices":[]}'), []);
+    assert.throws(() => H.firmwareDevices('{}'));
+    assert.throws(() => H.firmwareDevices('not json'));
+    assert.equal(H.firmwareLabel([{ name: "KEK CA" }, { name: "Windows UEFI CA" },
+        { name: "System Firmware" }]), "Secure Boot certificates · System firmware");
     assert.match(H.projectCheckError("curl: (22) The requested URL returned error: 404"),
         /no published release.*HTTP 404/);
 });
@@ -338,14 +438,14 @@ test("firmware completion distinguishes no updates, malformed output and failure
     ]) {
         let settled = 0;
         const state = {exitCode, body, errText: "", firmwareError: "", firmwareDone: false,
-            nextFirmwareNames: ["old"], UpdatesHelpers: H,
+            nextFirmwareDevices: ["old"], UpdatesHelpers: H,
             ProcHelpers: load("ProcHelpers.js"), logCheckError() {},
             finishCheck() { settled++; }};
         vm.runInNewContext("(() => {" + finish + "})()", state);
         assert.equal(state.firmwareDone, true);
         assert.equal(settled, 1);
         assert.equal(state.firmwareError !== "", failed);
-        assert.equal(state.nextFirmwareNames.length, failed ? 1 : 0);
+        assert.equal(state.nextFirmwareDevices.length, failed ? 1 : 0);
     }
 });
 
@@ -381,7 +481,7 @@ test("cancel waits for the current step and is offered only while one remains", 
     assert.equal(H.cancelAllowed("packages", false), false,
         "a worker from before deferred cancellation refuses mid-transaction");
     assert.equal(H.cancelAllowed("packages", undefined), false);
-    for (const phase of ["ansible", "activation", "reboot-check"])
+    for (const phase of ["firmware", "ansible", "activation", "reboot-check"])
         assert.equal(H.cancelAllowed(phase, true), false, `${phase} has no stopping point left`);
 
     const updates = read("Common/Updates.qml");
@@ -396,9 +496,10 @@ test("cancel waits for the current step and is offered only while one remains", 
         /id: cancelProc\s*onRunningChanged: \{\s*if \(running\)\s*return;\s*cancelSettle\.restart\(\);\s*root\.refreshRunStatus\(\);/);
     assert.match(popover,
         /id: cancelButton\s*visible: root\.mode === "running" && Updates\.cancelAllowed\s*enabled: !Updates\.cancelPending/);
-    assert.match(popover, /Updates\.cancelPending \? "cancelling after the current step…"/);
+    assert.match(updates, /runPhaseLabel: UpdatesHelpers\.runPhaseLabel\(\{\s*cancelPending: cancelPending,/);
+    assert.match(popover, /return Updates\.runPhaseLabel \+ " · "/);
     assert.match(read("Popovers/Drawer/DrawerOverview.qml"),
-        /Updates\.cancelPending \? "Cancelling after the current step…"/);
+        /text: Updates\.runActive \? Updates\.runPhaseLabel/);
 });
 
 test("a failed release apply that left newer files says how to recover", () => {

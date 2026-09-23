@@ -278,16 +278,14 @@ Column {
                 Text {
                     width: parent.width
                     text: Updates.runActive
-                        ? (Updates.cancelPending ? "Cancelling after the current step…"
-                            : "Updating · " + (Updates.runPercent >= 0
-                                ? Updates.runPercent + "%" : "…"))
+                        ? "Updating · " + (Updates.runPercent >= 0
+                            ? Updates.runPercent + "%" : "…")
                         : Updates.runState === "failed"
-                        ? "Update failed"
+                        ? (Updates.runCancelled ? "Update cancelled" : "Update didn’t finish")
                         : Updates.rebootRecommended
                         ? UpdatesHelpers.rebootLabel(Updates.rebootRecommendation,
                             Updates.kernelPending)
-                        : Updates.error !== "" ? "Updates unavailable"
-                        : Updates.total === 0 ? "Up to date"
+                        : Updates.total === 0 ? Updates.summary
                         : Updates.total + (Updates.total === 1
                             ? " update" : " updates")
                     font.family: Theme.fontMenu
@@ -299,11 +297,17 @@ Column {
 
                 Text {
                     width: parent.width
-                    text: Updates.total > 0
-                        ? Updates.namesLabel(Updates.dnfNames, Updates.dnfCount)
-                            + (Updates.flatpakCount > 0
-                                ? " · " + Updates.flatpakCount + " flatpaks" : "")
-                        : Updates.summary
+                    // Only a second line when it adds something: what a
+                    // run is doing, a failure's reason, or where the
+                    // pending updates are.
+                    visible: text !== ""
+                    text: Updates.runActive ? Updates.runPhaseLabel
+                        : Updates.runState === "failed" ? Updates.failMessage
+                        : Updates.total > 0
+                        ? UpdatesHelpers.pendingSummary(Updates.dnfCount,
+                            Updates.flatpakCount, Updates.firmwareCount,
+                            Updates.projectAvailable, Updates.projectVersion)
+                        : ""
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.metadata
                     color: Theme.textFaint

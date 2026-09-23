@@ -7,7 +7,9 @@ import "ProcHelpers.js" as ProcHelpers
 import "UpdatesHelpers.js" as UpdatesHelpers
 
 // Pending updates: dnf packages, Flatpak refs, firmware and CybexOS releases.
-// Package installation runs inside the shell; firmware uses fwupd’s prompts.
+// Everything installs inside the shell: packages and firmware are phases of
+// one durable run, and fwupd's device requests arrive as events the panel
+// shows in place of a terminal prompt.
 //
 // Polling is inherent here — there is nothing to subscribe to — so this is one
 // timer, at the interval the module's settings choose, plus a manual refresh
@@ -26,12 +28,25 @@ Singleton {
     id: root
 
     property int dnfCount: 0
-    property int firmwareCount: 0
-    property var firmwareNames: []
-    property var nextFirmwareNames: []
+    // The two facts about pending system packages worth a line of their own:
+    // a new kernel (it means a restart) and security fixes.
+    property string dnfKernel: ""
+    property int dnfSecurityCount: 0
+    property bool dnfSecuritySevere: false
+    readonly property string systemDetail: UpdatesHelpers.systemDetail(
+        dnfKernel, dnfSecurityCount, dnfSecuritySevere)
+    // [{ id, name, from, to, needsReboot, requireAc }] per device.
+    property var firmwareDevices: []
+    property var nextFirmwareDevices: []
+    readonly property int firmwareCount: firmwareDevices.length
     property string firmwareError: ""
     property bool firmwareDone: true
-    readonly property bool firmwareInstalling: firmwareInstallProc.running
+    // fwupd refuses some flashes on battery. Rather than let the run fail
+    // there, the firmware waits for power and the rest of the update goes on.
+    readonly property bool firmwareNeedsPower: Battery.isLaptop
+        && !Battery.pluggedIn
+        && firmwareDevices.some(device => device.requireAc)
+    readonly property bool firmwareInRun: firmwareCount > 0 && !firmwareNeedsPower
     property int flatpakCount: 0
     // Temporarily disabled until GitHub releases are published. Keep the
     // release-check process and handlers below for re-enabling later.
@@ -60,6 +75,8 @@ Singleton {
     // as it closes makes total briefly describe a half-completed check and can
     // fire a notification for a state that never existed.
     property var nextDnfNames: []
+    property string nextDnfKernel: ""
+    property var nextDnfSecurity: ({ count: 0, severe: false })
     property var nextFlatpakNames: []
     property bool nextProjectAvailable: false
     property string nextProjectVersion: ""
@@ -81,6 +98,8 @@ Singleton {
     // recount after a run force a real read.
     property string dnfCacheSignature: ""
     property var dnfCacheNames: []
+    property string dnfCacheKernel: ""
+    property var dnfCacheSecurity: ({ count: 0, severe: false })
     property double dnfCacheAt: 0
     property bool dnfForced: false
     property bool initialized: false
@@ -118,57 +137,60 @@ Singleton {
     // so rather than pretending nothing was ever pending.
     property bool wasPending: false
 
+    // Which sources could not be checked, in one sentence ("" when all
+    // answered). The reasons themselves are in `error`.
+    readonly property string checkError: UpdatesHelpers.checkErrorLabel({
+        dnf: dnfError, flatpak: flatpakError, firmware: firmwareError,
+        project: projectError })
+
+    // The one-line answer the bar tooltip and the overview card give.
     readonly property string summary: {
         if (busy)
-            return "Checking…";
-        if (packageError !== "")
-            return "Package updates unavailable";
-        if (firmwareError !== "")
-            return "Firmware check unavailable";
-        if (total === 0)
-            return packagesOnly ? "Packages up to date · CybexOS check unavailable"
-                : "All up to date";
-        const parts = [];
-        if (dnfCount > 0)
-            parts.push("dnf " + dnfCount);
-        if (flatpakCount > 0)
-            parts.push("flatpak " + flatpakCount);
-        if (firmwareCount > 0)
-            parts.push("firmware " + firmwareCount);
-        if (projectAvailable)
-            parts.push("CybexOS " + projectVersion);
-        return parts.join(" · ") + (packagesOnly ? " · CybexOS check unavailable" : "");
+            return "Checking for updates…";
+        if (total > 0)
+            return total + (total === 1 ? " update" : " updates") + " available";
+        if (checkError !== "")
+            return checkError;
+        return "Up to date";
     }
+
+    // The session remembers whether the panel's details were open, so the
+    // transcript is where it was left when the panel comes back.
+    property bool detailsOpen: false
 
     function checkedLabel() {
         if (lastChecked === 0)
-            return "not checked yet";
+            return "Not checked yet";
         const mins = Math.floor((Date.now() - lastChecked) / 60000);
         if (mins < 1)
-            return "checked just now";
+            return "Checked just now";
         if (mins < 60)
-            return "checked " + mins + " m ago";
-        return "checked " + Math.floor(mins / 60) + " h ago";
+            return "Checked " + mins + " min ago";
+        const hours = Math.floor(mins / 60);
+        return "Checked " + hours + (hours === 1 ? " hour ago" : " hours ago");
     }
 
-    // A first few names for the panel's subtitle, so the two rows say
-    // something more useful than a bare count.
+    // A first few names for a row's subtitle ("Signal, Firefox and 2 more").
     //
     // Deduplicated, because a multiarch package appears once per architecture
-    // and "SDL3 · SDL3 · abrt" reads as a bug. The count beside it stays raw:
-    // it has to agree with what `dnf upgrade` is about to list.
+    // and "SDL3, SDL3" reads as a bug. The row's count stays raw: it has to
+    // agree with what `dnf upgrade` is about to list.
     function namesLabel(list, count) {
-        const unique = [];
-        for (const name of list) {
-            if (unique.indexOf(name) === -1)
-                unique.push(name);
-            if (unique.length === 3)
-                break;
-        }
+        const unique = uniqueNames(list);
         if (unique.length === 0)
             return count > 0 ? count + " pending" : "";
-        const shown = unique.join(" · ");
-        return unique.length < count ? shown + " and more" : shown;
+        const shown = unique.slice(0, 3);
+        const rest = unique.length - shown.length;
+        return shown.join(", ") + (rest > 0 ? " and " + rest + " more" : "");
+    }
+
+    function uniqueNames(list) {
+        const unique = [];
+        for (const name of list || []) {
+            if (unique.indexOf(name) === -1)
+                unique.push(name);
+        }
+        return unique;
     }
 
     // The panel's refresh, and the recount after a run: every source, and
@@ -182,7 +204,7 @@ Singleton {
         // A poll firing mid-transaction would read the cache while dnf is
         // rewriting the installed set; whatever it said would be wrong by the
         // time it landed. finishRun schedules the recount instead.
-        if (runActive || firmwareInstalling)
+        if (runActive)
             return;
         if (busy) {
             checkAgain = true;
@@ -195,6 +217,8 @@ Singleton {
         if (parts.dnf) {
             dnfError = "";
             nextDnfNames = [];
+            nextDnfKernel = "";
+            nextDnfSecurity = ({ count: 0, severe: false });
             dnfDone = false;
             dnfForced = forced === true;
         }
@@ -213,7 +237,7 @@ Singleton {
         }
         if (parts.firmware) {
             firmwareError = "";
-            nextFirmwareNames = [];
+            nextFirmwareDevices = [];
             firmwareDone = false;
         }
         error = [dnfError, flatpakError, projectError, firmwareError]
@@ -253,6 +277,8 @@ Singleton {
         if (!dnfForced && UpdatesHelpers.dnfAnswerReusable(signature,
                 dnfCacheSignature, dnfCacheAt, Date.now())) {
             nextDnfNames = dnfCacheNames;
+            nextDnfKernel = dnfCacheKernel;
+            nextDnfSecurity = dnfCacheSecurity;
             dnfDone = true;
             finishCheck();
             return;
@@ -271,15 +297,41 @@ Singleton {
     function finishDnf(exitCode, body, errText, signature) {
         if (exitCode === 0 || exitCode === 100) {
             nextDnfNames = UpdatesHelpers.dnfNames(body);
+            nextDnfKernel = UpdatesHelpers.dnfKernelVersion(body);
             dnfCacheSignature = signature || "";
             dnfCacheNames = nextDnfNames;
+            dnfCacheKernel = nextDnfKernel;
+            dnfCacheSecurity = ({ count: 0, severe: false });
             dnfCacheAt = Date.now();
+            // Security advisories only matter for packages that are pending,
+            // and cost a second dnf read; skip it when nothing is.
+            if (nextDnfNames.length > 0) {
+                dnfSecurityProc.running = true;
+                return;
+            }
         } else {
             dnfCacheSignature = "";
             dnfError = ProcHelpers.commandError("dnf check-update", exitCode, errText,
                 ({ 124: "dnf check-update timed out" }));
             logCheckError(dnfError);
         }
+        dnfDone = true;
+        finishCheck();
+    }
+
+    // The advisory list is a detail of the dnf answer, not a source of its
+    // own: when it cannot be read the row just says less.
+    function finishDnfSecurity(exitCode, body) {
+        if (exitCode === 0) {
+            try {
+                nextDnfSecurity = UpdatesHelpers.securityAdvisories(body);
+            } catch (exception) {
+                nextDnfSecurity = ({ count: 0, severe: false });
+            }
+        } else {
+            console.warn("update check: dnf advisory list exited with status", exitCode);
+        }
+        dnfCacheSecurity = nextDnfSecurity;
         dnfDone = true;
         finishCheck();
     }
@@ -298,10 +350,10 @@ Singleton {
 
     function finishFirmware(exitCode, body, errText) {
         if (exitCode === 2) {
-            nextFirmwareNames = [];
+            nextFirmwareDevices = [];
         } else if (exitCode === 0) {
             try {
-                nextFirmwareNames = UpdatesHelpers.firmwareNames(body);
+                nextFirmwareDevices = UpdatesHelpers.firmwareDevices(body);
             } catch (exception) {
                 firmwareError = "Firmware update check returned invalid data";
             }
@@ -313,12 +365,6 @@ Singleton {
             logCheckError(firmwareError);
         firmwareDone = true;
         finishCheck();
-    }
-
-    function installFirmware() {
-        if (runActive || busy || firmwareInstalling)
-            return;
-        firmwareInstallProc.running = true;
     }
 
     function finishProject(exitCode, body, errText) {
@@ -359,6 +405,9 @@ Singleton {
         if (parts.dnf && dnfError === "") {
             dnfNames = nextDnfNames;
             dnfCount = nextDnfNames.length;
+            dnfKernel = nextDnfKernel;
+            dnfSecurityCount = nextDnfSecurity.count;
+            dnfSecuritySevere = nextDnfSecurity.severe;
             answered.push({ baseline: !!known.dnf, count: dnfCount });
             known.dnf = true;
         }
@@ -380,8 +429,7 @@ Singleton {
             }
         }
         if (parts.firmware && firmwareError === "") {
-            firmwareNames = nextFirmwareNames;
-            firmwareCount = nextFirmwareNames.length;
+            firmwareDevices = nextFirmwareDevices;
             answered.push({ baseline: !!known.firmware, count: firmwareCount });
             known.firmware = true;
         }
@@ -445,8 +493,34 @@ Singleton {
     property int fpTotal: 0
     property bool runDnfDone: true
     property bool runFpDone: true
+    property bool runFwDone: true
     property int runDnfRc: 0
     property int runFpRc: 0
+    property int runFwRc: 0
+    // The firmware phase, from the worker's event stream: devices finished
+    // of those planned, the one being written and fwupd's word for what it
+    // is doing, and anything fwupd asks the person to do.
+    property int fwCur: 0
+    property int fwTotal: 0
+    property int fwPercent: 0
+    property string fwStatus: ""
+    // The current device's share done, across fwupd's restarting stages.
+    // Devices order their stages differently (a restart before or after
+    // verification), so it only ever moves forward within one device.
+    property real fwFraction: 0
+    property string fwActiveName: ""
+    property string fwRequest: ""
+    property var fwNotes: []
+    property int fwInstalled: 0
+    property int fwFailed: 0
+    property string fwFailMessage: ""
+    property bool fwNeedsReboot: false
+    // Feed rows of planned devices, by fwupd device id.
+    property var fwRows: ({})
+    // What the run was started with, for its rows and its progress weights;
+    // null when this client attached to a run it did not start.
+    property var runPlan: null
+    property string runPlanStamp: ""
     property int upCount: 0
     property int addCount: 0
     property int delCount: 0
@@ -457,6 +531,10 @@ Singleton {
     property var failTail: []
     property var rawTail: []
     property string fpWarning: ""
+    // The failure in one sentence (UpdatesHelpers.friendlyFailure); dnf's
+    // own words are failHeadline and failTail.
+    property string failMessage: ""
+    property bool runCancelled: false
     // Fedora's needs-restarting result is authoritative. The kernel parsed
     // from dnf's transcript is optional explanatory detail only.
     property string bootId: ""
@@ -470,12 +548,16 @@ Singleton {
     readonly property string updateClient:
         Quickshell.shellDir + "/scripts/update-client"
     property bool runIncludedFlatpak: true
+    property bool runIncludedFirmware: false
     property int dnfLogOffset: 0
     property int flatpakLogOffset: 0
+    property int firmwareLogOffset: 0
     property int wantedDnfBytes: 0
     property int wantedFlatpakBytes: 0
+    property int wantedFirmwareBytes: 0
     property string dnfLogCarry: ""
     property string flatpakLogCarry: ""
+    property string firmwareLogCarry: ""
     property string backendTerminalState: ""
     property string backendMessage: ""
     property string backendPhase: ""
@@ -502,10 +584,28 @@ Singleton {
     property string startPreviousStamp: ""
     property int startPollCount: 0
 
-    readonly property int runPercent: UpdatesHelpers.runPercent(
-        dnfCur, dnfTotal, fpCur, fpTotal)
+    // Streams restart their counters (dnf downloads, then installs), so the
+    // published percentage only ever moves forward within one run.
+    readonly property int runProgressNow: UpdatesHelpers.runProgress({
+        dnfPhase: dnfPhase, dnfCur: dnfCur, dnfTotal: dnfTotal,
+        dnfDone: runDnfDone, dnfPlanned: runPlan ? runPlan.dnf : 0,
+        fpIncluded: runIncludedFlatpak, fpCur: fpCur, fpTotal: fpTotal,
+        fpDone: runFpDone, fpPlanned: runPlan ? runPlan.flatpak : 0,
+        fwIncluded: runIncludedFirmware, fwCur: fwCur, fwTotal: fwTotal,
+        fwFraction: fwFraction, fwDone: runFwDone,
+        fwPlanned: runPlan ? runPlan.firmware : 0
+    })
+    property int runPercent: -1
+    onRunProgressNowChanged: {
+        if (runActive && runProgressNow > runPercent)
+            runPercent = runProgressNow;
+    }
     readonly property int runPkgCount: upCount + addCount + delCount
-    readonly property string runLogLabel: "cybexos/update/logs/" + runStamp
+    readonly property string runPhaseLabel: UpdatesHelpers.runPhaseLabel({
+        cancelPending: cancelPending, phase: backendPhase, dnfPhase: dnfPhase,
+        dnfDone: runDnfDone, fpIncluded: runIncludedFlatpak, fpDone: runFpDone,
+        fwStatus: fwStatus, fwName: fwActiveName
+    })
 
     ListModel {
         id: feedModel
@@ -525,7 +625,7 @@ Singleton {
         startPending = false;
     }
 
-    function resetRun(runId, startedAt, includedFlatpak) {
+    function resetRun(runId, startedAt, includedFlatpak, includedFirmware) {
         feedModel.clear();
         pendingRows = ({});
         dnfCur = 0;
@@ -542,9 +642,26 @@ Singleton {
         failTail = [];
         rawTail = [];
         fpWarning = "";
+        failMessage = "";
+        runCancelled = false;
         runSeen = false;
         runDnfRc = 0;
         runFpRc = 0;
+        runFwRc = 0;
+        fwCur = 0;
+        fwTotal = 0;
+        fwPercent = 0;
+        fwFraction = 0;
+        fwStatus = "";
+        fwActiveName = "";
+        fwRequest = "";
+        fwNotes = [];
+        fwInstalled = 0;
+        fwFailed = 0;
+        fwFailMessage = "";
+        fwNeedsReboot = false;
+        fwRows = ({});
+        runPercent = -1;
         runStamp = runId || "";
         runStartedAt = startedAt > 0 ? startedAt : Date.now();
         runElapsed = 0;
@@ -554,12 +671,17 @@ Singleton {
         runDnfDone = false;
         runIncludedFlatpak = includedFlatpak;
         runFpDone = !includedFlatpak;
+        runIncludedFirmware = includedFirmware === true;
+        runFwDone = !runIncludedFirmware;
         dnfLogOffset = 0;
         flatpakLogOffset = 0;
+        firmwareLogOffset = 0;
         wantedDnfBytes = 0;
         wantedFlatpakBytes = 0;
+        wantedFirmwareBytes = 0;
         dnfLogCarry = "";
         flatpakLogCarry = "";
+        firmwareLogCarry = "";
         backendTerminalState = "";
         backendMessage = "";
         backendPhase = "";
@@ -575,7 +697,7 @@ Singleton {
     }
 
     function run(packagesOnly = false) {
-        if (runActive || runStartProc.running || firmwareInstalling)
+        if (runActive || runStartProc.running)
             return;
         // This process only stages and starts the durable worker. systemd
         // requests authorization from the desktop Polkit agent when needed,
@@ -585,11 +707,19 @@ Singleton {
             command.push("--system-only");
         if (!flatpakEnabled)
             command.push("--no-flatpak");
+        // Firmware is part of the same run whenever some is pending and it
+        // can be written now; the worker installs it after the packages.
+        const withFirmware = firmwareInRun;
+        if (withFirmware)
+            command.push("--firmware");
         statusGeneration++;
         startPreviousStamp = runStamp;
         startPollCount = 0;
         startPending = true;
-        resetRun("", Date.now(), flatpakEnabled);
+        resetRun("", Date.now(), flatpakEnabled, withFirmware);
+        runPlan = ({ dnf: dnfCount, flatpak: flatpakEnabled ? flatpakCount : 0,
+            firmware: withFirmware ? firmwareCount : 0 });
+        runPlanStamp = "pending";
         runStartProc.command = command;
         runStartProc.running = true;
     }
@@ -612,7 +742,7 @@ Singleton {
             const row = UpdatesHelpers.dnfTableRow(text);
             if (row !== null) {
                 feedModel.append({ tag: "dnf", verb: tableVerb, name: row.name,
-                    ver: row.version, evr: row.evr, done: false });
+                    ver: row.version, evr: row.evr, done: false, failed: false });
                 UpdatesHelpers.addPendingRow(pendingRows, row.name, row.evr,
                     feedModel.count - 1);
                 if (tableVerb === "up")
@@ -670,7 +800,7 @@ Singleton {
             return;
         }
         feedModel.append({ tag: "fpk", verb: parsed.verb, name: parsed.name,
-            ver: "", evr: "", done: true });
+            ver: "", evr: "", done: true, failed: false });
         lastDoneIndex = feedModel.count - 1;
         if (!parsed.runtime) {
             fpCur = Math.min(fpCur + 1, Math.max(fpTotal, fpCur + 1));
@@ -678,8 +808,96 @@ Singleton {
         }
     }
 
+    // One event from the worker's firmware phase (UpdatesHelpers
+    // .parseFirmwareEvent). The planned devices join the transaction feed
+    // up front, like dnf's table, and light up as each one finishes.
+    function fwLine(line) {
+        const event = UpdatesHelpers.parseFirmwareEvent(line);
+        if (event === null)
+            return;
+        const id = typeof event.id === "string" ? event.id : "";
+        const message = typeof event.message === "string" ? event.message.trim() : "";
+        switch (event.event) {
+        case "plan": {
+            const devices = Array.isArray(event.devices) ? event.devices : [];
+            const rows = {};
+            for (const device of devices) {
+                if (!device || typeof device.id !== "string")
+                    continue;
+                feedModel.append({ tag: "fw", verb: "up",
+                    name: UpdatesHelpers.firmwareDisplayName(device.name),
+                    ver: device.from && device.to ? device.from + " → " + device.to
+                        : String(device.to || ""),
+                    evr: "", done: false, failed: false });
+                rows[device.id] = feedModel.count - 1;
+            }
+            fwRows = rows;
+            fwTotal = Math.max(fwTotal, Object.keys(rows).length);
+            break;
+        }
+        case "device": {
+            fwPercent = 0;
+            fwFraction = 0;
+            fwStatus = "";
+            fwRequest = "";
+            const row = fwRows[id];
+            fwActiveName = row !== undefined ? feedModel.get(row).name : "firmware";
+            if (typeof event.count === "number")
+                fwTotal = Math.max(fwTotal, event.count);
+            break;
+        }
+        case "progress":
+            fwStatus = typeof event.status === "string" ? event.status : "";
+            fwPercent = Math.max(0, Math.min(100, Number(event.percent) || 0));
+            fwFraction = Math.max(fwFraction,
+                UpdatesHelpers.firmwareDeviceFraction(fwStatus, fwPercent));
+            if (fwStatus !== "waiting-for-user")
+                fwRequest = "";
+            break;
+        case "request":
+            // An immediate request waits on the person (replug, press a
+            // button); a post request is advice for after the update.
+            if (event.kind === "immediate")
+                fwRequest = message;
+            else if (message !== "" && fwNotes.indexOf(message) === -1)
+                fwNotes = fwNotes.concat([message]);
+            break;
+        case "installed":
+        case "skipped":
+        case "failed": {
+            const row = fwRows[id];
+            if (row !== undefined) {
+                feedModel.setProperty(row, "done", true);
+                feedModel.setProperty(row, "failed", event.event === "failed");
+                lastDoneIndex = row;
+            }
+            if (id !== "")
+                fwCur++;
+            fwPercent = 0;
+            fwFraction = 0;
+            fwRequest = "";
+            if (event.event === "installed") {
+                fwInstalled++;
+                if (event.needsReboot === true)
+                    fwNeedsReboot = true;
+                if (message !== "" && fwNotes.indexOf(message) === -1)
+                    fwNotes = fwNotes.concat([message]);
+            } else if (event.event === "failed") {
+                fwFailed++;
+                if (fwFailMessage === "")
+                    fwFailMessage = message !== "" ? message
+                        : "The firmware update didn’t finish.";
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
     function consumeBackendLog(kind, body, targetOffset) {
-        let text = (kind === "dnf" ? dnfLogCarry : flatpakLogCarry)
+        let text = (kind === "dnf" ? dnfLogCarry
+            : kind === "flatpak" ? flatpakLogCarry : firmwareLogCarry)
             + String(body || "");
         const complete = text.endsWith("\n");
         const lines = text.split("\n");
@@ -689,15 +907,20 @@ Singleton {
         for (const line of lines) {
             if (kind === "dnf")
                 dnfLine(line);
-            else
+            else if (kind === "flatpak")
                 fpLine(line);
+            else
+                fwLine(line);
         }
         if (kind === "dnf") {
             dnfLogCarry = carry;
             dnfLogOffset = targetOffset;
-        } else {
+        } else if (kind === "flatpak") {
             flatpakLogCarry = carry;
             flatpakLogOffset = targetOffset;
+        } else {
+            firmwareLogCarry = carry;
+            firmwareLogOffset = targetOffset;
         }
         drainBackendLogs();
         maybeFinishBackendRun();
@@ -729,6 +952,18 @@ Singleton {
                     - flatpakLogReadProc.sourceOffset)];
             flatpakLogReadProc.running = true;
         }
+        if (!firmwareLogReadProc.running
+                && wantedFirmwareBytes > firmwareLogOffset) {
+            firmwareLogReadProc.targetRunStamp = runStamp;
+            firmwareLogReadProc.sourceOffset = firmwareLogOffset;
+            firmwareLogReadProc.targetOffset = wantedFirmwareBytes;
+            firmwareLogReadProc.command = [runBackend, "read-log",
+                firmwareLogReadProc.targetRunStamp, "firmware-events",
+                String(firmwareLogReadProc.sourceOffset),
+                String(firmwareLogReadProc.targetOffset
+                    - firmwareLogReadProc.sourceOffset)];
+            firmwareLogReadProc.running = true;
+        }
     }
 
     function applyBackendStatus(data) {
@@ -742,11 +977,19 @@ Singleton {
             return;
         const started = Number(data.startedAt || 0) * 1000;
         const includedFlatpak = data.flatpak !== false;
-        if (runStamp !== data.id)
-            resetRun(data.id, started, includedFlatpak);
-        else {
+        const includedFirmware = data.firmware === true;
+        if (runStamp !== data.id) {
+            resetRun(data.id, started, includedFlatpak, includedFirmware);
+            // The plan belongs to the run this client started; a run it
+            // merely found (the CLI's, or one from before a reload) has none.
+            if (runPlanStamp === "pending")
+                runPlanStamp = data.id;
+            else if (runPlanStamp !== data.id)
+                runPlan = null;
+        } else {
             runStartedAt = started > 0 ? started : runStartedAt;
             runIncludedFlatpak = includedFlatpak;
+            runIncludedFirmware = includedFirmware;
         }
         backendPhase = typeof data.phase === "string" ? data.phase : "";
         recoveryPointId = typeof data.snapshotId === "string" ? data.snapshotId : "";
@@ -757,10 +1000,14 @@ Singleton {
         wantedDnfBytes = Math.max(wantedDnfBytes, Number(data.dnfBytes || 0));
         wantedFlatpakBytes = Math.max(wantedFlatpakBytes,
             Number(data.flatpakBytes || 0));
+        wantedFirmwareBytes = Math.max(wantedFirmwareBytes,
+            Number(data.firmwareEventBytes || 0));
         runDnfDone = data.dnfDone === true;
         runFpDone = !includedFlatpak || data.flatpakDone === true;
+        runFwDone = !includedFirmware || data.firmwareDone === true;
         runDnfRc = Number(data.dnfRc || 0);
         runFpRc = Number(data.flatpakRc || 0);
+        runFwRc = Number(data.firmwareRc || 0);
         backendMessage = typeof data.message === "string" ? data.message : "";
         drainBackendLogs();
 
@@ -774,6 +1021,7 @@ Singleton {
         backendFinishedAt = Number(data.finishedAt || 0) * 1000;
         runDnfDone = true;
         runFpDone = true;
+        runFwDone = true;
         if (data.state !== "done")
             runDnfRc = Number(data.exitCode || runDnfRc
                 || ProcHelpers.NOT_STARTED);
@@ -782,8 +1030,10 @@ Singleton {
 
     function maybeFinishBackendRun() {
         if (backendTerminalState === "" || dnfLogReadProc.running
-                || flatpakLogReadProc.running || dnfLogOffset < wantedDnfBytes
-                || flatpakLogOffset < wantedFlatpakBytes)
+                || flatpakLogReadProc.running || firmwareLogReadProc.running
+                || dnfLogOffset < wantedDnfBytes
+                || flatpakLogOffset < wantedFlatpakBytes
+                || firmwareLogOffset < wantedFirmwareBytes)
             return;
         if (dnfLogCarry !== "") {
             dnfLine(dnfLogCarry);
@@ -793,11 +1043,15 @@ Singleton {
             fpLine(flatpakLogCarry);
             flatpakLogCarry = "";
         }
+        if (firmwareLogCarry !== "") {
+            fwLine(firmwareLogCarry);
+            firmwareLogCarry = "";
+        }
         finishRun();
     }
 
     function finishRun() {
-        if (!runDnfDone || !runFpDone || !runActive)
+        if (!runDnfDone || !runFpDone || !runFwDone || !runActive)
             return;
         runFinishedAt = backendFinishedAt > 0 ? backendFinishedAt : Date.now();
         runDuration = Math.round((runFinishedAt - runStartedAt) / 1000);
@@ -811,12 +1065,19 @@ Singleton {
                     : runDnfRc === ProcHelpers.NOT_STARTED
                     ? "dnf could not be started"
                     : "dnf exited with status " + runDnfRc;
+            runCancelled = backendTerminalState === "cancelled";
+            failMessage = runCancelled ? "Nothing more was changed after the step that was running."
+                : UpdatesHelpers.friendlyFailure(rawTail, backendMessage,
+                    runDnfRc, backendPhase, ProcHelpers.NOT_STARTED);
             runState = "failed";
         } else {
-            // A Flathub hiccup should not turn a completed system upgrade
-            // into a failure banner; it gets a warning line instead.
+            // A Flathub hiccup or a device that refused its firmware should
+            // not turn a completed system upgrade into a failure banner;
+            // their rows say what happened instead.
             if (runIncludedFlatpak && runFpRc !== 0)
-                fpWarning = "flatpak update failed — see the log";
+                fpWarning = "Couldn’t update apps";
+            if (runIncludedFirmware && runFwRc !== 0 && fwFailMessage === "")
+                fwFailMessage = "The firmware update didn’t finish.";
             runState = "done";
             doneClear.restart();
         }
@@ -847,8 +1108,8 @@ Singleton {
 
     // Raw transcript, in the pager everyone already has. The log file is the
     // one place the full unparsed output survives, so the escape hatch opens
-    // it rather than re-rendering it.
-    function openLog(file) {
+    // it rather than re-rendering it. run.log interleaves every step.
+    function openLog(file = "run.log") {
         Quickshell.execDetached(["kitty", "--title", "Update log", "bash",
             "-c", "exec less -R \"${XDG_STATE_HOME:-$HOME/.local/state}/"
             + "cybexos/update/logs/" + runStamp + "/" + file + "\""]);
@@ -1073,6 +1334,39 @@ Singleton {
         }
     }
 
+    Process {
+        id: firmwareLogReadProc
+        property string targetRunStamp: ""
+        property int sourceOffset: 0
+        property int targetOffset: 0
+        property string body: ""
+        property bool exitSeen: false
+        property int lastExit: -1
+        stdout: StdioCollector {
+            onStreamFinished: firmwareLogReadProc.body = text
+        }
+        onExited: (exitCode, exitStatus) => {
+            firmwareLogReadProc.exitSeen = true;
+            firmwareLogReadProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                exitSeen = false;
+                lastExit = -1;
+            } else if (UpdatesHelpers.acceptsLogRead(root.runStamp,
+                    root.firmwareLogOffset, targetRunStamp, sourceOffset,
+                    targetOffset, exitSeen, lastExit)) {
+                root.consumeBackendLog("firmware", body, targetOffset);
+            } else if (exitSeen && (targetRunStamp !== root.runStamp
+                    || sourceOffset !== root.firmwareLogOffset)) {
+                root.drainBackendLogs();
+            } else if (exitSeen && lastExit !== 0) {
+                console.warn("firmware update log read exited with status", lastExit);
+            }
+        }
+    }
+
     // The falling edge, so a cancel client that never started still asks
     // for the run's state.
     Process {
@@ -1251,6 +1545,40 @@ Singleton {
         }
     }
 
+    // The security advisories among the pending packages, from the same
+    // cache check-update just read.
+    Process {
+        id: dnfSecurityProc
+        property string body: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        command: ["timeout", "45s", "dnf", "--quiet", "--cacheonly",
+            "advisory", "list", "--security", "--updates", "--json"]
+        // qmllint disable incompatible-type
+        environment: ({ LC_ALL: "C" })
+        // qmllint enable incompatible-type
+
+        stdout: StdioCollector {
+            onStreamFinished: dnfSecurityProc.body = text
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            dnfSecurityProc.exitSeen = true;
+            dnfSecurityProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                exitSeen = false;
+                lastExit = 0;
+            } else {
+                root.finishDnfSecurity(exitSeen ? lastExit : ProcHelpers.NOT_STARTED,
+                    body);
+            }
+        }
+    }
+
     Process {
         id: flatpakProc
         property string body: ""
@@ -1323,35 +1651,6 @@ Singleton {
             } else {
                 root.finishFirmware(exitSeen ? lastExit : ProcHelpers.NOT_STARTED,
                     body, errText);
-            }
-        }
-    }
-
-    // Keep fwupd's safety/device/reboot prompts in an interactive terminal.
-    // kitty stays attached, so closing it schedules a fresh count.
-    Process {
-        id: firmwareInstallProc
-        property bool started: false
-        property bool exitSeen: false
-        property int lastExit: 0
-        command: ["kitty", "--title", "Firmware updates", "bash",
-            Quickshell.shellDir + "/scripts/firmware-update"]
-        onExited: (exitCode, exitStatus) => {
-            exitSeen = true;
-            lastExit = exitCode;
-        }
-        onRunningChanged: {
-            if (running) {
-                exitSeen = false;
-                lastExit = 0;
-                started = true;
-            } else if (started) {
-                started = false;
-                if (!exitSeen || lastExit !== 0) {
-                    root.firmwareError = "Firmware updater did not complete. Check the terminal output or try again.";
-                } else {
-                    Qt.callLater(root.check);
-                }
             }
         }
     }

@@ -57,9 +57,10 @@ BarModule {
             : chip.rebootRecommended
             ? UpdatesHelpers.rebootLabel(Updates.rebootRecommendation,
                 Updates.kernelPending)
-            : Updates.runState === "done" ? "Update finished · open for the transcript"
-            : Updates.runState === "failed" ? "Update failed · " + Updates.failHeadline
-            : "Updates · " + Updates.summary
+            : Updates.runState === "done" ? "Updates installed"
+            : Updates.runState === "failed"
+            ? (Updates.runCancelled ? "Update cancelled" : "Update didn’t finish")
+            : Updates.summary
         tooltipAlign: 1
     }
 }
