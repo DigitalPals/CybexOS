@@ -48,8 +48,11 @@ Singleton {
 
     readonly property var helperNetworks: snapshot.wifi
         && Array.isArray(snapshot.wifi.networks) ? snapshot.wifi.networks : []
+    // `acquired` is checked first so a released controller holds no binding
+    // on the radio's network list: each access point's signal change would
+    // otherwise rebuild and regroup the scan with no Network view open.
     readonly property var fallbackNetworks: {
-        if (!WifiState.device || !WifiState.enabled)
+        if (!root.acquired || !WifiState.device || !WifiState.enabled)
             return [];
         return WifiState.device.networks.values.map(network => ({
             ssid: network.name,

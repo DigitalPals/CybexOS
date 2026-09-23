@@ -257,6 +257,124 @@ test("snapshot subprocess failures are bounded", () => {
     }
 });
 
+// Every external lookup the 1.5 second snapshot makes, each deliberately slow.
+// Run one after another they take seven delays; the helper runs the three
+// NetworkManager/ip reads side by side and then the scan, link and pings.
+function snapshotStubs(base, delay) {
+    const pause = `sleep ${delay}\n`;
+    executable(base, "nmcli", `#!/usr/bin/env bash
+${pause}case "$*" in
+  *"device show"*)
+    printf '%s\\n' 'GENERAL.DEVICE:wlan0' 'GENERAL.TYPE:wifi' 'GENERAL.NM-TYPE:NMDeviceWifi' \\
+      'GENERAL.CONNECTION:Home' 'GENERAL.CON-UUID:uuid-home' 'GENERAL.STATE:100 (connected)' \\
+      'IP4.ADDRESS[1]:192.168.1.20/24' 'IP4.GATEWAY:192.168.1.1' '' \\
+      'GENERAL.DEVICE:eth0' 'GENERAL.TYPE:ethernet' 'GENERAL.NM-TYPE:NMDeviceEthernet' \\
+      'GENERAL.CONNECTION:--' 'GENERAL.CON-UUID:' 'GENERAL.STATE:30 (disconnected)' \\
+      'IP4.GATEWAY:' ;;
+  *"connection show"*)
+    printf '%s\\n' 'NAME:Home' 'UUID:uuid-home' 'TYPE:802-11-wireless' 'DEVICE:wlan0' '' \\
+      'NAME:Office' 'UUID:uuid-office' 'TYPE:802-11-wireless' 'DEVICE:--' ;;
+  *"wifi list"*)
+    printf '%s\\n' '*:Home:AA\\:BB\\:CC\\:DD\\:EE\\:01:81:5180 MHz:WPA2' \\
+      ' :Office:AA\\:BB\\:CC\\:DD\\:EE\\:02:40:2437 MHz:WPA2' \\
+      ' :Cafe:AA\\:BB\\:CC\\:DD\\:EE\\:03:55:2412 MHz:' ;;
+esac
+`);
+    executable(base, "ip", `#!/usr/bin/env bash
+${pause}printf '%s\\n' '[{"dst":"default","gateway":"192.168.1.1","dev":"wlan0","metric":600}]'
+`);
+    executable(base, "iw", `#!/usr/bin/env bash
+${pause}printf '%s\\n' 'Connected to aa:bb:cc:dd:ee:01 (on wlan0)' '	SSID: Home' \\
+  '	freq: 5180' '	signal: -48 dBm' '	rx bitrate: 866.7 MBit/s' '	tx bitrate: 650.0 MBit/s'
+`);
+    executable(base, "ping", `#!/usr/bin/env bash
+${pause}case "$*" in
+  *192.168.1.1*) echo '64 bytes from 192.168.1.1: icmp_seq=1 ttl=64 time=2.5 ms' ;;
+  *) echo '64 bytes from 203.0.113.9: icmp_seq=1 ttl=57 time=14.0 ms' ;;
+esac
+`);
+    base.env.NETWORK_TOOL_PING_TARGET = "203.0.113.9";
+    base.env.NETWORK_TOOL_SYS_CLASS_NET = path.join(base.directory, "no-sysfs");
+}
+
+test("snapshot runs its independent lookups concurrently with an unchanged payload", () => {
+    const base = fixture();
+    try {
+        snapshotStubs(base, 0.5);
+        const started = Date.now();
+        const result = invoke(helper, "snapshot", undefined, base.env);
+        const elapsed = Date.now() - started;
+        assert.equal(result.status, 0, result.stderr);
+        const payload = JSON.parse(result.stdout);
+
+        delete payload.timestamp;
+        assert.deepEqual(payload, {
+            success: true,
+            devices: [
+                {
+                    interface: "wlan0", type: "wifi", nmType: "NMDeviceWifi",
+                    connection: "Home", uuid: "uuid-home", stateCode: 100,
+                    state: "connected", connected: true, managed: true,
+                    ipv4: "192.168.1.20", gateway: "192.168.1.1",
+                    rxBytes: null, txBytes: null, defaultMetric: 600,
+                    ssid: "Home", signal: 81, frequency: 5180, security: "WPA2",
+                    signalDbm: -48, rxBitrateMbps: 866.7, txBitrateMbps: 650
+                },
+                {
+                    interface: "eth0", type: "ethernet", nmType: "NMDeviceEthernet",
+                    connection: "", uuid: "", stateCode: 30,
+                    state: "disconnected", connected: false, managed: true,
+                    ipv4: "", gateway: "", rxBytes: null, txBytes: null
+                }
+            ],
+            routes: [{
+                destination: "default", interface: "wlan0", gateway: "192.168.1.1",
+                metric: 600, source: ""
+            }],
+            profiles: [
+                {
+                    name: "Home", uuid: "uuid-home", connectionType: "802-11-wireless",
+                    type: "wifi", device: "wlan0", active: true
+                },
+                {
+                    name: "Office", uuid: "uuid-office", connectionType: "802-11-wireless",
+                    type: "wifi", device: "", active: false
+                }
+            ],
+            wifi: {
+                interface: "wlan0",
+                networks: [
+                    {
+                        ssid: "Home", bssid: "aa:bb:cc:dd:ee:01", signal: 81, frequency: 5180,
+                        security: "WPA2", connected: true, known: true,
+                        profileUuid: "uuid-home", profileName: "Home"
+                    },
+                    {
+                        ssid: "Office", bssid: "aa:bb:cc:dd:ee:02", signal: 40, frequency: 2437,
+                        security: "WPA2", connected: false, known: true,
+                        profileUuid: "uuid-office", profileName: "Office"
+                    },
+                    {
+                        ssid: "Cafe", bssid: "aa:bb:cc:dd:ee:03", signal: 55, frequency: 2412,
+                        security: "", connected: false, known: false,
+                        profileUuid: "", profileName: ""
+                    }
+                ],
+                link: {
+                    ssid: "Home", frequency: 5180, signalDbm: -48,
+                    rxBitrateMbps: 866.7, txBitrateMbps: 650
+                }
+            },
+            diagnostics: { routerPingMs: 2.5, internetPingMs: 14 }
+        });
+        // Seven sequential 0.5 s lookups (the two pings already overlapped)
+        // took at least three seconds; two concurrent rounds take one.
+        assert.ok(elapsed < 2500, `snapshot took ${elapsed}ms`);
+    } finally {
+        base.cleanup();
+    }
+});
+
 test("speed test emits phase, sample, and completion JSON lines", () => {
     const base = fixture();
     try {

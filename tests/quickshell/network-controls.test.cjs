@@ -129,7 +129,18 @@ test("Tailscale polling follows Network consumers and refreshes new views", () =
 
     assert.match(singleton,
         /function acquire\(\)[\s\S]{0,120}watchers\+\+;[\s\S]{0,80}if \(!statusProc\.running\)\s*refresh\(\)/);
-    assert.match(singleton, /interval:\s*30000/);
+    // The menubar's permanent claim polls slowly; an open view polls fast.
+    assert.match(singleton, /readonly property int livePollMs:\s*30000/);
+    assert.match(singleton, /readonly property int idlePollMs:\s*120000/);
+    assert.match(singleton,
+        /interval:\s*root\.liveWatchers > 0 \? root\.livePollMs : root\.idlePollMs/);
+    assert.match(singleton,
+        /function acquireLive\(\)\s*\{\s*liveWatchers\+\+;\s*acquire\(\);/);
+    assert.match(singleton,
+        /function releaseLive\(\)\s*\{[\s\S]{0,80}liveWatchers - 1\);\s*release\(\);/);
+    const drawer = read("Popovers/Drawer/DrawerNetwork.qml");
+    assert.match(drawer, /onClaimed:[\s\S]{0,200}Tailscale\.acquireLive\(\)/);
+    assert.match(drawer, /onReleased:[\s\S]{0,200}Tailscale\.releaseLive\(\)/);
     for (const source of [module, panel]) {
         assert.match(source, /Tailscale\.acquire\(\)/);
         assert.match(source, /Tailscale\.release\(\)/);
@@ -158,7 +169,15 @@ test("wired monitoring is ref-counted by each visible Network consumer", () => {
 
     assert.match(singleton, /function acquire\(\)/);
     assert.match(singleton, /function release\(\)/);
-    assert.match(singleton, /"nmcli", "device", "monitor"/);
+    // One NetworkManager event stream for the shell: wired changes arrive
+    // through NetworkStatus's `nmcli monitor`, and the poll is only a
+    // safety net while that stream is down.
+    assert.doesNotMatch(singleton, /"nmcli", "device", "monitor"/);
+    assert.match(singleton,
+        /target: NetworkStatus[\s\S]*?function onMonitorEvent\(line\)[\s\S]*?monitorDebounce\.restart\(\)/);
+    assert.match(singleton, /function onMonitorRunningChanged\(\)/);
+    assert.match(singleton,
+        /id: poll[\s\S]{0,80}running: root\.watchers > 0 && !NetworkStatus\.monitorRunning/);
     assert.match(singleton, /property bool known:/);
     assert.match(singleton, /property string error:/);
     assert.match(singleton, /readonly property var connectedDevices:/);

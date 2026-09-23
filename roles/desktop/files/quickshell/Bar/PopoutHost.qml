@@ -156,6 +156,19 @@ Item {
         return -1;
     }
 
+    // An outgoing slot is hidden once its fade-out finishes, not merely
+    // transparent: panels key their claims (Common/Claim.qml) and pollers on
+    // `visible`, so a transparent one kept Bluetooth discovery, the network
+    // poll and the rest running behind the incoming panel until the popout
+    // closed. The front slot, and a slot incubating or re-seated for the
+    // pending request, stay visible so their layout is real before they are
+    // measured. Card visibility still hides everything once closed, which is
+    // what releases a latched warm panel.
+    function slotVisible(slot, opacity) {
+        return frontSlot === slot || opacity > 0
+            || (requestedName !== "" && nameFor(slot) === requestedName);
+    }
+
     function serialFor(slot) {
         return slot === 0 ? slotASerial : slotBSerial;
     }
@@ -712,6 +725,7 @@ Item {
                     width: Math.max(1, implicitWidth)
                     height: Math.max(1, implicitHeight)
                     opacity: 0
+                    visible: host.slotVisible(0, opacity)
                     enabled: host.frontSlot === 0 && Popouts.open
                     focus: enabled
                     z: host.frontSlot === 0 ? 2 : 1
@@ -735,6 +749,7 @@ Item {
                     width: Math.max(1, implicitWidth)
                     height: Math.max(1, implicitHeight)
                     opacity: 0
+                    visible: host.slotVisible(1, opacity)
                     enabled: host.frontSlot === 1 && Popouts.open
                     focus: enabled
                     z: host.frontSlot === 1 ? 2 : 1

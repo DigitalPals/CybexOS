@@ -31,9 +31,11 @@ Singleton {
     // The other networks in range, strongest first and deduplicated by name:
     // one SSID on several APs is one row to the user. There is deliberately no
     // old seven-row cap; the Network view scrolls and groups the full scan.
-    // Empty while the radio is off so a stale scan cannot outlive it.
+    // Empty while the radio is off so a stale scan cannot outlive it, and
+    // while no view has the scanner on: every access point's signal change
+    // would otherwise re-sort this list with nothing on screen to read it.
     readonly property var others: {
-        if (!device || !enabled)
+        if (!scanning || !enabled)
             return [];
         const seen = new Set();
         return device.networks.values
