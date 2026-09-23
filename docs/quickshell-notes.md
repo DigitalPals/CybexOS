@@ -577,21 +577,26 @@ The 2026-08-15 redesign ("QuickShell Menubar", Claude Design project
 `facd7f56`) replaced an opaque bar and its bar-fused popouts with translucent
 glass and detached panels. What that added, and what it needs:
 
-- **Pinned shell fonts.** `JetBrains Mono` is the default UI face;
-  `Google Sans Flex`, `Urbanist`, `OPPO Sans 4.0`, and `IBM Plex Sans` remain
-  optional menu faces, and `Material Symbols Rounded` supplies every generic
-  interface glyph. Audited product marks go through `Common/BrandIcon.qml`,
-  while application identities come from the desktop icon theme. The apps
-  role installs the packaged faces and the remaining fonts come from
-  `inventory/group_vars/all.yml`. **Qt reads the font database once at
-  startup**, so a freshly installed face needs
-  `systemctl --user restart quickshell.service`, not a hot reload — a missing
-  icon font renders each ligature as its own name in plain text.
-- **Icons are ligatures, not codepoints.** `Sym { name: "wifi" }` draws the
-  word "wifi" shaped into one mark. A name the face does not carry is not a
-  blank box, it is the word — invisible to qmllint.
-  `tests/quickshell/material-symbols.test.cjs` reads the installed TTF's `post`
-  table and checks every name the shell draws.
+- **Pinned shell fonts.** The UI typeface remains configurable. Generic
+  interface icons use bundled Tabler 3.48.0, loaded once by
+  `Common/TablerIcons.qml`; no icon font installation or font-cache refresh is
+  needed. Product marks still use `BrandIcon`, and application icons use the
+  desktop theme.
+- **Icons use an explicit registry.** `Sym { name: "wifi" }` resolves through
+  `Common/TablerGlyphs.js`. Existing semantic names remain as compatibility
+  aliases for built-ins and plugins; canonical bundled Tabler names also work.
+  Unknown names show help-circle and empty names draw nothing. `Sym` reserves
+  a square slot and always draws the outline variant, including active states
+  and playback controls. Selection uses colour, backgrounds, borders, labels
+  and checkmarks; pinned thread actions use accent ink and favourite stars
+  use amber. Icon colour fades, press feedback and spinners remain. Legacy
+  `fill`/`animateFill`/`glyphFill`/`symbolFill` inputs are accepted but inert,
+  as are `symWeight`/`grade`. The filled font is no longer shipped.
+  `tests/quickshell/tabler-icons.test.cjs` checks names and actual codepoint
+  coverage in the bundled font, without system dependencies. Brand/application
+  artwork and functional shapes such as switch tracks and progress meters
+  retain their own presentation.
+  Update assets with `scripts/update-tabler-icons`; see `assets/tabler/README.md`.
 - **Blur is the compositor's.** `roles/desktop/files/looknfeel.lua` exports the
   named `quickshell_blur_rule` matching the `qs-*` namespaces. The Appearance
   switch calls that handle through `hyprctl eval`; its initial `enabled` value

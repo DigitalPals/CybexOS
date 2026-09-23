@@ -814,18 +814,11 @@ Column {
                         color: T3Theme.accentForeground
                     }
 
-                    // Drawn rather than set in the icon font. Material Symbols
-                    // makes its filled square by collapsing the outlined one's
-                    // counter onto itself, and at this size FreeType rounds the
-                    // seam back open — a notch through the middle of the mark.
-                    // The shape is a rounded square either way; this one is
-                    // exact.
-                    Rectangle {
+                    Sym {
                         visible: root.stopMode
                         anchors.centerIn: parent
-                        width: 8
-                        height: 8
-                        radius: 2
+                        name: "stop"
+                        size: Theme.iconMedium
                         color: T3Theme.dangerForeground
                     }
 

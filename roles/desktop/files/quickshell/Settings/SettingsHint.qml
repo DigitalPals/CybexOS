@@ -39,7 +39,6 @@ Item {
         y: Math.max(0, (body.lineHeightPx - height) / 2)
         name: root.tone === "error" ? "error" : "warning"
         size: Theme.iconSmall
-        fill: 1
         color: root.ink
     }
 

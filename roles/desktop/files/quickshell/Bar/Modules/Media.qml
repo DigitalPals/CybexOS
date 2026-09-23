@@ -57,7 +57,6 @@ BarModule {
             anchors.centerIn: parent
             name: button.glyph
             size: Theme.iconMedium
-            fill: 1
             color: button.hovered ? button.hoverTone : button.tone
         }
 
@@ -143,7 +142,6 @@ BarModule {
                 visible: !playerBrand.visible && !playerIcon.visible
                 name: root.playing ? "graphic_eq" : "music_note"
                 size: Theme.iconSmall + 1
-                fill: 1
                 color: mediaChip.fg
             }
         }

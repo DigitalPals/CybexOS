@@ -60,7 +60,7 @@ test("the brand registry owns canonical and geometry-matched hover SVGs", () => 
 test("product marks render through BrandIcon rather than ad-hoc asset paths", () => {
     const registry = path.join(shellDir, "Common/BrandIcons.qml");
     for (const file of codeFiles()) {
-        if (file === registry)
+        if (file === registry || file.endsWith("/Common/TablerIcons.qml"))
             continue;
         const source = fs.readFileSync(file, "utf8");
         assert.doesNotMatch(source, /\/assets\/|\.svg["']/,
@@ -78,7 +78,7 @@ test("product marks render through BrandIcon rather than ad-hoc asset paths", ()
     assert.match(icon, /property bool highlighted:\s*false/);
     assert.match(icon, /property real highlightAmount:\s*highlighted \? 1 : 0/);
     assert.match(icon, /Behavior on tintAmount/,
-        "contextual brand tints must fade like Material glyph colours");
+        "contextual brand tints must fade like interface icon colours");
     assert.match(icon, /Behavior on highlightAmount/,
         "source-painted hover marks must cross-fade like other bar glyphs");
     assert.match(icon, /colorization:\s*root\.tintAmount/);

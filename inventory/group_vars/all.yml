@@ -194,7 +194,7 @@ pinned_font_archives:
 # the version below is only the directory label. JetBrainsMono Nerd Font is
 # the Quickshell default (installed above); Figtree, Google Sans Flex and
 # Urbanist remain appearance choices, with Geist Mono for numeric readings,
-# and Material Symbols Rounded supplies every generic interface glyph in the
+# and bundled Tabler icons supply every generic interface glyph in the
 # shell (Common/Sym.qml). Product identities are the audited SVGs behind
 # Common/BrandIcon.qml.
 pinned_font_files:
@@ -359,14 +359,6 @@ pinned_font_files:
     license_url: https://raw.githubusercontent.com/coreyhu/Urbanist/cf64de52fe255c01a13db5f25c6deeb51a240311/OFL.txt
     license_checksum: sha256:93b568382826c6f92eda0dc4807d0106b05141fb8348cd63ac996077e8cc47fa
     license_filename: OFL.txt
-  - name: material-symbols-rounded
-    version: "2026.08.14"
-    url: https://raw.githubusercontent.com/google/material-design-icons/e083cc60a0828fdd3b404cea0cb8a5b900e9c23e/variablefont/MaterialSymbolsRounded%5BFILL%2CGRAD%2Copsz%2Cwght%5D.ttf
-    checksum: sha256:c2c185c2f31193348f34ae454215d990bb49f494c45e79348d9f2b3d653607d7
-    filename: MaterialSymbolsRounded[FILL,GRAD,opsz,wght].ttf
-    license_url: https://raw.githubusercontent.com/google/material-design-icons/e083cc60a0828fdd3b404cea0cb8a5b900e9c23e/LICENSE
-    license_checksum: sha256:58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd
-    license_filename: LICENSE.txt
 source_apps:
   - name: awww
     repo_url: https://codeberg.org/LGFae/awww.git

@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Effects
-import QtQuick.Shapes
 import Quickshell.Services.Mpris
 import "../Common"
 import "../Common/Format.js" as Format
@@ -161,101 +160,17 @@ Surface {
         }
     }
 
-    // ---- The transport marks ---------------------------------------------
-    // Drawn rather than set in the icon face. Common/Sym.qml renders through
-    // Qt's distance-field text path, which does not apply the Material
-    // Symbols FILL axis — every glyph comes out as an outline, and Qt gives
-    // that outline subpixel antialiasing on top. On a large mark over the
-    // accent, four fringed edges per shape read as a bevel: a button
-    // pretending to be three-dimensional. These are the same shapes, solid.
-    //
-    // Only playback uses them. Shuffle and repeat stay on Sym, because they
-    // are line marks in the icon set to begin with and read correctly there.
-    component TransportMark: Item {
-        id: mark
-
-        // "play" | "pause" | "previous" | "next"
+    // Playback, shuffle and repeat share Tabler outline icons.
+    component TransportMark: Sym {
         property string kind: "play"
         property color tone: Theme.icon
-        property int size: Theme.iconLarge
-
-        // The marks are described on the icon set's own 24-unit grid, so they
-        // keep Material's proportions at any size.
-        readonly property real u: size / 24
-        // Stroked with the fill colour and a round join: that is what rounds
-        // the triangle's points without a corner radius on a path.
-        readonly property real soften: Math.max(1.5, 2.1 * u)
-
-        implicitWidth: size
-        implicitHeight: size
-
-        Row {
-            anchors.centerIn: parent
-            visible: mark.kind === "pause"
-            spacing: 3.6 * mark.u
-
-            Rectangle {
-                width: 4.4 * mark.u
-                height: 15 * mark.u
-                radius: 1.7 * mark.u
-                color: mark.tone
-            }
-
-            Rectangle {
-                width: 4.4 * mark.u
-                height: 15 * mark.u
-                radius: 1.7 * mark.u
-                color: mark.tone
-            }
-        }
-
-        Rectangle {
-            visible: mark.kind === "previous" || mark.kind === "next"
-            x: mark.kind === "previous" ? 4.8 * mark.u : mark.width - 8.4 * mark.u
-            anchors.verticalCenter: parent.verticalCenter
-            width: 3.6 * mark.u
-            height: 14 * mark.u
-            radius: 1.5 * mark.u
-            color: mark.tone
-        }
-
-        Shape {
-            anchors.fill: parent
-            visible: mark.kind !== "pause"
-            preferredRendererType: Shape.CurveRenderer
-            // The skip marks point back at their own bar; play points right
-            // from the centre of the box.
-            transform: Scale {
-                origin.x: mark.width / 2
-                xScale: mark.kind === "previous" ? -1 : 1
-            }
-
-            ShapePath {
-                fillColor: mark.tone
-                strokeColor: mark.tone
-                strokeWidth: mark.soften
-                joinStyle: ShapePath.RoundJoin
-                capStyle: ShapePath.RoundCap
-
-                startX: mark.kind === "play" ? 8.4 * mark.u : 8.6 * mark.u
-                startY: mark.kind === "play" ? 5.9 * mark.u : 6.9 * mark.u
-
-                PathLine {
-                    x: mark.kind === "play" ? 17.4 * mark.u : 15.6 * mark.u
-                    y: 12 * mark.u
-                }
-
-                PathLine {
-                    x: mark.kind === "play" ? 8.4 * mark.u : 8.6 * mark.u
-                    y: mark.kind === "play" ? 18.1 * mark.u : 17.1 * mark.u
-                }
-
-                PathLine {
-                    x: mark.kind === "play" ? 8.4 * mark.u : 8.6 * mark.u
-                    y: mark.kind === "play" ? 5.9 * mark.u : 6.9 * mark.u
-                }
-            }
-        }
+        readonly property var marks: ({
+            play: "play_arrow", pause: "pause",
+            previous: "skip_previous", next: "skip_next"
+        })
+        name: marks[kind] || "play_arrow"
+        color: tone
+        size: Theme.iconLarge
     }
 
     // ---- One transport control -------------------------------------------
@@ -266,7 +181,7 @@ Surface {
         id: button
 
         property string glyph
-        // Playback marks are drawn; shuffle and repeat stay glyphs.
+        // The playback action selects its outline icon by kind.
         property string mark: ""
         property int diameter: 38
         property int glyphSize: Theme.iconLarge
@@ -475,7 +390,6 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 name: root.playing ? "graphic_eq" : "pause"
                 size: Theme.iconSmall
-                fill: 1
                 color: root.playing ? Theme.accentText : Theme.textDim
             }
 

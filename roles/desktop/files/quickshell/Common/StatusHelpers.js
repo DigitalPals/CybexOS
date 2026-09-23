@@ -81,8 +81,8 @@ var PLAYBACK_STATE = {
     Paused: 2
 };
 
-// Material Symbols ligatures. The set carries no brand marks, so a player is
-// identified by what it is doing rather than by whose logo it wears: a browser
+// Semantic Tabler icon names. Players are
+// identified by media type: a browser
 // gets the globe, a video player the film mark, everything else the note.
 var PLAYER_GLYPH = {
     spotify: "graphic_eq",

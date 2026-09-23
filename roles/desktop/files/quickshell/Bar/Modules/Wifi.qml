@@ -61,7 +61,6 @@ BarModule {
                 : WifiState.signal >= 33 ? "network_wifi_2_bar"
                 : "network_wifi_1_bar"
             size: Theme.barIconSize
-            fill: 1
             color: chip.fg
             opacity: EthernetState.connected || WifiState.connected ? 1 : 0.35
 

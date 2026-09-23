@@ -4,7 +4,7 @@ import "../Common"
 import "../Common/Format.js" as Format
 import "../Common/LayoutHelpers.js" as LayoutHelpers
 
-// A compact glyph button in the bar: one Material Symbols mark, an optional
+// A compact glyph button in the bar: one Tabler icons mark, an optional
 // value beside it, and the quiet chip that lights under the pointer.
 //
 // Four shapes, because the design uses four; see `shape` below. What they
@@ -79,7 +79,7 @@ Rectangle {
     property real pillHeight: round ? Theme.roundButton
         : inner ? Theme.chipInnerHeight : Theme.chipHeight
 
-    // Material Symbols ligature name, e.g. "wifi".
+    // Semantic icon name, e.g. "wifi".
     property string glyph
     property real glyphSize: Theme.barIconSize
     // Determinate task progress, 0..1. Anything at or above zero replaces the
@@ -92,7 +92,8 @@ Rectangle {
     // module that changes width slides every module beside it: pin the width
     // for icons that differ between states. 0 sizes to the glyph.
     property real glyphWidth: 0
-    property real glyphFill: active || alert ? 1 : 0
+    // Legacy plugin API: outlines are used regardless of this value.
+    property real glyphFill: 0
     property real glyphWeight: 500
     property string label: ""
     property bool compact: false
@@ -199,7 +200,6 @@ Rectangle {
                 anchors.centerIn: parent
                 name: root.glyph
                 size: root.glyphSize
-                fill: root.glyphFill
                 symWeight: root.glyphWeight
                 color: root.fg
             }

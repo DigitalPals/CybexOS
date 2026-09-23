@@ -46,7 +46,6 @@ Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             name: root.glyph
             size: Theme.iconLarge
-            fill: root.on ? 1 : 0
             color: root.on ? Theme.accentText : Theme.textMid
         }
 

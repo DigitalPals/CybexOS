@@ -30,7 +30,6 @@ BarModule {
             name: Audio.muted || Audio.volume === 0 ? "volume_off"
                 : Audio.volume < 50 ? "volume_down" : "volume_up"
             size: Theme.barIconSize
-            fill: 1
             color: chip.fg
         }
 

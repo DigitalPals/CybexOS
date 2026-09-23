@@ -110,7 +110,6 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         name: root.glyph
         size: 18
-        fill: 1
         color: Theme.textHi
     }
 
@@ -141,7 +140,6 @@ Rectangle {
             anchors.centerIn: parent
             name: root.glyph
             size: 18
-            fill: 1
             color: Theme.textHi
         }
 

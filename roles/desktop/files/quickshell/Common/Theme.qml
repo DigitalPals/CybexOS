@@ -395,11 +395,9 @@ Singleton {
     // edge-drawer redesign sets these in Geist Mono against Figtree UI copy,
     // so a reading is recognisably an instrument value rather than prose.
     readonly property string fontNumeric: Settings.font === "mono" ? fontMono : "Geist Mono"
-    // Material Symbols Rounded, installed as a pinned variable font by the
-    // apps role. Draw it through Common/Sym.qml rather than by hand: the
-    // glyph is selected by ligature name and the fill/weight axes need
-    // setting for the icon to read at the intended optical weight.
-    readonly property string fontIcon: "Material Symbols Rounded"
+    // Bundled Tabler icons. Sym owns name resolution, font loading and the
+    // consistent outline rendering; views must not draw icon codepoints directly.
+    readonly property string fontIcon: "Cybex Tabler Outline"
 
     // One library owns the scale AND its usage by native and plugin surfaces.
     readonly property var typography: Typography.resolve(fontBaseSize)

@@ -4,57 +4,50 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir, load } = require("./shell.cjs");
 
-// Material Symbols selects a glyph by *ligature*: `name: "wifi"` is the string
-// "wifi", shaped into one mark by the font. A name the font does not carry is
-// not a missing icon — it is the word, drawn in the icon font, in the middle of
-// the bar. That failure is invisible to qmllint and to every other check here,
-// so this reads the installed face and confirms every name the shell draws
-// exists in it.
-//
-// The face is a pinned install (inventory/group_vars/all.yml → pinned_font_files);
-// the check skips rather than fails when it is absent, the way tests/qml-lint
-// skips without qmllint.
+const Tabler = load("TablerGlyphs.js");
 
-const FONT_DIR = "/usr/local/share/fonts/material-symbols-rounded";
-
-function installedFont() {
-    if (!fs.existsSync(FONT_DIR))
-        return null;
-    for (const version of fs.readdirSync(FONT_DIR).sort().reverse()) {
-        const dir = path.join(FONT_DIR, version);
-        if (!fs.statSync(dir).isDirectory())
-            continue;
-        const ttf = fs.readdirSync(dir).find(f => f.endsWith(".ttf"));
-        if (ttf)
-            return path.join(dir, ttf);
-    }
-    return null;
-}
-
-// Glyph names out of the TrueType `post` table (format 2.0), which for this
-// face is exactly the icon-name list.
-function glyphNames(file) {
+// Read cmap formats 4 and 12 directly, so coverage is checked on every machine
+// without an installed icon font or a Python/fonttools test dependency.
+function fontCodepoints(file) {
     const data = fs.readFileSync(file);
-    const tableCount = data.readUInt16BE(4);
-    let post = null;
-    for (let i = 0; i < tableCount; i++) {
-        const record = 12 + i * 16;
-        if (data.toString("latin1", record, record + 4) === "post")
-            post = { offset: data.readUInt32BE(record + 8), length: data.readUInt32BE(record + 12) };
+    let cmap;
+    for (let i = 0; i < data.readUInt16BE(4); i++) {
+        const r = 12 + i * 16;
+        if (data.toString("ascii", r, r + 4) === "cmap")
+            cmap = data.readUInt32BE(r + 8);
     }
-    assert.ok(post, "the installed face has no post table");
-    assert.equal(data.readUInt32BE(post.offset), 0x00020000,
-        "expected a format 2.0 post table with real glyph names");
-
-    const count = data.readUInt16BE(post.offset + 32);
-    let cursor = post.offset + 34 + count * 2;
-    const names = new Set();
-    while (cursor < post.offset + post.length) {
-        const length = data[cursor];
-        names.add(data.toString("latin1", cursor + 1, cursor + 1 + length));
-        cursor += 1 + length;
+    assert.notEqual(cmap, undefined);
+    const found = new Set();
+    for (let i = 0; i < data.readUInt16BE(cmap + 2); i++) {
+        const table = cmap + data.readUInt32BE(cmap + 4 + i * 8 + 4);
+        const format = data.readUInt16BE(table);
+        if (format === 12) {
+            for (let j = 0; j < data.readUInt32BE(table + 12); j++) {
+                const group = table + 16 + j * 12;
+                const start = data.readUInt32BE(group);
+                const end = data.readUInt32BE(group + 4);
+                const glyph = data.readUInt32BE(group + 8);
+                for (let c = start; c <= end; c++)
+                    if (glyph + c - start !== 0) found.add(c);
+            }
+        } else if (format === 4) {
+            const n = data.readUInt16BE(table + 6) / 2;
+            const ends = table + 14, starts = ends + 2 * n + 2;
+            const deltas = starts + 2 * n, offsets = deltas + 2 * n;
+            for (let j = 0; j < n; j++) {
+                const start = data.readUInt16BE(starts + j * 2);
+                const end = data.readUInt16BE(ends + j * 2);
+                const delta = data.readInt16BE(deltas + j * 2);
+                const offset = data.readUInt16BE(offsets + j * 2);
+                for (let c = start; c <= end && c < 0xffff; c++) {
+                    let glyph = offset ? data.readUInt16BE(offsets + j * 2 + offset + (c - start) * 2) : c;
+                    if (!offset || glyph) glyph = (glyph + delta) & 0xffff;
+                    if (glyph) found.add(c);
+                }
+            }
+        }
     }
-    return names;
+    return found;
 }
 
 function qmlFiles() {
@@ -72,7 +65,7 @@ function qmlFiles() {
     return out;
 }
 
-// Where an icon name can come from, and nowhere else: a `name:` inside a Sym
+// Existing semantic names (underscore spelling) can come from: a `name:` inside a Sym
 // block, a `glyph:` on a BarIcon or a Control Panel tile, a `symbol:` on an
 // IconButton, and the two helpers that pick one by hand. Deliberately narrow —
 // a broad "any lowercase string" sweep collects enum values and format strings
@@ -120,7 +113,7 @@ function collectNames() {
         }
 
         // Helpers that pick a name from state — the launcher's result kinds,
-        // the notification sources — return the ligature itself.
+        // the notification sources — return the semantic name itself.
         for (const fn of source.matchAll(/function \w*(?:glyph|symbol)\w*\s*\(/gi)) {
             addNames(found, blockAt(source, fn.index),
                 `${relative}:${lineOf(source, fn.index)}`);
@@ -142,7 +135,7 @@ function collectNames() {
 
     // Command-palette providers and built-in actions choose their glyphs from
     // a pure-JS registry. User actions deliberately inherit the validated
-    // action glyph rather than accepting an arbitrary ligature from JSON.
+    // action glyph rather than accepting an arbitrary icon name from JSON.
     for (const glyph of load("LauncherProviders.js").GLYPHS)
         found.set(glyph, "Common/LauncherProviders.js: GLYPHS");
 
@@ -152,35 +145,40 @@ function collectNames() {
     return found;
 }
 
-test("every Material Symbols name the shell draws exists in the installed face", () => {
-    const file = installedFont();
-    if (!file) {
-        console.log(`SKIP  Material Symbols Rounded not installed under ${FONT_DIR}`);
-        return;
-    }
-
-    const available = glyphNames(file);
-    // Sanity: a name the shell definitely draws, so a broken parse fails loudly
-    // rather than passing an empty set.
-    for (const known of ["wifi", "power_settings_new", "chevron_left"])
-        assert.ok(available.has(known), `the post table parse missed "${known}"`);
-
+test("every shell icon name resolves to bundled Tabler artwork", () => {
     const used = collectNames();
-    assert.ok(used.size > 30, `only found ${used.size} icon names — did the scan break?`);
+    assert.ok(used.size > 140);
+    const missing = [...used].filter(([name]) => !Tabler.has(name));
+    assert.deepEqual(missing, []);
+});
 
-    const missing = [];
-    for (const [name, where] of used) {
-        if (!available.has(name))
-            missing.push(`${where}: "${name}"`);
+test("all registry codepoints exist in the bundled outline font", () => {
+    const aliases = JSON.parse(fs.readFileSync(path.join(shellDir, "assets/tabler/aliases.json")));
+    assert.deepEqual(Tabler.ALIASES, aliases, "regenerate after changing icon mappings");
+    const points = fontCodepoints(path.join(shellDir, "assets/tabler/outline.ttf"));
+    assert.ok(Object.keys(Tabler.GLYPHS).length > 150);
+    for (const [name, glyph] of Object.entries(Tabler.GLYPHS)) {
+        assert.ok(points.has(glyph.outline.codePointAt(0)), `${name}: missing outline`);
+        assert.equal(glyph.filled, undefined, `${name}: filled icons are not shipped`);
     }
-    assert.deepEqual(missing.sort(), [],
-        "these names are not ligatures in the face, so they draw as literal text");
+    for (const target of Object.values(aliases))
+        assert.ok(Object.hasOwn(Tabler.GLYPHS, target));
+    assert.equal(fs.existsSync(path.join(shellDir, "assets/tabler/filled.ttf")), false);
+});
+
+test("empty, unknown, canonical and compatibility names resolve safely", () => {
+    assert.equal(Tabler.resolve("").outline, "");
+    assert.equal(Tabler.resolve(null).outline, "");
+    assert.equal(Tabler.resolve("not-an-icon"), Tabler.GLYPHS["help-circle"]);
+    assert.equal(Tabler.resolve("__proto__"), Tabler.GLYPHS["help-circle"]);
+    assert.equal(Tabler.resolve("notifications"), Tabler.resolve("bell"));
+    assert.ok(Tabler.resolve("notifications").outline);
+    assert.ok(Tabler.resolve("wifi").outline);
+    assert.equal(Tabler.resolve("wifi").filled, undefined);
 });
 
 test("icons are drawn through Sym rather than by hand", () => {
-    // Sym is what sets the family, the fill axis and the optical size; a bare
-    // Text in the icon font renders at the font's default instance, which is
-    // visibly lighter than everything beside it.
+    // Sym owns the bundled font and square alignment.
     const offenders = [];
     for (const file of qmlFiles()) {
         const relative = path.relative(shellDir, file);

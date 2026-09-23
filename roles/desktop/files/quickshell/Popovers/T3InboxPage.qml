@@ -367,7 +367,7 @@ Item {
 
                         visible: T3Code.supportsPinning
                         symbol: pending ? "more_horiz" : "keep"
-                        symbolFill: entry.thread.pinned ? 1 : 0
+                        tint: entry.thread.pinned ? T3Theme.accent : T3Theme.textMuted
                         accessibleName: entry.thread.pinned ? "Unpin" : "Pin"
                         enabled: T3Code.canDispatch && !pending
                         onTriggered: entry.thread.pinned

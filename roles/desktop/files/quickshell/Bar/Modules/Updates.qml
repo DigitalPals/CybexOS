@@ -17,7 +17,7 @@ BarModule {
     BarIcon {
         id: chip
 
-        // Indirection keeps the `glyph:` line to one validated ligature; the
+        // Indirection keeps the `glyph:` line to one validated icon name; the
         // icon-name test reads every string on that line as one.
         readonly property bool rebootRecommended: Updates.rebootRecommended
         readonly property string stateGlyph: chip.rebootRecommended
@@ -31,7 +31,6 @@ BarModule {
         glyph: chip.stateGlyph
         glyphSize: Theme.barIconSize - 1
         glyphWeight: 600
-        glyphFill: chip.rebootRecommended || chip.alert ? 1 : 0
         // Pinned: the glyph, its completed state and the progress ring trade places here,
         // and the right cluster is right-anchored, so a wobbling column would
         // slide every module beside it.

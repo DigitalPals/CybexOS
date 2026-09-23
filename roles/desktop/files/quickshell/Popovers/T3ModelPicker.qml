@@ -310,7 +310,6 @@ Item {
                     Sym {
                         anchors.centerIn: parent
                         name: "star"
-                        fill: 1
                         size: Theme.iconMedium
                         symWeight: 500
                         color: root.railId === "favorites"
@@ -698,7 +697,6 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 controlSize: 24
                                 symbol: "star"
-                                symbolFill: pickerRow.modelData.favorite === true ? 1 : 0
                                 tint: pickerRow.modelData.favorite === true
                                     ? T3Theme.amber : T3Theme.textFaint
                                 // A column of stars down an untouched list is

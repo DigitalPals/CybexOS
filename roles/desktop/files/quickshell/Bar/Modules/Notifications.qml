@@ -20,7 +20,6 @@ BarModule {
         anchorItem: root.groupAnchor ?? chip
         glyph: Notifs.dnd ? "notifications_off" : "notifications"
         glyphSize: Theme.barIconSize
-        glyphFill: Notifs.dnd || Notifs.hasUrgent ? 1 : 0
         glyphWeight: 550
         // Critical history stays visible even while DND suppresses its toast.
         alert: Notifs.hasUrgent

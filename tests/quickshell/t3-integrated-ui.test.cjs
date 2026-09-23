@@ -199,7 +199,7 @@ test("the T3 composer exposes an attached settings drawer and round send action"
 
     assert.match(composer, /id:\s*settingsDrawer[\s\S]*?visible:\s*settingsPresentation\.expanded/);
     assert.match(composer, /text:\s*"Ask anything…"/);
-    assert.ok(send, "expected the composer's Material Symbol send button");
+    assert.ok(send, "expected the composer's Tabler send button");
     assert.match(send[1], /width:\s*Theme\.inlineActionHeight/);
     assert.match(send[1], /height:\s*Theme\.inlineActionHeight/);
     assert.match(send[1], /radius:\s*width \/ 2/);
@@ -207,8 +207,8 @@ test("the T3 composer exposes an attached settings drawer and round send action"
         /name:\s*root\.sending \? "more_horiz" : "arrow_upward"/,
         "the one round action carries send and in-flight");
     assert.match(composer,
-        /Rectangle\s*\{\s*visible:\s*root\.stopMode[\s\S]*?color:\s*T3Theme\.dangerForeground/,
-        "and stop, as a drawn square the icon font cannot render cleanly");
+        /Sym\s*\{\s*visible:\s*root\.stopMode[\s\S]*?name:\s*"stop"[\s\S]*?color:\s*T3Theme\.dangerForeground/,
+        "and stop, as a Tabler outline with contrasting ink");
     assert.doesNotMatch(composer, /Enter to send · Ctrl\+Enter/,
         "keyboard help must not be permanent visual chrome");
 });

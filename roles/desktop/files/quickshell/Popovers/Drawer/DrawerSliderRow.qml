@@ -25,7 +25,6 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         name: root.glyph
         size: Theme.iconLarge
-        fill: 1
         color: Theme.textMid
     }
 

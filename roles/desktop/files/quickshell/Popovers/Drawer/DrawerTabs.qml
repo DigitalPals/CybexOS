@@ -20,7 +20,7 @@ Rectangle {
         sound: { glyph: "volume_down", label: "Sound" },
         network: { glyph: "wifi", label: "Network" },
         bluetooth: { glyph: "bluetooth", label: "Bluetooth" },
-        power: { glyph: "battery_5_bar", label: "Power", rotate: true },
+        power: { glyph: "battery_5_bar", label: "Power" },
         notifications: { glyph: "notifications", label: "Notifications" },
         usage: { glyph: "insights", label: "Usage" }
     })
@@ -149,7 +149,6 @@ Rectangle {
                             anchors.centerIn: parent
                             name: segment.modelData.glyph
                             size: root.tabIconSize
-                            fill: segment.on ? 1 : 0
                             rotation: segment.modelData.rotate === true ? 90 : 0
                             color: segment.on ? Theme.textHi : Theme.textFaint
                         }

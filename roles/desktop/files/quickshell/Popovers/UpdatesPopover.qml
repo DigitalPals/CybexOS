@@ -77,8 +77,8 @@ Surface {
             : verb === "down" ? Theme.amber : Theme.ok;
     }
 
-    // Only ligature literals may appear in here: the icon-name test reads
-    // every string in a *glyph* helper as a Material Symbols name.
+    // Only icon-name literals may appear in here: the icon-name test reads
+    // every string in a *glyph* helper as a Tabler icons name.
     function headerGlyph(running, done, failed) {
         return running ? "progress_activity" : done ? "check_circle"
             : failed ? "error" : "deployed_code_update";
@@ -108,7 +108,6 @@ Surface {
                     root.mode === "done", root.mode === "failed")
                 size: Theme.iconLarge
                 symWeight: 450
-                fill: root.mode === "done" || root.mode === "failed" ? 1 : 0
                 color: root.mode === "done" ? Theme.ok
                     : root.mode === "failed" ? Theme.redText : Theme.accentText
 
@@ -380,7 +379,6 @@ Surface {
                     name: Updates.busy ? "refresh"
                         : Updates.packageError !== "" ? "cloud_off" : "check_circle"
                     size: Theme.iconLarge
-                    fill: Updates.busy || Updates.packageError !== "" ? 0 : 1
                     color: Updates.busy ? Theme.accentText
                         : Updates.packageError !== "" ? Theme.textFaint : Theme.accentText
                     opacity: 0.9
@@ -549,7 +547,6 @@ Surface {
                         : stepLine.rc === 0 ? "check_circle" : "error"
                     size: 13
                     symWeight: 600
-                    fill: stepLine.finished ? 1 : 0
                     color: !stepLine.finished ? stepLine.tint
                         : stepLine.rc === 0 ? Theme.ok : Theme.redText
 
@@ -776,7 +773,6 @@ Surface {
                     : rebootOutcome.notNeeded ? "check_circle" : "warning"
                 size: Theme.iconSmall + 2
                 symWeight: 600
-                fill: 1
                 color: rebootOutcome.notNeeded ? Theme.ok : Theme.amber
             }
 

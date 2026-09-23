@@ -117,7 +117,6 @@ Column {
             DrawerIconButton {
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "skip_previous"
-                fill: 1
                 width: 30
                 height: 30
                 enabled: Media.player !== null && Media.player.canGoPrevious
@@ -138,7 +137,6 @@ Column {
                         && Media.player.playbackState === MprisPlaybackState.Playing
                         ? "pause" : "play_arrow"
                     size: 18
-                    fill: 1
                     color: Theme.accentFg
                 }
 
@@ -158,7 +156,6 @@ Column {
             DrawerIconButton {
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "skip_next"
-                fill: 1
                 width: 30
                 height: 30
                 enabled: Media.player !== null && Media.player.canGoNext
@@ -265,7 +262,6 @@ Column {
                     && Updates.runState === "idle" && !Updates.rebootRecommended
                     ? "check_circle" : "deployed_code_update"
                 size: 18
-                fill: Updates.total === 0 && Updates.runState === "idle" ? 1 : 0
                 color: Updates.total === 0 && Updates.error === ""
                     && Updates.runState === "idle" && !Updates.rebootRecommended
                     ? Theme.ok : Theme.textMid

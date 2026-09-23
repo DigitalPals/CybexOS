@@ -74,7 +74,6 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             name: "notifications_active"
             size: Theme.iconMedium
-            fill: Reminders.count > 0 ? 1 : 0
             color: Reminders.count > 0 ? Theme.accentText : Theme.textMid
         }
 

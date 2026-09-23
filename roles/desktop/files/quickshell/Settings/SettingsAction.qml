@@ -60,7 +60,7 @@ Rectangle {
         // drawn in the menu face, which only worked while that face happened
         // to carry them: JetBrains Mono has no ↺, so every reset control in
         // the workspace fell back to whatever glyph the fontconfig chain
-        // offered. Material Symbols is a set the shell installs and checks.
+        // offered. Tabler icons is a set the shell installs and checks.
         Sym {
             anchors.verticalCenter: parent.verticalCenter
             visible: root.glyph !== ""

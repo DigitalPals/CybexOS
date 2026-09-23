@@ -174,7 +174,6 @@ Column {
                     anchors.verticalCenter: parent.verticalCenter
                     name: AudioHelpers.sinkGlyph(sinkRow.modelData)
                     size: 16
-                    fill: sinkRow.current ? 1 : 0
                     color: sinkRow.current ? Theme.accentText : Theme.textMid
                 }
 
@@ -301,7 +300,6 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 name: Audio.sourceMuted ? "mic_off" : "mic"
                 size: 16
-                fill: 1
                 color: Audio.sourceMuted ? Theme.redText : Theme.accentText
             }
 

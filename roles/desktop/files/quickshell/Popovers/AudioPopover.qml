@@ -175,7 +175,6 @@ Surface {
             anchors.centerIn: parent
             name: muteButton.muted ? muteButton.mutedGlyph : muteButton.audibleGlyph
             size: Theme.iconMedium
-            fill: muteButton.muted ? 1 : 0
             color: muteButton.muted ? Theme.redText : Theme.textMid
         }
 
@@ -255,7 +254,6 @@ Surface {
             width: 22
             name: devicePicker.glyph
             size: Theme.iconMedium
-            fill: 1
             color: devicePicker.ready ? Theme.accentText : Theme.textDim
         }
 
@@ -368,7 +366,6 @@ Surface {
             width: 20
             name: AudioHelpers.sinkGlyph(sinkRow.sinkNode)
             size: Theme.iconMedium
-            fill: sinkRow.isDefault ? 1 : 0
             color: sinkRow.isDefault ? Theme.accentText : Theme.textLow
         }
 
@@ -463,7 +460,6 @@ Surface {
             width: 20
             name: AudioHelpers.sourceGlyph(sourceRow.sourceNode)
             size: Theme.iconMedium
-            fill: sourceRow.isDefault ? 1 : 0
             color: sourceRow.isDefault ? Theme.accentText : Theme.textLow
         }
 
@@ -639,7 +635,6 @@ Surface {
                             anchors.centerIn: parent
                             name: root.outputGlyph
                             size: Theme.fontHero + 6
-                            fill: Audio.muted ? 0 : 1
                             color: Audio.muted || !Audio.ready
                                 ? Theme.textDim : Theme.accentText
                         }

@@ -410,7 +410,6 @@ Surface {
                         anchors.verticalCenter: parent.verticalCenter
                         name: "sticky_note_2"
                         size: Theme.iconMedium
-                        fill: Notes.count > 0 ? 1 : 0
                         color: Theme.accentText
                     }
 

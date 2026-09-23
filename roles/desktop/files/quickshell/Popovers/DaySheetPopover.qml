@@ -104,7 +104,6 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     name: Weather.symbol(Weather.code, Weather.isDay)
                     size: 22
-                    fill: 1
                     color: Weather.ready
                         ? Weather.glyphColor(Weather.code, Weather.isDay)
                         : Theme.textMid
@@ -212,7 +211,6 @@ Surface {
                                         dayCell.modelData.forecast.code, true)
                                     : "circle"
                                 size: 14
-                                fill: 1
                                 color: dayCell.modelData.forecast
                                     ? Weather.glyphColor(
                                         dayCell.modelData.forecast.code, true)

@@ -115,8 +115,6 @@ Column {
                 : root.level >= 35 ? "battery_3_bar"
                 : root.level >= 20 ? "battery_2_bar" : "battery_1_bar"
             size: 30
-            fill: 1
-            rotation: 90
             color: Theme.textMid
         }
     }
@@ -186,7 +184,6 @@ Column {
                             anchors.verticalCenter: parent.verticalCenter
                             name: profileChoice.modelData.glyph
                             size: 16
-                            fill: profileChoice.on ? 1 : 0
                             color: profileChoice.on ? Theme.textHi : Theme.textFaint
                         }
 
@@ -232,7 +229,6 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 name: "battery_saver"
                 size: 18
-                fill: BatteryHealth.enabled ? 1 : 0
                 color: BatteryHealth.enabled ? Theme.accentText : Theme.textMid
             }
 
@@ -299,7 +295,6 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 name: "coffee"
                 size: 18
-                fill: SysInfo.idleInhibited ? 1 : 0
                 color: SysInfo.idleInhibited ? Theme.accentText : Theme.textMid
             }
 

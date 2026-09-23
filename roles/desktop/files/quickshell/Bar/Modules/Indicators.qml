@@ -317,7 +317,6 @@ BarModule {
                 anchors.verticalCenter: parent.verticalCenter
                 name: button.transcribing ? "progress_activity" : (button.action.glyph ?? "")
                 size: Theme.iconSmall + 2
-                fill: button.activeState && !button.transcribing ? 1 : 0
                 symWeight: 550
                 color: button.ink
                 // A recording blinks on the elapsed timer's own 1 Hz tick,

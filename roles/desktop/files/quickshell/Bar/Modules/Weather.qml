@@ -37,7 +37,6 @@ BarModule {
             name: !Weather.locationSet ? "add_location"
                 : Weather.symbol(Weather.code, Weather.isDay)
             size: Theme.iconSmall + 1
-            fill: 1
             // Weather.code is -1 until a forecast lands, and barGlyphColor()
             // already answers that with the "no data" resting tone.
             color: chip.fg

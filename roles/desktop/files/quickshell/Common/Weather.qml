@@ -181,7 +181,7 @@ Singleton {
         return "—";
     }
 
-    // Material Symbols ligature for a WMO code. Kept in the same code order as
+    // Semantic icon name for a WMO code. Kept in the same code order as
     // glyphColor() below so a mark and its tint cannot disagree about the sky.
     function symbol(code, day) {
         if (code < 0)

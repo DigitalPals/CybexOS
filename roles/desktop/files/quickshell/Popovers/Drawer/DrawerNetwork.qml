@@ -229,7 +229,6 @@ Column {
                             : netEntry.network.signal >= 33
                             ? "network_wifi_2_bar" : "network_wifi_1_bar"
                         size: 16
-                        fill: netEntry.current ? 1 : 0
                         color: netEntry.current ? Theme.accentText : Theme.textMid
                     }
 

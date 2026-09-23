@@ -612,7 +612,6 @@ Surface {
             width: 22
             name: picker.glyph
             size: Theme.iconMedium
-            fill: 1
             color: picker.ready ? Theme.accentText : Theme.textDim
         }
 
@@ -1023,7 +1022,6 @@ Surface {
                             name: !root.primary ? "wifi_off"
                                 : NetworkHelpers.physicalType(root.primary) === "ethernet" ? "lan" : "wifi"
                             size: Theme.fontHero
-                            fill: 1
                             color: root.primary ? Theme.accentText : Theme.textDim
                         }
                     }
@@ -1324,7 +1322,6 @@ Surface {
                             anchors.verticalCenter: parent.verticalCenter
                             name: "lan"
                             size: Theme.fontBody
-                            fill: ethernetRow.modelData.connected ? 1 : 0
                             color: ethernetRow.modelData.connected ? Theme.accentText : Theme.textDim
                         }
 

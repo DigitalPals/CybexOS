@@ -8,6 +8,7 @@ Rectangle {
     id: root
 
     property string glyph: ""
+    // Legacy plugin API: outlines are used regardless of this value.
     property real fill: 0
     property real glyphSize: Theme.iconMedium
     property color tint: Theme.textMid
@@ -50,7 +51,6 @@ Rectangle {
         anchors.centerIn: parent
         name: root.glyph
         size: root.glyphSize
-        fill: root.fill
         color: mouse.containsMouse ? Theme.textHi : root.tint
     }
 

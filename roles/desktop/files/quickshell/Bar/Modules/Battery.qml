@@ -4,9 +4,9 @@ import "../../Common"
 
 // Battery gets its own detail target and is shown only on laptops (auto-rule).
 //
-// The mark is Material's vertical battery turned on its side, which is how the
-// design draws it, and it fills with the charge so the glyph itself carries
-// the reading before the percentage does.
+// Tabler battery marks are horizontal; the shared icon slot keeps every
+// charge level aligned without rotating its glyph.
+
 BarModule {
     id: root
 
@@ -60,8 +60,6 @@ BarModule {
                     : root.level >= 20 ? "battery_2_bar"
                     : "battery_1_bar"
                 size: Theme.barIconSize
-                fill: 1
-                rotation: 90
                 color: chip.fg
             }
         }

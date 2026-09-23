@@ -72,7 +72,6 @@ Item {
             visible: !brand.visible && !image.visible
             name: root.urgent ? "warning" : root.entry.webOrigin ? "public" : "notifications"
             size: Math.max(Theme.fontCaption, root.iconSize - (root.framed ? 3 : 8))
-            fill: root.framed ? 1 : 0
             color: root.urgent ? Theme.redText : Theme.accentText
         }
     }

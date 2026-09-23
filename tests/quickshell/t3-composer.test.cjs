@@ -283,12 +283,9 @@ test("the composer's round action becomes a stop while the turn is working", () 
         /readonly property bool stopMode:\s*stoppable && !newThread/,
         "a thread that does not exist yet has no turn to interrupt");
     assert.match(send[1], /visible:\s*!root\.stopMode[\s\S]*?name:\s*root\.sending \? "more_horiz" : "arrow_upward"/);
-    // The stop mark is a Rectangle, not a glyph: the icon font builds its
-    // filled square by collapsing the outlined one's counter, and the seam
-    // rounds back open at this size.
     assert.match(send[1],
-        /Rectangle\s*\{\s*visible:\s*root\.stopMode[\s\S]*?radius:\s*2/,
-        "the stop square must be drawn, not shaped from the icon font");
+        /Sym\s*\{\s*visible:\s*root\.stopMode[\s\S]*?name:\s*"stop"/,
+        "stop uses the same Tabler outline renderer as the other controls");
     assert.match(send[1], /enabled:\s*root\.stopMode\s*\n\s*\? T3Code\.canDispatch && !root\.stopping/,
         "a stop must not wait on prompt text the composer will not accept");
     assert.match(send[1], /onClicked:\s*root\.activatePrimary\(\)/);

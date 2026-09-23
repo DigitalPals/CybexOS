@@ -247,7 +247,6 @@ Surface {
                 anchors.centerIn: parent
                 name: radio.glyph
                 size: Theme.iconLarge
-                fill: radio.on ? 1 : 0
                 color: radio.on ? Theme.accentText : Theme.icon
             }
         }
@@ -394,7 +393,6 @@ Surface {
                     anchors.centerIn: parent
                     name: tile.glyph
                     size: Theme.iconLarge
-                    fill: tile.effective ? 1 : 0
                     color: tile.mark
                 }
             }
@@ -500,7 +498,6 @@ Surface {
                 anchors.horizontalCenter: parent.horizontalCenter
                 name: action.glyph
                 size: Theme.iconMedium
-                fill: 0
                 color: action.armed ? Theme.amber : Theme.icon
             }
 
@@ -928,7 +925,6 @@ Surface {
                                     anchors.verticalCenter: parent.verticalCenter
                                     name: capture.glyph
                                     size: Theme.iconSmall + 2
-                                    fill: capture.recording ? 1 : 0
                                     color: capture.mark
                                 }
 

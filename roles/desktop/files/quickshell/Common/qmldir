@@ -52,6 +52,7 @@ singleton BatteryHealth BatteryHealth.qml
 singleton BarOverflow BarOverflow.qml
 singleton ShellHealth ShellHealth.qml
 singleton BrandIcons BrandIcons.qml
+singleton TablerIcons TablerIcons.qml
 singleton WebIcons WebIcons.qml
 singleton Media Media.qml
 singleton Tailscale Tailscale.qml

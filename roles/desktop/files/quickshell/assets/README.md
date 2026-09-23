@@ -2,8 +2,9 @@
 
 The shell chooses icons by semantic role:
 
-- Generic actions and status use `Common/Sym.qml` and Material Symbols
-  Rounded.
+- Generic actions and status use `Common/Sym.qml` and bundled Tabler icons.
+  See [tabler/README.md](tabler/README.md) for the pinned fonts, name mapping
+  and regeneration instructions.
 - Product identities use `Common/BrandIcon.qml` and the allow-list in
   `Common/BrandIcons.qml`.
 - Installed applications use the desktop icon theme through

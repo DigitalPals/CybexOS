@@ -1,14 +1,13 @@
 import QtQuick
 import "../Common"
 
-// Compact T3 header icon button. Material Symbols avoid the baseline and
+// Compact T3 header icon button. Tabler icons avoid the baseline and
 // weight inconsistencies of typographic arrows while retaining a text-only
 // accessible name at every call site.
 Rectangle {
     id: iconButton
     property string symbol: ""
-    // 0 outline, 1 solid. Sym animates the axis, so a toggle here lights the
-    // same glyph rather than cutting to a second one — see Common/Sym.qml.
+    // Legacy plugin API: outlines are used regardless of this value.
     property real symbolFill: 0
     property color tint: T3Theme.textMuted
     property int controlSize: T3Theme.iconButtonSize
@@ -64,7 +63,6 @@ Rectangle {
     Sym {
         anchors.centerIn: parent
         name: iconButton.symbol
-        fill: iconButton.symbolFill
         size: Theme.iconMedium
         symWeight: 450
         color: iconButton.tint

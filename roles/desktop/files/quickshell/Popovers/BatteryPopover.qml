@@ -137,8 +137,6 @@ Surface {
                 anchors.centerIn: parent
                 name: root.batteryGlyph
                 size: Theme.fontHero + 12
-                fill: 1
-                rotation: 90
                 color: root.batteryTone
 
                 Behavior on color {
@@ -175,7 +173,6 @@ Surface {
                     anchors.verticalCenter: parent.verticalCenter
                     name: "bolt"
                     size: Theme.iconSmall
-                    fill: 1
                     color: Theme.accentText
                 }
 
@@ -342,7 +339,6 @@ Surface {
                 anchors.verticalCenter: parent.verticalCenter
                 name: "battery_saver"
                 size: Theme.iconMedium
-                fill: BatteryHealth.enabled ? 1 : 0
                 color: BatteryHealth.enabled ? Theme.accentText : Theme.textLow
             }
 
@@ -498,7 +494,6 @@ Surface {
                             anchors.verticalCenter: parent.verticalCenter
                             name: profileSegment.modelData.glyph
                             size: Theme.iconMedium
-                            fill: profileSegment.current ? 1 : 0
                             color: profileSegment.current
                                 ? Theme.textHi : Theme.textLow
                         }

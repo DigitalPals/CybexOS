@@ -75,7 +75,7 @@ test("semantic typography tokens retain the intended logical-pixel scale", () =>
 
 test("menu typography keeps the bar's own compact metrics", () => {
     assert.equal(stringToken("fontSans"), "JetBrainsMono Nerd Font");
-    assert.equal(stringToken("fontIcon"), "Material Symbols Rounded");
+    assert.equal(stringToken("fontIcon"), "Cybex Tabler Outline");
     assert.deepEqual([
         intToken("chipHeight"),
         intToken("chipInnerHeight"),

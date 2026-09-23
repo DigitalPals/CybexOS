@@ -135,7 +135,7 @@ Font includes the coverage of Omarchy's basic variant. The `fonts` tag also
 installs all 16 iA Writer static faces (Mono, Duo, Quattro and legacy Duospace),
 using Omarchy's upstream commits with SHA-256 pins and bundled OFL notices.
 Omarchy's private branding icon font is shell artwork; CybexOS uses its own
-Material Symbols and product icons. Existing additional font choices remain.
+bundled Tabler interface icons and product icons. Existing additional font choices remain.
 Arabic and Urdu fallback ordering follows Omarchy, including Chromium requests
 without a language hint.
 

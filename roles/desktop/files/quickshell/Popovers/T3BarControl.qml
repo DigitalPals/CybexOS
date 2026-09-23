@@ -14,7 +14,7 @@ Item {
     property string text: ""
     // What the control is for, when the value alone ("Max") does not say.
     property string accessibleDescription: ""
-    // Either an approved brand name or a Material Symbol. A control that shows
+    // Either an approved brand name or a Tabler icon. A control that shows
     // both marks would be two icons for one idea, so brand wins.
     property string brand: ""
     property string symbol: ""

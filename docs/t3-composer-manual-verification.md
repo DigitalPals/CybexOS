@@ -16,7 +16,7 @@ select trait and a boolean trait.
   drawer resets to collapsed instead of persisting the previous choice.
 - [ ] Confirm the toolbar stays one row: model text elides before access text,
   while the tune and send/stop actions never clip. Run settings must have a
-  Material Symbol close control rather than a typographic chevron.
+  Tabler close control rather than a typographic chevron.
 - [ ] Confirm `Full access` is amber in both the toolbar chip and expanded Access
   picker. Below 360px of effective composer width, confirm reasoning moves into
   Run settings while model and access remain available in the toolbar and its

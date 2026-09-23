@@ -83,7 +83,6 @@ Item {
                 anchors.centerIn: parent
                 name: root.glyph
                 size: Theme.iconLarge
-                fill: root.kind === "loading" ? 0 : 1
                 color: root.kind === "error" ? root.errorColor : root.accentColor
 
                 RotationAnimation on rotation {
