@@ -25,6 +25,11 @@ UEFI_FIRMWARE = (
     ("/usr/share/edk2/ovmf/OVMF_CODE.fd", "/usr/share/edk2/ovmf/OVMF_VARS.fd"),
     ("/usr/share/OVMF/OVMF_CODE.fd", "/usr/share/OVMF/OVMF_VARS.fd"),
 )
+# Seconds after VM start before typing first (GRUB waits 5 s), between typing
+# attempts while SSH stays down, and allowed beyond --boot-wait overall.
+FIRST_ATTEMPT = 60
+ATTEMPT_WINDOW = 60
+SSH_ALLOWANCE = 240
 
 
 def run(args, **kwargs):
@@ -119,7 +124,8 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--firmware", choices=("bios", "uefi"), default="uefi")
     parser.add_argument("--boot-wait", type=int, default=150,
-                        help="Seconds allowed for boot and offline first-login toolchain setup")
+                        help="Seconds allowed for boot and offline first-login toolchain setup; "
+                             f"typing starts earlier and is retried, and SSH gets {SSH_ALLOWANCE} more")
     parser.add_argument("--hold", action="store_true", help="Keep the VM open for interactive installer testing; Ctrl-C cleans up")
     args = parser.parse_args()
     uefi = None
@@ -171,24 +177,36 @@ def main():
     try:
         # Boot the ISO's real firmware/menu path, then open the normal live
         # user's terminal. No debug console or special guest agent is shipped.
-        time.sleep(args.boot_wait)
+        # Keys sent before the desktop is up are lost, so repeat the idempotent
+        # terminal setup until SSH answers. The overall limit stays --boot-wait
+        # plus the SSH allowance that used to follow a single fixed wait.
         control = [str(Path(__file__).with_name("vm-control")), str(work)]
-        run([*control, "key", "meta_l+ret"])
-        time.sleep(4)
         public = (work / "id_ed25519.pub").read_text().strip()
         setup = "mkdir -p ~/.ssh; printf '%s\\n' " + shlex.quote(public)
         setup += " > ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys; "
         setup += "sudo restorecon -RF ~/.ssh; sudo systemctl start sshd; sudo firewall-cmd --add-service=ssh; exit\n"
-        run([*control, "type", setup])
-        for _ in range(120):
+        started = time.monotonic()
+        deadline = started + args.boot_wait + SSH_ALLOWANCE
+        attempt_at = started + min(args.boot_wait, FIRST_ATTEMPT)
+        attempts = 0
+        while True:
             if vm.poll() is not None:
                 raise RuntimeError("VM exited before SSH was ready")
-            if subprocess.run([*ssh, "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+            now = time.monotonic()
+            if now >= deadline:
+                raise RuntimeError(f"test SSH did not start after {attempts} terminal attempts")
+            if now >= attempt_at:
+                attempts += 1
+                print(f"Opening the live terminal for test SSH (attempt {attempts})…", flush=True)
+                run([*control, "key", "meta_l+ret"])
+                time.sleep(4)
+                run([*control, "type", setup])
+                attempt_at = time.monotonic() + ATTEMPT_WINDOW
+            elif attempts and subprocess.run([*ssh, "true"], stdout=subprocess.DEVNULL,
+                                             stderr=subprocess.DEVNULL).returncode == 0:
                 ssh_ready = True
                 break
             time.sleep(2)
-        else:
-            raise RuntimeError("test SSH did not start")
         for _ in range(90):
             result = subprocess.run([*ssh, "XDG_RUNTIME_DIR=/run/user/1000 systemctl --user is-active --quiet quickshell.service"],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
