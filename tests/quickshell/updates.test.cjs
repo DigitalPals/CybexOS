@@ -513,3 +513,20 @@ test("a failed release apply that left newer files says how to recover", () => {
     assert.match(read("Popovers/UpdatesPopover.qml"),
         /visible: Updates\.mixedState[\s\S]{0,80}?text: UpdatesHelpers\.mixedStateAdvice\(Updates\.mixedState\)/);
 });
+
+test("the drawer keeps one layout and decides row visibility up front", () => {
+    const popover = read("Popovers/UpdatesPopover.qml");
+    // A container that shows only when a child is visible hides that child
+    // too (effective visibility), and then never recovers.
+    assert.doesNotMatch(popover, /visible:[^\n]*\b\w+Row\.visible/,
+        "row visibility must come from the state, not from the rows");
+    for (const row of ["systemRow", "appsRow", "firmwareRow", "projectRow"])
+        assert.match(popover, new RegExp(`id: ${row}\\s*visible: root\\.show`), row);
+    // Backend vocabulary and configuration stay out of the drawer.
+    assert.doesNotMatch(popover, /"System · dnf"|"Flatpak"|sudo dnf upgrade|every " \+/);
+    assert.doesNotMatch(popover, /kitty|in terminal/i, "firmware no longer opens a terminal");
+    assert.match(popover, /text: Updates\.fwRequest/, "fwupd's requests appear in the panel");
+    const updates = read("Common/Updates.qml");
+    assert.doesNotMatch(updates, /"kitty", "--title", "Firmware updates"/);
+    assert.match(updates, /if \(withFirmware\)\s*command\.push\("--firmware"\);/);
+});

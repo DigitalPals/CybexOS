@@ -42,6 +42,22 @@ Surface {
         + (Updates.projectAvailable ? 1 : 0)
     readonly property bool canUpdate: updateCategories > 0
 
+    // Which rows show. Decided here rather than read back from the rows:
+    // a container whose visibility follows its children's `visible` hides
+    // them too, and then can never become visible again.
+    //
+    // Every run upgrades the system (`dnf upgrade --refresh` can find more
+    // than the cached check did), so outside idle that row always shows.
+    readonly property bool showSystem: idle ? Updates.dnfCount > 0 : true
+    readonly property bool showApps: idle ? Updates.flatpakCount > 0
+        : Updates.runIncludedFlatpak && (plan === null || plan.flatpak > 0
+            || Updates.appCount > 0 || Updates.fpWarning !== "")
+    readonly property bool showFirmware: idle ? Updates.firmwareCount > 0
+        : Updates.runIncludedFirmware
+    readonly property bool showProject: idle && Updates.projectAvailable
+    readonly property bool hasDetails: !idle || Updates.total > 0
+        || Updates.error !== ""
+
     // idle: "update" | "restart" | ""; done: "restart" | ""; failed: "retry".
     readonly property string primaryAction: failed ? "retry"
         : idle && canUpdate ? "update"
@@ -453,17 +469,15 @@ Surface {
     Column {
         id: rows
 
-        visible: systemRow.visible || appsRow.visible || firmwareRow.visible
-            || projectRow.visible
+        visible: root.showSystem || root.showApps || root.showFirmware
+            || root.showProject
         width: parent.width
         spacing: 4
 
         UpdateRow {
             id: systemRow
 
-            // Every run upgrades the system (`dnf upgrade --refresh` can find
-            // more than the cached check did), so outside idle it always shows.
-            visible: root.idle ? Updates.dnfCount > 0 : true
+            visible: root.showSystem
             glyph: "computer"
             label: "System"
             count: String(Updates.dnfCount)
@@ -500,10 +514,7 @@ Surface {
         UpdateRow {
             id: appsRow
 
-            visible: root.idle ? Updates.flatpakCount > 0
-                : Updates.runIncludedFlatpak && (root.plan === null
-                    || root.plan.flatpak > 0 || Updates.appCount > 0
-                    || Updates.fpWarning !== "")
+            visible: root.showApps
             glyph: "apps"
             label: "Apps"
             count: String(Updates.flatpakCount)
@@ -536,8 +547,7 @@ Surface {
         UpdateRow {
             id: firmwareRow
 
-            visible: root.idle ? Updates.firmwareCount > 0
-                : Updates.runIncludedFirmware
+            visible: root.showFirmware
             glyph: "memory"
             label: "Firmware"
             count: String(Updates.firmwareCount)
@@ -638,7 +648,7 @@ Surface {
         UpdateRow {
             id: projectRow
 
-            visible: root.idle && Updates.projectAvailable
+            visible: root.showProject
             glyph: "deployed_code_update"
             label: "CybexOS"
             count: Updates.projectVersion
@@ -804,10 +814,7 @@ Surface {
     Item {
         id: detailsToggle
 
-        readonly property bool hasDetails: !root.idle || Updates.total > 0
-            || Updates.error !== ""
-
-        visible: hasDetails
+        visible: root.hasDetails
         width: parent.width
         height: 22
 
@@ -847,7 +854,7 @@ Surface {
         Item {
             id: toggleFocus
             anchors.fill: toggleRow
-            activeFocusOnTab: detailsToggle.visible
+            activeFocusOnTab: root.hasDetails
             Accessible.role: Accessible.Button
             Accessible.name: Updates.detailsOpen ? "Hide details" : "Show details"
             Accessible.onPressAction: Updates.detailsOpen = !Updates.detailsOpen
@@ -925,7 +932,7 @@ Surface {
     Column {
         id: details
 
-        visible: detailsToggle.visible && Updates.detailsOpen
+        visible: root.hasDetails && Updates.detailsOpen
         width: parent.width
         spacing: 12
 
@@ -1023,7 +1030,10 @@ Surface {
                     width: feedView.width
                     height: 21
                     spacing: 8
-                    opacity: root.running && !model.done ? 0.45 : 1
+                    // Rows the transaction has not reached wait at half
+                    // strength — while it runs, and after a failure, where
+                    // they are exactly what was not installed.
+                    opacity: (root.running || root.failed) && !model.done ? 0.45 : 1
 
                     Behavior on opacity {
                         NumberAnimation { duration: Theme.chipFadeDuration }
@@ -1099,15 +1109,50 @@ Surface {
             color: Theme.textFaint
         }
 
-        // A failure: dnf's own last words.
+        // A failure: dnf's own last words, one line each so the final lines
+        // (where the error is) are never the ones cut off.
+        Column {
+            visible: root.failed && Updates.failTail.length > 0
+            width: parent.width
+            spacing: 3
+
+            Text {
+                width: parent.width
+                text: "WHAT DNF SAID"
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.metadata
+                font.weight: Theme.weightSemibold
+                font.letterSpacing: 0.4
+                color: Theme.textFaint
+            }
+
+            Repeater {
+                model: root.failed ? Updates.failTail.slice(-6) : []
+
+                delegate: Text {
+                    required property var modelData
+
+                    readonly property bool problem: /error|failed|cannot|no space/i
+                        .test(modelData)
+
+                    width: parent.width
+                    text: String(modelData).trim()
+                    elide: Text.ElideRight
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.typography.secondary
+                    font.weight: problem ? Theme.weightSemibold : Theme.weightMedium
+                    color: problem ? Theme.redText : Theme.textLow
+                }
+            }
+        }
+
+        // A failure before dnf wrote anything (the restore point, the start
+        // itself): the worker's own message is all there is.
         DetailBlock {
-            visible: root.failed && body !== ""
-            heading: "WHAT DNF SAID"
-            body: root.failed ? (Updates.failTail.length > 0
-                ? Updates.failTail.join("\n") : Updates.failHeadline) : ""
+            visible: root.failed && Updates.failTail.length === 0 && body !== ""
+            heading: "WHAT HAPPENED"
+            body: root.failed ? Updates.failHeadline : ""
             bodyColor: Theme.textLow
-            mono: true
-            lines: 10
         }
 
         // The release step failed and the package run went ahead without it.

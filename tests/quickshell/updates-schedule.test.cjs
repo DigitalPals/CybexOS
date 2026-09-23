@@ -344,3 +344,71 @@ test("pending packages bring their kernel and security advisories along", () => 
     assert.equal(ctx.dnfSecurityCount, 0);
     assert.equal(ctx.error, "");
 });
+
+// The worker's firmware events (assets/scripts/cybexos-firmware-update), fed
+// through the coordinator's own consumer: the feed, the row counters and
+// what the panel asks of the person.
+test("firmware events drive the feed, the row and the restart advice", () => {
+    const rows = [];
+    const ctx = {
+        UpdatesHelpers: H,
+        feedModel: {
+            get count() { return rows.length; },
+            append(row) { rows.push(Object.assign({}, row)); },
+            get(index) { return rows[index]; },
+            setProperty(index, key, value) { rows[index][key] = value; }
+        },
+        fwRows: {}, fwCur: 0, fwTotal: 0, fwPercent: 0, fwFraction: 0, fwStatus: "",
+        fwActiveName: "", fwRequest: "", fwNotes: [], fwInstalled: 0, fwFailed: 0,
+        fwFailMessage: "", fwNeedsReboot: false, lastDoneIndex: -1
+    };
+    vm.createContext(ctx);
+    vm.runInContext(functionSource("fwLine"), ctx);
+    const send = event => ctx.fwLine(JSON.stringify(event));
+
+    send({ event: "plan", devices: [
+        { id: "bios", name: "System Firmware", vendor: "HP", from: "01.06", to: "01.07",
+            needsReboot: true, affectsFde: false },
+        { id: "dock", name: "USB-C Dock", vendor: "HP", from: "1.0.12", to: "1.0.14",
+            needsReboot: false, affectsFde: false }
+    ] });
+    assert.equal(ctx.fwTotal, 2);
+    assert.deepEqual(rows.map(row => [row.tag, row.name, row.ver, row.done]), [
+        ["fw", "System firmware", "01.06 → 01.07", false],
+        ["fw", "USB-C Dock", "1.0.12 → 1.0.14", false]
+    ]);
+
+    send({ event: "device", id: "bios", index: 1, count: 2 });
+    assert.equal(ctx.fwActiveName, "System firmware");
+    send({ event: "progress", id: "bios", status: "downloading", percent: 100 });
+    send({ event: "progress", id: "bios", status: "scheduling", percent: 0 });
+    assert.ok(ctx.fwFraction >= 0.2, "a later stage at 0% does not rewind the device");
+    send({ event: "installed", id: "bios", needsReboot: true, message: "" });
+    assert.equal(ctx.fwCur, 1);
+    assert.equal(ctx.fwNeedsReboot, true);
+    assert.equal(rows[0].done, true);
+    assert.equal(ctx.fwFraction, 0);
+
+    send({ event: "device", id: "dock", index: 2, count: 2 });
+    send({ event: "request", id: "dock", kind: "immediate",
+        requestId: "org.freedesktop.fwupd.request.remove-replug",
+        message: "Unplug the device and plug it back in." });
+    assert.equal(ctx.fwRequest, "Unplug the device and plug it back in.");
+    send({ event: "progress", id: "dock", status: "waiting-for-user", percent: 40 });
+    assert.notEqual(ctx.fwRequest, "", "the request stays while fwupd waits for the person");
+    send({ event: "progress", id: "dock", status: "device-verify", percent: 10 });
+    assert.equal(ctx.fwRequest, "", "and clears once the device is back");
+    send({ event: "request", id: "dock", kind: "post", requestId: "x",
+        message: "Restart the dock to finish." });
+    send({ event: "failed", id: "dock", reason: "ac-power",
+        message: "Connect the power adapter to install this firmware." });
+    assert.deepEqual(ctx.fwNotes, ["Restart the dock to finish."]);
+    assert.equal(ctx.fwFailed, 1);
+    assert.equal(ctx.fwFailMessage, "Connect the power adapter to install this firmware.");
+    assert.equal(rows[1].failed, true);
+
+    send({ event: "summary", installed: 1, failed: 1, needsReboot: true });
+    ctx.fwLine("System firmware 01.06 → 01.07: writing 40%");
+    ctx.fwLine('{"event":');
+    assert.equal(ctx.fwCur, 2, "human lines, truncated lines and the summary change nothing");
+});
