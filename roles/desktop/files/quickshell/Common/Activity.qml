@@ -27,6 +27,10 @@ Singleton {
     IdleMonitor {
         id: monitor
 
+        // Idle notification is a Wayland protocol. The offscreen test
+        // harness has no compositor to ask, and a monitor that never
+        // reports idle is the right answer there.
+        enabled: Qt.platform.pluginName.startsWith("wayland")
         timeout: 300
         respectInhibitors: true
         onIsIdleChanged: {
