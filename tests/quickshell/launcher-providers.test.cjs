@@ -142,3 +142,29 @@ test("window activation dispatches a Lua focus with Hyprland's address form", ()
                 `${path.relative(shellDir, file)} dispatches a non-Lua request: ${match[0]}`);
     }
 });
+
+// Quickshell emits no `exited` when a binary cannot be launched, only the
+// falling edge of `running`; a provider waiting for `exited` would stay
+// "Searching…" forever when fd, qalc or sh is missing.
+test("launcher searches settle even when their binary never starts", () => {
+    const providers = fs.readFileSync(
+        path.join(shellDir, "Common/LauncherProviders.qml"), "utf8");
+    for (const [id, loading] of [["fileProc", "fileLoading"],
+            ["calcProc", "calcLoading"], ["clipboardListProc", "clipboardLoading"]]) {
+        const start = providers.indexOf(`id: ${id}`);
+        assert.notEqual(start, -1, `${id} is missing`);
+        const next = providers.indexOf("\n    Process {", start);
+        const next2 = providers.indexOf("\n    Timer {", start);
+        const end = Math.min(...[next, next2].filter(i => i !== -1), providers.length);
+        const block = providers.slice(start, end);
+        const falling = block.slice(block.indexOf("onRunningChanged"));
+        assert.match(falling, /exitSeen \? lastExit : ProcHelpers\.NOT_STARTED/,
+            `${id} must settle on the falling edge of running`);
+        assert.match(falling, new RegExp(`root\\.${loading} = false`),
+            `${id} must clear its loading state on the falling edge`);
+        const exited = block.slice(block.indexOf("onExited"),
+            block.indexOf("}", block.indexOf("onExited")));
+        assert.doesNotMatch(exited, new RegExp(loading),
+            `${id} must not wait for an exited signal that may never come`);
+    }
+});
