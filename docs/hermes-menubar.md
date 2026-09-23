@@ -153,6 +153,12 @@ journalctl --user -u hermes-menubar-bridge.service -b --no-pager
 curl -fsS "${HERMES_WEBUI_ORIGIN%/}/api/auth/status" | jq
 ```
 
+A bridge that crashes is restarted after 2 seconds at first; repeated failures
+stretch the delay to 5 minutes, so a startup fault such as a taken port 9120 or
+a missing `python3-websockets` does not loop for the whole session. After fixing
+the cause, `systemctl --user restart hermes-menubar-bridge.service` retries
+immediately.
+
 The public status request should be reachable even while signed out. A healthy
 password-protected server reports `auth_enabled: true`,
 `password_auth_enabled: true`, and `logged_in: false` until the widget has a

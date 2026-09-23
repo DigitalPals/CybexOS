@@ -565,7 +565,26 @@ async def _refresh_coalescing_scenario() -> None:
         assert saves, "the coalesced registry write must still land"
 
 
+def unit_restart_policy() -> None:
+    """A bridge that fails at startup backs off instead of looping every 2 s."""
+
+    unit = (
+        ROOT / "roles/desktop/templates/hermes-menubar-bridge.service.j2"
+    ).read_text(encoding="utf-8")
+    directives = dict(
+        line.split("=", 1)
+        for line in unit.splitlines()
+        if "=" in line and not line.startswith("#")
+    )
+    assert directives.get("Restart") == "on-failure", directives
+    assert int(directives["RestartSteps"]) > 0
+    assert directives.get("RestartMaxDelaySec") == "5min"
+    # A user manager has no network-online.target; ordering on it is a no-op.
+    assert "network-online.target" not in unit
+
+
 if __name__ == "__main__":
+    unit_restart_policy()
     asyncio.run(scenario())
     asyncio.run(delivery_scenario())
     asyncio.run(observer_backoff_scenario())
@@ -574,5 +593,6 @@ if __name__ == "__main__":
         "Hermes bridge exposes native WebUI history, starts on New chat, "
         "creates and deletes sessions, has no channel RPC contract, "
         "coalesces status churn and list refreshes, isolates slow local "
-        "clients, and backs off observer streams that close early"
+        "clients, backs off observer streams that close early, and does "
+        "not restart-loop a failing unit"
     )
