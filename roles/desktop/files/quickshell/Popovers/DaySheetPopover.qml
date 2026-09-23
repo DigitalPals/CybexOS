@@ -365,4 +365,16 @@ Surface {
             }
         }
     }
+
+    // A calendar that timed out still leaves the others' events here; say
+    // that some are missing rather than let the week look complete.
+    Text {
+        visible: Calendar.partialWarning !== "" && Calendar.ready
+        width: parent.width
+        text: Calendar.partialWarning
+        elide: Text.ElideRight
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.secondary
+        color: Theme.textFaint
+    }
 }
