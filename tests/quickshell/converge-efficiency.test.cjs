@@ -168,6 +168,12 @@ test("Docker starts through its socket instead of at boot", () => {
     assert.doesNotMatch(base, /name: docker\.service\s+enabled: true/);
 });
 
+test("the weekly Btrfs scrub waits for AC power and stays in the background", () => {
+    const scrub = task(read("roles/base/tasks/main.yml"), "Install weekly Btrfs scrub unit");
+    assert.match(scrub, /\[Unit\][\s\S]*ConditionACPower=true[\s\S]*\[Service\]/);
+    assert.match(scrub, /ExecStart=\/usr\/bin\/btrfs scrub start -B -d --limit \d+M \//);
+});
+
 test("hypridle restarts when its configuration, unit, or renderer changes", () => {
     const handlers = read("roles/desktop/handlers/main.yml");
     const desktop = read("roles/desktop/tasks/main.yml");

@@ -566,12 +566,17 @@
       [Unit]
       Description=Scrub all mounted Btrfs filesystems
       ConditionPathIsMountPoint=/
+      # Persistent=true catches a missed run up at the next boot or resume;
+      # never spend a battery charge reading the whole disk.
+      ConditionACPower=true
 
       [Service]
       Type=oneshot
       Nice=19
       IOSchedulingClass=idle
-      ExecStart=/usr/bin/btrfs scrub start -B -d /
+      # The idle I/O class needs a scheduler that honors it, and NVMe uses
+      # none. Cap the read rate so a scrub stays in the background regardless.
+      ExecStart=/usr/bin/btrfs scrub start -B -d --limit 200M /
   notify: Reload systemd
   when: base_root_filesystem.stdout | trim == 'btrfs'
 
