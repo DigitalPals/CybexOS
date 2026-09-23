@@ -38,6 +38,9 @@ Singleton {
     readonly property bool projectUpdatesEnabled: false
     property bool projectAvailable: false
     property string projectVersion: ""
+    // Why an available release cannot be applied here yet (gh missing or
+    // not logged in); the release still counts as pending.
+    property string projectApplyNote: ""
     property var dnfNames: []
     property var flatpakNames: []
     property bool ran: false
@@ -60,6 +63,7 @@ Singleton {
     property var nextFlatpakNames: []
     property bool nextProjectAvailable: false
     property string nextProjectVersion: ""
+    property string nextProjectApplyNote: ""
     property string dnfError: ""
     property string flatpakError: ""
     property string projectError: ""
@@ -204,6 +208,7 @@ Singleton {
             projectError = "";
             nextProjectAvailable = false;
             nextProjectVersion = "";
+            nextProjectApplyNote = "";
             projectDone = !projectUpdatesEnabled;
         }
         if (parts.firmware) {
@@ -323,6 +328,7 @@ Singleton {
                 nextProjectAvailable = data.available === true;
                 nextProjectVersion = typeof data.availableVersion === "string"
                     ? data.availableVersion : "";
+                nextProjectApplyNote = UpdatesHelpers.projectErrorOf(data);
             } catch (exception) {
                 projectError = "CybexOS update check returned invalid data";
             }
@@ -367,6 +373,7 @@ Singleton {
         if (parts.project && projectError === "") {
             projectAvailable = nextProjectAvailable;
             projectVersion = nextProjectVersion;
+            projectApplyNote = nextProjectAvailable ? nextProjectApplyNote : "";
             if (projectUpdatesEnabled) {
                 answered.push({ baseline: !!known.project, count: projectAvailable ? 1 : 0 });
                 known.project = true;
@@ -474,6 +481,19 @@ Singleton {
     property string backendPhase: ""
     property string recoveryPointId: ""
     property double backendFinishedAt: 0
+    // Why this run's CybexOS release step was skipped while its package
+    // update went ahead. Only the start record carries it, so a shell
+    // reload mid-run forgets it; the run log keeps it.
+    property string runProjectSkipped: ""
+    // The worker finishes its current step before it honours a cancel.
+    property bool cancelRequested: false
+    property bool runDeferredCancel: false
+    readonly property bool cancelPending: cancelRequested || cancelProc.running
+        || cancelSettle.running
+    readonly property bool cancelAllowed: runActive && runStamp !== ""
+        && UpdatesHelpers.cancelAllowed(backendPhase, runDeferredCancel)
+    // A release apply stopped after Ansible began (see mixedStateAdvice).
+    property bool mixedState: false
     // Status requests are deliberately subordinate to a local start. A retry
     // must not accept the old run's final status after the start client has
     // already returned the new durable run.
@@ -545,6 +565,11 @@ Singleton {
         backendPhase = "";
         recoveryPointId = "";
         backendFinishedAt = 0;
+        runProjectSkipped = "";
+        cancelRequested = false;
+        runDeferredCancel = false;
+        cancelSettle.stop();
+        mixedState = false;
         runState = "running";
         doneClear.stop();
     }
@@ -725,6 +750,9 @@ Singleton {
         }
         backendPhase = typeof data.phase === "string" ? data.phase : "";
         recoveryPointId = typeof data.snapshotId === "string" ? data.snapshotId : "";
+        cancelRequested = data.cancelRequested === true;
+        runDeferredCancel = data.deferredCancel === true;
+        mixedState = data.mixedState === true;
 
         wantedDnfBytes = Math.max(wantedDnfBytes, Number(data.dnfBytes || 0));
         wantedFlatpakBytes = Math.max(wantedFlatpakBytes,
@@ -811,7 +839,7 @@ Singleton {
     }
 
     function cancelRun() {
-        if (!runActive || runStamp === "" || cancelProc.running)
+        if (!cancelAllowed || cancelPending)
             return;
         cancelProc.command = [runBackend, "cancel", runStamp];
         cancelProc.running = true;
@@ -906,6 +934,7 @@ Singleton {
                 if (typeof started.id !== "string" || started.id === "")
                     throw new Error("missing durable run id");
                 root.applyBackendStatus(started);
+                root.runProjectSkipped = UpdatesHelpers.projectErrorOf(started);
             } catch (error) {
                 root.runDnfDone = true;
                 root.runFpDone = true;
@@ -1044,9 +1073,24 @@ Singleton {
         }
     }
 
+    // The falling edge, so a cancel client that never started still asks
+    // for the run's state.
     Process {
         id: cancelProc
-        onExited: root.refreshRunStatus()
+        onRunningChanged: {
+            if (running)
+                return;
+            cancelSettle.restart();
+            root.refreshRunStatus();
+        }
+    }
+
+    // A status read already in flight predates the cancel. Hold the pending
+    // state until a later poll can report the worker's answer, so Cancel
+    // does not flash back on in between.
+    Timer {
+        id: cancelSettle
+        interval: 2000
     }
 
     function refreshRunStatus() {

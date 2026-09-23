@@ -90,7 +90,8 @@ Surface {
         spacing: 9
 
         readonly property real rightWidth: root.mode === "running"
-            ? cancelButton.width + hideButton.width + parent.spacing
+            ? hideButton.width + (cancelButton.visible
+                ? cancelButton.width + parent.spacing : 0)
             : Theme.chipHeight
 
         // The state is in the mark, not in a filled square behind it: the bar
@@ -148,7 +149,8 @@ Surface {
                 width: parent.width
                 text: root.mode === "running"
                     ? Format.mmss(Updates.runElapsed) + " · "
-                        + (Updates.flatpakEnabled ? "dnf and flatpak in parallel" : "dnf")
+                        + (Updates.cancelPending ? "cancelling after the current step…"
+                            : Updates.flatpakEnabled ? "dnf and flatpak in parallel" : "dnf")
                     : root.mode === "done"
                     ? "finished " + root.clock(Updates.runFinishedAt)
                         + " · took " + Format.mmss(Updates.runDuration)
@@ -219,9 +221,13 @@ Surface {
             }
         }
 
+        // The worker stops at its next safe boundary, so a requested cancel
+        // stays pending while dnf or flatpak finish; once Ansible applies a
+        // release there is no boundary left and the button goes.
         ActionButton {
             id: cancelButton
-            visible: root.mode === "running"
+            visible: root.mode === "running" && Updates.cancelAllowed
+            enabled: !Updates.cancelPending
             anchors.verticalCenter: parent.verticalCenter
             label: "Cancel"
             revealed: visible
@@ -399,6 +405,30 @@ Surface {
         visible: root.mode === "idle" && Updates.projectError !== ""
         width: parent.width
         text: Updates.projectError + "\nPackage and firmware updates remain available."
+        wrapMode: Text.Wrap
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.metadata
+        color: Theme.amber
+    }
+
+    Text {
+        visible: root.mode === "idle" && Updates.projectAvailable
+            && Updates.projectApplyNote !== ""
+        width: parent.width
+        text: "To apply CybexOS " + Updates.projectVersion + ": "
+            + Updates.projectApplyNote
+        wrapMode: Text.Wrap
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.metadata
+        color: Theme.amber
+    }
+
+    // The release step failed and the package run went ahead without it.
+    Text {
+        visible: root.mode !== "idle" && Updates.runProjectSkipped !== ""
+        width: parent.width
+        text: UpdatesHelpers.projectSkippedLabel(Updates.runProjectSkipped,
+            root.mode !== "running")
         wrapMode: Text.Wrap
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.metadata
@@ -1191,6 +1221,16 @@ Surface {
                 font.weight: Theme.weightSemibold
                 color: Theme.textFaint
                 elide: Text.ElideRight
+            }
+
+            Text {
+                visible: Updates.mixedState
+                width: parent.width
+                text: UpdatesHelpers.mixedStateAdvice(Updates.mixedState)
+                wrapMode: Text.Wrap
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                color: Theme.amber
             }
         }
     }
