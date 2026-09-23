@@ -9,19 +9,51 @@ Item {
 
     signal clicked()
 
+    // The settings row this chip resets. Its control is where focus goes.
+    property Item row: null
+
+    function inside(item, container) {
+        for (let at = item; at; at = at.parent) {
+            if (at === container)
+                return true;
+        }
+        return false;
+    }
+
+    // Resetting clears the change this chip exists for, so the caller hides
+    // it at once, which would strand keyboard focus on an invisible item.
+    // Hand focus to the row's own control first. A row declares its control
+    // after the base row's chip, so look both ways along the tab chain.
+    function trigger() {
+        if (root.activeFocus && root.row) {
+            for (const forward of [true, false]) {
+                let item = root.nextItemInFocusChain(forward);
+                for (let i = 0; item && item !== root && i < 64; i++) {
+                    if (inside(item, root.row)) {
+                        item.forceActiveFocus(Qt.TabFocusReason);
+                        root.clicked();
+                        return;
+                    }
+                    item = item.nextItemInFocusChain(forward);
+                }
+            }
+        }
+        root.clicked();
+    }
+
     width: Theme.chipHeight
     height: Theme.chipHeight
     activeFocusOnTab: visible
     Accessible.role: Accessible.Button
     Accessible.name: "Reset to default"
-    Accessible.onPressAction: root.clicked()
+    Accessible.onPressAction: root.trigger()
     Controls.ToolTip.visible: mouse.containsMouse
     Controls.ToolTip.text: "Reset to default"
 
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                 || event.key === Qt.Key_Space) {
-            root.clicked(); event.accepted = true;
+            root.trigger(); event.accepted = true;
         }
     }
 
@@ -47,6 +79,8 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: { root.forceActiveFocus(); root.clicked(); }
+        // A pointer reset leaves focus where it was rather than parking it
+        // on a chip that is about to disappear.
+        onClicked: root.trigger()
     }
 }

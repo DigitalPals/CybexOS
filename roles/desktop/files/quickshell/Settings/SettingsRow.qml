@@ -156,6 +156,7 @@ Item {
 
         UndoChip {
             id: undoChip
+            row: root
             visible: root.dirty
             Accessible.name: "Reset " + root.resetLabel + " to default"
             // Revealed by the pointer or by keyboard focus; kept in the tab
