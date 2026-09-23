@@ -37,6 +37,12 @@ ansible-playbook site.yml -e @/etc/cybexos/config.yml --check --diff
 ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags desktop,dotfiles
 ```
 
+`ansible.cfg` pipelines modules to the Python interpreter instead of writing
+a temporary file for every task, and sets `force_handlers`. A handler notified
+before a later task failed (an initramfs rebuild, a daemon-reload, a service
+restart) therefore still runs; a retry would see its triggering task as
+unchanged and never notify it again.
+
 The public release updater applies a candidate through the lower-level durable
 worker with `--full --skip-tests --repo <verified-stage>`. That internal path
 always supplies `--skip-tags boot`; public updates therefore do not rebuild
@@ -95,6 +101,13 @@ currently exist for `browser`, `onepassword`, `fonts`, `font-defaults`, `package
 `speaker`, and `touchpad`. The
 narrow tags are development tools, not independent installation profiles;
 their prerequisites can live in an earlier role.
+
+The `quickshell` tag compares the deployed shell tree with the managed sources
+in one read-only pass and writes only the files that differ. An unchanged
+tree skips qmllint, and with an unchanged Quickshell unit also the live
+snapshot and the verified restart; `--tags quickshell-lint` still runs qmllint
+on its own. Bytecode caches written by the running shell's Python helpers do
+not count as a change; the next real deployment clears them.
 
 The `font-defaults` tag installs Liberation Sans/Serif/Mono, the full Noto
 collection, Noto CJK Sans/Serif/Mono, Noto Color Emoji, and Font Awesome
@@ -392,6 +405,55 @@ can also leave `/var/lib/xps-hardware/ipu7/reboot-required` when new signed
 DKMS modules must be loaded in a clean boot. Let the play finish, inspect its
 result, then perform one normal reboot. `./verify` reports this camera state.
 
+## Idle, power, and background services
+
+hypridle runs the idle timeline from **Settings → System → Idle**, unless a
+regular file at `~/.config/cybexos/hypr/hypridle.conf` replaces it. A new
+installation locks after five idle minutes, turns the screen off after ten,
+and suspends after 30 minutes only on battery, so a machine on mains power,
+including every desktop, stays awake. A laptop that reaches the suspend
+timeout on mains power checks again every minute until the next input, and
+suspends if it is unplugged meanwhile. Existing installations keep their
+stored values: the shell writes every key to `shell.json`, so a stored Never
+cannot be told apart from a deliberate one.
+
+A locked screen turns off about a minute after the last input, whether it was
+locked by hand or by the idle lock; a Screen off setting of Never keeps it lit.
+Every suspend waits for the lock. For a lid close or any other sleep request,
+hypridle's `inhibit_sleep = 3` holds the sleep until the compositor reports
+the session locked, for as long as logind allows a delay. The shell's Suspend
+and idle suspend call `systemctl suspend` only after `hyprctl locked`
+confirms the lock. Without that confirmation within eight seconds the machine
+stays awake, and a lock screen that is still starting is left running rather
+than stopped.
+
+hypridle reads its configuration only when it starts. A converge that changes
+its configuration, its unit, the runtime resolver, or the timeout renderer
+restarts a running hypridle, so new timeouts apply without logging in again.
+hypridle only tracks idle time, so the restart neither locks nor unlocks the
+session.
+
+Docker is socket-activated: `docker.socket` starts dockerd, and with it
+containerd, on the first client request instead of at boot. Containers with a
+`restart=always` policy therefore wait for the first `docker` command after
+boot. A converge leaves a daemon that is already running alone.
+
+The weekly Btrfs scrub runs only on AC power and reads at most 200 MiB/s per
+device. A run skipped on battery is not caught up when the charger returns; it
+waits for the next weekly trigger.
+
+Dictation requires the `developer_tools` feature, which also downloads its
+model and binds its keys. Without it the Voxtype user unit is not installed,
+and a converge stops and removes one left by an earlier run. The daemon loads
+the model when a recording starts and releases it when idle, so the first
+dictation after an idle period has a short load delay.
+
+mpv prefers hardware decoding: a managed block at the top of
+`/etc/mpv/mpv.conf` sets `hwdec=auto-safe`, which uses only the decoders mpv
+considers reliable and falls back to software otherwise. Lines below the block
+and a personal `~/.config/mpv/mpv.conf` override it; uninstall removes only
+the block.
+
 ## The strict source gate
 
 `tests/run` executes every stage even after a failure and returns nonzero when
@@ -442,3 +504,9 @@ Then run `systemctl --user daemon-reload` and restart the managed
 `quickshell.service` at a safe time. Remove the drop-in and repeat those two
 commands to restore motion. Repository runtime tests set the variable only in
 their isolated offscreen process.
+
+The power saver profile is a reduced-motion request too, for as long as it is
+on; it changes neither this variable nor **Settings → Appearance → Reduce
+motion**. The compositor follows it as well: blur drops to one pass and
+Hyprland animations turn off, and the values it replaced return when power
+saver ends.
