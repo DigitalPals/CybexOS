@@ -742,6 +742,41 @@ class ResilientFetchTests(unittest.TestCase):
         self.assertFalse(second["claude"]["stale"])
         self.assertEqual(second["claude"]["observedAt"], 1_000)
 
+    def test_server_inventory_is_listed_once_and_only_when_a_provider_is_due(self):
+        listing = mock.Mock(return_value=(None, MODULE.err(
+            "rate", "CLIProxyAPI management API is rate limited.",
+            retryAfter=600)))
+        with mock.patch.object(MODULE, "read_cliproxy_key",
+                               return_value=("private", None)), \
+                mock.patch.object(MODULE.CliProxyClient, "auth_files", listing):
+            providers, _ = MODULE.make_cliproxy_providers(
+                "https://proxy.test", True)
+            listing.assert_not_called()
+            state = MODULE.empty_state()
+            failed = MODULE.fetch_all_resilient(providers, state, now=1_000)
+            self.assertEqual(listing.call_count, 1,
+                             "due providers must share one inventory request")
+            self.assertTrue(all(row["kind"] == "rate" for row in failed.values()))
+
+            providers, _ = MODULE.make_cliproxy_providers(
+                "https://proxy.test", True)
+            MODULE.fetch_all_resilient(providers, state, now=1_100)
+            self.assertEqual(listing.call_count, 1,
+                             "providers in backoff must not list the server")
+
+    def test_sub2api_inventory_failure_keeps_its_source(self):
+        with mock.patch.object(MODULE, "read_cliproxy_key",
+                               return_value=("private", None)), \
+                mock.patch.object(MODULE.Sub2ApiClient, "accounts",
+                                  return_value=(None, MODULE.err(
+                                      "network", "down"))) as accounts:
+            providers, _ = MODULE.make_sub2api_providers(
+                "https://proxy.test", True)
+            accounts.assert_not_called()
+            result = MODULE.fetch_all(providers)
+        self.assertEqual(accounts.call_count, 1)
+        self.assertTrue(all(row["source"] == "sub2api" for row in result.values()))
+
     def test_failure_retains_last_good_and_honors_retry_after(self):
         state = MODULE.empty_state()
         MODULE.fetch_all_resilient(

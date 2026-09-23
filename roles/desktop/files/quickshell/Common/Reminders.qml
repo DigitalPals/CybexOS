@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "Format.js" as Format
 
 // Canonical reminder state lives in the helper's atomic JSON records. This
 // singleton is a live read model for the bar and manager; systemd owns timing.
@@ -79,36 +80,70 @@ Singleton {
         }
     }
 
+    // The helper calls `reminders refresh` over IPC itself whenever restore
+    // delivered or rescheduled something, so its exit needs no second list —
+    // unless this list still shows an overdue record, which is either still
+    // failing delivery or was delivered behind a missed IPC call.
     Process {
         id: restoreProc
         command: [root.helper, "restore"]
-        onExited: root.refresh()
-    }
-
-    Timer {
-        id: settle
-        interval: 300
-        repeat: true
-        property int ticks: 0
-        onTriggered: {
-            root.refresh();
-            if (++ticks >= 12)
-                stop();
-        }
         onRunningChanged: {
             if (running)
-                ticks = 0;
+                return;
+            if (root.count > 0 && root.nextDue * 1000 <= Date.now())
+                root.refresh();
+            root.armRestore();
         }
     }
 
-    // Refresh is the normal fallback for a missed IPC call. Restore also
-    // retries overdue records whose notification delivery previously failed.
+    // add/cancel/clear refresh the shell over IPC once their work is done;
+    // this single delayed read is only the fallback for a missed call.
     Timer {
-        interval: 60000
-        running: true
-        repeat: true
+        id: settle
+        interval: 1500
+        onTriggered: root.refresh()
+    }
+
+    // Restore delivers overdue records whose notification previously failed
+    // and recreates missing timers. With nothing held there is nothing to
+    // restore; otherwise it runs shortly after the earliest due time (the
+    // systemd timer normally delivers first), every minute while a record is
+    // overdue, and at least hourly as a lost-timer check.
+    function restoreDelayMs() {
+        const untilDue = nextDue * 1000 - Date.now() + 30000;
+        return Math.max(Format.MS_MINUTE, Math.min(Format.MS_HOUR, untilDue));
+    }
+
+    function armRestore() {
+        if (count === 0 || !startupRestore.done) {
+            restoreTimer.stop();
+            return;
+        }
+        restoreTimer.interval = restoreDelayMs();
+        restoreTimer.restart();
+    }
+
+    onRecordsChanged: armRestore()
+
+    Timer {
+        id: restoreTimer
         onTriggered: root.restore()
     }
 
-    Component.onCompleted: restore()
+    // Session start: the list is a cheap local read and goes at once; the
+    // restore pass (jq and systemctl per record) waits out the startup burst.
+    Timer {
+        id: startupRestore
+        property bool done: false
+        interval: 8000
+        onTriggered: {
+            done = true;
+            root.restore();
+        }
+    }
+
+    Component.onCompleted: {
+        refresh();
+        startupRestore.start();
+    }
 }

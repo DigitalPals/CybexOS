@@ -21,6 +21,11 @@ Singleton {
     property string actionError: ""
     property bool refreshAgain: false
     property int watchers: 0
+    // `upower --monitor-detail` block state: the device the current block
+    // describes and the last charge-threshold values seen per device. Plain
+    // JS bookkeeping; nothing binds to it.
+    property string monitorDevice: ""
+    property var monitorSeen: ({})
 
     readonly property bool busy: setProc.running
     readonly property string error: actionError !== ""
@@ -33,6 +38,8 @@ Singleton {
         if (watchers !== 1)
             return;
         refresh();
+        monitorDevice = "";
+        monitorSeen = ({});
         monitorProc.running = true;
     }
 
@@ -193,6 +200,33 @@ Singleton {
         }
     }
 
+    // One line of `upower --monitor-detail`. A battery reprints its whole
+    // detail block on every energy or rate change — several times a minute
+    // while charging — and none of that moves the charge policy. Only a
+    // device appearing or leaving, the daemon changing, or a charge-threshold
+    // line whose value differs from the last one seen asks for a status read.
+    function monitorLine(line) {
+        const text = String(line);
+        const header = /^\S/.test(text) ? text.match(
+            /(device added|device removed|device changed|daemon changed):\s*(\S*)/)
+            : null;
+        if (header !== null) {
+            monitorDevice = header[2];
+            if (header[1] !== "device changed")
+                refreshDebounce.restart();
+            return;
+        }
+        const field = text.match(/^\s*(charge-[a-z-]*threshold[a-z-]*):\s*(.*)$/);
+        if (field === null)
+            return;
+        const key = monitorDevice + " " + field[1];
+        const value = field[2].trim();
+        if (monitorSeen[key] === value)
+            return;
+        monitorSeen[key] = value;
+        refreshDebounce.restart();
+    }
+
     // UPower's own monitor supplies change notifications without keeping a
     // privileged process around. The 30-second timer above is only a safety
     // net for daemon restarts or backends that omit a notification.
@@ -202,10 +236,7 @@ Singleton {
         command: ["upower", "--monitor-detail"]
 
         stdout: SplitParser {
-            onRead: line => {
-                if (!line.startsWith("Monitoring activity"))
-                    refreshDebounce.restart();
-            }
+            onRead: line => root.monitorLine(line)
         }
         onRunningChanged: {
             if (!running && root.watchers > 0)

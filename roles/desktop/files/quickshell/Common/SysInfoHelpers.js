@@ -233,6 +233,20 @@ function formatUptime(seconds) {
     return parts.join(" ");
 }
 
+// Delay to the next moment a whole-minute countdown to `untilMs` changes
+// its label (a multiple of a minute before the deadline), or to the deadline
+// itself. A small margin puts the tick just past the boundary; the caller
+// recomputes from the clock, so an early firing only costs one short tick.
+function countdownTickMs(untilMs, nowMs) {
+    var remaining = Number(untilMs) - Number(nowMs);
+    if (!isFinite(remaining))
+        return 60000;
+    if (remaining <= 0)
+        return 1;
+    var step = remaining % 60000;
+    return (step === 0 ? 60000 : step) + 50;
+}
+
 var exported = {
     decodeOsReleaseValue: decodeOsReleaseValue,
     parseOsRelease: parseOsRelease,
@@ -243,7 +257,8 @@ var exported = {
     parseDf: parseDf,
     parseUptime: parseUptime,
     formatIecBytes: formatIecBytes,
-    formatUptime: formatUptime
+    formatUptime: formatUptime,
+    countdownTickMs: countdownTickMs
 };
 
 if (typeof module !== "undefined" && module.exports)

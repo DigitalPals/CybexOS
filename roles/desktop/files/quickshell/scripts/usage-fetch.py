@@ -32,6 +32,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -1245,6 +1246,25 @@ def summarize_accounts(readings, source):
     return best
 
 
+def once(fn):
+    """Call ``fn`` at most once, on first use, from any provider thread.
+
+    The server inventory is a network round trip. Listing it lazily lets
+    ``fetch_all_resilient`` skip it entirely when every provider is still in
+    its backoff or polling interval, and the result is shared by the providers
+    that are due in the same run.
+    """
+    lock = threading.Lock()
+    box = []
+
+    def call():
+        with lock:
+            if not box:
+                box.append(fn())
+            return box[0]
+    return call
+
+
 def make_cliproxy_providers(address, verify_tls):
     provider_names = ("claude", "codex", "kimi", "xai")
     key, key_error = read_cliproxy_key()
@@ -1257,14 +1277,16 @@ def make_cliproxy_providers(address, verify_tls):
         value = err("config", str(failure))
         return tuple((name, lambda failure=value: copy.deepcopy(failure))
                      for name in provider_names), "invalid-url"
-    files, list_error = client.auth_files()
-    if list_error:
-        providers = tuple((name, lambda failure=list_error: copy.deepcopy(failure))
-                          for name in provider_names)
-    else:
-        providers = tuple((name, lambda provider=name:
-                          fetch_cliproxy_provider(provider, files, client))
-                          for name in provider_names)
+    listing = once(client.auth_files)
+
+    def fetch(provider):
+        files, list_error = listing()
+        if list_error:
+            return copy.deepcopy(list_error)
+        return fetch_cliproxy_provider(provider, files, client)
+
+    providers = tuple((name, lambda provider=name: fetch(provider))
+                      for name in provider_names)
     fingerprint = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
     return providers, f"{client.base}|{verify_tls}|{fingerprint}"
 
@@ -1472,15 +1494,22 @@ def make_sub2api_providers(address, verify_tls):
             failure = err("config", str(error))
     fingerprint = "sub2api|" + hashlib.sha256(
         f"{address}|{verify_tls}|{key}".encode()).hexdigest()
-    if not failure:
-        entries, failure = client.accounts()
     if failure:
         # Keep setup failures visible even before an inventory is available.
         failure["source"] = "sub2api"
         return tuple((name, lambda: copy.deepcopy(failure))
                      for name in SUB2API_PROVIDERS), fingerprint
-    return tuple((name, lambda provider=name:
-                  fetch_sub2api_provider(provider, entries, client))
+    listing = once(client.accounts)
+
+    def fetch(provider):
+        entries, list_error = listing()
+        if list_error:
+            value = copy.deepcopy(list_error)
+            value["source"] = "sub2api"
+            return value
+        return fetch_sub2api_provider(provider, entries, client)
+
+    return tuple((name, lambda provider=name: fetch(provider))
                  for name in SUB2API_PROVIDERS), fingerprint
 
 

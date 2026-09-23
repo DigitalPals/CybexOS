@@ -52,7 +52,12 @@ schedule_record() {
     --collect -- "$script_path" fire "$id" >/dev/null
 }
 
+# Batch operations (clear, restore) set this so the shell is told once, at
+# the end, instead of once per record.
+suppress_refresh=0
+
 refresh_shell() {
+  ((suppress_refresh == 0)) || return 0
   command -v qs >/dev/null 2>&1 || return 0
   qs ipc call reminders refresh >/dev/null 2>&1 || true
 }
@@ -124,54 +129,74 @@ clear_reminders() {
   shopt -s nullglob
   records=("$state_dir"/*.json)
   shopt -u nullglob
+  suppress_refresh=1
   for file in "${records[@]}"; do
     id=${file##*/}
     id=${id%.json}
-    valid_id "$id" && cancel_reminder "$id"
+    if valid_id "$id"; then
+      cancel_reminder "$id"
+    fi
   done
+  suppress_refresh=0
   refresh_shell
 }
 
+# Returns rather than exits: restore calls this in-process for every overdue
+# record, and one unreadable or undeliverable record must not end that loop
+# before the later records are delivered or rescheduled. Status 0 means the
+# record is gone (delivered, or already removed), 1 retained, 2 invalid id.
 fire_reminder() {
   local id=${1:-} path message
-  valid_id "$id" || exit 2
-  path=$(record_path "$id")
-  [[ -f $path ]] || exit 0
-  message=$(jq -er '.message | select(type == "string")' "$path") || exit 1
+  valid_id "$id" || return 2
+  path=$(record_path "$id") || return 2
+  [[ -f $path ]] || return 0
+  message=$(jq -er '.message | select(type == "string")' "$path") || return 1
 
   # notify-send returns nonzero when no notification server is available.
   # Keep the canonical record in that case so restore can retry it later.
   if ! notify-send --app-name="Quickshell Reminders" --icon=alarm \
       "Reminder" "$message"; then
     printf 'quickshell-reminder: notification delivery failed; reminder retained\n' >&2
-    exit 1
+    return 1
   fi
-  rm -f -- "$path"
+  rm -f -- "$path" || return 1
   refresh_shell
 }
 
+# Tells the shell only when something changed: the shell polls this while
+# it holds reminders, and an unchanged list is not worth a round trip.
 restore_reminders() {
   ensure_state_dir
-  local now records=() file id due base failed=0
+  local now records=() file id due base failed=0 changed=0
   now=$(date +%s)
   shopt -s nullglob
   records=("$state_dir"/*.json)
   shopt -u nullglob
+  suppress_refresh=1
   for file in "${records[@]}"; do
     id=${file##*/}
     id=${id%.json}
     valid_id "$id" || continue
     due=$(jq -er '.due | select(type == "number") | floor' "$file") || continue
     if ((due <= now)); then
-      fire_reminder "$id" || failed=1
+      if fire_reminder "$id"; then
+        changed=1
+      else
+        failed=1
+      fi
       continue
     fi
     base=$(timer_base "$id")
     if ! systemctl --user is-active --quiet "$base.timer"; then
-      schedule_record "$id" "$due" || failed=1
+      if schedule_record "$id" "$due"; then
+        changed=1
+      else
+        failed=1
+      fi
     fi
   done
-  refresh_shell
+  suppress_refresh=0
+  ((changed == 0)) || refresh_shell
   return "$failed"
 }
 
@@ -208,7 +233,9 @@ case $command in
     ;;
   fire)
     [[ $# == 2 ]] || usage
-    fire_reminder "$2"
+    status=0
+    fire_reminder "$2" || status=$?
+    exit "$status"
     ;;
   *) usage ;;
 esac

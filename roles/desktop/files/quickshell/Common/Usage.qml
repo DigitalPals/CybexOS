@@ -513,7 +513,10 @@ Singleton {
         onTriggered: root.countdownNow = Date.now()
     }
 
-    onPollEnabledChanged: warmUp()
+    onPollEnabledChanged: {
+        if (!startupWarmUp.running)
+            warmUp();
+    }
 
     onFetchConfigurationChanged: {
         connectionTestMessage = "";
@@ -524,8 +527,24 @@ Singleton {
         }
     }
 
+    // Session start: the first fetch and the private-key status check wait a
+    // few seconds so they do not join the burst of every other singleton
+    // starting at once. Direct mode has no management key to look up.
+    Timer {
+        id: startupWarmUp
+        interval: 5000
+        onTriggered: {
+            const source = Settings.modOpts.usage.source;
+            if (source !== "direct")
+                root.checkManagementKey(source === "sub2api" ? "sub2api" : "cliproxy");
+            root.warmUp();
+        }
+    }
+
     Component.onCompleted: {
-        checkManagementKey(Settings.modOpts.usage.source === "sub2api" ? "sub2api" : "cliproxy");
-        warmUp();
+        // With the module off there is nothing to wait for: settle at once.
+        if (!pollEnabled)
+            warmUp();
+        startupWarmUp.start();
     }
 }

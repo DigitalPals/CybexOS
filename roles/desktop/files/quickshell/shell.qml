@@ -196,7 +196,10 @@ ShellRoot {
     // must start collecting, usage and GitHub must start polling — GitHub
     // also raises the toasts for watched repositories, which must not wait
     // for the popover — and settings must load from session start rather than
-    // from the first popover open.
+    // from the first popover open. Constructing them is cheap; the
+    // non-critical first fetches stagger themselves behind their own
+    // start-up timers (Usage 5 s, Reminders restore 8 s, Calendar 12 s,
+    // Updates 20 s) so a login does not run them all at once.
     Component.onCompleted: {
         void OmarchyPlugins.ready;
         void Notifs.server;

@@ -72,10 +72,15 @@ Singleton {
         target: NetworkStatus
 
         function onOnlineChanged() {
-            if (NetworkStatus.online) {
-                root.consecutiveFailures = 0;
-                root.refresh(true);
-            }
+            if (!NetworkStatus.online)
+                return;
+            root.consecutiveFailures = 0;
+            // A flapping link should not refetch a forecast that is still
+            // fresh; a failed, missing or relocated one is fetched at once.
+            if (root.ready && root.fetchError === "" && root.fetchedUrl === root.url
+                    && Date.now() - root.updatedAt < 600000)
+                return;
+            root.refresh(true);
         }
     }
 

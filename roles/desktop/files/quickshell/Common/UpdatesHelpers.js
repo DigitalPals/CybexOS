@@ -138,6 +138,96 @@ function rowMatchesToken(name, evr, token) {
         : key.slice(0, token.length) === token;
 }
 
+// Pending feed rows indexed by package name ({name: [{index, evr}, …]}), so a
+// progress line costs a handful of lookups instead of a scan of the whole
+// transcript. The candidates are every prefix of the token that ends before a
+// "-": one of them is the package name unless dnf clipped the token inside the
+// name itself, and only then does the lookup fall back to a scan. A token
+// whose name is pending but whose evr is not (cleanup of the outgoing
+// version) matches nothing, as before. Returns the feed index taken, or -1.
+function addPendingRow(pending, name, evr, index) {
+    if (!pending.hasOwnProperty(name))
+        pending[name] = [];
+    pending[name].push({ index: index, evr: evr });
+}
+
+function takeFromRows(pending, name, token) {
+    var rows = pending[name];
+    for (var j = 0; j < rows.length; j++) {
+        if (rowMatchesToken(name, rows[j].evr, token)) {
+            var index = rows[j].index;
+            rows.splice(j, 1);
+            if (rows.length === 0)
+                delete pending[name];
+            return index;
+        }
+    }
+    return -1;
+}
+
+function takePendingRow(pending, token) {
+    if (typeof token !== "string" || token === "")
+        return -1;
+    var named = false;
+    for (var at = token.indexOf("-"); at > 0; at = token.indexOf("-", at + 1)) {
+        var name = token.slice(0, at);
+        if (!pending.hasOwnProperty(name))
+            continue;
+        named = true;
+        var index = takeFromRows(pending, name, token);
+        if (index !== -1)
+            return index;
+    }
+    if (named)
+        return -1;
+    var best = -1;
+    var bestName = "";
+    for (var key in pending) {
+        if (!pending.hasOwnProperty(key))
+            continue;
+        var rows = pending[key];
+        for (var k = 0; k < rows.length; k++) {
+            if ((best === -1 || rows[k].index < best)
+                    && rowMatchesToken(key, rows[k].evr, token)) {
+                best = rows[k].index;
+                bestName = key;
+            }
+        }
+    }
+    if (best === -1)
+        return -1;
+    var list = pending[bestName];
+    for (var m = 0; m < list.length; m++) {
+        if (list[m].index === best) {
+            list.splice(m, 1);
+            break;
+        }
+    }
+    if (list.length === 0)
+        delete pending[bestName];
+    return best;
+}
+
+// After a run the counts are rechecked once. A second, delayed check is only
+// worth its network traffic when that recount failed, or when a successful
+// run still reports pending packages for a backend it just upgraded (the
+// package database or remote metadata was still settling).
+function postRunRetryNeeded(complete, runState, dnfCount, flatpakCount,
+        includedFlatpak) {
+    if (!complete)
+        return true;
+    if (runState !== "done")
+        return false;
+    return dnfCount > 0 || (!!includedFlatpak && flatpakCount > 0);
+}
+
+// Connectivity can flap; an online edge is not a reason to repeat a
+// complete check that is only a few minutes old.
+function checkIsFresh(lastChecked, now, maxAgeMs) {
+    return lastChecked > 0 && now - lastChecked >= 0
+        && now - lastChecked < maxAgeMs;
+}
+
 // Application ids read as their most distinctive segment: org.signal.Signal
 // is "Signal", but com.spotify.Client must not become "Client".
 var FLATPAK_GENERIC_TAILS = ["client", "app", "desktop"];
@@ -286,6 +376,10 @@ var exported = {
     dnfTableRow: dnfTableRow,
     parseDnfRunLine: parseDnfRunLine,
     rowMatchesToken: rowMatchesToken,
+    addPendingRow: addPendingRow,
+    takePendingRow: takePendingRow,
+    postRunRetryNeeded: postRunRetryNeeded,
+    checkIsFresh: checkIsFresh,
     flatpakRefName: flatpakRefName,
     parseFlatpakRunLine: parseFlatpakRunLine,
     runPercent: runPercent,
