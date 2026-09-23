@@ -10,6 +10,7 @@ QtObject {
     property var component: null
     property var instance: null
     property string error: ""
+    property string configureError: ""
     property bool disposed: false
     readonly property bool ready: instance !== null
     signal loaded()
@@ -24,10 +25,19 @@ QtObject {
             omarchyPath: Quickshell.env("OMARCHY_PATH") || Quickshell.shellDir + "/compat/omarchy",
             barConfig: api.barConfig, settings: api.descriptor.settings || {},
             service: OmarchyPlugins.serviceFor(pluginId) };
+        // Field by field: a plugin that declares one with an incompatible
+        // type (or a throwing handler) loses that field, not the rest of its
+        // injection, and never aborts the registry sync that called this.
+        const failures = [];
         for (const key of Object.keys(fields)) {
-            if (key in instance)
-                instance[key] = fields[key];
+            try {
+                if (key in instance)
+                    instance[key] = fields[key];
+            } catch (exception) {
+                failures.push(key + ": " + exception);
+            }
         }
+        configureError = failures.length > 0 ? "Could not set " + failures.join("; ") : "";
     }
 
     function finish() {
