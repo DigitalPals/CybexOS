@@ -59,6 +59,19 @@ test("SysInfo reads and writes brightness through brightness-control", () => {
         /function refreshBrightness\(\) \{[\s\S]{0,200}?brightnessWrite\.running[\s\S]{0,80}?brightnessSettle\.running/);
 });
 
+test("the OSD wheel waits for a real reading before stepping brightness", () => {
+    // Brightness is -1 until something reads it (nothing does at login), so
+    // a step computed from it would set the display to about 4 %.
+    const osd = read("OsdWindow.qml");
+    const wheel = osd.slice(osd.indexOf("onWheel:"));
+    const guard = wheel.indexOf("SysInfo.brightness < 0");
+    assert.ok(guard > 0, "the wheel must check for an unread brightness");
+    assert.ok(guard < wheel.indexOf("SysInfo.setBrightness("),
+        "the check must come before any write");
+    assert.match(wheel, /SysInfo\.brightness < 0\) \{[^}]*SysInfo\.refreshBrightness\(\);/,
+        "an unread wheel asks for the reading instead");
+});
+
 test("a refresh during a running read re-reads once that read settles", () => {
     const vm = require("node:vm");
     const sys = read("Common/SysInfo.qml");

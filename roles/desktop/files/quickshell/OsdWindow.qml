@@ -171,6 +171,12 @@ PanelWindow {
                 if (root.volumeKind) {
                     if (root.audio)
                         root.audio.volume = Format.clamp01(root.audio.volume + steps * 0.05);
+                } else if (SysInfo.brightness < 0) {
+                    // Nothing has read the display yet (brightness is -1
+                    // until something asks), and a step from there would
+                    // land near zero. Ask now; the next notch acts on it.
+                    SysInfo.refreshBrightness();
+                    Osd.show("brightness");
                 } else {
                     SysInfo.setBrightness(SysInfo.brightness + steps * 5);
                     Osd.show("brightness");
