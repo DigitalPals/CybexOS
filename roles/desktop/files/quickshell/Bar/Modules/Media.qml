@@ -124,14 +124,17 @@ BarModule {
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
                 visible: !playerBrand.visible && status === Image.Ready
-                layer.enabled: true
+                // The tint animates here rather than inside the effect so the
+                // offscreen layer exists only while it is non-zero, as in
+                // BrandIcon; at rest the icon takes the plain image path.
+                property real tintAmount: mediaChip.held || mediaChip.hovered ? 1 : 0
+                Behavior on tintAmount {
+                    NumberAnimation { duration: Theme.chipFadeDuration }
+                }
+                layer.enabled: visible && tintAmount > 0.001
                 layer.effect: MultiEffect {
-                    colorization: mediaChip.held || mediaChip.hovered ? 1 : 0
+                    colorization: playerIcon.tintAmount
                     colorizationColor: mediaChip.hoverColor
-
-                    Behavior on colorization {
-                        NumberAnimation { duration: Theme.chipFadeDuration }
-                    }
                 }
             }
 

@@ -143,6 +143,10 @@ ShellRoot {
                 source: Wallpaper.current !== "" ? Wallpaper.url(Wallpaper.current) : ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
+                // Keep drawing the outgoing wallpaper until the next one has
+                // decoded, instead of flashing the window's fallback colour
+                // for the length of every asynchronous load (Qt 6.8+).
+                retainWhileLoading: true
                 cache: true
                 // screen is briefly null while an output is torn down;
                 // 0 falls back to the image's own size for that instant.

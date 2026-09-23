@@ -4,8 +4,11 @@
 
 set -euo pipefail
 
-if wl-paste --list-types 2>/dev/null \
-    | grep -Eiq 'passwordmanagerhint|x-kde-secret|keepassxc|concealed'; then
+# Read the whole type list first. Piping it straight into `grep -q` lets grep
+# exit on the first match; wl-paste then dies of SIGPIPE, pipefail reports the
+# pipeline as failed, and the concealed secret would be stored after all.
+types=$(wl-paste --list-types 2>/dev/null || true)
+if grep -Eiq 'passwordmanagerhint|x-kde-secret|keepassxc|concealed' <<<"$types"; then
   # Consume the watcher payload so wl-paste can complete cleanly without ever
   # passing the secret bytes to cliphist.
   cat >/dev/null

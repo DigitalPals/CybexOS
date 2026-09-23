@@ -81,8 +81,11 @@ Item {
       fillMode: Image.PreserveAspectCrop
       asynchronous: true
       cache: root.version === 0
-      sourceSize.width: root.version > 0 ? width : 0
-      sourceSize.height: root.version > 0 ? height : 0
+      // Always decode at the drawn size: a zero sourceSize decodes the full
+      // file, which for a 24-megapixel still is ~100 MB of texture
+      // behind a screen-sized crop.
+      sourceSize.width: Math.ceil(width * Screen.devicePixelRatio)
+      sourceSize.height: Math.ceil(height * Screen.devicePixelRatio)
     }
   }
 }

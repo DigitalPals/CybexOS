@@ -68,8 +68,25 @@ def favicon_databases() -> list[Path]:
     return found
 
 
+FAVICON_QUERY = """
+    SELECT b.image_data, b.width, b.height, b.last_updated
+      FROM icon_mapping AS m
+      JOIN favicon_bitmaps AS b ON b.icon_id = m.icon_id
+     WHERE ({where})
+       AND b.image_data IS NOT NULL
+       AND length(b.image_data) > 0
+     ORDER BY (b.width * b.height) DESC, b.last_updated DESC
+     LIMIT 1
+"""
+
+
 def best_favicon(database: Path, origin: str) -> tuple[int, int, bytes] | None:
     prefixes = [f"https://{origin}", f"http://{origin}"]
+    # The origin's own root page is almost always mapped, and an exact
+    # `page_url IN (...)` is answered from the page_url index. The
+    # case-insensitive LIKE scan of the whole table is only the fallback for
+    # sites whose icon is known solely through deeper pages.
+    exact = [value for prefix in prefixes for value in (prefix, prefix + "/")]
     params: list[str] = []
     clauses: list[str] = []
     for prefix in prefixes:
@@ -77,20 +94,15 @@ def best_favicon(database: Path, origin: str) -> tuple[int, int, bytes] | None:
         params.extend([prefix, prefix + "/%", prefix + ":%"])
 
     uri = database.resolve().as_uri() + "?immutable=1"
-    query = f"""
-        SELECT b.image_data, b.width, b.height, b.last_updated
-          FROM icon_mapping AS m
-          JOIN favicon_bitmaps AS b ON b.icon_id = m.icon_id
-         WHERE {' OR '.join(clauses)}
-           AND b.image_data IS NOT NULL
-           AND length(b.image_data) > 0
-         ORDER BY (b.width * b.height) DESC, b.last_updated DESC
-         LIMIT 1
-    """
     try:
         connection = sqlite3.connect(uri, uri=True, timeout=0.25)
         try:
-            row = connection.execute(query, params).fetchone()
+            row = connection.execute(
+                FAVICON_QUERY.format(where="m.page_url IN (" + ", ".join("?" * len(exact)) + ")"),
+                exact).fetchone()
+            if not row:
+                row = connection.execute(
+                    FAVICON_QUERY.format(where=" OR ".join(clauses)), params).fetchone()
         finally:
             connection.close()
     except (OSError, sqlite3.Error):

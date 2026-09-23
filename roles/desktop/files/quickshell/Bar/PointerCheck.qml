@@ -42,10 +42,30 @@ QtObject {
         // be hovered before it has been laid out.
         if (!root.host || !root.host.tooltipPointerInside || !root.target)
             return false;
+        // mapFromItem knows nothing of visibility or clipping. A target
+        // inside a collapsed Revealer or a tray strip clipped to zero width
+        // still has a rectangle under the pointer, and would arm its tooltip
+        // and hover animation from behind the thing hiding it. `visible` is
+        // effective visibility, so a hidden ancestor counts too; checking it
+        // first also keeps hidden targets off every pointer-motion update.
+        if (!root.target.visible || root.target.width <= 0
+                || root.target.height <= 0)
+            return false;
         const scenePoint = root.host.tooltipPointerPosition;
-        const localPoint = root.target.mapFromItem(null,
-            scenePoint.x, scenePoint.y);
-        return localPoint.x >= 0 && localPoint.x <= root.target.width
-            && localPoint.y >= 0 && localPoint.y <= root.target.height;
+        if (!root.inside(root.target, scenePoint))
+            return false;
+        // Partially clipped: the point must also fall inside every clipping
+        // ancestor, or a half-revealed strip claims its hidden half.
+        for (let item = root.target.parent; item; item = item.parent) {
+            if (item.clip && !root.inside(item, scenePoint))
+                return false;
+        }
+        return true;
+    }
+
+    function inside(item, scenePoint) {
+        const localPoint = item.mapFromItem(null, scenePoint.x, scenePoint.y);
+        return localPoint.x >= 0 && localPoint.x <= item.width
+            && localPoint.y >= 0 && localPoint.y <= item.height;
     }
 }

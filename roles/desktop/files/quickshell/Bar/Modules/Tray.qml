@@ -102,6 +102,9 @@ BarModule {
                 height: 26
                 clip: true
                 opacity: root.expanded ? 1 : 0
+                // Hidden once collapsed so the icons behind the zero-width
+                // clip stop answering the bar-wide hover check.
+                visible: root.expanded || width > 0.5
 
                 Behavior on width {
                     NumberAnimation {
@@ -155,6 +158,7 @@ BarModule {
                             }
 
                             Image {
+                                id: trayIcon
                                 anchors.centerIn: parent
                                 width: 15
                                 height: 15
@@ -162,14 +166,17 @@ BarModule {
                                 fillMode: Image.PreserveAspectFit
                                 source: trayItem.modelData.icon
                                 smooth: true
-                                layer.enabled: true
+                                // The tint animates here rather than inside
+                                // the effect so the offscreen layer can exist
+                                // only while it is non-zero, as in BrandIcon.
+                                property real tintAmount: itemHover.over ? 1 : 0
+                                Behavior on tintAmount {
+                                    NumberAnimation { duration: Theme.chipFadeDuration }
+                                }
+                                layer.enabled: tintAmount > 0.001
                                 layer.effect: MultiEffect {
-                                    colorization: itemHover.over ? 1 : 0
+                                    colorization: trayIcon.tintAmount
                                     colorizationColor: Theme.barTextHi
-
-                                    Behavior on colorization {
-                                        NumberAnimation { duration: Theme.chipFadeDuration }
-                                    }
                                 }
                             }
 

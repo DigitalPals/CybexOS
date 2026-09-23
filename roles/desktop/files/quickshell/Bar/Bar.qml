@@ -266,8 +266,18 @@ PanelWindow {
         }));
     }
 
+    // The More chip calls this on every pointer motion (its recovery path for
+    // a lost enter). Reassigning the singleton rebuilds the open popover's
+    // Repeater, so only publish a list that actually differs — which still
+    // lets this output's list replace another output's.
+    function prepareOverflow() {
+        const next = currentOverflowItems();
+        if (JSON.stringify(next) !== JSON.stringify(BarOverflow.items))
+            BarOverflow.items = next;
+    }
+
     function toggleOverflow(item) {
-        BarOverflow.items = currentOverflowItems();
+        prepareOverflow();
         togglePopout("overflow", "right", item);
     }
 
@@ -1049,7 +1059,7 @@ PanelWindow {
                 panelName: "overflow"
                 isle: "right"
                 hPadding: 6
-                preparePanel: () => BarOverflow.items = barWindow.currentOverflowItems()
+                preparePanel: () => barWindow.prepareOverflow()
                 tooltip: barWindow.overflowIds.length + " hidden widgets"
                 tooltipAlign: 1
                 Accessible.role: Accessible.Button

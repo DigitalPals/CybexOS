@@ -314,24 +314,37 @@ PanelWindow {
                             radius: 10
                             color: "white"
 
-                            Grid {
+                            // Painted once per matrix rather than built as a
+                            // Rectangle (and binding) per module — a Wi-Fi QR
+                            // is well over a thousand of them.
+                            Canvas {
                                 id: qrGrid
                                 anchors.centerIn: parent
-                                columns: qr.matrix.length > 0 ? qr.matrix[0].length : 1
-                                readonly property real cell: qr.matrix.length > 0
-                                    ? Math.floor((parent.width - 16) / qr.matrix[0].length) : 1
-
-                                Repeater {
-                                    model: qr.matrix.length > 0
-                                        ? qr.matrix.length * qr.matrix[0].length : 0
-
-                                    Rectangle {
-                                        required property int index
-                                        width: qrGrid.cell
-                                        height: qrGrid.cell
-                                        color: qr.matrix[Math.floor(index / qr.matrix[0].length)]
-                                            .charAt(index % qr.matrix[0].length) === "1"
-                                            ? "#111111" : "white"
+                                readonly property var matrix: qr.matrix
+                                readonly property int columns: matrix.length > 0
+                                    ? matrix[0].length : 1
+                                readonly property real cell: matrix.length > 0
+                                    ? Math.max(1, Math.floor((parent.width - 16) / columns)) : 1
+                                width: cell * columns
+                                height: cell * Math.max(1, matrix.length)
+                                // Hard module edges: antialiased neighbours
+                                // leave hairline seams at fractional scales.
+                                antialiasing: false
+                                onMatrixChanged: requestPaint()
+                                onCellChanged: requestPaint()
+                                onPaint: {
+                                    const context = getContext("2d");
+                                    context.reset();
+                                    context.fillStyle = "white";
+                                    context.fillRect(0, 0, width, height);
+                                    context.fillStyle = "#111111";
+                                    for (let row = 0; row < matrix.length; row++) {
+                                        const line = matrix[row];
+                                        for (let column = 0; column < line.length; column++) {
+                                            if (line.charAt(column) === "1")
+                                                context.fillRect(column * cell, row * cell,
+                                                    cell, cell);
+                                        }
                                     }
                                 }
                             }
