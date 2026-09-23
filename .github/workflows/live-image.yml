@@ -5,14 +5,22 @@ on:
     paths:
       - image/**
       - roles/apps/**
+      - roles/base/**
+      - roles/desktop/**
       - roles/dotfiles/**
+      - assets/**
+      - VERSION
       - inventory/group_vars/all.yml
       - .github/workflows/live-image.yml
   push:
     paths:
       - image/**
       - roles/apps/**
+      - roles/base/**
+      - roles/desktop/**
       - roles/dotfiles/**
+      - assets/**
+      - VERSION
       - inventory/group_vars/all.yml
       - .github/workflows/live-image.yml
   workflow_dispatch:

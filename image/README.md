@@ -133,6 +133,10 @@ Boot the normal menu entry when testing graphics; a basic-graphics entry with
 The first private alpha's completed VM tests and exact ISO checksum are
 recorded in [VALIDATION.md](VALIDATION.md).
 
+The [September 23 source and installer audit](AUDIT-2026-09-23.md) records
+current desktop parity gaps, build fixes, and proposed boot/installer changes.
+It does not qualify a newly built ISO.
+
 ```bash
 # In Fedora with python3-pyside6 installed:
 QT_QPA_PLATFORM=offscreen python3 image/tests

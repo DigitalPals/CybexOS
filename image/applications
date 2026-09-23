@@ -51,6 +51,27 @@ def package_names():
     return sorted(set(packages)), defaults["apps_flatpaks"] + defaults["apps_steam_flatpaks"]
 
 
+def application_repositories(repo_directory=Path("/etc/yum.repos.d")):
+    """Load every reviewed vendor policy; missing files must stop the build."""
+    policies = configparser.ConfigParser(interpolation=None)
+    repo_files = [*repo_directory.glob("rpmfusion-*.repo")]
+    # Brave Origin is published in the Brave Browser repository. Package
+    # names and repository filenames are independent contracts.
+    repo_files += [ROOT / "roles/apps/files" / (name + ".repo")
+                   for name in ("brave-browser", "1password", "chatgpt", "tailscale")]
+    for path in repo_files:
+        # ConfigParser.read silently ignores missing files, which otherwise
+        # hides a renamed policy until dependency resolution during compose.
+        with path.open() as stream:
+            policies.read_file(stream, source=str(path))
+    for section in list(policies.sections()):
+        if not policies[section].getboolean("enabled", fallback=True):
+            policies.remove_section(section)
+        elif not policies[section].getboolean("gpgcheck", fallback=False):
+            raise RuntimeError(f"Unsigned application repository: {section}")
+    return policies
+
+
 def main():
     if os.geteuid() != 0 or Path("/etc/hostname").read_text().strip() != "image-builder":
         raise RuntimeError("Application preparation is only allowed in the disposable image builder")
@@ -106,18 +127,9 @@ def main():
     android = payload / "usr/local/libexec/cybexos-android-sdk-update"
     android.write_text(android.read_text().replace(f"sdk={SEED}/Android/Sdk", 'sdk="$HOME/Android/Sdk"'))
     # Existing repo definitions keep native RPM updates working after install.
-    policies = configparser.ConfigParser(interpolation=None)
-    repo_files = [*Path("/etc/yum.repos.d").glob("rpmfusion-*.repo")]
     # Vendor RPM scriptlets can rewrite their installed repo files. Compose
     # from the reviewed definitions that reference our checksum-pinned keys.
-    repo_files += [ROOT / "roles/apps/files" / (name + ".repo")
-                   for name in ("brave-origin", "1password", "chatgpt", "tailscale")]
-    policies.read(repo_files)
-    for section in list(policies.sections()):
-        if not policies[section].getboolean("enabled", fallback=True):
-            policies.remove_section(section)
-        elif not policies[section].getboolean("gpgcheck", fallback=False):
-            raise RuntimeError(f"Unsigned application repository: {section}")
+    policies = application_repositories()
     with (BUILD / "application-repositories.repo").open("w") as output:
         policies.write(output)
     installed = run("flatpak", "list", "--system", "--app", "--columns=application",

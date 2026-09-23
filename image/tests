@@ -27,6 +27,20 @@ applications = load("applications", ROOT / "applications")
 
 
 class OfflineApplications(unittest.TestCase):
+    def test_vendor_repository_policy_includes_brave_origin_source(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            policies = applications.application_repositories(Path(temporary))
+        self.assertIn("brave-origin", applications.package_names()[0])
+        self.assertIn("brave-browser", policies.sections())
+        self.assertTrue(policies["brave-browser"].getboolean("gpgcheck"))
+        self.assertIn("brave-browser-rpm-release", policies["brave-browser"]["baseurl"])
+
+    def test_missing_vendor_repository_policy_fails_before_compose(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.object(applications, "ROOT", Path(temporary)):
+                with self.assertRaises(FileNotFoundError):
+                    applications.application_repositories(Path(temporary))
+
     def test_compose_selects_every_app_including_steam_multilib(self):
         packages, _ = applications.package_names()
         source = (ROOT / "live.ks").read_text()
