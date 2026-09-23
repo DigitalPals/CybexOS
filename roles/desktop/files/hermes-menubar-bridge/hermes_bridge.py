@@ -88,6 +88,14 @@ TOKEN_PATTERN = re.compile(
 )
 CONVERSATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$")
 REMOTE_AUTH_VERSION = 1
+# Remote observer streams (the session list and the selected session) are
+# long-lived. Only one that stayed open this long proves the server healthy
+# and resets reconnect backoff; a server that accepts and promptly closes, or
+# fails, is retried with jittered exponential delays between the floor and
+# the cap instead of at a fixed sub-second rate.
+REMOTE_OBSERVER_HEALTHY_SECONDS = 60.0
+REMOTE_OBSERVER_RETRY_FLOOR = 3.0
+REMOTE_OBSERVER_RETRY_CAP = 120.0
 
 
 class RpcFault(Exception):
@@ -144,6 +152,25 @@ def event_frame(event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         "method": "event",
         "params": {"type": event_type, "payload": payload},
     }
+
+
+def remote_observer_retry_delay(failures: int) -> float:
+    """Return the jittered reconnect delay after ``failures`` short streams."""
+
+    exponent = min(max(0, failures - 1), 8)
+    delay = REMOTE_OBSERVER_RETRY_FLOOR * (2 ** exponent)
+    return min(REMOTE_OBSERVER_RETRY_CAP, delay * (0.8 + random.random() * 0.4))
+
+
+def remote_observer_failures(failures: int, connected_at: float | None) -> int:
+    """Reset backoff only for a stream that stayed open long enough."""
+
+    if (
+        connected_at is not None
+        and time.monotonic() - connected_at >= REMOTE_OBSERVER_HEALTHY_SECONDS
+    ):
+        return 0
+    return failures + 1
 
 
 def slugify(name: str) -> str:
@@ -3526,16 +3553,17 @@ class HermesBridge:
                 and self.remote_auth.status.get("state") == "connected"
             ):
                 response: Any = None
+                connected_at: float | None = None
                 try:
                     response = await asyncio.to_thread(
                         self.remote_auth.open_sse,
                         "/api/sessions/events",
                         timeout=45,
                     )
+                    connected_at = time.monotonic()
                     with self.remote_observer_response_lock:
                         self.remote_observer_responses[key] = response
                     await self.update_remote_contract(globalSessionEvents=True)
-                    failures = 0
 
                     async def handle(event: str, _event_id: str, _data: dict[str, Any]) -> None:
                         if event.strip().lower().replace("-", "_") != "sessions_changed":
@@ -3553,9 +3581,8 @@ class HermesBridge:
                     if "HTTP 404" in fault.message or "invalid event stream" in fault.message:
                         await self.update_remote_contract(globalSessionEvents=False)
                         return
-                    failures += 1
                 except (OSError, TimeoutError, UnicodeDecodeError):
-                    failures += 1
+                    pass  # counted below like any other short-lived stream
                 finally:
                     with self.remote_observer_response_lock:
                         if self.remote_observer_responses.get(key) is response:
@@ -3563,7 +3590,8 @@ class HermesBridge:
                     if response is not None:
                         with suppress(Exception):
                             await asyncio.to_thread(response.close)
-                await asyncio.sleep(min(30.0, 0.5 * (2 ** min(failures, 6))))
+                failures = remote_observer_failures(failures, connected_at)
+                await asyncio.sleep(remote_observer_retry_delay(failures))
         finally:
             if self.remote_observer_tasks.get(key) is asyncio.current_task():
                 self.remote_observer_tasks.pop(key, None)
@@ -3592,14 +3620,15 @@ class HermesBridge:
                 path += "&known_count=" + str(
                     max(0, int(conversation.get("message_count") or 0))
                 )
+                connected_at: float | None = None
                 try:
                     response = await asyncio.to_thread(
                         self.remote_auth.open_sse, path, timeout=45
                     )
+                    connected_at = time.monotonic()
                     with self.remote_observer_response_lock:
                         self.remote_observer_responses[key] = response
                     await self.update_remote_contract(sessionStream=True)
-                    failures = 0
 
                     async def handle(event: str, event_id: str, data: dict[str, Any]) -> None:
                         normalized = event.strip().lower().replace("-", "_")
@@ -3654,9 +3683,8 @@ class HermesBridge:
                     if "HTTP 404" in fault.message or "invalid event stream" in fault.message:
                         await self.update_remote_contract(sessionStream=False)
                         return
-                    failures += 1
                 except (OSError, TimeoutError, UnicodeDecodeError):
-                    failures += 1
+                    pass  # counted below like any other short-lived stream
                 finally:
                     with self.remote_observer_response_lock:
                         if self.remote_observer_responses.get(key) is response:
@@ -3664,7 +3692,8 @@ class HermesBridge:
                     if response is not None:
                         with suppress(Exception):
                             await asyncio.to_thread(response.close)
-                await asyncio.sleep(min(30.0, 0.5 * (2 ** min(failures, 6))))
+                failures = remote_observer_failures(failures, connected_at)
+                await asyncio.sleep(remote_observer_retry_delay(failures))
         finally:
             if self.remote_observer_tasks.get(key) is asyncio.current_task():
                 self.remote_observer_tasks.pop(key, None)

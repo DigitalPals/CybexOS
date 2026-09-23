@@ -11,6 +11,7 @@ from pathlib import Path
 import stat
 import sys
 import tempfile
+import threading
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -363,11 +364,90 @@ async def delivery_scenario() -> None:
             await client.stop()
 
 
+class ObserverResponse:
+    """An accepted SSE response that stays open ``lifetime`` seconds, then ends."""
+
+    def __init__(self, lifetime: float) -> None:
+        self.lifetime = lifetime
+        self.closed = threading.Event()
+
+    def readline(self, _limit: int) -> bytes:
+        self.closed.wait(self.lifetime)
+        return b""
+
+    def close(self) -> None:
+        self.closed.set()
+
+
+async def observer_backoff_scenario() -> None:
+    """A server that accepts and promptly closes is not retried at a fixed rate."""
+
+    delays = [BRIDGE.remote_observer_retry_delay(n) for n in range(12)]
+    assert min(delays) >= 2.0, delays
+    assert max(delays) <= BRIDGE.REMOTE_OBSERVER_RETRY_CAP, delays
+    assert delays[-1] == BRIDGE.REMOTE_OBSERVER_RETRY_CAP, delays
+
+    real_delay = BRIDGE.remote_observer_retry_delay
+    real_healthy = BRIDGE.REMOTE_OBSERVER_HEALTHY_SECONDS
+    recorded: list[int] = []
+
+    def no_wait(failures: int) -> float:
+        recorded.append(failures)
+        return 0.0
+
+    BRIDGE.remote_observer_retry_delay = no_wait
+    BRIDGE.REMOTE_OBSERVER_HEALTHY_SECONDS = 0.05
+    try:
+        with tempfile.TemporaryDirectory(prefix="cybexos-hermes-observer.") as temporary:
+            root = Path(temporary)
+            state = root / "conversations.json"
+            state.write_text(
+                json.dumps({"conversations": [{"session_id": "live-1", "title": "Live"}]}),
+                encoding="utf-8",
+            )
+            bridge = BRIDGE.HermesBridge(
+                BRIDGE.ConversationRegistry(state),
+                "http://127.0.0.1:1",
+                root / "remote-auth.json",
+                local_backend_enabled=False,
+            )
+            origin = "https://hermes.example.test"
+            for loop_name in ("global", "session"):
+                connected_remote(bridge, origin)
+                bridge.remote_observed_conversation_id = "live-1"
+                recorded.clear()
+                # Three prompt closes, one stream that stayed up long enough to
+                # count as healthy, one more prompt close, then a refused open
+                # after the configuration is gone ends the loop.
+                lifetimes = [0.0, 0.0, 0.0, 0.1, 0.0]
+
+                def open_sse(_path: str, **_kwargs: Any) -> ObserverResponse:
+                    if not lifetimes:
+                        bridge.remote_auth.base_url = ""
+                        raise OSError("fixture configuration removed")
+                    return ObserverResponse(lifetimes.pop(0))
+
+                bridge.remote_auth.open_sse = open_sse
+                loop = (
+                    bridge._remote_global_events_loop(origin)
+                    if loop_name == "global"
+                    else bridge._remote_session_events_loop("live-1", "live-1", origin)
+                )
+                await asyncio.wait_for(loop, timeout=5)
+                assert recorded == [1, 2, 3, 0, 1, 2], (loop_name, recorded)
+            await bridge.stop()
+    finally:
+        BRIDGE.remote_observer_retry_delay = real_delay
+        BRIDGE.REMOTE_OBSERVER_HEALTHY_SECONDS = real_healthy
+
+
 if __name__ == "__main__":
     asyncio.run(scenario())
     asyncio.run(delivery_scenario())
+    asyncio.run(observer_backoff_scenario())
     print(
         "Hermes bridge exposes native WebUI history, starts on New chat, "
         "creates and deletes sessions, has no channel RPC contract, "
-        "coalesces status churn, and isolates slow local clients"
+        "coalesces status churn, isolates slow local clients, and backs off "
+        "observer streams that close early"
     )
