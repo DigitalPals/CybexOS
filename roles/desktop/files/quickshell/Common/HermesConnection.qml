@@ -13,19 +13,34 @@ Singleton {
     // "connecting" | "connected" | "offline" | "disabled"
     property string state: "offline"
     property string connectionError: ""
+    // The next retry's delay. It doubles with every failed attempt and starts
+    // over only once a link has stayed up (stableTimer) or the user asks
+    // (reconnect), never merely because the socket opened: a bridge that
+    // accepts and then drops would otherwise be retried every two seconds.
     property int retrySecs: 2
     property int generation: 0
 
-    readonly property var opts: Settings.modOpts.hermes ?? ({})
-    readonly property bool enabled: opts.enabled !== false
+    // Whether anything wants the bridge. The bar module is the one consumer
+    // that needs it unasked; with the module off, a socket (or a retry every
+    // minute for an absent bridge) is pure idle churn, and merely
+    // constructing this singleton (Settings → About) must not connect. The
+    // panel still connects while it is open. Settings.mods is replaced
+    // wholesale on every edit, so this re-evaluates with the module list.
+    readonly property bool enabled: {
+        const mods = Settings.mods;
+        for (const col of ["left", "center", "right"]) {
+            if (mods[col].some(m => m.id === "hermes" && m.on))
+                return true;
+        }
+        return Popouts.open && Popouts.currentName === "hermes";
+    }
+    // There is no settings key for the address: normalizeModOpts keeps only
+    // the hermes options it validates, so the environment is the override.
     readonly property string endpoint: {
-        const configured = typeof opts.socketUrl === "string"
-            ? opts.socketUrl.trim() : "";
         const rawEnvironment = Quickshell.env("HERMES_MENUBAR_WS_URL");
         const environment = typeof rawEnvironment === "string"
             ? rawEnvironment.trim() : "";
-        return configured !== "" ? configured
-            : environment !== "" ? environment : "ws://127.0.0.1:9120/ws";
+        return environment !== "" ? environment : "ws://127.0.0.1:9120/ws";
     }
     readonly property bool websocketsMissing: socketLoader.status === Loader.Error
     readonly property int retryInSecs: retryTimer.running
@@ -84,6 +99,7 @@ Singleton {
     function disconnect() {
         retryTimer.stop();
         connectTimeout.stop();
+        stableTimer.stop();
         const wasLive = state === "connected" || state === "connecting";
         generation++;
         state = enabled ? "offline" : "disabled";
@@ -103,6 +119,7 @@ Singleton {
 
     function scheduleRetry(emitDrop) {
         connectTimeout.stop();
+        stableTimer.stop();
         if (emitDrop === true)
             dropped();
         // Publish offline before deactivating the WebSocket. Its synchronous
@@ -110,9 +127,11 @@ Singleton {
         state = enabled ? "offline" : "disabled";
         if (socketLoader.item)
             socketLoader.item.active = false;
-        if (!enabled) {
+        // Unattended, nobody would see another attempt: leave the timer off
+        // and let Activity.resumed start it. The bridge is on loopback, so
+        // the network state is no reason to wait.
+        if (!enabled || Activity.idle)
             return;
-        }
         retryTimer.interval = retrySecs * 1000;
         retrySecs = Math.min(60, retrySecs * 2);
         retryTimer.restart();
@@ -126,7 +145,6 @@ Singleton {
     }
 
     onEnabledChanged: enabled ? reconnect() : disconnect()
-    onEndpointChanged: reconnect()
 
     Component.onCompleted: connectDelay.restart()
 
@@ -138,7 +156,21 @@ Singleton {
 
     Timer {
         id: retryTimer
-        onTriggered: root.connect()
+        // Idleness that began while this was pending: onResumed connects.
+        onTriggered: {
+            if (!Activity.idle)
+                root.connect();
+        }
+    }
+
+    Timer {
+        id: stableTimer
+        interval: 60000
+        property int generation: -1
+        onTriggered: {
+            if (generation === root.generation && root.state === "connected")
+                root.retrySecs = 2;
+        }
     }
 
     Timer {
@@ -175,6 +207,20 @@ Singleton {
         }
     }
 
+    // Back at the machine: a link that is down gets its attempt now, whether
+    // idleness held the retry back or a long backoff is still running.
+    // `idle` itself is not read here; it may not have settled yet.
+    Connections {
+        target: Activity
+
+        function onResumed() {
+            if (!root.enabled || root.state !== "offline" || root.websocketsMissing)
+                return;
+            retryTimer.stop();
+            root.connect();
+        }
+    }
+
     Connections {
         target: socketLoader.item
         enabled: socketLoader.status === Loader.Ready
@@ -190,8 +236,9 @@ Singleton {
             if (status === 1) {
                 connectTimeout.stop();
                 root.connectionError = "";
-                root.retrySecs = 2;
                 root.state = "connected";
+                stableTimer.generation = generation;
+                stableTimer.restart();
                 root.opened();
             } else if (status === 3 || status === 4) {
                 connectTimeout.stop();

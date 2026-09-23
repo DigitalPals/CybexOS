@@ -30,6 +30,22 @@ Singleton {
     // would be a lie here — connect() deliberately arms no timer for it.
     readonly property bool websocketsMissing: socketLoader.status === Loader.Error
 
+    // Whether anything wants the link. The bar module is the one consumer
+    // that needs it unasked; with the module off, a socket and its pings, or
+    // a ticket helper retrying a dead host, are pure idle churn — and merely
+    // constructing this singleton (Settings → About) must not connect. The
+    // panel still connects while it is open, for an IPC or sign-in opening it
+    // with the module off. Settings.mods is replaced wholesale on every edit,
+    // so this re-evaluates whenever the module list changes.
+    readonly property bool enabled: {
+        const mods = Settings.mods;
+        for (const col of ["left", "center", "right"]) {
+            if (mods[col].some(m => m.id === "t3" && m.on))
+                return true;
+        }
+        return Popouts.open && Popouts.currentName === "t3code";
+    }
+
     property string host: ""            // https base url from the state file
     property string wsBaseUrl: ""
     property string accessToken: ""
@@ -46,6 +62,9 @@ Singleton {
     property string credentialFingerprint: ""
     property var ticketRequest: null
     property var descriptorRequest: null
+    // The session whose environment descriptor is already loaded. It does not
+    // change within one, so a retry does not fetch it again.
+    property int descriptorEpoch: -1
     property string pendingSocketUrl: ""
     property int pendingSocketEpoch: -1
 
@@ -107,6 +126,7 @@ Singleton {
         cloudTicketTimeout.stop();
         socketConnectTimeout.stop();
         descriptorTimeout.stop();
+        stableTimer.stop();
         if (ticketRequest) {
             ticketRequest.abort();
             ticketRequest = null;
@@ -133,6 +153,24 @@ Singleton {
         environmentId = "";
         serverVersion = "";
         environmentCapabilities = ({});
+    }
+
+    onEnabledChanged: {
+        if (enabled) {
+            // Disabling destroyed the socket wrapper. Its Ready handler
+            // connects as soon as it is back; connect() covers the rest.
+            if (!socketLoader.active)
+                socketLoader.active = true;
+            if (state !== "connecting" && state !== "connected")
+                connect();
+            return;
+        }
+        // Nothing shows the link any more: close it, and let neither a pending
+        // retry nor the last failure outlive the module.
+        resetTransport();
+        connectionError = "";
+        if (!paired)
+            state = stateWithoutCredential();
     }
 
     function clearCredential() {
@@ -266,6 +304,10 @@ Singleton {
         }
     }
 
+    // scripts/t3-cloud.mjs exits with this (SIGN_IN_REQUIRED_EXIT) when it
+    // found no active T3 Connect session: a state, not a transient failure.
+    readonly property int signInRequiredExit: 3
+
     Process {
         id: cloudTicketProc
 
@@ -333,6 +375,15 @@ Singleton {
                     console.warn("t3code: bad cloud ticket response");
                 }
                 root.connectionError = "Malformed T3 Connect ticket response";
+            } else if (cloudTicketProc.exitSeen
+                    && cloudTicketProc.lastExit === root.signInRequiredExit) {
+                // No browser session is left to mint credentials from: it
+                // expired or was revoked. Only an interactive sign-in can end
+                // that, so offer it — as for a rejected bearer token — instead
+                // of retrying the helper and its Clerk calls forever.
+                root.connectionError = "T3 Connect sign-in has expired";
+                root.state = root.stateWithoutCredential();
+                return;
             } else {
                 root.connectionError = cloudTicketProc.errText !== ""
                     ? cloudTicketProc.errText : "T3 Connect authorization failed";
@@ -343,6 +394,9 @@ Singleton {
 
     // ---- connection ------------------------------------------------------
 
+    // The next retry's delay. It doubles with every failed attempt and starts
+    // over only once a link has proven healthy (markHealthy), never merely
+    // because a socket opened.
     property int retrySecs: 5
     // When the open socket last delivered a frame. Pings go out every
     // pingTimer interval and the server answers each, so a long silence
@@ -355,6 +409,11 @@ Singleton {
             state = stateWithoutCredential();
             return;
         }
+        // Every path in — the state file, the loader, a retry, a stale
+        // helper's handoff — funnels through here. onEnabledChanged connects
+        // once something wants the link again.
+        if (!enabled)
+            return;
         const epoch = sessionEpoch;
         // The state file routinely loads before the socket component does.
         // Without a retry the shell would sit offline until a restart; the
@@ -457,6 +516,8 @@ Singleton {
     }
 
     function fetchDescriptor(epoch) {
+        if (descriptorEpoch === epoch)
+            return;
         if (descriptorRequest) {
             descriptorRequest.onreadystatechange = null;
             descriptorRequest.abort();
@@ -481,6 +542,7 @@ Singleton {
                     ? d.serverVersion : root.serverVersion;
                 if (d.capabilities && typeof d.capabilities === "object")
                     root.environmentCapabilities = Object.assign({}, d.capabilities);
+                root.descriptorEpoch = epoch;
             } catch (e) {
                 // Optional metadata: the shell works without it, and the
                 // connection attempt this rode along with reports its own
@@ -498,15 +560,54 @@ Singleton {
         if (epoch !== undefined && epoch !== sessionEpoch)
             return;
         socketConnectTimeout.stop();
+        stableTimer.stop();
         dropped();
         if (socketLoader.item)
             socketLoader.item.active = false;
         if (state !== "signed-out" && state !== "cloud-empty")
             state = "offline";
+        // Offline, another attempt cannot succeed; unattended, nobody would
+        // see it. Leave the timer off: the edge that ends the hold
+        // (resumeReconnect) starts the next attempt.
+        if (!enabled || retryHold(false) !== "")
+            return;
         retryTimer.interval = retrySecs * 1000;
         retryTimer.epoch = sessionEpoch;
         retrySecs = Math.min(retrySecs * 2, 120);
         retryTimer.restart();
+    }
+
+    // Why an automatic reconnect should wait; see Helpers.reconnectHold.
+    // Read fresh at each decision rather than bound: the edges that end a
+    // hold arrive while bindings over them may not have settled yet, which
+    // is also why the resume edge passes `resumed` instead of reading idle.
+    function retryHold(resumed) {
+        return Helpers.reconnectHold(NetworkStatus.known, NetworkStatus.online,
+            Helpers.isLoopbackOrigin(host), resumed ? false : Activity.idle);
+    }
+
+    // A hold just ended (or the user came back to a long backoff): try now
+    // rather than waiting out a timer that scheduleRetry may never have armed.
+    // Only a link that is down for a transient reason qualifies; signed-out
+    // and a missing WebSocket module stay as they are.
+    function resumeReconnect(resetBackoff, resumed) {
+        if (!enabled || !paired || state !== "offline" || websocketsMissing
+                || retryHold(resumed) !== "")
+            return;
+        retryTimer.stop();
+        if (resetBackoff)
+            retrySecs = 5;
+        connect();
+    }
+
+    // The link carried real work — T3Code calls this on the first shell
+    // snapshot — so a later drop may start over from the shortest retry. An
+    // open socket alone proves nothing: a relay that accepts and then closes,
+    // or a server that ends every subscription at once, would otherwise be
+    // retried every five seconds for as long as it stays broken.
+    function markHealthy() {
+        stableTimer.stop();
+        retrySecs = 5;
     }
 
     // Send a frame. No-op while the socket is not open, which is what every
@@ -519,8 +620,22 @@ Singleton {
         id: retryTimer
         property int epoch: -1
         onTriggered: {
-            if (epoch === root.sessionEpoch)
+            // A hold that began while this was pending: resumeReconnect
+            // starts the attempt when it ends.
+            if (epoch === root.sessionEpoch && root.retryHold(false) === "")
                 root.connect();
+        }
+    }
+
+    // A link that stays up this long has proven itself even without a shell
+    // snapshot, which a pairing that cannot read never receives.
+    Timer {
+        id: stableTimer
+        interval: 60000
+        property int epoch: -1
+        onTriggered: {
+            if (epoch === root.sessionEpoch && root.state === "connected")
+                root.markHealthy();
         }
     }
 
@@ -637,6 +752,32 @@ Singleton {
         }
     }
 
+    // The edges that end a hold. Regaining the network also starts the
+    // backoff over: the failures it counted were the outage, not the server.
+    Connections {
+        target: NetworkStatus
+
+        function onOnlineChanged() {
+            if (NetworkStatus.online)
+                root.resumeReconnect(true, false);
+        }
+
+        // Losing the status read ends a network hold as well: an unknown
+        // state holds nothing back, and no online edge may ever follow.
+        function onKnownChanged() {
+            if (!NetworkStatus.known)
+                root.resumeReconnect(false, false);
+        }
+    }
+
+    Connections {
+        target: Activity
+
+        function onResumed() {
+            root.resumeReconnect(false, true);
+        }
+    }
+
     Connections {
         target: socketLoader.item
         enabled: socketLoader.status === Loader.Ready
@@ -656,7 +797,8 @@ Singleton {
                 root.connectionError = "";
                 root.lastFrameMs = Date.now();
                 root.state = "connected";
-                root.retrySecs = 5;
+                stableTimer.epoch = epoch;
+                stableTimer.restart();
                 root.opened();
             } else if (st === 3 || st === 4) { // closed | error
                 socketConnectTimeout.stop();

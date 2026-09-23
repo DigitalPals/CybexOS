@@ -23,9 +23,12 @@ import os from "node:os";
 import path from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
+// The shell configuration this helper ships in. Quickshell runs it by path
+// and does not pass that path to its children, so IPC must name it.
+const SHELL_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const { safeHttpUrl } = require("../Common/ExternalUrl.js");
 
 export const CLOUD_CONFIG = Object.freeze({
@@ -71,6 +74,19 @@ export const STATE_PATHS = Object.freeze({
 });
 
 const sessionEpochContext = new AsyncLocalStorage();
+
+// Exit status of a non-interactive command that found no active T3 Connect
+// browser session to mint credentials from. Unlike every other failure it
+// cannot clear up by itself, so the panel offers Sign in instead of retrying
+// (Common/T3Connection.qml, signInRequiredExit).
+export const SIGN_IN_REQUIRED_EXIT = 3;
+
+class SignInRequiredError extends Error {
+    constructor() {
+        super("Sign in to T3 Connect from the panel, then try again.");
+        this.name = "SignInRequiredError";
+    }
+}
 
 class SessionChangedError extends Error {
     constructor() {
@@ -761,7 +777,7 @@ async function waitForT3CodeRelayCredentials(interactive) {
     if (current)
         return current;
     if (!interactive)
-        throw new Error("Sign in to T3 Connect from the panel, then try again.");
+        throw new SignInRequiredError();
 
     await browserSignIn();
     const credentials = await t3CodeRelayCredentials();
@@ -790,7 +806,10 @@ function decodeIdentity(idToken, fallbackToken = "") {
 
 function activatePanel() {
     try {
-        const child = spawn("qs", ["ipc", "call", "popouts", "open", "t3code"], {
+        const child = spawn("qs", [
+            "ipc", "--any-display", "-p", SHELL_DIR,
+            "call", "--", "popouts", "open", "t3code",
+        ], {
             detached: true,
             stdio: "ignore",
         });
@@ -1200,6 +1219,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         ? main(process.argv)
         : sessionEpochContext.run(epoch, () => main(process.argv))).catch(error => {
         process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-        process.exitCode = 1;
+        process.exitCode = error instanceof SignInRequiredError ? SIGN_IN_REQUIRED_EXIT : 1;
     });
 }
