@@ -201,6 +201,15 @@ migrate_home() {
   retarget_links "$home/.local/bin" 1 "${legacy_pairs[@]}"
   retarget_links "$home/.local/share/cybexos-user-tools" 3 "${legacy_pairs[@]}"
   migrate_agent_skills
+  # oh-my-posh keys its init cache on its version and config, not on the
+  # executable path, so a cache written before the rename keeps calling the
+  # removed binary. Deleting it makes the next shell regenerate it.
+  local cache
+  for cache in "$home"/.cache/oh-my-posh/init.*; do
+    [[ -f $cache ]] && grep -qF /opt/fedora-config-apps/ -- "$cache" || continue
+    rm -f -- "$cache"
+    changed "removed stale $cache"
+  done
 }
 
 if [[ $EUID -ne 0 && $testing == false ]] || [[ $home_only == true ]]; then

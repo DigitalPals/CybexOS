@@ -57,6 +57,11 @@ mkdir -p "$home/.config/fedora-config" "$home/.local/share/fedora-config/release
   "$home/.cache/fedora-config" "$home/.agents/skills" "$home/.claude/skills" \
   "$home/.codex/skills"
 printf '{}\n' >"$home/.config/fedora-config/shell.json"
+mkdir -p "$home/.cache/oh-my-posh"
+printf "set --global _omp_executable '/opt/fedora-config-apps/oh-my-posh/current/bin/oh-my-posh'\n" \
+  >"$home/.cache/oh-my-posh/init.1.fish"
+printf "set --global _omp_executable '/opt/cybexos-apps/oh-my-posh/current/bin/oh-my-posh'\n" \
+  >"$home/.cache/oh-my-posh/init.2.fish"
 ln -s releases/bootstrap "$home/.local/share/fedora-config/current"
 ln -s "$home/.local/share/fedora-config-user-tools/codex/current/bin/codex" "$home/.local/bin/codex"
 skill=$home/.local/share/fedora-config/current/agent-skills/fedora-config
@@ -121,6 +126,8 @@ assert_absent "$home/.claude/skills/fedora-config"
 assert_absent "$home/.codex/skills/fedora-config"
 assert_absent "$home/.local/state/cybexos/backups/agent-skills"
 assert_absent "$home/.local/state/cybexos/backups/agent-skills-fedora-config"
+assert_absent "$home/.cache/oh-my-posh/init.1.fish"
+[[ -f $home/.cache/oh-my-posh/init.2.fish ]] || fail 'a current oh-my-posh cache was removed'
 
 output=$("$migrate" --user tester --home "$home")
 [[ -z $output ]] || fail "the second run was not idempotent: $output"
