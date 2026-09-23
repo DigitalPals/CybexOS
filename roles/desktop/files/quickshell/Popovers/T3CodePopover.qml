@@ -349,20 +349,34 @@ Surface {
                 }
 
                 Rectangle {
+                    id: reconnectItem
+                    // An expired T3 Connect session keeps its pairing, so this
+                    // menu stays up — and reconnecting cannot help it. Offer
+                    // the one thing that can.
+                    readonly property bool signIn: T3Code.state === "signed-out"
+
+                    function trigger() {
+                        root.connectionMenuOpen = false;
+                        if (signIn)
+                            T3Code.loginCloud();
+                        else
+                            T3Code.connect();
+                    }
+
                     width: parent.width
                     height: 36
                     radius: T3Theme.controlRadius
                     color: reconnectMouse.containsMouse ? T3Theme.hoverStrong : "transparent"
                     activeFocusOnTab: visible
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Reconnect"
-                    Accessible.onPressAction: T3Code.connect()
+                    Accessible.name: signIn ? "Sign in" : "Reconnect"
+                    Accessible.onPressAction: trigger()
 
                     Sym {
                         anchors.left: parent.left
                         anchors.leftMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
-                        name: "refresh"
+                        name: reconnectItem.signIn ? "login" : "refresh"
                         size: Theme.iconSmall
                         color: T3Theme.textMuted
                     }
@@ -371,7 +385,7 @@ Surface {
                         anchors.left: parent.left
                         anchors.leftMargin: 30
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Reconnect"
+                        text: reconnectItem.signIn ? "Sign in" : "Reconnect"
                         font.family: T3Theme.fontUi
                         font.pixelSize: Theme.typography.secondary
                         color: T3Theme.textSecondary
@@ -382,10 +396,7 @@ Surface {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            root.connectionMenuOpen = false;
-                            T3Code.connect();
-                        }
+                        onClicked: reconnectItem.trigger()
                     }
                 }
             }

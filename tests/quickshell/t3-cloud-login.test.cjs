@@ -391,6 +391,114 @@ test("browser-login ownership excludes competitors and logout settles its owner"
         "logout must remove the pending callback record");
 });
 
+test("an expired T3 Connect session exits distinctly instead of failing transiently", async t => {
+    const requests = [];
+    const server = http.createServer((request, response) => {
+        requests.push({ url: request.url, authorization: request.headers.authorization });
+        const route = new URL(request.url, "http://127.0.0.1").pathname;
+        if (request.method === "GET" && route === "/v1/client") {
+            // A revoked native client is refused; a fresh one has no session.
+            if (request.headers.authorization === "Bearer revoked-clerk-client") {
+                response.writeHead(401, { "content-type": "application/json" });
+                response.end('{"error":"unauthorized"}');
+                return;
+            }
+            response.writeHead(200, {
+                "content-type": "application/json",
+                authorization: "Bearer anonymous-clerk-client",
+            });
+            response.end(JSON.stringify({
+                response: { object: "client", sessions: [], last_active_session_id: null },
+                client: null,
+            }));
+            return;
+        }
+        response.writeHead(404, { "content-type": "application/json" });
+        response.end('{"error":"not_found"}');
+    });
+    await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", resolve);
+    });
+    t.after(() => new Promise(resolve => server.close(resolve)));
+
+    const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "t3-panel-expired-"));
+    t.after(() => fs.rmSync(temporaryHome, { recursive: true, force: true }));
+    const script = path.join(shellDir, "scripts/t3-cloud.mjs");
+    const stateRoot = path.join(temporaryHome, "state");
+    const privateState = path.join(stateRoot, "t3code-cloud");
+    const backend = `http://127.0.0.1:${server.address().port}`;
+    const env = {
+        ...process.env,
+        HOME: temporaryHome,
+        T3CODE_CLOUD_STATE_DIR: stateRoot,
+        T3CODE_CLERK_URL: backend,
+        T3CODE_RELAY_URL: backend,
+        T3CODE_BROWSER_COMMAND: "/usr/bin/false",
+        T3CODE_MIME_COMMAND: "/usr/bin/false",
+    };
+    const helper = await import(pathToFileURL(script).href + `?exit=${Date.now()}`);
+    const connection = readShell("Common/T3Connection.qml");
+    const declared = connection.match(/readonly property int signInRequiredExit: (\d+)/);
+    assert.ok(declared, "the panel must name the helper's sign-in-required status");
+    assert.equal(Number(declared[1]), helper.SIGN_IN_REQUIRED_EXIT);
+    assert.notEqual(helper.SIGN_IN_REQUIRED_EXIT, 1,
+        "a missing session must not look like an ordinary transient failure");
+
+    // An expired environment token with a revoked browser session.
+    fs.mkdirSync(privateState, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(privateState, "clerk-client.json"),
+        JSON.stringify({ clientToken: "revoked-clerk-client" }), { mode: 0o600 });
+    fs.writeFileSync(path.join(stateRoot, "t3code-bar.json"), JSON.stringify({
+        authMode: "cloud",
+        cloudStatus: "connected",
+        httpBaseUrl: backend,
+        wsBaseUrl: backend.replace("http:", "ws:"),
+        accessToken: "expired-environment-token",
+        tokenType: "DPoP",
+        expiresAtEpochMs: Date.now() - 1000,
+    }), { mode: 0o600 });
+    const revoked = await runNode(script, "ticket", env);
+    assert.equal(revoked.status, helper.SIGN_IN_REQUIRED_EXIT, revoked.stderr);
+    assert.equal(revoked.stdout, "");
+    assert.match(revoked.stderr, /Sign in to T3 Connect from the panel/);
+
+    // The replacement anonymous client is still signed out on the next try.
+    const anonymous = await runNode(script, "ticket", env);
+    assert.equal(anonymous.status, helper.SIGN_IN_REQUIRED_EXIT, anonymous.stderr);
+    assert.equal(requests.at(-1).authorization, "Bearer anonymous-clerk-client");
+    assert.equal(requests.filter(item => new URL(item.url, backend).pathname
+        !== "/v1/client").length, 0, "no relay or environment call without a session");
+
+    // Anything else still fails as a transient, retried error.
+    const unreachable = await runNode(script, "ticket", {
+        ...env,
+        T3CODE_CLERK_URL: "http://127.0.0.1:9",
+    });
+    assert.equal(unreachable.status, 1, unreachable.stderr);
+});
+
+test("the panel treats a missing T3 Connect session as signed out, not offline", () => {
+    const connection = readShell("Common/T3Connection.qml");
+    const popover = readShell("Popovers/T3CodePopover.qml");
+    const inbox = readShell("Popovers/T3InboxPage.qml");
+
+    const start = connection.indexOf("cloudTicketProc.lastExit === root.signInRequiredExit");
+    assert.notEqual(start, -1, "the ticket helper's exit must be told apart");
+    const branch = connection.slice(start, connection.indexOf("} else {", start));
+    assert.match(branch, /root\.state = root\.stateWithoutCredential\(\);\s*return;/);
+    assert.doesNotMatch(branch, /scheduleRetry/,
+        "only a sign-in can end it, so no retry may be armed");
+
+    // The inbox's Sign in shows for any signed-out state; the connection
+    // menu, which stays up while the pairing does, must offer it too.
+    assert.match(inbox, /visible: T3Code\.state === "signed-out" \|\| T3Code\.state === "cloud-empty"/);
+    assert.match(inbox, /T3Code\.state === "signed-out" && T3Code\.paired/);
+    assert.match(popover, /readonly property bool signIn: T3Code\.state === "signed-out"/);
+    assert.match(popover, /if \(signIn\)\s*T3Code\.loginCloud\(\);\s*else\s*T3Code\.connect\(\);/);
+    assert.match(popover, /text: reconnectItem\.signIn \? "Sign in" : "Reconnect"/);
+});
+
 test("the T3 Connect helper emits verifiable T3-compatible DPoP proofs", async () => {
     const script = path.join(shellDir, "scripts/t3-cloud.mjs");
     const helper = await import(pathToFileURL(script).href + `?dpop=${Date.now()}`);

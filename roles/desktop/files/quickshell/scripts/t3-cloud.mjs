@@ -72,6 +72,19 @@ export const STATE_PATHS = Object.freeze({
 
 const sessionEpochContext = new AsyncLocalStorage();
 
+// Exit status of a non-interactive command that found no active T3 Connect
+// browser session to mint credentials from. Unlike every other failure it
+// cannot clear up by itself, so the panel offers Sign in instead of retrying
+// (Common/T3Connection.qml, signInRequiredExit).
+export const SIGN_IN_REQUIRED_EXIT = 3;
+
+class SignInRequiredError extends Error {
+    constructor() {
+        super("Sign in to T3 Connect from the panel, then try again.");
+        this.name = "SignInRequiredError";
+    }
+}
+
 class SessionChangedError extends Error {
     constructor() {
         super("T3 Connect session changed while this request was running.");
@@ -761,7 +774,7 @@ async function waitForT3CodeRelayCredentials(interactive) {
     if (current)
         return current;
     if (!interactive)
-        throw new Error("Sign in to T3 Connect from the panel, then try again.");
+        throw new SignInRequiredError();
 
     await browserSignIn();
     const credentials = await t3CodeRelayCredentials();
@@ -1200,6 +1213,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         ? main(process.argv)
         : sessionEpochContext.run(epoch, () => main(process.argv))).catch(error => {
         process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-        process.exitCode = 1;
+        process.exitCode = error instanceof SignInRequiredError ? SIGN_IN_REQUIRED_EXIT : 1;
     });
 }

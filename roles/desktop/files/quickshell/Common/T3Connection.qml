@@ -266,6 +266,10 @@ Singleton {
         }
     }
 
+    // scripts/t3-cloud.mjs exits with this (SIGN_IN_REQUIRED_EXIT) when it
+    // found no active T3 Connect session: a state, not a transient failure.
+    readonly property int signInRequiredExit: 3
+
     Process {
         id: cloudTicketProc
 
@@ -333,6 +337,15 @@ Singleton {
                     console.warn("t3code: bad cloud ticket response");
                 }
                 root.connectionError = "Malformed T3 Connect ticket response";
+            } else if (cloudTicketProc.exitSeen
+                    && cloudTicketProc.lastExit === root.signInRequiredExit) {
+                // No browser session is left to mint credentials from: it
+                // expired or was revoked. Only an interactive sign-in can end
+                // that, so offer it — as for a rejected bearer token — instead
+                // of retrying the helper and its Clerk calls forever.
+                root.connectionError = "T3 Connect sign-in has expired";
+                root.state = root.stateWithoutCredential();
+                return;
             } else {
                 root.connectionError = cloudTicketProc.errText !== ""
                     ? cloudTicketProc.errText : "T3 Connect authorization failed";

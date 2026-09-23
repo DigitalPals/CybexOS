@@ -643,8 +643,12 @@ Item {
                         : T3Code.state === "cloud-empty" ? "No linked T3 environments"
                         : T3Code.state === "connecting" ? "Connecting through T3 Connect…"
                         : "Server unreachable — drafts are safe"
+                    // Signed out yet still paired: the stored session expired
+                    // or was revoked, and no retry can renew it.
                     detail: T3Code.cloudLoginRunning
                         ? "Choose Google or GitHub in the browser to continue."
+                        : T3Code.state === "signed-out" && T3Code.paired
+                            ? "Your T3 Connect session has ended. Sign in again to reconnect."
                         : T3Code.state === "signed-out"
                             ? "Sign in with Google or GitHub to access your linked environments."
                         : T3Code.state === "cloud-empty"
