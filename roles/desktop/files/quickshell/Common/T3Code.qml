@@ -195,6 +195,12 @@ Singleton {
         return T3Threads.historyPage(messages, visibleCount);
     }
 
+    // Edit script from the rows a thread page is showing to the rows for
+    // `items`; see Helpers.historyRowOps.
+    function historyRowOps(currentRows, items) {
+        return Helpers.historyRowOps(currentRows, items);
+    }
+
     function styleMarkdownLinks(markdown, linkColor) {
         return Helpers.styleMarkdownLinks(markdown, linkColor);
     }
@@ -273,8 +279,7 @@ Singleton {
             if (msg._tag === "Chunk") {
                 T3Connection.send(JSON.stringify({ _tag: "Ack", requestId: msg.requestId }));
                 if (reqId === T3Rpc.shellReqId) {
-                    for (const item of (Array.isArray(msg.values) ? msg.values : []))
-                        dirty = T3Threads.applyItem(item) || dirty;
+                    dirty = T3Threads.applyItems(msg.values) || dirty;
                 } else if (T3Rpc.rpcHandlers[reqId]) {
                     for (const item of (Array.isArray(msg.values) ? msg.values : []))
                         T3Rpc.rpcHandlers[reqId].item?.(item);
@@ -290,7 +295,7 @@ Singleton {
             }
         }
         if (dirty)
-            T3Threads.rebuild();
+            T3Threads.scheduleRebuild();
     }
 
     // Server configuration is protocol state, so it is owned here and bound

@@ -22,6 +22,12 @@ Item {
 
     readonly property var thread: T3Code.projectedThread(threadId)
     readonly property var history: T3Code.historyPage(T3Code.detailMessages, visibleMessages)
+    // The rows historyModel holds, mirrored so each sync can diff against
+    // them without reading the model back. Nothing binds to it.
+    property var historyRows: []
+    // "Show more" per message id. It lives here rather than on the card so
+    // it survives a card being rebuilt when the visible page shifts.
+    property var expandedMessages: ({})
     readonly property bool backgroundWorking: thread !== null && thread.cls === "running"
         && !thread.foregroundWorking && thread.backgroundLiveness === "working"
     readonly property bool working: thread !== null && thread.cls === "running"
@@ -128,6 +134,39 @@ Item {
         T3Code.runGitAction(threadId, action);
     }
 
+    // Bring historyModel in line with the visible page. A streamed token
+    // becomes one setProperty on one row, so only that card re-lays its text;
+    // every other card, its Markdown and its keyboard focus stay put.
+    function syncHistory() {
+        const update = T3Code.historyRowOps(historyRows, history.items);
+        for (const op of update.ops) {
+            if (op.op === "remove") {
+                historyModel.remove(op.index, op.count);
+            } else if (op.op === "insert") {
+                historyModel.insert(op.index, op.row);
+            } else {
+                for (const field in op.changes)
+                    historyModel.setProperty(op.index, field, op.changes[field]);
+            }
+        }
+        historyRows = update.rows;
+    }
+
+    function toggleExpanded(messageId) {
+        const next = Object.assign({}, expandedMessages);
+        if (next[messageId] === true)
+            delete next[messageId];
+        else
+            next[messageId] = true;
+        expandedMessages = next;
+    }
+
+    onHistoryChanged: syncHistory()
+
+    ListModel {
+        id: historyModel
+    }
+
     function openMessageLink(link) {
         T3Code.openExternalUrl(link);
     }
@@ -225,19 +264,21 @@ Item {
     // the transcript, and at 460px it cost a fifth of the measure to say
     // something the label already says. The label row also gives the hover
     // metadata a fixed home, so it no longer floats over the geometry.
+    // Its properties are historyModel's roles (Helpers.historyRows).
     component MessageCard: Item {
         id: messageCard
-        required property var message
+        required property string messageId
+        required property string speakerRole
+        required property string body
+        required property bool streaming
+        required property string timestamp
+        required property bool longMessage
         // A run of replies is one speaker talking, so it is named once. The
         // hairline and the timestamp still separate the turns; repeating the
         // label down a four-message run is the noise the bubble used to be.
-        required property int index
-        property bool expanded: false
-        readonly property bool fromUser: message.role === "user"
-        readonly property bool continuation: index > 0
-            && (root.history.items[index - 1]?.role ?? "") === message.role
-        readonly property bool longMessage: typeof message.text === "string"
-            && (message.text.length > 1200 || message.text.split("\n").length > 12)
+        required property bool continuation
+        readonly property bool expanded: root.expandedMessages[messageId] === true
+        readonly property bool fromUser: speakerRole === "user"
         readonly property bool metadataVisible: messageHover.hovered || activeFocus
             || copyMessageButton.activeFocus
         // A message carries a role and its text, and no model of its own, so
@@ -249,7 +290,7 @@ Item {
         height: messageColumn.implicitHeight + 12
         activeFocusOnTab: true
         Accessible.role: Accessible.StaticText
-        Accessible.name: (fromUser ? "You" : "T3 Code") + ": " + (message.text ?? "")
+        Accessible.name: (fromUser ? "You" : "T3 Code") + ": " + body
 
         HoverHandler { id: messageHover }
 
@@ -297,16 +338,15 @@ Item {
                     symbol: "content_copy"
                     accessibleName: "Copy message"
                     tint: T3Theme.textFaint
-                    onTriggered: Quickshell.clipboardText = messageCard.message.text ?? ""
+                    onTriggered: Quickshell.clipboardText = messageCard.body
                 }
 
                 Text {
                     id: messageTime
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: messageCard.message.streaming === true ? "streaming…"
-                        : T3Code.relTime(messageCard.message.updatedAt
-                            ?? messageCard.message.createdAt)
+                    text: messageCard.streaming ? "streaming…"
+                        : T3Code.relTime(messageCard.timestamp)
                     font.family: T3Theme.fontUi
                     font.pixelSize: Theme.typography.metadata
                     font.features: T3Theme.tabularNumberFeatures
@@ -316,8 +356,8 @@ Item {
 
             Text {
                 width: parent.width
-                text: messageCard.fromUser ? messageCard.message.text ?? ""
-                    : root.themedMarkdown(messageCard.message.text)
+                text: messageCard.fromUser ? messageCard.body
+                    : root.themedMarkdown(messageCard.body)
                 textFormat: messageCard.fromUser ? Text.PlainText : Text.MarkdownText
                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                 lineHeight: Theme.proseLineHeight
@@ -338,7 +378,7 @@ Item {
                     visible: messageCard.longMessage
                     anchors.left: parent.left
                     label: messageCard.expanded ? "Show less" : "Show more"
-                    onTriggered: messageCard.expanded = !messageCard.expanded
+                    onTriggered: root.toggleExpanded(messageCard.messageId)
                 }
 
             }
@@ -859,11 +899,8 @@ Item {
                 }
 
                 Repeater {
-                    model: root.history.items
-                    delegate: MessageCard {
-                        required property var modelData
-                        message: modelData
-                    }
+                    model: historyModel
+                    delegate: MessageCard {}
                 }
 
                 Item {
@@ -1587,6 +1624,7 @@ Item {
     Connections {
         target: T3Code
         function onDetailThreadIdChanged() {
+            root.expandedMessages = ({});
             root.visibleMessages = 10;
             root.followTail = true;
             root.scrollToEnd();
@@ -1617,6 +1655,7 @@ Item {
     }
 
     Component.onCompleted: {
+        syncHistory();
         followTail = true;
         changesExpanded = false;
         expandedCheckpointRef = "";

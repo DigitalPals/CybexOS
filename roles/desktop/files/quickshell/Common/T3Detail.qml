@@ -97,6 +97,7 @@ Singleton {
     }
 
     function resetDetailData() {
+        checkpointSummarySource = null;
         detailLoading = false;
         detailError = "";
         detailMessages = [];
@@ -116,34 +117,19 @@ Singleton {
         detailReset();
     }
 
+    // Every history array here is kept in this order by the only two
+    // writers, sortedHistory() and upsertHistory(), so readers walk them
+    // as they are instead of sorting a copy.
     function historyCompare(left, right) {
-        if (typeof left?.sequence === "number" && typeof right?.sequence === "number"
-                && left.sequence !== right.sequence)
-            return left.sequence - right.sequence;
-        const lm = T3Threads.parseMs(left?.createdAt ?? left?.updatedAt ?? left?.completedAt);
-        const rm = T3Threads.parseMs(right?.createdAt ?? right?.updatedAt ?? right?.completedAt);
-        if (!isNaN(lm) && !isNaN(rm) && lm !== rm)
-            return lm - rm;
-        const lid = typeof left?.id === "string" ? left.id : "";
-        const rid = typeof right?.id === "string" ? right.id : "";
-        return lid.localeCompare(rid);
+        return Helpers.compareHistory(left, right);
     }
 
     function sortedHistory(values) {
-        return (Array.isArray(values) ? values.slice() : []).sort(historyCompare);
+        return Helpers.sortHistory(values);
     }
 
     function upsertHistory(values, value, idField) {
-        const next = Array.isArray(values) ? values.slice() : [];
-        const key = value ? value[idField] : undefined;
-        let at = -1;
-        if (key !== undefined && key !== null)
-            at = next.findIndex(entry => entry && entry[idField] === key);
-        if (at >= 0)
-            next[at] = value;
-        else if (value)
-            next.push(value);
-        return sortedHistory(next);
+        return Helpers.upsertHistory(values, value, idField);
     }
 
     function approvalKind(requestType) {
@@ -246,8 +232,7 @@ Singleton {
     function recomputePendingRequests() {
         const approvals = {};
         const inputs = {};
-        const activities = sortedHistory(detailActivities);
-        for (const activity of activities) {
+        for (const activity of detailActivities) {
             const payload = activity && activity.payload && typeof activity.payload === "object"
                 ? activity.payload : {};
             const requestId = typeof payload.requestId === "string" ? payload.requestId : "";
@@ -285,19 +270,28 @@ Singleton {
             }
             reconcileRequestActivity(activity, detailThreadId);
         }
-        detailApprovals = Object.values(approvals)
+        // Reassign only on a real change: the request cards are delegates of
+        // these arrays, and a fresh-but-equal array would recreate them and
+        // drop a half-made choice along with keyboard focus.
+        const nextApprovals = Object.values(approvals)
             .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-        detailPendingInputs = Object.values(inputs)
+        if (JSON.stringify(nextApprovals) !== JSON.stringify(detailApprovals))
+            detailApprovals = nextApprovals;
+        const nextInputs = Object.values(inputs)
             .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        if (JSON.stringify(nextInputs) !== JSON.stringify(detailPendingInputs))
+            detailPendingInputs = nextInputs;
     }
 
     function recomputeDetailDerived() {
-        const messages = sortedHistory(detailMessages);
         let assistant = null;
-        for (const message of messages) {
+        for (let i = detailMessages.length - 1; i >= 0; i--) {
+            const message = detailMessages[i];
             if (message && message.role === "assistant" && typeof message.text === "string"
-                    && message.text.trim() !== "")
+                    && message.text.trim() !== "") {
                 assistant = message;
+                break;
+            }
         }
         detailLatestAssistant = assistant;
 
@@ -312,7 +306,8 @@ Singleton {
             "context-window.updated": true
         };
         let latestActivity = null;
-        for (const activity of sortedHistory(detailActivities)) {
+        for (let i = detailActivities.length - 1; i >= 0; i--) {
+            const activity = detailActivities[i];
             if (!activity || typeof activity.summary !== "string"
                     || activity.summary.trim() === "")
                 continue;
@@ -320,6 +315,7 @@ Singleton {
                     || activity.summary === "Checkpoint captured"))
                 continue;
             latestActivity = activity;
+            break;
         }
         if (detailSession && detailSession.status === "error"
                 && typeof detailSession.lastError === "string"
@@ -357,10 +353,15 @@ Singleton {
             && (latestPlan.implementedAt === null || latestPlan.implementedAt === undefined)
             ? latestPlan : null;
 
-        const ready = (Array.isArray(detailCheckpoints) ? detailCheckpoints.slice() : [])
-            .filter(checkpoint => checkpoint && checkpoint.status === "ready")
-            .sort(historyCompare);
-        if (ready.length === 0) {
+        let checkpoint = null;
+        for (let i = detailCheckpoints.length - 1; i >= 0; i--) {
+            if (detailCheckpoints[i] && detailCheckpoints[i].status === "ready") {
+                checkpoint = detailCheckpoints[i];
+                break;
+            }
+        }
+        if (checkpoint === null) {
+            checkpointSummarySource = null;
             detailCheckpointSummary = null;
             if (detailDiff.checkpointRef !== "") {
                 cancelDiffRequests(detailThreadId);
@@ -368,26 +369,30 @@ Singleton {
                     truncated: false, totalChars: 0, totalLines: 0 });
             }
         } else {
-            const checkpoint = ready[ready.length - 1];
-            const files = Array.isArray(checkpoint.files) ? checkpoint.files : [];
-            let additions = 0, deletions = 0;
-            const filenames = [];
-            for (const file of files) {
-                if (!file || typeof file !== "object")
-                    continue;
-                if (typeof file.additions === "number" && isFinite(file.additions))
-                    additions += Math.max(0, file.additions);
-                if (typeof file.deletions === "number" && isFinite(file.deletions))
-                    deletions += Math.max(0, file.deletions);
-                if (typeof file.path === "string" && file.path !== "")
-                    filenames.push(file.path);
+            // The same history entry makes the same summary; rebuilding it on
+            // every streamed token would notify the page for nothing.
+            if (checkpoint !== checkpointSummarySource) {
+                checkpointSummarySource = checkpoint;
+                const files = Array.isArray(checkpoint.files) ? checkpoint.files : [];
+                let additions = 0, deletions = 0;
+                const filenames = [];
+                for (const file of files) {
+                    if (!file || typeof file !== "object")
+                        continue;
+                    if (typeof file.additions === "number" && isFinite(file.additions))
+                        additions += Math.max(0, file.additions);
+                    if (typeof file.deletions === "number" && isFinite(file.deletions))
+                        deletions += Math.max(0, file.deletions);
+                    if (typeof file.path === "string" && file.path !== "")
+                        filenames.push(file.path);
+                }
+                detailCheckpointSummary = Object.assign({}, checkpoint, {
+                    fileCount: files.length,
+                    additions: additions,
+                    deletions: deletions,
+                    filenames: filenames.slice(0, 3)
+                });
             }
-            detailCheckpointSummary = Object.assign({}, checkpoint, {
-                fileCount: files.length,
-                additions: additions,
-                deletions: deletions,
-                filenames: filenames.slice(0, 3)
-            });
             if (detailDiff.checkpointRef !== ""
                     && detailDiff.checkpointRef !== checkpoint.checkpointRef) {
                 cancelDiffRequests(detailThreadId);
@@ -398,7 +403,37 @@ Singleton {
     }
 
     function recomputeDetail() {
+        detailRecomputeQueued = false;
+        requestsRecomputeQueued = false;
         recomputePendingRequests();
+        recomputeDetailDerived();
+    }
+
+    // Stream events arrive in bursts — a Chunk carries many, and a reply
+    // streams one per token — so the projections are brought up to date once
+    // per event-loop turn. Pending approvals and questions derive from
+    // activities alone and are only redone when an activity arrived.
+    property bool detailRecomputeQueued: false
+    property bool requestsRecomputeQueued: false
+    property var checkpointSummarySource: null
+
+    function scheduleDetailRecompute(requests) {
+        if (requests)
+            requestsRecomputeQueued = true;
+        if (detailRecomputeQueued)
+            return;
+        detailRecomputeQueued = true;
+        Qt.callLater(root.flushDetailRecompute);
+    }
+
+    function flushDetailRecompute() {
+        if (!detailRecomputeQueued)
+            return;
+        detailRecomputeQueued = false;
+        if (requestsRecomputeQueued) {
+            requestsRecomputeQueued = false;
+            recomputePendingRequests();
+        }
         recomputeDetailDerived();
     }
 
@@ -594,7 +629,7 @@ Singleton {
             closeDetail();
             return;
         }
-        recomputeDetail();
+        scheduleDetailRecompute(event.type === "thread.activity-appended");
     }
 
     function applyDetailSnapshot(snapshot, threadId) {

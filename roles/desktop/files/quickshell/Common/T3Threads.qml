@@ -11,7 +11,7 @@ import "Format.js" as Format
 //
 // This is what Bar/T3Chip.qml and T3InboxPage actually read. It holds no
 // connection and sends nothing — T3Code hands it items off the shell stream
-// and calls rebuild().
+// and calls scheduleRebuild().
 Singleton {
     id: root
 
@@ -165,7 +165,25 @@ Singleton {
     // delegates (and a half-typed prompt) alone.
     property string listSignature: ""
 
+    // A busy shell stream delivers many Chunk frames per second. Coalesce
+    // them: classifying, sorting and fingerprinting every thread happens at
+    // most once per event-loop turn.
+    property bool rebuildQueued: false
+
+    function scheduleRebuild() {
+        if (rebuildQueued)
+            return;
+        rebuildQueued = true;
+        Qt.callLater(root.flushRebuild);
+    }
+
+    function flushRebuild() {
+        if (rebuildQueued)
+            rebuild();
+    }
+
     function rebuild() {
+        rebuildQueued = false;
         const now = Date.now();
         const projection = Helpers.classifyThreads(threadMap, projectMap, now,
             autoSettleAfterDays);
@@ -293,51 +311,24 @@ Singleton {
     }
 
 
-    function applyItem(item) {
-        switch (item.kind) {
-        case "snapshot": {
-            const tm = {}, pm = {};
-            for (const p of item.snapshot.projects)
-                pm[p.id] = p;
-            for (const t of item.snapshot.threads)
-                tm[t.id] = t;
-            projectMap = pm;
-            threadMap = tm;
+    // Apply one Chunk's items. Each map is copied at most once per frame and
+    // assigned once, then the signals go out in item order against the
+    // settled maps. Returns whether the projections need a rebuild.
+    function applyItems(items) {
+        const result = Helpers.applyShellItems(threadMap, projectMap, items);
+        if (result.projectsChanged)
+            projectMap = result.projectMap;
+        if (result.threadsChanged)
+            threadMap = result.threadMap;
+        if (result.ready)
             shellReady = true;
-            snapshotApplied();
-            return true;
+        for (const event of result.events) {
+            if (event.kind === "snapshot")
+                snapshotApplied();
+            else if (event.kind === "thread-upserted")
+                threadUpserted(event.threadId);
         }
-        case "synchronized":
-            shellReady = true;
-            return false;
-        case "project-upserted": {
-            const next = Object.assign({}, projectMap);
-            next[item.project.id] = item.project;
-            projectMap = next;
-            return true;
-        }
-        case "project-removed": {
-            const next = Object.assign({}, projectMap);
-            delete next[item.projectId];
-            projectMap = next;
-            return true;
-        }
-        case "thread-upserted": {
-            const next = Object.assign({}, threadMap);
-            next[item.thread.id] = item.thread;
-            threadMap = next;
-            threadUpserted(item.thread.id);
-            return true;
-        }
-        case "thread-removed": {
-            const next = Object.assign({}, threadMap);
-            delete next[item.threadId];
-            threadMap = next;
-            return true;
-        }
-        default:
-            return false;
-        }
+        return result.dirty;
     }
 
 
