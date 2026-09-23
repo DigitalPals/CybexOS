@@ -116,6 +116,27 @@ var INDICATOR_ACTION_CHOICES = [
 var INDICATOR_ACTION_IDS = INDICATOR_ACTION_CHOICES.map(
     function(choice) { return choice.id; });
 
+// Dictation comes with the developer tooling feature, which installs voxtype,
+// its model and its keys. Without it the action is left off the bar and out
+// of the editor, but its saved place and visibility stay, so enabling the
+// feature brings it back where it was.
+function availableIndicatorIds(ids, dictationAvailable) {
+    return (Array.isArray(ids) ? ids : []).filter(function(id) {
+        return id !== "dictation" || dictationAvailable === true;
+    });
+}
+
+// A reorder of the shown actions, written back with each action the editor
+// did not show returned to its saved index.
+function mergeIndicatorOrder(shown, saved) {
+    var out = shown.slice();
+    (Array.isArray(saved) ? saved : []).forEach(function(id, index) {
+        if (out.indexOf(id) === -1)
+            out.splice(Math.min(index, out.length), 0, id);
+    });
+    return out;
+}
+
 var DICTATION_MODEL_CHOICES = [
     { value: "tiny", label: "Tiny" },
     { value: "base", label: "Base" },
@@ -1461,6 +1482,8 @@ var exported = {
     NOTIFICATION_GROUPS: NOTIFICATION_GROUPS,
     INDICATOR_ACTION_CHOICES: INDICATOR_ACTION_CHOICES,
     INDICATOR_ACTION_IDS: INDICATOR_ACTION_IDS,
+    availableIndicatorIds: availableIndicatorIds,
+    mergeIndicatorOrder: mergeIndicatorOrder,
     DICTATION_MODEL_CHOICES: DICTATION_MODEL_CHOICES,
     NOTE_CODEX_MODEL_CHOICES: NOTE_CODEX_MODEL_CHOICES,
     NOTE_CLAUDE_MODEL_CHOICES: NOTE_CLAUDE_MODEL_CHOICES,

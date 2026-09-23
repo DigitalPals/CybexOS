@@ -7,6 +7,10 @@ Type=simple
 ExecStart={{ primary_home }}/.local/bin/cybexos-runtime exec quickshell
 Environment=PATH={{ primary_home }}/.local/bin:{{ primary_home }}/.npm-global/bin:/usr/local/bin:/usr/bin
 Environment=CYBEXOS_CONNECTED_WIDGETS={{ (features.connected_widgets | bool) | ternary('1', '0') }}
+Environment=CYBEXOS_DEVELOPER_TOOLS={{ (features.developer_tools | bool) | ternary('1', '0') }}
+# The shell runs Python helpers from its managed runtime tree; bytecode caches
+# written there would be files the next deployment has to clean up.
+Environment=PYTHONDONTWRITEBYTECODE=1
 Restart=on-failure
 RestartSec=2
 

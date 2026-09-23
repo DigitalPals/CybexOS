@@ -28,7 +28,8 @@ BarModule {
     // No Settings.revision here: it is bumped by every save (a wallpaper
     // shuffle included), and modOpts is reassigned — never mutated in place —
     // so reading Settings.modOpts.indicators already tracks every edit.
-    readonly property var actions: Settings.modOpts.indicators.order
+    readonly property var actions: SettingsHelpers.availableIndicatorIds(
+            Settings.modOpts.indicators.order, Dictation.available)
         .map(id => actionCatalog[id]).filter(action => action !== undefined)
     readonly property string actionStateKey: [
         Dictation.state, Recorder.active, Reminders.count,

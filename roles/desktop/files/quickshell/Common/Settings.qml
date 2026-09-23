@@ -24,6 +24,10 @@ Singleton {
 
     readonly property bool connectedWidgetsConfigured:
         Quickshell.env("CYBEXOS_CONNECTED_WIDGETS") === "1"
+    // The installer's developer tooling feature (quickshell.service sets
+    // it). Unset, as in a source-tree run, it counts as on: the default.
+    readonly property bool developerToolsConfigured:
+        Quickshell.env("CYBEXOS_DEVELOPER_TOOLS") !== "0"
     readonly property var defaults: {
         const value = SettingsHelpers.defaults();
         if (connectedWidgetsConfigured) {
