@@ -100,6 +100,23 @@ test("power saver takes the reduced-motion path without changing the setting", (
     // The Appearance switch keeps showing what the user chose.
     for (const file of ["Common/Theme.qml", "Common/Activity.qml"])
         assert.doesNotMatch(read(file), /Settings\.(?:set\("reducedMotion"|reducedMotion\s*=[^=])/, file);
+    // Everything that moves reads Theme's answer, plugins included; the raw
+    // setting misses power saver and the environment override.
+    const walk = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory())
+            return entry.name === "scripts" ? [] : walk(full);
+        return /\.(?:qml|js)$/.test(entry.name) ? [full] : [];
+    });
+    for (const file of walk(shellDir)) {
+        const label = path.relative(shellDir, file);
+        if (label === path.join("Common", "Theme.qml"))
+            continue;
+        assert.doesNotMatch(fs.readFileSync(file, "utf8"), /Settings\.reducedMotion\b(?!\s*=[^=])/,
+            `${label} must read Theme.reducedMotion`);
+    }
+    assert.match(read("Bar/UserWidgets.qml"), /reducedMotion: Theme\.reducedMotion/,
+        "plugin widgets follow power saver too");
 });
 
 test("the clock's text transition snaps instead of animating at zero duration", () => {
