@@ -1179,6 +1179,9 @@
     - Reload user systemd
     - Restart hypridle
 
+# Dictation follows the developer tooling feature, which also selects its GPU
+# backend, downloads its model, and binds its keys. Without that model an
+# always-on daemon would only hold an idle audio and GPU context.
 - name: Install the restartable Voxtype user unit
   become: true
   become_user: "{{ primary_user }}"
@@ -1189,6 +1192,42 @@
   notify:
     - Reload user systemd
     - Restart Voxtype daemon
+  when: features.developer_tools | bool
+
+- name: Inspect a Voxtype unit installed before dictation followed developer tooling
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.stat:
+    path: "{{ primary_home }}/.config/systemd/user/voxtype.service"
+  register: desktop_voxtype_unit
+  when: not features.developer_tools | bool
+
+- name: Stop the Voxtype daemon when developer tooling is disabled
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.systemd_service:
+    name: voxtype.service
+    state: stopped
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  failed_when: false
+  when:
+    - not features.developer_tools | bool
+    - desktop_voxtype_unit.stat.exists | default(false)
+    - not ansible_check_mode
+
+- name: Remove the Voxtype user unit when developer tooling is disabled
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/voxtype.service"
+    - "{{ primary_home }}/.config/systemd/user/voxtype.service"
+  notify: Reload user systemd
+  when: not features.developer_tools | bool
 
 - name: Install external monitor watcher unit
   become: true
@@ -1224,11 +1263,9 @@
     dest: "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/{{ item }}.service"
     state: link
     force: true
-  loop:
-    - quickshell
-    - hypridle
-    - hyprpolkitagent
-    - voxtype
+  loop: >-
+    {{ ['quickshell', 'hypridle', 'hyprpolkitagent']
+       + (features.developer_tools | bool | ternary(['voxtype'], [])) }}
   notify: Reload user systemd
 
 - name: Enable the XPS external monitor watcher

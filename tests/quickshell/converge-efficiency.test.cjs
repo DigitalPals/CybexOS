@@ -174,6 +174,21 @@ test("the weekly Btrfs scrub waits for AC power and stays in the background", ()
     assert.match(scrub, /ExecStart=\/usr\/bin\/btrfs scrub start -B -d --limit \d+M \//);
 });
 
+test("dictation runs only with developer tooling and loads its model on demand", () => {
+    const desktop = read("roles/desktop/tasks/main.yml");
+    const voxtype = read("roles/dotfiles/files/voxtype.toml");
+    assert.match(voxtype, /\[whisper\][^[]*\non_demand_loading = true\n/);
+    assert.match(task(desktop, "Install the restartable Voxtype user unit"),
+        /when: features\.developer_tools \| bool/,
+        "dictation follows the feature that downloads its model and binds its keys");
+    assert.match(task(desktop, "Enable desktop units for the Hyprland target"),
+        /features\.developer_tools \| bool \| ternary\(\['voxtype'\], \[\]\)/);
+    assert.match(task(desktop, "Remove the Voxtype user unit when developer tooling is disabled"),
+        /hyprland-session\.target\.wants\/voxtype\.service[\s\S]*when: not features\.developer_tools \| bool/);
+    assert.ok(desktop.indexOf("Stop the Voxtype daemon when developer tooling is disabled")
+        < desktop.indexOf("Remove the Voxtype user unit when developer tooling is disabled"));
+});
+
 test("hypridle restarts when its configuration, unit, or renderer changes", () => {
     const handlers = read("roles/desktop/handlers/main.yml");
     const desktop = read("roles/desktop/tasks/main.yml");

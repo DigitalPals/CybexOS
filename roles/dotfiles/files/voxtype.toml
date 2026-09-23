@@ -17,6 +17,10 @@ max_duration_secs = 60
 model = "base"
 language = "auto"
 translate = false
+# Load the model when a recording starts and release it when idle, instead of
+# keeping it resident on the GPU for the whole session. The first dictation
+# after an idle period pays a short load delay.
+on_demand_loading = true
 
 [output]
 mode = "type"
