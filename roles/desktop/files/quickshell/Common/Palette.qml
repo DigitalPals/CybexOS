@@ -7,7 +7,9 @@ import "ProcHelpers.js" as ProcHelpers
 
 // Wallpaper-derived Material tonal-spot palette. The cache always holds both
 // light and dark variants, so switching theme mode is a property selection —
-// never another Matugen invocation.
+// never another Matugen invocation. It keeps the most recent wallpapers,
+// keyed by path plus mtime and size, and nothing runs while the fixed
+// palette is selected.
 Singleton {
     id: root
 
@@ -22,6 +24,7 @@ Singleton {
     property string error: ""
     property string queuedIdentity: ""
     property string activeIdentity: ""
+    property string activeStamp: ""
 
     readonly property color background: active.background || "#121318"
     readonly property color surface: active.surface || (Settings.themeMode === "light"
@@ -63,6 +66,14 @@ Singleton {
     function requestCurrent() {
         const identity = wallpaperIdentity;
         generationTimer.stop();
+        if (Settings.paletteMode !== "wallpaper") {
+            variants = null;
+            ready = false;
+            busy = false;
+            error = "";
+            queuedIdentity = "";
+            return;
+        }
         if (identity === "" || Settings.wall === "") {
             variants = null;
             ready = false;
@@ -70,24 +81,27 @@ Singleton {
             error = "No wallpaper is selected";
             return;
         }
+        // A palette cached for this path is shown straight away; the queued
+        // stat below then confirms the file is still the one it was made
+        // from before anything is regenerated.
         const cached = PaletteHelpers.readCache(cacheStore.text(), identity);
         if (cached) {
-            queuedIdentity = "";
             usePalette(identity, cached);
-            return;
+        } else {
+            // Drop the previous wallpaper immediately. Theme renders its
+            // fixed fallback until this identity has a complete, validated
+            // result.
+            variants = null;
+            ready = false;
+            error = "";
+            busy = true;
         }
-        // Drop the previous wallpaper immediately. Theme renders its fixed
-        // fallback until this identity has a complete, validated result.
-        variants = null;
-        ready = false;
-        error = "";
         queuedIdentity = identity;
-        busy = true;
         generationTimer.restart();
     }
 
     function startQueued() {
-        if (paletteProc.running || queuedIdentity === "")
+        if (statProc.running || paletteProc.running || queuedIdentity === "")
             return;
         if (queuedIdentity !== wallpaperIdentity) {
             queuedIdentity = wallpaperIdentity;
@@ -96,28 +110,58 @@ Singleton {
         }
         activeIdentity = queuedIdentity;
         queuedIdentity = "";
-        paletteProc.command = ["matugen", "image", activeIdentity,
-            "--type", "scheme-tonal-spot", "--dry-run", "--json", "hex", "--quiet"];
-        paletteProc.running = true;
+        statProc.command = ["stat", "-L", "-c", "%Y %s", "--", activeIdentity];
+        statProc.running = true;
     }
 
-    function queueLatest() {
-        queuedIdentity = wallpaperIdentity;
+    // A request that arrived while a stage was running only queued itself;
+    // go round again for whatever is current now.
+    function drainQueue() {
+        if (queuedIdentity !== "")
+            Qt.callLater(requestCurrent);
+    }
+
+    function finishStat(output) {
+        const identity = activeIdentity;
+        if (!PaletteHelpers.resultIsCurrent(identity, wallpaperIdentity)
+                || Settings.paletteMode !== "wallpaper") {
+            activeIdentity = "";
+            Qt.callLater(requestCurrent);
+            return;
+        }
+        // An unreadable file has no fingerprint; Matugen then reports why.
+        const stamp = PaletteHelpers.fingerprint(output);
+        const cached = stamp !== ""
+            ? PaletteHelpers.readCache(cacheStore.text(), identity, stamp) : null;
+        if (cached) {
+            activeIdentity = "";
+            usePalette(identity, cached);
+            drainQueue();
+            return;
+        }
+        variants = null;
+        ready = false;
+        error = "";
         busy = true;
-        generationTimer.restart();
+        activeStamp = stamp;
+        // Bounded so an image Matugen chokes on cannot leave `busy` stuck.
+        paletteProc.command = ["timeout", "20s"].concat(["matugen", "image", activeIdentity,
+            "--type", "scheme-tonal-spot", "--dry-run", "--json", "hex", "--quiet"]);
+        paletteProc.running = true;
     }
 
     function finishGeneration(exitCode, output) {
         const completedIdentity = activeIdentity;
+        const completedStamp = activeStamp;
         activeIdentity = "";
+        activeStamp = "";
         const current = PaletteHelpers.resultIsCurrent(completedIdentity,
-            wallpaperIdentity);
+            wallpaperIdentity) && Settings.paletteMode === "wallpaper";
         if (exitCode === 0) {
             const palette = PaletteHelpers.sanitizeMatugen(output);
-            if (palette && current) {
-                usePalette(completedIdentity, palette);
+            if (palette) {
                 const serialized = PaletteHelpers.serializeCache(completedIdentity,
-                    palette);
+                    palette, completedStamp, cacheStore.text());
                 if (serialized !== "") {
                     try {
                         cacheStore.setText(serialized);
@@ -125,7 +169,9 @@ Singleton {
                         console.warn("wallpaper palette cache write failed:", cacheError);
                     }
                 }
-            } else if (!palette && current) {
+                if (current)
+                    usePalette(completedIdentity, palette);
+            } else if (current) {
                 ready = false;
                 busy = false;
                 error = "Matugen returned an invalid palette";
@@ -134,20 +180,37 @@ Singleton {
         } else if (current) {
             ready = false;
             busy = false;
-            error = exitCode === ProcHelpers.NOT_STARTED
+            // `timeout` reports 124 when it had to stop Matugen and 127 when
+            // Matugen itself is missing.
+            error = exitCode === ProcHelpers.NOT_STARTED || exitCode === 127
                 ? "Matugen is not installed"
+                : exitCode === 124 ? "Matugen timed out"
                 : "Could not generate the wallpaper palette";
             console.warn("wallpaper palette generation failed:", exitCode);
         }
-        if (((!current && !ready) || queuedIdentity !== "")
-                && wallpaperIdentity !== "")
-            Qt.callLater(queueLatest);
+        if ((!current && !ready) || queuedIdentity !== "")
+            Qt.callLater(requestCurrent);
     }
 
     Timer {
         id: generationTimer
         interval: 180
         onTriggered: root.startQueued()
+    }
+
+    // Only the falling edge of `running` is guaranteed, so both stages settle
+    // there; a stat that could not start simply yields no fingerprint.
+    Process {
+        id: statProc
+
+        stdout: StdioCollector {
+            id: statOut
+        }
+
+        onRunningChanged: {
+            if (!running && root.activeIdentity !== "")
+                root.finishStat(statOut.text);
+        }
     }
 
     Process {
@@ -190,6 +253,14 @@ Singleton {
         target: Wallpaper
 
         function onCurrentIdentityChanged() {
+            root.requestCurrent();
+        }
+    }
+
+    Connections {
+        target: Settings
+
+        function onPaletteModeChanged() {
             root.requestCurrent();
         }
     }

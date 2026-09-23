@@ -143,6 +143,10 @@ Surface {
     function finishEditing(restoreFocus) {
         if (!editing)
             return;
+        // A draft typed inside the debounce window has not reached Notes
+        // yet; materialize it first so a quick Done cannot drop it.
+        persistTimer.stop();
+        persistEditor();
         const id = editingId;
         const body = noteEdit.text;
         const autoGenerateTitle = NotesHelpers.shouldAutoGenerateTitle(
@@ -166,6 +170,7 @@ Surface {
     }
 
     function deleteEditing() {
+        persistTimer.stop();
         const id = editingId;
         parkFocus();
         editing = false;
@@ -185,6 +190,7 @@ Surface {
     }
 
     function requestEditorTitle() {
+        persistTimer.stop();
         persistEditor();
         if (editingId === "")
             return;
@@ -499,8 +505,10 @@ Surface {
                     width: parent.width
                     spacing: Theme.scaled(3)
 
+                    // Emptied while the list is hidden behind the editor, so
+                    // a body commit does not rebuild every card unseen.
                     Repeater {
-                        model: Notes.records
+                        model: root.editing ? [] : Notes.records
 
                         delegate: Rectangle {
                             id: noteCard
@@ -921,7 +929,10 @@ Surface {
                         KeyNavigation.tab: boldButton
                         KeyNavigation.backtab: titleAction.visible
                             ? titleAction : titleEdit
-                        onTextChanged: root.persistEditor()
+                        onTextChanged: {
+                            if (!noteEdit.syncing)
+                                persistTimer.restart();
+                        }
                         onCursorRectangleChanged: {
                             if (cursorRectangle.y + cursorRectangle.height
                                     > editorFlick.contentY + editorFlick.height) {
@@ -1066,6 +1077,15 @@ Surface {
                 }
             }
         }
+    }
+
+    // Body edits reach Notes after a pause in typing rather than per
+    // keystroke: each commit copies and re-sorts every record. Every path
+    // out of the editor stops this and commits the live text itself.
+    Timer {
+        id: persistTimer
+        interval: 250
+        onTriggered: root.persistEditor()
     }
 
     Timer {

@@ -25,7 +25,11 @@ Singleton {
     property var thumbnailPaths: ({})
     property var thumbnailPending: ({})
     property var thumbnailQueue: []
-    property string activeThumbnailSource: ""
+    // Sources handed to the running helper, in argument order, and how many
+    // of its one-line-per-source answers have arrived.
+    property var activeThumbnailBatch: []
+    property int thumbnailAnswered: 0
+    readonly property int thumbnailBatchLimit: 24
     readonly property string currentIdentity: dir + "/" + Settings.wall
 
     readonly property string current:
@@ -80,19 +84,51 @@ Singleton {
         pending[path] = true;
         thumbnailPending = pending;
         thumbnailQueue = thumbnailQueue.concat([path]);
-        startNextThumbnail();
+        // Every visible cell asks in the same frame; collect them into one
+        // helper run rather than starting Python once per cell.
+        Qt.callLater(startNextThumbnail);
     }
 
     function startNextThumbnail() {
-        if (thumbnailProc.running || activeThumbnailSource !== ""
+        if (thumbnailProc.running || activeThumbnailBatch.length > 0
                 || thumbnailQueue.length === 0)
             return;
-        activeThumbnailSource = thumbnailQueue[0];
-        thumbnailQueue = thumbnailQueue.slice(1);
+        activeThumbnailBatch = thumbnailQueue.slice(0, thumbnailBatchLimit);
+        thumbnailQueue = thumbnailQueue.slice(thumbnailBatchLimit);
+        thumbnailAnswered = 0;
         thumbnailProc.command = ["python3",
-            Quickshell.shellDir + "/scripts/wallpaper-thumbnail.py",
-            activeThumbnailSource];
+            Quickshell.shellDir + "/scripts/wallpaper-thumbnail.py"]
+            .concat(activeThumbnailBatch);
         thumbnailProc.running = true;
+    }
+
+    // Records one helper answer. Anything that is not a cached file URL keeps
+    // the old behavior of showing the full image.
+    function settleThumbnail(source, cached) {
+        const pending = Object.assign({}, thumbnailPending);
+        delete pending[source];
+        thumbnailPending = pending;
+        const paths = Object.assign({}, thumbnailPaths);
+        if (cached.indexOf("file:") === 0) {
+            paths[source] = cached;
+        } else {
+            paths[source] = source;
+            console.warn("wallpaper thumbnail generation failed for", source);
+        }
+        thumbnailPaths = paths;
+    }
+
+    // Settles on the falling edge of `running`, which is the only signal
+    // Quickshell sends when python3 cannot start at all; sources the helper
+    // never answered fall back rather than stalling the queue.
+    function finishThumbnailBatch() {
+        const batch = activeThumbnailBatch;
+        const answered = thumbnailAnswered;
+        activeThumbnailBatch = [];
+        thumbnailAnswered = 0;
+        for (let i = answered; i < batch.length; i++)
+            settleThumbnail(batch[i], "");
+        Qt.callLater(startNextThumbnail);
     }
 
     function requestDirectory(path) {
@@ -203,29 +239,22 @@ Singleton {
     Process {
         id: thumbnailProc
 
-        stdout: StdioCollector {
-            id: thumbnailOut
+        // One line per source, flushed as each finishes, so a cell shows
+        // its preview without waiting for the rest of the batch.
+        stdout: SplitParser {
+            onRead: line => {
+                // The helper never prints a blank answer ("-" is failure).
+                const index = root.thumbnailAnswered;
+                if (line.trim() === "" || index >= root.activeThumbnailBatch.length)
+                    return;
+                root.thumbnailAnswered = index + 1;
+                root.settleThumbnail(root.activeThumbnailBatch[index], line.trim());
+            }
         }
 
-        onExited: exitCode => {
-            const completed = root.activeThumbnailSource;
-            root.activeThumbnailSource = "";
-            const pending = Object.assign({}, root.thumbnailPending);
-            delete pending[completed];
-            root.thumbnailPending = pending;
-
-            const cached = thumbnailOut.text.trim();
-            const paths = Object.assign({}, root.thumbnailPaths);
-            if (exitCode === 0 && cached.indexOf("file:") === 0)
-                paths[completed] = cached;
-            else {
-                // Preserve the old behavior if thumbnail generation fails.
-                paths[completed] = completed;
-                console.warn("wallpaper thumbnail generation failed for", completed);
-            }
-            root.thumbnailPaths = paths;
-            Qt.callLater(root.startNextThumbnail);
+        onRunningChanged: {
+            if (!running && root.activeThumbnailBatch.length > 0)
+                root.finishThumbnailBatch();
         }
     }
-
 }

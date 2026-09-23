@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Create or reuse a persistent, revisioned wallpaper thumbnail."""
+"""Create or reuse persistent, revisioned wallpaper thumbnails.
+
+Takes one or more images and prints exactly one line per argument, in order
+and flushed as each finishes: the thumbnail's file URL, or FAILED ("-") when
+that image failed (the reason goes to stderr). One interpreter start then
+serves a whole screenful of the wallpaper grid.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +13,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from urllib.parse import unquote, urlsplit
@@ -16,6 +23,11 @@ WIDTH = 640
 HEIGHT = 384
 QUALITY = 82
 CACHE_VERSION = f"v2-jpeg-{WIDTH}x{HEIGHT}"
+# One pathological image must not stall the grid's queue indefinitely.
+MAGICK_TIMEOUT = 30
+# Never an empty line: a line-splitting reader could drop it and misalign
+# every answer after it.
+FAILED = "-"
 
 
 def source_path(value: str) -> Path:
@@ -25,11 +37,26 @@ def source_path(value: str) -> Path:
     return Path(value).expanduser()
 
 
-def cache_directory() -> Path:
+def cache_root() -> Path:
     base = os.environ.get("XDG_CACHE_HOME")
     if not base:
         base = str(Path.home() / ".cache")
-    return Path(base) / "quickshell" / "wallpaper-thumbnails" / CACHE_VERSION
+    return Path(base) / "quickshell" / "wallpaper-thumbnails"
+
+
+def cache_directory() -> Path:
+    return cache_root() / CACHE_VERSION
+
+
+def prune_stale_versions() -> None:
+    """Drop thumbnail sets written under an older CACHE_VERSION."""
+    try:
+        entries = list(cache_root().iterdir())
+    except OSError:
+        return
+    for entry in entries:
+        if entry.name != CACHE_VERSION and entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry, ignore_errors=True)
 
 
 def source_identity(source: Path, stat: os.stat_result) -> dict[str, object]:
@@ -77,6 +104,15 @@ def thumbnail(source: Path) -> str:
             subprocess.run(
                 [
                     "magick",
+                    # Lets the JPEG decoder downscale while reading, instead
+                    # of decoding a full-resolution photo only to shrink it;
+                    # twice the target keeps the ^ fill crop sharp. Other
+                    # formats ignore it.
+                    "-define",
+                    f"jpeg:size={WIDTH * 2}x{HEIGHT * 2}",
+                    "-limit",
+                    "memory",
+                    "256MiB",
                     str(source),
                     "-auto-orient",
                     "-thumbnail",
@@ -94,6 +130,7 @@ def thumbnail(source: Path) -> str:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
                 text=True,
+                timeout=MAGICK_TIMEOUT,
             )
             os.replace(temporary, output)
             write_metadata(metadata, identity)
@@ -104,15 +141,21 @@ def thumbnail(source: Path) -> str:
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: wallpaper-thumbnail.py IMAGE", file=sys.stderr)
+    if len(sys.argv) < 2:
+        print("usage: wallpaper-thumbnail.py IMAGE...", file=sys.stderr)
         return 2
-    try:
-        print(thumbnail(source_path(sys.argv[1])))
-    except (OSError, subprocess.SubprocessError) as error:
-        print(f"wallpaper thumbnail failed: {error}", file=sys.stderr)
-        return 1
-    return 0
+    prune_stale_versions()
+    status = 0
+    for value in sys.argv[1:]:
+        try:
+            line = thumbnail(source_path(value))
+        except (OSError, subprocess.SubprocessError) as error:
+            # TimeoutExpired and CalledProcessError are SubprocessErrors.
+            print(f"wallpaper thumbnail failed for {value}: {error}", file=sys.stderr)
+            line = FAILED
+            status = 1
+        print(line, flush=True)
+    return status
 
 
 if __name__ == "__main__":
