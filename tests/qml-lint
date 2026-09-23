@@ -3,8 +3,9 @@
 # unresolved references before a shell reload, complementing the runtime
 # journal grep in tests/verify-system.
 #
-# One batched qmllint invocation over the whole tree (spawning it per file
-# costs ~4x as much). What fails the check is decided by qmllint's own exit
+# Batched qmllint invocations over slices of the tree, run side by side
+# (spawning it per file costs ~4x as much; a single invocation leaves the
+# other cores idle). What fails the check is decided by qmllint's own exit
 # status, driven by the category levels in the shell's .qmllint.ini — nothing
 # here parses human-readable output to make that call. Remaining warnings are
 # only counted by category, so the number stays visible while it is worked
@@ -66,12 +67,23 @@ if ((${#files[@]} == 0)); then
   exit 1
 fi
 
+# tests/run passes its own --jobs; standalone, up to eight slices.
+shards=${CYBEXOS_TESTS_RUN_JOBS:-}
+if [[ ! $shards =~ ^[1-9][0-9]*$ ]]; then
+  shards=$(nproc 2>/dev/null) || shards=4
+  ((shards > 8)) && shards=8
+fi
+per=$(( (${#files[@]} + shards - 1) / shards ))
+
 # Every invocation writes its own report, so parallel runs never interleave
 # and the combined output keeps the tree's file order.
-"$qmllint" -I "$qml_import_path" -I "$work/imports" -I . "${files[@]}" \
-  >"$work/tree.out" 2>&1 &
-lint_pids+=("$!")
-reports=("$work/tree.out")
+reports=()
+for ((first = 0; first < ${#files[@]}; first += per)); do
+  "$qmllint" -I "$qml_import_path" -I "$work/imports" -I . "${files[@]:first:per}" \
+    >"$work/tree.$first.out" 2>&1 &
+  lint_pids+=("$!")
+  reports+=("$work/tree.$first.out")
+done
 
 for index in "${!harnesses[@]}"; do
   harness=$work/harness.$index

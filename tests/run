@@ -205,7 +205,7 @@ stage_unit_tests() {
 
 # ── Whole-source syntax and playbook parse gate ────────────────────────
 stage_source_syntax() {
-  local out='' rc=0 t0 elapsed file
+  local out='' rc=0 t0 elapsed scratch jobs ansible_pid
   local bash_files=() python_files=() node_files=()
 
   for command in bash python3 node ansible-playbook; do
@@ -231,14 +231,21 @@ stage_source_syntax() {
     return
   fi
 
+  scratch=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-tests.XXXXXX") || {
+    fail 'source syntax' 'could not create a scratch directory'
+    return
+  }
+  test_scratch_dirs+=("$scratch")
+  jobs=$(default_jobs)
+
   t0=$(now_ms)
-  for file in "${bash_files[@]}"; do
-    if ! out=$(bash -n "$file" 2>&1); then
-      rc=1
-      out="$file: $out"
-      break
-    fi
-  done
+  # The playbook parse is the slowest single check, so it runs while the
+  # sources are checked. bash -n and node --check take one file per process;
+  # those fan out too.
+  spawn 300 "$scratch/ansible" \
+    ansible-playbook -i inventory/hosts.yml site.yml --syntax-check
+  ansible_pid=$spawned_pid
+  out=$(printf '%s\0' "${bash_files[@]}" | xargs -0 -r -P "$jobs" -n 1 bash -n 2>&1) || rc=1
   if ((rc == 0)); then
     out=$(python3 - "${python_files[@]}" <<'PY' 2>&1
 from pathlib import Path
@@ -251,16 +258,14 @@ PY
 ) || rc=$?
   fi
   if ((rc == 0)); then
-    for file in "${node_files[@]}"; do
-      if ! out=$(node --check "$file" 2>&1); then
-        rc=1
-        break
-      fi
-    done
+    out=$(printf '%s\0' "${node_files[@]}" \
+      | xargs -0 -r -P "$jobs" -n 1 node --check 2>&1) || rc=1
   fi
-  if ((rc == 0)); then
-    out=$(ansible-playbook -i inventory/hosts.yml site.yml --syntax-check 2>&1) || rc=$?
+  if ! reap "$ansible_pid" || ((reaped_rc != 0)); then
+    rc=1
+    out=${out:+$out$'\n'}$(<"$scratch/ansible")
   fi
+  rm -rf -- "$scratch"
 
   elapsed=$(( $(now_ms) - t0 ))
   if ((rc == 0)); then
