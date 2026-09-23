@@ -156,8 +156,11 @@ Surface {
                     ? "dnf gave up " + Format.mmss(Updates.runDuration) + " in"
                     : Updates.busy ? "Checking…"
                     : Updates.packageError !== "" ? Updates.packageError
-                    : Updates.checkedLabel() + " · every "
-                        + Settings.modOpts.updates.pollMins + " m"
+                    // Background checks run only for the bar widget or the
+                    // notification; otherwise opening a view is the check.
+                    : Updates.checkedLabel() + (Updates.pollEnabled
+                        ? " · every " + Settings.modOpts.updates.pollMins + " m"
+                        : " · refreshes when opened")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.metadata
                 font.weight: Theme.weightSemibold
