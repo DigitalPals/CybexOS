@@ -49,13 +49,14 @@ ShellRoot {
     Variants {
         model: OmarchyPlugins.replacementActive ? [] : Quickshell.screens
         PanelWindow {
+            id: screenBar
             required property var modelData
             screen: modelData
             anchors { top: true; left: true; right: true }
             implicitHeight: 32
             Row {
-                UserWidgets { section: "left"; screenName: modelData.name; availableWidth: 640 }
-                UserWidgets { section: "right"; screenName: modelData.name; availableWidth: 640 }
+                UserWidgets { section: "left"; screenName: screenBar.modelData.name; availableWidth: 640 }
+                UserWidgets { section: "right"; screenName: screenBar.modelData.name; availableWidth: 640 }
             }
         }
     }

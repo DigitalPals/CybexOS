@@ -147,9 +147,10 @@ test("the active player is playing, else paused, else the first known", () => {
 // ---- enum mirrors --------------------------------------------------------
 //
 // The two enums above are mirrored numerically so the helpers stay free of Qt
-// imports. Check them against the installed type information when it is
-// there, so a Quickshell upgrade that renumbers either one fails here rather
-// than silently reporting the wrong battery state.
+// imports. Check them against the installed type information, so a
+// Quickshell upgrade that renumbers either one fails here rather than silently
+// reporting the wrong battery state. The gate requires Quickshell (CI installs
+// it too), so a missing type file is a broken install, not a reason to skip.
 
 function qmlRoot() {
     const candidates = [
@@ -176,8 +177,7 @@ const skip = root === null ? "Qt QML directory not found" : false;
 test("the mirrored UPower device states match the installed enum", { skip }, () => {
     const file = path.join(root, "Quickshell/Services/UPower",
         "quickshell-service-upower.qmltypes");
-    if (!fs.existsSync(file))
-        return;
+    assert.ok(fs.existsSync(file), `${file} missing (dnf install quickshell)`);
     assert.deepEqual(
         enumValues(file, "qs::service::upower::UPowerDeviceState"),
         H.BATTERY_STATE);
@@ -186,8 +186,7 @@ test("the mirrored UPower device states match the installed enum", { skip }, () 
 test("the mirrored Mpris playback states match the installed enum", { skip }, () => {
     const file = path.join(root, "Quickshell/Services/Mpris",
         "quickshell-service-mpris.qmltypes");
-    if (!fs.existsSync(file))
-        return;
+    assert.ok(fs.existsSync(file), `${file} missing (dnf install quickshell)`);
     assert.deepEqual(
         enumValues(file, "qs::service::mpris::MprisPlaybackState"),
         H.PLAYBACK_STATE);
