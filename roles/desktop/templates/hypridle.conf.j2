@@ -2,6 +2,7 @@ general {
   lock_cmd = systemctl --user start cybexos-session-lock.service
   before_sleep_cmd = /usr/local/libexec/cybexos-session-action lock
   after_sleep_cmd = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "on" }))'
+  inhibit_sleep = 3
 }
 
 listener {

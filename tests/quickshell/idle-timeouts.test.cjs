@@ -71,6 +71,9 @@ test("chosen timeouts render in seconds and Never drops the listener", t => {
     assert.match(output, /timeout = 120\n  on-timeout = hyprctl eval .*"off"/);
     assert.match(output, new RegExp(`timeout = 1800\\n  on-timeout = ${action} idle-suspend on-battery\\n`));
     assert.match(output, /lock_cmd = systemctl --user start cybexos-session-lock\.service/);
+    // Suspend waits for the lock screen whatever the timeouts are.
+    const general = output.slice(0, output.indexOf("\n}\n") + 3);
+    assert.match(general, /^general \{\n[\s\S]*\n  inhibit_sleep = 3\n\}\n$/);
 
     const always = render(t, { idleSuspendMins: 60 });
     assert.match(always, new RegExp(`timeout = 3600\\n  on-timeout = ${action} idle-suspend\\n`));

@@ -50,11 +50,15 @@ def load_settings(path):
 
 
 def render(settings, session_action):
+    # inhibit_sleep = 3 holds every suspend until the compositor reports the
+    # session locked (logind caps the delay). hypridle's automatic mode would
+    # not choose that here, because lock_cmd does not name hyprlock.
     blocks = [
         "general {\n"
         f"  lock_cmd = {LOCK}\n"
         f"  before_sleep_cmd = {session_action} lock\n"
         f"  after_sleep_cmd = {DPMS_ON}\n"
+        "  inhibit_sleep = 3\n"
         "}\n"
     ]
     if settings["idleLockMins"]:
