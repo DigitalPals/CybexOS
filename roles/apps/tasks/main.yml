@@ -21,6 +21,13 @@
   loop_control:
     label: "{{ item.item }}"
 
+# One package database read lets the network- and transaction-bound tasks
+# below skip work whose package state already holds.
+- name: Read the installed package inventory
+  ansible.builtin.package_facts:
+    manager: rpm
+  tags: [browser]
+
 - name: Configure package repositories
   ansible.builtin.import_tasks: repos.yml
 

@@ -155,6 +155,72 @@
   when: not ansible_check_mode
   tags: [fonts]
 
+# Verify every pinned font, its license, and their directory in one pass;
+# otherwise each font costs three module runs even when nothing changed. A
+# font is reinstalled unless all three are root-owned with the managed mode,
+# not links, and both files carry their pinned SHA-256.
+- name: Inspect installed pinned single-file fonts
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import hashlib
+        import json
+        import os
+        import stat
+        import sys
+
+
+        fonts_root, owner = sys.argv[1], (int(sys.argv[2]), int(sys.argv[3]))
+
+
+        def managed(path, kind, mode, checksum=None):
+            try:
+                info = os.lstat(path)
+            except OSError:
+                return False
+            if (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) != (*owner, mode):
+                return False
+            if kind == "directory":
+                return stat.S_ISDIR(info.st_mode)
+            if not stat.S_ISREG(info.st_mode):
+                return False
+            digest = hashlib.sha256()
+            with open(path, "rb") as stream:
+                for block in iter(lambda: stream.read(1 << 20), b""):
+                    digest.update(block)
+            return "sha256:" + digest.hexdigest() == checksum.lower()
+
+
+        pending = []
+        for font in json.load(sys.stdin):
+            directory = os.path.join(fonts_root, font["name"], font["version"])
+            if not (managed(directory, "directory", 0o755)
+                    and managed(os.path.join(directory, font["filename"]),
+                                "file", 0o644, font["checksum"])
+                    and managed(os.path.join(directory, font["license_filename"]),
+                                "file", 0o644, font["license_checksum"])):
+                pending.append(font["name"])
+        json.dump(pending, sys.stdout)
+      - /usr/local/share/fonts
+      # root:root, as the installation tasks below set.
+      - "0"
+      - "0"
+    stdin: "{{ pinned_font_files | to_json }}"
+  register: apps_pinned_font_file_state
+  changed_when: false
+  check_mode: false
+  tags: [fonts]
+
+- name: Record pinned single-file fonts that need installation
+  ansible.builtin.set_fact:
+    apps_pending_font_files: >-
+      {{ pinned_font_files
+         | selectattr('name', 'in', apps_pinned_font_file_state.stdout | from_json)
+         | list }}
+  tags: [fonts]
+
 - name: Create pinned single-file font directories
   ansible.builtin.file:
     path: "/usr/local/share/fonts/{{ item.name }}/{{ item.version }}"
@@ -162,7 +228,7 @@
     owner: root
     group: root
     mode: "0755"
-  loop: "{{ pinned_font_files }}"
+  loop: "{{ apps_pending_font_files }}"
   loop_control:
     label: "{{ item.name }} {{ item.version }}"
   tags: [fonts]
@@ -179,7 +245,7 @@
     group: root
     mode: "0644"
   register: apps_pinned_font_file_install
-  loop: "{{ pinned_font_files }}"
+  loop: "{{ apps_pending_font_files }}"
   loop_control:
     label: "{{ item.name }} {{ item.version }}"
   when: not ansible_check_mode
@@ -193,7 +259,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ pinned_font_files }}"
+  loop: "{{ apps_pending_font_files }}"
   loop_control:
     label: "{{ item.name }} license"
   when: not ansible_check_mode
@@ -310,8 +376,10 @@
     jid: "{{ item.ansible_job_id }}"
   register: apps_upstream_install
   until: apps_upstream_install.finished
-  retries: 200
-  delay: 5
+  # Poll every second so an unchanged converge is not held up to five seconds
+  # per job; the retry budget still covers the 900 second async limit.
+  retries: 1000
+  delay: 1
   changed_when: (apps_upstream_install.stdout | default('') | regex_search('(?m)^CHANGED:')) is not none
   failed_when: false
   loop: "{{ apps_upstream_jobs.results | default([]) }}"
@@ -326,8 +394,9 @@
     jid: "{{ item.ansible_job_id }}"
   register: apps_source_build
   until: apps_source_build.finished
-  retries: 500
-  delay: 5
+  # Covers the 2400 second async build limit at one-second polling.
+  retries: 2500
+  delay: 1
   changed_when: (apps_source_build.stdout | default('') | regex_search('(?m)^CHANGED:')) is not none
   failed_when: false
   loop: "{{ apps_source_jobs.results | default([]) }}"

@@ -76,8 +76,36 @@
       - qt6-qtmultimedia
       # qmllint for the quickshell QML smoke check (tests/qml-lint).
       - qt6-qtdeclarative-devel
+      # Quickshell runtime helpers share this transaction because every dnf
+      # run reloads all repository metadata. The Network panel keeps system
+      # reads and bounded mutations in local Python helpers. List every
+      # command they invoke instead of relying on a workstation package group
+      # to pull it in transitively. curl and iw are also shared by weather and
+      # link telemetry.
+      - NetworkManager
+      - python3
+      # Durable JSON-RPC/WebSocket transport for the Hermes menubar bridge.
+      - python3-websockets
+      # Native multi-file chooser used by the Hermes composer; selected files
+      # are uploaded by the loopback bridge, never by QML itself.
+      - zenity
+      # Online Accounts stores Google OAuth credentials in the keyring;
+      # Evolution Data Server exposes its calendar cache to Quickshell.
+      - gnome-online-accounts
+      - gnome-control-center
+      - gnome-calendar
+      - evolution-data-server
+      - python3-gobject
+      - curl
+      - iw
+      - qrencode
+      - iproute
+      - iputils
+      # Fedora's authoritative post-update reboot recommendation command.
+      - dnf5-plugins
     state: present
   when: not ansible_check_mode
+  tags: [quickshell]
 
 - name: Inspect the package-provided GDM configuration fallback
   ansible.builtin.stat:
@@ -127,38 +155,6 @@
     - sleep-inactive-battery-timeout
   changed_when: false
   when: not ansible_check_mode
-
-- name: Install Quickshell runtime helpers
-  ansible.builtin.dnf:
-    # The Network panel keeps system reads and bounded mutations in local
-    # Python helpers. List every command they invoke instead of relying on a
-    # workstation package group to pull it in transitively. curl and iw are
-    # also shared by weather and link telemetry.
-    name:
-      - NetworkManager
-      - python3
-      # Durable JSON-RPC/WebSocket transport for the Hermes menubar bridge.
-      - python3-websockets
-      # Native multi-file chooser used by the Hermes composer; selected files
-      # are uploaded by the loopback bridge, never by QML itself.
-      - zenity
-      # Online Accounts stores Google OAuth credentials in the keyring;
-      # Evolution Data Server exposes its calendar cache to Quickshell.
-      - gnome-online-accounts
-      - gnome-control-center
-      - gnome-calendar
-      - evolution-data-server
-      - python3-gobject
-      - curl
-      - iw
-      - qrencode
-      - iproute
-      - iputils
-      # Fedora's authoritative post-update reboot recommendation command.
-      - dnf5-plugins
-    state: present
-  when: not ansible_check_mode
-  tags: [quickshell]
 
 - name: Inspect CybexOS ownership of connected widgets
   ansible.builtin.stat:
@@ -502,6 +498,7 @@
   loop:
     - { src: hypridle.conf.j2, dest: hypridle.conf }
     - { src: hyprlock.conf.j2, dest: hyprlock.conf }
+  notify: Restart hypridle
   when: not hypr_runtime_path_normalization_pending | bool
   tags: [browser]
 
@@ -539,6 +536,8 @@
     src: "{{ config_repo }}/assets/scripts/cybexos-runtime"
     dest: "{{ primary_home }}/.local/bin/cybexos-runtime"
     mode: "0755"
+  # hypridle starts through the resolver, which renders its configuration.
+  notify: Restart hypridle
   tags: [browser, quickshell]
 
 - name: Install the one-time ownership-layer migration helper
@@ -549,31 +548,6 @@
     dest: "{{ primary_home }}/.local/libexec/cybexos-migrate-layering"
     mode: "0755"
   tags: [browser, quickshell]
-
-# The copy below is unconditional, so broken QML would land on disk and only
-# surface at the next shell reload, far from the change that caused it. Run
-# the same static check tests/run uses, against the source tree, first.
-# Skip with --skip-tags quickshell-lint; it is read-only, so it also runs
-# under --check. A missing qmllint is a failed prerequisite, just as it is in
-# the repository and CI gates.
-- name: Check the Quickshell configuration before installing it
-  ansible.builtin.command: "{{ playbook_dir }}/tests/qml-lint"
-  delegate_to: localhost
-  become: false
-  changed_when: false
-  check_mode: false
-  failed_when: false
-  register: quickshell_lint
-  tags: [quickshell, quickshell-lint]
-
-# Reported separately so the findings themselves reach the terminal: a failing
-# command module puts them in stdout, which the compact callback drops in
-# favor of "non-zero return code".
-- name: Refuse to install a Quickshell configuration that qmllint rejects
-  ansible.builtin.fail:
-    msg: "{{ quickshell_lint.stdout | default(quickshell_lint.stderr) | default('qmllint failed') }}"
-  when: quickshell_lint.rc | default(0) != 0
-  tags: [quickshell, quickshell-lint]
 
 - name: Remove retired Paseo shell widget runtime
   become: true
@@ -633,6 +607,8 @@
          | map('regex_replace', '^roles/desktop/files/quickshell/', '')
          | reject('equalto', '')
          | list }}
+    # The only managed executables; every other shell file is installed 0644.
+    quickshell_executable_prefix: compat/omarchy/bin/
   tags: [quickshell]
 
 - name: Refuse an empty or incomplete Quickshell source manifest
@@ -645,29 +621,55 @@
       prune or modify the deployed shell.
   tags: [quickshell]
 
+# Besides the deployment identity, record what the copy task below would write
+# for each managed path (bytes, size, and mode) and every parent directory, so
+# the deployed tree can be compared without a module run per file.
 - name: Calculate the content identity of the managed Quickshell tree
   ansible.builtin.command:
     argv:
       - python3
-      - "-"
-      - "{{ config_repo }}/roles/desktop/files/quickshell"
-    stdin: |
-      import hashlib
-      import os
-      from pathlib import Path
-      import sys
+      - -c
+      - |
+        import hashlib
+        import json
+        import os
+        from pathlib import Path
+        import sys
 
-      root = Path(sys.argv[1])
-      digest = hashlib.sha256()
-      for relative in {{ quickshell_managed_manifest | sort | to_json }}:
-          path = root / relative
-          digest.update(relative.encode("utf-8") + b"\0")
-          if path.is_symlink():
-              payload = b"L" + os.readlink(path).encode("utf-8")
-          else:
-              payload = b"F" + path.read_bytes()
-          digest.update(payload + b"\0")
-      print(digest.hexdigest())
+        root = Path(sys.argv[1])
+        executable_prefix = sys.argv[2]
+        digest = hashlib.sha256()
+        files = {}
+        directories = set()
+        for relative in json.load(sys.stdin):
+            path = root / relative
+            digest.update(relative.encode("utf-8") + b"\0")
+            if path.is_symlink():
+                payload = b"L" + os.readlink(path).encode("utf-8")
+                # copy installs a linked source as a regular file holding the
+                # target's bytes. Anything else is simply always recopied.
+                content = path.read_bytes() if path.is_file() else None
+            else:
+                content = path.read_bytes()
+                payload = b"F" + content
+            digest.update(payload + b"\0")
+            files[relative] = {
+                "sha256": None if content is None else hashlib.sha256(content).hexdigest(),
+                "size": None if content is None else len(content),
+                "mode": 0o755 if relative.startswith(executable_prefix) else 0o644,
+            }
+            parent = relative.rpartition("/")[0]
+            while parent:
+                directories.add(parent)
+                parent = parent.rpartition("/")[0]
+        json.dump({
+            "digest": digest.hexdigest(),
+            "files": files,
+            "directories": sorted(directories),
+        }, sys.stdout)
+      - "{{ config_repo }}/roles/desktop/files/quickshell"
+      - "{{ quickshell_executable_prefix }}"
+    stdin: "{{ quickshell_managed_manifest | sort | to_json }}"
   delegate_to: localhost
   become: false
   changed_when: false
@@ -675,34 +677,196 @@
   register: quickshell_source_digest
   tags: [quickshell]
 
-- name: Build the tracked Quickshell directory manifest
-  ansible.builtin.shell: |
-    set -o pipefail
-    while IFS= read -r relative_path; do
-      directory=${relative_path%/*}
-      while [[ -n $directory && $directory != "$relative_path" ]]; do
-        printf '%s\n' "$directory"
-        [[ $directory == */* ]] || break
-        directory=${directory%/*}
-      done
-    done | LC_ALL=C sort -u
-  args:
-    executable: /bin/bash
-    stdin: "{{ quickshell_managed_manifest | join('\n') }}\n"
+- name: Record the managed Quickshell identity and directories
+  ansible.builtin.set_fact:
+    quickshell_source: "{{ quickshell_source_digest.stdout | from_json }}"
+  tags: [quickshell]
+
+# Classify the deployed tree in one pass instead of stat-and-checksumming each
+# managed file through its own module run. Nothing is followed: the root or
+# any child that is a link or has the wrong type is replaced, a stale or
+# linked child is removed, and a managed file is recopied unless it is a
+# regular file with exactly the source bytes and mode. Everything below this
+# task is derived from this read-only inspection, so an unchanged tree skips
+# the lint, live snapshot, writes, and live verification entirely.
+- name: Inspect the deployed Quickshell tree before writing through any child path
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import hashlib
+        import json
+        import os
+        import stat
+        import sys
+
+        root = sys.argv[1]
+        source = json.load(sys.stdin)
+        files = source["files"]
+        directories = set(source["directories"])
+        delta = {"root": "directory", "install": [], "directories": [],
+                 "stale_files": [], "stale_directories": [], "bytecode_caches": []}
+
+
+        def unchanged(path, expected, info):
+            if (not stat.S_ISREG(info.st_mode)
+                    or stat.S_IMODE(info.st_mode) != expected["mode"]
+                    or expected["sha256"] is None
+                    or info.st_size != expected["size"]):
+                return False
+            digest = hashlib.sha256()
+            try:
+                descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+            except OSError:
+                return False
+            with os.fdopen(descriptor, "rb") as stream:
+                for block in iter(lambda: stream.read(1 << 20), b""):
+                    digest.update(block)
+            return digest.hexdigest() == expected["sha256"]
+
+
+        try:
+            root_info = os.lstat(root)
+        except FileNotFoundError:
+            root_info = None
+        if root_info is None:
+            delta["root"] = "missing"
+        elif not stat.S_ISDIR(root_info.st_mode):
+            delta["root"] = "unsafe"
+        elif stat.S_IMODE(root_info.st_mode) != 0o755:
+            delta["root"] = "mode"
+
+        if delta["root"] in ("missing", "unsafe"):
+            # The root is created or replaced whole; never look through it.
+            delta["install"] = sorted(files)
+            delta["directories"] = sorted(directories)
+        else:
+            deployed = {}
+            unreadable = set()
+            pending = [""]
+            while pending:
+                parent = pending.pop()
+                try:
+                    with os.scandir(os.path.join(root, parent)) as entries:
+                        children = [(entry.name, entry.stat(follow_symlinks=False))
+                                    for entry in entries]
+                except PermissionError:
+                    # The directory task restores its mode; recopy its files.
+                    unreadable.add(parent)
+                    continue
+                for name, info in children:
+                    relative = parent + "/" + name if parent else name
+                    deployed[relative] = info
+                    if stat.S_ISDIR(info.st_mode):
+                        if relative in directories:
+                            pending.append(relative)
+                        elif name == "__pycache__":
+                            # Written by the running shell's Python helpers.
+                            # Python only loads a cached module beside its
+                            # source, so these are inert until a deployment
+                            # changes the tree anyway.
+                            delta["bytecode_caches"].append(relative)
+                        else:
+                            delta["stale_directories"].append(relative)
+                    elif relative not in files or not stat.S_ISREG(info.st_mode):
+                        delta["stale_files"].append(relative)
+            for relative in sorted(directories):
+                info = deployed.get(relative)
+                if (info is None or relative in unreadable
+                        or not stat.S_ISDIR(info.st_mode)
+                        or stat.S_IMODE(info.st_mode) != 0o755):
+                    delta["directories"].append(relative)
+            for relative in sorted(files):
+                info = deployed.get(relative)
+                if info is None or not unchanged(
+                        os.path.join(root, relative), files[relative], info):
+                    delta["install"].append(relative)
+            delta["stale_files"].sort()
+            delta["stale_directories"].sort()
+            delta["bytecode_caches"].sort()
+        json.dump(delta, sys.stdout)
+      - "{{ cybexos_runtime_root }}/quickshell"
+    # The source description: expected files and every managed directory.
+    stdin: "{{ quickshell_source_digest.stdout }}"
+  changed_when: false
+  check_mode: false
+  register: quickshell_deployed_tree
+  tags: [quickshell]
+
+- name: Record the Quickshell deployment delta
+  ansible.builtin.set_fact:
+    quickshell_deploy: "{{ quickshell_deploy_delta }}"
+    quickshell_deploy_required: >-
+      {{ quickshell_deploy_delta.root != 'directory'
+         or (quickshell_deploy_delta.install
+             + quickshell_deploy_delta.directories
+             + quickshell_deploy_delta.stale_files
+             + quickshell_deploy_delta.stale_directories) | length > 0 }}
+  vars:
+    quickshell_deploy_delta: "{{ quickshell_deployed_tree.stdout | from_json }}"
+  tags: [quickshell]
+
+# Broken QML would land on disk and only surface at the next shell reload, far
+# from the change that caused it. Run the same static check tests/run uses,
+# against the source tree, before anything is written. An unchanged deployed
+# tree has nothing to protect, so the check is skipped then; a lint-only run
+# (--tags quickshell-lint) always performs it. Skip with --skip-tags
+# quickshell-lint; it is read-only, so it also runs under --check. A missing
+# qmllint is a failed prerequisite, just as it is in the repository and CI
+# gates.
+- name: Check the Quickshell configuration before installing it
+  ansible.builtin.command: "{{ playbook_dir }}/tests/qml-lint"
+  delegate_to: localhost
   become: false
   changed_when: false
   check_mode: false
-  register: quickshell_tracked_directories
+  failed_when: false
+  register: quickshell_lint
+  when: quickshell_deploy_required | default(true) | bool
+  tags: [quickshell, quickshell-lint]
+
+# Reported separately so the findings themselves reach the terminal: a failing
+# command module puts them in stdout, which the compact callback drops in
+# favor of "non-zero return code".
+- name: Refuse to install a Quickshell configuration that qmllint rejects
+  ansible.builtin.fail:
+    msg: "{{ quickshell_lint.stdout | default(quickshell_lint.stderr) | default('qmllint failed') }}"
+  when: quickshell_lint.rc | default(0) != 0
+  tags: [quickshell, quickshell-lint]
+
+# Installed ahead of the live snapshot so a unit-only change also takes the
+# snapshot and verified-restart path below. A daemon-reload does not restart
+# the running shell; the verification step does that from the final tree.
+- name: Install the explicitly rooted Quickshell user unit
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: quickshell.service.j2
+    dest: "{{ primary_home }}/.config/systemd/user/quickshell.service"
+    mode: "0644"
+  register: quickshell_unit
+  notify: Reload user systemd
   tags: [quickshell]
 
-- name: Record the managed Quickshell directories
-  ansible.builtin.set_fact:
-    quickshell_managed_directories: >-
-      {{ quickshell_tracked_directories.stdout_lines
-         | reject('equalto', '')
-         | list }}
+- name: Make the explicitly rooted Quickshell unit immediately available
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  when:
+    - not ansible_check_mode
+    - quickshell_unit is changed
   tags: [quickshell]
 
+# Taken only when this run will change the shell: the snapshot probes the live
+# service and reconciles stray developer qs processes, which an unchanged
+# converge has no reason to disturb.
 - name: Snapshot the last-known-good live Quickshell before deployment
   become: true
   become_user: "{{ primary_user }}"
@@ -711,11 +875,14 @@
       - "{{ playbook_dir }}/tests/quickshell-deploy-health"
       - snapshot
       - "{{ primary_home }}"
-      - "{{ quickshell_source_digest.stdout }}"
+      - "{{ quickshell_source.digest }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
   changed_when: false
-  when: not ansible_check_mode
+  register: quickshell_live_snapshot
+  when:
+    - not ansible_check_mode
+    - quickshell_deploy_required | bool or quickshell_unit is changed
   tags: [quickshell]
 
 - name: Inspect the managed Quickshell root without following links
@@ -759,37 +926,18 @@
   register: quickshell_root_created
   tags: [quickshell]
 
-- name: Inspect the deployed Quickshell tree before writing through any child path
-  become: true
-  become_user: "{{ primary_user }}"
-  ansible.builtin.find:
-    paths: "{{ cybexos_runtime_root }}/quickshell"
-    recurse: true
-    hidden: true
-    file_type: any
-    follow: false
-  when: not (ansible_check_mode and quickshell_root_unsafe | bool)
-  register: quickshell_deployed_tree
-  tags: [quickshell]
-
 - name: Remove files and links that are stale or unsafe copy destinations
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ item.path }}"
+    path: "{{ cybexos_runtime_root }}/quickshell/{{ item }}"
     state: absent
-  loop: >-
-    {{ quickshell_deployed_tree.files | default([])
-       | rejectattr('isdir')
-       | list }}
+  # Includes every link, even one at a managed path, and every non-directory
+  # outside the manifest. Children of stale or linked directories are never
+  # listed: removing the directory entry itself is sufficient.
+  loop: "{{ quickshell_deploy.stale_files }}"
   loop_control:
-    label: "{{ item.path }}"
-  vars:
-    quickshell_relative_path: >-
-      {{ item.path | regex_replace('^' + (cybexos_runtime_root + '/quickshell/') | regex_escape, '') }}
-  when: >-
-    quickshell_relative_path not in quickshell_managed_manifest
-    or item.islnk | default(false)
+    label: "{{ item }}"
   register: quickshell_removed_files
   tags: [quickshell]
 
@@ -797,18 +945,16 @@
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    path: "{{ item.path }}"
+    path: "{{ cybexos_runtime_root }}/quickshell/{{ item }}"
     state: absent
+  # Bytecode caches alone never make a deployment necessary; they are cleared
+  # with one so the restarted shell runs from exactly the managed tree.
   loop: >-
-    {{ quickshell_deployed_tree.files | default([])
-       | selectattr('isdir')
-       | list }}
+    {{ quickshell_deploy.stale_directories
+       + (quickshell_deploy_required | bool
+          | ternary(quickshell_deploy.bytecode_caches, [])) }}
   loop_control:
-    label: "{{ item.path }}"
-  vars:
-    quickshell_relative_directory: >-
-      {{ item.path | regex_replace('^' + (cybexos_runtime_root + '/quickshell/') | regex_escape, '') }}
-  when: quickshell_relative_directory not in quickshell_managed_directories
+    label: "{{ item }}"
   register: quickshell_removed_directories
   tags: [quickshell]
 
@@ -830,7 +976,7 @@
     state: directory
     mode: "0755"
     follow: false
-  loop: "{{ quickshell_managed_directories }}"
+  loop: "{{ quickshell_deploy.directories }}"
   loop_control:
     label: "{{ item }}"
   when: not quickshell_path_normalization_pending | bool
@@ -843,14 +989,27 @@
   ansible.builtin.copy:
     src: "quickshell/{{ item }}"
     dest: "{{ cybexos_runtime_root }}/quickshell/{{ item }}"
-    mode: "{{ '0755' if item.startswith('compat/omarchy/bin/') else '0644' }}"
+    mode: "{{ '0755' if item.startswith(quickshell_executable_prefix) else '0644' }}"
     follow: false
     local_follow: false
-  loop: "{{ quickshell_managed_manifest }}"
+  # Only the paths whose deployed copy differs; see the inspection above.
+  loop: "{{ quickshell_deploy.install }}"
   loop_control:
     label: "{{ item }}"
   when: not quickshell_path_normalization_pending | bool
   register: quickshell_config
+  tags: [quickshell]
+
+# hypridle runs the shell's timeout renderer only when it starts.
+- name: Queue a hypridle restart after its configuration renderer changes
+  ansible.builtin.command: /usr/bin/true
+  changed_when: true
+  notify: Restart hypridle
+  when: >-
+    quickshell_config.results | default([])
+    | selectattr('changed', 'defined') | selectattr('changed')
+    | selectattr('item', 'equalto', 'scripts/hypridle-config.py')
+    | list | length > 0
   tags: [quickshell]
 
 - name: Create cybexos deployment state directory
@@ -897,28 +1056,42 @@
     content: "{{ quickshell_managed_manifest | sort | join('\n') }}\n"
   tags: [quickshell]
 
-- name: Install the explicitly rooted Quickshell user unit
+# Qt keeps one compiled cache file per QML/JS source revision and never
+# removes superseded ones. Every deployment strands the previous set, so prune
+# entries unread for two weeks while the shell is about to restart anyway. The
+# cache regenerates on demand, and an unlinked file stays valid for a process
+# that still maps it.
+- name: Prune stale compiled QML cache entries after a shell change
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.template:
-    src: quickshell.service.j2
-    dest: "{{ primary_home }}/.config/systemd/user/quickshell.service"
-    mode: "0644"
-  register: quickshell_unit
-  notify: Reload user systemd
-  tags: [quickshell]
-
-- name: Make the explicitly rooted Quickshell unit immediately available
-  become: true
-  become_user: "{{ primary_user }}"
-  ansible.builtin.systemd_service:
-    daemon_reload: true
-    scope: user
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  ansible.builtin.command:
+    argv:
+      - find
+      - "{{ primary_home }}/.cache/quickshell/qmlcache"
+      - -mindepth
+      - "1"
+      - -maxdepth
+      - "1"
+      - -type
+      - f
+      - (
+      - -name
+      - "*.qmlc"
+      - -o
+      - -name
+      - "*.jsc"
+      - )
+      - -atime
+      - "+14"
+      - -print
+      - -delete
+  register: quickshell_qmlcache_prune
+  changed_when: quickshell_qmlcache_prune.stdout | length > 0
+  # An absent cache directory is normal before the first shell start.
+  failed_when: false
   when:
     - not ansible_check_mode
-    - quickshell_unit is changed
+    - quickshell_deploy_required | bool
   tags: [quickshell]
 
 - name: Verify the live Quickshell deployment or restore its last-known-good tree
@@ -929,12 +1102,15 @@
       - "{{ playbook_dir }}/tests/quickshell-deploy-health"
       - verify-or-rollback
       - "{{ primary_home }}"
-      - "{{ quickshell_source_digest.stdout }}"
+      - "{{ quickshell_source.digest }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
   changed_when: false
   when:
     - not ansible_check_mode
+    # The rollback archive and pending marker must come from this run's
+    # snapshot, never from an earlier deployment's.
+    - quickshell_live_snapshot is not skipped
     - quickshell_config is changed
       or quickshell_removed_files is changed
       or quickshell_removed_directories is changed
@@ -999,8 +1175,13 @@
   loop:
     - hypridle
     - hyprpolkitagent
-  notify: Reload user systemd
+  notify:
+    - Reload user systemd
+    - Restart hypridle
 
+# Dictation follows the developer tooling feature, which also selects its GPU
+# backend, downloads its model, and binds its keys. Without that model an
+# always-on daemon would only hold an idle audio and GPU context.
 - name: Install the restartable Voxtype user unit
   become: true
   become_user: "{{ primary_user }}"
@@ -1011,6 +1192,42 @@
   notify:
     - Reload user systemd
     - Restart Voxtype daemon
+  when: features.developer_tools | bool
+
+- name: Inspect a Voxtype unit installed before dictation followed developer tooling
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.stat:
+    path: "{{ primary_home }}/.config/systemd/user/voxtype.service"
+  register: desktop_voxtype_unit
+  when: not features.developer_tools | bool
+
+- name: Stop the Voxtype daemon when developer tooling is disabled
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.systemd_service:
+    name: voxtype.service
+    state: stopped
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  failed_when: false
+  when:
+    - not features.developer_tools | bool
+    - desktop_voxtype_unit.stat.exists | default(false)
+    - not ansible_check_mode
+
+- name: Remove the Voxtype user unit when developer tooling is disabled
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/voxtype.service"
+    - "{{ primary_home }}/.config/systemd/user/voxtype.service"
+  notify: Reload user systemd
+  when: not features.developer_tools | bool
 
 - name: Install external monitor watcher unit
   become: true
@@ -1046,11 +1263,9 @@
     dest: "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/{{ item }}.service"
     state: link
     force: true
-  loop:
-    - quickshell
-    - hypridle
-    - hyprpolkitagent
-    - voxtype
+  loop: >-
+    {{ ['quickshell', 'hypridle', 'hyprpolkitagent']
+       + (features.developer_tools | bool | ternary(['voxtype'], [])) }}
   notify: Reload user systemd
 
 - name: Enable the XPS external monitor watcher

@@ -9,6 +9,21 @@
     XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
   failed_when: false
 
+# hypridle reads its configuration only when it starts: the runtime resolver
+# renders the shell's idle timeouts into it then. try-restart leaves a stopped
+# or headless service alone, and hypridle only tracks idle time, so a restart
+# neither locks nor unlocks the session.
+- name: Restart hypridle
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv: [systemctl, --user, try-restart, hypridle.service]
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  changed_when: true
+  failed_when: false
+  when: not ansible_check_mode
+
 - name: Restart Voxtype daemon
   become: true
   become_user: "{{ primary_user }}"

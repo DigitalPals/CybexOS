@@ -1,4 +1,7 @@
 ---
+# Pinned omarchy-cybex commit that supplies the Cybex Plymouth artwork.
+boot_cybex_commit: e76c323ed69baf0efae12b2e7afb42635920607a
+
 boot_cybex_override_files:
   - logo.png
   - entry.png

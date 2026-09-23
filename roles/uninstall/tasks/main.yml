@@ -202,6 +202,13 @@
     - /etc/systemd/system/xps-ipu7-camera-resume.service
     - /etc/systemd/system/v4l2-relayd@ipu7.service.d/override.conf
 
+- name: Remove the managed mpv defaults
+  ansible.builtin.blockinfile:
+    path: /etc/mpv/mpv.conf
+    marker: "# {mark} CYBEXOS MANAGED DEFAULTS"
+    state: absent
+  failed_when: false
+
 - name: Inspect system configuration preserved before XPS adoption
   ansible.builtin.stat:
     path: "/var/lib/cybexos/backups/system/{{ item }}"

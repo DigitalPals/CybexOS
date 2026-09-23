@@ -389,11 +389,12 @@ assert not Path("roles/desktop/files/noctalia").exists()
 assert "- quickshell" in tasks
 assert "Install tracked Quickshell menubar files" in tasks
 assert 'src: "quickshell/{{ item }}"' in tasks
-assert "loop: \"{{ quickshell_managed_manifest }}\"" in tasks
+assert "loop: \"{{ quickshell_deploy.install }}\"" in tasks
+assert 'stdin: "{{ quickshell_managed_manifest | sort | to_json }}"' in tasks
 assert tasks.index("Build the tracked Quickshell source manifest") < tasks.index("Install tracked Quickshell menubar files")
 assert "Calculate the content identity of the managed Quickshell tree" in tasks
 assert 'digest.update(payload + b"\\0")' in tasks
-assert tasks.count('"{{ quickshell_source_digest.stdout }}"') == 2
+assert tasks.count('"{{ quickshell_source.digest }}"') == 2
 assert tasks.index("Install rendered Hyprland Lua dependencies before their consumers") < tasks.index("Install Hyprland Lua configuration")
 lua_install = tasks[tasks.index("Install Hyprland Lua configuration"):tasks.index("Install ordered Hyprland session starter")]
 assert lua_install.index("- bindings.lua") < lua_install.index("- hyprland.lua")

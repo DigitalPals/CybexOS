@@ -237,11 +237,23 @@
     - not features.docker | bool
     - base_docker_marker.stat.exists
 
-- name: Enable Docker when requested
+# Socket activation starts dockerd, and with it containerd, on the first
+# client request instead of keeping both resident and waking while idle.
+- name: Enable Docker socket activation when requested
   ansible.builtin.systemd_service:
-    name: docker.service
+    name: docker.socket
     enabled: true
     state: started
+  when:
+    - features.docker | bool
+    - not ansible_check_mode
+
+# Only the boot-time start is dropped; a daemon already running is left alone
+# rather than stopping its containers in the middle of a converge.
+- name: Start Docker on demand rather than at boot
+  ansible.builtin.systemd_service:
+    name: docker.service
+    enabled: false
   when:
     - features.docker | bool
     - not ansible_check_mode
@@ -554,12 +566,17 @@
       [Unit]
       Description=Scrub all mounted Btrfs filesystems
       ConditionPathIsMountPoint=/
+      # Persistent=true catches a missed run up at the next boot or resume;
+      # never spend a battery charge reading the whole disk.
+      ConditionACPower=true
 
       [Service]
       Type=oneshot
       Nice=19
       IOSchedulingClass=idle
-      ExecStart=/usr/bin/btrfs scrub start -B -d /
+      # The idle I/O class needs a scheduler that honors it, and NVMe uses
+      # none. Cap the read rate so a scrub stays in the background regardless.
+      ExecStart=/usr/bin/btrfs scrub start -B -d --limit 200M /
   notify: Reload systemd
   when: base_root_filesystem.stdout | trim == 'btrfs'
 
