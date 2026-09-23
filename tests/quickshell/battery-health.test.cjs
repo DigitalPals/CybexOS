@@ -100,8 +100,13 @@ test("battery health refreshes only while a visible consumer holds a claim", () 
     assert.match(singleton, /function acquire\(\)/);
     assert.match(singleton, /function release\(\)/);
     assert.match(singleton, /command:\s*\["upower", "--monitor-detail"\]/);
-    assert.match(singleton, /running:\s*root\.watchers > 0/);
-    assert.match(singleton, /interval:\s*30000/);
+    // The status poll is a safety net for a monitor that is down, as
+    // NetworkStatus's is, not a second source while it is healthy.
+    assert.match(singleton,
+        /interval:\s*30000\s*running:\s*root\.watchers > 0 && !monitorProc\.running/);
+    assert.match(singleton,
+        /monitorProc\.running = true;[\s\S]{0,120}?root\.refresh\(\);/,
+        "a restarted monitor reads the status it missed");
     assert.match(singleton, /BatteryView\.parseChargeThresholdStatus\(body\)/);
 });
 

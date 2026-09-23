@@ -94,9 +94,10 @@ Singleton {
         console.warn("battery health unavailable:", statusError);
     }
 
+    // Safety net only while the UPower monitor is down; see monitorProc.
     Timer {
         interval: 30000
-        running: root.watchers > 0
+        running: root.watchers > 0 && !monitorProc.running
         repeat: true
         onTriggered: root.refresh()
     }
@@ -111,8 +112,11 @@ Singleton {
         id: monitorRestart
         interval: 5000
         onTriggered: {
-            if (root.watchers > 0 && !monitorProc.running)
+            if (root.watchers > 0 && !monitorProc.running) {
                 monitorProc.running = true;
+                // A change made while it was down was never reported.
+                root.refresh();
+            }
         }
     }
 
@@ -228,8 +232,9 @@ Singleton {
     }
 
     // UPower's own monitor supplies change notifications without keeping a
-    // privileged process around. The 30-second timer above is only a safety
-    // net for daemon restarts or backends that omit a notification.
+    // privileged process around. The 30-second timer above covers only the
+    // gap while it is down, as NetworkStatus's does for nmcli monitor, and
+    // each restart reads the status afresh.
     Process {
         id: monitorProc
 
