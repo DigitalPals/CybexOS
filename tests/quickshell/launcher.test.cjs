@@ -173,6 +173,24 @@ test("the launcher defaults to Apps and exposes the discoverable provider tabs",
     assert.match(view, /Accessible\.role:\s*Accessible\.PageTab/);
 });
 
+test("a closed launcher stops feeding its query to the providers", () => {
+    const view = read("LauncherView.qml");
+    const window = read("LauncherWindow.qml");
+    const providers = read("Common/LauncherProviders.qml");
+
+    // A `$` query binds every toplevel's title and focus, and the History tab
+    // re-reads cliphist on each copy; neither is on screen once closed.
+    assert.match(view,
+        /function resetForClose\(\): void \{\s*LauncherProviders\.selectedProviderId = "apps";\s*search\.text = "";/s);
+    assert.match(window,
+        /onVisibleChanged:\s*\{\s*if \(!visible\)\s*launcherView\.resetForClose\(\);/s,
+        "the reset waits for the fade-out to unmap the window");
+    // The emoji paste lands after the fade; it must not depend on the query.
+    const paste = providers.match(/id:\s*pasteTimer[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.ok(paste !== "");
+    assert.doesNotMatch(paste, /\b(?:query|term|rows|activeProvider\w*)\b/);
+});
+
 test("result navigation wraps, pages by six, and Escape clears before closing", () => {
     const view = read("LauncherView.qml");
     const window = read("LauncherWindow.qml");

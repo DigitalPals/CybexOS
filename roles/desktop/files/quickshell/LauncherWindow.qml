@@ -14,6 +14,10 @@ PanelWindow {
 
     // Kept mapped through the fade-out so the exit animation is visible.
     visible: Launcher.open || panel.opacity > 0.001
+    onVisibleChanged: {
+        if (!visible)
+            launcherView.resetForClose();
+    }
     screen: Launcher.screen
     anchors { top: true; left: true; right: true; bottom: true }
     exclusionMode: ExclusionMode.Ignore
