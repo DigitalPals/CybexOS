@@ -472,6 +472,18 @@ coverage in CI, Quickshell deployment integration, callback and Python
 fixtures, transactional agent-skill lifecycle coverage, XPS hardware
 integration, Plymouth layout, the durable updater, screenshot/brightness
 workflows, Btrfs snapshot retention, and the fedora-config name migration.
+QML static analysis also lints the three real-engine test harnesses, each over
+a scratch copy of the tree, so a harness that drifted from the components it
+drives fails locally even while the managed shell keeps the real-engine run
+itself CI-only. The deploy's own lint (`tests/qml-lint --shell-only`) checks
+the shell alone.
+
+Independent stages run side by side, longest first, and their results print
+in the fixed order with the verdict last. `--jobs N` bounds the concurrency
+(`--jobs 1` runs serially) and `--only STAGE` runs a single stage. Every stage
+has a time limit (300 seconds; 600 for static lint and the Python fixtures),
+and a stage that exceeds it fails with whatever it printed rather than holding
+the gate open.
 
 The GitHub workflow runs the same `./tests/run` command in a Fedora 44
 container. The lower-level worker stops before Ansible if this gate fails or
