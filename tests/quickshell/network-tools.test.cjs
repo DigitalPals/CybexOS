@@ -257,9 +257,10 @@ test("snapshot subprocess failures are bounded", () => {
     }
 });
 
-// Every external lookup the 1.5 second snapshot makes, each deliberately slow.
-// Run one after another they take seven delays; the helper runs the three
-// NetworkManager/ip reads side by side and then the scan, link and pings.
+// Every external lookup the snapshot makes, each deliberately slow. Run one
+// after another they take five delays; the helper runs the three
+// NetworkManager/ip reads side by side and then the scan and link. Latency is
+// NetworkDetails' own long-lived ping now, so the snapshot must not ping.
 function snapshotStubs(base, delay) {
     const pause = `sleep ${delay}\n`;
     executable(base, "nmcli", `#!/usr/bin/env bash
@@ -287,13 +288,10 @@ ${pause}printf '%s\\n' '[{"dst":"default","gateway":"192.168.1.1","dev":"wlan0",
 ${pause}printf '%s\\n' 'Connected to aa:bb:cc:dd:ee:01 (on wlan0)' '	SSID: Home' \\
   '	freq: 5180' '	signal: -48 dBm' '	rx bitrate: 866.7 MBit/s' '	tx bitrate: 650.0 MBit/s'
 `);
+    base.env.STUB_PING_LOG = path.join(base.directory, "ping.log");
     executable(base, "ping", `#!/usr/bin/env bash
-${pause}case "$*" in
-  *192.168.1.1*) echo '64 bytes from 192.168.1.1: icmp_seq=1 ttl=64 time=2.5 ms' ;;
-  *) echo '64 bytes from 203.0.113.9: icmp_seq=1 ttl=57 time=14.0 ms' ;;
-esac
+printf '%s\\n' "$*" >>"$STUB_PING_LOG"
 `);
-    base.env.NETWORK_TOOL_PING_TARGET = "203.0.113.9";
     base.env.NETWORK_TOOL_SYS_CLASS_NET = path.join(base.directory, "no-sysfs");
 }
 
@@ -365,11 +363,12 @@ test("snapshot runs its independent lookups concurrently with an unchanged paylo
                     rxBitrateMbps: 866.7, txBitrateMbps: 650
                 }
             },
-            diagnostics: { routerPingMs: 2.5, internetPingMs: 14 }
         });
-        // Seven sequential 0.5 s lookups (the two pings already overlapped)
-        // took at least three seconds; two concurrent rounds take one.
-        assert.ok(elapsed < 2500, `snapshot took ${elapsed}ms`);
+        assert.equal(fs.existsSync(base.env.STUB_PING_LOG), false,
+            "the snapshot must not start a ping");
+        // Five sequential 0.5 s lookups took 2.5 seconds; two concurrent
+        // rounds take one.
+        assert.ok(elapsed < 2000, `snapshot took ${elapsed}ms`);
     } finally {
         base.cleanup();
     }
