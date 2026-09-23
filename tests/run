@@ -462,6 +462,7 @@ python_fixtures=(
   user-plugins
   usage-fetch
   bluetooth-tool
+  firmware-update
   shell-health
   repository-policy
   application-defaults

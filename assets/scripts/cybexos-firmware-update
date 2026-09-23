@@ -1,0 +1,662 @@
+#!/usr/bin/python3 -I
+"""Install fwupd device firmware for the durable CybexOS updater.
+
+cybexos-update-run runs `install` as root after the package phase. It picks
+the same devices and releases as `fwupdmgr update`, but reports every step as
+structured events that Quickshell renders, instead of prompting in a terminal:
+
+  cybexos-firmware-update plan
+  cybexos-firmware-update install [--events PATH]
+
+`plan` is read-only and prints {"devices": [...]}. `install` appends one
+compact JSON object per line to PATH, flushed as it happens, and writes
+human-readable progress to stdout for the run log. It always ends the event
+stream with exactly one `summary`. Exit status: 0 when nothing failed
+(including nothing to do), 1 when any device failed, 2 when fwupd could not
+be used at all.
+
+The interpreter is the system Python in isolated mode: PyGObject comes from
+python3-gobject, and a root process must not import packages from the update
+owner's user site directory (the worker keeps that user's HOME).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+
+EXIT_OK = 0
+EXIT_FAILED = 1
+EXIT_SETUP = 2
+
+CONNECT_TIMEOUT_SECONDS = 30
+USER_AGENT = ("cybexos-firmware-update", "1")
+
+# fwupd only sends a request with its own text when it is device-specific; a
+# generic request expects the client to phrase it, as fwupdmgr does.
+REQUEST_MESSAGES = {
+    "org.freedesktop.fwupd.request.remove-replug": "Unplug the device and plug it back in.",
+    "org.freedesktop.fwupd.request.insert-usb-cable": "Plug the device's USB cable back in.",
+    "org.freedesktop.fwupd.request.remove-usb-cable": "Unplug the device's USB cable.",
+    "org.freedesktop.fwupd.request.press-unlock": "Press the unlock button on the device.",
+    "org.freedesktop.fwupd.replug-power": "Unplug the device's power and plug it back in.",
+    "org.freedesktop.fwupd.replug-install":
+        "Unplug the device and plug it back in to finish installing.",
+    "org.freedesktop.fwupd.request.do-not-power-off":
+        "Do not turn off the computer or unplug the device until the update finishes.",
+}
+DEFAULT_REQUEST_MESSAGE = "Follow the instructions on the device."
+
+FAILURE_MESSAGES = {
+    "ac-power": "Connect the power adapter to install this firmware.",
+    "battery": "Charge the battery before installing this firmware.",
+    "auth": "The firmware update was not authorized.",
+    "network": "Couldn't download the firmware. Check the network connection.",
+    "signature": "The downloaded firmware failed verification.",
+    "busy": "Another firmware update is in progress. Try again when it finishes.",
+    "user-action": "The device needs your attention before it can be updated.",
+    "other": "The firmware update failed.",
+}
+UNAVAILABLE_MESSAGE = "The firmware update service (fwupd) is not available."
+MISSING_BINDINGS_MESSAGE = "The firmware updater cannot load fwupd's Python bindings."
+ALREADY_PENDING_MESSAGE = "Already scheduled for the next restart."
+
+# FwupdError members this helper distinguishes, by name, so the numeric codes
+# always come from the installed libfwupd.
+FWUPD_ERROR_NAMES = (
+    "AC_POWER_REQUIRED", "ALREADY_PENDING", "AUTH_EXPIRED", "AUTH_FAILED",
+    "BATTERY_LEVEL_TOO_LOW", "BUSY", "INTERNAL", "INVALID_FILE",
+    "NEEDS_USER_ACTION", "NOTHING_TO_DO", "NOT_FOUND", "NOT_REACHABLE",
+    "NOT_SUPPORTED", "PERMISSION_DENIED", "READ", "SIGNATURE_INVALID",
+    "TIMED_OUT", "VERSION_NEWER", "VERSION_SAME",
+)
+# Only these GIO errors mean the download could not reach its server. A
+# closed D-Bus connection (a crashed daemon) is also a GIO error, but blaming
+# the network for it would send the user to the wrong place.
+NETWORK_IO_ERROR_NAMES = (
+    "CONNECTION_CLOSED", "CONNECTION_REFUSED", "HOST_NOT_FOUND",
+    "HOST_UNREACHABLE", "NETWORK_UNREACHABLE", "NOT_CONNECTED",
+    "PROXY_AUTH_FAILED", "PROXY_FAILED", "PROXY_NEED_AUTH", "PROXY_NOT_ALLOWED",
+    "TIMED_OUT",
+)
+# get_upgrades() reports "no upgrade" as an error; these are all ordinary.
+NO_UPGRADE_ERRORS = ("NOTHING_TO_DO", "NOT_FOUND", "NOT_SUPPORTED",
+                     "VERSION_NEWER", "VERSION_SAME")
+
+STATUS_WORDS = {
+    "decompressing": "decompressing",
+    "device-busy": "waiting for the device",
+    "device-erase": "erasing",
+    "device-read": "reading",
+    "device-restart": "restarting the device",
+    "device-verify": "verifying",
+    "device-write": "writing",
+    "downloading": "downloading",
+    "loading": "loading",
+    "scheduling": "scheduling for the next restart",
+    "shutdown": "shutting down",
+    "waiting-for-auth": "waiting for authorization",
+    "waiting-for-user": "waiting for you",
+}
+
+
+class SetupError(Exception):
+    """fwupd cannot be used at all; nothing was attempted."""
+
+
+class Api:
+    """The parts of gi.repository this helper uses, resolved once.
+
+    Keeping them on one object lets the tests substitute a fake libfwupd and
+    lets every lookup degrade instead of fail on an older or newer typelib.
+    """
+
+    def __init__(self, fwupd, glib, gio=None):
+        self.fwupd = fwupd
+        self.glib = glib
+        self.error_domain = quark_name(glib, getattr(fwupd, "error_quark", None), "FwupdError")
+        self.io_domain = quark_name(glib, getattr(gio, "io_error_quark", None),
+                                    "g-io-error-quark")
+        self.resolver_domain = quark_name(glib, getattr(gio, "resolver_error_quark", None),
+                                          "g-resolver-error-quark")
+        self.error_names = {}
+        for name in FWUPD_ERROR_NAMES:
+            member = getattr(fwupd.Error, name, None)
+            if member is not None:
+                self.error_names[int(member)] = name
+        io_errors = getattr(gio, "IOErrorEnum", None)
+        self.network_io_codes = {
+            int(getattr(io_errors, name)) for name in NETWORK_IO_ERROR_NAMES
+            if io_errors is not None and getattr(io_errors, name, None) is not None
+        }
+
+    def fwupd_error_name(self, error):
+        if getattr(error, "domain", None) != self.error_domain:
+            return None
+        return self.error_names.get(getattr(error, "code", None))
+
+    def is_network_error(self, error):
+        domain = getattr(error, "domain", None)
+        return domain == self.resolver_domain or (
+            domain == self.io_domain and getattr(error, "code", None) in self.network_io_codes)
+
+    def feature_flags(self):
+        flags = 0
+        for name in ("REQUESTS", "REQUESTS_NON_GENERIC", "UPDATE_ACTION",
+                     "DETACH_ACTION", "FDE_WARNING"):
+            member = getattr(self.fwupd.FeatureFlags, name, None)
+            if member is not None:
+                flags = member if not flags else flags | member
+        return flags
+
+    def status_name(self, status):
+        """fwupd's own status string (downloading, device-write, ...), or None."""
+        try:
+            return self.fwupd.status_to_string(status) or None
+        except (TypeError, ValueError):
+            return None
+
+    def request_kind(self, kind):
+        kinds = self.fwupd.RequestKind
+        if getattr(kinds, "POST", None) is not None and kind == kinds.POST:
+            return "post"
+        # IMMEDIATE, and an unknown kind that fwupd sends mid-update.
+        return "immediate"
+
+
+def quark_name(glib, quark_function, fallback):
+    """PyGObject reports GLib.Error.domain as the quark's string."""
+    if quark_function is None:
+        return fallback
+    try:
+        name = glib.quark_to_string(quark_function())
+    except (AttributeError, TypeError, ValueError):
+        return fallback
+    return name or fallback
+
+
+def load_api():
+    """Import libfwupd lazily so the logic stays importable without PyGObject."""
+    try:
+        import gi
+
+        gi.require_version("Fwupd", "2.0")
+        from gi.repository import Fwupd, Gio, GLib
+    except Exception as error:  # ImportError, or a missing/mismatched typelib.
+        raise SetupError(MISSING_BINDINGS_MESSAGE) from error
+    return Api(Fwupd, GLib, Gio)
+
+
+def first_line(text, fallback=""):
+    """One trimmed line of fwupd's message, without a D-Bus error prefix."""
+    for line in str(text or "").splitlines():
+        line = re.sub(r"^GDBus\.Error:[\w.-]+:\s*", "", line.strip())
+        if line:
+            return line
+    return fallback
+
+
+def error_message(error):
+    return first_line(getattr(error, "message", None) or str(error))
+
+
+def device_flag_names(api, device):
+    """Return fwupd's names for the device's flags.
+
+    Introspection truncates FwupdDeviceFlags to 32 bits, which loses newer
+    flags such as affects-fde, so the device's own JSON export (which names
+    all 64) is authoritative. The enum members fill in if that export fails.
+    """
+    names = set()
+    try:
+        exported = json.loads(device.to_json_string(api.fwupd.CodecFlags.NONE))
+        names.update(flag for flag in exported.get("Flags", []) if isinstance(flag, str))
+    except Exception:  # Best effort: the enum members below still apply.
+        pass
+    for name in ("updatable", "needs-reboot", "needs-shutdown", "affects-fde"):
+        member = getattr(api.fwupd.DeviceFlags, name.upper().replace("-", "_"), None)
+        try:
+            if member is not None and device.has_flag(member):
+                names.add(name)
+        except (TypeError, ValueError, OverflowError):
+            pass
+    return names
+
+
+class Planned:
+    """One device, the release it will receive, and its `plan` event entry."""
+
+    def __init__(self, device, release, info):
+        self.device = device
+        self.release = release
+        self.info = info
+
+    @property
+    def id(self):
+        return self.info["id"]
+
+    @property
+    def needs_reboot(self):
+        return self.info["needsReboot"]
+
+    @property
+    def label(self):
+        versions = " → ".join(value for value in (self.info["from"], self.info["to"]) if value)
+        return f"{self.info['name']} {versions}".strip()
+
+
+def clean_text(value):
+    return str(value or "").strip()
+
+
+def plan_entry(api, device, release):
+    flags = device_flag_names(api, device)
+    return Planned(device, release, {
+        "id": clean_text(device.get_id()),
+        "name": clean_text(device.get_name()) or "Unknown device",
+        "vendor": clean_text(device.get_vendor()),
+        # fwupd reports some versions with padding ("HPS0050 ").
+        "from": clean_text(device.get_version()),
+        "to": clean_text(release.get_version()),
+        # A capsule or other deferred update is staged now and applied by
+        # the next restart (or full shutdown); the panel must say so.
+        "needsReboot": bool({"needs-reboot", "needs-shutdown"} & flags),
+        "affectsFde": "affects-fde" in flags,
+    })
+
+
+def build_plan(api, client, warn=None):
+    """What `fwupdmgr update` would install: the newest upgrade per device."""
+    try:
+        devices = client.get_devices(None)
+    except api.glib.Error as error:
+        if api.fwupd_error_name(error) == "NOTHING_TO_DO":
+            return []
+        raise SetupError(UNAVAILABLE_MESSAGE) from error
+    plan = []
+    for device in devices or []:
+        if "updatable" not in device_flag_names(api, device):
+            continue
+        try:
+            releases = client.get_upgrades(device.get_id(), None)
+        except api.glib.Error as error:
+            if warn is not None and api.fwupd_error_name(error) not in NO_UPGRADE_ERRORS:
+                warn(f"{device.get_name() or device.get_id()}: {error_message(error)}")
+            continue
+        if releases:
+            plan.append(plan_entry(api, device, releases[0]))
+    return plan
+
+
+def run_main_loop_until(api, start, timeout=None):
+    """Run START(done) in a GLib main loop until it calls done(error).
+
+    Returns the error (None on success). A fake client may complete
+    synchronously, in which case the loop never runs.
+    """
+    loop = api.glib.MainLoop()
+    state = {"done": False, "error": None, "timer": None}
+
+    def done(error=None):
+        if state["done"]:
+            return
+        state["done"] = True
+        state["error"] = error
+        loop.quit()
+
+    def expired():
+        state["timer"] = None
+        done(TimeoutError("fwupd did not respond"))
+        return False
+
+    try:
+        start(done)
+    except Exception as error:  # Reported as this step's failure.
+        done(error)
+    if not state["done"]:
+        if timeout is not None:
+            state["timer"] = api.glib.timeout_add_seconds(timeout, expired)
+        loop.run()
+    if state["timer"] is not None:
+        api.glib.source_remove(state["timer"])
+    return state["error"]
+
+
+def open_client(api):
+    """Connect to the daemon with the same client features as fwupdmgr.
+
+    The daemon filters releases by client features (a release can require a
+    client that shows detach actions), so `plan` and `install` must declare
+    the same set.
+    """
+    try:
+        client = api.fwupd.Client.new()
+    except Exception as error:
+        raise SetupError(UNAVAILABLE_MESSAGE) from error
+
+    def start(done):
+        def connected(source, result, *_):
+            try:
+                source.connect_finish(result)
+            except Exception as error:
+                done(error)
+            else:
+                done()
+
+        # Fwupd.Client.connect is shadowed by GObject's signal connect.
+        client.connect_async(None, connected)
+
+    if run_main_loop_until(api, start, CONNECT_TIMEOUT_SECONDS) is not None:
+        raise SetupError(UNAVAILABLE_MESSAGE)
+    try:
+        client.set_feature_flags(api.feature_flags(), None)
+    except api.glib.Error as error:
+        raise SetupError(UNAVAILABLE_MESSAGE) from error
+    if hasattr(client, "set_user_agent_for_package"):
+        # libfwupd refuses to download without a user agent.
+        client.set_user_agent_for_package(*USER_AGENT)
+    return client
+
+
+def classify_error(api, error):
+    """Map an install error to the event that reports it: (event, fields)."""
+    message = error_message(error)
+    name = api.fwupd_error_name(error)
+
+    def failed(reason, text=None):
+        return "failed", {"reason": reason, "message": text or FAILURE_MESSAGES[reason]}
+
+    if name == "AC_POWER_REQUIRED":
+        return failed("ac-power")
+    if name == "BATTERY_LEVEL_TOO_LOW":
+        return failed("battery")
+    if name in ("PERMISSION_DENIED", "AUTH_FAILED", "AUTH_EXPIRED"):
+        return failed("auth")
+    if name == "BUSY":
+        return failed("busy")
+    if name == "NEEDS_USER_ACTION":
+        return failed("user-action", message)
+    if name in ("NOTHING_TO_DO", "VERSION_SAME", "VERSION_NEWER"):
+        return "skipped", {"message": message or "This firmware is already installed."}
+    if name == "ALREADY_PENDING":
+        return "installed", {"needsReboot": True, "message": ALREADY_PENDING_MESSAGE}
+    if name in ("NOT_REACHABLE", "TIMED_OUT") or api.is_network_error(error):
+        return failed("network")
+    # libfwupd downloads in the client and reports a failed transfer as an
+    # invalid file ("Failed to download ..."); that is not a bad signature.
+    if name in ("INVALID_FILE", "INTERNAL", "NOT_FOUND", "READ") \
+            and re.search(r"\bdownload\b", message, re.IGNORECASE):
+        return failed("network")
+    if name in ("SIGNATURE_INVALID", "INVALID_FILE"):
+        return failed("signature")
+    return failed("other", message)
+
+
+class EventLog:
+    """Append-only JSON-lines sink; without a path, events go nowhere."""
+
+    def __init__(self, path=None):
+        # The worker pre-creates the file as the update owner so the panel can
+        # read it unprivileged; appending as root keeps that ownership.
+        self._stream = open(path, "a", encoding="utf-8") if path else None
+
+    def emit(self, event, **fields):
+        record = {"event": event, **fields}
+        if self._stream is not None:
+            # ASCII-only output keeps every byte offset a character boundary
+            # for the panel's windowed `read-log` reads.
+            self._stream.write(json.dumps(record, separators=(",", ":")) + "\n")
+            self._stream.flush()
+
+    def close(self):
+        if self._stream is not None:
+            self._stream.close()
+            self._stream = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+
+class HumanOutput:
+    def __init__(self, stream):
+        self.stream = stream
+
+    def line(self, text):
+        # The worker reads stdout through a pipe; flush every line so the
+        # run log follows the update live.
+        self.stream.write(text + "\n")
+        self.stream.flush()
+
+
+def percentage(value):
+    """A 0-100 percentage, or None: fwupd reports "unknown" as G_MAXUINT."""
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return None
+    return value if 0 <= value <= 100 else None
+
+
+class ProgressFilter:
+    """Emit a progress event only when the status or percentage changes.
+
+    An unknown status or percentage keeps the last known value.
+    """
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.status = None
+        self.percent = None
+
+    def observe(self, status, percent):
+        status = status or self.status
+        if percent is None:
+            percent = self.percent if self.percent is not None else 0
+        if status is None:
+            return None
+        if (status, percent) == (self.status, self.percent):
+            return None
+        self.status, self.percent = status, percent
+        return status, percent
+
+
+class HumanProgress:
+    """Throttle stdout to status changes and every tenth percent."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.status = None
+        self.bucket = None
+
+    def observe(self, label, status, percent):
+        if status == "idle":
+            return None
+        bucket = percent // 10
+        if (status, bucket) == (self.status, self.bucket):
+            return None
+        self.status, self.bucket = status, bucket
+        words = STATUS_WORDS.get(status, status)
+        return f"{label}: {words} {percent}%" if percent > 0 else f"{label}: {words}"
+
+
+def request_message(request):
+    message = (request.get_message() or "").strip()
+    return message or REQUEST_MESSAGES.get(request.get_id() or "", DEFAULT_REQUEST_MESSAGE)
+
+
+class Installer:
+    """Install a plan sequentially, streaming events for each device."""
+
+    def __init__(self, api, client, events, out):
+        self.api = api
+        self.client = client
+        self.events = events
+        self.out = out
+        self.current = None
+        self.progress = ProgressFilter()
+        self.human = HumanProgress()
+        client.connect("notify::status", self._on_progress)
+        client.connect("notify::percentage", self._on_progress)
+        client.connect("device-request", self._on_request)
+
+    def _on_progress(self, client, *_):
+        planned = self.current
+        if planned is None:
+            return
+        change = self.progress.observe(self.api.status_name(client.get_status()),
+                                       percentage(client.get_percentage()))
+        if change is None:
+            return
+        status, percent = change
+        self.events.emit("progress", id=planned.id, status=status, percent=percent)
+        text = self.human.observe(planned.label, status, percent)
+        if text is not None:
+            self.out.line(text)
+
+    def _on_request(self, client, request, *_):
+        planned = self.current
+        if planned is None:
+            return
+        message = request_message(request)
+        self.events.emit("request", id=planned.id,
+                         kind=self.api.request_kind(request.get_kind()),
+                         requestId=request.get_id() or "", message=message)
+        self.out.line(f"{planned.info['name']}: {message}")
+
+    def install(self, planned):
+        fwupd = self.api.fwupd
+
+        def start(done):
+            def finished(source, result, *_):
+                try:
+                    source.install_release_finish(result)
+                except Exception as error:
+                    done(error)
+                else:
+                    done()
+
+            self.client.install_release_async(
+                planned.device, planned.release, fwupd.InstallFlags.NONE,
+                fwupd.ClientDownloadFlags.NONE, None, finished)
+
+        # No deadline: the daemon owns the flash once it starts, and
+        # abandoning the client would not stop a write in progress.
+        return run_main_loop_until(self.api, start)
+
+    def run(self, plan):
+        installed = failed = 0
+        needs_reboot = False
+        self.events.emit("plan", devices=[planned.info for planned in plan])
+        if not plan:
+            self.out.line("No firmware updates are available.")
+        try:
+            for index, planned in enumerate(plan, 1):
+                self.current = planned
+                self.progress.reset()
+                self.human.reset()
+                self.events.emit("device", id=planned.id, index=index, count=len(plan))
+                self.out.line(f"Updating {planned.label} ({index} of {len(plan)})")
+                error = self.install(planned)
+                if error is None:
+                    event, fields = "installed", {
+                        "needsReboot": planned.needs_reboot,
+                        "message": (planned.release.get_update_message() or "").strip(),
+                    }
+                else:
+                    event, fields = classify_error(self.api, error)
+                self.current = None
+                self.events.emit(event, id=planned.id, **fields)
+                if event == "installed":
+                    installed += 1
+                    needs_reboot = needs_reboot or fields["needsReboot"]
+                    suffix = "; restart to finish" if fields["needsReboot"] else ""
+                    self.out.line(f"{planned.label}: installed{suffix}")
+                elif event == "failed":
+                    failed += 1
+                    detail = error_message(error)
+                    self.out.line(f"{planned.label}: failed: {detail or fields['message']}")
+                else:
+                    self.out.line(f"{planned.label}: skipped: {fields['message']}")
+        except Exception as error:  # A bug must still leave the panel a summary.
+            failed += 1
+            planned_id = self.current.id if self.current is not None else ""
+            self.current = None
+            self.events.emit("failed", id=planned_id, reason="other",
+                             message=error_message(error) or FAILURE_MESSAGES["other"])
+            self.out.line(f"Firmware update stopped: {error_message(error)}")
+        self.events.emit("summary", installed=installed, failed=failed, needsReboot=needs_reboot)
+        if plan:
+            summary = f"Firmware: {installed} installed, {failed} failed"
+            self.out.line(summary + ("; restart to finish installing" if needs_reboot else ""))
+        return EXIT_FAILED if failed else EXIT_OK
+
+
+def command_plan(out):
+    try:
+        api = load_api()
+        plan = build_plan(api, open_client(api), warn=warn)
+    except SetupError as error:
+        warn(str(error))
+        return EXIT_SETUP
+    out.line(json.dumps({"devices": [planned.info for planned in plan]}, separators=(",", ":")))
+    return EXIT_OK
+
+
+def command_install(events_path, out):
+    try:
+        events = EventLog(events_path)
+    except OSError as error:
+        warn(f"cannot open {events_path}: {error.strerror or error}")
+        return EXIT_SETUP
+    with events:
+        try:
+            api = load_api()
+            client = open_client(api)
+            plan = build_plan(api, client, warn=warn)
+        except Exception as error:
+            if isinstance(error, SetupError):
+                reason, message = "unavailable", str(error)
+            else:  # A bug must still leave the panel a terminal record.
+                warn(f"unexpected setup failure: {error!r}")
+                reason, message = "other", error_message(error) or FAILURE_MESSAGES["other"]
+            out.line(message)
+            events.emit("failed", id="", reason=reason, message=message)
+            events.emit("summary", installed=0, failed=1, needsReboot=False)
+            return EXIT_SETUP
+        return Installer(api, client, events, out).run(plan)
+
+
+def warn(text):
+    print(f"cybexos-firmware-update: {text}", file=sys.stderr, flush=True)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="cybexos-firmware-update",
+        description="Install fwupd firmware updates with structured progress.")
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("plan", help="print the updates `install` would apply (read-only)")
+    install = commands.add_parser("install", help="install every available firmware update")
+    install.add_argument("--events", metavar="PATH",
+                         help="append JSON-lines progress events to PATH")
+    args = parser.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        # A system unit may run with a C locale; the run log is UTF-8.
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    out = HumanOutput(sys.stdout)
+    if args.command == "plan":
+        return command_plan(out)
+    return command_install(args.events, out)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

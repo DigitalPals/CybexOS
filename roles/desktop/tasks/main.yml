@@ -567,6 +567,16 @@
     mode: "0755"
   tags: [quickshell]
 
+# The durable worker runs this beside itself, as root, for --firmware updates.
+- name: Install the fwupd firmware helper used by the durable updater
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "{{ config_repo }}/assets/scripts/cybexos-firmware-update"
+    dest: "{{ primary_home }}/.local/bin/cybexos-firmware-update"
+    mode: "0755"
+  tags: [quickshell]
+
 - name: Build the tracked Quickshell source manifest
   ansible.builtin.shell: |
     set -o pipefail
