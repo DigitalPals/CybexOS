@@ -1125,9 +1125,6 @@ Singleton {
             staleCheck();
     }
 
-    // dnf check-update lists one package per line as "name.arch  version  repo"
-    // under a plain-text section heading. Exit 100 is the "there are updates"
-    // status, exit 0 means none, anything else is a real failure.
     // One cheap process for the signature: each repository's repomd.xml
     // (depth 3 under the libdnf5 cache), the repo files and the rpm
     // database, as "path size mtime" lines.
@@ -1164,6 +1161,9 @@ Singleton {
         }
     }
 
+    // dnf check-update lists one package per line as "name.arch  version  repo"
+    // under a plain-text section heading. Exit 100 is the "there are updates"
+    // status, exit 0 means none, anything else is a real failure.
     Process {
         id: dnfProc
         property string body: ""
