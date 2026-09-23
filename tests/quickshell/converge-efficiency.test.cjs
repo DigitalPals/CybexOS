@@ -178,6 +178,10 @@ test("dictation runs only with developer tooling and loads its model on demand",
     const desktop = read("roles/desktop/tasks/main.yml");
     const voxtype = read("roles/dotfiles/files/voxtype.toml");
     assert.match(voxtype, /\[whisper\][^[]*\non_demand_loading = true\n/);
+    // The configuration is managed only with the personal dotfiles, so the
+    // unit asks too; `voxtype daemon --on-demand-loading` is rejected.
+    assert.match(read("roles/desktop/templates/voxtype.service.j2"),
+        /^ExecStart=\/usr\/bin\/voxtype --on-demand-loading daemon$/m);
     assert.match(task(desktop, "Install the restartable Voxtype user unit"),
         /when: features\.developer_tools \| bool/,
         "dictation follows the feature that downloads its model and binds its keys");
