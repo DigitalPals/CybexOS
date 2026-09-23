@@ -41,9 +41,10 @@ Singleton {
     property var dnfNames: []
     property var flatpakNames: []
     property bool ran: false
-    // A failed first attempt is not a baseline: the first complete result of
-    // a session stays silent even if an earlier attempt could not run.
-    property bool hasBaseline: false
+    // Which sources have answered at least once this session. A source's
+    // first answer is its baseline and stays silent, even if an earlier
+    // attempt could not run; see UpdatesHelpers.shouldNotify.
+    property var baselines: ({})
     property double lastChecked: 0
     property string error: ""
 
@@ -63,6 +64,9 @@ Singleton {
     property string flatpakError: ""
     property string projectError: ""
     property bool checkingFlatpak: false
+    // The sources the running check covers (UpdatesHelpers.allParts or
+    // failedParts); the others keep their last answer.
+    property var checkParts: UpdatesHelpers.allParts()
     property bool checkAgain: false
     property bool initialized: false
     property int checkFailureCount: 0
@@ -135,7 +139,14 @@ Singleton {
         return unique.length < count ? shown + " and more" : shown;
     }
 
+    // The panel's refresh, and the recount after a run: every source, and
+    // a fresh set of retries if something still fails.
     function check() {
+        checkFailureCount = 0;
+        startCheck(UpdatesHelpers.allParts());
+    }
+
+    function startCheck(parts) {
         // A poll firing mid-transaction would read the cache while dnf is
         // rewriting the installed set; whatever it said would be wrong by the
         // time it landed. finishRun schedules the recount instead.
@@ -146,38 +157,59 @@ Singleton {
             return;
         }
         checkAgain = false;
-        error = "";
-        dnfError = "";
-        flatpakError = "";
-        projectError = "";
-        firmwareError = "";
-        nextFirmwareNames = [];
-        nextDnfNames = [];
-        nextFlatpakNames = [];
-        nextProjectAvailable = false;
-        nextProjectVersion = "";
-        checkingFlatpak = flatpakEnabled;
-        dnfDone = false;
-        flatpakDone = !checkingFlatpak;
-        projectDone = !projectUpdatesEnabled;
-        firmwareDone = false;
-        dnfProc.running = true;
-        if (checkingFlatpak)
+        checkParts = parts;
+        if (parts.dnf) {
+            dnfError = "";
+            nextDnfNames = [];
+            dnfDone = false;
+        }
+        if (parts.flatpak) {
+            flatpakError = "";
+            nextFlatpakNames = [];
+            checkingFlatpak = flatpakEnabled;
+            flatpakDone = !checkingFlatpak;
+        }
+        if (parts.project) {
+            projectError = "";
+            nextProjectAvailable = false;
+            nextProjectVersion = "";
+            projectDone = !projectUpdatesEnabled;
+        }
+        if (parts.firmware) {
+            firmwareError = "";
+            nextFirmwareNames = [];
+            firmwareDone = false;
+        }
+        error = [dnfError, flatpakError, projectError, firmwareError]
+            .filter(value => value !== "").join(" · ");
+        // Nothing left to ask (only a disabled source was due): settle now.
+        if (!busy) {
+            finishCheck();
+            return;
+        }
+        if (parts.dnf)
+            dnfProc.running = true;
+        if (parts.flatpak && checkingFlatpak)
             flatpakProc.running = true;
-        if (projectUpdatesEnabled)
+        if (parts.project && projectUpdatesEnabled)
             projectProc.running = true;
-        firmwareProc.running = true;
+        if (parts.firmware)
+            firmwareProc.running = true;
     }
 
     // Automatic work waits for NetworkManager's global connected state.
     // Manual refresh remains an explicit attempt, even on a network whose
-    // connectivity check is conservative or unavailable.
-    function automaticCheck(resetRetries) {
+    // connectivity check is conservative or unavailable. Only the online
+    // edge restarts the retry budget: a scheduled poll must not, or a source
+    // that always fails would be retried four more times after every poll.
+    function automaticCheck(resetRetries, failedOnly) {
         if (!NetworkStatus.online)
             return;
         if (resetRetries)
             checkFailureCount = 0;
-        check();
+        startCheck(failedOnly ? UpdatesHelpers.failedParts({ dnf: dnfError,
+            flatpak: flatpakError, firmware: firmwareError, project: projectError })
+            : UpdatesHelpers.allParts());
     }
 
     function logCheckError(reason) {
@@ -262,33 +294,43 @@ Singleton {
         if (!projectDone || !firmwareDone)
             return;
 
+        const parts = checkParts;
         const previousTotal = total;
-        const nextDnfCount = dnfError === "" ? nextDnfNames.length : dnfCount;
-        const nextFlatpakCount = !checkingFlatpak ? 0
-            : flatpakError === "" ? nextFlatpakNames.length : flatpakCount;
-        const nextFirmwareCount = firmwareError === "" ? nextFirmwareNames.length : firmwareCount;
-        const nextTotal = nextDnfCount + nextFlatpakCount + nextFirmwareCount
-            + (projectError === "" && nextProjectAvailable ? 1 : 0);
         const errors = [dnfError, flatpakError, projectError, firmwareError].filter(value => value !== "");
         const complete = errors.length === 0;
+        // What answered this check, and whether it had answered before.
+        const answered = [];
+        const known = Object.assign({}, baselines);
 
-        if (dnfError === "") {
+        if (parts.dnf && dnfError === "") {
             dnfNames = nextDnfNames;
-            dnfCount = nextDnfCount;
+            dnfCount = nextDnfNames.length;
+            answered.push({ baseline: !!known.dnf, count: dnfCount });
+            known.dnf = true;
         }
-        if (!checkingFlatpak || flatpakError === "") {
+        if (parts.flatpak && (!checkingFlatpak || flatpakError === "")) {
             flatpakNames = checkingFlatpak ? nextFlatpakNames : [];
-            flatpakCount = nextFlatpakCount;
+            flatpakCount = flatpakNames.length;
+            if (checkingFlatpak) {
+                answered.push({ baseline: !!known.flatpak, count: flatpakCount });
+                known.flatpak = true;
+            }
         }
-        if (projectError === "") {
+        if (parts.project && projectError === "") {
             projectAvailable = nextProjectAvailable;
             projectVersion = nextProjectVersion;
+            if (projectUpdatesEnabled) {
+                answered.push({ baseline: !!known.project, count: projectAvailable ? 1 : 0 });
+                known.project = true;
+            }
         }
-
-        if (firmwareError === "") {
+        if (parts.firmware && firmwareError === "") {
             firmwareNames = nextFirmwareNames;
-            firmwareCount = nextFirmwareCount;
+            firmwareCount = nextFirmwareNames.length;
+            answered.push({ baseline: !!known.firmware, count: firmwareCount });
+            known.firmware = true;
         }
+        const nextTotal = dnfCount + flatpakCount + firmwareCount + (projectAvailable ? 1 : 0);
 
         error = errors.join(" · ");
         lastChecked = Date.now();
@@ -296,14 +338,15 @@ Singleton {
         if (nextTotal > 0)
             wasPending = true;
 
-        if (UpdatesHelpers.shouldNotify(complete, hasBaseline, previousTotal, nextTotal,
+        if (UpdatesHelpers.shouldNotify(previousTotal, nextTotal, answered,
                 Settings.modOpts.updates.notify)) {
             Quickshell.execDetached(["notify-send", "--app-name=Updates",
                 nextTotal + (nextTotal === 1 ? " update ready" : " updates ready"),
-                summary]);
+                UpdatesHelpers.pendingSummary(dnfCount, flatpakCount, firmwareCount,
+                    projectAvailable, projectVersion)]);
         }
+        baselines = known;
         if (complete) {
-            hasBaseline = true;
             checkFailureCount = 0;
             lastLoggedCheckError = "";
         } else {
@@ -319,7 +362,7 @@ Singleton {
         }
 
         if (checkAgain)
-            Qt.callLater(root.check);
+            Qt.callLater(root.startCheck, UpdatesHelpers.allParts());
     }
 
     // ---- the native run ---------------------------------------------------
@@ -990,20 +1033,20 @@ Singleton {
     // A transient endpoint failure after NetworkManager came online should
     // not survive until the ordinary (30 minute by default) poll. Four
     // bounded retries cover startup DNS/repository lag without hammering a
-    // permanently broken remote.
+    // permanently broken remote, and each repeats only what failed.
     Timer {
         interval: Math.min(120000, 15000 * Math.pow(2,
             Math.max(0, root.checkFailureCount - 1)))
         running: root.error !== "" && root.checkFailureCount <= 4
             && NetworkStatus.online && !root.busy && !root.runActive
-        onTriggered: root.automaticCheck(false)
+        onTriggered: root.automaticCheck(false, true)
     }
 
     Timer {
         interval: Math.max(10, Settings.modOpts.updates.pollMins) * 60000
         running: NetworkStatus.online
         repeat: true
-        onTriggered: root.automaticCheck(true)
+        onTriggered: root.automaticCheck(false, false)
     }
 
     // dnf check-update lists one package per line as "name.arch  version  repo"
@@ -1189,7 +1232,7 @@ Singleton {
             if (NetworkStatus.online && (root.error !== ""
                     || !UpdatesHelpers.checkIsFresh(root.lastChecked,
                         Date.now(), 600000)))
-                root.automaticCheck(true);
+                root.automaticCheck(true, false);
         }
     }
 
@@ -1199,7 +1242,7 @@ Singleton {
     Timer {
         id: startupCheck
         interval: 20000
-        onTriggered: root.automaticCheck(true)
+        onTriggered: root.automaticCheck(true, false)
     }
 
     Component.onCompleted: {
@@ -1209,6 +1252,6 @@ Singleton {
     }
     onFlatpakEnabledChanged: {
         if (initialized && !startupCheck.running)
-            automaticCheck(true);
+            automaticCheck(true, false);
     }
 }

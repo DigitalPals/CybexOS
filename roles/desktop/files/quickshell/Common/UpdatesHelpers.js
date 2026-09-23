@@ -30,12 +30,59 @@ function firmwareNames(body) {
         typeof device.Name === "string" ? device.Name : "Firmware device");
 }
 
-// Only a complete zero -> positive transition after a known baseline is news.
-// A failed first attempt must not turn the first successful snapshot into a
-// notification for updates that may have been pending before login.
-function shouldNotify(complete, hasBaseline, previousTotal, nextTotal, enabled) {
-    return !!complete && !!hasBaseline && previousTotal === 0
-        && nextTotal > 0 && !!enabled;
+// The sources one check covers, as { dnf, flatpak, firmware, project }.
+var CHECK_SOURCES = ["dnf", "flatpak", "firmware", "project"];
+
+function allParts() {
+    var parts = {};
+    CHECK_SOURCES.forEach(function (source) {
+        parts[source] = true;
+    });
+    return parts;
+}
+
+// A retry repeats only the sources whose last attempt failed ({ source:
+// error text }, "" for one that answered). Rerunning dnf, a Flathub round
+// trip and fwupd because one of them is unreachable is what turned a single
+// blocked remote into five complete checks per poll.
+function failedParts(errors) {
+    var parts = {};
+    CHECK_SOURCES.forEach(function (source) {
+        parts[source] = !!errors && typeof errors[source] === "string"
+            && errors[source] !== "";
+    });
+    return parts;
+}
+
+// Only a zero -> positive transition of the published total is news, and only
+// a source that answered before can make it: each source's first answer of a
+// session is its baseline, since those updates may have been pending before
+// login. Tracking that per source is what lets dnf keep notifying while a
+// blocked Flathub or a masked fwupd never answers at all. `sources` lists
+// what this check answered: [{ baseline, count }], baseline meaning the
+// source had answered in an earlier check.
+function shouldNotify(previousTotal, nextTotal, sources, enabled) {
+    if (!enabled || previousTotal !== 0 || !(nextTotal > 0))
+        return false;
+    return (Array.isArray(sources) ? sources : []).some(function (source) {
+        return !!source && !!source.baseline && source.count > 0;
+    });
+}
+
+// The notification body: what is pending, never an error from a source that
+// did not answer (the menubar summary leads with those).
+function pendingSummary(dnfCount, flatpakCount, firmwareCount, projectAvailable,
+        projectVersion) {
+    var parts = [];
+    if (dnfCount > 0)
+        parts.push("dnf " + dnfCount);
+    if (flatpakCount > 0)
+        parts.push("flatpak " + flatpakCount);
+    if (firmwareCount > 0)
+        parts.push("firmware " + firmwareCount);
+    if (projectAvailable)
+        parts.push("CybexOS " + projectVersion);
+    return parts.join(" · ");
 }
 
 // ---- native run parsing ----------------------------------------------------
@@ -371,7 +418,11 @@ var exported = {
     projectCheckError: projectCheckError,
     dnfNames: dnfNames,
     flatpakNames: flatpakNames,
+    CHECK_SOURCES: CHECK_SOURCES,
+    allParts: allParts,
+    failedParts: failedParts,
     shouldNotify: shouldNotify,
+    pendingSummary: pendingSummary,
     dnfSection: dnfSection,
     dnfTableRow: dnfTableRow,
     parseDnfRunLine: parseDnfRunLine,

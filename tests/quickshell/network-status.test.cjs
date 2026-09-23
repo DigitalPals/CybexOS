@@ -81,9 +81,9 @@ test("weather and update startup checks wait for the shared online edge", () => 
         "the startup fallback must retain the same online guard as the shared edge");
 
     assert.match(updates,
-        /target: NetworkStatus[\s\S]*?function onOnlineChanged\(\)[\s\S]*?root\.automaticCheck\(true\)/);
+        /target: NetworkStatus[\s\S]*?function onOnlineChanged\(\)[\s\S]*?root\.automaticCheck\(true, false\)/);
     assert.match(updates,
-        /function automaticCheck\(resetRetries\)\s*\{[\s\S]*?if \(!NetworkStatus\.online\)[\s\S]*?return;/,
+        /function automaticCheck\(resetRetries, failedOnly\)\s*\{[\s\S]*?if \(!NetworkStatus\.online\)[\s\S]*?return;/,
         "all automatic startup paths must fail closed while offline");
     assert.match(updates, /checkFailureCount <= 4[\s\S]*?NetworkStatus\.online/);
 });
