@@ -156,6 +156,13 @@ test("reminders poll only while records exist and settle with one read", () => {
         "restore already refreshes over IPC when it changed something");
     assert.match(reminders, /if \(count === 0 \|\| !startupRestore\.done\)/);
     assert.match(reminders, /Math\.max\(Format\.MS_MINUTE, Math\.min\(Format\.MS_HOUR, untilDue\)\)/);
+    // A helper that cannot start sends no exited(): the list settles on the
+    // falling edge of running, so loading and a queued refresh cannot stick.
+    const list = reminders.slice(reminders.indexOf("id: listProc"), reminders.indexOf("id: restoreProc"));
+    const exited = list.slice(list.indexOf("onExited:"));
+    assert.doesNotMatch(exited.slice(0, exited.indexOf("}")), /loading|refresh/);
+    assert.match(list,
+        /onRunningChanged: \{[\s\S]{0,160}?root\.loading = false;[\s\S]{0,120}?ProcHelpers\.NOT_STARTED[\s\S]{0,200}?Qt\.callLater\(root\.refresh\)/);
 });
 
 test("the calendar polls only for an open Day sheet, and never while idle", () => {
