@@ -120,14 +120,21 @@ archive=$(mktemp --suffix=.tar.zst)
 cleanup() { rm -f -- "$release_json" "$archive"; }
 trap cleanup EXIT
 
+# Bound the connection and abort a stalled transfer. The installed release
+# tree does not ship the system helper library, so the limits are local here.
+release_curl() {
+  curl --connect-timeout 15 --speed-limit 1024 --speed-time 60 \
+    --retry 3 --retry-connrefused --fail --silent --show-error --location "$@"
+}
+
 fetch_release() {
   local api="https://api.github.com/repos/$github_repo/releases"
   if [[ $channel == stable ]]; then
     api+="/latest"
-    curl --fail --silent --show-error --location --retry 3 \
+    release_curl --max-time 60 \
       -H 'Accept: application/vnd.github+json' "$api" -o "$release_json"
   else
-    curl --fail --silent --show-error --location --retry 3 \
+    release_curl --max-time 60 \
       -H 'Accept: application/vnd.github+json' "$api?per_page=30" -o "$release_json"
     jq -e '[.[] | select(.draft == false and .prerelease == true)] | first' \
       "$release_json" >"$release_json.selected"
@@ -201,15 +208,14 @@ if [[ $available == true ]]; then
   else
     printf 'Downloading CybexOS %s...\n' "$release_version"
   fi
-  curl --fail --silent --show-error --location --retry 3 \
-    "$asset_url" -o "$archive"
+  release_curl "$asset_url" -o "$archive"
   actual_digest=sha256:$(sha256sum "$archive" | awk '{print $1}')
   [[ $actual_digest == "$asset_digest" ]] || {
     echo 'update: downloaded release digest does not match GitHub metadata' >&2
     exit 1
   }
-  gh release verify "$tag" --repo "$github_repo" >/dev/null
-  gh release verify-asset "$tag" "$archive" --repo "$github_repo" >/dev/null
+  timeout 120 gh release verify "$tag" --repo "$github_repo" >/dev/null
+  timeout 120 gh release verify-asset "$tag" "$archive" --repo "$github_repo" >/dev/null
 
   stage=$(mktemp -d "$releases_root/.stage.$release_version.XXXXXX")
   trap 'rm -f -- "$release_json" "$archive"; [[ -z ${stage:-} ]] || rm -rf -- "$stage"' EXIT

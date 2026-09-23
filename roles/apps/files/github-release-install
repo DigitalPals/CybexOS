@@ -133,7 +133,8 @@ else
     exit 1
   }
   sums="$cache_root/$safe_tag/checksums.txt"
-  curl --fail --silent --show-error --location "$checksum_url" -o "$sums"
+  cybexos_curl --max-time 60 --fail --silent --show-error --location \
+    "$checksum_url" -o "$sums"
   expected=$(awk -v file="$asset" '$0 ~ ("[ */]" file "$") {print $1; exit}' "$sums")
   [[ $expected =~ ^[[:xdigit:]]{64}$ ]] || {
     echo "No SHA-256 entry for $asset in release checksum file" >&2
@@ -168,7 +169,7 @@ fi
 
 if [[ ! -f $download ]]; then
   partial="$download.partial"
-  curl --fail --location --retry 3 --output "$partial" "$url"
+  cybexos_curl --fail --location --output "$partial" "$url"
   mv -f "$partial" "$download"
 fi
 
@@ -176,7 +177,7 @@ if ! verify_sha256 "$download" "$expected"; then
   # Heal a truncated or stale cached asset once from the authorized URL.
   unlink "$download"
   partial="$download.partial"
-  curl --fail --location --retry 3 --output "$partial" "$url"
+  cybexos_curl --fail --location --output "$partial" "$url"
   mv -f "$partial" "$download"
   verify_sha256 "$download" "$expected" || {
     unlink "$download"

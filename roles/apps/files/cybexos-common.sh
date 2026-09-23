@@ -2,6 +2,16 @@
 # Source this file; do not execute it. Installed at /usr/local/libexec/cybexos-common.sh.
 # shellcheck shell=bash
 
+# cybexos_curl [curl arguments...]
+# curl with a bounded connection attempt and stall detection. A transfer that
+# makes less than 1 KiB/s of progress for a minute is aborted and retried, so a
+# dead mirror cannot hold an Ansible task (or the durable updater's lock)
+# forever. Callers add --max-time for small API/metadata requests.
+cybexos_curl() {
+  curl --connect-timeout 15 --speed-limit 1024 --speed-time 60 \
+    --retry 3 --retry-connrefused "$@"
+}
+
 # gh_api_fetch <url> <cache_dir> <out_file>
 # GitHub API GET with ETag caching. A 304 reuses the cached body and does not
 # count against the anonymous rate limit. GH_TOKEN is honored when set.
@@ -13,7 +23,8 @@ gh_api_fetch() {
   local etag="$cache_dir/etag" body="$cache_dir/response.json" code
   local compare=()
   [[ -r $etag && -s $body ]] && compare=(--etag-compare "$etag")
-  code=$(curl --silent --show-error --location "${headers[@]}" "${compare[@]}" \
+  code=$(cybexos_curl --max-time 60 --silent --show-error --location \
+    "${headers[@]}" "${compare[@]}" \
     --etag-save "$etag.new" --write-out '%{http_code}' \
     --output "$body.new" "$url") || {
     rm -f "$etag.new" "$body.new"

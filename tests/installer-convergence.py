@@ -60,6 +60,7 @@ def common_stub(path: Path) -> None:
     executable(
         path,
         r'''
+cybexos_curl() { curl "$@"; }
 gh_api_fetch() {
   /usr/bin/cp -- "$MOCK_RELEASE_JSON" "$3"
   printf '%s\n' "$1" > "$MOCK_API_LOG"
@@ -697,6 +698,34 @@ exec /usr/bin/mv "$@"
         assert "CHANGED:" not in result.stdout
 
 
+def test_network_transfers_are_bounded() -> None:
+    # A stalled mirror must not hold a synchronous Ansible task, or the durable
+    # updater's lock, forever: every transfer goes through the bounded helper.
+    common = ROOT / "roles/apps/files/cybexos-common.sh"
+    with tempfile.TemporaryDirectory(prefix="cybexos-curl.") as temporary:
+        root = Path(temporary)
+        executable(root / "curl", 'printf "%s\\n" "$@" > "$MOCK_CURL_ARGS"\n')
+        arguments = root / "arguments"
+        result = run(
+            ["bash", "-c", f"source {shlex.quote(str(common))}; cybexos_curl https://example.invalid"],
+            env={"PATH": f"{root}:/usr/bin:/bin", "MOCK_CURL_ARGS": str(arguments)},
+        )
+        assert result.returncode == 0, result.stderr
+        recorded = arguments.read_text().splitlines()
+        for flag in ("--connect-timeout", "--speed-limit", "--speed-time", "--retry"):
+            assert flag in recorded, flag
+    for relative in (
+        "roles/apps/files/github-release-install",
+        "roles/apps/templates/android-sdk-update.j2",
+        "roles/dotfiles/templates/t3code-update.j2",
+    ):
+        source = (ROOT / relative).read_text()
+        assert "\ncurl " not in source and " curl --fail" not in source, relative
+    source_build = (ROOT / "roles/apps/files/source-app-build").read_text()
+    assert "GIT_HTTP_LOW_SPEED_LIMIT" in source_build
+    assert "timeout 120 git ls-remote" in source_build
+
+
 def test_font_archive_checksum_contract() -> None:
     tasks = (ROOT / "roles/apps/tasks/upstream.yml").read_text()
     health = tasks.index("Inspect checksum-addressed pinned font extractions")
@@ -724,5 +753,6 @@ if __name__ == "__main__":
     test_android_same_version_legacy_layout_migration()
     test_android_legacy_layout_rollback()
     test_t3code_metadata_rollback()
+    test_network_transfers_are_bounded()
     test_font_archive_checksum_contract()
     print("PASS  installer convergence and rollback fixtures")

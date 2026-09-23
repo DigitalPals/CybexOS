@@ -50,7 +50,7 @@ if [[ $before != "$claude_pin" ]]; then
   before_path=$(command -v claude 2>/dev/null || true)
   [[ -z $before_path ]] || before_path=$(readlink -f -- "$before_path")
   if [[ -n $before ]]; then
-    if ! claude install "$claude_pin" >/dev/null 2>&1; then
+    if ! timeout 15m claude install "$claude_pin" >/dev/null 2>&1; then
       restore_claude "$before_path"
       echo "Claude Code $claude_pin install failed; existing $before retained" >&2
       failed=1
@@ -58,10 +58,15 @@ if [[ $before != "$claude_pin" ]]; then
   else
     if installer=$(mktemp "${TMPDIR:-/tmp}/cybexos-user-tools.XXXXXX"); then
       cleanup_paths+=("$installer")
-      if curl --fail --silent --show-error --location https://claude.ai/install.sh -o "$installer"; then
+      # Bound the connection and abort a stalled transfer: this runs inside a
+      # synchronous Ansible task, which would otherwise wait forever.
+      if curl --connect-timeout 15 --speed-limit 1024 --speed-time 60 \
+          --max-time 60 --retry 3 --retry-connrefused \
+          --fail --silent --show-error --location https://claude.ai/install.sh \
+          -o "$installer"; then
         # The official bootstrap accepts an exact VERSION argument, downloads a
         # manifest, and verifies the selected native artifact before installing.
-        bash "$installer" "$claude_pin" >/dev/null 2>&1 \
+        timeout 15m bash "$installer" "$claude_pin" >/dev/null 2>&1 \
           || { echo "Claude Code $claude_pin install failed" >&2; failed=1; }
       else
         echo "Claude Code bootstrap download failed" >&2
