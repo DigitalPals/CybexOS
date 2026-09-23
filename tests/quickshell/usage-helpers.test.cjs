@@ -4,9 +4,36 @@ const { load } = require("./shell.cjs");
 
 const H = load("UsageHelpers.js");
 
-test("direct usage keeps every supported provider available for sign-in", () => {
-    assert.deepEqual(H.providerKeys("direct", {}),
-        ["claude", "codex", "kimi", "xai"]);
+test("direct usage shows only detected CLI logins", () => {
+    assert.deepEqual(H.providerKeys("direct", {}), []);
+    assert.deepEqual(H.providerKeys("direct", null), []);
+    assert.deepEqual(H.providerKeys("direct", {
+        claude: { status: "error", kind: "nocreds" },
+        codex: { status: "ok", source: "codex-oauth", windows: [] },
+        kimi: { status: "error", kind: "nocreds" },
+        xai: { status: "error", kind: "config" }
+    }), ["codex"]);
+});
+
+test("detected direct logins keep their tabs through usage failures", () => {
+    for (const kind of ["expired", "rate", "refresh", "wait", "network", "parse"]) {
+        assert.deepEqual(H.providerKeys("direct", {
+            kimi: { status: "error", kind },
+            claude: { status: "ok", stale: true, staleKind: kind },
+            codex: { status: "error", kind }
+        }), ["claude", "codex", "kimi"]);
+    }
+});
+
+test("direct usage drops removed logins even with cached readings", () => {
+    assert.deepEqual(H.providerKeys("direct", {
+        claude: { status: "ok", stale: true, staleKind: "nocreds" },
+        codex: { status: "error", kind: "nocreds" },
+        kimi: { status: "ok", source: "cliproxy" },
+        xai: { status: "ok", stale: true, staleKind: "config" }
+    }), []);
+    const keys = H.providerKeys("direct", { codex: { status: "ok" } });
+    assert.equal(H.selectedProvider(keys, "claude"), "codex");
 });
 
 test("CLIProxy usage follows its managed provider inventory", () => {
@@ -53,7 +80,7 @@ test("Sub2API discovers Gemini and managed failures without adding direct CLI ta
         kimi: { source: "cliproxy", status: "ok" }
     }), ["claude", "codex", "gemini"]);
     assert.deepEqual(H.providerKeys("sub2api", {}), []);
-    assert.deepEqual(H.providerKeys("direct", {}), ["claude", "codex", "kimi", "xai"]);
+    assert.deepEqual(H.providerKeys("direct", {}), []);
 });
 
 

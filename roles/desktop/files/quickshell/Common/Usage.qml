@@ -11,9 +11,9 @@ Singleton {
     id: root
 
     readonly property var supportedProviderKeys: Helpers.SUPPORTED_PROVIDER_KEYS
-    // Direct mode keeps sign-in/error tabs for every supported CLI. In proxy
-    // mode the server inventory is authoritative: only managed providers
-    // returned by that server belong in any usage surface.
+    // Direct mode shows detected CLI logins; managed sources use their server
+    // inventory. Every usage surface shares this list, including error tabs
+    // for detected accounts whose usage is temporarily unavailable.
     readonly property var providerKeys: Helpers.providerKeys(
         Settings.modOpts.usage.source, data)
     readonly property var meta: ({
@@ -106,6 +106,16 @@ Singleton {
     // Stays "" while the module is off: nothing is being fetched, and that
     // is not a failure.
     property string fetchError: ""
+    readonly property string emptyTitle: fetchError !== "" ? "Usage unavailable"
+        : loading ? "Detecting usage sessions…"
+        : Settings.modOpts.usage.source === "direct" ? "No active sessions detected"
+        : "No managed usage providers"
+    readonly property string emptyBody: fetchError !== "" ? fetchError
+        : Settings.modOpts.usage.source === "direct"
+        ? (loading ? "Checking for signed-in CLI accounts."
+            : "Install Codex CLI and sign in with codex login, then press Refresh. Signed-in providers will appear here automatically.")
+        : (loading ? "Waiting for " + sourceName + "."
+            : sourceName + " did not return a supported enabled provider.")
     property double updatedAt: 0
     // Seconds until the next scheduled fetch, derived from when the current
     // poll period started rather than counted down. A counter is only right

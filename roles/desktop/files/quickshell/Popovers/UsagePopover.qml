@@ -271,9 +271,8 @@ Surface {
         }
     }
 
-    // CLIProxyAPI may legitimately manage none of the providers this widget
-    // understands. Keep that source-level state neutral rather than reviving
-    // whichever provider happened to be selected before the inventory changed.
+    // An empty inventory shows setup guidance without reviving whichever
+    // provider happened to be selected before its session disappeared.
     Rectangle {
         visible: !root.hasProvider
         width: parent.width
@@ -292,18 +291,18 @@ Surface {
 
             Text {
                 width: parent.width
-                text: Usage.loading ? "Loading provider inventory…"
-                    : "No managed usage providers"
+                text: Usage.emptyTitle
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightMedium
                 color: Theme.textHi
+                wrapMode: Text.Wrap
             }
 
             Text {
                 width: parent.width
-                text: Usage.loading ? "Waiting for " + Usage.sourceName + "."
-                    : Usage.sourceName + " did not return a supported enabled provider."
+                text: Usage.emptyBody
+                textFormat: Text.PlainText
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.secondary
                 color: Theme.textLow

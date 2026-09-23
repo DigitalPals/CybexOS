@@ -6,10 +6,21 @@ var CLI_PROVIDER_KEYS = ["claude", "codex", "kimi", "xai"];
 var SUPPORTED_PROVIDER_KEYS = ["claude", "codex", "kimi", "gemini", "xai"];
 
 function providerKeys(source, data) {
-    if (source !== "cliproxy" && source !== "sub2api")
-        return CLI_PROVIDER_KEYS.slice();
-
     var records = data && typeof data === "object" ? data : {};
+    if (source !== "cliproxy" && source !== "sub2api") {
+        return CLI_PROVIDER_KEYS.filter(function (key) {
+            var reading = records[key];
+            if (!reading || reading.source === "cliproxy" || reading.source === "sub2api")
+                return false;
+            // Missing credentials and setup placeholders are not sessions.
+            // Keep detected logins visible through expiry or endpoint failures,
+            // but do not revive a removed login from last-known usage.
+            return (reading.status === "ok" || reading.status === "error")
+                && reading.kind !== "nocreds" && reading.kind !== "config"
+                && reading.staleKind !== "nocreds" && reading.staleKind !== "config";
+        });
+    }
+
     var keys = source === "sub2api" ? ["claude", "codex", "gemini", "xai"]
         : CLI_PROVIDER_KEYS;
     return keys.filter(function (key) {

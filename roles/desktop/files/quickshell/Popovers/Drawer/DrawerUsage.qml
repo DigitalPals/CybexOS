@@ -242,7 +242,7 @@ Column {
             Text {
                 width: parent.width
                 text: !root.hasProvider
-                    ? (Usage.loading ? "Loading usage" : "No managed providers")
+                    ? Usage.emptyTitle
                     : Usage.fetchError !== "" ? "Usage unavailable"
                     : root.singleRecord && (root.singleRecord.kind === "auth"
                         || root.singleRecord.kind === "nocreds")
@@ -251,17 +251,18 @@ Column {
                 font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
                 color: Theme.textHi
+                wrapMode: Text.WordWrap
             }
 
             Text {
                 width: parent.width
                 text: !root.hasProvider
-                    ? (Usage.loading ? "Waiting for " + Usage.sourceName + "."
-                        : Usage.sourceName + " did not return a supported enabled provider.")
+                    ? Usage.emptyBody
                     : Usage.fetchError !== "" ? Usage.fetchError
                     : root.singleRecord && root.singleRecord.message
                     ? root.singleRecord.message
                     : Usage.loading ? "Fetching…" : "Nothing reported yet."
+                textFormat: Text.PlainText
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.secondary
                 color: Theme.textFaint
