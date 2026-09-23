@@ -189,6 +189,20 @@ test("dictation runs only with developer tooling and loads its model on demand",
         < desktop.indexOf("Remove the Voxtype user unit when developer tooling is disabled"));
 });
 
+test("mpv prefers reliable hardware decoding below every personal choice", () => {
+    const packages = read("roles/apps/tasks/packages.yml");
+    const uninstall = read("roles/uninstall/tasks/main.yml");
+    const vendor = task(packages, "Prefer reliable hardware video decoding in mpv");
+    assert.match(vendor, /path: \/etc\/mpv\/mpv\.conf/);
+    assert.match(vendor, /insertbefore: BOF/,
+        "an administrator's own lines must follow, and override, the vendor block");
+    assert.match(vendor, /marker: "# \{mark\} CYBEXOS MANAGED DEFAULTS"/);
+    assert.match(vendor, /^\s+hwdec=auto-safe$/m);
+    assert.doesNotMatch(packages, /mesa-va-drivers-freeworld/);
+    assert.match(task(uninstall, "Remove the managed mpv defaults"),
+        /path: \/etc\/mpv\/mpv\.conf[\s\S]*CYBEXOS MANAGED DEFAULTS[\s\S]*state: absent/);
+});
+
 test("hypridle restarts when its configuration, unit, or renderer changes", () => {
     const handlers = read("roles/desktop/handlers/main.yml");
     const desktop = read("roles/desktop/tasks/main.yml");
