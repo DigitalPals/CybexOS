@@ -652,6 +652,7 @@ done
 release_status=$($backend status --json "$release_id")
 [[ $(jq -r .state <<<"$release_status") == done ]]
 [[ $(jq -r .releaseVersion <<<"$release_status") == 2.0.0 ]]
+[[ $(jq -r .mixedState <<<"$release_status") == false ]]
 
 # A failure while reconciling adopted skill slots rolls every slot back to its
 # exact pre-call object, restores current, and triggers configuration rollback.
@@ -697,6 +698,9 @@ assert_unrelated_skills
 activation_failure=$($backend status --json "$activation_failure_id")
 [[ $(jq -r .state <<<"$activation_failure") == failed ]]
 [[ $(jq -r .phase <<<"$activation_failure") == activation ]]
+# Ansible already deployed the candidate's files while current names the prior
+# release; the record says so instead of implying a clean rollback.
+[[ $(jq -r .mixedState <<<"$activation_failure") == true ]]
 grep -F '[release] agent skill provisioning failed; restoring prior activation' \
   "$XDG_STATE_HOME/cybexos/update/logs/$activation_failure_id/run.log" \
   >/dev/null
@@ -724,6 +728,7 @@ unset MOCK_ANSIBLE_RC
 failed_release=$($backend status --json "$failed_release_id")
 [[ $(jq -r .state <<<"$failed_release") == failed ]]
 [[ $(jq -r .phase <<<"$failed_release") == ansible ]]
+[[ $(jq -r .mixedState <<<"$failed_release") == true ]]
 grep -F '[release] restored the pre-update installer configuration' \
   "$XDG_STATE_HOME/cybexos/update/logs/$failed_release_id/run.log" >/dev/null
 

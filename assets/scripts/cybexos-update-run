@@ -282,13 +282,14 @@ write_status() {
     --argjson flatpakDone "$flatpak_done" --argjson dnfRc "$dnf_rc" \
     --argjson flatpakRc "$flatpak_rc" --argjson testsRc "$tests_rc" \
     --argjson ansibleRc "$ansible_rc" --arg snapshotId "${snapshot_id:-}" \
+    --argjson mixedState "${mixed_state:-false}" \
     '{id: $id, state: $state, phase: $phase, message: $message,
       logDir: $logDir, unit: $unit, systemUnit: $systemUnit, startedAt: $startedAt,
       finishedAt: $finishedAt, exitCode: $exitCode, full: $full,
       flatpak: $flatpak, dnfDone: $dnfDone, flatpakDone: $flatpakDone,
       dnfRc: $dnfRc, flatpakRc: $flatpakRc, testsRc: $testsRc,
       ansibleRc: $ansibleRc, snapshotId: $snapshotId, bootId: $bootId,
-      releaseVersion: $releaseVersion,
+      releaseVersion: $releaseVersion, mixedState: $mixedState,
       deferredCancel: true,
       rebootRecommendation: $rebootRecommendation}' > "$temporary"
   mv -f -- "$temporary" "$run_dir/status.json"
@@ -510,6 +511,7 @@ release_activated=false
 release_backup=""
 cancel_requested=false
 packages_ran=false
+mixed_state=false
 inhibitor_pid=""
 
 # SIGTERM from `cybexos-update-run cancel` (systemctl stop) only records the
@@ -807,7 +809,7 @@ worker() {
     "$run_dir/status.json" "$boot_id")
   [[ $reboot_recommendation == recommended ]] \
     || reboot_recommendation="pending"
-  cancel_requested=false; packages_ran=false
+  cancel_requested=false; packages_ran=false; mixed_state=false
   trap request_cancellation INT TERM
   trap worker_exit_fallback EXIT
   exec 9>"$lock_file"
@@ -945,6 +947,9 @@ worker() {
     # Last boundary: once Ansible starts, the transaction runs to completion
     # (or failure) so installed files and the active release stay coherent.
     honor_cancellation
+    # From here until activation, installed files can be newer than the
+    # active release; a failure or abandonment leaves that recorded.
+    [[ $release_transaction != true ]] || mixed_state=true
     write_status running ansible "Applying the managed configuration" 0
     # Keep the complete stream even when the configured callback is compact.
     tagged_command ansible "$run_dir/ansible.log" "$run_dir/ansible.rc" \
@@ -958,6 +963,7 @@ worker() {
       if ! activate_release; then
         worker_failed activation "Could not activate the applied CybexOS release" 1
       fi
+      mixed_state=false
     fi
   fi
 
@@ -1016,6 +1022,8 @@ load_status_globals() {
   release_version=$(jq -r '.releaseVersion // empty' "$file")
   [[ -z $release_version ]] && release_transaction=false || release_transaction=true
   snapshot_id=$(jq -r '.snapshotId // empty' "$file")
+  mixed_state=$(jq -r '.mixedState // false' "$file")
+  [[ $mixed_state == true ]] || mixed_state=false
   boot_id=$(current_boot_id || true)
   reboot_recommendation=$(status_reboot_recommendation "$file" "$boot_id")
 }

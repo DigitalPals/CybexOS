@@ -216,9 +216,14 @@ agent-skill reconciliation, rollback, and the atomic `current` symlink change.
 Detaching the terminal cannot split those steps, and an unrelated active
 update is never accepted as the candidate transaction. Apply failure restores
 the pre-migration configuration; activation failure also restores the prior
-`current` target and every agent-skill slot. The active release plus two recent
-release directories are retained as recovery material; filesystem rollback
-remains the supported way to reverse system package changes.
+`current` target and every agent-skill slot. Files that Ansible had already
+deployed from the candidate are not rolled back, so after a failed or
+abandoned apply the run's `status.json` records `mixedState: true`: the
+machine runs the previous release with some newer managed files. Retry
+`cybex update` once the cause is fixed, or converge the active release again
+with `~/.local/share/cybexos/current/install`. The active release plus two
+recent release directories are retained as recovery material; filesystem
+rollback remains the supported way to reverse system package changes.
 
 Useful release commands are:
 
@@ -272,8 +277,9 @@ Run state lives under `~/.local/state/cybexos/update/`. Each run has a private
 directory under `logs/<run-id>/` containing:
 
 - `status.json`: atomic machine-readable phase, result, component exit codes,
-  timestamps, transient unit name, and the pre-update `snapshotId` when one
-  was created;
+  timestamps, transient unit name, the pre-update `snapshotId` when one was
+  created, and `mixedState` when a release apply stopped after Ansible began
+  changing files;
 - `run.log`: the complete combined stream with `dnf`, `flatpak`, `tests`, and
   `ansible` prefixes;
 - component logs such as `dnf.log`, `flatpak.log`, `tests.log`, and
