@@ -224,3 +224,11 @@ test("hypridle restarts when its configuration, unit, or renderer changes", () =
     assert.ok(desktop.indexOf("Install tracked Quickshell menubar files")
         < desktop.indexOf("Queue a hypridle restart after its configuration renderer changes"));
 });
+
+test("the T3Code updater cannot hang a converge", () => {
+    const dotfiles = read("roles/dotfiles/tasks/main.yml");
+    assert.match(task(dotfiles, "Install or update T3Code nightly"), /async: 900\s+poll: 1/);
+    assert.match(task(dotfiles, "Refuse a T3Code nightly failure without verified retention"),
+        /dotfiles_t3code_update\.rc \| default\(1\)/,
+        "a job killed at the async limit has no exit code and must be refused");
+});
