@@ -749,10 +749,12 @@ class Sub2ApiTests(unittest.TestCase):
 
     def test_best_account_summary_keeps_failures_and_excludes_disabled(self):
         client = mock.Mock()
-        client.api_json.side_effect = [
-            ({"five_hour": {"utilization": 75}}, None),
-            (None, MODULE.err("expired", "Rejected")),
-            ({"five_hour": {"utilization": 20}}, None)]
+        # Accounts are read concurrently, so answer by path, not call order.
+        replies = {
+            "/accounts/1/usage": ({"five_hour": {"utilization": 75}}, None),
+            "/accounts/2/usage": (None, MODULE.err("expired", "Rejected")),
+            "/accounts/3/usage": ({"five_hour": {"utilization": 20}}, None)}
+        client.api_json.side_effect = replies.__getitem__
         entries = [{"id": n, "name": "Team", "platform": "anthropic",
                     "status": "disabled" if n == 4 else "active"}
                    for n in range(1, 5)]
