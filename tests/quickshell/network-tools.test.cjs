@@ -432,6 +432,26 @@ for _ in range(40):
     }
 });
 
+test("a signal arriving while the main thread holds the worker lock cannot deadlock", () => {
+    // Python runs the handler on the main thread between bytecodes, so it can
+    // land inside register()/worker_snapshot(). With a plain Lock the handler
+    // blocked on the lock its own thread held, and the helper never exited.
+    const script = [
+        "import importlib.util, signal",
+        `spec = importlib.util.spec_from_file_location("speedtest", ${JSON.stringify(speedHelper)})`,
+        "module = importlib.util.module_from_spec(spec)",
+        "spec.loader.exec_module(module)",
+        "with module.workers_lock:",
+        "    module.on_signal(signal.SIGTERM, None)",
+        "    module.on_signal(signal.SIGTERM, None)",
+        "print('canceled' if module.cancel_event.is_set() else 'running')",
+    ].join("\n");
+    const result = spawnSync("python3", ["-c", script], { encoding: "utf8", timeout: 5000 });
+    assert.equal(result.signal, null, "the signal handler deadlocked on the worker lock");
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), "canceled");
+});
+
 async function waitUntil(predicate, timeoutMs = 3000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {

@@ -22,7 +22,11 @@ from typing import Any
 IFACE_RE = re.compile(r"^[A-Za-z0-9_.:@+-]{1,64}$")
 FAST_TOKEN = "YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm"
 workers: set[subprocess.Popen[bytes]] = set()
-workers_lock = threading.Lock()
+# Reentrant: the SIGTERM/SIGINT handler runs on the main thread between
+# bytecodes and stops workers through this lock, which the main thread may
+# already hold, e.g. while cleaning up after the first of two SIGTERMs (the
+# overlay sends one per interface switch, cancel, and close).
+workers_lock = threading.RLock()
 cancel_event = threading.Event()
 
 
