@@ -241,7 +241,11 @@ Singleton {
             Launcher.close();
             break;
         case "windows":
-            Hyprland.dispatch("focuswindow address:" + row.win.address);
+            // Hyprland reads a dispatch as Lua, and its address selector
+            // matches the 0x-prefixed form that Quickshell's hex address
+            // leaves out.
+            Hyprland.dispatch('hl.dsp.focus({ window = "address:0x'
+                + row.win.address + '" })');
             Launcher.close();
             break;
         case "clipboard":

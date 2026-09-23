@@ -1,6 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { load } = require("./shell.cjs");
+const fs = require("node:fs");
+const path = require("node:path");
+const { load, shellDir } = require("./shell.cjs");
 
 const P = load("LauncherProviders.js");
 
@@ -106,4 +108,37 @@ test("user actions require a name and argv command and cannot inject glyphs", ()
         "subtitles remain searchable even though the view does not draw them");
     assert.notEqual(P.parseActions("{").error, "");
     assert.notEqual(P.parseActions("{}").error, "");
+});
+
+function qmlFiles(dir) {
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory())
+            return qmlFiles(full);
+        return entry.name.endsWith(".qml") ? [full] : [];
+    });
+}
+
+// Hyprland here reads every dispatch as Lua (`hl.dispatch(<request>)`), so a
+// plain dispatcher word such as `focuswindow address:…` is a syntax error
+// that fails silently from the shell's side.
+test("window activation dispatches a Lua focus with Hyprland's address form", () => {
+    const providers = fs.readFileSync(
+        path.join(shellDir, "Common/LauncherProviders.qml"), "utf8");
+    const call = providers.match(
+        /case "windows":\s*(?:\/\/.*\n\s*)*Hyprland\.dispatch\(([\s\S]*?)\);\n/);
+    assert.ok(call, "the windows provider must dispatch through Hyprland");
+    // Quickshell reports the address as bare hex; Hyprland's selector
+    // compares against the 0x-prefixed form.
+    const request = new Function("row", `return ${call[1]};`)(
+        { win: { address: "55a33dbecb20" } });
+    assert.equal(request,
+        'hl.dsp.focus({ window = "address:0x55a33dbecb20" })');
+
+    for (const file of qmlFiles(shellDir)) {
+        const source = fs.readFileSync(file, "utf8");
+        for (const match of source.matchAll(/Hyprland\.dispatch\(\s*(['"`])(.*)/g))
+            assert.ok(match[2].startsWith("hl.dsp."),
+                `${path.relative(shellDir, file)} dispatches a non-Lua request: ${match[0]}`);
+    }
 });
