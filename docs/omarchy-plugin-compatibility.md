@@ -30,11 +30,9 @@ development branch.
 | First-party integrations | Full bars receive narrow idle, nightlight, notification and media adapters backed by Cybex. Authentication, Omarchy commands and external backends are not supplied |
 | Manifest acceptance | Stricter here, not identical. For example, Cybex requires an ID beginning with a letter, while upstream's package CLI also accepts a leading digit; Cybex also requires entrypoint keys to exactly match declared kinds |
 
-The lack of a marketplace or manifest-generated settings editor is a local
-limitation, but is **not established as a parity gap** by this upstream revision.
-Its plugin catalogue enumerates local packages, its management menu handles
-enable/disable/clone/remove, and schema metadata alone does not demonstrate a
-generated settings editor.
+The lack of a marketplace is a local limitation, but is **not established as
+a parity gap** by this upstream revision. Its plugin catalogue enumerates local
+packages and its management menu handles enable/disable/clone/remove.
 
 Implemented commands and menus share the existing locked preference writer.
 Package updates never run plugin installers or Git hooks. Git preview reports
@@ -76,6 +74,32 @@ cybex plugin set markbusking.pomodoro workMinutes 25
 cybex plugin set markbusking.pomodoro sound false
 cybex plugin list
 ```
+
+### Declared settings
+
+Upstream schema 1 defines no settings format, so Cybex reads an optional
+`barWidget.schema` array, the convention used by packages such as
+`digitalpals.model-usage`. The widget's settings dialog (Settings → Widgets →
+the widget) draws each entry as an ordinary settings row, with its `label`,
+`description`, a changed-value mark, and a reset to its default:
+
+| `type` | Extra keys | Control |
+| --- | --- | --- |
+| `boolean` | | Switch |
+| `enum` | `options` | One-of-many picker |
+| `multiselect` | `options`, optional `noSelectionText` | Toggle chips |
+| `integer`, `number` | `min`, `max`, optional `step` | Slider when both bounds are set, otherwise a validated number field |
+| `string` | | Text field |
+
+Every entry needs a `key`; `label` falls back to the key. `options` are strings
+or `{ "value", "label" }` objects. The default is the entry's `defaultValue`,
+else `barWidget.defaults[key]`. An entry with an unknown type or no options,
+or whose saved value its control cannot show exactly (wrong type, an undeclared
+option, a number out of range), is not drawn as a row. That key, and any saved
+key the schema does not mention, stays in the dialog's raw JSON editor, so no
+saved value is hidden. The schema is presentation only: the CLI and IPC still
+accept any JSON value. Cybex's own `apiVersion` manifests can declare the same
+`barWidget.schema`; their defaults come only from each entry's `defaultValue`.
 
 Preferences and package code refresh within two seconds. `cybex plugin reload`
 requests an immediate scan through the running shell; `cybex plugin restart`
@@ -258,7 +282,8 @@ retain their status indications.
   named overrides are writable through the native bar, CLI, or full layout
   mutation; replacement facades are not keyed by instance. Full `shell.json`
   mutation is unavailable; only bar presentation/layout is persisted.
-- No remote marketplace catalogue or manifest-generated settings editor.
+- No remote marketplace catalogue. Generated settings rows cover only the
+  `barWidget.schema` types listed under Declared settings.
   `applyTheme` updates the Omarchy compatibility palette/style for the session,
   not Cybex's persisted theme. `reloadConfig` refreshes plugin preferences;
   Cybex shell settings retain their existing file watcher.

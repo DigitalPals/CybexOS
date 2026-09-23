@@ -36,3 +36,4 @@ AboutPage AboutPage.qml
 SettingsHint SettingsHint.qml
 TimeRow TimeRow.qml
 CornerPickerRow CornerPickerRow.qml
+ChipToggleRow ChipToggleRow.qml
