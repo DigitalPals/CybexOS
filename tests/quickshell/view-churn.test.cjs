@@ -57,7 +57,8 @@ test("spinners stop while their view is hidden", () => {
         "Popovers/T3ThreadPage.qml": /running:\s*root\.working && workingGlyph\.visible/,
         "Popovers/HermesToolCard.qml": /running:\s*root\.running && statusGlyph\.visible/,
         "Ui/Button.qml": /running:\s*root\.iconSpinning && iconLabel\.visible/,
-        "Ui/MultiSelect.qml": /running:\s*root\.loadingOptions && refreshButton\.visible/
+        "Ui/MultiSelect.qml": /running:\s*root\.loadingOptions && refreshButton\.visible/,
+        "Popovers/WifiPopover.qml": /running:\s*row\.working && signalGlyph\.visible/
     };
     for (const [file, pattern] of Object.entries(sites))
         assert.match(read(file), pattern, file);
@@ -68,7 +69,8 @@ test("spinners stop while their view is hidden", () => {
     // must not inherit the tilt.
     for (const [file, id] of [["Popovers/UpdatesPopover.qml", "headerMark"],
             ["Popovers/UpdatesPopover.qml", "stepMark"],
-            ["Popovers/HermesToolCard.qml", "statusGlyph"]])
+            ["Popovers/HermesToolCard.qml", "statusGlyph"],
+            ["Popovers/WifiPopover.qml", "signalGlyph"]])
         assert.match(read(file),
             new RegExp(`onRunningChanged: if \\(!running\\) ${id}\\.rotation = 0`), `${file} ${id}`);
 });

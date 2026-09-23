@@ -724,6 +724,7 @@ Surface {
             height: 48
 
             Sym {
+                id: signalGlyph
                 x: 10
                 anchors.verticalCenter: parent.verticalCenter
                 name: row.working ? "progress_activity"
@@ -732,12 +733,16 @@ Surface {
                 size: Theme.fontBody
                 color: row.network.connected ? Theme.accentText : Theme.textMid
 
+                // Gated on visibility: a hidden panel must not keep spinning.
+                // A stopped value source keeps its angle, and the signal bars
+                // that replace the arc must not inherit the tilt.
                 RotationAnimation on rotation {
-                    running: row.working && !Theme.reducedMotion
+                    running: row.working && signalGlyph.visible && !Theme.reducedMotion
                     from: 0
                     to: 360
                     duration: 950
                     loops: Animation.Infinite
+                    onRunningChanged: if (!running) signalGlyph.rotation = 0
                 }
             }
 
