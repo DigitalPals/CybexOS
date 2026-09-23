@@ -467,7 +467,7 @@ test("schema twenty-three keeps safe defaults and exposes accessibility preferen
     assert.match(helpers, /function migratePaletteMode\(parsed, defaultsValue\)/);
     assert.match(helpers, /function adoptSofterTypography\(parsed\)/);
     assert.match(helpers, /mod\("media", true\)/);
-    assert.match(helpers, /mod\("bt", false\)/);
+    assert.match(helpers, /mod\("bt", true\)/);
     assert.match(helpers, /wallDir:\s*"~\/Pictures\/Wallpapers"/);
     assert.match(helpers, /DETAIL_POLICIES/);
     // A settings file written by the previous schema must adopt the redesign

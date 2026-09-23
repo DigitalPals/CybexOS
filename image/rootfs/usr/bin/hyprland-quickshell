@@ -6,7 +6,7 @@ export MOZ_ENABLE_WAYLAND=1 QT_QPA_PLATFORM=wayland
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/Android/Sdk/platform-tools:/usr/local/bin:/usr/bin"
 export XDG_DATA_DIRS="$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export ANDROID_HOME="$HOME/Android/Sdk" ANDROID_SDK_ROOT="$HOME/Android/Sdk"
-/usr/libexec/cybexos-user-init
+/usr/libexec/cybexos-user-init --essential
 # Anaconda writes the system keyboard choice through locale1. Query it on
 # every login so the shared image never hardcodes the live account's layout.
 keyboard_property() {

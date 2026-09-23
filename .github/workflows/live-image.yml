@@ -5,14 +5,24 @@ on:
     paths:
       - image/**
       - roles/apps/**
+      - roles/base/**
+      - roles/desktop/**
+      - roles/boot/**
       - roles/dotfiles/**
+      - assets/**
+      - VERSION
       - inventory/group_vars/all.yml
       - .github/workflows/live-image.yml
   push:
     paths:
       - image/**
       - roles/apps/**
+      - roles/base/**
+      - roles/desktop/**
+      - roles/boot/**
       - roles/dotfiles/**
+      - assets/**
+      - VERSION
       - inventory/group_vars/all.yml
       - .github/workflows/live-image.yml
   workflow_dispatch:
@@ -22,14 +32,14 @@ permissions:
 
 jobs:
   welcome-and-accounts:
-    name: Welcome GUI and account isolation
+    name: Image tooling, installer fixtures and account isolation
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Build Fedora test environment
         run: docker build -f image/Containerfile.tests -t cybexos-image-tests:44 image
-      - name: Exercise account isolation and both welcome modes
+      - name: Exercise source fixtures without building or booting an ISO
         run: docker run --rm -v "$PWD:/source:ro" cybexos-image-tests:44
       - name: Validate installer configuration and launchers
         run: |

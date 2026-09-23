@@ -10,14 +10,14 @@ ApplicationWindow {
     minimumHeight: 560
     visible: true
     title: "Welcome to CybexOS"
-    color: "#101719"
+    color: "#0d0d0d"
     font.family: "Figtree"
     font.pixelSize: 16
-    palette.windowText: "#edf5f2"
-    palette.text: "#edf5f2"
-    palette.buttonText: "#edf5f2"
-    palette.button: "#243431"
-    palette.highlight: "#a9e7cf"
+    palette.windowText: "#e8e7df"
+    palette.text: "#e8e7df"
+    palette.buttonText: "#e8e7df"
+    palette.button: "#333122"
+    palette.highlight: "#d3d283"
     onClosing: close => { if (welcome.busy) close.accepted = false; }
 
     Connections {
@@ -44,15 +44,15 @@ ApplicationWindow {
         font.weight: Font.DemiBold
         background: Rectangle {
             radius: 12
-            color: button.primary ? (button.down ? "#80c9af" : "#a9e7cf")
-                : (button.hovered ? "#334943" : "#243431")
+            color: button.primary ? (button.down ? "#bbb96e" : "#d3d283")
+                : (button.hovered ? "#44412b" : "#333122")
             opacity: button.enabled ? 1 : 0.5
             border.width: button.activeFocus ? 2 : 0
             border.color: "#ffffff"
         }
         contentItem: Text {
             text: button.text
-            color: button.primary ? "#142c24" : "#edf5f2"
+            color: button.primary ? "#27260c" : "#e8e7df"
             font: button.font
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
@@ -65,30 +65,30 @@ ApplicationWindow {
         Rectangle {
             Layout.preferredWidth: window.width * 0.32
             Layout.fillHeight: true
-            color: "#192a25"
+            color: "#232217"
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 32
                 spacing: 22
-                Text { text: "CybexOS"; color: "#b4c8bf"; font.pixelSize: 13; font.letterSpacing: 2 }
+                Text { text: "CybexOS"; color: "#c5c2ac"; font.pixelSize: 13; font.letterSpacing: 2 }
                 Item { Layout.fillHeight: true }
                 Rectangle {
-                    width: 94; height: 94; radius: 26; color: "#a9e7cf"
-                    Text { anchors.centerIn: parent; text: "Cx"; color: "#183c2d"; font.pixelSize: 48; font.weight: Font.DemiBold }
+                    width: 94; height: 94; radius: 26; color: "#d3d283"
+                    Text { anchors.centerIn: parent; text: "Cx"; color: "#34320d"; font.pixelSize: 48; font.weight: Font.DemiBold }
                 }
                 Text {
                     Layout.fillWidth: true
                     text: "A little less friction.\nA lot more you."
                     wrapMode: Text.WordWrap
-                    color: "#edf5f2"; font.pixelSize: 28; font.weight: Font.DemiBold
+                    color: "#e8e7df"; font.pixelSize: 28; font.weight: Font.DemiBold
                 }
                 Text {
                     Layout.fillWidth: true
                     text: "Cybex Opinionated System.\nA focused desktop, built on Fedora."
-                    wrapMode: Text.WordWrap; color: "#afc7bb"; lineHeight: 1.3
+                    wrapMode: Text.WordWrap; color: "#b7b5a7"; lineHeight: 1.3
                 }
                 Item { Layout.fillHeight: true }
-                Text { text: welcome.isLive ? "LIVE PREVIEW  /  ALPHA" : "YOUR DESKTOP"; color: "#a3b9ae"; font.pixelSize: 11; font.letterSpacing: 1 }
+                Text { text: welcome.isLive ? "LIVE PREVIEW  /  ALPHA" : "YOUR DESKTOP"; color: "#aaa790"; font.pixelSize: 11; font.letterSpacing: 1 }
             }
         }
         ColumnLayout {
@@ -100,38 +100,38 @@ ApplicationWindow {
             Text {
                 Layout.fillWidth: true
                 text: welcome.isLive ? "Make yourself at home." : "Welcome to your new desktop."
-                color: "#edf5f2"; font.pixelSize: 34; font.weight: Font.DemiBold; wrapMode: Text.WordWrap
+                color: "#e8e7df"; font.pixelSize: 34; font.weight: Font.DemiBold; wrapMode: Text.WordWrap
             }
             Text {
                 Layout.fillWidth: true
                 text: welcome.isLive
                     ? "Explore the desktop from your USB drive, or install it when you’re ready."
                     : "Start with a few personal touches. You can return to this window from the app launcher."
-                color: "#a9bbb4"; wrapMode: Text.WordWrap; lineHeight: 1.4
+                color: "#b7b5a7"; wrapMode: Text.WordWrap; lineHeight: 1.4
             }
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: details.implicitHeight + 40
-                radius: 16; color: "#1b2724"
+                radius: 16; color: "#232217"
                 ColumnLayout {
                     id: details
                     anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                     anchors.margins: 20; spacing: 14
                     Text {
                         text: welcome.isLive ? "A guided installation" : "Make it yours"
-                        color: "#dcebe4"; font.weight: Font.DemiBold
+                        color: "#e8e7df"; font.weight: Font.DemiBold
                     }
                     Text {
                         Layout.fillWidth: true
                         text: welcome.isLive
-                            ? "Choose your language and disk, then review your storage and encryption options in the installer."
-                            : "Choose your colors and wallpaper, then discover the keyboard shortcuts that keep everything within reach."
-                        color: "#a9bbb4"; wrapMode: Text.WordWrap; lineHeight: 1.3
+                            ? "Create your account, choose a disk, and review. Encryption and automatic login are selected by default."
+                            : "Choose your colors and wallpaper, then discover the keyboard shortcuts. Your app keyring stays protected and may ask for its password after automatic login."
+                        color: "#b7b5a7"; wrapMode: Text.WordWrap; lineHeight: 1.3
                     }
                     Text {
                         visible: welcome.isLive; Layout.fillWidth: true
-                        text: "The desktop and all included applications install without an internet connection."
-                        color: "#a9e7cf"; wrapMode: Text.WordWrap; font.pixelSize: 14
+                        text: "Your disk and account passwords start out the same. Changing the account password later does not update the disk password."
+                        color: "#d3d283"; wrapMode: Text.WordWrap; font.pixelSize: 14
                     }
                 }
             }

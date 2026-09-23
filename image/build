@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Build the live ISO in a disposable Fedora VM; never attach host disks."""
-
+"""Build an ISO in a disposable Fedora VM; --preflight performs no build."""
 import argparse
-import hashlib
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -14,7 +13,9 @@ import sys
 import tarfile
 import tempfile
 import time
-import urllib.request
+
+from build_support import (atomic_json, build_id, create_seed, deliver_artifacts,
+                           digest, phase, preflight, source_provenance, validate_qemu_path)
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = "Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2"
@@ -26,129 +27,194 @@ def run(args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
 
-def digest(path):
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
-
-
-def source_archive(destination):
-    # An explicit source allowlist excludes inventories with personal answers,
-    # Git metadata, local caches, credentials, and previous build artifacts.
+def source_archive(destination, additions=None):
     roots = ["image", "roles/desktop", "assets/scripts", "assets/EDM115-newline2.omp.json",
-             "inventory/group_vars/all.yml", "VERSION",
+             "assets/desktop-contract.json", "assets/wallpapers", "assets/PROVENANCE.json",
+             "roles/boot/files", "roles/boot/defaults/main.yml", "inventory/group_vars/all.yml", "VERSION",
              "roles/dotfiles", "roles/apps", "roles/base/tasks/main.yml",
-             "roles/base/files/cybexos-system-snapshot"]
+             "roles/base/files/cybexos-system-snapshot", "roles/base/files/60-cybexos-hardening.conf",
+             "roles/base/templates/cybexos-zone.xml.j2"]
+    excluded = {"image/update-channel.json", "image/update-key.asc", "image/build-provenance.json"}
     with tarfile.open(destination, "w:gz") as archive:
         for name in roots:
             path = ROOT / name
-            paths = sorted(path.rglob("*")) if path.is_dir() else [path]
-            for item in paths:
-                if item.is_file() and not item.is_symlink() and "__pycache__" not in item.parts and item.suffix != ".pyc":
-                    archive.add(item, arcname=str(item.relative_to(ROOT)), recursive=False)
+            if not path.exists():
+                raise FileNotFoundError(f"Missing image source input: {name}")
+            for item in sorted(path.rglob("*")) if path.is_dir() else [path]:
+                relative = str(item.relative_to(ROOT))
+                if item.is_file() and not item.is_symlink() and relative not in excluded and "__pycache__" not in item.parts and item.suffix != ".pyc":
+                    archive.add(item, arcname=relative, recursive=False)
+        for name, path in (additions or {}).items():
+            if name not in excluded:
+                raise ValueError("Unexpected generated source input")
+            archive.add(path, arcname=name, recursive=False)
+
+
+def stop(process):
+    if process is not None and process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=Path.home() / ".local/share/cybexos/images")
+    parser.add_argument("--output", type=Path, help="New task-specific output directory (default: images/BUILD-ID)")
+    parser.add_argument("--cache", type=Path, default=Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "cybexos/image")
     parser.add_argument("--memory", type=int, default=24576, help="Builder VM RAM in MiB")
-    parser.add_argument("--cpus", type=int, default=8)
-    parser.add_argument("--debug-on-failure", action="store_true", help="Keep a failed builder running for inspection until interrupted")
+    parser.add_argument("--cpus", type=int, default=min(8, os.cpu_count() or 1))
+    parser.add_argument("--compression", choices=("xz", "zstd"), default="xz", help="xz is the previously validated default; zstd requires new qualification")
+    parser.add_argument("--preflight", action="store_true", help="Only validate host dependencies/resources; no downloads, files or VM")
+    parser.add_argument("--update-channel", type=Path, help="Reviewed public RPM update channel JSON; key is validated before transfer")
+    parser.add_argument("--debug-on-failure", action="store_true", help="Keep a failed builder available until interrupted")
     args = parser.parse_args()
-    for command in ("qemu-img", "qemu-system-x86_64", "cloud-localds", "ssh", "ssh-keygen", "scp"):
-        if not shutil.which(command):
-            parser.error(f"missing {command}; on Debian install qemu-system-x86 qemu-utils cloud-image-utils openssh-client")
-    if not os.access("/dev/kvm", os.R_OK | os.W_OK):
-        parser.error("the builder requires access to /dev/kvm")
-    output = args.output.expanduser().resolve()
-    output.mkdir(parents=True, exist_ok=True)
-    if any(output.iterdir()):
-        parser.error("output must be empty; use a new output directory for each build")
-    cache = Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "cybexos"
+    identifier = build_id()
+    output = (args.output or Path.home() / ".local/share/cybexos/images" / identifier).expanduser().resolve()
+    cache = args.cache.expanduser().resolve()
+    validate_qemu_path(output)
+    validate_qemu_path(cache)
+    if output.exists() and any(output.iterdir()):
+        parser.error("output must be empty; use a new directory")
+    if output == Path("/data/pxe/iso") or Path("/data/pxe/iso") in output.parents:
+        parser.error("build staging must be outside the served ISO tree; publish completed artifacts separately")
+    try:
+        from download_cache import cached_download, merge_cache, pins, verified_entries
+    except ImportError as error:
+        parser.error(f"{error}; install python3-pyyaml (Fedora) or python3-yaml (Debian)")
+    resources = preflight(output, cache, args.memory, args.cpus)
+    if args.update_channel and not shutil.which("gpg"):
+        parser.error("--update-channel requires gpg to validate the public signing key")
+    if args.preflight:
+        print(json.dumps(resources, indent=2))
+        return
+    output.mkdir(parents=True, exist_ok=True, mode=0o700)
+    output.chmod(0o700)
     cache.mkdir(parents=True, exist_ok=True)
-    base = cache / IMAGE
-    if not base.exists() or digest(base) != IMAGE_SHA256:
-        print("Downloading and verifying the Fedora builder image…", flush=True)
-        partial = cache / (IMAGE + ".download")
-        urllib.request.urlretrieve(IMAGE_URL, partial)
-        if digest(partial) != IMAGE_SHA256:
-            partial.unlink()
-            raise RuntimeError("Fedora builder image checksum mismatch")
-        partial.replace(base)
-    with tempfile.TemporaryDirectory(prefix="cybexos-image-", dir=cache) as temporary:
-        work = Path(temporary)
-        key = work / "id_ed25519"
-        run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)])
-        public = key.with_suffix(".pub").read_text().strip()
-        (work / "user-data").write_text("#cloud-config\n" + json.dumps({
-            "users": [{"name": "builder", "groups": ["wheel"], "shell": "/bin/bash",
-                       "sudo": "ALL=(ALL) NOPASSWD:ALL", "ssh_authorized_keys": [public]}],
-            "ssh_pwauth": False, "disable_root": True,
-        }))
-        (work / "meta-data").write_text("instance-id: cybexos-image-builder\nlocal-hostname: image-builder\n")
-        run(["cloud-localds", str(work / "seed.iso"), str(work / "user-data"), str(work / "meta-data")])
-        run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2", "-b", str(base), str(work / "system.qcow2"), "220G"])
-        with socket.socket() as sock:
-            sock.bind(("127.0.0.1", 0))
-            port = sock.getsockname()[1]
-        ssh_options = ["-i", str(key), "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
-                       "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={work / 'known_hosts'}"]
-        ssh = ["ssh", *ssh_options, "-p", str(port), "builder@127.0.0.1"]
-        (output / "builder.json").write_text(json.dumps({"ssh": ssh, "work": str(work)}, indent=2) + "\n")
-        console = (output / "builder-console.log").open("w")
-        vm = subprocess.Popen([
-            "qemu-system-x86_64", "-name", "cybexos-image-builder", "-machine", "q35,accel=kvm",
-            "-cpu", "host", "-smp", str(args.cpus), "-m", str(args.memory),
-            "-drive", f"file={work / 'system.qcow2'},if=virtio,format=qcow2",
-            "-drive", f"file={work / 'seed.iso'},if=virtio,format=raw,readonly=on",
-            "-netdev", f"user,id=net,hostfwd=tcp:127.0.0.1:{port}-:22",
-            "-device", "virtio-net-pci,netdev=net", "-display", "none", "-serial", "stdio", "-monitor", "none",
-        ], stdout=console, stderr=subprocess.STDOUT)
-        try:
-            for _ in range(120):
-                if vm.poll() is not None:
-                    raise RuntimeError("builder VM exited; see builder-console.log")
-                if subprocess.run([*ssh, "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
-                    break
-                time.sleep(3)
-            else:
-                raise RuntimeError("builder SSH did not become ready")
-            run([*ssh, "cloud-init status --wait >/dev/null; mkdir -p /home/builder/source"])
-            source_archive(work / "source.tar.gz")
-            with (work / "source.tar.gz").open("rb") as archive:
-                run([*ssh, "tar xzf - -C /home/builder/source"], stdin=archive)
-            print("Building desktop RPMs and the live ISO in Fedora…", flush=True)
-            with (output / "build.log").open("w") as log:
-                build = subprocess.Popen([*ssh, "sudo bash /home/builder/source/image/build-in-guest"],
-                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-                for line in build.stdout:
-                    print(line, end="", flush=True)
-                    log.write(line)
-                    log.flush()
-                if build.wait():
-                    if args.debug_on_failure:
-                        print(f"Build failed; builder remains available for inspection via {output / 'builder.json'}. Interrupt to clean up.", flush=True)
+    phases = []
+    provenance = {"build_id": identifier, "utc": datetime.now(timezone.utc).isoformat(),
+                  "compression": args.compression, "resources": resources, "status": "running", "phases": phases}
+    status_path = output / "build.json"
+    atomic_json(status_path, provenance)
+    vm = build_process = None
+    contract = pins(ROOT)
+    try:
+        with tempfile.TemporaryDirectory(prefix=identifier + "-", dir=cache) as temporary:
+            work = Path(temporary)
+            additions = {}
+            if args.update_channel:
+                from release_metadata import stage_update_channel
+                with phase("Validate public update channel", phases):
+                    additions.update(stage_update_channel(args.update_channel, work / "channel"))
+            with phase("Verify cached Fedora builder", phases):
+                base = cached_download(IMAGE_URL, IMAGE_SHA256, cache / "base")
+            with phase("Record source and prepare isolated VM", phases):
+                provenance.update(source_revision=subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip(),
+                                  source_dirty=bool(subprocess.check_output(["git", "-C", str(ROOT), "status", "--porcelain"], text=True).strip()),
+                                  source_epoch=int(subprocess.check_output(["git", "-C", str(ROOT), "show", "-s", "--format=%ct", "HEAD"], text=True)))
+                installed = {key: provenance[key] for key in ("utc", "build_id", "source_revision", "source_dirty", "source_epoch")}
+                atomic_json(work / "build-provenance.json", installed)
+                additions["image/build-provenance.json"] = work / "build-provenance.json"
+                source_archive(work / "source.tar.gz", additions)
+                provenance["source"] = source_provenance(ROOT, work / "source.tar.gz")
+                provenance["tools"] = {name: subprocess.check_output([name, "--version"], text=True).splitlines()[0]
+                                       for name in ("qemu-system-x86_64", "qemu-img")}
+                provenance["tools"]["python"] = sys.version
+                atomic_json(status_path, provenance)
+                key = work / "id_ed25519"
+                run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)])
+                (work / "user-data").write_text("#cloud-config\n" + json.dumps({
+                    "users": [{"name": "builder", "groups": ["wheel"], "shell": "/bin/bash", "sudo": "ALL=(ALL) NOPASSWD:ALL", "ssh_authorized_keys": [key.with_suffix(".pub").read_text().strip()]}],
+                    "ssh_pwauth": False, "disable_root": True}))
+                (work / "meta-data").write_text(f"instance-id: {identifier}\nlocal-hostname: image-builder\n")
+                create_seed(work, resources["seed_tool"])
+                run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2", "-b", str(base), str(work / "system.qcow2"), "220G"])
+                with socket.socket() as sock:
+                    sock.bind(("127.0.0.1", 0))
+                    port = sock.getsockname()[1]
+                ssh_options = ["-i", str(key), "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={work / 'known_hosts'}"]
+                ssh = ["ssh", *ssh_options, "-p", str(port), "builder@127.0.0.1"]
+                atomic_json(output / "builder.json", {"ssh": ssh, "work": str(work)})
+            with (output / "builder-console.log").open("w") as console:
+                vm = subprocess.Popen([
+                    "qemu-system-x86_64", "-name", "cybexos-image-builder", "-machine", "q35,accel=kvm", "-cpu", "host", "-smp", str(args.cpus), "-m", str(args.memory),
+                    "-drive", f"file={work / 'system.qcow2'},if=virtio,format=qcow2", "-drive", f"file={work / 'seed.iso'},if=virtio,format=raw,readonly=on",
+                    "-netdev", f"user,id=net,hostfwd=tcp:127.0.0.1:{port}-:22", "-device", "virtio-net-pci,netdev=net", "-display", "none", "-serial", "stdio", "-monitor", "none"], stdout=console, stderr=subprocess.STDOUT)
+                try:
+                    with phase("Wait for builder and restore verified downloads", phases):
+                        deadline = time.monotonic() + 600
+                        while time.monotonic() < deadline:
+                            if vm.poll() is not None:
+                                raise RuntimeError("Builder exited; see builder-console.log")
+                            if subprocess.run([*ssh, "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                                break
+                            time.sleep(2)
+                        else:
+                            raise RuntimeError("Builder SSH readiness timed out")
+                        run([*ssh, "cloud-init status --wait >/dev/null && mkdir -p /home/builder/source"], timeout=300)
+                        with (work / "source.tar.gz").open("rb") as archive:
+                            run([*ssh, "tar xzf - -C /home/builder/source"], stdin=archive)
+                        cached = verified_entries(cache / "downloads", contract)
+                        cache_stage = work / "cache-import"
+                        cache_stage.mkdir()
+                        for entry in cached:
+                            shutil.copyfile(cache / "downloads" / entry["sha256"], cache_stage / entry["sha256"])
+                        atomic_json(cache_stage / "manifest.json", {"entries": cached})
+                        run(["scp", *ssh_options, "-P", str(port), "-r", str(cache_stage), "builder@127.0.0.1:/home/builder/"])
+                        provenance["download_cache_hits"] = len(cached)
+                    with phase("Build applications, desktop RPM and compressed image", phases):
+                        with (output / "build.log").open("w") as log:
+                            build_process = subprocess.Popen([*ssh, f"sudo env CYBEXOS_IMAGE_COMPRESSION={args.compression} bash /home/builder/source/image/build-in-guest"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                            for line in build_process.stdout:
+                                print(line, end="", flush=True)
+                                log.write(line)
+                                log.flush()
+                            if build_process.wait():
+                                raise RuntimeError("Guest build failed; see build.log for the failing phase")
+                    with phase("Save verified download cache", phases):
+                        run(["scp", *ssh_options, "-P", str(port), "-r", "builder@127.0.0.1:/home/builder/cache-export", str(work)])
+                        merge_cache(work / "cache-export", cache / "downloads", contract)
+                    with phase("Verify and atomically deliver completed artifacts", phases):
+                        with tempfile.TemporaryDirectory(prefix=".delivery-", dir=output) as staging:
+                            run(["scp", *ssh_options, "-P", str(port), "-r", "builder@127.0.0.1:/home/builder/artifacts/.", staging])
+                            from build_support import checksum_entries
+                            checksum_entries(staging)
+                            original = Path(staging) / "CybexOS-Live-44.iso"
+                            original.rename(Path(staging) / f"CybexOS-Live-44-{identifier}.iso")
+                            files = sorted(path for path in Path(staging).iterdir() if path.name != "SHA256SUMS")
+                            (Path(staging) / "SHA256SUMS").write_text("".join(f"{digest(path)}  {path.name}\n" for path in files))
+                            provenance["artifacts"] = deliver_artifacts(staging, output / "artifacts")
+                except BaseException as error:
+                    if not isinstance(error, (KeyboardInterrupt, SystemExit)) and args.debug_on_failure and vm.poll() is None:
+                        print(f"Failed builder retained for inspection: {output / 'builder.json'}. Interrupt again to clean up.", flush=True)
                         while vm.poll() is None:
                             time.sleep(1)
-                    raise RuntimeError("image build failed; see build.log")
-            run(["scp", *ssh_options, "-P", str(port), "-r", "builder@127.0.0.1:/home/builder/artifacts/.", str(output)])
-            print(f"Build complete: {output}")
-        finally:
-            vm.terminate()
-            try:
-                vm.wait(timeout=20)
-            except subprocess.TimeoutExpired:
-                vm.kill()
-                vm.wait()
-            console.close()
+                    raise
+                finally:
+                    stop(build_process)
+                    stop(vm)
+            provenance["status"] = "complete"
+        print(f"Build complete: {output / 'artifacts'}\nNo boot qualification or PXE publication was performed.")
+    except BaseException as error:
+        provenance["status"] = "failed"
+        provenance["error"] = str(error) or type(error).__name__
+        raise
+    finally:
+        stop(build_process)
+        stop(vm)
+        (output / "builder.json").unlink(missing_ok=True)
+        atomic_json(status_path, provenance)
 
 
 if __name__ == "__main__":
     def interrupted(_signal, _frame):
         raise KeyboardInterrupt
-
-    signal.signal(signal.SIGTERM, interrupted)
+    for name in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(name, interrupted)
     try:
         main()
-    except (RuntimeError, subprocess.CalledProcessError, KeyboardInterrupt) as error:
+    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError, KeyboardInterrupt) as error:
         print(f"image/build: {error}", file=sys.stderr)
         sys.exit(1)

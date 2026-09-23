@@ -1,0 +1,11 @@
+[Unit]
+Description=Prepare offline CybexOS applications
+PartOf=hyprland-session.target
+After=quickshell.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/cybexos-user-init --background
+TimeoutStartSec=infinity
+Nice=10
+IOSchedulingClass=idle

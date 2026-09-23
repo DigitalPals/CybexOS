@@ -1,0 +1,48 @@
+#!/usr/bin/python3
+"""Anaconda web-engine hook: same Cockpit server, CybexOS's first page."""
+import os
+from pathlib import Path
+import subprocess
+import signal
+import sys
+import tempfile
+from urllib.parse import urlsplit, urlunsplit
+
+def installer_url(value):
+    # Keep the origin/port supplied by webui-desktop; never accept a remote URL.
+    url = urlsplit(value)
+    if url.scheme != 'http' or url.hostname not in ('127.0.0.1', 'localhost') or url.username or url.password:
+        raise ValueError('The installer browser requires the local Anaconda URL.')
+    if url.path != '/cockpit/@localhost/anaconda-webui/index.html':
+        raise ValueError('Unexpected Anaconda page.')
+    return urlunsplit((url.scheme, url.netloc, '/cockpit/@localhost/cybexos-installer/index.html', '', ''))
+
+
+def main():
+    url = installer_url(sys.argv[-1])
+    with tempfile.TemporaryDirectory(prefix='cybexos-installer-', dir=os.environ.get('XDG_RUNTIME_DIR')) as profile:
+        Path(profile, 'user.js').write_text('user_pref("signon.rememberSignons", false);\n'
+                                          'user_pref("browser.shell.checkDefaultBrowser", false);\n'
+                                          'user_pref("browser.sessionstore.resume_from_crash", false);\n'
+                                          'user_pref("browser.formfill.enable", false);\n')
+        child = subprocess.Popen(['/usr/bin/firefox', '--no-remote', '--profile', profile, '--kiosk', url])
+        def stop(_signal, _frame):
+            raise KeyboardInterrupt
+        signal.signal(signal.SIGTERM, stop)
+        signal.signal(signal.SIGINT, stop)
+        try:
+            return child.wait()
+        except KeyboardInterrupt:
+            return 0
+        finally:
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait()
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

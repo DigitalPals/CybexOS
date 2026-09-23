@@ -75,6 +75,7 @@ e2fsprogs
 chrony
 plymouth
 plymouth-system-theme
+plymouth-plugin-script
 -dracut-config-rescue
 %end
 
@@ -89,6 +90,9 @@ install -Dm0644 /home/builder/source/roles/desktop/templates/hyprland-copr.repo.
 set -eu
 systemctl enable cybexos-live.service
 systemctl set-default graphical.target
+# Both live boot and the installed LUKS prompt use the shared Cybex artwork.
+plymouth-set-default-theme cybex
+firewall-offline-cmd --set-default-zone=cybexos
 mkdir -p /etc/gdm
 cat > /etc/gdm/custom.conf <<'GDM'
 [daemon]

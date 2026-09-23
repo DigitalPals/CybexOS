@@ -157,7 +157,8 @@ def verify_dependency_policy(values: dict) -> None:
     command_wrapper = (ROOT / "roles/dotfiles/templates/cybex.j2").read_text()
     assert '$verify_scope || set -- --system "$@"' in command_wrapper
     assert 'exec "$agent_command" "$@"' in command_wrapper
-    assert "    - cybexos-agent" in dotfiles
+    assert "cybexos_desktop_contract.userHelpers" in dotfiles
+    assert "cybexos-agent" in json.loads((ROOT / "assets/desktop-contract.json").read_text())["userHelpers"]
     assert uninstall.count(".local/bin/cybexos-agent") == 2
     assert ".config/cybexos/defaults/agent" not in uninstall
 

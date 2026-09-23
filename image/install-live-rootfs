@@ -16,7 +16,8 @@ def install_tree(source, destination):
         elif path.is_file():
             target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
             shutil.copyfile(path, target)
-            target.chmod(0o755 if relative.parts[:2] == ("usr", "libexec") else 0o644)
+            executable = relative.parts[:2] in (("usr", "libexec"), ("usr", "bin"))
+            target.chmod(0o755 if executable else 0o644)
 
 
 if __name__ == "__main__":

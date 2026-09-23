@@ -187,7 +187,7 @@ function defaultMods() {
         right: [
             mod("updates", true), mod("gh", false), mod("t3", false), mod("hermes", false),
             mod("usage", false), mod("tray", false), mod("notifications", true), mod("vol", true),
-            mod("wifi", true), mod("bt", false), mod("batt", true)
+            mod("wifi", true), mod("bt", true), mod("batt", true)
         ]
     };
 }

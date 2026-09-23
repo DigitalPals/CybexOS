@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""Seed installed accounts during installation, before their first login."""
+import os
+from pathlib import Path
+import pwd
+import subprocess
+
+
+def accounts(entries):
+    return [account for account in entries if 1000 <= account.pw_uid < 65534
+            and account.pw_name != "liveuser"
+            and Path(account.pw_dir).is_absolute()
+            and Path(account.pw_dir).parent == Path("/home")]
+
+
+def main():
+    if os.geteuid() != 0:
+        raise PermissionError("Run this helper in the installed target as root")
+    for account in accounts(pwd.getpwall()):
+        # Run as the owner with a clean environment. No recursive chown, no
+        # root writes through user-controlled symlinks and no live-user state.
+        subprocess.run([
+            "runuser", "--user", account.pw_name, "--", "env", "-i",
+            "HOME=" + account.pw_dir, "USER=" + account.pw_name,
+            "PATH=/usr/local/bin:/usr/bin:/bin",
+            "/usr/libexec/cybexos-user-init", "--all",
+        ], check=True)
+
+
+if __name__ == "__main__":
+    main()

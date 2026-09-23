@@ -1,4 +1,7 @@
 Name:           cybexos-desktop
+# The packager derives Version and Release from VERSION and build provenance.
+# Epoch 1 allows source-versioned packages to replace the old hardcoded 0.1.0.
+Epoch:          1
 Version:        0.1.0
 Release:        0.1.alpha%{?dist}
 Summary:        CybexOS Hyprland and Quickshell desktop
@@ -10,10 +13,11 @@ Source0:        desktop.tar
 BuildArch:      x86_64
 AutoReqProv:    no
 # Replaces the alpha package published under the project's former name.
-Obsoletes:      fedora-config-desktop <= %{version}-%{release}
+Obsoletes:      fedora-config-desktop < %{epoch}:%{version}-%{release}
 # This RPM is an intermediate container; the live ISO compresses the installed
 # filesystem separately. Avoid spending minutes recompressing user toolchains.
 %global _binary_payload w3.zstdio
+%global _binary_filedigest_algorithm 8
 Requires:       bash coreutils util-linux systemd python3
 Requires:       hyprland hyprland-guiutils quickshell hypridle hyprlock hyprpolkitagent hyprsunset
 Requires:       xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-utils
@@ -46,9 +50,10 @@ Private alpha image integration; not a public distribution release.
 
 %install
 mkdir -p %{buildroot}
-cp -a usr opt %{buildroot}/
+cp -a usr opt etc %{buildroot}/
 
 %files
+%config(noreplace) /etc/yum.repos.d/cybexos-desktop.repo
 /opt/cybexos-apps/
 /opt/cybexos-builds/
 /usr/local/bin/*
@@ -61,12 +66,16 @@ cp -a usr opt %{buildroot}/
 /usr/lib/systemd/user/*.service
 /usr/lib/systemd/user/hypridle.service.d/
 /usr/lib/systemd/user/hyprpolkitagent.service.d/
+/usr/lib/systemd/user/voxtype.service.d/
 /usr/lib/systemd/user/hyprland-session.target
 /usr/share/cybexos/
 /usr/share/applications/cybex.desktop
 /usr/share/wayland-sessions/hyprland-quickshell.desktop
 /usr/share/fonts/cybexos/
 /usr/share/licenses/cybexos-fonts/
+/usr/share/plymouth/themes/cybex/
+/usr/lib/sysctl.d/60-cybexos-hardening.conf
+/usr/lib/firewalld/zones/cybexos.xml
 
 %changelog
 * Sat Sep 05 2026 CybexOS <noreply@localhost> - 0.1.0-0.1.alpha

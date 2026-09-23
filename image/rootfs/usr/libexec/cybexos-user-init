@@ -1,21 +1,62 @@
 #!/usr/bin/env python3
-"""Create absent per-user links; never adopt or replace existing user files."""
+"""Initialize desktop essentials quickly; copy offline apps safely in background."""
+import argparse
+import fcntl
+import json
 import os
 from pathlib import Path
 import shutil
-import fcntl
+import signal
+import subprocess
+import tempfile
+import time
 
 
-def seed_applications(source, destination):
-    """Copy absent defaults, with filesystem reflinks when supported.
+def directory(path):
+    """Never adopt a user's symlink or replace an existing non-directory."""
+    if path.is_symlink():
+        return False
+    if path.exists():
+        return path.is_dir()
+    if not directory(path.parent):
+        return False
+    try:
+        path.mkdir()
+    except FileExistsError:
+        return not path.is_symlink() and path.is_dir()
+    return True
 
-    Never descend into an existing symlink or replace an existing user file.
-    Interrupted initialization can safely resume on the next login.
+
+def copy_absent(source, target):
+    """Publish complete files atomically, retaining reflinks where supported.
+
+    A crash must never leave a partial final pathname that a subsequent login
+    mistakes for a personal file. link() also refuses a concurrent user edit.
     """
-    if destination.is_symlink() or (destination.exists() and not destination.is_dir()):
+    if target.exists() or target.is_symlink():
         return
-    destination.mkdir(parents=True, exist_ok=True)
-    for item in source.iterdir():
+    descriptor, temporary = tempfile.mkstemp(prefix=".cybexos-seed-", dir=target.parent)
+    temporary = Path(temporary)
+    try:
+        with os.fdopen(descriptor, "wb") as output, source.open("rb") as original:
+            try:
+                fcntl.ioctl(output.fileno(), 0x40049409, original.fileno())  # FICLONE
+            except OSError:
+                shutil.copyfileobj(original, output, length=1024 * 1024)
+            output.flush()
+            os.fchmod(output.fileno(), source.stat().st_mode & 0o777)
+        try:
+            os.link(temporary, target)
+        except FileExistsError:
+            pass
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def seed_applications(source, destination, progress=None):
+    if not directory(destination):
+        return
+    for item in sorted(source.iterdir()):
         target = destination / item.name
         if item.is_symlink():
             try:
@@ -23,44 +64,118 @@ def seed_applications(source, destination):
             except FileExistsError:
                 pass
         elif item.is_dir():
-            seed_applications(item, target)
-        else:
-            try:
-                with item.open("rb") as original, target.open("xb") as output:
-                    try:
-                        fcntl.ioctl(output.fileno(), 0x40049409, original.fileno())  # FICLONE
-                    except OSError:
-                        shutil.copyfileobj(original, output, length=1024 * 1024)
-                target.chmod(item.stat().st_mode & 0o777)
-            except FileExistsError:
-                pass
-            except BaseException:
-                target.unlink(missing_ok=True)
-                raise
+            seed_applications(item, target, progress)
+        elif item.is_file():
+            copy_absent(item, target)
+            if progress:
+                progress(item.stat().st_size)
 
 
-def initialize(home, vendor=Path("/usr/share/cybexos")):
-    seed = vendor / "user-seed"
-    marker = home / ".local/state/cybexos/offline-apps-seeded"
-    if seed.is_dir() and not marker.exists():
-        seed_applications(seed, home)
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.touch()
-    config = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config"))) / "cybexos"
-    data = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))) / "cybexos"
-    for directory in (config / "hypr", data / "themes", data / "plugins", home / ".local/bin"):
-        directory.mkdir(parents=True, exist_ok=True)
-    links = {data / "runtime": vendor / "runtime"}
-    for helper in (vendor / "bin").iterdir():
-        if helper.is_file():
-            links[home / ".local/bin" / helper.name] = helper
-    links[home / ".local/bin/cybex"] = Path("/usr/bin/cybex")
-    for destination, source in links.items():
+def write_status(path, status):
+    descriptor, temporary = tempfile.mkstemp(prefix=".seed-progress-", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w") as output:
+            json.dump(status, output)
+            output.write("\n")
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def notify(message, urgency="normal"):
+    if shutil.which("notify-send"):
         try:
-            destination.symlink_to(source)
-        except FileExistsError:
+            subprocess.run(["notify-send", "--app-name=CybexOS", "--urgency=" + urgency,
+                            "Offline applications", message], check=False, timeout=3,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired):
             pass
 
 
+def initialize(home, vendor=Path("/usr/share/cybexos"), mode="all", notifications=False):
+    config = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config"))) / "cybexos"
+    data = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))) / "cybexos"
+    state = Path(os.environ.get("XDG_STATE_HOME", str(home / ".local/state"))) / "cybexos"
+    for target in (config / "hypr", data / "themes", data / "plugins", home / ".local/bin", state):
+        if not directory(target):
+            raise RuntimeError(f"Preserved existing path; cannot initialize directory: {target}")
+    # Concurrent manual retries and login initialization share one lock.
+    descriptor = os.open(state / "seed.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        essential = vendor / "essential-seed"
+        if essential.is_dir():
+            seed_applications(essential, home)
+        links = {data / "runtime": vendor / "runtime"}
+        for helper in (vendor / "bin").iterdir():
+            if helper.is_file():
+                links[home / ".local/bin" / helper.name] = helper
+        links[home / ".local/bin/cybex"] = Path("/usr/bin/cybex")
+        for destination, source in links.items():
+            try:
+                destination.symlink_to(source)
+            except FileExistsError:
+                pass
+        seed = vendor / "user-seed"
+        marker = state / "offline-apps-seeded"
+        status_path = state / "seed-progress.json"
+        if marker.exists() or not seed.is_dir():
+            write_status(status_path, {"state": "ready", "label": "Offline applications are ready"})
+            return
+        if mode == "essential":
+            write_status(status_path, {"state": "pending", "label": "Preparing offline applications"})
+            return
+        manifest = vendor / "seed-groups.json"
+        total = json.loads(manifest.read_text())["totalBytes"] if manifest.exists() else 0
+        status = {"state": "copying", "label": "Preparing offline applications",
+                  "completedBytes": 0, "totalBytes": total}
+        write_status(status_path, status)
+        if notifications:
+            notify("The desktop is ready. Offline developer tools are being prepared.")
+        last_update = 0
+
+        def progress(size):
+            nonlocal last_update
+            status["completedBytes"] += size
+            now = time.monotonic()
+            if now - last_update >= 0.5:
+                write_status(status_path, status)
+                last_update = now
+
+        try:
+            seed_applications(seed, home, progress)
+            # LazyVim's config and rustup/npm/user command shims become
+            # available after their offline dependencies. Launching them
+            # during live setup must never start an automatic download.
+            final = vendor / "final-seed"
+            if final.is_dir():
+                seed_applications(final, home, progress)
+            marker.touch()
+            write_status(status_path, {**status, "state": "ready", "label": "Offline applications are ready"})
+        except BaseException:
+            write_status(status_path, {**status, "state": "error", "label":
+                "Application preparation was interrupted. Run cybex prepare-apps to retry."})
+            if notifications:
+                notify("Preparation was interrupted. Run cybex prepare-apps to retry.", "critical")
+            raise
+        if notifications:
+            notify("Your offline applications and developer tools are ready.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--essential", action="store_true")
+    group.add_argument("--background", action="store_true")
+    group.add_argument("--all", action="store_true")
+    args = parser.parse_args()
+
+    def interrupted(*_):
+        raise InterruptedError("Session ended")
+
+    signal.signal(signal.SIGTERM, interrupted)
+    initialize(Path.home(), mode="essential" if args.essential else "all", notifications=args.background)
+
+
 if __name__ == "__main__":
-    initialize(Path.home())
+    main()

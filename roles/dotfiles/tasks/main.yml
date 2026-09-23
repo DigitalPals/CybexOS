@@ -81,17 +81,7 @@
     src: "{{ config_repo }}/assets/scripts/{{ item }}"
     dest: "{{ primary_home }}/.local/bin/{{ item }}"
     mode: "0755"
-  loop:
-    - screenshot
-    - screen-record
-    - quickshell-reminder
-    - screen-ocr
-    - clipboard-copy-image
-    - clipboard-image-to-file
-    - clipboard-history-store
-    - localsend
-    - localsend-share
-    - cybexos-agent
+  loop: "{{ cybexos_desktop_contract.userHelpers }}"
 
 - name: Install the CybexOS command
   become: true

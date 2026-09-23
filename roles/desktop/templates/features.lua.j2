@@ -4,6 +4,7 @@ return {
   podman = {{ (features.podman | bool) | ternary('true', 'false') }},
   developer_tools = {{ (features.developer_tools | bool) | ternary('true', 'false') }},
   connected_widgets = {{ (features.connected_widgets | bool) | ternary('true', 'false') }},
+  private_portal = {{ ((features.private_hooks | default(false) | bool) and ((private_services | default({})).portal_binary | default('') | length > 0)) | ternary('true', 'false') }},
   proprietary_apps = {{ (features.proprietary_apps | bool) | ternary('true', 'false') }},
   xps_2026 = {{ (cybexos_xps_2026 | bool) | ternary('true', 'false') }},
 }

@@ -1,0 +1,468 @@
+#!/usr/bin/python3
+"""CybexOS's small Anaconda 44 DBus client. Never partitions disks itself.
+
+Request JSON arrives on stdin; stdout is secret-free NDJSON. Anaconda owns
+device discovery, in-memory partition planning, validation, installation and
+progress. Only `install` starts its installation task, after plan confirmation.
+See image/INSTALLER.md for the versioned upstream interface and test limits.
+"""
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import pwd
+import re
+import secrets
+import sys
+import subprocess
+import time
+from zoneinfo import available_timezones
+
+RUNTIME = Path('/run/cybexos-installer')
+RESERVED = {'root', 'liveuser', 'bin', 'daemon', 'adm', 'mail', 'ftp', 'nobody',
+            'dbus', 'systemd', 'gdm', 'sshd', 'polkitd', 'chrony'}
+
+
+class Invalid(ValueError):
+    """A message safe to display; never include secret input in one."""
+
+
+def plain(value):
+    if hasattr(value, 'unpack'):
+        return plain(value.unpack())
+    if isinstance(value, dict):
+        return {key: plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [plain(item) for item in value]
+    return value
+
+
+def validate_account(data, choices):
+    username = data.get('username', '')
+    if not isinstance(username, str) or not re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}', username) or username in RESERVED:
+        raise Invalid('Choose a username of 1–31 lowercase letters, numbers, underscores or dashes, starting with a letter.')
+    password = data.get('password', '')
+    if not isinstance(password, str) or len(password) < 12 or len(password) > 512:
+        raise Invalid('Use a password of 12–512 characters.')
+    if any(ord(char) < 32 or ord(char) == 127 for char in password):
+        raise Invalid('The password cannot contain control characters.')
+    if password != data.get('confirm'):
+        raise Invalid('The passwords do not match.')
+    keyboard = data.get('keyboard', '')
+    if keyboard not in {item['id'] for item in choices['keyboards']}:
+        raise Invalid('Choose an available keyboard layout.')
+    locale = data.get('locale', '')
+    if locale not in choices['locales']:
+        raise Invalid('Choose an available system language.')
+    timezone = data.get('timezone', '')
+    if timezone not in available_timezones():
+        raise Invalid('Choose a valid timezone.')
+    hostname = data.get('hostname') or 'cybexos'
+    if not isinstance(hostname, str) or not re.fullmatch(r'[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?', hostname):
+        raise Invalid('The computer name must contain 1–63 letters, numbers or dashes.')
+    encrypted = data.get('encrypted', True)
+    if not isinstance(encrypted, bool):
+        raise Invalid('The encryption choice is invalid.')
+    return dict(username=username, keyboard=keyboard, locale=locale, timezone=timezone,
+                hostname=hostname, encrypted=encrypted)
+
+
+def fingerprint(disk):
+    identity = {key: disk.get(key) for key in ('name', 'path', 'size', 'serial', 'wwn', 'device_id')}
+    return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+
+
+def apply_live_keyboard(layout, run=subprocess.run):
+    """Apply only an Anaconda-listed XKB layout to the live user's compositor."""
+    match = re.fullmatch(r'([A-Za-z0-9_-]+)(?:\s*\(([A-Za-z0-9_-]+)\))?', layout)
+    if not match:
+        raise Invalid('This keyboard layout needs the full installer.')
+    user = pwd.getpwnam('liveuser')
+    command = ['runuser', '-u', 'liveuser', '--', 'env', f'XDG_RUNTIME_DIR=/run/user/{user.pw_uid}']
+    instances = json.loads(run(command + ['/usr/bin/hyprctl', '-j', 'instances'],
+                               check=True, capture_output=True, text=True).stdout)
+    instances = [item for item in instances if Path(f"/proc/{int(item['pid'])}").stat().st_uid == user.pw_uid]
+    if len(instances) != 1:
+        raise Invalid('The live keyboard could not be applied to a unique desktop session.')
+    signature = instances[0]['instance']
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+', signature):
+        raise Invalid('The live desktop instance is invalid.')
+    command += [f'HYPRLAND_INSTANCE_SIGNATURE={signature}', '/usr/bin/hyprctl']
+    for key, value in [('input:kb_variant', ''), ('input:kb_layout', match[1]), ('input:kb_variant', match[2] or '')]:
+        result = run(command + ['keyword', key, value], check=True, capture_output=True, text=True)
+        if result.stdout.strip() != 'ok':
+            raise Invalid('The live keyboard could not be applied. Choose another layout.')
+
+
+class State:
+    def __init__(self, directory=RUNTIME):
+        self.directory = directory
+
+    def read(self):
+        try:
+            return json.loads((self.directory / 'state.json').read_text())
+        except FileNotFoundError:
+            return {'phase': 'setup'}
+
+    def write(self, value):
+        # No password, password hash, passphrase or raw DBus request belongs here.
+        self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        temporary = self.directory / ('.state-' + secrets.token_hex(12) + '.tmp')
+        with temporary.open('w', encoding='utf-8') as stream:
+            os.chmod(temporary, 0o600)
+            json.dump(value, stream)
+        temporary.replace(self.directory / 'state.json')
+
+
+def installation_status(store, run=subprocess.run):
+    state = store.read()
+    if state.get('phase') == 'installing':
+        service = run(['systemctl', 'show', 'cybexos-installer-worker.service',
+                       '--property=ActiveState', '--value'], capture_output=True, text=True)
+        if (time.time() - state.get('worker_queued_at', time.time()) > 30
+                and service.stdout.strip() not in ('active', 'activating', 'reloading', 'deactivating')):
+            # A killed worker does not prove that Anaconda's storage task stopped.
+            # Fail closed: never report success or permit a replacement install.
+            state.update(phase='failed-install', message='The installation monitor stopped unexpectedly. Anaconda may still be writing the disk. Keep this session open and inspect the installer diagnostics before restarting.')
+            # This status reader never writes: the worker alone owns progress
+            # and completion. Its concurrent final update must win this race.
+    return state
+
+
+class Installer:
+    def __init__(self, backend, state, emit=lambda event: None):
+        self.backend, self.state, self.emit = backend, state, emit
+
+    def require_idle(self):
+        if self.state.read().get('phase') in ('installing', 'complete', 'failed-install'):
+            raise Invalid('Installation has already started. Check its status before leaving this window.')
+
+    def inventory(self):
+        return self.backend.inventory()
+
+    def keyboard(self, data):
+        self.require_idle()
+        layout = data.get('keyboard', '')
+        if layout not in {item['id'] for item in self.inventory()['keyboards']}:
+            raise Invalid('Choose an available keyboard layout.')
+        result = self.backend.keyboard(layout)
+        # Changing the active keyboard invalidates any old disk confirmation.
+        self.state.write({'phase': 'setup', 'keyboard': layout})
+        return result
+
+    def plan(self, data):
+        self.require_idle()
+        self.state.write({'phase': 'planning'})  # Any old confirmation token is invalid now.
+        try:
+            choices = self.inventory()
+            account = validate_account(data, choices)
+            disk = next((item for item in choices['disks'] if item['name'] == data.get('disk')), None)
+            if disk is None:
+                raise Invalid('Select an available installation disk. The live medium cannot be selected.')
+            required = max(64 * 1024**3, choices.get('required_bytes', 0))
+            if disk['size'] < required:
+                raise Invalid(f'CybexOS needs a disk with at least {(required + 1024**3 - 1) // 1024**3} GiB for its included applications.')
+            result = self.backend.plan(account, data['password'], disk)
+            if result.get('errors'):
+                raise Invalid('Anaconda rejected the storage layout. Open Advanced storage to review the disk.')
+            state = dict(phase='review', token=secrets.token_hex(24), created=time.time(),
+                         disk=disk, fingerprint=fingerprint(disk), account=account,
+                         partitioning=result['partitioning'], actions=result['actions'],
+                         warnings=result.get('warnings', []), boot_keyboard=result['boot_keyboard'])
+            self.state.write(state)
+            return state
+        except Exception:
+            self.state.write({'phase': 'failed-plan'})
+            raise
+        finally:
+            data.pop('password', None)
+            data.pop('confirm', None)
+
+    def install(self, data):
+        state = self.state.read()
+        if state.get('phase') != 'review':
+            raise Invalid('Review a new installation plan before installing.')
+        if not secrets.compare_digest(str(data.get('token', '')), state['token']):
+            raise Invalid('This review has expired. Review the disk again.')
+        if data.get('confirmed_disk') != state['disk']['name'] or data.get('erase_confirmed') is not True:
+            raise Invalid('Confirm erasing the selected disk before installing.')
+        if time.time() - state['created'] > 1800:
+            raise Invalid('This review has expired. Review the disk again.')
+        current = next((item for item in self.inventory()['disks'] if item['name'] == state['disk']['name']), None)
+        if current is None or fingerprint(current) != state['fingerprint']:
+            self.state.write({'phase': 'failed-plan'})
+            raise Invalid('The selected disk changed. Review the available disks again.')
+        # Reject storage edits made by another UI between review and confirmation.
+        self.backend.check_plan(state)
+        state['phase'] = 'installing'
+        state['worker_queued_at'] = time.time()
+        state.pop('token')
+        self.state.write(state)
+
+        try:
+            self.backend.start_install(state)
+        except Exception:
+            state.update(phase='failed-install', message='The installation worker could not start. Review its status before restarting the installer.')
+            self.state.write(state)
+            raise
+        return state
+
+    def worker(self):
+        state = self.state.read()
+        if state.get('phase') != 'installing' or state.get('task'):
+            raise Invalid('No new confirmed installation is queued.')
+
+        def progress(step, total, message):
+            state.update(step=step, total=total, message=message)
+            self.state.write(state)
+            self.emit({'event': 'progress', 'phase': 'installing', 'step': step,
+                       'total': total, 'message': message})
+
+        try:
+            self.backend.run_install(state, progress, self.state)
+            state.update(phase='complete', message='CybexOS is installed. Restart and remove the installation medium.')
+        except Exception:
+            state.update(phase='failed-install', message='Installation did not finish. Keep this session open and review Anaconda diagnostics before retrying.')
+            self.state.write(state)
+            raise
+        self.state.write(state)
+        return state
+
+    def reset(self):
+        self.require_idle()
+        self.backend.reset()
+        self.state.write({'phase': 'setup'})
+        return {'phase': 'setup'}
+
+
+class Anaconda:
+    """Adapter for anaconda 44.30, matching anaconda-webui 68's API sequence."""
+    def __init__(self):
+        # Always discover the installation bus from Anaconda's own root-owned file.
+        os.environ.pop('DBUS_ANACONDA_SESSION_ADDRESS', None)
+        os.environ.pop('DBUS_STARTER_ADDRESS', None)
+        from pyanaconda.core.dbus import AnacondaMessageBus
+        from gi.repository import GLib
+        self.bus = AnacondaMessageBus()
+        self.GLib = GLib
+
+    def proxy(self, module, suffix=''):
+        service = 'org.fedoraproject.Anaconda.' + ('Boss' if module == 'Boss' else 'Modules.' + module)
+        path = '/' + service.replace('.', '/') + suffix
+        return self.bus.get_proxy(service, path)
+
+    def task(self, module, path, result=False, progress=None, timeout=300):
+        service = 'org.fedoraproject.Anaconda.' + ('Boss' if module == 'Boss' else 'Modules.' + module)
+        task = self.bus.get_proxy(service, path)
+        context = self.GLib.MainContext.default()
+        stopped = []
+        task.Stopped.connect(lambda: stopped.append(True))
+        if progress:
+            task.ProgressChanged.connect(lambda step, message: progress(step, task.Steps, message))
+        task.Start()
+        start = time.monotonic()
+        while not stopped:
+            while context.pending():
+                context.iteration(False)
+            if time.monotonic() - start > timeout:
+                # Never cancel an installation whose filesystem transaction may be active.
+                raise Invalid('Anaconda is taking longer than expected. Keep the installer open and check its status.')
+            time.sleep(0.05)
+        task.Finish()  # Propagates failures; stopped does not mean succeeded.
+        return plain(task.GetResult()) if result else None
+
+    def inventory(self):
+        selection = self.proxy('Storage', '/DiskSelection')
+        viewer = self.proxy('Storage', '/DeviceTree')
+        disks = []
+        for name in selection.GetUsableDisks():
+            device = plain(viewer.GetDeviceData(name))
+            if not device.get('is-disk') or device.get('protected'):
+                continue
+            attrs = device.get('attrs', {})
+            disks.append(dict(name=name, path=device['path'], size=device['size'],
+                              model=attrs.get('model') or device.get('description') or name,
+                              serial=attrs.get('serial', ''), wwn=attrs.get('wwn', ''),
+                              device_id=device.get('device-id', ''), removable=device.get('removable', False)))
+        localization = self.proxy('Localization')
+        keyboards = plain(localization.GetKeyboardLayouts())
+        keyboard_choices = [{'id': item['layout-id'], 'label': item['description']} for item in keyboards]
+        locales = list(localization.GetCommonLocales())
+        if localization.Language and localization.Language not in locales:
+            locales.append(localization.Language)
+        timezone = self.proxy('Timezone').Timezone or 'UTC'
+        return dict(disks=disks, keyboards=keyboard_choices, locales=locales,
+                    locale=localization.Language or 'en_US.UTF-8',
+                    keyboard=(list(localization.XLayouts) or ['us'])[0], timezone=timezone,
+                    required_bytes=int(self.proxy('Payloads').CalculateRequiredSpace()))
+
+    def reset(self):
+        self.proxy('Storage').ResetPartitioning()
+        self.proxy('Users').Users = []
+        self.proxy('Storage', '/DiskSelection').SelectedDisks = []
+        initialization = self.proxy('Storage', '/DiskInitialization')
+        initialization.InitializationMode = 0
+        initialization.DrivesToClear = []
+        initialization.DevicesToClear = []
+
+    def keyboard(self, layout):
+        localization = self.proxy('Localization')
+        localization.XLayouts = [layout]
+        localization.VirtualConsoleKeymap = ''
+        self.task('Localization', localization.PopulateMissingKeyboardConfigurationWithTask())
+        if not localization.VirtualConsoleKeymap:
+            raise Invalid('This layout cannot be used at the boot unlock screen.')
+        apply_live_keyboard(layout)
+        return {'keyboard': layout, 'boot_keyboard': localization.VirtualConsoleKeymap}
+
+    def plan(self, account, password, disk):
+        from pyanaconda.core.users import crypt_password
+        from pyanaconda.modules.common.structures.user import UserData
+        from pyanaconda.modules.common.structures.partitioning import PartitioningRequest
+        self.reset()
+        users = self.proxy('Users')
+        user = UserData()
+        user.name = account['username']
+        user.password = crypt_password(password)
+        user.is_crypted = True
+        user.groups = ['wheel']
+        users.Users = [UserData.to_structure(user)]
+        users.ClearRootPassword()
+        users.IsRootAccountLocked = True
+        localization = self.proxy('Localization')
+        localization.Language = account['locale']
+        localization.XLayouts = [account['keyboard']]
+        localization.VirtualConsoleKeymap = ''
+        self.task('Localization', localization.PopulateMissingKeyboardConfigurationWithTask())
+        boot_keyboard = localization.VirtualConsoleKeymap
+        if not boot_keyboard:
+            raise Invalid('Anaconda could not map this keyboard to the boot unlock screen. Choose another layout.')
+        self.proxy('Timezone').SetTimezoneWithPriority(account['timezone'], 90)
+        self.proxy('Network').Hostname = account['hostname']
+        storage = self.proxy('Storage')
+        self.proxy('Storage', '/DiskSelection').SelectedDisks = [disk['name']]
+        initialization = self.proxy('Storage', '/DiskInitialization')
+        initialization.InitializationMode = 1  # CLEAR_PARTITIONS_ALL; selected disk only.
+        initialization.DrivesToClear = [disk['name']]
+        initialization.DevicesToClear = []
+        initialization.InitializeLabelsEnabled = True
+        path = storage.CreatePartitioning('AUTOMATIC')
+        partitioning = self.bus.get_proxy('org.fedoraproject.Anaconda.Modules.Storage', path)
+        request = PartitioningRequest.from_structure(partitioning.Request)
+        request.partitioning_scheme = 1  # BTRFS
+        request.encrypted = account['encrypted']
+        request.luks_version = 'luks2'
+        partitioning.Request = PartitioningRequest.to_structure(request)
+        if account['encrypted']:
+            partitioning.SetPassphrase(password)
+        self.proxy('Storage', '/Bootloader').Drive = ''
+        self.task('Storage', partitioning.ConfigureWithTask())
+        storage.ApplyPartitioning(path)
+        report = self.task('Storage', partitioning.ValidateWithTask(), result=True)
+        return dict(partitioning=path, actions=plain(self.proxy('Storage', '/DeviceTree').GetActions()),
+                    errors=report.get('error-messages', []), warnings=report.get('warning-messages', []),
+                    boot_keyboard=boot_keyboard)
+
+    def check_plan(self, state):
+        storage = self.proxy('Storage')
+        if storage.AppliedPartitioning != state['partitioning']:
+            raise Invalid('The storage plan changed. Review the installation again.')
+        if list(self.proxy('Storage', '/DiskSelection').SelectedDisks) != [state['disk']['name']]:
+            raise Invalid('The selected storage changed. Review the installation again.')
+        actions = plain(self.proxy('Storage', '/DeviceTree').GetActions())
+        if actions != state['actions']:
+            raise Invalid('The planned disk changes changed. Review the installation again.')
+        partitioning = self.bus.get_proxy('org.fedoraproject.Anaconda.Modules.Storage', state['partitioning'])
+        report = self.task('Storage', partitioning.ValidateWithTask(), result=True)
+        if report.get('error-messages'):
+            raise Invalid('Anaconda no longer considers this storage plan valid.')
+
+    def start_install(self, state):
+        # The worker is independent of the browser/Cockpit channel. Closing a
+        # tab never terminates the monitor or starts a second installation.
+        subprocess.run(['/usr/bin/systemd-run', '--unit=cybexos-installer-worker',
+                        '--collect', '--property=Type=exec',
+                        '/usr/libexec/cybexos-installer-backend', 'worker'],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, check=True)
+
+    def run_install(self, state, progress, store):
+        tasks = list(self.proxy('Boss').InstallWithTasks())
+        if len(tasks) != 1:
+            raise Invalid('This Anaconda version returned an unsupported installation task sequence.')
+        state['task'] = tasks[0]
+        store.write(state)
+        self.task('Boss', tasks[0], progress=progress, timeout=4 * 3600)
+
+
+def check_live_environment(require_backend=True):
+    if os.geteuid() != 0:
+        raise Invalid('The installer needs its authorized local administrator connection.')
+    cmdline = Path('/proc/cmdline').read_text().split()
+    if not Path('/run/cybexos-live').is_file() or not any(item in ('rd.live.image', 'rd.live.image=1') for item in cmdline):
+        raise Invalid('Installation is available only from the CybexOS live image.')
+    if require_backend and not Path('/run/anaconda/backend_ready').exists():
+        raise Invalid('Anaconda is still starting. Try again in a moment.')
+
+
+def main():
+    os.umask(0o077)
+    command = sys.argv[1] if len(sys.argv) == 2 else ''
+    if command not in ('inventory', 'keyboard', 'plan', 'install', 'status', 'reset', 'advanced', 'worker', 'reboot'):
+        raise Invalid('Unknown installer request.')
+    check_live_environment(require_backend=command not in ('status', 'reboot'))
+    RUNTIME.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # Serialize planning and commit. Status remains readable during installation.
+    lock = (RUNTIME / 'lock').open('a')
+    if command != 'status':
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | (0 if command == 'worker' else fcntl.LOCK_NB))
+        except BlockingIOError:
+            raise Invalid('Another installer operation is still running.') from None
+    if command == 'status':
+        return installation_status(State())
+    if command == 'reboot':
+        if State().read().get('phase') != 'complete':
+            raise Invalid('Wait for installation to finish before restarting.')
+        subprocess.run(['systemctl', 'reboot'], check=True)
+        return {'phase': 'complete'}
+    if command == 'worker':
+        return Installer(Anaconda(), State(), emit).worker()
+    raw = sys.stdin.buffer.read(16385)
+    if len(raw) > 16384:
+        raise Invalid('Installer request is too large.')
+    try:
+        data = json.loads(raw or b'{}')
+    except (ValueError, UnicodeError):
+        raise Invalid('Installer request is invalid.') from None
+    if not isinstance(data, dict):
+        raise Invalid('Installer request is invalid.')
+    installer = Installer(Anaconda(), State(), emit)
+    if command == 'inventory':
+        return installer.inventory()
+    if command in ('reset', 'advanced'):
+        return installer.reset()
+    return getattr(installer, command)(data)
+
+
+def emit(event):
+    # The browser may disconnect while Anaconda continues installing. Persisted
+    # state still records completion; broken stdout must not abort the monitor.
+    try:
+        print(json.dumps(event), flush=True)
+    except BrokenPipeError:
+        pass
+
+
+if __name__ == '__main__':
+    try:
+        emit({'event': 'result', 'ok': True, 'data': main()})
+    except Invalid as error:
+        emit({'event': 'result', 'ok': False, 'error': str(error)})
+        sys.exit(1)
+    except Exception:
+        # Remote errors can include method parameters; do not echo or log them.
+        emit({'event': 'result', 'ok': False,
+              'error': 'Anaconda could not complete this operation. Open Advanced storage or check the installer diagnostics.'})
+        sys.exit(1)

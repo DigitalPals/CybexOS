@@ -5,6 +5,7 @@ command_name=${1:-help}
 case $command_name in
   welcome|configure) exec /usr/bin/cybexos-welcome "$@" ;;
   update) exec /usr/share/cybexos/bin/cybexos-update-run run "$@" ;;
+  prepare-apps) exec /usr/libexec/cybexos-user-init --background "$@" ;;
   agent) exec /usr/share/cybexos/bin/cybexos-agent "$@" ;;
   plugin|dev) exec /usr/share/cybexos/bin/cybexos-runtime "$command_name" "$@" ;;
   version|--version) exec rpm -q cybexos-desktop ;;
@@ -13,7 +14,7 @@ case $command_name in
     exec hyprctl configerrors
     ;;
   help|-h|--help)
-    echo 'Usage: cybex {welcome|configure|update|agent|plugin|dev|version|verify}'
+    echo 'Usage: cybex {welcome|configure|update|prepare-apps|agent|plugin|dev|version|verify}'
     ;;
   *) echo "Unknown command: $command_name" >&2; exit 2 ;;
 esac

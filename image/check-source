@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""Run image tooling and installer fixtures without building or booting an ISO."""
+from pathlib import Path
+import os
+import subprocess
+import sys
+
+
+def main():
+    root = Path(__file__).resolve().parents[1]
+    environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1",
+                   "QT_QPA_PLATFORM": "offscreen", "QT_QUICK_BACKEND": "software"}
+    commands = [[sys.executable, "image/tests"],
+                [sys.executable, "-m", "unittest", "discover", "-s", "image", "-p", "test_*.py", "-v"]]
+    javascript = sorted({*root.glob("image/**/*.test.mjs"), *root.glob("image/**/*.test.cjs")})
+    if javascript:
+        commands.append(["node", "--test", *(str(path) for path in javascript)])
+    failures = 0
+    for command in commands:
+        print("[source check] " + " ".join(command), flush=True)
+        try:
+            result = subprocess.run(command, cwd=root, env=environment, check=False)
+            failures += result.returncode != 0
+        except OSError as error:
+            print(str(error), file=sys.stderr)
+            failures += 1
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

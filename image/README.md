@@ -1,197 +1,267 @@
 # CybexOS live image
 
-The live image packages the existing Hyprland/Quickshell desktop, boots into
-a temporary account, and opens a welcome window with **Install CybexOS**
-and **Try the desktop first**. Installation uses Fedora 44's Anaconda Web UI.
-Anaconda owns disk selection, partitioning, encryption, account creation,
-installation progress, and its final destructive confirmation. The welcome
-application never runs a partitioning command.
+The image packages the shared Hyprland/Quickshell desktop and offline
+application set. The proposed boot path is **Cybex firmware menu → Cybex
+Plymouth → live desktop/welcome → three-screen installer**. After an encrypted
+installation, it is **disk unlock → automatic login → desktop**.
 
-The ISO carries the full default application set: desktop and media apps,
-Fastfetch and shell tools, Steam, Docker, Podman/Distrobox, Tailscale, Brave,
-1Password, ChatGPT, LocalSend, Spotify, developer tools, the Android SDK,
-Rust, Claude Code, OpenCode, Codex CLI, and T3 Code. Installation and initial
-application setup work offline. Signing in and using online services still
-require the relevant accounts and network access.
+The September 23 implementation has source, Qt, backend-fixture and browser
+checks only. **No ISO was built or booted for these changes.** The earlier
+image in [VALIDATION.md](VALIDATION.md) predates this implementation and does
+not qualify it. See [IMPLEMENTATION-2026-09-23.md](IMPLEMENTATION-2026-09-23.md)
+for changes and remaining integration checks, and the historical
+[audit](AUDIT-2026-09-23.md) for the original findings.
 
-## Try the image
+## Installation experience
 
-In the build output directory, run `sha256sum --check SHA256SUMS`. Open
-`CybexOS-Live-44.iso` in a virtual machine, or choose **Custom image** in Fedora
-Media Writer and follow its prompts to write the ISO to your chosen USB drive.
-Writing an image replaces the contents of that USB drive.
+| Screen | Required choices | Defaults |
+| --- | --- | --- |
+| Your setup | Username, password/confirmation, keyboard | Language, timezone and hostname under More options; live keyboard applied before password entry, with a test field |
+| Install location | Disk, identified by model and capacity | LUKS2-encrypted Btrfs, shared initial disk/account password, automatic login |
+| Review and install | Explicit confirmation to erase the selected disk | Anaconda's actual partition plan, progress, completion and reboot |
 
-Boot the image and choose **Install CybexOS** in the welcome window.
-Anaconda walks through language, timezone, storage, optional disk encryption,
-and your account. Review the selected disk before confirming installation.
-When installation finishes, restart and remove the USB drive. Log in to your
-new account to open the Hyprland/Quickshell desktop and its first-login welcome.
+The custom Cockpit page uses Fedora 44 Anaconda's DBus storage/account/task
+interfaces. Anaconda performs validation, partitioning and installation.
+The full Anaconda Web UI remains available for advanced storage. The simple
+flow requires a disk of at least 64 GiB and erases the selected disk.
+Encryption can be disabled explicitly; that path uses a normal login screen.
+Root stays locked, and the new user has administrator privileges.
 
-## Build on Debian or Fedora
+Passwords are passed through the privileged local transport and Anaconda's
+in-memory interfaces. The account is stored as a password hash. CybexOS's
+confirmation/progress files contain neither the password nor its hash.
+Installation runs in a durable systemd worker and progress survives a browser
+reload. A failed or lost installation worker requires inspection/restart;
+the UI does not automatically retry disk writes.
 
-On Debian, the host prerequisites are `qemu-system-x86`, `qemu-utils`,
-`cloud-image-utils`, and `openssh-client`, plus read/write access to `/dev/kvm`.
-Python 3.11 or later is required. The host does not need Anaconda, RPM build
-tools, privileged containers, loop devices, or Fedora installed.
+The account and encryption passwords start equal; changing one later does
+not change the other. GNOME Keyring retains its protection, so applications
+may request a first-use unlock after automatic login. See
+[INSTALLER.md](INSTALLER.md) for interfaces, keyboard constraints and upstream
+version references.
 
-```bash
-./image/build --output "$HOME/.local/share/cybexos/images/alpha-01"
-```
+## Desktop and first boot
 
-Use a new, empty output directory for each build. Allow approximately 180 GiB
-of free disk space and 24 GiB of RAM for the complete application build. The builder:
+Both deployment paths consume [the shared desktop contract](../assets/desktop-contract.json),
+wallpaper collection, existing Cybex Plymouth artwork, helpers, firewall zone
+and sysctl policy. Bluetooth visibility matches the workstation default.
+The image contains the repository desktop and default applications; it does
+not export personal plugins (including the Omarchy plugin), credentials,
+monitor overrides or private launchers from the build machine. The private
+portal keybinding is enabled only when its helper exists.
 
-1. Downloads and SHA-256-verifies the same Fedora Cloud 44 base used by the
-   existing VM convergence test.
-2. Boots an isolated KVM guest with a new 220 GiB sparse overlay and temporary
-   SSH credentials. Only those virtual disks are attached.
-3. Transfers an explicit allowlist of source files and runs the existing
-   application role in the disposable guest. It installs pinned upstream
-   tools, complete system Flatpaks, and a clean per-user application seed.
-4. Builds the desktop RPM, adds the shared application lists to the compose
-   kickstart, and creates the live ISO with the `livecd-tools` image library.
-   Applications are selected directly, so later application removals leave
-   the desktop package installed.
-5. Copies the ISO, RPM, application and payload manifests, and checksums to the output directory.
-6. Stops its VM and removes the temporary disk and credentials on success,
-   failure, or a normal interruption. Build and console logs are retained.
+The firmware menu uses the same dark background and warm accent as Plymouth,
+welcome and installer. Media checks, basic graphics and recovery entries are
+preserved. Installed accounts are seeded before reboot. Live login copies
+only desktop essentials before starting Hyprland; a background service copies
+the large offline application seed and reports progress in the welcome
+window. Reflinks are used where supported. Partially copied files never
+become active, personal files/symlinks are preserved, and interrupted seeding
+can be resumed with `cybex prepare-apps`. Developer tool links and editor
+configuration activate after their dependencies are copied.
 
-The builder uses Fedora's moving security-update repositories, so successive
-builds are not byte-for-byte reproducible. The Cloud base, COPR key, and font
-downloads are checksum-verified. All upstream RPM repositories retain package
-signature checks. Fedora 44 ships an older `livecd-tools` whose transaction
-implementation skips signature checking; `image/compose` supplies a DNF
-adapter that checks every upstream RPM before any installation script runs.
-Only the freshly built private alpha desktop RPM and inventory-checksummed
-upstream application RPMs may use the local repository. The latter are
-SHA-256-verified again at the transaction boundary. Vendor repositories retain
-their package and metadata signature policies.
+The default application payload includes the desktop/media tools, Steam,
+Docker, Podman/Distrobox, Tailscale, Brave, 1Password, ChatGPT, LocalSend,
+Spotify, Android SDK, Rust, Claude Code, OpenCode, Codex CLI and T3 Code.
+The payload is prepared for offline installation and first use. Online
+services still need their accounts/network access. T3 waits for its offline
+seed rather than downloading a fallback during setup.
 
-## Runtime and accounts
+The temporary live account has administrative access and autologin; live
+locking is disabled. The destination cleanup removes the account, its
+privileges and live-only services/installer files, sets the shared firewall
+policy, and rebuilds initramfs after removing live configuration. Autologin
+is enabled only after the mounted target root is verified as encrypted.
 
-`cybexos-desktop` owns shared files under `/usr/share/cybexos`,
-session units under `/usr/lib/systemd/user`, and commands under `/usr/bin` and
-`/usr/libexec`. It reuses the existing QML, Hyprland modules, helper scripts,
-and checksum-pinned fonts. The image packaging step adapts system helper paths
-in its staging directory; the Ansible installation is unchanged.
-
-At login, `cybexos-user-init` copies absent application defaults from
-the offline seed, using filesystem reflinks when available, and creates
-absent runtime/helper links. Seed-owned symlinks are relative, so every
-account gets working toolchains and independent writable application state.
-The first live login can take around a minute while the toolchains are copied
-into the writable overlay. Installed Btrfs systems can use reflinks instead.
-Existing files and even dangling links are preserved. No first-login download
-or privileged background installer is needed. Shell preferences, plugins, themes, and Hyprland overrides
-remain per-user. The system keyboard choice is read through locale1 at login.
-
-The live account is created at boot in the writable overlay, not baked into
-the packaged desktop. It has temporary autologin and administrative access.
-Anaconda's post-install script explicitly removes that account, its privilege
-rules, and live-only startup files from the destination, and restores GDM
-without autologin. It records Hyprland as the new accounts' GDM session so the
-first login opens the intended desktop. The installed user sees a separate
-first-login welcome.
-Locking and idle lock are disabled in the passwordless live session.
-
-On image installations, `cybex update` uses the existing durable DNF
-and Flatpak updater. Desktop RPM updates will require a signed RPM repository;
-the Ansible source-release updater is not used to replace RPM-owned files.
-The original checkout-based installer and its update channel remain available
-for existing installations.
-
-## Checks
-
-### Graphics coverage
-
-The image includes Fedora's kernel driver sets, Mesa OpenGL/EGL and Vulkan
-drivers, and explicit AMD, Intel, and NVIDIA GPU firmware packages. These
-firmware packages must be listed separately: the compose disables weak
-dependencies, so `linux-firmware` alone does not install them. Composition
-checks that the required graphics packages are installed before packaging.
-The generic live initramfs explicitly includes kernel modesetting (`drm`);
-hardware detection chooses the driver, and Hyprland requests each display's
-preferred mode. No GPU vendor is forced or blacklisted.
-
-This covers Intel (`i915`/`xe`), AMD (`radeon`/`amdgpu`), NVIDIA through
-Nouveau/Mesa (including NVK on supported GPUs), and Fedora's virtual display
-drivers such as virtio and VMware. Kernel driver availability does not imply
-that every older GPU supports the graphics features Hyprland requires.
-Proprietary NVIDIA drivers are not bundled: they require selecting a branch
-for the GPU, matching kernel modules, and Secure Boot signing/enrollment when
-applicable. Firmware is not a replacement for those drivers on GPUs that need
-them. Physical GPU compatibility still needs testing after the next rebuild.
-
-For an unexpected low resolution, `lspci -nnk` (included in the image) shows
-the GPU and bound kernel driver, `hyprctl monitors all` shows display modes,
-and `sudo journalctl -b -k` exposes firmware, modesetting, and EDID failures.
-Boot the normal menu entry when testing graphics; a basic-graphics entry with
-`nomodeset` intentionally disables normal kernel modesetting.
-
-### Validation
-
-The first private alpha's completed VM tests and exact ISO checksum are
-recorded in [VALIDATION.md](VALIDATION.md).
+## Source checks: no ISO or VM
 
 ```bash
-# In Fedora with python3-pyside6 installed:
-QT_QPA_PLATFORM=offscreen python3 image/tests
+# Fedora dependencies: python3-pyside6 python3-jinja2 python3-pyyaml
+# pykickstart nodejs24 gnupg2 git ripgrep
+PYTHONDONTWRITEBYTECODE=1 python3 image/check-source
+./tests/run
 
-# Or use the isolated test container on Debian:
+# Alternatively, the image fixture environment:
 docker build -f image/Containerfile.tests -t cybexos-image-tests:44 image
 docker run --rm -v "$PWD:/source:ro" cybexos-image-tests:44
-
-# Boot and check an image (UEFI testing on Debian also requires ovmf):
-./image/test-live "$HOME/.local/share/cybexos/images/alpha-01/CybexOS-Live-44.iso" \
-  --output "$HOME/.local/share/cybexos/images/test-01"
 ```
 
-These exercise two-user isolation, preservation during vendor updates,
-installed-system installer gating, startup failure reporting, and real Qt QML
-loading for both welcome modes. A booted ISO additionally needs graphical
-login, Anaconda installation onto a blank virtual disk, and a successful boot
-from that installed disk. A passing package build alone does not prove those.
+`image/check-source` exercises Qt welcome loading, user isolation, interrupted
+seeding, branding, installer confirmation/worker/Anaconda adapter contracts,
+artifact delivery/cache, firmware discovery, iVentoy responses and release
+metadata. CI runs these fixtures without an image build or VM.
 
-`image/test-live --hold` keeps its VM available for interacting with Anaconda.
-The generated `vm.json` records its loopback-only VNC port, SSH command, and
-QMP socket. The test uses 16 GiB RAM, a blank 100 GiB virtual disk, and blocks outbound
-networking while checking the complete RPM/Flatpak manifest and user toolchains.
-It allows 150 seconds for boot and first-login setup (`--boot-wait` overrides
-this), and flushes guest filesystem writes before stopping a held VM.
-It boots the ISO through UEFI by default (`--firmware bios`
-selects BIOS), opens the live user's terminal through virtual keyboard events,
-and adds an ephemeral SSH key to that live session. The ISO itself is not
-modified. Interrupting the test audits Quickshell, stops its VM, and removes
-the host test key. The virtual disk is retained for inspecting an installation.
-The smoke test does not install the system. After a manual installation, stop
-the live VM and boot its retained `installed.qcow2` without a CD-ROM, using
-the same `OVMF_VARS.fd` for UEFI. Verify disk unlocking, GDM login, and the
-installed welcome. Secure Boot requires separate testing.
-`image/vm-control` can take screenshots, send clicks/keys, and execute the
-recorded SSH command for this disposable VM.
+`image/browser-smoke.cjs` optionally exercises the real HTML/CSS/JavaScript
+against a fake Cockpit transport in a headless Chromium browser. It contacts
+only its temporary loopback fixture server. Install `playwright-core@1.63.0`
+in a disposable dependency directory and set `NODE_PATH` to its `node_modules`:
 
-Use `image/build --debug-on-failure` to retain a running failed builder for
-inspection. Its `builder.json` contains the SSH command. Interrupt the build
-when finished to stop the VM and remove its temporary disk and credentials.
+```bash
+CYBEXOS_BROWSER=/usr/bin/brave-origin node image/browser-smoke.cjs
+```
 
-`applications.json` records the full requested RPM and Flatpak contract.
-Composition checks every listed application before packaging. `packages.txt`
-lists the installed RPM versions. `package-manifest.json` records file hashes
-and symlink targets from the staged payload. Upstream executable bytes are
-preserved through RPM packaging; the manifest is not an extracted-RPM audit. `SHA256SUMS`
-contains the hashes of the actual ISO and RPM artifacts.
+It checks the minimal flow, encryption default, erase confirmation, password
+clearing, progress/reload recovery and a narrow viewport. Screenshots are
+only written when `CYBEXOS_UI_SCREENSHOTS` specifies a directory.
 
-## Release boundary
+## Builder
 
-This is a private alpha image. The repository has no software license yet;
-the RPM's `LicenseRef-Not-Licensed` records that fact and grants no rights.
-Before public distribution, select the repository license, review redistributed
-dependencies and Fedora branding, establish RPM signing and update hosting,
-and qualify BIOS/UEFI installation and recovery on supported hardware.
-Do not describe a local build as a signed or production-ready release.
+Python 3.11+, PyYAML and writable `/dev/kvm` are required. Host packages:
 
-Upstream implementation references:
+- Fedora: `qemu-kvm qemu-img xorriso openssh-clients python3-pyyaml edk2-ovmf`.
+- Debian: `qemu-system-x86 qemu-utils cloud-image-utils openssh-client python3-yaml ovmf`.
 
-- <https://github.com/livecd-tools/livecd-tools>
-- <https://github.com/rhinstaller/anaconda/tree/main/data/liveinst>
-- <https://github.com/rhinstaller/anaconda-webui>
+Allow approximately 180 GiB free staging space and 24 GiB available RAM for
+the complete application build. OVMF is needed for later UEFI qualification.
+`cloud-localds`, `xorriso`, `genisoimage` or `mkisofs` can create the builder's
+cloud-init seed. Preflight checks resources and tools without creating files,
+downloading or starting a VM:
+
+```bash
+./image/build --preflight
+```
+
+When a build is authorized:
+
+```bash
+./image/build
+# Optional: --output /path/to/new-task-directory --memory 24576 --cpus 8
+# Optional: --compression zstd (xz remains the established default)
+# Optional: --update-channel /path/to/public-update-channel.json
+```
+
+Default output is `~/.local/share/cybexos/images/BUILD-ID/`; each ID combines
+UTC time and a random suffix. Output must be empty and outside `/data/pxe/iso`.
+The builder:
+
+1. Verifies the pinned Fedora Cloud 44 base and starts a disposable KVM guest.
+2. Transfers an explicit source allowlist, build provenance and, if supplied,
+   a validated public update key/channel. Personal runtime directories and
+   private signing keys are not inputs.
+3. Installs applications, assembles the desktop RPM, composes and compresses
+   the image, with named phases, elapsed times and failure summaries.
+4. Reuses only checksum-pinned cached upstream archives/fonts/COPR keys.
+   Moving npm, Flatpak and repository content is not treated as verified cache.
+5. Verifies all copied checksums and atomically publishes `artifacts/`, with
+   a uniquely named ISO, desktop RPM, manifests and `SHA256SUMS`.
+6. Stops the guest and removes temporary disks/keys on success, failure or
+   normal interruption. Logs and small provenance records stay with output.
+
+The persistent cache defaults to `~/.cache/cybexos/image`; `--cache` changes
+it. `build.json` records revision, dirty state, source archive/configuration
+hashes, host tools and timings; installed `/usr/share/cybexos/build.json`
+identifies the source build. `applications.json`, `packages.txt` and
+`package-manifest.json` record the application contract, RPM versions and
+staged payload. The latter is not an extracted-RPM audit.
+
+Moving Fedora/vendor updates mean builds are not byte-for-byte reproducible.
+The compose adapter verifies upstream RPM signatures before installation;
+local upstream application RPMs are inventory-checksummed at the transaction
+boundary. The locally built desktop RPM becomes signed through the release
+step below. zstd is available for measurement, but compression size/startup
+benchmarks have not been run; xz remains the default.
+
+`--debug-on-failure` retains a failed builder only while the command remains
+running; `builder.json` contains its SSH command. Interrupt when inspection
+is finished to trigger cleanup. Do not retain superseded large test artifacts.
+
+## Desktop updates and signing
+
+Image installations use `cybex update` for DNF/Flatpak updates. Desktop package
+versions come from `VERSION`, with a timestamp/revision release suffix and
+installed provenance. Epoch 1 permits upgrading the older hardcoded alpha
+version. Existing checkout installations retain their source updater.
+
+A default build ships a **disabled** desktop update channel. Enabling actual
+desktop updates requires your HTTPS repository URL and existing signing key.
+Prepare a public configuration before building, for example:
+
+```json
+{
+  "baseurl": "https://YOUR-HOST/cybexos/44/x86_64",
+  "fingerprint": "YOUR-COMPLETE-OPENPGP-PRIMARY-FINGERPRINT",
+  "key_file": "CYBEXOS-desktop.asc"
+}
+```
+
+`key_file` is public ASCII armor, relative to this JSON file or an absolute
+path. The builder checks its full fingerprint, rejects private/revoked/expired
+key material and transfers only the normalized public channel. Both package
+and repository metadata signature checks are enabled. Keep the URL/key stable
+across updates; key rotation needs an explicit migration.
+
+After an authorized build, create a signed local repository from existing
+RPMs on a Fedora signing host (`rpm-sign`, `createrepo_c`, `gnupg2`):
+
+```bash
+./image/release-repository /path/to/artifacts/cybexos-desktop-*.rpm \
+  --output /path/to/new-release-directory \
+  --public-key /path/to/CYBEXOS-desktop.asc \
+  --key YOUR-COMPLETE-OPENPGP-PRIMARY-FINGERPRINT \
+  --baseurl https://YOUR-HOST/cybexos/44/x86_64
+```
+
+The RPM must have been built with that same enabled channel; a disabled or
+different bundled channel is rejected. The tool signs copies, independently
+verifies the RPM signatures using only the public key, signs/verifies metadata
+and the release manifest, writes checksums, and atomically publishes a new
+local directory. Original RPMs and the system RPM keyring remain untouched.
+`--gnupghome` can select an existing signing keyring. Hosting/deployment is a
+separate action; the tool does not upload anything or create signing keys.
+No real signed repository was created for this implementation.
+
+## Future ISO qualification and PXE publication
+
+These commands are opt-in operations, **not part of source checks**. They were
+not executed for the September 23 changes. Completed testing ISOs belong in
+`/data/pxe/iso`; keep incomplete builds outside that tree.
+
+On the iVentoy host, `image/publish-pxe /path/to/artifacts` verifies the artifact
+set and prints a plan. Adding `--execute` copies the ISO/checksum through
+staging, verifies them before publication, preserves existing images, then
+requires iVentoy refresh success, completed refresh, running PXE, filename
+presence and an active service. Identical-file retries are supported. The
+default API contract is iVentoy 1.0.41; review its installed UI after upgrades
+and provide `--api-contract` for a changed schema. A failed refresh retains
+the verified ISO for inspection and does not automatically restart PXE.
+
+When boot tests are separately authorized:
+
+```bash
+./image/test-live /data/pxe/iso/CybexOS-Live-44-BUILD-ID.iso \
+  --output /path/to/new-live-test --execute-vm
+
+./image/qualify /data/pxe/iso/CybexOS-Live-44-BUILD-ID.iso \
+  --output /path/to/new-install-test --execute-vm --erase-disposable-disk
+```
+
+The harness detects Fedora/Debian UEFI firmware (raw or qcow2), uses bounded
+readiness checks and blocks guest outbound networking. `--firmware bios`
+selects BIOS. An adjacent `ISO-FILENAME.iso.sha256` must verify before a VM
+can start. The smoke test checks the live desktop/applications; qualification
+also installs to its newly created, serial-identified virtual disk, reboots
+without the ISO, unlocks it and checks encryption, autologin, desktop defaults,
+SELinux and live-account cleanup. It drives the backend; the browser fixture
+separately covers frontend flow. A passing fixture is not a boot result.
+
+`--hold` on the smoke test allows inspection using `image/vm-control` and
+`vm.json`. By default cleanup removes disks, credentials, screenshots and VM
+logs; small JSON reports remain. `--keep-artifacts` is only for unresolved
+diagnostics, and retained paths/sizes must be reported and later cleaned.
+Qualification's graphical keyboard bootstrap still needs real VM validation.
+Physical GPUs, Secure Boot, international early-boot password entry, screen
+lock, suspend/resume and application credential behavior need separate checks.
+
+## Graphics and release boundary
+
+The payload includes Fedora kernel drivers, Mesa OpenGL/EGL/Vulkan and explicit
+AMD, Intel and NVIDIA firmware, plus DRM in the generic live initramfs. It does
+not force a GPU vendor. Nouveau/NVK support depends on the GPU; proprietary
+NVIDIA drivers are not bundled. Investigate graphics with `lspci -nnk`,
+`hyprctl monitors all` and `journalctl -b -k`; basic-graphics recovery intentionally
+disables normal modesetting.
+
+This remains a private alpha. The repository has no software license;
+`LicenseRef-Not-Licensed` grants no distribution rights. Public distribution
+requires the project's licensing/redistribution decisions, actual update
+hosting and successful release/hardware qualification.

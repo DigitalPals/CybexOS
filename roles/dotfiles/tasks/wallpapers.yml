@@ -44,7 +44,7 @@
   ansible.builtin.copy:
     dest: "{{ primary_home }}/.config/cybexos/shell.json"
     mode: "0600"
-    content: "{{ wallpaper_settings | combine({'wall': 'snow-capped-mountains-with-full-moon-lo.jpg', 'wallDir': '~/Pictures/Wallpapers'}) | to_nice_json }}\n"
+    content: "{{ wallpaper_settings | combine(cybexos_desktop_contract.shell) | to_nice_json }}\n"
   when:
     - wallpaper_settings.wall | default('') == ''
     - wallpaper_settings.wallDir | default('~/Pictures/Wallpapers') in ['~/Pictures/Wallpapers', primary_home + '/Pictures/Wallpapers']

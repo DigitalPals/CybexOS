@@ -51,7 +51,9 @@ bind(mainMod .. " + E", hl.dsp.exec_cmd("nautilus --new-window"))
 bind(mainMod .. " + B", hl.dsp.exec_cmd(browser))
 bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd(privateBrowser))
 bind(mainMod .. " + M", hl.dsp.exec_cmd(web_app("https://app.slack.com/")))
-bind(mainMod .. " + P", hl.dsp.exec_cmd(home .. "/.local/bin/portal-launcher"))
+if features.private_portal then
+  bind(mainMod .. " + P", hl.dsp.exec_cmd(home .. "/.local/bin/portal-launcher"))
+end
 bind(mainMod .. " + S", hl.dsp.exec_cmd("spotify"))
 if features.proprietary_apps then
   bind(mainMod .. " + SHIFT + SLASH", hl.dsp.exec_cmd("1password"))

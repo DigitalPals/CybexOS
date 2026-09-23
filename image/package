@@ -14,6 +14,8 @@ import urllib.request
 import jinja2
 import yaml
 from application_payload import relativize_seed_links, include_applications
+from desktop_payload import prepare_defaults, split_seed
+from release_metadata import install_update_channel, render_spec
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -39,6 +41,7 @@ def main():
     shutil.copytree(seed_home / ".local/share/nvim", nvim_payload, symlinks=True)
     shutil.copy2(seed_home / ".config/nvim/lazy-lock.json", seed_root / ".config/nvim/lazy-lock.json")
     shutil.copytree(build / "applications-root", payload, dirs_exist_ok=True, symlinks=True)
+    provenance = install_update_channel(ROOT / "image", payload)
     inventory = yaml.safe_load((ROOT / "inventory/group_vars/all.yml").read_text())
     environment = jinja2.Environment(undefined=jinja2.StrictUndefined, keep_trailing_newline=True)
     environment.filters.update(bool=bool, ternary=lambda value, yes, no: yes if value else no,
@@ -81,9 +84,8 @@ def main():
         if name == "looknfeel.lua":
             content += '\nhl.window_rule({ match = { class = [[^cybex$]] }, float = true, center = true, size = { 920, 620 } })\n'
         write(f"{runtime}/hypr/{name}", content)
-    helpers = ("screenshot", "screen-record", "screen-ocr", "quickshell-reminder", "clipboard-copy-image",
-               "clipboard-image-to-file", "clipboard-history-store", "cybexos-agent", "cybexos-runtime",
-               "cybexos-update-run", "localsend", "localsend-share")
+    contract = json.loads((ROOT / "assets/desktop-contract.json").read_text())
+    helpers = contract["userHelpers"] + ["cybexos-runtime", "cybexos-update-run"]
     for name in helpers:
         copy(f"assets/scripts/{name}", f"usr/share/cybexos/bin/{name}", True)
     copy("roles/dotfiles/files/dev-distrobox-init", "usr/share/cybexos/bin/dev-distrobox-init", True)
@@ -132,6 +134,7 @@ def main():
         if source.is_file() and "__pycache__" not in source.parts and source.suffix != ".pyc":
             relative = source.relative_to(ROOT / "image/rootfs")
             copy(source.relative_to(ROOT), relative, relative.parts[1] in ("bin", "libexec"))
+    prepare_defaults(ROOT, payload, environment, inventory)
     # The fonts are already checksum-pinned by the project. Preserve upstream
     # license texts and fail the build on any mismatch.
     for font in inventory["pinned_font_files"]:
@@ -141,11 +144,18 @@ def main():
         ):
             destination = payload / target
             destination.parent.mkdir(parents=True, exist_ok=True)
-            urllib.request.urlretrieve(font[url_key], destination)
+            filename = font["filename"] if url_key == "url" else font["license_filename"]
+            prepared = Path("/usr/local/share/fonts") / font["name"] / font["version"] / filename
+            expected = font[checksum_key].split(":", 1)[1]
+            if prepared.is_file() and hashlib.sha256(prepared.read_bytes()).hexdigest() == expected:
+                shutil.copy2(prepared, destination)
+            else:
+                urllib.request.urlretrieve(font[url_key], destination)
             if hashlib.sha256(destination.read_bytes()).hexdigest() != font[checksum_key].split(":", 1)[1]:
                 raise RuntimeError(f"checksum mismatch for {font['name']} {url_key}")
             destination.chmod(0o644)
     relativize_seed_links(payload / seed, seed_home)
+    split_seed(payload / "usr/share/cybexos", contract)
     manifest = {}
     for file in sorted(payload.rglob("*")):
         if file.is_symlink():
@@ -159,7 +169,7 @@ def main():
     (build / "package-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     sources = build / "rpmbuild/SOURCES"
     sources.mkdir(parents=True)
-    spec = (ROOT / "image/cybexos-desktop.spec").read_text()
+    spec = render_spec((ROOT / "image/cybexos-desktop.spec").read_text(), ROOT / "VERSION", provenance)
     (build / "desktop.spec").write_text(spec)
     (build / "live.ks").write_text(include_applications(
         (ROOT / "image/live.ks").read_text(), applications["packages"],
@@ -167,6 +177,7 @@ def main():
     with tarfile.open(sources / "desktop.tar", "w") as archive:
         archive.add(payload / "usr", arcname="usr")
         archive.add(payload / "opt", arcname="opt")
+        archive.add(payload / "etc", arcname="etc")
 
 
 if __name__ == "__main__":

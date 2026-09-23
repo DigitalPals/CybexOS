@@ -1,210 +1,56 @@
 #!/usr/bin/env python3
-"""Boot an ISO on a disposable disk and check the graphical desktop via SSH.
-
-The test types setup commands into the live desktop through QEMU keyboard
-events. Neither the ISO nor its packaged root is edited.
-"""
+"""Explicit live ISO smoke test. No build, installation or PXE publication."""
 import argparse
-import json
-import os
 from pathlib import Path
-import shlex
 import signal
-import socket
-import subprocess
-import sys
 import time
 
-
-def run(args, **kwargs):
-    return subprocess.run(args, check=True, **kwargs)
-
-
-def free_port():
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
-
-
-AUDIT = r"""
-set -euo pipefail
-export XDG_RUNTIME_DIR=/run/user/$(id -u)
-main=$(systemctl --user show quickshell.service -p MainPID --value)
-mapfile -t processes < <(pgrep -x qs || true)
-for pid in "${processes[@]}"; do
-  [[ $pid == "$main" ]] && continue
-  command=$(tr '\0' ' ' < "/proc/$pid/cmdline")
-  cgroup=$(cat "/proc/$pid/cgroup")
-  printf 'Extra qs PID %s: %s\n%s\n' "$pid" "$command" "$cgroup"
-  # Only explicitly identifiable source-tree developer instances are eligible
-  # for cleanup. Unknown or service-owned instances fail the audit untouched.
-  if [[ $cgroup != *'.service'* && $command == *'/roles/desktop/files/quickshell'* ]]; then
-    kill "$pid"
-  else
-    exit 1
-  fi
-done
-systemctl --user is-active --quiet quickshell.service
-[[ $(pgrep -x qs) == "$main" && $main != 0 ]]
-invocation=$(systemctl --user show quickshell.service -p InvocationID --value)
-journalctl --user _SYSTEMD_INVOCATION_ID="$invocation" --no-pager > /tmp/cybexos-shell-test.log
-if grep -Ei 'failed to load|qml.*(error|not installed)|ReferenceError:|TypeError:|SyntaxError:' /tmp/cybexos-shell-test.log; then
-  exit 1
-fi
-echo "Quickshell is healthy; sole PID $main."
-"""
-
-OFFLINE_APPLICATION_AUDIT = r"""
-import hashlib
-import json
-import os
-from pathlib import Path
-import shutil
-import subprocess
-
-home = Path.home()
-os.environ['PATH'] = ':'.join(str(home / path) for path in (
-    '.cargo/bin', '.local/bin', '.npm-global/bin', 'Android/Sdk/platform-tools',
-)) + ':/usr/local/bin:/usr/bin'
-manifest = json.loads(Path('/usr/share/cybexos/applications.json').read_text())
-subprocess.run(['rpm', '-q', *manifest['packages']], check=True, stdout=subprocess.DEVNULL)
-for app in manifest['flatpaks']:
-    subprocess.run(['flatpak', 'info', '--system', app], check=True, stdout=subprocess.DEVNULL)
-for command in ('cybex', 'fastfetch', 'claude', 'opencode', 'codex', 'cargo', 'rustup',
-                'node', 'npm', 'bun', 'lazygit', 'lazydocker', 'balena', 'mdview',
-                'awww', 'wayfreeze', 'voxtype', 'localsend', 't3code-desktop', 'adb'):
-    assert shutil.which(command), 'Missing offline command: ' + command
-for command in ('cybex', 'fastfetch', 'claude', 'opencode', 'codex', 'cargo', 'node', 'bun', 'awww', 'wayfreeze', 'voxtype'):
-    result = subprocess.run([command, '--version'], check=True, capture_output=True, text=True, timeout=30)
-    print(command + ': ' + (result.stdout or result.stderr).splitlines()[0])
-subprocess.run(['nvim', '--headless', '+qa'], check=True, timeout=30)
-sdk = home / 'Android/Sdk'
-assert (sdk / 'cmdline-tools/latest/bin/sdkmanager').is_file()
-subprocess.run([str(sdk / 'cmdline-tools/latest/bin/sdkmanager'), '--version'], check=True, timeout=30)
-assert list((sdk / 'platforms').glob('*/android.jar'))
-assert list((sdk / 'build-tools').glob('*/aapt2'))
-t3 = home / '.local/share/t3code-nightly'
-with (t3 / 'T3-Code-Nightly-x86_64.AppImage').open('rb') as stream:
-    assert hashlib.file_digest(stream, 'sha256').hexdigest() == (t3 / 'digest').read_text().strip()
-assert (home / '.local/share/voxtype/models/ggml-base.bin').is_file()
-assert (home / '.local/state/cybexos/offline-apps-seeded').is_file()
-print('Complete application manifest and offline user toolchains passed.')
-"""
+from build_support import atomic_json, digest
+from vm_testing import TestVM, require_test_iso, run
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("iso", type=Path)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--firmware", choices=("bios", "uefi"), default="uefi")
-    parser.add_argument("--boot-wait", type=int, default=150,
-                        help="Seconds allowed for boot and offline first-login toolchain setup")
-    parser.add_argument("--hold", action="store_true", help="Keep the VM open for interactive installer testing; Ctrl-C cleans up")
+    parser.add_argument('iso', type=Path)
+    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--firmware', choices=('bios', 'uefi'), default='uefi')
+    parser.add_argument('--boot-wait', type=int, default=300, help='Bounded readiness timeout, not a fixed startup sleep')
+    parser.add_argument('--hold', action='store_true')
+    parser.add_argument('--keep-artifacts', action='store_true', help='Retain task-owned disk/logs for unresolved diagnostics')
+    parser.add_argument('--execute-vm', action='store_true', help='Required opt-in to starting a VM')
     args = parser.parse_args()
-    iso = args.iso.resolve(strict=True)
-    work = args.output.resolve()
-    work.mkdir(parents=True, exist_ok=True)
-    if any(work.iterdir()):
-        parser.error("test output directory must be empty")
-    firmware = []
-    if args.firmware == "uefi":
-        import shutil
-        shutil.copyfile("/usr/share/OVMF/OVMF_VARS_4M.fd", work / "OVMF_VARS.fd")
-        firmware = ["-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
-                    "-drive", f"if=pflash,format=raw,file={work / 'OVMF_VARS.fd'}"]
-    run(["qemu-img", "create", "-q", "-f", "qcow2", str(work / "installed.qcow2"), "100G"])
-    run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(work / "id_ed25519")])
-    port = free_port()
-    vnc_port = free_port()
-    ssh = ["ssh", "-i", str(work / "id_ed25519"), "-p", str(port), "-o", "BatchMode=yes",
-           "-o", "ConnectTimeout=3", "-o", "StrictHostKeyChecking=accept-new",
-           "-o", f"UserKnownHostsFile={work / 'known_hosts'}", "liveuser@127.0.0.1"]
-    vm = subprocess.Popen([
-        "qemu-system-x86_64", "-name", "cybexos-live-test", "-machine", "q35,accel=kvm",
-        "-cpu", "host", "-smp", "4", "-m", "16384",
-        "-drive", f"file={work / 'installed.qcow2'},format=qcow2,if=virtio",
-        "-cdrom", str(iso), "-boot", "d",
-        *firmware,
-        "-device", "virtio-vga", "-device", "qemu-xhci", "-device", "usb-tablet",
-        "-netdev", f"user,id=net,restrict=on,hostfwd=tcp:127.0.0.1:{port}-:22",
-        "-device", "virtio-net-pci,netdev=net", "-vnc", f"127.0.0.1:{vnc_port - 5900}",
-        "-serial", f"file:{work / 'serial.log'}",
-        "-qmp", f"unix:{work / 'qmp.sock'},server=on,wait=off", "-monitor", "none",
-    ], stdout=(work / "qemu.log").open("w"), stderr=subprocess.STDOUT)
-    state = {"pid": vm.pid, "ssh": ssh, "vnc_port": vnc_port, "qmp": str(work / "qmp.sock"),
-             "disk": str(work / "installed.qcow2")}
-    (work / "vm.json").write_text(json.dumps(state, indent=2) + "\n")
-    ssh_ready = False
+    if not args.execute_vm:
+        parser.error('VM execution requires --execute-vm')
+    iso = require_test_iso(args.iso)
+    vm = TestVM(args.output, args.firmware)
+    report = {'iso_sha256': digest(iso), 'firmware': args.firmware, 'status': 'failed'}
     try:
-        # Boot the ISO's real firmware/menu path, then open the normal live
-        # user's terminal. No debug console or special guest agent is shipped.
-        time.sleep(args.boot_wait)
-        control = [str(Path(__file__).with_name("vm-control")), str(work)]
-        run([*control, "key", "meta_l+ret"])
-        time.sleep(4)
-        public = (work / "id_ed25519.pub").read_text().strip()
-        setup = "mkdir -p ~/.ssh; printf '%s\\n' " + shlex.quote(public)
-        setup += " > ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys; "
-        setup += "sudo restorecon -RF ~/.ssh; sudo systemctl start sshd; sudo firewall-cmd --add-service=ssh; exit\n"
-        run([*control, "type", setup])
-        for _ in range(120):
-            if vm.poll() is not None:
-                raise RuntimeError("VM exited before SSH was ready")
-            if subprocess.run([*ssh, "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
-                ssh_ready = True
-                break
-            time.sleep(2)
-        else:
-            raise RuntimeError("test SSH did not start")
-        for _ in range(90):
-            result = subprocess.run([*ssh, "XDG_RUNTIME_DIR=/run/user/1000 systemctl --user is-active --quiet quickshell.service"],
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            if result.returncode == 0:
-                break
-            time.sleep(2)
-        time.sleep(5)
-        run([*ssh, "case \"$(stat -c '%u:%g:%a' /)\" in 0:0:555|0:0:755) ;; *) exit 1;; esac; "
-             "test \"$(stat -c '%u:%g:%a' /usr)\" = 0:0:755 && "
-             "test \"$(stat -c '%u:%g:%a' /etc)\" = 0:0:755"])
-        run([*ssh, "bash -s"], input=AUDIT, text=True)
-        run([*ssh, "test -f /run/cybexos-live && test -x /usr/bin/liveinst && command -v cybex && fastfetch --version && "
-             "XDG_RUNTIME_DIR=/run/user/1000 systemctl --user is-active cybexos-welcome.service"])
-        run([*ssh, "python3 -"], input=OFFLINE_APPLICATION_AUDIT, text=True)
-        print(f"Live desktop and welcome passed. Test connection details: {work / 'vm.json'}", flush=True)
+        vm.prepare()
+        vm.start(iso)
+        vm.wait_ssh(args.boot_wait)
+        vm.audit()
+        run([*vm.ssh, 'test -f /run/cybexos-live && test -x /usr/bin/liveinst && XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user is-active cybexos-welcome.service'])
+        report['status'] = 'passed'
+        report['checks'] = ['live-boot', 'offline-applications', 'quickshell']
+        print('Live desktop smoke check passed. No installation was performed.', flush=True)
         if args.hold:
-            print("VM is available for installer testing; interrupt this command to stop it.", flush=True)
-            while vm.poll() is None:
+            print(f"VM ready for interaction: {args.output / 'vm.json'}", flush=True)
+            while vm.process.poll() is None:
                 time.sleep(1)
     finally:
-        try:
-            if ssh_ready and vm.poll() is None:
-                try:
-                    run([*ssh, "bash -s"], input=AUDIT, text=True, timeout=30)
-                finally:
-                    # --hold can leave a completed installation mounted. Flush
-                    # its guest page cache before stopping the virtual machine.
-                    run([*ssh, "sync"], timeout=60)
-        finally:
-            vm.terminate()
+        if vm.owned:
             try:
-                vm.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                vm.kill()
-                vm.wait()
-            for name in ("id_ed25519", "id_ed25519.pub"):
-                (work / name).unlink(missing_ok=True)
+                vm.cleanup(args.keep_artifacts)
+            except BaseException:
+                report['status'] = 'failed'
+                raise
+            finally:
+                atomic_json(args.output / 'live-report.json', report)
 
 
-def interrupted(_signal, _frame):
-    raise KeyboardInterrupt
-
-
-if __name__ == "__main__":
-    signal.signal(signal.SIGTERM, interrupted)
-    try:
-        main()
-    except KeyboardInterrupt:
-        pass
-    except (RuntimeError, subprocess.CalledProcessError) as error:
-        print(f"image/test-live: {error}", file=sys.stderr)
-        sys.exit(1)
+if __name__ == '__main__':
+    def interrupt(_signum, _frame):
+        raise KeyboardInterrupt
+    for name in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(name, interrupt)
+    main()

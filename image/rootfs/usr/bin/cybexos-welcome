@@ -48,7 +48,7 @@ class Welcome(QObject):
             self.changed.emit()
             return
         self.message = "Opening the installer…"
-        self.process.start("/usr/bin/liveinst", [])
+        self.process.start("/usr/bin/liveinst", ["--nosave=all_ks"])
 
     def finished(self, code, _status):
         self.message = ("The installer has closed. If installation finished, restart and remove the USB drive."

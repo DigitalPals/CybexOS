@@ -5,11 +5,23 @@ set -euo pipefail
 # the Quickshell panel has a browser sign-in pending, deliver that redirect to
 # its loopback listener; every other URI still opens the desktop client.
 if [[ ${1-} == t3code://app/* ]] \
-        && node "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/scripts/t3-cloud.mjs" \
+        && runtime=$(cybexos-runtime path quickshell) \
+        && node "$runtime/scripts/t3-cloud.mjs" \
             oauth-callback "$1" >/dev/null 2>&1; then
     exit 0
 fi
 
 appimage="${XDG_DATA_HOME:-$HOME/.local/share}/t3code-nightly/T3-Code-Nightly-x86_64.AppImage"
+if [[ ! -x $appimage && -d /usr/share/cybexos/user-seed ]]; then
+    marker="${XDG_STATE_HOME:-$HOME/.local/state}/cybexos/offline-apps-seeded"
+    if [[ ! -f $marker ]] && ! systemctl --user start cybexos-app-seed.service; then
+        printf 'Offline applications are not ready. Run cybex prepare-apps to retry.\n' >&2
+        exit 1
+    fi
+    if [[ ! -x $appimage ]]; then
+        printf 'The offline T3 Code application is unavailable. Run t3code-update to install it explicitly.\n' >&2
+        exit 1
+    fi
+fi
 [[ -x $appimage ]] || "$HOME/.local/bin/t3code-update"
 exec "$appimage" --appimage-extract-and-run --password-store=gnome-libsecret "$@"

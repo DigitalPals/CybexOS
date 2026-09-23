@@ -284,21 +284,11 @@
 
 - name: Configure portable kernel hardening
   ansible.builtin.copy:
+    src: 60-cybexos-hardening.conf
     dest: /etc/sysctl.d/60-cybexos-hardening.conf
     owner: root
     group: root
     mode: "0644"
-    content: |
-      kernel.kptr_restrict = 2
-      kernel.dmesg_restrict = 1
-      kernel.perf_event_paranoid = 3
-      kernel.yama.ptrace_scope = 1
-      vm.mmap_min_addr = 65536
-      net.ipv4.icmp_echo_ignore_broadcasts = 1
-      net.ipv4.conf.all.accept_redirects = 0
-      net.ipv4.conf.default.accept_redirects = 0
-      net.ipv6.conf.all.accept_redirects = 0
-      net.ipv6.conf.default.accept_redirects = 0
 
 - name: Apply portable kernel hardening
   ansible.builtin.command: sysctl --load /etc/sysctl.d/60-cybexos-hardening.conf

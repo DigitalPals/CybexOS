@@ -1,0 +1,4 @@
+---
+# Only reviewed portable preferences belong here. Personal plugins, tokens,
+# machine monitor overrides and transient shell state are never exported.
+cybexos_desktop_contract: "{{ lookup('file', config_repo + '/assets/desktop-contract.json') | from_json }}"

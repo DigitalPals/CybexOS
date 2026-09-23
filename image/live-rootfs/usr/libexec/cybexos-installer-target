@@ -1,0 +1,73 @@
+#!/usr/bin/python3
+"""Finalize only a mounted Anaconda target; no credentials are transferred."""
+import configparser
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+
+
+def root_is_encrypted(root, run=subprocess.run):
+    mount = json.loads(run(['findmnt', '--json', '--mountpoint', str(root), '--output', 'SOURCE,TARGET'],
+                           check=True, capture_output=True, text=True).stdout)['filesystems'][0]
+    if Path(mount['target']).resolve() != root.resolve():
+        raise RuntimeError('The Anaconda target is not a separate mounted filesystem.')
+    source = mount['source'].split('[', 1)[0]
+    if not source.startswith('/dev/'):
+        raise RuntimeError('The Anaconda target has an unsupported root device.')
+    devices = json.loads(run(['lsblk', '--inverse', '--json', '--output', 'TYPE', source],
+                             check=True, capture_output=True, text=True).stdout)['blockdevices']
+    def encrypted(nodes):
+        return any(item.get('type') == 'crypt' or encrypted(item.get('children', [])) for item in nodes)
+    return encrypted(devices)
+
+
+def finalize(root, policy, encrypted):
+    account = policy.get('account', {})
+    username = account.get('username', '')
+    if not re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}', username):
+        raise RuntimeError('Installation policy does not name a valid account.')
+    users = [line.split(':') for line in (root / 'etc/passwd').read_text().splitlines()]
+    if not any(row[0] == username and 1000 <= int(row[2]) < 65534 for row in users):
+        raise RuntimeError('The installed administrator account is missing.')
+    root_entry = next((line.split(':')[1] for line in (root / 'etc/shadow').read_text().splitlines() if line.startswith('root:')), '')
+    if not root_entry.startswith(('!', '*')):
+        raise RuntimeError('The root account was not locked by Anaconda.')
+    if account.get('encrypted') and not encrypted:
+        raise RuntimeError('The requested encrypted root could not be verified; automatic login was not enabled.')
+    settings = configparser.ConfigParser()
+    settings.optionxform = str
+    settings['daemon'] = {'DefaultSession': 'hyprland-quickshell.desktop'}
+    if account.get('encrypted') and encrypted:
+        settings['daemon']['AutomaticLoginEnable'] = 'True'
+        settings['daemon']['AutomaticLogin'] = username
+    path = root / 'etc/gdm/custom.conf'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('w') as stream:
+        settings.write(stream)
+    record = root / 'etc/cybexos/installation.json'
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(json.dumps({'username': username, 'encrypted': encrypted,
+                                 'autologin': bool(account.get('encrypted') and encrypted),
+                                 'passwordsInitiallyShared': True,
+                                 'keyring': 'protected-first-use-unlock'}) + '\n')
+    record.chmod(0o644)
+
+
+def main():
+    if os.geteuid() != 0:
+        raise SystemExit('Target finalization requires root.')
+    root = Path('/mnt/sysroot')
+    policy_file = Path('/run/cybexos-installer/state.json')
+    if not policy_file.exists():
+        return  # Stock Advanced installation retains the stock login policy.
+    policy = json.loads(policy_file.read_text())
+    if policy.get('phase') != 'installing':
+        return
+    finalize(root, policy, root_is_encrypted(root))
+    subprocess.run(['chroot', str(root), 'restorecon', '-RF', '/etc/gdm', '/etc/cybexos'], check=True)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Install CybexOS</title>
+  <link rel="stylesheet" href="installer.css">
+  <script src="../base1/cockpit.js"></script>
+  <script type="module" src="installer.js"></script>
+</head>
+<body>
+<aside>
+  <div class="wordmark">CYBEX<span>OS</span></div>
+  <div class="orbit" aria-hidden="true"><span>Cx</span></div>
+  <h1>Your next<br>workspace.</h1>
+  <p>A focused desktop.<br>Ready to make your own.</p>
+  <ol id="steps" aria-label="Installation steps">
+    <li aria-current="step">01 <span>Your setup</span></li>
+    <li>02 <span>Install location</span></li>
+    <li>03 <span>Review and install</span></li>
+  </ol>
+  <small>CYBEX OPINIONATED SYSTEM</small>
+</aside>
+<main>
+  <div id="error" role="alert" hidden></div>
+  <div id="busy" role="status">Starting the installer…</div>
+  <section id="setup" hidden>
+    <p class="eyebrow">01 / YOUR SETUP</p><h2>Make it yours.</h2>
+    <p>One password for your disk and account. Unlock once at startup and arrive at your desktop.</p>
+    <form id="account-form" autocomplete="off">
+      <label>Keyboard layout<select id="keyboard" required></select></label>
+      <label>Try your keyboard<input id="keyboard-test" autocomplete="off" placeholder="Type a few characters here" spellcheck="false"></label>
+      <p id="keyboard-status" class="hint" role="status"></p>
+      <label>Username<input id="username" name="username" required pattern="[a-z_][a-z0-9_-]{0,30}" maxlength="31" autocomplete="off" spellcheck="false" autocapitalize="none"></label>
+      <div class="pair">
+        <label>Password<input id="password" type="password" required minlength="12" maxlength="512" autocomplete="new-password"></label>
+        <label>Confirm password<input id="confirm" type="password" required minlength="12" maxlength="512" autocomplete="new-password"></label>
+      </div>
+      <p class="hint">Use at least 12 characters. Your chosen layout will also be used at the boot unlock screen.</p>
+      <details><summary>Language and computer details</summary>
+        <label>System language<select id="locale"></select></label>
+        <label>Timezone<input id="timezone" required placeholder="Europe/Amsterdam"></label>
+        <label>Computer name<input id="hostname" value="cybexos" required maxlength="63"></label>
+      </details>
+      <footer><button type="submit" class="primary">Choose install location →</button></footer>
+    </form>
+  </section>
+  <section id="location" hidden>
+    <p class="eyebrow">02 / INSTALL LOCATION</p><h2>A place to begin.</h2>
+    <p>Choose a disk for CybexOS. The entire selected disk will be erased.</p>
+    <form id="disk-form">
+      <label>Installation disk<select id="disk" required></select></label>
+      <div class="card"><strong>Encrypted Btrfs</strong><p>Your files stay protected while the computer is powered off. CybexOS creates the system partitions automatically.</p></div>
+      <details><summary>Advanced options</summary>
+        <label class="check"><input id="encrypted" type="checkbox" checked> Encrypt this installation</label>
+        <p class="hint">Disabling encryption also disables automatic login.</p>
+        <button id="advanced" type="button" class="secondary">Open full storage installer</button>
+        <p class="hint">For dual boot, existing partitions, or a custom layout. The full installer manages its own account and encryption choices.</p>
+      </details>
+      <footer><button type="button" class="secondary back" data-page="setup">Back</button><button type="submit" class="primary">Review installation →</button></footer>
+    </form>
+  </section>
+  <section id="review" hidden>
+    <p class="eyebrow">03 / REVIEW AND INSTALL</p><h2>Ready when you are.</h2>
+    <dl id="summary"></dl>
+    <details><summary>Planned disk changes</summary><ul id="actions"></ul></details>
+    <div id="warnings" role="status"></div>
+    <p class="hint">Your disk and account passwords start out the same. Changing your account password later does not change the disk password. A protected app keyring may ask for its password after automatic login.</p>
+    <label class="check erase"><input id="erase" type="checkbox"> I understand that all data on the selected disk will be erased.</label>
+    <footer><button type="button" class="secondary back" data-page="location">Back</button><button id="install" class="primary" disabled>Erase disk and install</button></footer>
+  </section>
+  <section id="progress" hidden>
+    <p class="eyebrow">YOUR WORKSPACE IS TAKING SHAPE</p><h2 id="progress-title">Installing CybexOS.</h2>
+    <progress id="meter" aria-label="Installation progress"></progress>
+    <p id="progress-message" role="status"></p>
+    <div class="card"><strong>Space for what matters.</strong><p>Your desktop, tools, and applications are included on the installation medium. No download is needed to get started.</p></div>
+    <button id="refresh-status" class="secondary">Refresh installation status</button>
+    <p id="restart-help" hidden>Restart your computer, then remove the USB drive or select the installed disk.</p>
+    <button id="reboot" class="primary" hidden>Restart into CybexOS</button>
+  </section>
+  <div id="startup-retry" hidden><button id="retry" class="primary">Try again</button><a href="../anaconda-webui/index.html">Open the full installer</a></div>
+</main>
+</body>
+</html>

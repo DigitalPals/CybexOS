@@ -5,6 +5,7 @@ import configparser
 import hashlib
 import json
 import gc
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -14,6 +15,7 @@ import imgcreate
 import imgcreate.creator
 from imgcreate.dnfinst import DnfLiveCD
 import rpm
+from boot_branding import brand_boot_menu
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 source = Path(__file__).resolve().parent
@@ -82,11 +84,21 @@ class VerifiedDnf(DnfLiveCD):
 
 imgcreate.creator.DnfLiveCD = VerifiedDnf
 kickstart = imgcreate.read_kickstart(str(build / "live.ks"))
-creator = imgcreate.LiveImageCreator(
+class CybexImageCreator(imgcreate.LiveImageCreator):
+    def _configure_bootloader(self, isodir):
+        super()._configure_bootloader(isodir)
+        brand_boot_menu(isodir, self._instroot)
+
+
+creator = CybexImageCreator(
     kickstart, "CybexOS-Live-44", fslabel="CYBEXOS-LIVE-44", releasever="44",
     tmpdir=str(build / "tmp"), title="CybexOS", product="CybexOS",
 )
-creator.compress_args = "xz"
+compression = os.environ.get("CYBEXOS_IMAGE_COMPRESSION", "xz")
+if compression not in ("xz", "zstd"):
+    raise ValueError("Unsupported live image compression")
+creator.compress_args = compression
+logging.info("Live image compression: %s", compression)
 try:
     creator.mount(cachedir=str(build / "cache"))
     shutil.copyfile(source / "dracut-live.conf", Path(creator._instroot) / "etc/dracut.conf.d/99-liveos.conf")
@@ -110,6 +122,10 @@ try:
             shutil.copy2(key, Path(creator._instroot) / "etc/pki/rpm-gpg" / key.name)
     with (Path(creator._instroot) / "etc/yum.repos.d/cybex-applications.repo").open("w") as output:
         vendor_policy.write(output)
+    # imgcreate stages its initrd before Kickstart post scripts run. Select
+    # the branded theme and rebuild now, while all installed kernels exist.
+    subprocess.run(["chroot", creator._instroot, "plymouth-set-default-theme", "cybex"], check=True)
+    subprocess.run(["chroot", creator._instroot, "dracut", "--regenerate-all", "--force"], check=True)
     creator.configure()
     applications = json.loads((build / "applications.json").read_text())
     subprocess.run(["rpm", "--root", creator._instroot, "-q", *applications["packages"]], check=True)

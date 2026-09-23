@@ -10,25 +10,62 @@ source_root=/home/builder/source
 build_root=/home/builder/build
 artifacts=/home/builder/artifacts
 mkdir -p "$build_root" "$artifacts"
+phase_name=prerequisites
+phase_started=$SECONDS
+phase() {
+  printf '[guest] %s completed in %ss\n' "$phase_name" "$((SECONDS - phase_started))"
+  phase_name=$1
+  phase_started=$SECONDS
+  printf '[guest] Starting %s\n' "$phase_name"
+}
+trap 'printf "[guest] FAILED: %s after %ss (line %s)\n" "$phase_name" "$((SECONDS - phase_started))" "$LINENO" >&2' ERR
+printf '[guest] Starting %s\n' "$phase_name"
 dnf install -y livecd-tools rpm-build createrepo_c python3-jinja2 python3-pyyaml \
   curl cpio policycoreutils pykickstart ansible-core
-# The builder's SELinux is permissive because it installs and relabels a
-# separate root filesystem. The resulting live and installed OS enforce it.
+# Builder SELinux is permissive; live and installed systems enforce it.
 setenforce 0
-curl --fail --location --retry 3 --output "$build_root/hyprland.gpg" \
-  https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
+phase verified-download-cache
+python3 "$source_root/image/download_cache.py" import /home/builder/cache-import
+if ! echo "581bd602d10705eb89003680335ffc3684b922c587073b6e52c371f949843fd7  $build_root/hyprland.gpg" | sha256sum --check --status; then
+  curl --fail --location --retry 3 --output "$build_root/hyprland.gpg" \
+    https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
+fi
 echo "581bd602d10705eb89003680335ffc3684b922c587073b6e52c371f949843fd7  $build_root/hyprland.gpg" | sha256sum --check
+phase offline-applications
 python3 "$source_root/image/applications"
+phase desktop-payload
 python3 "$source_root/image/package" --output "$build_root"
+phase desktop-rpm
 rpmbuild -bb --define "_topdir $build_root/rpmbuild" "$build_root/desktop.spec"
 mkdir -p "$build_root/repo"
 cp "$build_root"/rpmbuild/RPMS/*/*.rpm "$build_root/repo/"
 createrepo_c "$build_root/repo"
 ksvalidator --version F44 "$build_root/live.ks"
 mkdir -p "$build_root/tmp"
+phase compose-and-compress
 cd "$artifacts"
 python3 "$source_root/image/compose"
+phase manifests-and-cache
 cp "$build_root/repo/"*.rpm "$artifacts/"
 cp "$build_root/package-manifest.json" "$build_root/applications.json" "$artifacts/"
-sha256sum ./*.iso ./*.rpm > SHA256SUMS
+cp "$source_root/image/build-provenance.json" "$artifacts/"
+rpm -qa --qf '%{NEVRA}\n' | sort > "$artifacts/builder-packages.txt"
+python3 "$source_root/image/download_cache.py" export /home/builder/cache-export
+chown -R builder:builder /home/builder/cache-export
+# Cover every delivered manifest as well as executable artifacts.
+python3 - <<'PY'
+from pathlib import Path
+import hashlib
+root = Path('/home/builder/artifacts')
+with (root / 'SHA256SUMS').open('w') as output:
+    for path in sorted(root.iterdir()):
+        if path.name == 'SHA256SUMS':
+            continue
+        if not path.is_file() or path.is_symlink():
+            raise RuntimeError(f'Unexpected artifact: {path.name}')
+        with path.open('rb') as stream:
+            checksum = hashlib.file_digest(stream, 'sha256').hexdigest()
+        output.write(f'{checksum}  {path.name}\n')
+PY
 chown -R builder:builder "$artifacts"
+phase complete

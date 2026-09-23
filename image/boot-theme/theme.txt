@@ -1,0 +1,42 @@
+# CybexOS firmware menu. The logo is the same asset used by Plymouth.
+desktop-color: "#0d0d0d"
+title-text: ""
+message-color: "#e8e7df"
+message-bg-color: "#0d0d0d"
+terminal-font: "Unifont Regular 16"
++ image {
+  left = 50%-125
+  top = 23%
+  width = 250
+  height = 59
+  file = "logo.png"
+}
++ label {
+  left = 10%
+  top = 37%
+  width = 80%
+  height = 32
+  align = "center"
+  color = "#d3d283"
+  text = "CybexOS"
+}
++ boot_menu {
+  left = 15%
+  top = 48%
+  width = 70%
+  height = 32%
+  item_color = "#e8e7df"
+  selected_item_color = "#d3d283"
+  item_height = 30
+  item_padding = 8
+  item_spacing = 6
+}
++ label {
+  left = 10%
+  top = 90%
+  width = 80%
+  height = 24
+  align = "center"
+  color = "#a7a59b"
+  text = "Enter to start  |  E to edit  |  Esc to go back"
+}

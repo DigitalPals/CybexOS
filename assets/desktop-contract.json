@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "shell": {
+    "wall": "snow-capped-mountains-with-full-moon-lo.jpg",
+    "wallDir": "~/Pictures/Wallpapers"
+  },
+  "userHelpers": [
+    "screenshot", "screen-record", "quickshell-reminder", "screen-ocr",
+    "clipboard-copy-image", "clipboard-image-to-file", "clipboard-history-store",
+    "localsend", "localsend-share", "cybexos-agent"
+  ],
+  "essentialPaths": [
+    ".config/cybexos/shell.json", ".config/fastfetch", ".config/fish",
+    ".config/kitty", ".config/oh-my-posh", ".config/voxtype/config.toml",
+    ".config/mimeapps.list", ".local/share/applications", ".local/libexec",
+    "Pictures/Wallpapers",
+    ".npmrc"
+  ],
+  "activationPaths": [".config/nvim", ".cargo", ".local/bin", ".npm-global/bin"]
+}

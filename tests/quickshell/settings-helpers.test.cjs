@@ -64,8 +64,8 @@ test("defaults carry the design values", () => {
         ["updates", "gh", "t3", "hermes", "usage", "tray", "notifications",
          "vol", "wifi", "bt", "batt"]);
     assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
-    assert.equal(d.mods.right.find(m => m.id === "bt").on, false,
-        "Bluetooth is opt-in; its auto-rule already hides it when nothing is connected");
+    assert.equal(d.mods.right.find(m => m.id === "bt").on, true,
+        "Bluetooth matches the portable desktop; its auto-rule hides idle hardware");
     assert.equal(d.mods.right.find(m => m.id === "tray").on, false);
     assert.equal(d.mods.right.find(m => m.id === "updates").on, true);
     assert.equal(d.mods.right.find(m => m.id === "notifications").on, true);
@@ -616,13 +616,13 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.deepEqual(next.right.map(m => m.id),
         ["updates", "gh", "t3", "hermes", "usage", "tray", "notifications",
          "wifi", "bt", "batt"]);
-    assert.ok(next.right.some(m => m.id === "bt" && m.on === false),
+    assert.ok(next.right.some(m => m.id === "bt" && m.on === true),
         "appended module keeps its default enable flag");
 });
 
 test("normalizeMods falls back to the default flag for a non-boolean", () => {
     const next = H.normalizeMods({ left: [{ id: "bt", on: "yes" }], center: [], right: [] });
-    assert.equal(next.left[0].on, false);
+    assert.equal(next.left[0].on, true);
 });
 
 test("a schema-3 file adopts the redesign only where it was left untouched", () => {

@@ -10,6 +10,10 @@ rm -f /var/lib/AccountsService/users/liveuser
 rm -f /etc/systemd/system/multi-user.target.wants/cybexos-live.service
 rm -f /usr/lib/systemd/system/cybexos-live.service
 rm -f /usr/libexec/cybexos-live-setup
+rm -f /usr/libexec/cybexos-installer-backend /usr/libexec/cybexos-installer-target
+rm -f /usr/bin/cybexos-installer-browser
+rm -rf /usr/share/cockpit/cybexos-installer
+rm -f /etc/anaconda/conf.d/20-cybexos.conf
 rm -f /etc/dracut.conf.d/99-live.conf
 rm -f /etc/dracut.conf.d/99-liveos.conf
 rm -f /etc/ssh/ssh_host_*
@@ -24,6 +28,10 @@ GDM
 systemctl disable sshd.service
 systemctl enable gdm.service NetworkManager.service firewalld.service
 systemctl set-default graphical.target
+# Anaconda adds SSH to its selected firewall zone unless explicitly disabled.
+# Restore the shipped CybexOS policy after its configuration task has finished.
+install -D -m 0644 /usr/lib/firewalld/zones/cybexos.xml /etc/firewalld/zones/cybexos.xml
+firewall-offline-cmd --set-default-zone=cybexos
 # GDM chooses its generic GNOME fallback for new users unless AccountsService
 # records the intended session. Set this after Anaconda creates the accounts.
 python3 - <<'PY'
@@ -51,4 +59,15 @@ for account in pwd.getpwall():
     path.chmod(0o600)
 PY
 restorecon -RF /etc/gdm /var/lib/AccountsService/users
+/usr/libexec/cybexos-seed-installed-users
+# Anaconda's initial initramfs was created before this post script removed the
+# live-only dracut settings. Rebuild from the final installed configuration.
+dracut --force --regenerate-all
+%end
+
+%post --nochroot --erroronfail --log=/var/log/anaconda/cybexos-target-policy.log
+set -eu
+# Reads only the confirmed account/encryption policy from live /run. The helper
+# verifies that the mounted target root is encrypted before enabling autologin.
+/usr/libexec/cybexos-installer-target
 %end

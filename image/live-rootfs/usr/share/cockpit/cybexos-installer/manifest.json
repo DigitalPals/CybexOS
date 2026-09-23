@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "requires": {"cockpit": "300"},
+  "content-security-policy": "default-src 'self'; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; form-action 'self'"
+}
