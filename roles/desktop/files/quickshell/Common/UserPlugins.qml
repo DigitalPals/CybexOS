@@ -213,7 +213,10 @@ Singleton {
 
     // Registry edits are seen at once; package trees are polled. The helper
     // only stats unchanged packages, but a scan is still a process, so poll
-    // briskly only while the settings window can show the result.
+    // briskly only while the settings window can show the result. Otherwise
+    // the poll only notices hand edits inside an enabled plugin's folder
+    // (`plugin update` touches the registry, and `plugin reload` rescans at
+    // once), so it is slow, needs something enabled, and stops while idle.
     FileView {
         path: root.registryPath
         watchChanges: true
@@ -236,10 +239,20 @@ Singleton {
     }
 
     Timer {
-        interval: Settings.panelOpen ? 2000 : 30000
+        interval: Settings.panelOpen ? 2000 : 300000
         repeat: true
-        running: true
-        triggeredOnStart: true
+        running: !Activity.idle && (Settings.panelOpen || root.enabled.length > 0)
         onTriggered: root.refresh()
     }
+
+    Connections {
+        target: Activity
+
+        function onResumed() {
+            if (Settings.panelOpen || root.enabled.length > 0)
+                root.refresh();
+        }
+    }
+
+    Component.onCompleted: refresh()
 }

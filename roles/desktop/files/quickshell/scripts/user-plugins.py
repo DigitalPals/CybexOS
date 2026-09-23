@@ -248,6 +248,21 @@ def write_preferences(config: Path, value: dict) -> None:
             os.unlink(temporary)
 
 
+def touch_registry(config: Path) -> None:
+    """Tell a running shell that package code changed without a registry edit.
+
+    The shell watches plugins.json and rescans on any change to it, but only
+    polls package trees slowly; a fast-forward otherwise goes unseen until
+    that poll. Only the timestamp moves, so preferences are never rewritten.
+    """
+    try:
+        os.utime(config)
+    except OSError:
+        # No registry means nothing is enabled, so nothing to reload; any
+        # other failure only delays the reload to the shell's own poll.
+        pass
+
+
 def apply_layout(registry: dict, layout: object, packages: Path) -> None:
     if not isinstance(layout, dict) or set(layout) != {"left", "center", "right"}:
         raise ValueError("layout must contain left, center and right arrays")
@@ -605,6 +620,8 @@ def main() -> int:
             if args.command == "update":
                 print(plugin_packages.update(packages, args.id, package, args.preview,
                                              lock=lambda: locked(config)))
+                if not args.preview:
+                    touch_registry(config)
                 return 0
             with locked(config):
                 if args.command == "clone":
