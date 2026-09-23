@@ -818,7 +818,7 @@
 # qmllint is a failed prerequisite, just as it is in the repository and CI
 # gates.
 - name: Check the Quickshell configuration before installing it
-  ansible.builtin.command: "{{ playbook_dir }}/tests/qml-lint"
+  ansible.builtin.command: "{{ playbook_dir }}/tests/qml-lint --shell-only"
   delegate_to: localhost
   become: false
   changed_when: false

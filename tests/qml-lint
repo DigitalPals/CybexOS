@@ -19,11 +19,19 @@
 set -uo pipefail
 
 verbose=false
-case ${1:-} in
-  -v|--verbose) verbose=true ;;
-  '') ;;
-  *) printf 'usage: %s [-v|--verbose]\n' "${BASH_SOURCE[0]##*/}" >&2; exit 2 ;;
-esac
+# --shell-only is the deploy's check: a drifted test harness is a repository
+# failure, not a reason to refuse installing a shell that lints clean.
+shell_only=false
+for arg in "$@"; do
+  case $arg in
+    -v|--verbose) verbose=true ;;
+    --shell-only) shell_only=true ;;
+    *)
+      printf 'usage: %s [-v|--verbose] [--shell-only]\n' "${BASH_SOURCE[0]##*/}" >&2
+      exit 2
+      ;;
+  esac
+done
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 shell_dir="$repo_root/roles/desktop/files/quickshell"
@@ -45,6 +53,7 @@ harnesses=(
   tests/user-widgets/shell.qml
   tests/omarchy-plugins/shell.qml
 )
+$shell_only && harnesses=()
 
 # Quickshell provides qs.* as a virtual import of the configuration root.
 # Reproduce that mapping for Qt's standalone linter without modifying source.
