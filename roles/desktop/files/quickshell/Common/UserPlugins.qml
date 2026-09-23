@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "ProcHelpers.js" as ProcHelpers
 
 // Separate from Settings: older shell schemas must never rewrite plugin data.
 Singleton {
@@ -130,16 +131,24 @@ Singleton {
                 }
             }
         }
+        property bool exitSeen: false
+        property int lastExit: 0
+        onExited: (code, status) => {
+            scanner.exitSeen = true;
+            scanner.lastExit = code;
+        }
+        // Settles on the falling edge of `running`, the only signal there is
+        // when python3 cannot start, so a queued refresh is never stranded.
         onRunningChanged: {
             if (running) {
                 timedOut = false;
+                exitSeen = false;
+                lastExit = 0;
                 scanWatchdog.restart();
-            } else {
-                scanWatchdog.stop();
+                return;
             }
-        }
-        onExited: (code, status) => {
-            if (code !== 0)
+            scanWatchdog.stop();
+            if (!exitSeen || lastExit !== 0)
                 root.error = timedOut ? "Plugin discovery timed out" : "Could not inspect user widgets";
             if (root.refreshPending) {
                 root.refreshPending = false;
@@ -150,6 +159,8 @@ Singleton {
 
     Process {
         id: writer
+        property bool exitSeen: false
+        property int lastExit: 0
         stdout: StdioCollector {
             onStreamFinished: root.operationResult = text.trim()
         }
@@ -160,6 +171,21 @@ Singleton {
             }
         }
         onExited: (code, status) => {
+            writer.exitSeen = true;
+            writer.lastExit = code;
+        }
+        // The queue advances on the falling edge of `running`: a writer that
+        // never started sends no exited(), and must not leave `busy` stuck
+        // with the rest of the queue behind it.
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+            if (code === ProcHelpers.NOT_STARTED && root.error === "")
+                root.error = ProcHelpers.commandError("user-plugins.py", code, "");
             if (command[2] === "configure-widget") {
                 const changes = JSON.parse(command[4]);
                 if (typeof changes.enabled === "boolean")

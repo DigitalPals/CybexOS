@@ -239,6 +239,15 @@ test("plugin discovery keeps the last good state and cannot wedge", () => {
     assert.match(plugins, /id: scanWatchdog[^]*?scanner\.running = false;/);
     assert.match(plugins, /interval: Settings\.panelOpen \? 2000 : 30000/);
     assert.match(plugins, /FileView \{\s*path: root\.registryPath\s*watchChanges: true/);
+    // Neither process may wedge its queue when python3 cannot start.
+    for (const id of ["scanner", "writer"]) {
+        const block = plugins.slice(plugins.indexOf("id: " + id));
+        const exited = block.slice(block.indexOf("onExited:"));
+        assert.ok(block.indexOf("onRunningChanged:") >= 0, id + " settles on running");
+        assert.doesNotMatch(exited.slice(0, exited.indexOf("}")),
+            /refresh|nextWrite|widgetMembershipFinished/, id + " must not settle in onExited");
+    }
+    assert.match(plugins, /exitSeen \? lastExit : ProcHelpers\.NOT_STARTED[\s\S]{0,700}?Qt\.callLater\(root\.nextWrite\)/);
 });
 
 test("one plugin's exception cannot abort the registry sync", () => {
