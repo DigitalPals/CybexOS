@@ -345,6 +345,17 @@ Do not shut down or reboot while `cybexos-update-run status` reports `queued` or
 not a machine power cycle. Wait for a terminal state (`done`, `failed`, or
 `cancelled`), or cancel deliberately and confirm the terminal state first.
 
+While it runs, the worker holds a logind block inhibitor for shutdown and
+sleep (`systemd-inhibit --list` shows `CybexOS`), so ordinary power-off,
+reboot, and suspend requests, including idle suspend, are refused until it
+finishes. `systemctl poweroff -i` overrides it deliberately. Closing a laptop
+lid still suspends, because logind's default `LidSwitchIgnoreInhibited=yes`
+ignores inhibitors; keep the lid open during an update. The protection is
+complete for a system-service worker (Quickshell and release updates). logind
+does not apply a user's own inhibitor to that user's requests, and Polkit may
+refuse it to a user-service worker altogether; `run.log` then records an
+`[inhibit]` line and the update continues unprotected.
+
 No repository command automatically reboots or powers off the machine.
 Ordinary package updates can install a new kernel for the next boot. A direct
 bootstrap can rebuild initramfs through the `boot` role. The IPU7 camera role

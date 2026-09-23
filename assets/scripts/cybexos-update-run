@@ -510,6 +510,7 @@ release_activated=false
 release_backup=""
 cancel_requested=false
 packages_ran=false
+inhibitor_pid=""
 
 # SIGTERM from `cybexos-update-run cancel` (systemctl stop) only records the
 # request. Interrupting dnf/rpm or an Ansible play midway can leave duplicate
@@ -530,6 +531,49 @@ wait_for_job() {
   until wait "$pid"; do
     kill -0 "$pid" 2>/dev/null || return 0
   done
+}
+
+# Hold a logind block inhibitor for the worker's lifetime so shutdown and
+# sleep requests are refused while packages or configuration change. The
+# worker must stay the unit's main process (it alone receives a stop's
+# SIGTERM), so a child holds the lock and exits together with the worker. A
+# user unit may be refused by Polkit; the update then continues unprotected.
+# logind's default LidSwitchIgnoreInhibited=yes still suspends on lid close.
+acquire_inhibitor() {
+  local ready="$run_dir/.inhibit.$$.ready" error_file="$run_dir/inhibit.err"
+  if ! command -v systemd-inhibit >/dev/null 2>&1; then
+    printf '[inhibit] systemd-inhibit is unavailable; shutdown and sleep are not blocked\n' \
+      >>"$run_dir/run.log"
+    return 0
+  fi
+  rm -f -- "$ready"
+  systemd-inhibit --no-ask-password --what=shutdown:sleep --mode=block \
+    --who=CybexOS --why='Applying updates' \
+    sh -c ': >"$1" && exec tail --pid="$2" -f /dev/null' \
+    cybexos-update-inhibit "$ready" "$$" \
+    </dev/null >/dev/null 2>"$error_file" &
+  inhibitor_pid=$!
+  for _ in {1..100}; do
+    if [[ -e $ready ]]; then
+      rm -f -- "$ready"
+      printf '[inhibit] shutdown and sleep are blocked until the update finishes\n' \
+        >>"$run_dir/run.log"
+      return 0
+    fi
+    kill -0 "$inhibitor_pid" 2>/dev/null || break
+    sleep 0.05
+  done
+  release_inhibitor
+  rm -f -- "$ready"
+  printf '[inhibit] could not block shutdown and sleep; continuing: %s\n' \
+    "$(tr -s '\n' ' ' <"$error_file" 2>/dev/null | cut -c1-200)" >>"$run_dir/run.log"
+}
+
+release_inhibitor() {
+  [[ -n $inhibitor_pid ]] || return 0
+  kill "$inhibitor_pid" 2>/dev/null || true
+  wait "$inhibitor_pid" 2>/dev/null || true
+  inhibitor_pid=""
 }
 
 restore_release_configuration() {
@@ -692,6 +736,7 @@ worker_cancelled() {
 
 worker_exit_fallback() {
   local rc=$?
+  release_inhibitor
   [[ $worker_finalized == true ]] && return
   # This catches interpreter/tool failures and SIGKILL's next status read
   # repairs the one case in which no shell trap can run.
@@ -795,6 +840,7 @@ worker() {
     worker_failed staging "Could not promote the verified release candidate" 1
   fi
 
+  acquire_inhibitor
   write_status running snapshot "Creating a pre-update recovery point" 0
   printf 'CybexOS update %s started at %s\n' "$run_id" "$(date --iso-8601=seconds)" >> "$run_dir/run.log"
   # Keep run state and logs private, but do not pass that 0077 umask through

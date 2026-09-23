@@ -93,6 +93,17 @@ apply_mock systemd-run \
   'printf "%s\n" "$*" >>"$MOCK_SYSTEMD_ARGS_LOG"' \
   'printf "%s\n" "$unit" >>"$MOCK_SYSTEMD_LOG"'
 
+# The worker holds a logind inhibitor through this helper; never take a real
+# one from the fixture.
+apply_mock systemd-inhibit \
+  'set -euo pipefail' \
+  'printf "%s\n" "$*" >>"$MOCK_INHIBIT_LOG"' \
+  'if [[ -n ${MOCK_INHIBIT_FAIL:-} ]]; then' \
+  '  echo "Failed to inhibit: Access denied" >&2' \
+  '  exit 1' \
+  'fi' \
+  'while [[ ${1:-} == --* ]]; do shift; done' \
+  'exec "$@"'
 
 apply_mock sudo \
   'set -euo pipefail' \
@@ -155,6 +166,7 @@ export MOCK_ACTIVE_DIR="$active_dir"
 export MOCK_SYSTEMD_LOG="$fixture/systemd.log"
 export MOCK_SYSTEMD_ARGS_LOG="$fixture/systemd-args.log"
 export MOCK_STOP_LOG="$fixture/stop.log"
+export MOCK_INHIBIT_LOG="$fixture/inhibit.log"
 export MOCK_PACKAGE_LOG="$fixture/package.log"
 export MOCK_DNF_LOG="$fixture/dnf.log"
 export MOCK_DNF_UMASK_LOG="$fixture/dnf-umask.log"
@@ -392,7 +404,8 @@ $backend cancel "$defer_status_id" >/dev/null
 
 # SIGTERM never interrupts the package transaction: dnf runs to completion,
 # then the worker records the cancellation instead of starting the test gate
-# or Ansible, and keeps the reboot advice for what was installed.
+# or Ansible, and keeps the reboot advice for what was installed. The worker
+# holds a shutdown/sleep block inhibitor while it runs.
 export MOCK_PACKAGE_SUCCESS=1
 export MOCK_DNF_GATE="$fixture/dnf-gate"
 export MOCK_TESTS_RAN="$fixture/defer-tests-ran"
@@ -438,6 +451,10 @@ deferred_run=$($backend status --json "$defer_id")
 [[ $(jq -r .rebootRecommendation <<<"$deferred_run") != pending ]]
 [[ ! -e $MOCK_TESTS_RAN ]]
 [[ ! -e $MOCK_ANSIBLE_ARGS_LOG ]]
+grep -Fq -- '--what=shutdown:sleep --mode=block' "$MOCK_INHIBIT_LOG"
+grep -Fq '[inhibit] shutdown and sleep are blocked' \
+  "$XDG_STATE_HOME/cybexos/update/logs/$defer_id/run.log"
+[[ -z $(find "$XDG_STATE_HOME/cybexos/update/logs/$defer_id" -name '.inhibit.*') ]]
 grep -Fq 'timeout --kill-after=1m 30m ./tests/run' "$backend"
 unset MOCK_PACKAGE_SUCCESS
 
@@ -523,12 +540,17 @@ not_needed=$($backend status --json "$not_needed_id")
 # the already-completed update into a failed run.
 export MOCK_REBOOT_RC=0
 export MOCK_REBOOT_JSON='{"reboot_required":false}'
+# A refused inhibitor (Polkit denies a user unit) is logged, not fatal.
+export MOCK_INHIBIT_FAIL=1
 malformed_start=$($backend start --json --no-flatpak)
 malformed_id=$(jq -er .id <<<"$malformed_start")
 $backend _worker "$malformed_id" --no-flatpak
+unset MOCK_INHIBIT_FAIL
 malformed=$($backend status --json "$malformed_id")
 [[ $(jq -r .state <<<"$malformed") == done ]]
 [[ $(jq -r .rebootRecommendation <<<"$malformed") == unavailable ]]
+grep -Fq '[inhibit] could not block shutdown and sleep; continuing: Failed to inhibit' \
+  "$XDG_STATE_HOME/cybexos/update/logs/$malformed_id/run.log"
 
 export MOCK_REBOOT_RC=2
 export MOCK_REBOOT_JSON='[]'
@@ -719,4 +741,4 @@ assert_unrelated_skills
 
 ! grep -q 'set +e;.*set -e' "$backend"
 
-printf 'Durable updater serializes starts, defers cancellation past package transactions, owns release and agent-skill activation rollback, preserves boot-scoped reboot advice, and reads exact log windows\n'
+printf 'Durable updater serializes starts, defers cancellation past package transactions, inhibits shutdown, owns release and agent-skill activation rollback, preserves boot-scoped reboot advice, and reads exact log windows\n'
