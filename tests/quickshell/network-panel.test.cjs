@@ -2,7 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { shellDir } = require("./shell.cjs");
+const { spawnSync } = require("node:child_process");
+const { shellDir, load } = require("./shell.cjs");
 
 function read(relative) {
     return fs.readFileSync(path.join(shellDir, relative), "utf8");
@@ -32,6 +33,118 @@ test("network details poll only while acquired and serialize snapshots", () => {
     assert.match(controller, /scannerDevice\.scannerEnabled = false/);
     assert.match(controller, /NetworkHelpers\.calculateRates/);
     assert.match(controller, /NetworkHelpers\.updatePingHistory/);
+});
+
+test("the live network figures start no process per sample", () => {
+    const controller = read("Common/NetworkDetails.qml");
+    // Throughput: the 1.5 s tick reads sysfs counters through FileView.
+    assert.match(controller,
+        /id: detailsPoll\s*interval: root\.pollIntervalMs\s*repeat: true\s*running: root\.acquired\s*onTriggered: \{\s*root\.sampleCounters\(\);\s*root\.checkPinger\(routerPinger, true\);\s*root\.checkPinger\(internetPinger, false\);/);
+    for (const counter of ["rx_bytes", "tx_bytes"])
+        assert.match(controller, new RegExp(
+            `FileView \\{[^}]*counterPath\\(root\\.counterInterface, "${counter}"\\)[^}]*blockAllReads: true`));
+    assert.match(controller, /readonly property string counterInterface: acquired \? primaryInterface : ""/);
+    // Latency: two long-lived pingers, stopped when released.
+    assert.match(controller, /readonly property string routerPingTarget: acquired && snapshotPrimary/);
+    assert.match(controller, /readonly property string internetPingTarget: acquired && snapshotPrimary/);
+    assert.match(controller, /onRouterPingTargetChanged: restartPinger\(routerPinger, routerPingTarget\)/);
+    assert.match(controller, /onInternetPingTargetChanged: restartPinger\(internetPinger, internetPingTarget\)/);
+    assert.match(controller, /id: pingRetry[\s\S]{0,80}running: root\.acquired\s*&&/);
+    // The snapshot follows NetworkManager's single monitor plus a slow poll.
+    assert.match(controller,
+        /id: snapshotPoll\s*interval: root\.snapshotIntervalMs\s*repeat: true\s*running: root\.acquired\s*onTriggered: root\.refresh\(\)/);
+    assert.match(controller, /readonly property int snapshotIntervalMs:\s*10000/);
+    assert.match(controller,
+        /target: NetworkStatus\s*function onMonitorEvent\(line\) \{\s*if \(root\.acquired\)\s*snapshotDebounce\.restart\(\);/);
+    assert.match(controller, /function onMonitorRunningChanged\(\) \{\s*if \(root\.acquired\)/);
+    assert.doesNotMatch(controller, /result\.diagnostics/,
+        "ping results no longer come from the snapshot helper");
+    const release = controller.slice(controller.indexOf("function release()"),
+        controller.indexOf("function syncScanner()"));
+    for (const timer of ["detailsPoll", "snapshotPoll", "snapshotDebounce"])
+        assert.match(release, new RegExp(`${timer}\\.stop\\(\\)`));
+});
+
+test("sysfs counter samples feed the existing rate math and the primary device", () => {
+    const D = load("NetworkDetailsHelpers.js");
+    const N = load("NetworkHelpers.js");
+    assert.equal(D.counterPath("wlan0", "rx_bytes"), "/sys/class/net/wlan0/statistics/rx_bytes");
+    assert.equal(D.counterPath("enp0s31f6", "tx_bytes"), "/sys/class/net/enp0s31f6/statistics/tx_bytes");
+    for (const bad of ["", "..", "../../etc", "wlan0/../x", "a b"])
+        assert.equal(D.counterPath(bad, "rx_bytes"), "", bad);
+    assert.equal(D.counterPath("wlan0", "rx_errors"), "");
+
+    const first = D.counterSample("wlan0", "1000\n", "500\n", 1000);
+    assert.deepEqual(first, { interface: "wlan0", rxBytes: 1000, txBytes: 500, timestamp: 1000 });
+    const second = D.counterSample("wlan0", "4000\n", "1500\n", 2500);
+    const rate = N.calculateRates(N.calculateRates(null, first, 1000).next, second, 2500);
+    assert.equal(rate.download, 2000);
+    assert.equal(rate.upload, 1000 / 1.5);
+    assert.deepEqual(D.counterSample("wlan0", "", "junk", 3000),
+        { interface: "wlan0", rxBytes: null, txBytes: null, timestamp: 3000 });
+
+    const device = { interface: "wlan0", ipv4: "192.168.1.20", rxBytes: 10, txBytes: 20 };
+    const merged = D.withCounters(device, "wlan0", second);
+    assert.deepEqual(merged, { interface: "wlan0", ipv4: "192.168.1.20", rxBytes: 4000, txBytes: 1500 });
+    assert.equal(device.rxBytes, 10, "the snapshot object is not mutated");
+    assert.equal(D.withCounters(device, "eth0", second), device);
+    assert.equal(D.withCounters(device, "wlan0", null), device);
+    assert.equal(D.withCounters(null, "wlan0", second), null);
+});
+
+test("long-lived ping output becomes one latency or loss sample per probe", () => {
+    const D = load("NetworkDetailsHelpers.js");
+    assert.equal(D.parsePingLine("PING 1.1.1.1 (1.1.1.1) 56(84) bytes of data."), null);
+    assert.deepEqual(D.parsePingLine("64 bytes from 1.1.1.1: icmp_seq=3 ttl=57 time=14.2 ms"),
+        { seq: 3, ms: 14.2 });
+    assert.deepEqual(D.parsePingLine("64 bytes from 10.0.0.1: icmp_seq=4 ttl=64 time<1 ms"),
+        { seq: 4, ms: 1 });
+    assert.deepEqual(D.parsePingLine("no answer yet for icmp_seq=5"), { seq: 5, ms: null });
+    assert.equal(D.parsePingLine("ping: sendmsg: Network is unreachable"), null);
+
+    // A reply that arrives after its probe was counted lost, and a DUP!,
+    // add nothing; the sequence wraps at 16 bits.
+    assert.deepEqual(D.pingSample(-1, "no answer yet for icmp_seq=1"), { seq: 1, ms: null });
+    assert.equal(D.pingSample(1, "64 bytes from 1.1.1.1: icmp_seq=1 ttl=57 time=1600 ms"), null);
+    assert.equal(D.pingSample(2, "64 bytes from 1.1.1.1: icmp_seq=2 ttl=57 time=9 ms (DUP!)"), null);
+    assert.deepEqual(D.pingSample(65535, "64 bytes from 1.1.1.1: icmp_seq=0 ttl=57 time=9 ms"),
+        { seq: 0, ms: 9 });
+
+    // A pinger that cannot send prints no per-probe line at all.
+    assert.equal(D.missedProbes(0, 1500, 1500), 0);
+    assert.equal(D.missedProbes(0, 2999, 1500), 0);
+    assert.equal(D.missedProbes(0, 3000, 1500), 1);
+    assert.equal(D.missedProbes(0, 7600, 1500), 4);
+    assert.equal(D.missedProbes(0, 5000, 0), 0);
+
+    assert.deepEqual(D.pingCommand("192.168.1.1", 1500),
+        ["env", "LC_ALL=C", "ping", "-n", "-O", "-i", "1.5", "--", "192.168.1.1"]);
+    assert.deepEqual(D.pingCommand("fe80::1", 1500).slice(-2), ["--", "fe80::1"]);
+    for (const bad of ["", "-f", "example.com", "1.1.1.1 -c 1", "fe80::1%wlan0", null]) {
+        assert.equal(D.pingCommand(bad, 1500), null, bad);
+        assert.equal(D.pingTarget(bad), "", bad);
+    }
+    assert.equal(D.pingTarget("192.168.1.1"), "192.168.1.1");
+});
+
+test("the pinger command and parser agree with the installed ping",
+    { skip: spawnSync("ping", ["-V"]).status !== 0 && "ping is not installed" }, () => {
+    const D = load("NetworkDetailsHelpers.js");
+    const argv = D.pingCommand("127.0.0.1", 200);
+    const run = spawnSync("timeout", ["0.7", ...argv], { encoding: "utf8" });
+    if (!/icmp_seq=/.test(run.stdout))
+        return; // No ICMP socket permission here (e.g. a restricted container).
+    let lastSeq = -1;
+    const samples = [];
+    for (const line of run.stdout.split("\n")) {
+        const sample = D.pingSample(lastSeq, line);
+        if (sample) {
+            lastSeq = sample.seq;
+            samples.push(sample);
+        }
+    }
+    assert.ok(samples.length >= 2, run.stdout);
+    assert.ok(samples.every(sample => sample.ms !== null && sample.ms >= 0), run.stdout);
 });
 
 test("DNS controls remain profile-backed and Wi-Fi band options stay out of the view", () => {

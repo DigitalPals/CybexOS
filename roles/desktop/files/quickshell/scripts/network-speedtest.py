@@ -22,7 +22,11 @@ from typing import Any
 IFACE_RE = re.compile(r"^[A-Za-z0-9_.:@+-]{1,64}$")
 FAST_TOKEN = "YXNkZmFzZGxmbnNkYWZoYXNkZmhrYWxm"
 workers: set[subprocess.Popen[bytes]] = set()
-workers_lock = threading.Lock()
+# Reentrant: the SIGTERM/SIGINT handler runs on the main thread between
+# bytecodes and stops workers through this lock, which the main thread may
+# already hold, e.g. while cleaning up after the first of two SIGTERMs (the
+# overlay sends one per interface switch, cancel, and close).
+workers_lock = threading.RLock()
 cancel_event = threading.Event()
 
 
@@ -188,10 +192,13 @@ def traffic_arguments(
 ) -> list[str]:
     arguments = curl_prefix(interface, duration + 3) + ["--output", "/dev/null"]
     if direction == "upload":
+        # --upload-file streams the body from disk; --data-binary @file read
+        # the whole file into every parallel curl first (~135 MB each). The
+        # request keeps its POST method, Content-Type and Content-Length.
         arguments += [
             "--request", "POST",
             "--header", "Content-Type: application/octet-stream",
-            "--data-binary", f"@{upload_path}",
+            "--upload-file", upload_path,
         ]
     arguments.append(url)
     return arguments
