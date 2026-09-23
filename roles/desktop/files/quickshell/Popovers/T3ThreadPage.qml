@@ -914,6 +914,7 @@ Item {
                         spacing: 7
 
                         Sym {
+                            id: workingGlyph
                             anchors.verticalCenter: parent.verticalCenter
                             name: "progress_activity"
                             size: Theme.iconSmall
@@ -923,7 +924,8 @@ Item {
                             // The arc only reads as activity while it turns;
                             // parked, it is an ambiguous half-ring.
                             RotationAnimation on rotation {
-                                running: root.working && !Theme.reducedMotion
+                                running: root.working && workingGlyph.visible
+                                    && !Theme.reducedMotion
                                 from: 0
                                 to: 360
                                 duration: 1100

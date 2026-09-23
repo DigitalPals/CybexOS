@@ -43,12 +43,15 @@ Rectangle {
         symWeight: 460
         color: root.statusColor
 
+        // Hidden behind another panel it stops too, and a stopped value
+        // source leaves its angle behind for the finished status glyph.
         RotationAnimation on rotation {
-            running: root.running && !Theme.reducedMotion
+            running: root.running && statusGlyph.visible && !Theme.reducedMotion
             from: 0
             to: 360
             loops: Animation.Infinite
             duration: 950
+            onRunningChanged: if (!running) statusGlyph.rotation = 0
         }
     }
 

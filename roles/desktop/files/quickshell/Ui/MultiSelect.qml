@@ -499,7 +499,7 @@ Item {
                   font.pixelSize: Style.font.control
 
                   RotationAnimator on rotation {
-                    running: root.loadingOptions
+                    running: root.loadingOptions && refreshButton.visible
                     from: 0; to: 360
                     duration: 800
                     loops: Animation.Infinite
