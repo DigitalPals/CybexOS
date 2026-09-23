@@ -157,17 +157,40 @@ Singleton {
     property var lastPush: ({})
     property var runBaselines: ({})
 
+    // The state as last written (or read), so a sweep that changed nothing
+    // leaves github.json alone; every sweep used to rewrite it, a couple of
+    // thousand identical writes a day.
+    property string persistedState: ""
+
+    function stateSnapshot() {
+        return {
+            seenAt: root.seenAt,
+            activitySeenAt: root.activitySeenAt,
+            lastPush: root.lastPush,
+            runBaselines: root.runBaselines,
+            inboxItems: Helpers.compactInboxItems(root.inboxState),
+            inboxSourceRevisions: root.inboxSourceRevisions,
+            eventEtags: root.eventEtags,
+            eventPollIntervals: root.eventPollIntervals
+        };
+    }
+
     function persist() {
+        const snapshot = stateSnapshot();
+        const text = JSON.stringify(snapshot);
+        if (text === persistedState)
+            return;
+        persistedState = text;
         // FileView.adapter ids are absent from the shipped static type data.
         // qmllint disable unqualified
-        stateData.seenAt = root.seenAt;
-        stateData.activitySeenAt = root.activitySeenAt;
-        stateData.lastPush = root.lastPush;
-        stateData.runBaselines = root.runBaselines;
-        stateData.inboxItems = Helpers.compactInboxItems(root.inboxState);
-        stateData.inboxSourceRevisions = root.inboxSourceRevisions;
-        stateData.eventEtags = root.eventEtags;
-        stateData.eventPollIntervals = root.eventPollIntervals;
+        stateData.seenAt = snapshot.seenAt;
+        stateData.activitySeenAt = snapshot.activitySeenAt;
+        stateData.lastPush = snapshot.lastPush;
+        stateData.runBaselines = snapshot.runBaselines;
+        stateData.inboxItems = snapshot.inboxItems;
+        stateData.inboxSourceRevisions = snapshot.inboxSourceRevisions;
+        stateData.eventEtags = snapshot.eventEtags;
+        stateData.eventPollIntervals = snapshot.eventPollIntervals;
         // qmllint enable unqualified
         stateFile.writeAdapter();
     }
@@ -191,6 +214,8 @@ Singleton {
             root.eventEtags = Helpers.normalizeEventEtags(stateData.eventEtags);
             root.eventPollIntervals = Helpers.normalizeEventPollIntervals(
                 stateData.eventPollIntervals);
+            // What the file already holds; the reset below differs from it.
+            root.persistedState = JSON.stringify(root.stateSnapshot());
             if (!root.ciReportsEnabled) {
                 const reset = Helpers.removeInboxSources(root.inboxState,
                     root.inboxSourceRevisions, "workflows:");
@@ -200,6 +225,8 @@ Singleton {
             }
             root.publishInbox();
         }
+        // A failed write is retried by the next persist(), changed or not.
+        onSaveFailed: root.persistedState = ""
         // qmllint enable unqualified
 
         JsonAdapter {

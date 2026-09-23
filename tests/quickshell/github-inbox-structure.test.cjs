@@ -21,8 +21,10 @@ test("the GitHub singleton publishes the persistent Inbox contract", () => {
     assert.match(source,
         /property string seenAt:[\s\S]*property string activitySeenAt:[\s\S]*property var lastPush:[\s\S]*property var runBaselines:[\s\S]*property var inboxItems:[\s\S]*property var inboxSourceRevisions:/,
         "Inbox state must append to every legacy state field");
-    assert.match(source, /stateData\.inboxItems = Helpers\.compactInboxItems\(root\.inboxState\)/);
-    assert.match(source, /stateData\.inboxSourceRevisions = root\.inboxSourceRevisions/);
+    assert.match(source, /inboxItems: Helpers\.compactInboxItems\(root\.inboxState\)/);
+    assert.match(source, /inboxSourceRevisions: root\.inboxSourceRevisions/);
+    assert.match(source, /stateData\.inboxItems = snapshot\.inboxItems/);
+    assert.match(source, /stateData\.inboxSourceRevisions = snapshot\.inboxSourceRevisions/);
     assert.match(source, /badgeVisible:[^\n]*pendingInboxCount > 0/);
     assert.doesNotMatch(source, /unreadRepoCount\s*\+/,
         "view-based repository dots must not enter the bar badge count");
@@ -392,4 +394,27 @@ test("an unchanged Inbox is not republished and the popover lists are keyed", ()
     assert.match(popover,
         /id: repoRow\s*required property string modelData\s*readonly property var repo: Helpers\.repoFor\(root\.repoIndex, modelData\)/);
     assert.doesNotMatch(popover, /repoRow\.modelData\./);
+});
+
+test("an unchanged GitHub state is not rewritten after every sweep", () => {
+    const source = read("Common/GitHub.qml");
+    const persist = source.match(/function persist\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(persist,
+        /const text = JSON\.stringify\(snapshot\);\s*if \(text === persistedState\)\s*return;\s*persistedState = text;/);
+    assert.match(persist, /stateFile\.writeAdapter\(\)/);
+    // Every field the adapter persists is part of the comparison.
+    const adapter = source.match(/JsonAdapter \{\s*id: stateData([\s\S]*?)\n        \}/)?.[1] ?? "";
+    const fields = [...adapter.matchAll(/property \w+ (\w+):/g)].map(match => match[1]);
+    const snapshot = source.match(/function stateSnapshot\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.ok(fields.length >= 8);
+    for (const field of fields) {
+        assert.match(snapshot, new RegExp(`\\b${field}:`), field);
+        assert.match(persist, new RegExp(`stateData\\.${field} = snapshot\\.${field};`), field);
+    }
+    const loaded = source.match(/onLoaded: \{[\s\S]*?\n        \}/)?.[0] ?? "";
+    assert.match(loaded,
+        /root\.persistedState = JSON\.stringify\(root\.stateSnapshot\(\)\);\s*if \(!root\.ciReportsEnabled\)/,
+        "the loaded file is the baseline, so a reset applied on load is still written");
+    assert.match(source, /onSaveFailed: root\.persistedState = ""/,
+        "a failed write must not suppress the retry");
 });
