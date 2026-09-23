@@ -13,8 +13,10 @@ Text {
         id: shift
     }
 
+    // Reduced motion snaps the value in rather than running the transition
+    // at zero duration through the animation driver.
     Behavior on text {
-        enabled: root.animateChange
+        enabled: root.animateChange && !Theme.reducedMotion
 
         SequentialAnimation {
             alwaysRunToEnd: true

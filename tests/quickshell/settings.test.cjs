@@ -563,7 +563,10 @@ test("touchpad scroll speed defaults to Hyprland's factor and applies live", () 
 
     assert.match(helpers, /scrollFactor:\s*1\.0/);
     assert.match(helpers, /realIn\(parsed\.scrollFactor, 0\.2, 2\.0, 0\.1/);
-    assert.match(settings, /"input:touchpad:scroll_factor"/);
+    assert.match(settings,
+        /"hyprctl", "eval",\s*"hl\.config\(\{ input = \{ touchpad = \{ scroll_factor = "\s*\+ root\.scrollFactor\.toFixed\(1\) \+ " \} \} \}\)"\]/);
+    assert.doesNotMatch(settings, /"hyprctl", "keyword"/,
+        "a Lua-configured Hyprland refuses keyword with exit status 0");
     assert.match(system, /min:\s*0\.2[\s\S]*max:\s*2\.0[\s\S]*step:\s*0\.1/);
     assert.match(input, /persisted_scroll_factor\(\)/);
     assert.match(input, /"scrollFactor"%s\*:%s\*\(\[%d%\.\]\+\)/);
@@ -920,7 +923,8 @@ test("an unchanged save cannot block subsequent widget changes", () => {
     let writes = 0;
     const context = vm.createContext({
         ready: true, migrationPending: false, corruptBackupPending: false, loadError: false,
-        writeInFlight: false, writeSnapshot: "", lastPersistedText: disk,
+        writeInFlight: false, writeSnapshot: "", lastPersistedText: disk, storeText: disk,
+        reloadAfterWrite: false,
         saveError: false, savePending: true, lastSavedAt: 0,
         SettingsHelpers: { serialize: JSON.stringify }, snapshot: () => value,
         saveTimer: { restart() {} }, FileViewError: { Unknown: 1 },
@@ -929,7 +933,8 @@ test("an unchanged save cannot block subsequent widget changes", () => {
             writes++; disk = text; context.handleSaveSucceeded();
         } }
     });
-    for (const name of ["saveNow", "handleSaveSucceeded", "handleSaveFailure"]) {
+    for (const name of ["sameContent", "releaseWriteGuard", "saveNow", "handleSaveSucceeded",
+            "handleSaveFailure"]) {
         const body = source.match(new RegExp("    function " + name + "\\([^]*?^    }", "m"))[0];
         vm.runInContext(body, context);
     }

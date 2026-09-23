@@ -173,7 +173,7 @@ test("file-change reloads are debounced once settings are live", () => {
     const settings = read("Common/Settings.qml");
     assert.match(settings,
         /onFileChanged: \{\s*if \(root\.loaded\)\s*reloadTimer\.restart\(\);\s*else\s*reload\(\);\s*\}/);
-    assert.match(settings, /id: reloadTimer\s*interval: 250\s*onTriggered: store\.reload\(\)/);
+    assert.match(settings, /id: reloadTimer\s*interval: 250\s*onTriggered: root\.reloadStore\(\)/);
     assert.match(functionSource(settings, "set"), /SettingsHelpers\.normalizeKey\(key, value\)/);
 });
 
