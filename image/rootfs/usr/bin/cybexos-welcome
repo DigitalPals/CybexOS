@@ -63,11 +63,12 @@ class Welcome(QObject):
     def openSettings(self, page):
         if page not in ("appearance", "shortcuts"):
             return
-        runtime = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share"))) / "cybexos/runtime/quickshell"
-        arguments = ["ipc", "--path", str(runtime), "call"]
+        # The runtime helper reaches the shell that is actually running,
+        # including a development checkout selected with `cybex dev`.
+        arguments = ["ipc"]
         arguments += (["settings", "open", "appearance"] if page == "appearance"
                       else ["session", "keys"])
-        success, _ = QProcess.startDetached("/usr/bin/qs", arguments)
+        success, _ = QProcess.startDetached(str(Path.home() / ".local/bin/cybexos-runtime"), arguments)
         if not success:
             self.message = "The desktop settings could not be opened."
             self.changed.emit()

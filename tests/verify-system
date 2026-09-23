@@ -185,7 +185,11 @@ check_managed_quickshell_tree() {
     return 1
   }
   if [[ -d $deployed ]]; then
-    find "$deployed" \( -type f -o -type l \) -printf '%P\n' | LC_ALL=C sort >"$actual"
+    # The running shell's Python helpers write __pycache__ into the runtime
+    # tree; the deployment treats those as inert and clears them only with a
+    # real deployment, so they are not unmanaged files.
+    find "$deployed" \( -type d -name __pycache__ -prune \) -o \
+      \( -type f -o -type l \) -printf '%P\n' | LC_ALL=C sort >"$actual"
   else
     printf 'deployed directory is missing: %s\n' "$deployed" >&2
     rm -rf -- "$scratch"
@@ -235,9 +239,12 @@ for unit in NetworkManager firewalld bluetooth avahi-daemon cups; do
   check "$unit is enabled" unit_enabled "$unit.service"
 done
 if feature_enabled docker; then
-  check 'docker is enabled' unit_enabled docker.service
+  # Socket activation starts dockerd on the first client request.
+  check 'docker socket activation is enabled' unit_enabled docker.socket
+  check 'docker is not started at boot' bash -c '! systemctl is-enabled --quiet docker.service'
 else
-  check 'docker is disabled while the feature is off' bash -c '! systemctl is-enabled --quiet docker.service'
+  check 'docker is disabled while the feature is off' bash -c \
+    '! systemctl is-enabled --quiet docker.socket && ! systemctl is-enabled --quiet docker.service'
 fi
 if feature_enabled tailscale; then
   check 'Tailscale package is installed' rpm -q tailscale
@@ -699,7 +706,8 @@ if [[ ${XDG_CURRENT_DESKTOP:-} == *Hyprland* ]] && command_exists hyprctl && hyp
   errors=$(hyprctl configerrors 2>/dev/null || true)
   [[ -z $errors || $errors == 'no errors' ]] && pass 'Hyprland has no config errors' || fail "Hyprland config errors: $errors"
   check 'retired Noctalia process is absent' bash -c '! pgrep -x noctalia'
-  user_units=(quickshell hypridle hyprpolkitagent voxtype external-monitor-toggle)
+  user_units=(quickshell hypridle hyprpolkitagent external-monitor-toggle)
+  feature_enabled developer_tools && user_units+=(voxtype)
   feature_enabled connected_widgets && user_units+=(hermes-menubar-bridge)
   for unit in "${user_units[@]}"; do
     check "user unit active: $unit" user_unit_active "$unit.service"

@@ -9,7 +9,7 @@ awk '/^{% if cybexos_xps_2026 \| bool %}$/ { next }
      /^{% else %}$/ { exit }
      { print }' roles/desktop/templates/monitors.lua.j2 >"$rendered"
 
-FEDORA_MONITORS_CONFIG=$rendered luajit <<'LUA'
+FEDORA_MONITORS_CONFIG=$rendered luajit - <<'LUA'
 local config = assert(os.getenv("FEDORA_MONITORS_CONFIG"))
 local monitors = {}
 local rules = {}
@@ -130,7 +130,7 @@ LUA
 for xps in false true; do
   sed "s/{{ (cybexos_xps_2026 | bool) | ternary('true', 'false') }}/$xps/" \
     roles/desktop/templates/looknfeel.lua.j2 >"$rendered"
-  FEDORA_APPEARANCE_CONFIG=$rendered luajit <<'LUA'
+  FEDORA_APPEARANCE_CONFIG=$rendered luajit - <<'LUA'
 local config = assert(os.getenv("FEDORA_APPEARANCE_CONFIG"))
 local monitors, rules, listeners = {}, {}, {}
 hl = {

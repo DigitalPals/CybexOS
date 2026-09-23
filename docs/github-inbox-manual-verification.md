@@ -23,7 +23,11 @@ Keep the GitHub module enabled unless a step explicitly says otherwise.
 - [ ] With no active workflow, observe a full Inbox sweep at roughly 60 seconds.
   It includes directed notifications and repository events. Repository
   discovery still uses **Repo refresh**, and event requests honor GitHub's
-  `X-Poll-Interval` when it is longer than a minute.
+  `X-Poll-Interval` when it is longer than a minute. A quiet repository's
+  workflow runs are read once per **Repo refresh** interval; they are read
+  every sweep only while one of its runs is active or for three minutes after
+  its events report a push, pull request, new branch or tag, or release. A
+  manual refresh reads every repository's runs.
 - [ ] Complete one workflow successfully and one with failure or
   action-required. Success moves to **Updates**; failures move to **Attention**
   in red, and action-required uses amber.
@@ -125,7 +129,8 @@ Keep the GitHub module enabled unless a step explicitly says otherwise.
   request sends the exact ETag (including a weak `W/` prefix). A `304` is
   treated as success despite `gh --jq` returning nonzero for its empty body,
   and cached rows remain unchanged.
-- [ ] Repeat for workflow runs (`If-None-Match`) and notifications
+- [ ] Repeat for workflow runs and repository discovery (`/user/repos` and
+  each outside watch), all with `If-None-Match`, and for notifications
   (`If-Modified-Since`). A `304` keeps the rows; notifications are not polled
   sooner than the server's `X-Poll-Interval`. Mark a notification read on
   github.com and confirm it leaves the Inbox once `Last-Modified` moves.
@@ -140,10 +145,15 @@ Keep the GitHub module enabled unless a step explicitly says otherwise.
   appears in the popover and settings.
 - [ ] Use a credential without notification access. Repository events, commits,
   and permitted workflow data continue while notifications report unavailable.
-- [ ] Disconnect the network or exhaust the API rate limit. Cached Inbox rows
-  remain visible, the global error reports a paused Inbox, and retries back off
-  instead of continuously invoking `gh`.
+- [ ] Break connectivity while NetworkManager still reports it online (as
+  above), or exhaust the API rate limit. Cached Inbox rows remain visible, the
+  global error reports a paused Inbox, and retries back off instead of
+  continuously invoking `gh`.
 - [ ] Change recent-repository count or watch list during a slow sweep. Results
   from the obsolete scope do not reappear after the new scope loads.
 - [ ] Disable the GitHub module for more than one minute. Neither the 60-second
   full timer nor the 30-second active timer invokes `gh`.
+- [ ] Leave the session without input for five minutes (locked or not), or
+  disconnect through NetworkManager. No scheduled `gh` process starts while
+  it stays idle or offline. The first input, or the reconnect, starts a sweep
+  at once; it reads only what is due.
