@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "ProcHelpers.js" as ProcHelpers
+import "SettingsHelpers.js" as SettingsHelpers
 import "SysInfoHelpers.js" as SysInfoHelpers
 
 Singleton {
@@ -409,7 +410,107 @@ Singleton {
         }
     }
 
-    Component.onCompleted: applyStartupPolicies()
+    Component.onCompleted: {
+        applyStartupPolicies();
+        // hypridle started from the file as it was when the shell loaded it.
+        idleTimeoutsApplied = persistedIdleTimeouts();
+        refreshIdleUserConfig();
+    }
+
+    // ---- idle timeouts -------------------------------------------------
+    // fedora-config-runtime renders hypridle's configuration from shell.json
+    // when hypridle starts, so a change applies by restarting the service
+    // once the file holds it. The comparison uses the saved text, not the
+    // live values: those can be ahead of the file while a save is in flight.
+    // A user-owned hypridle.conf replaces the rendered file entirely.
+    readonly property string idleUserConfigPath: Quickshell.env("HOME")
+        + "/.config/fedora-config/hypr/hypridle.conf"
+    property string idleTimeoutsApplied: ""
+    property string idleTimeoutsError: ""
+    property bool idleUserConfig: false
+
+    function idleTimeoutsKey(settings) {
+        return [settings.idleLockMins, settings.idleScreenOffMins,
+            settings.idleSuspendMins, settings.idleSuspendBatteryOnly].join(",");
+    }
+
+    function persistedIdleTimeouts() {
+        const parsed = SettingsHelpers.parse(Settings.lastPersistedText);
+        return idleTimeoutsKey(SettingsHelpers.merge(parsed.value));
+    }
+
+    function applyIdleTimeouts() {
+        const key = persistedIdleTimeouts();
+        if (key === idleTimeoutsApplied)
+            return;
+        if (idleRestartProc.running) {
+            idleApplyTimer.restart();
+            return;
+        }
+        idleRestartProc.key = key;
+        idleRestartProc.running = true;
+    }
+
+    function refreshIdleUserConfig() {
+        if (!idleUserConfigProc.running)
+            idleUserConfigProc.running = true;
+    }
+
+    Connections {
+        target: Settings
+
+        function onLastPersistedTextChanged() {
+            idleApplyTimer.restart();
+        }
+    }
+
+    Timer {
+        id: idleApplyTimer
+        interval: 250
+        onTriggered: root.applyIdleTimeouts()
+    }
+
+    Process {
+        id: idleRestartProc
+
+        property string key: ""
+        property bool exitSeen: false
+        property int lastExit: ProcHelpers.NOT_STARTED
+
+        // try-restart leaves a stopped hypridle stopped (the live session
+        // never starts it); the next start renders the new file anyway.
+        command: ["systemctl", "--user", "try-restart", "hypridle.service"]
+        onExited: exitCode => {
+            exitSeen = true;
+            lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = ProcHelpers.NOT_STARTED;
+                return;
+            }
+            const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+            if (code === 0) {
+                root.idleTimeoutsApplied = key;
+                root.idleTimeoutsError = "";
+            } else {
+                root.idleTimeoutsError = "The idle service could not be restarted";
+                console.warn("could not restart hypridle.service:", code);
+            }
+            if (root.persistedIdleTimeouts() !== root.idleTimeoutsApplied && code === 0)
+                idleApplyTimer.restart();
+        }
+    }
+
+    Process {
+        id: idleUserConfigProc
+
+        // The same test fedora-config-runtime applies before preferring it.
+        command: ["sh", "-c", '[ -f "$1" ] && [ ! -L "$1" ]', "sh",
+            root.idleUserConfigPath]
+        onExited: exitCode => root.idleUserConfig = exitCode === 0
+    }
 
     // ---- system identity and live metrics ----------------------------
     // Identity files are tiny and immutable for the lifetime of the shell,

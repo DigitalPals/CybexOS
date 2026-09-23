@@ -166,6 +166,35 @@ dev_command() {
   esac
 }
 
+# Applies the shell's idle timeouts (shell.json) to the vendor hypridle
+# configuration. Prints the rendered file, or the vendor file when rendering is
+# impossible, so a broken settings file never leaves the session without idle
+# locking.
+render_hypridle_config() {
+  local vendor=$1 script output_dir output temporary session_action
+  script=$(runtime_path quickshell)/scripts/hypridle-config.py
+  session_action=/usr/local/libexec/fedora-config-session-action
+  [[ -x $session_action || ! -x /usr/libexec/fedora-config-session-action ]] ||
+    session_action=/usr/libexec/fedora-config-session-action
+  output_dir=${XDG_RUNTIME_DIR:-}/fedora-config
+  output=$output_dir/hypridle.conf
+  if [[ -z ${XDG_RUNTIME_DIR:-} || ! -f $script ]] ||
+      ! mkdir -p -- "$output_dir" ||
+      ! temporary=$(mktemp "$output_dir/.hypridle.conf.XXXXXX"); then
+    printf 'fedora-config-runtime: using default idle timeouts\n' >&2
+    printf '%s\n' "$vendor"
+    return 0
+  fi
+  if python3 "$script" "$config_root/shell.json" "$session_action" >"$temporary" &&
+      mv -f -- "$temporary" "$output"; then
+    printf '%s\n' "$output"
+  else
+    rm -f -- "$temporary"
+    printf 'fedora-config-runtime: could not apply idle settings; using defaults\n' >&2
+    printf '%s\n' "$vendor"
+  fi
+}
+
 exec_runtime() {
   local kind=$1 selected user_config
   case $kind in
@@ -192,6 +221,9 @@ exec_runtime() {
           "$kind" "$selected" >&2
         return 1
       }
+      if [[ $kind == hypridle && $selected != "$user_config" ]]; then
+        selected=$(render_hypridle_config "$selected")
+      fi
       if [[ $kind == hypridle ]]; then
         exec /usr/bin/hypridle --config "$selected"
       else

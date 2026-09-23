@@ -79,6 +79,10 @@ var ROWS = [
     { page: "system", pageLabel: "System", group: "Touchpad", label: "Scroll speed", key: "scrollFactor", terms: "touchpad mouse wheel input" },
     { page: "system", pageLabel: "System", group: "Night light", label: "Night light", key: "nightLight", terms: "blue light hyprsunset" },
     { page: "system", pageLabel: "System", group: "Night light", label: "Warmth", key: "warmth", terms: "kelvin tint blue light" },
+    { page: "system", pageLabel: "System", group: "Idle", label: "Lock screen", key: "idleLockMins", terms: "idle timeout auto lock hypridle power" },
+    { page: "system", pageLabel: "System", group: "Idle", label: "Screen off", key: "idleScreenOffMins", terms: "idle timeout display dpms blank monitor power" },
+    { page: "system", pageLabel: "System", group: "Idle", label: "Suspend", key: "idleSuspendMins", terms: "idle timeout sleep suspend power" },
+    { page: "system", pageLabel: "System", group: "Idle", label: "Only on battery", key: "idleSuspendBatteryOnly", terms: "idle suspend sleep battery plugged in ac power" },
     { page: "system", pageLabel: "System", group: "Stay awake", label: "Duration", key: "", terms: "idle inhibit caffeine sleep" },
     { page: "system", pageLabel: "System", group: "On-screen display", label: "Placement", key: "osd", terms: "osd volume brightness popup overlay" },
 

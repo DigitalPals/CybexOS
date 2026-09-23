@@ -19,6 +19,11 @@ var DRAWER_HOVER_MODES = ["off", "open", "always"];
 // The Overview tab's optional sections; machine stats and the session footer
 // are fixed.
 var DRAWER_OVERVIEW_KEYS = ["media", "sliders", "tiles", "updates"];
+// Idle timeout choices in minutes, 0 meaning never. scripts/hypridle-config.py
+// accepts exactly these values when it renders the idle configuration.
+var IDLE_LOCK_MINS = [0, 1, 2, 5, 10, 15, 30];
+var IDLE_SCREEN_OFF_MINS = [0, 1, 2, 5, 10, 15, 30];
+var IDLE_SUSPEND_MINS = [0, 15, 30, 60, 120];
 
 // Reads in default layout order: left, then center, then right. The order
 // only decides where an id the settings file has never seen is appended, but
@@ -350,6 +355,12 @@ function defaults() {
         pollMax: 300,
         scrollFactor: 1.0,
         nightLight: false,
+        // Idle timeouts in minutes; 0 disables that step. The defaults match
+        // the vendor hypridle.conf, which the idle service falls back to.
+        idleLockMins: 5,
+        idleScreenOffMins: 10,
+        idleSuspendMins: 0,
+        idleSuspendBatteryOnly: false,
         // Runtime choices are persisted so a Quickshell service reload can
         // resume them. The Indicators startup policy decides what survives a
         // new login; timed modes retain an absolute deadline rather than
@@ -1281,6 +1292,13 @@ function merge(raw) {
         pollMax: enumIn(parsed.pollMax, [60, 300, 600], d.pollMax),
         scrollFactor: realIn(parsed.scrollFactor, 0.2, 2.0, 0.1, d.scrollFactor),
         nightLight: boolIn(parsed.nightLight, d.nightLight),
+        idleLockMins: enumIn(parsed.idleLockMins, IDLE_LOCK_MINS, d.idleLockMins),
+        idleScreenOffMins: enumIn(parsed.idleScreenOffMins, IDLE_SCREEN_OFF_MINS,
+            d.idleScreenOffMins),
+        idleSuspendMins: enumIn(parsed.idleSuspendMins, IDLE_SUSPEND_MINS,
+            d.idleSuspendMins),
+        idleSuspendBatteryOnly: boolIn(parsed.idleSuspendBatteryOnly,
+            d.idleSuspendBatteryOnly),
         idleInhibitMode: idleMode,
         idleInhibitUntilMs: idleUntil,
         notifDnd: dnd,
@@ -1440,6 +1458,9 @@ var exported = {
     DRAWER_TAB_IDS: DRAWER_TAB_IDS,
     DRAWER_HOVER_MODES: DRAWER_HOVER_MODES,
     DRAWER_OVERVIEW_KEYS: DRAWER_OVERVIEW_KEYS,
+    IDLE_LOCK_MINS: IDLE_LOCK_MINS,
+    IDLE_SCREEN_OFF_MINS: IDLE_SCREEN_OFF_MINS,
+    IDLE_SUSPEND_MINS: IDLE_SUSPEND_MINS,
     defaults: defaults,
     defaultMods: defaultMods,
     defaultModOpts: defaultModOpts,

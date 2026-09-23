@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Quickshell
 import Quickshell.Io
 import Quickshell.Services.UPower
 import "../../Common"
@@ -356,10 +355,8 @@ Column {
                 parts.push(root.cycleCountText + " cycles");
             return parts.join(" · ");
         }
-        actionText: "Power settings"
-        onActionClicked: {
-            Popouts.close();
-            Quickshell.execDetached(["gnome-control-center", "power"]);
-        }
+        actionText: "Idle settings"
+        onActionClicked: Settings.showSetting("system", "idleLockMins",
+            Popouts.hostScreenName)
     }
 }

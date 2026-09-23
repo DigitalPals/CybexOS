@@ -1,0 +1,153 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
+const { shellDir, load } = require("./shell.cjs");
+
+const H = load("SettingsHelpers.js");
+const repoRoot = path.resolve(shellDir, "../../../..");
+const generator = path.join(shellDir, "scripts/hypridle-config.py");
+const resolver = path.join(repoRoot, "assets/scripts/fedora-config-runtime");
+const template = path.join(repoRoot, "roles/desktop/templates/hypridle.conf.j2");
+const action = "/usr/local/libexec/fedora-config-session-action";
+
+function read(relative) {
+    return fs.readFileSync(path.join(shellDir, relative), "utf8");
+}
+
+function scratch(t) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fedora-config-idle."));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    return root;
+}
+
+function render(t, settings) {
+    const file = path.join(scratch(t), "shell.json");
+    if (settings !== undefined)
+        fs.writeFileSync(file, typeof settings === "string" ? settings : JSON.stringify(settings));
+    const result = spawnSync("python3", [generator, file, action], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout;
+}
+
+test("idle timeouts default to the vendor hypridle values and validate choices", () => {
+    const d = H.defaults();
+    assert.equal(d.idleLockMins, 5);
+    assert.equal(d.idleScreenOffMins, 10);
+    assert.equal(d.idleSuspendMins, 0);
+    assert.equal(d.idleSuspendBatteryOnly, false);
+    assert.equal(H.merge({ idleLockMins: 7 }).idleLockMins, 5);
+    assert.equal(H.merge({ idleLockMins: 0 }).idleLockMins, 0);
+    assert.equal(H.merge({ idleScreenOffMins: "15" }).idleScreenOffMins, 10);
+    assert.equal(H.merge({ idleSuspendMins: 120 }).idleSuspendMins, 120);
+    assert.equal(H.merge({ idleSuspendBatteryOnly: 1 }).idleSuspendBatteryOnly, false);
+});
+
+test("the generator accepts exactly the shell's idle choices", () => {
+    const source = fs.readFileSync(generator, "utf8");
+    const tuple = values => "(" + values.join(", ") + ")";
+    assert.ok(source.includes(`"idleLockMins": ${tuple(H.IDLE_LOCK_MINS)}`));
+    assert.ok(source.includes(`"idleScreenOffMins": ${tuple(H.IDLE_SCREEN_OFF_MINS)}`));
+    assert.ok(source.includes(`"idleSuspendMins": ${tuple(H.IDLE_SUSPEND_MINS)}`));
+    const d = H.defaults();
+    for (const key of ["idleLockMins", "idleScreenOffMins", "idleSuspendMins"])
+        assert.ok(source.includes(`"${key}": ${d[key]},`), key);
+});
+
+test("default settings render the vendor hypridle.conf byte for byte", t => {
+    const vendor = fs.readFileSync(template, "utf8");
+    assert.equal(render(t, undefined), vendor);
+    assert.equal(render(t, {}), vendor);
+    assert.equal(render(t, "[1, 2]"), vendor);
+    assert.equal(render(t, { idleLockMins: true, idleScreenOffMins: 7 }), vendor);
+});
+
+test("chosen timeouts render in seconds and Never drops the listener", t => {
+    const output = render(t, { idleLockMins: 0, idleScreenOffMins: 2,
+        idleSuspendMins: 30, idleSuspendBatteryOnly: true });
+    assert.doesNotMatch(output, /on-timeout = systemctl --user start/);
+    assert.match(output, /timeout = 120\n  on-timeout = hyprctl eval .*"off"/);
+    assert.match(output, new RegExp(`timeout = 1800\\n  on-timeout = ${action} idle-suspend on-battery\\n`));
+    assert.match(output, /lock_cmd = systemctl --user start fedora-config-session-lock\.service/);
+
+    const always = render(t, { idleSuspendMins: 60 });
+    assert.match(always, new RegExp(`timeout = 3600\\n  on-timeout = ${action} idle-suspend\\n`));
+    assert.match(always, /timeout = 300\n/);
+});
+
+function resolverFixture(t) {
+    const root = scratch(t);
+    const config = path.join(root, "config");
+    const data = path.join(root, "data");
+    const run = path.join(root, "run");
+    const runtime = path.join(data, "fedora-config/runtime");
+    fs.mkdirSync(path.join(config, "fedora-config/hypr"), { recursive: true });
+    fs.mkdirSync(path.join(runtime, "hypr"), { recursive: true });
+    fs.mkdirSync(path.join(runtime, "quickshell/scripts"), { recursive: true });
+    fs.mkdirSync(run, { mode: 0o700 });
+    fs.copyFileSync(template, path.join(runtime, "hypr/hypridle.conf"));
+    fs.copyFileSync(generator, path.join(runtime, "quickshell/scripts/hypridle-config.py"));
+    const hypridle = path.join(root, "hypridle");
+    fs.writeFileSync(hypridle, "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\"\n", { mode: 0o755 });
+    const script = path.join(root, "fedora-config-runtime");
+    fs.writeFileSync(script, fs.readFileSync(resolver, "utf8")
+        .replace("exec /usr/bin/hypridle", `exec ${hypridle}`));
+    return {
+        config: path.join(config, "fedora-config"),
+        runtime,
+        run,
+        exec() {
+            const result = spawnSync("bash", [script, "exec", "hypridle"], {
+                encoding: "utf8",
+                env: { ...process.env, XDG_CONFIG_HOME: config, XDG_DATA_HOME: data,
+                    XDG_RUNTIME_DIR: run }
+            });
+            assert.equal(result.status, 0, result.stderr);
+            return { config: result.stdout.trim().split("\n")[1], stderr: result.stderr };
+        }
+    };
+}
+
+test("the runtime resolver starts hypridle with the rendered shell timeouts", t => {
+    const f = resolverFixture(t);
+    fs.writeFileSync(path.join(f.config, "shell.json"), JSON.stringify({ idleLockMins: 15 }));
+    const started = f.exec();
+    assert.equal(started.config, path.join(f.run, "fedora-config/hypridle.conf"));
+    assert.match(fs.readFileSync(started.config, "utf8"), /timeout = 900\n/);
+});
+
+test("a user hypridle.conf wins and a failed render falls back to the vendor file", t => {
+    const f = resolverFixture(t);
+    fs.writeFileSync(path.join(f.config, "shell.json"), JSON.stringify({ idleLockMins: 15 }));
+    const user = path.join(f.config, "hypr/hypridle.conf");
+    fs.writeFileSync(user, "general {}\n");
+    assert.equal(f.exec().config, user);
+    fs.rmSync(user);
+
+    fs.writeFileSync(path.join(f.config, "shell.json"), "{ not json");
+    const fallback = f.exec();
+    assert.equal(fallback.config, path.join(f.runtime, "hypr/hypridle.conf"));
+    assert.match(fallback.stderr, /using defaults/);
+    assert.deepEqual(fs.readdirSync(path.join(f.run, "fedora-config")), []);
+});
+
+test("saved idle changes restart hypridle and the power drawer links to them", () => {
+    const settings = read("Common/Settings.qml");
+    const sysinfo = read("Common/SysInfo.qml");
+    const system = read("Settings/SystemPage.qml");
+    const power = read("Popovers/Drawer/DrawerPower.qml");
+
+    for (const key of ["idleLockMins", "idleScreenOffMins", "idleSuspendMins",
+            "idleSuspendBatteryOnly"]) {
+        assert.match(settings, new RegExp(`on${key[0].toUpperCase()}${key.slice(1)}Changed: scheduleSave\\(\\)`));
+        assert.match(system, new RegExp(`settingKey: "${key}"`));
+    }
+    assert.match(sysinfo, /"systemctl", "--user", "try-restart", "hypridle\.service"/);
+    assert.match(sysinfo, /onLastPersistedTextChanged/);
+    assert.match(sysinfo, /SettingsHelpers\.parse\(Settings\.lastPersistedText\)/);
+    assert.match(system, /SysInfo\.idleUserConfig/);
+    assert.match(power, /Settings\.showSetting\("system", "idleLockMins"/);
+    assert.doesNotMatch(power, /gnome-control-center/);
+});

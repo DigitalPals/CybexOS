@@ -66,8 +66,15 @@ PopoutPanel {
         Settings.highlightKey = "";
         Settings.highlightKey = row.key;
         Settings.announcement = row.pageLabel + " page, " + row.label + " row.";
-        if (row.key !== "")
-            highlightClearTimer.restart();
+    }
+
+    // Search results and Settings.showSetting() both jump by setting the key.
+    Connections {
+        target: Settings
+        function onHighlightKeyChanged() {
+            if (Settings.highlightKey !== "")
+                highlightClearTimer.restart();
+        }
     }
 
     Timer {

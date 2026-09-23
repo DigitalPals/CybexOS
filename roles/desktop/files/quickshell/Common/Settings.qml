@@ -85,6 +85,10 @@ Singleton {
     property int pollMax: defaults.pollMax
     property real scrollFactor: defaults.scrollFactor
     property bool nightLight: defaults.nightLight
+    property int idleLockMins: defaults.idleLockMins
+    property int idleScreenOffMins: defaults.idleScreenOffMins
+    property int idleSuspendMins: defaults.idleSuspendMins
+    property bool idleSuspendBatteryOnly: defaults.idleSuspendBatteryOnly
     property string idleInhibitMode: defaults.idleInhibitMode
     property double idleInhibitUntilMs: defaults.idleInhibitUntilMs
     property bool notifDnd: defaults.notifDnd
@@ -171,7 +175,8 @@ Singleton {
             "notifDuration", "notifPosition", "notifDensity", "notifIcons",
             "notifProgress", "notifBodyLines"],
         system: ["clock24", "unit", "warmth", "osd", "scrollFactor",
-            "nightLight", "idleInhibitMode", "idleInhibitUntilMs"],
+            "nightLight", "idleLockMins", "idleScreenOffMins", "idleSuspendMins",
+            "idleSuspendBatteryOnly", "idleInhibitMode", "idleInhibitUntilMs"],
         about: []
     })
 
@@ -187,6 +192,13 @@ Singleton {
             panelScreenName = targetScreenName || (Screens.focused ? Screens.focused.name : "");
         panelOpen = true;
         presentPanel();
+    }
+
+    // Opens a page scrolled to one row, which flashes as a search result does.
+    function showSetting(targetPage, key, targetScreenName) {
+        showPanel(targetPage, targetScreenName);
+        highlightKey = "";
+        highlightKey = key;
     }
 
     function togglePanel(targetPage, targetScreenName) {
@@ -637,6 +649,10 @@ Singleton {
     onOsdChanged: scheduleSave()
     onPollMaxChanged: scheduleSave()
     onNightLightChanged: scheduleSave()
+    onIdleLockMinsChanged: scheduleSave()
+    onIdleScreenOffMinsChanged: scheduleSave()
+    onIdleSuspendMinsChanged: scheduleSave()
+    onIdleSuspendBatteryOnlyChanged: scheduleSave()
     onIdleInhibitModeChanged: scheduleSave()
     onIdleInhibitUntilMsChanged: scheduleSave()
     onScrollFactorChanged: {

@@ -49,11 +49,32 @@ ensure_locked() {
   return 1
 }
 
+# UPower's aggregate answer, the same source the shell's battery state reads.
+# An unknown answer counts as mains power, so it never suspends by mistake.
+on_battery() {
+  [[ $(busctl --system get-property org.freedesktop.UPower \
+    /org/freedesktop/UPower org.freedesktop.UPower OnBattery 2>/dev/null) == 'b true' ]]
+}
+
 case $action in
   lock)
     ensure_locked
     ;;
   suspend)
+    ensure_locked
+    systemctl suspend
+    ;;
+  idle-suspend)
+    # hypridle's suspend step. `on-battery` limits it to battery power, which
+    # is checked when the timeout fires rather than when hypridle starts.
+    case ${2:-} in
+      '') ;;
+      on-battery) on_battery || exit 0 ;;
+      *)
+        printf 'Usage: fedora-config-session-action idle-suspend [on-battery]\n' >&2
+        exit 2
+        ;;
+    esac
     ensure_locked
     systemctl suspend
     ;;
@@ -67,7 +88,7 @@ case $action in
     systemctl poweroff
     ;;
   *)
-    printf 'Usage: fedora-config-session-action <lock|suspend|logout|reboot|shutdown>\n' >&2
+    printf 'Usage: fedora-config-session-action <lock|suspend|idle-suspend|logout|reboot|shutdown>\n' >&2
     exit 2
     ;;
 esac

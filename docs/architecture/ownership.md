@@ -21,7 +21,12 @@ The session always starts Hyprland with the vendor entry point. Vendor modules
 load first; `~/.config/fedora-config/hypr/user.lua`, when present, loads last.
 The idle and lock services prefer their same-named user configuration files
 and otherwise use vendor defaults. A bad user override may break that component
-but is never silently replaced by an update.
+but is never silently replaced by an update. Without a user `hypridle.conf`,
+the idle service applies the timeouts from Settings → System → Idle: the
+runtime resolver renders them from `shell.json` into
+`$XDG_RUNTIME_DIR/fedora-config/hypridle.conf` at each start (falling back to
+the vendor file), and the shell restarts `hypridle.service` after a change is
+saved.
 
 Quickshell starts with an explicit `qs -p` path. The legacy
 `~/.config/quickshell` and `~/.config/hypr` trees are not runtime inputs after
