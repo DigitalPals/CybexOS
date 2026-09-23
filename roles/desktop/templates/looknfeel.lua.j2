@@ -1,22 +1,22 @@
 -- Keep compositor blur in step with the shell's persisted glass setting from
 -- the first frame. Quickshell updates the named rule below at runtime; this
 -- lightweight read covers compositor reloads and restarts before the shell has
--- a reason to emit a setting change.
+-- a reason to emit a setting change. Without a stored choice glass is off, as
+-- it is in the shell's defaults.
 local function persisted_glass_enabled()
   local home = os.getenv("HOME")
-  if not home then return true end
+  if not home then return false end
 
   local file = io.open(home .. "/.config/cybexos/shell.json", "r")
   if not file then
     file = io.open(home .. "/.local/state/quickshell/shell-settings.json", "r")
   end
-  if not file then return true end
+  if not file then return false end
   local contents = file:read("*a")
   file:close()
 
   local value = contents:match('[,{]%s*"glassEnabled"%s*:%s*(%a+)')
-  if value == "false" then return false end
-  return true
+  return value == "true"
 end
 
 hl.config({

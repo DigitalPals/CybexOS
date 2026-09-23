@@ -169,3 +169,18 @@ test("the shell sends the power profile to the compositor on startup and on chan
     assert.match(look, /^function cybexos_power_saver\(enabled\)$/m,
         "the eval handle must be a global");
 });
+
+test("compositor blur follows the shell's glass default when nothing is stored",
+    { skip: luajit ? false : "luajit is not installed" }, () => {
+    const defaults = require("./shell.cjs").load("SettingsHelpers.js").defaults();
+    assert.equal(defaults.glassEnabled, false, "this test pins the Lua fallback to that default");
+    const glass = value => `dofile(look)
+assert(layer_rules["quickshell-blur"].enabled == ${value},
+  "quickshell-blur enabled = " .. tostring(layer_rules["quickshell-blur"].enabled))`;
+    runLookAndFeel(glass(false));
+    runLookAndFeel(glass(false), { ".config/cybexos/shell.json": '{"v": 23, "barHeight": 40}' });
+    runLookAndFeel(glass(true), { ".config/cybexos/shell.json": '{"v": 23, "glassEnabled": true}' });
+    runLookAndFeel(glass(false), { ".config/cybexos/shell.json": '{"v": 23, "glassEnabled": false}' });
+    runLookAndFeel(glass(true),
+        { ".local/state/quickshell/shell-settings.json": '{\n  "glassEnabled": true\n}' });
+});
