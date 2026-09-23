@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise installer defaults, saved opt-outs, and both public command names."""
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -145,7 +146,18 @@ class ApplicationDefaults(unittest.TestCase):
             )
             self.assertIn("--ask-become-pass", result.splitlines())
 
-    def test_uninstall_asks_for_become_password_without_detached_sudo(self):
+            # A running durable update owns the lock; never converge beside it.
+            with open(runtime / "update.lock", "w") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                blocked = subprocess.run(
+                    ["bash", str(installer)], env=environment, text=True,
+                    capture_output=True,
+                )
+            self.assertEqual(blocked.returncode, 75, blocked.stderr)
+            self.assertIn("update is running", blocked.stderr)
+            self.assertNotIn("site.yml", blocked.stdout)
+
+    def test_uninstall_honors_update_lock_and_detached_become(self):
         with tempfile.TemporaryDirectory(prefix="cybex-uninstall.") as temporary:
             home = Path(temporary)
             binaries = home / "bin"
@@ -185,6 +197,14 @@ class ApplicationDefaults(unittest.TestCase):
                 env=dict(environment, MOCK_SUDO_TTY_ONLY="1"),
             )
             self.assertIn("--ask-become-pass", result.splitlines())
+            with open(runtime / "update.lock", "w") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                blocked = subprocess.run(
+                    ["bash", str(uninstaller), "--yes"], env=environment,
+                    text=True, capture_output=True,
+                )
+            self.assertEqual(blocked.returncode, 75, blocked.stderr)
+            self.assertNotIn("uninstall.yml", blocked.stdout)
 
     def test_both_command_names_preserve_arguments_and_verification_scope(self):
         with tempfile.TemporaryDirectory(prefix="cybex-command.") as temporary:

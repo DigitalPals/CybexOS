@@ -49,6 +49,17 @@ if [[ $assume_yes == false ]]; then
   [[ ${answer,,} == y || ${answer,,} == yes ]] || exit 0
 fi
 
+# Never remove the updater while its durable worker owns an update. Hold the
+# worker's lock for the rest of this process.
+update_state_root=${XDG_STATE_HOME:-$HOME/.local/state}/cybexos/update
+update_runtime_root=${XDG_RUNTIME_DIR:-$update_state_root/runtime}
+mkdir -p -- "$update_runtime_root"
+exec 9>"$update_runtime_root/update.lock"
+flock -n 9 || {
+  echo 'uninstall: a CybexOS update is running; retry after it finishes (cybexos-update-run status).' >&2
+  exit 75
+}
+
 sudo -v
 # Ansible's workers detach from the terminal, where sudo's default tty-scoped
 # ticket from `sudo -v` does not apply; ask for the become password unless

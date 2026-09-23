@@ -424,7 +424,8 @@ start_run() {
       report_existing_run "$active_id" "$active_state" "$json"
       return 3
     fi
-    printf 'cybexos-update-run: update lock is held but no active run is readable\n' >&2
+    # install and uninstall hold the same lock for their whole playbook.
+    printf 'cybexos-update-run: the update lock is held by another CybexOS operation (install, uninstall, or a launching update); retry after it finishes\n' >&2
     return 4
   fi
 

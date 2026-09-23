@@ -24,6 +24,9 @@ table in the README links here instead of duplicating these details.
 `./install` and `./uninstall` pass `--ask-become-pass` to Ansible unless sudo
 works without a terminal. Ansible's workers detach from the terminal, so the
 ticket that `sudo -v` caches there cannot authorize their privileged tasks.
+Both take the durable updater's lock before changing the machine and exit
+with status 75 while an update is running, so a playbook never interleaves
+with an update's DNF transaction or configuration run.
 
 For repository development, run Ansible directly after the source gate. The
 saved installer configuration is deliberately supplied explicitly:
