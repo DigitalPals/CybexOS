@@ -26,6 +26,11 @@ Singleton {
     property double rangeEndMs: 0
     property double requestStartMs: 0
     property double requestEndMs: 0
+    // Whether the last request was the rolling default window (month grid +
+    // upcoming horizon) rather than a month the user browsed to. Only the
+    // default window has to move with the clock.
+    property bool requestIsDefault: false
+    property double browsedAt: 0
     property int googleAccounts: 0
     property int googleCalendarAccounts: 0
     property var calendars: []
@@ -75,6 +80,7 @@ Singleton {
             return;
         requestStartMs = start;
         requestEndMs = end;
+        requestIsDefault = false;
         loading = true;
         fetchProc.staleRuns += fetchProc.running ? 1 : 0;
         fetchProc.running = false;
@@ -84,6 +90,39 @@ Singleton {
     function refreshDefault() {
         const window = defaultWindow();
         startRange(window.start, window.end);
+        requestIsDefault = enabled;
+    }
+
+    // The poll recomputes the default window, so upcoming() keeps working
+    // across midnight and days of uptime. A month the user browsed to within
+    // the last poll interval is refreshed in place instead; after that the
+    // poll returns to the default window.
+    function pollRefresh() {
+        if (!requestIsDefault && requestEndMs > requestStartMs
+                && Date.now() - browsedAt < pollIntervalSecs * 1000)
+            startRange(requestStartMs, requestEndMs);
+        else
+            refreshDefault();
+    }
+
+    // Ends a fetch that never reported back, so `loading` cannot stick.
+    function abandonFetch(reason) {
+        if (fetchProc.running) {
+            fetchProc.staleRuns++;
+            fetchProc.running = false;
+        } else {
+            fetchProc.staleRuns = 0;
+        }
+        loading = false;
+        fetchError = reason;
+        console.warn("calendar fetch failed:", reason);
+    }
+
+    function msUntilNextDay() {
+        const now = new Date();
+        const next = new Date(now.getFullYear(), now.getMonth(),
+            now.getDate() + 1).getTime();
+        return Math.max(1000, next - now.getTime() + 5000);
     }
 
     function refresh() {
@@ -108,6 +147,7 @@ Singleton {
             refreshDefault();
             return;
         }
+        browsedAt = Date.now();
         startRange(window.start, window.end);
     }
 
@@ -191,6 +231,7 @@ Singleton {
         property int lastExit: 0
 
         command: [
+            "timeout", "30s",
             "python3", Quickshell.shellDir + "/scripts/calendar-events.py",
             String(Math.floor(root.requestStartMs / 1000)),
             String(Math.ceil(root.requestEndMs / 1000))
@@ -224,7 +265,30 @@ Singleton {
         interval: root.pollIntervalSecs * 1000
         running: root.enabled
         repeat: true
-        onTriggered: root.refresh()
+        onTriggered: root.pollRefresh()
+    }
+
+    // The helper answers within its own 15 s deadline and `timeout` kills it
+    // at 30 s; this is the last resort for a run whose exit never arrives.
+    Timer {
+        interval: 45000
+        running: root.loading
+        onTriggered: root.abandonFetch("Calendar request timed out")
+    }
+
+    // The default window starts from today: move it at local midnight rather
+    // than waiting for the next poll. Re-armed after every firing, so a
+    // suspend or DST change only delays it to the following check.
+    Timer {
+        id: dayRollover
+        interval: root.msUntilNextDay()
+        running: root.enabled
+        onTriggered: {
+            if (root.requestIsDefault)
+                root.refreshDefault();
+            interval = root.msUntilNextDay();
+            restart();
+        }
     }
 
     onEnabledChanged: {
@@ -242,8 +306,19 @@ Singleton {
             refreshDefault();
     }
 
+    // Not needed for the first frame: the bar shows no events, and opening a
+    // calendar surface fetches its own window. Kept off the startup burst.
+    Timer {
+        id: warmUp
+        interval: 12000
+        onTriggered: {
+            if (root.enabled && !root.ready && !root.loading)
+                root.refreshDefault();
+        }
+    }
+
     Component.onCompleted: {
         if (enabled)
-            refreshDefault();
+            warmUp.start();
     }
 }

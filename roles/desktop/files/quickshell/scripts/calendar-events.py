@@ -9,19 +9,35 @@ it only returns the presentation fields used by the Quickshell calendar.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
+import threading
 from typing import Any
 
 
 MAX_RANGE_SECONDS = 370 * 24 * 60 * 60
 DEFAULT_COLOR = "#62a0ea"
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$")
+# The whole request, not each call: SourceRegistry/Goa new_sync can block for
+# tens of seconds when their D-Bus services are slow to activate, and every
+# calendar source adds its own connect timeout.  The shell's poll must always
+# receive an answer, so past this point the process reports "timed out".
+DEADLINE_SECONDS = 15.0
+
+_emit_lock = threading.Lock()
+_emitted = False
 
 
 def emit(payload: dict[str, Any]) -> None:
-    json.dump(payload, sys.stdout, ensure_ascii=False, separators=(",", ":"))
-    sys.stdout.write("\n")
+    global _emitted
+    with _emit_lock:
+        if _emitted:
+            return
+        _emitted = True
+        json.dump(payload, sys.stdout, ensure_ascii=False, separators=(",", ":"))
+        sys.stdout.write("\n")
+        sys.stdout.flush()
 
 
 def unavailable(message: str) -> int:
@@ -37,6 +53,21 @@ def unavailable(message: str) -> int:
         }
     )
     return 0
+
+
+def _deadline_expired() -> None:
+    # The main thread may be parked inside a GI call that never returns to
+    # the interpreter, so a signal handler would not run.  PyGObject releases
+    # the GIL around those calls; this thread answers and ends the process.
+    unavailable("Calendar request timed out")
+    os._exit(0)
+
+
+def arm_deadline(seconds: float) -> threading.Timer:
+    timer = threading.Timer(seconds, _deadline_expired)
+    timer.daemon = True
+    timer.start()
+    return timer
 
 
 def parse_range(arguments: list[str]) -> tuple[int, int]:
@@ -267,4 +298,7 @@ def main(arguments: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    deadline = arm_deadline(DEADLINE_SECONDS)
+    status = main(sys.argv[1:])
+    deadline.cancel()
+    raise SystemExit(status)

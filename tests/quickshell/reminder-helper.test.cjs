@@ -159,3 +159,65 @@ test("failed overdue delivery remains available for a later restore retry", () =
     assert.notEqual(failed.status, 0);
     assert.equal(fs.existsSync(file), true);
 });
+
+function writeRecord(f, id, fields) {
+    fs.mkdirSync(f.state, { recursive: true });
+    fs.writeFileSync(path.join(f.state, `${id}.json`), JSON.stringify({
+        id, minutes: 5, message: "Due", created: 0,
+        due: Math.floor(Date.now() / 1000) - 10, ...fields
+    }));
+}
+
+function qsCalls(f) {
+    return fs.existsSync(f.env.MOCK_QS_LOG)
+        ? fs.readFileSync(f.env.MOCK_QS_LOG, "utf8").split("\n").filter(Boolean)
+        : [];
+}
+
+test("one unreadable overdue record does not end the restore pass", t => {
+    const f = fixture();
+    t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+    writeRecord(f, "a-broken", { message: 42 });
+    writeRecord(f, "b-deliverable", { message: "Later record" });
+    writeRecord(f, "c-future", { due: Math.floor(Date.now() / 1000) + 3600 });
+
+    const result = run(f, ["restore"]);
+    assert.notEqual(result.status, 0, "the unreadable record is still reported");
+    assert.equal(fs.existsSync(path.join(f.state, "a-broken.json")), true);
+    assert.equal(fs.existsSync(path.join(f.state, "b-deliverable.json")), false,
+        "records after a failing one must still be delivered");
+    assert.equal(fs.existsSync(path.join(f.active, "quickshell-reminder-c-future.timer")),
+        true, "records after a failing one must still be rescheduled");
+    assert.deepEqual(qsCalls(f), ["ipc call reminders refresh"],
+        "a restore that changed something tells the shell exactly once");
+});
+
+test("restore with nothing to do does not call back into the shell", t => {
+    const f = fixture();
+    t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+    ok(run(f, ["add", "30", "Future"]));
+    fs.rmSync(f.env.MOCK_QS_LOG, { force: true });
+    ok(run(f, ["restore"]));
+    assert.deepEqual(qsCalls(f), []);
+});
+
+test("fire keeps its exit codes as a command", t => {
+    const f = fixture();
+    t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+    assert.equal(run(f, ["fire", "bad id!"]).status, 2);
+    assert.equal(run(f, ["fire", "missing"]).status, 0,
+        "an already-removed record is done");
+    writeRecord(f, "unreadable", { message: null });
+    assert.equal(run(f, ["fire", "unreadable"]).status, 1);
+});
+
+test("clear refreshes the shell once, not once per record", t => {
+    const f = fixture();
+    t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+    for (const minutes of ["5", "10", "15"])
+        ok(run(f, ["add", minutes, "Batch"]));
+    fs.rmSync(f.env.MOCK_QS_LOG, { force: true });
+    ok(run(f, ["clear"]));
+    assert.deepEqual(list(f), []);
+    assert.deepEqual(qsCalls(f), ["ipc call reminders refresh"]);
+});

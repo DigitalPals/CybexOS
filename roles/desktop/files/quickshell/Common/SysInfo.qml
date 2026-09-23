@@ -299,8 +299,13 @@ Singleton {
             syncIdleInhibit();
     }
 
+    // Every reader shows whole minutes, so tick where the minute count
+    // changes and at the deadline itself rather than once a second. Each tick
+    // moves the clock, which re-arms the interval from the new reading; a
+    // timer that fires early just lands one extra short tick.
     Timer {
-        interval: 1000
+        interval: SysInfoHelpers.countdownTickMs(root.idleInhibitUntilMs,
+            root.idleInhibitClockMs)
         running: root.idleInhibitUntilMs > 0
         repeat: true
         onTriggered: {
@@ -568,10 +573,11 @@ Singleton {
         onLoadFailed: root.kernelRelease = ""
     }
 
+    // Tens of kilobytes on a many-core machine and only shown in the system
+    // panel: load it off the startup path.
     FileView {
         path: "/proc/cpuinfo"
         printErrors: false
-        blockLoading: true
         onLoaded: root.cpuModel = SysInfoHelpers.parseCpuModel(text())
         onLoadFailed: root.cpuModel = ""
     }
@@ -800,15 +806,51 @@ Singleton {
         }
     }
 
+    // A failed write leaves the slider showing a value the display never
+    // took; drop the settle window and read back what it really has.
     Process {
         id: brightnessSet
+        property bool exitSeen: false
+        property int lastExit: 0
+        onExited: (exitCode, exitStatus) => {
+            brightnessSet.exitSeen = true;
+            brightnessSet.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            if (!exitSeen || lastExit !== 0)
+                brightnessSettle.stop();
+            Qt.callLater(root.refreshBrightness);
+        }
     }
 
     // A write that has not landed yet is still the truth: a read overtaking
     // it would drag the slider back to a value the pointer has already left.
+    // Once it has settled, read back what the display actually took.
     Timer {
         id: brightnessSettle
         interval: 400
+        onTriggered: root.refreshBrightness()
+    }
+
+    // brightness-control talks to hardware (DDC/HID) that can stop
+    // answering. A hung helper would otherwise hold its process forever:
+    // a stuck read makes refreshBrightness a permanent no-op, a stuck write
+    // re-arms brightnessWrite forever.
+    Timer {
+        interval: 5000
+        running: brightnessRead.running
+        onTriggered: brightnessRead.running = false
+    }
+
+    Timer {
+        interval: 5000
+        running: brightnessSet.running
+        onTriggered: brightnessSet.running = false
     }
 
     // Nothing about either backend is watchable — sysfs backlight attributes
@@ -817,7 +859,7 @@ Singleton {
     // over IPC from brightness-control itself.
     function refreshBrightness() {
         if (brightnessRead.running || brightnessWrite.running
-                || brightnessSettle.running)
+                || brightnessSettle.running || brightnessSet.running)
             return;
         brightnessRead.running = true;
     }

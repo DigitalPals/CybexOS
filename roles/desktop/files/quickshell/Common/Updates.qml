@@ -66,6 +66,9 @@ Singleton {
     property bool checkAgain: false
     property bool initialized: false
     property int checkFailureCount: 0
+    // 0 = no post-run recount owed; 1 = the recount right after a run;
+    // 2 = its single delayed retry. See postRunRetryNeeded.
+    property int postRunCheck: 0
     property string lastLoggedCheckError: ""
 
     readonly property string packageError: [dnfError, flatpakError]
@@ -307,6 +310,14 @@ Singleton {
             checkFailureCount++;
         }
 
+        if (postRunCheck === 1 && UpdatesHelpers.postRunRetryNeeded(complete,
+                runState, dnfCount, flatpakCount, runIncludedFlatpak)) {
+            postRunCheck = 2;
+            recheck.restart();
+        } else {
+            postRunCheck = 0;
+        }
+
         if (checkAgain)
             Qt.callLater(root.check);
     }
@@ -388,6 +399,9 @@ Singleton {
     ListModel {
         id: feedModel
     }
+    // Feed rows still waiting for their progress line, by package name
+    // (UpdatesHelpers.takePendingRow). Plain JS state: nothing binds to it.
+    property var pendingRows: ({})
     readonly property ListModel feed: feedModel
 
     function settleStartRequest() {
@@ -402,6 +416,7 @@ Singleton {
 
     function resetRun(runId, startedAt, includedFlatpak) {
         feedModel.clear();
+        pendingRows = ({});
         dnfCur = 0;
         dnfTotal = 0;
         fpCur = 0;
@@ -482,6 +497,8 @@ Singleton {
             if (row !== null) {
                 feedModel.append({ tag: "dnf", verb: tableVerb, name: row.name,
                     ver: row.version, evr: row.evr, done: false });
+                UpdatesHelpers.addPendingRow(pendingRows, row.name, row.evr,
+                    feedModel.count - 1);
                 if (tableVerb === "up")
                     upCount++;
                 else if (tableVerb === "del")
@@ -521,16 +538,10 @@ Singleton {
             return;
         // Cleanup of a replaced version carries the outgoing evr and matches
         // nothing here — progress moves, the feed stays truthful.
-        for (let i = 0; i < feedModel.count; i++) {
-            const entry = feedModel.get(i);
-            if (entry.tag !== "dnf" || entry.done)
-                continue;
-            if (UpdatesHelpers.rowMatchesToken(entry.name, entry.evr,
-                    step.token)) {
-                feedModel.setProperty(i, "done", true);
-                lastDoneIndex = i;
-                break;
-            }
+        const i = UpdatesHelpers.takePendingRow(pendingRows, step.token);
+        if (i !== -1) {
+            feedModel.setProperty(i, "done", true);
+            lastDoneIndex = i;
         }
     }
 
@@ -690,8 +701,11 @@ Singleton {
             runState = "done";
             doneClear.restart();
         }
-        // The counts the panel shows must agree with what is now installed.
-        recheck.restart();
+        // The counts the panel shows must agree with what is now installed:
+        // one recount now, and finishCheck allows a single delayed retry
+        // only when that recount failed or still looks inconsistent.
+        recheck.stop();
+        postRunCheck = 1;
         Qt.callLater(root.check);
     }
 
@@ -970,19 +984,7 @@ Singleton {
     Timer {
         id: recheck
         interval: 60000
-        repeat: true
-        property int ticks: 0
-        onTriggered: {
-            root.check();
-            if (++ticks > 15) {
-                ticks = 0;
-                stop();
-            }
-        }
-        onRunningChanged: {
-            if (running)
-                ticks = 0;
-        }
+        onTriggered: root.check()
     }
 
     // A transient endpoint failure after NetworkManager came online should
@@ -1179,18 +1181,34 @@ Singleton {
         target: NetworkStatus
 
         function onOnlineChanged() {
-            if (NetworkStatus.online)
+            // The session's first online edge belongs to startupCheck.
+            // A flapping link must not repeat a complete check that is
+            // only minutes old; a failed one is still retried at once.
+            if (startupCheck.running)
+                return;
+            if (NetworkStatus.online && (root.error !== ""
+                    || !UpdatesHelpers.checkIsFresh(root.lastChecked,
+                        Date.now(), 600000)))
                 root.automaticCheck(true);
         }
     }
 
+    // The first check (dnf, a Flathub round trip, fwupd) is not needed for
+    // the first frame; keep it out of the session-start burst. A run already
+    // in progress is still picked up immediately by refreshRunStatus.
+    Timer {
+        id: startupCheck
+        interval: 20000
+        onTriggered: root.automaticCheck(true)
+    }
+
     Component.onCompleted: {
         initialized = true;
-        automaticCheck(true);
+        startupCheck.start();
         refreshRunStatus();
     }
     onFlatpakEnabledChanged: {
-        if (initialized)
+        if (initialized && !startupCheck.running)
             automaticCheck(true);
     }
 }
