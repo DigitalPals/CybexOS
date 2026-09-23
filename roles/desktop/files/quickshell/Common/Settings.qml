@@ -198,10 +198,15 @@ Singleton {
         if (targetPage && validPages.indexOf(targetPage) !== -1)
             page = targetPage;
         Popouts.close();
-        if (!panelOpen)
-            panelScreenName = targetScreenName || (Screens.focused ? Screens.focused.name : "");
+        // Hyprland focuses a window as it maps; only one already open needs
+        // raising. A focus-by-title sent with the map would arrive before the
+        // window exists and only log "window not found".
+        if (panelOpen) {
+            presentPanel();
+            return;
+        }
+        panelScreenName = targetScreenName || (Screens.focused ? Screens.focused.name : "");
         panelOpen = true;
-        presentPanel();
     }
 
     // Opens a page scrolled to one row, which flashes as a search result does.

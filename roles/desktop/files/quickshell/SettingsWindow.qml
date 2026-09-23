@@ -21,8 +21,10 @@ FloatingWindow {
         target: Settings
 
         function onPanelOpenChanged() {
-            if (Settings.panelOpen)
+            if (Settings.panelOpen) {
                 window.screen = Screens.byName(Settings.panelScreenName) ?? Screens.focused;
+                window.minimized = false;
+            }
             window.visible = Settings.panelOpen;
         }
 
