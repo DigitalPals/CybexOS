@@ -21,6 +21,10 @@ table in the README links here instead of duplicating these details.
 | `cybex dev disable` | Returns desktop components to the verified vendor runtime. |
 | `./uninstall` | Removes CybexOS-owned services and configuration, restores first-adoption backups, and retains installed applications. Pass `--keep-user-data` to retain backup/updater state after restoration. |
 
+`./install` and `./uninstall` pass `--ask-become-pass` to Ansible unless sudo
+works without a terminal. Ansible's workers detach from the terminal, so the
+ticket that `sudo -v` caches there cannot authorize their privileged tasks.
+
 For repository development, run Ansible directly after the source gate. The
 saved installer configuration is deliberately supplied explicitly:
 
@@ -238,9 +242,12 @@ cybex update --system-only
 
 ## Durable updater lifecycle
 
-The package/configuration worker is a transient service. Terminal invocations
-retain the sudo path and may use a user service while cached authorization is
-available. Quickshell explicitly requests a system service; when authorization
+The package/configuration worker is a transient service. It has no terminal,
+and sudo's default ticket (`timestamp_type=tty`) is tied to the terminal that
+authenticated, so a terminal invocation uses a user service only when sudo
+works without any terminal (for example passwordless sudo). Otherwise it
+authenticates once and starts a system service. Quickshell explicitly requests
+a system service; when authorization
 is needed, systemd's own Polkit action is handled by the graphical session
 agent, so no terminal is opened and progress remains in the Updates view.
 Release transactions also use a system service because their configuration
@@ -288,7 +295,8 @@ directory under `logs/<run-id>/` containing:
 The twenty newest valid run directories are retained. For a worker that looks
 stuck, start with `cybexos-update-run status --json`, inspect `run.log`, then use
 the `unit` field with `systemctl --user status <unit>` and
-`journalctl --user -u <unit>`. If the unit disappeared without final status,
+`journalctl --user -u <unit>` (without `--user` when `systemUnit` is true). If
+the unit disappeared without final status,
 the next status read marks the run failed with phase `abandoned` instead of
 blocking all future updates.
 

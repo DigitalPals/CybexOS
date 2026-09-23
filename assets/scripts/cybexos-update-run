@@ -382,18 +382,30 @@ parse_options() {
   fi
 }
 
+# A transient unit has no terminal. sudo's default timestamp_type=tty keys a
+# cached authorization to the terminal, so a ticket this client holds does not
+# reach a user-unit worker; only sudo that works without any terminal (NOPASSWD
+# or a global timestamp) does. Probe exactly that condition.
+detached_sudo_available() {
+  setsid -w sudo -n true </dev/null >/dev/null 2>&1
+}
+
 start_run() {
   parse_options "$@"
   local parse_rc=$?
   [[ $parse_rc -eq 0 ]] || { [[ $parse_rc -eq 10 ]] && return 0; return "$parse_rc"; }
   if [[ ${CYBEXOS_UPDATE_ASSUME_USER_UNIT:-0} != 1 \
-        && $system_unit != true ]] && ! sudo -n true >/dev/null 2>&1; then
-    if [[ $json == true || ! -t 0 ]]; then
-      printf 'cybexos-update-run: authentication is required; run `cybex update` in a terminal\n' >&2
-      return 77
+        && $system_unit != true ]] && ! detached_sudo_available; then
+    if ! sudo -n true >/dev/null 2>&1; then
+      if [[ $json == true || ! -t 0 ]]; then
+        printf 'cybexos-update-run: authentication is required; run `cybex update` in a terminal\n' >&2
+        return 77
+      fi
+      printf 'Authenticate once to start the durable system update worker.\n'
+      sudo -v || return
     fi
-    printf 'Authenticate once to start the durable system update worker.\n'
-    sudo -v || return
+    # The terminal's ticket authorizes launching a root system unit now; the
+    # worker itself then needs no further authentication.
     system_unit=true
   fi
   exec 9>"$lock_file"

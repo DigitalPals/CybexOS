@@ -50,8 +50,13 @@ if [[ $assume_yes == false ]]; then
 fi
 
 sudo -v
+# Ansible's workers detach from the terminal, where sudo's default tty-scoped
+# ticket from `sudo -v` does not apply; ask for the become password unless
+# sudo works without a terminal.
+become_args=()
+setsid -w sudo -n true </dev/null >/dev/null 2>&1 || become_args=(--ask-become-pass)
 ansible-playbook uninstall.yml -e "@$config_path" \
-  -e "cybexos_keep_user_data=$keep_user_data"
+  -e "cybexos_keep_user_data=$keep_user_data" "${become_args[@]}"
 if [[ $keep_user_data == false ]]; then
   sudo rm -f -- "$config_path"
   sudo rmdir -- /etc/cybexos 2>/dev/null || true
