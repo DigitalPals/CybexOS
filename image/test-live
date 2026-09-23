@@ -5,6 +5,7 @@ The test types setup commands into the live desktop through QEMU keyboard
 events. Neither the ISO nor its packaged root is edited.
 """
 import argparse
+import ctypes
 import json
 from pathlib import Path
 import shlex
@@ -34,6 +35,16 @@ def free_port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
+
+
+LIBC = ctypes.CDLL(None, use_errno=True)
+
+
+def stop_with_harness():
+    # Runs in the forked VM process. Its own process group keeps a terminal
+    # Ctrl-C from killing the VM before the harness has flushed the guest;
+    # PR_SET_PDEATHSIG still stops the VM if the harness itself is killed.
+    LIBC.prctl(1, signal.SIGTERM)
 
 
 AUDIT = r"""
@@ -149,7 +160,8 @@ def main():
         "-device", "virtio-net-pci,netdev=net", "-vnc", f"127.0.0.1:{vnc_port - 5900}",
         "-serial", f"file:{work / 'serial.log'}",
         "-qmp", f"unix:{work / 'qmp.sock'},server=on,wait=off", "-monitor", "none",
-    ], stdout=(work / "qemu.log").open("w"), stderr=subprocess.STDOUT)
+    ], stdout=(work / "qemu.log").open("w"), stderr=subprocess.STDOUT,
+        process_group=0, preexec_fn=stop_with_harness)
     state = {"pid": vm.pid, "ssh": ssh, "vnc_port": vnc_port, "qmp": str(work / "qmp.sock"),
              "disk": str(work / "installed.qcow2")}
     if uefi:
@@ -194,8 +206,12 @@ def main():
         print(f"Live desktop and welcome passed. Test connection details: {work / 'vm.json'}", flush=True)
         if args.hold:
             print("VM is available for installer testing; interrupt this command to stop it.", flush=True)
-            while vm.poll() is None:
-                time.sleep(1)
+            try:
+                while vm.poll() is None:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                # Its checks passed; an interrupt is how a held test ends.
+                pass
     finally:
         try:
             if ssh_ready and vm.poll() is None:
@@ -216,16 +232,21 @@ def main():
                 (work / name).unlink(missing_ok=True)
 
 
-def interrupted(_signal, _frame):
-    raise KeyboardInterrupt
+def interrupted(number, _frame):
+    raise KeyboardInterrupt(number)
 
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGTERM, interrupted)
+    # A closed terminal also cleans up; the default SIGHUP action skips it.
+    for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(number, interrupted)
     try:
         main()
-    except KeyboardInterrupt:
-        pass
-    except (RuntimeError, subprocess.CalledProcessError) as error:
+    except KeyboardInterrupt as error:
+        # An interrupted test did not pass. Report it the way a shell would.
+        number = error.args[0] if error.args else signal.SIGINT
+        print(f"image/test-live: interrupted by {signal.Signals(number).name}", file=sys.stderr)
+        sys.exit(128 + number)
+    except (RuntimeError, subprocess.SubprocessError) as error:
         print(f"image/test-live: {error}", file=sys.stderr)
         sys.exit(1)
