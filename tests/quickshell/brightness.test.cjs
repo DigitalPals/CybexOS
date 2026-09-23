@@ -59,6 +59,52 @@ test("SysInfo reads and writes brightness through brightness-control", () => {
         /function refreshBrightness\(\) \{[\s\S]{0,200}?brightnessWrite\.running[\s\S]{0,80}?brightnessSettle\.running/);
 });
 
+test("a refresh during a running read re-reads once that read settles", () => {
+    const vm = require("node:vm");
+    const sys = read("Common/SysInfo.qml");
+    const refresh = sys.match(/^    function refreshBrightness\(\) \{[^]*?^    }/m)[0];
+    const block = sys.slice(sys.indexOf("id: brightnessRead"));
+    const edge = block.match(/onRunningChanged: \{([^]*?)\n        \}/)[1];
+    let starts = 0;
+    const later = [];
+    const ctx = {
+        brightnessReadPending: false,
+        brightnessWrite: { running: false },
+        brightnessSettle: { running: false },
+        brightnessSet: { running: false },
+        brightnessRead: {
+            _running: false,
+            get running() { return this._running; },
+            set running(value) { if (value) starts++; this._running = value; }
+        },
+        Qt: { callLater: fn => later.push(fn) }
+    };
+    ctx.root = ctx;
+    vm.createContext(ctx);
+    vm.runInContext(refresh, ctx);
+    const settle = () => {
+        ctx.brightnessRead._running = false;
+        vm.runInContext("(function (running) {" + edge + "})(false)", ctx);
+        later.splice(0).forEach(fn => fn());
+    };
+
+    ctx.refreshBrightness();
+    assert.equal(starts, 1);
+    // Key repeat: several pings while that read is still out.
+    ctx.refreshBrightness();
+    ctx.refreshBrightness();
+    assert.equal(starts, 1, "a running read is not interrupted");
+    settle();
+    assert.equal(starts, 2, "the pings coalesce into exactly one re-read");
+    settle();
+    assert.equal(starts, 2, "and nothing more once it is answered");
+
+    // A local write in flight still owns the next read.
+    ctx.brightnessSettle.running = true;
+    ctx.refreshBrightness();
+    assert.equal(starts, 2);
+});
+
 test("brightness-control keeps the verbs its callers use", () => {
     const script = fs.readFileSync(path.resolve(shellDir,
         "../../../dotfiles/templates/brightness-control.j2"), "utf8");
