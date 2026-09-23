@@ -1399,6 +1399,27 @@ function restoreSnapshot(current, snapshot) {
     return restored;
 }
 
+// The value one key holds after a save and reload: what merge() makes of it.
+// Writers pass values through this so memory never holds one the file cannot
+// reproduce — a stepped slider's 0.7000000000000001, an out-of-range number —
+// which would make the reload of our own save look like an external edit.
+// Two keys depend on another key in merge() (an expiry is dropped while its
+// mode is off); callers set those in either order, so they are checked alone.
+function normalizeKey(key, value) {
+    if (key === "idleInhibitUntilMs" || key === "notifDndUntilMs")
+        return timestampIn(value, 0);
+    var raw = { v: VERSION };
+    raw[key] = value;
+    var merged = merge(raw);
+    return Object.prototype.hasOwnProperty.call(merged, key) ? merged[key] : value;
+}
+
+// A file written by a newer shell carries keys and option values this one
+// would drop, so it must not be rewritten here (rollback after an update).
+function isNewerSchema(parsed) {
+    return !!parsed && typeof parsed.v === "number" && parsed.v > VERSION;
+}
+
 // Deterministic serialization: fixed key order so snapshot equality can be
 // compared as strings (self-write echo detection) and diffs stay readable.
 function serialize(settings) {
@@ -1495,6 +1516,8 @@ var exported = {
     clone: clone,
     restoreSnapshot: restoreSnapshot,
     merge: merge,
+    normalizeKey: normalizeKey,
+    isNewerSchema: isNewerSchema,
     serialize: serialize,
     parse: parse
 };

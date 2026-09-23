@@ -1,10 +1,12 @@
 """Transactional management of trusted user-owned plugin source trees."""
 
+from contextlib import nullcontext
 import json
 import hashlib
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import tempfile
 
@@ -24,12 +26,51 @@ def fingerprint(directory):
         dirs[:] = sorted(name for name in dirs if name != ".git")
         for name in sorted(files):
             path = Path(root) / name
+            mode = path.lstat().st_mode
+            # Opening a FIFO blocks forever, and a device is not package
+            # code. Neither is copied into a snapshot, so neither is hashed.
+            if not stat.S_ISLNK(mode) and not stat.S_ISREG(mode):
+                continue
             digest.update(str(path.relative_to(directory)).encode())
-            if path.is_symlink():
+            if stat.S_ISLNK(mode):
                 digest.update(os.readlink(path).encode())
             else:
                 digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def stat_signature(directory):
+    """Identify a tree by metadata alone: (signature, newest timestamp in ns).
+
+    Hashing every file is what a rescan used to cost. Names, types, sizes and
+    change times identify a revision without reading any contents; callers
+    remember signature -> fingerprint and hash again only when this changes.
+    """
+    digest = hashlib.sha256()
+    newest = 0
+    for root, dirs, files in os.walk(directory, followlinks=False):
+        dirs[:] = sorted(name for name in dirs if name != ".git")
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            info = os.lstat(path)
+            digest.update(os.fsencode(os.path.relpath(path, directory)))
+            digest.update(f"\0{info.st_mode}:{info.st_size}:{info.st_mtime_ns}:"
+                          f"{info.st_ctime_ns}:{info.st_ino}\n".encode())
+            newest = max(newest, info.st_mtime_ns, info.st_ctime_ns)
+    return digest.hexdigest(), newest
+
+
+def ignore_special(directory, names):
+    """copytree filter: skip .git and anything but files, links and directories."""
+    ignored = []
+    for name in names:
+        if name == ".git":
+            ignored.append(name)
+            continue
+        mode = os.lstat(os.path.join(directory, name)).st_mode
+        if not (stat.S_ISREG(mode) or stat.S_ISLNK(mode) or stat.S_ISDIR(mode)):
+            ignored.append(name)
+    return ignored
 
 
 def managed_directory(packages, plugin_id):
@@ -39,7 +80,12 @@ def managed_directory(packages, plugin_id):
     return directory
 
 
-def install(packages, source, validate, read_object):
+# Network operations (clone, fetch) and validation run without `lock`: a slow
+# remote may take minutes, and holding the registry lock that long would stall
+# discovery and every other preference write. `lock` is taken only for the
+# final rename and registry write, after re-checking what the unlocked phase
+# assumed.
+def install(packages, source, validate, read_object, lock=None, commit=None):
     packages.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".install-", dir=packages) as temporary:
         checkout = Path(temporary) / "checkout"
@@ -52,14 +98,21 @@ def install(packages, source, validate, read_object):
         if candidate != checkout:
             checkout.rename(candidate)
         validate(Path(temporary), plugin_id)
-        destination = packages / plugin_id
-        if destination.exists() or destination.is_symlink():
-            raise ValueError("Plugin already installed")
-        candidate.rename(destination)
+        with (lock or nullcontext)():
+            destination = packages / plugin_id
+            if destination.exists() or destination.is_symlink():
+                raise ValueError("Plugin already installed")
+            candidate.rename(destination)
+            if commit:
+                try:
+                    commit(plugin_id)
+                except Exception:
+                    shutil.rmtree(destination)
+                    raise
         return plugin_id
 
 
-def update(packages, plugin_id, validate, preview=False):
+def update(packages, plugin_id, validate, preview=False, lock=None):
     directory = managed_directory(packages, plugin_id)
     if git(directory, "rev-parse", "--show-toplevel") != str(directory.resolve()):
         raise ValueError("Plugin must be its own Git checkout")
@@ -67,6 +120,8 @@ def update(packages, plugin_id, validate, preview=False):
         raise ValueError("Plugin has local changes; commit or stash them before updating")
     branch = git(directory, "symbolic-ref", "--quiet", "--short", "HEAD")
     remote = git(directory, "config", "--get", "branch." + branch + ".remote")
+    # Unlocked: a fetch adds only objects and remote-tracking refs, which
+    # neither discovery nor code snapshots read.
     git(directory, "fetch", "--", remote)
     upstream = git(directory, "rev-parse", "@{upstream}")
     previous = git(directory, "rev-parse", "HEAD")
@@ -81,9 +136,12 @@ def update(packages, plugin_id, validate, preview=False):
         git(packages, "clone", "--no-hardlinks", "--", str(directory), str(candidate))
         git(candidate, "checkout", "--detach", upstream)
         validate(Path(temporary), plugin_id)
-    if git(directory, "status", "--porcelain", "--untracked-files=all"):
-        raise ValueError("Plugin changed during validation; update was not applied")
-    git(directory, "merge", "--ff-only", upstream)
+    with (lock or nullcontext)():
+        directory = managed_directory(packages, plugin_id)
+        if (git(directory, "rev-parse", "HEAD") != previous
+                or git(directory, "status", "--porcelain", "--untracked-files=all")):
+            raise ValueError("Plugin changed during validation; update was not applied")
+        git(directory, "merge", "--ff-only", upstream)
     return diff or "Already up to date"
 
 
@@ -128,7 +186,7 @@ def clone(packages, plugin_id, new_id, validate, read_object, builtin_root=None)
                         text = text.replace(mapping["source"], mapping["target"])
                     path.write_text(text)
         else:
-            shutil.copytree(source, candidate, symlinks=True, ignore=shutil.ignore_patterns(".git"))
+            shutil.copytree(source, candidate, symlinks=True, ignore=ignore_special)
             manifest = read_object(candidate / "manifest.json")
         manifest["id"] = new_id
         manifest["omarchy"] = {**manifest.get("omarchy", {}), "clonedFrom": plugin_id}

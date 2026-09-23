@@ -52,13 +52,58 @@ Column {
         }
     }
     SliderRow {
+        id: widthRow
+        // Held locally while dragging and until discovery reports it back:
+        // each write is a helper process and a rescan, so the drag is saved
+        // where it rests (as the schema sliders below are), and the row stays
+        // live while that write is queued.
+        property var pending: undefined
+        property var pendingDescriptor: null
+        readonly property int saved: root.descriptor.width || 120
         width: parent.width
         minimumLabelWidth: root.labelColumn
         label: "Width"
         min: 24; max: 320; step: 1; unit: "px"
-        value: root.descriptor.width || 120
-        enabled: !UserPlugins.busy
-        onMoved: value => UserPlugins.configureWidget(root.descriptor, { width: Math.round(value) })
+        value: pending !== undefined ? pending : saved
+        onSavedChanged: {
+            if (pending !== undefined && !widthSettle.running && saved === pending)
+                pending = undefined;
+        }
+        onMoved: value => {
+            pending = Math.round(value);
+            pendingDescriptor = root.descriptor;
+            widthSettle.restart();
+        }
+
+        // Saves against the widget the drag was made on, even if the dialog
+        // has moved on to another one or is closing.
+        function flushWidth() {
+            if (!widthSettle.running)
+                return;
+            widthSettle.stop();
+            UserPlugins.configureWidget(pendingDescriptor, { width: pending });
+        }
+
+        Timer {
+            id: widthSettle
+            interval: 300
+            onTriggered: UserPlugins.configureWidget(widthRow.pendingDescriptor, { width: widthRow.pending })
+        }
+        Connections {
+            target: root
+            function onWidgetKeyChanged() {
+                widthRow.flushWidth();
+                widthRow.pending = undefined;
+            }
+        }
+        Connections {
+            target: UserPlugins
+            function onErrorChanged() {
+                if (UserPlugins.error !== "" && !widthSettle.running)
+                    widthRow.pending = undefined;
+            }
+        }
+        Component.onDestruction: flushWidth()
 
         // Measures the labels for labelColumn. Laid-out text, not a
         // FontMetrics call, so the column follows the face as it resolves.

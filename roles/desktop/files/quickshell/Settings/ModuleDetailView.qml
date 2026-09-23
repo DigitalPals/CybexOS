@@ -32,7 +32,10 @@ SettingsPage {
     // The old options component can survive one binding update while switching widgets.
     readonly property var indicatorOrder: opts.order || []
     readonly property var indicatorEnabledIds: opts.enabled || []
-    onModuleIdChanged: cancelIndicatorDrag()
+    onModuleIdChanged: {
+        cancelIndicatorDrag();
+        flushSettling();
+    }
     readonly property var optDefaults: Settings.defaults.modOpts[moduleId] ?? ({})
     readonly property var modEntry: {
         const mods = Settings.mods;
@@ -50,7 +53,7 @@ SettingsPage {
     }
 
     function optDirty(key) {
-        return view.opts[key] !== view.optDefaults[key];
+        return view.optValue(key) !== view.optDefaults[key];
     }
 
     function setOpt(key, value) {
@@ -58,8 +61,57 @@ SettingsPage {
     }
 
     function resetOpt(key) {
+        view.dropSettling(key);
         Settings.setModuleOption(view.moduleId, key, view.optDefaults[key]);
     }
+
+    // Sliders report every step of a drag, and each modOpts write clones and
+    // normalizes every option and notifies every consumer (the calendar's
+    // look-ahead respawns its event helper). Hold the dragged value here and
+    // store it where the drag rests.
+    property var settlingOpts: ({})
+    property string settlingModule: ""
+
+    function optValue(key) {
+        return Object.prototype.hasOwnProperty.call(view.settlingOpts, key)
+            ? view.settlingOpts[key] : view.opts[key];
+    }
+
+    function settleOpt(key, value) {
+        if (view.settlingModule !== view.moduleId)
+            view.flushSettling();
+        const next = Object.assign({}, view.settlingOpts);
+        next[key] = value;
+        view.settlingModule = view.moduleId;
+        view.settlingOpts = next;
+        optSettle.restart();
+    }
+
+    function dropSettling(key) {
+        if (!Object.prototype.hasOwnProperty.call(view.settlingOpts, key))
+            return;
+        const next = Object.assign({}, view.settlingOpts);
+        delete next[key];
+        view.settlingOpts = next;
+    }
+
+    function flushSettling() {
+        optSettle.stop();
+        const changes = view.settlingOpts;
+        const id = view.settlingModule;
+        view.settlingOpts = {};
+        view.settlingModule = "";
+        if (id !== "" && Object.keys(changes).length > 0)
+            Settings.setModuleOptions(id, changes);
+    }
+
+    Timer {
+        id: optSettle
+        interval: 300
+        onTriggered: view.flushSettling()
+    }
+
+    Component.onDestruction: flushSettling()
 
     function indicatorEnabled(id) {
         return view.indicatorEnabledIds.indexOf(id) !== -1;
@@ -660,10 +712,10 @@ SettingsPage {
                 min: 1
                 max: 10
                 step: 1
-                value: view.opts.minSlots
+                value: view.optValue("minSlots")
                 unit: ""
                 dirty: view.optDirty("minSlots")
-                onMoved: value => view.setOpt("minSlots", value)
+                onMoved: value => view.settleOpt("minSlots", value)
                 onResetRequested: view.resetOpt("minSlots")
             }
 
@@ -718,9 +770,9 @@ SettingsPage {
                 min: 120
                 max: 360
                 step: 20
-                value: view.opts.maxWidth
+                value: view.optValue("maxWidth")
                 dirty: view.optDirty("maxWidth")
-                onMoved: value => view.setOpt("maxWidth", value)
+                onMoved: value => view.settleOpt("maxWidth", value)
                 onResetRequested: view.resetOpt("maxWidth")
             }
         }
@@ -780,11 +832,11 @@ SettingsPage {
                 min: 1
                 max: 31
                 step: 1
-                value: view.opts.daysAhead
+                value: view.optValue("daysAhead")
                 unit: value === 1 ? "day" : "days"
                 valueWidth: 62
                 dirty: view.optDirty("daysAhead")
-                onMoved: value => view.setOpt("daysAhead", value)
+                onMoved: value => view.settleOpt("daysAhead", value)
                 onResetRequested: view.resetOpt("daysAhead")
             }
 
@@ -795,12 +847,12 @@ SettingsPage {
                 min: 5
                 max: 60
                 step: 5
-                value: view.opts.pollMins
+                value: view.optValue("pollMins")
                 unit: "min"
                 // Match Look ahead so both tracks end at the same edge.
                 valueWidth: 62
                 dirty: view.optDirty("pollMins")
-                onMoved: value => view.setOpt("pollMins", value)
+                onMoved: value => view.settleOpt("pollMins", value)
                 onResetRequested: view.resetOpt("pollMins")
             }
 
@@ -870,10 +922,10 @@ SettingsPage {
                 min: 5
                 max: 60
                 step: 5
-                value: view.opts.pollMins
+                value: view.optValue("pollMins")
                 unit: "min"
                 dirty: view.optDirty("pollMins")
-                onMoved: value => view.setOpt("pollMins", value)
+                onMoved: value => view.settleOpt("pollMins", value)
                 onResetRequested: view.resetOpt("pollMins")
             }
         }
@@ -1192,10 +1244,10 @@ SettingsPage {
                 min: 10
                 max: 50
                 step: 5
-                value: view.opts.warnAt
+                value: view.optValue("warnAt")
                 unit: "%"
                 dirty: view.optDirty("warnAt")
-                onMoved: value => view.setOpt("warnAt", value)
+                onMoved: value => view.settleOpt("warnAt", value)
                 onResetRequested: view.resetOpt("warnAt")
             }
 
@@ -1205,10 +1257,10 @@ SettingsPage {
                 min: 5
                 max: 25
                 step: 5
-                value: view.opts.critAt
+                value: view.optValue("critAt")
                 unit: "%"
                 dirty: view.optDirty("critAt")
-                onMoved: value => view.setOpt("critAt", value)
+                onMoved: value => view.settleOpt("critAt", value)
                 onResetRequested: view.resetOpt("critAt")
             }
 
@@ -1301,10 +1353,10 @@ SettingsPage {
                 min: 3
                 max: 15
                 step: 1
-                value: view.opts.repos
+                value: view.optValue("repos")
                 unit: ""
                 dirty: view.optDirty("repos")
-                onMoved: value => view.setOpt("repos", value)
+                onMoved: value => view.settleOpt("repos", value)
                 onResetRequested: view.resetOpt("repos")
             }
 
@@ -1315,10 +1367,10 @@ SettingsPage {
                 min: 1
                 max: 30
                 step: 1
-                value: view.opts.pollMins
+                value: view.optValue("pollMins")
                 unit: "min"
                 dirty: view.optDirty("pollMins")
-                onMoved: value => view.setOpt("pollMins", value)
+                onMoved: value => view.settleOpt("pollMins", value)
                 onResetRequested: view.resetOpt("pollMins")
             }
 
@@ -1396,10 +1448,10 @@ SettingsPage {
                 min: 1
                 max: 10
                 step: 1
-                value: view.opts.step
+                value: view.optValue("step")
                 unit: "%"
                 dirty: view.optDirty("step")
-                onMoved: value => view.setOpt("step", value)
+                onMoved: value => view.settleOpt("step", value)
                 onResetRequested: view.resetOpt("step")
             }
 
@@ -1450,10 +1502,10 @@ SettingsPage {
                 min: 10
                 max: 40
                 step: 5
-                value: view.opts.warnAt
+                value: view.optValue("warnAt")
                 unit: "%"
                 dirty: view.optDirty("warnAt")
-                onMoved: value => view.setOpt("warnAt", value)
+                onMoved: value => view.settleOpt("warnAt", value)
                 onResetRequested: view.resetOpt("warnAt")
             }
 
@@ -1463,10 +1515,10 @@ SettingsPage {
                 min: 5
                 max: 20
                 step: 5
-                value: view.opts.critAt
+                value: view.optValue("critAt")
                 unit: "%"
                 dirty: view.optDirty("critAt")
-                onMoved: value => view.setOpt("critAt", value)
+                onMoved: value => view.settleOpt("critAt", value)
                 onResetRequested: view.resetOpt("critAt")
             }
         }
@@ -1484,10 +1536,10 @@ SettingsPage {
                 min: 10
                 max: 240
                 step: 10
-                value: view.opts.pollMins
+                value: view.optValue("pollMins")
                 unit: "min"
                 dirty: view.optDirty("pollMins")
-                onMoved: value => view.setOpt("pollMins", value)
+                onMoved: value => view.settleOpt("pollMins", value)
                 onResetRequested: view.resetOpt("pollMins")
             }
 

@@ -24,6 +24,10 @@ Singleton {
     readonly property var enabled: plugins.filter(plugin => plugin.enabled)
     readonly property var enabledWidgets: widgets.filter(plugin => plugin.enabled)
     readonly property string helper: Quickshell.shellDir + "/scripts/user-plugins.py"
+    // Resolved as scripts/user-plugins.py roots() does.
+    readonly property string registryPath: (Quickshell.env("CYBEXOS_USER_CONFIG_ROOT")
+        || (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/cybexos")
+        + "/plugins.json"
 
     function registerHost(host) {
         widgetHosts = widgetHosts.concat([host]);
@@ -100,6 +104,7 @@ Singleton {
 
     Process {
         id: scanner
+        property bool timedOut: false
         command: ["python3", root.helper, "list", "--live"]
         stdout: StdioCollector {
             onStreamFinished: {
@@ -107,8 +112,15 @@ Singleton {
                     return;
                 try {
                     const result = JSON.parse(text);
-                    root.error = result.error;
-                    // A malformed registry is shown, never repaired with defaults.
+                    if (result.error || !Array.isArray(result.plugins)) {
+                        // A malformed or half-written registry is shown, never
+                        // repaired with defaults — and never applied: an empty
+                        // list would unload every running plugin until the
+                        // next good scan. Keep the last good state.
+                        root.error = result.error || "Could not read user widgets";
+                        return;
+                    }
+                    root.error = "";
                     root.barConfig = result.bar || {};
                     root.widgets = result.widgets || [];
                     root.plugins = result.plugins;
@@ -118,9 +130,17 @@ Singleton {
                 }
             }
         }
+        onRunningChanged: {
+            if (running) {
+                timedOut = false;
+                scanWatchdog.restart();
+            } else {
+                scanWatchdog.stop();
+            }
+        }
         onExited: (code, status) => {
             if (code !== 0)
-                root.error = "Could not inspect user widgets";
+                root.error = timedOut ? "Plugin discovery timed out" : "Could not inspect user widgets";
             if (root.refreshPending) {
                 root.refreshPending = false;
                 Qt.callLater(root.refresh);
@@ -151,8 +171,46 @@ Singleton {
         }
     }
 
+    // A scan waits on the registry lock and reads package trees; neither may
+    // wedge discovery for the rest of the session.
     Timer {
-        interval: 2000
+        id: scanWatchdog
+        interval: 20000
+        onTriggered: {
+            if (!scanner.running)
+                return;
+            scanner.timedOut = true;
+            root.error = "Plugin discovery timed out";
+            scanner.running = false;
+        }
+    }
+
+    // Registry edits are seen at once; package trees are polled. The helper
+    // only stats unchanged packages, but a scan is still a process, so poll
+    // briskly only while the settings window can show the result.
+    FileView {
+        path: root.registryPath
+        watchChanges: true
+        printErrors: false
+        onFileChanged: registryChanged.restart()
+    }
+
+    Timer {
+        id: registryChanged
+        interval: 150
+        onTriggered: root.refresh()
+    }
+
+    Connections {
+        target: Settings
+        function onPanelOpenChanged() {
+            if (Settings.panelOpen)
+                root.refresh();
+        }
+    }
+
+    Timer {
+        interval: Settings.panelOpen ? 2000 : 30000
         repeat: true
         running: true
         triggeredOnStart: true

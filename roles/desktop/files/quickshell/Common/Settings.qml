@@ -136,6 +136,10 @@ Singleton {
     property string writeSnapshot: ""
     property string lastPersistedText: ""
     property bool initialLoadHandled: false
+    // The file on disk came from a newer schema; see protectNewerFile().
+    property bool newerSchema: false
+    // An empty or unparsable reload is being read a second time.
+    property bool recheckPending: false
     // Blocks every save while an unreadable settings file is being moved
     // aside, and stays set if that move fails — overwriting it then would
     // destroy the only copy of the user's settings.
@@ -232,7 +236,7 @@ Singleton {
     function set(key, value) {
         clearUndo();
         migrationPending = false;
-        root[key] = value;
+        root[key] = SettingsHelpers.normalizeKey(key, value);
     }
 
     function previewBarColor(mode) {
@@ -482,19 +486,44 @@ Singleton {
 
     function applyLoaded(rawText) {
         initialLoadHandled = true;
+        const result = SettingsHelpers.parse(rawText);
+        // An editor that truncates before writing exposes an empty or partial
+        // file for a moment. Once settings are live, read it once more before
+        // treating that as a reset or as damage.
+        if (loaded && result.status !== "ok" && !recheckPending) {
+            recheckPending = true;
+            reloadTimer.restart();
+            return;
+        }
+        recheckPending = false;
         loadError = false;
         loadErrorText = "";
-        const result = SettingsHelpers.parse(rawText);
+        newerSchema = SettingsHelpers.isNewerSchema(result.value);
         // Before the no-op check below: a corrupt file whose defaults happen to
         // match the running state would otherwise slip through unprotected.
         if (result.status === "corrupt")
             backUpCorruptFile();
+        // Still empty (or gone) after the recheck: keep the running settings
+        // rather than dropping to defaults mid-session. Only an absent file at
+        // startup is a first run; the next change writes a complete file.
+        if (loaded && result.status === "empty") {
+            ready = true;
+            return;
+        }
+        if (newerSchema)
+            protectNewerFile(result.value.v);
         const parsed = result.value;
-        const merged = SettingsHelpers.merge(parsed);
+        const previousText = lastPersistedText;
         if (result.status !== "corrupt")
             lastPersistedText = rawText;
         // Skip echoes of our own atomic writes (watchChanges reports them)
-        // and external edits that merge back to the current state.
+        // byte for byte, then external edits that merge back to the current
+        // state.
+        if (loaded && result.status === "ok" && rawText === previousText) {
+            ready = true;
+            return;
+        }
+        const merged = SettingsHelpers.merge(parsed);
         if (loaded && SettingsHelpers.serialize(merged) === SettingsHelpers.serialize(snapshot())) {
             ready = true;
             return;
@@ -517,6 +546,21 @@ Singleton {
         applyGlassEffect();
     }
 
+    // After a rollback to an older shell the file carries keys and option
+    // values this schema would drop on its next save. Apply what this version
+    // understands, but leave the file alone: the same error path as an
+    // unreadable file closes every write, and Retry re-reads it.
+    function protectNewerFile(version) {
+        loadError = true;
+        loadErrorText = filePath + " was saved by a newer CybexOS (settings version "
+            + version + "). Changes apply but are not saved, so its newer settings are kept.";
+        saveTimer.stop();
+        savePending = false;
+        announcement = loadErrorText;
+        console.warn("settings: file schema", version, "is newer than", SettingsHelpers.VERSION,
+            "— not saving");
+    }
+
     function handleLoadFailure(error) {
         initialLoadHandled = true;
         if (error === FileViewError.FileNotFound) {
@@ -529,6 +573,7 @@ Singleton {
         // Keep the last known-good in-memory values, and close every write
         // path. Treating permission/IO failures as an empty first run would
         // make the next setting change replace a file we never read.
+        recheckPending = false;
         ready = false;
         loadError = true;
         loadErrorText = "Could not read " + filePath + " ("
@@ -684,6 +729,12 @@ Singleton {
     }
 
     Timer {
+        id: reloadTimer
+        interval: 250
+        onTriggered: store.reload()
+    }
+
+    Timer {
         id: resetTimer
         interval: 8000
         onTriggered: root.clearUndo()
@@ -800,7 +851,14 @@ Singleton {
         blockWrites: true
         blockLoading: true
         watchChanges: true
-        onFileChanged: reload()
+        // Coalesce an editor's truncate-and-write into one reload once
+        // settings are live; the initial load stays synchronous.
+        onFileChanged: {
+            if (root.loaded)
+                reloadTimer.restart();
+            else
+                reload();
+        }
         onLoaded: root.applyLoaded(text())
         onLoadFailed: error => root.handleLoadFailure(error)
         onSaved: root.handleSaveSucceeded()

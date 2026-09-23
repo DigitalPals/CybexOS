@@ -75,6 +75,17 @@ PopoutPanel {
             if (Settings.highlightKey !== "")
                 highlightClearTimer.restart();
         }
+        function onPanelOpenChanged() {
+            if (Settings.panelOpen)
+                pageRelease.stop();
+            else
+                pageRelease.restart();
+        }
+    }
+
+    Timer {
+        id: pageRelease
+        interval: 15000
     }
 
     Timer {
@@ -611,6 +622,7 @@ PopoutPanel {
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - 6 - 7 - parent.leftPadding
                     text: Settings.undoAvailable ? Settings.resetLabel + " reset"
+                        : Settings.newerSchema ? "Newer settings file · not saving"
                         : Settings.loadError ? "Could not read settings"
                         : Settings.saveError ? "Could not save settings"
                         : Settings.savePending ? "Saving changes…"
@@ -641,6 +653,11 @@ PopoutPanel {
             // is one frame late changes nothing but its own content area, and
             // every reader below already tolerates a null item.
             asynchronous: true
+            // The window outlives every close, and a page such as the
+            // wallpaper grid holds thumbnails and models while it exists. Keep
+            // it briefly so a quick reopen is instant, then release it;
+            // Settings.page reopens the same page.
+            active: Settings.panelOpen || pageRelease.running
             x: root.navWidth + root.gutter
             y: root.gutter
             width: parent.width - root.navWidth - root.gutter * 2

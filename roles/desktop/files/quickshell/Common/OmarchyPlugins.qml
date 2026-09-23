@@ -103,8 +103,12 @@ Singleton {
             }
         }
         if (records[key]) {
-            records[key].host.configure();
-            return records[key].host;
+            const existing = records[key].host;
+            existing.configure();
+            // A host that failed to load keeps its load error.
+            if (existing.ready)
+                setError(key, existing.configureError);
+            return existing;
         }
         const host = hostFactory.createObject(root, {
             pluginId: item.id, kind: kind, sourceUrl: source, api: apiFor(item.id)
@@ -117,10 +121,15 @@ Singleton {
         const loaded = () => {
             // Notify bindings that initially observed an asynchronous service.
             records = Object.assign({}, records);
-            setError(key, "");
+            setError(key, host.configureError);
             if (kind === "bar") replacing = true;
             if (kind === "service") {
-                for (const record of Object.values(records)) record.host.configure();
+                for (const other of Object.keys(records)) {
+                    const otherHost = records[other].host;
+                    otherHost.configure();
+                    if (otherHost.ready)
+                        setError(other, otherHost.configureError);
+                }
             }
             if (kind !== "service" && kind !== "bar" && openIds[item.id])
                 deliver(item.id, host);
@@ -134,6 +143,16 @@ Singleton {
         if (host.ready) loaded();
         else if (host.error) failed(host.error);
         return host;
+    }
+
+    // One plugin's exception must not abort sync() for every plugin after it.
+    function loadSafely(item, kind) {
+        try {
+            return load(item, kind);
+        } catch (exception) {
+            setError(item.id + ":" + kind, String(exception));
+            return null;
+        }
     }
 
     function panelKind(item) {
@@ -157,7 +176,12 @@ Singleton {
             // UI references must release their service before it is destroyed.
             const keys = Object.keys(records).sort((a, b) => Number(a.endsWith(":service")) - Number(b.endsWith(":service")));
             for (const key of keys) {
-                if (!wanted[key]) unload(key);
+                if (wanted[key]) continue;
+                try {
+                    unload(key);
+                } catch (exception) {
+                    console.warn("plugins: could not unload", key, exception);
+                }
             }
             const nextOpen = {};
             for (const id of Object.keys(openIds)) {
@@ -165,18 +189,19 @@ Singleton {
             }
             openIds = nextOpen;
             for (const item of items) {
-                if (item.sources.service) load(item, "service");
+                if (item.sources.service) loadSafely(item, "service");
             }
             for (const item of items) {
                 const kind = panelKind(item);
-                if (kind && wanted[item.id + ":" + kind]) load(item, kind);
+                if (kind && wanted[item.id + ":" + kind]) loadSafely(item, kind);
             }
             syncCatalog(items);
             const replacement = items.find(item => item.id === selected && item.sources.bar);
             if (replacement) {
                 // Retire native bars before constructing the replacement.
                 replacing = !errors[replacement.id + ":bar"];
-                load(replacement, "bar");
+                if (!loadSafely(replacement, "bar"))
+                    replacing = false;
             } else {
                 replacing = false;
             }
@@ -196,16 +221,20 @@ Singleton {
     function syncCatalog(items) {
         const next = {};
         for (const item of items.filter(entry => entry.sources.barWidget)) {
-            let entry = Object.prototype.hasOwnProperty.call(catalog, item.id) ? catalog[item.id] : null;
-            if (!entry || entry.source !== item.source) {
-                const component = Qt.createComponent(item.source, Component.PreferSynchronous);
-                entry = { source: item.source, component: component };
+            try {
+                let entry = Object.prototype.hasOwnProperty.call(catalog, item.id) ? catalog[item.id] : null;
+                if (!entry || entry.source !== item.source) {
+                    const component = Qt.createComponent(item.source, Component.PreferSynchronous);
+                    entry = { source: item.source, component: component };
+                }
+                const metadata = Object.assign({}, item.manifest.barWidget || {}, {
+                    displayName: (item.manifest.barWidget || {}).displayName || item.name,
+                    pluginId: item.id, sourceDir: item.packagePath, source: "plugin", firstParty: false
+                });
+                next[item.id] = { source: entry.source, component: entry.component, metadata: metadata };
+            } catch (exception) {
+                setError(item.id + ":barWidget", String(exception));
             }
-            const metadata = Object.assign({}, item.manifest.barWidget || {}, {
-                displayName: (item.manifest.barWidget || {}).displayName || item.name,
-                pluginId: item.id, sourceDir: item.packagePath, source: "plugin", firstParty: false
-            });
-            next[item.id] = { source: entry.source, component: entry.component, metadata: metadata };
         }
         // Components can still be referenced by a retiring replacement bar's
         // Loader. Release our references and let the engine collect them.
@@ -253,7 +282,7 @@ Singleton {
         const queue = openIds[id] ? openIds[id].queue.slice() : [];
         queue.push(String(payloadJson || ""));
         openIds = Object.assign({}, openIds, { [id]: { queue: queue } });
-        const host = load(item, kind);
+        const host = loadSafely(item, kind);
         if (host && host.ready) deliver(id, host);
         return !!host && !host.error;
     }

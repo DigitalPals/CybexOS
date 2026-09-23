@@ -13,6 +13,7 @@ import re
 import tempfile
 import shutil
 import subprocess
+import time
 import plugin_packages
 from urllib.parse import unquote
 
@@ -370,29 +371,124 @@ def edit_layout(config: Path, packages: Path, state: Path, action: str, plugin_i
     write_preferences(config, value)
 
 
+REVISION = re.compile(r"[0-9a-f]{64}\Z")
+# A tree touched this recently may change again within the filesystem's
+# timestamp granularity without changing its stat signature, so its
+# fingerprint is not remembered (the "racy git" problem).
+SETTLE_NS = 2_000_000_000
+
+
+def read_revision_cache(runtime: Path) -> dict:
+    try:
+        cache = json.loads((runtime / ".revisions.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"plugins": {}, "current": {}}
+    if not isinstance(cache, dict):
+        return {"plugins": {}, "current": {}}
+    return {key: cache[key] if isinstance(cache.get(key), dict) else {} for key in ("plugins", "current")}
+
+
+def write_revision_cache(runtime: Path, cache: dict) -> None:
+    runtime.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".revisions-", dir=runtime)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(cache, stream)
+        os.replace(temporary, runtime / ".revisions.json")
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def snapshot(source: Path, plugin_root: Path, remembered: object, now: int) -> tuple[str, dict | None, bool]:
+    """Return (revision, cache entry or None, whether a new snapshot was made)."""
+    signature, newest = plugin_packages.stat_signature(source)
+    if (isinstance(remembered, dict) and remembered.get("stat") == signature
+            and isinstance(remembered.get("revision"), str)
+            and REVISION.fullmatch(remembered["revision"])
+            and (plugin_root / remembered["revision"]).is_dir()):
+        return remembered["revision"], remembered, False
+    revision = plugin_packages.fingerprint(source)
+    destination = plugin_root / revision
+    created = False
+    if not destination.exists():
+        plugin_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".snapshot-", dir=plugin_root) as temporary:
+            staged = Path(temporary) / "code"
+            shutil.copytree(source, staged, symlinks=True, ignore=plugin_packages.ignore_special)
+            if plugin_packages.fingerprint(source) != revision:
+                raise ValueError("Plugin changed during scan; retrying on next refresh")
+            staged.rename(destination)
+        created = True
+    entry = {"stat": signature, "revision": revision} if newest < now - SETTLE_NS else None
+    return revision, entry, created
+
+
+def prune_revisions(plugin_root: Path, keep: set) -> None:
+    # Called under the registry lock, so a leftover .snapshot-* directory
+    # belongs to an interrupted scan, not to a concurrent one.
+    for old in plugin_root.iterdir():
+        if old.name in keep:
+            continue
+        if old.is_symlink() or not old.is_dir():
+            old.unlink()
+        else:
+            shutil.rmtree(old, ignore_errors=True)
+
+
 def runtime_sources(result: dict, packages: Path, runtime: Path) -> None:
+    cache = read_revision_cache(runtime)
+    before = json.dumps(cache, sort_keys=True)
+    now = time.time_ns()
     for item in result["plugins"]:
         if item.get("error") or not item.get("enabled"):
             continue
-        source = packages / item["id"]
-        revision = plugin_packages.fingerprint(source)
-        destination = runtime / item["id"] / revision
-        if not destination.exists():
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.TemporaryDirectory(prefix=".snapshot-", dir=destination.parent) as temporary:
-                staged = Path(temporary) / "code"
-                shutil.copytree(source, staged, symlinks=True, ignore=shutil.ignore_patterns(".git"))
-                if plugin_packages.fingerprint(source) != revision:
-                    raise ValueError("Plugin changed during scan; retrying on next refresh")
-                staged.rename(destination)
-        original = source.resolve()
-        item["sources"] = {kind: (destination / Path(unquote(url.removeprefix("file://"))).relative_to(original)).as_uri()
-                           for kind, url in item["sources"].items()}
+        plugin_id = item["id"]
+        source = packages / plugin_id
+        plugin_root = runtime / plugin_id
+        # One unreadable or changing package must not take every other
+        # plugin down with it: record its error and keep scanning.
+        try:
+            for attempt in range(3):
+                try:
+                    revision, entry, created = snapshot(source, plugin_root,
+                                                        cache["plugins"].get(plugin_id), now)
+                    break
+                except (OSError, ValueError):
+                    if attempt == 2:
+                        raise
+            if entry:
+                cache["plugins"][plugin_id] = entry
+            else:
+                cache["plugins"].pop(plugin_id, None)
+            previous = cache["current"].get(plugin_id)
+            cache["current"][plugin_id] = revision
+            # The shell still runs the previously returned revision until it
+            # applies this result, so that one stays too. A keepLoaded service
+            # is never reloaded within a session; it keeps every revision.
+            if created and not item.get("keepLoaded"):
+                prune_revisions(plugin_root, {revision, previous})
+            destination = plugin_root / revision
+            original = source.resolve()
+            sources = {kind: (destination / Path(unquote(url.removeprefix("file://"))).relative_to(original)).as_uri()
+                       for kind, url in item["sources"].items()}
+        except (OSError, ValueError) as error:
+            item["error"] = f"Could not prepare plugin code: {error}"
+            for widget in result["widgets"]:
+                if widget["id"] == plugin_id:
+                    widget["error"] = item["error"]
+            continue
+        item["sources"] = sources
         item["source"] = item["sources"].get("barWidget", "")
         for widget in result["widgets"]:
-            if widget["id"] == item["id"]:
+            if widget["id"] == plugin_id:
                 widget["sources"] = item["sources"]
                 widget["source"] = item["source"]
+    if json.dumps(cache, sort_keys=True) != before:
+        try:
+            write_revision_cache(runtime, cache)
+        except OSError:
+            pass  # Only an optimization: the next scan hashes again.
 
 
 def main() -> int:
@@ -486,27 +582,32 @@ def main() -> int:
                 edit_layout(config, packages, state, args.action, args.id, payload)
             return 0
         if args.command == "add":
+            # Refuse early, before a network clone, if the registry is unusable.
             with locked(config):
+                preferences(config)
+
+            def register(plugin_id: str) -> None:
+                # Runs under the lock with the installed tree in place; a
+                # failure here removes that tree again.
                 value = preferences(config)
-                plugin_id = plugin_packages.install(packages, args.source, package, read_object)
-                try:
-                    entry = value["plugins"].setdefault(plugin_id, {})
-                    if not isinstance(entry, dict):
-                        raise ValueError("Plugin preferences must be an object")
-                    entry["enabled"] = False
-                    write_preferences(config, value)
-                except (OSError, ValueError):
-                    shutil.rmtree(packages / plugin_id)
-                    raise
-                print(plugin_id)
+                entry = value["plugins"].setdefault(plugin_id, {})
+                if not isinstance(entry, dict):
+                    raise ValueError("Plugin preferences must be an object")
+                entry["enabled"] = False
+                write_preferences(config, value)
+
+            print(plugin_packages.install(packages, args.source, package, read_object,
+                                          lock=lambda: locked(config), commit=register))
             return 0
         if args.command in ("update", "remove", "clone"):
             if not valid_id(args.id):
                 raise ValueError("Invalid plugin id")
+            if args.command == "update":
+                print(plugin_packages.update(packages, args.id, package, args.preview,
+                                             lock=lambda: locked(config)))
+                return 0
             with locked(config):
-                if args.command == "update":
-                    print(plugin_packages.update(packages, args.id, package, args.preview))
-                elif args.command == "clone":
+                if args.command == "clone":
                     if not valid_id(args.new_id):
                         raise ValueError("Invalid clone id")
                     value = preferences(config)

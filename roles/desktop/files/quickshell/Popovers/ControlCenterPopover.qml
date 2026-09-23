@@ -794,7 +794,7 @@ Surface {
                     glyph: "dark_mode"
                     title: "Dark mode"
                     on: Theme.dark
-                    onToggled: Settings.themeMode = Theme.dark ? "light" : "dark"
+                    onToggled: Settings.set("themeMode", Theme.dark ? "light" : "dark")
                 }
 
                 QuickTile {
