@@ -6,8 +6,22 @@ general {
 }
 
 listener {
+  timeout = 60
+  condition_cmd = hyprctl locked | grep -qx true
+  on-timeout = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "off" }))'
+  on-resume = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "on" }))'
+}
+
+listener {
   timeout = 300
   on-timeout = systemctl --user start cybexos-session-lock.service
+}
+
+listener {
+  timeout = 360
+  condition_cmd = hyprctl locked | grep -qx true
+  on-timeout = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "off" }))'
+  on-resume = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "on" }))'
 }
 
 listener {

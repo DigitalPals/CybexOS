@@ -56,6 +56,16 @@ test("the generator accepts exactly the shell's idle choices", () => {
         assert.ok(source.includes(`"${key}": ${d[key]},`), key);
 });
 
+// The rendered listener blocks as rows, in file order.
+function listeners(output) {
+    return output.split("\n\n").filter(block => block.startsWith("listener {")).map(block => {
+        const field = name => block.match(new RegExp(`^  ${name} = (.*)$`, "m"))?.[1] ?? "";
+        return { timeout: Number(field("timeout")), condition: field("condition_cmd"),
+            retry: field("condition_retry"), onTimeout: field("on-timeout"),
+            onResume: field("on-resume") };
+    });
+}
+
 test("default settings render the vendor hypridle.conf byte for byte", t => {
     const vendor = fs.readFileSync(template, "utf8");
     assert.equal(render(t, undefined), vendor);
@@ -78,6 +88,36 @@ test("chosen timeouts render in seconds and Never drops the listener", t => {
     const always = render(t, { idleSuspendMins: 60 });
     assert.match(always, new RegExp(`timeout = 3600\\n  on-timeout = ${action} idle-suspend\\n`));
     assert.match(always, /timeout = 300\n/);
+});
+
+test("a locked screen goes dark a minute after the last input", t => {
+    const lockedOff = settings => listeners(render(t, settings))
+        .filter(row => row.condition === "hyprctl locked | grep -qx true");
+
+    // A manual lock at 60 s and the five-minute idle lock at 360 s; the
+    // unlocked screen-off listener remains at ten minutes.
+    const rows = listeners(render(t, {}));
+    assert.deepEqual(rows.map(row => row.timeout), [60, 300, 360, 600]);
+    const defaults = lockedOff({});
+    assert.deepEqual(defaults.map(row => row.timeout), [60, 360]);
+    for (const row of defaults) {
+        assert.match(row.onTimeout, /^hyprctl eval .*dpms\(\{ action = "off" \}\)/);
+        assert.match(row.onResume, /^hyprctl eval .*dpms\(\{ action = "on" \}\)/);
+        assert.equal(row.retry, "", "an unlocked idle stretch is not polled");
+    }
+
+    assert.deepEqual(lockedOff({ idleLockMins: 0 }).map(row => row.timeout), [60]);
+    // Listeners at or after the screen-off timeout would add nothing.
+    assert.deepEqual(lockedOff({ idleLockMins: 10, idleScreenOffMins: 10 })
+        .map(row => row.timeout), [60]);
+    assert.deepEqual(lockedOff({ idleScreenOffMins: 1 }), []);
+    // Never turning the screen off applies to the lock screen too.
+    assert.ok(listeners(render(t, { idleScreenOffMins: 0 }))
+        .every(row => !/dpms/.test(row.onTimeout)));
+
+    const late = listeners(render(t, { idleLockMins: 1, idleScreenOffMins: 5 }));
+    assert.deepEqual(late.map(row => row.timeout), [60, 60, 120, 300]);
+    assert.equal(late[0].onTimeout, "systemctl --user start cybexos-session-lock.service");
 });
 
 function resolverFixture(t) {
