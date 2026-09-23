@@ -41,6 +41,15 @@ test('notification actions wrap and image captions retain independent contrast',
     assert.match(read('ShortcutsOverlay.qml'), /columns: width < Theme.settingsNarrowWidth \? 1 : 2/);
 });
 
+test('shortcut rows size from their column, not a parent that closing unsets', () => {
+    // Closing the sheet clears the group model; each row is unparented
+    // before its bindings are torn down, so `parent.width` threw once per row.
+    const sheet = read('ShortcutsOverlay.qml');
+    const row = sheet.slice(sheet.indexOf('id: shortcut\n'), sheet.indexOf('id: label'));
+    assert.match(row, /width: rows\.width/);
+    assert.doesNotMatch(row, /width: parent\.width/);
+});
+
 test('accent ink remains readable without changing the chosen fill', () => {
     const helpers = require('../../roles/desktop/files/quickshell/Common/SettingsHelpers.js');
     for (const background of ['#201e1b', '#eeedf3', '#f7f5fb']) {

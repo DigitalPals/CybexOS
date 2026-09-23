@@ -207,6 +207,8 @@ PanelWindow {
                             }
 
                             Column {
+                                id: rows
+
                                 width: parent.width
                                 spacing: Theme.iconTextSpacing
 
@@ -218,7 +220,10 @@ PanelWindow {
 
                                         required property var modelData
 
-                                        width: parent.width
+                                        // Named, not `parent`: closing the sheet
+                                        // clears the outer model, and each row is
+                                        // unparented before its bindings go.
+                                        width: rows.width
                                         height: Math.max(Theme.settingsControlHeight, label.implicitHeight)
 
                                         Text {
