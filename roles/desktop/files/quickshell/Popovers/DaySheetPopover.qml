@@ -53,9 +53,12 @@ Surface {
 
     readonly property var events: Calendar.upcoming(3)
 
-    Component.onCompleted: {
-        if (Calendar.enabled)
-            Calendar.refreshDefault();
+    // Keyed on visibility, not construction, so a latched sheet still asks
+    // for a fresh window on every open and polls only while it is shown.
+    Claim {
+        active: root.visible
+        onClaimed: Calendar.acquire()
+        onReleased: Calendar.release()
     }
 
     Row {

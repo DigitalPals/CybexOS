@@ -37,6 +37,21 @@ Singleton {
     property var events: []
     property var sourceErrors: []
 
+    // The Day sheet is the only surface that shows events, so it is the only
+    // reason to poll: each open view holds a claim and asks for a fresh
+    // window on arrival. With none open, the data waits for the next one.
+    property int watchers: 0
+
+    function acquire() {
+        watchers++;
+        if (enabled)
+            refreshDefault();
+    }
+
+    function release() {
+        watchers = Math.max(0, watchers - 1);
+    }
+
     readonly property bool googleConnected: googleAccounts > 0
         || calendars.some(calendar => calendar.isGoogle)
     readonly property bool googleCalendarEnabled: googleCalendarAccounts > 0
@@ -263,9 +278,19 @@ Singleton {
 
     Timer {
         interval: root.pollIntervalSecs * 1000
-        running: root.enabled
+        running: root.enabled && root.watchers > 0 && !Activity.idle
         repeat: true
         onTriggered: root.pollRefresh()
+    }
+
+    Connections {
+        target: Activity
+
+        function onResumed() {
+            if (root.enabled && root.watchers > 0 && !root.loading
+                    && Date.now() - root.updatedAt >= root.pollIntervalSecs * 1000)
+                root.pollRefresh();
+        }
     }
 
     // The helper answers within its own 15 s deadline and `timeout` kills it
@@ -278,13 +303,14 @@ Singleton {
 
     // The default window starts from today: move it at local midnight rather
     // than waiting for the next poll. Re-armed after every firing, so a
-    // suspend or DST change only delays it to the following check.
+    // suspend or DST change only delays it to the following check. With no
+    // Day sheet open, the next one to open asks for today's window itself.
     Timer {
         id: dayRollover
         interval: root.msUntilNextDay()
         running: root.enabled
         onTriggered: {
-            if (root.requestIsDefault)
+            if (root.requestIsDefault && root.watchers > 0)
                 root.refreshDefault();
             interval = root.msUntilNextDay();
             restart();
@@ -307,7 +333,8 @@ Singleton {
     }
 
     // Not needed for the first frame: the bar shows no events, and opening a
-    // calendar surface fetches its own window. Kept off the startup burst.
+    // calendar surface fetches its own window. Kept off the startup burst;
+    // this one read is only so the first Day sheet opens with events drawn.
     Timer {
         id: warmUp
         interval: 12000

@@ -118,6 +118,26 @@ test("reminders poll only while records exist and settle with one read", () => {
     assert.match(reminders, /Math\.max\(Format\.MS_MINUTE, Math\.min\(Format\.MS_HOUR, untilDue\)\)/);
 });
 
+test("the calendar polls only for an open Day sheet, and never while idle", () => {
+    const calendar = read("Common/Calendar.qml");
+    const sheet = read("Popovers/DaySheetPopover.qml");
+    assert.match(calendar,
+        /running: root\.enabled && root\.watchers > 0 && !Activity\.idle\s*repeat: true\s*onTriggered: root\.pollRefresh\(\)/);
+    assert.match(calendar, /function acquire\(\) \{\s*watchers\+\+;\s*if \(enabled\)\s*refreshDefault\(\);/,
+        "every newly visible sheet asks for a fresh window");
+    assert.match(calendar,
+        /target: Activity[\s\S]{0,80}function onResumed\(\)[\s\S]{0,200}root\.pollRefresh\(\)/);
+    assert.match(calendar, /if \(root\.requestIsDefault && root\.watchers > 0\)\s*root\.refreshDefault\(\)/,
+        "midnight moves the window only for a sheet that is showing it");
+    assert.match(sheet,
+        /Claim \{\s*active: root\.visible\s*onClaimed: Calendar\.acquire\(\)\s*onReleased: Calendar\.release\(\)/);
+    assert.doesNotMatch(sheet, /Component\.onCompleted:[\s\S]{0,80}refreshDefault/,
+        "a latched sheet would never refresh again; the claim follows visibility");
+    // Nothing else reads events: the menubar clock and reminders do not.
+    for (const file of ["Bar/Modules/Clock.qml", "Common/Reminders.qml", "Common/Notifs.qml"])
+        assert.doesNotMatch(read(file), /Calendar\.(events|upcoming|eventsForDay)/, file);
+});
+
 test("the calendar poll follows the clock and loading cannot stick", () => {
     const calendar = read("Common/Calendar.qml");
     assert.match(calendar, /repeat: true\s*onTriggered: root\.pollRefresh\(\)/);
