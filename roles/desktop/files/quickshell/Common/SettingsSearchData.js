@@ -55,6 +55,7 @@ var ROWS = [
     { page: "modules", pageLabel: "Widgets", group: "Catalog", label: "Show or hide widgets", key: "", terms: "enable disable toggle module clock weather notes battery tray workspaces media" },
     { page: "modules", pageLabel: "Widgets", group: "Indicators", label: "Clock-side actions", key: "", terms: "indicator dictate recording ocr scan text clipboard reminder night light do not disturb dnd stay awake idle inhibit order startup duration" },
     { page: "modules", pageLabel: "Widgets", group: "Notes", label: "AI note titles", key: "", terms: "codex claude model provider effort reasoning generate regenerate privacy" },
+    { page: "modules", pageLabel: "Widgets", group: "Weather", label: "Weather location", key: "", widget: "weather", terms: "clock city place search country region coordinates latitude longitude forecast" },
     { page: "modules", pageLabel: "Widgets", group: "Usage", label: "Usage refresh interval", key: "pollMax", widget: "usage", terms: "t3 model usage poll refresh interval" },
 
     { page: "modules", pageLabel: "Widgets", group: "Model usage", label: "Model usage", key: "", widget: "usage", terms: "providers accounts quota credentials api key direct cliproxy sub2api" },

@@ -884,6 +884,10 @@ SettingsPage {
                 color: Theme.textDim
                 wrapMode: Text.Wrap
             }
+
+            WeatherLocationPicker {
+                width: parent.width
+            }
         }
     }
 
@@ -893,34 +897,8 @@ SettingsPage {
         Column {
             spacing: Theme.settingsContentSpacing
 
-            SettingsTextRow {
+            WeatherLocationPicker {
                 width: parent.width
-                label: "Place"
-                value: view.opts.place
-                placeholder: "Shown on the chip and popover"
-                dirty: view.optDirty("place")
-                onCommitted: text => view.setOpt("place", text)
-                onResetRequested: view.resetOpt("place")
-            }
-
-            SettingsTextRow {
-                width: parent.width
-                label: "Latitude"
-                numeric: true
-                value: String(view.opts.lat)
-                dirty: view.optDirty("lat")
-                onCommitted: text => view.setNumericOpt("lat", text)
-                onResetRequested: view.resetOpt("lat")
-            }
-
-            SettingsTextRow {
-                width: parent.width
-                label: "Longitude"
-                numeric: true
-                value: String(view.opts.lon)
-                dirty: view.optDirty("lon")
-                onCommitted: text => view.setNumericOpt("lon", text)
-                onResetRequested: view.resetOpt("lon")
             }
 
             SliderRow {

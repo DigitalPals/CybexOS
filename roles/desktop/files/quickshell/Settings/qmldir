@@ -37,3 +37,4 @@ SettingsHint SettingsHint.qml
 TimeRow TimeRow.qml
 CornerPickerRow CornerPickerRow.qml
 ChipToggleRow ChipToggleRow.qml
+WeatherLocationPicker WeatherLocationPicker.qml

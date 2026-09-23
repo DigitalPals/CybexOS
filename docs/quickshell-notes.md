@@ -579,6 +579,14 @@ The 2026-09-03 redesign ("Quickshell Menubar", Claude Design project
 - **The Day sheet** (`Popovers/DaySheetPopover.qml`) hangs under the clock
   (and the weather pill): big time, today's sky, a Monday-first week strip
   with per-day forecast and calendar event dots, and the next three events.
+- Clock and Weather options share `Settings/WeatherLocationPicker.qml`.
+  City search uses Open-Meteo geocoding (GeoNames), debounces typing, and
+  distinguishes matches by region, country, and coordinates. Typing previews;
+  Enter applies a sole match, while ambiguous results require selection.
+  A selection saves the name and both coordinates in one settings write.
+  Clearing or dismissing a search preserves the saved location; timeouts and
+  stale replies cannot overwrite it. Manual coordinates remain available.
+  This sets the forecast location, not the system clock's time zone.
 - The registry gained two flags: `attached` (flush under the bar, squared
   bar-side corners, Hug-corner bridges drawn by `Bar/PopoutHost.qml`) and
   `edge: "right"` (pinned to the screen edge instead of centred on the
