@@ -158,6 +158,16 @@ test("pinned single-file fonts are verified in one pass", () => {
     }
 });
 
+test("Docker starts through its socket instead of at boot", () => {
+    const base = read("roles/base/tasks/main.yml");
+    assert.match(task(base, "Enable Docker socket activation when requested"),
+        /name: docker\.socket\s+enabled: true\s+state: started/);
+    const service = task(base, "Start Docker on demand rather than at boot");
+    assert.match(service, /name: docker\.service\s+enabled: false/);
+    assert.doesNotMatch(service, /state:/, "a running daemon must not be stopped mid-converge");
+    assert.doesNotMatch(base, /name: docker\.service\s+enabled: true/);
+});
+
 test("hypridle restarts when its configuration, unit, or renderer changes", () => {
     const handlers = read("roles/desktop/handlers/main.yml");
     const desktop = read("roles/desktop/tasks/main.yml");

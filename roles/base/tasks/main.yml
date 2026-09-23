@@ -237,11 +237,23 @@
     - not features.docker | bool
     - base_docker_marker.stat.exists
 
-- name: Enable Docker when requested
+# Socket activation starts dockerd, and with it containerd, on the first
+# client request instead of keeping both resident and waking while idle.
+- name: Enable Docker socket activation when requested
   ansible.builtin.systemd_service:
-    name: docker.service
+    name: docker.socket
     enabled: true
     state: started
+  when:
+    - features.docker | bool
+    - not ansible_check_mode
+
+# Only the boot-time start is dropped; a daemon already running is left alone
+# rather than stopping its containers in the middle of a converge.
+- name: Start Docker on demand rather than at boot
+  ansible.builtin.systemd_service:
+    name: docker.service
+    enabled: false
   when:
     - features.docker | bool
     - not ansible_check_mode
