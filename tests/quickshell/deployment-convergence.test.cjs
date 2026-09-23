@@ -210,30 +210,61 @@ test("the deployed Quickshell manifest excludes tracked paths deleted on disk", 
         < tasks.indexOf("Install tracked Quickshell menubar files"),
     "the allowlist must exist before any shell source is copied");
     assert.match(tasks,
-        /Install tracked Quickshell menubar files[\s\S]{0,500}?src: "quickshell\/\{\{ item \}\}"[\s\S]{0,300}?loop: "\{\{ quickshell_managed_manifest \}\}"/,
-        "copy input must be the tracked allowlist, not the whole source directory");
+        /Calculate the content identity of the managed Quickshell tree[\s\S]{0,2600}?stdin: "\{\{ quickshell_managed_manifest \| sort \| to_json \}\}"/,
+        "the expected tree must be described from the tracked allowlist alone");
+    assert.match(tasks,
+        /Inspect the deployed Quickshell tree before writing through any child path[\s\S]{0,4500}?stdin: "\{\{ quickshell_source_digest\.stdout \}\}"/,
+        "the deployed tree must be compared with that allowlist description");
+    assert.match(tasks,
+        /Install tracked Quickshell menubar files[\s\S]{0,500}?src: "quickshell\/\{\{ item \}\}"[\s\S]{0,400}?loop: "\{\{ quickshell_deploy\.install \}\}"/,
+        "copy input must be the changed part of the tracked allowlist, not the whole source directory");
     assert.doesNotMatch(tasks,
         /Install (?:tracked )?Quickshell menubar (?:configuration|files)[\s\S]{0,250}?src: quickshell\//,
         "recursive copy would transiently deploy ignored caches and developer files");
     assert.match(tasks,
-        /Remove directories not present in the tracked Quickshell manifest[\s\S]{0,600}?quickshell_relative_directory not in quickshell_managed_directories/,
+        /Remove directories not present in the tracked Quickshell manifest[\s\S]{0,600}?loop: >-\s*\{\{ quickshell_deploy\.stale_directories\b/,
         "directories removed upstream must not linger in the deployed tree");
+    const preflightAt = tasks.indexOf("Inspect the deployed Quickshell tree before writing through any child path");
+    const lintAt = tasks.indexOf("Check the Quickshell configuration before installing it");
+    const snapshotAt = tasks.indexOf("Snapshot the last-known-good live Quickshell before deployment");
     const rootStatAt = tasks.indexOf("Inspect the managed Quickshell root without following links");
     const rootRemoveAt = tasks.indexOf("Remove a non-directory or linked Quickshell root safely");
-    const preflightAt = tasks.indexOf("Inspect the deployed Quickshell tree before writing through any child path");
     const removeFilesAt = tasks.indexOf("Remove files and links that are stale or unsafe copy destinations");
     const removeDirectoriesAt = tasks.indexOf("Remove directories not present in the tracked Quickshell manifest");
     const createDirectoriesAt = tasks.indexOf("Create tracked Quickshell directories");
     const copyAt = tasks.indexOf("Install tracked Quickshell menubar files");
-    assert.ok(rootStatAt < rootRemoveAt && rootRemoveAt < preflightAt
-        && preflightAt < removeFilesAt && removeFilesAt < removeDirectoriesAt
-        && removeDirectoriesAt < createDirectoriesAt && createDirectoriesAt < copyAt,
+    const verifyAt = tasks.indexOf("Verify the live Quickshell deployment or restore its last-known-good tree");
+    assert.ok(preflightAt > 0 && preflightAt < lintAt && lintAt < snapshotAt
+        && snapshotAt < rootStatAt,
+    "the read-only inspection decides the lint and snapshot before any write");
+    assert.ok(rootStatAt < rootRemoveAt && rootRemoveAt < removeFilesAt
+        && removeFilesAt < removeDirectoriesAt && removeDirectoriesAt < createDirectoriesAt
+        && createDirectoriesAt < copyAt && copyAt < verifyAt,
     "root and child path types must be normalized before any managed child is written");
     assert.match(tasks,
         /Inspect the managed Quickshell root without following links[\s\S]{0,220}?follow: false/);
-    assert.match(tasks,
-        /Remove files and links that are stale or unsafe copy destinations[\s\S]{0,750}?or item\.islnk \| default\(false\)/,
+    const preflight = tasks.slice(preflightAt, tasks.indexOf("\n- name:", preflightAt + 1));
+    assert.match(preflight, /os\.lstat\(root\)/,
+        "a linked or non-directory root must be detected without following it");
+    assert.match(preflight, /entry\.stat\(follow_symlinks=False\)/,
+        "deployed children must be classified without following links");
+    assert.match(preflight,
+        /elif relative not in files or not stat\.S_ISREG\(info\.st_mode\):\s*delta\["stale_files"\]\.append/,
         "even a symlink at an otherwise managed file path must be removed before copy");
+    assert.match(preflight, /os\.O_NOFOLLOW/,
+        "a managed file is hashed only as the regular file that was inspected");
+    assert.match(preflight, /changed_when: false[\s\S]*check_mode: false/,
+        "the inspection is a read-only fact source, also during check mode");
+    for (const gated of ["Check the Quickshell configuration before installing it",
+        "Snapshot the last-known-good live Quickshell before deployment",
+        "Prune stale compiled QML cache entries after a shell change"]) {
+        const block = tasks.slice(tasks.indexOf(gated), tasks.indexOf("\n- name:", tasks.indexOf(gated) + 1));
+        assert.match(block, /quickshell_deploy_required/,
+            `${gated} must be skipped when the deployed tree already matches`);
+    }
+    const verify = tasks.slice(verifyAt, tasks.indexOf("\n- name:", verifyAt + 1));
+    assert.match(verify, /quickshell_live_snapshot is not skipped/,
+        "verification may only roll back to a snapshot taken by the same run");
     assert.match(tasks,
         /Record deferred path normalization during check mode[\s\S]{0,500}?quickshell_removed_files\.changed \| default\(false\)[\s\S]{0,180}?quickshell_removed_directories\.changed \| default\(false\)/,
         "check mode must defer writes whose prerequisite removals are only simulated");
