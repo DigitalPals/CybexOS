@@ -9,6 +9,12 @@
 # here parses human-readable output to make that call. Remaining warnings are
 # only counted by category, so the number stays visible while it is worked
 # down without burying a real failure; --verbose prints them in full.
+#
+# The test harnesses that the real-engine tests install as shell.qml over a
+# copy of the tree are linted too, each from its own scratch copy so relative
+# and qs.* imports resolve exactly as they do at runtime. Those tests only run
+# where no managed qs is active (CI), so without this a harness that drifted
+# from the components it drives failed nowhere else.
 set -uo pipefail
 
 verbose=false
@@ -33,13 +39,25 @@ qml_import_path=$(qtpaths6 --query QT_INSTALL_QML 2>/dev/null \
   || qtpaths --query QT_INSTALL_QML 2>/dev/null || true)
 [[ -d ${qml_import_path:-} ]] || qml_import_path=/usr/lib64/qt6/qml
 
+harnesses=(
+  tests/qml-lifecycle/shell.qml
+  tests/user-widgets/shell.qml
+  tests/omarchy-plugins/shell.qml
+)
+
 # Quickshell provides qs.* as a virtual import of the configuration root.
 # Reproduce that mapping for Qt's standalone linter without modifying source.
-qs_import_root=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-qml-imports.XXXXXX") || exit 1
-trap 'rm -rf -- "$qs_import_root"' EXIT
+work=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-qml-imports.XXXXXX") || exit 1
+lint_pids=()
+cleanup() {
+  ((${#lint_pids[@]})) && kill -- "${lint_pids[@]}" 2>/dev/null
+  wait
+  rm -rf -- "$work"
+}
+trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-ln -s "$shell_dir" "$qs_import_root/qs" || exit 1
+mkdir -- "$work/imports" && ln -s "$shell_dir" "$work/imports/qs" || exit 1
 
 cd -- "$shell_dir" || exit 1
 mapfile -t -d '' files < <(find . -name '*.qml' -print0 | sort -z)
@@ -48,8 +66,35 @@ if ((${#files[@]} == 0)); then
   exit 1
 fi
 
-output=$("$qmllint" -I "$qml_import_path" -I "$qs_import_root" -I . "${files[@]}" 2>&1)
-status=$?
+# Every invocation writes its own report, so parallel runs never interleave
+# and the combined output keeps the tree's file order.
+"$qmllint" -I "$qml_import_path" -I "$work/imports" -I . "${files[@]}" \
+  >"$work/tree.out" 2>&1 &
+lint_pids+=("$!")
+reports=("$work/tree.out")
+
+for index in "${!harnesses[@]}"; do
+  harness=$work/harness.$index
+  (
+    mkdir -p -- "$harness/imports" &&
+      cp -a -- "$shell_dir" "$harness/tree" &&
+      cp -- "$repo_root/${harnesses[index]}" "$harness/tree/shell.qml" &&
+      ln -s "$harness/tree" "$harness/imports/qs" &&
+      cd -- "$harness/tree" || exit 1
+    # Findings name the tracked harness, not the throwaway copy.
+    "$qmllint" -I "$qml_import_path" -I "$harness/imports" -I . ./shell.qml 2>&1 \
+      | sed "s#\\./shell\\.qml:#${harnesses[index]}:#g"
+  ) >"$harness.out" 2>&1 &
+  lint_pids+=("$!")
+  reports+=("$harness.out")
+done
+
+status=0
+for pid in "${lint_pids[@]}"; do
+  wait "$pid" || status=1
+done
+lint_pids=()
+output=$(cat -- "${reports[@]}")
 
 # "[category]" suffixes, most frequent first — e.g. "421 unqualified".
 summary=$(grep -oE '\[[a-z-]+\]$' <<<"$output" \
@@ -77,15 +122,16 @@ fatal_findings() {
 
 if ((status != 0)); then
   $verbose && printf '%s\n' "$output" || fatal_findings
-  printf '\033[31mFAIL\033[0m  qmllint rejected %d QML files (%s)\n' \
-    "${#files[@]}" "${summary:-no categories reported}"
+  printf '\033[31mFAIL\033[0m  qmllint rejected %d QML files and %d test harnesses (%s)\n' \
+    "${#files[@]}" "${#harnesses[@]}" "${summary:-no categories reported}"
   exit 1
 fi
 
 $verbose && printf '%s\n' "$output"
 if [[ -n $summary ]]; then
-  printf '\033[32mPASS\033[0m  %d QML files, no qmllint errors (warnings: %s)\n' \
-    "${#files[@]}" "$summary"
+  printf '\033[32mPASS\033[0m  %d QML files and %d test harnesses, no qmllint errors (warnings: %s)\n' \
+    "${#files[@]}" "${#harnesses[@]}" "$summary"
 else
-  printf '\033[32mPASS\033[0m  %d QML files, no qmllint errors\n' "${#files[@]}"
+  printf '\033[32mPASS\033[0m  %d QML files and %d test harnesses, no qmllint errors\n' \
+    "${#files[@]}" "${#harnesses[@]}"
 fi
