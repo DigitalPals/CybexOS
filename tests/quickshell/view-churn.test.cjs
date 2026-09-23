@@ -33,3 +33,19 @@ test("drawer Sound rows survive streams coming and going", () => {
     assert.doesNotMatch(drawer, /model:\s*root\.(?:visibleSinks|readyStreams)\b/,
         "a fresh node array as the model rebuilds every row, a dragged slider included");
 });
+
+test("the Sound tab samples the mic meter and releases a muted source", () => {
+    const drawer = read("Popovers/Drawer/DrawerSound.qml");
+    const monitor = drawer.match(/PwNodePeakMonitor \{[\s\S]*?\n    \}/)?.[0] ?? "";
+
+    assert.match(monitor, /enabled:\s*root\.visible && !!Audio\.source && !Audio\.sourceMuted/,
+        "a muted source must not hold a capture stream open");
+    // The peak arrives at the PipeWire buffer rate; the meter reads a ~15 Hz
+    // sample of it, in whole pixels.
+    assert.match(drawer,
+        /Timer \{\s*interval:\s*66\s*repeat:\s*true\s*running:\s*inputPeak\.enabled\s*onTriggered:\s*root\.micPeak = Format\.clamp01\(inputPeak\.peak\)/);
+    assert.match(drawer, /if \(!running\)\s*root\.micPeak = 0;/);
+    assert.match(drawer, /width:\s*Math\.round\(parent\.width \* root\.micPeak\)/);
+    assert.equal((drawer.match(/inputPeak\.peak/g) ?? []).length, 1,
+        "only the sampling timer may read the live peak");
+});
