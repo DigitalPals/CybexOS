@@ -135,6 +135,10 @@ Singleton {
     property bool writeInFlight: false
     property string writeSnapshot: ""
     property string lastPersistedText: ""
+    // What FileView compares the next setText against: the bytes it last
+    // read or tried to write, which after a failed save is not the file.
+    // See saveNow().
+    property string storeText: ""
     property bool initialLoadHandled: false
     // The file on disk came from a newer schema; see protectNewerFile().
     property bool newerSchema: false
@@ -491,6 +495,7 @@ Singleton {
 
     function applyLoaded(rawText) {
         initialLoadHandled = true;
+        storeText = rawText;
         const result = SettingsHelpers.parse(rawText);
         // An editor that truncates before writing exposes an empty or partial
         // file for a moment. Once settings are live, read it once more before
@@ -571,6 +576,7 @@ Singleton {
 
     function handleLoadFailure(error) {
         initialLoadHandled = true;
+        storeText = "";
         if (error === FileViewError.FileNotFound) {
             loadError = false;
             loadErrorText = "";
@@ -592,16 +598,23 @@ Singleton {
         console.warn("settings load failed:", FileViewError.toString(error));
     }
 
+    // A retried write may carry one extra trailing newline (see saveNow());
+    // it is still the same settings file.
+    function sameContent(text, written) {
+        return text === written || text + "\n" === written;
+    }
+
     function handleSaveSucceeded() {
         const completedSnapshot = writeSnapshot;
         lastPersistedText = completedSnapshot;
+        storeText = completedSnapshot;
         const wasRetry = saveError;
         writeInFlight = false;
         writeSnapshot = "";
         saveError = false;
         lastSavedAt = Date.now();
-        const changedWhileSaving = SettingsHelpers.serialize(snapshot())
-            !== completedSnapshot;
+        const changedWhileSaving = !sameContent(SettingsHelpers.serialize(snapshot()),
+            completedSnapshot);
         savePending = changedWhileSaving;
         if (wasRetry)
             announcement = "Settings saved.";
@@ -610,6 +623,9 @@ Singleton {
     }
 
     function handleSaveFailure(error) {
+        // FileView keeps the attempted bytes even though they never reached
+        // the file; saveNow() has to write around them.
+        storeText = writeSnapshot;
         writeInFlight = false;
         writeSnapshot = "";
         savePending = false;
@@ -623,19 +639,30 @@ Singleton {
                 || writeInFlight)
             return;
         const next = SettingsHelpers.serialize(snapshot());
-        // FileView.setText silently skips identical bytes: no saved signal is
-        // emitted. Do not acquire the write guard for a confirmed no-op, or
-        // all later widget edits would remain stuck at "Saving changes…".
-        if (!saveError && next === lastPersistedText) {
+        // Already on disk: settle without writing. That includes a failed
+        // save whose change was undone before Retry — the atomic write left
+        // the previous file in place.
+        if (sameContent(next, lastPersistedText)) {
             savePending = false;
+            if (saveError) {
+                saveError = false;
+                announcement = "Settings saved.";
+            }
             return;
         }
-        writeSnapshot = next;
+        // FileView.setText compares against the bytes the view last read or
+        // tried to write, not against the file, and skips a match without
+        // emitting saved or saveFailed. After a failed save that is the
+        // attempt itself, so a Retry of the same content would hold the write
+        // guard for the rest of the session. The same JSON with one more
+        // trailing newline makes it a real write.
+        writeSnapshot = next === storeText ? next + "\n" : next;
         writeInFlight = true;
         try {
-            // FileView reports completion through saved/saveFailed even when
-            // blockWrites is enabled. Do not advertise success before that
-            // signal; a failed atomic rename is still a failed save.
+            // Completion arrives only through saved/saveFailed. Quickshell
+            // logs a failed atomic commit (the fsync or the rename) and still
+            // emits saved, so saved means the bytes were written, not that
+            // they replaced the file.
             store.setText(writeSnapshot);
         } catch (error) {
             handleSaveFailure(FileViewError.Unknown);

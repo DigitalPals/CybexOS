@@ -920,7 +920,7 @@ test("an unchanged save cannot block subsequent widget changes", () => {
     let writes = 0;
     const context = vm.createContext({
         ready: true, migrationPending: false, corruptBackupPending: false, loadError: false,
-        writeInFlight: false, writeSnapshot: "", lastPersistedText: disk,
+        writeInFlight: false, writeSnapshot: "", lastPersistedText: disk, storeText: disk,
         saveError: false, savePending: true, lastSavedAt: 0,
         SettingsHelpers: { serialize: JSON.stringify }, snapshot: () => value,
         saveTimer: { restart() {} }, FileViewError: { Unknown: 1 },
@@ -929,7 +929,7 @@ test("an unchanged save cannot block subsequent widget changes", () => {
             writes++; disk = text; context.handleSaveSucceeded();
         } }
     });
-    for (const name of ["saveNow", "handleSaveSucceeded", "handleSaveFailure"]) {
+    for (const name of ["sameContent", "saveNow", "handleSaveSucceeded", "handleSaveFailure"]) {
         const body = source.match(new RegExp("    function " + name + "\\([^]*?^    }", "m"))[0];
         vm.runInContext(body, context);
     }
