@@ -76,8 +76,36 @@
       - qt6-qtmultimedia
       # qmllint for the quickshell QML smoke check (tests/qml-lint).
       - qt6-qtdeclarative-devel
+      # Quickshell runtime helpers share this transaction because every dnf
+      # run reloads all repository metadata. The Network panel keeps system
+      # reads and bounded mutations in local Python helpers. List every
+      # command they invoke instead of relying on a workstation package group
+      # to pull it in transitively. curl and iw are also shared by weather and
+      # link telemetry.
+      - NetworkManager
+      - python3
+      # Durable JSON-RPC/WebSocket transport for the Hermes menubar bridge.
+      - python3-websockets
+      # Native multi-file chooser used by the Hermes composer; selected files
+      # are uploaded by the loopback bridge, never by QML itself.
+      - zenity
+      # Online Accounts stores Google OAuth credentials in the keyring;
+      # Evolution Data Server exposes its calendar cache to Quickshell.
+      - gnome-online-accounts
+      - gnome-control-center
+      - gnome-calendar
+      - evolution-data-server
+      - python3-gobject
+      - curl
+      - iw
+      - qrencode
+      - iproute
+      - iputils
+      # Fedora's authoritative post-update reboot recommendation command.
+      - dnf5-plugins
     state: present
   when: not ansible_check_mode
+  tags: [quickshell]
 
 - name: Inspect the package-provided GDM configuration fallback
   ansible.builtin.stat:
@@ -127,38 +155,6 @@
     - sleep-inactive-battery-timeout
   changed_when: false
   when: not ansible_check_mode
-
-- name: Install Quickshell runtime helpers
-  ansible.builtin.dnf:
-    # The Network panel keeps system reads and bounded mutations in local
-    # Python helpers. List every command they invoke instead of relying on a
-    # workstation package group to pull it in transitively. curl and iw are
-    # also shared by weather and link telemetry.
-    name:
-      - NetworkManager
-      - python3
-      # Durable JSON-RPC/WebSocket transport for the Hermes menubar bridge.
-      - python3-websockets
-      # Native multi-file chooser used by the Hermes composer; selected files
-      # are uploaded by the loopback bridge, never by QML itself.
-      - zenity
-      # Online Accounts stores Google OAuth credentials in the keyring;
-      # Evolution Data Server exposes its calendar cache to Quickshell.
-      - gnome-online-accounts
-      - gnome-control-center
-      - gnome-calendar
-      - evolution-data-server
-      - python3-gobject
-      - curl
-      - iw
-      - qrencode
-      - iproute
-      - iputils
-      # Fedora's authoritative post-update reboot recommendation command.
-      - dnf5-plugins
-    state: present
-  when: not ansible_check_mode
-  tags: [quickshell]
 
 - name: Inspect CybexOS ownership of connected widgets
   ansible.builtin.stat:

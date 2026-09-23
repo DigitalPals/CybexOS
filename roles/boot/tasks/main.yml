@@ -1,18 +1,14 @@
 ---
-- name: Install Fedora BGRT Plymouth theme support
+# Fedora's bgrt.plymouth definition is shipped in plymouth-theme-spinner; the
+# rendering plugin alone is insufficient on a minimal/Cloud installation. The
+# Cybex script theme shares the transaction, since each dnf run reloads all
+# repository metadata.
+- name: Install Fedora BGRT and selected Plymouth theme support
   ansible.builtin.dnf:
-    name:
-      - plymouth-plugin-two-step
-      # Fedora's bgrt.plymouth definition is shipped here; the rendering
-      # plugin alone is insufficient on a minimal/Cloud installation.
-      - plymouth-theme-spinner
+    name: >-
+      {{ ['plymouth-plugin-two-step', 'plymouth-theme-spinner']
+         + ((plymouth_theme == 'cybex') | ternary(['plymouth-plugin-script'], [])) }}
     state: present
-
-- name: Install optional Cybex Plymouth script theme support
-  ansible.builtin.dnf:
-    name: plymouth-plugin-script
-    state: present
-  when: plymouth_theme == 'cybex'
 
 # The git module asks the remote about the pinned revision on every run, so a
 # converged cache would still need the network. Check the local checkout

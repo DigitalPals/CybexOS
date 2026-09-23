@@ -61,6 +61,34 @@ test("RPM Fusion trust and release packages converge without the network", () =>
         "the Brave replacement under --tags browser relies on the inventory");
 });
 
+test("app, desktop, and boot packages share dnf transactions and skip no-op removals", () => {
+    const apps = read("roles/apps/tasks/packages.yml");
+    const desktop = read("roles/desktop/tasks/main.yml");
+    const boot = read("roles/boot/tasks/main.yml");
+
+    const required = task(apps, "Install the required Fedora and RPM Fusion application packages");
+    assert.match(required,
+        /name: "\{\{ apps_desired_required_fedora_packages \+ apps_available_fedora_packages \}\}"/);
+    assert.ok(apps.indexOf("Resolve optional packages available for Fedora 44")
+        < apps.indexOf("Install the required Fedora and RPM Fusion application packages"));
+    assert.match(task(apps, "Resolve optional packages available for Fedora 44"),
+        /when: apps_missing_optional_fedora_packages \| length > 0/,
+        "installed optional packages need no repository query");
+    assert.doesNotMatch(apps, /Install available optional Fedora packages/);
+    assert.match(task(apps, "Replace standard Brave with Brave Origin"),
+        /'brave-browser' in \(ansible_facts\.packages/);
+
+    assert.doesNotMatch(desktop, /- name: Install Quickshell runtime helpers/);
+    const hyprland = task(desktop, "Install stable Hyprland and desktop integration packages");
+    for (const helper of ["NetworkManager", "python3-websockets", "evolution-data-server", "dnf5-plugins"])
+        assert.match(hyprland, new RegExp(`- ${helper}\\n`));
+    assert.match(hyprland, /tags: \[quickshell\]/,
+        "a targeted Quickshell deployment still installs its runtime helpers");
+
+    assert.match(task(boot, "Install Fedora BGRT and selected Plymouth theme support"),
+        /plymouth-theme-spinner[\s\S]*plymouth_theme == 'cybex'[\s\S]*plymouth-plugin-script/);
+});
+
 test("cached boot artwork and finished upstream jobs skip network and polling waits", () => {
     const boot = read("roles/boot/tasks/main.yml");
     const defaults = read("roles/boot/defaults/main.yml");

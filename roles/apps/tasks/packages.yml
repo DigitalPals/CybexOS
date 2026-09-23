@@ -7,37 +7,43 @@
          + (features.podman | bool | ternary(apps_podman_packages, []))
          + (features.steam | bool | ternary(apps_steam_packages, [])) }}
 
-- name: Install the required Fedora and RPM Fusion application packages
-  ansible.builtin.dnf:
-    name: "{{ apps_desired_required_fedora_packages }}"
-    state: present
-    allowerasing: true
+# Installed optional packages need no repository query.
+- name: Record optional packages that are not installed yet
+  ansible.builtin.set_fact:
+    apps_missing_optional_fedora_packages: >-
+      {{ apps_optional_fedora_packages
+         | reject('in', ansible_facts.packages | default({}))
+         | list }}
 
 - name: Resolve optional packages available for Fedora 44
   ansible.builtin.command:
-    argv: "{{ ['dnf', '-q', 'repoquery', '--available', '--qf', '%{name}\\n'] + apps_optional_fedora_packages }}"
+    argv: "{{ ['dnf', '-q', 'repoquery', '--available', '--qf', '%{name}\\n'] + apps_missing_optional_fedora_packages }}"
   register: apps_available_package_query
   changed_when: false
   check_mode: false
+  when: apps_missing_optional_fedora_packages | length > 0
 
 - name: Record available and unavailable package names
   ansible.builtin.set_fact:
-    apps_available_fedora_packages: "{{ apps_available_package_query.stdout_lines | unique | list }}"
+    apps_available_fedora_packages: >-
+      {{ apps_missing_optional_fedora_packages
+         | intersect(apps_available_package_query.stdout_lines | default([])) }}
     apps_unavailable_optional_fedora_packages: >-
-      {{ apps_optional_fedora_packages
-         | difference(apps_available_package_query.stdout_lines) }}
+      {{ apps_missing_optional_fedora_packages
+         | difference(apps_available_package_query.stdout_lines | default([])) }}
 
 - name: Report optional packages absent from enabled repositories
   ansible.builtin.debug:
     msg: "Optional Fedora package is unavailable and was skipped: {{ item }}"
   loop: "{{ apps_unavailable_optional_fedora_packages }}"
 
-- name: Install available optional Fedora packages
+# One transaction for the required set and newly available optional packages:
+# every dnf run reloads all repository metadata.
+- name: Install the required Fedora and RPM Fusion application packages
   ansible.builtin.dnf:
-    name: "{{ apps_optional_fedora_packages | intersect(apps_available_fedora_packages) }}"
+    name: "{{ apps_desired_required_fedora_packages + apps_available_fedora_packages }}"
     state: present
     allowerasing: true
-  when: apps_optional_fedora_packages | intersect(apps_available_fedora_packages) | length > 0
 
 - name: Disable system Podman activation when Podman is disabled
   ansible.builtin.systemd_service:
@@ -162,6 +168,7 @@
   when:
     - features.proprietary_apps | bool
     - not ansible_check_mode
+    - "'brave-browser' in (ansible_facts.packages | default({'brave-browser': []}))"
   tags: [browser]
 
 - name: Remove optional signed vendor applications when disabled
