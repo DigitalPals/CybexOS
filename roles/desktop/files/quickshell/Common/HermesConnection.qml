@@ -16,16 +16,27 @@ Singleton {
     property int retrySecs: 2
     property int generation: 0
 
-    readonly property var opts: Settings.modOpts.hermes ?? ({})
-    readonly property bool enabled: opts.enabled !== false
+    // Whether anything wants the bridge. The bar module is the one consumer
+    // that needs it unasked; with the module off, a socket (or a retry every
+    // minute for an absent bridge) is pure idle churn, and merely
+    // constructing this singleton (Settings → About) must not connect. The
+    // panel still connects while it is open. Settings.mods is replaced
+    // wholesale on every edit, so this re-evaluates with the module list.
+    readonly property bool enabled: {
+        const mods = Settings.mods;
+        for (const col of ["left", "center", "right"]) {
+            if (mods[col].some(m => m.id === "hermes" && m.on))
+                return true;
+        }
+        return Popouts.open && Popouts.currentName === "hermes";
+    }
+    // There is no settings key for the address: normalizeModOpts keeps only
+    // the hermes options it validates, so the environment is the override.
     readonly property string endpoint: {
-        const configured = typeof opts.socketUrl === "string"
-            ? opts.socketUrl.trim() : "";
         const rawEnvironment = Quickshell.env("HERMES_MENUBAR_WS_URL");
         const environment = typeof rawEnvironment === "string"
             ? rawEnvironment.trim() : "";
-        return configured !== "" ? configured
-            : environment !== "" ? environment : "ws://127.0.0.1:9120/ws";
+        return environment !== "" ? environment : "ws://127.0.0.1:9120/ws";
     }
     readonly property bool websocketsMissing: socketLoader.status === Loader.Error
     readonly property int retryInSecs: retryTimer.running
@@ -126,7 +137,6 @@ Singleton {
     }
 
     onEnabledChanged: enabled ? reconnect() : disconnect()
-    onEndpointChanged: reconnect()
 
     Component.onCompleted: connectDelay.restart()
 

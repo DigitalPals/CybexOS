@@ -30,6 +30,22 @@ Singleton {
     // would be a lie here — connect() deliberately arms no timer for it.
     readonly property bool websocketsMissing: socketLoader.status === Loader.Error
 
+    // Whether anything wants the link. The bar module is the one consumer
+    // that needs it unasked; with the module off, a socket and its pings, or
+    // a ticket helper retrying a dead host, are pure idle churn — and merely
+    // constructing this singleton (Settings → About) must not connect. The
+    // panel still connects while it is open, for an IPC or sign-in opening it
+    // with the module off. Settings.mods is replaced wholesale on every edit,
+    // so this re-evaluates whenever the module list changes.
+    readonly property bool enabled: {
+        const mods = Settings.mods;
+        for (const col of ["left", "center", "right"]) {
+            if (mods[col].some(m => m.id === "t3" && m.on))
+                return true;
+        }
+        return Popouts.open && Popouts.currentName === "t3code";
+    }
+
     property string host: ""            // https base url from the state file
     property string wsBaseUrl: ""
     property string accessToken: ""
@@ -133,6 +149,24 @@ Singleton {
         environmentId = "";
         serverVersion = "";
         environmentCapabilities = ({});
+    }
+
+    onEnabledChanged: {
+        if (enabled) {
+            // Disabling destroyed the socket wrapper. Its Ready handler
+            // connects as soon as it is back; connect() covers the rest.
+            if (!socketLoader.active)
+                socketLoader.active = true;
+            if (state !== "connecting" && state !== "connected")
+                connect();
+            return;
+        }
+        // Nothing shows the link any more: close it, and let neither a pending
+        // retry nor the last failure outlive the module.
+        resetTransport();
+        connectionError = "";
+        if (!paired)
+            state = stateWithoutCredential();
     }
 
     function clearCredential() {
@@ -368,6 +402,11 @@ Singleton {
             state = stateWithoutCredential();
             return;
         }
+        // Every path in — the state file, the loader, a retry, a stale
+        // helper's handoff — funnels through here. onEnabledChanged connects
+        // once something wants the link again.
+        if (!enabled)
+            return;
         const epoch = sessionEpoch;
         // The state file routinely loads before the socket component does.
         // Without a retry the shell would sit offline until a restart; the
