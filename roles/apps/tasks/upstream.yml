@@ -310,8 +310,10 @@
     jid: "{{ item.ansible_job_id }}"
   register: apps_upstream_install
   until: apps_upstream_install.finished
-  retries: 200
-  delay: 5
+  # Poll every second so an unchanged converge is not held up to five seconds
+  # per job; the retry budget still covers the 900 second async limit.
+  retries: 1000
+  delay: 1
   changed_when: (apps_upstream_install.stdout | default('') | regex_search('(?m)^CHANGED:')) is not none
   failed_when: false
   loop: "{{ apps_upstream_jobs.results | default([]) }}"
@@ -326,8 +328,9 @@
     jid: "{{ item.ansible_job_id }}"
   register: apps_source_build
   until: apps_source_build.finished
-  retries: 500
-  delay: 5
+  # Covers the 2400 second async build limit at one-second polling.
+  retries: 2500
+  delay: 1
   changed_when: (apps_source_build.stdout | default('') | regex_search('(?m)^CHANGED:')) is not none
   failed_when: false
   loop: "{{ apps_source_jobs.results | default([]) }}"
