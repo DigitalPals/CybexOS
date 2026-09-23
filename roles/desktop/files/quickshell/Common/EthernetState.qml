@@ -7,7 +7,8 @@ import "ProcHelpers.js" as ProcHelpers
 
 // Wired NetworkManager devices. Quickshell's Networking API exposes the
 // Wi-Fi radio and networks but not enough wired-device detail for the bar, so
-// one ref-counted nmcli snapshot serves every visible consumer.
+// one ref-counted nmcli snapshot serves every visible consumer. It is
+// refreshed from NetworkStatus's shared `nmcli monitor` stream.
 Singleton {
     id: root
 
@@ -70,10 +71,13 @@ Singleton {
             lastLoggedError = "";
     }
 
+    // NetworkStatus owns the shell's one `nmcli monitor`, which reports
+    // device state changes as well as connectivity. The poll is only a safety
+    // net while that stream is down.
     Timer {
         id: poll
         interval: 30000
-        running: root.watchers > 0
+        running: root.watchers > 0 && !NetworkStatus.monitorRunning
         repeat: true
         onTriggered: root.refresh()
     }
@@ -84,21 +88,19 @@ Singleton {
         onTriggered: root.refresh()
     }
 
-    // A bar host can hand off between outputs quickly enough that the old
-    // monitor reports its terminated exit after the new claim has arrived.
-    // Delay diagnostics until that handoff window closes; a replacement
-    // monitor that is already running makes the old exit irrelevant.
-    Timer {
-        id: monitorFailureCheck
-        interval: 500
-        onTriggered: {
-            if (root.watchers === 0 || monitorProc.running)
-                return;
-            const status = monitorProc.exitSeen
-                ? monitorProc.lastExit : ProcHelpers.NOT_STARTED;
-            console.warn("ethernet monitor stopped:",
-                ProcHelpers.commandError("nmcli device monitor", status,
-                    monitorProc.errText));
+    Connections {
+        target: NetworkStatus
+
+        function onMonitorEvent(line) {
+            if (root.watchers > 0)
+                monitorDebounce.restart();
+        }
+
+        // Events are lost while the stream is down or reattaching, so each
+        // edge takes a fresh snapshot.
+        function onMonitorRunningChanged() {
+            if (root.watchers > 0)
+                monitorDebounce.restart();
         }
     }
 
@@ -138,42 +140,6 @@ Singleton {
                 root.refreshAgain = false;
                 Qt.callLater(root.refresh);
             }
-        }
-    }
-
-    Process {
-        id: monitorProc
-
-        property string errText: ""
-        property bool exitSeen: false
-        property int lastExit: 0
-
-        command: ["env", "LC_ALL=C", "nmcli", "device", "monitor"]
-        running: root.watchers > 0
-
-        stdout: SplitParser {
-            onRead: line => {
-                if (root.watchers > 0)
-                    monitorDebounce.restart();
-            }
-        }
-        stderr: StdioCollector {
-            onStreamFinished: monitorProc.errText = text
-        }
-        onExited: (exitCode, exitStatus) => {
-            monitorProc.exitSeen = true;
-            monitorProc.lastExit = exitCode;
-        }
-        onRunningChanged: {
-            if (running) {
-                monitorFailureCheck.stop();
-                errText = "";
-                exitSeen = false;
-                lastExit = 0;
-                return;
-            }
-            if (root.watchers > 0)
-                monitorFailureCheck.restart();
         }
     }
 }

@@ -11,13 +11,23 @@ import ".."
 Column {
     id: root
 
-    readonly property var networks: NetworkDetails.groupedNetworks.all.slice(0, 6)
+    readonly property var networks: NetworkDetails.groupedNetworks.all
+    // Every 1.5 s snapshot is a fresh array. Handing that to the Repeater
+    // rebuilt every row each poll — wiping a half-typed password and its
+    // focus — so the rows are keyed by SSID instead: a string property only
+    // notifies when the six visible networks or their order really change,
+    // and each row reads its live entry from `networks`.
+    readonly property string networkKey: NetworkHelpers.networkListKey(networks, 6)
+    readonly property var networkSsids: NetworkHelpers.networkListIds(networkKey)
     readonly property var activeNetwork: NetworkDetails.activeWifiNetwork
     readonly property var internetPing: NetworkDetails.internetPing
     // The SSID whose credential entry is unfolded, "" while none is.
     property string credentialSsid: ""
     property string credentialSecurity: ""
     property string credentialError: ""
+    // What has been typed for credentialSsid. Held here rather than only in
+    // the row's field, because a reorder still rebuilds rows.
+    property string credentialPassword: ""
 
     width: parent ? parent.width : 0
     spacing: Theme.scaled(14)
@@ -27,17 +37,20 @@ Column {
         onClaimed: {
             NetworkDetails.acquire();
             EthernetState.acquire();
-            Tailscale.acquire();
+            Tailscale.acquireLive();
         }
         onReleased: {
             NetworkDetails.release();
             EthernetState.release();
-            Tailscale.release();
+            Tailscale.releaseLive();
         }
     }
 
     function beginConnect(network) {
         credentialError = "";
+        // A row outliving its scan entry has no security to act on.
+        if (network.missing)
+            return;
         const security = NetworkHelpers.classifySecurity(
             network.profileSecurity || network.security);
         if (!security.supported)
@@ -50,7 +63,7 @@ Column {
                 interface: iface,
                 security: network.profileSecurity || network.security, saved: true
             });
-            credentialSsid = "";
+            foldCredentials();
             return;
         }
         if (!security.password && !security.identity) {
@@ -58,11 +71,17 @@ Column {
                 action: "connect", ssid: network.ssid, interface: iface,
                 security: network.security
             });
-            credentialSsid = "";
+            foldCredentials();
             return;
         }
+        credentialPassword = "";
         credentialSsid = network.ssid;
         credentialSecurity = network.security;
+    }
+
+    function foldCredentials() {
+        credentialSsid = "";
+        credentialPassword = "";
     }
 
     function submitPassword(password) {
@@ -77,9 +96,24 @@ Column {
             security: credentialSecurity, password: password
         });
         if (accepted) {
-            credentialSsid = "";
+            foldCredentials();
             credentialError = "";
         }
+    }
+
+    function metricValue(label) {
+        const ping = internetPing;
+        switch (label) {
+        case "Ping":
+            return ping && ping.latency >= 0 ? Math.round(ping.latency) + " ms" : "--";
+        case "Loss":
+            return ping ? ping.loss + "%" : "--";
+        case "Down":
+            return NetworkHelpers.formatRate(NetworkDetails.downloadRate);
+        case "Up":
+            return NetworkHelpers.formatRate(NetworkDetails.uploadRate);
+        }
+        return "--";
     }
 
     // ---- header ----------------------------------------------------------
@@ -149,17 +183,26 @@ Column {
         spacing: 2
 
         Repeater {
-            model: root.networks
+            model: root.networkSsids
 
             delegate: Column {
                 id: netEntry
 
-                required property var modelData
-                readonly property bool current: modelData.connected === true
+                // The SSID; everything else is read live from root.networks.
+                required property string modelData
+                readonly property var network:
+                    NetworkHelpers.networkBySsid(root.networks, modelData)
+                readonly property bool current: network.connected === true
                 readonly property bool unfolded:
-                    root.credentialSsid === modelData.ssid
+                    root.credentialSsid === modelData
                 readonly property string failure:
-                    NetworkDetails.wifiError(modelData.ssid)
+                    NetworkDetails.wifiError(modelData)
+
+                // A fresh field starts from what was already typed.
+                onUnfoldedChanged: {
+                    if (unfolded)
+                        passwordInput.text = root.credentialPassword;
+                }
 
                 width: parent ? parent.width : 0
                 spacing: 2
@@ -181,8 +224,8 @@ Column {
                         anchors.left: parent.left
                         anchors.leftMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
-                        name: netEntry.modelData.signal >= 66 ? "wifi"
-                            : netEntry.modelData.signal >= 33
+                        name: netEntry.network.signal >= 66 ? "wifi"
+                            : netEntry.network.signal >= 33
                             ? "network_wifi_2_bar" : "network_wifi_1_bar"
                         size: 16
                         fill: netEntry.current ? 1 : 0
@@ -195,7 +238,7 @@ Column {
                         anchors.right: netSecurity.left
                         anchors.rightMargin: 8
                         anchors.verticalCenter: parent.verticalCenter
-                        text: netEntry.modelData.ssid
+                        text: netEntry.network.ssid
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.primary
                         font.weight: netEntry.current
@@ -210,9 +253,9 @@ Column {
                         anchors.rightMargin: netLock.visible ? 6 : 10
                         anchors.verticalCenter: parent.verticalCenter
                         text: netEntry.current ? "Connected"
-                            : netEntry.modelData.known ? "Saved"
+                            : netEntry.network.known ? "Saved"
                             : NetworkHelpers.classifySecurity(
-                                netEntry.modelData.security).label
+                                netEntry.network.security).label
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.metadata
                         color: Theme.textFaint
@@ -224,8 +267,8 @@ Column {
                         anchors.rightMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
                         visible: !netEntry.current
-                            && (netEntry.modelData.security || "") !== ""
-                            && (netEntry.modelData.security || "") !== "--"
+                            && (netEntry.network.security || "") !== ""
+                            && (netEntry.network.security || "") !== "--"
                         name: "lock"
                         size: 13
                         color: Theme.textFaint
@@ -240,15 +283,15 @@ Column {
                             if (netEntry.current)
                                 return;
                             if (netEntry.unfolded)
-                                root.credentialSsid = "";
+                                root.foldCredentials();
                             else
-                                root.beginConnect(netEntry.modelData);
+                                root.beginConnect(netEntry.network);
                         }
                     }
 
                     Accessible.role: Accessible.Button
                     Accessible.name: (netEntry.current ? "Connected to "
-                        : "Connect to ") + netEntry.modelData.ssid
+                        : "Connect to ") + netEntry.network.ssid
                 }
 
                 // Inline credential entry for a secured network the shell has
@@ -274,6 +317,19 @@ Column {
                         clip: true
                         focus: netEntry.unfolded
                         onAccepted: root.submitPassword(text)
+                        onTextChanged: {
+                            if (netEntry.unfolded)
+                                root.credentialPassword = text;
+                        }
+                        // A reorder while the entry is open recreates this
+                        // row: carry the typed text and the keyboard across.
+                        Component.onCompleted: {
+                            if (!netEntry.unfolded)
+                                return;
+                            text = root.credentialPassword;
+                            cursorPosition = text.length;
+                            forceActiveFocus();
+                        }
 
                         Text {
                             visible: passwordInput.text === ""
@@ -464,32 +520,15 @@ Column {
 
         readonly property real cellWidth: (width - columnSpacing) / 2
 
+        // A fixed model: an array literal of live values was a new model on
+        // every sample, and rebuilt all four cells each time.
         Repeater {
-            model: [
-                {
-                    label: "Ping",
-                    value: root.internetPing && root.internetPing.latency >= 0
-                        ? Math.round(root.internetPing.latency) + " ms" : "--"
-                },
-                {
-                    label: "Loss",
-                    value: root.internetPing
-                        ? root.internetPing.loss + "%" : "--"
-                },
-                {
-                    label: "Down",
-                    value: NetworkHelpers.formatRate(NetworkDetails.downloadRate)
-                },
-                {
-                    label: "Up",
-                    value: NetworkHelpers.formatRate(NetworkDetails.uploadRate)
-                }
-            ]
+            model: ["Ping", "Loss", "Down", "Up"]
 
             delegate: Rectangle {
                 id: metricCell
 
-                required property var modelData
+                required property string modelData
 
                 width: metricsGrid.cellWidth
                 height: 36
@@ -500,7 +539,7 @@ Column {
                     anchors.left: parent.left
                     anchors.leftMargin: 12
                     anchors.verticalCenter: parent.verticalCenter
-                    text: metricCell.modelData.label
+                    text: metricCell.modelData
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.metadata
                     color: Theme.textFaint
@@ -510,7 +549,7 @@ Column {
                     anchors.right: parent.right
                     anchors.rightMargin: 12
                     anchors.verticalCenter: parent.verticalCenter
-                    text: metricCell.modelData.value
+                    text: root.metricValue(metricCell.modelData)
                     font.family: Theme.fontNumeric
                     font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightSemibold

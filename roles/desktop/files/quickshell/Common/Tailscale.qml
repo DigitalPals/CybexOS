@@ -10,7 +10,9 @@ import "ProcHelpers.js" as ProcHelpers
 //
 // This is a poll rather than a subscription because `tailscale status` has
 // no watch mode; watchers keep it running only while something is on screen
-// to read it. The enabled Network module is normally the long-lived watcher.
+// to read it. The enabled Network module is normally the long-lived watcher,
+// and a menubar glyph and tooltip do not need a fresh tailnet every 30s: only
+// an open view (acquireLive) polls at the fast cadence.
 Singleton {
     id: root
 
@@ -45,6 +47,10 @@ Singleton {
     // This matters now the menubar holds a long-lived claim: opening a detail
     // view must not inherit a snapshot that is almost one poll interval old.
     property int watchers: 0
+    // The subset of watchers that are open views rather than the menubar.
+    property int liveWatchers: 0
+    readonly property int livePollMs: 30000
+    readonly property int idlePollMs: 120000
 
     function acquire() {
         watchers++;
@@ -56,8 +62,19 @@ Singleton {
         watchers = Math.max(0, watchers - 1);
     }
 
+    // A panel or detail view: a watcher that also wants the fast cadence.
+    function acquireLive() {
+        liveWatchers++;
+        acquire();
+    }
+
+    function releaseLive() {
+        liveWatchers = Math.max(0, liveWatchers - 1);
+        release();
+    }
+
     Timer {
-        interval: 30000
+        interval: root.liveWatchers > 0 ? root.livePollMs : root.idlePollMs
         running: root.watchers > 0
         repeat: true
         onTriggered: root.refresh()

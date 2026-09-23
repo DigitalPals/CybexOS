@@ -12,7 +12,11 @@ import "ProcHelpers.js" as ProcHelpers
 //
 // `nmcli monitor` supplies the edge; the small status command supplies both
 // the initial value and a stable, machine-readable snapshot after each edge.
-// The poll is only a safety net if the monitor is interrupted.
+// The poll is only a safety net while the monitor is down.
+//
+// This is also the shell's only NetworkManager event stream: `nmcli monitor`
+// reports device state changes too, so EthernetState listens to
+// `monitorEvent` rather than running a second `nmcli device monitor`.
 Singleton {
     id: root
 
@@ -21,6 +25,13 @@ Singleton {
     property string error: ""
     property bool refreshAgain: false
     property string lastLoggedError: ""
+    // Consecutive failed status reads; see NetworkStatusHelpers.holdsKnownState.
+    property int failures: 0
+
+    readonly property bool monitorRunning: monitorProc.running
+    // One line of `nmcli monitor` output, for consumers that keep their own
+    // NetworkManager snapshot.
+    signal monitorEvent(string line)
 
     function refresh() {
         if (statusProc.running) {
@@ -33,19 +44,31 @@ Singleton {
     function apply(exitCode, body, errText) {
         const next = exitCode === 0 ? NetworkStatusHelpers.onlineState(body) : null;
         if (next !== null) {
+            failures = 0;
+            confirmRetry.stop();
             known = true;
             online = next;
             error = "";
             return;
         }
 
-        // A failed or unreadable snapshot cannot vouch for the old state.
-        known = false;
-        online = false;
-        error = exitCode === 0
+        const reason = exitCode === 0
             ? "NetworkManager returned an unknown connectivity state"
             : ProcHelpers.commandError("NetworkManager status", exitCode, errText,
                 ({ 124: "NetworkManager status timed out" }));
+        failures++;
+        // A single slow read keeps the last answer and asks again shortly:
+        // with the monitor attached, nothing else would re-read until the
+        // next NetworkManager event.
+        if (NetworkStatusHelpers.holdsKnownState(known, failures)) {
+            confirmRetry.restart();
+            return;
+        }
+
+        // Repeated failures cannot vouch for the old state.
+        known = false;
+        online = false;
+        error = reason;
         if (error !== lastLoggedError) {
             console.warn("network status unavailable:", error);
             lastLoggedError = error;
@@ -64,15 +87,22 @@ Singleton {
     }
 
     Timer {
+        id: confirmRetry
+        interval: 2000
+        onTriggered: root.refresh()
+    }
+
+    // Safety net only while there is no event stream to rely on.
+    Timer {
         interval: 30000
-        running: true
+        running: !root.monitorRunning
         repeat: true
         onTriggered: root.refresh()
     }
 
     Timer {
         id: monitorRestart
-        interval: 5000
+        interval: NetworkStatusHelpers.MONITOR_RESTART_MIN_MS
         onTriggered: {
             if (!monitorProc.running)
                 monitorProc.running = true;
@@ -119,20 +149,58 @@ Singleton {
     Process {
         id: monitorProc
 
+        // When the current run began; 0 once it has ended, so a restart
+        // that never starts reads as an immediate failure.
+        property real startedAt: Date.now()
+        property int shortRuns: 0
+        property string errText: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+        property string lastLoggedFailure: ""
+
         command: ["env", "LC_ALL=C", "nmcli", "monitor"]
         running: true
 
         stdout: SplitParser {
-            onRead: line => snapshotDebounce.restart()
+            onRead: line => {
+                snapshotDebounce.restart();
+                root.monitorEvent(line);
+            }
+        }
+        stderr: StdioCollector {
+            onStreamFinished: monitorProc.errText = text
+        }
+        onExited: (exitCode, exitStatus) => {
+            monitorProc.exitSeen = true;
+            monitorProc.lastExit = exitCode;
         }
         onRunningChanged: {
             if (running) {
                 monitorRestart.stop();
+                startedAt = Date.now();
+                errText = "";
+                exitSeen = false;
+                lastExit = 0;
                 return;
             }
             // NetworkManager itself can restart. Keep the fallback snapshot
-            // current while waiting to reattach to its event stream.
+            // current while waiting to reattach to its event stream, and back
+            // off while the monitor keeps failing straight away.
+            const ranMs = startedAt > 0 ? Date.now() - startedAt : 0;
+            startedAt = 0;
+            shortRuns = NetworkStatusHelpers.monitorShortRuns(shortRuns, ranMs);
+            if (shortRuns === 1) {
+                lastLoggedFailure = "";
+            } else {
+                const failure = ProcHelpers.commandError("nmcli monitor",
+                    exitSeen ? lastExit : ProcHelpers.NOT_STARTED, errText);
+                if (failure !== lastLoggedFailure) {
+                    console.warn("network monitor stopped:", failure);
+                    lastLoggedFailure = failure;
+                }
+            }
             root.refresh();
+            monitorRestart.interval = NetworkStatusHelpers.monitorRestartDelay(shortRuns);
             monitorRestart.restart();
         }
     }

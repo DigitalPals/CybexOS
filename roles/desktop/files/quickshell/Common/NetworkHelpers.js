@@ -371,6 +371,44 @@ function groupWifiNetworks(networks, profiles) {
     };
 }
 
+// The identity of a network list as a string: its first `limit` SSIDs in
+// order. A view bound to a fresh array per snapshot rebuilds every row (and
+// whatever the user is typing in one) on each poll; a string property only
+// notifies when this key really changes.
+function networkListKey(networks, limit) {
+    var list = Array.isArray(networks) ? networks : [];
+    var count = limit === undefined
+        ? list.length : Math.max(0, Math.floor(Number(limit)) || 0);
+    return JSON.stringify(list.slice(0, count).map(ssidOf));
+}
+
+// The SSIDs a networkListKey names; malformed keys name none.
+function networkListIds(key) {
+    try {
+        var ids = JSON.parse(key);
+        return Array.isArray(ids) ? ids.filter(function (id) {
+            return typeof id === "string";
+        }) : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+// The live entry for one row. A row can briefly outlive its network between
+// the list and its key updating, so a missing SSID reads as a bare,
+// disconnected, signal-less entry rather than undefined.
+function networkBySsid(networks, ssid) {
+    var list = Array.isArray(networks) ? networks : [];
+    for (var i = 0; i < list.length; i++) {
+        if (list[i] && ssidOf(list[i]) === ssid)
+            return list[i];
+    }
+    return {
+        ssid: text(ssid), signal: -1, security: "", connected: false,
+        known: false, profileUuid: "", missing: true
+    };
+}
+
 function availableBands(networks, activeSsid) {
     var found = {};
     (Array.isArray(networks) ? networks : []).forEach(function (network) {
@@ -541,6 +579,9 @@ var exported = {
     bandForFrequency: bandForFrequency,
     classifySecurity: classifySecurity,
     groupWifiNetworks: groupWifiNetworks,
+    networkListKey: networkListKey,
+    networkListIds: networkListIds,
+    networkBySsid: networkBySsid,
     availableBands: availableBands,
     bandState: bandState,
     isIpv4: isIpv4,
