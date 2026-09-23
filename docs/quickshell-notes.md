@@ -216,6 +216,43 @@ blends with whatever is behind it, so `-shave 12x0` before comparing.
   `RequiredProperty` is an error in `.qmllint.ini`; the general lesson is that
   a null-degrades default turns a loud failure into a silent one.
 
+## Churn and lifetime invariants (2026-09 robustness pass)
+
+A review of efficiency and robustness left these contracts in the code. Keep
+them when changing the surrounding files.
+
+- **Streaming transcripts update rows, not arrays.** `T3ThreadPage` and
+  `HermesTranscript` draw from a `ListModel` keyed by message id and apply
+  edit scripts (`T3CodeHelpers.historyRowOps`, `HermesHelpers.listSyncOps`);
+  a token is one `setProperty`. Per-row UI state (expanded, editing) lives on
+  the page keyed by id. T3 detail histories stay sorted, so `upsertHistory`
+  inserts by binary search instead of re-sorting. Hermes stores messages in
+  place: bind to `transcriptRevision`/`transcriptChanged`, not to
+  `messagesByConversation`.
+- **Repeaters over derived lists take a structural key.** Bar clusters,
+  indicators, workspaces, usage chips and the drawer network list parse their
+  model from a JSON string of ids, and delegates look up live data by id, so a
+  value change flows through bindings instead of recreating delegates.
+- **`Settings.applyLoaded` assigns only changed keys** (`assignChanged`) and
+  ignores a reload whose bytes equal the last write. Reassigning an unchanged
+  var key still notifies and rebuilds every bar module. A settings file from a
+  newer schema is applied read-only and never saved over.
+- **Popout slots are visible only while fronted, fading or requested.** An
+  outgoing panel turns invisible when its fade ends, which releases its
+  `Claim`s and visible-gated timers.
+- **One `nmcli monitor`** lives in `NetworkStatus`; `EthernetState` listens to
+  its `monitorEvent`. Both 30 s safety polls run only while it is down, and
+  restarts back off 5 s → 60 s. Tailscale polls every 120 s for plain
+  `acquire()` claims and every 30 s for `acquireLive()` views.
+- **Plugin discovery** watches `plugins.json`, polls every 30 s (2 s while
+  Settings is open), and rehashes a package only when its stat signature in
+  `<runtime-root>/.revisions.json` changes. A registry error keeps the last
+  good plugins.
+- **Long-lived helpers are bounded.** `gh` reads, brightness reads/writes,
+  matugen, `calendar-events.py`, wallpaper thumbnails and the plugin scanner
+  each have a timeout or watchdog, and settle on the falling edge of `running`
+  so a helper that never starts cannot wedge its queue.
+
 ## Layout
 
 - `Common/` — singletons (services, settings, theme), pure `.js` helpers, and

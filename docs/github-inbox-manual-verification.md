@@ -125,6 +125,16 @@ Keep the GitHub module enabled unless a step explicitly says otherwise.
   request sends the exact ETag (including a weak `W/` prefix). A `304` is
   treated as success despite `gh --jq` returning nonzero for its empty body,
   and cached rows remain unchanged.
+- [ ] Repeat for workflow runs (`If-None-Match`) and notifications
+  (`If-Modified-Since`). A `304` keeps the rows; notifications are not polled
+  sooner than the server's `X-Poll-Interval`. Mark a notification read on
+  github.com and confirm it leaves the Inbox once `Last-Modified` moves.
+- [ ] With `x-ratelimit-remaining` below 200, the Inbox shows "GitHub API quota
+  is low; Inbox checks resume in N minutes" and timers stop invoking `gh` until
+  the reset; a manual refresh still runs.
+- [ ] Blackhole the network mid-request (for example drop traffic to
+  api.github.com). A stalled `gh` is killed after 60 s (30 s for an interactive
+  commit/stat read), the job fails with "timed out", and the queue moves on.
 - [ ] Remove event or Actions permission from one monitored private repository.
   Other sources and cached rows remain visible; the repository-specific error
   appears in the popover and settings.
