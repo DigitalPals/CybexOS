@@ -186,9 +186,12 @@ stage_hyprland_workspaces() {
     fail 'Hyprland' 'luajit is required for workspace policy fixtures'
     return
   fi
+  # A { } group reports only its last status; every command has to count.
   out=$({
-    bash tests/hyprland-workspaces
-    bash tests/hyprland-features
+    r=0
+    bash tests/hyprland-workspaces || r=1
+    bash tests/hyprland-features || r=1
+    exit "$r"
   } 2>&1) || rc=$?
   elapsed=$(( $(now_ms) - t0 ))
 
@@ -370,7 +373,7 @@ stage_quickshell_integration() {
   local out rc=0 t0 elapsed
   t0=$(now_ms)
 
-  out=$({ python3 - <<'PY'
+  out=$({ r=0; python3 - <<'PY' || r=1
 from pathlib import Path
 
 tasks = Path("roles/desktop/tasks/main.yml").read_text()
@@ -412,7 +415,8 @@ assert "--exclude='__pycache__/'" in snapshot
 assert "--exclude='*.py[co]'" in snapshot
 print("Quickshell configuration and guarded Noctalia migration are wired")
 PY
-    bash tests/quickshell-deploy-health-fixture
+    bash tests/quickshell-deploy-health-fixture || r=1
+    exit "$r"
   } 2>&1) || rc=1
 
   elapsed=$(( $(now_ms) - t0 ))
@@ -818,9 +822,11 @@ stage_agent_skills() {
   done
   t0=$(now_ms)
   out=$({
-    python3 tests/agent-skill.py
-    python3 tests/default-agent.py
-    bash tests/agent-skills
+    r=0
+    python3 tests/agent-skill.py || r=1
+    python3 tests/default-agent.py || r=1
+    bash tests/agent-skills || r=1
+    exit "$r"
   } 2>&1) || rc=$?
   elapsed=$(( $(now_ms) - t0 ))
 
