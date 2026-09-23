@@ -176,7 +176,7 @@ test("battery-only idle suspend stays awake on mains or an unknown source", t =>
         t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
         const result = f.run("idle-suspend", "on-battery");
         assert.equal(result.status, 0, result.stderr);
-        assert.match(f.calls(), /busctl --system get-property org\.freedesktop\.UPower/);
+        assert.match(f.calls(), /busctl --system --timeout=2 get-property org\.freedesktop\.UPower/);
         assert.doesNotMatch(f.calls(), /systemctl/);
     }
 });
@@ -187,6 +187,17 @@ test("battery-only idle suspend suspends on battery power", t => {
     const result = f.run("idle-suspend", "on-battery");
     assert.equal(result.status, 0, result.stderr);
     assert.match(f.calls(), /systemctl suspend/);
+});
+
+test("the on-battery condition answers without locking or suspending", t => {
+    for (const [onBattery, status] of [["b true", 0], ["b false", 1], ["", 1]]) {
+        const f = fixture({ onBattery });
+        t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+        const result = f.run("on-battery");
+        assert.equal(result.status, status, `${onBattery || "no answer"}: ${result.stderr}`);
+        assert.doesNotMatch(f.calls(), /systemctl|hyprctl/);
+        assert.equal(f.queries(), 0);
+    }
 });
 
 test("idle suspend rejects an unknown condition without suspending", t => {

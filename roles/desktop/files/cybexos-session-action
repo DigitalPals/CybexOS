@@ -48,8 +48,9 @@ ensure_locked() {
 
 # UPower's aggregate answer, the same source the shell's battery state reads.
 # An unknown answer counts as mains power, so it never suspends by mistake.
+# The timeout bounds a hung UPower: hypridle waits for this as a condition.
 on_battery() {
-  [[ $(busctl --system get-property org.freedesktop.UPower \
+  [[ $(busctl --system --timeout=2 get-property org.freedesktop.UPower \
     /org/freedesktop/UPower org.freedesktop.UPower OnBattery 2>/dev/null) == 'b true' ]]
 }
 
@@ -75,6 +76,12 @@ case $action in
     ensure_locked
     systemctl suspend
     ;;
+  on-battery)
+    # hypridle's condition for battery-only idle suspend. While it fails,
+    # hypridle retries it until the next input, so a laptop unplugged after
+    # the timeout still suspends instead of waiting for another idle stretch.
+    on_battery
+    ;;
   logout)
     # Hyprland's Lua config wraps the argument in hl.dispatch(), so the
     # dispatcher is a Lua expression; a bare `exit` is nil there.
@@ -87,7 +94,7 @@ case $action in
     systemctl poweroff
     ;;
   *)
-    printf 'Usage: cybexos-session-action <lock|suspend|idle-suspend|logout|reboot|shutdown>\n' >&2
+    printf 'Usage: cybexos-session-action <lock|suspend|idle-suspend|on-battery|logout|reboot|shutdown>\n' >&2
     exit 2
     ;;
 esac

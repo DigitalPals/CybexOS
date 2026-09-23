@@ -32,6 +32,9 @@ DPMS_ON = "hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = \"on\" }))'"
 # the matching on-resume, so a listener with this condition acts only on a
 # locked session.
 IS_LOCKED = "hyprctl locked | grep -qx true"
+# Seconds between battery checks while battery-only idle suspend waits on
+# mains power. hypridle drops a pending retry at the next input.
+BATTERY_RETRY_SECS = 60
 # Idle seconds after which a locked screen goes dark. Without it the lock
 # screen stayed lit until the screen-off timeout, which counts from the last
 # input before the lock.
@@ -57,10 +60,12 @@ def load_settings(path):
     return settings
 
 
-def listener(timeout, on_timeout, on_resume="", condition=""):
+def listener(timeout, on_timeout, on_resume="", condition="", retry=0):
     lines = [f"timeout = {timeout}"]
     if condition:
         lines.append(f"condition_cmd = {condition}")
+    if retry:
+        lines.append(f"condition_retry = {retry}")
     lines.append(f"on-timeout = {on_timeout}")
     if on_resume:
         lines.append(f"on-resume = {on_resume}")
@@ -97,10 +102,16 @@ def render(settings, session_action):
                     timeout, DPMS_OFF, DPMS_ON, IS_LOCKED)))
         listeners.append((screen_off, listener(screen_off, DPMS_OFF, DPMS_ON)))
     if suspend:
-        command = f"{session_action} idle-suspend"
         if settings["idleSuspendBatteryOnly"]:
-            command += " on-battery"
-        listeners.append((suspend, listener(suspend, command)))
+            # The condition waits for battery power rather than skipping this
+            # idle stretch; idle-suspend still checks again when it runs.
+            listeners.append((suspend, listener(
+                suspend, f"{session_action} idle-suspend on-battery",
+                condition=f"{session_action} on-battery",
+                retry=BATTERY_RETRY_SECS)))
+        else:
+            listeners.append((suspend, listener(
+                suspend, f"{session_action} idle-suspend")))
     # In timeout order, so the file reads as the idle timeline. The sort is
     # stable: the lock still precedes a check for it at the same second.
     listeners.sort(key=lambda item: item[0])
