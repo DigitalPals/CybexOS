@@ -455,7 +455,7 @@ test("a signal arriving while the main thread holds the worker lock cannot deadl
         "    module.on_signal(signal.SIGTERM, None)",
         "print('canceled' if module.cancel_event.is_set() else 'running')",
     ].join("\n");
-    const result = spawnSync("python3", ["-c", script], { encoding: "utf8", timeout: 5000 });
+    const result = spawnSync("python3", ["-B", "-c", script], { encoding: "utf8", timeout: 5000 });
     assert.equal(result.signal, null, "the signal handler deadlocked on the worker lock");
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout.trim(), "canceled");
