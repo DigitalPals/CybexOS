@@ -465,13 +465,13 @@ from the executable itself:
 ./tests/run --list
 ```
 
-The current sixteen stages cover whole-source/Ansible syntax, ShellCheck,
-ansible-lint, yamllint, Ruff, Node unit tests, Hyprland workspace fixtures, QML
-static analysis, offscreen helper contracts, real-Quickshell component
-lifecycle coverage in CI, Quickshell deployment integration, callback and
-Python fixtures, transactional agent-skill lifecycle coverage, XPS hardware
+The stages cover whole-source/Ansible syntax, ShellCheck, ansible-lint,
+yamllint, Ruff, Node unit tests, Hyprland workspace fixtures, QML static
+analysis, offscreen helper contracts, real-Quickshell component lifecycle
+coverage in CI, Quickshell deployment integration, callback and Python
+fixtures, transactional agent-skill lifecycle coverage, XPS hardware
 integration, Plymouth layout, the durable updater, screenshot/brightness
-workflows, and Btrfs snapshot retention.
+workflows, Btrfs snapshot retention, and the fedora-config name migration.
 
 The GitHub workflow runs the same `./tests/run` command in a Fedora 44
 container. The lower-level worker stops before Ansible if this gate fails or

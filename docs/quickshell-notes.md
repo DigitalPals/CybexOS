@@ -24,11 +24,11 @@ you need the reasoning behind a particular change; `git log --oneline
   runtime as "X is not a type". `tests/quickshell/qmldir.test.cjs` enforces it.
 - Pure logic goes in a `.js` module in `Common/` with a Node test in
   `tests/quickshell/` — that suite runs in under a second without Qt.
-- `tests/run` is the strict fifteen-stage source gate: language-aware static
-  analysis, Node tests, QML static/runtime checks, integration contracts, and
-  the repository's other fixtures. `update --full` runs it before deploying,
-  and the Ansible role lints the tree before copying it. See `./tests/run --list` and
-  [the operations guide](operations.md#the-strict-source-gate).
+- `tests/run` is the strict source gate: language-aware static analysis, Node
+  tests, QML static/runtime checks, integration contracts, and the
+  repository's other fixtures. `update --full` runs it before deploying, and
+  the Ansible role lints the tree before copying it. See `./tests/run --list`
+  and [the operations guide](operations.md#the-strict-source-gate).
 
 ## Testing without a GUI
 
