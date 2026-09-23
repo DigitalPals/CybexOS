@@ -460,11 +460,14 @@ start_run() {
   # KillMode=mixed sends a stop's SIGTERM to the worker alone. It lets a
   # running dnf transaction or Ansible play finish and records the
   # cancellation at the next step boundary; everything left is killed only
-  # after TimeoutStopSec.
+  # after TimeoutStopSec. The worker also yields CPU and I/O to the desktop.
   local -a unit_properties=(
     --property=Type=exec
     --property=KillMode=mixed
     --property=TimeoutStopSec=30min
+    --property=Nice=10
+    --property=IOWeight=20
+    --property=CPUWeight=20
   )
   local launch_rc=0
   if [[ $system_unit == true ]]; then

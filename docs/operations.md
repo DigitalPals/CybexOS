@@ -241,7 +241,8 @@ agent, so no terminal is opened and progress remains in the Updates view.
 Release transactions also use a system service because their configuration
 migration and activation must outlive the client. Closing the view or pressing
 Ctrl+C while attached only detaches the observer. At most one worker can own
-the update lock.
+the update lock. The worker runs at nice 10 with a CPU and I/O weight of 20,
+so the desktop stays responsive while it works.
 
 Use the installed backend to inspect or control it:
 

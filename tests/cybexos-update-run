@@ -189,9 +189,10 @@ expected_auth_probes=2
 ((EUID == 0)) && expected_auth_probes=0
 [[ $(grep -Fxc -- '-n true' "$MOCK_PACKAGE_LOG") -eq $expected_auth_probes ]]
 ! grep -Eq 'systemd-run|systemctl' "$MOCK_PACKAGE_LOG"
-# A stop reaches only the worker process so it can finish a running
-# transaction first.
-for property in Type=exec KillMode=mixed TimeoutStopSec=30min; do
+# The worker yields CPU and I/O to the desktop, and a stop reaches only the
+# worker process so it can finish a running transaction first.
+for property in Type=exec KillMode=mixed TimeoutStopSec=30min Nice=10 \
+    IOWeight=20 CPUWeight=20; do
   grep -Fq -- "--property=$property" "$MOCK_SYSTEMD_ARGS_LOG"
 done
 grep -Fq -- "stop --no-block $polkit_unit" "$MOCK_STOP_LOG"
