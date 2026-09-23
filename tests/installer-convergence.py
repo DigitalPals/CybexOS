@@ -230,12 +230,20 @@ def test_github_rpm_convergence_and_tag_endpoint() -> None:
             ROOT / "roles/apps/files/github-release-install"
         ).read_text()
 
+        # The authorized tag and checksum already describe the intact package,
+        # so convergence makes no GitHub round trip and survives being offline.
         Path(env["MOCK_DNF_LOG"]).write_text("")
-        result = run(argv, env=env)
+        Path(env["MOCK_API_LOG"]).unlink()
+        offline = dict(env, MOCK_RELEASE_JSON=str(root / "offline.json"))
+        result = run(argv, env=offline)
         assert result.returncode == 0, (result.stdout, result.stderr)
         assert result.stdout.strip() == "UNCHANGED: demo v1"
         assert Path(env["MOCK_DNF_LOG"]).read_text() == ""
+        assert not Path(env["MOCK_API_LOG"]).exists()
 
+        # Whenever the package must be (re)installed, the pin must still agree
+        # with GitHub's digest.
+        (state / "version").unlink()
         release_json(release, "v1", "demo.rpm", "f" * 64)
         result = run(argv, env=env)
         assert result.returncode == 75
@@ -337,6 +345,24 @@ def test_github_font_payload_and_post_commit_warning() -> None:
         assert "could not prune older versions" in result.stderr
         assert (root / "apps/demo/current/bin/demo").is_file()
 
+        Path(env["MOCK_API_LOG"]).unlink()
+        env["MOCK_RELEASE_JSON"] = str(root / "offline.json")
+        result = run(
+            [
+                str(installer),
+                "demo",
+                "owner/repo",
+                "^demo$",
+                "binary",
+                "v2",
+                f"sha256:{digest}",
+            ],
+            env=env,
+        )
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert result.stdout.strip() == "UNCHANGED: demo v2"
+        assert not Path(env["MOCK_API_LOG"]).exists()
+
 
 def test_source_build_post_commit_warning() -> None:
     with tempfile.TemporaryDirectory(prefix="cybexos-source-build.") as temporary:
@@ -351,7 +377,10 @@ def test_source_build_post_commit_warning() -> None:
         executable(
             mock_bin / "git",
             r'''
-if [[ $1 == ls-remote ]]; then
+if [[ -n ${MOCK_GIT_OFFLINE:-} ]]; then
+  echo "unexpected git network call: $*" >&2
+  exit 128
+elif [[ $1 == ls-remote ]]; then
   printf '%s\trefs/tags/%s\n' "$MOCK_REVISION" "$MOCK_TAG"
 elif [[ $1 == clone ]]; then
   mkdir -p "${@: -1}"
@@ -405,6 +434,23 @@ chmod 0755 "$output/$MOCK_BINARY"
         assert "could not prune older versions" in result.stderr
         assert "retained after update failure" not in result.stderr
         assert (root / "builds/demo/current/bin/demo").read_text().endswith("built\n")
+
+        # The authorized commit, image, and recipe describe the intact build;
+        # the next converge must not contact the remote at all.
+        result = run(
+            [
+                str(installer),
+                "demo",
+                "https://example.invalid/demo.git",
+                "demo",
+                "v1",
+                revision,
+                "fedora@sha256:" + ("b" * 64),
+            ],
+            env=dict(env, MOCK_GIT_OFFLINE="1"),
+        )
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert result.stdout.strip() == f"UNCHANGED: demo v1 ({revision})"
 
 
 def test_android_command_tools_rollback() -> None:

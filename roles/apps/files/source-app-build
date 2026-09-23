@@ -49,16 +49,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Resolve only the inventory-authorized tag and reject a moved tag before clone.
 [[ $revision =~ ^[[:xdigit:]]{40}$ ]] || { echo "Authorized source commit is not a full SHA-1" >&2; exit 1; }
-ls_remote=$(timeout 120 git ls-remote --tags "$repo" "refs/tags/$tag" "refs/tags/$tag^{}")
-resolved=$(awk -v ref="refs/tags/$tag^{}" '$2 == ref {print $1}' <<<"$ls_remote")
-[[ -n $resolved ]] || resolved=$(awk -v ref="refs/tags/$tag" '$2 == ref {print $1}' <<<"$ls_remote")
-[[ $resolved == "$revision" ]] || {
-  echo "Authorized $repo tag $tag resolved to ${resolved:-nothing}, expected $revision" >&2
-  exit 1
-}
 
+# The authorized commit, image, and recipe identify the build completely. An
+# intact matching deployment needs no network: a routine converge makes no
+# remote round trip and an offline one reports no false update failure.
 recipe=$(sha256sum "$0" | awk '{print $1}')
 manifest="revision=$revision image=$build_image recipe=$recipe"
 if [[ -L $root/current && -r $root/current/.cybexos-build ]] \
@@ -72,6 +67,15 @@ if [[ -L $root/current && -r $root/current/.cybexos-build ]] \
     exit 0
   fi
 fi
+
+# Resolve only the inventory-authorized tag and reject a moved tag before clone.
+ls_remote=$(timeout 120 git ls-remote --tags "$repo" "refs/tags/$tag" "refs/tags/$tag^{}")
+resolved=$(awk -v ref="refs/tags/$tag^{}" '$2 == ref {print $1}' <<<"$ls_remote")
+[[ -n $resolved ]] || resolved=$(awk -v ref="refs/tags/$tag" '$2 == ref {print $1}' <<<"$ls_remote")
+[[ $resolved == "$revision" ]] || {
+  echo "Authorized $repo tag $tag resolved to ${resolved:-nothing}, expected $revision" >&2
+  exit 1
+}
 
 work=$(mktemp -d "$root/.build.XXXXXX")
 timeout 20m git clone --quiet --depth 1 --branch "$tag" "$repo" "$work/src"
