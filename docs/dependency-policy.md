@@ -33,7 +33,9 @@ playbook convergence.
   install.
 - Claude Code and OpenCode versions are explicit inventory pins.
   Claude's native installer accepts the exact target and keeps versioned
-  binaries. Codex CLI tracks npm's `latest` stable release, resolved on each
+  binaries. Claude Code's pin is the version an install receives and a
+  minimum afterwards: Claude Code updates itself, and a newer install is not
+  downgraded. Codex CLI tracks npm's `latest` stable release, resolved on each
   installer/user-tool update run. OpenCode and Codex are installed from resolved npm package versions
   into separate staged, versioned user directories and exposed only after each
   binary reports the requested version. Neither package policy changes agent
@@ -41,6 +43,13 @@ playbook convergence.
 - Vendor repository keys, standalone font files/archives, source inputs, and
   XPS camera inputs carry the checksums or commits next to their configuration.
   See the relevant inventory and role defaults for their update points.
+- The RPM Fusion signing keys are vendored in-tree as the copies that the
+  `rpmfusion-*-release` packages ship (`roles/apps/files/rpmfusion-*.asc`), so
+  an already-imported key is recognized without a download; each is still
+  imported only after its full fingerprint matches. Rotating them means
+  replacing both files and updating the fingerprints in
+  `roles/apps/tasks/repos.yml` and the SHA-256 digests in
+  `tests/quickshell/converge-efficiency.test.cjs`.
 
 `tests/repository-policy.py` rejects an unpinned GitHub release, a floating
 Distrobox image, malformed toolchain pins, drift in the CLI installer
@@ -86,7 +95,8 @@ Some inputs should move, but their boundary is explicit:
   exact `claude_code_version`, and the bootstrap validates the native payload
   against Anthropic's manifest. Pinning the bootstrap itself would require an
   owner-maintained checksum and rotation process that the repository does not
-  currently have.
+  currently have. After that install, Claude Code's own updater moves it past
+  the pin.
 
 These are not interchangeable with source-build or root-RPM pins. Adding a new
 moving installer requires documenting why currency is more important than
