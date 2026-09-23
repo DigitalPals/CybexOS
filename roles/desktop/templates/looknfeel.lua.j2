@@ -100,6 +100,36 @@ quickshell_blur_rule = hl.layer_rule({
   ignore_alpha = 0.1,
 })
 
+-- Power saver trades compositor polish for battery: one blur pass and no
+-- animations. Quickshell calls cybexos_power_saver() through `hyprctl eval`
+-- when it starts and whenever the power profile changes. What the saver
+-- replaced is read live and kept in _G, which outlives a config reload: a
+-- reload that has just re-applied the full values above takes the saver
+-- straight back up, and switching it off later restores what was there
+-- before, including an override from user.lua.
+local power_saver = rawget(_G, "__cybexos_power_saver") or {}
+_G.__cybexos_power_saver = power_saver
+local power_saver_config = { decoration = { blur = { passes = 1 } }, animations = { enabled = false } }
+
+function cybexos_power_saver(enabled)
+  if enabled and not power_saver.restore then
+    local restore = {
+      passes = hl.get_config("decoration.blur.passes"),
+      animations = hl.get_config("animations.enabled"),
+    }
+    hl.config(power_saver_config)
+    power_saver.restore = restore
+  elseif not enabled and power_saver.restore then
+    hl.config({
+      decoration = { blur = { passes = power_saver.restore.passes } },
+      animations = { enabled = power_saver.restore.animations },
+    })
+    power_saver.restore = nil
+  end
+end
+
+if power_saver.restore then hl.config(power_saver_config) end
+
 hl.window_rule({ match = { title = [[^CybexOS Settings$]] }, float = true, center = true })
 hl.window_rule({ match = { class = [[xdg-desktop-portal-gtk]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Properties]] }, float = true })

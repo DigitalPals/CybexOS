@@ -885,6 +885,58 @@ Singleton {
         }
     }
 
+    // Power saver takes the compositor's polish too: cybexos_power_saver() in
+    // looknfeel.lua drops blur to one pass and turns animations off, and
+    // holds that across a config reload. It is sent on startup as well, which
+    // also lifts a saver left behind by a shell that exited meanwhile.
+    property bool dispatchedPowerSaver: false
+
+    function applyPowerSaver() {
+        if (powerSaverProc.running)
+            return;
+        dispatchedPowerSaver = Activity.powerSaver;
+        powerSaverProc.command = ["hyprctl", "eval",
+            "cybexos_power_saver(" + (dispatchedPowerSaver ? "true" : "false") + ")"];
+        powerSaverProc.running = true;
+    }
+
+    Connections {
+        target: Activity
+
+        function onPowerSaverChanged() {
+            root.applyPowerSaver();
+        }
+    }
+
+    Timer {
+        id: powerSaverReplayTimer
+        interval: 0
+        onTriggered: root.applyPowerSaver()
+    }
+
+    Process {
+        id: powerSaverProc
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        onExited: exitCode => {
+            exitSeen = true;
+            lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+            if (code !== 0)
+                console.warn("could not apply power saver compositor effects:", code);
+            if (root.dispatchedPowerSaver !== Activity.powerSaver)
+                powerSaverReplayTimer.restart();
+        }
+    }
+
     Process {
         id: corruptBackupProc
 
@@ -943,5 +995,6 @@ Singleton {
             if (!initialLoadHandled && store.loaded)
                 applyLoaded(initialText);
         }
+        applyPowerSaver();
     }
 }
