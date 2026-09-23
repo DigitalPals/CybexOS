@@ -141,8 +141,14 @@ test("clock and weather own their targets without covering indicator actions", (
 
 test("recording and dictation expose their complete live state", () => {
     assert.match(indicators, /Recorder\.elapsedLabel/);
-    assert.match(indicators, /running:\s*button\.recording[\s\S]{0,100}?Animation\.Infinite/,
-        "recording must pulse while its elapsed timer is shown");
+    // The recording mark blinks on the elapsed timer's 1 Hz tick: one frame
+    // a second, not a pulse that repaints every bar at display rate for the
+    // whole recording.
+    assert.match(indicators,
+        /opacity:\s*button\.recording && !Theme\.reducedMotion\s*&& Recorder\.elapsed % 2 === 1 \? [\d.]+ : 1/,
+        "recording must blink with its elapsed timer");
+    assert.doesNotMatch(indicators, /SequentialAnimation on opacity/,
+        "a continuous recording pulse renders the bar at display rate");
     assert.match(indicators, /Dictation\.recording/);
     assert.match(indicators, /Dictation\.transcribing/);
     assert.match(indicators, /"progress_activity"/);

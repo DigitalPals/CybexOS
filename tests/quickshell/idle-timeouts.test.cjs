@@ -200,6 +200,9 @@ test("saved idle changes restart hypridle and the power drawer links to them", (
     assert.match(sysinfo, /onLastPersistedTextChanged/);
     assert.match(sysinfo, /SettingsHelpers\.parse\(Settings\.lastPersistedText\)/);
     assert.match(system, /SysInfo\.idleUserConfig/);
+    // hypridle keeps retrying the battery condition until the next input, so
+    // an idle laptop unplugged after the timeout still suspends.
+    assert.match(system, /description: "Waits while plugged in; suspends once unplugged"/);
     assert.match(power, /Settings\.showSetting\("system", "idleLockMins"/);
     assert.doesNotMatch(power, /gnome-control-center/);
 });

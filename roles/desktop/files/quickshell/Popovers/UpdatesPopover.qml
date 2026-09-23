@@ -101,6 +101,7 @@ Surface {
             height: Theme.iconLarge
 
             Sym {
+                id: headerMark
                 anchors.centerIn: parent
                 name: root.headerGlyph(root.mode === "running",
                     root.mode === "done", root.mode === "failed")
@@ -110,12 +111,18 @@ Surface {
                 color: root.mode === "done" ? Theme.ok
                     : root.mode === "failed" ? Theme.redText : Theme.accentText
 
+                // Gated on visibility too: the popout keeps an outgoing
+                // panel alive, hidden, until it closes. Stopping a value
+                // source leaves the angle where it landed, which would tilt
+                // the done or failed mark that replaces the arc.
                 RotationAnimation on rotation {
-                    running: root.mode === "running" && !Theme.reducedMotion
+                    running: root.mode === "running" && headerMark.visible
+                        && !Theme.reducedMotion
                     from: 0
                     to: 360
                     duration: 1400
                     loops: Animation.Infinite
+                    onRunningChanged: if (!running) headerMark.rotation = 0
                 }
             }
         }
@@ -503,6 +510,7 @@ Surface {
                 height: 14
 
                 Sym {
+                    id: stepMark
                     anchors.centerIn: parent
                     name: !stepLine.finished ? "progress_activity"
                         : stepLine.rc === 0 ? "check_circle" : "error"
@@ -514,11 +522,12 @@ Surface {
 
                     RotationAnimation on rotation {
                         running: !stepLine.finished && root.mode === "running"
-                            && !Theme.reducedMotion
+                            && stepMark.visible && !Theme.reducedMotion
                         from: 0
                         to: 360
                         duration: 1400
                         loops: Animation.Infinite
+                        onRunningChanged: if (!running) stepMark.rotation = 0
                     }
                 }
             }

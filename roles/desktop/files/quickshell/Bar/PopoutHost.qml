@@ -383,15 +383,22 @@ Item {
         const firstOpen = frontSlot < 0 || openProgress < 0.01;
         const oldSlot = frontSlot;
 
+        // Front the incoming slot before the card turns visible. After a
+        // close, frontSlot still names the latched drawer, so raising
+        // `presented` first made that slot visible for one synchronous turn:
+        // every Claim in its current tab fired and released again before a
+        // frame was drawn — a network snapshot, a Bluetooth helper, a mic
+        // capture stream — on every open of an unrelated panel. An outgoing
+        // slot that is still fading stays visible through its own opacity.
+        frontSlot = slot;
+        if (oldSlot >= 0 && oldSlot !== slot)
+            loaderFor(oldSlot).opacity = 0;
+
         presented = true;
         closeTimer.stop();
         rememberTargets(geometry);
         if (firstOpen)
             snapClosed(geometry);
-
-        frontSlot = slot;
-        if (oldSlot >= 0 && oldSlot !== slot)
-            loaderFor(oldSlot).opacity = 0;
 
         Qt.callLater(() => {
             if (!live || !Popouts.open

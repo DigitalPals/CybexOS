@@ -43,7 +43,7 @@ BarModule {
     // The two Repeaters are fed id lists parsed back out of a string: the
     // string only notifies when membership or order really changes, so a
     // re-evaluation that lands on the same ids leaves the buttons (their
-    // registered anchors, tooltips and pulse animations) alone. Each button
+    // registered anchors, tooltips and spinners) alone. Each button
     // looks its catalog entry up by id.
     readonly property string inactiveActionsKey: {
         void actionStateKey;
@@ -319,6 +319,12 @@ BarModule {
                 fill: button.activeState && !button.transcribing ? 1 : 0
                 symWeight: 550
                 color: button.ink
+                // A recording blinks on the elapsed timer's own 1 Hz tick,
+                // stepped rather than eased. A continuous pulse repainted
+                // every bar at display rate for the whole recording, and
+                // handed the screen recorder a new frame to encode each time.
+                opacity: button.recording && !Theme.reducedMotion
+                    && Recorder.elapsed % 2 === 1 ? 0.45 : 1
 
                 RotationAnimation on rotation {
                     running: button.transcribing && !Theme.reducedMotion
@@ -326,13 +332,6 @@ BarModule {
                     to: 360
                     duration: 850
                     loops: Animation.Infinite
-                }
-
-                SequentialAnimation on opacity {
-                    running: button.recording && !Theme.reducedMotion
-                    loops: Animation.Infinite
-                    NumberAnimation { to: 0.35; duration: 650; easing.type: Easing.InOutSine }
-                    NumberAnimation { to: 1; duration: 650; easing.type: Easing.InOutSine }
                 }
             }
 
