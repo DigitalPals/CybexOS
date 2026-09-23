@@ -39,11 +39,11 @@ test("full Inbox and active-workflow sweeps use independent fixed cadences", () 
     const full = source.match(/Timer \{\s*id: inboxTimer[\s\S]*?\n    \}/)?.[0] ?? "";
     const active = source.match(/Timer \{\s*id: activeInboxTimer[\s\S]*?\n    \}/)?.[0] ?? "";
     assert.match(full, /interval:\s*60000/);
-    assert.match(full, /running:\s*root\.pollEnabled/);
+    assert.match(full, /running:\s*root\.scheduleActive\b/);
     assert.match(full, /root\.refreshInbox\(false\)/);
     assert.match(active, /interval:\s*30000/);
     assert.match(active,
-        /running:\s*root\.pollEnabled && root\.ciReportsEnabled && root\.runningCount > 0/);
+        /running:\s*root\.scheduleActive && root\.ciReportsEnabled && root\.runningCount > 0/);
     assert.match(active, /root\.refreshActiveInbox\(\)/);
 
     const sweep = source.match(/function startInboxSweep[\s\S]*?\n    \}/)?.[0] ?? "";
@@ -76,7 +76,7 @@ test("Inbox reads use conditional HTTP polling and preserve partial caches", () 
         /const notModified = Helpers\.notModifiedResponse\(included, exitCode, errText\)/);
     const settleInbox = source.match(/function settleInbox\(job[\s\S]*?\n    \}/)?.[0] ?? "";
     assert.match(settleInbox,
-        /job\.kind === "runs"\) \{\s*if \(notModified\) \{\s*patchRunResult\(job\.slug, null, ""\)/,
+        /job\.kind === "runs"\) \{\s*scheduleRuns\(job\.slug, startedAt\);\s*if \(notModified\) \{\s*patchRunResult\(job\.slug, null, ""\)/,
         "a workflow 304 keeps the previous rows");
     assert.match(settleInbox,
         /if \(notModified\) \{\s*notificationError = "";\s*inboxSweep\.anySuccess = true;/,
@@ -446,4 +446,47 @@ test("repository discovery is conditional and reuses its rows on a 304", () => {
     const refresh = source.match(/function refresh\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
     assert.doesNotMatch(refresh, /reposCache|watchCache/,
         "a new poll keeps the rows its validators stand for");
+});
+
+test("scheduled GitHub polling rests while idle or offline and reads quiet runs less often", () => {
+    const source = read("Common/GitHub.qml");
+    assert.match(source,
+        /readonly property bool scheduleActive:\s*pollEnabled && !Activity\.idle\s*&& !\(NetworkStatus\.known && !NetworkStatus\.online\)/,
+        "cross-singleton state must be qualified, and an unknown network is not offline");
+    for (const id of ["pollTimer", "inboxTimer"]) {
+        const timer = source.match(new RegExp(`Timer \\{\\s*id: ${id}[\\s\\S]*?\\n    \\}`))?.[0] ?? "";
+        assert.match(timer, /running:\s*root\.scheduleActive\n/, id);
+        assert.match(timer, /triggeredOnStart:\s*true/,
+            `${id} fires on the edge that resumes it`);
+    }
+    const poll = source.match(/Timer \{\s*id: pollTimer[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(poll, /!root\.rateLimited\(\) && root\.repoPollDue\(\)/,
+        "resuming does not re-poll a repository list that is still fresh");
+    assert.match(source, /function refresh\(\)[\s\S]{0,120}?repoPollStartedAt = Date\.now\(\);/);
+
+    const sweep = source.match(/function startInboxSweep[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(sweep,
+        /if \(!full \|\| force \|\| runPollDue\(slug, now, active\)\)/,
+        "scheduled full sweeps read only due runs; manual and active sweeps read all");
+    assert.match(sweep, /Helpers\.activeRepositories\(inboxItems, slugs\.length\)/);
+    assert.match(source, /startInboxSweep\(monitoredRepos, true, force === true\)/);
+    assert.match(source, /startInboxSweep\(activeRepos, false, false\)/);
+
+    const settleInbox = source.match(/function settleInbox\(job[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(settleInbox, /job\.kind === "runs"\) \{\s*scheduleRuns\(job\.slug, startedAt\);/,
+        "every runs read reschedules its repository");
+    assert.match(settleInbox,
+        /reconcileInboxRows\("events:"[\s\S]{0,120}?noteRunTriggers\(job\.slug, rows\);/,
+        "only a usable events page can boost the runs cadence");
+    const triggers = source.match(/function noteRunTriggers[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(triggers, /Helpers\.runTriggerSince\(rows,\s*\(runPolledAt\[key\] \?\? 0\) - Helpers\.RUN_TRIGGER_SLACK_MS\)/);
+    assert.match(triggers, /sweep\.runs\[key\] === true/);
+    assert.match(triggers, /if \(enqueue\([\s\S]*?sweep: sweep\.id[\s\S]*?\)\)\s*sweep\.pending\+\+;/,
+        "a runs read added mid-sweep must hold the sweep open");
+    const schedule = source.match(/function scheduleRuns[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(schedule, /next\[key\] = startedAt \+ pollMins \* 60000;/);
+    assert.match(source, /function invalidateInboxScope\(\) \{\s*scopeGeneration\+\+;\s*pruneRunSchedule\(\);/,
+        "the schedule is bounded by the monitored scope");
+    assert.match(source,
+        /onCiReportsEnabledChanged:[\s\S]*?runPolledAt = \(\{\}\);\s*runNextPollAt = \(\{\}\);\s*runBoostUntil = \(\{\}\);/);
 });

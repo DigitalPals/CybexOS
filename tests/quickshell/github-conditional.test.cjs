@@ -135,3 +135,37 @@ test("the gh watchdog is shorter for interactive reads and reports as a timeout"
     assert.equal(H.globalInboxFailure(H.GH_TIMEOUT_EXIT,
         H.ghTimeoutMessage({ interactive: false })), true);
 });
+
+test("workflow runs are read every sweep only while active or freshly triggered", () => {
+    const later = NOW + 5 * 60000;
+    assert.equal(H.runPollDue(0, 0, false, NOW), true, "a repository never read is due");
+    assert.equal(H.runPollDue(NOW + 5 * 60000, 0, false, NOW), false, "a quiet one waits");
+    assert.equal(H.runPollDue(NOW + 5 * 60000, 0, true, NOW), true, "an active one does not");
+    assert.equal(H.runPollDue(NOW + 5 * 60000, NOW + H.RUN_BOOST_MS, false, NOW), true);
+    assert.equal(H.runPollDue(NOW + 5 * 60000, NOW + H.RUN_BOOST_MS, false, later), true,
+        "the quiet interval still comes round after the boost lapses");
+    assert.equal(H.runPollDue(NOW + 10 * 60000, NOW + H.RUN_BOOST_MS, false, later), false,
+        "and once it lapses a quiet repository waits again");
+    assert.equal(H.runPollDue(NOW + 3000, 0, false, NOW), true, "the sweep's slack applies");
+
+    const event = (type, msAgo) => ({ eventType: type,
+        at: new Date(NOW - msAgo).toISOString() });
+    const since = NOW - 60000;
+    assert.equal(H.runTriggerSince([event("PushEvent", 1000)], since), true);
+    assert.equal(H.runTriggerSince([event("PullRequestEvent", 1000)], since), true);
+    assert.equal(H.runTriggerSince([event("CreateEvent", 1000)], since), true);
+    assert.equal(H.runTriggerSince([event("ReleaseEvent", 1000)], since), true);
+    assert.equal(H.runTriggerSince([event("IssuesEvent", 1000),
+        event("DiscussionEvent", 1000), event("DeleteEvent", 1000)], since), false,
+        "activity that starts no workflow leaves a quiet repository quiet");
+    assert.equal(H.runTriggerSince([event("PushEvent", 120000)], since), false,
+        "a push the last runs read already covered is not news");
+    assert.equal(H.runTriggerSince([{ eventType: "PushEvent", at: "garbage" }], since), false);
+    assert.equal(H.runTriggerSince(null, since), false);
+    assert.equal(H.runTriggerSince([event("PushEvent", 1000)], undefined), true);
+    // Parsed rows carry the field the singleton reads.
+    const rows = H.parseEvents(JSON.stringify([{ i: "1", ty: "PushEvent",
+        at: new Date(NOW - 1000).toISOString(), a: "me", ref: "refs/heads/main",
+        size: 1 }]), "a/b");
+    assert.equal(H.runTriggerSince(rows, since), true);
+});

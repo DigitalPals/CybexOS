@@ -1269,6 +1269,38 @@ function pollDue(nextAtMs, nowMs) {
     return next - nowMs <= POLL_SLACK_MS;
 }
 
+// ---- workflow-run cadence -----------------------------------------------
+// Workflow runs have no X-Poll-Interval, so their cadence is the shell's own.
+// A repository is read every sweep only while something is happening there:
+// a run is active, or its events feed has just reported what starts runs
+// (a push, a pull request, a new branch or tag, a release). The boost keeps
+// it hot for a few minutes, long enough for a workflow to be created and seen
+// running. Every other repository is read once per repository refresh
+// interval, which used to be every sweep for every repository.
+var RUN_TRIGGER_EVENTS = { PushEvent: true, PullRequestEvent: true, CreateEvent: true,
+    ReleaseEvent: true };
+var RUN_BOOST_MS = 3 * MINUTE_MS;
+// The events API lags the activity it reports, so a trigger slightly older
+// than the last runs read may still name a run that read could not see.
+var RUN_TRIGGER_SLACK_MS = 2 * MINUTE_MS;
+
+function runPollDue(nextAtMs, boostUntilMs, active, nowMs) {
+    if (active === true)
+        return true;
+    if (typeof boostUntilMs === "number" && isFinite(boostUntilMs) && boostUntilMs > nowMs)
+        return true;
+    return pollDue(nextAtMs, nowMs);
+}
+
+// Whether a repository-event page reports run-starting activity newer than
+// `sinceMs` (the last runs read, less the slack).
+function runTriggerSince(rows, sinceMs) {
+    var since = typeof sinceMs === "number" && isFinite(sinceMs) ? sinceMs : 0;
+    return (Array.isArray(rows) ? rows : []).some(function (row) {
+        return row && RUN_TRIGGER_EVENTS[row.eventType] === true && atMs(row) > since;
+    });
+}
+
 // ---- gh watchdog ---------------------------------------------------------
 // One queued `gh` process serves every read, so a stalled request would hold
 // the queue — and every polling flag — forever. Interactive reads are the
@@ -2250,6 +2282,11 @@ var exported = {
     nextPollInterval: nextPollInterval,
     POLL_SLACK_MS: POLL_SLACK_MS,
     pollDue: pollDue,
+    RUN_TRIGGER_EVENTS: RUN_TRIGGER_EVENTS,
+    RUN_BOOST_MS: RUN_BOOST_MS,
+    RUN_TRIGGER_SLACK_MS: RUN_TRIGGER_SLACK_MS,
+    runPollDue: runPollDue,
+    runTriggerSince: runTriggerSince,
     GH_TIMEOUT_MS: GH_TIMEOUT_MS,
     GH_INTERACTIVE_TIMEOUT_MS: GH_INTERACTIVE_TIMEOUT_MS,
     GH_KILL_GRACE_MS: GH_KILL_GRACE_MS,

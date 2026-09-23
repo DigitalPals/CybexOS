@@ -79,11 +79,25 @@ Singleton {
     // known, so a 304 always has a reconciled snapshot to stand on.
     property var runEtags: ({})
     property string notificationLastModified: ""
+    // Workflow-run cadence (see Helpers.runPollDue), process-local like the
+    // run ETags: when each repository's runs were last read, when a quiet one
+    // is next due, and until when fresh activity keeps one read every sweep.
+    property var runPolledAt: ({})
+    property var runNextPollAt: ({})
+    property var runBoostUntil: ({})
     property double notificationNextPollAt: 0
     property int notificationPollInterval: 60000
     // Set from x-ratelimit-* headers when the primary quota runs low; the
     // scheduled sweeps and repository polls stand down until GitHub's reset.
     property double rateLimitUntil: 0
+
+    // Scheduled polling stands down while nobody is at the machine and while
+    // the network is known to be down: an idle or locked session no longer
+    // spawns `gh` around the clock. The timers fire on start, so the edge
+    // that resumes them (activity, or the network coming back) is also the
+    // first sweep back. Interactive reads and a manual refresh still run.
+    readonly property bool scheduleActive: pollEnabled && !Activity.idle
+        && !(NetworkStatus.known && !NetworkStatus.online)
 
     readonly property var monitoredRepos: Helpers.monitoredScope(repos, opts.repos, watch)
     readonly property string monitoredKey: monitoredRepos.join(",")
@@ -412,10 +426,19 @@ Singleton {
     property string reposSignature: ""
     property string watchErrorsSignature: ""
 
+    // When the last repository poll started. Resuming the poll timer fires it
+    // at once; a list polled less than half an interval ago is left alone.
+    property double repoPollStartedAt: 0
+
+    function repoPollDue() {
+        return Date.now() - repoPollStartedAt >= pollMins * 30000;
+    }
+
     function refresh() {
         if (!pollEnabled || polling)
             return;
         polling = true;
+        repoPollStartedAt = Date.now();
         ownRepos = [];
         extraRepos = [];
         pendingWatch = 0;
@@ -608,8 +631,25 @@ Singleton {
         inboxState = next;
     }
 
+    function pruneRunSchedule() {
+        const keep = {};
+        monitoredRepos.forEach(slug => keep[slug.toLowerCase()] = true);
+        const pick = map => {
+            const next = {};
+            Object.keys(map).forEach(key => {
+                if (keep[key])
+                    next[key] = map[key];
+            });
+            return next;
+        };
+        runPolledAt = pick(runPolledAt);
+        runNextPollAt = pick(runNextPollAt);
+        runBoostUntil = pick(runBoostUntil);
+    }
+
     function invalidateInboxScope() {
         scopeGeneration++;
+        pruneRunSchedule();
         queue = queue.filter(job => job.kind !== "runs" && job.kind !== "events"
             && job.kind !== "notifications");
         inboxSweep = null;
@@ -624,7 +664,7 @@ Singleton {
         // A manual refresh overrides both pauses; the timers honour them.
         if (!force && (inboxBackoffUntil > Date.now() || rateLimited()))
             return;
-        startInboxSweep(monitoredRepos, true);
+        startInboxSweep(monitoredRepos, true, force === true);
     }
 
     function refreshActiveInbox() {
@@ -633,15 +673,25 @@ Singleton {
             return;
         const activeRepos = Helpers.activeRepositories(inboxItems, Helpers.MAX_ACTIVE_REPOS);
         if (activeRepos.length > 0)
-            startInboxSweep(activeRepos, false);
+            startInboxSweep(activeRepos, false, false);
     }
 
     function eventPollDue(slug, now) {
         return Helpers.pollDue(eventNextPollAt[slug.toLowerCase()] ?? 0, now);
     }
 
-    function startInboxSweep(slugs, full) {
+    function runPollDue(slug, now, active) {
+        const key = slug.toLowerCase();
+        return Helpers.runPollDue(runNextPollAt[key] ?? 0, runBoostUntil[key] ?? 0,
+            active[key] === true, now);
+    }
+
+    // `force` (a manual or scope refresh) reads every repository's runs; a
+    // scheduled full sweep reads only the ones due. The active sweep's
+    // repositories are running by definition.
+    function startInboxSweep(slugs, full, force) {
         inboxSweepSeq++;
+        const now = Date.now();
         const sweep = {
             id: inboxSweepSeq,
             generation: scopeGeneration,
@@ -649,17 +699,24 @@ Singleton {
             transitions: [],
             anySuccess: false,
             full: full,
-            startedAt: Date.now()
+            runs: ({}),
+            startedAt: now
         };
         inboxSweep = sweep;
         inboxPolling = true;
         const jobs = [];
         if (ciReportsEnabled) {
-            for (const slug of slugs)
-                jobs.push({ kind: "runs", slug: slug });
+            const active = {};
+            Helpers.activeRepositories(inboxItems, slugs.length)
+                .forEach(slug => active[slug.toLowerCase()] = true);
+            for (const slug of slugs) {
+                if (!full || force || runPollDue(slug, now, active)) {
+                    jobs.push({ kind: "runs", slug: slug });
+                    sweep.runs[slug.toLowerCase()] = true;
+                }
+            }
         }
         if (full) {
-            const now = Date.now();
             for (const slug of slugs) {
                 if (eventPollDue(slug, now))
                     jobs.push({ kind: "events", slug: slug });
@@ -765,6 +822,39 @@ Singleton {
         eventNextPollAt = nextPolls;
     }
 
+    // Every runs read, whatever it returned, puts a quiet repository back on
+    // the repository refresh interval; a global failure never gets here and
+    // is retried with the sweep's backoff instead.
+    function scheduleRuns(slug, startedAt) {
+        const key = slug.toLowerCase();
+        const polled = Object.assign({}, runPolledAt);
+        const next = Object.assign({}, runNextPollAt);
+        polled[key] = startedAt;
+        next[key] = startedAt + pollMins * 60000;
+        runPolledAt = polled;
+        runNextPollAt = next;
+    }
+
+    // Fresh push/PR/ref/release activity is what starts workflows: keep the
+    // repository's runs read every sweep for a while, starting with this one
+    // when its runs were not already part of it.
+    function noteRunTriggers(slug, rows) {
+        const key = slug.toLowerCase();
+        if (!ciReportsEnabled || !Helpers.runTriggerSince(rows,
+                (runPolledAt[key] ?? 0) - Helpers.RUN_TRIGGER_SLACK_MS))
+            return;
+        const boost = Object.assign({}, runBoostUntil);
+        boost[key] = Date.now() + Helpers.RUN_BOOST_MS;
+        runBoostUntil = boost;
+        const sweep = inboxSweep;
+        if (sweep === null || sweep.runs[key] === true)
+            return;
+        sweep.runs[key] = true;
+        if (enqueue({ kind: "runs", slug: slug, sweep: sweep.id,
+                generation: sweep.generation, interactive: false }))
+            sweep.pending++;
+    }
+
     function updateRunEtag(slug, etag) {
         const next = Object.assign({}, runEtags);
         if (etag === "")
@@ -799,6 +889,7 @@ Singleton {
         const startedAt = inboxSweep.startedAt;
 
         if (job.kind === "runs") {
+            scheduleRuns(job.slug, startedAt);
             if (notModified) {
                 patchRunResult(job.slug, null, "");
                 inboxSweep.anySuccess = true;
@@ -849,6 +940,7 @@ Singleton {
                     patchEventResult(job.slug, rows, "");
                     reconcileInboxRows("events:" + job.slug.toLowerCase(), rows);
                     inboxSweep.anySuccess = true;
+                    noteRunTriggers(job.slug, rows);
                 }
             }
         } else {
@@ -1118,19 +1210,22 @@ Singleton {
     Timer {
         id: pollTimer
         interval: root.pollMins * 60000
-        running: root.pollEnabled
+        running: root.scheduleActive
         repeat: true
         triggeredOnStart: true
         onTriggered: {
-            if (!root.rateLimited())
+            if (!root.rateLimited() && root.repoPollDue())
                 root.refresh();
         }
     }
 
+    // A sweep only reads what is due (runs by Helpers.runPollDue, events and
+    // notifications by their X-Poll-Interval), so the one fired on resume
+    // costs nothing for sources that are still fresh.
     Timer {
         id: inboxTimer
         interval: 60000
-        running: root.pollEnabled
+        running: root.scheduleActive
         repeat: true
         triggeredOnStart: true
         onTriggered: root.refreshInbox(false)
@@ -1139,7 +1234,7 @@ Singleton {
     Timer {
         id: activeInboxTimer
         interval: 30000
-        running: root.pollEnabled && root.ciReportsEnabled && root.runningCount > 0
+        running: root.scheduleActive && root.ciReportsEnabled && root.runningCount > 0
         repeat: true
         onTriggered: root.refreshActiveInbox()
     }
@@ -1172,6 +1267,9 @@ Singleton {
         if (!ciReportsEnabled) {
             runCache = ({});
             runEtags = ({});
+            runPolledAt = ({});
+            runNextPollAt = ({});
+            runBoostUntil = ({});
             runBaselines = ({});
             const reset = Helpers.removeInboxSources(inboxState,
                 inboxSourceRevisions, "workflows:");
