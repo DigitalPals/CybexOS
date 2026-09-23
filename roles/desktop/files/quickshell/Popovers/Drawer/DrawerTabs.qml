@@ -49,13 +49,23 @@ Rectangle {
     function activateTab(index, focusTab) {
         if (index < 0 || index >= tabs.length)
             return;
-        const name = PanelRegistry.nameForTab(tabs[index].tab);
+        const tab = tabs[index].tab;
+        // Focus moves before the tab does: activeFocusOnTab follows the
+        // current tab, and Qt refuses to clear it on the segment that still
+        // holds focus (see Settings/PillRow).
+        if (focusTab) {
+            const target = tabRepeater.itemAt(index);
+            if (target) target.forceActiveFocus();
+        }
+        const name = PanelRegistry.nameForTab(tab);
         if (name !== "")
             Popouts.openPanel(name, "right");
+        // Leaving a tab switched off in settings drops it from the strip and
+        // rebuilds the segments, so look the new one up again once it has.
         if (focusTab) {
             Qt.callLater(() => {
-                const item = tabRepeater.itemAt(index);
-                if (item) item.forceActiveFocus();
+                const item = tabRepeater.itemAt(root.tabs.findIndex(entry => entry.tab === tab));
+                if (item && !item.activeFocus) item.forceActiveFocus();
             });
         }
     }

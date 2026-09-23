@@ -221,6 +221,10 @@ test("background checks run only for the widget or notifications, never while id
     assert.match(source,
         /Popouts\.currentName === "updates"\s*\|\| Popouts\.currentName === "control"\s*&& Settings\.drawerOverview\.updates === true\)\)\s*root\.staleCheck\(\)/);
     assert.match(source, /id: startupCheck[\s\S]{0,200}?if \(root\.pollEnabled && !root\.ran && !root\.busy\)/);
+    // The panel names a cadence only while one is running.
+    const panel = fs.readFileSync(path.join(shellDir, "Popovers/UpdatesPopover.qml"), "utf8");
+    assert.match(panel,
+        /Updates\.checkedLabel\(\) \+ \(Updates\.pollEnabled\s*\? " · every " \+ Settings\.modOpts\.updates\.pollMins \+ " m"\s*: " · refreshes when opened"\)/);
 });
 
 test("dnf reruns only when its metadata or the installed set moved", () => {

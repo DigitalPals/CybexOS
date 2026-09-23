@@ -266,6 +266,10 @@ test("settings explain repository refresh and Inbox polling separately", () => {
     const watches = read("Settings/GitHubWatchList.qml");
     assert.match(options, /label:\s*"Recent account repos"/);
     assert.match(options, /label:\s*"Repo refresh"/);
+    // The same interval paces quiet repositories' workflow-run reads
+    // (Helpers.runPollDue), which the row has to say.
+    assert.match(options,
+        /label:\s*"Repo refresh"[\s\S]{0,300}?hint:\s*"Also how often quiet repos' workflow runs are read; busy ones every minute"/);
     assert.match(options, /optionLabelWidth:\s*156/);
     assert.match(options, /label:\s*"CI reports"[\s\S]{0,220}?view\.opts\.ciActivity/);
     assert.match(options, /Workflow rows in the Inbox/);

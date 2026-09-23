@@ -348,3 +348,67 @@ test("firmware completion distinguishes no updates, malformed output and failure
         assert.equal(state.nextFirmwareNames.length, failed ? 1 : 0);
     }
 });
+
+test("a skipped or blocked CybexOS release says why without stopping packages", () => {
+    assert.equal(H.projectErrorOf({ id: "run", projectError: "  the GitHub CLI is not logged in  " }),
+        "the GitHub CLI is not logged in");
+    assert.equal(H.projectErrorOf({ id: "run" }), "");
+    assert.equal(H.projectErrorOf({ projectError: 69 }), "");
+    assert.equal(H.projectErrorOf(null), "");
+    assert.equal(H.projectSkippedLabel("gh is missing", false),
+        "System update started · CybexOS skipped: gh is missing");
+    assert.equal(H.projectSkippedLabel("gh is missing", true), "CybexOS skipped: gh is missing");
+    assert.equal(H.projectSkippedLabel("", false), "");
+
+    const updates = read("Common/Updates.qml");
+    const popover = read("Popovers/UpdatesPopover.qml");
+    // The start record is the only place the reason travels; a status poll
+    // (which never carries it) must not be what sets it, and resetRun clears it.
+    assert.match(updates,
+        /root\.applyBackendStatus\(started\);\s*root\.runProjectSkipped = UpdatesHelpers\.projectErrorOf\(started\);/);
+    assert.match(updates, /function resetRun\([\s\S]*?runProjectSkipped = "";[\s\S]*?runState = "running";/);
+    assert.match(updates, /nextProjectApplyNote = UpdatesHelpers\.projectErrorOf\(data\);/);
+    assert.match(updates, /projectApplyNote = nextProjectAvailable \? nextProjectApplyNote : "";/);
+    assert.match(popover, /UpdatesHelpers\.projectSkippedLabel\(Updates\.runProjectSkipped,/);
+    assert.match(popover, /"To apply CybexOS " \+ Updates\.projectVersion \+ ": "\s*\+ Updates\.projectApplyNote/);
+});
+
+test("cancel waits for the current step and is offered only while one remains", () => {
+    for (const phase of ["queued", "snapshot", "tests", "migration"])
+        assert.equal(H.cancelAllowed(phase, true), true, phase);
+    assert.equal(H.cancelAllowed("packages", true), true,
+        "a deferred cancel lets dnf and flatpak finish first");
+    assert.equal(H.cancelAllowed("packages", false), false,
+        "a worker from before deferred cancellation refuses mid-transaction");
+    assert.equal(H.cancelAllowed("packages", undefined), false);
+    for (const phase of ["ansible", "activation", "reboot-check"])
+        assert.equal(H.cancelAllowed(phase, true), false, `${phase} has no stopping point left`);
+
+    const updates = read("Common/Updates.qml");
+    const popover = read("Popovers/UpdatesPopover.qml");
+    assert.match(updates, /cancelRequested = data\.cancelRequested === true;/);
+    assert.match(updates, /runDeferredCancel = data\.deferredCancel === true;/);
+    assert.match(updates,
+        /readonly property bool cancelPending: cancelRequested \|\| cancelProc\.running\s*\|\| cancelSettle\.running/);
+    assert.match(updates, /function cancelRun\(\) \{\s*if \(!cancelAllowed \|\| cancelPending\)\s*return;/);
+    // The cancel client settles on the falling edge, like every other process.
+    assert.match(updates,
+        /id: cancelProc\s*onRunningChanged: \{\s*if \(running\)\s*return;\s*cancelSettle\.restart\(\);\s*root\.refreshRunStatus\(\);/);
+    assert.match(popover,
+        /id: cancelButton\s*visible: root\.mode === "running" && Updates\.cancelAllowed\s*enabled: !Updates\.cancelPending/);
+    assert.match(popover, /Updates\.cancelPending \? "cancelling after the current step…"/);
+    assert.match(read("Popovers/Drawer/DrawerOverview.qml"),
+        /Updates\.cancelPending \? "Cancelling after the current step…"/);
+});
+
+test("a failed release apply that left newer files says how to recover", () => {
+    assert.equal(H.mixedStateAdvice(false), "");
+    assert.equal(H.mixedStateAdvice(undefined), "");
+    assert.match(H.mixedStateAdvice(true), /`cybex update` again/);
+    assert.match(H.mixedStateAdvice(true), /~\/\.local\/share\/cybexos\/current\/install/);
+
+    const updates = read("Common/Updates.qml");
+    assert.match(updates, /mixedState = data\.mixedState === true;/);
+    assert.match(read("Popovers/UpdatesPopover.qml"),
+        /visible: Updates\.mixedState[\s\S]{0,80}?text: UpdatesHelpers\.mixedStateAdvice\(Updates\.mixedState\)/);
+});

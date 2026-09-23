@@ -341,3 +341,11 @@ test("the deadline keeps the calendars that answered and names the one that did 
     assert.equal(normalized.available, true);
     assert.equal(normalized.sourceErrors.length, 1);
 });
+
+test("both event views say when a calendar could not be read", () => {
+    // A timed-out calendar leaves the others' events on screen; without a
+    // note the Day sheet's week and next events look complete.
+    const warning = /Text \{\s*visible: Calendar\.partialWarning !== "" && Calendar\.ready[\s\S]{0,120}?text: Calendar\.partialWarning/;
+    assert.match(read("Popovers/CalendarPopover.qml"), warning);
+    assert.match(read("Popovers/DaySheetPopover.qml"), warning);
+});

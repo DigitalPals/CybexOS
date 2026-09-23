@@ -12,11 +12,12 @@ Column {
     id: root
 
     readonly property var networks: NetworkDetails.groupedNetworks.all
-    // Every 1.5 s snapshot is a fresh array. Handing that to the Repeater
-    // rebuilt every row each poll — wiping a half-typed password and its
-    // focus — so the rows are keyed by SSID instead: a string property only
-    // notifies when the six visible networks or their order really change,
-    // and each row reads its live entry from `networks`.
+    // Every network snapshot (on NetworkManager events, scan changes and a
+    // 10 s safety poll) regroups the list into a fresh array. Handing that to
+    // the Repeater rebuilt every row each time — wiping a half-typed password
+    // and its focus — so the rows are keyed by SSID instead: a string property
+    // only notifies when the six visible networks or their order really
+    // change, and each row reads its live entry from `networks`.
     readonly property string networkKey: NetworkHelpers.networkListKey(networks, 6)
     readonly property var networkSsids: NetworkHelpers.networkListIds(networkKey)
     readonly property var activeNetwork: NetworkDetails.activeWifiNetwork

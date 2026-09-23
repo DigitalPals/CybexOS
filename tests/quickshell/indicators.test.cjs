@@ -329,3 +329,49 @@ test("reminder manager and shell-wide refresh IPC are wired to the action", () =
     assert.match(manager, /root\.clearArmed \? "Confirm clear all" : "Clear all"/);
     assert.match(manager, /Reminders\.cancel\(reminderRow\.modelData\.id\)/);
 });
+
+test("dictation is offered only with the developer tooling that installs it", () => {
+    const helpers = load("SettingsHelpers.js");
+    const saved = ["recording", "dictation", "ocr", "reminder"];
+    assert.deepEqual(helpers.availableIndicatorIds(saved, true), saved);
+    assert.deepEqual(helpers.availableIndicatorIds(saved, false), ["recording", "ocr", "reminder"]);
+    assert.deepEqual(helpers.availableIndicatorIds(undefined, false), []);
+    // Reordering what is shown keeps the hidden action's saved place.
+    assert.deepEqual(helpers.mergeIndicatorOrder(["ocr", "recording", "reminder"], saved),
+        ["ocr", "dictation", "recording", "reminder"]);
+    assert.deepEqual(helpers.mergeIndicatorOrder(["reminder", "ocr", "recording"],
+        ["recording", "ocr", "reminder", "dictation"]),
+        ["reminder", "ocr", "recording", "dictation"]);
+    assert.deepEqual(helpers.mergeIndicatorOrder(["ocr", "recording"], ["recording", "ocr"]),
+        ["ocr", "recording"]);
+
+    // The unit passes the installer's feature; unset (a source-tree run) is on.
+    const unit = fs.readFileSync(path.resolve(shellDir, "../../templates/quickshell.service.j2"), "utf8");
+    assert.match(unit,
+        /^Environment=CYBEXOS_DEVELOPER_TOOLS=\{\{ \(features\.developer_tools \| bool\) \| ternary\('1', '0'\) \}\}$/m);
+    const settings = read("Common/Settings.qml");
+    assert.match(settings,
+        /readonly property bool developerToolsConfigured:\s*Quickshell\.env\("CYBEXOS_DEVELOPER_TOOLS"\) !== "0"/);
+
+    const dictation = read("Common/Dictation.qml");
+    assert.match(dictation, /readonly property bool available: Settings\.developerToolsConfigured/);
+    assert.match(dictation, /path: root\.available \? root\.statePath : ""/,
+        "no daemon, no state file to watch");
+    assert.match(indicators,
+        /SettingsHelpers\.availableIndicatorIds\(\s*Settings\.modOpts\.indicators\.order, Dictation\.available\)/);
+
+    const options = read("Settings/ModuleDetailView.qml");
+    assert.match(options,
+        /readonly property var indicatorOrder: SettingsHelpers\.availableIndicatorIds\(\s*opts\.order \|\| \[\], Dictation\.available\)/);
+    assert.match(options,
+        /view\.setOpt\("order", SettingsHelpers\.mergeIndicatorOrder\(ids, view\.opts\.order \|\| \[\]\)\)/);
+    // Toggling a shown action must not drop a hidden one from `enabled`.
+    assert.match(options,
+        /next = \(view\.opts\.order \|\| \[\]\)\.filter\(candidate => next\.indexOf\(candidate\) !== -1\);/);
+    assert.match(options, /SettingsGroup \{\s*visible: Dictation\.available\s*width: parent\.width\s*title: "Dictation"/);
+});
+
+test("the shell's Python helpers leave no bytecode in the managed tree", () => {
+    const unit = fs.readFileSync(path.resolve(shellDir, "../../templates/quickshell.service.j2"), "utf8");
+    assert.match(unit, /^Environment=PYTHONDONTWRITEBYTECODE=1$/m);
+});

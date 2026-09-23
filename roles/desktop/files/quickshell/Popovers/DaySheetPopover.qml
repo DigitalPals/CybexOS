@@ -120,11 +120,23 @@ Surface {
                     color: Theme.textHi
                 }
 
+                // Without coordinates there is no sky to describe, only where
+                // to set them: the weather widget's own options.
+                LinkText {
+                    visible: !Weather.locationSet
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Set a location in Settings"
+                    font.pixelSize: Theme.typography.secondary
+                    onClicked: {
+                        Settings.openWidgetSettings("weather");
+                        Settings.showPanel("modules", Popouts.hostScreenName);
+                    }
+                }
+
                 Text {
+                    visible: Weather.locationSet
                     anchors.verticalCenter: parent.verticalCenter
                     text: {
-                        if (!Weather.locationSet)
-                            return "Set a location in Settings";
                         if (!Weather.ready)
                             return Weather.offline ? "offline" : "loading…";
                         const today = Weather.days.length > 0
@@ -352,5 +364,17 @@ Surface {
                 Accessible.name: eventCard.modelData.summary
             }
         }
+    }
+
+    // A calendar that timed out still leaves the others' events here; say
+    // that some are missing rather than let the week look complete.
+    Text {
+        visible: Calendar.partialWarning !== "" && Calendar.ready
+        width: parent.width
+        text: Calendar.partialWarning
+        elide: Text.ElideRight
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.secondary
+        color: Theme.textFaint
     }
 }

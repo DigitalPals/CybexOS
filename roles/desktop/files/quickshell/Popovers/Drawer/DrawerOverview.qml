@@ -282,8 +282,9 @@ Column {
                 Text {
                     width: parent.width
                     text: Updates.runActive
-                        ? "Updating · " + (Updates.runPercent >= 0
-                            ? Updates.runPercent + "%" : "…")
+                        ? (Updates.cancelPending ? "Cancelling after the current step…"
+                            : "Updating · " + (Updates.runPercent >= 0
+                                ? Updates.runPercent + "%" : "…"))
                         : Updates.runState === "failed"
                         ? "Update failed"
                         : Updates.rebootRecommended

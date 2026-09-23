@@ -438,9 +438,53 @@ function projectCheckError(message) {
     return "CybexOS: " + message;
 }
 
+// Why the CybexOS release step cannot run while packages still can: the
+// start record carries it when the step was skipped and the package run went
+// ahead; `--check --json` carries it beside a release this machine cannot
+// verify yet (gh missing or not logged in). "" when there is none.
+function projectErrorOf(record) {
+    if (!record || typeof record.projectError !== "string")
+        return "";
+    return record.projectError.trim();
+}
+
+function projectSkippedLabel(reason, finished) {
+    if (reason === "")
+        return "";
+    return (finished ? "" : "System update started · ") + "CybexOS skipped: " + reason;
+}
+
+// The worker defers a cancellation to its next stopping point. Once Ansible
+// has started there is none: the apply and activation run to completion so
+// installed files and the active release stay coherent, and the reboot check
+// comes after the last one. A worker from before deferred cancellation
+// refuses a stop during its package transaction outright.
+var UNCANCELLABLE_PHASES = ["ansible", "activation", "reboot-check"];
+
+function cancelAllowed(phase, deferredCancel) {
+    if (UNCANCELLABLE_PHASES.indexOf(phase) !== -1)
+        return false;
+    return phase !== "packages" || deferredCancel === true;
+}
+
+// A release apply that stopped after Ansible began leaves newer managed files
+// under the previous release (`mixedState` in the run record).
+function mixedStateAdvice(mixedState) {
+    if (mixedState !== true)
+        return "";
+    return "Some newer CybexOS files are installed under the previous release. "
+        + "Run `cybex update` again once the cause is fixed, or "
+        + "~/.local/share/cybexos/current/install to restore the previous release's files.";
+}
+
 var exported = {
     firmwareNames: firmwareNames,
     projectCheckError: projectCheckError,
+    projectErrorOf: projectErrorOf,
+    projectSkippedLabel: projectSkippedLabel,
+    UNCANCELLABLE_PHASES: UNCANCELLABLE_PHASES,
+    cancelAllowed: cancelAllowed,
+    mixedStateAdvice: mixedStateAdvice,
     dnfNames: dnfNames,
     flatpakNames: flatpakNames,
     CHECK_SOURCES: CHECK_SOURCES,
