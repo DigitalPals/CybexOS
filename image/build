@@ -173,12 +173,19 @@ def main():
 
 
 if __name__ == "__main__":
-    def interrupted(_signal, _frame):
-        raise KeyboardInterrupt
+    def interrupted(number, _frame):
+        raise KeyboardInterrupt(number)
 
-    signal.signal(signal.SIGTERM, interrupted)
+    # A closed terminal must also stop the builder and remove its overlay;
+    # the default SIGHUP action skips that cleanup.
+    for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(number, interrupted)
     try:
         main()
-    except (RuntimeError, subprocess.CalledProcessError, KeyboardInterrupt) as error:
+    except KeyboardInterrupt as error:
+        number = error.args[0] if error.args else signal.SIGINT
+        print(f"image/build: interrupted by {signal.Signals(number).name}", file=sys.stderr)
+        sys.exit(128 + number)
+    except (RuntimeError, subprocess.CalledProcessError) as error:
         print(f"image/build: {error}", file=sys.stderr)
         sys.exit(1)
