@@ -16,7 +16,9 @@ while IFS= read -r input; do
   [[ -n $input ]] || continue
   pactl move-sink-input "$input" "$target" >/dev/null 2>&1 || true
 done < <(
-  pactl list sink-inputs 2>/dev/null | awk '
+  # The long listing's "Sink Input #" header is translated (Dutch prints
+  # "Afvoer-invoer #"), so parse it untranslated.
+  LC_ALL=C pactl list sink-inputs 2>/dev/null | awk '
     /^Sink Input #/ { id = substr($3, 2) }
     /^[[:space:]]+application[.]name = / { print id; id = "" }
   '

@@ -1,7 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 const { shellDir, load } = require("./shell.cjs");
 
 const H = load("AudioHelpers.js");
@@ -306,6 +308,43 @@ test("the output routing helper moves named apps but leaves filter internals", (
     assert.match(route, /application\[\.\]name/);
     assert.match(route, /pactl move-sink-input "\$input" "\$target"/);
     assert.doesNotMatch(route, /pactl list sink-inputs short/);
+});
+
+test("the output routing helper finds running streams under a translated locale", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "audio-route-"));
+    try {
+        const bin = path.join(tmp, "bin");
+        const calls = path.join(tmp, "calls.log");
+        fs.mkdirSync(bin);
+        // pactl translates the long listing's headers; Dutch is what a user
+        // who picked nl_NL in the installer sees. Property keys stay English.
+        fs.writeFileSync(path.join(bin, "pactl"), `#!/usr/bin/env bash
+printf '%s\\n' "LC_ALL=\${LC_ALL:-} $*" >>"$AUDIO_ROUTE_CALLS"
+[[ \${1:-} == list ]] || exit 0
+if [[ \${LC_ALL:-} == C ]]; then header='Sink Input'; else header='Afvoer-invoer'; fi
+printf '%s #41\\n\\tProperties:\\n\\t\\tapplication.name = "Firefox"\\n' "$header"
+printf '%s #42\\n\\tProperties:\\n\\t\\tnode.name = "speaker-filter"\\n' "$header"
+printf '%s #43\\n\\tProperties:\\n\\t\\tapplication.name = "mpv"\\n' "$header"
+`, { mode: 0o755 });
+        const run = spawnSync("bash", [path.join(shellDir, "scripts/audio-route"), "usb-dac"], {
+            encoding: "utf8",
+            env: {
+                ...process.env,
+                PATH: `${bin}:${process.env.PATH}`,
+                LANG: "nl_NL.UTF-8",
+                LC_ALL: "nl_NL.UTF-8",
+                AUDIO_ROUTE_CALLS: calls,
+            },
+        });
+        assert.equal(run.status, 0, run.stderr);
+        const moves = fs.readFileSync(calls, "utf8").split("\n")
+            .filter(line => line.includes("move-sink-input"))
+            .map(line => line.replace(/^LC_ALL=\S* /, ""));
+        assert.deepEqual(moves, ["move-sink-input 41 usb-dac", "move-sink-input 43 usb-dac"],
+            "application streams move; the filter-chain internal stays put");
+    } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
 });
 
 test("the input routing helper updates the default and existing recorders", () => {
