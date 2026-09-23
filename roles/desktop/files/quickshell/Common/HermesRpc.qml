@@ -9,8 +9,13 @@ Singleton {
     id: root
 
     property int nextId: 1
+    // Correlation table, mutated in place: nothing binds to it (the deadline
+    // Timer keys off deadlineCount), so a copy per request/response is waste.
     property var handlers: ({})
     property int deadlineCount: 0
+    // Only pending and failed actions are kept: views read `pending` and
+    // `error`, and a success leaves neither, so its entry is removed rather
+    // than accumulating one row per action ever performed.
     property var actionStates: ({})
     readonly property int defaultTimeoutMs: 20000
 
@@ -54,11 +59,41 @@ Singleton {
     function finishAction(key, error) {
         if (key === "")
             return;
+        const message = typeof error === "string" ? error : "";
+        if (message === "") {
+            if (actionStates[key] !== undefined)
+                putAction(key, null);
+            return;
+        }
         const current = actionStates[key] ?? {};
         putAction(key, Object.assign({}, current, {
             pending: false,
-            error: typeof error === "string" ? error : ""
+            error: message
         }));
+    }
+
+    // A deleted conversation's failed actions can never be retried or shown.
+    function forgetConversation(conversationId) {
+        if (typeof conversationId !== "string" || conversationId === "")
+            return;
+        const marker = "|" + conversationId + "|";
+        let next = null;
+        for (const key in actionStates) {
+            if (key.indexOf(marker) < 0 || actionStates[key]?.pending === true)
+                continue;
+            next = next ?? Object.assign({}, actionStates);
+            delete next[key];
+        }
+        if (next !== null)
+            actionStates = next;
+    }
+
+    function kindPending(kind, conversationId) {
+        const prefix = kind + "|" + (conversationId || "") + "|";
+        for (const key in actionStates)
+            if (key.indexOf(prefix) === 0 && actionStates[key]?.pending === true)
+                return true;
+        return false;
     }
 
     function errorText(error, fallback) {
@@ -88,9 +123,7 @@ Singleton {
             actionKey: key,
             fallback: opts.fallback ?? "Hermes request failed"
         };
-        const next = Object.assign({}, handlers);
-        next[id] = handler;
-        handlers = next;
+        handlers[id] = handler;
         deadlineCount++;
         beginAction(key, method);
         if (!HermesConnection.send(JSON.stringify({
@@ -114,9 +147,7 @@ Singleton {
         const current = handlers[id];
         if (current === undefined)
             return null;
-        const next = Object.assign({}, handlers);
-        delete next[id];
-        handlers = next;
+        delete handlers[id];
         deadlineCount = Math.max(0, deadlineCount - 1);
         return current;
     }

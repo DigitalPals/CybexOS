@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell.Io
 import "../Common"
 
 // Persistent per-conversation composer. Enter sends, Shift/Ctrl+Enter adds a line,
@@ -77,21 +76,14 @@ Rectangle {
         Hermes.submit(conversationId, promptEdit.text);
     }
 
+    // The picker runs in the Hermes singleton so a selection survives this
+    // popover closing while the dialog has focus; the staged files come back
+    // through Hermes.attachments(conversationId).
     function chooseAttachments() {
-        if (!editable || working || filePicker.running
+        if (!editable || working || Hermes.attachmentPickerRunning
                 || Hermes.capabilities.attachments !== true)
             return;
-        filePicker.command = ["zenity", "--file-selection", "--multiple",
-            "--separator=\n", "--title=Attach files to Hermes"];
-        filePicker.running = true;
-    }
-
-    function acceptPickedAttachments(exitCode) {
-        if (exitCode !== 0)
-            return;
-        const paths = filePickerOutput.text.split("\n")
-            .map(value => value.trim()).filter(value => value !== "");
-        Hermes.stageAttachments(conversationId, paths);
+        Hermes.pickAttachments(conversationId);
     }
 
     function steer() {
@@ -113,19 +105,11 @@ Rectangle {
         syncDraft();
         Hermes.loadReasoning(conversationId, false);
     }
+    Component.onDestruction: Hermes.flushDrafts()
 
     Connections {
         target: HermesConversations
         function onDraftsChanged() { root.syncDraft(); }
-    }
-
-    Process {
-        id: filePicker
-
-        stdout: StdioCollector { id: filePickerOutput }
-        stderr: StdioCollector {}
-        onExited: code => Qt.callLater(() =>
-            root.acceptPickedAttachments(code))
     }
 
     Column {
@@ -304,11 +288,13 @@ Rectangle {
                     id: attachmentButton
                     visible: Hermes.capabilities.attachments === true
                     controlSize: 28
-                    symbol: filePicker.running ? "progress_activity" : "attach_file"
+                    symbol: Hermes.attachmentPickerRunning
+                        ? "progress_activity" : "attach_file"
                     accessibleName: "Attach files to Hermes"
                     tint: root.stagedAttachments.length > 0
                         ? HermesTheme.accent : HermesTheme.textMuted
-                    enabled: root.editable && !root.working && !filePicker.running
+                    enabled: root.editable && !root.working
+                        && !Hermes.attachmentPickerRunning
                         && root.stagedAttachments.length < 20
                     onTriggered: root.chooseAttachments()
                 }

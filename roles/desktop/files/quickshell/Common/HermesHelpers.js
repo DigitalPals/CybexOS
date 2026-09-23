@@ -78,6 +78,9 @@ function normalizeConversation(raw, index) {
     var status = canonicalStatus(statusValue);
     var unread = Math.max(0, Math.floor(number(value.unread,
         number(value.unreadCount, value.hasUnread === true ? 1 : 0))));
+    var updatedAt = firstString(value.updatedAt, value.lastActivityAt,
+        value.updated_at, value.last_message_at, session.updatedAt,
+        session.updated_at, value.createdAt, value.created_at);
     return {
         id: id,
         sessionId: id,
@@ -105,13 +108,29 @@ function normalizeConversation(raw, index) {
         unread: unread,
         requestCount: Math.max(0, Math.floor(number(value.requestCount,
             number(value.pendingRequests, status === "attention" ? 1 : 0)))),
-        updatedAt: firstString(value.updatedAt, value.lastActivityAt,
-            value.updated_at, value.last_message_at, session.updatedAt,
-            session.updated_at, value.createdAt, value.created_at),
+        updatedAt: updatedAt,
+        // Numeric sort key, parsed once here instead of inside the comparator.
+        updatedAtMs: parseTime(updatedAt),
         createdAt: firstString(value.createdAt, value.created_at,
             session.createdAt, session.created_at),
         error: firstString(value.error, value.lastError, session.error)
     };
+}
+
+// Shallow equality over a normalized conversation's scalar fields. Status
+// broadcasts often repeat the current state; callers skip the reassign (and
+// the list re-sort every binding would observe) when nothing changed.
+function sameConversation(a, b) {
+    if (!a || !b)
+        return false;
+    var keys = Object.keys(a);
+    if (keys.length !== Object.keys(b).length)
+        return false;
+    for (var i = 0; i < keys.length; i++) {
+        if (a[keys[i]] !== b[keys[i]])
+            return false;
+    }
+    return true;
 }
 
 function conversationPriority(conversation) {
@@ -135,12 +154,17 @@ function parseTime(value) {
     return isNaN(parsed) ? 0 : parsed;
 }
 
+function sortTime(conversation) {
+    return typeof conversation.updatedAtMs === "number"
+        ? conversation.updatedAtMs : parseTime(conversation.updatedAt);
+}
+
 function sortedConversations(values) {
     return array(values).slice().sort(function(a, b) {
         var priority = conversationPriority(a) - conversationPriority(b);
         if (priority !== 0)
             return priority;
-        var time = parseTime(b.updatedAt) - parseTime(a.updatedAt);
+        var time = sortTime(b) - sortTime(a);
         if (time !== 0)
             return time;
         return string(a.title).localeCompare(string(b.title));
@@ -249,6 +273,102 @@ function normalizeMessage(raw, index) {
     };
 }
 
+// Normalized fields of an incremental message event, restricted to those the
+// payload actually carries. Merging a full normalizeMessage() result would
+// overwrite an existing row's createdAt, model, attachments, parentId and
+// sourceIndex with empty defaults on every streamed delta.
+function messagePatch(raw, message) {
+    var value = object(raw);
+    var nested = object(value.message);
+    if (Object.keys(nested).length > 0)
+        value = Object.assign({}, nested, value);
+    function has() {
+        for (var i = 0; i < arguments.length; i++) {
+            var candidate = value[arguments[i]];
+            if (candidate !== undefined && candidate !== null)
+                return true;
+        }
+        return false;
+    }
+    var patch = { id: message.id };
+    if (has("role", "author", "sender"))
+        patch.role = message.role;
+    if (has("text", "content", "delta", "message"))
+        patch.text = message.text;
+    if (has("createdAt", "created_at", "timestamp", "time"))
+        patch.createdAt = message.createdAt;
+    if (has("updatedAt", "updated_at", "timestamp", "time"))
+        patch.updatedAt = message.updatedAt;
+    if (has("streaming", "partial"))
+        patch.streaming = message.streaming;
+    if (has("pending"))
+        patch.pending = message.pending;
+    if (has("error"))
+        patch.error = message.error;
+    if (has("model", "modelName"))
+        patch.model = message.model;
+    if (Array.isArray(value.attachments))
+        patch.attachments = message.attachments;
+    if (has("parentId", "parent_id", "parentMessageId", "parent_message_id"))
+        patch.parentId = message.parentId;
+    if (typeof value.order === "number" || typeof value.timelineOrder === "number"
+            || typeof value.sourceIndex === "number")
+        patch.order = message.order;
+    if (typeof value.sourceIndex === "number"
+            || typeof value.source_index === "number")
+        patch.sourceIndex = message.sourceIndex;
+    return patch;
+}
+
+// True once `text` has more than `limit` lines. Scans with indexOf and stops
+// early instead of allocating a split() array for every streamed update.
+function exceedsLineCount(text, limit) {
+    var value = string(text);
+    var max = number(limit, 0);
+    var lines = 1;
+    var at = value.indexOf("\n");
+    while (at >= 0) {
+        if (++lines > max)
+            return true;
+        at = value.indexOf("\n", at + 1);
+    }
+    return lines > max;
+}
+
+// Minimal keyed edit script turning the `current` keys into the `desired`
+// keys, for updating a ListModel in place. Rows whose key survives are kept
+// (so their delegates, focus and per-row state survive); only new rows are
+// inserted and only vanished or displaced rows removed. Ops apply in order:
+// {op: "remove", at, count}, {op: "insert", at, index}, {op: "keep", at, index},
+// where `index` addresses `desired`.
+function listSyncOps(current, desired) {
+    var model = array(current).slice();
+    var wanted = array(desired);
+    var ops = [];
+    var row = 0;
+    for (var i = 0; i < wanted.length; i++) {
+        var key = wanted[i];
+        if (row < model.length && model[row] === key) {
+            ops.push({ op: "keep", at: row, index: i });
+            row++;
+            continue;
+        }
+        var later = model.indexOf(key, row + 1);
+        if (later > row) {
+            ops.push({ op: "remove", at: row, count: later - row });
+            model.splice(row, later - row);
+            ops.push({ op: "keep", at: row, index: i });
+        } else {
+            ops.push({ op: "insert", at: row, index: i });
+            model.splice(row, 0, key);
+        }
+        row++;
+    }
+    if (model.length > row)
+        ops.push({ op: "remove", at: row, count: model.length - row });
+    return ops;
+}
+
 function renderableMessage(message) {
     if (!message || ["user", "assistant", "system"].indexOf(message.role) < 0)
         return false;
@@ -292,26 +412,27 @@ function applyMessageEvent(values, type, payload) {
         return normalizeMessages(payload);
     var current = array(values);
     var message = normalizeMessage(payload, current.length);
-    if (event === "message-delta" || event === "assistant-delta" || event === "stream-delta") {
-        var at = current.findIndex(function(item) { return item.id === message.id; });
-        if (at < 0) {
-            message.streaming = true;
-            return current.concat([message]);
-        }
-        var next = current.slice();
-        var previous = next[at];
-        next[at] = Object.assign({}, previous, message, {
-            text: string(previous.text) + string(message.text),
-            streaming: true
-        });
-        return next;
+    var delta = event === "message-delta" || event === "assistant-delta"
+        || event === "stream-delta";
+    var streaming = delta || event === "message-start" || event === "assistant-start"
+        ? true : event === "message-complete" || event === "message-completed"
+            || event === "assistant-complete" ? false : null;
+    var at = current.findIndex(function(item) { return item.id === message.id; });
+    if (at < 0) {
+        if (streaming !== null)
+            message.streaming = streaming;
+        return current.concat([message]);
     }
-    if (event === "message-start" || event === "assistant-start")
-        message.streaming = true;
-    if (event === "message-complete" || event === "message-completed"
-            || event === "assistant-complete")
-        message.streaming = false;
-    return upsertById(current, message);
+    // An existing row takes only the fields this event actually carries.
+    var next = current.slice();
+    var previous = next[at];
+    var patch = messagePatch(payload, message);
+    if (delta)
+        patch.text = string(previous.text) + string(message.text);
+    if (streaming !== null)
+        patch.streaming = streaming;
+    next[at] = Object.assign({}, previous, patch);
+    return next;
 }
 
 function normalizeTool(raw, index) {
@@ -915,12 +1036,16 @@ var exported = {
     firstString: firstString,
     canonicalStatus: canonicalStatus,
     normalizeConversation: normalizeConversation,
+    sameConversation: sameConversation,
     sortedConversations: sortedConversations,
     extractText: extractText,
     normalizeRole: normalizeRole,
     normalizeMessage: normalizeMessage,
     normalizeMessages: normalizeMessages,
+    messagePatch: messagePatch,
     applyMessageEvent: applyMessageEvent,
+    exceedsLineCount: exceedsLineCount,
+    listSyncOps: listSyncOps,
     normalizeTool: normalizeTool,
     applyToolEvent: applyToolEvent,
     historicalTools: historicalTools,

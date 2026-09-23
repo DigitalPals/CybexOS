@@ -76,11 +76,10 @@ Surface {
         active: root.visible
         onClaimed: {
             Hermes.setPopoverVisible(true);
-            if (Hermes.bridgeReady) {
-                Hermes.refreshRemoteStatus();
-                Hermes.refreshProviderStatus();
-            }
-            if (!Hermes.conversationsReady || Hermes.conversations.length === 0)
+            // refresh() re-checks remote and provider status and reloads the
+            // list, so each probe runs once per open rather than twice.
+            if (Hermes.bridgeReady || !Hermes.conversationsReady
+                    || Hermes.conversations.length === 0)
                 Hermes.refresh();
         }
         onReleased: {
