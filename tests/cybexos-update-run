@@ -110,6 +110,14 @@ apply_mock systemd-inhibit \
 apply_mock sudo \
   'set -euo pipefail' \
   'printf "%s\n" "$*" >>"$MOCK_PACKAGE_LOG"' \
+  'if [[ -n ${MOCK_SUDO_V_TICKET:-} ]]; then' \
+  '  if [[ $* == -v ]]; then : >"$MOCK_SUDO_V_TICKET"; exit 0; fi' \
+  '  [[ -e $MOCK_SUDO_V_TICKET ]] || exit 1' \
+  '  read -r -a stat_fields </proc/$$/stat' \
+  '  [[ ${stat_fields[5]} != "$$" ]] || exit 1' \
+  '  [[ ${1:-} != -n ]] || shift' \
+  '  exec "$@"' \
+  'fi' \
   '[[ -n ${MOCK_PACKAGE_SUCCESS:-} ]] || exit 99' \
   'if [[ -n ${MOCK_SUDO_TTY_ONLY:-} ]]; then' \
   '  read -r -a stat_fields </proc/$$/stat' \
@@ -187,6 +195,8 @@ export PATH="$mock_bin:$PATH"
 printf 'boot-a\n' >"$CYBEXOS_UPDATE_BOOT_ID_FILE"
 : >"$MOCK_PACKAGE_LOG"
 
+current_run_id() { cat "$XDG_STATE_HOME/cybexos/update/current"; }
+
 idle=$($backend status --json)
 [[ $(jq -r .state <<<"$idle") == idle ]]
 [[ $(jq -r .bootId <<<"$idle") == boot-a ]]
@@ -237,6 +247,22 @@ $backend start --json --no-flatpak >"$fixture/unauthenticated.json" \
 unauthenticated_rc=$?
 set -e
 [[ $unauthenticated_rc -eq 77 ]]
+# The terminal client cannot prompt from inside start_run's command
+# substitution, so it authenticates first and then launches a system unit.
+# A pty stands in for the terminal; attach is cut short by the timeout.
+: >"$MOCK_PACKAGE_LOG"
+set +e
+MOCK_SUDO_V_TICKET="$fixture/sudo-ticket" timeout 5 python3 -c \
+  'import pty, sys; pty.spawn(sys.argv[1:])' "$backend" run --no-flatpak \
+  </dev/null >"$fixture/terminal-run.out" 2>&1
+set -e
+grep -Fxq -- '-v' "$MOCK_PACKAGE_LOG"
+grep -Fq 'Authenticate once' "$fixture/terminal-run.out"
+terminal_id=$(current_run_id)
+[[ $(jq -r .systemUnit "$XDG_STATE_HOME/cybexos/update/logs/$terminal_id/status.json") == true ]]
+export MOCK_PACKAGE_SUCCESS=1
+$backend cancel "$terminal_id" >/dev/null
+unset MOCK_PACKAGE_SUCCESS
 export CYBEXOS_UPDATE_ASSUME_USER_UNIT=1
 : >"$MOCK_PACKAGE_LOG"
 : >"$MOCK_SYSTEMD_LOG"

@@ -1179,6 +1179,15 @@ run_client() {
       return 0
     fi
   done
+  # start_run runs inside a command substitution and cannot prompt. Unless
+  # sudo already works for it, authenticate here in the terminal, so that it
+  # can launch the system unit instead of failing with "authentication is
+  # required" in the very terminal it asks for.
+  if [[ ${CYBEXOS_UPDATE_ASSUME_USER_UNIT:-0} != 1 && -t 0 ]] \
+      && ! detached_sudo_available && ! sudo -n true >/dev/null 2>&1; then
+    printf 'Authenticate once to start the durable system update worker.\n'
+    sudo -v || return
+  fi
   if output=$(start_run --json "$@"); then
     rc=0
   else
