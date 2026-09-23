@@ -8,9 +8,24 @@ repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 backend="$repo_root/assets/scripts/cybexos-update-run"
 fixture=$(mktemp -d)
 
+# Stop a process and every descendant. Background clients and the gated mocks
+# they launch inherit this script's stderr, so an orphan would keep the source
+# gate's output capture open forever after a failed assertion.
+kill_tree() {
+  local pid=$1 child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do
+    kill_tree "$child"
+  done
+  kill "$pid" 2>/dev/null || true
+}
+
 cleanup() {
-  local rc=$? file
+  local rc=$? file pid
   trap - EXIT
+  for pid in $(jobs -p); do
+    kill_tree "$pid"
+  done
+  wait 2>/dev/null || true
   if ((rc != 0)); then
     printf 'cybexos-update-run fixture failed; retained diagnostics follow\n' >&2
     while IFS= read -r -d '' file; do
@@ -49,7 +64,10 @@ apply_mock systemctl \
   '  [[ -n $unit && -e $MOCK_ACTIVE_DIR/$unit ]] && state=active' \
   '  if [[ -n ${MOCK_SHOW_GATE:-} && ! -e $MOCK_SHOW_GATE.used ]]; then' \
   '    : >"$MOCK_SHOW_GATE.used"; : >"$MOCK_SHOW_GATE.entered"' \
-  '    while [[ ! -e $MOCK_SHOW_GATE.release ]]; do sleep 0.01; done' \
+  '    while [[ ! -e $MOCK_SHOW_GATE.release ]]; do' \
+  '      [[ -d ${MOCK_SHOW_GATE%/*} ]] || exit 1' \
+  '      sleep 0.01' \
+  '    done' \
   '  fi' \
   '  printf "%s\n" "$state"' \
   'elif [[ " $* " == *" stop "* ]]; then' \
@@ -64,7 +82,10 @@ apply_mock systemd-run \
   '[[ -n $unit ]]' \
   'if [[ -n ${MOCK_BLOCK_GATE:-} ]]; then' \
   '  : >"$MOCK_BLOCK_GATE.entered"' \
-  '  while [[ ! -e $MOCK_BLOCK_GATE.release ]]; do sleep 0.01; done' \
+  '  while [[ ! -e $MOCK_BLOCK_GATE.release ]]; do' \
+  '    [[ -d ${MOCK_BLOCK_GATE%/*} ]] || exit 1' \
+  '    sleep 0.01' \
+  '  done' \
   'fi' \
   ': >"$MOCK_ACTIVE_DIR/$unit"' \
   'printf "%s\n" "$unit" >>"$MOCK_SYSTEMD_LOG"'
@@ -87,7 +108,10 @@ apply_mock dnf \
   'if [[ " $* " == *" needs-restarting "* ]]; then' \
   '  if [[ -n ${MOCK_REBOOT_GATE:-} ]]; then' \
   '    : >"$MOCK_REBOOT_GATE.entered"' \
-  '    while [[ ! -e $MOCK_REBOOT_GATE.release ]]; do sleep 0.01; done' \
+  '    while [[ ! -e $MOCK_REBOOT_GATE.release ]]; do' \
+  '      [[ -d ${MOCK_REBOOT_GATE%/*} ]] || exit 1' \
+  '      sleep 0.01' \
+  '    done' \
   '  fi' \
   '  printf "%s\n" "${MOCK_REBOOT_JSON:-[]}"' \
   '  exit "${MOCK_REBOOT_RC:-2}"' \
@@ -160,14 +184,17 @@ expected_auth_probes=2
 export MOCK_BLOCK_GATE="$fixture/launch"
 $backend start --json --no-flatpak >"$fixture/first.json" &
 first_pid=$!
-for _ in {1..200}; do
+for _ in {1..1000}; do
   [[ -e $MOCK_BLOCK_GATE.entered ]] && break
   sleep 0.01
 done
 [[ -e $MOCK_BLOCK_GATE.entered ]]
 
+# The blocked first client never releases the lock by itself, so a second
+# client that waited instead of resolving the published run would still time
+# out. The bound only has to survive a loaded machine.
 set +e
-timeout 1 "$backend" start --json --no-flatpak \
+timeout 10 "$backend" start --json --no-flatpak \
   >"$fixture/second.json" 2>"$fixture/second.err"
 second_rc=$?
 set -e
@@ -183,7 +210,7 @@ export MOCK_SHOW_GATE="$fixture/show"
 $backend cancel "$first_id" >"$fixture/cancel-race.out" \
   2>"$fixture/cancel-race.err" &
 cancel_pid=$!
-for _ in {1..200}; do
+for _ in {1..1000}; do
   [[ -e $MOCK_SHOW_GATE.entered ]] && break
   sleep 0.01
 done
@@ -320,7 +347,7 @@ recommended_id=$(jq -er .id <<<"$recommended_start")
 [[ $(jq -r .rebootRecommendation <<<"$recommended_start") == pending ]]
 $backend _worker "$recommended_id" --no-flatpak &
 recommended_worker=$!
-for _ in {1..200}; do
+for _ in {1..1000}; do
   [[ -e $MOCK_REBOOT_GATE.entered ]] && break
   sleep 0.01
 done
