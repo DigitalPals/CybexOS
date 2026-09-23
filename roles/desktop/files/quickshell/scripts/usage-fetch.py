@@ -27,6 +27,7 @@ import math
 import os
 import re
 import shutil
+import signal
 import ssl
 import stat
 import subprocess
@@ -43,6 +44,15 @@ from email.utils import parsedate_to_datetime
 
 TIMEOUT = 20
 REFRESH_TIMEOUT = 30
+# The whole run, not each call. Socket timeouts do not cover DNS, and a
+# pool of slow accounts adds up, but the shell must always get an answer.
+# This sits above the slowest legitimate path (two Claude refreshes and two
+# usage reads) and below the shell's own 180 s watchdog.
+DEADLINE_SECONDS = 150.0
+# How long to wait for another run's cache lock before giving up on this one.
+LOCK_WAIT_SECONDS = 10.0
+# Accounts of one provider read at once; providers already run side by side.
+ACCOUNT_WORKERS = 4
 
 FIVE_HOURS = 5 * 3600
 SEVEN_DAYS = 7 * 24 * 3600
@@ -102,7 +112,8 @@ def http_request(url, headers, method="GET", body=None, ssl_context=None):
         with open_url(req, ssl_context) as resp:
             return resp.status, resp.read(), resp.headers
     except urllib.error.HTTPError as e:
-        return e.code, e.read(), e.headers
+        with e:
+            return e.code, e.read(), e.headers
     except Exception as e:  # DNS, timeout, TLS…
         return None, str(e), {}
 
@@ -189,6 +200,115 @@ def first_text(mapping, *keys):
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+
+# ----------------------------------------------------------- Run lifetime
+
+_emit_lock = threading.Lock()
+_emitted = False
+_child_lock = threading.Lock()
+_child = None
+
+
+def emit(write):
+    """Write this run's one answer, unless the deadline already has."""
+    global _emitted
+    with _emit_lock:
+        if _emitted:
+            return False
+        write()
+        sys.stdout.flush()
+        _emitted = True
+        return True
+
+
+def kill_child_group():
+    """Kill the Claude CLI's whole process group, if one is running."""
+    with _child_lock:
+        child = _child
+    if child is None or child.returncode is not None:
+        return
+    try:
+        os.killpg(child.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def deadline_seconds():
+    # The override only lets the source suite exercise the real deadline
+    # without waiting for it.
+    raw = os.environ.get("CYBEXOS_USAGE_FETCH_TEST_DEADLINE", "")
+    if not raw:
+        return DEADLINE_SECONDS
+    try:
+        return min(5.0, max(0.05, float(raw)))
+    except ValueError:
+        return DEADLINE_SECONDS
+
+
+def arm_deadline(seconds, testing_connection):
+    """Answer and end the process once ``seconds`` have passed.
+
+    The main thread may be parked in DNS resolution or a socket read that no
+    signal interrupts, so this thread answers for it: a connection test gets
+    its usual failure object, a fetch a nonzero status with the reason on
+    stderr (the shell keeps its last readings and shows the reason).
+    """
+    message = f"Usage fetch timed out after {round(seconds)} s."
+
+    def expire():
+        global _emitted
+        with _emit_lock:
+            if _emitted:
+                return
+            _emitted = True
+            kill_child_group()
+            if testing_connection:
+                json.dump({"success": False, "kind": "timeout",
+                           "message": "The connection test timed out."}, sys.stdout)
+                status = 0
+            else:
+                sys.stderr.write(message + "\n")
+                status = 124
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(status)
+
+    timer = threading.Timer(seconds, expire)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
+def terminate(signum, _frame):
+    # The Claude CLI runs in its own session, beyond a signal sent to this
+    # helper, so a SIGTERM (the shell's watchdog, or the shell stopping) must
+    # reach it explicitly. Nothing is left worth unwinding for.
+    kill_child_group()
+    os._exit(128 + signum)
+
+
+def acquire_lock(fd, wait=None):
+    """Take the cache lock, waiting a bounded time for another run."""
+    limit = time.monotonic() + (LOCK_WAIT_SECONDS if wait is None else wait)
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            if time.monotonic() >= limit:
+                return False
+            time.sleep(0.1)
+
+
+def map_accounts(fetch, items):
+    """``fetch`` each item, ACCOUNT_WORKERS at a time, preserving order."""
+    items = list(items)
+    if len(items) <= 1:
+        return [fetch(item) for item in items]
+    with ThreadPoolExecutor(max_workers=min(ACCOUNT_WORKERS, len(items)),
+                            thread_name_prefix="usage-account") as pool:
+        return list(pool.map(fetch, items))
 
 
 # ---------------------------------------------------------------- State/cache
@@ -369,6 +489,37 @@ def update_cached_claude_metadata(state):
         last_ok["plan"] = claude_plan(oauth)
 
 
+def run_refresh_cli(command, environment):
+    """Run the Claude CLI in its own session; return its exit status.
+
+    ``subprocess.run`` kills only its direct child on a timeout, so anything
+    the CLI started would outlive it, still holding the refresh token. Its own
+    process group lets a timeout, this helper's deadline, or a SIGTERM end all
+    of it. The CLI's output is never read (it may hold credential material),
+    so there are no pipes for a straggler to keep open.
+    """
+    global _child
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=environment,
+        start_new_session=True,
+    )
+    with _child_lock:
+        _child = process
+    try:
+        return process.wait(timeout=REFRESH_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        kill_child_group()
+        process.wait()
+        raise
+    finally:
+        with _child_lock:
+            _child = None
+
+
 def refresh_claude_oauth(path, oauth):
     """Ask Claude Code to exchange its own refresh token and rewrite creds."""
     refresh_token = oauth.get("refreshToken")
@@ -401,20 +552,13 @@ def refresh_claude_oauth(path, oauth):
     environment["NO_COLOR"] = "1"
 
     try:
-        completed = subprocess.run(
-            [executable, "auth", "login", "--claudeai"],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=environment,
-            timeout=REFRESH_TIMEOUT,
-            check=False,
-        )
+        returncode = run_refresh_cli(
+            [executable, "auth", "login", "--claudeai"], environment)
     except subprocess.TimeoutExpired:
         return None, err("refresh", "Claude Code token refresh timed out.")
     except OSError:
         return None, err("refresh", "Claude Code token refresh could not start.")
-    if completed.returncode != 0:
+    if returncode != 0:
         # Deliberately do not surface CLI output: authentication diagnostics
         # are not guaranteed to be free of credential material.
         return None, err("refresh", "Claude Code could not refresh the saved login.")
@@ -1206,10 +1350,10 @@ def fetch_cliproxy_provider(provider, entries, client):
                 and entry.get("disabled") is not True]
     if not matching:
         return err("nocreds", f"No enabled {provider} credentials in CLIProxyAPI.")
-    readings = [decorate_cliproxy_reading(
-                    provider, entry,
-                    fetch_cliproxy_account(provider, entry, client), position)
-                for position, entry in enumerate(matching)]
+    readings = map_accounts(
+        lambda item: decorate_cliproxy_reading(
+            provider, item[1], fetch_cliproxy_account(provider, item[1], client), item[0]),
+        enumerate(matching))
     return summarize_accounts(readings, "cliproxy")
 
 
@@ -1469,29 +1613,33 @@ def sub2api_codex_snapshot(entry):
     return parse_sub2api_usage(data)
 
 
+def sub2api_account_reading(provider, position, entry, client):
+    account_id = entry.get("id")
+    if type(account_id) is not int or account_id <= 0:
+        value = err("parse", "Sub2API account has an invalid ID.")
+    elif provider == "codex":
+        value = sub2api_codex_snapshot(entry)
+    else:
+        data, failure = client.api_json(f"/accounts/{account_id}/usage")
+        value = failure or parse_sub2api_usage(data)
+    value["id"] = "account-" + hashlib.sha256(
+        f"sub2api:{account_id}".encode()).hexdigest()[:16]
+    value["label"] = mask_emails_in_label(first_text(entry, "name")) or f"Account {position + 1}"
+    last_used = parse_rfc3339(entry.get("last_used_at"))
+    if last_used is not None and 0 < last_used <= time.time():
+        value["lastUsedAt"] = last_used
+    return value
+
+
 def fetch_sub2api_provider(provider, entries, client):
     matching = [entry for entry in entries
                 if SUB2API_PLATFORMS.get(entry.get("platform")) == provider
                 and entry.get("status") != "disabled"]
     if not matching:
         return err("nocreds", f"No enabled {provider} accounts in Sub2API.")
-    readings = []
-    for position, entry in enumerate(matching):
-        account_id = entry.get("id")
-        if type(account_id) is not int or account_id <= 0:
-            value = err("parse", "Sub2API account has an invalid ID.")
-        elif provider == "codex":
-            value = sub2api_codex_snapshot(entry)
-        else:
-            data, failure = client.api_json(f"/accounts/{account_id}/usage")
-            value = failure or parse_sub2api_usage(data)
-        value["id"] = "account-" + hashlib.sha256(
-            f"sub2api:{account_id}".encode()).hexdigest()[:16]
-        value["label"] = mask_emails_in_label(first_text(entry, "name")) or f"Account {position + 1}"
-        last_used = parse_rfc3339(entry.get("last_used_at"))
-        if last_used is not None and 0 < last_used <= time.time():
-            value["lastUsedAt"] = last_used
-        readings.append(value)
+    readings = map_accounts(
+        lambda item: sub2api_account_reading(provider, item[0], item[1], client),
+        enumerate(matching))
     return summarize_accounts(readings, "sub2api")
 
 
@@ -1699,13 +1847,16 @@ def main():
     parser.add_argument("--test-connection", action="store_true",
                         help="test management access without reading or writing the usage cache")
     args = parser.parse_args()
+    if args.test_connection and args.source == "direct":
+        parser.error("--test-connection requires a server source")
+    signal.signal(signal.SIGTERM, terminate)
+    arm_deadline(deadline_seconds(), args.test_connection)
     if args.test_connection:
-        if args.source == "direct":
-            parser.error("--test-connection requires a server source")
         address = args.sub2api_url if args.source == "sub2api" else args.cliproxy_url
         verify_tls = not (args.sub2api_insecure if args.source == "sub2api" else args.cliproxy_insecure)
-        json.dump(test_connection(args.source, address, verify_tls), sys.stdout)
-        return
+        result = test_connection(args.source, address, verify_tls)
+        emit(lambda: json.dump(result, sys.stdout))
+        return 0
 
     source_fingerprint = "direct"
     if args.source == "sub2api":
@@ -1736,7 +1887,12 @@ def main():
         os.fchmod(lock_fd, 0o600)
         lock = os.fdopen(lock_fd, "r+")
         lock_fd = None
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        if not acquire_lock(lock.fileno()):
+            # Another run holds the cache, and may be mid-way through a
+            # Claude refresh: a second one must not start beside it.
+            lock.close()
+            sys.stderr.write("Another usage fetch is still running.\n")
+            return 75
         state = load_state(path)
     except OSError:
         if lock is not None:
@@ -1766,19 +1922,25 @@ def main():
             claude_state["nextAttemptAt"] = 0
     state["claudeAutoRefresh"] = args.source == "direct" and args.refresh_claude
 
-    try:
-        result = fetch_all_resilient(providers, state)
+    def save_and_print():
         if lock is not None:
             try:
                 save_state(path, state)
             except (OSError, TypeError, ValueError):
                 pass
+        json.dump(result, sys.stdout)
+
+    try:
+        result = fetch_all_resilient(providers, state)
+        # Under the emission lock, so the deadline cannot cut a state write
+        # in half; once it has answered, this run's results are dropped.
+        emit(save_and_print)
     finally:
         if lock is not None:
             fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
             lock.close()
-    json.dump(result, sys.stdout)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
