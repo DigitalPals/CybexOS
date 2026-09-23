@@ -79,6 +79,8 @@ def main():
     parser.add_argument("--memory", type=int, default=24576, help="Builder VM RAM in MiB")
     parser.add_argument("--cpus", type=int, default=8)
     parser.add_argument("--debug-on-failure", action="store_true", help="Keep a failed builder running for inspection until interrupted")
+    parser.add_argument("--compress", choices=("xz", "zstd"), default="xz",
+                        help="Live root compression; zstd builds faster, larger development images")
     args = parser.parse_args()
     for command in ("qemu-img", "qemu-system-x86_64", "cloud-localds", "ssh", "ssh-keygen", "scp"):
         if not shutil.which(command):
@@ -148,7 +150,8 @@ def main():
                 run([*ssh, "tar xzf - -C /home/builder/source"], stdin=archive)
             print("Building desktop RPMs and the live ISO in Fedora…", flush=True)
             with (output / "build.log").open("w") as log:
-                build = subprocess.Popen([*ssh, "sudo bash /home/builder/source/image/build-in-guest"],
+                build = subprocess.Popen([*ssh, f"sudo env CYBEXOS_SQUASHFS_COMPRESSION={args.compress} "
+                                          "bash /home/builder/source/image/build-in-guest"],
                                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
                 for line in build.stdout:
                     print(line, end="", flush=True)

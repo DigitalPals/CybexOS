@@ -5,6 +5,7 @@ import configparser
 import hashlib
 import json
 import gc
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -86,7 +87,13 @@ creator = imgcreate.LiveImageCreator(
     kickstart, "CybexOS-Live-44", fslabel="CYBEXOS-LIVE-44", releasever="44",
     tmpdir=str(build / "tmp"), title="CybexOS", product="CybexOS",
 )
-creator.compress_args = "xz"
+# image/build --compress zstd trades a larger ISO for a faster development
+# build. Upstream livecd-tools also writes this value into its dracut
+# configuration as compress=, so it must stay a bare compressor name.
+creator.compress_args = os.environ.get("CYBEXOS_SQUASHFS_COMPRESSION", "xz")
+if creator.compress_args not in ("xz", "zstd"):
+    raise RuntimeError(f"Unsupported squashfs compression: {creator.compress_args}")
+logging.info("Compressing the live root with %s", creator.compress_args)
 try:
     creator.mount(cachedir=str(build / "cache"))
     shutil.copyfile(source / "dracut-live.conf", Path(creator._instroot) / "etc/dracut.conf.d/99-liveos.conf")
