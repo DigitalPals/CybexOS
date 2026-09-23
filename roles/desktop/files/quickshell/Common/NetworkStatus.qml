@@ -117,8 +117,15 @@ Singleton {
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["timeout", "5s", "env", "LC_ALL=C", "nmcli", "--terse",
+        command: ["timeout", "5s", "nmcli", "--terse",
             "--fields", "STATE", "general", "status"]
+        // The parsed output must be untranslated. Setting that here rather
+        // than through `env` saves a process on every NetworkManager event.
+        // QML object literals convert to QVariantHash at runtime; the shipped
+        // Quickshell type description reports them as QVariantMap to qmllint.
+        // qmllint disable incompatible-type
+        environment: ({ LC_ALL: "C" })
+        // qmllint enable incompatible-type
 
         stdout: StdioCollector {
             onStreamFinished: statusProc.body = text
@@ -158,7 +165,10 @@ Singleton {
         property int lastExit: 0
         property string lastLoggedFailure: ""
 
-        command: ["env", "LC_ALL=C", "nmcli", "monitor"]
+        command: ["nmcli", "monitor"]
+        // qmllint disable incompatible-type
+        environment: ({ LC_ALL: "C" })
+        // qmllint enable incompatible-type
         running: true
 
         stdout: SplitParser {

@@ -1173,8 +1173,14 @@ Singleton {
         // The signature taken before this read started.
         property string signature: ""
 
-        command: ["timeout", "45s", "env", "LC_ALL=C", "dnf", "--quiet",
+        command: ["timeout", "45s", "dnf", "--quiet",
             "--cacheonly", "check-update"]
+        // Untranslated output, without an `env` process per check.
+        // QML object literals convert to QVariantHash at runtime; the shipped
+        // Quickshell type description reports them as QVariantMap to qmllint.
+        // qmllint disable incompatible-type
+        environment: ({ LC_ALL: "C" })
+        // qmllint enable incompatible-type
 
         stdout: StdioCollector {
             onStreamFinished: dnfProc.body = text
@@ -1208,8 +1214,11 @@ Singleton {
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["timeout", "45s", "env", "LC_ALL=C", "flatpak", "remote-ls",
+        command: ["timeout", "45s", "flatpak", "remote-ls",
             "--updates", "--app", "--columns=name"]
+        // qmllint disable incompatible-type
+        environment: ({ LC_ALL: "C" })
+        // qmllint enable incompatible-type
 
         stdout: StdioCollector {
             onStreamFinished: flatpakProc.body = text
@@ -1243,8 +1252,11 @@ Singleton {
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["timeout", "45s", "env", "LC_ALL=C", "fwupdmgr",
+        command: ["timeout", "45s", "fwupdmgr",
             "get-updates", "--json"]
+        // qmllint disable incompatible-type
+        environment: ({ LC_ALL: "C" })
+        // qmllint enable incompatible-type
 
         stdout: StdioCollector {
             onStreamFinished: firmwareProc.body = text
