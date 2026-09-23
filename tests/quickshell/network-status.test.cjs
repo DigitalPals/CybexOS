@@ -87,7 +87,7 @@ test("weather and update startup checks wait for the shared online edge", () => 
         /target: NetworkStatus[\s\S]*?function onOnlineChanged\(\)[\s\S]*?root\.refresh\(\)/);
     assert.match(weather, /running: NetworkStatus\.online/);
     assert.match(weather,
-        /Component\.onCompleted:\s*\{[\s\S]*?if \(NetworkStatus\.online\)[\s\S]*?refresh\(\)/,
+        /Component\.onCompleted:\s*\{[\s\S]*?if \(NetworkStatus\.online && wanted\)[\s\S]*?refresh\(\)/,
         "the startup fallback must retain the same online guard as the shared edge");
 
     assert.match(updates,

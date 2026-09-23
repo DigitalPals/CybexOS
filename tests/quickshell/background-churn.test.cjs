@@ -71,7 +71,39 @@ test("an online edge does not repeat a fresh complete update check", () => {
         /function onOnlineChanged\(\)[\s\S]{0,500}?root\.error !== ""[\s\S]{0,120}?checkIsFresh/);
     const weather = read("Common/Weather.qml");
     assert.match(weather,
-        /function onOnlineChanged\(\)[\s\S]{0,500}?Date\.now\(\) - root\.updatedAt < 600000/);
+        /function onOnlineChanged\(\)[\s\S]{0,500}?!root\.stale\(600000\)/);
+    assert.match(weather, /function stale\(maxAgeMs\) \{[\s\S]{0,200}?Date\.now\(\) - updatedAt >= maxAgeMs/);
+});
+
+test("weather is fetched only for a set location someone is shown", () => {
+    const weather = read("Common/Weather.qml");
+    const sheet = read("Popovers/DaySheetPopover.qml");
+    const vm = require("node:vm");
+
+    const locationSet = weather.match(/readonly property bool locationSet: ([^\n]*\n[^\n]*)/)[1];
+    const set = (lat, lon, place) => vm.runInNewContext(locationSet,
+        { Settings: { modOpts: { weather: { lat, lon, place } } } });
+    assert.equal(set(0, 0, ""), false, "the shipped default is not a location");
+    assert.equal(set(0, 0, "Amsterdam"), false, "a label alone fetches nothing");
+    assert.equal(set(52.37, 4.9, ""), true);
+    assert.equal(set(0, 4.9, "Somewhere"), true);
+
+    assert.match(weather,
+        /readonly property bool wanted: locationSet && \(widgetOn \|\| watchers > 0\)/);
+    assert.match(weather, /hit = mods\[col\]\.find\(m => m\.id === "weather"\)/);
+    assert.match(weather,
+        /interval: root\.pollIntervalSecs \* 1000\s*running: NetworkStatus\.online && root\.wanted && !Activity\.idle/);
+    assert.match(weather,
+        /interval: root\.retryIntervalSecs \* 1000\s*running: NetworkStatus\.online && root\.wanted && !Activity\.idle/);
+    assert.match(weather,
+        /target: Activity[\s\S]{0,80}function onResumed\(\)[\s\S]{0,160}root\.stale\(root\.pollIntervalSecs \* 1000\)\)\s*root\.refresh\(\)/);
+    assert.match(weather, /function acquire\(\) \{\s*watchers\+\+;[\s\S]{0,120}stale\(600000\)\)\s*refresh\(\)/);
+    assert.match(weather, /onLocationSetChanged: \{[\s\S]{0,300}?ready = false;/,
+        "clearing the location drops the old place's sky");
+
+    assert.match(sheet, /onClaimed: \{[^}]*Weather\.acquire\(\);/);
+    assert.match(sheet, /onReleased: \{[^}]*Weather\.release\(\);/);
+    assert.match(sheet, /if \(!Weather\.locationSet\)\s*return "Set a location in Settings";/);
 });
 
 test("the idle-inhibit countdown ticks on minute boundaries", () => {
@@ -130,7 +162,7 @@ test("the calendar polls only for an open Day sheet, and never while idle", () =
     assert.match(calendar, /if \(root\.requestIsDefault && root\.watchers > 0\)\s*root\.refreshDefault\(\)/,
         "midnight moves the window only for a sheet that is showing it");
     assert.match(sheet,
-        /Claim \{\s*active: root\.visible\s*onClaimed: Calendar\.acquire\(\)\s*onReleased: Calendar\.release\(\)/);
+        /Claim \{\s*active: root\.visible\s*onClaimed: \{[^}]*Calendar\.acquire\(\);[^}]*\}\s*onReleased: \{[^}]*Calendar\.release\(\);/);
     assert.doesNotMatch(sheet, /Component\.onCompleted:[\s\S]{0,80}refreshDefault/,
         "a latched sheet would never refresh again; the claim follows visibility");
     // Nothing else reads events: the menubar clock and reminders do not.
