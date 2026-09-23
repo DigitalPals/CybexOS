@@ -77,11 +77,11 @@ test("saving and loading enumerate the schema rather than restating it", () => {
         "snapshot() has grown a hand-written list again");
 
     const body = functionBody("applyLoaded(rawText)");
-    assert.match(body, /for \(const key of Object\.keys\(root\.defaults\)\)\s*\n\s*root\[key\] = merged\[key\];/,
+    assert.match(body, /for \(const key of Object\.keys\(root\.defaults\)\)\s*\n\s*assignChanged\(key, merged\[key\]\);/,
         "applyLoaded() must loop the schema");
     // modOpts is the one key that is not a straight copy, and it has to be
     // assigned after the loop or the env seed is overwritten by it.
-    const loopAt = body.indexOf("root[key] = merged[key]");
+    const loopAt = body.indexOf("assignChanged(key, merged[key])");
     const seedAt = body.indexOf("seedWeatherFromEnv");
     assert.ok(loopAt > 0 && seedAt > loopAt,
         "the modOpts env seed must run after the schema loop, not before");

@@ -72,7 +72,7 @@ function settingsHarness() {
     context.defaults = H.defaults();
     Object.assign(context, H.defaults());
     vm.createContext(context);
-    for (const name of ["snapshot", "seedWeatherFromEnv", "protectNewerFile",
+    for (const name of ["snapshot", "seedWeatherFromEnv", "protectNewerFile", "assignChanged",
             "applyLoaded", "handleLoadFailure", "saveNow", "set"])
         vm.runInContext(functionSource(source, name), context);
     return { context, calls };
@@ -96,6 +96,18 @@ test("our own save echoes back as a no-op, byte for byte", () => {
     context.applyLoaded(external);
     assert.equal(calls.applied, 2);
     assert.equal(context.scrollFactor, 1.2);
+});
+
+test("an external edit leaves unchanged var keys untouched", () => {
+    const { context } = settingsHarness();
+    context.applyLoaded(H.serialize(H.defaults()));
+    const mods = context.mods;
+    const modOpts = context.modOpts;
+    // Each var-key reassignment notifies and rebuilds every bar module.
+    context.applyLoaded(H.serialize(Object.assign(H.defaults(), { scrollFactor: 1.2 })));
+    assert.equal(context.scrollFactor, 1.2);
+    assert.equal(context.mods, mods, "an unchanged mods was reassigned");
+    assert.equal(context.modOpts, modOpts, "an unchanged modOpts was reassigned");
 });
 
 test("an empty or partial file mid-session is re-read, not applied", () => {

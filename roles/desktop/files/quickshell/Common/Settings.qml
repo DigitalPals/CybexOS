@@ -484,6 +484,11 @@ Singleton {
         });
     }
 
+    function assignChanged(key, value) {
+        if (JSON.stringify(root[key]) !== JSON.stringify(value))
+            root[key] = value;
+    }
+
     function applyLoaded(rawText) {
         initialLoadHandled = true;
         const result = SettingsHelpers.parse(rawText);
@@ -532,12 +537,15 @@ Singleton {
         saveTimer.stop();
         savePending = false;
         clearUndo();
+        // An external edit usually touches one key. The var keys (mods,
+        // modOpts, …) notify on every assignment, and each notification
+        // rebuilds their consumers, so unchanged values are left alone.
         for (const key of Object.keys(root.defaults))
-            root[key] = merged[key];
+            assignChanged(key, merged[key]);
         // The one key that is not a straight copy: a file predating modOpts
         // (or no file at all) still takes the retired QS_WEATHER_* env
         // configuration on its way in.
-        modOpts = seedWeatherFromEnv(parsed, merged.modOpts);
+        assignChanged("modOpts", seedWeatherFromEnv(parsed, merged.modOpts));
         ready = true;
         migrationPending = parsed !== null && parsed.v !== SettingsHelpers.VERSION;
         firstRun = result.status === "empty";
