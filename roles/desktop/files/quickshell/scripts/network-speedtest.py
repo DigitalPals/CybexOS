@@ -192,10 +192,13 @@ def traffic_arguments(
 ) -> list[str]:
     arguments = curl_prefix(interface, duration + 3) + ["--output", "/dev/null"]
     if direction == "upload":
+        # --upload-file streams the body from disk; --data-binary @file read
+        # the whole file into every parallel curl first (~135 MB each). The
+        # request keeps its POST method, Content-Type and Content-Length.
         arguments += [
             "--request", "POST",
             "--header", "Content-Type: application/octet-stream",
-            "--data-binary", f"@{upload_path}",
+            "--upload-file", upload_path,
         ]
     arguments.append(url)
     return arguments

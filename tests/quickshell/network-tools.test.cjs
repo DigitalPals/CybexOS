@@ -427,6 +427,16 @@ for _ in range(40):
         assert.ok(curlCalls.length >= 4, "parallel workers should sustain both phases");
         assert.ok(curlCalls.every(call => call.includes("--interface")
             && call[call.indexOf("--interface") + 1] === "eth0"));
+        // Uploads stream the scratch file; `--data-binary @file` made each
+        // parallel curl hold the whole 64 MB body in memory.
+        const uploads = curlCalls.filter(call => call.includes("POST"));
+        assert.ok(uploads.length > 0);
+        for (const call of uploads) {
+            assert.ok(!call.includes("--data-binary"), JSON.stringify(call));
+            const body = call[call.indexOf("--upload-file") + 1];
+            assert.match(body, /quickshell-speedtest-/);
+            assert.ok(call.includes("Content-Type: application/octet-stream"));
+        }
     } finally {
         base.cleanup();
     }
