@@ -62,6 +62,9 @@ Singleton {
     property string credentialFingerprint: ""
     property var ticketRequest: null
     property var descriptorRequest: null
+    // The session whose environment descriptor is already loaded. It does not
+    // change within one, so a retry does not fetch it again.
+    property int descriptorEpoch: -1
     property string pendingSocketUrl: ""
     property int pendingSocketEpoch: -1
 
@@ -513,6 +516,8 @@ Singleton {
     }
 
     function fetchDescriptor(epoch) {
+        if (descriptorEpoch === epoch)
+            return;
         if (descriptorRequest) {
             descriptorRequest.onreadystatechange = null;
             descriptorRequest.abort();
@@ -537,6 +542,7 @@ Singleton {
                     ? d.serverVersion : root.serverVersion;
                 if (d.capabilities && typeof d.capabilities === "object")
                     root.environmentCapabilities = Object.assign({}, d.capabilities);
+                root.descriptorEpoch = epoch;
             } catch (e) {
                 // Optional metadata: the shell works without it, and the
                 // connection attempt this rode along with reports its own
@@ -560,10 +566,38 @@ Singleton {
             socketLoader.item.active = false;
         if (state !== "signed-out" && state !== "cloud-empty")
             state = "offline";
+        // Offline, another attempt cannot succeed; unattended, nobody would
+        // see it. Leave the timer off: the edge that ends the hold
+        // (resumeReconnect) starts the next attempt.
+        if (!enabled || retryHold(false) !== "")
+            return;
         retryTimer.interval = retrySecs * 1000;
         retryTimer.epoch = sessionEpoch;
         retrySecs = Math.min(retrySecs * 2, 120);
         retryTimer.restart();
+    }
+
+    // Why an automatic reconnect should wait; see Helpers.reconnectHold.
+    // Read fresh at each decision rather than bound: the edges that end a
+    // hold arrive while bindings over them may not have settled yet, which
+    // is also why the resume edge passes `resumed` instead of reading idle.
+    function retryHold(resumed) {
+        return Helpers.reconnectHold(NetworkStatus.known, NetworkStatus.online,
+            Helpers.isLoopbackOrigin(host), resumed ? false : Activity.idle);
+    }
+
+    // A hold just ended (or the user came back to a long backoff): try now
+    // rather than waiting out a timer that scheduleRetry may never have armed.
+    // Only a link that is down for a transient reason qualifies; signed-out
+    // and a missing WebSocket module stay as they are.
+    function resumeReconnect(resetBackoff, resumed) {
+        if (!enabled || !paired || state !== "offline" || websocketsMissing
+                || retryHold(resumed) !== "")
+            return;
+        retryTimer.stop();
+        if (resetBackoff)
+            retrySecs = 5;
+        connect();
     }
 
     // The link carried real work — T3Code calls this on the first shell
@@ -586,7 +620,9 @@ Singleton {
         id: retryTimer
         property int epoch: -1
         onTriggered: {
-            if (epoch === root.sessionEpoch)
+            // A hold that began while this was pending: resumeReconnect
+            // starts the attempt when it ends.
+            if (epoch === root.sessionEpoch && root.retryHold(false) === "")
                 root.connect();
         }
     }
@@ -713,6 +749,32 @@ Singleton {
                 retryTimer.stop();
                 root.connect();
             }
+        }
+    }
+
+    // The edges that end a hold. Regaining the network also starts the
+    // backoff over: the failures it counted were the outage, not the server.
+    Connections {
+        target: NetworkStatus
+
+        function onOnlineChanged() {
+            if (NetworkStatus.online)
+                root.resumeReconnect(true, false);
+        }
+
+        // Losing the status read ends a network hold as well: an unknown
+        // state holds nothing back, and no online edge may ever follow.
+        function onKnownChanged() {
+            if (!NetworkStatus.known)
+                root.resumeReconnect(false, false);
+        }
+    }
+
+    Connections {
+        target: Activity
+
+        function onResumed() {
+            root.resumeReconnect(false, true);
         }
     }
 

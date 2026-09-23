@@ -127,9 +127,11 @@ Singleton {
         state = enabled ? "offline" : "disabled";
         if (socketLoader.item)
             socketLoader.item.active = false;
-        if (!enabled) {
+        // Unattended, nobody would see another attempt: leave the timer off
+        // and let Activity.resumed start it. The bridge is on loopback, so
+        // the network state is no reason to wait.
+        if (!enabled || Activity.idle)
             return;
-        }
         retryTimer.interval = retrySecs * 1000;
         retrySecs = Math.min(60, retrySecs * 2);
         retryTimer.restart();
@@ -154,7 +156,11 @@ Singleton {
 
     Timer {
         id: retryTimer
-        onTriggered: root.connect()
+        // Idleness that began while this was pending: onResumed connects.
+        onTriggered: {
+            if (!Activity.idle)
+                root.connect();
+        }
     }
 
     Timer {
@@ -198,6 +204,20 @@ Singleton {
                     connectDelay.restart();
                 }
             }
+        }
+    }
+
+    // Back at the machine: a link that is down gets its attempt now, whether
+    // idleness held the retry back or a long backoff is still running.
+    // `idle` itself is not read here; it may not have settled yet.
+    Connections {
+        target: Activity
+
+        function onResumed() {
+            if (!root.enabled || root.state !== "offline" || root.websocketsMissing)
+                return;
+            retryTimer.stop();
+            root.connect();
         }
     }
 

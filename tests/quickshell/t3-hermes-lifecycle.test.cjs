@@ -165,3 +165,164 @@ test("Hermes resets its backoff only after the bridge has stayed up", () => {
     assert.match(blockAfter(connection, "function reconnect()"), /retrySecs = 2;/,
         "an explicit reconnect still starts over");
 });
+
+test("reconnect holds: known-offline waits unless the server is local, idle waits", () => {
+    const Helpers = load("T3CodeHelpers.js");
+    assert.equal(Helpers.isLoopbackOrigin("http://127.0.0.1:3773"), true);
+    assert.equal(Helpers.isLoopbackOrigin("https://localhost"), true);
+    assert.equal(Helpers.isLoopbackOrigin("ws://[::1]:9120/ws"), true);
+    assert.equal(Helpers.isLoopbackOrigin("https://t3.example.test"), false);
+    assert.equal(Helpers.isLoopbackOrigin("http://127.0.0.1.example.test"), false);
+    assert.equal(Helpers.isLoopbackOrigin(""), false);
+    assert.equal(Helpers.isLoopbackOrigin(null), false);
+
+    assert.equal(Helpers.reconnectHold(true, false, false, false), "network");
+    assert.equal(Helpers.reconnectHold(true, false, true, false), "",
+        "a loopback server needs no network");
+    assert.equal(Helpers.reconnectHold(false, false, false, false), "",
+        "an unknown network state must not strand the link");
+    assert.equal(Helpers.reconnectHold(true, true, false, true), "idle");
+    assert.equal(Helpers.reconnectHold(true, false, false, true), "network");
+    assert.equal(Helpers.reconnectHold(true, true, false, false), "");
+});
+
+// Runs T3Connection's own retry functions and edge handlers against
+// stand-ins for the QML objects they touch.
+function t3Harness(overrides = {}) {
+    const source = read("Common/T3Connection.qml");
+    const timer = () => ({
+        running: false, interval: 0, epoch: -1,
+        restart() { this.running = true; },
+        stop() { this.running = false; },
+    });
+    const scope = {
+        Helpers: load("T3CodeHelpers.js"),
+        NetworkStatus: { known: true, online: true },
+        Activity: { idle: false },
+        sessionEpoch: 4,
+        state: "connected",
+        enabled: true,
+        paired: true,
+        websocketsMissing: false,
+        host: "https://t3.example.test",
+        retrySecs: 5,
+        connects: 0,
+        drops: 0,
+        socketLoader: { item: null },
+        retryTimer: timer(),
+        stableTimer: timer(),
+        socketConnectTimeout: timer(),
+        dropped() { scope.drops++; },
+        connect() { scope.connects++; scope.state = "connecting"; },
+        ...overrides,
+    };
+    scope.root = scope;
+    const compile = (params, body) =>
+        new Function("scope", `with (scope) { return function (${params}) {${body}}; }`)(scope);
+    for (const [name, params] of [["scheduleRetry", "epoch"], ["retryHold", "resumed"],
+        ["resumeReconnect", "resetBackoff, resumed"]])
+        scope[name] = compile(params, blockAfter(source, `function ${name}(${params})`));
+    const onOnline = compile("", blockAfter(source, "function onOnlineChanged()"));
+    const onKnown = compile("", blockAfter(source, "function onKnownChanged()"));
+    const onResumed = compile("", blockAfter(source, "function onResumed()"));
+    const fire = compile("", `with (retryTimer) {${blockAfter(
+        source.slice(source.indexOf("id: retryTimer")), "onTriggered:")}}`);
+    return { scope, onOnline, onKnown, onResumed, fire };
+}
+
+test("T3 holds its retries while offline or idle and resumes on the edge", () => {
+    // Offline: the drop arms nothing; regaining the network connects at once
+    // and starts the backoff over.
+    let { scope, onOnline, onResumed, fire } = t3Harness({ retrySecs: 40 });
+    scope.NetworkStatus.online = false;
+    scope.scheduleRetry(4);
+    assert.equal(scope.state, "offline");
+    assert.equal(scope.drops, 1);
+    assert.equal(scope.retryTimer.running, false, "no retry may be armed while offline");
+    scope.NetworkStatus.online = true;
+    onOnline();
+    assert.equal(scope.connects, 1);
+    assert.equal(scope.retrySecs, 5);
+
+    // A status probe that breaks while offline must not strand the link.
+    let onKnown;
+    ({ scope, onKnown } = t3Harness());
+    scope.NetworkStatus.online = false;
+    scope.scheduleRetry(4);
+    onKnown();
+    assert.equal(scope.connects, 0, "a still-known offline state keeps holding");
+    scope.NetworkStatus.known = false;
+    onKnown();
+    assert.equal(scope.connects, 1);
+
+    // Idle: the same, and the resume edge connects even while `idle` itself
+    // has not settled yet.
+    ({ scope, onOnline, onResumed, fire } = t3Harness({ retrySecs: 40 }));
+    scope.Activity.idle = true;
+    scope.scheduleRetry(4);
+    assert.equal(scope.retryTimer.running, false, "no retry may start while idle");
+    onOnline();
+    assert.equal(scope.connects, 0, "coming online does not end an idle hold");
+    onResumed();
+    assert.equal(scope.connects, 1);
+    assert.equal(scope.retrySecs, 40, "resuming alone keeps the backoff");
+
+    // A pending retry that fires into a hold does nothing.
+    ({ scope, onOnline, onResumed, fire } = t3Harness());
+    scope.scheduleRetry(4);
+    assert.equal(scope.retryTimer.running, true);
+    assert.equal(scope.retryTimer.interval, 5000);
+    assert.equal(scope.retrySecs, 10);
+    scope.Activity.idle = true;
+    fire();
+    assert.equal(scope.connects, 0);
+    scope.Activity.idle = false;
+    fire();
+    assert.equal(scope.connects, 1);
+
+    // A loopback server and an unknown network state are never held.
+    ({ scope } = t3Harness({ host: "http://127.0.0.1:3773" }));
+    scope.NetworkStatus.online = false;
+    scope.scheduleRetry(4);
+    assert.equal(scope.retryTimer.running, true);
+    ({ scope } = t3Harness({ NetworkStatus: { known: false, online: false } }));
+    scope.scheduleRetry(4);
+    assert.equal(scope.retryTimer.running, true);
+
+    // Only a transiently offline link is resumed.
+    for (const blocked of [{ state: "signed-out" }, { state: "connected" },
+        { enabled: false, state: "offline" }, { paired: false, state: "offline" },
+        { websocketsMissing: true, state: "offline" }]) {
+        ({ scope, onOnline, onResumed } = t3Harness(blocked));
+        onOnline();
+        onResumed();
+        assert.equal(scope.connects, 0, JSON.stringify(blocked));
+    }
+    ({ scope } = t3Harness({ enabled: false }));
+    scope.scheduleRetry(4);
+    assert.equal(scope.retryTimer.running, false, "a disabled link arms nothing");
+});
+
+test("T3 fetches its environment descriptor once per session", () => {
+    const connection = read("Common/T3Connection.qml");
+    const fetch = blockAfter(connection, "function fetchDescriptor(epoch)");
+    assert.match(fetch, /^\s*if \(descriptorEpoch === epoch\)\s*return;/);
+    assert.match(fetch, /root\.environmentCapabilities = [^\n]*\n\s*root\.descriptorEpoch = epoch;/,
+        "only a descriptor that was actually read counts as loaded");
+    assert.match(blockAfter(connection, "function resetTransport()"), /sessionEpoch\+\+/,
+        "a new session must fetch its own descriptor");
+});
+
+test("Hermes holds its retries while idle and resumes when the user returns", () => {
+    const connection = read("Common/HermesConnection.qml");
+    assert.match(blockAfter(connection, "function scheduleRetry(emitDrop)"),
+        /if \(!enabled \|\| Activity\.idle\)\s*return;\s*retryTimer\.interval/);
+    assert.match(blockAfter(connection.slice(connection.indexOf("id: retryTimer")), "onTriggered:"),
+        /if \(!Activity\.idle\)\s*root\.connect\(\);/);
+    const resumed = blockAfter(connection, "function onResumed()");
+    assert.match(resumed,
+        /if \(!root\.enabled \|\| root\.state !== "offline" \|\| root\.websocketsMissing\)\s*return;\s*retryTimer\.stop\(\);\s*root\.connect\(\);/);
+    assert.doesNotMatch(resumed, /Activity\.idle/, "idle may not have settled on this edge");
+    assert.doesNotMatch(connection, /NetworkStatus/,
+        "the bridge is on loopback; the network state is no reason to wait");
+});

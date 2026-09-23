@@ -1815,6 +1815,30 @@ function socketSilent(lastFrameMs, nowMs, pingIntervalMs) {
     return nowMs - lastFrameMs > pingIntervalMs * 1.5;
 }
 
+// Whether a server origin is this machine, which needs no network to reach.
+function isLoopbackOrigin(url) {
+    var match = /^[a-z][a-z0-9+.-]*:\/\/(\[[^\]]*\]|[^\/:?#]*)/i
+        .exec(typeof url === "string" ? url.trim() : "");
+    if (match === null)
+        return false;
+    var host = match[1].toLowerCase();
+    return host === "localhost" || host === "[::1]"
+        || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+
+// Why an automatic reconnect should wait instead of starting now: "network"
+// while NetworkManager knows the machine is offline (unless the server is on
+// loopback), "idle" while nobody is at it, "" to go ahead. An unknown network
+// state holds nothing back — a broken status probe must not strand the link.
+// Only automatic retries ask; a credential change or a click connects anyway.
+function reconnectHold(networkKnown, networkOnline, loopback, idle) {
+    if (networkKnown === true && networkOnline !== true && loopback !== true)
+        return "network";
+    if (idle === true)
+        return "idle";
+    return "";
+}
+
 function truncateDiff(rawDiff, maxChars, maxLines) {
     var source = typeof rawDiff === "string" ? rawDiff : "";
     var charLimit = Math.max(0, Math.floor(
@@ -2179,6 +2203,8 @@ var exported = {
     applyShellItems: applyShellItems,
     credentialFingerprint: credentialFingerprint,
     socketSilent: socketSilent,
+    isLoopbackOrigin: isLoopbackOrigin,
+    reconnectHold: reconnectHold,
     truncateDiff: truncateDiff,
     canBeginAction: canBeginAction,
     findErrorText: findErrorText,
