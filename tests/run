@@ -75,7 +75,8 @@ stage_unit_tests() {
   fi
 
   t0=$(now_ms)
-  out=$(node --test "${files[@]}" 2>&1) || rc=$?
+  # A hung test fails on its own instead of holding the whole run.
+  out=$(node --test --test-timeout=60000 "${files[@]}" 2>&1) || rc=$?
   elapsed=$(( $(now_ms) - t0 ))
 
   passed=$(awk '$2 == "pass" { n = $3 } END { print n + 0 }' <<<"$out")
@@ -430,7 +431,7 @@ PY
 
 # ── XPS 2026 hardware integration sanity checks ────────────────────────────
 stage_xps_hardware() {
-  local out rc=0 t0 elapsed biquads
+  local out rc=0 t0 elapsed biquads search_rc
   local shell_files=(
     roles/xps-2026/files/xps-speaker-tuning
     roles/xps-2026/files/xps-fingerprint-detect
@@ -668,10 +669,11 @@ PY
     rc=1
   fi
   if ((rc == 0)); then
-    if out=$(rg -n 'linux-ptl|fred=on|disable_11be|BUILT_MODULE_NAME.*intel-ipu7(-isys)?"' \
-      roles/xps-2026/tasks roles/xps-2026/defaults roles/xps-2026/templates 2>&1); then
-      rc=1
-    fi
+    # Only rg's "no match" (1) passes: 0 is a forbidden match, 2 a failed search.
+    search_rc=0
+    out=$(rg -n 'linux-ptl|fred=on|disable_11be|BUILT_MODULE_NAME.*intel-ipu7(-isys)?"' \
+      roles/xps-2026/tasks roles/xps-2026/defaults roles/xps-2026/templates 2>&1) || search_rc=$?
+    ((search_rc == 1)) || rc=1
   fi
 
   elapsed=$(( $(now_ms) - t0 ))
