@@ -46,6 +46,9 @@ on_exit() {
   cleanup_test_scratch
 }
 trap on_exit EXIT
+# Stage workers run in process groups of their own, out of reach of the
+# terminal's signals, so every way this run can end has to pass through on_exit.
+trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
