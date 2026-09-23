@@ -16,8 +16,8 @@ import sys
 DEFAULTS = {
     "idleLockMins": 5,
     "idleScreenOffMins": 10,
-    "idleSuspendMins": 0,
-    "idleSuspendBatteryOnly": False,
+    "idleSuspendMins": 30,
+    "idleSuspendBatteryOnly": True,
 }
 CHOICES = {
     "idleLockMins": (0, 1, 2, 5, 10, 15, 30),

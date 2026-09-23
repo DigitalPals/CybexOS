@@ -359,8 +359,8 @@ function defaults() {
         // the vendor hypridle.conf, which the idle service falls back to.
         idleLockMins: 5,
         idleScreenOffMins: 10,
-        idleSuspendMins: 0,
-        idleSuspendBatteryOnly: false,
+        idleSuspendMins: 30,
+        idleSuspendBatteryOnly: true,
         // Runtime choices are persisted so a Quickshell service reload can
         // resume them. The Indicators startup policy decides what survives a
         // new login; timed modes retain an absolute deadline rather than

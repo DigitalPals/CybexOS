@@ -36,13 +36,19 @@ test("idle timeouts default to the vendor hypridle values and validate choices",
     const d = H.defaults();
     assert.equal(d.idleLockMins, 5);
     assert.equal(d.idleScreenOffMins, 10);
-    assert.equal(d.idleSuspendMins, 0);
-    assert.equal(d.idleSuspendBatteryOnly, false);
+    // A laptop left idle on battery suspends; mains power keeps it awake.
+    assert.equal(d.idleSuspendMins, 30);
+    assert.equal(d.idleSuspendBatteryOnly, true);
     assert.equal(H.merge({ idleLockMins: 7 }).idleLockMins, 5);
     assert.equal(H.merge({ idleLockMins: 0 }).idleLockMins, 0);
     assert.equal(H.merge({ idleScreenOffMins: "15" }).idleScreenOffMins, 10);
     assert.equal(H.merge({ idleSuspendMins: 120 }).idleSuspendMins, 120);
-    assert.equal(H.merge({ idleSuspendBatteryOnly: 1 }).idleSuspendBatteryOnly, false);
+    assert.equal(H.merge({ idleSuspendBatteryOnly: 1 }).idleSuspendBatteryOnly, true);
+    // A stored Never stays Never: saved files hold every key, so an untouched
+    // 0 cannot be told from a chosen one.
+    assert.equal(H.merge({ v: H.VERSION, idleSuspendMins: 0 }).idleSuspendMins, 0);
+    assert.equal(H.merge({ v: H.VERSION, idleSuspendBatteryOnly: false })
+        .idleSuspendBatteryOnly, false);
 });
 
 test("the generator accepts exactly the shell's idle choices", () => {
@@ -54,6 +60,7 @@ test("the generator accepts exactly the shell's idle choices", () => {
     const d = H.defaults();
     for (const key of ["idleLockMins", "idleScreenOffMins", "idleSuspendMins"])
         assert.ok(source.includes(`"${key}": ${d[key]},`), key);
+    assert.ok(source.includes(`"idleSuspendBatteryOnly": ${d.idleSuspendBatteryOnly ? "True" : "False"},`));
 });
 
 // The rendered listener blocks as rows, in file order.
@@ -97,9 +104,9 @@ test("a locked screen goes dark a minute after the last input", t => {
         .filter(row => row.condition === "hyprctl locked | grep -qx true");
 
     // A manual lock at 60 s and the five-minute idle lock at 360 s; the
-    // unlocked screen-off listener remains at ten minutes.
+    // unlocked screen-off listener remains at ten minutes, before suspend.
     const rows = listeners(render(t, {}));
-    assert.deepEqual(rows.map(row => row.timeout), [60, 300, 360, 600]);
+    assert.deepEqual(rows.map(row => row.timeout), [60, 300, 360, 600, 1800]);
     const defaults = lockedOff({});
     assert.deepEqual(defaults.map(row => row.timeout), [60, 360]);
     for (const row of defaults) {
@@ -118,7 +125,7 @@ test("a locked screen goes dark a minute after the last input", t => {
         .every(row => !/dpms/.test(row.onTimeout)));
 
     const late = listeners(render(t, { idleLockMins: 1, idleScreenOffMins: 5 }));
-    assert.deepEqual(late.map(row => row.timeout), [60, 60, 120, 300]);
+    assert.deepEqual(late.map(row => row.timeout), [60, 60, 120, 300, 1800]);
     assert.equal(late[0].onTimeout, "systemctl --user start cybexos-session-lock.service");
 });
 

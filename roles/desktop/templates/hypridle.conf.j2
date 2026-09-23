@@ -29,3 +29,10 @@ listener {
   on-timeout = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "off" }))'
   on-resume = hyprctl eval 'hl.dispatch(hl.dsp.dpms({ action = "on" }))'
 }
+
+listener {
+  timeout = 1800
+  condition_cmd = /usr/local/libexec/cybexos-session-action on-battery
+  condition_retry = 60
+  on-timeout = /usr/local/libexec/cybexos-session-action idle-suspend on-battery
+}
