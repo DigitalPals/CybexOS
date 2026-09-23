@@ -238,7 +238,7 @@ test("the calendar helper answers within its own deadline", () => {
         "print('not reached')",
     ].join("\n");
     const started = Date.now();
-    const result = spawnSync("python3", ["-c", script], { encoding: "utf8", timeout: 8000 });
+    const result = spawnSync("python3", ["-B", "-c", script], { encoding: "utf8", timeout: 8000 });
     assert.equal(result.status, 0, result.stderr);
     assert.ok(Date.now() - started < 5000, "the deadline must end the process");
     const payload = JSON.parse(result.stdout);
