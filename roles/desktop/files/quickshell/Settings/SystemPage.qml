@@ -143,7 +143,7 @@ SettingsPage {
                 visible: Battery.isLaptop || Settings.idleSuspendBatteryOnly
                 label: "Only on battery"
                 settingKey: "idleSuspendBatteryOnly"
-                description: "Stays awake while plugged in"
+                description: "Waits while plugged in; suspends once unplugged"
                 disabledReason: page.idleOverrideReason !== "" ? page.idleOverrideReason
                     : Settings.idleSuspendMins === 0 ? "Suspend is set to Never" : ""
             }
