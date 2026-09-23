@@ -47,19 +47,29 @@ set -euo pipefail
 printf '%s\\0' "$@" > "$MOCK_NOTIFY_LOG"
 [[ \${MOCK_NOTIFY_FAIL:-0} != 1 ]]
 `);
+    // The shell runs by path, so the refresh must go through the runtime
+    // resolver; a bare qs is recorded only to prove nothing calls it.
     executable(path.join(bin, "qs"), `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\\n' "$*" >> "$MOCK_QS_LOG"
 `);
+    const home = path.join(root, "home");
+    fs.mkdirSync(path.join(home, ".local/bin"), { recursive: true });
+    executable(path.join(home, ".local/bin/cybexos-runtime"), `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "$MOCK_RUNTIME_LOG"
+`);
 
     const env = {
         ...process.env,
+        HOME: home,
         PATH: `${bin}:${process.env.PATH}`,
         QUICKSHELL_REMINDER_STATE_DIR: state,
         MOCK_ACTIVE_DIR: active,
         MOCK_SYSTEMD_LOG: path.join(root, "systemd.log"),
         MOCK_NOTIFY_LOG: path.join(root, "notify.log"),
-        MOCK_QS_LOG: path.join(root, "qs.log")
+        MOCK_QS_LOG: path.join(root, "qs.log"),
+        MOCK_RUNTIME_LOG: path.join(root, "runtime.log")
     };
     return { root, bin, state, active, env };
 }
@@ -168,10 +178,16 @@ function writeRecord(f, id, fields) {
     }));
 }
 
-function qsCalls(f) {
-    return fs.existsSync(f.env.MOCK_QS_LOG)
-        ? fs.readFileSync(f.env.MOCK_QS_LOG, "utf8").split("\n").filter(Boolean)
+function logLines(file) {
+    return fs.existsSync(file)
+        ? fs.readFileSync(file, "utf8").split("\n").filter(Boolean)
         : [];
+}
+
+function shellCalls(f) {
+    assert.deepEqual(logLines(f.env.MOCK_QS_LOG), [],
+        "a bare qs ipc call finds no configuration for the path-run shell");
+    return logLines(f.env.MOCK_RUNTIME_LOG);
 }
 
 test("one unreadable overdue record does not end the restore pass", t => {
@@ -188,7 +204,7 @@ test("one unreadable overdue record does not end the restore pass", t => {
         "records after a failing one must still be delivered");
     assert.equal(fs.existsSync(path.join(f.active, "quickshell-reminder-c-future.timer")),
         true, "records after a failing one must still be rescheduled");
-    assert.deepEqual(qsCalls(f), ["ipc call reminders refresh"],
+    assert.deepEqual(shellCalls(f), ["ipc reminders refresh"],
         "a restore that changed something tells the shell exactly once");
 });
 
@@ -196,9 +212,9 @@ test("restore with nothing to do does not call back into the shell", t => {
     const f = fixture();
     t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
     ok(run(f, ["add", "30", "Future"]));
-    fs.rmSync(f.env.MOCK_QS_LOG, { force: true });
+    fs.rmSync(f.env.MOCK_RUNTIME_LOG, { force: true });
     ok(run(f, ["restore"]));
-    assert.deepEqual(qsCalls(f), []);
+    assert.deepEqual(shellCalls(f), []);
 });
 
 test("fire keeps its exit codes as a command", t => {
@@ -216,8 +232,8 @@ test("clear refreshes the shell once, not once per record", t => {
     t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
     for (const minutes of ["5", "10", "15"])
         ok(run(f, ["add", minutes, "Batch"]));
-    fs.rmSync(f.env.MOCK_QS_LOG, { force: true });
+    fs.rmSync(f.env.MOCK_RUNTIME_LOG, { force: true });
     ok(run(f, ["clear"]));
     assert.deepEqual(list(f), []);
-    assert.deepEqual(qsCalls(f), ["ipc call reminders refresh"]);
+    assert.deepEqual(shellCalls(f), ["ipc reminders refresh"]);
 });

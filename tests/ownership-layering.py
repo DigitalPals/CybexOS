@@ -185,23 +185,47 @@ def dev_source_contract() -> None:
         run("git", "commit", "--quiet", "-m", "fixture", cwd=checkout)
         before = run("git", "status", "--porcelain=v1", cwd=checkout).stdout
 
+        # A stand-in qs records the IPC client's argv, so no call can reach the
+        # desktop running this suite.
+        bin_dir = root / "bin"
+        bin_dir.mkdir()
+        qs = bin_dir / "qs"
+        qs.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\n", encoding="utf-8")
+        qs.chmod(0o755)
+
         env = os.environ.copy()
         env.update({
             "HOME": str(home),
             "XDG_CONFIG_HOME": str(home / ".config"),
             "XDG_DATA_HOME": str(home / ".local/share"),
             "CYBEXOS_RUNTIME_TESTING": "1",
+            "PATH": f"{bin_dir}:{env['PATH']}",
         })
+
+        def ipc_argv(*call: str) -> list[str]:
+            return run(RUNTIME, "ipc", *call, env=env).stdout.splitlines()
+
+        # The shell runs by path, so IPC must name the same path the service
+        # was started with; a bare `qs ipc call` finds no configuration.
+        vendor_shell = home / ".local/share/cybexos/runtime/quickshell"
+        assert ipc_argv("settings", "toggle") == [
+            "ipc", "--any-display", "-p", str(vendor_shell),
+            "call", "--", "settings", "toggle",
+        ]
+        assert run(RUNTIME, "ipc", "settings", env=env, check=False).returncode == 2
+
         enabled = run(RUNTIME, "dev", "enable", checkout, env=env)
         assert str(checkout.resolve()) in enabled.stdout
         status = run(RUNTIME, "dev", "status", env=env).stdout
         assert status == f"enabled\t{checkout.resolve()}\n"
         selected = run(RUNTIME, "path", "quickshell", env=env).stdout.strip()
         assert Path(selected) == shell_dir.resolve()
+        assert ipc_argv("popouts", "toggle", "control")[3] == selected
         assert run("git", "status", "--porcelain=v1", cwd=checkout).stdout == before
         disabled = run(RUNTIME, "dev", "disable", env=env)
         assert "disabled" in disabled.stdout.lower()
         assert run(RUNTIME, "dev", "status", env=env).stdout.startswith("disabled\t")
+        assert ipc_argv("session", "keys")[3] == str(vendor_shell)
         assert run("git", "status", "--porcelain=v1", cwd=checkout).stdout == before
 
         # A user-created object cannot turn the atomic switch write into a

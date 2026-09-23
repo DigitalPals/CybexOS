@@ -56,10 +56,14 @@ schedule_record() {
 # the end, instead of once per record.
 suppress_refresh=0
 
+# The shell runs by path, so a bare `qs ipc call` finds no configuration;
+# cybexos-runtime names the active runtime. Best effort: the shell's own
+# settle and restore reads are the fallback for a missed call.
 refresh_shell() {
+  local runtime=${HOME:-}/.local/bin/cybexos-runtime
   ((suppress_refresh == 0)) || return 0
-  command -v qs >/dev/null 2>&1 || return 0
-  qs ipc call reminders refresh >/dev/null 2>&1 || true
+  [[ -x $runtime ]] || return 0
+  "$runtime" ipc reminders refresh >/dev/null 2>&1 || true
 }
 
 list_json() {
