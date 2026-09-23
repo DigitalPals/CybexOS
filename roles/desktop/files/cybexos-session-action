@@ -76,7 +76,9 @@ case $action in
     systemctl suspend
     ;;
   logout)
-    hyprctl dispatch exit
+    # Hyprland's Lua config wraps the argument in hl.dispatch(), so the
+    # dispatcher is a Lua expression; a bare `exit` is nil there.
+    hyprctl dispatch 'hl.dsp.exit()'
     ;;
   reboot)
     systemctl reboot

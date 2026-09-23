@@ -143,6 +143,14 @@ test("a lock screen that never confirms is left running and the machine stays aw
     }
 });
 
+test("log out asks Hyprland's Lua config for its exit dispatcher", t => {
+    const f = fixture();
+    t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+    const result = f.run("logout");
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(f.calls(), "hyprctl dispatch hl.dsp.exit()\n");
+});
+
 test("unknown actions fail without invoking a session command", t => {
     const f = fixture();
     t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
