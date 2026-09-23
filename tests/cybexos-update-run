@@ -71,7 +71,9 @@ apply_mock systemctl \
   '  fi' \
   '  printf "%s\n" "$state"' \
   'elif [[ " $* " == *" stop "* ]]; then' \
+  '  printf "%s\n" "$*" >>"$MOCK_STOP_LOG"' \
   '  [[ -z ${MOCK_STOP_FAIL:-} ]] || exit 1' \
+  '  [[ -z ${MOCK_STOP_DEFER:-} ]] || exit 0' \
   '  [[ -z $unit ]] || rm -f -- "$MOCK_ACTIVE_DIR/$unit"' \
   'fi'
 
@@ -88,7 +90,9 @@ apply_mock systemd-run \
   '  done' \
   'fi' \
   ': >"$MOCK_ACTIVE_DIR/$unit"' \
+  'printf "%s\n" "$*" >>"$MOCK_SYSTEMD_ARGS_LOG"' \
   'printf "%s\n" "$unit" >>"$MOCK_SYSTEMD_LOG"'
+
 
 apply_mock sudo \
   'set -euo pipefail' \
@@ -102,6 +106,14 @@ apply_mock dnf \
   'printf "%s\n" "$*" >>"$MOCK_DNF_LOG"' \
   'if [[ " $* " == *" upgrade "* ]]; then' \
   '  umask >>"$MOCK_DNF_UMASK_LOG"' \
+  '  if [[ -n ${MOCK_DNF_GATE:-} ]]; then' \
+  '    : >"$MOCK_DNF_GATE.entered"' \
+  '    while [[ ! -e $MOCK_DNF_GATE.release ]]; do' \
+  '      [[ -d ${MOCK_DNF_GATE%/*} ]] || exit 1' \
+  '      sleep 0.01' \
+  '    done' \
+  '    : >"$MOCK_DNF_GATE.finished"' \
+  '  fi' \
   '  printf "Repositories loaded.\nNothing to do.\n"' \
   '  exit "${MOCK_DNF_UPGRADE_RC:-0}"' \
   'fi' \
@@ -141,6 +153,8 @@ export XDG_STATE_HOME="$fixture/state"
 export XDG_RUNTIME_DIR="$fixture/runtime"
 export MOCK_ACTIVE_DIR="$active_dir"
 export MOCK_SYSTEMD_LOG="$fixture/systemd.log"
+export MOCK_SYSTEMD_ARGS_LOG="$fixture/systemd-args.log"
+export MOCK_STOP_LOG="$fixture/stop.log"
 export MOCK_PACKAGE_LOG="$fixture/package.log"
 export MOCK_DNF_LOG="$fixture/dnf.log"
 export MOCK_DNF_UMASK_LOG="$fixture/dnf-umask.log"
@@ -175,6 +189,12 @@ expected_auth_probes=2
 ((EUID == 0)) && expected_auth_probes=0
 [[ $(grep -Fxc -- '-n true' "$MOCK_PACKAGE_LOG") -eq $expected_auth_probes ]]
 ! grep -Eq 'systemd-run|systemctl' "$MOCK_PACKAGE_LOG"
+# A stop reaches only the worker process so it can finish a running
+# transaction first.
+for property in Type=exec KillMode=mixed TimeoutStopSec=30min; do
+  grep -Fq -- "--property=$property" "$MOCK_SYSTEMD_ARGS_LOG"
+done
+grep -Fq -- "stop --no-block $polkit_unit" "$MOCK_STOP_LOG"
 : >"$MOCK_PACKAGE_LOG"
 : >"$MOCK_SYSTEMD_LOG"
 
@@ -322,6 +342,103 @@ exec {worker_lock_fd}>&-
 unlocked_status=$($backend status --json "$lock_race_id")
 [[ $(jq -r .state <<<"$unlocked_status") == failed ]]
 [[ $(jq -r .phase <<<"$unlocked_status") == abandoned ]]
+
+# A worker finishing its step keeps running after the stop request. The
+# client returns at once, and status reports the pending cancellation until
+# the worker records it at the next boundary.
+defer_status_start=$($backend start --json --no-flatpak)
+defer_status_id=$(jq -er .id <<<"$defer_status_start")
+defer_status_dir=$(jq -er .logDir <<<"$defer_status_start")
+defer_status_unit=$(jq -er .unit <<<"$defer_status_start")
+defer_status_file="$defer_status_dir/status.json"
+jq '.state = "running" | .phase = "packages"' "$defer_status_file" \
+  >"$defer_status_file.new"
+mv -f -- "$defer_status_file.new" "$defer_status_file"
+[[ $(jq -r .deferredCancel "$defer_status_file") == true ]]
+[[ $(jq -r .cancelRequested <<<"$($backend status --json "$defer_status_id")") == false ]]
+export MOCK_STOP_DEFER=1
+: >"$MOCK_STOP_LOG"
+deferred_out=$($backend cancel "$defer_status_id")
+grep -q 'finishes first' <<<"$deferred_out"
+grep -Fq -- "stop --no-block $defer_status_unit" "$MOCK_STOP_LOG"
+[[ -e $active_dir/$defer_status_unit ]]
+deferred_status=$($backend status --json "$defer_status_id")
+[[ $(jq -r .state <<<"$deferred_status") == running ]]
+[[ $(jq -r .cancelRequested <<<"$deferred_status") == true ]]
+unset MOCK_STOP_DEFER
+
+# A worker launched before deferred cancellation existed would be killed
+# together with dnf; refuse rather than interrupt its package transaction.
+jq 'del(.deferredCancel)' "$defer_status_file" >"$defer_status_file.new"
+mv -f -- "$defer_status_file.new" "$defer_status_file"
+rm -f -- "$defer_status_dir/cancel.requested"
+: >"$MOCK_STOP_LOG"
+set +e
+$backend cancel "$defer_status_id" >"$fixture/legacy-cancel.out" \
+  2>"$fixture/legacy-cancel.err"
+legacy_cancel_rc=$?
+set -e
+[[ $legacy_cancel_rc -eq 1 ]]
+grep -q 'cannot be interrupted safely' "$fixture/legacy-cancel.err"
+[[ ! -s $MOCK_STOP_LOG ]]
+[[ ! -e $defer_status_dir/cancel.requested ]]
+[[ -e $active_dir/$defer_status_unit ]]
+jq '.deferredCancel = true' "$defer_status_file" >"$defer_status_file.new"
+mv -f -- "$defer_status_file.new" "$defer_status_file"
+$backend cancel "$defer_status_id" >/dev/null
+[[ $(jq -r .state "$defer_status_file") == cancelled ]]
+[[ $(jq -r .cancelRequested <<<"$($backend status --json "$defer_status_id")") == false ]]
+
+# SIGTERM never interrupts the package transaction: dnf runs to completion,
+# then the worker records the cancellation instead of starting the test gate
+# or Ansible, and keeps the reboot advice for what was installed.
+export MOCK_PACKAGE_SUCCESS=1
+export MOCK_DNF_GATE="$fixture/dnf-gate"
+export MOCK_TESTS_RAN="$fixture/defer-tests-ran"
+defer_repo="$fixture/defer-repo"
+mkdir -p "$defer_repo/tests"
+printf '%s\n' '---' >"$defer_repo/site.yml"
+printf '%s\n' '#!/usr/bin/env bash' ': >"$MOCK_TESTS_RAN"' >"$defer_repo/tests/run"
+chmod 0755 "$defer_repo/tests/run"
+rm -f -- "$MOCK_ANSIBLE_ARGS_LOG"
+defer_start=$($backend start --json --full --no-flatpak --repo "$defer_repo")
+defer_id=$(jq -er .id <<<"$defer_start")
+$backend _worker "$defer_id" --full --no-flatpak --repo "$defer_repo" \
+  >"$fixture/defer-worker.out" 2>"$fixture/defer-worker.err" &
+defer_worker=$!
+for _ in {1..1000}; do
+  [[ -e $MOCK_DNF_GATE.entered ]] && break
+  sleep 0.01
+done
+[[ -e $MOCK_DNF_GATE.entered ]]
+# Signal again after a pause so at least one TERM arrives while the worker is
+# blocked in `wait`, which a trapped signal interrupts early.
+kill -TERM "$defer_worker"
+sleep 0.3
+kill -TERM "$defer_worker"
+sleep 0.3
+kill -0 "$defer_worker"
+[[ ! -e $MOCK_DNF_GATE.finished ]]
+[[ $(jq -r .phase <<<"$($backend status --json "$defer_id")") == packages ]]
+: >"$MOCK_DNF_GATE.release"
+set +e
+wait "$defer_worker"
+defer_worker_rc=$?
+set -e
+[[ $defer_worker_rc -eq 130 ]]
+[[ -e $MOCK_DNF_GATE.finished ]]
+unset MOCK_DNF_GATE
+deferred_run=$($backend status --json "$defer_id")
+[[ $(jq -r .state <<<"$deferred_run") == cancelled ]]
+[[ $(jq -r .dnfDone <<<"$deferred_run") == true ]]
+[[ $(jq -r .dnfRc <<<"$deferred_run") -eq 0 ]]
+[[ $(jq -r .message <<<"$deferred_run") \
+    == 'Update cancelled after the package transaction finished' ]]
+[[ $(jq -r .rebootRecommendation <<<"$deferred_run") != pending ]]
+[[ ! -e $MOCK_TESTS_RAN ]]
+[[ ! -e $MOCK_ANSIBLE_ARGS_LOG ]]
+grep -Fq 'timeout --kill-after=1m 30m ./tests/run' "$backend"
+unset MOCK_PACKAGE_SUCCESS
 
 printf 'abcdefghi' >"$next_dir/dnf.log"
 [[ $($backend read-log "$next_id" dnf 2 4) == cdef ]]
@@ -601,4 +718,4 @@ assert_unrelated_skills
 
 ! grep -q 'set +e;.*set -e' "$backend"
 
-printf 'Durable updater serializes starts, owns release and agent-skill activation rollback, preserves boot-scoped reboot advice, and reads exact log windows\n'
+printf 'Durable updater serializes starts, defers cancellation past package transactions, owns release and agent-skill activation rollback, preserves boot-scoped reboot advice, and reads exact log windows\n'

@@ -255,9 +255,17 @@ cybexos-update-run dismiss
 ```
 
 Each command accepts a run ID where documented by `cybexos-update-run --help`.
-`cancel` is explicit and terminates an active worker; Ctrl+C during `attach`
-does not. `dismiss` only changes the completed status shown by the UI and does
-not delete its logs.
+`cancel` is explicit; Ctrl+C during `attach` never cancels. The stop request
+reaches only the worker process (`KillMode=mixed`), because interrupting
+DNF/RPM midway can leave duplicate or half-upgraded packages. A running
+package transaction, repository check, or Ansible play therefore finishes
+first, and the worker records `cancelled` at the next step boundary;
+`status --json` reports `cancelRequested: true` meanwhile. Once Ansible has
+started, the run completes or fails instead, so installed files and the active
+release stay coherent. A worker still running 30 minutes after the request is
+killed. A package phase started by an updater without this contract is not
+cancellable. `dismiss` only changes the completed status shown by the UI and
+does not delete its logs.
 
 Run state lives under `~/.local/state/cybexos/update/`. Each run has a private
 directory under `logs/<run-id>/` containing:
@@ -363,7 +371,8 @@ integration, Plymouth layout, the durable updater, screenshot/brightness
 workflows, and Btrfs snapshot retention.
 
 The GitHub workflow runs the same `./tests/run` command in a Fedora 44
-container. The lower-level worker stops before Ansible if this gate fails.
+container. The lower-level worker stops before Ansible if this gate fails or
+does not finish within 30 minutes.
 `--skip-tests` is reserved for an already verified release candidate and is
 not part of the public command interface.
 
