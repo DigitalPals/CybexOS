@@ -856,23 +856,42 @@ Singleton {
     // Nothing about either backend is watchable — sysfs backlight attributes
     // deliver no inotify events and a HID write emits none — so every
     // consumer that can observe an external change calls this. The OSD does,
-    // over IPC from brightness-control itself.
+    // over IPC from brightness-control itself, after every step of a held
+    // key. A read already running may predate that step, so a request that
+    // arrives during one re-reads once it settles; a local write in flight
+    // ends in a read of its own.
+    property bool brightnessReadPending: false
+
     function refreshBrightness() {
-        if (brightnessRead.running || brightnessWrite.running
-                || brightnessSettle.running || brightnessSet.running)
+        if (brightnessRead.running) {
+            brightnessReadPending = true;
+            return;
+        }
+        if (brightnessWrite.running || brightnessSettle.running
+                || brightnessSet.running)
             return;
         brightnessRead.running = true;
     }
 
+    // Not read at login: nothing shows brightness until the Overview claims
+    // SysInfo or brightness-control pings the OSD, and both read it then.
+    // Until then it stays -1, which every view draws as unknown.
     Process {
         id: brightnessRead
         command: [root.brightnessTool, "get"]
-        running: true
         stdout: StdioCollector {
             onStreamFinished: {
                 const value = parseInt(text.trim());
                 if (!isNaN(value))
                     root.brightness = Math.max(0, Math.min(100, value));
+            }
+        }
+        // The falling edge, so a helper that never started or was killed by
+        // the watchdog still releases a queued request.
+        onRunningChanged: {
+            if (!running && root.brightnessReadPending) {
+                root.brightnessReadPending = false;
+                Qt.callLater(root.refreshBrightness);
             }
         }
     }

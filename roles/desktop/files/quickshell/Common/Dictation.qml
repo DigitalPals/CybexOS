@@ -39,6 +39,13 @@ Singleton {
         }
     }
 
+    // Whether the last read found no state file. The view also watches the
+    // file's directory, so while the file exists a creation or an atomic
+    // replace is seen without polling; only a missing file may have taken
+    // its directory with it (the daemon not started yet), and a missing
+    // directory cannot be watched.
+    property bool stateMissing: false
+
     FileView {
         id: stateView
         path: root.statePath
@@ -46,11 +53,15 @@ Singleton {
         watchChanges: true
         onFileChanged: reload()
         onLoaded: {
+            root.stateMissing = false;
             const value = text().trim();
             root.state = ["idle", "recording", "transcribing"].indexOf(value) !== -1
                 ? value : "idle";
         }
-        onLoadFailed: root.state = "idle"
+        onLoadFailed: {
+            root.stateMissing = true;
+            root.state = "idle";
+        }
     }
 
     // inotify covers normal transitions; this bounded replay covers a daemon
@@ -71,11 +82,21 @@ Singleton {
         }
     }
 
+    // Each reload rebuilds the view's inotify watches, so the poll runs only
+    // while there is no file to watch, and not while the session is idle.
     Timer {
         interval: 3000
-        running: true
+        running: root.stateMissing && !Activity.idle
         repeat: true
-        triggeredOnStart: true
         onTriggered: root.refresh()
+    }
+
+    Connections {
+        target: Activity
+
+        function onResumed() {
+            if (root.stateMissing)
+                root.refresh();
+        }
     }
 }

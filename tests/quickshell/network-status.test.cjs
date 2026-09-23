@@ -24,9 +24,19 @@ test("only NetworkManager's global connected state is online", () => {
 test("one monitored NetworkManager snapshot drives online work", () => {
     const status = read("Common/NetworkStatus.qml");
 
+    // Untranslated output comes from the process environment, not from an
+    // extra `env` process per NetworkManager event.
     assert.match(status,
-        /command: \["timeout", "5s", "env", "LC_ALL=C", "nmcli", "--terse",[\s\S]*?"STATE", "general", "status"\]/);
-    assert.match(status, /command: \["env", "LC_ALL=C", "nmcli", "monitor"\]/);
+        /command: \["timeout", "5s", "nmcli", "--terse",[\s\S]*?"STATE", "general", "status"\][\s\S]{0,400}?environment: \(\{ LC_ALL: "C" \}\)/);
+    assert.match(status, /command: \["nmcli", "monitor"\]\s*\/\/ qmllint disable incompatible-type\s*environment: \(\{ LC_ALL: "C" \}\)/);
+    const ethernet = read("Common/EthernetState.qml");
+    const updates = read("Common/Updates.qml");
+    for (const [label, text] of [["NetworkStatus", status], ["EthernetState", ethernet],
+        ["Updates", updates]])
+        assert.doesNotMatch(text, /"env", "LC_ALL=C"/, `${label} must not wrap commands in env`);
+    assert.match(ethernet, /"device", "show"\][\s\S]{0,400}?environment: \(\{ LC_ALL: "C" \}\)/);
+    for (const binary of ["dnf", "flatpak", "fwupdmgr"])
+        assert.match(updates, new RegExp(`command: \\["timeout", "45s", "${binary}",[^\\]]*\\][\\s\\S]{0,400}?environment: \\(\\{ LC_ALL: "C" \\}\\)`));
     assert.match(status,
         /onRead: line => \{\s*snapshotDebounce\.restart\(\);\s*root\.monitorEvent\(line\);/);
     assert.match(status, /signal monitorEvent\(string line\)/);
@@ -77,13 +87,13 @@ test("weather and update startup checks wait for the shared online edge", () => 
         /target: NetworkStatus[\s\S]*?function onOnlineChanged\(\)[\s\S]*?root\.refresh\(\)/);
     assert.match(weather, /running: NetworkStatus\.online/);
     assert.match(weather,
-        /Component\.onCompleted:\s*\{[\s\S]*?if \(NetworkStatus\.online\)[\s\S]*?refresh\(\)/,
+        /Component\.onCompleted:\s*\{[\s\S]*?if \(NetworkStatus\.online && wanted\)[\s\S]*?refresh\(\)/,
         "the startup fallback must retain the same online guard as the shared edge");
 
     assert.match(updates,
-        /target: NetworkStatus[\s\S]*?function onOnlineChanged\(\)[\s\S]*?root\.automaticCheck\(true\)/);
+        /target: NetworkStatus[\s\S]*?function onOnlineChanged\(\)[\s\S]*?root\.automaticCheck\(true, false\)/);
     assert.match(updates,
-        /function automaticCheck\(resetRetries\)\s*\{[\s\S]*?if \(!NetworkStatus\.online\)[\s\S]*?return;/,
+        /function automaticCheck\(resetRetries, failedOnly\)\s*\{[\s\S]*?if \(!NetworkStatus\.online\)[\s\S]*?return;/,
         "all automatic startup paths must fail closed while offline");
     assert.match(updates, /checkFailureCount <= 4[\s\S]*?NetworkStatus\.online/);
 });

@@ -71,7 +71,39 @@ test("an online edge does not repeat a fresh complete update check", () => {
         /function onOnlineChanged\(\)[\s\S]{0,500}?root\.error !== ""[\s\S]{0,120}?checkIsFresh/);
     const weather = read("Common/Weather.qml");
     assert.match(weather,
-        /function onOnlineChanged\(\)[\s\S]{0,500}?Date\.now\(\) - root\.updatedAt < 600000/);
+        /function onOnlineChanged\(\)[\s\S]{0,500}?!root\.stale\(600000\)/);
+    assert.match(weather, /function stale\(maxAgeMs\) \{[\s\S]{0,200}?Date\.now\(\) - updatedAt >= maxAgeMs/);
+});
+
+test("weather is fetched only for a set location someone is shown", () => {
+    const weather = read("Common/Weather.qml");
+    const sheet = read("Popovers/DaySheetPopover.qml");
+    const vm = require("node:vm");
+
+    const locationSet = weather.match(/readonly property bool locationSet: ([^\n]*\n[^\n]*)/)[1];
+    const set = (lat, lon, place) => vm.runInNewContext(locationSet,
+        { Settings: { modOpts: { weather: { lat, lon, place } } } });
+    assert.equal(set(0, 0, ""), false, "the shipped default is not a location");
+    assert.equal(set(0, 0, "Amsterdam"), false, "a label alone fetches nothing");
+    assert.equal(set(52.37, 4.9, ""), true);
+    assert.equal(set(0, 4.9, "Somewhere"), true);
+
+    assert.match(weather,
+        /readonly property bool wanted: locationSet && \(widgetOn \|\| watchers > 0\)/);
+    assert.match(weather, /hit = mods\[col\]\.find\(m => m\.id === "weather"\)/);
+    assert.match(weather,
+        /interval: root\.pollIntervalSecs \* 1000\s*running: NetworkStatus\.online && root\.wanted && !Activity\.idle/);
+    assert.match(weather,
+        /interval: root\.retryIntervalSecs \* 1000\s*running: NetworkStatus\.online && root\.wanted && !Activity\.idle/);
+    assert.match(weather,
+        /target: Activity[\s\S]{0,80}function onResumed\(\)[\s\S]{0,160}root\.stale\(root\.pollIntervalSecs \* 1000\)\)\s*root\.refresh\(\)/);
+    assert.match(weather, /function acquire\(\) \{\s*watchers\+\+;[\s\S]{0,120}stale\(600000\)\)\s*refresh\(\)/);
+    assert.match(weather, /onLocationSetChanged: \{[\s\S]{0,300}?ready = false;/,
+        "clearing the location drops the old place's sky");
+
+    assert.match(sheet, /onClaimed: \{[^}]*Weather\.acquire\(\);/);
+    assert.match(sheet, /onReleased: \{[^}]*Weather\.release\(\);/);
+    assert.match(sheet, /if \(!Weather\.locationSet\)\s*return "Set a location in Settings";/);
 });
 
 test("the idle-inhibit countdown ticks on minute boundaries", () => {
@@ -98,6 +130,14 @@ test("brightness processes are bounded and a failed write reads back", () => {
     assert.match(sys, /running: brightnessSet\.running\s*onTriggered: brightnessSet\.running = false/);
     assert.match(sys, /id: brightnessSet[\s\S]{0,700}?Qt\.callLater\(root\.refreshBrightness\)/);
     assert.match(sys, /id: brightnessSettle\s*interval: 400\s*onTriggered: root\.refreshBrightness\(\)/);
+    // The DDC/HID helper runs when something shows brightness, not at login.
+    const read_ = sys.slice(sys.indexOf("id: brightnessRead"));
+    assert.doesNotMatch(read_.slice(0, read_.indexOf("stdout:")), /running: true/);
+    assert.match(sys, /function acquire\(\)[\s\S]{0,900}?refreshBrightness\(\);/,
+        "the Overview's claim reads it");
+    assert.match(read("Common/Osd.qml"),
+        /function brightnessChanged\(\) \{\s*SysInfo\.refreshBrightness\(\);/,
+        "and so does the OSD when brightness-control pings it");
     const cpuinfo = sys.slice(sys.indexOf('path: "/proc/cpuinfo"'));
     assert.doesNotMatch(cpuinfo.slice(0, cpuinfo.indexOf("}")), /blockLoading/);
 });
@@ -116,6 +156,33 @@ test("reminders poll only while records exist and settle with one read", () => {
         "restore already refreshes over IPC when it changed something");
     assert.match(reminders, /if \(count === 0 \|\| !startupRestore\.done\)/);
     assert.match(reminders, /Math\.max\(Format\.MS_MINUTE, Math\.min\(Format\.MS_HOUR, untilDue\)\)/);
+    // A helper that cannot start sends no exited(): the list settles on the
+    // falling edge of running, so loading and a queued refresh cannot stick.
+    const list = reminders.slice(reminders.indexOf("id: listProc"), reminders.indexOf("id: restoreProc"));
+    const exited = list.slice(list.indexOf("onExited:"));
+    assert.doesNotMatch(exited.slice(0, exited.indexOf("}")), /loading|refresh/);
+    assert.match(list,
+        /onRunningChanged: \{[\s\S]{0,160}?root\.loading = false;[\s\S]{0,120}?ProcHelpers\.NOT_STARTED[\s\S]{0,200}?Qt\.callLater\(root\.refresh\)/);
+});
+
+test("the calendar polls only for an open Day sheet, and never while idle", () => {
+    const calendar = read("Common/Calendar.qml");
+    const sheet = read("Popovers/DaySheetPopover.qml");
+    assert.match(calendar,
+        /running: root\.enabled && root\.watchers > 0 && !Activity\.idle\s*repeat: true\s*onTriggered: root\.pollRefresh\(\)/);
+    assert.match(calendar, /function acquire\(\) \{\s*watchers\+\+;\s*if \(enabled\)\s*refreshDefault\(\);/,
+        "every newly visible sheet asks for a fresh window");
+    assert.match(calendar,
+        /target: Activity[\s\S]{0,80}function onResumed\(\)[\s\S]{0,200}root\.pollRefresh\(\)/);
+    assert.match(calendar, /if \(root\.requestIsDefault && root\.watchers > 0\)\s*root\.refreshDefault\(\)/,
+        "midnight moves the window only for a sheet that is showing it");
+    assert.match(sheet,
+        /Claim \{\s*active: root\.visible\s*onClaimed: \{[^}]*Calendar\.acquire\(\);[^}]*\}\s*onReleased: \{[^}]*Calendar\.release\(\);/);
+    assert.doesNotMatch(sheet, /Component\.onCompleted:[\s\S]{0,80}refreshDefault/,
+        "a latched sheet would never refresh again; the claim follows visibility");
+    // Nothing else reads events: the menubar clock and reminders do not.
+    for (const file of ["Bar/Modules/Clock.qml", "Common/Reminders.qml", "Common/Notifs.qml"])
+        assert.doesNotMatch(read(file), /Calendar\.(events|upcoming|eventsForDay)/, file);
 });
 
 test("the calendar poll follows the clock and loading cannot stick", () => {
@@ -159,4 +226,15 @@ test("non-critical singletons stay out of the session-start burst", () => {
     const reminders = read("Common/Reminders.qml");
     assert.match(reminders, /id: startupRestore[\s\S]{0,80}?interval: 8000/);
     assert.match(reminders, /Component\.onCompleted: \{\s*refresh\(\);\s*startupRestore\.start\(\);/);
+});
+
+test("wallpaper rotation skips an idle session and catches up once on return", () => {
+    const wallpaper = read("Common/Wallpaper.qml");
+    assert.match(wallpaper,
+        /running: Settings\.shuffle !== "Off"\s*repeat: true\s*interval: root\.shuffleMs/,
+        "the interval keeps running: a daily rotation must survive idle spells");
+    assert.match(wallpaper,
+        /onTriggered: \{\s*if \(Activity\.idle\)\s*root\.shuffleOwed = true;\s*else\s*root\.shuffle\(\);/);
+    assert.match(wallpaper,
+        /target: Activity[\s\S]{0,80}function onResumed\(\) \{\s*if \(!root\.shuffleOwed\)\s*return;\s*root\.shuffleOwed = false;\s*root\.shuffle\(\);/);
 });

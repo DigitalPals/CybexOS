@@ -53,9 +53,18 @@ Surface {
 
     readonly property var events: Calendar.upcoming(3)
 
-    Component.onCompleted: {
-        if (Calendar.enabled)
-            Calendar.refreshDefault();
+    // Keyed on visibility, not construction, so a latched sheet still asks
+    // for a fresh window and sky on every open and polls only while shown.
+    Claim {
+        active: root.visible
+        onClaimed: {
+            Calendar.acquire();
+            Weather.acquire();
+        }
+        onReleased: {
+            Calendar.release();
+            Weather.release();
+        }
     }
 
     Row {
@@ -114,6 +123,8 @@ Surface {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: {
+                        if (!Weather.locationSet)
+                            return "Set a location in Settings";
                         if (!Weather.ready)
                             return Weather.offline ? "offline" : "loading…";
                         const today = Weather.days.length > 0

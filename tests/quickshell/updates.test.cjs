@@ -30,15 +30,29 @@ test("Flatpak output drops blank rows without changing application names", () =>
     assert.deepEqual(H.flatpakNames(undefined), []);
 });
 
-test("only a complete post-baseline zero-to-positive transition notifies", () => {
-    assert.equal(H.shouldNotify(true, true, 0, 3, true), true);
-    assert.equal(H.shouldNotify(true, false, 0, 3, true), false,
-        "the first successful snapshot establishes the baseline silently");
-    assert.equal(H.shouldNotify(false, true, 0, 3, true), false,
-        "a partial failure cannot announce a half-result");
-    assert.equal(H.shouldNotify(true, true, 2, 3, true), false,
+test("only a post-baseline zero-to-positive transition of an answering source notifies", () => {
+    const dnf = count => ({ baseline: true, count });
+    assert.equal(H.shouldNotify(0, 3, [dnf(3)], true), true);
+    assert.equal(H.shouldNotify(0, 3, [{ baseline: false, count: 3 }], true), false,
+        "a source's first answer establishes its baseline silently");
+    assert.equal(H.shouldNotify(0, 3, [dnf(3), { baseline: false, count: 0 }], true), true,
+        "a source answering for the first time does not silence one that has");
+    assert.equal(H.shouldNotify(0, 5, [dnf(0), { baseline: false, count: 5 }], true), false,
+        "only a known source's count is news");
+    assert.equal(H.shouldNotify(2, 3, [dnf(3)], true), false,
         "a count that merely grows is not a new update event");
-    assert.equal(H.shouldNotify(true, true, 0, 3, false), false);
+    assert.equal(H.shouldNotify(0, 3, [dnf(3)], false), false);
+    assert.equal(H.shouldNotify(0, 3, [], true), false,
+        "nothing that answered, nothing to announce");
+});
+
+test("a retry repeats only the sources that failed", () => {
+    assert.deepEqual(H.allParts(), { dnf: true, flatpak: true, firmware: true, project: true });
+    assert.deepEqual(H.failedParts({ dnf: "", flatpak: "Flathub unreachable", firmware: "", project: "" }),
+        { dnf: false, flatpak: true, firmware: false, project: false });
+    assert.deepEqual(H.failedParts(null), { dnf: false, flatpak: false, firmware: false, project: false });
+    assert.equal(H.pendingSummary(3, 0, 1, false, ""), "dnf 3 · firmware 1");
+    assert.equal(H.pendingSummary(0, 2, 0, true, "1.4"), "flatpak 2 · CybexOS 1.4");
 });
 
 test("table sections map to feed verbs and reject prose", () => {
