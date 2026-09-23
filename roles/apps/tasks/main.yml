@@ -40,6 +40,10 @@
 - name: Install upstream release applications
   ansible.builtin.import_tasks: upstream.yml
 
+- name: Install the default text and Markdown editor
+  ansible.builtin.import_tasks: omawrite.yml
+  tags: [omawrite]
+
 - name: Configure Omarchy font defaults
   ansible.builtin.import_tasks: fonts.yml
   tags: [fonts, font-defaults]

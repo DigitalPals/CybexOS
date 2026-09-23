@@ -1,0 +1,60 @@
+---
+- name: Install Omawrite build and runtime dependencies
+  ansible.builtin.dnf:
+    name: "{{ apps_omawrite_packages }}"
+    state: present
+
+- name: Install the verified Omawrite build helper
+  ansible.builtin.copy:
+    src: omawrite-install
+    dest: /usr/local/libexec/cybexos-omawrite-install
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Build and install the pinned Omawrite release
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/cybexos-omawrite-install
+      - "{{ omawrite_version }}"
+      - "{{ omawrite_commit }}"
+      - "{{ omawrite_checksum }}"
+  register: apps_omawrite_install
+  changed_when: (apps_omawrite_install.stdout | regex_search('(?m)^CHANGED:')) is not none
+  when: not ansible_check_mode
+
+- name: Create system application and icon directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /usr/local/share/applications
+    - /usr/share/icons/hicolor/scalable/apps
+
+- name: Install the Omawrite file launcher
+  ansible.builtin.copy:
+    src: omawrite.desktop
+    dest: /usr/local/share/applications/omawrite.desktop
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Link the pinned Omawrite application icon
+  ansible.builtin.file:
+    src: /opt/cybexos-apps/omawrite/current/share/omawrite.svg
+    dest: /usr/share/icons/hicolor/scalable/apps/omawrite.svg
+    state: link
+  when: not ansible_check_mode
+
+- name: Refresh system desktop file associations
+  ansible.builtin.command: update-desktop-database /usr/local/share/applications
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Refresh the shared application icon cache
+  ansible.builtin.command: gtk-update-icon-cache --force /usr/share/icons/hicolor
+  changed_when: false
+  when: not ansible_check_mode

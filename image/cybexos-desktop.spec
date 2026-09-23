@@ -22,6 +22,7 @@ Requires:       bash coreutils util-linux systemd python3
 Requires:       hyprland hyprland-guiutils quickshell hypridle hyprlock hyprpolkitagent hyprsunset
 Requires:       xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-utils
 Requires:       qt6-qtwebsockets-devel qt6-qt5compat qt6-qtsvg
+Requires:       qt6-qtbase qt6-qtdeclarative qt6-qtwayland
 Requires:       python3-pyside6 python3-websockets python3-gobject
 Requires:       kitty firefox nautilus jq curl NetworkManager iw qrencode iproute iputils
 Requires:       pipewire pipewire-pulseaudio wireplumber bluez brightnessctl playerctl
@@ -59,6 +60,8 @@ cp -a usr opt etc %{buildroot}/
 /usr/local/bin/*
 /usr/local/libexec/*
 /usr/local/share/fonts/*
+/usr/local/share/applications/omawrite.desktop
+/usr/share/icons/hicolor/scalable/apps/omawrite.svg
 /usr/bin/cybex
 /usr/bin/cybexos-*
 /usr/bin/hyprland-quickshell

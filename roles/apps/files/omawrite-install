@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source /usr/local/libexec/cybexos-common.sh
+
+version=${1:?release version required}
+revision=${2:?source commit required}
+checksum=${3:?source SHA-256 required}
+[[ $revision =~ ^[[:xdigit:]]{40}$ && $checksum =~ ^sha256:[[:xdigit:]]{64}$ ]] || {
+  echo "Omawrite requires a full source commit and SHA-256" >&2
+  exit 1
+}
+root=/opt/cybexos-apps/omawrite
+recipe=$(sha256sum "$0" | awk '{print $1}')
+manifest="revision=$revision checksum=$checksum recipe=$recipe qt=$(qmake6 -query QT_VERSION)"
+if [[ -x $root/current/bin/omawrite && -r $root/current/share/omawrite.svg \
+   && -r $root/current/share/licenses/LICENSE && -r $root/current/share/licenses/OFL.txt \
+   && -r $root/current/.cybexos-build \
+   && $(<"$root/current/.cybexos-build") == "$manifest" \
+   && $(readlink /usr/local/bin/omawrite) == "$root/current/bin/omawrite" ]]; then
+  emit_unchanged "omawrite $version"
+  exit 0
+fi
+
+mkdir -p "$root/versions"
+work=$(mktemp -d "$root/.build.XXXXXX")
+stage=""
+cleanup() {
+  local rc=$?
+  trap - EXIT
+  rm -rf -- "$work"
+  [[ -z $stage ]] || rm -rf -- "$stage"
+  exit "$rc"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+cybexos_curl --fail --silent --show-error --location --max-time 300 \
+  "https://codeload.github.com/omacom/omawrite/tar.gz/$revision" -o "$work/source.tar.gz"
+verify_sha256 "$work/source.tar.gz" "${checksum#sha256:}" || {
+  echo "Omawrite source checksum mismatch; previous installation retained" >&2
+  exit 1
+}
+mkdir "$work/src" "$work/build"
+tar -xzf "$work/source.tar.gz" -C "$work/src" --strip-components=1
+(
+  cd "$work/build"
+  qmake6 "$work/src/omawrite.pro"
+  make -j"$(nproc)"
+)
+# Publish only a complete build; failed downloads/builds never replace current.
+stage=$(mktemp -d "$root/versions/$revision.XXXXXX")
+install -Dm755 "$work/build/omawrite" "$stage/bin/omawrite"
+install -Dm644 "$work/src/pkgbuild/omawrite.svg" "$stage/share/omawrite.svg"
+install -Dm644 "$work/src/LICENSE" "$stage/share/licenses/LICENSE"
+install -Dm644 "$work/src/fonts/OFL.txt" "$stage/share/licenses/OFL.txt"
+printf '%s\n' "$manifest" > "$stage/.cybexos-build"
+# mktemp's private mode is appropriate during staging, but users need traversal.
+chmod 0755 "$stage"
+mkdir -p /usr/local/bin
+ln -sfn "$root/current/bin/omawrite" /usr/local/bin/omawrite
+atomic_current_swap "$root" "versions/${stage##*/}"
+stage=""
+emit_changed "omawrite $version"
+cybexos_restorecon "$root" /usr/local/bin/omawrite
+prune_version_dirs "$root" 2 || echo "Could not prune old Omawrite versions" >&2

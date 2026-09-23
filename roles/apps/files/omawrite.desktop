@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Omawrite
+GenericName=Text and Markdown Editor
+Comment=Write text and Markdown documents
+Exec=omawrite %f
+Icon=omawrite
+Terminal=false
+Categories=Utility;TextEditor;
+MimeType=text/plain;text/x-nfo;text/markdown;text/x-markdown;
+Keywords=markdown;write;notes;text;editor;
+StartupWMClass=omawrite

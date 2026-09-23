@@ -119,6 +119,11 @@ distrobox_images:
 # image. Fedora packages installed inside the build remain Fedora 44 content.
 source_build_container_image: docker.io/library/fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
 
+# Required desktop editor, built natively even when optional source tools are off.
+omawrite_version: v0.5.0
+omawrite_commit: 8f98892b26768236b2c20f4e637cf4b102d898bf
+omawrite_checksum: sha256:7277c05472930f15a5b13842a88260b0abe3a26bb0e7db9f9c852681e515842e
+
 github_release_apps:
   - name: lazygit
     enabled: "{{ features.developer_tools }}"

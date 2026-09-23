@@ -34,7 +34,7 @@ def package_names():
     """Read package groups from the application and desktop contracts."""
     defaults = yaml.safe_load((ROOT / "roles/apps/defaults/main.yml").read_text())
     packages = []
-    for key in ("apps_required_fedora_packages", "apps_developer_fedora_packages",
+    for key in ("apps_required_fedora_packages", "apps_omawrite_packages", "apps_developer_fedora_packages",
                 "apps_podman_packages", "apps_steam_packages"):
         packages.extend(defaults[key])
     for path, names in (
@@ -106,7 +106,9 @@ def main():
     # An explicit allowlist prevents builder accounts, keys, caches, logs,
     # container storage and other disposable state from reaching the image.
     for relative in ("opt/cybexos-apps", "opt/cybexos-builds", "usr/local/bin",
-                     "usr/local/libexec", "usr/local/share/fonts"):
+                     "usr/local/libexec", "usr/local/share/fonts",
+                     "usr/local/share/applications/omawrite.desktop",
+                     "usr/share/icons/hicolor/scalable/apps/omawrite.svg"):
         source = Path("/") / relative
         if source.exists():
             copy_tree(source, payload / relative)

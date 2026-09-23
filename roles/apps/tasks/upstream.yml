@@ -6,6 +6,7 @@
     owner: root
     group: root
     mode: "0644"
+  tags: [omawrite]
 
 - name: Install verified upstream release helper
   ansible.builtin.copy:

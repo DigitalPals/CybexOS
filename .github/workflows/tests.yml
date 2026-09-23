@@ -42,9 +42,11 @@ jobs:
             yamllint \
             curl \
             dbus-daemon \
+            desktop-file-utils \
             dnf5-plugins \
             findutils \
             git \
+            glib2 \
             gnupg2 \
             jq \
             luajit \
@@ -54,6 +56,8 @@ jobs:
             qt6-qtdeclarative-devel \
             qt6-qtwebsockets-devel \
             qt6-qtmultimedia \
+            shared-mime-info \
+            xdg-utils \
             ripgrep
           dnf install -y sway
 

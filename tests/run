@@ -466,6 +466,7 @@ python_fixtures=(
   shell-health
   repository-policy
   application-defaults
+  omawrite
   ownership-layering
   plugin-packages
   installer-convergence

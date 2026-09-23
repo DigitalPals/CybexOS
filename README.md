@@ -20,6 +20,8 @@ see [the operations guide](docs/operations.md#migrating-from-fedora-config).
   desktop services
 - a portable Fedora package, Flatpak, shell, font, firewall, and recovery
   baseline
+- Omawrite for text, NFO, and Markdown files, with default file associations
+  when personal dotfiles integration is enabled
 - developer/Android tools, Steam, Docker, Podman/Distrobox, Tailscale,
   connected-service widgets, proprietary applications, and source-built tools
   enabled by default
@@ -35,6 +37,13 @@ see [the operations guide](docs/operations.md#migrating-from-fedora-config).
 There is no desktop-preset selection: every installation gets the same core
 Hyprland/Quickshell desktop. The installer asks only about the target machine,
 security decisions, personal dotfiles, and application opt-outs.
+
+On an installed CybexOS desktop, apply only Omawrite and the managed file
+associations with the saved configuration:
+
+```bash
+ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags omawrite,mime-defaults
+```
 
 ## Install
 

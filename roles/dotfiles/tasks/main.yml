@@ -37,6 +37,7 @@
     path: "{{ primary_home }}/.local/state/cybexos/backups/initial-personal.complete"
   register: dotfiles_initial_backup_marker
   when: manage_personal_dotfiles | bool
+  tags: [mime-defaults]
 
 - name: Preserve pre-existing personal configuration before adoption
   become: true
@@ -73,6 +74,7 @@
     - manage_personal_dotfiles | bool
     - not dotfiles_initial_backup_marker.stat.exists
     - not ansible_check_mode
+  tags: [mime-defaults]
 
 - name: Install desktop and CybexOS user helpers
   become: true
@@ -584,7 +586,7 @@
     dest: "{{ primary_home }}/.config/mimeapps.list"
     mode: "0644"
   when: manage_personal_dotfiles | bool
-  tags: [browser]
+  tags: [browser, mime-defaults]
 
 - name: Install Distrobox desktop launchers when Podman is enabled
   become: true

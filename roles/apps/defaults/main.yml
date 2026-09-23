@@ -69,6 +69,18 @@ apps_required_fedora_packages:
   - fira-code-fonts
   - jetbrains-mono-fonts
 
+# Omawrite uses Qt's native Fedora toolchain, independently of developer_tools
+# and the optional container-based source_builds group.
+apps_omawrite_packages:
+  - gcc-c++
+  - make
+  - qt6-qtbase-devel
+  - qt6-qtdeclarative-devel
+  - qt6-qtwayland
+  - desktop-file-utils
+  - hicolor-icon-theme
+  - gtk-update-icon-cache
+
 apps_developer_fedora_packages:
   - git-lfs
   - gcc
