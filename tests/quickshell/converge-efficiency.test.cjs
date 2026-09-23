@@ -114,6 +114,50 @@ test("cached boot artwork and finished upstream jobs skip network and polling wa
     }
 });
 
+test("pinned single-file fonts are verified in one pass", () => {
+    const upstream = read("roles/apps/tasks/upstream.yml");
+    for (const install of ["Create pinned single-file font directories",
+        "Install pinned single-file fonts", "Install pinned single-file font licenses"])
+        assert.match(task(upstream, install), /loop: "\{\{ apps_pending_font_files \}\}"/);
+
+    const inspection = task(upstream, "Inspect installed pinned single-file fonts");
+    const script = inspection.split("      - |\n")[1].split("\n      - /usr/local/share/fonts")[0]
+        .split("\n").map(line => line.slice(8)).join("\n");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-font-check-"));
+    try {
+        const font = Buffer.from("font bytes\n");
+        const license = Buffer.from("license\n");
+        const sha = bytes => "sha256:" + crypto.createHash("sha256").update(bytes).digest("hex");
+        const fonts = ["good", "drifted", "linked", "missing"].map(name => ({
+            name, version: "1", filename: "Font.ttf", checksum: sha(font),
+            license_filename: "OFL.txt", license_checksum: sha(license).toUpperCase(),
+        }));
+        for (const name of ["good", "drifted", "linked"]) {
+            const directory = path.join(root, name, "1");
+            fs.mkdirSync(directory, { recursive: true, mode: 0o755 });
+            fs.chmodSync(directory, 0o755);
+            fs.writeFileSync(path.join(directory, "OFL.txt"), license, { mode: 0o644 });
+            fs.chmodSync(path.join(directory, "OFL.txt"), 0o644);
+        }
+        fs.writeFileSync(path.join(root, "good/1/Font.ttf"), font);
+        fs.chmodSync(path.join(root, "good/1/Font.ttf"), 0o644);
+        fs.writeFileSync(path.join(root, "drifted/1/Font.ttf"), "changed\n");
+        fs.chmodSync(path.join(root, "drifted/1/Font.ttf"), 0o644);
+        fs.symlinkSync(path.join(root, "good/1/Font.ttf"), path.join(root, "linked/1/Font.ttf"));
+        const run = (uid, gid) => spawnSync("python3",
+            ["-c", script, root, String(uid), String(gid)],
+            { input: JSON.stringify(fonts), encoding: "utf8" });
+        const current = run(process.getuid(), process.getgid());
+        assert.equal(current.status, 0, current.stderr);
+        assert.deepEqual(JSON.parse(current.stdout), ["drifted", "linked", "missing"]);
+        const foreign = run(process.getuid() + 1, process.getgid());
+        assert.deepEqual(JSON.parse(foreign.stdout), ["good", "drifted", "linked", "missing"],
+            "ownership drift must reinstall the font");
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
 test("hypridle restarts when its configuration, unit, or renderer changes", () => {
     const handlers = read("roles/desktop/handlers/main.yml");
     const desktop = read("roles/desktop/tasks/main.yml");
