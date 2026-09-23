@@ -3,28 +3,86 @@
 
 set -euo pipefail
 
-# Cancel any existing slurp
-pkill slurp && exit 0
+ACTION_DIR="${XDG_RUNTIME_DIR:-/tmp}/screen-ocr-${UID}"
+mkdir -p "$ACTION_DIR"
+chmod 0700 "$ACTION_DIR"
+SLURP_PID_FILE="$ACTION_DIR/slurp.pid"
+exec 9>"$ACTION_DIR/action.lock"
+# A second press while a selection is open cancels it. Only the slurp this
+# script started is killed — never another application's (or the screenshot
+# script's) region picker.
+if ! flock -n 9; then
+  pid=$(cat "$SLURP_PID_FILE" 2>/dev/null || true)
+  if [[ $pid =~ ^[0-9]+$ ]] && [ "$(cat "/proc/$pid/comm" 2>/dev/null || true)" = slurp ]; then
+    kill "$pid" 2>/dev/null || true
+  fi
+  exit 0
+fi
+
+FREEZE_PID=""
+SLURP_PID=""
+WORK_DIR=""
+
+notify() {
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send --app-name="Screen OCR" "Screen OCR" "$1" 9>&- 2>/dev/null || true
+  fi
+}
+
+cleanup_freeze() {
+  if [ -n "$FREEZE_PID" ]; then
+    kill "$FREEZE_PID" 2>/dev/null || true
+    wait "$FREEZE_PID" 2>/dev/null || true
+    FREEZE_PID=""
+  fi
+}
 
 cleanup() {
-  if [ -n "${FREEZE_PID:-}" ]; then
-    kill "$FREEZE_PID" 2>/dev/null || true
+  cleanup_freeze
+  rm -f "$SLURP_PID_FILE"
+  if [ -n "$WORK_DIR" ]; then
+    rm -rf "$WORK_DIR"
   fi
 }
 trap cleanup EXIT
 
-wayfreeze &
+WORK_DIR=$(mktemp -d "$ACTION_DIR/capture.XXXXXX")
+IMAGE="$WORK_DIR/selection.png"
+
+wayfreeze 9>&- &
 FREEZE_PID=$!
 sleep 0.1
 
-SELECTION=$(slurp 2>/dev/null || true)
-[ -z "$SELECTION" ] && exit 0
-
-TEXT=$(grim -g "$SELECTION" - | tesseract stdin stdout --oem 1 --psm 6 -l eng --dpi 300 -c preserve_interword_spaces=1 2>/dev/null)
-[ -z "$TEXT" ] && exit 1
-
-printf "%s" "$TEXT" | wl-copy
-
-if command -v notify-send >/dev/null 2>&1; then
-  notify-send "Screen OCR" "Copied text from selection to clipboard"
+slurp 9>&- >"$WORK_DIR/selection" 2>/dev/null &
+SLURP_PID=$!
+printf '%s\n' "$SLURP_PID" > "$SLURP_PID_FILE"
+wait "$SLURP_PID" || true
+rm -f "$SLURP_PID_FILE"
+SELECTION=$(cat "$WORK_DIR/selection")
+if [ -z "$SELECTION" ]; then
+  exit 0
 fi
+
+# Capture while the screen is still frozen, then thaw it before OCR: the
+# recognition pass can take seconds, and the desktop must not stay frozen
+# behind it.
+if ! grim -g "$SELECTION" "$IMAGE" 9>&-; then
+  cleanup_freeze
+  notify "Could not capture the selected region"
+  exit 1
+fi
+cleanup_freeze
+
+if ! TEXT=$(tesseract "$IMAGE" stdout --oem 1 --psm 6 -l eng --dpi 300 \
+    -c preserve_interword_spaces=1 9>&- 2>/dev/null); then
+  notify "Text recognition failed"
+  exit 1
+fi
+if [ -z "$TEXT" ]; then
+  notify "No text found in the selection"
+  exit 1
+fi
+
+printf "%s" "$TEXT" | wl-copy 9>&-
+
+notify "Copied text from selection to clipboard"

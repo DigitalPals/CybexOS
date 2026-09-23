@@ -58,6 +58,12 @@ Item {
             return false;
         return Usage.minRemaining(k) >= 0;
     })
+    // Usage republishes on every poll, so the filter above re-runs and hands
+    // back a fresh (usually identical) array. The Repeater reads the list
+    // back out of a string, which only notifies when the keys really change,
+    // so the chips keep their hover and meter animations across polls.
+    readonly property string availableKeysKey: JSON.stringify(availableKeys)
+    readonly property var chipKeys: JSON.parse(availableKeysKey)
     readonly property bool empty: availableKeys.length === 0
     readonly property real detailSaving: {
         if (empty)
@@ -184,7 +190,7 @@ Item {
 
         Repeater {
             id: providerRepeater
-            model: root.availableKeys
+            model: root.chipKeys
 
             delegate: UsageProviderItem {
                 id: chip

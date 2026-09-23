@@ -57,6 +57,25 @@ test("the resolver writes the largest exact-origin browser favicon to cache", t 
     assert.equal(fs.readFileSync(fileURLToPath(output)).toString(), "large");
 });
 
+test("the origin's root page mapping is answered before the prefix scan", t => {
+    const env = fixture();
+    t.after(() => fs.rmSync(env.base, { recursive: true, force: true }));
+    const setup = spawnSync("python3", ["-c", String.raw`
+import sqlite3, sys
+db = sqlite3.connect(sys.argv[1])
+db.executescript("""
+INSERT INTO icon_mapping VALUES (4, 'https://news.example.com/', 13);
+INSERT INTO favicon_bitmaps VALUES (4, 13, 400, X'726F6F74', 32, 32);
+""")
+db.commit()
+`, path.join(env.browser, "Default", "Favicons")], { encoding: "utf8" });
+    assert.equal(setup.status, 0, setup.stderr);
+
+    const result = run("news.example.com", env);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.readFileSync(fileURLToPath(result.stdout.trim())).toString(), "root");
+});
+
 test("an uncached valid origin falls back to its own conventional favicon", t => {
     const env = fixture();
     t.after(() => fs.rmSync(env.base, { recursive: true, force: true }));

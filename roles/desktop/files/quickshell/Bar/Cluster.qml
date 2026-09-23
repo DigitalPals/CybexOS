@@ -21,8 +21,28 @@ Item {
     property var model: []
     property int spacing: Theme.barSpacing
 
-    readonly property var groups: LayoutHelpers.groupModules(model,
-        id => SettingsHelpers.moduleGroup(id, Settings.modOpts))
+    // The Repeaters below are keyed on structure alone — which ids sit in
+    // which group, in what order. Settings reassigns `mods` and `modOpts`
+    // wholesale on every edit, so a model built from those objects would
+    // hand the Repeater a fresh array for any widget option toggle and
+    // tear down every group and module Loader on every output (the tray
+    // forgets it was expanded, Wifi re-acquires Tailscale, anchors
+    // re-register). A string property only notifies when its value really
+    // changes; the live entry (`on`, `detail`) is looked up by id instead,
+    // so flag changes flow through bindings into the surviving slots.
+    readonly property string groupsKey: JSON.stringify(LayoutHelpers.groupModules(
+        (model || []).map(entry => ({ id: entry.id })),
+        id => SettingsHelpers.moduleGroup(id, Settings.modOpts)))
+    readonly property var groups: JSON.parse(groupsKey)
+    readonly property var entriesById: {
+        const out = {};
+        (model || []).forEach(entry => out[entry.id] = entry);
+        return out;
+    }
+
+    function liveEntry(id) {
+        return entriesById[id] ?? null;
+    }
 
     implicitWidth: row.implicitWidth
     implicitHeight: Theme.barHeight
@@ -46,7 +66,7 @@ Item {
                 // player, no battery, no updates) takes its pill with it.
                 readonly property bool populated: {
                     for (let i = 0; i < items.length; i++) {
-                        if (root.host.moduleShown(items[i].entry))
+                        if (root.host.moduleShown(root.liveEntry(items[i].entry.id)))
                             return true;
                     }
                     return false;
@@ -59,7 +79,7 @@ Item {
                 // from the laid-out items, so it never lags a frame behind.
                 function shownBefore(at) {
                     for (let i = 0; i < at && i < items.length; i++) {
-                        if (root.host.moduleShown(items[i].entry))
+                        if (root.host.moduleShown(root.liveEntry(items[i].entry.id)))
                             return true;
                     }
                     return false;
@@ -151,7 +171,8 @@ Item {
                                     id: slotLoader
                                     host: root.host
                                     col: root.col
-                                    modelData: entry.modelData.entry
+                                    modelData: root.liveEntry(entry.modelData.entry.id)
+                                        ?? entry.modelData.entry
                                     index: entry.modelData.index
                                     groupHovered: entry.modelData.entry.id === "indicators"
                                         && root.host.indicatorTriggerHovered

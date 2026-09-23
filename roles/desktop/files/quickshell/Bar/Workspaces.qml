@@ -19,8 +19,14 @@ Rectangle {
         ...Hyprland.workspaces.values.map(workspace => workspace.id))
     readonly property var existingIds:
         Hyprland.workspaces.values.map(workspace => workspace.id).sort((a, b) => a - b)
-    readonly property var visibleIds: WorkspaceMotion.visibleIds(slots,
-        existingIds, -1, Settings.modOpts.ws.hideEmpty)
+    // Hyprland republishes its workspace list on every focus change and window
+    // event, so the id list is recomputed often and almost always comes out
+    // the same. Round-tripping through a string gives the Repeater a new
+    // model only when the ids really change; a fresh array every time would
+    // recreate every pip (and its hover/tooltip state) on each event.
+    readonly property string visibleIdsKey: JSON.stringify(WorkspaceMotion.visibleIds(slots,
+        existingIds, -1, Settings.modOpts.ws.hideEmpty))
+    readonly property var visibleIds: JSON.parse(visibleIdsKey)
     readonly property string structureKey: JSON.stringify([
         slots, existingIds, Settings.modOpts.ws.hideEmpty
     ])

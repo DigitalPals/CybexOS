@@ -182,6 +182,11 @@ Item {
   // a runaway command can be detected after a timeout.
   property int refreshSeq: 0
   readonly property int refreshTimeoutMs: 6000
+  // Set when a refresh arrives while the previous run is still going.
+  // `running = false; running = true` in one tick does not restart a live
+  // Process, so the stop is requested here and the new run is started from
+  // the falling edge of `running` once the old one has actually gone.
+  property bool restartPending: false
 
   function refresh() {
     var cmd = arrayFrom(optionsCommand)
@@ -194,9 +199,20 @@ Item {
     optionsError = ""
     optionsProcess.command = cmd
     optionsProcess.workingDirectory = optionsCommandCwd
-    optionsProcess.running = false
-    optionsProcess.running = true
+    if (optionsProcess.running || restartPending) {
+      restartPending = true
+      optionsProcess.running = false
+    } else {
+      startOptionsProcess()
+    }
     refreshTimeoutTimer.restart()
+  }
+
+  function startOptionsProcess() {
+    restartPending = false
+    optionsProcess.seq = refreshSeq
+    optionsProcess.finished = false
+    optionsProcess.running = true
   }
 
   Timer {
@@ -205,6 +221,7 @@ Item {
     repeat: false
     onTriggered: {
       if (!root.loadingOptions) return
+      root.restartPending = false
       optionsProcess.running = false
       root.loadingOptions = false
       root.optionsError = "Options command timed out"
@@ -221,11 +238,16 @@ Item {
     command: []
 
     property int seq: 0
+    // Whether this run reported back (stdout or exit). Quickshell emits no
+    // exited() at all for a binary it cannot launch — only the falling edge
+    // of `running` — so that edge is where a never-started run is caught.
+    property bool finished: false
 
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         if (optionsProcess.seq !== root.refreshSeq) return
+        optionsProcess.finished = true
         var result = root.parseCommandOutput(text)
         if (result.error) {
           root.optionsError = result.error
@@ -241,10 +263,22 @@ Item {
       }
     }
 
-    onRunningChanged: if (running) seq = root.refreshSeq
+    onRunningChanged: {
+      if (running) return
+      if (root.restartPending) {
+        root.startOptionsProcess()
+        return
+      }
+      if (seq === root.refreshSeq && !finished && root.loadingOptions) {
+        refreshTimeoutTimer.stop()
+        root.loadingOptions = false
+        root.optionsError = "Options command could not be started"
+      }
+    }
 
     onExited: function(exitCode, exitStatus) {
       if (seq !== root.refreshSeq) return
+      finished = true
       refreshTimeoutTimer.stop()
       if (exitCode !== 0) {
         root.loadingOptions = false

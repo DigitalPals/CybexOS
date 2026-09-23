@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const { shellDir } = require("./shell.cjs");
 
 const helper = path.join(shellDir, "scripts", "note-title.py");
@@ -172,6 +172,43 @@ printf '%s\n' 'Too late'
         assert.notEqual(result.status, 0);
         assert.equal(response(result).code, "timeout");
         assert.ok(Date.now() - started < 1500, "the process-group timeout must be prompt");
+    } finally {
+        base.cleanup();
+    }
+});
+
+test("a terminated helper kills its CLI group and removes its scratch directory", async () => {
+    const base = fixture();
+    try {
+        const marker = path.join(base.directory, "child.json");
+        base.env.STUB_MARKER = marker;
+        executable(base, "claude", `#!/usr/bin/python3
+import json, os, time
+with open(os.environ["STUB_MARKER"] + ".tmp", "w", encoding="utf-8") as stream:
+    json.dump({"pid": os.getpid(), "cwd": os.getcwd()}, stream)
+os.rename(os.environ["STUB_MARKER"] + ".tmp", os.environ["STUB_MARKER"])
+time.sleep(30)
+`);
+        const child = spawn("/usr/bin/python3", [helper], {
+            env: base.env, stdio: ["pipe", "pipe", "pipe"]
+        });
+        const exited = new Promise(resolve => child.on("exit", (code, signal) =>
+            resolve({ code, signal })));
+        child.stdin.end(`${JSON.stringify({
+            provider: "claude", model: "fable", effort: "low", body: "Body"
+        })}\n`);
+        const deadline = Date.now() + 4_000;
+        while (!fs.existsSync(marker)) {
+            assert.ok(Date.now() < deadline, "the stub CLI never started");
+            await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        const stub = JSON.parse(fs.readFileSync(marker, "utf8"));
+        child.kill("SIGTERM");
+        const result = await exited;
+        assert.equal(result.code, 128 + os.constants.signals.SIGTERM);
+        assert.throws(() => process.kill(stub.pid, 0), { code: "ESRCH" },
+            "the CLI must not outlive the helper");
+        assert.ok(!fs.existsSync(stub.cwd), "the scratch directory must be removed");
     } finally {
         base.cleanup();
     }

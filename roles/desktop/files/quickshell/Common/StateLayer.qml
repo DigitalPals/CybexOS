@@ -88,7 +88,11 @@ Item {
         radius: root.radius
         color: "white"
         visible: false
-        layer.enabled: true
+        // Only the ripple samples this mask, so it holds an offscreen
+        // texture for the pulse's lifetime rather than for every control's.
+        // A pulse starts at zero diameter, so the frame the texture is built
+        // in has nothing to show yet.
+        layer.enabled: rippleLayer.visible
     }
 
     SequentialAnimation {

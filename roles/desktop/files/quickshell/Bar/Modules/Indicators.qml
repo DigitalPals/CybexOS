@@ -25,14 +25,14 @@ BarModule {
             catalog[action.id] = action;
         return catalog;
     }
-    readonly property var actions: {
-        void Settings.revision;
-        return Settings.modOpts.indicators.order
-            .map(id => actionCatalog[id]).filter(action => action !== undefined);
-    }
+    // No Settings.revision here: it is bumped by every save (a wallpaper
+    // shuffle included), and modOpts is reassigned — never mutated in place —
+    // so reading Settings.modOpts.indicators already tracks every edit.
+    readonly property var actions: Settings.modOpts.indicators.order
+        .map(id => actionCatalog[id]).filter(action => action !== undefined)
     readonly property string actionStateKey: [
         Dictation.state, Recorder.active, Reminders.count,
-        SysInfo.nightLight, Notifs.dnd, SysInfo.idleInhibited, Settings.revision
+        SysInfo.nightLight, Notifs.dnd, SysInfo.idleInhibited
     ].join(":")
     readonly property bool reminderOpen: host !== null
         && host.popoutOpen("reminders")
@@ -40,15 +40,25 @@ BarModule {
         || (Settings.modOpts.indicators.mode === "hover"
             && (disclosureLatched || reminderOpen))
     readonly property bool disclosureAnimating: inactiveRevealer.widthAnimating
-    readonly property var inactiveActions: {
+    // The two Repeaters are fed id lists parsed back out of a string: the
+    // string only notifies when membership or order really changes, so a
+    // re-evaluation that lands on the same ids leaves the buttons (their
+    // registered anchors, tooltips and pulse animations) alone. Each button
+    // looks its catalog entry up by id.
+    readonly property string inactiveActionsKey: {
         void actionStateKey;
-        return actions.filter(action => actionEnabled(action.id) && !isActive(action.id));
+        return JSON.stringify(actions
+            .filter(action => actionEnabled(action.id) && !isActive(action.id))
+            .map(action => action.id));
     }
-    readonly property var activeActions: {
+    readonly property string activeActionsKey: {
         void actionStateKey;
-        return actions.filter(action => isActive(action.id)
-            && (actionEnabled(action.id) || mandatoryWhileActive(action.id)));
+        return JSON.stringify(actions.filter(action => isActive(action.id)
+            && (actionEnabled(action.id) || mandatoryWhileActive(action.id)))
+            .map(action => action.id));
     }
+    readonly property var inactiveActions: JSON.parse(inactiveActionsKey)
+    readonly property var activeActions: JSON.parse(activeActionsKey)
 
     function actionEnabled(id) {
         return Settings.modOpts.indicators.enabled.indexOf(id) !== -1;
@@ -248,8 +258,9 @@ BarModule {
 
     component IndicatorAction: Rectangle {
         id: button
-        required property var modelData
-        readonly property string actionId: modelData.id
+        required property string modelData
+        readonly property string actionId: modelData
+        readonly property var action: root.actionCatalog[actionId] ?? ({})
         readonly property bool activeState: root.isActive(actionId)
         readonly property bool recording: actionId === "recording" && Recorder.active
         readonly property bool transcribing: actionId === "dictation" && Dictation.transcribing
@@ -303,7 +314,7 @@ BarModule {
             Sym {
                 id: actionGlyph
                 anchors.verticalCenter: parent.verticalCenter
-                name: button.transcribing ? "progress_activity" : button.modelData.glyph
+                name: button.transcribing ? "progress_activity" : (button.action.glyph ?? "")
                 size: Theme.iconSmall + 2
                 fill: button.activeState && !button.transcribing ? 1 : 0
                 symWeight: 550

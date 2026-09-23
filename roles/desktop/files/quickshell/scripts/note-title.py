@@ -133,7 +133,36 @@ def timeout_seconds() -> float:
         return TIMEOUT_SECONDS
 
 
+# The CLI runs in its own session so a timeout can kill its whole process
+# group. That also puts it beyond a signal sent to this helper, so a SIGTERM
+# (the shell cancelling a request, or stopping) must reach it explicitly.
+_child: subprocess.Popen[str] | None = None
+
+
+def kill_child_group() -> None:
+    if _child is None or _child.returncode is not None:
+        return
+    try:
+        os.killpg(_child.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def terminate(signum: int, _frame: object) -> NoReturn:
+    # Only signal here and unwind: the child is reaped by run_cli once the
+    # exception has left communicate(), whose wait lock this frame may hold.
+    # SystemExit then lets TemporaryDirectory remove the scratch directory.
+    kill_child_group()
+    raise SystemExit(128 + signum)
+
+
+def install_signal_handlers() -> None:
+    for signum in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        signal.signal(signum, terminate)
+
+
 def run_cli(command: list[str], prompt: str, directory: str) -> tuple[int, str, str]:
+    global _child
     environment = {
         **os.environ,
         "LC_ALL": "C.UTF-8",
@@ -161,6 +190,7 @@ def run_cli(command: list[str], prompt: str, directory: str) -> tuple[int, str, 
     except OSError:
         fail("unavailable", "The selected title CLI could not be started.")
 
+    _child = process
     try:
         stdout, stderr = process.communicate(prompt, timeout=timeout_seconds())
     except subprocess.TimeoutExpired:
@@ -170,6 +200,14 @@ def run_cli(command: list[str], prompt: str, directory: str) -> tuple[int, str, 
             pass
         process.communicate()
         fail("timeout", "Title generation timed out after 30 seconds.")
+    except BaseException:
+        # Interrupted by a signal (or anything else): the group has already
+        # been told to die; reap it before the scratch directory goes.
+        kill_child_group()
+        process.wait()
+        raise
+    finally:
+        _child = None
     return process.returncode, stdout, stderr
 
 
@@ -226,6 +264,7 @@ def normalize_output(output: str) -> str:
 
 
 def main() -> int:
+    install_signal_handlers()
     provider, model, effort, body = read_request()
     command = command_for(provider, model, effort)
     with tempfile.TemporaryDirectory(prefix="quickshell-note-title-") as directory:

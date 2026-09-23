@@ -11,7 +11,14 @@ import re
 import signal
 import sys
 
-from gi.repository import Gio, GLib
+# The drawer reads JSON lines only; a traceback on stderr would leave it
+# waiting for `ready` with nothing on screen. Report a missing binding as the
+# same error event every other failure uses.
+try:
+    from gi.repository import Gio, GLib
+except Exception as exc:  # ImportError, or a broken/mismatched typelib.
+    print(json.dumps({'error': f'Bluetooth support is unavailable: {exc}'}), flush=True)
+    sys.exit(1)
 
 AGENT_PATH = '/org/cybex/BluetoothAgent'
 DEVICE_IFACE = 'org.bluez.Device1'
@@ -240,6 +247,10 @@ class Session:
                 self.command(message)
             except (ValueError, TypeError, GLib.Error) as exc:
                 self.emit(error=str(exc))
+            except Exception as exc:
+                # An exception escaping a GLib watch callback removes the
+                # watch, and the helper would then ignore stdin forever.
+                self.emit(error=f'Bluetooth request failed: {exc}')
         return True
 
     def close(self):
@@ -275,6 +286,9 @@ def main():
         Session(sys.argv[1]).run()
     except (GLib.Error, ValueError, IndexError) as exc:
         print(json.dumps({'error': str(exc)}), flush=True)
+        return 1
+    except Exception as exc:
+        print(json.dumps({'error': f'Bluetooth controls failed: {exc}'}), flush=True)
         return 1
     return 0
 

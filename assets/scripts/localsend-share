@@ -14,6 +14,17 @@ if [ -z "$mode" ]; then
   exit 1
 fi
 
+# Picker candidates under $HOME. A bare `find "$HOME"` walks every cache,
+# toolchain and browser profile before the useful paths; fd skips hidden and
+# ignored trees, and the fallback prunes dot-directories the same way.
+candidates() {
+  if command -v fd >/dev/null 2>&1; then
+    fd --type "$1" . "$HOME" 2>/dev/null || true
+  else
+    find "$HOME" -mindepth 1 -name '.*' -prune -o -type "$1" -print 2>/dev/null || true
+  fi
+}
+
 case "$mode" in
   _send-staged)
     [[ $# == 1 ]] || exit 2
@@ -46,9 +57,9 @@ case "$mode" in
     fi
 
     if [ "$mode" = "folder" ]; then
-      selection="$(find "$HOME" -type d 2>/dev/null | fzf --prompt 'Folder> ' --height 40% --reverse || true)"
+      selection="$(candidates d | fzf --prompt 'Folder> ' --height 40% --reverse || true)"
     else
-      selection="$(find "$HOME" -type f 2>/dev/null | fzf --multi --prompt 'Files> ' --height 40% --reverse || true)"
+      selection="$(candidates f | fzf --multi --prompt 'Files> ' --height 40% --reverse || true)"
     fi
 
     [ -z "$selection" ] && exit 0

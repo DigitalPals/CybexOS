@@ -169,18 +169,26 @@ PanelWindow {
                     columnSpacing: Theme.panelSectionSpacing
                     rowSpacing: Theme.panelSectionSpacing
 
+                    // A few hundred rows and key caps: build them while the
+                    // sheet is on screen (including its fade-out) and release
+                    // them once it is gone, rather than holding them for the
+                    // shell's whole lifetime behind an unmapped surface.
                     Repeater {
-                        model: Session.shortcutGroups
+                        model: root.visible ? Session.shortcutGroups : []
 
                         delegate: Column {
                             id: group
 
                             required property var modelData
                             required property int index
+                            // Starts false and binds after construction so
+                            // the fade-in still runs for groups built on open.
+                            property bool shown: false
 
                             width: (shortcutGrid.width - shortcutGrid.columnSpacing * (shortcutGrid.columns - 1)) / shortcutGrid.columns
                             spacing: Theme.controlSpacing
-                            opacity: Session.keysOpen ? 1 : 0
+                            opacity: shown ? 1 : 0
+                            Component.onCompleted: shown = Qt.binding(() => Session.keysOpen)
 
                             Behavior on opacity {
                                 NumberAnimation {

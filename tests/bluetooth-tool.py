@@ -181,6 +181,34 @@ class BluetoothTest(unittest.TestCase):
         s.close()
         s.bus.close_sync.assert_called_once()
 
+    def test_unexpected_request_failure_is_reported_and_keeps_reading(self):
+        s = self.session
+        s.buffer = b''
+        s.command = Mock(side_effect=[KeyError('boom'), None])
+        with patch.object(module.os, 'read',
+                          return_value=b'{"action":"scan"}\n{"action":"stop-scan"}\n'):
+            self.assertTrue(s.read(0, None))
+        self.assertEqual(s.command.call_count, 2)
+        self.assertIn('boom', s.emit.call_args_list[0].kwargs['error'])
+
+    def test_unexpected_startup_failure_is_a_json_error(self):
+        with patch.object(module, 'Session', side_effect=KeyError('no adapter')), \
+                patch.object(module.sys, 'argv', ['bluetooth-tool', '/org/bluez/hci0']), \
+                patch('builtins.print') as printed:
+            self.assertEqual(module.main(), 1)
+        self.assertIn('"error"', printed.call_args.args[0])
+
+    def test_missing_gobject_binding_is_a_json_error(self):
+        path = Path(__file__).resolve().parents[1] / \
+            'roles/desktop/files/quickshell/scripts/bluetooth-tool.py'
+        broken = importlib.util.spec_from_file_location('bluetooth_tool_broken', path)
+        with patch.dict(sys.modules, {'gi': None, 'gi.repository': None}), \
+                patch('builtins.print') as printed, \
+                self.assertRaises(SystemExit) as exited:
+            broken.loader.exec_module(importlib.util.module_from_spec(broken))
+        self.assertEqual(exited.exception.code, 1)
+        self.assertIn('Bluetooth support is unavailable', printed.call_args.args[0])
+
 
 if __name__ == '__main__':
     unittest.main()
