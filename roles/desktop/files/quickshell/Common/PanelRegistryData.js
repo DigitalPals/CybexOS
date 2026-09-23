@@ -12,7 +12,8 @@
 //
 // Fields:
 //   name       the popout name, as passed to Popouts.openPanel() and
-//              `qs ipc call popouts toggle <name>`
+//              `cybexos-runtime ipc popouts toggle <name>` (the shell runs
+//              by path, so a bare `qs ipc call` finds no config)
 //   island     which bar section it hangs under when no caller says otherwise
 //   source     the view, relative to the shell root (the popout host makes it
 //              absolute against Quickshell.shellDir)
