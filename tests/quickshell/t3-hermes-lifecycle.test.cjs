@@ -113,3 +113,55 @@ test("Settings → About reports an off integration without constructing it", ()
     assert.equal(on(modsWith("t3", true), "t3"), true);
     assert.equal(on(modsWith("hermes", true), "hermes"), true);
 });
+
+// What a transport's stableTimer does when a link has stayed up.
+function stableTrigger(source) {
+    return blockAfter(source.slice(source.indexOf("id: stableTimer")), "onTriggered:");
+}
+
+// The socket-open branch of a transport's status handler.
+function openBranch(source) {
+    const handler = blockAfter(source, "function onSocketStatusChanged(");
+    return blockAfter(handler, "=== 1)");
+}
+
+test("T3 resets its backoff only once the link has proven healthy", () => {
+    const connection = read("Common/T3Connection.qml");
+    const facade = read("Common/T3Code.qml");
+    const opened = openBranch(connection);
+    assert.doesNotMatch(opened, /retrySecs/,
+        "an accept-then-drop server must not be retried at a fixed five seconds");
+    assert.match(opened, /stableTimer\.epoch = epoch;\s*stableTimer\.restart\(\);/);
+    assert.match(blockAfter(connection, "function markHealthy()"),
+        /stableTimer\.stop\(\);\s*retrySecs = 5;/);
+    assert.match(connection, /id: stableTimer\s*interval: 60000/);
+    assert.match(stableTrigger(connection),
+        /epoch === root\.sessionEpoch && root\.state === "connected"\)\s*root\.markHealthy\(\);/);
+    assert.match(blockAfter(connection, "function scheduleRetry(epoch)"),
+        /stableTimer\.stop\(\);[\s\S]*retrySecs = Math\.min\(retrySecs \* 2, 120\);/,
+        "a drop must cancel a pending proof and keep doubling");
+
+    // The shell stream proves the link, and ending it with a Failure says why.
+    const handle = blockAfter(facade, "function handleMessage(text)");
+    assert.match(handle,
+        /const wasReady = T3Threads\.shellReady;\s*dirty = T3Threads\.applyItems\(msg\.values\) \|\| dirty;[\s\S]*?if \(!wasReady && T3Threads\.shellReady\)\s*T3Connection\.markHealthy\(\);/);
+    const exit = blockAfter(handle, 'msg._tag === "Exit")');
+    assert.match(exit,
+        /if \(msg\.exit && msg\.exit\._tag === "Failure"\)\s*T3Connection\.connectionError = T3Rpc\.failureMessage\(msg,[\s\S]*?\);\s*T3Connection\.scheduleRetry\(\);/);
+    assert.doesNotMatch(exit, /markHealthy|retrySecs/);
+});
+
+test("Hermes resets its backoff only after the bridge has stayed up", () => {
+    const connection = read("Common/HermesConnection.qml");
+    const opened = openBranch(connection);
+    assert.doesNotMatch(opened, /retrySecs/,
+        "a bridge that accepts and drops must not be retried every two seconds");
+    assert.match(opened, /stableTimer\.generation = generation;\s*stableTimer\.restart\(\);/);
+    assert.match(connection, /id: stableTimer\s*interval: 60000/);
+    assert.match(stableTrigger(connection),
+        /generation === root\.generation && root\.state === "connected"\)\s*root\.retrySecs = 2;/);
+    for (const fn of ["function disconnect()", "function scheduleRetry(emitDrop)"])
+        assert.match(blockAfter(connection, fn), /stableTimer\.stop\(\);/, fn);
+    assert.match(blockAfter(connection, "function reconnect()"), /retrySecs = 2;/,
+        "an explicit reconnect still starts over");
+});

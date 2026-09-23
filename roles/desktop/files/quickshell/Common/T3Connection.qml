@@ -123,6 +123,7 @@ Singleton {
         cloudTicketTimeout.stop();
         socketConnectTimeout.stop();
         descriptorTimeout.stop();
+        stableTimer.stop();
         if (ticketRequest) {
             ticketRequest.abort();
             ticketRequest = null;
@@ -390,6 +391,9 @@ Singleton {
 
     // ---- connection ------------------------------------------------------
 
+    // The next retry's delay. It doubles with every failed attempt and starts
+    // over only once a link has proven healthy (markHealthy), never merely
+    // because a socket opened.
     property int retrySecs: 5
     // When the open socket last delivered a frame. Pings go out every
     // pingTimer interval and the server answers each, so a long silence
@@ -550,6 +554,7 @@ Singleton {
         if (epoch !== undefined && epoch !== sessionEpoch)
             return;
         socketConnectTimeout.stop();
+        stableTimer.stop();
         dropped();
         if (socketLoader.item)
             socketLoader.item.active = false;
@@ -559,6 +564,16 @@ Singleton {
         retryTimer.epoch = sessionEpoch;
         retrySecs = Math.min(retrySecs * 2, 120);
         retryTimer.restart();
+    }
+
+    // The link carried real work — T3Code calls this on the first shell
+    // snapshot — so a later drop may start over from the shortest retry. An
+    // open socket alone proves nothing: a relay that accepts and then closes,
+    // or a server that ends every subscription at once, would otherwise be
+    // retried every five seconds for as long as it stays broken.
+    function markHealthy() {
+        stableTimer.stop();
+        retrySecs = 5;
     }
 
     // Send a frame. No-op while the socket is not open, which is what every
@@ -573,6 +588,18 @@ Singleton {
         onTriggered: {
             if (epoch === root.sessionEpoch)
                 root.connect();
+        }
+    }
+
+    // A link that stays up this long has proven itself even without a shell
+    // snapshot, which a pairing that cannot read never receives.
+    Timer {
+        id: stableTimer
+        interval: 60000
+        property int epoch: -1
+        onTriggered: {
+            if (epoch === root.sessionEpoch && root.state === "connected")
+                root.markHealthy();
         }
     }
 
@@ -708,7 +735,8 @@ Singleton {
                 root.connectionError = "";
                 root.lastFrameMs = Date.now();
                 root.state = "connected";
-                root.retrySecs = 5;
+                stableTimer.epoch = epoch;
+                stableTimer.restart();
                 root.opened();
             } else if (st === 3 || st === 4) { // closed | error
                 socketConnectTimeout.stop();

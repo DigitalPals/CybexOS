@@ -13,6 +13,10 @@ Singleton {
     // "connecting" | "connected" | "offline" | "disabled"
     property string state: "offline"
     property string connectionError: ""
+    // The next retry's delay. It doubles with every failed attempt and starts
+    // over only once a link has stayed up (stableTimer) or the user asks
+    // (reconnect), never merely because the socket opened: a bridge that
+    // accepts and then drops would otherwise be retried every two seconds.
     property int retrySecs: 2
     property int generation: 0
 
@@ -95,6 +99,7 @@ Singleton {
     function disconnect() {
         retryTimer.stop();
         connectTimeout.stop();
+        stableTimer.stop();
         const wasLive = state === "connected" || state === "connecting";
         generation++;
         state = enabled ? "offline" : "disabled";
@@ -114,6 +119,7 @@ Singleton {
 
     function scheduleRetry(emitDrop) {
         connectTimeout.stop();
+        stableTimer.stop();
         if (emitDrop === true)
             dropped();
         // Publish offline before deactivating the WebSocket. Its synchronous
@@ -149,6 +155,16 @@ Singleton {
     Timer {
         id: retryTimer
         onTriggered: root.connect()
+    }
+
+    Timer {
+        id: stableTimer
+        interval: 60000
+        property int generation: -1
+        onTriggered: {
+            if (generation === root.generation && root.state === "connected")
+                root.retrySecs = 2;
+        }
     }
 
     Timer {
@@ -200,8 +216,9 @@ Singleton {
             if (status === 1) {
                 connectTimeout.stop();
                 root.connectionError = "";
-                root.retrySecs = 2;
                 root.state = "connected";
+                stableTimer.generation = generation;
+                stableTimer.restart();
                 root.opened();
             } else if (status === 3 || status === 4) {
                 connectTimeout.stop();

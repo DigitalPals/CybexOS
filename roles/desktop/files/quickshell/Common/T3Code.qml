@@ -279,14 +279,25 @@ Singleton {
             if (msg._tag === "Chunk") {
                 T3Connection.send(JSON.stringify({ _tag: "Ack", requestId: msg.requestId }));
                 if (reqId === T3Rpc.shellReqId) {
+                    const wasReady = T3Threads.shellReady;
                     dirty = T3Threads.applyItems(msg.values) || dirty;
+                    // The first snapshot is what proves the link works end
+                    // to end; only now may a later drop retry at once.
+                    if (!wasReady && T3Threads.shellReady)
+                        T3Connection.markHealthy();
                 } else if (T3Rpc.rpcHandlers[reqId]) {
                     for (const item of (Array.isArray(msg.values) ? msg.values : []))
                         T3Rpc.rpcHandlers[reqId].item?.(item);
                 }
             } else if (msg._tag === "Exit") {
                 if (reqId === T3Rpc.shellReqId) {
-                    // Stream ended server-side (shutdown/restart): reconnect.
+                    // Stream ended server-side: reconnect. A clean end is a
+                    // shutdown or restart; a Failure (version skew, a server
+                    // stream error) recurs on every resubscribe, so say why
+                    // and let the backoff grow rather than loop on it.
+                    if (msg.exit && msg.exit._tag === "Failure")
+                        T3Connection.connectionError = T3Rpc.failureMessage(msg,
+                            "T3 server ended the session stream");
                     T3Connection.scheduleRetry();
                 } else if (T3Rpc.rpcHandlers[reqId]) {
                     T3Rpc.rpcHandlers[reqId].exit?.(msg);
