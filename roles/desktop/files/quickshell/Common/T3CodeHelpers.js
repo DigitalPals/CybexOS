@@ -1509,6 +1509,312 @@ function historyPage(messages, visibleCount) {
     return { items: source.slice(start), hasEarlier: start > 0, hiddenCount: start };
 }
 
+// ---- detail history order ---------------------------------------------
+// Messages, activities, plans and checkpoints arrive as histories ordered by
+// server sequence, then timestamp, then id. A streaming reply upserts its
+// message once per token, so the order is decided on keys parsed once per
+// entry rather than by re-parsing two ISO strings inside every comparison.
+
+function historySortKey(entry) {
+    var stamp = entry ? entry.createdAt : undefined;
+    if (stamp === undefined || stamp === null)
+        stamp = entry ? entry.updatedAt : undefined;
+    if (stamp === undefined || stamp === null)
+        stamp = entry ? entry.completedAt : undefined;
+    return {
+        sequence: entry && typeof entry.sequence === "number" ? entry.sequence : null,
+        ms: parseMs(stamp),
+        id: entry && typeof entry.id === "string" ? entry.id : ""
+    };
+}
+
+function compareHistoryKeys(left, right) {
+    if (left.sequence !== null && right.sequence !== null
+            && left.sequence !== right.sequence)
+        return left.sequence - right.sequence;
+    if (!isNaN(left.ms) && !isNaN(right.ms) && left.ms !== right.ms)
+        return left.ms - right.ms;
+    return left.id.localeCompare(right.id);
+}
+
+function compareHistory(left, right) {
+    return compareHistoryKeys(historySortKey(left), historySortKey(right));
+}
+
+// A sorted copy. Keys are computed once per entry; ties keep input order.
+function sortHistory(values) {
+    var source = Array.isArray(values) ? values : [];
+    var decorated = [];
+    for (var i = 0; i < source.length; i++)
+        decorated.push({ key: historySortKey(source[i]), value: source[i], at: i });
+    decorated.sort(function(left, right) {
+        return compareHistoryKeys(left.key, right.key) || left.at - right.at;
+    });
+    var sorted = [];
+    for (var j = 0; j < decorated.length; j++)
+        sorted.push(decorated[j].value);
+    return sorted;
+}
+
+// Insert or replace `value` (matched on `idField`) in a history that is
+// already in sortHistory order, returning a new array in that order. The
+// common case — a streaming message growing in place — keeps its slot and
+// costs one comparison with each neighbour; anything else is a binary insert
+// after its equals, which is where a push followed by a stable sort puts it.
+function upsertHistory(values, value, idField) {
+    var next = Array.isArray(values) ? values.slice() : [];
+    if (!value)
+        return next;
+    var key = value[idField];
+    var at = -1;
+    if (key !== undefined && key !== null) {
+        for (var i = 0; i < next.length; i++) {
+            if (next[i] && next[i][idField] === key) {
+                at = i;
+                break;
+            }
+        }
+    }
+    var valueKey = historySortKey(value);
+    if (at >= 0) {
+        var afterPrevious = at === 0
+            || compareHistoryKeys(historySortKey(next[at - 1]), valueKey) <= 0;
+        var beforeNext = at === next.length - 1
+            || compareHistoryKeys(valueKey, historySortKey(next[at + 1])) <= 0;
+        if (afterPrevious && beforeNext) {
+            next[at] = value;
+            return next;
+        }
+        next.splice(at, 1);
+    }
+    var low = 0;
+    var high = next.length;
+    while (low < high) {
+        var middle = (low + high) >> 1;
+        if (compareHistoryKeys(historySortKey(next[middle]), valueKey) <= 0)
+            low = middle + 1;
+        else
+            high = middle;
+    }
+    next.splice(low, 0, value);
+    return next;
+}
+
+// ---- conversation rows --------------------------------------------------
+// The thread page draws its visible page of messages from a ListModel keyed
+// by message id, so a streaming token rewrites one row's text instead of
+// rebuilding (and re-parsing the Markdown of) every card on the page.
+
+var LONG_MESSAGE_CHARS = 1200;
+var LONG_MESSAGE_LINES = 12;
+
+// True when `text` has more than `maxLines` lines, counted by scanning for
+// newlines and stopping at the first one past the limit — never splitting.
+function exceedsLineCount(text, maxLines) {
+    if (typeof text !== "string")
+        return false;
+    var newlines = 0;
+    var cursor = text.indexOf("\n");
+    while (cursor >= 0) {
+        newlines++;
+        if (newlines >= maxLines)
+            return true;
+        cursor = text.indexOf("\n", cursor + 1);
+    }
+    return false;
+}
+
+function isLongMessage(text) {
+    return typeof text === "string"
+        && (text.length > LONG_MESSAGE_CHARS || exceedsLineCount(text, LONG_MESSAGE_LINES));
+}
+
+var HISTORY_ROW_FIELDS = ["speakerRole", "body", "streaming", "timestamp", "longMessage",
+    "continuation"];
+
+// One flat, consistently typed ListModel row per message. `continuation`
+// marks a message whose speaker matches the one before it on this page.
+function historyRows(items) {
+    var source = Array.isArray(items) ? items : [];
+    var rows = [];
+    var previousRole = null;
+    for (var i = 0; i < source.length; i++) {
+        var message = source[i] || {};
+        var role = typeof message.role === "string" ? message.role : "";
+        var text = message.text === undefined || message.text === null ? ""
+            : String(message.text);
+        var stamp = message.updatedAt;
+        if (stamp === undefined || stamp === null)
+            stamp = message.createdAt;
+        rows.push({
+            messageId: typeof message.id === "string" ? message.id : "#" + i,
+            speakerRole: role,
+            body: text,
+            streaming: message.streaming === true,
+            timestamp: typeof stamp === "string" ? stamp : "",
+            longMessage: isLongMessage(message.text),
+            continuation: i > 0 && previousRole === role
+        });
+        previousRole = role;
+    }
+    return rows;
+}
+
+// Edit script that turns `current` rows into `next`, preserving every row
+// whose id survives in the same relative order. Operations apply in sequence:
+// { op: "remove", index, count }, { op: "insert", index, row } and
+// { op: "set", index, changes } with only the fields that differ.
+function keyedRowOps(current, next, keyField, fields) {
+    var work = Array.isArray(current) ? current.slice() : [];
+    var wanted = Array.isArray(next) ? next : [];
+    var ops = [];
+    for (var n = 0; n < wanted.length; n++) {
+        var row = wanted[n];
+        var at = -1;
+        for (var j = n; j < work.length; j++) {
+            if (work[j][keyField] === row[keyField]) {
+                at = j;
+                break;
+            }
+        }
+        if (at < 0) {
+            ops.push({ op: "insert", index: n, row: row });
+            work.splice(n, 0, row);
+            continue;
+        }
+        if (at > n) {
+            ops.push({ op: "remove", index: n, count: at - n });
+            work.splice(n, at - n);
+        }
+        var changes = null;
+        for (var f = 0; f < fields.length; f++) {
+            var field = fields[f];
+            if (work[n][field] !== row[field]) {
+                changes = changes || {};
+                changes[field] = row[field];
+            }
+        }
+        if (changes)
+            ops.push({ op: "set", index: n, changes: changes });
+        work[n] = row;
+    }
+    if (work.length > wanted.length)
+        ops.push({ op: "remove", index: wanted.length, count: work.length - wanted.length });
+    return ops;
+}
+
+function historyRowOps(currentRows, items) {
+    var rows = historyRows(items);
+    return { rows: rows, ops: keyedRowOps(currentRows, rows, "messageId", HISTORY_ROW_FIELDS) };
+}
+
+// ---- shell stream -------------------------------------------------------
+// Fold one Chunk's worth of shell items into the thread and project maps.
+// Each map is copied at most once per frame, however many items touch it;
+// the caller assigns the results once and then relays `events` in order.
+function applyShellItems(threadMap, projectMap, items) {
+    var threads = threadMap || {};
+    var projects = projectMap || {};
+    var ownThreads = false;
+    var ownProjects = false;
+    var result = {
+        dirty: false, ready: false, threadsChanged: false, projectsChanged: false,
+        events: []
+    };
+    var source = Array.isArray(items) ? items : [];
+    for (var i = 0; i < source.length; i++) {
+        var item = source[i];
+        if (!item || typeof item !== "object")
+            continue;
+        switch (item.kind) {
+        case "snapshot": {
+            var snapshot = item.snapshot || {};
+            threads = {};
+            projects = {};
+            ownThreads = ownProjects = true;
+            var snapshotProjects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
+            var snapshotThreads = Array.isArray(snapshot.threads) ? snapshot.threads : [];
+            for (var p = 0; p < snapshotProjects.length; p++)
+                projects[snapshotProjects[p].id] = snapshotProjects[p];
+            for (var t = 0; t < snapshotThreads.length; t++)
+                threads[snapshotThreads[t].id] = snapshotThreads[t];
+            result.threadsChanged = result.projectsChanged = true;
+            result.ready = true;
+            result.dirty = true;
+            result.events.push({ kind: "snapshot" });
+            break;
+        }
+        case "synchronized":
+            result.ready = true;
+            break;
+        case "project-upserted":
+        case "project-removed":
+            if (!ownProjects) {
+                projects = Object.assign({}, projects);
+                ownProjects = true;
+            }
+            if (item.kind === "project-upserted")
+                projects[item.project.id] = item.project;
+            else
+                delete projects[item.projectId];
+            result.projectsChanged = true;
+            result.dirty = true;
+            break;
+        case "thread-upserted":
+        case "thread-removed":
+            if (!ownThreads) {
+                threads = Object.assign({}, threads);
+                ownThreads = true;
+            }
+            if (item.kind === "thread-upserted") {
+                threads[item.thread.id] = item.thread;
+                result.events.push({ kind: "thread-upserted", threadId: item.thread.id });
+            } else {
+                delete threads[item.threadId];
+            }
+            result.threadsChanged = true;
+            result.dirty = true;
+            break;
+        default:
+            break;
+        }
+    }
+    result.threadMap = threads;
+    result.projectMap = projects;
+    return result;
+}
+
+// ---- transport ----------------------------------------------------------
+
+// What identifies the credential session, as opposed to its current token.
+// A DPoP T3 Connect token is owned by scripts/t3-cloud.mjs, which refreshes it
+// in the state file while exchanging a WebSocket ticket; that write must not
+// read as a new session and invalidate the very ticket it is producing. A
+// bearer token is the pairing itself, so replacing it still is one.
+function credentialFingerprint(data) {
+    var source = data || {};
+    var authMode = source.authMode || "";
+    var tokenType = source.tokenType || "Bearer";
+    var token = source.accessToken || "";
+    var helperOwned = authMode === "cloud" && tokenType === "DPoP";
+    return JSON.stringify([
+        source.httpBaseUrl || "", source.wsBaseUrl || "",
+        helperOwned ? token !== "" : token, authMode,
+        tokenType, source.cloudStatus || "signed-out",
+        helperOwned ? source.cloudIdentity || "" : "",
+        helperOwned ? source.environmentId || "" : ""
+    ]);
+}
+
+// The socket answers every app-level Ping with a Pong, so a connected link
+// that has delivered nothing for one and a half ping intervals has missed a
+// reply: typically a half-open TCP connection left behind by a suspend.
+function socketSilent(lastFrameMs, nowMs, pingIntervalMs) {
+    if (typeof lastFrameMs !== "number" || !isFinite(lastFrameMs) || lastFrameMs <= 0)
+        return false;
+    return nowMs - lastFrameMs > pingIntervalMs * 1.5;
+}
+
 function truncateDiff(rawDiff, maxChars, maxLines) {
     var source = typeof rawDiff === "string" ? rawDiff : "";
     var charLimit = Math.max(0, Math.floor(
@@ -1860,6 +2166,19 @@ var exported = {
     resolveSnoozePresets: resolveSnoozePresets,
     snoozeWakeLabel: snoozeWakeLabel,
     historyPage: historyPage,
+    historySortKey: historySortKey,
+    compareHistoryKeys: compareHistoryKeys,
+    compareHistory: compareHistory,
+    sortHistory: sortHistory,
+    upsertHistory: upsertHistory,
+    exceedsLineCount: exceedsLineCount,
+    isLongMessage: isLongMessage,
+    historyRows: historyRows,
+    keyedRowOps: keyedRowOps,
+    historyRowOps: historyRowOps,
+    applyShellItems: applyShellItems,
+    credentialFingerprint: credentialFingerprint,
+    socketSilent: socketSilent,
     truncateDiff: truncateDiff,
     canBeginAction: canBeginAction,
     findErrorText: findErrorText,

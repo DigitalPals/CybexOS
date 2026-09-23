@@ -91,12 +91,12 @@ Singleton {
         cloudLoginProc.running = true;
     }
 
+    // Identifies the credential session rather than its current token: the
+    // DPoP ticket helper refreshes a near-expiry environment token in this
+    // file while it is producing a ticket, and treating that write as a new
+    // session would discard the ticket and spawn a second helper.
     function fingerprint(data) {
-        return JSON.stringify([
-            data.httpBaseUrl ?? "", data.wsBaseUrl ?? "",
-            data.accessToken ?? "", data.authMode ?? "",
-            data.tokenType || "Bearer", data.cloudStatus || "signed-out"
-        ]);
+        return Helpers.credentialFingerprint(data);
     }
 
     function resetTransport() {
@@ -344,6 +344,11 @@ Singleton {
     // ---- connection ------------------------------------------------------
 
     property int retrySecs: 5
+    // When the open socket last delivered a frame. Pings go out every
+    // pingTimer interval and the server answers each, so a long silence
+    // means the link is gone even though no close was ever reported.
+    property double lastFrameMs: 0
+    onMessage: lastFrameMs = Date.now()
 
     function connect() {
         if (!paired) {
@@ -579,12 +584,23 @@ Singleton {
         }
     }
 
+    // A half-open socket — typically after a suspend — never reports a close,
+    // so "connected" would outlive the link indefinitely. A Ping that went
+    // unanswered for over an interval recycles the connection instead.
     Timer {
         id: pingTimer
         interval: 30000
         repeat: true
         running: root.state === "connected"
-        onTriggered: root.send(JSON.stringify({ _tag: "Ping" }))
+        onTriggered: {
+            if (Helpers.socketSilent(root.lastFrameMs, Date.now(),
+                    pingTimer.interval)) {
+                root.connectionError = "T3 connection stopped responding";
+                root.scheduleRetry(root.sessionEpoch);
+                return;
+            }
+            root.send(JSON.stringify({ _tag: "Ping" }));
+        }
     }
 
     Loader {
@@ -638,6 +654,7 @@ Singleton {
                 // Cleared before the state change so no listener ever sees a
                 // connected shell still carrying the failure it recovered from.
                 root.connectionError = "";
+                root.lastFrameMs = Date.now();
                 root.state = "connected";
                 root.retrySecs = 5;
                 root.opened();
