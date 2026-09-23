@@ -245,7 +245,7 @@ test("thread transcript follows T3 message rhythm and attaches response UI", () 
         "and is separated from the one above it by a hairline");
 
     assert.match(message[1], /textFormat:\s*messageCard\.fromUser \? Text\.PlainText : Text\.MarkdownText/);
-    assert.match(message[1], /root\.themedMarkdown\(messageCard\.message\.text\)/);
+    assert.match(message[1], /root\.themedMarkdown\(messageCard\.body\)/);
     assert.match(message[1], /messageHover\.hovered \|\| activeFocus/);
 
     // The metadata used to float because it had nowhere stable to sit: putting
