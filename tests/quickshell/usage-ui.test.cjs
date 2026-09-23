@@ -177,3 +177,56 @@ test("both Claude overview surfaces expose account-labelled Fable windows", () =
     assert.match(drawerUsage, /additionalWindows: Usage.additionalFableWindows\(root.selected\)/);
     assert.match(drawerUsage, /windows: additionalWindows/);
 });
+
+test("a wedged usage fetch is ended by a watchdog that settles on the falling edge", () => {
+    const launch = usage.match(/function launchFetch\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(launch,
+        /fetchWatchdog\.interval = fetchTimeoutMs;\s*fetchWatchdog\.restart\(\);\s*fetchProc\.running = true;/,
+        "armed before launch, so a python3 that never starts disarms it");
+    // Every launch goes through it.
+    assert.equal((usage.match(/fetchProc\.running = true/g) ?? []).length, 1);
+    assert.match(usage, /function start\(\) \{\s*if \(fetchProc\.running\)\s*return;\s*launchFetch\(\);/);
+    assert.match(usage, /function warmUp\(\)[\s\S]*?if \(fetchProc\.running\)\s*return;\s*launchFetch\(\);/);
+
+    const timeout = Number(usage.match(/fetchTimeoutMs:\s*(\d+)/)?.[1]);
+    const script = fs.readFileSync(path.join(shellDir, "scripts", "usage-fetch.py"), "utf8");
+    const deadline = Number(script.match(/^DEADLINE_SECONDS = ([\d.]+)/m)?.[1]) * 1000;
+    const refresh = Number(script.match(/^REFRESH_TIMEOUT = (\d+)/m)?.[1]) * 1000;
+    assert.ok(deadline > 2 * refresh, "the helper's deadline outlasts two Claude refreshes");
+    assert.ok(timeout >= deadline + 20000,
+        "the shell waits for the helper to answer for itself first");
+
+    const fired = usage.match(/function fetchWatchdogFired\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(fired, /fetchProc\.timedOut = true;[\s\S]*fetchProc\.running = false;/,
+        "first firing terminates through the normal falling edge");
+    assert.match(fired, /fetchProc\.signal\(9\);\s*fetchProc\.abandoned = true;\s*settle\(124/,
+        "a run that ignores SIGTERM is killed and settled directly");
+    const proc = usage.match(/Process \{\s*id: fetchProc[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(proc, /fetchWatchdog\.stop\(\);/);
+    assert.match(proc, /if \(settled\)\s*return;/, "an abandoned run must not settle twice");
+    assert.match(proc, /if \(timedOut\)\s*root\.settle\(124, "", root\.fetchTimeoutText\)/);
+    assert.match(proc, /ProcHelpers\.NOT_STARTED/);
+    const settle = usage.match(/function settle\(exitCode, body, errText\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(settle, /loading = false;[\s\S]*fetchError = ProcHelpers\.commandError/,
+        "a timeout clears loading and reports why, keeping the last figures");
+});
+
+test("scheduled usage fetches rest while idle or offline and catch up afterwards", () => {
+    assert.match(usage,
+        /readonly property bool scheduleActive:\s*pollEnabled && !Activity\.idle\s*&& !\(NetworkStatus\.known && !NetworkStatus\.online\)/);
+    const timer = usage.match(/Timer \{\s*id: pollTimer[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(timer, /running:\s*root\.scheduleActive\n/);
+    assert.match(usage, /function refresh\(\)[\s\S]*?if \(scheduleActive\) \{\s*pollStartedAt = Date\.now\(\);\s*pollTimer\.restart\(\);/,
+        "a manual refresh must not start the timer behind its binding");
+    assert.match(usage,
+        /target: Activity\s*function onResumed\(\) \{\s*root\.refreshIfStale\(\);/);
+    assert.match(usage,
+        /target: NetworkStatus\s*function onOnlineChanged\(\) \{\s*if \(NetworkStatus\.online\)\s*root\.refreshIfStale\(\);/);
+    const stale = usage.match(/function refreshIfStale\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
+    assert.match(stale, /startupWarmUp\.running/, "the session-start warm-up keeps its delay");
+    assert.match(stale, /NetworkStatus\.known && !NetworkStatus\.online/);
+    assert.match(stale,
+        /fetchError === "" && updatedAt > 0\s*&& Date\.now\(\) - updatedAt < pollIntervalSecs \* 1000/,
+        "fresh figures are not refetched on every resume");
+    assert.match(usage, /nextPollSecs: \{\s*if \(!scheduleActive/);
+});

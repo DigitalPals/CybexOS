@@ -58,11 +58,44 @@ Singleton {
         return false;
     }
 
+    // Scheduled fetches rest while nobody is at the machine and while the
+    // network is known to be down; the warm-up and a manual refresh still run
+    // (offline, the helper answers from its cache). Coming back fetches at
+    // once when the figures went stale meanwhile.
+    readonly property bool scheduleActive: pollEnabled && !Activity.idle
+        && !(NetworkStatus.known && !NetworkStatus.online)
+
+    // A run still going after this is wedged. It sits above the helper's own
+    // 150 s deadline (which already covers the 30 s Claude refresh and every
+    // request), so it fires only when the helper cannot answer for itself.
+    readonly property int fetchTimeoutMs: 180000
+    // After SIGTERM, how long to wait for the falling edge before SIGKILL.
+    readonly property int fetchKillGraceMs: 5000
+    readonly property string fetchTimeoutText: "usage-fetch.py timed out after "
+        + Math.round(fetchTimeoutMs / 1000) + " s"
+
     Connections {
         target: Settings
 
         function onPollMaxChanged() {
             root.refresh();
+        }
+    }
+
+    Connections {
+        target: Activity
+
+        function onResumed() {
+            root.refreshIfStale();
+        }
+    }
+
+    Connections {
+        target: NetworkStatus
+
+        function onOnlineChanged() {
+            if (NetworkStatus.online)
+                root.refreshIfStale();
         }
     }
     property var data: ({})
@@ -83,7 +116,7 @@ Singleton {
     property double pollStartedAt: 0
     property double countdownNow: 0
     readonly property int nextPollSecs: {
-        if (!pollEnabled || pollStartedAt <= 0 || countdownNow <= 0)
+        if (!scheduleActive || pollStartedAt <= 0 || countdownNow <= 0)
             return pollIntervalSecs;
         const elapsed = Math.floor((countdownNow - pollStartedAt) / 1000);
         return Math.max(0, Math.min(pollIntervalSecs, pollIntervalSecs - elapsed));
@@ -195,22 +228,64 @@ Singleton {
     }
 
     // One run may invoke Claude Code to rotate its saved OAuth token. Never
-    // cancel that credential transaction or overlap it with another fetch.
+    // cancel that credential transaction or overlap it with another fetch:
+    // only the watchdog ends a run early, long after any refresh has timed
+    // out, and the helper takes the Claude CLI down with it.
     function start() {
         if (fetchProc.running)
             return;
+        launchFetch();
+    }
+
+    function launchFetch() {
         loading = true;
+        // Armed before the launch: a python3 that cannot start reports its
+        // falling edge at once, and that edge is what stops the watchdog.
+        fetchWatchdog.interval = fetchTimeoutMs;
+        fetchWatchdog.restart();
         fetchProc.running = true;
     }
 
     function refresh() {
         start();
-        // A manual refresh from the popover still works with the module off;
-        // it just must not leave the poll timer running behind its binding.
-        if (pollEnabled) {
+        // A manual refresh from the popover still works with the module off
+        // or paused; it just must not leave the poll timer running behind its
+        // binding.
+        if (scheduleActive) {
             pollStartedAt = Date.now();
             pollTimer.restart();
         }
+    }
+
+    // After an idle spell or an outage: fetch now when the figures are older
+    // than one poll period or the last run failed, rather than waiting out
+    // the period the resumed timer starts.
+    function refreshIfStale() {
+        if (!pollEnabled || startupWarmUp.running
+                || (NetworkStatus.known && !NetworkStatus.online))
+            return;
+        if (fetchError === "" && updatedAt > 0
+                && Date.now() - updatedAt < pollIntervalSecs * 1000)
+            return;
+        refresh();
+    }
+
+    // First firing: SIGTERM, reported through the falling edge as a timeout.
+    // If that edge has still not arrived after the grace period, SIGKILL and
+    // settle here, so `loading` falls and the chip reports the failure.
+    function fetchWatchdogFired() {
+        if (!fetchProc.running)
+            return;
+        if (!fetchProc.timedOut) {
+            fetchProc.timedOut = true;
+            fetchWatchdog.interval = fetchKillGraceMs;
+            fetchWatchdog.restart();
+            fetchProc.running = false;
+            return;
+        }
+        fetchProc.signal(9);
+        fetchProc.abandoned = true;
+        settle(124, "", fetchTimeoutText);
     }
 
     function fetchCommand(testing = false) {
@@ -349,6 +424,9 @@ Singleton {
         property string errText: ""
         property bool exitSeen: false
         property int lastExit: 0
+        // Watchdog state for the current run; see root.fetchWatchdogFired().
+        property bool timedOut: false
+        property bool abandoned: false
 
         command: root.fetchCommand()
 
@@ -369,14 +447,33 @@ Singleton {
                 errText = "";
                 exitSeen = false;
                 lastExit = 0;
+                timedOut = false;
+                abandoned = false;
             } else {
+                fetchWatchdog.stop();
+                const settled = abandoned;
+                abandoned = false;
                 if (configuration !== root.fetchConfiguration) {
                     Qt.callLater(root.refresh);
                     return;
                 }
-                root.settle(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
+                // The watchdog already settled a run it had to SIGKILL. A
+                // terminated run's output is not an answer, and its exit
+                // status is whatever the signal left.
+                if (settled)
+                    return;
+                if (timedOut)
+                    root.settle(124, "", root.fetchTimeoutText);
+                else
+                    root.settle(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
             }
         }
+    }
+
+    Timer {
+        id: fetchWatchdog
+        interval: root.fetchTimeoutMs
+        onTriggered: root.fetchWatchdogFired()
     }
 
     Process {
@@ -476,9 +573,9 @@ Singleton {
     Timer {
         id: pollTimer
         interval: root.pollIntervalSecs * 1000
-        running: root.pollEnabled
+        running: root.scheduleActive
         repeat: true
-        // Switching the module back on starts a fresh period.
+        // Switching the module back on (or resuming) starts a fresh period.
         onRunningChanged: {
             if (running)
                 root.pollStartedAt = Date.now();
@@ -501,8 +598,7 @@ Singleton {
         }
         if (fetchProc.running)
             return;
-        loading = true;
-        fetchProc.running = true;
+        launchFetch();
     }
 
     Timer {
