@@ -86,14 +86,14 @@ test("an unreadable repository response is null, never an empty account", () => 
 test("mergeRepos folds the watch list into one feed, newest push first", () => {
     const own = H.parseRepos(JSON.stringify([
         { n: "DigitalPals/CybexOS", p: iso(4 * MINUTE), b: "main" },
-        { n: "digitalbrain/website", p: iso(3 * HOUR), b: "main" }
+        { n: "example-org/website", p: iso(3 * HOUR), b: "main" }
     ]));
     const extra = H.parseRepos(JSON.stringify([
         { n: "hyprwm/Hyprland", p: iso(HOUR), b: "main" }
     ]));
     const feed = H.mergeRepos(own, extra, ["hyprwm/Hyprland", "DigitalPals/CybexOS"]);
     assert.deepEqual(feed.map(r => r.slug),
-        ["DigitalPals/CybexOS", "hyprwm/Hyprland", "digitalbrain/website"]);
+        ["DigitalPals/CybexOS", "hyprwm/Hyprland", "example-org/website"]);
     assert.deepEqual(feed.map(r => r.watched), [true, true, false]);
 });
 
@@ -145,7 +145,7 @@ test("parseCommits splits the subject from the body and drops git trailers", () 
             m: "popouts: seat a reused slot on its own tab\n\nA latched panel swept"
                 + " across the bar while it grew.\n\nCo-Authored-By: Someone <x@y>\n"
                 + "Signed-off-by: Someone Else <a@b>\n",
-            a: "john",
+            a: "octocat",
             d: "2026-08-09T11:36:00Z",
             u: "https://github.com/o/r/commit/a41c9e2"
         },
@@ -155,7 +155,7 @@ test("parseCommits splits the subject from the body and drops git trailers", () 
     assert.equal(rows[0].short, "a41c9e2");
     assert.equal(rows[0].subject, "popouts: seat a reused slot on its own tab");
     assert.equal(rows[0].body, "A latched panel swept across the bar while it grew.");
-    assert.equal(rows[0].author, "john");
+    assert.equal(rows[0].author, "octocat");
     assert.equal(H.parseCommits("nonsense"), null);
 });
 

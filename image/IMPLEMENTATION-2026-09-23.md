@@ -1,6 +1,6 @@
 # ISO experience implementation — 2026-09-23
 
-Worktree: `/home/john/Code/CybexOS-wt/iso-experience-20260923`
+Worktree: `CybexOS-wt/iso-experience-20260923`, beside the main checkout
 
 Branch: `feat/iso-experience-20260923`
 
