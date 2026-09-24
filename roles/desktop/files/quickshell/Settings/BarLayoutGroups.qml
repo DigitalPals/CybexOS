@@ -15,7 +15,12 @@ Column {
         { value: Settings.defaults.barHeight, label: "Default" },
         { value: 42, label: "Roomy" }
     ]
-    readonly property bool heightIsPreset: heightPresets.some(preset => preset.value === Settings.barHeight)
+    // The bar never draws shorter than its controls (Theme.barHeight), so a
+    // preset below that floor would change nothing at this text size and
+    // density; offer only the heights the bar can actually take.
+    readonly property int drawableFloor: Theme.chipHeight + 8
+    readonly property var drawablePresets: heightPresets.filter(preset => preset.value >= drawableFloor)
+    readonly property bool heightIsPreset: drawablePresets.some(preset => preset.value === Settings.barHeight)
     // View state, not a setting: Custom is what the picker shows for a height
     // no preset names, and what it keeps showing once picked — the slider
     // must not fold away under a drag that passes over 34 or 42.
@@ -116,7 +121,7 @@ Column {
             id: heightRow
             width: parent.width
             label: "Height"
-            model: page.heightPresets.concat([{ value: "custom", label: "Custom" }])
+            model: page.drawablePresets.concat([{ value: "custom", label: "Custom" }])
             current: page.showCustomHeight ? "custom" : Settings.barHeight
             caption: page.showCustomHeight ? "" : Settings.barHeight + " px"
             // The bar never draws shorter than its controls; say so rather

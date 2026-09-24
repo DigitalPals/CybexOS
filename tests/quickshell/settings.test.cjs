@@ -797,6 +797,12 @@ test("progressive disclosure hides inactive controls without discarding latent v
             'value: Settings.defaults.barHeight, label: "Default"', 'value: 42, label: "Roomy"'])
         assert.ok(bar.includes(preset), preset);
     assert.match(height, /value: "custom", label: "Custom"/);
+    // The bar never draws shorter than its controls, so the picker offers
+    // only the presets it can actually draw at the current text size.
+    assert.match(bar, /drawableFloor: Theme\.chipHeight \+ 8/);
+    assert.match(read("Common/Theme.qml"), /barHeight: Math\.max\(Settings\.barHeight, chipHeight \+ 8\)/,
+        "the picker's floor must match the bar's own");
+    assert.match(height, /model: page\.drawablePresets\.concat/);
     assert.match(height, /current: page\.showCustomHeight \? "custom" : Settings\.barHeight/);
     assert.match(height, /page\.customHeight = true;[\s\S]*?Settings\.set\("barHeight", value\)/,
         "Custom keeps the value; a preset writes it");
