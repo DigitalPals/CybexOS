@@ -1,0 +1,16 @@
+#!/usr/bin/sh
+# Keep the CybexOS recovery boot menu in step with installed kernels: an
+# entry is offered only while its kernel and initramfs are still in /boot.
+# A kernel transaction must never fail because of the recovery menu.
+case "${1:-}" in
+  add|remove) ;;
+  *) exit 0 ;;
+esac
+for helper in /usr/local/libexec/cybexos-system-snapshot /usr/libexec/cybexos-system-snapshot; do
+  if [ -x "$helper" ]; then
+    "$helper" refresh --quiet >/dev/null 2>&1 ||
+      echo 'cybexos: could not refresh the recovery boot menu' >&2
+    exit 0
+  fi
+done
+exit 0

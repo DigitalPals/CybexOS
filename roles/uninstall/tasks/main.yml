@@ -40,6 +40,7 @@
     state: stopped
   loop:
     - cybexos-btrfs-scrub.timer
+    - cybexos-recovery-refresh.service
     - xps-haptic-touchpad.service
     - xps-ipu7-camera-init.service
     - xps-ipu7-camera.service
@@ -202,6 +203,34 @@
     - /etc/systemd/system/xps-ipu7-camera.service
     - /etc/systemd/system/xps-ipu7-camera-resume.service
     - /etc/systemd/system/v4l2-relayd@ipu7.service.d/override.conf
+
+# Recovery points themselves stay: they are data on the user's filesystem and
+# `cybexos-system-snapshot` can be reinstalled to restore from them.
+- name: Remove recovery booting from the boot chain
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/grub.d/42_cybexos_recovery
+    - /etc/kernel/install.d/95-cybexos-recovery.install
+    - /etc/systemd/system/cybexos-recovery-refresh.service
+    - /usr/lib/dracut/modules.d/90cybexos-recovery
+    - /etc/dracut.conf.d/90-cybexos-recovery.conf
+    - /boot/grub2/cybexos-recovery.cfg
+    - /run/cybexos-snapshots
+  register: uninstall_recovery_boot
+
+- name: Rebuild grub.cfg without the recovery submenu
+  ansible.builtin.command:
+    cmd: grub2-mkconfig -o /boot/grub2/grub.cfg
+    removes: /boot/grub2/grub.cfg
+  changed_when: true
+  when: uninstall_recovery_boot.results[0] is changed
+
+- name: Rebuild initramfs images without the recovery overlay module
+  ansible.builtin.command: dracut --regenerate-all --force
+  changed_when: true
+  when: uninstall_recovery_boot.results[3] is changed or uninstall_recovery_boot.results[4] is changed
 
 - name: Remove the managed mpv defaults
   ansible.builtin.blockinfile:

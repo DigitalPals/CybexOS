@@ -60,6 +60,7 @@ singleton Updates Updates.qml
 singleton Recorder Recorder.qml
 singleton Dictation Dictation.qml
 singleton Reminders Reminders.qml
+singleton Recovery Recovery.qml
 singleton Notes Notes.qml
 singleton Session Session.qml
 singleton Startup Startup.qml

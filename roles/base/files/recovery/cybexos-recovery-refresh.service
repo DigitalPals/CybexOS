@@ -1,0 +1,15 @@
+[Unit]
+Description=Refresh the CybexOS recovery boot menu
+Documentation=https://github.com/DigitalPals/CybexOS/blob/main/docs/operations.md#update-recovery-points
+After=local-fs.target
+ConditionPathExists=/usr/local/libexec/cybexos-system-snapshot
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Also finishes a restore that was interrupted before /boot was updated, and
+# publishes the unprivileged index read by the desktop.
+ExecStart=/usr/local/libexec/cybexos-system-snapshot refresh --quiet
+
+[Install]
+WantedBy=multi-user.target

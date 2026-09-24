@@ -33,7 +33,8 @@ def source_archive(destination, additions=None):
              "assets/desktop-contract.json", "assets/wallpapers", "assets/PROVENANCE.json",
              "roles/boot/files", "roles/boot/defaults/main.yml", "inventory/group_vars/all.yml", "VERSION",
              "roles/dotfiles", "roles/apps", "roles/base/tasks/main.yml",
-             "roles/base/files/cybexos-system-snapshot", "roles/base/files/60-cybexos-hardening.conf",
+             "roles/base/files/cybexos-system-snapshot", "roles/base/files/recovery",
+             "roles/base/files/60-cybexos-hardening.conf",
              "roles/base/templates/cybexos-zone.xml.j2"]
     excluded = {"image/update-channel.json", "image/update-key.asc", "image/build-provenance.json"}
     with tarfile.open(destination, "w:gz") as archive:

@@ -44,6 +44,16 @@ for unit in quickshell.service hypridle.service hyprpolkitagent.service; do
 done
 
 [[ -x /usr/local/libexec/cybexos-system-snapshot ]] || fail 'snapshot helper is not executable'
+[[ -x /etc/grub.d/42_cybexos_recovery ]] || fail 'recovery GRUB include is missing'
+grep -qxF '### BEGIN /etc/grub.d/42_cybexos_recovery ###' /boot/grub2/grub.cfg ||
+  fail 'grub.cfg does not source the recovery submenu'
+[[ -f /boot/grub2/cybexos-recovery.cfg ]] || fail 'recovery submenu file is missing'
+[[ -x /etc/kernel/install.d/95-cybexos-recovery.install ]] || fail 'recovery kernel-install hook is missing'
+systemctl is-enabled --quiet cybexos-recovery-refresh.service ||
+  fail 'recovery menu refresh is not enabled'
+initramfs_listing=$(lsinitrd "/boot/initramfs-$(uname -r).img")
+grep -q cybexos-recovery <<<"$initramfs_listing" ||
+  fail 'the running kernel initramfs lacks the recovery overlay module'
 [[ -x /usr/local/libexec/cybexos-session-action ]] || fail 'session action helper is not executable'
 [[ -r /usr/local/libexec/cybexos-common.sh ]] || fail 'shared installer helper is missing'
 [[ -x /home/fedora/.local/bin/cybexos-agent ]] || fail 'default AI agent helper is missing'

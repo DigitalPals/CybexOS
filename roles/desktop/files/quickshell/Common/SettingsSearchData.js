@@ -100,6 +100,7 @@ var ROWS = [
     { page: "system", pageLabel: "System", group: "Idle", label: "Only on battery", key: "idleSuspendBatteryOnly", terms: "idle suspend sleep battery plugged in ac power" },
     { page: "system", pageLabel: "System", group: "Stay awake", label: "Duration", key: "", terms: "idle inhibit caffeine sleep" },
     { page: "system", pageLabel: "System", group: "On-screen display", label: "Placement", key: "osd", terms: "osd volume brightness popup overlay" },
+    { page: "system", pageLabel: "System", group: "Recovery points", label: "Recovery points", key: "", terms: "snapshot restore rollback undo update btrfs boot menu grub recovery" },
 
     // About
     { page: "about", pageLabel: "About", group: "Shell health", label: "Status", key: "", terms: "service deployment journal pid" },

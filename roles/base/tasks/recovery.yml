@@ -1,0 +1,132 @@
+---
+# Bootable recovery points: GRUB lists each retained point whose kernel is
+# still installed, and dracut boots it read-only under an in-memory overlay.
+# The helper rewrites only the sourced submenu; grub.cfg is regenerated once.
+# Expects base_root_filesystem and base_snapshot_helper from main.yml.
+- name: Create the recovery boot hook directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /etc/grub.d
+    - /etc/kernel/install.d
+  when: base_root_filesystem.stdout | trim == 'btrfs'
+
+- name: Install the recovery boot menu and refresh hooks
+  ansible.builtin.copy:
+    src: "recovery/{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { src: 42_cybexos_recovery, dest: /etc/grub.d/42_cybexos_recovery, mode: "0755" }
+    - { src: 95-cybexos-recovery.install, dest: /etc/kernel/install.d/95-cybexos-recovery.install, mode: "0755" }
+    - { src: cybexos-recovery-refresh.service, dest: /etc/systemd/system/cybexos-recovery-refresh.service, mode: "0644" }
+  register: base_recovery_files
+  notify: Reload systemd
+  when: base_root_filesystem.stdout | trim == 'btrfs'
+
+- name: Install the recovery overlay dracut module
+  ansible.builtin.copy:
+    src: recovery/90cybexos-recovery/
+    dest: /usr/lib/dracut/modules.d/90cybexos-recovery/
+    owner: root
+    group: root
+    mode: "0755"
+  register: base_recovery_dracut_module
+  when: base_root_filesystem.stdout | trim == 'btrfs'
+
+- name: Include the recovery overlay module in every initramfs
+  ansible.builtin.copy:
+    src: recovery/90-cybexos-recovery.conf
+    dest: /etc/dracut.conf.d/90-cybexos-recovery.conf
+    owner: root
+    group: root
+    mode: "0644"
+  register: base_recovery_dracut_conf
+  when: base_root_filesystem.stdout | trim == 'btrfs'
+
+# The initramfs also carries the helper, so a point from an older release can
+# still be restored. Rebuild only when the module or that helper changed.
+- name: Rebuild initramfs images for recovery booting
+  ansible.builtin.command: dracut --regenerate-all --force
+  changed_when: true
+  when:
+    - base_root_filesystem.stdout | trim == 'btrfs'
+    - base_recovery_dracut_module is changed or base_recovery_dracut_conf is changed
+      or base_snapshot_helper is changed
+
+- name: Check whether grub.cfg includes the recovery submenu
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -qxF
+      - "### BEGIN /etc/grub.d/42_cybexos_recovery ###"
+      - /boot/grub2/grub.cfg
+  register: base_recovery_grub_cfg
+  changed_when: false
+  failed_when: base_recovery_grub_cfg.rc not in [0, 1, 2]
+  check_mode: false
+  when: base_root_filesystem.stdout | trim == 'btrfs'
+
+- name: Regenerate grub.cfg with the recovery submenu
+  ansible.builtin.command: grub2-mkconfig -o /boot/grub2/grub.cfg
+  changed_when: true
+  when:
+    - base_root_filesystem.stdout | trim == 'btrfs'
+    - base_recovery_grub_cfg.rc | default(2) != 2
+    - base_recovery_grub_cfg.rc | default(2) == 1
+      or base_recovery_files.results[0] is changed
+
+- name: Refresh the recovery boot menu at every boot
+  ansible.builtin.systemd_service:
+    name: cybexos-recovery-refresh.service
+    enabled: true
+    daemon_reload: true
+  when:
+    - base_root_filesystem.stdout | trim == 'btrfs'
+    - not ansible_check_mode
+
+- name: Refresh the recovery boot menu now
+  ansible.builtin.command: /usr/local/libexec/cybexos-system-snapshot refresh
+  register: base_recovery_refresh
+  changed_when: "'CHANGED' in base_recovery_refresh.stdout"
+  when: base_root_filesystem.stdout | trim == 'btrfs'
+
+- name: Disable recovery booting on other filesystems
+  ansible.builtin.systemd_service:
+    name: cybexos-recovery-refresh.service
+    enabled: false
+  failed_when: false
+  when:
+    - base_root_filesystem.stdout | trim != 'btrfs'
+    - not ansible_check_mode
+
+- name: Remove recovery booting on other filesystems
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/grub.d/42_cybexos_recovery
+    - /etc/kernel/install.d/95-cybexos-recovery.install
+    - /etc/systemd/system/cybexos-recovery-refresh.service
+    - /usr/lib/dracut/modules.d/90cybexos-recovery
+    - /etc/dracut.conf.d/90-cybexos-recovery.conf
+    - /boot/grub2/cybexos-recovery.cfg
+  register: base_recovery_removed
+  notify: Reload systemd
+  when: base_root_filesystem.stdout | trim != 'btrfs'
+
+- name: Rebuild boot files without recovery booting
+  ansible.builtin.command: "{{ item }}"
+  changed_when: true
+  loop:
+    - grub2-mkconfig -o /boot/grub2/grub.cfg
+    - dracut --regenerate-all --force
+  when:
+    - base_root_filesystem.stdout | trim != 'btrfs'
+    - base_recovery_removed is changed

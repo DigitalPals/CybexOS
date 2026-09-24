@@ -164,6 +164,7 @@
     owner: root
     group: root
     mode: "0755"
+  register: base_snapshot_helper
 
 # Dotfiles and the apps role both consume this library. Installing the shared
 # prerequisite in the foundational role keeps a fresh selective convergence
@@ -624,3 +625,8 @@
     - cybexos-btrfs-scrub.timer
   notify: Reload systemd
   when: base_root_filesystem.stdout | trim != 'btrfs'
+
+# Bootable recovery points and restore: GRUB submenu, dracut overlay module,
+# kernel-install hook and boot-time refresh.
+- name: Configure bootable recovery points
+  ansible.builtin.include_tasks: recovery.yml
