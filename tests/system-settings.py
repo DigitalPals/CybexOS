@@ -14,11 +14,14 @@ audio = importlib.import_module("system_settings_audio")
 network = importlib.import_module("system_settings_network")
 accounts = importlib.import_module("system_settings_accounts")
 
+# Without PyGObject, `gi` can still import as a bare namespace package when
+# another package ships gi/overrides (as the CI image does); it then has no
+# require_version, and the libnm tests are skipped like a missing typelib.
 try:
     import gi
     gi.require_version('NM', '1.0')
     from gi.repository import GLib, NM
-except (ImportError, ValueError):
+except (ImportError, ValueError, AttributeError):
     GLib = NM = None
 
 

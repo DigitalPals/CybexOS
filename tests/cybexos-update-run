@@ -132,6 +132,7 @@ apply_mock dnf \
   'printf "%s\n" "$*" >>"$MOCK_DNF_LOG"' \
   'if [[ " $* " == *" upgrade "* ]]; then' \
   '  umask >>"$MOCK_DNF_UMASK_LOG"' \
+  '  printf "dnf upgrade\n" >>"$MOCK_ORDER_LOG"' \
   '  if [[ -n ${MOCK_DNF_GATE:-} ]]; then' \
   '    : >"$MOCK_DNF_GATE.entered"' \
   '    while [[ ! -e $MOCK_DNF_GATE.release ]]; do' \
@@ -182,6 +183,7 @@ printf '%s\n' '#!/usr/bin/env bash' \
   'set -euo pipefail' \
   'printf "%s\n" "$*" >>"$MOCK_FIRMWARE_LOG"' \
   'umask >>"$MOCK_FIRMWARE_UMASK_LOG"' \
+  'printf "firmware install\n" >>"$MOCK_ORDER_LOG"' \
   '[[ ${1:-} == install && ${2:-} == --events && -n ${3:-} ]] || exit 64' \
   'if [[ -n ${MOCK_FIRMWARE_GATE:-} ]]; then' \
   '  : >"$MOCK_FIRMWARE_GATE.entered"' \
@@ -212,6 +214,9 @@ export MOCK_ANSIBLE_ARGS_LOG="$fixture/ansible-args.log"
 export MOCK_LEGACY_SNAPSHOT_LOG="$fixture/legacy-snapshot.log"
 export MOCK_FIRMWARE_LOG="$fixture/firmware-helper.log"
 export MOCK_FIRMWARE_UMASK_LOG="$fixture/firmware-umask.log"
+# Package-phase order as the mocks saw it. As root (a CI container) the worker
+# runs dnf and the firmware helper directly, so sudo's log cannot show it.
+export MOCK_ORDER_LOG="$fixture/order.log"
 export CYBEXOS_UPDATE_FIRMWARE_HELPER="$firmware_helper"
 export CYBEXOS_UPDATE_BOOT_ID_FILE="$fixture/boot-id"
 export CYBEXOS_UPDATE_ASSUME_USER_UNIT=1
@@ -660,6 +665,7 @@ export MOCK_PACKAGE_SUCCESS=1
 export MOCK_REBOOT_RC=0
 export MOCK_REBOOT_JSON='[{"type":"reboot","reboot_required":false,"packages":[]}]'
 : >"$MOCK_PACKAGE_LOG"
+: >"$MOCK_ORDER_LOG"
 firmware_start=$($backend start --json --no-flatpak --firmware)
 firmware_id=$(jq -er .id <<<"$firmware_start")
 firmware_dir=$(jq -er .logDir <<<"$firmware_start")
@@ -703,11 +709,14 @@ set -e
 # One invocation, as root through the package umask wrapper, after dnf.
 [[ $(<"$MOCK_FIRMWARE_LOG") == "install --events $firmware_dir/firmware-events.log" ]]
 [[ $(tail -n 1 "$MOCK_FIRMWARE_UMASK_LOG") =~ ^0?022$ ]]
-dnf_line=$(grep -n -- 'cybexos-update-package dnf -y upgrade' "$MOCK_PACKAGE_LOG" \
-  | cut -d: -f1)
-firmware_line=$(grep -nF -- "cybexos-update-package $firmware_helper install --events" \
-  "$MOCK_PACKAGE_LOG" | cut -d: -f1)
-((dnf_line < firmware_line))
+[[ $(<"$MOCK_ORDER_LOG") == $'dnf upgrade\nfirmware install' ]]
+if ((EUID != 0)); then
+  dnf_line=$(grep -n -- 'cybexos-update-package dnf -y upgrade' "$MOCK_PACKAGE_LOG" \
+    | cut -d: -f1)
+  firmware_line=$(grep -nF -- "cybexos-update-package $firmware_helper install --events" \
+    "$MOCK_PACKAGE_LOG" | cut -d: -f1)
+  ((dnf_line < firmware_line))
+fi
 
 # A later package-only run in the same boot keeps the restart advice although
 # dnf still reports none, and does not run the helper again. A new boot
