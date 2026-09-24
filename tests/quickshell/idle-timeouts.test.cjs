@@ -206,3 +206,108 @@ test("saved idle changes restart hypridle and the power drawer links to them", (
     assert.match(power, /Settings\.showSetting\("power", "idleLockMins"/);
     assert.doesNotMatch(power, /gnome-control-center/);
 });
+
+// The Power page's timeline (Settings/IdleTimelineModel.js) draws the three
+// delays in order and warns about the one order the dropdowns hide.
+const Timeline = require(path.join(shellDir, "Settings/IdleTimelineModel.js"));
+const AXIS = Timeline.axis([H.IDLE_SCREEN_OFF_MINS, H.IDLE_LOCK_MINS, H.IDLE_SUSPEND_MINS]);
+const idle = (lock, screenOff, suspend) =>
+    ({ idleLockMins: lock, idleScreenOffMins: screenOff, idleSuspendMins: suspend });
+
+test("the idle timeline axis is every offered delay, in order", () => {
+    assert.deepEqual(AXIS, [1, 2, 5, 10, 15, 30, 60, 120]);
+    assert.deepEqual(AXIS.map(Timeline.tickLabel), ["1m", "2m", "5m", "10m", "15m", "30m", "1h", "2h"]);
+    assert.equal(Timeline.fraction(AXIS, 1), 0);
+    assert.equal(Timeline.fraction(AXIS, 120), 1);
+    assert.equal(Timeline.fraction(AXIS, 0), null, "Never sits in its own zone, off the axis");
+    assert.deepEqual([0, 5, 60, 120].map(Timeline.durationLabel), ["Never", "5 min", "1 hour", "2 hours"]);
+    // Markers at one delay share a dot; Never gathers last.
+    const groups = Timeline.groups(idle(10, 10, 0), AXIS);
+    assert.deepEqual(groups.map(g => g.events.map(e => e.label)), [["Screen off", "Lock"], ["Suspend"]]);
+    assert.equal(groups[1].fraction, null);
+});
+
+test("the idle timeline warns when the screen turns off before the lock", () => {
+    const d = H.defaults();
+    const defaults = Timeline.assessment(d, d.idleSuspendBatteryOnly, AXIS);
+    assert.equal(defaults.tone, "info");
+    assert.equal(defaults.band, null);
+    assert.equal(defaults.text,
+        "Locks after 5 min, turns the screen off after 10 min and suspends after 30 min on battery.");
+
+    const early = Timeline.assessment(idle(30, 10, 0), false, AXIS);
+    assert.equal(early.tone, "warning");
+    assert.equal(early.text,
+        "The screen turns off 20 minutes before it locks. Waking it in that time skips the lock screen.");
+    assert.deepEqual(early.band, { from: Timeline.fraction(AXIS, 10), to: Timeline.fraction(AXIS, 30) });
+
+    const never = Timeline.assessment(idle(0, 10, 0), false, AXIS);
+    assert.equal(never.tone, "warning");
+    assert.match(never.text, /never locks/);
+    assert.equal(never.band.to, 1, "the shaded span runs into the Never zone");
+
+    // hypridle locks before it suspends, so an earlier suspend closes the
+    // gap — but only one that also happens on mains power.
+    assert.equal(Timeline.assessment(idle(30, 20, 15), false, AXIS).tone, "info");
+    assert.equal(Timeline.assessment(idle(30, 20, 15), true, AXIS).tone, "warning");
+    assert.match(Timeline.assessment(idle(0, 10, 30), false, AXIS).text,
+        /20 minutes before the computer suspends, which locks it/);
+    assert.match(Timeline.assessment(idle(0, 10, 30), true, AXIS).text, /suspends on battery/);
+
+    assert.equal(Timeline.assessment(idle(5, 5, 15), false, AXIS).text,
+        "Locks and turns the screen off after 5 min and suspends after 15 min.");
+    assert.equal(Timeline.assessment(idle(0, 0, 0), false, AXIS).text,
+        "Nothing happens while the computer is idle.");
+});
+
+test("idle timeline labels never overlap, at any setting or width", () => {
+    const widths = { "Screen off": 78, "Lock": 40, "Suspend": 64 };
+    for (const width of [300, 420, 640, 900]) {
+        const contentRight = width - 28;
+        const metrics = {
+            left: 18, right: contentRight - 56 - 8,
+            neverCenter: contentRight - 28, neverRight: contentRight,
+            widths, lineHeight: 14, lineGap: 2, boxGap: 8,
+            baseStem: 4, neverStem: 8, dotRadius: 5
+        };
+        for (const lock of H.IDLE_LOCK_MINS)
+            for (const screenOff of H.IDLE_SCREEN_OFF_MINS)
+                for (const suspend of H.IDLE_SUSPEND_MINS) {
+                    const at = `${width}px lock ${lock} screen ${screenOff} suspend ${suspend}`;
+                    const placed = Timeline.layout(
+                        Timeline.groups(idle(lock, screenOff, suspend), AXIS), metrics);
+                    assert.equal(placed.groups.reduce((n, g) => n + g.events.length, 0), 3, at);
+                    for (const g of placed.groups) {
+                        assert.ok(g.boxLeft >= metrics.left - metrics.dotRadius - 0.001
+                            && g.boxLeft + g.boxWidth <= metrics.neverRight + 0.001, `${at}: box off the track`);
+                        assert.ok(placed.top >= g.stem + g.height, at);
+                    }
+                    for (let i = 0; i < placed.groups.length; i++)
+                        for (let j = 0; j < i; j++) {
+                            const a = placed.groups[i], b = placed.groups[j];
+                            const apart = a.boxLeft >= b.boxLeft + b.boxWidth || b.boxLeft >= a.boxLeft + a.boxWidth;
+                            const stacked = a.stem >= b.stem + b.height || b.stem >= a.stem + a.height;
+                            assert.ok(apart || stacked, `${at}: labels overlap`);
+                        }
+                }
+    }
+});
+
+test("the Power page shows the idle timeline above three idle dropdowns", () => {
+    const power = read("Settings/PowerPage.qml");
+    const timeline = read("Settings/IdleTimeline.qml");
+    assert.match(power, /IdleTimeline \{[\s\S]{0,120}?overridden: SysInfo\.idleUserConfig/,
+        "a user hypridle.conf dims the timeline");
+    for (const key of ["idleLockMins", "idleScreenOffMins", "idleSuspendMins"])
+        assert.match(power, new RegExp(`SelectRow \\{[^}]*settingKey: "${key}"[^}]*disabledReason: page\\.idleOverrideReason`),
+            `${key} is a dropdown that names the hypridle.conf override`);
+    assert.doesNotMatch(power, /PickerRow \{[^}]*settingKey: "idle/,
+        "seven choices on one segmented track wrapped at ordinary widths");
+    assert.match(power, /hint: "Locks the screen first"/);
+    assert.match(power, /IdleTimelineModel\.durationLabel\(mins\)/, "dropdowns and summary share one wording");
+    assert.match(timeline, /Model\.assessment\(values, Settings\.idleSuspendBatteryOnly, axisValues\)/);
+    assert.match(timeline, /SettingsHelpers\.IDLE_SCREEN_OFF_MINS/);
+    assert.match(timeline, /tone: root\.overridden \? "info" : root\.verdict\.tone/);
+    assert.match(timeline, /color: Theme\.amberBg[\s\S]{0,80}?border\.color: Theme\.amber/,
+        "the unlocked stretch is shaded in the warning colour");
+});

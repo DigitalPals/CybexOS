@@ -385,7 +385,10 @@ test("default body size is shared by settings controls and plugin typography", (
     assert.equal(d.shellFontSize, 12);
     assert.equal(d.shellScale, 100);
     assert.equal(d.pluginScale, 100);
-    const plugins = fs.readFileSync(path.join(shellDir, "Settings", "PluginsPage.qml"), "utf8");
+    // The plugin install and clone fields are FieldRows.
+    const plugins = ["PluginsPage", "PluginRow", "FieldRow"].map(name =>
+        fs.readFileSync(path.join(shellDir, "Settings", name + ".qml"), "utf8")).join("\n");
+    assert.match(plugins, /SettingsField\s*\{/, "the plugin forms must keep a field to check");
     for (const field of plugins.matchAll(/SettingsField\s*\{([^}]+)\}/g)) {
         assert.match(field[1], /font\.family: Theme\.fontMenu/);
         assert.match(field[1], /font\.pixelSize: Theme\.typography\.control/);

@@ -86,8 +86,13 @@ test('accent ink remains readable without changing the chosen fill', () => {
 
 test('native forms share field chrome and drawer tabs expose keyboard selection', () => {
     assert.match(read('Settings/SettingsTextRow.qml'), /SettingsField \{/);
-    assert.match(read('Settings/PluginsPage.qml'), /SettingsField \{/);
-    assert.doesNotMatch(read('Settings/PluginsPage.qml'), /Controls.TextField/);
+    // Plugin install and clone fields are FieldRows: the shared field chrome
+    // on a labeled row, ending with their action on the control edge.
+    assert.match(read('Settings/FieldRow.qml'), /SettingsField \{/);
+    assert.match(read('Settings/PluginsPage.qml'), /FieldRow \{/);
+    assert.match(read('Settings/PluginRow.qml'), /FieldRow \{/);
+    for (const file of ['PluginsPage', 'PluginRow', 'FieldRow'])
+        assert.doesNotMatch(read(`Settings/${file}.qml`), /Controls.TextField/);
     for (const surface of ['T3InboxPage', 'GitHubPopover'])
         assert.match(read(`Popovers/${surface}.qml`), /component GroupHeader: SectionLabel/);
     const tabs = read('Popovers/Drawer/DrawerTabs.qml');

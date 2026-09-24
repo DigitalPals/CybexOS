@@ -1,13 +1,26 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import "../Common"
+import "LocalTime.js" as LocalTime
 
 // Diagnostics and the settings file: things to read or act on once, not
-// preferences, so they sit apart from System. Reset all gets a group of its
-// own rather than a place beside Open, where a slip lands on it; the rail's
-// eight-second Undo still covers it, as it covers every reset.
+// preferences, so they sit apart from the other pages. Every row reads as
+// label, value and action on the page's one control edge. Reset all gets a
+// group of its own rather than a place beside Open, where a slip lands on
+// it; the rail's eight-second Undo still covers it, as it covers every
+// reset.
 SettingsPage {
     id: page
+
+    // Status colours are the shell's status colours: green for healthy,
+    // amber for a shell that runs but reports a problem, red for one that
+    // does not run. The accent is a mark, not a verdict.
+    readonly property color statusColor: !ShellHealth.serviceActive ? Theme.red
+        : !ShellHealth.healthy || ShellHealth.issueCount > 0 ? Theme.amber
+        : Theme.connected
+    readonly property bool deploymentFailed: ShellHealth.deploymentStatus === "failed"
+    readonly property bool deploymentRolledBack: ShellHealth.deploymentStatus === "rolled-back"
 
     // The page loads asynchronously, often already visible, so a visibility
     // edge alone would leave the first open showing a stale probe.
@@ -15,6 +28,14 @@ SettingsPage {
     onVisibleChanged: {
         if (visible)
             ShellHealth.refresh();
+    }
+
+    // Relative dates only change at midnight; an hourly tick while the page
+    // is on screen is enough to roll "Today" over to "Yesterday".
+    SystemClock {
+        id: clock
+        precision: SystemClock.Hours
+        enabled: page.visible
     }
 
     function openConfig() {
@@ -32,89 +53,50 @@ SettingsPage {
             width: parent.width
             title: "Shell health"
 
-            SettingsRow {
+            ValueRow {
                 width: parent.width
                 label: "Status"
-
-                Row {
-                    x: parent.narrow ? parent.markInset : parent.labelWidth
-                    width: parent.contentRight - x
-                    y: parent.narrow ? Theme.settingsStackOffset : (parent.lineHeight - height) / 2
-                    spacing: Theme.iconTextSpacing
-
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 7
-                        height: 7
-                        radius: 4
-                        color: ShellHealth.healthy ? Theme.accent
-                            : ShellHealth.serviceActive ? Theme.amber : Theme.red
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: ShellHealth.busy ? "Checking…" : ShellHealth.statusLabel
-                        font.family: Theme.fontMenu
-                        font.pixelSize: Theme.typography.secondary
-                        font.weight: Theme.weightMedium
-                        color: Theme.textHi
-                    }
-                }
+                dotColor: page.statusColor
+                value: ShellHealth.busy ? "Checking…" : ShellHealth.statusLabel
+                valueColor: Theme.textHi
+                hint: ShellHealth.issueCount > 0
+                    ? (ShellHealth.integrationIssues.concat(ShellHealth.recentWarnings))[0] || "" : ""
+                hintTone: "warning"
             }
-
-            SettingsRow {
+            ValueRow {
                 width: parent.width
                 label: "Service"
-
-                Text {
-                    x: parent.narrow ? parent.markInset : parent.labelWidth
-                    width: parent.contentRight - x
-                    y: parent.narrow ? Theme.settingsStackOffset : (parent.lineHeight - height) / 2
-                    text: ShellHealth.serviceActive
-                        ? "PID " + ShellHealth.servicePid + " · up " + ShellHealth.uptimeLabel()
-                        : (ShellHealth.refreshError || "inactive")
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.typography.secondary
-                    color: ShellHealth.serviceActive ? Theme.textMid : Theme.redText
-                    elide: Text.ElideRight
-                }
+                valueMono: true
+                value: ShellHealth.serviceActive
+                    ? "PID " + ShellHealth.servicePid + " · up " + ShellHealth.uptimeLabel()
+                    : (ShellHealth.refreshError || "Inactive")
+                valueColor: ShellHealth.serviceActive ? Theme.textMid : Theme.redText
             }
-
-            SettingsRow {
+            ValueRow {
                 width: parent.width
                 label: "Deployment"
-
-                Text {
-                    x: parent.narrow ? parent.markInset : parent.labelWidth
-                    width: parent.contentRight - x
-                    y: parent.narrow ? Theme.settingsStackOffset : (parent.lineHeight - height) / 2
-                    text: ShellHealth.deploymentId === ""
-                        ? ShellHealth.deploymentDetail
-                        : ShellHealth.deploymentStatus + " · "
-                            + ShellHealth.deploymentId.slice(0, 10)
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.typography.secondary
-                    color: ShellHealth.deploymentStatus === "failed"
-                        ? Theme.redText : Theme.textMid
-                    elide: Text.ElideRight
-                }
+                valueMono: ShellHealth.deploymentId !== ""
+                value: ShellHealth.deploymentId !== ""
+                    ? ShellHealth.deploymentId.slice(0, 10) + " · " + ShellHealth.deploymentStatus
+                    : page.deploymentFailed ? "Unreadable" : "None yet"
+                valueColor: page.deploymentFailed ? Theme.redText : Theme.textMid
+                hint: page.deploymentFailed || page.deploymentRolledBack
+                    ? ShellHealth.deploymentDetail : ""
+                hintTone: page.deploymentFailed ? "error"
+                    : page.deploymentRolledBack ? "warning" : "info"
             }
-
-            SettingsHint {
+            // The deploy writes this time; Refresh re-reads it with the live
+            // service and warnings, so it does not start a new deploy check.
+            ValueRow {
                 width: parent.width
-                text: ShellHealth.issueCount > 0
-                    ? (ShellHealth.integrationIssues.concat(ShellHealth.recentWarnings))[0] || "" : ""
-                tone: "warning"
-            }
-
-            ResponsiveActionRow {
-                width: parent.width
-                description: ShellHealth.deploymentCheckedAt === ""
-                    ? "Live service and current-invocation warnings"
-                    : "Last deploy check " + ShellHealth.deploymentCheckedAt
+                label: "Last deploy check"
+                value: LocalTime.fromText(ShellHealth.deploymentCheckedAt, clock.date.getTime(),
+                    Settings.clock24, ShellHealth.deploymentCheckedAt || "Not recorded")
 
                 SettingsAction {
                     text: ShellHealth.busy ? "Checking" : "Refresh"
                     glyph: "refresh"
+                    Accessible.name: "Refresh shell health"
                     onTriggered: ShellHealth.refresh()
                 }
             }
@@ -122,21 +104,22 @@ SettingsPage {
 
         RecoveryGroup {
             width: parent.width
+            nowMs: clock.date.getTime()
         }
 
         SettingsGroup {
             width: parent.width
             title: "Settings file"
 
-            ResponsiveActionRow {
+            ValueRow {
                 width: parent.width
-                breakpoint: 560
-                descriptionMono: true
-                description: "~/.config/cybexos/shell.json"
+                label: "~/.config/cybexos/shell.json"
+                labelMono: true
 
                 SettingsAction {
                     text: "Open"
                     glyph: "open_in_new"
+                    Accessible.name: "Open the settings file"
                     onTriggered: page.openConfig()
                 }
             }
@@ -146,14 +129,14 @@ SettingsPage {
             width: parent.width
             title: "Reset"
 
-            ResponsiveActionRow {
+            ValueRow {
                 width: parent.width
-                breakpoint: 560
-                description: "Every page back to its defaults; undo lasts 8 seconds"
+                label: "Reset all settings"
+                hint: "Every page back to its defaults. You can undo for 8 seconds."
 
                 SettingsAction {
-                    text: "Reset all settings"
-                    glyph: "undo"
+                    text: "Reset all"
+                    glyph: "restart_alt"
                     danger: true
                     onTriggered: Settings.resetAll()
                 }

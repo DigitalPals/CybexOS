@@ -2,17 +2,31 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 import "../Common/RecoveryHelpers.js" as RecoveryHelpers
+import "LocalTime.js" as LocalTime
 
 // Recovery points on the About page: taken before every update, bootable
 // from GRUB, restorable here. The recovery-boot notification scrolls to it
 // (settingKey "recoveryPoints").
+//
+// Each point is a row named by when it was taken, in local time; the boot
+// menu lists points in UTC, so a bootable point also gives that stamp.
+// Restore always takes a second press: the row turns into its own warning
+// with Confirm restore and Cancel.
 SettingsGroup {
     id: recoveryGroup
     readonly property string settingKey: "recoveryPoints"
     property string confirmId: ""
+    // The page's clock, so "Today" turns into "Yesterday" at midnight.
+    property real nowMs: Date.now()
+    readonly property string restoreWarning:
+        "Replaces the installed system at the next restart. Your home folder is not changed."
     width: parent.width
     title: "Recovery points"
-    rowSpacing: Theme.settingsContentSpacing
+
+    function whenTaken(id) {
+        return LocalTime.fromText(String(id).slice(0, 16), recoveryGroup.nowMs,
+            Settings.clock24, RecoveryHelpers.pointTime(id));
+    }
 
     SettingsHint {
         width: parent.width
@@ -21,29 +35,33 @@ SettingsGroup {
         text: "You are running the recovery point from " + RecoveryHelpers.pointTime(Recovery.recoveryBootId)
             + ". Changes made now are temporary and disappear when you restart."
     }
-    ResponsiveActionRow {
+    ValueRow {
+        id: keepRow
+        readonly property bool confirming: recoveryGroup.confirmId === Recovery.recoveryBootId
         width: parent.width
         visible: Recovery.recoveryBoot && !Recovery.restartPending
-        description: recoveryGroup.confirmId === Recovery.recoveryBootId
-            ? "Replaces the installed system at the next restart. Your home folder is not changed."
-            : "Keep this recovery point as the installed system"
+        label: "Keep this system"
+        hint: confirming ? recoveryGroup.restoreWarning
+            : "Restores this recovery point as the installed system"
+        hintTone: confirming ? "warning" : "info"
+
         SettingsAction {
-            text: recoveryGroup.confirmId === Recovery.recoveryBootId
-                ? "Confirm restore" : "Restore this recovery point"
+            text: keepRow.confirming ? "Confirm restore" : "Restore…"
             glyph: "history"
-            danger: recoveryGroup.confirmId === Recovery.recoveryBootId
+            danger: keepRow.confirming
             enabled: !Recovery.busy
+            Accessible.name: keepRow.confirming ? "Confirm restore of the running recovery point"
+                : "Restore the running recovery point"
             onTriggered: {
-                if (recoveryGroup.confirmId === Recovery.recoveryBootId)
+                if (keepRow.confirming)
                     Recovery.restore(Recovery.recoveryBootId);
                 else
                     recoveryGroup.confirmId = Recovery.recoveryBootId;
             }
         }
         SettingsAction {
-            visible: recoveryGroup.confirmId === Recovery.recoveryBootId
+            visible: keepRow.confirming
             text: "Cancel"
-            glyph: "close"
             onTriggered: recoveryGroup.confirmId = ""
         }
     }
@@ -53,72 +71,57 @@ SettingsGroup {
         tone: "active"
         text: "A restored recovery point starts at the next restart."
     }
-    SettingsHint {
+    ValueRow {
         width: parent.width
         visible: Recovery.loaded && !Recovery.supported && !Recovery.recoveryBoot
-        tone: "info"
-        text: "Recovery points need the standard Btrfs layout"
+        label: "Recovery points"
+        value: "Unavailable"
+        hint: "They need the standard Btrfs layout"
             + (Recovery.unsupportedReason !== "" ? " (" + Recovery.unsupportedReason + ")." : ".")
     }
-    SettingsHint {
+    ValueRow {
         width: parent.width
         visible: Recovery.supported && Recovery.points.length === 0
-        text: "None yet. One is taken automatically before each update."
+        label: "Recovery points"
+        value: "None yet"
+        hint: "One is taken automatically before each update."
     }
 
     Repeater {
         model: Recovery.points
-        delegate: Item {
+
+        delegate: ValueRow {
             id: pointRow
             required property var modelData
             readonly property bool confirming: recoveryGroup.confirmId === modelData.id
             readonly property bool running: modelData.id === Recovery.recoveryBootId
             width: recoveryGroup.width
-            implicitHeight: pointColumn.implicitHeight
-            height: implicitHeight
+            label: recoveryGroup.whenTaken(modelData.id)
+            hint: confirming ? recoveryGroup.restoreWarning
+                : [RecoveryHelpers.pointLabel(modelData), RecoveryHelpers.pointStatus(modelData),
+                    modelData.bootable ? RecoveryHelpers.pointTime(modelData.id) : "",
+                    running ? "running now" : ""].filter(part => part !== "").join(" · ")
+            hintTone: confirming ? "warning" : "info"
 
-            Column {
-                id: pointColumn
-                width: parent.width
-                spacing: Theme.settingsContentSpacing / 2
-
-                Text {
-                    width: parent.width
-                    leftPadding: Theme.settingsMarkInset
-                    text: RecoveryHelpers.pointTime(pointRow.modelData.id) + " · "
-                        + RecoveryHelpers.pointLabel(pointRow.modelData)
-                        + (pointRow.running ? " · running now" : "")
-                    color: Theme.textHi
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.control
-                    elide: Text.ElideRight
+            SettingsAction {
+                visible: !pointRow.running && !Recovery.restartPending
+                text: pointRow.confirming ? "Confirm restore" : "Restore…"
+                glyph: "history"
+                danger: pointRow.confirming
+                enabled: !Recovery.busy
+                Accessible.name: (pointRow.confirming ? "Confirm restore of" : "Restore")
+                    + " recovery point from " + RecoveryHelpers.pointTime(pointRow.modelData.id)
+                onTriggered: {
+                    if (pointRow.confirming)
+                        Recovery.restore(pointRow.modelData.id);
+                    else
+                        recoveryGroup.confirmId = pointRow.modelData.id;
                 }
-                ResponsiveActionRow {
-                    width: parent.width
-                    description: pointRow.confirming
-                        ? "Replaces the installed system at the next restart. Your home folder is not changed."
-                        : RecoveryHelpers.pointStatus(pointRow.modelData)
-                    SettingsAction {
-                        visible: !pointRow.running && !Recovery.restartPending
-                        text: pointRow.confirming ? "Confirm restore" : "Restore…"
-                        glyph: "history"
-                        danger: pointRow.confirming
-                        enabled: !Recovery.busy
-                        Accessible.name: "Restore recovery point from " + RecoveryHelpers.pointTime(pointRow.modelData.id)
-                        onTriggered: {
-                            if (pointRow.confirming)
-                                Recovery.restore(pointRow.modelData.id);
-                            else
-                                recoveryGroup.confirmId = pointRow.modelData.id;
-                        }
-                    }
-                    SettingsAction {
-                        visible: pointRow.confirming
-                        text: "Cancel"
-                        glyph: "close"
-                        onTriggered: recoveryGroup.confirmId = ""
-                    }
-                }
+            }
+            SettingsAction {
+                visible: pointRow.confirming
+                text: "Cancel"
+                onTriggered: recoveryGroup.confirmId = ""
             }
         }
     }

@@ -65,3 +65,8 @@ VolumeRow VolumeRow.qml
 StreamRow StreamRow.qml
 DraftFieldRow DraftFieldRow.qml
 BarPreview BarPreview.qml
+IdleTimeline IdleTimeline.qml
+ValueRow ValueRow.qml
+FieldRow FieldRow.qml
+RowCluster RowCluster.qml
+PluginRow PluginRow.qml

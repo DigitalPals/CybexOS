@@ -413,16 +413,73 @@ is manual.
 
 ## System page
 
-- [ ] 12 h clock reformats the bar clock and both live captions.
-- [ ] °F refetches weather in Fahrenheit (bar chip + popover + forecast).
 - [ ] Warmth drag with Night light on retints smoothly (single hyprsunset
       restart per pause, not per step).
 - [ ] OSD placement Top shows volume/brightness pills top-center, clearing
       the bar; Bottom returns them; slide-in direction matches the edge.
 - [ ] Poll every 1 min shortens the countdown; the usage popover and the
       caption agree.
-- [ ] The full config path elides in its own lane; Open and Reset all remain
-      reachable and stack below it before any collision.
+## Power page
+
+- [ ] The Idle timeline marks Screen off, Lock and Suspend at their current
+      delays on a 1m–2h axis, with Never as a dashed zone at its end. Delays
+      that share a value share one dot; neighbouring labels rise onto a longer
+      stem instead of touching, at 900px and 480px window widths.
+- [ ] Set Lock screen to 30 min with Screen off at 10 min: the span between
+      them is shaded amber and the line under the timeline warns that the
+      screen turns off 20 minutes before it locks. Lock at Never warns that it
+      never locks. Otherwise the line reads the order back in words.
+- [ ] Lock screen, Screen off and Suspend are dropdowns that save and restart
+      hypridle as before; the power drawer's idle link lands on Lock screen.
+- [ ] With `~/.config/cybexos/hypr/hypridle.conf` present, the timeline dims
+      and says it is shown for reference; the three dropdowns and Only on
+      battery are disabled with "Set in your hypridle.conf".
+- [ ] Stay awake Duration starts, retimes and stops the inhibitor; its hint
+      shows the time left. Bar indicator → Indicator settings opens the
+      Indicators widget on the Bar page.
+
+## Region & formats page
+
+- [ ] 12 h clock reformats the bar clock and the "Now …" caption.
+- [ ] °F refetches weather in Fahrenheit (bar chip + popover + forecast);
+      the caption reads "… outside" in the new unit.
+
+## Online accounts page
+
+- [ ] With no accounts the group shows "No accounts connected" and an
+      accent-filled Add account, which opens the account window. There is no
+      standing Refresh.
+- [ ] Each connected account is a row (address, provider and status) with a
+      Use calendars switch under it. An account needing attention says so in
+      amber and offers Reconnect. Remove… asks first; Cancel leaves it.
+- [ ] Stop the accounts helper (or break GOA): an error row with Refresh
+      appears; Refresh clears it once the helper answers again.
+
+## Plugins page
+
+- [ ] Install is disabled until Source holds text; Enter in the field installs.
+      The result or error reads under the Source row.
+- [ ] Each installed plugin is one row: name, "id · version · adds …", an
+      Enabled switch and a ⋯ menu with Update, Preview update, Clone as a
+      custom copy… and Remove…. Clone opens a New ID row under the plugin;
+      Remove… opens a confirmation row. A command's output reads under the
+      plugin it ran on.
+- [ ] There is no "Configure bar widgets" link; plugin widgets appear in the
+      Bar page's tray.
+
+## About page
+
+- [ ] Status shows a green dot for Healthy, amber for issues or a failed or
+      rolled-back deployment, red when the service is down.
+- [ ] Last deploy check reads "Today at 19:16", "Yesterday at …", a weekday or
+      a date in local time, in the Region clock format; Refresh re-reads it.
+- [ ] Recovery points list as rows named by local time, with the UTC stamp the
+      boot menu shows for bootable points. Restore… turns the row into a
+      warning with Confirm restore and Cancel. With none, the row says
+      "None yet".
+- [ ] The settings file path elides in the middle; Open saves then opens it.
+      Reset all settings is red, resets every page and offers the rail's
+      eight-second Undo.
 
 ## Regression sweep
 
