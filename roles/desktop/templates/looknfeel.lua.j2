@@ -132,6 +132,12 @@ end
 if power_saver.restore then hl.config(power_saver_config) end
 
 hl.window_rule({ match = { title = [[^CybexOS Settings$]] }, float = true, center = true })
+-- The first-login welcome floats in the middle of the screen it opens on, at
+-- half the monitor's width and 48% of its height (1280x692 on a 2560x1440
+-- desktop), and never below the window's own minimum of 760x580. Sizes are
+-- expressions: Hyprland 0.56 ignores "50%"-style strings, and the client's
+-- own guess is sized for Qt's primary screen, not necessarily this one.
+hl.window_rule({ match = { class = [[^cybex$]], title = [[^Welcome to CybexOS$]] }, float = true, center = true, size = "max(760,monitor_w*0.5) max(580,monitor_h*0.48)" })
 hl.window_rule({ match = { class = [[xdg-desktop-portal-gtk]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Properties]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Open.*]] }, float = true })
@@ -182,7 +188,7 @@ update_single_window_width()
 hl.window_rule({ match = { class = [[.*]] }, suppress_event = "maximize" })
 hl.window_rule({ match = { class = [[.*]] }, opacity = "1.0 1.0" })
 hl.window_rule({ match = { class = [[1[pP]assword]] }, float = true, center = true, size = { 875, 600 }, no_screen_share = true })
-hl.window_rule({ match = { class = [[org\.gnome\.NautilusPreviewer]] }, float = true, center = true, size = { "60%", "70%" } })
+hl.window_rule({ match = { class = [[org\.gnome\.NautilusPreviewer]] }, float = true, center = true, size = "monitor_w*0.6 monitor_h*0.7" })
 hl.window_rule({ match = { class = [[localsend_app]] }, float = true, center = true, size = { 875, 600 } })
 hl.window_rule({ match = { class = [[org\.gnome\.Calculator]] }, float = true })
 hl.window_rule({ match = { class = [[(imv|mpv)]] }, float = true, center = true })

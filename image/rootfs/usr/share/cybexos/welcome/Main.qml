@@ -23,8 +23,13 @@ ApplicationWindow {
     readonly property color accentDown: "#b8002b"
     readonly property color accentText: "#ff6b86"
 
-    width: 980
-    height: 660
+    // Hyprland's window rule (looknfeel.lua) floats and centres the window
+    // and sizes it from the monitor it opens on: half its width, 48% of its
+    // height, never below the minimum. Before mapping, Qt only knows its
+    // primary screen, so this same share of it is just the fallback for a
+    // session without that rule.
+    width: Math.max(minimumWidth, Math.round(Screen.width * 0.5))
+    height: Math.max(minimumHeight, Math.round(Screen.height * 0.48))
     minimumWidth: 760
     minimumHeight: 580
     visible: true
