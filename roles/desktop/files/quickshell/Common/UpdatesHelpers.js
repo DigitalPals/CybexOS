@@ -704,9 +704,11 @@ function acceptsStatusResponse(activeGeneration, requestGeneration,
         && requestGeneration === activeGeneration;
 }
 
-// Older release updaters only expose curl's status line. Keep the affected
-// source and the likely remedy visible instead of a bare HTTP error.
+// The updater's own reasons arrive as "update: <reason>"; older release
+// updaters only expose curl's status line. Keep the affected source and the
+// likely remedy visible instead of a bare HTTP error.
 function projectCheckError(message) {
+    message = String(message).replace(/^update:\s*/, "");
     if (/curl:.*(?:error:|returned error:) 403/.test(message))
         return "CybexOS: GitHub refused the release check (HTTP 403). Its API may be rate limited; try again later.";
     if (/curl:.*(?:error:|returned error:) 404/.test(message))
@@ -717,11 +719,22 @@ function projectCheckError(message) {
 // Why the CybexOS release step cannot run while packages still can: the
 // start record carries it when the step was skipped and the package run went
 // ahead; `--check --json` carries it beside a release this machine cannot
-// verify yet (gh missing or not logged in). "" when there is none.
+// verify yet (gh missing or too old). "" when there is none.
 function projectErrorOf(record) {
     if (!record || typeof record.projectError !== "string")
         return "";
     return record.projectError.trim();
+}
+
+// A neutral release-check answer from `--check --json`: "no-release" while
+// the channel has nothing published yet. Not an error, so it never feeds
+// projectError; anything else (including older updaters) is "".
+function projectStatusOf(record) {
+    return record && record.status === "no-release" ? "no-release" : "";
+}
+
+function projectStatusLabel(status) {
+    return status === "no-release" ? "No CybexOS release published yet" : "";
 }
 
 function projectSkippedLabel(reason, finished) {
@@ -764,6 +777,8 @@ var exported = {
     checkErrorLabel: checkErrorLabel,
     projectCheckError: projectCheckError,
     projectErrorOf: projectErrorOf,
+    projectStatusOf: projectStatusOf,
+    projectStatusLabel: projectStatusLabel,
     projectSkippedLabel: projectSkippedLabel,
     UNCANCELLABLE_PHASES: UNCANCELLABLE_PHASES,
     cancelAllowed: cancelAllowed,

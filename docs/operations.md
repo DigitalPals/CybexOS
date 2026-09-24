@@ -12,7 +12,7 @@ table in the README links here instead of duplicating these details.
 | `./bootstrap` | Compatibility alias for `./install`. |
 | `./tests/run` | Runs all required source-tree checks without inspecting or changing the live machine. |
 | `./verify` | Runs complete source and non-destructive installed-system checks. Use `--source`, `--system`, or `--quick` for a narrower scope and `--json` for automation. |
-| `./update` | Resolves and verifies the selected GitHub release channel, applies a newer compatible release, then starts the durable Fedora/Flatpak worker. If the release cannot be checked, verified, or staged, it still updates packages and exits 69. |
+| `./update` | Resolves and verifies the selected GitHub release channel without a GitHub login, applies a newer compatible release, then starts the durable Fedora/Flatpak worker. With no published release it only updates packages and succeeds; if a release cannot be checked, verified, or staged, it still updates packages and exits 69. |
 | `./update --system-only` | Skips the project release check and updates Fedora packages and system Flatpaks only. |
 | `cybex agent` | Launches the selected AI coding agent in the current directory; an unset interactive session opens the picker. |
 | `cybex agent --pick` | Selects, persists, and launches an installed OpenCode, Claude Code, or Codex CLI. |
@@ -227,20 +227,38 @@ migration leaves the old one for manual review and says so.
 
 `cybex update` follows the channel saved in
 `~/.local/share/cybexos/channel` (`stable` by default, or `beta` after
-`--channel beta`). A project release is accepted only when GitHub marks it
-immutable, its release and asset attestations verify, the downloaded SHA-256
-matches GitHub metadata, and its manifest supports the current Fedora release,
-architecture, configuration schema, and updater version.
+`--channel beta`). It reads `DigitalPals/CybexOS` releases through GitHub's
+public API without credentials; no GitHub account, `gh auth login`, or token
+is needed. A project release is accepted only when GitHub marks it immutable,
+the downloaded SHA-256 matches GitHub metadata, its provenance attestation
+verifies, and its manifest supports the current Fedora release, architecture,
+configuration schema, and updater version.
 
-Verifying the attestations uses `gh`, which needs a login: run
-`gh auth login` once (or provide `GH_TOKEN`). The updater checks this before
-downloading anything. Fedora and Flatpak updates never depend on GitHub: when
-the release cannot be checked (offline, an API error or rate limit), verified,
-or staged, the updater says why, removes any partial stage, and runs the
+The release workflow publishes the Sigstore bundle of that attestation as
+`cybexos-VERSION.tar.zst.sigstore.jsonl` beside the archive. The updater
+downloads it and runs `gh attestation verify --bundle` offline, pinned to this
+repository's `.github/workflows/release.yml`, the release tag's
+`refs/tags/vVERSION`, and a GitHub-hosted runner. `gh` is always installed;
+one without offline bundle verification is reported as too old before
+anything is downloaded.
+
+While a channel has no published release (stable: GitHub reports no latest
+release for an existing repository; beta: no published prerelease), that is
+not an error. `--check` prints `No CybexOS release has been published on the
+stable channel yet (installed: VERSION).` and exits 0; `--check --json` reports
+`"status": "no-release"`, `"available": false`, and an empty `projectError`.
+An update then runs only the package phase and exits with its status, and
+the Updates panel shows the neutral note "No CybexOS release published yet".
+A missing repository is an error, not an unpublished channel.
+
+Fedora and Flatpak updates never depend on GitHub: when a release cannot be
+checked (offline, an API error, or the anonymous API rate limit), verified, or
+staged, the updater says why, removes any partial stage, and runs the
 package-only update. The terminal command then exits 69 after a successful
 package run; `--start --json` returns the started run with a `projectError`
 field, and `--check --json` reports an available release together with a
-`projectError` when it could not be verified yet. A request with
+`projectError` when this machine cannot verify it yet. A failed check exits
+nonzero with the reason as its last stderr line. A request with
 `--no-packages` has nothing to fall back to and fails.
 
 The verified archive is extracted into a new versioned directory. A dedicated

@@ -29,10 +29,12 @@ Usage: cybex update [--check] [--channel stable|beta] [--system-only]
                             [--start] [--json]
 
 By default, check GitHub for a verified CybexOS release, stage and apply
-it when newer, and then update Fedora packages and system Flatpaks. When the
-release cannot be checked, verified, or staged (offline, a GitHub error, or no
-`gh auth login`), packages are still updated and the command exits 69 after a
-successful package run; --start reports the reason as projectError.
+it when newer, and then update Fedora packages and system Flatpaks. No GitHub
+account or login is needed. When no release has been published on the channel
+yet, the project step is skipped and the command succeeds. When a release
+cannot be checked, verified, or staged (offline, a GitHub error or rate limit),
+packages are still updated and the command exits 69 after a successful package
+run; --start reports the reason as projectError.
 
   --check        Only report whether a compatible project release is available
   --channel      Save and use the stable or beta release channel
@@ -84,8 +86,9 @@ if [[ $command_name == system-only ]]; then
   exec "$backend" "${args[@]}" "${backend_args[@]}"
 fi
 
-# The project release needs GitHub and a logged-in gh; Fedora and Flatpak
-# updates must not. Only tools every path needs are hard requirements here.
+# The project release needs GitHub and gh (verification only, never a login);
+# Fedora and Flatpak updates must not. Only tools every path needs are hard
+# requirements here.
 for required_command in curl jq python3 sha256sum tar; do
   command -v "$required_command" >/dev/null 2>&1 || {
     printf 'update: required command is missing: %s\n' "$required_command" >&2
@@ -124,9 +127,11 @@ current_version=0.0.0
 
 release_json=$(mktemp)
 archive=$(mktemp --suffix=.tar.zst)
+# gh recognizes a bundle file by its extension.
+bundle_file=$(mktemp --suffix=.jsonl)
 stage=
 cleanup() {
-  rm -f -- "$release_json" "$archive"
+  rm -f -- "$release_json" "$archive" "$bundle_file"
   [[ -z $stage ]] || rm -rf -- "$stage"
 }
 trap cleanup EXIT
@@ -140,42 +145,99 @@ release_curl() {
 
 # Every step that depends on GitHub or on the downloaded candidate records why
 # it could not continue instead of exiting, so that being offline, an API
-# error, or a missing `gh auth login` still leaves package updates working.
-# These functions run in conditional context, where `set -e` does not apply;
-# each step checks its own status.
+# error, or a rate limit still leaves package updates working. These
+# functions run in conditional context, where `set -e` does not apply; each
+# step checks its own status.
 project_error=
 project_unavailable() {
   project_error=$1
   return 1
 }
 
+# Anonymous GitHub API request: no login and no token. The response body goes
+# to the output file and the final HTTP status to http_status ("000" without
+# a response). A transport failure returns curl's status and leaves its own
+# message on stderr, which is what an offline check shows.
+http_status=000
+github_api() {
+  local url=$1 output=$2 status rc=0
+  status=$(curl --connect-timeout 15 --speed-limit 1024 --speed-time 60 \
+    --max-time 60 --retry 3 --retry-connrefused --retry-max-time 60 \
+    --silent --show-error --location \
+    -H 'Accept: application/vnd.github+json' \
+    -H 'X-GitHub-Api-Version: 2022-11-28' \
+    -w '%{http_code}' -o "$output" "$url") || rc=$?
+  http_status=${status:-000}
+  return "$rc"
+}
+
+# Turn a GitHub HTTP error into the reason the panel and terminal show.
+github_http_error() {
+  local what=$1 message
+  message=$(jq -r '.message // empty' "$release_json" 2>/dev/null || true)
+  case $http_status in
+    403|429)
+      if [[ $http_status == 429 || ${message,,} == *"rate limit"* ]]; then
+        project_unavailable "GitHub's API rate limit for anonymous requests was reached; try again later"
+      else
+        project_unavailable "GitHub refused the $what request (HTTP $http_status)"
+      fi
+      ;;
+    *) project_unavailable "GitHub returned HTTP $http_status for the $what request" ;;
+  esac
+}
+
+# "no-release" when the channel has nothing published yet. That is not an
+# error: the project step is skipped and package updates run normally.
+project_status=
+
 fetch_release() {
-  local api="https://api.github.com/repos/$github_repo/releases" rc=0
+  local api="https://api.github.com/repos/$github_repo" rc=0 selected
   if [[ $channel == stable ]]; then
-    api+="/latest"
-    release_curl --max-time 60 \
-      -H 'Accept: application/vnd.github+json' "$api" -o "$release_json" || rc=$?
+    github_api "$api/releases/latest" "$release_json" || rc=$?
   else
-    release_curl --max-time 60 \
-      -H 'Accept: application/vnd.github+json' "$api?per_page=30" -o "$release_json" \
-      || rc=$?
-    ((rc != 0)) || jq -e '[.[] | select(.draft == false and .prerelease == true)] | first' \
-      "$release_json" >"$release_json.selected" || rc=$?
-    ((rc != 0)) || mv -f -- "$release_json.selected" "$release_json" || rc=$?
+    github_api "$api/releases?per_page=30" "$release_json" || rc=$?
   fi
   if ((rc != 0)); then
     project_unavailable "could not fetch the $channel release from GitHub"
     return "$rc"
   fi
+  if [[ $channel == stable && $http_status == 404 ]]; then
+    # GitHub answers 404 both when no release is published and when the
+    # repository does not exist; only the repository itself tells them apart.
+    rc=0
+    github_api "$api" "$release_json" || rc=$?
+    if ((rc != 0)); then
+      project_unavailable "could not fetch the $channel release from GitHub"
+      return "$rc"
+    fi
+    case $http_status in
+      200) project_status=no-release; return 0 ;;
+      404) project_unavailable "the GitHub repository $github_repo was not found"; return ;;
+      *) github_http_error 'repository'; return ;;
+    esac
+  fi
+  if [[ $http_status == 404 ]]; then
+    project_unavailable "the GitHub repository $github_repo was not found"
+    return
+  fi
+  [[ $http_status == 200 ]] || { github_http_error "$channel release"; return; }
+  if [[ $channel == beta ]]; then
+    selected=$(jq -c '[.[] | select(.draft == false and .prerelease == true)] | first // empty' \
+      "$release_json") || { project_unavailable 'GitHub returned invalid release data'; return; }
+    if [[ -z $selected ]]; then
+      project_status=no-release
+      return 0
+    fi
+    printf '%s\n' "$selected" >"$release_json" \
+      || { project_unavailable 'could not record the beta release'; return; }
+  fi
 
   tag=$(jq -er '.tag_name | strings | select(startswith("v"))' "$release_json") \
     || { project_unavailable 'GitHub returned no usable release tag'; return; }
   release_version=${tag#v}
-  "$semver_helper" validate "$release_version" || {
-    printf 'update: release tag is not strict SemVer: %s\n' "$tag" >&2
-    project_unavailable "release tag is not strict SemVer: $tag"
-    return
-  }
+  "$semver_helper" validate "$release_version" \
+    || { project_unavailable "release tag is not strict SemVer: $tag"; return; }
   asset_name="cybexos-$release_version.tar.zst"
   asset_url=$(jq -er --arg name "$asset_name" \
     '.assets[] | select(.name == $name) | .browser_download_url' "$release_json") \
@@ -183,29 +245,28 @@ fetch_release() {
   asset_digest=$(jq -er --arg name "$asset_name" \
     '.assets[] | select(.name == $name) | .digest | select(test("^sha256:[0-9a-f]{64}$"))' "$release_json") \
     || { project_unavailable "release $tag publishes no SHA-256 digest for $asset_name"; return; }
+  # The provenance bundle lets gh verify the archive offline, without the
+  # GitHub API and therefore without a login.
+  bundle_url=$(jq -er --arg name "$asset_name.sigstore.jsonl" \
+    '.assets[] | select(.name == $name) | .browser_download_url' "$release_json") \
+    || { project_unavailable "release $tag has no $asset_name.sigstore.jsonl provenance bundle"; return; }
   immutable=$(jq -r '.immutable // false' "$release_json")
-  [[ $immutable == true ]] || {
-    printf 'update: refusing mutable GitHub release %s\n' "$tag" >&2
-    project_unavailable "refusing mutable GitHub release $tag"
-    return
-  }
+  [[ $immutable == true ]] \
+    || { project_unavailable "refusing mutable GitHub release $tag"; return; }
 }
 
-# gh verifies the release and asset attestations. Every gh API command needs a
-# login (or a token in the environment); without one `gh release verify` fails
-# only after the archive has been downloaded, so check up front.
-gh_verification_ready() {
+# gh verifies the release workflow's provenance attestation from the bundle
+# published beside the archive. That is offline verification against the
+# Sigstore trust root: it needs neither the GitHub API nor a login.
+attestation_ready() {
+  local help
   command -v gh >/dev/null 2>&1 || {
     project_unavailable 'the GitHub CLI (gh) is not installed; it verifies CybexOS releases'
     return
   }
-  gh release verify --help >/dev/null 2>&1 && gh release verify-asset --help >/dev/null 2>&1 || {
+  help=$(gh attestation verify --help 2>/dev/null) || help=
+  [[ $help == *--bundle* && $help == *--signer-workflow* && $help == *--source-ref* ]] || {
     project_unavailable 'this GitHub CLI is too old to verify CybexOS releases; upgrade gh'
-    return
-  }
-  [[ -z ${GH_TOKEN:-} && -z ${GITHUB_TOKEN:-} ]] || return 0
-  timeout 10 gh auth token >/dev/null 2>&1 || {
-    project_unavailable 'the GitHub CLI is not logged in; run `gh auth login` to verify CybexOS releases'
     return
   }
 }
@@ -238,7 +299,7 @@ compatible_manifest() {
 # Download, verify, and extract the candidate into a hidden stage directory.
 stage_release() {
   local actual_digest
-  gh_verification_ready || return
+  attestation_ready || return
   if [[ $start_only == true ]]; then
     printf 'Downloading CybexOS %s...\n' "$release_version" >&2
   else
@@ -251,10 +312,17 @@ stage_release() {
     project_unavailable "the downloaded CybexOS $release_version archive does not match GitHub's digest"
     return
   }
-  timeout 120 gh release verify "$tag" --repo "$github_repo" >/dev/null \
-    && timeout 120 gh release verify-asset "$tag" "$archive" --repo "$github_repo" >/dev/null \
+  release_curl "$bundle_url" -o "$bundle_file" \
+    || { project_unavailable "could not download the CybexOS $release_version provenance bundle"; return; }
+  # Only this repository's release workflow, building this tag on a
+  # GitHub-hosted runner, can have produced an accepted archive.
+  timeout 120 env -u GH_HOST -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN \
+    GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 \
+    gh attestation verify "$archive" --bundle "$bundle_file" --repo "$github_repo" \
+      --signer-workflow "$github_repo/.github/workflows/release.yml" \
+      --source-ref "refs/tags/$tag" --deny-self-hosted-runners >/dev/null \
     || {
-      project_unavailable "GitHub could not verify the CybexOS $release_version release attestations"
+      project_unavailable "the CybexOS $release_version provenance attestation could not be verified"
       return
     }
 
@@ -286,26 +354,37 @@ stage_release() {
 
 available=false
 fetch_rc=0
+release_version=
 fetch_release || fetch_rc=$?
-if ((fetch_rc == 0)); then
+if ((fetch_rc == 0)) && [[ $project_status != no-release ]]; then
   version_newer "$release_version" "$current_version" && available=true
 fi
+no_release="No CybexOS release has been published on the $channel channel yet"
 
 if [[ $command_name == check ]]; then
-  # A failed check keeps the tool's own error as its last stderr line; the
-  # panel maps curl's HTTP errors to friendlier text.
-  ((fetch_rc == 0)) || exit "$fetch_rc"
+  # A failed check keeps its reason as the last stderr line for the panel:
+  # curl's own error when GitHub could not be reached, otherwise ours.
+  if ((fetch_rc != 0)); then
+    [[ $http_status == 000 || -z $project_error ]] \
+      || printf 'update: %s\n' "$project_error" >&2
+    exit "$fetch_rc"
+  fi
   # A release that this machine cannot verify is still reported, with the
   # reason, so the panel can say what is needed before it can be applied.
   if [[ $available == true ]]; then
-    gh_verification_ready || true
+    attestation_ready || true
   fi
+  status=current
+  [[ $available != true ]] || status=available
+  [[ $project_status != no-release ]] || status=no-release
   if [[ $json == true ]]; then
     jq -cn --arg current "$current_version" --arg availableVersion "$release_version" \
       --arg channel "$channel" --argjson available "$available" \
-      --arg projectError "$project_error" \
+      --arg projectError "$project_error" --arg status "$status" \
       '{currentVersion:$current,availableVersion:$availableVersion,channel:$channel,
-        available:$available,projectError:$projectError}'
+        available:$available,status:$status,projectError:$projectError}'
+  elif [[ $status == no-release ]]; then
+    printf '%s (installed: %s).\n' "$no_release" "$current_version"
   elif [[ $available == true ]]; then
     printf 'CybexOS %s is available (installed: %s, channel: %s).\n' \
       "$release_version" "$current_version" "$channel"
@@ -333,6 +412,13 @@ fi
 
 if [[ -n $project_error ]]; then
   printf 'update: CybexOS release skipped: %s\n' "$project_error" >&2
+elif [[ $project_status == no-release && $with_packages == true ]]; then
+  # Informational, not a skipped release: --start keeps stdout for its JSON.
+  if [[ $start_only == true ]]; then
+    printf '%s; updating Fedora packages and system Flatpaks.\n' "$no_release" >&2
+  else
+    printf '%s; updating Fedora packages and system Flatpaks.\n' "$no_release"
+  fi
 fi
 
 if [[ -n $candidate ]]; then
@@ -359,7 +445,11 @@ else
     echo 'update: no project or package work was requested' >&2
     exit 4
   fi
-  echo 'CybexOS is already current.'
+  if [[ $project_status == no-release ]]; then
+    printf '%s; nothing to apply.\n' "$no_release"
+  else
+    echo 'CybexOS is already current.'
+  fi
   exit 0
 fi
 

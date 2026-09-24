@@ -385,6 +385,50 @@ test("release errors identify GitHub rejection without hiding other causes", () 
     assert.match(H.projectCheckError("curl: (22) The requested URL returned error: 403"),
         /CybexOS: GitHub.*HTTP 403.*rate limited/);
     assert.equal(H.projectCheckError("network offline"), "CybexOS: network offline");
+    // The updater's own reasons drop its "update:" prefix.
+    assert.equal(H.projectCheckError(
+        "update: GitHub's API rate limit for anonymous requests was reached; try again later"),
+        "CybexOS: GitHub's API rate limit for anonymous requests was reached; try again later");
+    assert.equal(H.projectCheckError("update: the GitHub repository o/r was not found"),
+        "CybexOS: the GitHub repository o/r was not found");
+});
+
+test("an unpublished release channel is a neutral answer, never a check failure", () => {
+    assert.equal(H.projectStatusOf({ available: false, status: "no-release", projectError: "" }),
+        "no-release");
+    for (const record of [{ status: "current" }, { status: "available" }, {}, null,
+        { available: false, currentVersion: "1.0.0" }])
+        assert.equal(H.projectStatusOf(record), "");
+    assert.equal(H.projectStatusLabel("no-release"), "No CybexOS release published yet");
+    assert.equal(H.projectStatusLabel(""), "");
+
+    const vm = require("node:vm");
+    const updates = read("Common/Updates.qml");
+    assert.match(updates, /readonly property bool projectUpdatesEnabled: true/);
+    const finish = updates.match(/function finishProject\(exitCode, body, errText\) \{([\s\S]*?)\n    \}/)[1];
+    const state = { exitCode: 0, errText: "", projectError: "", projectDone: false,
+        nextProjectAvailable: true, nextProjectVersion: "x", nextProjectApplyNote: "x",
+        nextProjectStatus: "", UpdatesHelpers: H, ProcHelpers: load("ProcHelpers.js"),
+        logCheckError() { throw new Error("no-release is not an error"); },
+        finishCheck() {},
+        body: JSON.stringify({ currentVersion: "0.0.0", availableVersion: "", channel: "stable",
+            available: false, status: "no-release", projectError: "" }) };
+    vm.runInNewContext("(() => {" + finish + "})()", state);
+    assert.equal(state.projectError, "");
+    assert.equal(state.nextProjectAvailable, false);
+    assert.equal(state.nextProjectStatus, "no-release");
+    assert.equal(state.projectDone, true);
+    assert.match(updates, /projectStatus = nextProjectStatus;/);
+
+    const popover = read("Popovers/UpdatesPopover.qml");
+    const status = popover.match(/readonly property string status: \{([\s\S]*?)\n    \}/)[1];
+    const view = { running: false, finished: false, failed: false, rebootNeeded: false,
+        Updates: { busy: false, checkError: "", total: 0, projectNote: "No CybexOS release published yet",
+            checkedLabel: () => "Checked just now" } };
+    assert.equal(vm.runInNewContext("(() => {" + status + "})()", view),
+        "Checked just now · No CybexOS release published yet");
+    view.Updates.projectNote = "";
+    assert.equal(vm.runInNewContext("(() => {" + status + "})()", view), "Checked just now");
 });
 
 test("the one-line summary says what is pending, else what could not be checked", () => {
@@ -450,8 +494,8 @@ test("firmware completion distinguishes no updates, malformed output and failure
 });
 
 test("a skipped or blocked CybexOS release says why without stopping packages", () => {
-    assert.equal(H.projectErrorOf({ id: "run", projectError: "  the GitHub CLI is not logged in  " }),
-        "the GitHub CLI is not logged in");
+    assert.equal(H.projectErrorOf({ id: "run", projectError: "  this GitHub CLI is too old  " }),
+        "this GitHub CLI is too old");
     assert.equal(H.projectErrorOf({ id: "run" }), "");
     assert.equal(H.projectErrorOf({ projectError: 69 }), "");
     assert.equal(H.projectErrorOf(null), "");

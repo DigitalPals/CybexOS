@@ -69,6 +69,7 @@ function coordinator() {
         firmwareDone: true,
         projectUpdatesEnabled: false, projectAvailable: false, projectVersion: "",
         nextProjectAvailable: false, nextProjectVersion: "", projectError: "", projectDone: true,
+        projectStatus: "", nextProjectStatus: "",
         ran: false, baselines: {}, lastChecked: 0, error: "", wasPending: false,
         checkParts: H.allParts(), checkAgain: false, checkAgainForced: false,
         checkFailureCount: 0, dnfCacheSignature: "", dnfCacheNames: [], dnfCacheAt: 0,
@@ -237,7 +238,7 @@ test("background checks run only for the widget or notifications, never while id
     assert.match(source, /id: startupCheck[\s\S]{0,200}?if \(root\.pollEnabled && !root\.ran && !root\.busy\)/);
     // The panel says when it last checked, not how the poller is configured.
     const panel = fs.readFileSync(path.join(shellDir, "Popovers/UpdatesPopover.qml"), "utf8");
-    assert.match(panel, /return Updates\.checkedLabel\(\);/);
+    assert.match(panel, /return Updates\.checkedLabel\(\)\s*\+ \(Updates\.projectNote !== ""/);
     assert.doesNotMatch(panel, /pollMins|refreshes when opened/);
 });
 

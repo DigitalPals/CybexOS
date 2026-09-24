@@ -130,7 +130,9 @@ Surface {
             return Updates.checkError;
         if (rebootNeeded && Updates.total === 0)
             return "Restart to finish updating";
-        return Updates.checkedLabel();
+        // Neutral, like the checked time: nothing to install from CybexOS yet.
+        return Updates.checkedLabel()
+            + (Updates.projectNote !== "" ? " · " + Updates.projectNote : "");
     }
 
     readonly property color statusColor: failed && !Updates.runCancelled ? Theme.redText

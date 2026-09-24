@@ -167,10 +167,13 @@ cybex update
 ```
 
 The updater follows the saved `stable` channel by default (`--channel beta`
-selects and saves prereleases). It resolves an immutable GitHub release,
-verifies GitHub's release and asset attestations, checks the API SHA-256
-digest, validates Fedora/architecture/config-schema compatibility, and
-extracts into a versioned staging directory. One durable system worker owns the
+selects and saves prereleases). It checks this repository's GitHub releases
+anonymously, so no GitHub account or `gh auth login` is needed. While a channel
+has no published release, the CybexOS step is skipped and packages still
+update. For a newer immutable release it checks the API SHA-256 digest,
+verifies the release workflow's provenance attestation offline from the
+bundle published beside the archive, validates Fedora/architecture/config-schema
+compatibility, and extracts into a versioned staging directory. One durable system worker owns the
 saved-answer migration, candidate application, rollback, and atomic `current`
 symlink change, so detaching the terminal cannot split the transaction. A
 failed apply restores the previous configuration. The active release and two
