@@ -128,6 +128,7 @@ SettingsPage {
                         divider: false
                         visible: account.info.calendar
                         label: "Use calendars"
+                        accessibleName: "Use calendars from " + (account.info.identity || account.info.provider)
                         checked: !account.info.calendarDisabled
                         disabledReason: account.info.locked ? "Managed account" : page.service.busy ? "Updating…" : ""
                         onToggled: value => page.service.run({action: "calendar", id: account.info.id, enabled: value})

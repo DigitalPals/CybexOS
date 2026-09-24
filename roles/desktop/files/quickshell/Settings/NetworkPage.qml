@@ -197,8 +197,9 @@ SettingsPage {
         title: page.trialActive ? "Keep these network settings?"
             : page.changes.length === 1 ? "1 change not applied yet"
             : page.changes.length + " changes not applied yet"
-        // Apply stays pressable while a problem stands; applyChanges()
-        // refuses, and the problem is the line under the title.
+        // A standing problem disables Apply and is the line under the title;
+        // applyChanges() refuses as well.
+        applyEnabled: page.problem === ""
         detail: page.trialActive
             ? "Check your connection. NetworkManager restores the previous settings in "
                 + page.secondsLeft + " s."

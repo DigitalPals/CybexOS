@@ -23,6 +23,9 @@ Rectangle {
     // Share of the trial still left, 1 → 0.
     property real remaining: 1
     property bool busy: false
+    // False while something blocks applying; `detail` should then say what,
+    // and it is drawn in the warning ink.
+    property bool applyEnabled: true
     property string applyText: "Apply"
     property string discardText: "Discard"
     property string keepText: "Keep changes"
@@ -83,7 +86,7 @@ Rectangle {
             text: root.detail
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.secondary
-            color: Theme.textFaint
+            color: !root.trial && !root.applyEnabled ? Theme.amber : Theme.textFaint
             elide: Text.ElideRight
         }
     }
@@ -103,6 +106,7 @@ Rectangle {
         }
         SettingsAction {
             primary: true
+            enabled: root.trial || root.applyEnabled
             text: root.busy ? "Applying…" : root.trial ? root.keepText : root.applyText
             onTriggered: root.trial ? root.keep() : root.apply()
         }

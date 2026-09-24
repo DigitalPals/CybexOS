@@ -255,8 +255,9 @@ SettingsPage {
         title: page.trialActive ? "Keep these display settings?"
             : page.changes.length === 1 ? "1 change not applied yet"
             : page.changes.length + " changes not applied yet"
-        // Apply stays pressable while a problem stands; applyChanges()
-        // refuses, and the problem is the line under the title.
+        // A standing problem disables Apply and is the line under the title;
+        // applyChanges() refuses as well.
+        applyEnabled: page.problem === ""
         detail: page.trialActive
             ? "The previous settings return in " + page.secondsLeft + " s. Escape restores them now."
             : page.problem !== "" ? page.problem

@@ -8,6 +8,9 @@ SettingsRow {
     id: root
 
     property string description: ""
+    // What a screen reader calls the switch. Rows repeated per item (every
+    // account's "Use calendars") name the item here.
+    property string accessibleName: label
     property bool checked: root.stored === true
     signal toggled(bool value)
 
@@ -25,7 +28,7 @@ SettingsRow {
         opacity: root.controlOpacity
         metrics: Theme.switchRow
         checked: root.checked
-        accessibleName: root.label
+        accessibleName: root.accessibleName
         onToggled: value => {
             root.commit(value);
             root.toggled(value);
