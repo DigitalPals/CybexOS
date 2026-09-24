@@ -94,7 +94,7 @@ test("roving keyboard pickers move focus before they commit", () => {
     order(appearance, "swatchRepeater.itemAt(next).forceActiveFocus();",
         "page.pickAccent(page.accentChoices[next]);", "accent swatches");
     order(read("Settings/BarBackgroundGroup.qml"), "barColorRepeater.itemAt(next).forceActiveFocus();",
-        'Settings.set("barColorMode", Settings.barColorChoices[next].id);', "bar colours");
+        "barColorRow.commit(Settings.barColorChoices[next].id);", "bar colours");
     order(read("Settings/CornerPickerRow.qml"),
         "cornerRepeater.itemAt(root.corners.indexOf(target)).forceActiveFocus();",
         "root.pick(target);", "corner picker");

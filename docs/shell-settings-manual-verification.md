@@ -22,8 +22,8 @@ is manual.
       an icon rail with hairlines between the groups, themed tooltips and
       42px targets.
 - [ ] `cybexos-runtime ipc settings open bar` lands on the Bar page. The
-      retired ids still work: `open modules` lands on Bar and `open system`
-      on Power. The recovery-boot notification's action lands on About's
+      retired ids still work: `open modules` lands on Bar, with its widgets
+      at the top, and `open system` on Power. The recovery-boot notification's action lands on About's
       recovery points, and the power drawer's Idle settings on Power.
 - [ ] The header reads "<Page> · <description>" with the description in its
       own capitalization (Network shows "IP addresses and DNS"). It carries
@@ -191,17 +191,39 @@ is manual.
 
 ## Bar page
 
+- [ ] A preview of the bar stays pinned at the top of the page while the rows
+      below it scroll. Over the current wallpaper it draws the bar at its edge,
+      in its style (Hug with its inverted corners, Floating inset by the edge
+      gap with its corner radius, Attached square), at its height and in its
+      background colour, with each section's enabled widgets as their icons,
+      the workspace strip and the clock's time. Every Layout, Background and
+      Behavior row changes it as it changes the real bar; Auto-hide fades it,
+      and Reserve space off lets its window slide under the bar.
+- [ ] Clicking a widget in the preview opens that widget's options; closing
+      the dialog leaves the page scrolled where it was. At a short window
+      height the preview shrinks before the rows lose their room.
 - [ ] Position Bottom moves the bar; every popout opens above it with its
       directional motion mirrored, content upright; tooltips flip
       above modules; toasts hug the top edge; Esc/hover-switching still work.
 - [ ] Style picker renders Hug as full-width with 16px concave corners,
       Floating as the existing detached rounded slab, and Attached full-width
       and square. Top/Bottom mirrors Hug's corners without mirroring content.
-- [ ] Height slider resizes the real bar live; the miniature tracks it; the
-      labeled Height presets row snaps to 38/46/54 without detaching its pills.
-- [ ] Edge gap and corner radius are shown only for Floating and leave keyboard
-      and accessibility traversal immediately when hidden. Their stored values
-      survive a round trip through Hug and Attached.
+- [ ] Edge gap and Corner radius appear directly under Style only for
+      Floating and leave keyboard and accessibility traversal immediately when
+      hidden. Their stored values survive a round trip through Hug and
+      Attached; resetting Style restores them along with it.
+- [ ] Height offers Compact (30), Classic (34), Default (36), Roomy (42) and
+      Custom, with the value beside them. A stored height no preset names
+      shows Custom. Custom reveals a Custom height slider (28–60 px) that keeps
+      the current value, and dragging it across 34 or 42 does not fold it away.
+      Resetting Height, the page, or everything returns the picker to its
+      preset. Where the bar cannot be that short at the current text size, the
+      row names the height it is drawn at. A search for Height lands on the row.
+- [ ] Bar background is one row: the label on the left, the seven swatches on
+      the control edge. Arrow keys, Home and End move and pick; the hint names
+      the colour, its hex value, and whether it adapts to the theme. Custom
+      reveals Hue, Saturation and Lightness as attached rows; the row's reset
+      restores Shell Default together with the custom values.
 - [ ] Changing Height or Corner radius dirties/reset-enables Bar only;
       Appearance remains clean. Reset Bar owns and restores both values.
 - [ ] Auto-hide: bar slides away after ~1.6 s without hover; hovering the
@@ -214,27 +236,39 @@ is manual.
 - [ ] Opening a module or Shell settings from either bar shows exactly one
       panel, attached to the bar that was clicked.
 
-## Widgets page
+## Bar page — widgets
 
-- [ ] Left, Center and Right cards show enabled widgets as pills in bar order,
-      including widgets currently hidden by runtime conditions. There is no
-      duplicate preview, permanent inspector, or available-widget panel.
-- [ ] Each section's searchable selector lists only disabled built-ins and
-      installed plugin widget instances. Choose a result and press +: it appears
-      in that section with its existing settings retained.
-- [ ] The gear opens a dialog sized to its settings, with scrolling for longer
-      forms. Close or Esc returns focus to the pill without closing Settings.
-- [ ] Drag within and between cards; the ghost and insertion marker track both
-      axes, wrapped rows, empty sections and edge scrolling. Escape cancels
-      without writing. Alt+arrow keys and menu Earlier/Later also reorder.
-- [ ] Right-click, Menu, and Shift+F10 expose Move to Left/Center/Right and Remove.
-      Remove retains settings; Undo restores only that widget and its placement.
+- [ ] Left, Center and Right are rows of the Widgets group, separated by
+      hairlines rather than cards: the section's name in the label column and
+      its enabled widgets as chips in bar order, including widgets currently
+      hidden by runtime conditions (drawn quieter). An empty section says so
+      and still takes a drop. There is no per-section widget picker.
+- [ ] Clicking a chip opens its options in a dialog sized to its settings, with
+      scrolling for longer forms. Close or Esc returns focus to the chip
+      without closing Settings.
+- [ ] Every chip has a ⋯ button with Widget settings…, Move earlier/later,
+      Move to Left/Center/Right and Remove from bar; right-click, Menu and
+      Shift+F10 open the same menu. Remove retains settings; Undo restores
+      only that widget and its placement.
+- [ ] Add widgets lists every disabled built-in and every installed plugin
+      widget instance as an outlined chip. Clicking one adds it to the section
+      it last lived in, settings retained, and keeps focus in the tray; its ⋯
+      offers the other sections and its options. With every widget on the bar,
+      the tray says so.
+- [ ] Drag within and between sections; the section under the pointer lights
+      up, the ghost and insertion marker track both axes, wrapped rows, empty
+      sections and edge scrolling, and the preview dims the dragged widget.
+      Escape cancels without writing. Alt+arrow keys and menu Earlier/Later
+      also reorder.
 - [ ] Plugin adds are atomic, and reported success waits for the saved registry.
       Plugin ordering matches the bar's separate plugin block in each section.
-- [ ] At 480px window width, headers stack where needed, pills use fewer columns,
-      and pickers/dialogs remain inside the window with accessible controls.
-- [ ] Layout actions expose preset preview/application, Manage plugins, reset,
-      and Undo. Presets preserve placement and all plugin preferences.
+- [ ] At 480px window width, each section stacks its name above its chips,
+      chips use fewer columns, and menus/dialogs remain inside the window with
+      accessible controls.
+- [ ] The ⋯ beside the caption under the preview offers Presets…, Manage
+      plugins…, Restore default built-in layout and Undo. Presets show the
+      chosen preset on the preview before it is applied; applying preserves
+      placement and all plugin preferences.
 - [ ] Detail policy (Auto / Prefer detail / Always compact) is picked in the
       dialog; Prefer detail compacts only after Auto widgets.
 - [ ] Notifications → Grouping switches live between Separate and Status
@@ -244,6 +278,10 @@ is manual.
       volume percentage toggles and thresholds, media title format and width,
       usage provider toggles and warn/critical thresholds, T3 label and pulse,
       workspaces min slots / hide empty / dots, notification grouping.
+- [ ] Option rows in the dialog follow the page grammar: controls end on one
+      edge, rows are separated by hairlines, and explanatory copy (notes title
+      privacy, notification grouping, the usage key's state, the sign-in
+      policy) sits on the row's own hint line.
 - [ ] Indicators expands inline with Clock hover / Always show / Active only,
       per-action switches, and drag/keyboard ordering. A hidden Dictation or
       Screen recording action returns while running so it can always be stopped.
@@ -264,15 +302,14 @@ is manual.
 - [ ] Weather place/latitude/longitude edits commit on Enter or focus loss and
       refetch; Esc inside a text field restores the value without closing
       anything; junk input snaps back to the stored value.
-- [ ] Reset page on Widgets resets layout, detail policies, and all module
-      options (with Undo); per-row undo chips reset one option.
+- [ ] GitHub's account and watched repositories sit on the row grid without
+      cards: add a repository with Enter or Add, remove one with its ×, and a
+      watch error shows under that repository.
+- [ ] Reset Bar resets layout, detail policies, and all module options (with
+      Undo); per-row undo chips reset one option.
 - [ ] Toggles apply to the bar instantly; auto-rules keep working (Media
       only while playing, Bluetooth only when connected, Battery on
       laptops).
-- [ ] Drag a row: source dims, proxy follows the pointer, accent caret
-      marks the gap (rows never shift); drop reorders within and across
-      columns, including end-of-column; Esc during a drag cancels it (a
-      second Esc closes the window).
 - [ ] Disabling a module whose popout is open closes that popout.
 - [ ] T3 Code and Model usage can each be toggled, reordered, and moved across
       columns; Claude, Codex, and Kimi remain grouped under Model usage.
@@ -284,10 +321,8 @@ is manual.
 - [ ] In a narrow/stacked settings panel, pointer and keyboard drops use the
       correct column-relative index, edge dragging scrolls, and focus returns
       to the dropped row.
-- [ ] At 640px of Modules content width, LEFT/CENTER/RIGHT render as three
-      columns; below it they stack. In the preview, each lane clips its own
-      chips and never paints into another lane. Optional tags disappear before
-      a full module name is shortened.
+- [ ] With the Everything preset, the preview's center section moves aside
+      rather than painting over a crowded left or right section.
 
 ## Notifications page
 

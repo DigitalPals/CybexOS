@@ -5,6 +5,10 @@ import "../Common"
 // [label][toggle chips][undo]: any subset of a short list. PickerRow's
 // segmented control is one-of-many; these chips are checkboxes wearing the
 // same held-chip grammar, so a chosen option reads the same in both.
+//
+// Like every row's control, the chips end on the page's right-hand edge at
+// their natural width, and wrap back to the label column only when they do
+// not fit on one line (2026-09 redesign).
 SettingsRow {
     id: root
 
@@ -13,16 +17,36 @@ SettingsRow {
     property var chosen: []
     signal toggledOption(var value)
 
+    // The width the chips want on one line, as PillRow measures its options.
+    readonly property int chipPadding: 20
+    readonly property real naturalWidth: {
+        let total = 0;
+        for (const item of root.model)
+            total += Math.ceil(metrics.advanceWidth(item.label)) + 1
+                + Theme.iconSmall + chipSpacing + chipPadding;
+        return total + Math.max(0, root.model.length - 1) * chips.spacing + 1;
+    }
+    readonly property int chipSpacing: 4
+
     narrowHeight: Theme.settingsStackOffset + Math.max(Theme.settingsControlHeight,
         chips.implicitHeight) + Theme.settingsRowSpacing
-    wideHeight: Math.max(Theme.panelRowHeight, chips.implicitHeight)
+    wideHeight: Math.max(Theme.panelRowHeight, chips.implicitHeight) + root.rowPad * 2
     narrowLabelInset: root.undoWidth
+    controlLeft: chips.x
+
+    FontMetrics {
+        id: metrics
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.control
+        font.weight: Theme.weightMedium
+    }
 
     Flow {
         id: chips
-        x: root.narrow ? root.markInset : root.labelWidth
+        width: root.narrow ? Math.max(0, root.contentRight - root.markInset)
+            : Math.min(root.naturalWidth, Math.max(0, root.contentRight - root.labelWidth))
+        x: root.narrow ? root.markInset : root.contentRight - width
         y: root.narrow ? Theme.settingsStackOffset : (root.lineHeight - height) / 2
-        width: Math.max(0, root.contentRight - x)
         opacity: root.controlOpacity
         spacing: Theme.panelRowSpacing
 
@@ -37,7 +61,7 @@ SettingsRow {
                 required property int index
                 readonly property bool on: root.chosen.indexOf(modelData.value) >= 0
 
-                width: Math.min(chips.width, chipRow.implicitWidth + 20)
+                width: Math.min(chips.width, chipRow.implicitWidth + root.chipPadding)
                 height: Theme.chipInnerHeight
                 radius: Theme.chipRadius
                 color: chip.on ? Theme.chipHover : "transparent"
@@ -86,7 +110,7 @@ SettingsRow {
                 Row {
                     id: chipRow
                     anchors.centerIn: parent
-                    spacing: 4
+                    spacing: root.chipSpacing
 
                     Sym {
                         anchors.verticalCenter: parent.verticalCenter

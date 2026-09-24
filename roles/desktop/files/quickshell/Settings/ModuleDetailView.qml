@@ -176,7 +176,7 @@ SettingsPage {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        spacing: Theme.settingsContentSpacing
+        spacing: Theme.settingsRowSpacing
 
         Row {
             visible: !view.inlineMode
@@ -222,7 +222,21 @@ SettingsPage {
         }
 
         Loader {
+            id: optionsLoader
             width: parent.width
+
+            // Detail and the first option are rows of one list. The first
+            // row of the options column draws no rule of its own (it sits at
+            // the top of its column), so draw the one between them here.
+            Rectangle {
+                visible: view.hasDetail && optionsLoader.item !== null
+                x: Theme.settingsMarkInset
+                y: -Math.ceil(Theme.settingsRowSpacing / 2) - 1
+                width: Math.max(0, parent.width - x)
+                height: 1
+                color: Theme.hairlineSoft
+            }
+
             sourceComponent: {
                 switch (view.moduleId) {
                 case "ws": return wsOptions;
@@ -276,17 +290,11 @@ SettingsPage {
                 width: parent.width
                 title: "Actions"
 
-                Text {
+                SettingsHint {
                     width: parent.width
-                    leftPadding: Theme.settingsMarkInset
-                    bottomPadding: 4
                     text: "Drag to reorder. Hidden recording"
                         + (Dictation.available ? " and dictation" : "")
                         + " controls still return while active so they can be stopped."
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.secondary
-                    color: Theme.textDim
-                    wrapMode: Text.Wrap
                 }
 
                 Item {
@@ -389,21 +397,30 @@ SettingsPage {
                                     onClicked: indicatorRow.forceActiveFocus()
                                 }
 
-                                Text {
+                                // The rule between rows, as SettingsRow draws it.
+                                Rectangle {
+                                    visible: indicatorRow.index > 0
+                                    x: Theme.settingsMarkInset
+                                    y: -2
+                                    width: Math.max(0, parent.width - x)
+                                    height: 1
+                                    color: Theme.hairlineSoft
+                                }
+
+                                // The grip sits in the modified-mark gutter so
+                                // the icon and name line up with row labels.
+                                Sym {
                                     id: indicatorHandle
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 4
+                                    x: Math.max(0, Math.round((Theme.settingsMarkInset - width) / 2) - 1)
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: "⠿"
-                                    font.family: Theme.fontMono
-                                    font.pixelSize: Theme.typography.metadata
+                                    name: "drag_indicator"
+                                    size: Theme.iconSmall
                                     color: Theme.textDim
                                 }
 
                                 Sym {
                                     id: indicatorGlyph
-                                    anchors.left: indicatorHandle.right
-                                    anchors.leftMargin: 10
+                                    x: Theme.settingsMarkInset
                                     anchors.verticalCenter: parent.verticalCenter
                                     name: indicatorRow.meta.glyph
                                     size: Theme.iconMedium
@@ -442,8 +459,10 @@ SettingsPage {
 
                                 Toggle {
                                     id: indicatorToggle
+                                    // Ends where every row's control ends,
+                                    // clear of the reset column.
                                     anchors.right: parent.right
-                                    anchors.rightMargin: 8
+                                    anchors.rightMargin: Theme.chipHeight + 2
                                     anchors.verticalCenter: parent.verticalCenter
                                     metrics: Theme.switchCompact
                                     checked: indicatorRow.shown
@@ -664,6 +683,7 @@ SettingsPage {
                         { value: "on", label: "On" }
                     ]
                     current: view.opts.idleStartup
+                    hint: "Sign-in policy applies after login or reboot. Restarting only the menubar resumes its current state and original deadline."
                     dirty: view.optDirty("idleStartup")
                     onPicked: value => view.setOpt("idleStartup", value)
                     onResetRequested: view.resetOpt("idleStartup")
@@ -694,15 +714,6 @@ SettingsPage {
                     onResetRequested: view.resetOpt("idleShowRemaining")
                 }
 
-                Text {
-                    width: parent.width
-                    leftPadding: Theme.settingsMarkInset + Theme.settingsLabelWidth
-                    text: "Sign-in policy applies after login or reboot. Restarting only the menubar resumes its current state and original deadline."
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.secondary
-                    color: Theme.textDim
-                    wrapMode: Text.Wrap
-                }
             }
         }
     }
@@ -711,7 +722,7 @@ SettingsPage {
         id: wsOptions
 
         Column {
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             SliderRow {
                 width: parent.width
@@ -755,7 +766,7 @@ SettingsPage {
         id: mediaOptions
 
         Column {
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             PickerRow {
                 width: parent.width
@@ -789,7 +800,7 @@ SettingsPage {
         id: clockOptions
 
         Column {
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             SwitchRow {
                 width: parent.width
@@ -875,14 +886,9 @@ SettingsPage {
                 }
             }
 
-            Text {
+            SettingsHint {
                 width: parent.width
-                leftPadding: Theme.settingsMarkInset + Theme.settingsLabelWidth
-                text: "12/24-hour time is set on the System page. Google sign-in is handled by GNOME Online Accounts; credentials never enter Quickshell."
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Theme.textDim
-                wrapMode: Text.Wrap
+                text: "12/24-hour time is set on the Region & formats page. Google sign-in is handled by GNOME Online Accounts; credentials never enter Quickshell."
             }
 
             WeatherLocationPicker {
@@ -895,7 +901,7 @@ SettingsPage {
         id: weatherOptions
 
         Column {
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             WeatherLocationPicker {
                 width: parent.width
@@ -920,7 +926,7 @@ SettingsPage {
         id: notesOptions
 
         Column {
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             PickerRow {
                 width: parent.width
@@ -931,6 +937,9 @@ SettingsPage {
                     { value: "claude", label: "Claude Code CLI" }
                 ]
                 current: view.opts.titleProvider
+                hint: view.opts.titleProvider === "off"
+                    ? "Titles stay local. Choose a CLI to enable Generate in the note editor."
+                    : "Uses your existing CLI sign-in. Text is sent when you click Generate or leave a note untitled, up to 12,000 characters."
                 dirty: view.optDirty("titleProvider")
                 onPicked: value => view.setOpt("titleProvider", value)
                 onResetRequested: view.resetOpt("titleProvider")
@@ -980,17 +989,6 @@ SettingsPage {
                 onResetRequested: view.resetOpt("claudeEffort")
             }
 
-            Text {
-                width: parent.width
-                leftPadding: Theme.settingsMarkInset + Theme.settingsLabelWidth
-                text: view.opts.titleProvider === "off"
-                    ? "Titles stay local. Choose a CLI to enable Generate in the note editor."
-                    : "Uses your existing CLI sign-in. Text is sent when you click Generate or leave a note untitled, up to 12,000 characters."
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Theme.textDim
-                wrapMode: Text.Wrap
-            }
         }
     }
 
@@ -998,7 +996,7 @@ SettingsPage {
         id: t3Options
 
         Column {
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             SwitchRow {
                 width: parent.width
@@ -1024,7 +1022,7 @@ SettingsPage {
         id: usageOptions
 
         Column {
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             PickerRow {
                 width: parent.width
@@ -1073,24 +1071,15 @@ SettingsPage {
                 placeholder: Usage.cliproxyKeyConfigured
                     ? "Configured — enter to replace" : "Required"
                 secret: true
-                dirty: Usage.cliproxyKeyConfigured
-                onCommitted: text => Usage.saveManagementKey(text)
-                onResetRequested: Usage.clearManagementKey()
-            }
-
-            Text {
-                visible: view.opts.source === "cliproxy"
-                width: parent.width
-                text: Usage.credentialBusy ? "Checking private key…"
+                hint: Usage.credentialBusy ? "Checking private key…"
                     : Usage.credentialError ? Usage.credentialError
                     : Usage.cliproxyKeyConfigured
                         ? "Key stored privately; it is not saved in shell settings."
                         : "A CLIProxyAPI management key is required."
-                leftPadding: Theme.settingsMarkInset
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Usage.credentialError ? Theme.redText : Theme.textFaint
-                wrapMode: Text.Wrap
+                hintTone: Usage.credentialError ? "error" : "info"
+                dirty: Usage.cliproxyKeyConfigured
+                onCommitted: text => Usage.saveManagementKey(text)
+                onResetRequested: Usage.clearManagementKey()
             }
 
             SettingsTextRow {
@@ -1126,24 +1115,15 @@ SettingsPage {
                 placeholder: Usage.sub2apiKeyConfigured
                     ? "Configured — enter to replace" : "Required"
                 secret: true
-                dirty: Usage.sub2apiKeyConfigured
-                onCommitted: text => Usage.saveManagementKey(text, "sub2api")
-                onResetRequested: Usage.clearManagementKey("sub2api")
-            }
-
-            Text {
-                visible: view.opts.source === "sub2api"
-                width: parent.width
-                text: Usage.credentialBusy ? "Checking private key…"
+                hint: Usage.credentialBusy ? "Checking private key…"
                     : Usage.credentialError ? Usage.credentialError
                     : Usage.sub2apiKeyConfigured
                         ? "Key stored privately; it is not saved in shell settings."
                         : "A Sub2API admin API key is required."
-                leftPadding: Theme.settingsMarkInset
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Usage.credentialError ? Theme.redText : Theme.textFaint
-                wrapMode: Text.Wrap
+                hintTone: Usage.credentialError ? "error" : "info"
+                dirty: Usage.sub2apiKeyConfigured
+                onCommitted: text => Usage.saveManagementKey(text, "sub2api")
+                onResetRequested: Usage.clearManagementKey("sub2api")
             }
 
             ResponsiveActionRow {
@@ -1159,15 +1139,11 @@ SettingsPage {
                 }
             }
 
-            Text {
+            SettingsHint {
                 visible: view.opts.source !== "direct" && Usage.connectionTestMessage !== ""
                 width: parent.width
-                leftPadding: Theme.settingsMarkInset
                 text: Usage.connectionTestMessage
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Usage.connectionTestSucceeded ? Theme.textMid : Theme.redText
-                wrapMode: Text.Wrap
+                tone: Usage.connectionTestSucceeded ? "active" : "error"
             }
 
             SwitchRow {
@@ -1283,7 +1259,7 @@ SettingsPage {
         id: hermesOptions
 
         Column {
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             SwitchRow {
                 width: parent.width
@@ -1322,7 +1298,7 @@ SettingsPage {
             // while reserving enough room that the label cannot cover a track.
             readonly property int optionLabelWidth: 156
 
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             PickerRow {
                 width: parent.width
@@ -1405,7 +1381,7 @@ SettingsPage {
         id: notificationsOptions
 
         Column {
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             PickerRow {
                 width: parent.width
@@ -1415,21 +1391,12 @@ SettingsPage {
                     { value: "status", label: "Status group" }
                 ]
                 current: view.opts.group
+                hint: "Groups only with adjacent Volume, Network, Bluetooth, or Battery widgets."
                 dirty: view.optDirty("group")
                 onPicked: value => view.setOpt("group", value)
                 onResetRequested: view.resetOpt("group")
             }
 
-            Text {
-                width: parent.width
-                leftPadding: Theme.settingsMarkInset + Theme.settingsLabelWidth
-                rightPadding: Theme.chipHeight
-                text: "Groups only with adjacent Volume, Network, Bluetooth, or Battery widgets."
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Theme.textDim
-                wrapMode: Text.Wrap
-            }
         }
     }
 
@@ -1437,7 +1404,7 @@ SettingsPage {
         id: volOptions
 
         Column {
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             SliderRow {
                 width: parent.width
@@ -1481,7 +1448,7 @@ SettingsPage {
         id: battOptions
 
         Column {
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             SwitchRow {
                 width: parent.width
@@ -1525,7 +1492,7 @@ SettingsPage {
         id: updatesOptions
 
         Column {
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             SliderRow {
                 width: parent.width
@@ -1564,7 +1531,7 @@ SettingsPage {
         id: trayOptions
 
         Column {
-            spacing: Theme.settingsContentSpacing
+            spacing: Theme.settingsRowSpacing
 
             SwitchRow {
                 width: parent.width

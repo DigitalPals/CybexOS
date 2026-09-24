@@ -35,7 +35,6 @@ SettingsSubsection SettingsSubsection.qml
 SettingsField SettingsField.qml
 WidgetEditorRow WidgetEditorRow.qml
 WidgetPill WidgetPill.qml
-WidgetPicker WidgetPicker.qml
 PluginWidgetSettings PluginWidgetSettings.qml
 PluginAppearance PluginAppearance.qml
 AboutPage AboutPage.qml
@@ -65,3 +64,4 @@ MuteButton MuteButton.qml
 VolumeRow VolumeRow.qml
 StreamRow StreamRow.qml
 DraftFieldRow DraftFieldRow.qml
+BarPreview BarPreview.qml

@@ -774,23 +774,39 @@ test("progressive disclosure hides inactive controls without discarding latent v
     assert.match(barColors,
         /id:\s*customColorReveal[\s\S]*?reveal:\s*Settings\.barColorMode === "custom"/);
 
-    // Turn-3: floating-only geometry rows stay visible but dimmed and
-    // disabled under other styles, so the page never reflows on a style
-    // change and the latent values stay on screen. A disabled row says why.
-    const gapAt = bar.indexOf('settingKey: "gap"');
-    const behaviorAt = bar.indexOf('title: "Behavior"');
-    assert.ok(gapAt > 0 && behaviorAt > gapAt);
-    const floating = bar.slice(bar.indexOf('title: "Layout"'), behaviorAt);
+    // 2026-09: floating-only geometry appears under Style for Floating
+    // instead of sitting there disabled, and its values survive other styles.
+    const styleAt = bar.indexOf('settingKey: "barStyle"');
+    const floatingAt = bar.indexOf("id: floatingReveal");
+    const heightAt = bar.indexOf('label: "Height"');
+    assert.ok(styleAt > 0 && floatingAt > styleAt && heightAt > floatingAt,
+        "Edge gap and Corner radius are revealed directly under Style");
+    const floating = bar.slice(floatingAt, heightAt);
+    assert.match(floating, /reveal:\s*page\.floating/);
     assert.match(floating, /settingKey:\s*"gap"/);
     assert.match(floating, /settingKey:\s*"barRadius"/);
-    const explained = floating.match(/disabledReason:\s*page\.floating \? "" : "Only applies to the Floating style"/g) ?? [];
-    assert.equal(explained.length, 2, "both floating-only rows explain why they are disabled");
+    assert.doesNotMatch(bar, /Only applies to the Floating style/);
+    assert.match(bar, /settingKey: "barStyle"\s+resetKeys: \["barStyle", "gap", "barRadius"\]/,
+        "resetting Style restores the values it hides");
+    assert.equal((bar.match(/settingKey:\s*"(?:gap|barRadius)"/g) ?? []).length, 2,
+        "floating-only controls must not have a second focusable copy");
+
+    // Height is named presets; Custom reveals the slider and keeps the value.
+    const height = bar.slice(heightAt, bar.indexOf("BarBackgroundGroup {"));
+    for (const preset of ['value: 30, label: "Compact"', 'value: 34, label: "Classic"',
+            'value: Settings.defaults.barHeight, label: "Default"', 'value: 42, label: "Roomy"'])
+        assert.ok(bar.includes(preset), preset);
+    assert.match(height, /value: "custom", label: "Custom"/);
+    assert.match(height, /current: page\.showCustomHeight \? "custom" : Settings\.barHeight/);
+    assert.match(height, /page\.customHeight = true;[\s\S]*?Settings\.set\("barHeight", value\)/,
+        "Custom keeps the value; a preset writes it");
+    assert.match(bar, /readonly property bool showCustomHeight: customHeight \|\| !heightIsPreset/,
+        "a height no preset names shows Custom");
+    assert.match(height, /id: customHeightReveal[\s\S]*?reveal: page\.showCustomHeight[\s\S]*?settingKey: "barHeight"\s+min: 28; max: 60/);
     const row = read("Settings/SettingsRow.qml");
     assert.match(row, /enabled: !unavailable/, "a disabled row must not accept input");
     assert.match(row, /text: root\.unavailable \? root\.disabledReason : root\.hint/);
     assert.match(read("Settings/SliderRow.qml"), /dimmed: root\.unavailable/);
-    assert.equal((bar.match(/settingKey:\s*"(?:gap|barRadius)"/g) ?? []).length, 2,
-        "floating-only controls must not have a second focusable copy");
 
     assert.match(reveal, /enabled:\s*root\.reveal/);
     assert.match(reveal, /Accessible\.ignored:\s*!root\.reveal/);
@@ -901,7 +917,7 @@ test("per-module options live under one validated modOpts key", () => {
         "Weather must read its location from Settings, not the environment");
 });
 
-test("the gear opens built-in options in the widget dialog", () => {
+test("a widget chip opens its built-in options in the widget dialog", () => {
     const modules = read("Settings/ModulesPage.qml");
     const view = read("Settings/SettingsView.qml");
     const detail = read("Settings/ModuleDetailView.qml");

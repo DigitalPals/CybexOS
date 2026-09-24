@@ -21,7 +21,10 @@ Column {
 
     property string addError: ""
 
-    spacing: 8
+    // The options above are rows at row spacing; this block is a group of
+    // its own below them.
+    topPadding: Theme.settingsGroupSpacing - Theme.settingsRowSpacing
+    spacing: Theme.settingsContentSpacing
 
     function addWatch(text) {
         const slug = GitHubHelpers.repoSlug(text);
@@ -48,69 +51,21 @@ Column {
             root.watch.filter(entry => entry !== slug));
     }
 
-    // A 22px square beside a 28px row, the shape the Modules list already
-    // uses for its per-row cog.
-    component RowButton: Rectangle {
-        id: button
-
-        property string glyph: ""
-        property string action: ""
-        signal triggered()
-
-        width: 22
-        height: 22
-        radius: 5
-        color: buttonMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
-        border.width: activeFocus ? 1 : 0
-        border.color: Theme.accentText
-        activeFocusOnTab: true
-        Accessible.role: Accessible.Button
-        Accessible.name: button.action
-        Accessible.onPressAction: button.triggered()
-
-        Keys.onPressed: event => {
-            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                    || event.key === Qt.Key_Space) {
-                button.triggered();
-                event.accepted = true;
-            }
-        }
-
-        Sym {
-            anchors.centerIn: parent
-            name: button.glyph
-            size: Theme.iconSmall
-            symWeight: 450
-            color: buttonMouse.containsMouse ? Theme.textMid : Theme.textDim
-        }
-
-        MouseArea {
-            id: buttonMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                button.forceActiveFocus();
-                button.triggered();
-            }
-        }
-    }
-
     // ---- account ----------------------------------------------------------
+    // Who the shell reads GitHub as, on the row grid rather than in a card:
+    // the mark in the label lane, the login beside it, the connection state
+    // on the control edge.
     SectionHeader {
         label: "ACCOUNT"
     }
 
-    Rectangle {
+    Item {
         width: parent.width
-        height: 52
-        radius: Theme.rowRadius
-        color: Theme.cardFill
+        height: Math.max(Theme.settingsControlHeight, accountLines.implicitHeight)
 
         Sym {
             id: markGlyph
-            anchors.left: parent.left
-            anchors.leftMargin: 12
+            x: Theme.settingsMarkInset
             anchors.verticalCenter: parent.verticalCenter
             name: "code" // nf-fa-github
             size: Theme.iconMedium
@@ -120,13 +75,13 @@ Column {
         Row {
             id: connectionState
             anchors.right: parent.right
-            anchors.rightMargin: 12
+            anchors.rightMargin: Theme.chipHeight
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 7
+            spacing: Theme.iconTextSpacing
 
             readonly property bool failed: GitHub.error !== ""
-            // This page is reachable from the module row's cog whether or not
-            // the module is on, and with it off nothing polls — so the card
+            // This page is reachable from the widget's options whether or not
+            // the widget is on, and with it off nothing polls — so the row
             // says that rather than spinning on a check that will never run.
             readonly property bool off: !GitHub.pollEnabled
 
@@ -152,10 +107,11 @@ Column {
         }
 
         Column {
+            id: accountLines
             anchors.left: markGlyph.right
-            anchors.leftMargin: 10
+            anchors.leftMargin: Theme.controlSpacing
             anchors.right: connectionState.left
-            anchors.rightMargin: 10
+            anchors.rightMargin: Theme.controlSpacing
             anchors.verticalCenter: parent.verticalCenter
             spacing: 1
 
@@ -192,10 +148,10 @@ Column {
         }
     }
 
-    Text {
-        visible: GitHub.inboxError !== "" || GitHub.notificationError !== ""
-            || root.workflowFailedRepos.length > 0 || root.eventFailedRepos.length > 0
+    SettingsHint {
         width: parent.width
+        maximumLines: 6
+        tone: GitHub.inboxError !== "" ? "error" : "warning"
         text: {
             const parts = [];
             if (GitHub.inboxError !== "")
@@ -209,10 +165,6 @@ Column {
                     + root.eventFailedRepos.join(", "));
             return parts.join("\n");
         }
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.typography.secondary
-        color: GitHub.inboxError !== "" ? Theme.redText : Theme.amber
-        wrapMode: Text.Wrap
     }
 
     // ---- watched repositories ---------------------------------------------
@@ -224,9 +176,32 @@ Column {
         width: parent.width
         height: Theme.settingsControlHeight
 
+        SettingsField {
+            id: addInput
+            x: Theme.settingsMarkInset
+            width: Math.max(0, addAction.x - Theme.controlSpacing - x)
+            anchors.verticalCenter: parent.verticalCenter
+            placeholderText: "owner/repo"
+            invalid: root.addError !== ""
+            Accessible.name: "Repository to watch"
+            onTextChanged: root.addError = ""
+            onAccepted: {
+                if (root.addWatch(text))
+                    text = "";
+            }
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Escape) {
+                    text = "";
+                    focus = false;
+                    event.accepted = true;
+                }
+            }
+        }
+
         SettingsAction {
             id: addAction
             anchors.right: parent.right
+            anchors.rightMargin: Theme.chipHeight
             anchors.verticalCenter: parent.verticalCenter
             text: "Add"
             glyph: "add"
@@ -236,114 +211,47 @@ Column {
                 addInput.forceActiveFocus();
             }
         }
-
-        Rectangle {
-            anchors.left: parent.left
-            anchors.right: addAction.left
-            anchors.rightMargin: 6
-            anchors.verticalCenter: parent.verticalCenter
-            height: Theme.settingsControlHeight
-            radius: 7
-            color: addInput.activeFocus ? Theme.hoverFillStrong : Theme.cardFill
-            border.width: addInput.activeFocus ? 1 : 0
-            border.color: root.addError !== "" ? Theme.red : Theme.accentText
-
-            TextInput {
-                id: addInput
-                anchors.left: parent.left
-                anchors.leftMargin: 9
-                anchors.right: parent.right
-                anchors.rightMargin: 9
-                anchors.verticalCenter: parent.verticalCenter
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.control
-                color: Theme.textHi
-                selectionColor: Theme.accentBg
-                selectedTextColor: Theme.textHi
-                clip: true
-                activeFocusOnTab: true
-                Accessible.role: Accessible.EditableText
-                Accessible.name: "Repository to watch"
-                onTextChanged: root.addError = ""
-                onAccepted: {
-                    if (root.addWatch(text))
-                        text = "";
-                }
-
-                Keys.onPressed: event => {
-                    if (event.key === Qt.Key_Escape) {
-                        text = "";
-                        focus = false;
-                        event.accepted = true;
-                    }
-                }
-
-                Text {
-                    visible: addInput.text === ""
-                    anchors.fill: parent
-                    verticalAlignment: Text.AlignVCenter
-                    text: "owner/repo"
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.control
-                    color: Theme.textFaint
-                    elide: Text.ElideRight
-                }
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                visible: !addInput.activeFocus
-                cursorShape: Qt.IBeamCursor
-                onClicked: addInput.forceActiveFocus()
-            }
-        }
     }
 
-    Text {
-        visible: root.addError !== ""
+    SettingsHint {
         width: parent.width
+        tone: "error"
         text: root.addError
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.typography.secondary
-        color: Theme.redText
-        wrapMode: Text.Wrap
     }
 
+    // One hairline-separated row per watched repository.
     Column {
         width: parent.width
-        spacing: 3
+        spacing: Theme.settingsRowSpacing
 
         Repeater {
             model: root.watch
 
-            delegate: Rectangle {
+            delegate: Item {
                 id: watchRow
 
                 required property string modelData
+                required property int index
                 readonly property string errorText: GitHub.watchError(modelData)
 
                 width: parent.width
-                height: errorText !== "" ? 44 : Theme.settingsControlHeight
-                radius: 7
-                color: Theme.cardFill
+                height: Theme.settingsControlHeight + (errorText !== "" ? errorLine.height : 0)
 
-                RowButton {
-                    id: removeButton
-                    anchors.right: parent.right
-                    anchors.rightMargin: 3
-                    anchors.verticalCenter: parent.verticalCenter
-                    glyph: "close"
-                    action: "Stop watching " + watchRow.modelData
-                    onTriggered: root.removeWatch(watchRow.modelData)
+                Rectangle {
+                    visible: watchRow.index > 0
+                    x: Theme.settingsMarkInset
+                    y: -Math.ceil(Theme.settingsRowSpacing / 2) - 1
+                    width: Math.max(0, parent.width - x)
+                    height: 1
+                    color: Theme.hairlineSoft
                 }
 
                 Text {
                     id: watchedName
-                    anchors.left: parent.left
-                    anchors.leftMargin: 8
-                    anchors.right: removeButton.left
-                    anchors.rightMargin: 6
-                    y: watchRow.errorText !== "" ? 5 : (parent.height - height) / 2
+                    x: Theme.settingsMarkInset
+                    width: Math.max(0, removeAction.x - Theme.controlSpacing - x)
+                    height: Theme.settingsControlHeight
+                    verticalAlignment: Text.AlignVCenter
                     // The owner is dim and the name is not, the same split the
                     // popover's repository rows draw.
                     text: "<font color=\"" + Theme.textDim + "\">"
@@ -351,37 +259,41 @@ Column {
                         + watchRow.modelData.split("/")[1]
                     textFormat: Text.StyledText
                     font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.primary
+                    font.pixelSize: Theme.typography.control
                     color: Theme.textMid
                     elide: Text.ElideRight
                 }
 
-                Text {
-                    visible: watchRow.errorText !== ""
-                    anchors.left: parent.left
-                    anchors.leftMargin: 8
-                    anchors.right: removeButton.left
-                    anchors.rightMargin: 6
-                    y: 23
+                SettingsAction {
+                    id: removeAction
+                    anchors.right: parent.right
+                    anchors.rightMargin: Theme.chipHeight
+                    y: (Theme.settingsControlHeight - height) / 2
+                    text: "Stop watching " + watchRow.modelData
+                    tooltip: "Stop watching"
+                    glyph: "close"
+                    compact: true
+                    onTriggered: root.removeWatch(watchRow.modelData)
+                }
+
+                SettingsHint {
+                    id: errorLine
+                    y: Theme.settingsControlHeight
+                    width: removeAction.x
+                    tone: "warning"
+                    maximumLines: 2
                     text: watchRow.errorText
-                    font.family: Theme.fontMenu
-                    font.pixelSize: Theme.typography.secondary
-                    color: Theme.amber
-                    elide: Text.ElideRight
                 }
             }
         }
     }
 
-    Text {
+    SettingsHint {
         width: parent.width
+        maximumLines: 5
         text: "The configured count applies to recent account and org repositories. "
             + "Every watched repository is additive to that list and, when enabled, "
             + "the workflow-report scope. Repository refresh uses the interval above; "
             + "the Inbox checks repository events and GitHub notifications every minute."
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.typography.secondary
-        color: Theme.textFaint
-        wrapMode: Text.Wrap
     }
 }
