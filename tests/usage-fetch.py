@@ -440,8 +440,8 @@ class XaiUsageTests(unittest.TestCase):
 class CliProxyTests(unittest.TestCase):
     def test_dashboard_and_management_urls_normalize_to_server_base(self):
         self.assertEqual(MODULE.normalize_cliproxy_url(
-            "https://10.10.0.235:8317/management.html"),
-            "https://10.10.0.235:8317")
+            "https://192.0.2.10:8317/management.html"),
+            "https://192.0.2.10:8317")
         self.assertEqual(MODULE.normalize_cliproxy_url(
             "https://proxy.test/prefix/v0/management/"),
             "https://proxy.test/prefix")

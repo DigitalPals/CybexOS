@@ -30,6 +30,7 @@ BOOLEAN_KEYS = {
     "cleanup_legacy_xps_artifacts",
     "passwordless_wheel",
     "passwordless_local_polkit",
+    "docker_sudoless",
     "gdm_autologin",
     "desktop_autologin",
     "start_optional_hardware_services",
@@ -86,6 +87,10 @@ def migrate(document: object) -> dict:
     # Respect both existing opt-ins and an explicit opt-out under the new
     # display-manager-neutral name. The runtime separately checks encryption.
     result.setdefault("desktop_autologin", result.get("gdm_autologin", False))
+    # Earlier releases put every Docker user in the root-equivalent docker
+    # group without asking. A saved configuration without an answer revokes
+    # that access; `cybex configure` can accept it explicitly.
+    result.setdefault("docker_sudoless", False)
     for key in STRING_KEYS:
         if key in result and (not isinstance(result[key], str) or not result[key]):
             raise ValueError(f"{key} must be a non-empty string")

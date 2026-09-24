@@ -202,6 +202,7 @@ if [[ $non_interactive == true ]]; then
   proprietary_apps=true
   passwordless_wheel=false
   passwordless_local_polkit=false
+  docker_sudoless=false
   desktop_autologin=false
   local_network_services=false
   manage_personal_dotfiles=false
@@ -230,6 +231,10 @@ else
   echo 'The following choices relax local authentication. Review each explicitly.'
   ask_bool passwordless_wheel 'Allow the wheel group to use sudo without a password?'
   ask_bool passwordless_local_polkit 'Authorize active local wheel users through Polkit without a password?'
+  docker_sudoless=false
+  if [[ $docker == true ]]; then
+    ask_bool docker_sudoless "Let $primary_user use Docker without sudo? (The docker group is equivalent to root access.)" false
+  fi
   ask_bool desktop_autologin 'Automatically log this user into Hyprland when the root disk is encrypted?' false
   echo
   if [[ -e $selected_home/.gitconfig || -e $selected_home/.ssh/config \
@@ -270,6 +275,7 @@ manage_personal_dotfiles: $manage_personal_dotfiles
 cleanup_legacy_xps_artifacts: false
 passwordless_wheel: $passwordless_wheel
 passwordless_local_polkit: $passwordless_local_polkit
+docker_sudoless: $docker_sudoless
 desktop_autologin: $desktop_autologin
 start_optional_hardware_services: true
 allow_insecure_sccache_transport: false
@@ -298,8 +304,8 @@ printf 'User: %s (%s)\nHost: %s\nTimezone: %s\n' \
   "$primary_user" "$primary_home" "$machine_hostname" "$machine_timezone"
 printf 'Developer tools: %s  Gaming: %s  Docker: %s  Podman: %s  Tailscale: %s\n' \
   "$developer_tools" "$steam" "$docker" "$podman" "$tailscale"
-printf 'Passwordless sudo: %s  Passwordless Polkit: %s  Autologin: %s\n' \
-  "$passwordless_wheel" "$passwordless_local_polkit" "$desktop_autologin"
+printf 'Passwordless sudo: %s  Passwordless Polkit: %s  Sudoless Docker: %s  Autologin: %s\n' \
+  "$passwordless_wheel" "$passwordless_local_polkit" "$docker_sudoless" "$desktop_autologin"
 if [[ $non_interactive == true ]]; then
   confirmed=true
 else

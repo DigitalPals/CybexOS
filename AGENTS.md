@@ -10,8 +10,9 @@
   list before handoff. Finish copying and verifying the checksum first; keep
   incomplete ISOs outside the served ISO tree. Use ASCII filenames without
   spaces and permissions that allow iVentoy to read the files.
-- Prefer **ISO Management → Refresh** at `http://10.10.0.7:26000/`.
-  On `thebeast`, the equivalent requests below were verified with iVentoy
+- Prefer **ISO Management → Refresh** in the PXE host's iVentoy web UI
+  (port 26000; the host is documented in `/data/pxe/README.md`).
+  On the PXE host, the equivalent requests below were verified with iVentoy
   1.0.41. They use the installed UI's internal API, so recheck
   `http://127.0.0.1:26000/vtoy_image.html` after an iVentoy upgrade:
 

@@ -334,7 +334,7 @@ engine checks if another `qs` is active. Task-owned engines, compositors,
 sockets and user roots are cleaned up. Static QML lint covers the whole shared
 UI kit; not every form control, media backend or gesture has runtime coverage.
 
-Validation runs in Fedora 44 on Debian `thebeast`, which has no managed
+Validation runs in Fedora 44 containers on a Debian build server, which has no managed
 Quickshell desktop service. No persistent user plugins are installed by the
 tests. A physical Hyprland session, real audio/notifications, and pointer/grab
 behavior still need live qualification under the repository's sole-PID and

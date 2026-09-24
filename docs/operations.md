@@ -449,6 +449,15 @@ containerd, on the first client request instead of at boot. Containers with a
 `restart=always` policy therefore wait for the first `docker` command after
 boot. A converge leaves a daemon that is already running alone.
 
+Docker commands need `sudo` unless the saved `docker_sudoless` answer is
+`true`. Membership in the `docker` group controls a root daemon, so it is
+root-equivalent; the installer asks for it explicitly and defaults to no.
+Earlier releases granted the group without asking: a converge revokes it from
+a CybexOS-managed Docker installation whose saved configuration has not
+accepted sudoless use. The revocation applies to new login sessions. Run
+`cybex configure` to opt in again. `Super+D` starts lazydocker directly with
+socket access and through `sudo` otherwise.
+
 The weekly Btrfs scrub runs only on AC power and reads at most 200 MiB/s per
 device. A run skipped on battery is not caught up when the charger returns; it
 waits for the next weekly trigger.

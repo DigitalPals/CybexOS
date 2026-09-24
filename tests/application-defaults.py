@@ -120,6 +120,33 @@ class ApplicationDefaults(unittest.TestCase):
                     [str(ROOT / "scripts/migrate-config"), str(config)], text=True,
                 ), result)
 
+    def test_saved_answers_never_imply_root_equivalent_docker_access(self):
+        with tempfile.TemporaryDirectory(prefix="cybex-docker-group.") as temporary:
+            config = Path(temporary) / "config.yml"
+            config.write_text(yaml.safe_dump({"config_schema_version": 1,
+                                              "features": {"docker": True}}))
+            migrated = yaml.safe_load(subprocess.check_output(
+                [str(ROOT / "scripts/migrate-config"), str(config)], text=True))
+            self.assertIs(migrated["docker_sudoless"], False)
+            config.write_text(yaml.safe_dump({"config_schema_version": 1,
+                                              "docker_sudoless": True}))
+            migrated = yaml.safe_load(subprocess.check_output(
+                [str(ROOT / "scripts/migrate-config"), str(config)], text=True))
+            self.assertIs(migrated["docker_sudoless"], True)
+            config.write_text(yaml.safe_dump({"config_schema_version": 1,
+                                              "docker_sudoless": "yes"}))
+            self.assertNotEqual(subprocess.run(
+                [str(ROOT / "scripts/migrate-config"), str(config)],
+                capture_output=True, text=True).returncode, 0)
+        tasks = yaml.safe_load((ROOT / "roles/base/tasks/main.yml").read_text())
+        groups = next(task for task in tasks
+                      if task.get("name") == "Configure primary user groups and Fish login shell")
+        self.assertIn("docker_sudoless", groups["ansible.builtin.user"]["groups"])
+        self.assertEqual(yaml.safe_load((ROOT / "inventory/group_vars/all.yml").read_text())
+                         ["docker_sudoless"], False)
+        post_install = (ROOT / "image/live-rootfs/usr/share/anaconda/post-scripts/90-cybexos.ks")
+        self.assertNotRegex(post_install.read_text(), r"usermod[^\n]*docker")
+
     def test_noninteractive_installer_selects_every_application(self):
         with tempfile.TemporaryDirectory(prefix="cybex-installer.") as temporary:
             home = Path(temporary)
@@ -156,7 +183,8 @@ class ApplicationDefaults(unittest.TestCase):
             for key in APPLICATIONS:
                 self.assertIs(config["features"][key], True, key)
             self.assertFalse((home / "absent.yml").exists())
-            for key in ("passwordless_wheel", "passwordless_local_polkit", "desktop_autologin"):
+            for key in ("passwordless_wheel", "passwordless_local_polkit",
+                        "docker_sudoless", "desktop_autologin"):
                 self.assertIs(config[key], False)
             # hostnamectl succeeds with empty output when no static hostname
             # is configured; use the transient hostname in that case.

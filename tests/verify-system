@@ -101,6 +101,7 @@ firewall_zone=$(jq -r .firewall_zone <<<"$inventory_json")
 manage_system_identity=$(jq -r .manage_system_identity <<<"$inventory_json")
 manage_personal_dotfiles=$(jq -r .manage_personal_dotfiles <<<"$inventory_json")
 desktop_autologin=$(jq -r .desktop_autologin <<<"$inventory_json")
+docker_sudoless=$(jq -r '.docker_sudoless // false' <<<"$inventory_json")
 plymouth_theme=$(jq -r .plymouth_theme <<<"$inventory_json")
 feature_enabled() { jq -e --arg name "$1" '.features[$name] == true' >/dev/null <<<"$inventory_json"; }
 
@@ -234,12 +235,18 @@ else
   skip 'opinionated Fish prompt is not managed by this installation'
 fi
 required_groups=(wheel video input)
-feature_enabled docker && required_groups+=(docker)
+feature_enabled docker && [[ $docker_sudoless == true ]] && required_groups+=(docker)
 check "$primary_user is in required groups (${required_groups[*]})" bash -c '
   groups=$(id -nG "$1") || exit
   shift
   for group in "$@"; do grep -qw "$group" <<<"$groups" || exit 1; done
 ' _ "$primary_user" "${required_groups[@]}"
+if [[ $docker_sudoless != true ]]; then
+  # The account database, not this process: a session opened before the
+  # revocation keeps its old supplementary groups until the next login.
+  check "$primary_user has no root-equivalent docker group access" bash -c \
+    '! id -nG "$1" | grep -qw docker' _ "$primary_user"
+fi
 check 'user lingering is enabled' test -e "/var/lib/systemd/linger/$primary_user"
 
 for unit in NetworkManager firewalld bluetooth avahi-daemon cups; do
@@ -691,8 +698,10 @@ else
   warn 'Firefox profile is not present yet (no legacy backup was restored)'
 fi
 
-if feature_enabled docker; then
+if feature_enabled docker && [[ $docker_sudoless == true ]]; then
   check "Docker daemon responds as $primary_user" sg docker -c 'docker info'
+elif feature_enabled docker; then
+  skip 'Docker daemon check needs sudo because sudoless Docker is not accepted'
 else
   check 'Docker is absent while disabled' bash -c '! command -v docker && ! systemctl is-enabled --quiet docker.service'
 fi

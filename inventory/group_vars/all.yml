@@ -39,6 +39,9 @@ xps_2026_haptic_intensity: high
 # Explicitly accepted local-machine security tradeoffs.
 passwordless_wheel: false
 passwordless_local_polkit: false
+# Membership in the docker group grants root-equivalent control of the host,
+# so Docker requires sudo unless this is explicitly accepted.
+docker_sudoless: false
 # Saved gdm_autologin answers remain a compatibility alias. New installations
 # write desktop_autologin directly; boot-time policy also verifies encryption.
 desktop_autologin: "{{ gdm_autologin | default(false) }}"
