@@ -287,16 +287,11 @@ Column {
         visible: root.schemaFields.length === 0 || root.schema.other.length > 0
         title: root.schemaFields.length > 0 ? "Other saved settings" : "Plugin settings"
 
-        Text {
+        SettingsHint {
             width: parent.width
-            leftPadding: Theme.settingsMarkInset
             text: root.schemaFields.length > 0
                 ? "Saved values the plugin does not describe. Structured values use JSON; text fields use plain text."
                 : "These settings are supplied by the plugin. Structured values use JSON; text fields use plain text."
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.typography.secondary
-            color: Theme.textDim
-            wrapMode: Text.Wrap
         }
         Repeater {
             model: JSON.parse(root.fieldsJson)[1]
@@ -356,15 +351,10 @@ Column {
                 }
             }
         }
-        Text {
+        SettingsHint {
             width: parent.width
-            visible: Object.keys(root.settings).length === 0
-            leftPadding: Theme.settingsMarkInset
-            text: "This plugin has no saved settings or declared defaults."
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.typography.secondary
-            color: Theme.textDim
-            wrapMode: Text.Wrap
+            text: Object.keys(root.settings).length === 0
+                ? "This plugin has no saved settings or declared defaults." : ""
         }
     }
     ResponsiveActionRow {
@@ -408,16 +398,10 @@ Column {
             }
         }
     }
-    Text {
+    SettingsHint {
         width: parent.width
-        visible: root.validationError !== ""
-        leftPadding: Theme.settingsMarkInset
+        tone: "error"
         text: root.validationError
-        color: Theme.redText
-        font.family: Theme.fontMenu
-        font.pixelSize: Theme.typography.secondary
-        wrapMode: Text.Wrap
-        Accessible.role: Accessible.AlertMessage
     }
     ResponsiveActionRow {
         width: parent.width

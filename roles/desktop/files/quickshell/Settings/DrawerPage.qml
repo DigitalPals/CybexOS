@@ -182,21 +182,30 @@ SettingsPage {
                                 onClicked: tabRow.forceActiveFocus()
                             }
 
-                            Text {
+                            // The rule between rows, as SettingsRow draws it.
+                            Rectangle {
+                                visible: tabRow.index > 0
+                                x: Theme.settingsMarkInset
+                                y: -2
+                                width: Math.max(0, parent.width - x)
+                                height: 1
+                                color: Theme.hairlineSoft
+                            }
+
+                            // The grip sits in the modified-mark gutter so the
+                            // icon and name line up with row labels.
+                            Sym {
                                 id: handle
-                                anchors.left: parent.left
-                                anchors.leftMargin: 4
+                                x: Math.max(0, Math.round((Theme.settingsMarkInset - width) / 2) - 1)
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: "⠿"
-                                font.family: Theme.fontMono
-                                font.pixelSize: Theme.typography.metadata
+                                name: "drag_indicator"
+                                size: Theme.iconSmall
                                 color: Theme.textDim
                             }
 
                             Sym {
                                 id: tabGlyph
-                                anchors.left: handle.right
-                                anchors.leftMargin: 10
+                                x: Theme.settingsMarkInset
                                 anchors.verticalCenter: parent.verticalCenter
                                 name: tabRow.meta.glyph
                                 size: Theme.iconMedium
@@ -235,8 +244,10 @@ SettingsPage {
 
                             Toggle {
                                 id: tabToggle
+                                // Ends where every row's control ends, clear
+                                // of the reset column.
                                 anchors.right: parent.right
-                                anchors.rightMargin: 8
+                                anchors.rightMargin: Theme.chipHeight + 2
                                 anchors.verticalCenter: parent.verticalCenter
                                 metrics: Theme.switchCompact
                                 checked: tabRow.modelData.on

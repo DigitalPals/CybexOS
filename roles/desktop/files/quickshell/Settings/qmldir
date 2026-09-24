@@ -35,7 +35,6 @@ SettingsSubsection SettingsSubsection.qml
 SettingsField SettingsField.qml
 WidgetEditorRow WidgetEditorRow.qml
 WidgetPill WidgetPill.qml
-WidgetPicker WidgetPicker.qml
 PluginWidgetSettings PluginWidgetSettings.qml
 PluginAppearance PluginAppearance.qml
 AboutPage AboutPage.qml
@@ -58,3 +57,4 @@ SettingsSelect SettingsSelect.qml
 ApplyBar ApplyBar.qml
 SettingsDisclosure SettingsDisclosure.qml
 SettingsTooltip SettingsTooltip.qml
+BarPreview BarPreview.qml

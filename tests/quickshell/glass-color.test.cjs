@@ -59,6 +59,12 @@ test("Appearance exposes live glass, wallpaper accents, and independent bar colo
     assert.doesNotMatch(appearance, /barColorMode|barCustomHue/,
         "the bar background moved from Appearance to the Bar page");
     assert.match(barColors, /SettingsGroup \{\s*id: barColorControls[\s\S]*?title: "Background"/);
+    // One settings row: the label on the left, the swatches on the control
+    // edge, and the resolved colour on its hint line.
+    assert.match(barColors,
+        /SettingsRow \{\s*id: barColorRow[\s\S]*?label: "Bar background"\s+settingKey: "barColorMode"/);
+    assert.match(barColors, /hint: barColorControls\.barColorLabel[\s\S]{0,120}?Settings\.effectiveBarColor\.toUpperCase\(\)/);
+    assert.match(barColors, /x: barColorRow\.narrow \? barColorRow\.markInset : barColorRow\.contentRight - width/);
     assert.match(barColors, /model:\s*Settings\.barColorChoices/);
     assert.match(barColors, /Accessible\.role:\s*Accessible\.RadioButton/);
     assert.match(barColors, /Accessible\.checked:\s*selected/);

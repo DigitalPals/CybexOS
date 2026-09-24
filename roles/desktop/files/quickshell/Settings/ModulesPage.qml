@@ -15,6 +15,13 @@ Item {
     property string subPage: ""
     property bool presetsOpen: false
     property string preset: "focused"
+    // The catalog as the chosen preset would leave it, for the bar preview:
+    // presets switch built-ins on and off and leave plugins alone.
+    readonly property var presetEntries: {
+        const ids = Settings.modulePresetIds(preset);
+        return entries.map(entry => entry.plugin ? entry
+            : Object.assign({}, entry, { enabled: ids.indexOf(entry.id) !== -1 }));
+    }
     readonly property bool subPageActive: subPage !== "" || presetsOpen
     property var dragMod: null
     property var dropAt: null
@@ -55,8 +62,17 @@ Item {
             return;
         presetsOpen = false;
         subPage = id;
+        openedFromPreview = false;
         detailPage.contentY = 0;
         widgetDialog.open();
+    }
+    // The pinned preview is a pointer shortcut to the same dialog. Closing it
+    // then leaves the page where it was, instead of scrolling up to the
+    // widget's pill to hand it focus.
+    property bool openedFromPreview: false
+    function openFromPreview(id) {
+        openSubPage(id);
+        openedFromPreview = subPage === id;
     }
     // Another page asked for one widget's options (System's Stay awake links
     // to Indicators). Honour it once the catalog knows the widget.
@@ -128,10 +144,28 @@ Item {
         property bool available: false
         interval: 16
         onTriggered: {
+            const trayIndex = page.trayFocusIndex;
+            page.trayFocusIndex = -1;
             if (widgetDialog.visible) return;
             if (available) page.focusSection(section);
-            else page.focusEntry(key);
+            else if (!page.focusTray(trayIndex)) page.focusEntry(key);
         }
+    }
+    // Adding from the tray keeps the keyboard in the tray, on the chip that
+    // took the added one's place, so several widgets can be added in a row
+    // without the page scrolling up to each lane; the preview shows where
+    // each one landed.
+    property int trayFocusIndex: -1
+    function addFromTray(entry, index, section) {
+        trayFocusIndex = index;
+        setEnabled(entry, true, false, section);
+    }
+    function focusTray(index) {
+        if (index < 0 || availableRows.count === 0) return false;
+        const row = availableRows.itemAt(Math.min(index, availableRows.count - 1)) as WidgetPill;
+        if (!row) return false;
+        row.forceActiveFocus();
+        return true;
     }
     function confirmMembership() {
         const change = pendingMembership;
@@ -177,11 +211,14 @@ Item {
             if (group) group.focusEntry(key);
         }
     }
+    // After a removal, keep the keyboard in the lane the widget left; an
+    // emptied lane hands focus to the layout actions above it.
     function focusSection(section) {
         for (let i = 0; i < sections.count; i++) {
             const group = sections.itemAt(i) as ArrangementSection;
-            if (group && group.section === section) group.focusPicker();
+            if (group && group.section === section && group.focusFirst()) return;
         }
+        moreAction.forceActiveFocus();
     }
     function canMove(entry, delta) {
         if (!entry || !entry.enabled || membershipBusy) return false;
@@ -262,21 +299,34 @@ Item {
         }
     }
 
-    component ArrangementSection: Rectangle {
+    // One section of the bar as a settings row: the section's name in the
+    // label column and its widgets, in bar order, where a row's control goes.
+    // No card around it (2026-09 redesign): lanes are separated by the same
+    // hairline as every other row, and a drop target lights up instead.
+    component ArrangementSection: Item {
         id: group
         required property string modelData
         readonly property string section: modelData
         readonly property var widgets: page.sectionEntries(section)
         readonly property string title: section.charAt(0).toUpperCase() + section.slice(1)
-        readonly property bool stackedHeader: width < Theme.scaled(420, Theme.typeScale)
-        width: parent.width
-        height: sectionContent.implicitHeight + 32
-        radius: Theme.panelRadius
-        color: Theme.cardFill
-        border.width: page.dropAt && page.dropAt.section === section ? 1 : 0
-        border.color: Theme.accentText
+        readonly property bool narrow: width < Theme.settingsNarrowWidth
+        readonly property int pad: narrow ? 0 : Theme.scaled(4)
+        readonly property real laneX: narrow ? Theme.settingsMarkInset
+            : Theme.settingsMarkInset + Theme.settingsLabelWidth
+        readonly property bool dropTarget: page.dragActive && page.dropAt !== null
+            && page.dropAt.section === section
+        width: parent ? parent.width : 0
+        height: lane.y + lane.height + pad
+        Accessible.role: Accessible.Grouping
+        Accessible.name: title + " section, " + widgets.length
+            + (widgets.length === 1 ? " widget" : " widgets")
 
-        function focusPicker() { picker.focusPicker(); }
+        function focusFirst() {
+            const row = rows.itemAt(0) as WidgetPill;
+            if (!row) return false;
+            row.forceActiveFocus();
+            return true;
+        }
         function complete() {
             for (let i = 0; i < widgets.length; i++)
                 if (!rows.itemAt(i)) return false;
@@ -301,35 +351,48 @@ Item {
                 + (preceding ? widgetGrid.cellWidth + 3 : -5),
                 Math.floor(index / widgetGrid.columns) * (widgetGrid.cellHeight + widgetGrid.spacing));
         }
-        Column {
-            id: sectionContent
-            x: 16; y: 16
-            width: parent.width - 32
-            spacing: 12
-            Item {
-                width: parent.width
-                height: group.stackedHeader ? sectionLabel.height + picker.height + 10 : Math.max(sectionLabel.height, picker.height)
-                Heading {
-                    id: sectionLabel
-                    y: group.stackedHeader ? 0 : (parent.height - height) / 2
-                    text: group.title
-                }
-                WidgetPicker {
-                    id: picker
-                    x: group.stackedHeader ? 0 : parent.width - width
-                    y: group.stackedHeader ? sectionLabel.height + 10 : 0
-                    width: Math.min(group.stackedHeader ? parent.width : parent.width - sectionLabel.width - 20, Theme.scaled(190, Theme.typeScale))
-                    entries: page.entries
-                    sectionName: group.title
-                    busy: page.membershipBusy || page.dragActive
-                    onAddRequested: key => page.setEnabled(page.entries.find(entry => entry.key === key), true, false, group.section)
-                }
-            }
+
+        // The rule between lanes, where SettingsRow draws its own.
+        Rectangle {
+            visible: group.y > 0
+            x: Theme.settingsMarkInset
+            y: -Math.ceil(Theme.settingsRowSpacing / 2) - 1
+            width: Math.max(0, group.width - x)
+            height: 1
+            color: Theme.hairlineSoft
+        }
+        Rectangle {
+            anchors.fill: parent
+            anchors.leftMargin: -6
+            anchors.rightMargin: -6
+            radius: Theme.rowRadius
+            color: Theme.accentAlpha(0.10)
+            opacity: group.dropTarget ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: Theme.chipFadeDuration } }
+        }
+        Text {
+            id: sectionLabel
+            x: Theme.settingsMarkInset
+            y: group.pad + (Theme.settingsControlHeight - height) / 2
+            width: group.narrow ? group.width - x : Theme.settingsLabelWidth - Theme.controlSpacing
+            text: group.title
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.typography.control
+            color: group.dropTarget ? Theme.textHi : Theme.textMid
+            elide: Text.ElideRight
+        }
+        Item {
+            id: lane
+            x: group.laneX
+            y: group.narrow ? sectionLabel.y + sectionLabel.height + Theme.settingsContentSpacing : group.pad
+            // Ends on the page's control edge, clear of the reset column.
+            width: Math.max(0, group.width - Theme.chipHeight - x)
+            height: group.widgets.length ? widgetGrid.height : emptyHint.height
             Grid {
                 id: widgetGrid
                 width: parent.width
                 columns: Math.max(1, Math.min(3, Math.floor((width + spacing) / (Theme.scaled(150, Theme.typeScale) + spacing))))
-                spacing: 6
+                spacing: Theme.scaled(6)
                 readonly property real cellWidth: (width - (columns - 1) * spacing) / columns
                 readonly property real cellHeight: Theme.settingsControlHeight
                 Repeater {
@@ -362,23 +425,23 @@ Item {
             Caption {
                 id: emptyHint
                 width: parent.width
-                height: visible ? Math.max(44, implicitHeight) : 0
+                height: visible ? Math.max(Theme.settingsControlHeight, implicitHeight) : 0
                 verticalAlignment: Text.AlignVCenter
-                horizontalAlignment: Text.AlignHCenter
                 visible: group.widgets.length === 0
-                text: "Add a widget or drag one here"
+                color: Theme.textFaint
+                text: "Empty. Drag a widget here, or add one from the widgets below."
             }
-        }
-        Rectangle {
-            // Parent outside the Grid so the marker never consumes a cell.
-            readonly property point position: group.markerPosition(page.dropAt ? page.dropAt.gap : 0)
-            x: sectionContent.x + position.x
-            y: sectionContent.y + (group.widgets.length ? widgetGrid.y : emptyHint.y) + position.y
-            width: 3
-            height: widgetGrid.cellHeight
-            radius: 1
-            visible: page.dragActive && page.dropAt !== null && page.dropAt.section === group.section
-            color: Theme.accentText
+            Rectangle {
+                // Beside the Grid, not in it, so the marker never takes a cell.
+                readonly property point position: group.markerPosition(page.dropAt ? page.dropAt.gap : 0)
+                x: position.x
+                y: position.y
+                width: 3
+                height: widgetGrid.cellHeight
+                radius: 1
+                visible: group.dropTarget
+                color: Theme.accentText
+            }
         }
     }
 
@@ -395,62 +458,119 @@ Item {
         color: Theme.textHi
     }
 
-    Row {
-        id: toolbar
-        // End flush with the section cards, which stop short of the page's
-        // scroll gutter, and centre the caption on the action beside it.
-        width: parent.width - arrangement.scrollGutter
-        spacing: 8
-        Caption {
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - moreAction.width - 8
-            text: "Drag widgets to change their order. Right-click to move or remove them."
+    // Where the scrolling column sits, so the pinned header lines up with it.
+    readonly property real columnX: Math.max(0,
+        Math.floor((arrangement.width - arrangement.scrollGutter - arrangement.columnWidth) / 2))
+
+    // ---- pinned header ---------------------------------------------------
+    // The preview stays in view above the scrolling page, so every row below
+    // it — a widget, the height, the style, the colour — can be watched
+    // changing the bar. It sits outside the Flickable rather than in its
+    // overlay: the page clips under it, so glass surfaces need no mask.
+    Item {
+        id: header
+        x: page.columnX
+        width: arrangement.columnWidth
+        height: toolbar.y + toolbar.height
+
+        BarPreview {
+            id: preview
+            // From the label edge to the control edge, like every row.
+            x: Theme.settingsMarkInset
+            width: Math.max(0, parent.width - x - Theme.chipHeight)
+            entries: page.presetsOpen ? page.presetEntries : page.entries
+            draggingKey: page.dragMod ? page.dragMod.key : ""
+            interactive: !page.presetsOpen
+            // Never taller than a fifth of the page: on a short window the
+            // rows it previews need the room more.
+            height: Math.min(implicitHeight, Math.max(Theme.scaled(64), Math.round(page.height * 0.2)))
+            onWidgetActivated: key => page.openFromPreview(key)
         }
-        SettingsAction {
-            id: moreAction
-            text: "Widget layout actions"
-            glyph: "more_horiz"
-            compact: true
-            enabled: !page.dragActive && !page.membershipBusy
-            onTriggered: moreMenu.popup()
-            Controls.Menu {
-                id: moreMenu
-                popupType: Controls.Popup.Item
-                focus: true
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.control
-                palette.window: Theme.popBg
-                palette.base: Theme.popBg
-                palette.text: Theme.textHi
-                palette.windowText: Theme.textHi
-                palette.buttonText: Theme.textHi
-                palette.highlight: Theme.chipHover
-                palette.highlightedText: Theme.textHi
-                Controls.MenuItem {
-                    text: "Presets…"
-                    onTriggered: page.presetsOpen = true
-                }
-                Controls.MenuItem {
-                    text: "Manage plugins…"
-                    onTriggered: Settings.page = "plugins"
-                }
-                Controls.MenuItem {
-                    text: "Restore default built-in layout"
-                    onTriggered: Settings.resetKeys(["mods"], "Widgets")
-                }
-                Controls.MenuItem {
-                    text: "Undo layout change"
-                    enabled: Settings.undoAvailable && (Settings.resetLabel === "Widget profile" || Settings.resetLabel === "Widgets")
-                    onTriggered: Settings.undoReset()
+
+        Item {
+            id: toolbar
+            x: preview.x
+            y: preview.height + Theme.settingsContentSpacing
+            width: preview.width
+            height: Math.max(moreAction.height, toolbarCaption.implicitHeight)
+            Caption {
+                id: toolbarCaption
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - moreAction.width - Theme.controlSpacing
+                maximumLineCount: 2
+                elide: Text.ElideRight
+                text: page.presetsOpen
+                    ? "The preview shows the " + page.presetLabel(page.preset) + " preset. Apply it below to use it."
+                    : "Drag widgets to reorder them or move them between sections. Select one to change it."
+            }
+            SettingsAction {
+                id: moreAction
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Widget layout actions"
+                glyph: "more_horiz"
+                compact: true
+                enabled: !page.dragActive && !page.membershipBusy
+                onTriggered: moreMenu.popup(moreAction, 0, moreAction.height)
+                Controls.Menu {
+                    id: moreMenu
+                    popupType: Controls.Popup.Item
+                    focus: true
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.typography.control
+                    palette.window: Theme.popBg
+                    palette.base: Theme.popBg
+                    palette.text: Theme.textHi
+                    palette.windowText: Theme.textHi
+                    palette.buttonText: Theme.textHi
+                    palette.highlight: Theme.chipHover
+                    palette.highlightedText: Theme.textHi
+                    Controls.MenuItem {
+                        text: "Presets…"
+                        onTriggered: page.presetsOpen = true
+                    }
+                    Controls.MenuItem {
+                        text: "Manage plugins…"
+                        onTriggered: Settings.page = "plugins"
+                    }
+                    Controls.MenuItem {
+                        text: "Restore default built-in layout"
+                        onTriggered: Settings.resetKeys(["mods"], "Widgets")
+                    }
+                    Controls.MenuItem {
+                        text: "Undo layout change"
+                        enabled: Settings.undoAvailable && (Settings.resetLabel === "Widget profile" || Settings.resetLabel === "Widgets")
+                        onTriggered: Settings.undoReset()
+                    }
                 }
             }
         }
     }
 
+    // A rule under the header once the page has scrolled beneath it.
+    Rectangle {
+        x: header.x + Theme.settingsMarkInset
+        y: header.y + header.height + Math.round(Theme.settingsContentSpacing / 2)
+        width: Math.max(0, header.width - Theme.settingsMarkInset)
+        height: 1
+        color: Theme.hairlineSoft
+        visible: arrangement.visible && arrangement.contentY > 0
+    }
+
+    function presetLabel(value) {
+        const hit = presetChoices.find(choice => choice.value === value);
+        return hit ? hit.label : value;
+    }
+    readonly property var presetChoices: [
+        { value: "focused", label: "Focused" },
+        { value: "connected", label: "Connected" },
+        { value: "everything", label: "Everything" }
+    ]
+
     SettingsPage {
         id: arrangement
-        anchors.top: toolbar.bottom
-        anchors.topMargin: 16
+        anchors.top: header.bottom
+        anchors.topMargin: Theme.settingsContentSpacing
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: noticeBar.visible ? noticeBar.top : parent.bottom
@@ -461,52 +581,59 @@ Item {
         resetSection: "bar"
         Column {
             width: parent.width
-            spacing: 14
-            Repeater {
-                id: sections
-                model: ["left", "center", "right"]
-                delegate: ArrangementSection {}
-                onItemAdded: page.checkBuilt()
-            }
+            spacing: Theme.settingsGroupSpacing
             SettingsGroup {
                 width: parent.width
-                title: "Available widgets"
-                visible: page.availableEntries.length > 0
-                Caption {
-                    width: parent.width
-                    text: "Open settings to configure a widget and show it on the bar. Right-click to choose a section."
+                title: "Widgets"
+                Repeater {
+                    id: sections
+                    model: ["left", "center", "right"]
+                    delegate: ArrangementSection {}
+                    onItemAdded: page.checkBuilt()
                 }
-                Grid {
-                    id: availableGrid
-                    width: parent.width
-                    columns: Math.max(1, Math.min(3, Math.floor((width + spacing) / (Theme.scaled(150, Theme.typeScale) + spacing))))
-                    spacing: 6
+            }
+            // Everything that is not on the bar, built-in or from a plugin,
+            // in one tray: one click adds it where it last lived.
+            SettingsGroup {
+                width: parent.width
+                title: "Add widgets"
+                Flow {
+                    id: availableFlow
+                    x: Theme.settingsMarkInset
+                    width: Math.max(0, parent.width - x - Theme.chipHeight)
+                    spacing: Theme.controlSpacing
+                    visible: page.availableEntries.length > 0
                     Repeater {
                         id: availableRows
                         model: page.availableEntries
                         delegate: WidgetPill {
                             required property var modelData
+                            required property int index
                             entry: modelData
-                            width: (availableGrid.width - (availableGrid.columns - 1) * availableGrid.spacing) / availableGrid.columns
+                            width: Math.min(naturalWidth, availableFlow.width)
                             status: page.status(modelData)
                             draggable: false
                             actionsEnabled: !page.membershipBusy && !page.dragActive
                             onActivated: page.openSubPage(modelData.key)
-                            onAddRequested: page.setEnabled(modelData, true)
-                            onMoveRequested: section => page.setEnabled(modelData, true, false, section)
+                            onAddRequested: page.addFromTray(modelData, index)
+                            onMoveRequested: section => page.addFromTray(modelData, index, section)
                         }
                     }
                 }
-            }
-            Caption {
-                width: parent.width
-                visible: UserPlugins.error !== "" || UserPlugins.busy
-                text: UserPlugins.error || "Saving plugin changes…"
-                color: UserPlugins.error ? Theme.redText : Theme.textDim
+                SettingsHint {
+                    width: parent.width
+                    text: page.availableEntries.length > 0
+                        ? "Select a widget to add it to its section, or use ⋯ to pick another section. Widgets from plugins show up here too."
+                        : "Every widget is on the bar. Widgets from plugins show up here too."
+                }
+                SettingsHint {
+                    width: parent.width
+                    text: UserPlugins.error || (UserPlugins.busy ? "Saving plugin changes…" : "")
+                    tone: UserPlugins.error ? "error" : "info"
+                }
             }
             BarLayoutGroups {
                 width: parent.width
-                topPadding: Theme.settingsGroupSpacing - 14
             }
         }
     }
@@ -515,24 +642,36 @@ Item {
         id: dragGhost
         x: Math.max(0, Math.min(page.width - width, page.dragViewportPoint.x - width / 2))
         y: arrangement.y + page.dragViewportPoint.y - height / 2
-        width: Math.min(190, page.width)
+        width: Math.min(Theme.scaled(190, Theme.typeScale), page.width)
         height: Theme.settingsControlHeight
-        radius: height / 2
+        radius: Theme.chipRadius
         visible: page.dragActive
         color: Theme.popBg
         border.width: 1
         border.color: Theme.accentText
         opacity: 0.9
         z: 10
-        Text {
+        Row {
             anchors.fill: parent
-            anchors.margins: 6
-            text: page.dragMod ? page.dragMod.name : ""
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.typography.control
-            color: Theme.textHi
-            elide: Text.ElideRight
-            verticalAlignment: Text.AlignVCenter
+            anchors.leftMargin: Theme.controlSpacing
+            anchors.rightMargin: Theme.controlSpacing
+            spacing: Theme.iconTextSpacing
+            Sym {
+                anchors.verticalCenter: parent.verticalCenter
+                name: page.dragMod ? page.dragMod.glyph || "extension" : "extension"
+                size: Theme.iconSmall
+                color: Theme.textMid
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - Theme.iconSmall - parent.spacing
+                text: page.dragMod ? page.dragMod.name : ""
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.control
+                font.weight: Theme.weightMedium
+                color: Theme.textHi
+                elide: Text.ElideRight
+            }
         }
     }
 
@@ -551,7 +690,8 @@ Item {
         onClosed: {
             const key = page.subPage;
             page.subPage = "";
-            Qt.callLater(() => page.focusEntry(key));
+            if (page.openedFromPreview) moreAction.forceActiveFocus();
+            else Qt.callLater(() => page.focusEntry(key));
         }
         background: Rectangle {
             color: Theme.popBg
@@ -606,23 +746,23 @@ Item {
                 Column {
                     width: parent.width
                     spacing: Theme.settingsGroupSpacing
-                    // Indented to the rows' label column, past the modified-mark gutter.
-                    Caption {
+                    Column {
                         width: parent.width
-                        leftPadding: Theme.settingsMarkInset
-                        text: page.selected ? page.selected.description : ""
-                    }
-                    Caption {
-                        width: parent.width
-                        leftPadding: Theme.settingsMarkInset
-                        text: page.selected ? page.status(page.selected) : ""
-                    }
-                    SwitchRow {
-                        width: parent.width
-                        label: "Show on bar"
-                        checked: page.selected !== null && page.selected.enabled
-                        enabled: page.selected !== null && !page.membershipBusy
-                        onToggled: value => page.setEnabled(page.selected, value)
+                        spacing: Theme.settingsContentSpacing
+                        SettingsHint {
+                            width: parent.width
+                            text: page.selected ? page.selected.description : ""
+                        }
+                        // Whether it is on the bar, and whether the bar is
+                        // drawing it right now, on one row.
+                        SwitchRow {
+                            width: parent.width
+                            label: "Show on bar"
+                            description: page.selected ? page.status(page.selected) : ""
+                            checked: page.selected !== null && page.selected.enabled
+                            enabled: page.selected !== null && !page.membershipBusy
+                            onToggled: value => page.setEnabled(page.selected, value)
+                        }
                     }
                     Loader {
                         id: optionsLoader
@@ -697,33 +837,51 @@ Item {
         }
     }
 
+    // Presets, previewed on the bar above before they are applied.
     SettingsPage {
-        anchors.top: toolbar.bottom
-        anchors.topMargin: 12
+        anchors.top: header.bottom
+        anchors.topMargin: Theme.settingsContentSpacing
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         visible: page.presetsOpen
         Column {
             width: parent.width
-            spacing: 12
-            SettingsAction { text: "Back to widgets"; glyph: "arrow_back"; onTriggered: page.closeSubPage() }
-            Heading { text: "Preview a preset" }
-            Caption { width: parent.width; text: "Presets change which built-in widgets are enabled. Placement, widget options, and plugins are preserved." }
-            PillRow {
-                width: parent.width
-                current: page.preset
-                model: [{ value: "focused", label: "Focused" }, { value: "connected", label: "Connected" }, { value: "everything", label: "Everything" }]
-                onPicked: value => page.preset = value
-            }
-            Caption {
-                width: parent.width
-                text: "Enabled widgets: " + Settings.modulePresetIds(page.preset).map(id => WidgetCatalog.widgetName(id)).join(", ")
-            }
+            spacing: Theme.settingsGroupSpacing
             SettingsAction {
-                text: "Apply preset"
-                glyph: "check"
-                onTriggered: { Settings.applyModulePreset(page.preset); page.presetsOpen = false; }
+                x: Theme.settingsMarkInset - Theme.scaled(4)
+                text: "Back to widgets"
+                glyph: "arrow_back"
+                onTriggered: page.closeSubPage()
+            }
+            SettingsGroup {
+                width: parent.width
+                title: "Presets"
+                PickerRow {
+                    width: parent.width
+                    label: "Preset"
+                    hint: "Presets change which built-in widgets are on the bar. Placement, widget options and plugins are kept."
+                    model: page.presetChoices
+                    current: page.preset
+                    onPicked: value => page.preset = value
+                }
+                SettingsHint {
+                    width: parent.width
+                    text: "Turns on " + Settings.modulePresetIds(page.preset).map(id => WidgetCatalog.widgetName(id)).join(", ") + "."
+                }
+                Item {
+                    width: parent.width
+                    height: applyPreset.height
+                    SettingsAction {
+                        id: applyPreset
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.chipHeight
+                        text: "Apply preset"
+                        glyph: "check"
+                        primary: true
+                        onTriggered: { Settings.applyModulePreset(page.preset); page.presetsOpen = false; }
+                    }
+                }
             }
         }
     }
