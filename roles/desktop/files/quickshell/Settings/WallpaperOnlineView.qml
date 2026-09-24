@@ -7,7 +7,8 @@ import "../Common/WallhavenHelpers.js" as WallhavenHelpers
 
 // The Wallpaper page's Online view: search Wallhaven, then pick a result to
 // save it into the wallpaper folder and use it. The tiles read like the
-// Library grid's (same sizes, focus, keys and current mark); OnlineWallpapers
+// Library grid's (same sizes, focus, keys and current mark, in the same row
+// grid); the search is a row like the filters under it. OnlineWallpapers
 // owns the requests, so this view only draws and forwards picks.
 Item {
     id: root
@@ -59,15 +60,30 @@ Item {
         anchors.right: parent.right
         title: "Find wallpapers"
 
-        Row {
+        // [Search][field][search button][undo]: the field ends at the
+        // button, the button on the controls' edge; the label already says
+        // Search, so the button is the icon alone. The query runs on Enter or
+        // the button, never on focus loss, so this is not a SettingsTextRow.
+        SettingsRow {
+            id: searchRow
             width: parent.width
-            spacing: Theme.controlSpacing
+            label: "Search"
+            narrowLabelInset: searchRow.undoWidth
+            controlLeft: queryField.x
 
             SettingsField {
                 id: queryField
+                readonly property real laneLeft: searchRow.narrow
+                    ? searchRow.markInset : searchRow.labelWidth
                 objectName: "wallhavenSearch"
-                width: Math.max(0, parent.width - searchButton.width - parent.spacing)
-                placeholderText: "Search Wallhaven, e.g. mountains or city at night"
+                width: searchRow.narrow
+                    ? Math.max(0, searchButton.x - Theme.controlSpacing - laneLeft)
+                    : Math.max(0, Math.min(Theme.scaled(300, Theme.typeScale),
+                        searchButton.x - Theme.controlSpacing - laneLeft))
+                x: searchButton.x - Theme.controlSpacing - width
+                y: searchRow.narrow ? Theme.settingsStackOffset
+                    : (searchRow.lineHeight - height) / 2
+                placeholderText: "Mountains, city at night…"
                 Accessible.name: "Search Wallhaven wallpapers"
                 Accessible.description: "Press Enter to search, then Down to reach the results."
                 maximumLength: 100
@@ -83,6 +99,9 @@ Item {
 
             SettingsAction {
                 id: searchButton
+                x: searchRow.contentRight - width
+                y: queryField.y + (queryField.height - height) / 2
+                compact: true
                 text: "Search"
                 glyph: "search"
                 enabled: !OnlineWallpapers.busy || OnlineWallpapers.appending
@@ -136,7 +155,10 @@ Item {
         GridView {
             id: resultGrid
             readonly property int columnCount: width < Theme.settingsNarrowWidth ? 1 : 2
-            width: parent.width
+            // In the row grid, as the Library grid is: the label lane on the
+            // left, each tile's 7px gutter in the reset column on the right.
+            x: Theme.settingsMarkInset
+            width: Math.max(0, parent.width - x - Theme.chipHeight + 7)
             height: resultsGroup.availableContentHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -362,6 +384,7 @@ Item {
         id: statusHint
         anchors.left: parent.left
         anchors.right: parent.right
+        anchors.rightMargin: Theme.chipHeight
         anchors.bottom: footerRow.top
         anchors.bottomMargin: visible ? Theme.settingsContentSpacing : 0
         tone: "error"
@@ -369,10 +392,12 @@ Item {
             : root.results.length > 0 ? OnlineWallpapers.error : ""
     }
 
+    // The links end on the controls' edge, one reset column in.
     ResponsiveActionRow {
         id: footerRow
         anchors.left: parent.left
         anchors.right: parent.right
+        anchors.rightMargin: Theme.chipHeight
         anchors.bottom: parent.bottom
         breakpoint: 540
         description: "Safe-for-work only · saves to " + Settings.wallDir

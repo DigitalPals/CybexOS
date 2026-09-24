@@ -60,9 +60,17 @@ is manual.
 
 ## Wallpaper page
 
-- [ ] Grid lists the configured wallpaper folder; clicking a thumb swaps the
-      wallpaper live and moves the accent ring + ✓.
-- [ ] "Shuffle now" picks a different wallpaper each press.
+- [ ] The page keeps the bounded, centered column of the other pages: on a
+      wide window its rows end on the same right-hand edge as Appearance's,
+      and moving between the two does not shift the column sideways.
+- [ ] A Browse row at the top chooses Library or Online on one segmented
+      track, with no changed mark or reset chip.
+- [ ] Grid lists the configured wallpaper folder inside the row grid (from
+      the label lane to the controls' edge); clicking a thumb swaps the
+      wallpaper live, moves the accent ring + ✓, and the Current row under the
+      grid names the new file.
+- [ ] "Shuffle now" on the Current row picks a different wallpaper each press
+      and is disabled while the folder holds fewer than two images.
 - [ ] `Super+K` opens the shortcut sheet at up to 1180 logical pixels wide with
       three balanced columns on a wide screen (fewer on a narrow one). There is
       no Hardware keys group, and a long row such as Resize window wraps its keys
@@ -71,6 +79,8 @@ is manual.
       (or `cybexos-runtime ipc wallpaper browse`) shows popular Wallhaven
       results sized for the connected displays; Sort, Category and Size search
       again, and their reset chips restore Popular / General / Fits my displays.
+      The Search row runs on Enter or its search button, never on leaving the
+      field, and Down moves from the field to the results.
       Scrolling to the end, or pressing Down on the last row, appends the next
       24 results without jumping back to the top.
 - [ ] Picking an online result shows download progress on the tile, then saves
@@ -79,13 +89,18 @@ is manual.
       no `.part` file. A saved result shows its download mark and applies
       without a new download. Offline, the view reports a connection error.
 - [ ] Rotate 15 min / 1 hour / Daily arms the timer ("Off" disarms).
-- [ ] "Choose folder" stays inside the settings surface. Valid folders,
+- [ ] The Folder row shows the folder path as its label in the mono face,
+      with the image count on its hint line; an unusable folder shows its error
+      there instead. A long path elides in the middle before it reaches
+      Choose… and Open.
+- [ ] "Choose…" stays inside the settings surface. Valid folders,
       including paths with spaces, preserve the current basename or choose the
       first alphabetic supported image. Empty/unreadable folders change nothing.
 - [ ] "Open" opens the selected directory in the file manager. Large folders
       scroll smoothly without constructing every thumbnail at once.
-- [ ] Narrow the content below 520px: the gallery switches to one column and
-      folder path/actions stack without clipping or covering each other.
+- [ ] Narrow the content below 520px: the gallery switches to one column, the
+      rows stack their controls under their labels, and the folder actions drop
+      under the path without clipping or covering each other.
 
 ## Appearance page
 

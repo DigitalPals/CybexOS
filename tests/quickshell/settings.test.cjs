@@ -657,9 +657,21 @@ test("settings workspace uses shared responsive groups and bounded header lanes"
             "RegionPage", "TouchpadPage"])
         assert.match(read(`Settings/${page}.qml`), /SettingsGroup \{/,
             `${page} must use grouped settings sections`);
-    for (const page of ["WallpaperPage", "PowerPage", "AboutPage"])
+    for (const page of ["PowerPage", "AboutPage"])
         assert.match(read(`Settings/${page}.qml`), /ResponsiveActionRow \{/,
             `${page} must use bounded responsive action copy`);
+    // The wallpaper folder is a row like any other now (2026-09): its path
+    // is the row's label, bounded by the actions beside it and eliding in
+    // its own lane, so a long folder never pushes Choose… and Open off the
+    // edge; on a narrow page the actions drop under it.
+    const wallpaper = read("Settings/WallpaperPage.qml");
+    const folder = wallpaper.slice(wallpaper.indexOf("id: folderRow"));
+    assert.match(folder, /id: folderPath[\s\S]{0,400}?: Math\.max\(0, folderActions\.x - Theme\.controlSpacing - x\)/,
+        "the folder path is bounded by the actions beside it");
+    assert.match(folder, /id: folderPath[\s\S]{0,800}?elide: Text\.ElideMiddle/,
+        "a long folder path elides in its own lane");
+    assert.match(folder, /x: folderRow\.narrow \? folderRow\.markInset : folderRow\.contentRight - width/,
+        "the folder actions end on the controls' edge and stack when narrow");
 });
 
 // The menubar separates one run of modules from the next with a hairline and a
@@ -814,6 +826,14 @@ test("wallpaper and module layouts switch before content can collide", () => {
 
     assert.match(wallpaper, /columnCount:\s*width < Theme\.settingsNarrowWidth \? 1 : 2/);
     assert.match(wallpaper, /cellWidth:\s*Math\.floor\(width \/ columnCount\)/);
+    // One bounded column like every SettingsPage, with Library/Online as a
+    // row at its top and Shuffle now beside the current image's name.
+    assert.match(wallpaper, /width: Math\.min\(Theme\.scaled\(640, Theme\.typeScale\), Math\.max\(0, page\.width - 8\)\)/);
+    assert.match(wallpaper, /PickerRow \{\s*id: viewTabs\s*width: parent\.width\s*label: "Browse"/);
+    assert.match(wallpaper, /label: "Current"[\s\S]*?text: "Shuffle now"[\s\S]{0,200}?onTriggered: Wallpaper\.shuffle\(\)/);
+    for (const grid of [wallpaper, read("Settings/WallpaperOnlineView.qml")])
+        assert.match(grid, /x: Theme\.settingsMarkInset\s*width: Math\.max\(0, parent\.width - x - Theme\.chipHeight \+ 7\)/,
+            "the tiles sit in the row grid, ending where the controls do");
     assert.match(modules, /columns: Math.max\(1, Math.min\(3/);
     assert.match(read("Settings/WidgetPill.qml"), /elide:\s*Text\.ElideRight/);
 
