@@ -308,6 +308,74 @@ is manual.
       top-center, clearing the bar; Bottom returns them; slide-in direction
       matches the edge.
 
+## Displays page
+
+- [ ] The arrangement is the display picker. Clicking a tile, or tabbing to it
+      and pressing Enter or Space, selects it: the tile gains a check and an
+      accent outline, and the group below is titled with its kind and maker
+      (for example BUILT-IN DISPLAY · BOE) over a connector · model note.
+      Arrow keys on a focused tile place it beside the others and keep focus
+      on it.
+- [ ] Turning a display off, or setting it to mirror another, moves it out of
+      the layout to a chip under it ("DP-1 · off", "HDMI-A-1 · mirrors
+      eDP-1"). Selecting the chip opens its rows; turning it on returns it to
+      the layout.
+- [ ] Every property is one row with its control on the right edge:
+      Resolution, Refresh rate, Scale, Mirror and Adaptive sync as dropdowns,
+      Rotation as one segmented control, Flipped and Use this display as
+      switches. Rotation and Flipped together round-trip all eight transforms.
+- [ ] Any edit raises the Apply bar at the page foot: "N changes not applied
+      yet" and which ones. Discard restores the live values. An overlap or
+      other problem replaces the list with the reason, and Apply does
+      nothing. The last row scrolls clear of the bar.
+- [ ] Apply turns the bar into "Keep these display settings?" with a
+      15-second countdown and a draining line. Keep changes saves; Revert now,
+      Escape, closing Settings or the countdown restore the previous
+      settings, and a countdown that ran out leaves a note at the top.
+- [ ] There is no standing Refresh. Loading and errors appear as a line at
+      the top, with Refresh only after an error. Night light and Warmth still
+      apply as they change.
+
+## Network page
+
+- [ ] Saved Wi-Fi and wired connections are a list with their type and a
+      Connected status; the physical adapters are a quiet line under it.
+      Selecting one opens its settings below, under its name.
+- [ ] Connect to Wi-Fi… and Advanced connection editor share one row with the
+      VPN, certificates, bridges and routing hint.
+- [ ] Autoconnect and Metered connection read as ordinary rows; the metered
+      label no longer runs into its choices.
+- [ ] IPv4 or IPv6 Manual reveals labelled Address and Gateway fields. A
+      malformed entry outlines its field, names the problem under it and in
+      the Apply bar. The DNS field reads Additional DNS while Automatic DNS
+      is on and DNS servers while it is off.
+- [ ] Typing in a field raises the Apply bar at once, and the other
+      connections dim until the edits are applied or discarded. Applying an
+      active connection starts a trial in the bar ("Keep these network
+      settings?"): Keep saves; Revert now, closing Settings or the countdown
+      restore. An inactive connection saves directly and says so.
+
+## Sound page
+
+- [ ] The page is settings rows only: no drawer header, no MICROPHONE 100
+      heading, no standing Refresh.
+- [ ] Output: Volume with a mute button and a percent readout (Muted while
+      muted); one row per output device with a check on the default, and
+      AirPlay/network outputs folded under "N network outputs". Port appears
+      for a device with several ports; Balance (Center, L n, R n) follows a
+      drag without snapping back and is greyed out with a reason on a
+      non-stereo output.
+- [ ] Input: the device list, Input volume with mute, and a live Input level
+      meter lined up under the volume track.
+- [ ] Hardware profiles are dropdown rows. Each application is one row with
+      mute, its level and its output or input device. Advanced audio
+      controls opens Volume Control.
+
+## Touchpad page
+
+- [ ] Scroll speed reads 1.0× at the default, snaps to its 1.0 tick, and
+      applies to touchpad scrolling as it changes.
+
 ## System page
 
 - [ ] 12 h clock reformats the bar clock and both live captions.

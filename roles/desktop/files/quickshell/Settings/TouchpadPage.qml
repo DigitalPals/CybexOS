@@ -26,7 +26,7 @@ SettingsPage {
                 max: 2.0
                 step: 0.1
                 decimals: 1
-                unit: "×"
+                valueLabel: Settings.scrollFactor.toFixed(1) + "×"
                 marks: [1.0]
                 hint: "1.0× is Hyprland's default"
                 dirty: Math.abs(Settings.scrollFactor - Settings.defaults.scrollFactor) > 0.001
