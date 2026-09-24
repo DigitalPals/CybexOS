@@ -115,13 +115,26 @@ SettingsRow {
 
     // The chosen corner, named beside the miniature screen: after it when
     // the row stacks, before it when the screen sits on the right edge.
+    // Each lane is computed from the screen alone, so x and width never
+    // read each other.
+    readonly property real cornerLabelWidth: root.narrow
+        ? Math.max(0, root.contentRight - (screen.x + screen.width + Theme.controlSpacing + 4))
+        : Math.min(Math.ceil(cornerMetrics.advanceWidth(root.labelFor(root.current))) + 1,
+            Math.max(0, screen.x - Theme.controlSpacing - root.labelWidth))
+
+    FontMetrics {
+        id: cornerMetrics
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.control
+        font.weight: Theme.weightMedium
+    }
+
     Text {
         id: cornerLabel
         x: root.narrow ? screen.x + screen.width + Theme.controlSpacing + 4
-            : screen.x - Theme.controlSpacing - width
+            : screen.x - Theme.controlSpacing - root.cornerLabelWidth
         y: screen.y + (screen.height - height) / 2
-        width: root.narrow ? Math.max(0, root.contentRight - x)
-            : Math.min(implicitWidth, Math.max(0, screen.x - Theme.controlSpacing - root.labelWidth))
+        width: root.cornerLabelWidth
         horizontalAlignment: root.narrow ? Text.AlignLeft : Text.AlignRight
         opacity: root.controlOpacity
         text: root.labelFor(root.current)
