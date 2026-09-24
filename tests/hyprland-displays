@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# displays.lua (Settings -> Displays) against a recording hl mock: strict JSON,
+# the shared validation fixtures, vendor-rule merging, the disabled-display
+# companions, hotplug re-evaluation, reload hygiene and the trial entrypoint.
+set -euo pipefail
+
+cd -- "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+scratch=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-displays.XXXXXX")
+trap 'rm -rf -- "$scratch"' EXIT
+mkdir -p "$scratch/config/cybexos" "$scratch/runtime/cybexos"
+
+cat >"$scratch/fixture.lua" <<'LUA'
+local repo = assert(os.getenv("CYBEXOS_DISPLAYS_REPO"))
+local config = os.getenv("XDG_CONFIG_HOME") .. "/cybexos/displays.json"
+local status_path = os.getenv("XDG_RUNTIME_DIR") .. "/cybexos/displays-status.json"
+package.path = repo .. "/roles/desktop/files/?.lua;" .. package.path
+
+local function read(path)
+  local file = assert(io.open(path, "rb"))
+  local text = file:read("*a")
+  file:close()
+  return text
+end
+
+local function write(path, text)
+  local file = assert(io.open(path, "wb"))
+  file:write(text)
+  file:close()
+end
+
+-- Pure parts first, with no hl present: the module must load without it.
+_G.hl = nil
+local M = require("displays")
+
+local fixtures = assert(M.decode(read(repo .. "/tests/displays/documents.json")))
+for index = 1, fixtures.n do
+  local case = fixtures[index]
+  local document, decode_error = M.decode(case.text)
+  local entries, invalid = nil, decode_error
+  if document ~= nil then
+    entries, invalid = M.validate(document)
+  end
+  assert((entries ~= nil) == case.valid,
+    case.name .. ": expected " .. (case.valid and "valid" or "invalid")
+      .. " (" .. tostring(invalid) .. ")")
+end
+
+-- Bounded input.
+assert(M.decode(string.rep("[", 40) .. string.rep("]", 40)) == nil, "nesting limit")
+assert(M.decode(string.rep(" ", M.MAX_BYTES + 1)) == nil, "size limit")
+local decoded = assert(M.decode('"\\u00e9\\ud83d\\ude00\\n"'))
+assert(decoded == "\195\169\240\159\152\128\n", "unicode escapes decode to UTF-8")
+
+-- A description that reads like Lua stays an inert string in the rule.
+local evil = 'desc:Evil"); os.execute("id") --'
+local entries = assert(M.validate(assert(M.decode(
+  '{"v":1,"monitors":{"' .. evil:gsub('"', '\\"') .. '":{"scale":2}}}'))))
+local rule = M.rule_for(entries[1], false, {})
+assert(rule.output == evil and rule.scale == "2", "EDID text is data")
+assert(rule.mode == "preferred" and rule.position == "auto" and rule.transform == 0)
+assert(rule.mirror == "" and rule.vrr == -1 and rule.disabled == false,
+  "owned fields are explicit so a merged trial rule cannot keep old values")
+
+-- Vendor fields survive unless the user chose a value.
+local vendor = {
+  { output = "", mode = "preferred", position = "auto", scale = "auto" },
+  { output = "desc:Example Studio", mode = "preferred", bitdepth = 8, cm = "srgb", vrr = 0 },
+  { output = "eDP-1", position = "0x0" },
+}
+entries = assert(M.validate(assert(M.decode([[{"v":1,"monitors":{
+  "desc:Example Studio 1234":{"description":"Example Studio 1234","connector":"DP-3",
+    "mode":{"width":5120,"height":2880,"refresh":60},"scale":2},
+  "desc:Example Laptop":{"connector":"eDP-1","vrr":1,"position":{"x":10,"y":20}}}}]]))))
+local studio = M.rule_for(entries[2], false, vendor)
+assert(studio.output == "desc:Example Studio 1234")
+assert(studio.bitdepth == 8 and studio.cm == "srgb" and studio.vrr == 0, "vendor fields kept")
+assert(studio.mode == "5120x2880@60" and studio.scale == "2")
+local laptop = M.rule_for(entries[1], true, vendor)
+assert(laptop.vrr == 1 and laptop.position == "10x20" and laptop.disabled == true)
+assert(M.format_number(119.88) == "119.88" and M.format_number(120) == "120")
+entries = assert(M.validate(assert(M.decode('{"v":1,"monitors":{"DP-1":{"transform":1.0,"vrr":2.0}}}'))))
+assert(entries[1].transform == 1 and entries[1].vrr == 2
+  and math.floor(entries[1].transform) == entries[1].transform, "integral floats become integers")
+if math.type then
+  -- Hyprland rejects a Lua float for an integer field, even 1.0.
+  local typed = M.rule_for(entries[1], false, {})
+  assert(math.type(typed.transform) == "integer" and math.type(typed.vrr) == "integer")
+end
+
+-- Disabled displays need a live companion, and one output always remains.
+local function monitors(...)
+  local list = {}
+  for _, spec in ipairs({ ... }) do
+    list[#list + 1] = { name = spec[1], description = spec[2] }
+  end
+  return list
+end
+entries = assert(M.validate(assert(M.decode([[{"v":1,"monitors":{
+  "eDP-1":{"enabled":false,"disabledWith":["desc:Dock Screen"]}}}]]))))
+local docked = monitors({ "eDP-1", "Panel" }, { "DP-1", "Dock Screen 7" })
+assert(M.decide(entries, docked)["eDP-1"], "off while docked")
+assert(not M.decide(entries, monitors({ "eDP-1", "Panel" }))["eDP-1"], "back on when undocked")
+assert(not M.decide(entries, {})["eDP-1"], "never off with nothing else on")
+entries = assert(M.validate(assert(M.decode([[{"v":1,"monitors":{
+  "DP-1":{"enabled":false,"disabledWith":["DP-2"]},
+  "DP-2":{"enabled":false,"disabledWith":["DP-1"]}}}]]))))
+local both = M.decide(entries, monitors({ "DP-1", "A" }, { "DP-2", "B" }))
+assert((both["DP-1"] and 1 or 0) + (both["DP-2"] and 1 or 0) == 1,
+  "a stale cycle never turns every output off")
+
+-- Runtime: a recording hl mock.
+local emitted, subscriptions, current = {}, {}, {}
+_G.hl = {
+  monitor = function(rule) emitted[#emitted + 1] = rule end,
+  get_monitors = function() return current end,
+  on = function(event, callback)
+    local subscription = { event = event, callback = callback }
+    function subscription:remove() self.removed = true end
+    subscriptions[#subscriptions + 1] = subscription
+    return subscription
+  end,
+}
+_G.__cybexos_vendor_monitor_rules = { { output = "", mode = "preferred", position = "auto", scale = "auto" } }
+
+local function reload()
+  emitted = {}
+  package.loaded.displays = nil
+  return require("displays")
+end
+
+local function fire(event)
+  for _, subscription in ipairs(subscriptions) do
+    if subscription.event == event and not subscription.removed then subscription.callback() end
+  end
+end
+
+-- No file: nothing is emitted and the status says nothing was loaded.
+M = reload()
+assert(#emitted == 0, "a missing file emits no rules")
+assert(read(status_path):find('"loaded":false', 1, true))
+
+-- A corrupt file is ignored as a whole and reported.
+write(config, '{"v":1,"monitors":{"eDP-1":{"scale":0.01}}}')
+M = reload()
+assert(#emitted == 0, "an invalid file emits no rules")
+local status = read(status_path)
+assert(status:find('"loaded":false', 1, true) and status:find("invalid scale", 1, true), status)
+
+-- A valid file emits one rule per entry, then hotplug re-evaluates only the
+-- displays whose on/off decision changed.
+current = monitors({ "eDP-1", "Panel" }, { "DP-1", "Dock Screen 7" })
+write(config, [[{"v":1,"monitors":{
+  "eDP-1":{"enabled":false,"disabledWith":["desc:Dock Screen 7"],"scale":2},
+  "desc:Dock Screen 7":{"mode":{"width":3840,"height":2160,"refresh":120},"scale":1.5,
+    "position":{"x":0,"y":0}}}}]])
+local before = #subscriptions
+M = reload()
+for index = 1, before do
+  assert(subscriptions[index].removed, "a reload retires the previous subscriptions")
+end
+assert(#emitted == 2, "one rule per saved display")
+local by_output = {}
+for _, item in ipairs(emitted) do by_output[item.output] = item end
+assert(by_output["eDP-1"].disabled == true and by_output["desc:Dock Screen 7"].disabled == false)
+assert(by_output["desc:Dock Screen 7"].mode == "3840x2160@120")
+assert(read(status_path):find('"loaded":true', 1, true))
+
+emitted = {}
+current = monitors({ "eDP-1", "Panel" })
+fire("monitor.removed")
+assert(#emitted == 1 and emitted[1].output == "eDP-1" and emitted[1].disabled == false,
+  "undocking turns the laptop panel back on")
+emitted = {}
+fire("monitor.added")
+assert(#emitted == 0, "an unchanged decision emits nothing")
+
+-- The trial entrypoint reports invalid input to hyprctl eval as an error.
+local trial = os.getenv("XDG_RUNTIME_DIR") .. "/cybexos/displays-trial.json"
+write(trial, '{"v":1,"monitors":{"DP-9":{"transform":9}}}')
+local ok, err = pcall(M.apply_trial, trial)
+assert(not ok and tostring(err):find("invalid transform", 1, true), tostring(err))
+write(trial, '{"v":1,"monitors":{"DP-9":{"transform":1}}}')
+emitted = {}
+assert(M.apply_trial(trial) == nil)
+assert(#emitted == 1 and emitted[1].output == "DP-9" and emitted[1].transform == 1)
+ok, err = pcall(M.apply_trial, trial .. ".missing")
+assert(not ok, "a missing trial file is an error")
+
+print("Hyprland display preference fixtures passed (" .. _VERSION .. ")")
+LUA
+
+run_fixture() {
+  rm -rf -- "$scratch/config" "$scratch/runtime"
+  mkdir -p "$scratch/config/cybexos" "$scratch/runtime/cybexos"
+  CYBEXOS_DISPLAYS_REPO=$PWD \
+  HOME="$scratch/home" \
+  XDG_CONFIG_HOME="$scratch/config" \
+  XDG_RUNTIME_DIR="$scratch/runtime" \
+    "$@"
+}
+
+run_fixture luajit "$scratch/fixture.lua"
+
+# Hyprland on Fedora embeds Lua 5.4 (lua-libs, which rpm itself requires);
+# LuaJIT is 5.1. Run the same fixture on the real runtime when it is present:
+# integer/float typing, patterns and string escapes differ between the two.
+if python3 -c 'import ctypes; ctypes.CDLL("liblua-5.4.so")' 2>/dev/null; then
+  run_fixture python3 - "$scratch/fixture.lua" <<'PY'
+import ctypes
+import sys
+
+lua = ctypes.CDLL("liblua-5.4.so")
+lua.luaL_newstate.restype = ctypes.c_void_p
+lua.luaL_openlibs.argtypes = [ctypes.c_void_p]
+lua.luaL_loadstring.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+lua.lua_pcallk.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                           ctypes.c_void_p, ctypes.c_void_p]
+lua.lua_tolstring.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+lua.lua_tolstring.restype = ctypes.c_char_p
+lua.lua_close.argtypes = [ctypes.c_void_p]
+state = lua.luaL_newstate()
+lua.luaL_openlibs(state)
+with open(sys.argv[1], "rb") as handle:
+    status = lua.luaL_loadstring(state, handle.read())
+if status == 0:
+    status = lua.lua_pcallk(state, 0, 0, 0, None, None)
+if status != 0:
+    sys.exit("Lua 5.4: " + (lua.lua_tolstring(state, -1, None) or b"?").decode(errors="replace"))
+lua.lua_close(state)
+PY
+fi

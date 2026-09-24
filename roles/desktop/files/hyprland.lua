@@ -26,11 +26,19 @@ package.path = source_dir .. "/?.lua;" .. source_dir .. "/?/init.lua;"
   .. generated_dir .. "/?.lua;" .. generated_dir .. "/?/init.lua;"
   .. user_dir .. "/?.lua;" .. user_dir .. "/?/init.lua;" .. package.path
 
-for _, module in ipairs({ "features", "monitors", "input", "bindings", "looknfeel", "autostart" }) do
+for _, module in ipairs({ "features", "monitors", "input", "bindings", "looknfeel", "autostart", "displays" }) do
   package.loaded[module] = nil
 end
 
 require("monitors")
+-- Settings -> Displays. Its saved file is user data that must never stop the
+-- compositor from starting, so even an unexpected module error is contained;
+-- the vendor monitor rules above then stay in effect. Diagnose one with
+--   hyprctl repl 'return __cybexos_displays_error'
+local displays_ok, displays_error = pcall(require, "displays")
+if not displays_ok then
+  _G.__cybexos_displays_error = tostring(displays_error)
+end
 require("input")
 require("bindings")
 require("looknfeel")

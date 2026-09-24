@@ -1,25 +1,35 @@
+-- Vendor monitor rules. They are recorded as well as applied so that
+-- displays.lua (Settings -> Displays) can start a saved choice from the rule
+-- it overrides and keep fields the page does not own, such as bitdepth.
+local vendor_monitor_rules = {}
+_G.__cybexos_vendor_monitor_rules = vendor_monitor_rules
+local function monitor(rule)
+  table.insert(vendor_monitor_rules, rule)
+  hl.monitor(rule)
+end
+
 {% if cybexos_xps_2026 | bool %}
 -- XPS internal panel and known external display policy.
-hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = "auto" })
-hl.monitor({
+monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = "auto" })
+monitor({
   output = "desc:GIGA-BYTE TECHNOLOGY CO. LTD. AORUS FO32U2",
   mode = "3840x2160@120", position = "auto", scale = "auto",
 })
-hl.monitor({
+monitor({
   output = "desc:Apple Computer Inc Studio XDR",
   mode = "preferred", position = "auto", scale = "auto",
   bitdepth = 8, cm = "srgb", vrr = 0,
 })
-hl.monitor({
+monitor({
   output = "desc:Apple Computer Inc Pro Display XDR",
   mode = "preferred", position = "auto", scale = "auto",
   bitdepth = 8, cm = "srgb", vrr = 0,
 })
-hl.monitor({
+monitor({
   output = "desc:Nreal XREAL One Pro",
   mode = "1920x1080@120", position = "auto", scale = "auto", vrr = 0,
 })
-hl.monitor({
+monitor({
   output = "desc:XREAL XREAL One Pro",
   mode = "1920x1080@120", position = "auto", scale = "auto", vrr = 0,
 })
@@ -113,5 +123,5 @@ hl.env("GDK_SCALE", "2")
 {% else %}
 -- Portable default: use each connected output's preferred mode and let
 -- Hyprland choose its position and scale.
-hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
+monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })
 {% endif %}

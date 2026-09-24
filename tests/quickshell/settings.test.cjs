@@ -586,7 +586,7 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
         "the config path chip lives on the System page, not a bottom footer");
     assert.match(view, /case "notifications": return notificationsPage;/);
     assert.doesNotMatch(view, /id: "drawer"|case "drawer"|id: drawerPage/);
-    assert.match(settings, /"notifications", "network", "sound", "accounts", "system", "about"\]/);
+    assert.match(settings, /"notifications", "network", "sound", "displays", "accounts", "system", "about"\]/);
     assert.match(view, /case "about": return aboutPage;/);
 
     // Turn-3 search: "/" focuses the nav field, results jump to and
@@ -602,7 +602,7 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
     // key or page cannot leave a search row jumping nowhere.
     const schemaKeys = Object.keys(load("SettingsHelpers.js").defaults());
     const validPages = ["appearance", "wallpaper", "bar", "modules", "plugins",
-        "notifications", "network", "sound", "accounts", "system", "about"];
+        "notifications", "network", "sound", "displays", "accounts", "system", "about"];
     const rows = load("SettingsSearchData.js").ROWS;
     assert.ok(rows.length >= 30, "the search index must cover the workspace");
     for (const row of rows) {

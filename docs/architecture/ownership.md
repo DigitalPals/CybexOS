@@ -11,6 +11,7 @@ for the transitional, pre-RPM layout.
 | Vendor | `~/.local/share/cybexos/releases/` and `current` | Staged and atomically selected by the release updater |
 | User | `~/.config/cybexos/shell.json` | Read and written by the shell; never written by Ansible after a one-time, non-overwriting legacy copy |
 | User | `~/.config/cybexos/hypr/` | Optional `user.lua`, `hypridle.conf`, and `hyprlock.conf` overrides |
+| User | `~/.config/cybexos/displays.json` | Settings → Displays choices per physical monitor; written only by that page after a confirmed trial, read by the vendor `displays.lua`, never written by Ansible |
 | User | `~/.local/share/cybexos/themes/` | Reserved user theme packages; never reconciled or pruned |
 | User | `~/.local/share/cybexos/plugins/` | API 1 widget packages; never reconciled or pruned |
 | User | `~/.config/cybexos/plugins.json` | Separate widget enablement and preferences; never written by Ansible |
@@ -18,7 +19,8 @@ for the transitional, pre-RPM layout.
 | State | `~/.local/state/cybexos/` | Health, update, migration, and shell runtime state |
 
 The session always starts Hyprland with the vendor entry point. Vendor modules
-load first; `~/.config/cybexos/hypr/user.lua`, when present, loads last.
+load first, then the saved Settings → Displays choices;
+`~/.config/cybexos/hypr/user.lua`, when present, loads last.
 The idle and lock services prefer their same-named user configuration files
 and otherwise use vendor defaults. A bad user override may break that component
 but is never silently replaced by an update. Without a user `hypridle.conf`,

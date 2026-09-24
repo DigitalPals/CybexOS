@@ -488,6 +488,7 @@
   loop:
     - bindings.lua
     - autostart.lua
+    - displays.lua
     # This entrypoint requires every module above. Keeping it last makes an
     # empty live configuration valid at each observable deployment boundary.
     - hyprland.lua
@@ -574,7 +575,7 @@
     label: "{{ item.path }}"
   when:
     - not hypr_runtime_path_normalization_pending | bool
-    - item.path | basename not in ['features.lua', 'monitors.lua', 'input.lua', 'looknfeel.lua', 'bindings.lua', 'autostart.lua', 'hyprland.lua', 'hypridle.conf', 'hyprlock.conf']
+    - item.path | basename not in ['features.lua', 'monitors.lua', 'input.lua', 'looknfeel.lua', 'bindings.lua', 'autostart.lua', 'displays.lua', 'hyprland.lua', 'hypridle.conf', 'hyprlock.conf']
   tags: [browser]
 
 - name: Install the guarded desktop runtime resolver

@@ -40,6 +40,8 @@ ChipToggleRow ChipToggleRow.qml
 WeatherLocationPicker WeatherLocationPicker.qml
 
 SoundPage SoundPage.qml
+DisplaysPage DisplaysPage.qml
+DisplayArrangement DisplayArrangement.qml
 NetworkPage NetworkPage.qml
 AccountsPage AccountsPage.qml
 IpSettings IpSettings.qml
