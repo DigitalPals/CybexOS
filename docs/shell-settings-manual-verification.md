@@ -1,7 +1,7 @@
 # Shell settings — manual verification
 
 The Shell settings workspace makes bar geometry, appearance,
-modules, wallpaper, and system behavior live-configurable, persisted to
+widgets, wallpaper, and system behavior live-configurable, persisted to
 `~/.config/cybexos/shell.json`. Automated coverage:
 `tests/run` — the Node suite (store merge/clamp rules, schema/property
 agreement, qmldir completeness, IPC single-declaration, typography lint) plus
@@ -14,9 +14,24 @@ is manual.
 - [ ] `cybexos-runtime ipc settings toggle` opens the centered window; again
       closes it.
 - [ ] On an output with at least 900×664 logical pixels available, the card
-      opens at 900×664 with the labeled sidebar. Below 860px available width,
-      the same navigation becomes an icon rail with tooltips and 42px targets.
-- [ ] `cybexos-runtime ipc settings open modules` lands on the Widgets page.
+      opens at 900×664 with the labeled sidebar: Personalize (Appearance,
+      Wallpaper, Bar, Notifications), Devices (Displays, Sound, Network,
+      Touchpad) and System (Power, Region & formats, Online accounts,
+      Plugins, About), all visible without scrolling and with no dots on
+      changed pages. Below 860px available width, the same navigation becomes
+      an icon rail with hairlines between the groups, themed tooltips and
+      42px targets.
+- [ ] `cybexos-runtime ipc settings open bar` lands on the Bar page. The
+      retired ids still work: `open modules` lands on Bar and `open system`
+      on Power. The recovery-boot notification's action lands on About's
+      recovery points, and the power drawer's Idle settings on Power.
+- [ ] The header reads "<Page> · <description>" with the description in its
+      own capitalization (Network shows "IP addresses and DNS"). It carries
+      only Close, whose tip appears on hover (panel-colored, not a yellow
+      system box) and never merely because it has focus.
+- [ ] With the window freshly opened, the first Tab lands in the search
+      field, then the current page in the rail, then the page; Close comes
+      last. No Tab-then-Enter sequence from the start resets anything.
 - [ ] Gear in the Control Panel footer opens it (and closes the popout).
 - [ ] Right-click anywhere on the bar slab opens it; left-clicks on modules
       still open their popouts.
@@ -54,9 +69,21 @@ is manual.
       radius, or gap remains Floating; an old non-floating bar becomes Attached.
       Module order and centered Clock/Weather remain unchanged.
 - [ ] Deleting the file live restores defaults; restart keeps them.
-- [ ] Reset controls reset exactly their group and show an eight-second
-      `… reset · Undo` footer. Undo restores the snapshot; a new reset replaces
-      it; any manual edit clears it. A forced save failure exposes Retry.
+- [ ] A changed row wears the accent mark and, on hover or focus, its reset
+      chip. A page with changed values ends in "Reset <Page> to defaults"
+      (Displays: "Reset night light to defaults"); pages with nothing changed,
+      and pages whose values live outside shell.json, show none.
+- [ ] Reset controls reset exactly their row or page and show an eight-second
+      `… reset · Undo` line in the rail footer. Undo restores the snapshot; a
+      new reset replaces it; any manual edit clears it. A forced save failure
+      exposes Retry.
+- [ ] The rail footer is empty at rest. A change shows "Saving changes…",
+      then "Saved" for about two seconds, then nothing; errors and the newer-
+      schema warning stay until resolved.
+- [ ] Every page draws one bounded column centered in the pane: labels on
+      the left, every control ending on the same right-hand edge, a hairline
+      between rows, segmented choices on one track, sliders of bounded length,
+      and long choice lists as dropdowns.
 
 ## Wallpaper page
 

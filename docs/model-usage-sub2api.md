@@ -1,6 +1,6 @@
 # Sub2API model usage
 
-In **Settings → Widgets → Model usage**, select **Sub2API** as the usage source.
+In **Settings → Bar → Model usage**, select **Sub2API** as the usage source.
 Enter the server URL (including any reverse-proxy prefix) and the **admin API
 key** generated in Sub2API's admin settings. A gateway/inference API key is not
 an admin key. Server URLs, `/admin/accounts`, `/admin/dashboard`, and

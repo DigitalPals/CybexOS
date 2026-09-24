@@ -402,7 +402,7 @@ or helper changes.
 
 ### Restoring
 
-Restore from **Settings → System → Recovery points** (two presses; systemd asks
+Restore from **Settings → About → Recovery points** (two presses; systemd asks
 the desktop's Polkit agent, as for updates) or from a terminal, in a normal or
 a recovery boot:
 
@@ -502,7 +502,7 @@ result, then perform one normal reboot. `./verify` reports this camera state.
 
 ## Idle, power, and background services
 
-hypridle runs the idle timeline from **Settings → System → Idle**, unless a
+hypridle runs the idle timeline from **Settings → Power → Idle**, unless a
 regular file at `~/.config/cybexos/hypr/hypridle.conf` replaces it. A new
 installation locks after five idle minutes, turns the screen off after ten,
 and suspends after 30 minutes only on battery, so a machine on mains power,

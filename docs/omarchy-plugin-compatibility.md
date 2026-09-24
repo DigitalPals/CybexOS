@@ -79,7 +79,7 @@ cybex plugin list
 
 Upstream schema 1 defines no settings format, so Cybex reads an optional
 `barWidget.schema` array, the convention used by packages such as
-`digitalpals.model-usage`. The widget's settings dialog (Settings → Widgets →
+`digitalpals.model-usage`. The widget's settings dialog (Settings → Bar →
 the widget) draws each entry as an ordinary settings row, with its `label`,
 `description`, a changed-value mark, and a reset to its default:
 
