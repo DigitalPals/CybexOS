@@ -264,13 +264,22 @@ is manual.
 
 ## Notifications page
 
-- [ ] Preview updates live for position, duration, density, icons, body lines,
-      and timeout progress. “Timeout progress” and its description never
-      collide with the switch or reset lane.
-- [ ] Quiet Hours Off/Nights hides custom time sliders and removes them from
-      Tab/Orca traversal; Custom reveals both, preserving the stored range.
-- [ ] “Send test notification” and its current suppression explanation sit on
-      one line when they fit and stack cleanly on a narrow panel.
+- [ ] The sample toast heads the Style group, above Density, in the page's
+      one column (no second column beside the rows at any width). It updates
+      live for density, icons, body lines and timeout progress; the line under
+      it reads position · duration · density.
+- [ ] Body preview is a segmented choice of Off / 1 line / 2 lines / 3 lines,
+      and the sample and real toasts follow it.
+- [ ] Quiet hours Off/Nights hides the Quiet from / Quiet until rows and
+      removes them from Tab/Orca traversal; Custom reveals both directly under
+      Quiet hours, preserving the stored range. Nights and Custom show the
+      range beside the choices.
+- [ ] "Send test" sits at the sample's foot and sends a real toast using the
+      current settings. With Do Not Disturb or quiet hours active, a line
+      under it says the test only collects in the center.
+- [ ] On-screen display → Placement Top shows volume/brightness pills
+      top-center, clearing the bar; Bottom returns them; slide-in direction
+      matches the edge.
 
 ## System page
 

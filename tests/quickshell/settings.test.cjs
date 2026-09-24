@@ -858,6 +858,24 @@ test("notification settings drive the toasts and the notification center", () =>
     assert.match(notifs, /Settings\.notifDuration \* 1000/);
     assert.match(page, /Send test notification/);
     assert.match(page, /Critical alerts ignore the timer/);
+    // The preview heads the Style group as a block in the page's one column
+    // (2026-09), not a second column beside the rows.
+    const style = page.slice(page.indexOf('title: "Style"'), page.indexOf('title: "On-screen display"'));
+    assert.ok(style.indexOf("id: previewBlock") >= 0
+        && style.indexOf("id: previewBlock") < style.indexOf('label: "Density"'),
+        "the sample toast sits above the style rows");
+    assert.doesNotMatch(page, /sideBySide/);
+    assert.match(style, /id: sampleToast[\s\S]*id: sendTest/, "Send test sits at the preview's foot");
+    // Body preview offers exactly the line counts the store keeps.
+    const clamp = read("Common/SettingsHelpers.js")
+        .match(/notifBodyLines: intIn\(parsed\.notifBodyLines, (\d+), (\d+), 1,/);
+    assert.ok(clamp, "the body-lines clamp moved");
+    const body = style.slice(style.indexOf('label: "Body preview"'));
+    assert.match(body, /^\s*settingKey: "notifBodyLines"/m);
+    const values = [...body.slice(0, body.indexOf("]")).matchAll(/value: (\d+)/g)].map(m => Number(m[1]));
+    assert.deepEqual(values, Array.from({ length: Number(clamp[2]) - Number(clamp[1]) + 1 },
+        (_, i) => Number(clamp[1]) + i));
+    assert.doesNotMatch(style, /SliderRow \{/, "four line counts are choices, not a slider");
     // DND writers must go through the persisted setting, never the singleton.
     for (const name of ["Popovers/NotifsPopover.qml", "Popovers/ControlCenterPopover.qml"])
         assert.doesNotMatch(read(name), /Notifs\.dnd\s*=/,
