@@ -127,6 +127,9 @@ def main():
     write(f"{seed}/.npmrc", "prefix=${HOME}/.npm-global\n")
     write("usr/share/cybexos/applications.json", json.dumps(applications, indent=2) + "\n")
     copy("roles/base/files/cybexos-system-snapshot", "usr/libexec/cybexos-system-snapshot", True)
+    # `sudo cybexos-system-snapshot ...`, as documented; libexec is not on PATH.
+    (payload / "usr/bin").mkdir(parents=True, exist_ok=True)
+    (payload / "usr/bin/cybexos-system-snapshot").symlink_to("../libexec/cybexos-system-snapshot")
     # Recovery booting: vendor locations for dracut and kernel-install; GRUB
     # reads /etc/grub.d only. The installer's grub2-mkconfig and dracut runs
     # pick these up for the installed system.

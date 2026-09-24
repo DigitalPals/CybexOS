@@ -72,6 +72,7 @@ for path in \
   /usr/local/libexec/cybexos-session-action \
   /usr/libexec/cybexos-login-prepare \
   /usr/local/libexec/cybexos-system-snapshot \
+  /usr/local/sbin/cybexos-system-snapshot \
   /etc/grub.d/42_cybexos_recovery \
   /etc/kernel/install.d/95-cybexos-recovery.install \
   /etc/systemd/system/cybexos-recovery-refresh.service \

@@ -195,6 +195,10 @@ test("a failed run explains itself in one sentence", () => {
     assert.match(H.friendlyFailure(["GPG check FAILED"], "", 1, "packages", NS), /signing key/);
     assert.equal(H.friendlyFailure([], "", 126, "packages", NS), "Authorization was cancelled.");
     assert.equal(H.friendlyFailure([], "", NS, "", NS), "The updater couldn’t be started.");
+    assert.match(H.friendlyFailure(["refusing to create a recovery point from a temporary recovery boot; "
+        + "restore it or restart normally first"], "", 1, "snapshot", NS), /runs from a recovery point/);
+    assert.match(H.friendlyFailure(["a restored recovery point is waiting for a restart; restart before "
+        + "changing the system"], "", 1, "snapshot", NS), /waiting for a restart/);
     assert.match(H.friendlyFailure([], "Could not create the pre-update recovery point", 1,
         "snapshot", NS), /restore point/);
     assert.equal(H.friendlyFailure(["something odd"], "", 1, "packages", NS),

@@ -167,6 +167,7 @@
     - /usr/local/libexec/cybexos-hyprland-session-start
     - /usr/local/libexec/cybexos-session-action
     - /usr/local/libexec/cybexos-system-snapshot
+    - /usr/local/sbin/cybexos-system-snapshot
     - /usr/local/libexec/cybexos-common.sh
     - /etc/sysctl.d/60-cybexos-hardening.conf
     - /etc/systemd/system/cybexos-btrfs-scrub.service

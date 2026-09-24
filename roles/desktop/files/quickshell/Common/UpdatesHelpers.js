@@ -611,8 +611,17 @@ var FAILURE_RULES = [
 ];
 
 function friendlyFailure(lines, message, exitCode, phase, notStarted) {
-    if (phase === "snapshot")
+    if (phase === "snapshot") {
+        // The snapshot helper refuses while the system runs from a temporary
+        // recovery boot or waits for a restored root; say which.
+        var reason = (Array.isArray(lines) ? lines : []).concat([String(message || "")])
+            .join("\n");
+        if (/temporary recovery boot/i.test(reason))
+            return "This session runs from a recovery point. Restore it or restart normally before updating.";
+        if (/waiting for a restart/i.test(reason))
+            return "A restored recovery point is waiting for a restart. Restart before updating.";
         return "Couldn’t create a restore point, so nothing was changed.";
+    }
     if (exitCode === notStarted)
         return "The updater couldn’t be started.";
     if (exitCode === 126 || exitCode === 127)

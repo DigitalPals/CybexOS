@@ -952,7 +952,7 @@ stage_system_snapshot() {
   elapsed=$(( $(now_ms) - t0 ))
 
   if ((rc == 0)); then
-    pass 'snapshots' "Btrfs root and /boot recovery-point retention $(took "$elapsed")"
+    pass 'snapshots' "Btrfs recovery points, boot menu, and restore $(took "$elapsed")"
   else
     fail 'snapshots' 'Btrfs recovery fixture failed'
     excerpt "${out:-unknown failure}"

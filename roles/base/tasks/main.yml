@@ -166,6 +166,15 @@
     mode: "0755"
   register: base_snapshot_helper
 
+# The documented `sudo cybexos-system-snapshot ...` form needs the helper on
+# sudo's secure_path; libexec is not on it.
+- name: Expose the recovery helper to administrators
+  ansible.builtin.file:
+    src: /usr/local/libexec/cybexos-system-snapshot
+    dest: /usr/local/sbin/cybexos-system-snapshot
+    state: link
+    force: true
+
 # Dotfiles and the apps role both consume this library. Installing the shared
 # prerequisite in the foundational role keeps a fresh selective convergence
 # (base + dotfiles) valid. The apps role also declares it so an application

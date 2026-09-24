@@ -188,8 +188,12 @@ Quickshell panel, systemd requests authorization through the desktop's native
 Polkit agent and progress remains in the Updates view; the worker then runs in
 a transient system unit, so a Quickshell restart does not interrupt package
 work. Terminal invocations retain their sudo-compatible path. On Btrfs,
-package work first creates a paired read-only root snapshot and `/boot`
-archive.
+package work first creates a recovery point: a read-only root snapshot and a
+`/boot` archive. The boot menu's **CybexOS recovery points** submenu starts one
+with a temporary overlay (hold Shift or press Esc during boot to show the
+menu), and Settings → System → Recovery points or `sudo cybexos-system-snapshot
+restore ID` makes it the system again; the replaced root is kept until you
+discard it.
 
 Useful commands:
 
