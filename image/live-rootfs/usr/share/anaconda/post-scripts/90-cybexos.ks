@@ -39,13 +39,11 @@ python3 - <<'PY'
 import configparser
 from pathlib import Path
 import pwd
-import subprocess
 directory = Path('/var/lib/AccountsService/users')
 directory.mkdir(parents=True, exist_ok=True)
 for account in pwd.getpwall():
     if not (1000 <= account.pw_uid < 65534 and account.pw_dir.startswith('/home/')):
         continue
-    subprocess.run(['usermod', '--append', '--groups', 'docker', account.pw_name], check=True)
     path = directory / account.pw_name
     settings = configparser.ConfigParser()
     settings.optionxform = str

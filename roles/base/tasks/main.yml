@@ -456,10 +456,12 @@
     state: present
   loop: "{{ ['wheel', 'video', 'input'] + (features.docker | bool | ternary(['docker'], [])) }}"
 
+# The docker group controls a root daemon, so membership is root-equivalent.
+# It is granted only when the saved docker_sudoless answer accepts that.
 - name: Configure primary user groups and Fish login shell
   ansible.builtin.user:
     name: "{{ primary_user }}"
-    groups: "{{ (['wheel', 'video', 'input'] + (features.docker | bool | ternary(['docker'], []))) | join(',') }}"
+    groups: "{{ (['wheel', 'video', 'input'] + ((features.docker | bool and docker_sudoless | bool) | ternary(['docker'], []))) | join(',') }}"
     append: true
     shell: /usr/bin/fish
 
@@ -470,16 +472,19 @@
     fail_key: false
   register: base_docker_group
   when:
-    - not features.docker | bool
     - base_docker_marker.stat.exists
+    - not (features.docker | bool and docker_sudoless | bool)
 
-- name: Revoke Docker socket access when Docker is disabled
+# Earlier releases granted the group to every Docker user. Revoke it from a
+# CybexOS-managed Docker installation unless sudoless use is explicitly saved;
+# the change applies to new login sessions.
+- name: Revoke root-equivalent Docker group access (opt in with cybex configure)
   ansible.builtin.command:
     argv: [gpasswd, --delete, "{{ primary_user }}", docker]
   changed_when: true
   when:
-    - not features.docker | bool
     - base_docker_marker.stat.exists
+    - not (features.docker | bool and docker_sudoless | bool)
     - ansible_facts.getent_group.docker is defined
     - primary_user in (ansible_facts.getent_group.docker[2] | default('')).split(',')
 

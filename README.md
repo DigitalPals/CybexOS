@@ -63,7 +63,9 @@ are selected by default, including in non-interactive installs; interactive
 setup allows explicit opt-outs. Fastfetch is a required baseline package.
 The installer explicitly asks whether to enable passwordless sudo, passwordless
 local Polkit authorization, and encrypted-boot desktop autologin. The two passwordless choices
-have no implicit answer.
+have no implicit answer. When Docker is selected, it also asks whether the
+desktop user may run Docker without sudo; the default is no, because the
+`docker` group grants root-equivalent control of the machine.
 
 On an encrypted single-user installation, SDDM can open the desktop after the
 LUKS unlock and unlock GNOME Keyring with the briefly cached boot password.
