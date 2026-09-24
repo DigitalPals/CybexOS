@@ -235,7 +235,7 @@ install_feature_provider() {
 
 install_leaf_modules() {
   local destination=$1 scenario_root=$2 module
-  for module in monitors.lua input.lua looknfeel.lua bindings.lua autostart.lua; do
+  for module in monitors.lua input.lua looknfeel.lua bindings.lua autostart.lua displays.lua; do
     install_hypr_module "$module" "$destination/$module"
     if [[ -f $destination/hyprland.lua ]]; then
       assert_hypr_tree_loadable "$scenario_root" "after $module"
@@ -247,9 +247,11 @@ install_hypr_module() {
   local module=$1 destination=$2
   case $module in
     monitors.lua)
-      awk '/^{% else %}$/ { emit=1; next }
+      # The shared preamble, then the portable (non-XPS) branch.
+      awk '/^{% if cybexos_xps_2026 \| bool %}$/ { skip=1; next }
+           /^{% else %}$/ { skip=0; emit=1; next }
            /^{% endif %}$/ { if (emit) exit }
-           emit' roles/desktop/templates/monitors.lua.j2 >"$destination"
+           !skip' roles/desktop/templates/monitors.lua.j2 >"$destination"
       ;;
     input.lua)
       sed -e 's/{{ machine_keyboard_layout | to_json }}/"us"/' \
@@ -298,6 +300,14 @@ install_leaf_modules "$fresh_config" "$fresh_root"
 install -m 0644 roles/desktop/files/hyprland.lua "$fresh_config/hyprland.lua"
 assert_hypr_tree_loadable "$fresh_root" 'after activating fresh entrypoint'
 install -d "$fresh_root/config/cybexos/hypr"
+# Saved display preferences are user data: neither a corrupt nor a hostile
+# file may make the configuration unloadable.
+printf '%s' '{"v":1,"monitors":{"eDP-1":{"scale":' >"$fresh_root/config/cybexos/displays.json"
+assert_hypr_tree_loadable "$fresh_root" 'with a truncated displays.json'
+printf '%s\n' '{"v":1,"monitors":{"desc:x\"); error(\"boom\") --":{"scale":2}}}' \
+  >"$fresh_root/config/cybexos/displays.json"
+assert_hypr_tree_loadable "$fresh_root" 'with a Lua-looking display description'
+rm -f -- "$fresh_root/config/cybexos/displays.json"
 printf '%s\n' '_G.__fedora_user_override = "loaded"' \
   >"$fresh_root/config/cybexos/hypr/user.lua"
 assert_hypr_tree_loadable "$fresh_root" 'with final user override'

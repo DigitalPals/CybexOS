@@ -71,7 +71,7 @@ def main():
         if source.suffix in (".qml", ".js"):
             target = payload / relative
             target.write_text(target.read_text().replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))
-    for name in ("hyprland.lua", "bindings.lua", "autostart.lua"):
+    for name in ("hyprland.lua", "bindings.lua", "autostart.lua", "displays.lua"):
         content = (ROOT / "roles/desktop/files" / name).read_text()
         content = content.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-")
         write(f"{runtime}/hypr/{name}", content)

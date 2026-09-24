@@ -27,7 +27,7 @@ PopoutPanel {
         navItems.findIndex(item => item.id === Settings.page))
     readonly property bool dragActive: Settings.page === "modules"
         && moduleDragActive
-    readonly property bool systemServicePage: ["network", "sound", "accounts"].includes(Settings.page)
+    readonly property bool systemServicePage: ["network", "sound", "displays", "accounts"].includes(Settings.page)
     readonly property string persistenceStatus: systemServicePage ? "System changes are reported on this page" : Settings.loadError
         ? (Settings.loadErrorText !== "" ? Settings.loadErrorText
             : "Could not read the settings file.") + " Retry is available."
@@ -131,6 +131,8 @@ PopoutPanel {
             title: "Network", description: "Connections, IP addresses and DNS" },
         { id: "sound", group: "SYSTEM", label: "Sound", glyph: "volume_up",
             title: "Sound", description: "Devices, profiles and application audio" },
+        { id: "displays", group: "SYSTEM", label: "Displays", glyph: "monitor",
+            title: "Displays", description: "Arrangement, resolution, scale and rotation" },
         { id: "accounts", group: "SYSTEM", label: "Online accounts", glyph: "account_circle",
             title: "Online accounts", description: "Connected accounts and calendar access" },
         { id: "system", group: "SYSTEM", label: "System", glyph: "settings",
@@ -187,6 +189,10 @@ PopoutPanel {
             closeModuleSubPage();
             return true;
         }
+        // A pending display trial answers first: Escape reverts it.
+        const displays = pageLoader.item as DisplaysPage;
+        if (displays && displays.handleEscape())
+            return true;
         return false;
     }
 
@@ -681,6 +687,7 @@ PopoutPanel {
                 case "notifications": return notificationsPage;
                 case "network": return networkPage;
                 case "sound": return soundPage;
+                case "displays": return displaysPage;
                 case "accounts": return accountsPage;
                 case "system": return systemPage;
                 case "about": return aboutPage;
@@ -863,6 +870,7 @@ PopoutPanel {
         Component { id: pluginsPage; PluginsPage {} }
         Component { id: networkPage; NetworkPage {} }
         Component { id: soundPage; SoundPage {} }
+        Component { id: displaysPage; DisplaysPage {} }
         Component { id: accountsPage; AccountsPage {} }
         Component { id: systemPage; SystemPage {} }
         Component { id: aboutPage; AboutPage {} }

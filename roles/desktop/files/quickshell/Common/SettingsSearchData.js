@@ -12,6 +12,13 @@ var ROWS = [
     // Appearance
     { page: "network", pageLabel: "Network", group: "Connections", label: "Network connections", key: "", terms: "wifi ethernet ipv4 ipv6 dns gateway addresses manual automatic metered" },
     { page: "sound", pageLabel: "Sound", group: "Devices", label: "Sound devices and applications", key: "", terms: "audio microphone volume profiles ports balance routing mute" },
+    // Displays (Settings -> Displays): monitor rules saved outside shell.json.
+    { page: "displays", pageLabel: "Displays", group: "Arrangement", label: "Display arrangement", key: "", terms: "monitor screen layout position multiple external dock" },
+    { page: "displays", pageLabel: "Displays", group: "Display", label: "Resolution and refresh rate", key: "", terms: "monitor mode hz hertz 4k 120 144 60" },
+    { page: "displays", pageLabel: "Displays", group: "Display", label: "Display scale", key: "", terms: "monitor hidpi fractional zoom size 125 150 200" },
+    { page: "displays", pageLabel: "Displays", group: "Display", label: "Rotation", key: "", terms: "monitor transform portrait landscape orientation" },
+    { page: "displays", pageLabel: "Displays", group: "Display", label: "Mirror and turn off displays", key: "", terms: "monitor duplicate projector disable enable lid clamshell" },
+    { page: "displays", pageLabel: "Displays", group: "Display", label: "Adaptive sync", key: "", terms: "monitor vrr freesync gsync variable refresh" },
     { page: "accounts", pageLabel: "Online accounts", group: "Accounts", label: "Online accounts", key: "", terms: "google calendar login reconnect remove credentials" },
     { page: "appearance", pageLabel: "Appearance", group: "Theme", label: "Mode", key: "themeMode", terms: "dark light theme" },
     { page: "appearance", pageLabel: "Appearance", group: "Theme", label: "Glass effect", key: "glassEnabled", terms: "blur translucent transparent" },

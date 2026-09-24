@@ -1,0 +1,172 @@
+[
+  {
+    "name": "empty document",
+    "text": "{\"v\": 1, \"monitors\": {}}",
+    "valid": true
+  },
+  {
+    "name": "missing monitors object",
+    "text": "{\"v\": 1}",
+    "valid": true
+  },
+  {
+    "name": "full entry",
+    "text": "{\"v\": 1, \"monitors\": {\"desc:Example Corp. Panel 0x0001\": {\"description\": \"Example Corp. Panel 0x0001\", \"connector\": \"DP-1\", \"enabled\": true, \"mode\": {\"width\": 3840, \"height\": 2160, \"refresh\": 119.88}, \"position\": {\"x\": 0, \"y\": 0}, \"scale\": 1.5, \"transform\": 0}}}",
+    "valid": true
+  },
+  {
+    "name": "unknown fields are kept and ignored",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"description\": \"Example Corp. Panel 0x0001\", \"connector\": \"DP-1\", \"enabled\": true, \"mode\": {\"width\": 3840, \"height\": 2160, \"refresh\": 119.88}, \"position\": {\"x\": 0, \"y\": 0}, \"scale\": 1.5, \"transform\": 0, \"future\": {\"a\": [1, null]}}}, \"extra\": true}",
+    "valid": true
+  },
+  {
+    "name": "automatic values",
+    "text": "{\"v\": 1, \"monitors\": {\"HDMI-A-1\": {\"mode\": \"preferred\", \"position\": \"auto\", \"scale\": \"auto\"}}}",
+    "valid": true
+  },
+  {
+    "name": "disabled beside a companion",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"enabled\": false, \"disabledWith\": [\"desc:Example Corp. Panel 0x0001\"]}}}",
+    "valid": true
+  },
+  {
+    "name": "mirror and vrr",
+    "text": "{\"v\": 1, \"monitors\": {\"DP-2\": {\"mirror\": \"eDP-1\", \"vrr\": 2, \"transform\": 5}}}",
+    "valid": true
+  },
+  {
+    "name": "edid text that looks like Lua",
+    "text": "{\"v\": 1, \"monitors\": {\"desc:Evil\\\"); os.execute(\\\"id\\\") --\": {\"scale\": 2}}}",
+    "valid": true
+  },
+  {
+    "name": "unicode description",
+    "text": "{\"v\": 1, \"monitors\": {\"desc:\\u00c9cran \\u2603 \\u00e9\": {\"transform\": 1}}}",
+    "valid": true
+  },
+  {
+    "name": "wrong version",
+    "text": "{\"v\": 2, \"monitors\": {}}",
+    "valid": false
+  },
+  {
+    "name": "boolean version",
+    "text": "{\"v\": true, \"monitors\": {}}",
+    "valid": false
+  },
+  {
+    "name": "not an object",
+    "text": "[1, 2]",
+    "valid": false
+  },
+  {
+    "name": "monitors is an array",
+    "text": "{\"v\": 1, \"monitors\": []}",
+    "valid": false
+  },
+  {
+    "name": "duplicate key",
+    "text": "{\"v\": 1, \"v\": 1, \"monitors\": {}}",
+    "valid": false
+  },
+  {
+    "name": "trailing comma",
+    "text": "{\"v\": 1, \"monitors\": {},}",
+    "valid": false
+  },
+  {
+    "name": "NaN",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"scale\": NaN}}}",
+    "valid": false
+  },
+  {
+    "name": "comment",
+    "text": "{\"v\": 1, // hi\n \"monitors\": {}}",
+    "valid": false
+  },
+  {
+    "name": "truncated",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"scale\": 2}",
+    "valid": false
+  },
+  {
+    "name": "control character in key",
+    "text": "{\"v\": 1, \"monitors\": {\"desc:bad\\u0001name\": {}}}",
+    "valid": false
+  },
+  {
+    "name": "empty description key",
+    "text": "{\"v\": 1, \"monitors\": {\"desc:\": {}}}",
+    "valid": false
+  },
+  {
+    "name": "padded description key",
+    "text": "{\"v\": 1, \"monitors\": {\"desc: padded\": {}}}",
+    "valid": false
+  },
+  {
+    "name": "connector with a space",
+    "text": "{\"v\": 1, \"monitors\": {\"DP 1\": {}}}",
+    "valid": false
+  },
+  {
+    "name": "scale too small",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"scale\": 0.1}}}",
+    "valid": false
+  },
+  {
+    "name": "scale as string number",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"scale\": \"1.5\"}}}",
+    "valid": false
+  },
+  {
+    "name": "fractional width",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"mode\": {\"width\": 1920.5, \"height\": 1080, \"refresh\": 60}}}}",
+    "valid": false
+  },
+  {
+    "name": "refresh too high",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"mode\": {\"width\": 1920, \"height\": 1080, \"refresh\": 5000}}}}",
+    "valid": false
+  },
+  {
+    "name": "transform out of range",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"transform\": 8}}}",
+    "valid": false
+  },
+  {
+    "name": "vrr out of range",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"vrr\": -1}}}",
+    "valid": false
+  },
+  {
+    "name": "disabled without companions",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"enabled\": false}}}",
+    "valid": false
+  },
+  {
+    "name": "disabled beside itself",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"enabled\": false, \"disabledWith\": [\"eDP-1\"]}}}",
+    "valid": false
+  },
+  {
+    "name": "mirror of itself",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"mirror\": \"eDP-1\"}}}",
+    "valid": false
+  },
+  {
+    "name": "enabled as string",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"enabled\": \"yes\"}}}",
+    "valid": false
+  },
+  {
+    "name": "position as string",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": {\"position\": \"0x0\"}}}",
+    "valid": false
+  },
+  {
+    "name": "entry is a list",
+    "text": "{\"v\": 1, \"monitors\": {\"eDP-1\": [1]}}",
+    "valid": false
+  }
+]

@@ -91,4 +91,5 @@ singleton OmarchyApplications OmarchyApplications.qml
 OmarchyServiceApi OmarchyServiceApi.qml
 
 singleton SystemSettings SystemSettings.qml
+singleton DisplaySettings DisplaySettings.qml
 SystemSettingsBackend SystemSettingsBackend.qml
