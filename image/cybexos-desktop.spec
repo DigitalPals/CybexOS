@@ -27,7 +27,8 @@ Requires:       python3-pyside6 python3-websockets python3-gobject
 Requires:       kitty firefox nautilus jq curl NetworkManager iw qrencode iproute iputils
 Requires:       pipewire pipewire-pulseaudio wireplumber bluez brightnessctl playerctl
 Requires:       gnome-keyring polkit dbus-daemon dnf5-plugins flatpak sudo
-Requires:       gnome-online-accounts evolution-data-server gnome-control-center zenity
+Requires:       gnome-online-accounts gnome-online-accounts-gtk evolution-data-server gnome-control-center zenity
+Requires:       glib2 NetworkManager-libnm nm-connection-editor pulseaudio-utils pavucontrol
 Requires:       grim slurp satty wl-clipboard cliphist wf-recorder libnotify
 Requires:       ImageMagick tesseract tesseract-langpack-eng btop matugen
 Requires:       btrfs-progs tar zstd fastfetch

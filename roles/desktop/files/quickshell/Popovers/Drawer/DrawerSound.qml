@@ -12,6 +12,7 @@ import ".."
 // streams.
 Column {
     id: root
+    property bool showSettingsAction: true
 
     readonly property var nodeValues: Pipewire.nodes ? Pipewire.nodes.values : []
     readonly property var sinkCandidates: AudioHelpers.outputDevices(
@@ -431,13 +432,11 @@ Column {
     }
 
     DrawerFooter {
+        visible: root.showSettingsAction
         info: "PipeWire"
         actionText: "Sound settings"
         onActionClicked: {
-            Popouts.close();
-            Quickshell.execDetached(["sh", "-c",
-                "command -v pavucontrol >/dev/null && exec pavucontrol"
-                + " || exec gnome-control-center sound"]);
+            Settings.showPanel("sound");
         }
     }
 }

@@ -194,7 +194,7 @@ test("settings rail reports and retries both load and save failures", () => {
     const view = readShell("Settings/SettingsView.qml");
     const settings = readShell("Common/Settings.qml");
     assert.match(view,
-        /persistenceStatus: Settings\.loadError[\s\S]*Settings\.loadErrorText[\s\S]*Settings\.saveError/);
+        /persistenceStatus:[\s\S]*Settings\.loadError[\s\S]*Settings\.loadErrorText[\s\S]*Settings\.saveError/);
     assert.match(view,
         /visible: Settings\.persistenceError && !Settings\.undoAvailable/);
     assert.match(view,

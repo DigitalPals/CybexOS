@@ -89,3 +89,6 @@ OmarchyEntryHost OmarchyEntryHost.qml
 singleton OmarchyPlugins OmarchyPlugins.qml
 singleton OmarchyApplications OmarchyApplications.qml
 OmarchyServiceApi OmarchyServiceApi.qml
+
+singleton SystemSettings SystemSettings.qml
+SystemSettingsBackend SystemSettingsBackend.qml

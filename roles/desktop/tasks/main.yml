@@ -83,6 +83,11 @@
       # to pull it in transitively. curl and iw are also shared by weather and
       # link telemetry.
       - NetworkManager
+      - NetworkManager-libnm
+      - glib2
+      - nm-connection-editor
+      - pulseaudio-utils
+      - pavucontrol
       - python3
       # Durable JSON-RPC/WebSocket transport for the Hermes menubar bridge.
       - python3-websockets
@@ -92,6 +97,8 @@
       # Online Accounts stores Google OAuth credentials in the keyring;
       # Evolution Data Server exposes its calendar cache to Quickshell.
       - gnome-online-accounts
+      - gnome-online-accounts-gtk
+      # GNOME Calendar still opens GNOME Settings from its own account editor.
       - gnome-control-center
       - gnome-calendar
       - evolution-data-server

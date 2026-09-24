@@ -93,7 +93,7 @@ test("the calendar bridge delegates credentials and recurrence to GNOME", () => 
     const tasks = fs.readFileSync(path.resolve(shellDir, "../../tasks/main.yml"), "utf8");
 
     assert.match(service,
-        /"env", "XDG_CURRENT_DESKTOP=GNOME",\s*"gnome-control-center", "online-accounts"/);
+        /Settings\.showPanel\("accounts"\)/);
     assert.match(service, /scripts\/calendar-events\.py/);
     assert.match(service, /gnome-calendar", "--date"/);
     assert.match(helper, /SourceRegistry\.new_sync/);

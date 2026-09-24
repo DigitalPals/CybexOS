@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Read-only checks against the managed service. Requires deployed native pages.
+set -euo pipefail
+repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=tests/lib/quickshell-live
+source "$repo/tests/lib/quickshell-live"
+qs_live_begin
+previous=$(qs_live_wait_ipc 10 settings status)
+cleanup() {
+  local status=$?
+  if [[ $(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["open"])' "$previous") == True ]]; then
+    local page
+    page=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["page"])' "$previous")
+    qs_live_wait_ipc 10 settings open "$page" >/dev/null || status=1
+  else
+    qs_live_wait_ipc 10 settings close >/dev/null || status=1
+  fi
+  qs_live_end || status=1
+  exit "$status"
+}
+trap cleanup EXIT
+for page in sound network accounts network; do
+  qs_live_wait_ipc 10 settings open "$page" >/dev/null
+  ready=false
+  for _ in {1..40}; do
+    state=$(qs_live_wait_ipc 5 settings status)
+    if python3 - "$state" "$page" <<'PY'
+import json, sys
+state, page = json.loads(sys.argv[1]), sys.argv[2]
+service = state['services'][page]
+sys.exit(0 if state['open'] and state['page'] == page and service['loaded']
+         and service['watchers'] == 1 and service['watching'] and not service['failed']
+         and not service['busy'] and not service['loading'] else 1)
+PY
+    then ready=true; break; fi
+    sleep .25
+  done
+  [[ $ready == true ]] || { echo "Settings page did not become ready: $page ($state)" >&2; exit 1; }
+  qs_live_wait_ipc 5 settings close >/dev/null
+  sleep .5
+  state=$(qs_live_wait_ipc 5 settings status)
+  python3 - "$state" <<'PY'
+import json, sys
+state = json.loads(sys.argv[1])
+assert not state['open']
+assert all(s['watchers'] == 0 and not s['watching'] and not s['loading']
+           and not s['busy'] for s in state['services'].values()), state
+PY
+done
+echo 'PASS managed settings: all pages load, reopen, and release their service watchers and readers'

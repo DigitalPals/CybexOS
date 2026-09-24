@@ -183,14 +183,7 @@ Singleton {
     }
 
     function manageAccounts() {
-        // The Online Accounts panel is installed and fully functional under
-        // Hyprland, but its desktop file hides it outside GNOME. This override
-        // applies only to the launched Settings process; it does not change
-        // the session desktop or start GNOME Shell.
-        Quickshell.execDetached([
-            "env", "XDG_CURRENT_DESKTOP=GNOME",
-            "gnome-control-center", "online-accounts"
-        ]);
+        Settings.showPanel("accounts");
     }
 
     function openCalendar(value) {

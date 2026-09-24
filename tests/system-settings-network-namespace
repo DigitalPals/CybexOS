@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Real NetworkManager transaction checks, in private PID/mount/network namespaces.
+# Optional integration test; never runs against the workstation's system bus.
+set -euo pipefail
+if [[ ${1:-} != --inside ]]; then
+  exec sudo -n unshare --mount --net --uts --pid --fork --mount-proc bash "$(realpath "$0")" --inside
+fi
+[[ $$ == 1 ]] || { echo 'Expected a private PID namespace' >&2; exit 1; }
+mount --make-rprivate /
+mount -t tmpfs tmpfs /run
+mount -t tmpfs tmpfs /etc/NetworkManager
+mount -t tmpfs tmpfs /var/lib/NetworkManager
+mount -t sysfs sysfs /sys
+if [[ -e /dev/rfkill ]]; then mount --bind /dev/null /dev/rfkill; fi
+mkdir -p /run/dbus /run/NetworkManager /etc/NetworkManager/system-connections /run/empty
+touch /run/cybexos-settings-test
+cat > /etc/NetworkManager/NetworkManager.conf <<'CONFIG'
+[main]
+plugins=keyfile
+dns=none
+rc-manager=unmanaged
+auth-polkit=false
+no-auto-default=*
+[connectivity]
+enabled=false
+CONFIG
+cat > /run/dbus/settings-test.conf <<'CONFIG'
+<busconfig>
+  <type>system</type>
+  <listen>unix:path=/run/dbus/system_bus_socket</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow user="*"/>
+    <allow own="*"/>
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+  </policy>
+</busconfig>
+CONFIG
+dbus_pid=''
+nm_pid=''
+cleanup() {
+  [[ -z $nm_pid ]] || kill "$nm_pid" 2>/dev/null || true
+  [[ -z $dbus_pid ]] || kill "$dbus_pid" 2>/dev/null || true
+  wait || true
+}
+trap cleanup EXIT
+export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
+export PYTHONDONTWRITEBYTECODE=1
+dbus-daemon --config-file=/run/dbus/settings-test.conf --nofork --nopidfile > /run/dbus.log 2>&1 &
+dbus_pid=$!
+for _ in {1..50}; do
+  [[ -S /run/dbus/system_bus_socket ]] && break
+  sleep .1
+done
+ip link add settings0 type veth peer name settings1
+ip link set settings0 up
+ip link set settings1 up
+# The private /run has no udev daemon. Mark only our two synthetic interfaces
+# initialized, so libudev does not leave them permanently unmanaged.
+mkdir -p /run/udev/data
+for interface in settings0 settings1; do
+  index=$(cat "/sys/class/net/$interface/ifindex")
+  printf 'I:1\nE:INTERFACE=%s\nE:ID_NET_DRIVER=veth\n' "$interface" > "/run/udev/data/n$index"
+done
+NetworkManager --debug --log-level=INFO --config-dir=/run/empty --system-config-dir=/run/empty > /run/networkmanager.log 2>&1 &
+nm_pid=$!
+for _ in {1..100}; do
+  nmcli general status >/dev/null 2>&1 && break
+  sleep .1
+done
+for _ in {1..50}; do
+  nmcli device show settings0 >/dev/null 2>&1 && break
+  sleep .1
+done
+nmcli device set settings0 managed yes
+sleep .5
+nmcli connection add type ethernet ifname settings0 con-name settings-fixture \
+  ipv4.method manual ipv4.addresses 192.0.2.1/24 ipv6.method disabled \
+  connection.autoconnect no >/dev/null
+if ! nmcli connection up settings-fixture >/dev/null; then
+  nmcli device status
+  nmcli -f GENERAL device show settings0
+  tail -n 40 /run/networkmanager.log
+  exit 1
+fi
+python3 "$(dirname "$0")/system-settings-network-integration.py"

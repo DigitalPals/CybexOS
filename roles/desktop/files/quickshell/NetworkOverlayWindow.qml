@@ -20,8 +20,6 @@ PanelWindow {
     readonly property string helper: Quickshell.shellDir + "/scripts/network-tool.py"
     readonly property string speedHelper: Quickshell.shellDir + "/scripts/network-speedtest.py"
     readonly property bool qrPageActive: NetworkOverlayState.page === "qr"
-    readonly property var networkSettingsCommand: ["sh", "-c",
-        "command -v nm-connection-editor >/dev/null && exec nm-connection-editor || exec gnome-control-center network"]
 
     visible: NetworkOverlayState.open || scrim.opacity > 0.001
     screen: NetworkOverlayState.screen ?? Screens.focused
@@ -243,7 +241,7 @@ PanelWindow {
             }
 
             function openSettings() {
-                Quickshell.execDetached(root.networkSettingsCommand);
+                Settings.showPanel("network");
                 NetworkOverlayState.close();
             }
 

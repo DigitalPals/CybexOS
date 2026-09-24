@@ -65,6 +65,18 @@ ShellRoot {
         function close(): void {
             Settings.closePanel();
         }
+
+        // Read-only lifecycle diagnostics; no device or account metadata.
+        function status(): string {
+            const services = {};
+            for (const name of ["sound", "network", "accounts"]) {
+                const service = SystemSettings[name];
+                services[name] = {loaded: service.loaded, busy: service.busy,
+                    loading: service.loading, watchers: service.watchers,
+                    watching: service.watching, failed: service.error !== ""};
+            }
+            return JSON.stringify({page: Settings.page, open: Settings.panelOpen, services: services});
+        }
     }
 
     // Pinged by brightness-control after brightnessctl runs; volume needs

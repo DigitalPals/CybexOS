@@ -114,7 +114,10 @@ test("rows that cannot use settingKey still wire themselves completely", () => {
         const text = block.body.join("\n");
         // Layout commands and external plugin settings have no schema default.
         // Their enable/remove controls preserve state, rather than inventing a reset.
-        if (block.at.startsWith("Settings/ModulesPage.qml:") || block.at.startsWith("Settings/PluginWidgetSettings.qml:")) {
+        // System-owned values have no shell schema default. Their pages own
+        // live writes or an explicit Apply/Cancel draft, never shell reset.
+        if (["ModulesPage", "PluginWidgetSettings", "SoundPage", "NetworkPage", "AccountsPage", "IpSettings"]
+                .some(name => block.at.startsWith(`Settings/${name}.qml:`))) {
             assert.match(text, /on(?:Toggled|Picked|Moved|Committed):/, `${block.at}: missing write handler`);
             continue;
         }

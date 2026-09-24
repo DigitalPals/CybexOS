@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Quickshell
 import "../Common"
 import "../Common/NetworkHelpers.js" as NetworkHelpers
 
@@ -11,8 +10,6 @@ Surface {
 
     implicitWidth: Math.min(600, availableWidth > 0 ? availableWidth : 600)
 
-    readonly property var networkSettingsCommand: ["sh", "-c",
-        "command -v nm-connection-editor >/dev/null && exec nm-connection-editor || exec gnome-control-center network"]
     readonly property real bodyLimit: Math.max(280, availableHeight - padding * 2)
     readonly property var primary: NetworkDetails.primary
     readonly property var activeWifi: NetworkDetails.activeWifi
@@ -155,7 +152,7 @@ Surface {
     }
 
     function openSettings() {
-        Quickshell.execDetached(networkSettingsCommand);
+        Settings.showPanel("network");
         Popouts.close();
     }
 

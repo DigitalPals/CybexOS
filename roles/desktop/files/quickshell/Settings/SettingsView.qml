@@ -27,7 +27,8 @@ PopoutPanel {
         navItems.findIndex(item => item.id === Settings.page))
     readonly property bool dragActive: Settings.page === "modules"
         && moduleDragActive
-    readonly property string persistenceStatus: Settings.loadError
+    readonly property bool systemServicePage: ["network", "sound", "accounts"].includes(Settings.page)
+    readonly property string persistenceStatus: systemServicePage ? "System changes are reported on this page" : Settings.loadError
         ? (Settings.loadErrorText !== "" ? Settings.loadErrorText
             : "Could not read the settings file.") + " Retry is available."
         : Settings.saveError ? "Could not save settings. Retry is available."
@@ -126,6 +127,12 @@ PopoutPanel {
             title: "Plugins", description: "Install and manage trusted desktop plugins" },
         { id: "notifications", group: "SYSTEM", label: "Notifications", glyph: "notifications",
             title: "Notifications", description: "Toasts, quiet hours, and the notification center" },
+        { id: "network", group: "SYSTEM", label: "Network", glyph: "wifi",
+            title: "Network", description: "Connections, IP addresses and DNS" },
+        { id: "sound", group: "SYSTEM", label: "Sound", glyph: "volume_up",
+            title: "Sound", description: "Devices, profiles and application audio" },
+        { id: "accounts", group: "SYSTEM", label: "Online accounts", glyph: "account_circle",
+            title: "Online accounts", description: "Connected accounts and calendar access" },
         { id: "system", group: "SYSTEM", label: "System", glyph: "settings",
             title: "System", description: "Formats, input, night light, and stay awake" },
         { id: "about", group: "SYSTEM", label: "About", glyph: "info",
@@ -621,7 +628,7 @@ PopoutPanel {
                     visible: !root.compactNav
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - 6 - 7 - parent.leftPadding
-                    text: Settings.undoAvailable ? Settings.resetLabel + " reset"
+                    text: root.systemServicePage ? "System settings" : Settings.undoAvailable ? Settings.resetLabel + " reset"
                         : Settings.newerSchema ? "Newer settings file · not saving"
                         : Settings.loadError ? "Could not read settings"
                         : Settings.saveError ? "Could not save settings"
@@ -672,6 +679,9 @@ PopoutPanel {
                 case "modules": return modulesPage;
                 case "plugins": return pluginsPage;
                 case "notifications": return notificationsPage;
+                case "network": return networkPage;
+                case "sound": return soundPage;
+                case "accounts": return accountsPage;
                 case "system": return systemPage;
                 case "about": return aboutPage;
                 default: return appearancePage;
@@ -851,6 +861,9 @@ PopoutPanel {
         }
         Component { id: notificationsPage; NotificationsPage {} }
         Component { id: pluginsPage; PluginsPage {} }
+        Component { id: networkPage; NetworkPage {} }
+        Component { id: soundPage; SoundPage {} }
+        Component { id: accountsPage; AccountsPage {} }
         Component { id: systemPage; SystemPage {} }
         Component { id: aboutPage; AboutPage {} }
     }

@@ -10,6 +10,9 @@
 
 var ROWS = [
     // Appearance
+    { page: "network", pageLabel: "Network", group: "Connections", label: "Network connections", key: "", terms: "wifi ethernet ipv4 ipv6 dns gateway addresses manual automatic metered" },
+    { page: "sound", pageLabel: "Sound", group: "Devices", label: "Sound devices and applications", key: "", terms: "audio microphone volume profiles ports balance routing mute" },
+    { page: "accounts", pageLabel: "Online accounts", group: "Accounts", label: "Online accounts", key: "", terms: "google calendar login reconnect remove credentials" },
     { page: "appearance", pageLabel: "Appearance", group: "Theme", label: "Mode", key: "themeMode", terms: "dark light theme" },
     { page: "appearance", pageLabel: "Appearance", group: "Theme", label: "Glass effect", key: "glassEnabled", terms: "blur translucent transparent" },
     { page: "appearance", pageLabel: "Appearance", group: "Text & size", label: "Interface font", key: "font", terms: "typeface figtree mono typography" },
