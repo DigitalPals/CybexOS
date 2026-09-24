@@ -1,15 +1,16 @@
 # Shared shell appearance
 
-Settings → Appearance owns the base font size (10–24 logical pixels), UI scale
-(75–200%), font family, accessibility text scale, spacing density and panel
-borders/corners. These feed native panels, notifications, launcher and the
+Settings → Appearance owns the font family, text size, interface scale
+(75–200%), density and panel borders/corners; the base font size (10–24
+logical pixels) sits under **Advanced text options**. These feed native panels, notifications, launcher and the
 Omarchy compatibility components. Bar corner geometry remains separately
 configurable; panel corners no longer inherit the bar radius. Attached drawers
 and sheets use the same radius on all four corners, without square edge
 overrides or concave bridges to the bar.
 
-The **Typography → Interface font** picker is near the top of Appearance and
-can also be reached by searching for “font”. It includes the current default,
+The **Text & size → Interface font** dropdown is near the top of Appearance,
+draws each family in its own face, and can also be reached by searching for
+“font”. A preview above it shows the size text renders at. It includes the current default,
 JetBrainsMono Nerd Font, and applies immediately across the shell. The installer
 ships every offered family: JetBrainsMono Nerd Font, Figtree, Google Sans Flex,
 Urbanist, OPPO Sans 4.0 and IBM Plex Sans. System/browser fallbacks include
@@ -18,11 +19,11 @@ and iA Writer (Mono, Duo, Quattro and Duospace), matching Omarchy’s base font
 coverage. These use the managed
 Fontconfig defaults independently of the shell font choice.
 
-Fresh installations leave **System tray** disabled. Enable it from Settings →
-Widgets when wanted; existing saved widget choices are preserved.
+Fresh installations leave **System tray** disabled. Add it from Settings →
+Bar when wanted; existing saved widget choices are preserved.
 
 `Common/ShellMetrics.js` calculates a rounded effective font size once from
-base size × UI scale × accessibility scale. Typography uses this size relative
+base size × interface scale × accessibility (text size) scale. Typography uses this size relative
 to a 12px reference. Geometry and padding additionally multiply by density
 (Compact 0.92, Default 1, Comfortable 1.16). Compact changes geometry without
 shrinking text. Panel widths track that shared geometry scale without the old 115% cap and

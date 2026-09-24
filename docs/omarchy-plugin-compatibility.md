@@ -238,7 +238,7 @@ Model Usage's `Style.space(420)`
 is 420 logical pixels (840 image pixels on a 200% output). Qt applies monitor
 scaling; the shell never multiplies geometry by monitor scale itself.
 
-Settings → Plugins provides an additional UI scale (75–200%). Border mode
+Settings → Appearance → Plugins provides an additional interface scale (75–200%). Border mode
 **Shell** inherits the shared border; Accent/Subtle/Custom use the plugin width
 and opacity overrides. Corner value -1 follows the shared panel corners; 0 is
 square. Existing explicit plugin overrides are preserved until changed or reset. Scaling affects shared Omarchy UI, including bar widgets.

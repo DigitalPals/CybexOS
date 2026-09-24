@@ -28,14 +28,14 @@ var ROWS = [
     { page: "appearance", pageLabel: "Appearance", group: "Text & size", label: "Interface scale", key: "shellScale", terms: "ui zoom size accessibility" },
     { page: "appearance", pageLabel: "Appearance", group: "Text & size", label: "Density", key: "interfaceDensity", terms: "control spacing compact comfortable touch row height" },
     { page: "appearance", pageLabel: "Appearance", group: "Colors", label: "Accent source", key: "paletteMode", terms: "wallpaper palette fixed color" },
-    { page: "appearance", pageLabel: "Appearance", group: "Colors", label: "Accent hue", key: "accent", terms: "color swatch preset sky lavender sage sand coral" },
+    { page: "appearance", pageLabel: "Appearance", group: "Colors", label: "Accent color", key: "accent", terms: "hue swatch preset sky lavender sage sand coral" },
     { page: "appearance", pageLabel: "Appearance", group: "Panels", label: "Panel border", key: "surfaceBorderMode", terms: "accent subtle custom outline" },
     { page: "appearance", pageLabel: "Appearance", group: "Panels", label: "Panel border color", key: "surfaceBorderColor", terms: "color hex" },
     { page: "appearance", pageLabel: "Appearance", group: "Panels", label: "Panel border width", key: "surfaceBorderWidth", terms: "outline" },
     { page: "appearance", pageLabel: "Appearance", group: "Panels", label: "Panel border opacity", key: "surfaceBorderOpacity", terms: "border transparency" },
     { page: "appearance", pageLabel: "Appearance", group: "Panels", label: "Panel corners", key: "surfaceCornerRadius", terms: "radius rounding" },
     { page: "appearance", pageLabel: "Appearance", group: "Plugins", label: "Match shell style", key: "", terms: "plugin appearance omarchy inherit" },
-    { page: "appearance", pageLabel: "Appearance", group: "Plugins", label: "Plugin UI scale", key: "pluginScale", terms: "size font zoom omarchy" },
+    { page: "appearance", pageLabel: "Appearance", group: "Plugins", label: "Plugin interface scale", key: "pluginScale", terms: "ui size font zoom omarchy" },
     { page: "appearance", pageLabel: "Appearance", group: "Plugins", label: "Plugin border", key: "pluginBorderMode", terms: "accent subtle custom omarchy" },
     { page: "appearance", pageLabel: "Appearance", group: "Plugins", label: "Plugin border color", key: "pluginBorderColor", terms: "color hex omarchy" },
     { page: "appearance", pageLabel: "Appearance", group: "Plugins", label: "Plugin border width", key: "pluginBorderWidth", terms: "outline omarchy" },
@@ -45,9 +45,9 @@ var ROWS = [
     { page: "appearance", pageLabel: "Appearance", group: "Accessibility", label: "Reduce motion", key: "reducedMotion", terms: "animation accessibility" },
 
     // Wallpaper
-    { page: "wallpaper", pageLabel: "Wallpaper", group: "Image", label: "Wallpaper", key: "wall", terms: "desktop image background picture online wallhaven download" },
-    { page: "wallpaper", pageLabel: "Wallpaper", group: "Image", label: "Folder", key: "wallDir", terms: "directory pictures" },
-    { page: "wallpaper", pageLabel: "Wallpaper", group: "Rotation", label: "Shuffle", key: "shuffle", terms: "rotate slideshow interval" },
+    { page: "wallpaper", pageLabel: "Wallpaper", group: "Library", label: "Wallpaper", key: "wall", terms: "desktop image background picture online wallhaven download" },
+    { page: "wallpaper", pageLabel: "Wallpaper", group: "Folder", label: "Folder", key: "wallDir", terms: "directory pictures" },
+    { page: "wallpaper", pageLabel: "Wallpaper", group: "Rotation", label: "Rotate", key: "shuffle", terms: "shuffle slideshow interval" },
 
     // Bar
     { page: "bar", pageLabel: "Bar", group: "Layout", label: "Position", key: "position", terms: "top bottom edge placement" },
