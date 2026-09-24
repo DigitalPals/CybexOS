@@ -130,26 +130,31 @@ Singleton {
                     return;
                 deadline.stop();
                 root.request = null;
-                root.busy = false;
-                root.appending = false;
-                root.searched = true;
+                let parsed = null;
                 if (xhr.status !== 200) {
                     root.error = WallhavenHelpers.statusError(xhr.status);
-                    return;
+                } else {
+                    try {
+                        parsed = WallhavenHelpers.parseResults(xhr.responseText);
+                    } catch (e) {
+                        root.error = "Wallhaven returned an unreadable response. Try again.";
+                    }
                 }
-                let parsed;
-                try {
-                    parsed = WallhavenHelpers.parseResults(xhr.responseText);
-                } catch (e) {
-                    root.error = "Wallhaven returned an unreadable response. Try again.";
-                    return;
+                if (parsed !== null) {
+                    root.results = nextPage ? WallhavenHelpers.merge(root.results, parsed.items)
+                        : parsed.items;
+                    root.page = parsed.page;
+                    root.lastPage = parsed.lastPage;
+                    if (parsed.seed !== "")
+                        root.seed = parsed.seed;
                 }
-                root.results = nextPage ? WallhavenHelpers.merge(root.results, parsed.items)
-                    : parsed.items;
-                root.page = parsed.page;
-                root.lastPage = parsed.lastPage;
-                if (parsed.seed !== "")
-                    root.seed = parsed.seed;
+                // Settled last: the grid's footer shrinks and its end-of-list
+                // check runs when these change, and both must see the page
+                // that just arrived. Clearing them first let the shrinking
+                // footer ask for that same page again.
+                root.searched = true;
+                root.appending = false;
+                root.busy = false;
             };
             xhr.open("GET", url);
             deadline.restart();

@@ -31,6 +31,11 @@ Item {
         runSearch();
     }
 
+    function loadMoreAtEnd() {
+        if (resultGrid.atYEnd && resultGrid.contentHeight > resultGrid.height)
+            OnlineWallpapers.more();
+    }
+
     function focusResult(index) {
         const clamped = Math.max(0, Math.min(resultGrid.count - 1, index));
         // Focus moves before currentIndex does, as in the Library grid.
@@ -308,10 +313,12 @@ Item {
             // The next page loads when the person scrolls to the end (or
             // arrows past the last row), one request per 24 results.
             // contentHeight > height keeps a short first page from chaining
-            // requests on its own.
+            // requests on its own. The check runs after the current layout
+            // pass: atYEnd also changes while the footer resizes, and asking
+            // from inside that resize is a binding loop.
             onAtYEndChanged: {
-                if (atYEnd && contentHeight > height)
-                    OnlineWallpapers.more();
+                if (atYEnd)
+                    Qt.callLater(root.loadMoreAtEnd);
             }
 
             footer: Item {

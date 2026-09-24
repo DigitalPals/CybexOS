@@ -170,8 +170,15 @@ test("the Online view reaches the network only once chosen", () => {
         "creating the singleton must not search");
     assert.match(view, /model:\s*ScriptModel\s*\{\s*values:\s*root\.results\s*\}/,
         "a later page appends tiles instead of resetting the grid");
-    assert.match(view, /onAtYEndChanged:\s*\{\s*if \(atYEnd && contentHeight > height\)\s*OnlineWallpapers\.more\(\)/,
+    assert.match(view, /onAtYEndChanged:\s*\{\s*if \(atYEnd\)\s*Qt\.callLater\(root\.loadMoreAtEnd\);/,
+        "the end-of-list check never runs inside the footer's own resize");
+    assert.match(view,
+        /function loadMoreAtEnd\(\) \{\s*if \(resultGrid\.atYEnd && resultGrid\.contentHeight > resultGrid\.height\)\s*OnlineWallpapers\.more\(\);/,
         "a short first page must not chain requests by itself");
+    const handler = online.slice(online.indexOf("xhr.onreadystatechange"), online.indexOf("xhr.open("));
+    assert.ok(handler.indexOf("root.page = parsed.page") < handler.indexOf("root.busy = false"),
+        "a page's results land before the listing stops being busy");
+    assert.ok(handler.indexOf("root.page = parsed.page") < handler.indexOf("root.appending = false"));
     assert.match(online, /wallpaper-download\.py/);
     assert.match(online,
         /onRunningChanged:\s*\{\s*if \(!running && root\.downloadItem !== null\)\s*root\.finishDownload\(\)/,
