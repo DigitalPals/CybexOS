@@ -59,15 +59,21 @@ class Welcome(QObject):
         self.message = "Could not open the installer: " + self.process.errorString()
         self.changed.emit()
 
+    # Shell IPC calls the welcome window may make, by the page it names.
+    SHELL_PAGES = {
+        "appearance": ["settings", "open", "appearance"],
+        # Settings → Wallpaper, on its Online (Wallhaven) view.
+        "wallpaper": ["wallpaper", "browse"],
+        "shortcuts": ["session", "keys"],
+    }
+
     @Slot(str)
     def openSettings(self, page):
-        if page not in ("appearance", "shortcuts"):
+        if page not in self.SHELL_PAGES:
             return
         # The runtime helper reaches the shell that is actually running,
         # including a development checkout selected with `cybex dev`.
-        arguments = ["ipc"]
-        arguments += (["settings", "open", "appearance"] if page == "appearance"
-                      else ["session", "keys"])
+        arguments = ["ipc"] + self.SHELL_PAGES[page]
         success, _ = QProcess.startDetached(str(Path.home() / ".local/bin/cybexos-runtime"), arguments)
         if not success:
             self.message = "The desktop settings could not be opened."

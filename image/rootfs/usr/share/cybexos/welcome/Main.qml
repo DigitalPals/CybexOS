@@ -143,7 +143,9 @@ ApplicationWindow {
                 Accessible.role: Accessible.AlertMessage
             }
             Item { Layout.fillHeight: true }
-            RowLayout {
+            // Wraps at the minimum window width rather than letting the
+            // third button run past the edge.
+            Flow {
                 Layout.fillWidth: true
                 spacing: 12
                 ActionButton {
@@ -151,6 +153,11 @@ ApplicationWindow {
                     text: welcome.isLive ? (welcome.busy ? "Installer is open…" : "Install CybexOS") : "Personalize"
                     enabled: !welcome.busy
                     onClicked: welcome.isLive ? welcome.install() : welcome.openSettings("appearance")
+                }
+                ActionButton {
+                    visible: !welcome.isLive
+                    text: "Find a wallpaper"
+                    onClicked: welcome.openSettings("wallpaper")
                 }
                 ActionButton {
                     visible: !welcome.isLive

@@ -179,3 +179,17 @@ test("the Online view reaches the network only once chosen", () => {
     assert.match(read("Common/qmldir"), /^singleton OnlineWallpapers OnlineWallpapers\.qml$/m);
     assert.match(read("Settings/qmldir"), /^WallpaperOnlineView WallpaperOnlineView\.qml$/m);
 });
+
+test("the welcome window's wallpaper button reaches a real shell IPC call", () => {
+    const repo = path.resolve(shellDir, "../../../..");
+    const welcome = fs.readFileSync(path.join(repo, "image/rootfs/usr/bin/cybexos-welcome"), "utf8");
+    const window = fs.readFileSync(path.join(repo, "image/rootfs/usr/share/cybexos/welcome/Main.qml"), "utf8");
+    const shell = read("shell.qml");
+
+    assert.match(welcome, /"wallpaper":\s*\["wallpaper",\s*"browse"\]/);
+    assert.match(window, /onClicked:\s*welcome\.openSettings\("wallpaper"\)/);
+    const handler = shell.slice(shell.indexOf('target: "wallpaper"'));
+    assert.match(handler,
+        /function browse\(\): void \{\s*OnlineWallpapers\.view = "online";\s*Settings\.showPanel\("wallpaper",/,
+        "browse() opens Settings on the Online view");
+});
