@@ -48,14 +48,17 @@ Singleton {
         && firmwareDevices.some(device => device.requireAc)
     readonly property bool firmwareInRun: firmwareCount > 0 && !firmwareNeedsPower
     property int flatpakCount: 0
-    // Temporarily disabled until GitHub releases are published. Keep the
-    // release-check process and handlers below for re-enabling later.
-    readonly property bool projectUpdatesEnabled: false
+    // The release check needs no GitHub login. A channel with nothing
+    // published yet is a neutral answer (projectStatus), not a check failure.
+    readonly property bool projectUpdatesEnabled: true
     property bool projectAvailable: false
     property string projectVersion: ""
-    // Why an available release cannot be applied here yet (gh missing or
-    // not logged in); the release still counts as pending.
+    // Why an available release cannot be applied here yet (gh missing or too
+    // old to verify it); the release still counts as pending.
     property string projectApplyNote: ""
+    // "no-release" while the channel has no published release, else "".
+    property string projectStatus: ""
+    readonly property string projectNote: UpdatesHelpers.projectStatusLabel(projectStatus)
     property var dnfNames: []
     property var flatpakNames: []
     property bool ran: false
@@ -81,6 +84,7 @@ Singleton {
     property bool nextProjectAvailable: false
     property string nextProjectVersion: ""
     property string nextProjectApplyNote: ""
+    property string nextProjectStatus: ""
     property string dnfError: ""
     property string flatpakError: ""
     property string projectError: ""
@@ -233,6 +237,7 @@ Singleton {
             nextProjectAvailable = false;
             nextProjectVersion = "";
             nextProjectApplyNote = "";
+            nextProjectStatus = "";
             projectDone = !projectUpdatesEnabled;
         }
         if (parts.firmware) {
@@ -375,6 +380,7 @@ Singleton {
                 nextProjectVersion = typeof data.availableVersion === "string"
                     ? data.availableVersion : "";
                 nextProjectApplyNote = UpdatesHelpers.projectErrorOf(data);
+                nextProjectStatus = UpdatesHelpers.projectStatusOf(data);
             } catch (exception) {
                 projectError = "CybexOS update check returned invalid data";
             }
@@ -423,6 +429,7 @@ Singleton {
             projectAvailable = nextProjectAvailable;
             projectVersion = nextProjectVersion;
             projectApplyNote = nextProjectAvailable ? nextProjectApplyNote : "";
+            projectStatus = nextProjectStatus;
             if (projectUpdatesEnabled) {
                 answered.push({ baseline: !!known.project, count: projectAvailable ? 1 : 0 });
                 known.project = true;

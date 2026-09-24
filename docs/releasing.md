@@ -29,8 +29,9 @@ the archive checksum is otherwise correct.
    as `git tag -s v1.0.0 -m 'CybexOS 1.0.0'`.
 4. Push the commit and tag. A version containing a hyphen, such as
    `v1.1.0-beta.1`, is published as a prerelease for the beta channel.
-5. Wait for the workflow to build, attest, upload, publish, and confirm the
-   immutable release before announcing it.
+5. Wait for the workflow to build, attest, verify the provenance bundle
+   offline, upload, publish, and confirm the immutable release before
+   announcing it.
 6. On a clean supported machine, run `cybex update --check --json`,
    apply the release, and run `cybex verify --system`.
 
@@ -46,11 +47,30 @@ in the meantime.
 
 ## What the workflow publishes
 
-The release contains a versioned source archive and `SHA256SUMS`. Its checksum
-entry uses the asset basename, so it can be verified directly after both files
-are downloaded into one directory. The archive
+The release contains a versioned source archive, its provenance bundle
+`cybexos-VERSION.tar.zst.sigstore.jsonl`, and `SHA256SUMS`. The checksum
+entries use the asset basenames, so they can be verified directly after the
+files are downloaded into one directory. The archive
 is reconstructed from the tagged Git tree, its `VERSION` and manifest version
 are set to the tag, its installer is checked, and Ansible syntax is validated.
-GitHub attestation plus immutable-release verification form the updater trust
-boundary; files copied from an arbitrary branch or mutable URL are not
-accepted as updates.
+
+The bundle is the Sigstore bundle of the `actions/attest` provenance
+attestation. Before publishing, the workflow verifies it offline without a
+token, exactly as installed systems do:
+
+```bash
+gh attestation verify cybexos-VERSION.tar.zst \
+  --bundle cybexos-VERSION.tar.zst.sigstore.jsonl \
+  --repo DigitalPals/CybexOS \
+  --signer-workflow DigitalPals/CybexOS/.github/workflows/release.yml \
+  --source-ref refs/tags/vVERSION --deny-self-hosted-runners
+```
+
+That offline attestation check, the immutable-release flag, and the API
+SHA-256 digest form the updater trust boundary. Updating needs no GitHub
+login, and a release without its bundle is refused. Files copied from an
+arbitrary branch or mutable URL are not accepted as updates.
+
+Until the first release is published, `cybex update --check` reports that no
+release exists on the channel, and updates install Fedora and Flatpak
+packages only. That is expected, not a failure.

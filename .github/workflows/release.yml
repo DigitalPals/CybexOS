@@ -77,10 +77,33 @@ jobs:
           test -r dist/verify/agent-skills/cybexos/SKILL.md
           ansible-playbook dist/verify/site.yml --syntax-check
       - name: Attest the exact release archive
+        id: attest
         # actions/attest v4.2.2
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: dist/cybexos-*.tar.zst
+      # Installed systems verify updates offline from this bundle, so checking
+      # for and applying a release needs no GitHub login or API token.
+      - name: Package the provenance bundle for offline verification
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=${RELEASE_TAG#v}
+          bundle="dist/cybexos-$version.tar.zst.sigstore.jsonl"
+          jq -c . "$BUNDLE_PATH" >"$bundle"
+          test -s "$bundle"
+          # The same pinned, offline check the updater runs, without a token.
+          env -u GH_TOKEN -u GITHUB_TOKEN gh attestation verify \
+            "dist/cybexos-$version.tar.zst" --bundle "$bundle" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+            --source-ref "refs/tags/$RELEASE_TAG" --deny-self-hosted-runners
+          (
+            cd dist
+            sha256sum "cybexos-$version.tar.zst.sigstore.jsonl" >>SHA256SUMS
+          )
       - name: Publish the completed release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,7 +116,8 @@ jobs:
           gh release create "$RELEASE_TAG" --verify-tag --draft \
             --generate-notes --title "CybexOS $version" "${prerelease[@]}"
           gh release upload "$RELEASE_TAG" \
-            "dist/cybexos-$version.tar.zst" dist/SHA256SUMS
+            "dist/cybexos-$version.tar.zst" \
+            "dist/cybexos-$version.tar.zst.sigstore.jsonl" dist/SHA256SUMS
           gh release edit "$RELEASE_TAG" --draft=false
           for attempt in $(seq 1 12); do
             if test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .immutable)" = true; then

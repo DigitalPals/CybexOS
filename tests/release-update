@@ -37,12 +37,19 @@ jq -n --arg fedora "$fedora_release" --arg architecture "$(uname -m)" \
 tar --create --zstd --file "$fixture/release.tar.zst" \
   --directory "$fixture/release" cybexos-1.2.3
 digest=$(sha256sum "$fixture/release.tar.zst" | awk '{print $1}')
+# Stand-in for the provenance bundle the release workflow publishes; the gh
+# mock checks that exactly these bytes are verified.
+printf '%s\n' '{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"}' \
+  >"$fixture/release.sigstore.jsonl"
+printf '{}\n' >"$fixture/empty.json"
 
 release_json() {
   jq -n --arg digest "sha256:$digest" --argjson immutable "$1" \
     '{tag_name:"v1.2.3",draft:false,prerelease:false,immutable:$immutable,
       assets:[{name:"cybexos-1.2.3.tar.zst",
-      browser_download_url:"https://example.invalid/release.tar.zst",digest:$digest}]}' \
+      browser_download_url:"https://example.invalid/release.tar.zst",digest:$digest},
+      {name:"cybexos-1.2.3.tar.zst.sigstore.jsonl",
+      browser_download_url:"https://example.invalid/cybexos-1.2.3.tar.zst.sigstore.jsonl"}]}' \
     >"$fixture/release.json"
 }
 release_json true
@@ -55,36 +62,79 @@ $semver validate 1.2.3-beta.1+build.7
 $semver newer 1.2.3 1.2.3-rc.1
 ! $semver newer 1.2.3-beta.1 1.2.3
 
+# GitHub stand-in. API requests report their status through -w; downloads use
+# --fail like the real release asset transfers.
 cat >"$fixture/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-output=
+output= write_out= fail=false url=
 for ((i=1; i<=$#; i++)); do
-  if [[ ${!i} == -o ]]; then ((i++)); output=${!i}; fi
+  case ${!i} in
+    -o) ((++i)); output=${!i} ;;
+    -w) ((++i)); write_out=${!i} ;;
+    --fail) fail=true ;;
+    https://*) url=${!i} ;;
+  esac
 done
-[[ -n $output ]]
-printf '%s\n' "${@: -3:1}" >>"$MOCK_CURL_LOG"
+[[ -n $output && -n $url ]]
+printf '%s\n' "$url" >>"$MOCK_CURL_LOG"
 if [[ -n ${MOCK_CURL_OFFLINE:-} ]]; then
+  [[ -z $write_out ]] || printf '000'
   echo 'curl: (6) Could not resolve host: api.github.com' >&2
   exit 6
 fi
-if [[ $* == *api.github.com* ]]; then
-  cp -- "$MOCK_RELEASE_JSON" "$output"
-else
-  cp -- "$MOCK_RELEASE_ARCHIVE" "$output"
+status=200
+case $url in
+  */releases/latest)
+    status=${MOCK_LATEST_STATUS:-200}; body=${MOCK_LATEST_BODY:-$MOCK_RELEASE_JSON} ;;
+  */releases'?per_page=30')
+    status=${MOCK_LIST_STATUS:-200}; body=$MOCK_RELEASE_LIST ;;
+  https://api.github.com/repos/*)
+    status=${MOCK_REPO_STATUS:-200}; body=$MOCK_EMPTY_JSON ;;
+  *.sigstore.jsonl)
+    status=${MOCK_BUNDLE_STATUS:-200}; body=$MOCK_RELEASE_BUNDLE ;;
+  *) body=$MOCK_RELEASE_ARCHIVE ;;
+esac
+cp -- "$body" "$output"
+if [[ $fail == true ]] && ((status >= 400)); then
+  echo "curl: (22) The requested URL returned error: $status" >&2
+  exit 22
 fi
+[[ -z $write_out ]] || printf '%s' "$status"
 EOF
+# gh verifies offline from the downloaded bundle. Any command that needs the
+# GitHub API or a login fails loudly, so the updater provably uses neither.
 cat >"$fixture/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >>"$MOCK_GH_LOG"
-if [[ $* == 'auth token' && -n ${MOCK_GH_UNAUTHENTICATED:-} ]]; then
-  exit 1
+if [[ $* == 'attestation verify --help' ]]; then
+  printf '%s\n' '  -b, --bundle string   Path to bundle on disk'
+  [[ -n ${MOCK_GH_OLD:-} ]] ||
+    printf '%s\n' '      --signer-workflow string' '      --source-ref string'
+  exit 0
 fi
-if [[ $* == 'release verify v'* && -n ${MOCK_GH_VERIFY_FAIL:-} ]]; then
-  echo 'attestation verification failed' >&2
-  exit 1
+if [[ ${1:-} == attestation && ${2:-} == verify ]]; then
+  [[ -z ${GH_HOST:-} && ${GH_PROMPT_DISABLED:-} == 1 ]] || {
+    echo 'gh: unexpected host or prompt environment' >&2
+    exit 98
+  }
+  bundle=
+  for ((i=1; i<=$#; i++)); do
+    [[ ${!i} != --bundle ]] || { ((++i)); bundle=${!i}; }
+  done
+  [[ $bundle == *.jsonl ]] && cmp -s -- "$bundle" "$MOCK_RELEASE_BUNDLE" || {
+    echo 'gh: the provenance bundle was not the published one' >&2
+    exit 98
+  }
+  if [[ -n ${MOCK_GH_VERIFY_FAIL:-} ]]; then
+    echo 'Error: verifying with issuer "sigstore.dev"' >&2
+    exit 1
+  fi
+  exit 0
 fi
+echo "gh: unexpected call needing the API or a login: $*" >&2
+exit 97
 EOF
 cat >"$fixture/bin/backend" <<'EOF'
 #!/usr/bin/env bash
@@ -147,6 +197,9 @@ export CYBEXOS_CONFIG_FILE="$fixture/config.yml"
 export CYBEXOS_UPDATE_BACKEND="$fixture/bin/backend"
 export CYBEXOS_GITHUB_REPO=example/cybexos
 export MOCK_RELEASE_JSON="$fixture/release.json"
+export MOCK_RELEASE_LIST="$fixture/release-list.json"
+export MOCK_RELEASE_BUNDLE="$fixture/release.sigstore.jsonl"
+export MOCK_EMPTY_JSON="$fixture/empty.json"
 export MOCK_RELEASE_ARCHIVE="$fixture/release.tar.zst"
 export MOCK_GH_LOG="$fixture/gh.log"
 export MOCK_BACKEND_LOG="$fixture/backend.log"
@@ -155,6 +208,8 @@ export MOCK_CURL_LOG="$fixture/curl.log"
 check=$($updater --check --json)
 [[ $(jq -r .available <<<"$check") == true ]]
 [[ $(jq -r .availableVersion <<<"$check") == 1.2.3 ]]
+[[ $(jq -r .status <<<"$check") == available ]]
+[[ $(jq -r .projectError <<<"$check") == '' ]]
 
 jq '.tag_name = "v01.2.3"' "$fixture/release.json" >"$fixture/release-invalid.json"
 mv -- "$fixture/release-invalid.json" "$fixture/release.json"
@@ -168,7 +223,8 @@ release_json true
 # SemVer precedence, rather than version-sort punctuation rules, determines
 # whether a prerelease is actually newer than the installed source.
 jq '.tag_name = "v1.2.3-beta.1" |
-    .assets[0].name = "cybexos-1.2.3-beta.1.tar.zst"' \
+    .assets[0].name = "cybexos-1.2.3-beta.1.tar.zst" |
+    .assets[1].name = "cybexos-1.2.3-beta.1.tar.zst.sigstore.jsonl"' \
   "$fixture/release.json" >"$fixture/release-prerelease.json"
 mv -- "$fixture/release-prerelease.json" "$fixture/release.json"
 printf '1.2.3\n' >"$fixture/source/VERSION"
@@ -274,27 +330,37 @@ $updater --no-packages >/dev/null
 grep -F -- 'start --json --system-unit --full --skip-tests --repo' "$fixture/backend.log" >/dev/null
 grep -F -- '--release-version 1.2.3 --release-data-root' "$fixture/backend.log" >/dev/null
 grep -F -- '--no-packages -- -e' "$fixture/backend.log" >/dev/null
-grep -F -- 'release verify v1.2.3 --repo example/cybexos' "$fixture/gh.log" >/dev/null
-grep -F -- 'release verify-asset v1.2.3' "$fixture/gh.log" >/dev/null
+# The archive is verified offline from the published bundle, pinned to this
+# repository's release workflow and tag on a GitHub-hosted runner.
+grep -E -- '^attestation verify [^ ]+[.]tar[.]zst --bundle [^ ]+[.]jsonl --repo example/cybexos --signer-workflow example/cybexos/[.]github/workflows/release[.]yml --source-ref refs/tags/v1[.]2[.]3 --deny-self-hosted-runners$' \
+  "$fixture/gh.log" >/dev/null
+if grep -Ev '^attestation verify ' "$fixture/gh.log"; then
+  echo 'the updater used gh beyond offline bundle verification' >&2
+  exit 1
+fi
+grep -Fx 'https://example.invalid/cybexos-1.2.3.tar.zst.sigstore.jsonl' "$MOCK_CURL_LOG" >/dev/null
 
 # GitHub, gh, or a bad candidate must never block Fedora and Flatpak updates.
-# An unauthenticated gh is detected before the archive is downloaded, and the
-# package-only run carries the reason for the panel.
+# A gh too old for offline bundle verification is detected before the archive
+# is downloaded, and the package-only run carries the reason for the panel.
 no_stage() {
   [[ -z $(find "$fixture/data/cybexos/releases" -maxdepth 1 -name '.stage.*') ]]
 }
 # Earlier detached/failed attaches deliberately leave worker-owned stages.
 find "$fixture/data/cybexos/releases" -maxdepth 1 -name '.stage.*' -exec rm -rf -- {} +
-export MOCK_GH_UNAUTHENTICATED=1
+export MOCK_GH_OLD=1
 check=$($updater --check --json)
 [[ $(jq -r .available <<<"$check") == true ]]
-jq -e '.projectError | test("gh auth login")' <<<"$check" >/dev/null
+jq -e '.projectError | test("too old to verify")' <<<"$check" >/dev/null
 : >"$MOCK_CURL_LOG"
 fallback_start=$($updater --start --no-flatpak 2>"$fixture/fallback-start.err")
 [[ $(<"$fixture/backend.log") == 'start --json --system-unit --no-flatpak' ]]
 [[ $(jq -r .id <<<"$fallback_start") == 20260903-120001-2-2 ]]
-jq -e '.projectError | test("gh auth login")' <<<"$fallback_start" >/dev/null
-! grep -Fq 'example.invalid/release.tar.zst' "$MOCK_CURL_LOG"
+jq -e '.projectError | test("too old to verify")' <<<"$fallback_start" >/dev/null
+if grep -Fq 'example.invalid' "$MOCK_CURL_LOG"; then
+  echo 'a release was downloaded although gh could not verify it' >&2
+  exit 1
+fi
 no_stage
 set +e
 $updater --no-flatpak >"$fixture/fallback-run.out" 2>"$fixture/fallback-run.err"
@@ -311,10 +377,8 @@ $updater --no-packages >/dev/null 2>"$fixture/release-only.err"
 release_only_rc=$?
 set -e
 [[ $release_only_rc -eq 1 ]]
-grep -F 'gh auth login' "$fixture/release-only.err" >/dev/null
-# gh treats a token in the environment as a login.
-GH_TOKEN=fixture-token $updater --check --json | jq -e '.projectError == ""' >/dev/null
-unset MOCK_GH_UNAUTHENTICATED
+grep -F 'too old to verify' "$fixture/release-only.err" >/dev/null
+unset MOCK_GH_OLD
 
 # Offline: the check keeps curl's own error last for the panel, while an
 # update still starts the package-only worker.
@@ -335,10 +399,25 @@ unset MOCK_CURL_OFFLINE
 # removed, and the package update still runs.
 export MOCK_GH_VERIFY_FAIL=1
 verify_start=$($updater --start 2>/dev/null)
-jq -e '.projectError | test("could not verify")' <<<"$verify_start" >/dev/null
+jq -e '.projectError | test("provenance attestation could not be verified")' \
+  <<<"$verify_start" >/dev/null
 [[ $(<"$fixture/backend.log") == 'start --json --system-unit' ]]
 no_stage
+set +e
+$updater --no-flatpak >/dev/null 2>"$fixture/verify-run.err"
+verify_run_rc=$?
+set -e
+[[ $verify_run_rc -eq 69 ]]
+[[ $(<"$fixture/backend.log") == 'run --no-flatpak' ]]
+no_stage
 unset MOCK_GH_VERIFY_FAIL
+# A bundle that cannot be downloaded is refused the same way.
+export MOCK_BUNDLE_STATUS=404
+bundle_start=$($updater --start 2>/dev/null)
+jq -e '.projectError | test("could not download the CybexOS 1.2.3 provenance bundle")' \
+  <<<"$bundle_start" >/dev/null
+no_stage
+unset MOCK_BUNDLE_STATUS
 printf '%s\n' '---' 'config_schema_version: 2' 'primary_user: tester' >"$fixture/config.yml"
 incompatible_start=$($updater --start 2>/dev/null)
 jq -e '.projectError | test("incompatible")' <<<"$incompatible_start" >/dev/null
@@ -352,5 +431,125 @@ if $updater --check >/dev/null 2>"$fixture/mutable.err"; then
   exit 1
 fi
 grep -F 'refusing mutable GitHub release' "$fixture/mutable.err" >/dev/null
+release_json true
 
-echo 'GitHub releases are compatibility-checked, verified, staged, and activated after apply; package updates never depend on GitHub'
+# A release without its provenance bundle cannot be verified without the API.
+jq 'del(.assets[1])' "$fixture/release.json" >"$fixture/release-unbundled.json"
+export MOCK_LATEST_BODY="$fixture/release-unbundled.json"
+set +e
+$updater --check --json >/dev/null 2>"$fixture/unbundled.err"
+unbundled_rc=$?
+set -e
+[[ $unbundled_rc -ne 0 ]]
+[[ $(tail -n 1 "$fixture/unbundled.err") \
+    == 'update: release v1.2.3 has no cybexos-1.2.3.tar.zst.sigstore.jsonl provenance bundle' ]]
+unbundled_start=$($updater --start 2>/dev/null)
+jq -e '.projectError | test("provenance bundle")' <<<"$unbundled_start" >/dev/null
+[[ $(<"$fixture/backend.log") == 'start --json --system-unit' ]]
+unset MOCK_LATEST_BODY
+
+# No published release yet is a neutral state, not a failure: the check says
+# so, and updates run the package phase and succeed. GitHub's 404 is told
+# apart from a missing repository by asking for the repository itself.
+export MOCK_LATEST_STATUS=404
+: >"$MOCK_CURL_LOG"
+check=$($updater --check --json)
+jq -e '.available == false and .status == "no-release" and .projectError == ""
+  and .availableVersion == "" and .channel == "stable"' <<<"$check" >/dev/null
+grep -Fx 'https://api.github.com/repos/example/cybexos' "$MOCK_CURL_LOG" >/dev/null
+[[ $($updater --check) \
+    == 'No CybexOS release has been published on the stable channel yet (installed: 0.0.0).' ]]
+: >"$MOCK_CURL_LOG"
+$updater --no-flatpak >"$fixture/no-release-run.out" 2>"$fixture/no-release-run.err"
+[[ $(<"$fixture/backend.log") == 'run --no-flatpak' ]]
+grep -Fx 'No CybexOS release has been published on the stable channel yet; updating Fedora packages and system Flatpaks.' \
+  "$fixture/no-release-run.out" >/dev/null
+[[ ! -s $fixture/no-release-run.err ]]
+if grep -F 'example.invalid' "$MOCK_CURL_LOG"; then
+  echo 'something was downloaded although no release is published' >&2
+  exit 1
+fi
+no_release_start=$($updater --start --no-flatpak 2>"$fixture/no-release-start.err")
+[[ $(jq -r .id <<<"$no_release_start") == 20260903-120001-2-2 ]]
+jq -e 'has("projectError") | not' <<<"$no_release_start" >/dev/null
+[[ $(<"$fixture/backend.log") == 'start --json --system-unit --no-flatpak' ]]
+grep -F 'No CybexOS release has been published' "$fixture/no-release-start.err" >/dev/null
+[[ $($updater --no-packages) \
+    == 'No CybexOS release has been published on the stable channel yet; nothing to apply.' ]]
+no_stage
+
+# The beta channel has no release while nothing is published as a prerelease.
+printf '[]\n' >"$MOCK_RELEASE_LIST"
+jq -e '.status == "no-release" and .channel == "beta" and .projectError == ""' \
+  <<<"$($updater --check --json --channel beta)" >/dev/null
+jq '[., (. + {tag_name:"v1.2.4"})]' "$fixture/release.json" >"$MOCK_RELEASE_LIST"
+jq -e '.status == "no-release"' <<<"$($updater --check --json --channel beta)" >/dev/null
+$updater --channel beta --no-flatpak >/dev/null
+[[ $(<"$fixture/backend.log") == 'run --no-flatpak' ]]
+jq '[.[0] | .prerelease = true | .tag_name = "v1.2.3-beta.1" |
+     .assets[0].name = "cybexos-1.2.3-beta.1.tar.zst" |
+     .assets[1].name = "cybexos-1.2.3-beta.1.tar.zst.sigstore.jsonl"]' \
+  "$MOCK_RELEASE_LIST" >"$MOCK_RELEASE_LIST.new"
+mv -- "$MOCK_RELEASE_LIST.new" "$MOCK_RELEASE_LIST"
+jq -e '.status == "available" and .availableVersion == "1.2.3-beta.1"' \
+  <<<"$($updater --check --json --channel beta)" >/dev/null
+export MOCK_LIST_STATUS=404
+set +e
+$updater --check --channel beta >/dev/null 2>"$fixture/missing-beta.err"
+missing_beta_rc=$?
+set -e
+[[ $missing_beta_rc -ne 0 ]]
+[[ $(tail -n 1 "$fixture/missing-beta.err") \
+    == 'update: the GitHub repository example/cybexos was not found' ]]
+unset MOCK_LIST_STATUS
+rm -f -- "$fixture/data/cybexos/channel"
+
+# A missing repository is a real failure, never "no release yet".
+export MOCK_REPO_STATUS=404
+set +e
+$updater --check --json >/dev/null 2>"$fixture/missing-repo.err"
+missing_repo_rc=$?
+$updater --no-flatpak >/dev/null 2>"$fixture/missing-repo-run.err"
+missing_repo_run_rc=$?
+set -e
+[[ $missing_repo_rc -ne 0 && $missing_repo_run_rc -eq 69 ]]
+[[ $(tail -n 1 "$fixture/missing-repo.err") \
+    == 'update: the GitHub repository example/cybexos was not found' ]]
+grep -F 'system packages were updated, but CybexOS was not: the GitHub repository example/cybexos was not found' \
+  "$fixture/missing-repo-run.err" >/dev/null
+unset MOCK_REPO_STATUS MOCK_LATEST_STATUS
+
+# Anonymous API requests are rate limited; that is reported plainly, and the
+# package update still runs.
+printf '%s\n' '{"message":"API rate limit exceeded for 192.0.2.1."}' >"$fixture/rate-limit.json"
+# A 403 is a rate limit only when GitHub says so; a 429 always is.
+for rate_case in 403:rate-limit 429:empty; do
+  export MOCK_LATEST_STATUS=${rate_case%%:*}
+  export MOCK_LATEST_BODY="$fixture/${rate_case#*:}.json"
+  set +e
+  $updater --check --json >/dev/null 2>"$fixture/rate.err"
+  rate_rc=$?
+  $updater --no-flatpak >/dev/null 2>"$fixture/rate-run.err"
+  rate_run_rc=$?
+  set -e
+  [[ $rate_rc -ne 0 && $rate_run_rc -eq 69 ]]
+  [[ $(tail -n 1 "$fixture/rate.err") \
+      == "update: GitHub's API rate limit for anonymous requests was reached; try again later" ]]
+  [[ $(<"$fixture/backend.log") == 'run --no-flatpak' ]]
+done
+printf '%s\n' '{"message":"Forbidden"}' >"$fixture/forbidden.json"
+export MOCK_LATEST_STATUS=403 MOCK_LATEST_BODY="$fixture/forbidden.json"
+set +e
+$updater --check >/dev/null 2>"$fixture/forbidden.err"
+set -e
+[[ $(tail -n 1 "$fixture/forbidden.err") \
+    == 'update: GitHub refused the stable release request (HTTP 403)' ]]
+export MOCK_LATEST_STATUS=502 MOCK_LATEST_BODY="$fixture/empty.json"
+set +e
+$updater --check >/dev/null 2>"$fixture/bad-gateway.err"
+set -e
+[[ $(tail -n 1 "$fixture/bad-gateway.err") \
+    == 'update: GitHub returned HTTP 502 for the stable release request' ]]
+unset MOCK_LATEST_STATUS MOCK_LATEST_BODY
+
+echo 'GitHub releases are found anonymously, verified offline from their provenance bundle, compatibility-checked, staged, and activated after apply; an unpublished channel is not an error, and package updates never depend on GitHub'
