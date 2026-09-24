@@ -96,29 +96,53 @@ is manual.
 - [ ] Glass effect applies without closing Settings or remapping/flickering the
       bar. Toggle it twice quickly, then reload Hyprland and restart Quickshell;
       the final persisted state wins each time.
-- [ ] Wallpaper palette shows surface/primary/error swatches and generation
-      status. Switching Dark / Light selects the cached variant without a new
-      Matugen process; changing wallpaper regenerates once after the debounce.
-      Accent colors follow the wallpaper while the selected menubar background
-      remains unchanged.
+- [ ] Text & size opens with a live preview — a bar strip (workspaces, date
+      and clock, status icons) and a popover with two rows — captioned
+      "Preview · text renders at N px". Text size, Interface scale and Density
+      resize it along with the rest of the shell, and N matches the rendered
+      base size (12 at defaults, 14 at Large with 100%).
+- [ ] Text size, Interface scale and Density are in view; Base font size is
+      under "Advanced text options", which stays closed on opening. Searching
+      "Base font size" opens the disclosure and highlights the row. With a
+      changed base size and the disclosure closed, the page foot still offers
+      "Reset Appearance to defaults".
+- [ ] Interface font is a dropdown at the controls' edge. The closed button
+      and every option draw in their own face; picking one reflows the bar and
+      popovers instantly. Test every menu font: option names stay within the
+      list without clipping.
+- [ ] Accent source Wallpaper shows a Wallpaper palette row: six swatches at
+      the controls' edge (hover names each) and a hint that reads "Generated
+      from <file>" or the generation status. Switching Dark / Light selects the
+      cached variant without a new Matugen process; changing wallpaper
+      regenerates once after the debounce.
 - [ ] Change wallpapers rapidly: no stale palette flashes. Temporarily hide
       `matugen` or feed malformed output: the selector remains Wallpaper,
-      the fallback error appears, and the stored fixed palette renders.
-- [ ] Bar Background offers Shell Default, macOS, Black, Graphite, Slate, White,
-      and Custom in both Wallpaper and Fixed modes. Only the Accent area is
-      absent in Wallpaper mode, leaves Tab/Orca traversal immediately, and
-      returns with its values unchanged after switching back to Fixed.
+      the fallback error appears on the palette row, and the stored fixed
+      palette renders.
+- [ ] Accent source Fixed reveals an Accent color row (six presets, right
+      aligned, their name and hex on the hint line) and an Accent hue row
+      directly under Accent source, and scrolls them into view. The presets
+      are one Tab stop; arrow keys, Home and End move and pick. Presets and
+      hue recolor the whole shell, and in Wallpaper mode they are neither
+      focusable nor exposed.
+- [ ] Resetting Accent source returns to Wallpaper and restores the fixed
+      accent with it; Undo brings both back.
+- [ ] On the Bar page (moved there from Appearance), Background offers Shell
+      Default, macOS, Black, Graphite, Slate, White, and Custom in both
+      Wallpaper and Fixed accent modes, and the accent choice leaves it
+      unchanged.
 - [ ] A Black menubar changes its text/icons to light tones; White changes
       them to dark tones. Accent, warning, error, workspace, weather, and T3
       marks remain legible, with no change to popover colors.
 - [ ] Custom reveals Hue, Saturation, and Lightness sliders. Their tracks and
       the real bar update live, the chosen HSL survives a preset round-trip,
       and the Bar Background reset restores the adaptive Shell Default.
-- [ ] Font rows render their own family; picking one reflows the bar and
-      popovers instantly. Test every menu font: names and samples stay in
-      separate bounded lanes with no overlap.
-- [ ] Fixed accent swatches and hue recolor the whole shell in Fixed mode and
-      are not focusable or exposed in Wallpaper mode.
+- [ ] Panels: Border color appears directly under Border only for Custom, and
+      resetting Border also restores the custom color. Border opacity is
+      disabled and says why at width 0.
+- [ ] Plugins: with Match shell style off, Interface scale, Border and Corners
+      appear; Border color only for Custom, Border width and opacity for every
+      mode except Shell.
 - [ ] Appearance has no preset actions. Fresh settings use Dark mode, Hug,
       wallpaper colors, opaque surfaces, numbered workspaces, JetBrains Mono
       at size 12 and 100% scale, and no panel borders.

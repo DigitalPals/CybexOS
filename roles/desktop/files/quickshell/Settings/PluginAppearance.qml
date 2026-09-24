@@ -3,7 +3,9 @@ import "../Common"
 
 // Plugin chrome follows the shell unless asked not to. One switch says so;
 // the overrides it hides are the same controls the Panels group has, so
-// showing both copies all the time repeated the whole border setup.
+// showing both copies all the time repeated the whole border setup. The
+// border rows that only mean something under one border mode are revealed
+// beneath the Border row, like the Panels group's.
 //
 // "Matching" is derived from the stored values, never persisted: a plugin
 // scale of 100 %, the Shell border and the theme corner radius, with no
@@ -46,11 +48,13 @@ SettingsGroup {
             width: overrides.width
             spacing: Theme.settingsRowSpacing
 
+            // The same name as the shell's own scale above, so the two read
+            // as one control applied to different things.
             SliderRow {
                 width: parent.width
-                label: "UI scale"
+                label: "Interface scale"
                 settingKey: "pluginScale"
-                resetLabel: "Plugin UI scale"
+                resetLabel: "Plugin interface scale"
                 min: 75; max: 200; step: 5; unit: "%"
                 marks: [100]
                 hint: "100% follows the shell's text and size settings"
@@ -60,6 +64,8 @@ SettingsGroup {
                 label: "Border"
                 settingKey: "pluginBorderMode"
                 resetLabel: "Plugin border"
+                // The custom color only means something under Custom.
+                resetKeys: ["pluginBorderMode", "pluginBorderColor"]
                 model: [
                     { value: "inherit", label: "Shell" },
                     { value: "accent", label: "Accent" },
@@ -67,30 +73,47 @@ SettingsGroup {
                     { value: "custom", label: "Custom" }
                 ]
             }
-            SettingsTextRow {
+            Revealer {
+                id: borderColorReveal
                 width: parent.width
-                visible: Settings.pluginBorderMode === "custom"
-                label: "Border color"
-                settingKey: "pluginBorderColor"
-                resetLabel: "Plugin border color"
-                hexColor: true
-                placeholder: "#9ecbeb"
+                reveal: Settings.pluginBorderMode === "custom"
+
+                SettingsTextRow {
+                    width: borderColorReveal.width
+                    label: "Border color"
+                    settingKey: "pluginBorderColor"
+                    resetLabel: "Plugin border color"
+                    hexColor: true
+                    placeholder: "#9ecbeb"
+                }
             }
-            SliderRow {
+            // Shell borrows the shell's whole border, width and opacity
+            // included; any other mode draws its own.
+            Revealer {
+                id: borderShapeReveal
                 width: parent.width
-                label: "Border width"
-                settingKey: "pluginBorderWidth"
-                resetLabel: "Plugin border width"
-                visible: Settings.pluginBorderMode !== "inherit"
-                min: 0; max: 8; step: 1
-            }
-            SliderRow {
-                width: parent.width
-                label: "Border opacity"
-                settingKey: "pluginBorderOpacity"
-                resetLabel: "Plugin border opacity"
-                visible: Settings.pluginBorderMode !== "inherit"
-                min: 0; max: 100; step: 5; unit: "%"
+                reveal: Settings.pluginBorderMode !== "inherit"
+
+                Column {
+                    width: borderShapeReveal.width
+                    spacing: Theme.settingsRowSpacing
+
+                    SliderRow {
+                        width: parent.width
+                        label: "Border width"
+                        settingKey: "pluginBorderWidth"
+                        resetLabel: "Plugin border width"
+                        min: 0; max: 8; step: 1
+                    }
+                    SliderRow {
+                        width: parent.width
+                        label: "Border opacity"
+                        settingKey: "pluginBorderOpacity"
+                        resetLabel: "Plugin border opacity"
+                        min: 0; max: 100; step: 5; unit: "%"
+                        disabledReason: Settings.pluginBorderWidth === 0 ? "No border at width 0" : ""
+                    }
+                }
             }
             SliderRow {
                 width: parent.width

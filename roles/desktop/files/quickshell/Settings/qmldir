@@ -58,3 +58,4 @@ SettingsSelect SettingsSelect.qml
 ApplyBar ApplyBar.qml
 SettingsDisclosure SettingsDisclosure.qml
 SettingsTooltip SettingsTooltip.qml
+TextSizePreview TextSizePreview.qml

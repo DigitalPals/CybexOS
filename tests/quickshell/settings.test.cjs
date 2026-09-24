@@ -719,13 +719,40 @@ test("progressive disclosure hides inactive controls without discarding latent v
     assert.match(appearance,
         /id:\s*fixedColorScrollTimer[\s\S]{0,120}?page\.revealFixedColorsNow\(\)/,
         "the scroll must wait for the fixed-color reveal before measuring it");
+    // The presets come first and the hue row closes the revealed block, so
+    // bringing the hue row's foot into view brings both.
+    assert.match(fixed, /id: swatchRepeater[\s\S]*id: accentHueRow/,
+        "the accent presets lead the revealed rows and the hue row closes them");
     assert.match(appearance,
-        /lastSwatch\s*=\s*swatchRepeater\.itemAt\([\s\S]{0,160}?page\.revealFocus\(lastSwatch/,
+        /function revealFixedColorsNow\(\) \{[\s\S]{0,200}?page\.revealFocus\(accentHueRow\)/,
         "Fixed must bring the revealed accent controls into view");
     assert.doesNotMatch(appearance, /Component\.onCompleted:/,
         "opening Appearance must not scroll past typography or override a search jump");
     assert.match(appearance, /label: "Interface font"\s+settingKey: "font"/,
         "the interface font must support the shared settings search and persistence");
+    // A dropdown that draws every face in itself, not six pills over two lines.
+    assert.match(appearance, /SelectRow \{\s*width: parent\.width\s*label: "Interface font"/);
+    assert.match(appearance, /fontFor: value => page\.fontFamily\(value\)/);
+    assert.match(appearance, /function fontFamily\(id\)[\s\S]{0,200}?Settings\.fontChoices\.find/);
+    // Three size controls stay in view under a live preview; the base size
+    // they multiply is an advanced option that a search jump still opens.
+    const sizing = appearance.slice(appearance.indexOf('title: "Text & size"'),
+        appearance.indexOf('title: "Colors"'));
+    assert.match(sizing, /^\s*TextSizePreview \{/m);
+    assert.doesNotMatch(sizing, /Text renders at/);
+    for (const [label, key] of [["Text size", "textScale"], ["Interface scale", "shellScale"],
+            ["Density", "interfaceDensity"], ["Base font size", "shellFontSize"]])
+        assert.match(sizing, new RegExp(`label: "${label}"\\s+settingKey: "${key}"`));
+    const advanced = sizing.slice(sizing.indexOf("SettingsDisclosure {"));
+    assert.match(advanced, /text: "Advanced text options"\s+keys: \["shellFontSize"\]/);
+    assert.match(advanced, /settingKey: "shellFontSize"/);
+    assert.doesNotMatch(sizing.slice(0, sizing.indexOf("SettingsDisclosure {")), /shellFontSize/,
+        "the base size is not also in view above the disclosure");
+    const preview = read("Settings/TextSizePreview.qml");
+    assert.match(preview, /"Preview · text renders at " \+ Theme\.metrics\.fontBase \+ " px"/);
+    assert.match(preview, /SystemClock \{\s*id:\s*clock\s*precision:\s*SystemClock\.Minutes\s*enabled:\s*root\.visible/,
+        "the preview clock ticks on the minute and only while shown");
+    assert.match(read("Settings/qmldir"), /^TextSizePreview TextSizePreview\.qml$/m);
     assert.ok(appearance.indexOf('title: "Text & size"') < fixedAt,
         "typography must be reachable before the long color controls");
     for (const key of ["barColorMode", "barCustomHue", "barCustomSaturation",

@@ -11,8 +11,13 @@ test('settings subsections own separation inside revealers and preserve the row 
     assert.match(subsection, /heading.height[\s\S]*Theme.settingsContentSpacing/);
     assert.match(subsection, /root.insetContent \? Theme.settingsMarkInset : 0/);
     const appearance = read('Settings/AppearancePage.qml');
-    assert.equal((appearance.match(/SettingsSubsection \{/g) || []).length, 2);
+    // Accent source reveals rows attached to it (2026-09), not headed
+    // subsections: the fixed presets and hue, or the wallpaper palette.
+    assert.doesNotMatch(appearance, /SettingsSubsection \{/);
     assert.doesNotMatch(appearance, /SectionHeader \{/);
+    for (const reveal of ['fixedColorReveal', 'wallpaperPaletteReveal'])
+        assert.match(appearance, new RegExp(`id: ${reveal}[\\s\\S]{0,400}?SettingsRow \\{`),
+            `${reveal} holds rows in the page's grid`);
     for (const page of ['AppearancePage', 'BarLayoutGroups', 'DrawerPage', 'NotificationsPage',
             'PowerPage', 'RegionPage', 'TouchpadPage', 'ModulesPage', 'PluginsPage'])
         assert.match(read(`Settings/${page}.qml`), /spacing: Theme.settingsGroupSpacing/);
