@@ -103,7 +103,10 @@ Item {
     property var undoRemoved: null
     property string notice: ""
     readonly property bool membershipBusy: pendingMembership !== null || UserPlugins.busy
-    function setEnabled(entry, enabled, undoing, section) {
+    // `index`, when given, is where in the destination the widget lands: the
+    // persisted position a drop plan names (Editor.dropPlan). Without it an
+    // added widget goes to the end of its section.
+    function setEnabled(entry, enabled, undoing, section, index) {
         if (!entry || membershipBusy) return;
         const destination = section || entry.section;
         const change = { key: entry.key, name: entry.name, enabled: enabled, section: destination,
@@ -114,10 +117,16 @@ Item {
             const changes = { enabled: enabled };
             if (enabled && section) changes.section = section;
             UserPlugins.configureWidget(entry.descriptor, changes);
+            // Adding places it last among the section's plugin widgets; a
+            // drop anywhere earlier moves it there next. The helper runs the
+            // two writes in order.
+            if (enabled && section && index !== undefined
+                    && index < sectionEntries(destination).filter(item => item.plugin).length)
+                UserPlugins.moveWidget(entry.pluginKey, destination, index);
         } else {
             if (enabled && section) {
                 const result = LayoutHelpers.moveWidget(Settings.mods, entry.section, entry.id,
-                    destination, Settings.mods[destination].length);
+                    destination, index !== undefined ? index : Settings.mods[destination].length);
                 if (result) Settings.setModuleOrder(result.mods.left, result.mods.center, result.mods.right);
             }
             Settings.setModuleEnabled(entry.id, enabled);
@@ -254,11 +263,15 @@ Item {
         }
         dropAt = null;
     }
+    // A widget dragged within the lanes moves; one dragged out of the tray is
+    // added where it was dropped, through the same membership path as a click.
     function commitDrag() {
         const entry = dragMod;
         const target = dropAt;
         cancelDrag();
-        if (entry && target) move(entry, target.section, target.gap);
+        if (!entry || !target) return;
+        if (entry.enabled) move(entry, target.section, target.gap);
+        else setEnabled(entry, true, false, target.section, target.index);
     }
 
     Connections {
@@ -607,23 +620,30 @@ Item {
                         id: availableRows
                         model: page.availableEntries
                         delegate: WidgetPill {
+                            id: trayChip
                             required property var modelData
                             required property int index
                             entry: modelData
                             width: Math.min(naturalWidth, availableFlow.width)
                             status: page.status(modelData)
-                            draggable: false
+                            // Dragged into a lane, it lands at the drop marker.
+                            draggable: !page.membershipBusy
+                            dragInProgress: page.dragActive && page.dragMod.key === modelData.key
                             actionsEnabled: !page.membershipBusy && !page.dragActive
                             onActivated: page.openSubPage(modelData.key)
                             onAddRequested: page.addFromTray(modelData, index)
                             onMoveRequested: section => page.addFromTray(modelData, index, section)
+                            onDragStarted: page.dragMod = modelData
+                            onDragMoved: (x, y) => page.updateDrop(trayChip, x, y)
+                            onDragFinished: page.commitDrag()
+                            onDragCanceled: page.cancelDrag()
                         }
                     }
                 }
                 SettingsHint {
                     width: parent.width
                     text: page.availableEntries.length > 0
-                        ? "Select a widget to add it to its section, or use ⋯ to pick another section. Widgets from plugins show up here too."
+                        ? "Select a widget to add it to its section, drag it to a place in any section, or use ⋯ to pick one. Widgets from plugins show up here too."
                         : "Every widget is on the bar. Widgets from plugins show up here too."
                 }
                 SettingsHint {

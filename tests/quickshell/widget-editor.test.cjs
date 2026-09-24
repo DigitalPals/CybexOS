@@ -85,7 +85,8 @@ function membershipHarness() {
         LayoutHelpers: L, membershipBusy: false, subPage: '', search: { text: '' }, detailPage: { contentY: 0 },
         pendingMembership: null, undoRemoved: null, notice: '', announcement: '',
         membershipTimeout: timer, noticeTimer: timer, membershipFocus: { ...timer },
-        UserPlugins: { configureWidget() {} }, entries: []
+        UserPlugins: { configureWidget() {}, moveWidget() {} }, entries: [],
+        sectionEntries: section => E.sectionEntries(entries, section)
     });
     function install(source,name) {
         const match = source.match(new RegExp('    function '+name+'\\([^]*?^    }','m'));
@@ -95,7 +96,7 @@ function membershipHarness() {
     install(settings,'setModuleEnabled');
     context.Settings = { get mods() { return context.mods; }, setModuleEnabled: context.setModuleEnabled,
         setModuleOrder(left,center,right) { context.mods = {left,center,right}; } };
-    for (const name of ['setEnabled','finishMembership','confirmMembership']) install(editor,name);
+    for (const name of ['setEnabled','finishMembership','confirmMembership','commitDrag']) install(editor,name);
     return context;
 }
 
@@ -192,4 +193,75 @@ test('plugin add waits for both membership and chosen destination to be refreshe
     h.confirmMembership();
     assert.equal(h.pendingMembership,null);
     assert.equal(h.notice,'Unused added to your bar');
+});
+
+// ---- dragging out of the Add widgets tray -------------------------------
+
+test('a tray widget dropped into a lane is added at the drop marker, keeping its options', () => {
+    const h = membershipHarness();
+    const media = entries.find(e=>e.key==='media');
+    let moved = null;
+    h.cancelDrag = () => { h.dragMod = null; h.dropAt = null; };
+    h.move = () => { moved = true; };
+    h.dragMod = media;
+    h.dropAt = E.dropPlan(entries,mods,media,'right',0);
+    h.commitDrag();
+    assert.equal(moved,null,'a disabled widget is added, not moved');
+    assert.deepEqual(Array.from(h.mods.right,e=>e.id),['media','batt']);
+    assert.equal(h.mods.right[0].on,true);
+    assert.equal(h.mods.right[0].detail,'prefer');
+    assert.deepEqual(Array.from(h.mods.left,e=>e.id),['ws','clock']);
+    assert.equal(h.notice,'Media added to your bar');
+});
+
+test('a placed widget dragged between lanes still moves rather than re-adding', () => {
+    const h = membershipHarness();
+    const clock = entries.find(e=>e.key==='clock');
+    let moved = null;
+    h.cancelDrag = () => {};
+    h.move = (entry,section,gap) => { moved = [entry.key,section,gap]; };
+    h.dragMod = clock;
+    h.dropAt = E.dropPlan(entries,mods,clock,'center',0);
+    h.commitDrag();
+    assert.deepEqual(moved,['clock','center',0]);
+});
+
+test('a plugin widget dropped ahead of its peers is enabled and then moved to the marker', () => {
+    const h = membershipHarness();
+    const writes = [];
+    h.UserPlugins.configureWidget = (descriptor,changes) => writes.push(['configure',descriptor.key,changes]);
+    h.UserPlugins.moveWidget = (key,section,index) => writes.push(['move',key,section,index]);
+    const plugin = entries.find(e=>e.key==='plugin:unused');
+    h.cancelDrag = () => {};
+    h.dragMod = plugin;
+    h.dropAt = E.dropPlan(entries,mods,plugin,'left',0);
+    h.commitDrag();
+    // The changes object comes from the page's own realm; compare its content.
+    assert.deepEqual(JSON.parse(JSON.stringify(writes)),[['configure','unused',{enabled:true,section:'left'}],['move','unused','left',0]]);
+
+    // Dropped after the section's last plugin widget, adding alone puts it there.
+    const later = membershipHarness();
+    const laterWrites = [];
+    later.UserPlugins.configureWidget = (descriptor,changes) => laterWrites.push(['configure',descriptor.key,changes]);
+    later.UserPlugins.moveWidget = (key,section,index) => laterWrites.push(['move',key,section,index]);
+    later.cancelDrag = () => {};
+    later.dragMod = plugin;
+    later.dropAt = E.dropPlan(entries,mods,plugin,'left',3);
+    later.commitDrag();
+    assert.deepEqual(JSON.parse(JSON.stringify(laterWrites)),[['configure','unused',{enabled:true,section:'left'}]]);
+});
+
+test('tray chips drag through the same drop plan and ghost as the lanes', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { shellDir } = require('./shell.cjs');
+    const editor = fs.readFileSync(path.join(shellDir,'Settings/ModulesPage.qml'),'utf8');
+    const pill = fs.readFileSync(path.join(shellDir,'Settings/WidgetPill.qml'),'utf8');
+    const tray = editor.slice(editor.indexOf('title: "Add widgets"'));
+    assert.match(tray, /draggable: !page\.membershipBusy/);
+    assert.match(tray, /onDragStarted: page\.dragMod = modelData\s+onDragMoved: \(x, y\) => page\.updateDrop\(trayChip, x, y\)\s+onDragFinished: page\.commitDrag\(\)\s+onDragCanceled: page\.cancelDrag\(\)/);
+    assert.match(editor, /if \(entry\.enabled\) move\(entry, target\.section, target\.gap\);\s+else setEnabled\(entry, true, false, target\.section, target\.index\);/);
+    // A tray chip can start a drag; only the lanes' chips wear the open hand.
+    assert.match(pill, /if \(!\(pressedButtons & Qt\.LeftButton\) \|\| canceled \|\| !root\.draggable\) return;/);
+    assert.match(pill, /root\.draggable && root\.placed \? Qt\.OpenHandCursor : Qt\.PointingHandCursor/);
 });

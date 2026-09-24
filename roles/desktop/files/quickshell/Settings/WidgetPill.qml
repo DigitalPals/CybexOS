@@ -11,8 +11,9 @@ import "../Common"
 // longer the only way to reach them.
 //
 // A widget that is not on the bar is an outlined chip in the Add widgets
-// tray. Its body adds it to the section it last lived in; ⋯ offers the other
-// sections and its options.
+// tray. Its body adds it to the section it last lived in, dragging it into a
+// lane adds it at the drop marker, and ⋯ offers the other sections and its
+// options.
 Rectangle {
     id: root
 
@@ -66,7 +67,7 @@ Rectangle {
     Accessible.name: placed ? root.entry.name : "Add " + root.entry.name
     Accessible.description: status + (placed
         ? ". Opens its options. Alt+arrow keys reorder it; the Menu key moves or removes it."
-        : ". Adds it to the " + sectionTitle + " section; the Menu key offers another.")
+        : ". Adds it to the " + sectionTitle + " section, or drag it into place; the Menu key offers another section.")
     Accessible.onPressAction: root.primary()
 
     onDragInProgressChanged: {
@@ -144,8 +145,10 @@ Rectangle {
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
         preventStealing: true
-        cursorShape: !root.draggable || !root.placed ? Qt.PointingHandCursor
-            : dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+        // A tray chip's first answer is a click, so it keeps the pointing
+        // hand until a drag actually starts.
+        cursorShape: dragging ? Qt.ClosedHandCursor
+            : root.draggable && root.placed ? Qt.OpenHandCursor : Qt.PointingHandCursor
         property point startPoint
         property bool dragging: false
         property bool canceled: false
@@ -157,7 +160,7 @@ Rectangle {
             if (event.button === Qt.RightButton) menu.popup();
         }
         onPositionChanged: event => {
-            if (!(pressedButtons & Qt.LeftButton) || canceled || !root.draggable || !root.placed) return;
+            if (!(pressedButtons & Qt.LeftButton) || canceled || !root.draggable) return;
             if (!dragging && Math.hypot(event.x - startPoint.x, event.y - startPoint.y) > 8) {
                 dragging = true;
                 root.dragStarted();
@@ -176,7 +179,7 @@ Rectangle {
     SettingsTooltip {
         visible: !root.dragInProgress && mouse.containsMouse
         text: root.placed ? root.entry.name + "\n" + root.status
-            : "Add to " + root.sectionTitle + "\n" + root.entry.description
+            : "Add to " + root.sectionTitle + ", or drag into a section\n" + root.entry.description
     }
 
     // The visible route to Move and Remove, for the pointer and for a

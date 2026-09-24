@@ -131,6 +131,7 @@ test('widget editor pins a bar preview over lanes and one tray, and opens option
     assert.match(editor, /function addFromTray\(entry, index, section\) \{[\s\S]*?setEnabled\(entry, true, false, section\);/,
         'the tray adds through the same membership path as everything else');
     assert.match(editor, /Widgets from plugins show up here too/);
+    assert.match(editor, /drag it to a place in any section/, 'the tray says its chips can be dragged');
 
     // Every pill shows its Move/Remove menu without a right-click.
     const pill = read('Settings/WidgetPill.qml');
