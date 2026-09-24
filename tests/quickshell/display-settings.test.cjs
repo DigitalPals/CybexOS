@@ -66,3 +66,31 @@ test("the Displays page is a System page with a guarded trial", () => {
     assert.match(page, /baseDigest: store\.digest/);
     assert.match(service, /scripts\/display-settings\.py/);
 });
+
+test("the arrangement is the display picker and one Apply bar carries edits and the trial", () => {
+    const page = read("Settings/DisplaysPage.qml");
+    const arrangement = read("Settings/DisplayArrangement.qml");
+    // No separate Display picker row: selecting in the arrangement opens a
+    // display's rows below, by pointer or keyboard.
+    assert.doesNotMatch(page, /label: "Display"$/m);
+    assert.match(page, /DisplayArrangement \{[\s\S]*?onSelected: key => page\.selectedKey = key/);
+    assert.match(arrangement,
+        /activeFocusOnTab: root\.enabled[\s\S]*?Keys\.onPressed: event => root\.handleKey\(event, tile\.modelData, true\)/);
+    assert.match(arrangement, /Qt\.Key_Space\) \{\s+root\.selected\(key\)/);
+    // Displays that are off or mirroring take no room in the layout but can
+    // still be chosen, and tiles are keyed by display so focus survives a move.
+    assert.match(arrangement, /aside: drafts\.filter\(draft => !\(draft\.enabled && draft\.mirror === ""\)\)/);
+    assert.match(arrangement, /values: root\.layout\.map\(rect => rect\.key\)/);
+    // Every property is a row: dropdowns for long lists, a switch for the flip.
+    for (const label of ["Resolution", "Refresh rate", "Scale", "Mirror", "Adaptive sync"])
+        assert.match(page, new RegExp(`SystemChoice \\{[^}]*?label: "${label}"`), label);
+    assert.match(page, /PickerRow \{[^}]*?label: "Rotation"/);
+    assert.match(page, /SwitchRow \{[^}]*?label: "Flipped"/);
+    // One pinned Apply bar replaces the in-page buttons, the Keep group and
+    // the standing Refresh.
+    assert.match(page, /overlay: ApplyBar \{/);
+    assert.match(page, /bottomInset: applyBar\.reservedHeight/);
+    assert.doesNotMatch(page, /title: "Keep these display settings\?"|text: "Discard changes"|text: "Refresh"/);
+    assert.match(page, /onApply: page\.applyChanges\(\)[\s\S]*?onKeep: page\.keep\(\)[\s\S]*?onRevert: page\.revert\(\)/);
+    assert.match(page, /remaining: page\.secondsLeft \/ Displays\.TRIAL_SECONDS/);
+});

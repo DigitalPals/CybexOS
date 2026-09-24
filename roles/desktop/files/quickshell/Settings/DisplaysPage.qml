@@ -6,10 +6,18 @@ import "../Common/DisplayHelpers.js" as Displays
 // Settings -> Displays. Edits are drafted against the live outputs, applied
 // as a trial that restores itself unless kept, and only then saved to
 // ~/.config/cybexos/displays.json, which Hyprland reads through displays.lua.
+//
+// The arrangement is also the display picker: the group under it edits
+// whichever display is selected there. Unlike the shell settings on the
+// rest of the page, display edits wait — the Apply bar pinned to the page's
+// foot names them, and during a trial counts down to the automatic revert
+// (2026-09 redesign; the in-page Apply/Discard buttons and "Keep these
+// display settings?" group are gone).
 SettingsPage {
     id: page
     pageReset: true
     resetText: "Reset night light to defaults"
+    bottomInset: applyBar.reservedHeight
 
     readonly property var service: DisplaySettings
     property var drafts: []
@@ -19,13 +27,17 @@ SettingsPage {
     // Load the next snapshot even with edits pending: after Keep or Revert
     // the drafts describe a state that is no longer the baselineDrafts.
     property bool resync: true
+    // An outcome worth saying once the Apply bar has gone: the trial ran out.
+    property string notice: ""
     readonly property var store: service.snapshot.store || ({})
     readonly property var loaderStatus: service.snapshot.status || null
     readonly property bool trialActive: service.preview !== null
     readonly property bool dirty: Displays.draftSignature(drafts) !== Displays.draftSignature(baselineDrafts)
+    readonly property var changes: page.changeList(drafts, baselineDrafts)
     readonly property string problem: drafts.length ? Displays.validate(drafts) : ""
     readonly property var selected: drafts.find(draft => draft.key === selectedKey) || drafts[0] || null
     readonly property bool editable: !trialActive && !service.busy && service.loaded
+    readonly property bool showRows: selected !== null && selected.enabled
     readonly property var groups: selected ? Displays.modeGroups(selected.availableModes) : []
     readonly property var selectedGroup: {
         if (!selected || selected.mode === "preferred")
@@ -40,6 +52,24 @@ SettingsPage {
             return "Hyprland ignored the saved display settings: " + loaderStatus.error;
         return "";
     }
+    // The selected display's group heading names the kind of display and its
+    // maker; the connector and model follow as a note beneath it.
+    readonly property var identity: {
+        if (!selected)
+            return { title: "", note: "" };
+        const monitor = (service.snapshot.monitors || []).find(item => item.name === selected.name) || {};
+        const clean = value => {
+            const text = String(value || "").trim();
+            return /^0x[0-9a-f]+$/i.test(text) ? "" : text;
+        };
+        const vendor = clean(monitor.make);
+        const model = clean(monitor.model);
+        const kind = /^(eDP|LVDS|DSI)/.test(selected.name) ? "Built-in display" : "External display";
+        return {
+            title: kind + (vendor !== "" ? " · " + vendor : ""),
+            note: selected.name + (model !== "" ? " · " + model : "")
+        };
+    }
 
     function load() {
         const next = Displays.draftsFromSnapshot(service.snapshot.monitors || [], store.document || null);
@@ -49,6 +79,42 @@ SettingsPage {
             const first = next.find(draft => draft.enabled) || next[0];
             selectedKey = first ? first.key : "";
         }
+    }
+
+    // What differs from the live outputs, in words for the Apply bar:
+    // "scale", or "DP-1 scale" once there is more than one display. A move
+    // anywhere counts once, as the arrangement.
+    function changeList(next, before) {
+        const list = [];
+        let moved = false;
+        const size = mode => mode === "preferred" ? "preferred" : mode.width + "x" + mode.height;
+        for (const draft of next) {
+            const old = before.find(item => item.key === draft.key);
+            if (!old)
+                continue;
+            const add = what => list.push(next.length > 1 ? draft.name + " " + what : what);
+            if (draft.enabled !== old.enabled)
+                add(draft.enabled ? "turned on" : "turned off");
+            if (size(draft.mode) !== size(old.mode))
+                add("resolution");
+            else if (draft.mode !== "preferred" && Math.abs(draft.mode.refresh - old.mode.refresh) >= 0.005)
+                add("refresh rate");
+            if (draft.scale !== old.scale)
+                add("scale");
+            if (draft.transform % 4 !== old.transform % 4)
+                add("rotation");
+            if ((draft.transform >= 4) !== (old.transform >= 4))
+                add("flip");
+            if (draft.mirror !== old.mirror)
+                add("mirroring");
+            if (draft.vrr !== old.vrr)
+                add("adaptive sync");
+            if (draft.x !== old.x || draft.y !== old.y)
+                moved = true;
+        }
+        if (moved)
+            list.push("arrangement");
+        return list;
     }
 
     // Change one field of one draft. Geometry changes re-attach the other
@@ -99,8 +165,11 @@ SettingsPage {
     }
 
     function applyChanges() {
-        if (!dirty || problem !== "")
+        if (!dirty || problem !== "" || !editable)
             return;
+        notice = "";
+        // The bar's countdown starts full rather than from the last trial's end.
+        secondsLeft = Displays.TRIAL_SECONDS;
         service.run({
             action: "apply",
             document: Displays.buildDocument(store.document || null, drafts),
@@ -147,8 +216,20 @@ SettingsPage {
         }
         function onCompleted(result) {
             const action = page.service.request.action;
-            if (action === "confirm" || action === "rollback")
-                page.resync = true;
+            if (action !== "confirm" && action !== "rollback")
+                return;
+            // A kept trial is the new baseline; anything else leaves the
+            // previous settings on screen. Settle the drafts now so the bar
+            // does not flash the old edits back up until the next read.
+            if (action === "confirm" && result.success)
+                page.baselineDrafts = page.drafts;
+            else
+                page.drafts = page.baselineDrafts;
+            // A revert at zero is the countdown's, not the user's: say so
+            // once the bar has gone.
+            if (action === "rollback" && result.success && page.secondsLeft === 0)
+                page.notice = "The trial ran out, so the previous display settings are back.";
+            page.resync = true;
         }
     }
 
@@ -166,53 +247,43 @@ SettingsPage {
         }
     }
 
+    overlay: ApplyBar {
+        id: applyBar
+        pending: page.dirty && !page.trialActive
+        trial: page.trialActive
+        busy: page.service.busy
+        title: page.trialActive ? "Keep these display settings?"
+            : page.changes.length === 1 ? "1 change not applied yet"
+            : page.changes.length + " changes not applied yet"
+        // Apply stays pressable while a problem stands; applyChanges()
+        // refuses, and the problem is the line under the title.
+        detail: page.trialActive
+            ? "The previous settings return in " + page.secondsLeft + " s. Escape restores them now."
+            : page.problem !== "" ? page.problem
+            : page.service.error !== "" ? page.service.error
+            : page.changes.join(", ").replace(/^./, first => first.toUpperCase())
+        remaining: page.secondsLeft / Displays.TRIAL_SECONDS
+        onApply: page.applyChanges()
+        onDiscard: page.load()
+        onKeep: page.keep()
+        onRevert: page.revert()
+    }
+
     Column {
         width: parent.width
         spacing: Theme.settingsGroupSpacing
 
-        Column {
+        SystemServiceStatus {
             width: parent.width
-            spacing: Theme.settingsRowSpacing
-
-            SettingsHint {
-                width: parent.width
-                text: page.service.error || (page.service.busy ? "Applying…"
-                    : page.service.message || (!page.service.loaded ? "Loading…" : ""))
-                tone: page.service.error ? "error" : "info"
-            }
-            SettingsHint {
-                width: parent.width
-                text: page.loaderError
-                tone: "warning"
-            }
+            service: page.service
+            // The Apply bar says "Applying…" itself.
+            showBusy: false
+            notice: page.trialActive ? "" : page.notice
         }
-
-        SettingsGroup {
+        SettingsHint {
             width: parent.width
-            visible: page.trialActive
-            title: "Keep these display settings?"
-
-            SettingsHint {
-                width: parent.width
-                text: "The previous settings return in " + page.secondsLeft
-                    + " seconds. Revert now, press Escape or close this page to restore them sooner."
-            }
-            Flow {
-                width: parent.width
-                spacing: Theme.controlSpacing
-                enabled: !page.service.busy
-
-                SettingsAction {
-                    text: "Keep changes"
-                    glyph: "check"
-                    onTriggered: page.keep()
-                }
-                SettingsAction {
-                    text: "Revert now"
-                    glyph: "undo"
-                    onTriggered: page.revert()
-                }
-            }
+            text: page.loaderError
+            tone: "warning"
         }
 
         SettingsGroup {
@@ -230,27 +301,21 @@ SettingsPage {
             }
             SettingsHint {
                 width: parent.width
-                text: "Drag displays to match where they stand. With the arrangement focused, arrow keys place the selected display beside the others."
-            }
-            PickerRow {
-                width: parent.width
-                label: "Display"
-                model: page.drafts.map(draft => ({ value: draft.key,
-                    label: draft.name + (draft.enabled ? "" : " · off") }))
-                current: page.selected ? page.selected.key : ""
-                onPicked: value => page.selectedKey = value
+                text: page.drafts.length > 1
+                    ? "Drag displays to match where they stand, or select one to change it below. Arrow keys place the focused display beside the others."
+                    : "Connect another display to arrange them side by side."
             }
         }
 
         SettingsGroup {
             width: parent.width
             visible: page.selected !== null
-            title: page.selected ? page.selected.label : ""
+            title: page.identity.title
             enabled: page.editable
 
             SettingsHint {
                 width: parent.width
-                text: page.selected ? page.selected.name + " · " + (page.selected.description || "no description") : ""
+                text: page.identity.note
             }
             SwitchRow {
                 width: parent.width
@@ -262,115 +327,84 @@ SettingsPage {
                     ? "At least one display must stay on." : ""
                 onToggled: value => page.edit(page.selected.key, { enabled: value })
             }
-
-            Column {
+            SystemChoice {
                 width: parent.width
-                spacing: Theme.settingsRowSpacing
-                visible: page.selected !== null && page.selected.enabled
-
-                SystemChoice {
-                    width: parent.width
-                    label: "Resolution"
-                    choices: page.selected ? [{ value: "preferred",
-                        label: "Preferred (" + Displays.sizeLabel(page.selected.liveWidth, page.selected.liveHeight) + ")" }]
-                        .concat(page.groups.map(group => ({ value: group.id, label: group.label }))) : []
-                    current: !page.selected ? "" : page.selected.mode === "preferred" ? "preferred"
-                        : page.selected.mode.width + "x" + page.selected.mode.height
-                    onPicked: value => page.pickResolution(value)
-                }
-                SystemChoice {
-                    width: parent.width
-                    visible: page.selectedGroup !== null
-                    label: "Refresh rate"
-                    choices: page.selectedGroup ? page.selectedGroup.refreshes.map(rate =>
-                        ({ value: rate, label: Displays.refreshLabel(rate) })) : []
-                    current: page.selectedGroup ? page.selected.mode.refresh : 0
-                    onPicked: value => page.edit(page.selected.key, { mode: {
-                        width: page.selected.mode.width, height: page.selected.mode.height, refresh: value } })
-                }
-                PickerRow {
-                    width: parent.width
-                    label: "Scale"
-                    model: {
-                        if (!page.selected)
-                            return [];
-                        const size = page.selected.mode === "preferred"
-                            ? { width: page.selected.liveWidth, height: page.selected.liveHeight }
-                            : page.selected.mode;
-                        return Displays.scaleChoices(size.width, size.height,
-                            typeof page.selected.scale === "number" ? page.selected.scale : undefined);
-                    }
-                    current: page.selected ? page.selected.scale : "auto"
-                    onPicked: value => page.edit(page.selected.key, { scale: value })
-                }
-                PickerRow {
-                    width: parent.width
-                    label: "Rotation"
-                    model: page.selected && page.selected.transform > 3
-                        ? Displays.TRANSFORMS.concat([{ value: page.selected.transform, label: "Flipped" }])
-                        : Displays.TRANSFORMS
-                    current: page.selected ? page.selected.transform : 0
-                    onPicked: value => page.edit(page.selected.key, { transform: value })
-                }
-                SystemChoice {
-                    width: parent.width
-                    label: "Mirror"
-                    choices: page.selected ? [{ value: "", label: "Off: show its own picture" }].concat(
-                        page.drafts.filter(draft => draft.key !== page.selected.key && draft.enabled
-                            && draft.mirror === "").map(draft => ({ value: draft.key,
-                                label: "Mirror " + draft.name + " (" + draft.label + ")" }))) : []
-                    current: page.selected ? page.selected.mirror : ""
-                    onPicked: value => page.edit(page.selected.key, { mirror: value })
-                }
-                PickerRow {
-                    width: parent.width
-                    label: "Adaptive sync"
-                    model: Displays.VRR_CHOICES
-                    current: page.selected ? page.selected.vrr : -1
-                    onPicked: value => page.edit(page.selected.key, { vrr: value })
-                }
-                SettingsHint {
-                    width: parent.width
-                    text: "Default keeps CybexOS's policy for this display. Fullscreen enables variable refresh only for fullscreen windows."
-                }
+                visible: page.showRows
+                label: "Resolution"
+                choices: page.selected ? [{ value: "preferred",
+                    label: "Preferred (" + Displays.sizeLabel(page.selected.liveWidth, page.selected.liveHeight) + ")" }]
+                    .concat(page.groups.map(group => ({ value: group.id, label: group.label }))) : []
+                current: !page.selected ? "" : page.selected.mode === "preferred" ? "preferred"
+                    : page.selected.mode.width + "x" + page.selected.mode.height
+                onPicked: value => page.pickResolution(value)
             }
-        }
-
-        Column {
-            width: parent.width
-            spacing: Theme.settingsRowSpacing
-
-            SettingsHint {
+            SystemChoice {
                 width: parent.width
-                visible: page.dirty && page.problem !== ""
-                text: page.problem
-                tone: "warning"
+                visible: page.showRows && page.selectedGroup !== null
+                label: "Refresh rate"
+                choices: page.selectedGroup ? page.selectedGroup.refreshes.map(rate =>
+                    ({ value: rate, label: Displays.refreshLabel(rate) })) : []
+                current: page.selectedGroup ? page.selected.mode.refresh : 0
+                onPicked: value => page.edit(page.selected.key, { mode: {
+                    width: page.selected.mode.width, height: page.selected.mode.height, refresh: value } })
             }
-            Flow {
+            SystemChoice {
                 width: parent.width
-                spacing: Theme.controlSpacing
-
-                SettingsAction {
-                    text: "Apply"
-                    glyph: "check"
-                    enabled: page.editable && page.dirty && page.problem === ""
-                    onTriggered: page.applyChanges()
+                visible: page.showRows
+                label: "Scale"
+                choices: {
+                    if (!page.selected)
+                        return [];
+                    const size = page.selected.mode === "preferred"
+                        ? { width: page.selected.liveWidth, height: page.selected.liveHeight }
+                        : page.selected.mode;
+                    return Displays.scaleChoices(size.width, size.height,
+                        typeof page.selected.scale === "number" ? page.selected.scale : undefined);
                 }
-                SettingsAction {
-                    text: "Discard changes"
-                    glyph: "undo"
-                    enabled: page.editable && page.dirty
-                    onTriggered: page.load()
-                }
-                SettingsAction {
-                    text: "Refresh"
-                    glyph: "refresh"
-                    enabled: !page.service.busy && !page.service.loading
-                    onTriggered: {
-                        page.service.error = "";
-                        page.service.refresh();
-                    }
-                }
+                current: page.selected ? page.selected.scale : "auto"
+                onPicked: value => page.edit(page.selected.key, { scale: value })
+            }
+            // Hyprland's transforms 4–7 are 0–3 flipped; the page splits
+            // them into a rotation and a switch.
+            PickerRow {
+                width: parent.width
+                visible: page.showRows
+                label: "Rotation"
+                model: Displays.TRANSFORMS
+                current: page.selected ? page.selected.transform % 4 : 0
+                onPicked: value => page.edit(page.selected.key,
+                    { transform: value + (page.selected.transform >= 4 ? 4 : 0) })
+            }
+            SwitchRow {
+                width: parent.width
+                visible: page.showRows
+                label: "Flipped"
+                checked: page.selected ? page.selected.transform >= 4 : false
+                description: "Mirrors the picture left to right"
+                onToggled: value => page.edit(page.selected.key,
+                    { transform: page.selected.transform % 4 + (value ? 4 : 0) })
+            }
+            SystemChoice {
+                width: parent.width
+                visible: page.showRows
+                label: "Mirror"
+                choices: page.selected ? [{ value: "", label: "Off" }].concat(
+                    page.drafts.filter(draft => draft.key !== page.selected.key && draft.enabled
+                        && draft.mirror === "").map(draft => ({ value: draft.key,
+                            label: draft.label === draft.name ? draft.name : draft.name + " · " + draft.label }))) : []
+                current: page.selected ? page.selected.mirror : ""
+                hint: page.selected && page.selected.mirror !== ""
+                    ? "Shows the same picture and leaves the arrangement" : ""
+                onPicked: value => page.edit(page.selected.key, { mirror: value })
+            }
+            SystemChoice {
+                width: parent.width
+                visible: page.showRows
+                label: "Adaptive sync"
+                choices: Displays.VRR_CHOICES
+                current: page.selected ? page.selected.vrr : -1
+                hint: "Default keeps CybexOS's policy for this display. Fullscreen enables variable refresh only for fullscreen windows."
+                onPicked: value => page.edit(page.selected.key, { vrr: value })
             }
             SettingsHint {
                 width: parent.width

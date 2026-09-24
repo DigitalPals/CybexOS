@@ -9,10 +9,10 @@ available.
 
 | Page | Native controls | External support |
 | --- | --- | --- |
-| Network | Physical adapters and saved Ethernet/Wi-Fi profiles; autoconnect, metering, automatic/manual/disabled IPv4 and IPv6, gateway and DNS; explicit Apply/Discard | `nm-connection-editor` for VPNs, enterprise certificates, bridges and advanced routing |
-| Sound | Existing device selection, volume, microphone meter and application mixer; hardware profiles, ports, stereo balance, playback/recording stream routing and mute | `pavucontrol` for advanced controls |
+| Network | A list of saved Ethernet/Wi-Fi profiles with their status, and the physical adapters; for the selected profile, autoconnect, metering, automatic/manual/disabled IPv4 and IPv6, address, gateway and DNS; edits wait in the page's Apply bar | `nm-connection-editor` for VPNs, enterprise certificates, bridges and advanced routing |
+| Sound | Output and input device lists (network outputs folded), volume and mute, microphone level meter; ports of the default devices, output balance, hardware profiles, and per-application level, mute and playback/recording routing | `pavucontrol` for advanced controls |
 | Online Accounts | Provider, identity and attention status; calendar enable/disable; confirmed local removal; administrator locks | `gnome-online-accounts-gtk` for provider setup, browser authentication and reconnection |
-| Displays | Arrangement preview with drag and keyboard placement; per display: on/off, resolution, refresh rate, scale, rotation, mirroring and adaptive sync; a 15-second trial before anything is saved | `~/.config/cybexos/hypr/user.lua` for monitor rules the page does not cover (bit depth, HDR, reserved areas) |
+| Displays | Arrangement preview that also selects the display to edit, with drag and keyboard placement; per display: on/off, resolution, refresh rate, scale, rotation, flip, mirroring and adaptive sync; a 15-second trial before anything is saved | `~/.config/cybexos/hypr/user.lua` for monitor rules the page does not cover (bit depth, HDR, reserved areas) |
 
 GOA continues to own account authentication and credentials. The shell reads
 metadata and never requests access tokens or passwords. Calendar data still
@@ -29,8 +29,12 @@ the login manager and building a new ISO are separate work.
 
 NetworkManager, PipeWire/WirePlumber and GOA own their settings. None of the new
 device, connection or account data is stored in `shell.json`. Shell reset/undo
-does not change these services. System pages show their own operation status
-instead of the shell preference window's “Saved · applies live” indication.
+does not change these services. System pages show a status line only while
+their first read is in flight and after a failure, which offers Refresh.
+Network and Displays edits wait in an Apply bar pinned to the page foot. It
+names the pending changes, or the problem that blocks them, and during a
+trial counts down to the automatic restore with **Revert now** and **Keep
+changes**. Sound changes apply at once.
 
 Network edits clone the full libnm connection and validate the result. Version
 checks reject concurrent changes. Unedited settings, routes, secret flags,
@@ -66,12 +70,15 @@ The Displays page lists every output Hyprland reports, including disabled
 ones. The arrangement is drawn in Hyprland's layout coordinates. A dropped
 display snaps to the nearest shared edge (at least 64 logical pixels long) and
 never overlaps another. Changing a display's size keeps its neighbours on the
-side they were on. With the arrangement focused, arrow keys place the selected
-display beside the others. Scale presets are limited to values Hyprland keeps
+side they were on. The arrangement also picks the display the rows below
+edit. Each display is a Tab stop: Enter or Space selects it, and arrow keys
+place it beside the others. A display that is off or mirroring takes no room
+in the layout and appears as a chip under it, so it can still be selected.
+Scale presets are limited to values Hyprland keeps
 for the chosen mode, that is multiples of 1/120 that divide the mode into
 whole logical pixels.
 
-**Apply** starts a trial:
+**Apply** in the page's Apply bar starts a trial:
 
 1. `scripts/display-settings.py` writes the candidate to
    `$XDG_RUNTIME_DIR/cybexos/displays-trial.json`.
@@ -84,7 +91,7 @@ whole logical pixels.
 If the timer cannot be armed, nothing is applied. If Hyprland rejects a rule,
 the helper undoes the change immediately.
 
-The page counts down 15 seconds:
+The Apply bar counts down 15 seconds:
 
 - **Keep changes** saves the candidate atomically to
   `~/.config/cybexos/displays.json` and disarms the timer. A confirm is

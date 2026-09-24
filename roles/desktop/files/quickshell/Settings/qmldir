@@ -58,3 +58,9 @@ SettingsSelect SettingsSelect.qml
 ApplyBar ApplyBar.qml
 SettingsDisclosure SettingsDisclosure.qml
 SettingsTooltip SettingsTooltip.qml
+ChoiceRow ChoiceRow.qml
+ActionRow ActionRow.qml
+MuteButton MuteButton.qml
+VolumeRow VolumeRow.qml
+StreamRow StreamRow.qml
+DraftFieldRow DraftFieldRow.qml
