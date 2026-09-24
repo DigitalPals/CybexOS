@@ -22,8 +22,13 @@ var MODIFIERS = [
 
 var GROUP_ORDER = [
     "Shell", "Apps", "Web apps", "Development", "Windows", "Workspaces",
-    "Clipboard", "Capture", "Dictation", "Hardware keys"
+    "Clipboard", "Capture", "Dictation"
 ];
+
+// Described in bindings.lua (so `hyprctl binds` still explains them) but left
+// off the sheet: volume, brightness and media keys are labelled on the keys
+// themselves, and listing them doubled the sheet's length for nothing.
+var HIDDEN_GROUPS = ["Hardware keys"];
 
 var OTHER_GROUP = "Other";
 
@@ -221,6 +226,8 @@ function groupsFromBinds(binds) {
         if (description === "")
             return;
         var parsed = parseDescription(description);
+        if (HIDDEN_GROUPS.indexOf(parsed.group) >= 0)
+            return;
         var label = parsed.label;
         if (bind.submap)
             label += " (" + bind.submap + " mode)";
@@ -267,6 +274,53 @@ function groupsFromBinds(binds) {
     });
 }
 
+// Splits the groups, in order, into `count` columns of similar height: a
+// group weighs its rows plus its title, and the contiguous split with the
+// lightest heaviest column wins. Reading order stays top-to-bottom, then
+// left-to-right, and no column is left empty while another has two groups.
+function columnsFor(groups, count) {
+    var list = Array.isArray(groups) ? groups : [];
+    var columns = Math.max(1, Math.min(Math.floor(Number(count) || 1), list.length || 1));
+    var weights = list.map(function(group) {
+        return (group && Array.isArray(group.rows) ? group.rows.length : 0) + 1.5;
+    });
+    var prefix = [0];
+    weights.forEach(function(weight) { prefix.push(prefix[prefix.length - 1] + weight); });
+    var sum = function(from, to) { return prefix[to] - prefix[from]; };
+    // best[k][i]: the lightest heaviest column for the first i groups in k
+    // columns; cut[k][i] is where its last column starts.
+    var best = [];
+    var cut = [];
+    for (var k = 0; k <= columns; k++) {
+        best.push([]);
+        cut.push([]);
+        for (var i = 0; i <= list.length; i++) {
+            best[k].push(Infinity);
+            cut[k].push(0);
+        }
+    }
+    best[0][0] = 0;
+    for (k = 1; k <= columns; k++) {
+        for (i = k; i <= list.length; i++) {
+            for (var j = k - 1; j < i; j++) {
+                var cost = Math.max(best[k - 1][j], sum(j, i));
+                if (cost < best[k][i]) {
+                    best[k][i] = cost;
+                    cut[k][i] = j;
+                }
+            }
+        }
+    }
+    var out = [];
+    var end = list.length;
+    for (k = columns; k >= 1; k--) {
+        var start = list.length === 0 ? 0 : cut[k][end];
+        out.unshift(list.slice(start, end));
+        end = start;
+    }
+    return out;
+}
+
 // The complete step from hyprctl's stdout to what the overlay draws.
 function fromJson(text) {
     var binds;
@@ -282,7 +336,9 @@ function fromJson(text) {
 
 var exported = {
     GROUP_ORDER: GROUP_ORDER,
+    HIDDEN_GROUPS: HIDDEN_GROUPS,
     OTHER_GROUP: OTHER_GROUP,
+    columnsFor: columnsFor,
     modifierNames: modifierNames,
     keyName: keyName,
     parseDescription: parseDescription,

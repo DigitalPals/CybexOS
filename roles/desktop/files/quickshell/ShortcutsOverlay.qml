@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Wayland
 import "Common"
+import "Common/KeybindHelpers.js" as KeybindHelpers
 
 // The keyboard cheatsheet, from the Control Panel or Super+K.
 //
@@ -12,6 +13,10 @@ import "Common"
 // groups every binding that carries a "Group: Label" description. A
 // cheatsheet that drifts from what the keys actually do is worse than none,
 // so there is no hand-written list to drift.
+//
+// The sheet takes most of a wide screen: up to three columns, each holding
+// whole groups in reading order, split so the columns end at about the same
+// height (KeybindHelpers.columnsFor).
 PanelWindow {
     id: root
 
@@ -70,7 +75,7 @@ PanelWindow {
             id: card
 
             anchors.centerIn: parent
-            width: Math.min(680, root.width - 48)
+            width: Math.min(Theme.scaled(1180), root.width - 96)
             height: Math.min(root.height - Theme.surfacePadding * 2, body.implicitHeight + Theme.surfacePadding * 2)
             radius: Theme.popRadius
             color: Theme.panelSurface
@@ -178,145 +183,183 @@ PanelWindow {
                     color: Session.shortcutsError !== "" ? Theme.redText : Theme.textMid
                 }
 
-                Grid {
-                    id: shortcutGrid
+                Row {
+                    id: shortcutColumns
+
+                    // Columns at least this wide keep a label and its keys on
+                    // one line for all but the longest alternatives.
+                    readonly property real minimumColumnWidth: Theme.scaled(330)
+                    readonly property int count: Math.max(1, Math.min(3,
+                        Math.floor((width + spacing) / (minimumColumnWidth + spacing))))
+                    readonly property real columnWidth: (width - spacing * (count - 1)) / count
+
                     width: parent.width
-                    columns: width < Theme.settingsNarrowWidth ? 1 : 2
-                    columnSpacing: Theme.panelSectionSpacing
-                    rowSpacing: Theme.panelSectionSpacing
+                    spacing: Theme.panelSectionSpacing * 2
 
                     // A few hundred rows and key caps: build them while the
                     // sheet is on screen (including its fade-out) and release
                     // them once it is gone, rather than holding them for the
                     // shell's whole lifetime behind an unmapped surface.
                     Repeater {
-                        model: root.visible ? Session.shortcutGroups : []
+                        model: root.visible
+                            ? KeybindHelpers.columnsFor(Session.shortcutGroups, shortcutColumns.count) : []
 
                         delegate: Column {
-                            id: group
+                            id: column
 
                             required property var modelData
-                            required property int index
-                            // Starts false and binds after construction so
-                            // the fade-in still runs for groups built on open.
-                            property bool shown: false
 
-                            width: (shortcutGrid.width - shortcutGrid.columnSpacing * (shortcutGrid.columns - 1)) / shortcutGrid.columns
-                            spacing: Theme.controlSpacing
-                            opacity: shown ? 1 : 0
-                            Component.onCompleted: shown = Qt.binding(() => Session.keysOpen)
+                            width: shortcutColumns.columnWidth
+                            spacing: Theme.panelSectionSpacing
 
-                            Behavior on opacity {
-                                NumberAnimation {
-                                    duration: Theme.panelFadeDuration
-                                    easing.type: Easing.OutCubic
-                                }
-                            }
+                            Repeater {
+                                model: column.modelData
 
-                            Text {
-                                text: group.modelData.title
-                                font.capitalization: Font.AllUppercase
-                                font.family: Theme.fontMenu
-                                font.pixelSize: Theme.typography.section
-                                font.weight: Theme.weightMedium
-                                font.letterSpacing: 1.2
-                                color: Theme.accentText
-                            }
+                                delegate: Column {
+                                    id: group
 
-                            Column {
-                                id: rows
+                                    required property var modelData
+                                    // Starts false and binds after construction so
+                                    // the fade-in still runs for groups built on open.
+                                    property bool shown: false
 
-                                width: parent.width
-                                spacing: Theme.iconTextSpacing
+                                    width: column.width
+                                    spacing: Theme.controlSpacing
+                                    opacity: shown ? 1 : 0
+                                    Component.onCompleted: shown = Qt.binding(() => Session.keysOpen)
 
-                                Repeater {
-                                    model: group.modelData.rows
-
-                                    delegate: Item {
-                                        id: shortcut
-
-                                        required property var modelData
-                                        // Keys that do not fit beside the label
-                                        // move onto their own line beneath it.
-                                        readonly property bool stacked: label.implicitWidth + keys.implicitWidth
-                                            + Theme.controlSpacing > width
-
-                                        // Named, not `parent`: closing the sheet
-                                        // clears the outer model, and each row is
-                                        // unparented before its bindings go.
-                                        width: rows.width
-                                        height: stacked
-                                            ? label.implicitHeight + Theme.iconTextSpacing + keys.implicitHeight
-                                            : Math.max(Theme.settingsControlHeight, label.implicitHeight)
-
-                                        Text {
-                                            id: label
-                                            anchors.left: parent.left
-                                            y: shortcut.stacked ? 0 : (parent.height - implicitHeight) / 2
-                                            width: shortcut.stacked ? parent.width
-                                                : Math.max(0, parent.width - keys.width - Theme.controlSpacing)
-                                            text: shortcut.modelData.label
-                                            font.family: Theme.fontMenu
-                                            font.pixelSize: Theme.typography.primary
-                                            font.weight: Theme.weightSemibold
-                                            color: Theme.textMid
-                                            elide: Text.ElideRight
+                                    Behavior on opacity {
+                                        NumberAnimation {
+                                            duration: Theme.panelFadeDuration
+                                            easing.type: Easing.OutCubic
                                         }
+                                    }
 
-                                        // Each combination is one key-cap row;
-                                        // alternatives for the same action are
-                                        // separated by "or".
-                                        Row {
-                                            id: keys
-                                            anchors.right: parent.right
-                                            y: shortcut.stacked ? label.implicitHeight + Theme.iconTextSpacing
-                                                : (parent.height - height) / 2
-                                            spacing: Theme.iconTextSpacing
+                                    Text {
+                                        text: group.modelData.title
+                                        font.capitalization: Font.AllUppercase
+                                        font.family: Theme.fontMenu
+                                        font.pixelSize: Theme.typography.section
+                                        font.weight: Theme.weightMedium
+                                        font.letterSpacing: 1.2
+                                        color: Theme.accentText
+                                    }
 
-                                            Repeater {
-                                                model: shortcut.modelData.combos
+                                    Column {
+                                        id: rows
 
-                                                delegate: Row {
-                                                    id: combo
+                                        width: parent.width
+                                        spacing: Theme.iconTextSpacing
 
-                                                    required property var modelData
-                                                    required property int index
+                                        Repeater {
+                                            model: group.modelData.rows
 
-                                                    spacing: 4
+                                            delegate: Item {
+                                                id: shortcut
 
-                                                    Text {
-                                                        visible: combo.index > 0
-                                                        anchors.verticalCenter: parent.verticalCenter
-                                                        rightPadding: Theme.iconTextSpacing - combo.spacing
-                                                        text: "or"
-                                                        font.family: Theme.fontMenu
-                                                        font.pixelSize: Theme.typography.secondary
-                                                        color: Theme.textFaint
+                                                required property var modelData
+                                                // Keys that do not fit beside the label
+                                                // move onto their own lines beneath it,
+                                                // wrapping between alternatives.
+                                                readonly property bool stacked: label.implicitWidth + keys.naturalWidth
+                                                    + Theme.controlSpacing > width
+
+                                                // Named, not `parent`: closing the sheet
+                                                // clears the outer model, and each row is
+                                                // unparented before its bindings go.
+                                                width: rows.width
+                                                height: stacked
+                                                    ? label.implicitHeight + Theme.iconTextSpacing + keys.height
+                                                    : Math.max(Theme.settingsControlHeight, label.implicitHeight)
+
+                                                Text {
+                                                    id: label
+                                                    anchors.left: parent.left
+                                                    y: shortcut.stacked ? 0 : (parent.height - implicitHeight) / 2
+                                                    width: shortcut.stacked ? parent.width
+                                                        : Math.max(0, parent.width - keys.width - Theme.controlSpacing)
+                                                    text: shortcut.modelData.label
+                                                    font.family: Theme.fontMenu
+                                                    font.pixelSize: Theme.typography.primary
+                                                    font.weight: Theme.weightSemibold
+                                                    color: Theme.textMid
+                                                    elide: Text.ElideRight
+                                                }
+
+                                                // Each combination is one key-cap row;
+                                                // alternatives for the same action are
+                                                // separated by "or". Beside the label the
+                                                // keys sit on one line at the right edge;
+                                                // stacked, they wrap under it instead of
+                                                // running past the column's left edge.
+                                                Flow {
+                                                    id: keys
+
+                                                    readonly property real naturalWidth: {
+                                                        let total = 0;
+                                                        let count = 0;
+                                                        for (const child of children) {
+                                                            if (child.implicitWidth > 0) {
+                                                                total += child.implicitWidth;
+                                                                count++;
+                                                            }
+                                                        }
+                                                        return total + Math.max(0, count - 1) * spacing;
                                                     }
 
+                                                    x: shortcut.stacked ? 0 : parent.width - width
+                                                    y: shortcut.stacked ? label.implicitHeight + Theme.iconTextSpacing
+                                                        : (parent.height - height) / 2
+                                                    width: shortcut.stacked ? parent.width
+                                                        : Math.min(parent.width, naturalWidth)
+                                                    spacing: Theme.iconTextSpacing
+
                                                     Repeater {
-                                                        model: combo.modelData
+                                                        model: shortcut.modelData.combos
 
-                                                        delegate: Rectangle {
-                                                            id: cap
+                                                        delegate: Row {
+                                                            id: combo
 
-                                                            required property string modelData
+                                                            required property var modelData
+                                                            required property int index
 
-                                                            width: capLabel.implicitWidth + 14
-                                                            height: Theme.settingsControlHeight
-                                                            radius: 6
-                                                            color: Theme.chip
-                                                            border.width: 1
-                                                            border.color: Theme.stroke
+                                                            spacing: 4
 
                                                             Text {
-                                                                id: capLabel
-                                                                anchors.centerIn: parent
-                                                                text: cap.modelData
-                                                                font.family: Theme.fontMono
-                                                                font.pixelSize: Theme.typography.control
-                                                                font.weight: Theme.weightBold
-                                                                color: Theme.textHi
+                                                                visible: combo.index > 0
+                                                                anchors.verticalCenter: parent.verticalCenter
+                                                                rightPadding: Theme.iconTextSpacing - combo.spacing
+                                                                text: "or"
+                                                                font.family: Theme.fontMenu
+                                                                font.pixelSize: Theme.typography.secondary
+                                                                color: Theme.textFaint
+                                                            }
+
+                                                            Repeater {
+                                                                model: combo.modelData
+
+                                                                delegate: Rectangle {
+                                                                    id: cap
+
+                                                                    required property string modelData
+
+                                                                    width: capLabel.implicitWidth + 14
+                                                                    height: Theme.settingsControlHeight
+                                                                    radius: 6
+                                                                    color: Theme.chip
+                                                                    border.width: 1
+                                                                    border.color: Theme.stroke
+
+                                                                    Text {
+                                                                        id: capLabel
+                                                                        anchors.centerIn: parent
+                                                                        text: cap.modelData
+                                                                        font.family: Theme.fontMono
+                                                                        font.pixelSize: Theme.typography.control
+                                                                        font.weight: Theme.weightBold
+                                                                        color: Theme.textHi
+                                                                    }
+                                                                }
                                                             }
                                                         }
                                                     }

@@ -38,7 +38,14 @@ test('notification actions wrap and image captions retain independent contrast',
     const caption = wallpaper.slice(wallpaper.indexOf('id: fileName'), wallpaper.indexOf('visible: cell.current'));
     assert.match(caption, /color: "#ffffff"/);
     assert.match(read('ShortcutsOverlay.qml'), /contentHeight: body.implicitHeight/);
-    assert.match(read('ShortcutsOverlay.qml'), /columns: width < Theme.settingsNarrowWidth \? 1 : 2/);
+    const shortcuts = read('ShortcutsOverlay.qml');
+    assert.match(shortcuts, /width: Math\.min\(Theme\.scaled\(1180\), root\.width - 96\)/,
+        'the shortcut sheet uses the width of a wide screen');
+    assert.match(shortcuts,
+        /count: Math\.max\(1, Math\.min\(3,\s*Math\.floor\(\(width \+ spacing\) \/ \(minimumColumnWidth \+ spacing\)\)\)\)/,
+        'columns follow the available width, one to three');
+    assert.match(shortcuts, /width: shortcut\.stacked \? parent\.width\s*: Math\.min\(parent\.width, naturalWidth\)/,
+        'stacked keys wrap inside the column instead of overflowing its left edge');
 });
 
 test('shortcut rows size from their column, not a parent that closing unsets', () => {

@@ -79,13 +79,43 @@ test("several bindings for one action become alternatives, duplicates vanish", (
         bind(SUPER, "grave", "Capture: Screenshot a region"),
         bind(0, "Print", "Capture: Screenshot a region"),
         bind(0, "Print", "Capture: Screenshot a region"),
-        bind(0, "XF86AudioPlay", "Hardware keys: Play or pause"),
-        bind(0, "XF86AudioPause", "Hardware keys: Play or pause")
+        bind(0, "XF86AudioPlay", "Media: Play or pause"),
+        bind(0, "XF86AudioPause", "Media: Play or pause")
     ]);
     assert.deepEqual(rows(groups, "Capture"),
         [{ label: "Screenshot a region", combos: [["Super", "`"], ["Print"]] }]);
-    assert.deepEqual(rows(groups, "Hardware keys"),
+    assert.deepEqual(rows(groups, "Media"),
         [{ label: "Play or pause", combos: [["Play"], ["Pause"]] }]);
+});
+
+test("hardware keys stay described in Hyprland but off the sheet", () => {
+    const groups = H.groupsFromBinds([
+        bind(0, "XF86AudioRaiseVolume", "Hardware keys: Volume up"),
+        bind(0, "XF86MonBrightnessUp", "Hardware keys: Brightness up"),
+        bind(SUPER, "K", "Shell: Keyboard shortcuts")
+    ]);
+    assert.deepEqual(groups.map(group => group.title), ["Shell"]);
+    assert.ok(H.HIDDEN_GROUPS.includes("Hardware keys"));
+    assert.equal(H.GROUP_ORDER.includes("Hardware keys"), false);
+});
+
+test("columns split the groups in reading order with balanced heights", () => {
+    const group = (title, count) => ({ title, rows: Array(count).fill({}) });
+    const groups = [group("Shell", 7), group("Apps", 10), group("Web apps", 5),
+        group("Development", 4), group("Windows", 8), group("Workspaces", 4),
+        group("Clipboard", 4), group("Capture", 4), group("Dictation", 2)];
+    const titles = columns => columns.map(column => column.map(entry => entry.title));
+
+    assert.deepEqual(titles(H.columnsFor(groups, 3)), [
+        ["Shell", "Apps"],
+        ["Web apps", "Development", "Windows"],
+        ["Workspaces", "Clipboard", "Capture", "Dictation"]
+    ]);
+    assert.deepEqual(titles(H.columnsFor(groups, 1)), [groups.map(entry => entry.title)]);
+    assert.deepEqual(H.columnsFor(groups, 2).flat(), groups, "nothing is dropped or reordered");
+    assert.equal(H.columnsFor(groups, 40).length, groups.length, "never more columns than groups");
+    assert.deepEqual(H.columnsFor([], 3), [[]]);
+    assert.deepEqual(H.columnsFor(groups.slice(0, 2), 0).length, 1);
 });
 
 test("numbered workspace bindings collapse into one row per modifier set", () => {
@@ -211,7 +241,8 @@ test("the sheet draws Hyprland's bindings, with no hand-written fallback", () =>
     assert.match(session, /function openKeys\(targetScreen\) \{[\s\S]*?refreshShortcuts\(\);[\s\S]*?keysOpen = true;/,
         "each opening reads the bindings again");
     assert.doesNotMatch(session, /label:\s*"[^"]+",\s*keys:\s*\[/, "a hand-written row survived");
-    assert.match(overlay, /model: root\.visible \? Session\.shortcutGroups : \[\]/);
+    assert.match(overlay,
+        /model: root\.visible\s*\?\s*KeybindHelpers\.columnsFor\(Session\.shortcutGroups, shortcutColumns\.count\) : \[\]/);
     assert.match(overlay, /Session\.shortcutsError/, "a failed read is shown");
     assert.match(overlay, /model: shortcut\.modelData\.combos/);
 });

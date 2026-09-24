@@ -63,6 +63,10 @@ is manual.
 - [ ] Grid lists the configured wallpaper folder; clicking a thumb swaps the
       wallpaper live and moves the accent ring + ✓.
 - [ ] "Shuffle now" picks a different wallpaper each press.
+- [ ] `Super+K` opens the shortcut sheet at up to 1180 logical pixels wide with
+      three balanced columns on a wide screen (fewer on a narrow one). There is
+      no Hardware keys group, and a long row such as Resize window wraps its keys
+      under the label without clipping.
 - [ ] The page opens on Library and makes no network request. Choosing Online
       (or `cybexos-runtime ipc wallpaper browse`) shows popular Wallhaven
       results sized for the connected displays; Sort, Category and Size search
