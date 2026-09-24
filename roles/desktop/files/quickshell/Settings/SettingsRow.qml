@@ -2,10 +2,18 @@ import QtQuick
 import "../Common"
 
 // The skeleton every settings row shares: the modified-mark gutter on the
-// left, the fixed label column beside it, and the reset column on the right
-// that reveals itself on hover. A concrete row — SwitchRow, PickerRow,
-// SliderRow, SettingsTextRow — declares only its control, laid out between
-// `labelWidth` and `contentRight`.
+// left, the label beside it, and the reset column on the right that reveals
+// itself on hover. A concrete row — SwitchRow, PickerRow, SliderRow,
+// SelectRow, SettingsTextRow — declares only its control and ends it at
+// `contentRight`, so every control on a page lines up on one right-hand edge
+// however long the labels are (2026-09 redesign). The row reports where its
+// control begins as `controlLeft`; the label takes the room before it.
+//
+// Rows are separated by a hairline, which is what lets the eye cross from a
+// label to a control at the far side of the column. The first row of a
+// column has none (the group heading already rules it off), and neither does
+// the first row of a revealed sub-column, which keeps revealed options
+// visually attached to the row that revealed them.
 //
 // A changed row wears a 6px accent mark in its gutter and brightens its
 // label (turn-3 settings design); the reset chip appears while the pointer
@@ -59,6 +67,10 @@ Item {
     // room for a longer label without changing every settings page or losing
     // alignment between the rows in that page.
     property int minimumLabelWidth: 0
+    // Where this row's control begins. Subclasses bind it to their control's
+    // x; the label takes everything to its left.
+    property real controlLeft: labelWidth
+    property bool divider: true
 
     signal resetRequested()
 
@@ -78,11 +90,14 @@ Item {
     readonly property bool highlighted: settingKey !== ""
         && Settings.highlightKey === settingKey
 
-    property real wideHeight: Theme.panelRowHeight
+    // Breathing room above and below the control line, inside the row, so the
+    // divider between two rows has space on both sides.
+    readonly property int rowPad: narrow ? 0 : Theme.scaled(4)
+    property real wideHeight: Theme.panelRowHeight + rowPad * 2
     // The control line. Controls centre on it rather than on the row, which
     // grows by the hint below.
     readonly property real lineHeight: narrow ? narrowHeight : wideHeight
-    height: lineHeight + (hintLine.visible ? hintLine.height + Theme.scaled(2) : 0)
+    height: lineHeight + (hintLine.visible ? hintLine.height : 0)
     enabled: !unavailable
 
     function commit(value) {
@@ -113,6 +128,15 @@ Item {
     }
 
     Rectangle {
+        visible: root.divider && root.y > 0 && !root.narrow
+        x: root.markInset
+        y: -Math.ceil(Theme.settingsRowSpacing / 2) - 1
+        width: Math.max(0, root.width - root.markInset)
+        height: 1
+        color: Theme.hairlineSoft
+    }
+
+    Rectangle {
         anchors.left: parent.left
         y: root.narrow ? root.narrowLabelY + 5 : (root.lineHeight - height) / 2
         width: 6
@@ -127,8 +151,9 @@ Item {
         anchors.left: parent.left
         anchors.leftMargin: root.markInset
         y: root.narrow ? root.narrowLabelY : (root.lineHeight - height) / 2
-        width: (root.narrow ? parent.width - root.narrowLabelInset
-            : root.labelWidth) - root.markInset
+        width: root.narrow ? parent.width - root.narrowLabelInset - root.markInset
+            : Math.max(root.labelWidth - root.markInset,
+                root.controlLeft - root.markInset - Theme.controlSpacing)
         text: root.label
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.control
@@ -142,7 +167,7 @@ Item {
         id: hintLine
         // Tucked under the control line: the hint belongs to this row, not
         // to the gap before the next one.
-        y: root.lineHeight - Theme.scaled(2)
+        y: root.lineHeight - root.rowPad - Theme.scaled(2)
         width: root.contentRight
         text: root.unavailable ? root.disabledReason : root.hint
         tone: root.unavailable ? "info" : root.hintTone

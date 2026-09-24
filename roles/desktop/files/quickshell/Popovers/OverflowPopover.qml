@@ -40,7 +40,7 @@ Surface {
                     Popouts.openPanel(modelData.panel, "right", Popouts.anchorRect,
                         Popouts.hostScreenName);
                 else
-                    Settings.showPanel("modules", Popouts.hostScreenName);
+                    Settings.showPanel("bar", Popouts.hostScreenName);
             }
 
             Keys.onPressed: event => {

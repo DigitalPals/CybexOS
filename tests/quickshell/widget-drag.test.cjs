@@ -216,11 +216,11 @@ test("the settings page still owns the keyboard path", () => {
 // ---- the rename -------------------------------------------------------
 
 test("the settings surfaces call them widgets", () => {
-    const view = read("Settings/SettingsView.qml");
-    assert.match(view, /label: "Widgets"/);
-    assert.match(view, /title: "Widgets"/);
-    assert.doesNotMatch(view, /title: "Your bar"/);
-    assert.doesNotMatch(view, /label: "Modules"|title: "Modules"/);
+    // The widget editor is the top of the Bar page (2026-09): the rail says
+    // Bar, and the page's own copy calls its contents widgets.
+    const settings = read("Common/Settings.qml");
+    assert.match(settings, /\{ id: "bar", group: "Personalize", label: "Bar"[^}]*description: "Widgets,/);
+    assert.doesNotMatch(settings, /label: "Modules"|title: "Modules"/);
 
     const detail = read("Settings/ModuleDetailView.qml");
     assert.match(detail, /text: "Widgets"/);
@@ -231,12 +231,13 @@ test("the settings surfaces call them widgets", () => {
     assert.match(page, /resetKeys\(\["mods"\], "Widgets"\)/);
 });
 
-test("the stable page id is untouched by the rename", () => {
-    // Same contract BarLayoutPage keeps: the visible name moved, the id the
-    // rest of the shell routes on did not.
+test("the old Widgets page id still routes to the Bar page", () => {
+    // IPC, scripts and muscle memory kept `settings open modules`; it now
+    // opens the Bar page, which holds the widget editor.
     const settings = read("Common/Settings.qml");
-    assert.match(settings, /validPages: \[[^\]]*"modules"/);
-    assert.match(read("Settings/SettingsView.qml"), /\{ id: "modules"/);
+    assert.match(settings, /legacyPages: \(\{\s*modules: "bar", widgets: "bar"/);
+    assert.match(settings, /function openWidgetSettings\(id\) \{\s*widgetRequest = id;\s*page = "bar";/);
+    assert.match(read("Settings/SettingsView.qml"), /case "bar": return barPage;/);
 });
 
 // Run the actual QML methods with measured slots so plugin hit-testing and

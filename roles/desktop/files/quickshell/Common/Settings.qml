@@ -168,29 +168,100 @@ Singleton {
     readonly property bool modsModified:
         JSON.stringify(mods) !== JSON.stringify(defaults.mods)
 
-    readonly property var validPages: ["appearance", "wallpaper", "bar", "modules", "plugins", "notifications", "network", "sound", "displays", "accounts", "system", "about"]
+    // The Settings sidebar, in order: one entry per page, grouped by what the
+    // person is doing rather than by where the value is stored. SettingsView
+    // draws the rail from this list, SettingsPage takes its reset label from
+    // it, and IPC and search accept exactly these ids.
+    readonly property var pages: [
+        { id: "appearance", group: "Personalize", label: "Appearance", glyph: "palette",
+            description: "Theme, text and size, colors and panels" },
+        { id: "wallpaper", group: "Personalize", label: "Wallpaper", glyph: "image",
+            description: "Desktop image and automatic rotation" },
+        { id: "bar", group: "Personalize", label: "Bar", glyph: "space_dashboard",
+            description: "Widgets, placement, shape and behavior" },
+        { id: "notifications", group: "Personalize", label: "Notifications", glyph: "notifications",
+            description: "Pop-ups, quiet hours and the on-screen display" },
+        { id: "displays", group: "Devices", label: "Displays", glyph: "monitor",
+            description: "Arrangement, resolution, scale and night light", system: true },
+        { id: "sound", group: "Devices", label: "Sound", glyph: "volume_up",
+            description: "Devices, profiles and application audio", system: true },
+        { id: "network", group: "Devices", label: "Network", glyph: "wifi",
+            description: "Connections, IP addresses and DNS", system: true },
+        { id: "touchpad", group: "Devices", label: "Touchpad", glyph: "mouse",
+            description: "Scrolling" },
+        { id: "power", group: "System", label: "Power", glyph: "power",
+            description: "Screen off, lock, suspend and stay awake" },
+        { id: "region", group: "System", label: "Region & formats", glyph: "language",
+            description: "Clock and temperature formats" },
+        { id: "accounts", group: "System", label: "Online accounts", glyph: "account_circle",
+            description: "Connected accounts and calendar access", system: true },
+        { id: "plugins", group: "System", label: "Plugins", glyph: "extension",
+            description: "Install and manage trusted desktop plugins" },
+        { id: "about", group: "System", label: "About", glyph: "info",
+            description: "Shell health, recovery points and the settings file" }
+    ]
+    readonly property var pageGroups: ["Personalize", "Devices", "System"]
+    readonly property var validPages: pages.map(entry => entry.id)
+    // Ids from before the 2026-09 redesign, still accepted from IPC, scripts
+    // and muscle memory. The old System page split four ways; a key that
+    // names a row lands on the page that now holds it (see keyPages).
+    readonly property var legacyPages: ({
+        modules: "bar", widgets: "bar", system: "power", drawer: "bar"
+    })
+    readonly property var keyPages: ({
+        clock24: "region", unit: "region",
+        scrollFactor: "touchpad",
+        nightLight: "displays", warmth: "displays",
+        osd: "notifications",
+        recoveryPoints: "about",
+        idleLockMins: "power", idleScreenOffMins: "power", idleSuspendMins: "power",
+        idleSuspendBatteryOnly: "power", idleInhibitMode: "power"
+    })
 
-    // One dirty/reset key list per settings page (grouped-rail design 1c).
+    function pageInfo(id) {
+        return pages.find(entry => entry.id === id) || pages[0];
+    }
+
+    // The page an outside caller means: a current id as is, a legacy id
+    // through legacyPages, and a legacy id that names a moved row through
+    // keyPages. Returns "" for anything else.
+    function resolvePage(targetPage, key) {
+        if (key && keyPages[key] !== undefined
+                && (targetPage === "system" || targetPage === undefined || targetPage === ""))
+            return keyPages[key];
+        if (validPages.indexOf(targetPage) !== -1)
+            return targetPage;
+        if (legacyPages[targetPage] !== undefined)
+            return legacyPages[targetPage];
+        return "";
+    }
+
+    // One dirty/reset key list per settings page. A system page (Network,
+    // Sound, Accounts) has no shell.json values, so it has no list.
     readonly property var sectionKeys: ({
         wallpaper: ["wall", "wallDir", "shuffle"],
         appearance: ["themeMode", "glassEnabled", "highContrast", "reducedMotion",
             "textScale", "interfaceDensity", "shellFontSize", "shellScale", "surfaceBorderMode", "surfaceBorderColor", "surfaceBorderWidth", "surfaceBorderOpacity", "surfaceCornerRadius",
-            "barColorMode", "barCustomHue",
-            "barCustomSaturation", "barCustomLightness", "font", "accent", "paletteMode",
+            "font", "accent", "paletteMode",
             "pluginScale", "pluginBorderMode", "pluginBorderColor", "pluginBorderWidth", "pluginBorderOpacity", "pluginRadius", "pluginThemeOverrides"],
+        // The widget layout and every widget's options belong to the Bar
+        // page, which also owns the bar's background color. The usage poll
+        // interval is the Usage widget's own option; it is a top-level key
+        // only because the service predates modOpts.
         bar: ["position", "barStyle", "gap", "barHeight", "barRadius", "autoHide",
-            "exclusive"],
-        // The usage poll interval is the Usage widget's own option; it is a
-        // top-level key only because the service predates modOpts.
-        modules: ["mods", "modOpts", "pollMax"],
+            "exclusive", "barColorMode", "barCustomHue", "barCustomSaturation",
+            "barCustomLightness", "mods", "modOpts", "pollMax"],
         plugins: [],
         drawer: ["drawerTabs", "drawerOverview", "drawerHover", "drawerWidth"],
         notifications: ["notifDnd", "notifDndUntilMs", "notifQuiet", "notifQuietStart", "notifQuietEnd",
             "notifDuration", "notifPosition", "notifDensity", "notifIcons",
-            "notifProgress", "notifBodyLines"],
-        system: ["clock24", "unit", "warmth", "osd", "scrollFactor",
-            "nightLight", "idleLockMins", "idleScreenOffMins", "idleSuspendMins",
+            "notifProgress", "notifBodyLines", "osd"],
+        // Night light is a shell setting that lives beside the display rows.
+        displays: ["nightLight", "warmth"],
+        touchpad: ["scrollFactor"],
+        power: ["idleLockMins", "idleScreenOffMins", "idleSuspendMins",
             "idleSuspendBatteryOnly", "idleInhibitMode", "idleInhibitUntilMs"],
+        region: ["clock24", "unit"],
         about: []
     })
 
@@ -198,11 +269,12 @@ Singleton {
     property string panelScreenName: ""
     signal presentPanel()
 
-    function showPanel(targetPage, targetScreenName) {
+    function showPanel(targetPage, targetScreenName, key) {
+        const resolved = resolvePage(targetPage, key);
         if (targetPage === "drawer")
             openWidgetSettings("control");
-        else if (targetPage && validPages.indexOf(targetPage) !== -1)
-            page = targetPage;
+        else if (resolved !== "")
+            page = resolved;
         Popouts.close();
         // Hyprland focuses a window as it maps; only one already open needs
         // raising. A focus-by-title sent with the map would arrive before the
@@ -217,7 +289,7 @@ Singleton {
 
     // Opens a page scrolled to one row, which flashes as a search result does.
     function showSetting(targetPage, key, targetScreenName) {
-        showPanel(targetPage, targetScreenName);
+        showPanel(targetPage, targetScreenName, key);
         highlightKey = "";
         highlightKey = key;
     }
@@ -235,7 +307,7 @@ Singleton {
 
     function openWidgetSettings(id) {
         widgetRequest = id;
-        page = "modules";
+        page = "bar";
     }
 
     function sectionDirty(section) {
@@ -409,13 +481,10 @@ Singleton {
             || (id === "usage" && pollMax !== defaults.pollMax);
     }
 
-    function resetSection(section) {
-        const labels = {
-            wallpaper: "Wallpaper", appearance: "Appearance", bar: "Bar",
-            modules: "Widgets", drawer: "Control Center",
-            notifications: "Notifications", system: "System"
-        };
-        resetKeys(sectionKeys[section] || [], labels[section] || "Settings");
+    function resetSection(section, label) {
+        const labels = { drawer: "Control Center", displays: "Night light" };
+        resetKeys(sectionKeys[section] || [],
+            label || labels[section] || pageInfo(section).label);
     }
 
     function resetAll() {

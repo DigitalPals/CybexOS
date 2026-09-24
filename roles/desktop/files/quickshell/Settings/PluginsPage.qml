@@ -13,7 +13,7 @@ SettingsPage {
         SettingsAction {
             text: "Configure bar widgets"
             glyph: "widgets"
-            onTriggered: Settings.page = "modules"
+            onTriggered: Settings.page = "bar"
         }
         SettingsGroup {
             width: parent.width

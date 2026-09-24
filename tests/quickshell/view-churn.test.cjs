@@ -93,7 +93,7 @@ test("roving keyboard pickers move focus before they commit", () => {
     const appearance = read("Settings/AppearancePage.qml");
     order(appearance, "swatchRepeater.itemAt(next).forceActiveFocus();",
         "page.pickAccent(page.accentChoices[next]);", "accent swatches");
-    order(appearance, "barColorRepeater.itemAt(next).forceActiveFocus();",
+    order(read("Settings/BarBackgroundGroup.qml"), "barColorRepeater.itemAt(next).forceActiveFocus();",
         'Settings.set("barColorMode", Settings.barColorChoices[next].id);', "bar colours");
     order(read("Settings/CornerPickerRow.qml"),
         "cornerRepeater.itemAt(root.corners.indexOf(target)).forceActiveFocus();",
@@ -140,8 +140,8 @@ test("open views tick no faster than what they display", () => {
     assert.match(reminders, /id:\s*tick\s*onTriggered:\s*root\.scheduleTick\(\)/);
     assert.match(reminders, /Countdown\.remainingLabel\(Number\(due\) \* 1000 - nowMs\)/);
 
-    // The System page's clock caption is HH:mm.
-    const system = read("Settings/SystemPage.qml");
+    // The Region & formats page's clock caption is HH:mm.
+    const system = read("Settings/RegionPage.qml");
     assert.match(system,
         /SystemClock \{\s*id:\s*clock\s*precision:\s*SystemClock\.Minutes\s*enabled:\s*page\.visible/);
     assert.match(system, /Qt\.formatDateTime\(clock\.date, Settings\.clock24 \? "HH:mm" : "h:mm AP"\)/);

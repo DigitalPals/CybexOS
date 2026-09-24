@@ -23,17 +23,21 @@ test("only an already-open settings window is raised by title", () => {
     let presented = 0;
     const context = {
         page: "appearance", panelOpen: false, panelScreenName: "", highlightKey: "",
-        validPages: ["appearance", "system"],
+        validPages: ["appearance", "power", "about", "bar"],
+        legacyPages: { modules: "bar", system: "power" },
+        keyPages: { recoveryPoints: "about" },
+        openWidgetSettings() {},
         Popouts: { close() {} },
         Screens: { focused: { name: "DP-1" } },
         presentPanel() { presented++; }
     };
     context.closePanel = () => { context.panelOpen = false; };
     vm.createContext(context);
-    for (const name of ["showPanel", "showSetting", "togglePanel"])
+    for (const name of ["resolvePage", "showPanel", "showSetting", "togglePanel"])
         vm.runInContext(functionSource(source, name), context);
 
     context.showPanel("system", "eDP-1");
+    assert.equal(context.page, "power", "the retired System id opens the Power page");
     assert.equal(context.panelOpen, true);
     assert.equal(context.panelScreenName, "eDP-1");
     assert.equal(presented, 0, "a window that is only now mapping cannot be focused by title");
@@ -44,11 +48,19 @@ test("only an already-open settings window is raised by title", () => {
     assert.equal(context.panelScreenName, "eDP-1", "an open window stays on its screen");
     assert.equal(presented, 1, "an open window is raised");
 
+    // A legacy id that names a moved row lands on the row's new page.
+    context.showSetting("system", "recoveryPoints", "");
+    assert.equal(context.page, "about");
+    context.showPanel("modules", "");
+    assert.equal(context.page, "bar");
+    context.showPanel("nonsense", "");
+    assert.equal(context.page, "bar", "an unknown id leaves the page alone");
+
     context.togglePanel();
     assert.equal(context.panelOpen, false);
     context.togglePanel(undefined, "DP-2");
     assert.equal(context.panelScreenName, "DP-2");
-    assert.equal(presented, 1);
+    assert.equal(presented, 4);
 });
 
 test("the settings window maps unminimized and raises itself when asked", () => {

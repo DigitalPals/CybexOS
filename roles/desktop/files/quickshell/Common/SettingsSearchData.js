@@ -1,5 +1,5 @@
 // The settings search index (turn-3 settings design): every row the nav
-// search can jump to, described once. `page` must be a Settings.validPages
+// search can jump to, described once. `page` must be a Settings.pages
 // id, `key` a Settings key when the target is a keyed row — the jump
 // highlights that row through Settings.highlightKey — or "" when the entry
 // only navigates to its page. An optional `widget` names a widget whose
@@ -23,13 +23,12 @@ var ROWS = [
     { page: "appearance", pageLabel: "Appearance", group: "Theme", label: "Mode", key: "themeMode", terms: "dark light theme" },
     { page: "appearance", pageLabel: "Appearance", group: "Theme", label: "Glass effect", key: "glassEnabled", terms: "blur translucent transparent" },
     { page: "appearance", pageLabel: "Appearance", group: "Text & size", label: "Interface font", key: "font", terms: "typeface figtree mono typography" },
-    { page: "appearance", pageLabel: "Appearance", group: "Text & size", label: "Base font", key: "shellFontSize", terms: "typography font size pixels" },
+    { page: "appearance", pageLabel: "Appearance", group: "Text & size", label: "Base font size", key: "shellFontSize", terms: "typography font size pixels advanced" },
     { page: "appearance", pageLabel: "Appearance", group: "Text & size", label: "Text size", key: "textScale", terms: "scale large accessibility readability" },
-    { page: "appearance", pageLabel: "Appearance", group: "Text & size", label: "UI scale", key: "shellScale", terms: "zoom size accessibility" },
-    { page: "appearance", pageLabel: "Appearance", group: "Text & size", label: "Control spacing", key: "interfaceDensity", terms: "density compact comfortable touch" },
+    { page: "appearance", pageLabel: "Appearance", group: "Text & size", label: "Interface scale", key: "shellScale", terms: "ui zoom size accessibility" },
+    { page: "appearance", pageLabel: "Appearance", group: "Text & size", label: "Density", key: "interfaceDensity", terms: "control spacing compact comfortable touch row height" },
     { page: "appearance", pageLabel: "Appearance", group: "Colors", label: "Accent source", key: "paletteMode", terms: "wallpaper palette fixed color" },
     { page: "appearance", pageLabel: "Appearance", group: "Colors", label: "Accent hue", key: "accent", terms: "color swatch preset sky lavender sage sand coral" },
-    { page: "appearance", pageLabel: "Appearance", group: "Colors", label: "Bar background", key: "barColorMode", terms: "menubar color custom" },
     { page: "appearance", pageLabel: "Appearance", group: "Panels", label: "Panel border", key: "surfaceBorderMode", terms: "accent subtle custom outline" },
     { page: "appearance", pageLabel: "Appearance", group: "Panels", label: "Panel border color", key: "surfaceBorderColor", terms: "color hex" },
     { page: "appearance", pageLabel: "Appearance", group: "Panels", label: "Panel border width", key: "surfaceBorderWidth", terms: "outline" },
@@ -56,27 +55,28 @@ var ROWS = [
     { page: "bar", pageLabel: "Bar", group: "Layout", label: "Height", key: "barHeight", terms: "size thickness compact classic roomy preset" },
     { page: "bar", pageLabel: "Bar", group: "Layout", label: "Edge gap", key: "gap", terms: "margin floating" },
     { page: "bar", pageLabel: "Bar", group: "Layout", label: "Corner radius", key: "barRadius", terms: "rounding floating" },
+    { page: "bar", pageLabel: "Bar", group: "Background", label: "Bar background", key: "barColorMode", terms: "menubar color custom black white graphite slate macos hue" },
     { page: "bar", pageLabel: "Bar", group: "Behavior", label: "Auto-hide", key: "autoHide", terms: "hide idle reveal" },
     { page: "bar", pageLabel: "Bar", group: "Behavior", label: "Reserve space", key: "exclusive", terms: "exclusive zone tiled windows" },
 
-    // Widgets
+    // Bar widgets and their options
     { page: "plugins", pageLabel: "Plugins", group: "Packages", label: "Manage plugins", key: "", terms: "install git add update clone remove enable disable omarchy" },
-    { page: "modules", pageLabel: "Widgets", group: "Lanes", label: "Arrange widgets", key: "", terms: "drag order left center right lane module notification group grouping status pill separate" },
-    { page: "modules", pageLabel: "Widgets", group: "Catalog", label: "Show or hide widgets", key: "", terms: "enable disable toggle module clock weather notes battery tray workspaces media" },
-    { page: "modules", pageLabel: "Widgets", group: "Indicators", label: "Clock-side actions", key: "", terms: "indicator dictate recording ocr scan text clipboard reminder night light do not disturb dnd stay awake idle inhibit order startup duration" },
-    { page: "modules", pageLabel: "Widgets", group: "Notes", label: "AI note titles", key: "", terms: "codex claude model provider effort reasoning generate regenerate privacy" },
-    { page: "modules", pageLabel: "Widgets", group: "Weather", label: "Weather location", key: "", widget: "weather", terms: "clock city place search country region coordinates latitude longitude forecast" },
-    { page: "modules", pageLabel: "Widgets", group: "Usage", label: "Usage refresh interval", key: "pollMax", widget: "usage", terms: "t3 model usage poll refresh interval" },
+    { page: "bar", pageLabel: "Bar", group: "Widgets", label: "Arrange widgets", key: "", terms: "drag order left center right lane module notification group grouping status pill separate" },
+    { page: "bar", pageLabel: "Bar", group: "Widgets", label: "Add or remove widgets", key: "", terms: "enable disable toggle module clock weather notes battery tray workspaces media" },
+    { page: "bar", pageLabel: "Bar", group: "Indicators", label: "Clock-side actions", key: "", terms: "indicator dictate recording ocr scan text clipboard reminder night light do not disturb dnd stay awake idle inhibit order startup duration" },
+    { page: "bar", pageLabel: "Bar", group: "Notes", label: "AI note titles", key: "", terms: "codex claude model provider effort reasoning generate regenerate privacy" },
+    { page: "bar", pageLabel: "Bar", group: "Weather", label: "Weather location", key: "", widget: "weather", terms: "clock city place search country region coordinates latitude longitude forecast" },
+    { page: "bar", pageLabel: "Bar", group: "Usage", label: "Usage refresh interval", key: "pollMax", widget: "usage", terms: "t3 model usage poll refresh interval" },
 
-    { page: "modules", pageLabel: "Widgets", group: "Model usage", label: "Model usage", key: "", widget: "usage", terms: "providers accounts quota credentials api key direct cliproxy sub2api" },
+    { page: "bar", pageLabel: "Bar", group: "Model usage", label: "Model usage", key: "", widget: "usage", terms: "providers accounts quota credentials api key direct cliproxy sub2api" },
 
-    { page: "modules", pageLabel: "Widgets", group: "Control Center", label: "Control Center widget", key: "", widget: "control", terms: "fedora button move drag reorder show hide drawer" },
+    { page: "bar", pageLabel: "Bar", group: "Control Center", label: "Control Center widget", key: "", widget: "control", terms: "fedora button move drag reorder show hide drawer" },
 
     // Control Center (also searchable by its former Drawer name)
-    { page: "modules", pageLabel: "Widgets", widget: "control", group: "Tabs", label: "Tab order", key: "", terms: "drawer reorder overview sound network bluetooth power notifications usage" },
-    { page: "modules", pageLabel: "Widgets", widget: "control", group: "Overview", label: "Overview contents", key: "", terms: "drawer now playing sliders tiles updates cpu ram temperature system stats" },
-    { page: "modules", pageLabel: "Widgets", widget: "control", group: "Behavior", label: "Open on hover", key: "drawerHover", terms: "drawer hover switch glyph menu" },
-    { page: "modules", pageLabel: "Widgets", widget: "control", group: "Behavior", label: "Width", key: "drawerWidth", terms: "drawer size wide" },
+    { page: "bar", pageLabel: "Bar", widget: "control", group: "Tabs", label: "Tab order", key: "", terms: "drawer reorder overview sound network bluetooth power notifications usage" },
+    { page: "bar", pageLabel: "Bar", widget: "control", group: "Overview", label: "Overview contents", key: "", terms: "drawer now playing sliders tiles updates cpu ram temperature system stats" },
+    { page: "bar", pageLabel: "Bar", widget: "control", group: "Behavior", label: "Open on hover", key: "drawerHover", terms: "drawer hover switch glyph menu" },
+    { page: "bar", pageLabel: "Bar", widget: "control", group: "Behavior", label: "Width", key: "drawerWidth", terms: "drawer size wide" },
 
     // Notifications
     { page: "notifications", pageLabel: "Notifications", group: "Behavior", label: "Do Not Disturb", key: "notifDnd", terms: "dnd silence mute focus" },
@@ -88,19 +88,19 @@ var ROWS = [
     { page: "notifications", pageLabel: "Notifications", group: "Style", label: "Timeout progress", key: "notifProgress", terms: "countdown bar toast" },
     { page: "notifications", pageLabel: "Notifications", group: "Style", label: "Body preview", key: "notifBodyLines", terms: "lines text toast" },
 
-    // System
-    { page: "system", pageLabel: "System", group: "Formats", label: "Clock", key: "clock24", terms: "24 12 hour time format" },
-    { page: "system", pageLabel: "System", group: "Formats", label: "Temperature", key: "unit", terms: "celsius fahrenheit weather unit" },
-    { page: "system", pageLabel: "System", group: "Touchpad", label: "Scroll speed", key: "scrollFactor", terms: "touchpad mouse wheel input" },
-    { page: "system", pageLabel: "System", group: "Night light", label: "Night light", key: "nightLight", terms: "blue light hyprsunset" },
-    { page: "system", pageLabel: "System", group: "Night light", label: "Warmth", key: "warmth", terms: "kelvin tint blue light" },
-    { page: "system", pageLabel: "System", group: "Idle", label: "Lock screen", key: "idleLockMins", terms: "idle timeout auto lock hypridle power" },
-    { page: "system", pageLabel: "System", group: "Idle", label: "Screen off", key: "idleScreenOffMins", terms: "idle timeout display dpms blank monitor power" },
-    { page: "system", pageLabel: "System", group: "Idle", label: "Suspend", key: "idleSuspendMins", terms: "idle timeout sleep suspend power" },
-    { page: "system", pageLabel: "System", group: "Idle", label: "Only on battery", key: "idleSuspendBatteryOnly", terms: "idle suspend sleep battery plugged in ac power" },
-    { page: "system", pageLabel: "System", group: "Stay awake", label: "Duration", key: "", terms: "idle inhibit caffeine sleep" },
-    { page: "system", pageLabel: "System", group: "On-screen display", label: "Placement", key: "osd", terms: "osd volume brightness popup overlay" },
-    { page: "system", pageLabel: "System", group: "Recovery points", label: "Recovery points", key: "", terms: "snapshot restore rollback undo update btrfs boot menu grub recovery" },
+    // Formats, touchpad, night light and power (the old System page)
+    { page: "region", pageLabel: "Region & formats", group: "Formats", label: "Clock", key: "clock24", terms: "24 12 hour time format" },
+    { page: "region", pageLabel: "Region & formats", group: "Formats", label: "Temperature", key: "unit", terms: "celsius fahrenheit weather unit" },
+    { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Scroll speed", key: "scrollFactor", terms: "touchpad mouse wheel input" },
+    { page: "displays", pageLabel: "Displays", group: "Night light", label: "Night light", key: "nightLight", terms: "blue light hyprsunset" },
+    { page: "displays", pageLabel: "Displays", group: "Night light", label: "Warmth", key: "warmth", terms: "kelvin tint blue light" },
+    { page: "power", pageLabel: "Power", group: "Idle", label: "Lock screen", key: "idleLockMins", terms: "idle timeout auto lock hypridle power" },
+    { page: "power", pageLabel: "Power", group: "Idle", label: "Screen off", key: "idleScreenOffMins", terms: "idle timeout display dpms blank monitor power" },
+    { page: "power", pageLabel: "Power", group: "Idle", label: "Suspend", key: "idleSuspendMins", terms: "idle timeout sleep suspend power" },
+    { page: "power", pageLabel: "Power", group: "Idle", label: "Only on battery", key: "idleSuspendBatteryOnly", terms: "idle suspend sleep battery plugged in ac power" },
+    { page: "power", pageLabel: "Power", group: "Stay awake", label: "Duration", key: "", terms: "idle inhibit caffeine sleep" },
+    { page: "notifications", pageLabel: "Notifications", group: "On-screen display", label: "Placement", key: "osd", terms: "osd volume brightness popup overlay" },
+    { page: "about", pageLabel: "About", group: "Recovery points", label: "Recovery points", key: "", terms: "snapshot restore rollback undo update btrfs boot menu grub recovery" },
 
     // About
     { page: "about", pageLabel: "About", group: "Shell health", label: "Status", key: "", terms: "service deployment journal pid" },

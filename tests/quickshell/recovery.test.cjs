@@ -68,21 +68,22 @@ test("restore failures are explained in words", () => {
     assert.equal(helpers.restoreError(3, ""), "Restore failed (exit 3).");
 });
 
-test("the recovery UI is wired into the shell and the System page", () => {
+test("the recovery UI is wired into the shell and the About page", () => {
     const qmldir = read("Common/qmldir");
     const shell = read("shell.qml");
     const service = read("Common/Recovery.qml");
-    const page = read("Settings/SystemPage.qml");
+    const page = read("Settings/RecoveryGroup.qml");
+    assert.match(read("Settings/AboutPage.qml"), /RecoveryGroup \{/);
     const search = load("SettingsSearchData.js").ROWS;
 
     assert.match(qmldir, /^singleton Recovery Recovery\.qml$/m);
     assert.match(shell, /void Recovery\.recoveryBoot;/, "a recovery boot announces itself at login");
     assert.match(service, /path: RecoveryHelpers\.INDEX_PATH[\s\S]{0,80}watchChanges: true/);
     assert.match(service, /"--urgency=critical"/, "the notice persists until dismissed");
-    assert.match(service, /Settings\.showSetting\("system", "recoveryPoints", ""\)/);
+    assert.match(service, /Settings\.showSetting\("about", "recoveryPoints", ""\)/);
     assert.match(page, /readonly property string settingKey: "recoveryPoints"/);
     assert.match(page, /"Confirm restore"/, "restore always takes a second, explicit press");
     assert.match(page, /hold Shift \(or press Esc\)/);
-    assert.ok(search.some(row => row.page === "system" && row.group === "Recovery points"
+    assert.ok(search.some(row => row.page === "about" && row.group === "Recovery points"
         && /rollback/.test(row.terms)));
 });

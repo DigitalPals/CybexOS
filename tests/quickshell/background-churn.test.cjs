@@ -104,7 +104,7 @@ test("weather is fetched only for a set location someone is shown", () => {
     assert.match(sheet, /onClaimed: \{[^}]*Weather\.acquire\(\);/);
     assert.match(sheet, /onReleased: \{[^}]*Weather\.release\(\);/);
     assert.match(sheet,
-        /LinkText \{\s*visible: !Weather\.locationSet[\s\S]{0,120}?text: "Set a location in Settings"[\s\S]{0,160}?Settings\.openWidgetSettings\("weather"\);\s*Settings\.showPanel\("modules"/,
+        /LinkText \{\s*visible: !Weather\.locationSet[\s\S]{0,120}?text: "Set a location in Settings"[\s\S]{0,160}?Settings\.openWidgetSettings\("weather"\);\s*Settings\.showPanel\("bar"/,
         "the sheet links to where the location is set");
 });
 

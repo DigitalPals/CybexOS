@@ -38,9 +38,11 @@ SettingsRow {
             field.text = SettingsHelpers.formatMinutes(root.minutes);
     }
 
+    controlLeft: stepper.x
+
     Row {
         id: stepper
-        x: root.narrow ? root.markInset : root.labelWidth
+        x: root.narrow ? root.markInset : root.contentRight - width
         y: root.narrow ? Theme.settingsStackOffset : (root.lineHeight - height) / 2
         height: Theme.settingsControlHeight
         spacing: 2

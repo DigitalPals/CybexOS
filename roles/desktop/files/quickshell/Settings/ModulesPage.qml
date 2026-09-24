@@ -457,6 +457,8 @@ Item {
         anchors.bottomMargin: 8
         visible: !page.presetsOpen
         interactive: !page.dragActive && contentHeight > height
+        pageReset: true
+        resetSection: "bar"
         Column {
             width: parent.width
             spacing: 14
@@ -501,6 +503,10 @@ Item {
                 visible: UserPlugins.error !== "" || UserPlugins.busy
                 text: UserPlugins.error || "Saving plugin changes…"
                 color: UserPlugins.error ? Theme.redText : Theme.textDim
+            }
+            BarLayoutGroups {
+                width: parent.width
+                topPadding: Theme.settingsGroupSpacing - 14
             }
         }
     }

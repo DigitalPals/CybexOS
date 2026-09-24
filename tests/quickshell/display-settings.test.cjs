@@ -48,12 +48,13 @@ test("the Displays page is a System page with a guarded trial", () => {
     const view = read("Settings/SettingsView.qml");
     const page = read("Settings/DisplaysPage.qml");
     const service = read("Common/DisplaySettings.qml");
-    assert.match(view, /\{ id: "displays", group: "SYSTEM", label: "Displays"/);
+    const settings = read("Common/Settings.qml");
+    assert.match(settings, /\{ id: "displays", group: "Devices", label: "Displays"[^}]*system: true \}/);
     assert.match(view, /case "displays": return displaysPage;/);
-    assert.match(view, /systemServicePage: \[[^\]]*"displays"/);
+    assert.match(view, /systemServicePage: currentPage\.system === true/);
     assert.match(view, /pageLoader\.item as DisplaysPage[\s\S]{0,80}handleEscape\(\)/,
         "Escape reverts a pending trial before it closes Settings");
-    assert.match(read("Common/Settings.qml"), /validPages: \[[^\]]*"displays"/);
+    assert.match(settings, /validPages: pages\.map\(entry => entry\.id\)/);
     assert.match(read("Settings/qmldir"), /^DisplaysPage DisplaysPage\.qml$/m);
     assert.match(read("Settings/qmldir"), /^DisplayArrangement DisplayArrangement\.qml$/m);
     assert.match(read("Common/qmldir"), /^singleton DisplaySettings DisplaySettings\.qml$/m);

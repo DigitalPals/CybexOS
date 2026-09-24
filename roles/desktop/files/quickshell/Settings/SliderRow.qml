@@ -1,7 +1,10 @@
 import QtQuick
 import "../Common"
 
-// [label][slider][mono value][undo].
+// [label][slider][mono value][undo]. The slider keeps a bounded length at
+// the right-hand edge rather than stretching across the page: a 20-step
+// range does not need half a metre of travel, and a short track lines up
+// with every other row's control.
 SettingsRow {
     id: root
 
@@ -25,14 +28,21 @@ SettingsRow {
     property int valueWidth: 44
     signal moved(real value)
 
+    // The longest the track grows on the control line.
+    property int trackWidth: Theme.scaled(220, Theme.typeScale)
+
     narrowHeight: Theme.settingsStackOffset + Theme.settingsControlHeight
     labelColor: slider.dimmed ? Theme.textDim : Theme.textMid
+    controlLeft: slider.x
 
     HSlider {
         id: slider
-        x: root.narrow ? root.markInset : root.labelWidth
+        x: root.narrow ? root.markInset
+            : valueText.x - Theme.controlSpacing - width
         y: root.narrow ? Theme.settingsStackOffset : (root.lineHeight - height) / 2
-        width: Math.max(0, root.narrow ? root.contentRight - x : valueText.x - x - Theme.controlSpacing)
+        width: Math.max(0, root.narrow ? root.contentRight - x
+            : Math.min(root.trackWidth,
+                valueText.x - Theme.controlSpacing - root.labelWidth))
         height: Theme.settingsControlHeight
         dimmed: root.unavailable
         // Every settings row overrides this; the default matters only so a

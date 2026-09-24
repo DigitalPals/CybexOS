@@ -240,7 +240,7 @@ test("all shared toggles use one persisted write path", () => {
     assert.match(control, /onToggled:\s*SysInfo\.toggleNightLight\(\)/);
     assert.match(control, /onToggled:\s*SysInfo\.toggleIdleInhibited\(\)/);
     assert.match(control, /statusOverride:\s*SysInfo\.idleInhibitStatus/);
-    const systemPage = read("Settings/SystemPage.qml");
+    const systemPage = read("Settings/PowerPage.qml");
     for (const mode of ["off", "30m", "1h", "unplugged", "always"])
         assert.match(systemPage, new RegExp(`value: "${mode}"`));
     assert.match(systemPage, /SysInfo\.setIdleInhibitMode\(value\)/);

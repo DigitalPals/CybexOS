@@ -53,25 +53,26 @@ test("Appearance exposes live glass, wallpaper accents, and independent bar colo
         "the accent preset must visibly track the stored accent");
     assert.match(appearance, /Common\.Palette\.busy/);
     assert.match(appearance, /Common\.Palette\.error/);
-    assert.match(appearance, /SettingsSubsection \{\s*id: barColorControls[\s\S]*?title: "Bar background"/);
-    assert.match(appearance, /model:\s*Settings\.barColorChoices/);
-    assert.match(appearance, /Accessible\.role:\s*Accessible\.RadioButton/);
-    assert.match(appearance, /Accessible\.checked:\s*selected/);
-    assert.match(appearance, /Settings\.previewBarColor\(modelData\.id\)/);
+    // The menubar's own color is the Bar page's, independent of the accent.
+    const barColors = read("Settings/BarBackgroundGroup.qml");
+    assert.match(read("Settings/BarLayoutGroups.qml"), /BarBackgroundGroup \{/);
+    assert.doesNotMatch(appearance, /barColorMode|barCustomHue/,
+        "the bar background moved from Appearance to the Bar page");
+    assert.match(barColors, /SettingsGroup \{\s*id: barColorControls[\s\S]*?title: "Background"/);
+    assert.match(barColors, /model:\s*Settings\.barColorChoices/);
+    assert.match(barColors, /Accessible\.role:\s*Accessible\.RadioButton/);
+    assert.match(barColors, /Accessible\.checked:\s*selected/);
+    assert.match(barColors, /Settings\.previewBarColor\(modelData\.id\)/);
     for (const key of ["barCustomHue", "barCustomSaturation", "barCustomLightness"])
-        assert.match(appearance, new RegExp(`settingKey: "${key}"`));
-    assert.match(appearance, /hueTrack:\s*true/);
-    assert.match(appearance, /colorTrack:\s*true/);
-    const barAt = appearance.indexOf('title: "Bar background"');
-    const fixedAt = appearance.indexOf("id: fixedColorReveal");
-    assert.ok(fixedAt > 0 && barAt > fixedAt,
-        "fixed accent controls must appear before the independent bar colors");
+        assert.match(barColors, new RegExp(`settingKey: "${key}"`));
+    assert.match(barColors, /hueTrack:\s*true/);
+    assert.match(barColors, /colorTrack:\s*true/);
     assert.match(appearance, /id:\s*fixedColorReveal[\s\S]{0,100}?reveal:\s*page\.fixedPalette/,
         "wallpaper mode must collapse only the manual accent choices");
     assert.match(appearance,
         /id:\s*wallpaperPaletteReveal[\s\S]{0,100}?reveal:\s*!page\.fixedPalette/,
         "the non-interactive palette preview must not look disabled in Fixed mode");
-    assert.match(appearance,
+    assert.match(barColors,
         /id:\s*customColorReveal[\s\S]{0,100}?reveal:\s*Settings\.barColorMode === "custom"/,
         "custom HSL controls must be progressively disclosed");
     assert.match(read("Common/Revealer.qml"), /enabled:\s*root\.reveal/,

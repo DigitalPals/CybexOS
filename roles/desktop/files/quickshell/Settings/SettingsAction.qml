@@ -1,7 +1,9 @@
 import QtQuick
-import QtQuick.Controls as Controls
 import "../Common"
 
+// A settings button. Quiet by default: copy and an icon on a hover layer.
+// `primary` fills it with the accent for the one action a bar or dialog
+// leads with (Apply, Keep changes, Add account); `danger` inks it red.
 Rectangle {
     id: root
 
@@ -9,14 +11,20 @@ Rectangle {
     property string glyph: ""
     property bool compact: false
     property bool danger: false
+    property bool primary: false
+    // An icon-only action names itself in a tip; a labeled one needs none.
+    property string tooltip: compact ? text : ""
     signal triggered()
 
-    width: compact ? Theme.chipHeight : actionRow.implicitWidth + 16
+    readonly property color ink: primary ? Theme.textOnAccent
+        : danger ? Theme.redText : Theme.textMid
+
+    width: compact ? Theme.chipHeight : actionRow.implicitWidth + (primary ? 24 : 16)
     height: Theme.chipHeight
     radius: Theme.chipRadius
-    color: "transparent"
-    border.width: activeFocus ? 1 : 0
-    border.color: danger ? Theme.red : Theme.accentText
+    color: primary ? Theme.accent : "transparent"
+    border.width: activeFocus ? (primary ? 2 : 1) : 0
+    border.color: primary ? Theme.textHi : danger ? Theme.red : Theme.accentText
     opacity: enabled ? 1 : 0.4
     activeFocusOnTab: enabled && visible
     Accessible.role: Accessible.Button
@@ -27,8 +35,11 @@ Rectangle {
         actionState.pulseCenter();
         root.triggered();
     }
-    Controls.ToolTip.visible: (mouse.containsMouse || activeFocus) && (root.compact || root.text.indexOf("Reset") === 0)
-    Controls.ToolTip.text: root.text
+
+    SettingsTooltip {
+        visible: root.tooltip !== "" && mouse.containsMouse
+        text: root.tooltip
+    }
 
     Keys.onPressed: event => {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
@@ -47,7 +58,7 @@ Rectangle {
         hovered: mouse.containsMouse
         pressed: mouse.pressed
         focused: root.activeFocus
-        tint: root.danger ? Theme.red : Theme.textHi
+        tint: root.primary ? Theme.textOnAccent : root.danger ? Theme.red : Theme.textHi
         pressPoint: Qt.point(mouse.mouseX, mouse.mouseY)
     }
 
@@ -67,15 +78,15 @@ Rectangle {
             name: root.glyph
             size: Theme.iconSmall
             symWeight: 450
-            color: root.danger ? Theme.redText : Theme.textMid
+            color: root.ink
         }
         Text {
             visible: !root.compact
             text: root.text
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.control
-            font.weight: Theme.weightMedium
-            color: root.danger ? Theme.redText : Theme.textMid
+            font.weight: root.primary ? Theme.weightSemibold : Theme.weightMedium
+            color: root.ink
         }
     }
 

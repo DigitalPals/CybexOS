@@ -26,12 +26,14 @@ SettingsRow {
         root.picked(value);
     }
 
-    wideHeight: screenHeight + Theme.scaled(8)
+    wideHeight: screenHeight + Theme.scaled(8) + rowPad * 2
     narrowHeight: Theme.settingsStackOffset + screenHeight + Theme.scaled(4)
+
+    controlLeft: root.narrow ? root.labelWidth : cornerLabel.x
 
     Rectangle {
         id: screen
-        x: root.narrow ? root.markInset : root.labelWidth
+        x: root.narrow ? root.markInset : root.contentRight - width
         y: root.narrow ? Theme.settingsStackOffset : (root.lineHeight - height) / 2
         width: root.screenWidth
         height: root.screenHeight
@@ -111,10 +113,16 @@ SettingsRow {
         }
     }
 
+    // The chosen corner, named beside the miniature screen: after it when
+    // the row stacks, before it when the screen sits on the right edge.
     Text {
-        x: screen.x + screen.width + Theme.controlSpacing + 4
+        id: cornerLabel
+        x: root.narrow ? screen.x + screen.width + Theme.controlSpacing + 4
+            : screen.x - Theme.controlSpacing - width
         y: screen.y + (screen.height - height) / 2
-        width: Math.max(0, root.contentRight - x)
+        width: root.narrow ? Math.max(0, root.contentRight - x)
+            : Math.min(implicitWidth, Math.max(0, screen.x - Theme.controlSpacing - root.labelWidth))
+        horizontalAlignment: root.narrow ? Text.AlignLeft : Text.AlignRight
         opacity: root.controlOpacity
         text: root.labelFor(root.current)
         font.family: Theme.fontMenu

@@ -5,6 +5,7 @@ import "../Common/SettingsHelpers.js" as SettingsHelpers
 
 SettingsPage {
     id: page
+    pageReset: true
 
     readonly property var quietRange: SettingsHelpers.quietRange(Settings.notifQuiet,
         Settings.notifQuietStart, Settings.notifQuietEnd)
@@ -290,6 +291,23 @@ SettingsPage {
                         }
                     }
                 }
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            title: "On-screen display"
+
+            PickerRow {
+                width: parent.width
+                label: "Placement"
+                settingKey: "osd"
+                resetLabel: "OSD placement"
+                model: [
+                    { value: "top", label: "Top center" },
+                    { value: "bottom", label: "Bottom center" }
+                ]
+                hint: "Where the volume and brightness pop-up appears"
             }
         }
     }

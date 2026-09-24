@@ -209,6 +209,11 @@ Singleton {
             Common.Palette.surfaceContainerHigh.b, 0.62)
         : dark ? Qt.rgba(1, 1, 1, 0.09)
         : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.06)
+    // The chosen option of a settings segmented control, raised out of its
+    // chip-filled track: lighter than the track in dark mode, near white in
+    // light mode, so the selection reads without borrowing the accent.
+    readonly property color segmentSelected: dark
+        ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.94)
     // Occupied workspace pips are functional state, not decorative furniture:
     // keep them well above dotDim while the focused pip remains uniquely accent.
     readonly property color wsOccupied: dark

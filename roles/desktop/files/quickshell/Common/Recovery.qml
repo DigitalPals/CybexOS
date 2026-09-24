@@ -121,7 +121,7 @@ Singleton {
         stdout: StdioCollector {
             onStreamFinished: {
                 if (text.trim() === "open")
-                    Settings.showSetting("system", "recoveryPoints", "");
+                    Settings.showSetting("about", "recoveryPoints", "");
             }
         }
     }

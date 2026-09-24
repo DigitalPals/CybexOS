@@ -175,7 +175,7 @@ BarModule {
         }
         case "night-light":
             if (mouseButton === Qt.MiddleButton)
-                Settings.showPanel("system", host.outputName);
+                Settings.showSetting("displays", "nightLight", host.outputName);
             else
                 SysInfo.toggleNightLight();
             break;
@@ -187,7 +187,7 @@ BarModule {
             break;
         case "stay-awake":
             if (mouseButton === Qt.MiddleButton)
-                Settings.showPanel("system", host.outputName);
+                Settings.showPanel("power", host.outputName);
             else
                 SysInfo.toggleIdleInhibited();
             break;

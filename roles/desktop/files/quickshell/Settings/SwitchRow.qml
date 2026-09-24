@@ -16,6 +16,7 @@ SettingsRow {
     narrowHeight: Theme.settingsControlHeight
     narrowLabelY: Math.max(0, Math.round((Theme.settingsControlHeight - root.labelTextHeight) / 2))
     narrowLabelInset: control.width + root.undoWidth + Theme.controlSpacing
+    controlLeft: control.x
 
     Toggle {
         id: control

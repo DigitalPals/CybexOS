@@ -1,9 +1,11 @@
 import QtQuick
 import "../Common"
 
-// [label][pills][caption, right][undo]. The caption is a short live readout
-// of the choice — the time it formats, the next poll — never a description;
-// explanatory copy goes on the row's hint line.
+// [label][caption][segmented control][undo]. The control ends on the page's
+// right-hand edge at its natural width and only wraps, back to the label
+// column, when the choices do not fit on one line. The caption is a short
+// live readout of the choice — the time it formats, the next poll — never a
+// description; explanatory copy goes on the row's hint line.
 SettingsRow {
     id: root
 
@@ -13,25 +15,32 @@ SettingsRow {
     property string caption: ""
     property bool captionMono: true
     readonly property real captionWidth: caption === "" ? 0
-        : Math.min(180, captionText.implicitWidth)
+        : Math.min(Theme.scaled(180), captionText.implicitWidth)
+    readonly property real captionGap: captionWidth > 0 ? Theme.controlSpacing : 0
+    // Room the choices may take on the control line: everything right of the
+    // label column, less the caption.
+    readonly property real wideRoom: Math.max(0, root.contentRight - root.labelWidth
+        - root.captionWidth - root.captionGap)
+    readonly property bool fits: pills.naturalWidth <= wideRoom
     signal picked(var value)
 
     // A narrow segmented control may wrap to two or more lines. Let the row
-    // grow with the Flow instead of painting the next row over those pills.
+    // grow with the track instead of painting the next row over those pills.
     narrowHeight: Theme.settingsStackOffset + Math.max(Theme.settingsControlHeight,
         pills.implicitHeight) + (caption === "" ? Theme.settingsRowSpacing
             : Theme.settingsContentSpacing + captionText.implicitHeight)
-    wideHeight: Math.max(Theme.panelRowHeight, pills.implicitHeight)
+    wideHeight: Math.max(Theme.panelRowHeight, pills.implicitHeight) + rowPad * 2
     narrowLabelInset: root.undoWidth
+    controlLeft: root.narrow ? root.labelWidth
+        : Math.min(pills.x, captionText.visible ? captionText.x : pills.x)
 
     PillRow {
         id: pills
-        x: root.narrow ? root.markInset : root.labelWidth
+        width: root.narrow ? Math.max(0, root.contentRight - root.markInset)
+            : Math.min(naturalWidth, root.wideRoom)
+        x: root.narrow ? root.markInset : root.contentRight - width
         y: root.narrow ? Theme.settingsStackOffset : (root.lineHeight - height) / 2
         opacity: root.controlOpacity
-        width: root.narrow ? Math.max(0, root.contentRight - x)
-            : Math.max(0, parent.width - x - root.undoWidth
-                - root.captionWidth - (root.captionWidth > 0 ? 10 : 0))
         current: root.stored
         onPicked: value => {
             root.commit(value);
@@ -45,7 +54,7 @@ SettingsRow {
         y: root.narrow ? Theme.settingsStackOffset
             + Math.max(Theme.settingsControlHeight, pills.implicitHeight)
             + Theme.settingsContentSpacing : (root.lineHeight - height) / 2
-        x: root.narrow ? root.markInset : root.contentRight - root.captionWidth
+        x: root.narrow ? root.markInset : pills.x - root.captionGap - width
         width: root.narrow ? Math.max(0, root.contentRight - x) : root.captionWidth
         horizontalAlignment: root.narrow ? Text.AlignLeft : Text.AlignRight
         wrapMode: root.narrow ? Text.Wrap : Text.NoWrap

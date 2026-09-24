@@ -2,7 +2,8 @@
 # the engine's implicit directory scan proved unreliable for this directory.
 # Every Settings/*.qml type must be listed (settings.test.cjs enforces it).
 AppearancePage AppearancePage.qml
-BarLayoutPage BarLayoutPage.qml
+BarLayoutGroups BarLayoutGroups.qml
+BarBackgroundGroup BarBackgroundGroup.qml
 DrawerPage DrawerPage.qml
 FolderDialog FolderDialog.qml
 GitHubWatchList GitHubWatchList.qml
@@ -21,7 +22,11 @@ SettingsRow SettingsRow.qml
 SettingsView SettingsView.qml
 SliderRow SliderRow.qml
 SwitchRow SwitchRow.qml
-SystemPage SystemPage.qml
+PowerPage PowerPage.qml
+RegionPage RegionPage.qml
+TouchpadPage TouchpadPage.qml
+NightLightGroup NightLightGroup.qml
+RecoveryGroup RecoveryGroup.qml
 UndoChip UndoChip.qml
 WallpaperPage WallpaperPage.qml
 WallpaperOnlineView WallpaperOnlineView.qml
@@ -48,3 +53,8 @@ AccountsPage AccountsPage.qml
 IpSettings IpSettings.qml
 SystemChoice SystemChoice.qml
 SystemServiceStatus SystemServiceStatus.qml
+SelectRow SelectRow.qml
+SettingsSelect SettingsSelect.qml
+ApplyBar ApplyBar.qml
+SettingsDisclosure SettingsDisclosure.qml
+SettingsTooltip SettingsTooltip.qml

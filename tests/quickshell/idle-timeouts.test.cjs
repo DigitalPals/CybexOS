@@ -188,7 +188,7 @@ test("a user hypridle.conf wins and a failed render falls back to the vendor fil
 test("saved idle changes restart hypridle and the power drawer links to them", () => {
     const settings = read("Common/Settings.qml");
     const sysinfo = read("Common/SysInfo.qml");
-    const system = read("Settings/SystemPage.qml");
+    const system = read("Settings/PowerPage.qml");
     const power = read("Popovers/Drawer/DrawerPower.qml");
 
     for (const key of ["idleLockMins", "idleScreenOffMins", "idleSuspendMins",
@@ -203,6 +203,6 @@ test("saved idle changes restart hypridle and the power drawer links to them", (
     // hypridle keeps retrying the battery condition until the next input, so
     // an idle laptop unplugged after the timeout still suspends.
     assert.match(system, /description: "Waits while plugged in; suspends once unplugged"/);
-    assert.match(power, /Settings\.showSetting\("system", "idleLockMins"/);
+    assert.match(power, /Settings\.showSetting\("power", "idleLockMins"/);
     assert.doesNotMatch(power, /gnome-control-center/);
 });

@@ -128,7 +128,7 @@ Surface {
                     font.pixelSize: Theme.typography.secondary
                     onClicked: {
                         Settings.openWidgetSettings("weather");
-                        Settings.showPanel("modules", Popouts.hostScreenName);
+                        Settings.showPanel("bar", Popouts.hostScreenName);
                     }
                 }
 

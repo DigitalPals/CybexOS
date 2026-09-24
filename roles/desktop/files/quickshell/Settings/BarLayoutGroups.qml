@@ -1,11 +1,9 @@
 import QtQuick
 import "../Common"
 
-// The persisted page id remains `bar`; only the visible name and grouping
-// change. There is no preview strip: the live bar directly above the sheet
-// is the preview (turn-3 design). Floating-only geometry stays on screen
-// while another style is active, disabled and saying why.
-SettingsPage {
+// The bar's own layout, background and behavior, beneath the widget editor
+// on the Bar page.
+Column {
     id: page
 
     readonly property bool floating: Settings.barStyle === "floating"
@@ -19,10 +17,10 @@ SettingsPage {
         return hit ? hit.label : "";
     }
 
+    spacing: Theme.settingsGroupSpacing
+
     Column {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
+        width: parent.width
         spacing: Theme.settingsGroupSpacing
 
         SettingsGroup {
@@ -78,6 +76,10 @@ SettingsPage {
                 min: 0; max: 30; step: 1; unit: "px"
                 disabledReason: page.floating ? "" : "Only applies to the Floating style"
             }
+        }
+
+        BarBackgroundGroup {
+            width: parent.width
         }
 
         SettingsGroup {

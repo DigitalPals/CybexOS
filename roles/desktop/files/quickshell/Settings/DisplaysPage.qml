@@ -8,6 +8,8 @@ import "../Common/DisplayHelpers.js" as Displays
 // ~/.config/cybexos/displays.json, which Hyprland reads through displays.lua.
 SettingsPage {
     id: page
+    pageReset: true
+    resetText: "Reset night light to defaults"
 
     readonly property var service: DisplaySettings
     property var drafts: []
@@ -374,6 +376,10 @@ SettingsPage {
                 width: parent.width
                 text: "Saved per display in ~/.config/cybexos/displays.json. Monitor rules in ~/.config/cybexos/hypr/user.lua take precedence."
             }
+        }
+
+        NightLightGroup {
+            width: parent.width
         }
     }
 }

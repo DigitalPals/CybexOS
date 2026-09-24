@@ -597,12 +597,12 @@ SettingsPage {
 
                 ResponsiveActionRow {
                     width: parent.width
-                    description: "Temperature and schedule live on the System page"
+                    description: "Warmth lives with night light on the Displays page"
 
                     SettingsAction {
-                        text: "Temperature settings"
+                        text: "Night light settings"
                         glyph: "arrow_forward"
-                        onTriggered: Settings.page = "system"
+                        onTriggered: Settings.showSetting("displays", "nightLight", "")
                     }
                 }
             }

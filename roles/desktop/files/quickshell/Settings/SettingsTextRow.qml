@@ -21,6 +21,13 @@ SettingsRow {
 
     readonly property bool inputValid: !hexColor || /^#[0-9a-fA-F]{6}$/.test(input.text.trim())
     readonly property int swatchSize: hexColor ? Theme.settingsControlHeight - 8 : 0
+    // The longest the field grows on the control line; it ends at the
+    // page's right-hand edge like every other control.
+    property int fieldWidth: Theme.scaled(hexColor ? 140 : 280, Theme.typeScale)
+    readonly property real fieldLeft: root.narrow ? root.markInset
+        : Math.max(root.labelWidth, root.contentRight - Theme.settingsRowSpacing
+            - root.fieldWidth - (root.hexColor ? root.swatchSize + Theme.controlSpacing : 0))
+    controlLeft: fieldLeft
 
     hint: hexColor && !inputValid && input.activeFocus
         ? "Enter a six-digit hex color, such as #9ecbeb" : ""
@@ -33,7 +40,7 @@ SettingsRow {
 
     Rectangle {
         visible: root.hexColor
-        x: root.narrow ? root.markInset : root.labelWidth
+        x: root.fieldLeft
         y: (root.narrow ? Theme.settingsStackOffset : (root.lineHeight - Theme.settingsControlHeight) / 2) + 4
         width: root.swatchSize
         height: root.swatchSize
@@ -47,8 +54,7 @@ SettingsRow {
 
     SettingsField {
         id: input
-        x: (root.narrow ? root.markInset : root.labelWidth)
-            + (root.hexColor ? root.swatchSize + Theme.controlSpacing : 0)
+        x: root.fieldLeft + (root.hexColor ? root.swatchSize + Theme.controlSpacing : 0)
         y: root.narrow ? Theme.settingsStackOffset : (root.lineHeight - height) / 2
         width: Math.max(0, root.contentRight - x - Theme.settingsRowSpacing)
         height: Theme.settingsControlHeight

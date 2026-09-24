@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls as Controls
 import "../Common"
 import "../Common/SettingsSearchData.js" as SearchData
 import "../Popovers"
@@ -23,17 +22,41 @@ PopoutPanel {
     signal moveRequested()
     signal cancelModuleDrag()
     signal closeModuleSubPage()
-    readonly property int pageIndex: Math.max(0,
-        navItems.findIndex(item => item.id === Settings.page))
-    readonly property bool dragActive: Settings.page === "modules"
+    readonly property var currentPage: Settings.pageInfo(Settings.page)
+    readonly property bool dragActive: Settings.page === "bar"
         && moduleDragActive
-    readonly property bool systemServicePage: ["network", "sound", "displays", "accounts"].includes(Settings.page)
-    readonly property string persistenceStatus: systemServicePage ? "System changes are reported on this page" : Settings.loadError
+    readonly property bool systemServicePage: currentPage.system === true
+    readonly property string persistenceStatus: Settings.loadError
         ? (Settings.loadErrorText !== "" ? Settings.loadErrorText
             : "Could not read the settings file.") + " Retry is available."
         : Settings.saveError ? "Could not save settings. Retry is available."
         : Settings.savePending ? "Saving changes…"
-        : "Saved · applies live"
+        : "Saved"
+
+    // The rail's status line speaks only when there is something to say:
+    // while a change saves and briefly after, after a reset (with Undo), and
+    // on an error. A standing "saved" line told nobody anything.
+    property bool justSaved: false
+    readonly property bool statusShown: Settings.undoAvailable
+        || Settings.persistenceError || Settings.newerSchema
+        || Settings.savePending || justSaved
+    Connections {
+        target: Settings
+        function onSavePendingChanged() {
+            if (Settings.savePending) {
+                savedLinger.stop();
+                root.justSaved = false;
+            } else if (!Settings.persistenceError) {
+                root.justSaved = true;
+                savedLinger.restart();
+            }
+        }
+    }
+    Timer {
+        id: savedLinger
+        interval: 2200
+        onTriggered: root.justSaved = false
+    }
 
     // ---- search (turn-3 design: "/" jumps to any row) --------------------
     property string searchQuery: ""
@@ -114,40 +137,14 @@ PopoutPanel {
     // hairlines the way the bar separates its widgets.
     surfaceColor: Theme.panelSurface
 
-    readonly property var navItems: [
-        { id: "appearance", group: "SHELL", label: "Appearance", glyph: "palette",
-            title: "Appearance", description: "Theme, text and size, colors, and panels" },
-        { id: "wallpaper", group: "SHELL", label: "Wallpaper", glyph: "image",
-            title: "Wallpaper", description: "Desktop image and automatic rotation" },
-        { id: "bar", group: "SHELL", label: "Bar", glyph: "space_dashboard",
-            title: "Bar", description: "Placement, shape, and behavior" },
-        { id: "modules", group: "SHELL", label: "Widgets", glyph: "widgets",
-            title: "Widgets", description: "Choose and arrange the bar’s contents" },
-        { id: "plugins", group: "SHELL", label: "Plugins", glyph: "extension",
-            title: "Plugins", description: "Install and manage trusted desktop plugins" },
-        { id: "notifications", group: "SYSTEM", label: "Notifications", glyph: "notifications",
-            title: "Notifications", description: "Toasts, quiet hours, and the notification center" },
-        { id: "network", group: "SYSTEM", label: "Network", glyph: "wifi",
-            title: "Network", description: "Connections, IP addresses and DNS" },
-        { id: "sound", group: "SYSTEM", label: "Sound", glyph: "volume_up",
-            title: "Sound", description: "Devices, profiles and application audio" },
-        { id: "displays", group: "SYSTEM", label: "Displays", glyph: "monitor",
-            title: "Displays", description: "Arrangement, resolution, scale and rotation" },
-        { id: "accounts", group: "SYSTEM", label: "Online accounts", glyph: "account_circle",
-            title: "Online accounts", description: "Connected accounts and calendar access" },
-        { id: "system", group: "SYSTEM", label: "System", glyph: "settings",
-            title: "System", description: "Formats, input, night light, and stay awake" },
-        { id: "about", group: "SYSTEM", label: "About", glyph: "info",
-            title: "About", description: "Shell health and the settings file" }
-    ]
+    readonly property var navItems: Settings.pages
 
     function navDelegate(id) {
-        for (const repeater of [shellRepeater, systemRepeater]) {
-            for (let i = 0; i < repeater.count; i++) {
-                const item = repeater.itemAt(i);
-                if (item && item.modelData.id === id)
-                    return item;
-            }
+        for (let g = 0; g < navGroups.count; g++) {
+            const group = navGroups.itemAt(g) as NavGroup;
+            const item = group ? group.itemFor(id) : null;
+            if (item)
+                return item;
         }
         return null;
     }
@@ -185,7 +182,7 @@ PopoutPanel {
             cancelDrag();
             return true;
         }
-        if (Settings.page === "modules" && moduleSubPageActive) {
+        if (Settings.page === "bar" && moduleSubPageActive) {
             closeModuleSubPage();
             return true;
         }
@@ -220,8 +217,12 @@ PopoutPanel {
             navState.pulseCenter();
             Settings.page = navItem.modelData.id;
         }
-        Controls.ToolTip.visible: root.compactNav && navMouse.containsMouse
-        Controls.ToolTip.text: navItem.modelData.label
+        SettingsTooltip {
+            visible: root.compactNav && navMouse.containsMouse
+            text: navItem.modelData.label
+            x: parent.width + Theme.scaled(6)
+            y: (parent.height - height) / 2
+        }
 
         Keys.onPressed: event => {
             if (event.key === Qt.Key_Up || event.key === Qt.Key_Left) {
@@ -276,20 +277,6 @@ PopoutPanel {
             elide: Text.ElideRight
         }
 
-        // The page's modified mark: the same 6px accent dot its changed rows
-        // wear, so a page holding non-default values is findable from the nav.
-        Rectangle {
-            visible: !root.compactNav && Settings.revision >= 0
-                && Settings.sectionDirty(navItem.modelData.id)
-            anchors.right: parent.right
-            anchors.rightMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            width: 6
-            height: 6
-            radius: 3
-            color: Theme.accent
-        }
-
         MouseArea {
             id: navMouse
             anchors.fill: parent
@@ -299,6 +286,48 @@ PopoutPanel {
                 navItem.forceActiveFocus();
                 Settings.page = navItem.modelData.id;
             }
+        }
+    }
+
+    component NavGroup: Column {
+        id: navGroup
+        required property string modelData
+        required property int index
+        width: navColumn.width
+        spacing: navColumn.spacing
+        opacity: root.searchActive ? 0.45 : 1
+
+        function itemFor(id) {
+            for (let i = 0; i < pageRepeater.count; i++) {
+                const item = pageRepeater.itemAt(i) as NavItem;
+                if (item && item.modelData.id === id)
+                    return item;
+            }
+            return null;
+        }
+
+        GroupLabel {
+            text: navGroup.modelData.toUpperCase()
+            topPad: navGroup.index === 0 ? 0 : 6
+            visible: !root.compactNav
+        }
+        // In the icon rail a hairline stands in for the label.
+        Item {
+            visible: root.compactNav && navGroup.index > 0
+            width: parent.width
+            height: Theme.scaled(9)
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.width - Theme.scaled(12)
+                height: 1
+                color: Theme.hairlineSoft
+            }
+        }
+
+        Repeater {
+            id: pageRepeater
+            model: root.navItems.filter(item => item.group === navGroup.modelData)
+            delegate: NavItem {}
         }
     }
 
@@ -323,95 +352,6 @@ PopoutPanel {
     }
 
     Item {
-        id: header
-        width: parent.width
-        height: root.headerHeight
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.SizeAllCursor
-            onPressed: root.moveRequested()
-        }
-
-        // One line, the way the clock reads: the subject, then what it is
-        // about as a quieter qualifier after a middot. Two stacked lines made
-        // the header the tallest thing on the page and said no more than this.
-        Row {
-            id: headerCopy
-            anchors.left: parent.left
-            anchors.leftMargin: root.gutter
-            anchors.right: headerActions.left
-            anchors.rightMargin: 10
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 8
-
-            Text {
-                id: headerTitle
-                anchors.verticalCenter: parent.verticalCenter
-                text: root.searchActive ? "Search" : root.navItems[root.pageIndex].title
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.title
-                font.weight: Theme.weightSemibold
-                color: Theme.textHi
-            }
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: !root.compactNav
-                text: "·"
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Theme.dotDim
-            }
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: !root.compactNav
-                text: root.searchActive
-                    ? root.searchResults.length + " result"
-                        + (root.searchResults.length === 1 ? "" : "s")
-                        + " for “" + root.searchQuery.trim() + "”"
-                    : root.navItems[root.pageIndex].description.toLowerCase()
-                font.family: Theme.fontMenu
-                font.pixelSize: Theme.typography.secondary
-                color: Theme.textFaint
-                width: Math.max(0, parent.width - headerTitle.width - parent.spacing * 2 - 8)
-                elide: Text.ElideRight
-            }
-        }
-
-        Row {
-            id: headerActions
-            anchors.right: parent.right
-            anchors.rightMargin: root.gutter
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 4
-
-            SettingsAction {
-                visible: !root.searchActive && Settings.revision >= 0
-                    && Settings.sectionDirty(Settings.page)
-                text: "Reset page"
-                glyph: "undo"
-                onTriggered: Settings.resetSection(Settings.page)
-            }
-
-            SettingsAction {
-                compact: true
-                text: "Close"
-                glyph: "close"
-                onTriggered: Settings.closePanel()
-            }
-        }
-    }
-
-    Rectangle {
-        y: root.headerHeight
-        width: parent.width
-        height: 1
-        color: Theme.hairlineSoft
-    }
-
-    Item {
         id: body
         y: root.headerHeight + 1
         width: parent.width
@@ -422,7 +362,7 @@ PopoutPanel {
             x: root.gutter / 2
             y: root.gutter
             width: root.navWidth - root.gutter
-            spacing: 3
+            spacing: 1
 
             // The search field ("/" focuses it): a row that filters every
             // page's rows and jumps to the picked one. In the icon rail it
@@ -557,30 +497,14 @@ PopoutPanel {
             Item { width: 1; height: 6 }
 
             // Whole-nav dimming while a search runs: the list stays visible
-            // as a map, but the results own the workspace.
-            GroupLabel {
-                text: "SHELL"
-                topPad: 0
-                visible: !root.compactNav
-                opacity: root.searchActive ? 0.45 : 1
-            }
-
+            // as a map, but the results own the workspace. Groups follow
+            // what the person is doing — personalizing the desktop, a
+            // device, the system — not where a value happens to be stored.
             Repeater {
-                id: shellRepeater
-                model: root.navItems.filter(item => item.group === "SHELL")
-                delegate: NavItem { opacity: root.searchActive ? 0.45 : 1 }
-            }
+                id: navGroups
+                model: Settings.pageGroups
 
-            GroupLabel {
-                text: "SYSTEM"
-                visible: !root.compactNav
-                opacity: root.searchActive ? 0.45 : 1
-            }
-
-            Repeater {
-                id: systemRepeater
-                model: root.navItems.filter(item => item.group === "SYSTEM")
-                delegate: NavItem { opacity: root.searchActive ? 0.45 : 1 }
+                delegate: NavGroup {}
             }
 
         }
@@ -615,6 +539,7 @@ PopoutPanel {
             }
 
             Row {
+                visible: root.statusShown
                 spacing: 7
                 leftPadding: root.compactNav ? 0 : 8
                 width: parent.width
@@ -634,12 +559,12 @@ PopoutPanel {
                     visible: !root.compactNav
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - 6 - 7 - parent.leftPadding
-                    text: root.systemServicePage ? "System settings" : Settings.undoAvailable ? Settings.resetLabel + " reset"
+                    text: Settings.undoAvailable ? Settings.resetLabel + " reset"
                         : Settings.newerSchema ? "Newer settings file · not saving"
                         : Settings.loadError ? "Could not read settings"
                         : Settings.saveError ? "Could not save settings"
                         : Settings.savePending ? "Saving changes…"
-                        : "Saved · applies live"
+                        : "Saved"
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
                     color: Settings.persistenceError ? Theme.redText : Theme.textFaint
@@ -682,14 +607,15 @@ PopoutPanel {
                 switch (Settings.page) {
                 case "wallpaper": return wallpaperPage;
                 case "bar": return barPage;
-                case "modules": return modulesPage;
-                case "plugins": return pluginsPage;
                 case "notifications": return notificationsPage;
-                case "network": return networkPage;
-                case "sound": return soundPage;
                 case "displays": return displaysPage;
+                case "sound": return soundPage;
+                case "network": return networkPage;
+                case "touchpad": return touchpadPage;
+                case "power": return powerPage;
+                case "region": return regionPage;
                 case "accounts": return accountsPage;
-                case "system": return systemPage;
+                case "plugins": return pluginsPage;
                 case "about": return aboutPage;
                 default: return appearancePage;
                 }
@@ -844,9 +770,11 @@ PopoutPanel {
 
         Component { id: appearancePage; AppearancePage {} }
         Component { id: wallpaperPage; WallpaperPage {} }
-        Component { id: barPage; BarLayoutPage {} }
+        // The Bar page is the widget editor with the bar's own layout,
+        // background and behavior beneath it; the drag and the widget
+        // dialog it hosts take part in the Escape chain above.
         Component {
-            id: modulesPage
+            id: barPage
             ModulesPage {
                 id: modulesContent
                 onDragActiveChanged: root.moduleDragActive = modulesContent.dragActive
@@ -872,8 +800,95 @@ PopoutPanel {
         Component { id: soundPage; SoundPage {} }
         Component { id: displaysPage; DisplaysPage {} }
         Component { id: accountsPage; AccountsPage {} }
-        Component { id: systemPage; SystemPage {} }
+        Component { id: touchpadPage; TouchpadPage {} }
+        Component { id: powerPage; PowerPage {} }
+        Component { id: regionPage; RegionPage {} }
         Component { id: aboutPage; AboutPage {} }
+    }
+
+    // Declared after the body so the tab order starts at the search field,
+    // then the page list and the page, and reaches Close last. Resetting a
+    // page lives at the page's foot (SettingsPage.pageReset), not up here
+    // beside Close, where Tab then Enter used to reset the whole page.
+    Item {
+        id: header
+        width: parent.width
+        height: root.headerHeight
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.SizeAllCursor
+            onPressed: root.moveRequested()
+        }
+
+        // One line, the way the clock reads: the subject, then what it is
+        // about as a quieter qualifier after a middot. Two stacked lines made
+        // the header the tallest thing on the page and said no more than this.
+        Row {
+            id: headerCopy
+            anchors.left: parent.left
+            anchors.leftMargin: root.gutter
+            anchors.right: headerActions.left
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
+
+            Text {
+                id: headerTitle
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.searchActive ? "Search" : root.currentPage.label
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.title
+                font.weight: Theme.weightSemibold
+                color: Theme.textHi
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !root.compactNav
+                text: "·"
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                color: Theme.dotDim
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !root.compactNav
+                text: root.searchActive
+                    ? root.searchResults.length + " result"
+                        + (root.searchResults.length === 1 ? "" : "s")
+                        + " for “" + root.searchQuery.trim() + "”"
+                    : root.currentPage.description
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                color: Theme.textFaint
+                width: Math.max(0, parent.width - headerTitle.width - parent.spacing * 2 - 8)
+                elide: Text.ElideRight
+            }
+        }
+
+        Row {
+            id: headerActions
+            anchors.right: parent.right
+            anchors.rightMargin: root.gutter
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 4
+
+            SettingsAction {
+                compact: true
+                text: "Close"
+                glyph: "close"
+                onTriggered: Settings.closePanel()
+            }
+        }
+    }
+
+    Rectangle {
+        y: root.headerHeight
+        width: parent.width
+        height: 1
+        color: Theme.hairlineSoft
     }
 
     Item {

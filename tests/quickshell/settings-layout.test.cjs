@@ -11,24 +11,32 @@ test('settings subsections own separation inside revealers and preserve the row 
     assert.match(subsection, /heading.height[\s\S]*Theme.settingsContentSpacing/);
     assert.match(subsection, /root.insetContent \? Theme.settingsMarkInset : 0/);
     const appearance = read('Settings/AppearancePage.qml');
-    assert.equal((appearance.match(/SettingsSubsection \{/g) || []).length, 3);
+    assert.equal((appearance.match(/SettingsSubsection \{/g) || []).length, 2);
     assert.doesNotMatch(appearance, /SectionHeader \{/);
-    for (const page of ['Appearance', 'BarLayout', 'Drawer', 'Notifications', 'System', 'Modules', 'Plugins'])
-        assert.match(read(`Settings/${page}Page.qml`), /spacing: Theme.settingsGroupSpacing/);
+    for (const page of ['AppearancePage', 'BarLayoutGroups', 'DrawerPage', 'NotificationsPage',
+            'PowerPage', 'RegionPage', 'TouchpadPage', 'ModulesPage', 'PluginsPage'])
+        assert.match(read(`Settings/${page}.qml`), /spacing: Theme.settingsGroupSpacing/);
 });
 
 test('responsive controls and focus scrolling respect their content bounds', () => {
     const picker = read('Settings/PickerRow.qml');
-    assert.match(picker, /wideHeight: Math.max\(Theme.panelRowHeight, pills.implicitHeight\)/);
-    for (const row of ['PickerRow', 'SliderRow', 'SettingsTextRow', 'TimeRow', 'CornerPickerRow'])
-        assert.match(read(`Settings/${row}.qml`), /root\.narrow \? root\.markInset : root\.labelWidth/);
+    assert.match(picker, /wideHeight: Math.max\(Theme.panelRowHeight, pills.implicitHeight\) \+ rowPad \* 2/);
+    // Every control ends on the page's right-hand edge and tells the row
+    // where it begins, so labels take the room to its left (2026-09).
+    for (const row of ['PickerRow', 'SliderRow', 'SettingsTextRow', 'TimeRow', 'CornerPickerRow',
+            'SwitchRow', 'SelectRow'])
+        assert.match(read(`Settings/${row}.qml`), /controlLeft:/, `${row} reports its control's left edge`);
+    for (const row of ['PickerRow', 'TimeRow', 'CornerPickerRow', 'SelectRow'])
+        assert.match(read(`Settings/${row}.qml`), /root\.narrow \? root\.markInset : root\.contentRight - width/);
+    assert.match(read('Settings/SliderRow.qml'), /Math\.min\(root\.trackWidth,/,
+        'a slider keeps a bounded track instead of stretching across the page');
     // A switch keeps its own line beside the label; its description is the
     // shared hint line underneath, which wraps instead of eliding.
     assert.match(read('Settings/SwitchRow.qml'), /hint: description/);
     assert.match(read('Settings/SettingsRow.qml'),
         /height: lineHeight \+ \(hintLine\.visible \? hintLine\.height/);
     assert.match(read('Settings/ResponsiveActionRow.qml'), /Flow \{/);
-    assert.match(read('Settings/SettingsPage.qml'), /while \(ancestor && ancestor !== contentRoot\)/);
+    assert.match(read('Settings/SettingsPage.qml'), /while \(ancestor && ancestor !== contentRoot/);
     assert.match(read('Settings/SettingsRow.qml'), /Accessible.name: "Reset " \+ root.resetLabel/);
 });
 

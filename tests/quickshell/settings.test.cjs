@@ -31,7 +31,7 @@ test("every connected output keeps a bar while popouts stay single-hosted", () =
     const bar = read("Bar/Bar.qml");
     const window = read("Bar/BarPopoutWindow.qml");
     const popouts = read("Common/Popouts.qml");
-    const barPage = read("Settings/BarLayoutPage.qml");
+    const barPage = read("Settings/BarLayoutGroups.qml");
 
     assert.match(shell, /Variants\s*\{[\s\S]*?model:\s*Screens\.layerSurfaceModel[\s\S]*?Bar\s*\{/,
         "bars must still be created from the live screen model");
@@ -520,7 +520,8 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     const base = read("Settings/SettingsRow.qml");
     const picker = read("Settings/PickerRow.qml");
     const switchRow = read("Settings/SwitchRow.qml");
-    const system = read("Settings/SystemPage.qml");
+    const system = ["PowerPage", "RegionPage", "TouchpadPage"]
+        .map(name => read(`Settings/${name}.qml`)).join("\n");
 
     assert.match(view, /preferredWidth:\s*Theme\.scaled\(900, Theme\.contentScale\)/);
     assert.match(view, /preferredHeight:\s*Theme\.scaled\(664\)/,
@@ -529,8 +530,10 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
     // loops (narrower content re-wraps taller and flips the scrollbar).
     assert.match(page, /scrollGutter:\s*8/);
     assert.doesNotMatch(page, /scrollGutter:\s*scrollbarVisible/);
-    assert.match(page, /width:\s*root\.width - root\.scrollGutter/);
-    // One fixed lane keeps every row aligned across all menu fonts.
+    assert.match(page, /width:\s*Math\.min\(root\.maxContentWidth, Math\.max\(0, root\.width - root\.scrollGutter\)\)/,
+        "a page's column is bounded and centered rather than stretched across the pane");
+    // One minimum label lane keeps short labels aligned across all menu
+    // fonts; controls end on the right-hand edge.
     assert.match(theme,
         /readonly property int settingsLabelWidth:\s*scaled\(132, typeScale\)/);
     assert.match(theme, /readonly property int settingsNarrowWidth:\s*scaled\(520, typeScale\)/);
@@ -543,7 +546,7 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
         "switch descriptions wrap on the shared hint line, which grows the row");
     assert.match(base, /readonly property real lineHeight:/,
         "controls centre on the control line, not on a row grown by its hint");
-    for (const row of ["SliderRow", "PickerRow", "SwitchRow", "SettingsTextRow"])
+    for (const row of ["SliderRow", "PickerRow", "SwitchRow", "SettingsTextRow", "SelectRow"])
         assert.match(read(`Settings/${row}.qml`), /^SettingsRow \{$/m,
             `${row} must build on SettingsRow`);
     // Reset all keeps the rail's undo rather than a confirm step, and sits
@@ -557,7 +560,7 @@ test("settings geometry accommodates wide menu fonts and focused rows", () => {
 test("touchpad scroll speed defaults to Hyprland's factor and applies live", () => {
     const settings = read("Common/Settings.qml");
     const helpers = read("Common/SettingsHelpers.js");
-    const system = read("Settings/SystemPage.qml");
+    const system = read("Settings/TouchpadPage.qml");
     const input = fs.readFileSync(
         path.resolve(shellDir, "../../templates/input.lua.j2"), "utf8");
 
@@ -578,16 +581,24 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
     const settings = read("Common/Settings.qml");
     const searchData = read("Common/SettingsSearchData.js");
 
-    assert.match(view, /group:\s*"SHELL"/);
-    assert.match(view, /group:\s*"SYSTEM"/);
+    // Pages are grouped by task (2026-09): Personalize, Devices, System.
+    assert.match(settings, /pageGroups: \["Personalize", "Devices", "System"\]/);
+    assert.match(view, /model: Settings\.pageGroups/);
     assert.match(view, /id:\s*railFooter/);
-    assert.match(view, /Saved · applies live/);
+    // The status line speaks only while saving, briefly after, after a reset
+    // and on an error; "Saved · applies live" standing there said nothing.
+    assert.doesNotMatch(view, /Saved · applies live/);
+    assert.match(view, /visible: root\.statusShown/);
+    assert.doesNotMatch(view, /Settings\.sectionDirty\(navItem/,
+        "the rail carries no changed-page dots; they read as unread badges");
     assert.doesNotMatch(view, /shell-settings\.json/,
-        "the config path chip lives on the System page, not a bottom footer");
+        "the config path chip lives on the About page, not a bottom footer");
     assert.match(view, /case "notifications": return notificationsPage;/);
     assert.doesNotMatch(view, /id: "drawer"|case "drawer"|id: drawerPage/);
-    assert.match(settings, /"notifications", "network", "sound", "displays", "accounts", "system", "about"\]/);
-    assert.match(view, /case "about": return aboutPage;/);
+    for (const id of ["touchpad", "power", "region", "about"])
+        assert.match(view, new RegExp(`case "${id}": return ${id}Page;`));
+    // Old ids keep working from IPC and scripts.
+    assert.match(settings, /legacyPages: \(\{\s*modules: "bar", widgets: "bar", system: "power", drawer: "bar"/);
 
     // Turn-3 search: "/" focuses the nav field, results jump to and
     // highlight the row through Settings.highlightKey.
@@ -601,8 +612,9 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
     // The index is hand-maintained; hold it against the schema so a renamed
     // key or page cannot leave a search row jumping nowhere.
     const schemaKeys = Object.keys(load("SettingsHelpers.js").defaults());
-    const validPages = ["appearance", "wallpaper", "bar", "modules", "plugins",
-        "notifications", "network", "sound", "displays", "accounts", "system", "about"];
+    const validPages = [...settings.matchAll(/\{ id: "([a-z]+)", group: "/g)].map(m => m[1]);
+    assert.deepEqual(validPages, ["appearance", "wallpaper", "bar", "notifications", "displays",
+        "sound", "network", "touchpad", "power", "region", "accounts", "plugins", "about"]);
     const rows = load("SettingsSearchData.js").ROWS;
     assert.ok(rows.length >= 30, "the search index must cover the workspace");
     for (const row of rows) {
@@ -641,10 +653,11 @@ test("settings workspace uses shared responsive groups and bounded header lanes"
     assert.match(qmldir, /^SettingsGroup SettingsGroup\.qml$/m);
     assert.match(qmldir, /^ResponsiveActionRow ResponsiveActionRow\.qml$/m);
 
-    for (const page of ["AppearancePage", "BarLayoutPage", "NotificationsPage", "SystemPage"])
+    for (const page of ["AppearancePage", "BarLayoutGroups", "NotificationsPage", "PowerPage",
+            "RegionPage", "TouchpadPage"])
         assert.match(read(`Settings/${page}.qml`), /SettingsGroup \{/,
             `${page} must use grouped settings sections`);
-    for (const page of ["WallpaperPage", "SystemPage", "AboutPage"])
+    for (const page of ["WallpaperPage", "PowerPage", "AboutPage"])
         assert.match(read(`Settings/${page}.qml`), /ResponsiveActionRow \{/,
             `${page} must use bounded responsive action copy`);
 });
@@ -669,8 +682,10 @@ test("dialog chrome carries the menubar's grammar rather than a card stack", () 
     assert.match(header, /color:\s*Theme\.hairlineSoft/,
         "a section label runs a hairline to the page edge, as T3's inbox groups do");
 
-    assert.match(pills, /color:\s*pill\.selected \? Theme\.chipHover : "transparent"/,
-        "the taken option lights the bar's held chip, not an accent tint");
+    assert.match(pills, /: root\.segmented \? Theme\.segmentSelected : Theme\.chipHover/,
+        "the taken option is raised out of its track, not an accent tint");
+    assert.match(pills, /visible: root\.segmented\s+radius:[^\n]*\n\s+color: Theme\.chip/,
+        "settings choices share one track so they read as a single control");
     assert.match(pills, /radius:\s*Theme\.chipRadius/,
         "segments take the bar's chip corner rather than a pill");
     assert.doesNotMatch(pills, /Theme\.accentAlpha/,
@@ -685,18 +700,17 @@ test("dialog chrome carries the menubar's grammar rather than a card stack", () 
 
 test("progressive disclosure hides inactive controls without discarding latent values", () => {
     const appearance = read("Settings/AppearancePage.qml");
-    const bar = read("Settings/BarLayoutPage.qml");
+    const bar = read("Settings/BarLayoutGroups.qml");
     const reveal = read("Common/Revealer.qml");
     const picker = read("Settings/PickerRow.qml");
 
     const fixedAt = appearance.indexOf("id: fixedColorReveal");
     const paletteAt = appearance.indexOf("id: paletteContent");
-    const barAt = appearance.indexOf('title: "Bar background"');
     const sizingAt = appearance.indexOf('title: "Panels"');
-    assert.ok(fixedAt > 0 && paletteAt > fixedAt && barAt > paletteAt && sizingAt > barAt,
+    assert.ok(fixedAt > 0 && paletteAt > fixedAt && sizingAt > paletteAt,
         "Fixed must reveal its accent controls immediately below the mode picker");
     const fixed = appearance.slice(fixedAt, paletteAt);
-    const barColors = appearance.slice(barAt, sizingAt);
+    const barColors = read("Settings/BarBackgroundGroup.qml");
     assert.match(fixed, /reveal:\s*page\.fixedPalette/);
     assert.match(fixed, /\baccent\b/, "the manual accent choice belongs to fixed mode");
     assert.match(appearance,
@@ -706,8 +720,8 @@ test("progressive disclosure hides inactive controls without discarding latent v
         /id:\s*fixedColorScrollTimer[\s\S]{0,120}?page\.revealFixedColorsNow\(\)/,
         "the scroll must wait for the fixed-color reveal before measuring it");
     assert.match(appearance,
-        /firstBarSwatch\s*=\s*barColorRepeater\.itemAt\(0\)[\s\S]{0,160}?page\.revealFocus\(firstBarSwatch/,
-        "Fixed must reveal both the accent controls and the independent bar background");
+        /lastSwatch\s*=\s*swatchRepeater\.itemAt\([\s\S]{0,160}?page\.revealFocus\(lastSwatch/,
+        "Fixed must bring the revealed accent controls into view");
     assert.doesNotMatch(appearance, /Component\.onCompleted:/,
         "opening Appearance must not scroll past typography or override a search jump");
     assert.match(appearance, /label: "Interface font"\s+settingKey: "font"/,
@@ -748,7 +762,7 @@ test("progressive disclosure hides inactive controls without discarding latent v
 test("bar geometry reset ownership moves from Appearance to Bar", () => {
     const settings = read("Common/Settings.qml");
     const appearance = read("Settings/AppearancePage.qml");
-    const bar = read("Settings/BarLayoutPage.qml");
+    const bar = read("Settings/BarLayoutGroups.qml");
     const appearanceKeys = settings.match(/appearance:\s*\[([^\]]+)\]/s)?.[1] ?? "";
     const barKeys = settings.match(/bar:\s*\[([^\]]+)\]/s)?.[1] ?? "";
 
@@ -758,8 +772,13 @@ test("bar geometry reset ownership moves from Appearance to Bar", () => {
         assert.doesNotMatch(appearance, new RegExp(`settingKey:\\s*"${key}"`));
         assert.match(bar, new RegExp(`settingKey:\\s*"${key}"`));
     }
-    assert.match(settings, /bar:\s*"Bar"/,
-        "the reset announcement must use the new visible page name");
+    for (const key of ["barColorMode", "barCustomHue", "mods", "modOpts"]) {
+        assert.doesNotMatch(appearanceKeys, new RegExp(`"${key}"`));
+        assert.match(barKeys, new RegExp(`"${key}"`));
+    }
+    assert.match(settings, /\{ id: "bar", group: "Personalize", label: "Bar"/,
+        "the reset announcement uses the page's visible name");
+    assert.match(settings, /pageInfo\(section\)\.label/);
 });
 
 test("wallpaper and module layouts switch before content can collide", () => {

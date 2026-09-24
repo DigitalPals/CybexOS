@@ -351,7 +351,7 @@ Column {
             return parts.join(" · ");
         }
         actionText: "Idle settings"
-        onActionClicked: Settings.showSetting("system", "idleLockMins",
+        onActionClicked: Settings.showSetting("power", "idleLockMins",
             Popouts.hostScreenName)
     }
 }

@@ -120,6 +120,10 @@ SettingsPage {
             }
         }
 
+        RecoveryGroup {
+            width: parent.width
+        }
+
         SettingsGroup {
             width: parent.width
             title: "Settings file"
