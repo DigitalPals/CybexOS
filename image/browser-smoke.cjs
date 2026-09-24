@@ -75,12 +75,12 @@ async function main() {
         return;
       }
       const file = path.basename(pathname) || "index.html";
-      if (!["index.html", "installer.css", "installer.js", "model.mjs"].includes(file)) {
+      if (!["index.html", "installer.css", "installer.js", "model.mjs", "cybex-wordmark.svg"].includes(file)) {
         response.writeHead(404).end();
         return;
       }
       response.setHeader("Content-Type", file.endsWith(".html") ? "text/html"
-        : file.endsWith(".css") ? "text/css" : "text/javascript");
+        : file.endsWith(".css") ? "text/css" : file.endsWith(".svg") ? "image/svg+xml" : "text/javascript");
       response.end(await fs.readFile(path.join(root, file)));
     } catch {
       response.writeHead(500).end("Fixture server error");
@@ -115,6 +115,7 @@ async function main() {
     await page.getByRole("button", { name: "Choose install location" }).click();
     await page.locator("#location").waitFor({ state: "visible" });
     assert.equal(await page.isChecked("#encrypted"), true);
+    await screenshot(page, "installer-location");
     await page.selectOption("#disk", "vda");
     await page.getByRole("button", { name: "Review installation" }).click();
     await page.locator("#review").waitFor({ state: "visible" });
