@@ -71,6 +71,47 @@ Singleton {
             search();
     }
 
+    // The welcome window's row: the default listing (Popular, General, sized
+    // for these displays, no query). Filters changed in Settings go back to
+    // their defaults; a default listing that already loaded, or is loading,
+    // is kept rather than searched again.
+    function showPopular() {
+        const isDefault = query === "" && sort === defaults.sort
+            && category === defaults.category && size === defaults.size;
+        if (isDefault && (busy || (searched && error === "")))
+            return;
+        query = "";
+        sort = defaults.sort;
+        category = defaults.category;
+        size = defaults.size;
+        search();
+    }
+
+    // Picks a listed result by its Wallhaven id; false when it is not listed.
+    function pick(id) {
+        const item = results.find(entry => entry.id === id);
+        if (!item)
+            return false;
+        apply(item);
+        return true;
+    }
+
+    // Everything the welcome window polls for while it waits on a search or
+    // a download, as one JSON-ready object.
+    function state() {
+        return {
+            busy: busy,
+            searched: searched,
+            error: error,
+            items: WallhavenHelpers.ipcItems(results, Settings.wall, saved),
+            downloading: downloadingId,
+            progress: downloadProgress,
+            downloadError: downloadError,
+            failedId: failedId,
+            current: Settings.wall
+        };
+    }
+
     function search() {
         fetchPage(1);
     }

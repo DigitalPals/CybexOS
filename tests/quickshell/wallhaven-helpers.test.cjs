@@ -187,16 +187,39 @@ test("the Online view reaches the network only once chosen", () => {
     assert.match(read("Settings/qmldir"), /^WallpaperOnlineView WallpaperOnlineView\.qml$/m);
 });
 
-test("the welcome window's wallpaper button reaches a real shell IPC call", () => {
+test("every wallpaper call the welcome window makes exists in the shell", () => {
     const repo = path.resolve(shellDir, "../../../..");
     const welcome = fs.readFileSync(path.join(repo, "image/rootfs/usr/bin/cybexos-welcome"), "utf8");
     const window = fs.readFileSync(path.join(repo, "image/rootfs/usr/share/cybexos/welcome/Main.qml"), "utf8");
     const shell = read("shell.qml");
+    const start = shell.indexOf('target: "wallpaper"');
+    const handler = shell.slice(start, shell.indexOf("IpcHandler {", start));
 
-    assert.match(welcome, /"wallpaper":\s*\["wallpaper",\s*"browse"\]/);
-    assert.match(window, /onClicked:\s*welcome\.openSettings\("wallpaper"\)/);
-    const handler = shell.slice(shell.indexOf('target: "wallpaper"'));
+    const calls = new Set([...welcome.matchAll(/\["wallpaper",\s*"([a-z]+)"/g)].map(match => match[1]));
+    assert.deepEqual([...calls].sort(), ["browse", "list", "pick", "popular", "results", "set"]);
+    for (const call of calls)
+        assert.match(handler, new RegExp(`function ${call}\\(`), `the shell has no wallpaper.${call}()`);
+
+    assert.match(window, /onClicked:\s*welcome\.openSettings\("wallpaper"\)/, "More online opens Settings");
     assert.match(handler,
         /function browse\(\): void \{\s*OnlineWallpapers\.view = "online";\s*Settings\.showPanel\("wallpaper",/,
         "browse() opens Settings on the Online view");
+    assert.match(handler, /function set\(name: string\): string \{\s*return Wallpaper\.setByName\(name\)/);
+    const setByName = read("Common/Wallpaper.qml");
+    assert.match(setByName,
+        /function setByName\(name\) \{\s*if \(typeof name !== "string" \|\| name === "" \|\| name\.indexOf\("\/"\) >= 0\)\s*return false;\s*if \(!files\.some\(file => basename\(file\) === name\)\)\s*return false;/,
+        "set() accepts only a bare name already in the wallpaper folder");
+});
+
+test("the IPC listing reports what the welcome row draws", () => {
+    const listed = [{ id: "qroy2d", thumb: "t1", width: 3840, height: 2160, size: 5, fileName: "wallhaven-qroy2d.png",
+        favorites: 9, category: "general", image: "i1", page: "p1" },
+    { id: "rdwjj7", thumb: "t2", width: 4096, height: 2561, size: 6, fileName: "wallhaven-rdwjj7.jpg" }];
+    assert.deepEqual(H.ipcItems(listed, "wallhaven-rdwjj7.jpg", { "wallhaven-qroy2d.png": true }), [
+        { id: "qroy2d", thumb: "t1", width: 3840, height: 2160, size: 5, fileName: "wallhaven-qroy2d.png",
+            current: false, saved: true },
+        { id: "rdwjj7", thumb: "t2", width: 4096, height: 2561, size: 6, fileName: "wallhaven-rdwjj7.jpg",
+            current: true, saved: false }
+    ]);
+    assert.deepEqual(H.ipcItems(undefined, "", undefined), []);
 });

@@ -1,23 +1,46 @@
 #!/usr/bin/env python3
 """Unprivileged welcome window. Anaconda owns installation and authorization."""
+import json
 import os
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import QObject, Property, QProcess, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, Property, QProcess, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtQml import QQmlApplicationEngine
+
+# Beside this program in both layouts: /usr/bin → /usr/share when installed,
+# image/rootfs/usr/bin → image/rootfs/usr/share when run from a checkout.
+QML = Path(__file__).resolve().parents[1] / "share/cybexos/welcome/Main.qml"
+
+# How long to wait for the desktop shell at login (it can start after this
+# window), and how often to ask while a search or download is running.
+SHELL_ATTEMPTS = 20
+SHELL_RETRY_MS = 1000
+POLL_MS = 400
 
 
 class Welcome(QObject):
     changed = Signal()
     activate = Signal()
+    wallpapersChanged = Signal()
+    wallpaperStateChanged = Signal()
+
+    # Shell IPC calls the window's buttons make, by the name QML passes.
+    SHELL_PAGES = {
+        "appearance": ["settings", "open", "appearance"],
+        # Settings → Wallpaper, on its Online (Wallhaven) view.
+        "wallpaper": ["wallpaper", "browse"],
+    }
 
     def __init__(self):
         super().__init__()
         self.live = Path("/run/cybexos-live").exists()
         self.marker = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "cybexos/welcome-complete"
+        # The runtime helper reaches the shell that is actually running,
+        # including a development checkout selected with `cybex dev`.
+        self.runtime = Path.home() / ".local/bin/cybexos-runtime"
         self.message = ""
         self.process = QProcess(self)
         self.process.finished.connect(self.finished)
@@ -26,6 +49,27 @@ class Welcome(QObject):
         # Keep diagnostics in the user service's journal, never in a root-owned
         # file in the live account's home directory.
         self.process.setProcessChannelMode(QProcess.ForwardedChannels)
+
+        # The wallpaper row. `_wallpapers` changes only when the listed images
+        # do; the current file and download progress are separate properties,
+        # so polling never rebuilds the row or resets its scroll position.
+        self._wallpapers = []
+        self._source = "loading"
+        self._note = ""
+        self._current = ""
+        self._downloading = ""
+        self._progress = 0
+        self.attempts = 0
+        self.local_reason = ""
+        self.results_pending = False
+        self.poll_timer = QTimer(self)
+        self.poll_timer.setSingleShot(True)
+        self.poll_timer.setInterval(POLL_MS)
+        self.poll_timer.timeout.connect(self.poll_results)
+        self.retry_timer = QTimer(self)
+        self.retry_timer.setSingleShot(True)
+        self.retry_timer.setInterval(SHELL_RETRY_MS)
+        self.retry_timer.timeout.connect(self.request_popular)
 
     @Property(bool, constant=True)
     def isLive(self):
@@ -59,34 +103,229 @@ class Welcome(QObject):
         self.message = "Could not open the installer: " + self.process.errorString()
         self.changed.emit()
 
-    # Shell IPC calls the welcome window may make, by the page it names.
-    SHELL_PAGES = {
-        "appearance": ["settings", "open", "appearance"],
-        # Settings → Wallpaper, on its Online (Wallhaven) view.
-        "wallpaper": ["wallpaper", "browse"],
-        "shortcuts": ["session", "keys"],
-    }
-
     @Slot(str)
     def openSettings(self, page):
         if page not in self.SHELL_PAGES:
             return
-        # The runtime helper reaches the shell that is actually running,
-        # including a development checkout selected with `cybex dev`.
-        arguments = ["ipc"] + self.SHELL_PAGES[page]
-        success, _ = QProcess.startDetached(str(Path.home() / ".local/bin/cybexos-runtime"), arguments)
+        success, _ = QProcess.startDetached(str(self.runtime), ["ipc"] + self.SHELL_PAGES[page])
         if not success:
             self.message = "The desktop settings could not be opened."
             self.changed.emit()
+
+    # Closing the window is how an installed system finishes the welcome; a
+    # live session never records it.
+    @Slot()
+    def markComplete(self):
+        if self.live:
+            return
+        self.marker.parent.mkdir(parents=True, exist_ok=True)
+        self.marker.touch()
 
     @Slot()
     def finish(self):
         if self.busy:
             return
-        if not self.live:
-            self.marker.parent.mkdir(parents=True, exist_ok=True)
-            self.marker.touch()
+        self.markComplete()
         QGuiApplication.quit()
+
+    # ---- wallpapers ---------------------------------------------------
+
+    @Property("QVariantList", notify=wallpapersChanged)
+    def wallpapers(self):
+        return self._wallpapers
+
+    # loading | waiting | online | local | unavailable
+    @Property(str, notify=wallpaperStateChanged)
+    def wallpaperSource(self):
+        return self._source
+
+    @Property(str, notify=wallpaperStateChanged)
+    def wallpaperNote(self):
+        return self._note
+
+    @Property(str, notify=wallpaperStateChanged)
+    def currentFile(self):
+        return self._current
+
+    @Property(str, notify=wallpaperStateChanged)
+    def downloadingKey(self):
+        return self._downloading
+
+    @Property(int, notify=wallpaperStateChanged)
+    def downloadProgress(self):
+        return self._progress
+
+    def call(self, arguments, done):
+        """Runs `cybexos-runtime ipc ARGUMENTS` without blocking the window and
+        calls done(ok, stdout) exactly once."""
+        process = QProcess(self)
+        settled = [False]
+
+        def settle(ok):
+            if settled[0]:
+                return
+            settled[0] = True
+            try:
+                output = bytes(process.readAllStandardOutput()).decode("utf-8", "replace").strip()
+                process.deleteLater()
+            except RuntimeError:
+                # The window, and with it this process, is already gone.
+                return
+            done(ok, output)
+
+        process.finished.connect(
+            lambda code, status: settle(status == QProcess.NormalExit and code == 0))
+        # A program that never starts reports only this, never finished().
+        process.errorOccurred.connect(
+            lambda error: settle(False) if error == QProcess.FailedToStart else None)
+        process.start(str(self.runtime), ["ipc"] + arguments)
+
+    def set_state(self, **values):
+        changed = False
+        for name, value in values.items():
+            attribute = "_" + name
+            if getattr(self, attribute) != value:
+                setattr(self, attribute, value)
+                changed = True
+        if changed:
+            self.wallpaperStateChanged.emit()
+
+    def set_wallpapers(self, entries):
+        if [entry["key"] for entry in entries] != [entry["key"] for entry in self._wallpapers] \
+                or [entry["kind"] for entry in entries] != [entry["kind"] for entry in self._wallpapers]:
+            self._wallpapers = entries
+            self.wallpapersChanged.emit()
+
+    @Slot()
+    def loadWallpapers(self):
+        """Asks the shell for its Popular Wallhaven listing."""
+        if self.live:
+            return
+        self.attempts = 0
+        self.poll_timer.stop()
+        self.set_state(source="loading" if not self._wallpapers else self._source, note="")
+        self.request_popular()
+
+    def request_popular(self):
+        self.call(["wallpaper", "popular"], self.popular_requested)
+
+    def popular_requested(self, ok, _output):
+        if ok:
+            self.poll_results()
+            return
+        # The shell may still be starting: the welcome service and the shell
+        # come up with the same session target.
+        self.attempts += 1
+        if self.attempts < SHELL_ATTEMPTS:
+            self.set_state(source="waiting", note="")
+            self.retry_timer.start()
+        else:
+            self.set_state(source="unavailable",
+                           note="The desktop shell is not answering, so wallpapers cannot be shown yet.")
+
+    @Slot()
+    def poll_results(self):
+        if self.results_pending:
+            return
+        self.results_pending = True
+        self.call(["wallpaper", "results"], self.results_received)
+
+    def results_received(self, ok, output):
+        self.results_pending = False
+        state = self.parse(output) if ok else None
+        if state is None:
+            self.set_state(source="unavailable",
+                           note="The desktop shell did not answer. Try again in a moment.")
+            return
+        busy = bool(state.get("busy")) or not state.get("searched")
+        items = [item for item in state.get("items") or [] if self.valid_online(item)]
+        if busy and not items:
+            self.set_state(source="loading")
+            self.poll_timer.start()
+            return
+        if not items:
+            # Offline, rate limited or an empty listing: the folder still
+            # offers something to pick.
+            self.load_local(state.get("error") or "Wallhaven returned no wallpapers.")
+            return
+        self.set_wallpapers([{
+            "key": item["id"],
+            "kind": "online",
+            "thumb": item["thumb"],
+            "fileName": item["fileName"],
+            "label": "{} × {}".format(item.get("width", 0), item.get("height", 0)),
+        } for item in items])
+        downloading = str(state.get("downloading") or "")
+        self.set_state(source="online", current=str(state.get("current") or ""),
+                       downloading=downloading,
+                       progress=int(state.get("progress") or 0),
+                       note=str(state.get("downloadError") or ""))
+        if downloading or busy:
+            self.poll_timer.start()
+
+    @staticmethod
+    def parse(output):
+        try:
+            value = json.loads(output)
+        except ValueError:
+            return None
+        return value if isinstance(value, dict) else None
+
+    @staticmethod
+    def valid_online(item):
+        return (isinstance(item, dict) and isinstance(item.get("id"), str)
+                and isinstance(item.get("thumb"), str) and item["thumb"].startswith("https://th.wallhaven.cc/")
+                and isinstance(item.get("fileName"), str))
+
+    def load_local(self, reason=None):
+        """Lists the wallpaper folder instead; `reason` says why, and None
+        keeps the reason given when the row first fell back."""
+        if reason is not None:
+            self.local_reason = reason
+
+        def received(ok, output):
+            state = self.parse(output) if ok else None
+            if state is None:
+                self.set_state(source="unavailable",
+                               note="The desktop shell did not answer. Try again in a moment.")
+                return
+            folder = Path(str(state.get("dir") or "~/Pictures/Wallpapers")).expanduser()
+            names = [name for name in state.get("files") or []
+                     if isinstance(name, str) and name and "/" not in name]
+            self.set_wallpapers([{
+                "key": name,
+                "kind": "local",
+                "thumb": QUrl.fromLocalFile(str(folder / name)).toString(),
+                "fileName": name,
+                "label": name,
+            } for name in names])
+            self.set_state(source="local", current=str(state.get("current") or ""),
+                           downloading="", progress=0,
+                           note=(self.local_reason + " " if self.local_reason else "")
+                           + "Showing the wallpapers on this computer.")
+        self.call(["wallpaper", "list"], received)
+
+    @Slot(str)
+    def pickWallpaper(self, key):
+        entry = next((entry for entry in self._wallpapers if entry["key"] == key), None)
+        if entry is None:
+            return
+        if entry["kind"] == "online":
+            self.set_state(downloading=key, progress=0, note="")
+            self.call(["wallpaper", "pick", key], lambda _ok, _output: self.poll_results())
+        else:
+            self.set_state(current=key, note="")
+            self.call(["wallpaper", "set", key],
+                      lambda ok, output: self.load_local() if ok and output == "ok" else
+                      self.set_state(note="That wallpaper could not be applied."))
+
+    @Slot()
+    def refreshWallpapers(self):
+        """Catches up with a wallpaper chosen elsewhere (Settings, rotation)."""
+        if self._source == "online":
+            self.poll_results()
+        elif self._source == "local":
+            self.load_local()
 
 
 def main():
@@ -119,7 +358,7 @@ def main():
     server.newConnection.connect(activate)
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("welcome", backend)
-    engine.load(QUrl.fromLocalFile("/usr/share/cybexos/welcome/Main.qml"))
+    engine.load(QUrl.fromLocalFile(str(QML)))
     if not engine.rootObjects():
         return 1
     return app.exec()

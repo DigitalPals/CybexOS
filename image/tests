@@ -2,6 +2,7 @@
 """Behavioral checks for image account isolation and the welcome window."""
 import importlib.machinery
 import importlib.util
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -201,18 +202,179 @@ class WelcomeTests(unittest.TestCase):
             start.assert_not_called()
             self.assertIn("installer is missing", backend.status)
 
+    def backend(self, live=False):
+        backend = self.module.Welcome()
+        backend.live = live
+        # Never reach the shell of the machine running the tests.
+        backend.runtime = Path("/nonexistent/cybexos-runtime")
+        return backend
+
     def test_qml_loads_for_live_and_installed_modes(self):
+        self.assertEqual(self.module.QML, ROOT / "rootfs/usr/share/cybexos/welcome/Main.qml",
+                         "the window is found beside the program, installed or in a checkout")
+        self.assertTrue((self.module.QML.parent / "cybex-wordmark.svg").is_file())
         for live in (True, False):
-            backend = self.module.Welcome()
-            backend.live = live
+            backend = self.backend(live)
             engine = self.module.QQmlApplicationEngine()
+            warnings = []
+            engine.warnings.connect(lambda found: warnings.extend(w.toString() for w in found))
             engine.rootContext().setContextProperty("welcome", backend)
-            engine.load(self.module.QUrl.fromLocalFile(str(ROOT / "rootfs/usr/share/cybexos/welcome/Main.qml")))
+            engine.load(self.module.QUrl.fromLocalFile(str(self.module.QML)))
             self.assertTrue(engine.rootObjects(), f"welcome failed to load in live={live}")
+            self.assertEqual(warnings, [], f"QML warnings in live={live}")
             window = engine.rootObjects()[0]
             window.close()
             del window
             del engine
+
+    def test_closing_an_installed_welcome_records_completion(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            for live, expected in ((True, False), (False, True)):
+                backend = self.backend(live)
+                backend.marker = Path(temporary) / str(live) / "welcome-complete"
+                backend.markComplete()
+                self.assertEqual(backend.marker.exists(), expected, f"live={live}")
+
+    def test_buttons_reach_only_known_shell_calls(self):
+        self.assertEqual(self.module.Welcome.SHELL_PAGES, {
+            "appearance": ["settings", "open", "appearance"],
+            "wallpaper": ["wallpaper", "browse"],
+        })
+        backend = self.backend()
+        with patch.object(self.module.QProcess, "startDetached", return_value=(True, 0)) as start:
+            backend.openSettings("shortcuts")
+            start.assert_not_called()
+            backend.openSettings("wallpaper")
+            start.assert_called_once_with(str(backend.runtime), ["ipc", "wallpaper", "browse"])
+
+
+class WelcomeWallpaperTests(unittest.TestCase):
+    """The wallpaper row against a scripted shell: `calls` records each IPC
+    call, and `answer` settles the oldest one."""
+
+    @classmethod
+    def setUpClass(cls):
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        cls.module = load("welcome_app", ROOT / "rootfs/usr/bin/cybexos-welcome")
+        cls.app = cls.module.QGuiApplication.instance() or cls.module.QGuiApplication([])
+
+    def setUp(self):
+        self.backend = self.module.Welcome()
+        self.backend.live = False
+        self.calls = []
+        self.backend.call = lambda arguments, done: self.calls.append((arguments, done))
+        self.row_changes = 0
+        self.backend.wallpapersChanged.connect(self.count_row_change)
+
+    def tearDown(self):
+        self.backend.poll_timer.stop()
+        self.backend.retry_timer.stop()
+
+    def count_row_change(self):
+        self.row_changes += 1
+
+    def answer(self, ok, output=""):
+        arguments, done = self.calls.pop(0)
+        done(ok, output if isinstance(output, str) else json.dumps(output))
+        return arguments
+
+    @staticmethod
+    def item(identifier, **extra):
+        return {"id": identifier, "thumb": f"https://th.wallhaven.cc/lg/{identifier[:2]}/{identifier}.jpg",
+                "fileName": f"wallhaven-{identifier}.jpg", "width": 3840, "height": 2160, **extra}
+
+    def results(self, items, **state):
+        return {"busy": False, "searched": True, "error": "", "items": items,
+                "downloading": "", "progress": 0, "downloadError": "", "current": "", **state}
+
+    def test_popular_results_fill_a_row_that_polling_does_not_rebuild(self):
+        self.backend.loadWallpapers()
+        self.assertEqual(self.answer(True), ["wallpaper", "popular"])
+        self.assertEqual(self.answer(True, self.results([], busy=True, searched=False)),
+                         ["wallpaper", "results"])
+        self.assertEqual(self.backend.wallpaperSource, "loading")
+        self.assertTrue(self.backend.poll_timer.isActive(), "a running search is polled")
+
+        self.backend.poll_timer.stop()
+        self.backend.poll_results()
+        listing = [self.item("qroy2d"), self.item("rdwjj7"),
+                   {"id": "evil", "thumb": "https://evil.example/x.jpg", "fileName": "x.jpg"}]
+        self.answer(True, self.results(listing, current="wallhaven-rdwjj7.jpg"))
+        self.assertEqual(self.backend.wallpaperSource, "online")
+        self.assertEqual([entry["key"] for entry in self.backend.wallpapers], ["qroy2d", "rdwjj7"],
+                         "only Wallhaven thumbnails are shown")
+        self.assertEqual(self.backend.currentFile, "wallhaven-rdwjj7.jpg")
+        self.assertFalse(self.backend.poll_timer.isActive(), "a settled listing is not polled")
+
+        self.backend.pickWallpaper("qroy2d")
+        self.assertEqual(self.answer(True, "ok"), ["wallpaper", "pick", "qroy2d"])
+        self.assertEqual(self.backend.downloadingKey, "qroy2d")
+        self.answer(True, self.results(listing, downloading="qroy2d", progress=40))
+        self.assertEqual(self.backend.downloadProgress, 40)
+        self.assertTrue(self.backend.poll_timer.isActive(), "a download is polled")
+        self.backend.poll_timer.stop()
+        self.backend.poll_results()
+        self.answer(True, self.results(listing, current="wallhaven-qroy2d.jpg"))
+        self.assertEqual(self.backend.currentFile, "wallhaven-qroy2d.jpg")
+        self.assertEqual(self.backend.downloadingKey, "")
+        self.assertEqual(self.row_changes, 1, "progress and picks never rebuild the row")
+
+    def test_offline_falls_back_to_the_wallpaper_folder(self):
+        self.backend.loadWallpapers()
+        self.answer(True)
+        self.answer(True, self.results([], error="Wallhaven could not be reached."))
+        arguments = self.answer(True, {"dir": "~/Pictures/Wallpapers", "current": "b.jpg",
+                                       "files": ["a.jpg", "b.jpg", "../escape.jpg"]})
+        self.assertEqual(arguments, ["wallpaper", "list"])
+        self.assertEqual(self.backend.wallpaperSource, "local")
+        self.assertEqual([entry["key"] for entry in self.backend.wallpapers], ["a.jpg", "b.jpg"])
+        self.assertEqual(self.backend.wallpapers[0]["thumb"],
+                         self.module.QUrl.fromLocalFile(str(Path.home() / "Pictures/Wallpapers/a.jpg")).toString())
+        self.assertIn("could not be reached", self.backend.wallpaperNote)
+
+        self.backend.pickWallpaper("a.jpg")
+        self.assertEqual(self.answer(True, "ok"), ["wallpaper", "set", "a.jpg"])
+        self.answer(True, {"dir": "~/Pictures/Wallpapers", "current": "a.jpg", "files": ["a.jpg", "b.jpg"]})
+        self.assertEqual(self.backend.currentFile, "a.jpg")
+        self.assertIn("could not be reached", self.backend.wallpaperNote, "the reason stays after a pick")
+
+    def test_a_shell_that_is_still_starting_is_retried_then_reported(self):
+        self.backend.loadWallpapers()
+        for attempt in range(self.module.SHELL_ATTEMPTS - 1):
+            self.answer(False)
+            self.assertEqual(self.backend.wallpaperSource, "waiting")
+            self.assertTrue(self.backend.retry_timer.isActive())
+            self.backend.retry_timer.stop()
+            self.backend.request_popular()
+        self.answer(False)
+        self.assertEqual(self.backend.wallpaperSource, "unavailable")
+        self.assertNotEqual(self.backend.wallpaperNote, "")
+
+    def test_a_live_session_never_asks_for_wallpapers(self):
+        self.backend.live = True
+        self.backend.loadWallpapers()
+        self.assertEqual(self.calls, [])
+
+    def test_calls_run_the_runtime_helper_without_blocking(self):
+        from PySide6.QtCore import QEventLoop
+        backend = self.module.Welcome()
+        with tempfile.TemporaryDirectory() as temporary:
+            helper = Path(temporary) / "cybexos-runtime"
+            helper.write_text('#!/bin/sh\nprintf \'%s\\n\' "$*"\n')
+            helper.chmod(0o755)
+            backend.runtime = helper
+            loop = QEventLoop()
+            answers = []
+            backend.call(["wallpaper", "list"], lambda ok, output: (answers.append((ok, output)), loop.quit()))
+            self.module.QTimer.singleShot(5000, loop.quit)
+            loop.exec()
+            self.assertEqual(answers, [(True, "ipc wallpaper list")])
+
+            backend.runtime = Path(temporary) / "missing"
+            backend.call(["wallpaper", "list"], lambda ok, output: (answers.append((ok, output)), loop.quit()))
+            self.module.QTimer.singleShot(5000, loop.quit)
+            loop.exec()
+            self.assertEqual(answers[-1], (False, ""), "a helper that cannot start still answers")
 
 
 if __name__ == "__main__":

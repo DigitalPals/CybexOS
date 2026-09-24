@@ -52,6 +52,18 @@ Singleton {
         Settings.set("wall", basename(path));
     }
 
+    // Selects a file already in the wallpaper folder by its bare name, for
+    // `ipc wallpaper set`. Anything else (a path, an unknown name) is refused,
+    // so the call can only choose among the images the folder offers.
+    function setByName(name) {
+        if (typeof name !== "string" || name === "" || name.indexOf("/") >= 0)
+            return false;
+        if (!files.some(file => basename(file) === name))
+            return false;
+        set(name);
+        return true;
+    }
+
     function shuffle() {
         if (files.length < 2)
             return;

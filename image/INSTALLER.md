@@ -177,7 +177,8 @@ loss, strict Anaconda proxy members and ordering, password separation, keyboard
 commands, target autologin conditions, rejection of mixed encrypted/plaintext
 backing devices, live-policy cleanup, executable permissions, and browser URL
 validation. Node fixtures cover UI state, confirmation, navigation locks, and
-failure recovery. Existing image tests load the welcome QML offscreen. The
+failure recovery. Image tests load the welcome QML offscreen in both modes and
+drive its wallpaper row against a scripted shell. The
 headless browser fixture exercises the three pages with a mocked backend.
 
 Still required before an ISO can be called working: actual Cockpit loading and

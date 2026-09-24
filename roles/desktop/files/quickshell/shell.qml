@@ -79,9 +79,10 @@ ShellRoot {
         }
     }
 
-    // Opens the Wallpaper page on its Online (Wallhaven) view, for a
-    // first-run "choose a wallpaper" step. The singleton is created by the
-    // first call, not at startup.
+    // Wallpaper calls for the welcome window: its row of popular Wallhaven
+    // images (popular, results, pick), the wallpaper folder as the offline
+    // fallback (list, set), and the Settings Online view (browse). The Online
+    // singleton is created by the first call, not at startup.
     IpcHandler {
         target: "wallpaper"
 
@@ -89,6 +90,29 @@ ShellRoot {
             OnlineWallpapers.view = "online";
             Settings.showPanel("wallpaper",
                 Screens.focused ? Screens.focused.name : "");
+        }
+
+        // Starts the default Popular listing unless it is already loaded.
+        function popular(): void {
+            OnlineWallpapers.showPopular();
+        }
+
+        function results(): string {
+            return JSON.stringify(OnlineWallpapers.state());
+        }
+
+        // Downloads (if needed) and applies a listed result.
+        function pick(id: string): string {
+            return OnlineWallpapers.pick(id) ? "ok" : "unknown";
+        }
+
+        function list(): string {
+            return JSON.stringify({dir: Settings.wallDir, current: Settings.wall,
+                files: Wallpaper.files.map(file => Wallpaper.basename(file))});
+        }
+
+        function set(name: string): string {
+            return Wallpaper.setByName(name) ? "ok" : "unknown";
         }
 
         // Read-only diagnostics of the Online view's search and download.

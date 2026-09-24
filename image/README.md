@@ -57,8 +57,8 @@ not export personal plugins (including the Omarchy plugin), credentials,
 monitor overrides or private launchers from the build machine. The private
 portal keybinding is enabled only when its helper exists.
 
-The firmware menu uses the same dark background and warm accent as Plymouth,
-welcome and installer. Media checks, basic graphics and recovery entries are
+The firmware menu uses the same dark background and warm accent as Plymouth
+and the installer. Media checks, basic graphics and recovery entries are
 preserved. Installed accounts are seeded before reboot. Live login copies
 only desktop essentials before starting Hyprland; a background service copies
 the large offline application seed and reports progress in the welcome
@@ -66,6 +66,15 @@ window. Reflinks are used where supported. Partially copied files never
 become active, personal files/symlinks are preserved, and interrupted seeding
 can be resumed with `cybex prepare-apps`. Developer tool links and editor
 configuration activate after their dependencies are copied.
+
+On an installed system the first login opens the welcome window: the Cybex
+wordmark, a scrollable row of popular Wallhaven wallpapers that apply with one
+click (the shell searches, downloads and applies them over
+`cybexos-runtime ipc wallpaper …`), and a Settings button. Offline, the row
+shows the wallpaper folder instead. Closing the window finishes the welcome;
+`cybex welcome` opens it again. The live session keeps its install-or-explore
+choice. The window finds its QML beside the program, so
+`python3 image/rootfs/usr/bin/cybexos-welcome` runs it from a checkout.
 
 The default application payload includes the desktop/media tools, Steam,
 Docker, Podman/Distrobox, Tailscale, Brave, 1Password, ChatGPT, LocalSend,

@@ -202,6 +202,24 @@ function statusError(status) {
     return "Wallhaven is unavailable right now (HTTP " + status + "). Try again later.";
 }
 
+// What `ipc wallpaper results` reports for each listed image: the fields the
+// welcome window draws, plus whether the image is the current wallpaper or
+// already saved in the wallpaper folder. current: Settings.wall; saved: a
+// { fileName: true } map.
+function ipcItems(items, current, saved) {
+    const names = saved || {};
+    return (items || []).map(item => ({
+        id: item.id,
+        thumb: item.thumb,
+        width: item.width,
+        height: item.height,
+        size: item.size,
+        fileName: item.fileName,
+        current: item.fileName === current,
+        saved: names[item.fileName] === true
+    }));
+}
+
 // The download helper's failure codes, in the words the page shows.
 const DOWNLOAD_ERRORS = {
     url: "The download address was not a Wallhaven image.",
@@ -220,5 +238,5 @@ function downloadError(code) {
 if (typeof module !== "undefined")
     module.exports = {
         SORTS, CATEGORIES, SIZES, searchUrl, minimumFor, allLandscape,
-        parseResults, merge, formatBytes, describe, statusError, downloadError
+        parseResults, merge, formatBytes, describe, statusError, downloadError, ipcItems
     };
