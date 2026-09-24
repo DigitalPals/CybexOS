@@ -796,32 +796,34 @@ operating the host radio.
 
 ## Widget editor
 
-Settings → Widgets opens **Your bar**, with Left, Center, and Right cards.
-Each card has a searchable widget selector and an Add button. Enabled widgets
-appear as compact pills with leading icons and the dark settings background, in a responsive
-grid (up to three columns). This includes widgets whose runtime conditions
-currently hide them from the bar. Plugins without a declared catalog icon use
-the extension symbol. The gear
-opens built-in or plugin settings in an embedded, scrollable dialog; closing it
-returns focus to the pill. The arrangement has no duplicate preview or permanent
-detail/browser pane. This interaction design follows Noctalia's legacy QML bar
-editor; our implementation uses Cybex components and storage.
+Settings → Bar opens with a live preview of the bar pinned above the page:
+the wallpaper, the bar at its position, style, height, gap, radius and
+background, and each section's enabled widgets as their icons. Clicking a
+widget there opens its options. Below it, the **Widgets** group lists Left,
+Center, and Right as rows of compact pills with leading icons (no cards).
+This includes widgets whose runtime conditions currently hide them from the
+bar. Plugins without a declared catalog icon use the extension symbol.
+Clicking a pill opens built-in or plugin settings in an embedded, scrollable
+dialog; closing it returns focus to the pill. Each pill's ⋯ menu offers
+Widget settings…, Move earlier/later, Move to Left/Center/Right, and Remove
+from bar. The bar's Layout, Background, and Behavior rows follow on the same
+page. This interaction design follows Noctalia's legacy QML bar editor; our
+implementation uses Cybex components and storage.
 
-Disabled widgets remain visible in **Available widgets** below the three cards.
-Their gears open the same settings dialog, with a **Show on bar** toggle;
-the context menu can add them directly to Left, Center, or Right. Control Center
-is a normal widget: the Fedora button can move, be removed, and be restored.
-Its gear contains the tab, overview, and behavior controls. Settings search
-opens this widget dialog too; there is no separate Control Center sidebar entry. Model usage uses the same placement and
-visibility controls. An installed Model Usage plugin is a separate widget with
-its own preferences.
+Disabled widgets sit in the **Add widgets** tray below the sections. A click
+adds one to its own section; its ⋯ menu picks another. Control Center is a
+normal widget: the Fedora button can move, be removed, and be restored. Its
+options contain the tab, overview, and behavior controls. Settings search
+opens this widget dialog too; there is no separate Control Center sidebar
+entry. Model usage uses the same placement and visibility controls. An
+installed Model Usage plugin is a separate widget with its own preferences.
 
 Schema 24 adds the Fedora widget at the right edge of older layouts and keeps
 all other widget placements. Model usage defaults to Provider CLIs. An older
 CLIProxyAPI selection with no server URL adopts this default; configured proxies
 and source selections saved under schema 24 are preserved.
 
-Drag a pill to reorder or move it between cards. The drag ghost and insertion
+Drag a pill to reorder or move it between sections. The drag ghost and insertion
 marker follow wrapped grid positions and the arrangement scrolls near its edges.
 Alt+arrow keys reorder; right-click, Menu, or Shift+F10 exposes placement,
 earlier/later, settings, and removal actions. Plugin blocks match the native bar:

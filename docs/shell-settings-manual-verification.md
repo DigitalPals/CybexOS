@@ -323,6 +323,8 @@ is manual.
       to the dropped row.
 - [ ] With the Everything preset, the preview's center section moves aside
       rather than painting over a crowded left or right section.
+- [ ] In the Usage widget's options, Poll every 1 min shortens the countdown;
+      the usage popover and the caption agree.
 
 ## Notifications page
 
@@ -370,6 +372,8 @@ is manual.
 - [ ] There is no standing Refresh. Loading and errors appear as a line at
       the top, with Refresh only after an error. Night light and Warmth still
       apply as they change.
+- [ ] Warmth drag with Night light on retints smoothly (single hyprsunset
+      restart per pause, not per step).
 
 ## Network page
 
@@ -411,14 +415,6 @@ is manual.
 - [ ] Scroll speed reads 1.0× at the default, snaps to its 1.0 tick, and
       applies to touchpad scrolling as it changes.
 
-## System page
-
-- [ ] Warmth drag with Night light on retints smoothly (single hyprsunset
-      restart per pause, not per step).
-- [ ] OSD placement Top shows volume/brightness pills top-center, clearing
-      the bar; Bottom returns them; slide-in direction matches the edge.
-- [ ] Poll every 1 min shortens the countdown; the usage popover and the
-      caption agree.
 ## Power page
 
 - [ ] The Idle timeline marks Screen off, Lock and Suspend at their current
