@@ -150,16 +150,51 @@ ssh "${ssh_args[@]}" fedora@127.0.0.1 \
   ssh "${ssh_args[@]}" fedora@127.0.0.1 \
     'tar -C /home/fedora/cybexos -xf -'
 
-# Base convergence intentionally disables sshd. Both passes and all assertions
-# therefore run inside this one already-established session.
+# Optional public download reuse. The inventory contract and checksums are
+# checked on both hosts; Ansible still runs every download/extraction task.
+# Import before firewall adoption closes fresh SSH connections to the guest.
+if [[ -n ${FEDORA_VM_DOWNLOAD_CACHE:-} ]]; then
+  python3 -B - "$repo_root" "$FEDORA_VM_DOWNLOAD_CACHE" "$scratch/download-cache" <<'CACHE'
+from pathlib import Path
+import sys
+
+root, source, destination = map(Path, sys.argv[1:])
+sys.path.insert(0, str(root / 'image'))
+from download_cache import merge_cache, pins
+
+contract = [entry for entry in pins(root)
+            if entry[1].startswith(('/var/cache/cybexos-upstream/', '/usr/local/share/fonts/'))]
+merge_cache(source, destination, contract)
+CACHE
+  tar --create --file=- --directory="$scratch/download-cache" . |
+    ssh "${ssh_args[@]}" fedora@127.0.0.1 \
+      'mkdir /home/fedora/cybexos-download-cache; tar -C /home/fedora/cybexos-download-cache -xf -'
+fi
+
+# Both passes and all assertions run inside an already-established session,
+# preserving the strict network policy that blocks fresh SSH connections.
 timeout --signal=TERM --kill-after=30 100m \
   ssh "${ssh_args[@]}" fedora@127.0.0.1 bash -s -- "$convergence_tags" <<'GUEST'
 set -euo pipefail
 tags=$1
-sudo dnf install -y ansible-core firewalld git
+sudo dnf install -y ansible-core firewalld git python3-pyyaml
 cd /home/fedora/cybexos
 export ANSIBLE_FORCE_COLOR=0
 export PYTHONDONTWRITEBYTECODE=1
+if [[ -d /home/fedora/cybexos-download-cache ]]; then
+  sudo python3 -B - <<'CACHE'
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path.cwd() / 'image'))
+from download_cache import import_cache, pins
+
+contract = [entry for entry in pins(Path.cwd())
+            if entry[1].startswith(('/var/cache/cybexos-upstream/', '/usr/local/share/fonts/'))]
+import_cache(Path('/home/fedora/cybexos-download-cache'), contract)
+CACHE
+  rm -rf -- /home/fedora/cybexos-download-cache
+fi
 
 # Exercise first-adoption rollback with real collisions, not only an empty
 # cloud-user home. User-owned desktop roots must survive convergence itself;
@@ -179,7 +214,8 @@ install -d -m 0755 /home/fedora/.config/hypr \
   /home/fedora/original-codex-skill
 printf 'original Hyprland bindings\n' >/home/fedora/.config/hypr/bindings.lua
 printf 'original Quickshell root\n' >/home/fedora/.config/quickshell/shell.qml
-printf 'original shell settings\n' >/home/fedora/.config/cybexos/shell.json
+printf '{"wall":"~/Pictures/personal-wallpaper.jpg","fixture":"original shell settings"}\n' \
+  >/home/fedora/.config/cybexos/shell.json
 printf 'original user override\n' >/home/fedora/.config/cybexos/hypr/user.lua
 printf 'original user theme\n' >/home/fedora/.local/share/cybexos/themes/personal.theme
 printf 'original user plugin\n' >/home/fedora/.local/share/cybexos/plugins/personal.qml
@@ -203,6 +239,16 @@ printf 'unrelated claude skill\n' \
 printf 'unrelated codex skill\n' \
   >/home/fedora/.codex/skills/unrelated/SKILL.md
 sudo install -d -m 0755 /etc/gdm /etc/sudoers.d /etc/polkit-1/rules.d
+sudo install -d -m 0755 /etc/sddm.conf.d /etc/pam.d /etc/cybexos /etc/systemd/system/sddm.service.d
+printf '[Theme]\nCurrent=original\n' | sudo tee /etc/sddm.conf >/dev/null
+printf '# original SDDM autologin PAM\n' | sudo tee /etc/pam.d/sddm-autologin >/dev/null
+printf '# original SDDM drop-in\n' | sudo tee /etc/systemd/system/sddm.service.d/50-cybexos.conf >/dev/null
+printf '# original personal drop-in\n' | sudo tee /etc/systemd/system/sddm.service.d/99-personal.conf >/dev/null
+printf '{"original":true}\n' | sudo tee /etc/cybexos/login.json >/dev/null
+printf '[Unit]\nDescription=Previous login manager fixture\n[Service]\nExecStart=/usr/bin/true\n' |
+  sudo tee /etc/systemd/system/cybexos-original-display-manager.service >/dev/null
+sudo ln -s /etc/systemd/system/cybexos-original-display-manager.service \
+  /etc/systemd/system/display-manager.service
 printf '[daemon]\n# original GDM configuration\n' | sudo tee /etc/gdm/custom.conf >/dev/null
 printf '# original sudo policy\n' | sudo tee /etc/sudoers.d/10-wheel-nopasswd >/dev/null
 printf '// original Polkit policy\n' | sudo tee /etc/polkit-1/rules.d/49-wheel-local.rules >/dev/null

@@ -1,76 +1,44 @@
 ---
-- name: Keep autologin disabled during ordinary convergence
-  ansible.builtin.debug:
-    msg: "GDM autologin remains disabled by inventory; set gdm_autologin=true to enable it."
-  when: not gdm_autologin | bool
+- name: Validate the requested desktop login policy
+  ansible.builtin.assert:
+    that:
+      - desktop_autologin is boolean
+    fail_msg: desktop_autologin (or legacy gdm_autologin) must be an explicit boolean.
 
-- name: Explicitly disable GDM autologin
-  ansible.builtin.lineinfile:
-    path: /etc/gdm/custom.conf
-    regexp: "^\\s*#?\\s*AutomaticLoginEnable\\s*="
-    line: AutomaticLoginEnable=False
-    insertafter: "^\\[daemon\\]$"
-    firstmatch: true
-    create: true
-    mode: "0644"
-  when: not gdm_autologin | bool
-
-- name: Remove the managed GDM autologin user when disabled
-  ansible.builtin.lineinfile:
-    path: /etc/gdm/custom.conf
-    regexp: "^\\s*#?\\s*AutomaticLogin\\s*="
-    state: absent
-  when: not gdm_autologin | bool
-
-- name: Ensure GDM daemon section exists
-  ansible.builtin.lineinfile:
-    path: /etc/gdm/custom.conf
-    regexp: "^\\[daemon\\]$"
-    line: "[daemon]"
-    insertbefore: BOF
-    create: true
-    mode: "0644"
-
-- name: Enable GDM autologin for the selected user
-  ansible.builtin.lineinfile:
-    path: /etc/gdm/custom.conf
-    regexp: "^\\s*#?\\s*{{ item.key }}\\s*="
-    line: "{{ item.key }}={{ item.value }}"
-    insertafter: "^\\[daemon\\]$"
-    firstmatch: true
-  loop:
-    - { key: AutomaticLoginEnable, value: "True" }
-    - { key: AutomaticLogin, value: "{{ primary_user }}" }
-  when: gdm_autologin | bool
-
-- name: Ensure AccountsService user file exists
+- name: Create the desktop login policy directory
   ansible.builtin.file:
-    path: "/var/lib/AccountsService/users/{{ primary_user }}"
-    state: touch
-    access_time: preserve
-    modification_time: preserve
-    mode: "0600"
-  when: gdm_autologin | bool
+    path: /etc/cybexos
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
 
-- name: Ensure AccountsService User section exists
-  ansible.builtin.lineinfile:
-    path: "/var/lib/AccountsService/users/{{ primary_user }}"
-    regexp: "^\\[User\\]$"
-    line: "[User]"
-    insertbefore: BOF
-  when: gdm_autologin | bool
+- name: Record desktop login intent for boot-time encryption verification
+  ansible.builtin.copy:
+    dest: /etc/cybexos/login.json
+    owner: root
+    group: root
+    mode: "0644"
+    content: >-
+      {{ {'version': 1, 'user': primary_user,
+          'autologin': desktop_autologin | bool, 'live': false} | to_nice_json }}
 
-- name: Make Hyprland Quickshell the autologin session
-  ansible.builtin.lineinfile:
-    path: "/var/lib/AccountsService/users/{{ primary_user }}"
-    regexp: "^\\s*{{ item }}\\s*="
-    line: "{{ item }}=hyprland-quickshell"
-    insertafter: "^\\[User\\]$"
-    firstmatch: true
-  loop:
-    - Session
-    - XSession
-  when: gdm_autologin | bool
+# Never start, stop, or restart either display manager during convergence:
+# the current daemon owns the user's live graphical session. Repoint only the
+# boot alias after its package, launcher, PAM and policy are all installed.
+- name: Select SDDM for the next boot without interrupting the running session
+  ansible.builtin.systemd_service:
+    name: sddm.service
+    enabled: true
+    force: true
+    daemon_reload: true
+
+- name: Explain the next-boot display manager handoff
+  ansible.builtin.debug:
+    msg: >-
+      SDDM is selected for the next boot. The current login manager remains
+      running. Automatic login is permitted only when requested and when the
+      boot-time helper verifies encrypted root; logout always returns to login.
 
 # Shell packages, fonts, configuration, and user units are all installed by
 # earlier roles. Flush their handlers here so an already-running Noctalia

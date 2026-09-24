@@ -1,5 +1,5 @@
 FROM fedora:44
-RUN dnf install -y python3-pyside6 python3-jinja2 python3-pyyaml \
+RUN dnf install -y python3-pyside6 python3-jinja2 python3-pyyaml python3-gobject-base glib2 \
     ShellCheck pykickstart qt6-qtdeclarative-devel desktop-file-utils \
     nodejs24 gnupg2 git ripgrep \
     && dnf clean all

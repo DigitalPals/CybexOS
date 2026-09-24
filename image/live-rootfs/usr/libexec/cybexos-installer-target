@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 """Finalize only a mounted Anaconda target; no credentials are transferred."""
-import configparser
 import json
 import os
 from pathlib import Path
@@ -8,19 +7,51 @@ import re
 import subprocess
 
 
+def btrfs_members(output):
+    """Keep the complete-device check aligned with cybexos-login-prepare."""
+    totals = re.findall(r'^\s*Total devices ([0-9]+) FS bytes used [0-9]+\s*$', output, re.MULTILINE)
+    devices = re.findall(r'^\s*devid\s+([0-9]+)\s+size\s+[0-9]+\s+used\s+[0-9]+\s+path\s+(/dev/\S+)\s*$',
+                         output, re.MULTILINE)
+    headers = re.findall(r'^Label:.*\buuid: [0-9a-fA-F-]{36}\s*$', output, re.MULTILINE)
+    if (len(headers) != 1 or len(totals) != 1 or not devices or
+            len(devices) != int(totals[0]) or
+            len({device[0] for device in devices}) != len(devices) or
+            len({device[1] for device in devices}) != len(devices) or
+            'missing' in output.lower()):
+        raise ValueError('The complete Btrfs device set could not be verified')
+    return [device[1] for device in devices]
+
+
 def root_is_encrypted(root, run=subprocess.run):
-    mount = json.loads(run(['findmnt', '--json', '--mountpoint', str(root), '--output', 'SOURCE,TARGET'],
-                           check=True, capture_output=True, text=True).stdout)['filesystems'][0]
+    mounts = json.loads(run(['findmnt', '--json', '--mountpoint', str(root), '--output', 'SOURCE,TARGET,FSTYPE'],
+                            check=True, capture_output=True, text=True, timeout=15).stdout)['filesystems']
+    if len(mounts) != 1:
+        raise RuntimeError('The Anaconda target mount could not be verified.')
+    mount = mounts[0]
     if Path(mount['target']).resolve() != root.resolve():
         raise RuntimeError('The Anaconda target is not a separate mounted filesystem.')
     source = mount['source'].split('[', 1)[0]
     if not source.startswith('/dev/'):
         raise RuntimeError('The Anaconda target has an unsupported root device.')
-    devices = json.loads(run(['lsblk', '--inverse', '--json', '--output', 'TYPE', source],
-                             check=True, capture_output=True, text=True).stdout)['blockdevices']
+    try:
+        members = (btrfs_members(run(['btrfs', 'filesystem', 'show', '--raw', str(root)],
+                                    check=True, capture_output=True, text=True, timeout=15).stdout)
+                   if mount['fstype'] == 'btrfs' else [source])
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        return False
     def encrypted(nodes):
-        return any(item.get('type') == 'crypt' or encrypted(item.get('children', [])) for item in nodes)
-    return encrypted(devices)
+        # Every backing path must cross an encrypted mapper. An LVM/RAID root
+        # with one encrypted and one plaintext backing device is not protected.
+        return bool(nodes) and all(
+            item.get('type') == 'crypt' or encrypted(item.get('children', []))
+            for item in nodes
+        )
+    try:
+        return all(encrypted(json.loads(run(['lsblk', '--inverse', '--tree', '--json', '--output', 'TYPE', member],
+                                           check=True, capture_output=True, text=True, timeout=15).stdout)['blockdevices'])
+                   for member in members)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        return False
 
 
 def finalize(root, policy, encrypted):
@@ -28,6 +59,8 @@ def finalize(root, policy, encrypted):
     username = account.get('username', '')
     if not re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}', username):
         raise RuntimeError('Installation policy does not name a valid account.')
+    if not isinstance(account.get('encrypted'), bool) or not isinstance(encrypted, bool):
+        raise RuntimeError('Installation policy does not name a valid encryption choice.')
     users = [line.split(':') for line in (root / 'etc/passwd').read_text().splitlines()]
     if not any(row[0] == username and 1000 <= int(row[2]) < 65534 for row in users):
         raise RuntimeError('The installed administrator account is missing.')
@@ -36,22 +69,23 @@ def finalize(root, policy, encrypted):
         raise RuntimeError('The root account was not locked by Anaconda.')
     if account.get('encrypted') and not encrypted:
         raise RuntimeError('The requested encrypted root could not be verified; automatic login was not enabled.')
-    settings = configparser.ConfigParser()
-    settings.optionxform = str
-    settings['daemon'] = {'DefaultSession': 'hyprland-quickshell.desktop'}
-    if account.get('encrypted') and encrypted:
-        settings['daemon']['AutomaticLoginEnable'] = 'True'
-        settings['daemon']['AutomaticLogin'] = username
-    path = root / 'etc/gdm/custom.conf'
+    autologin = account['encrypted'] and encrypted
+    path = root / 'etc/cybexos/login.json'
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open('w') as stream:
-        settings.write(stream)
+    path.write_text(json.dumps({'version': 1, 'user': username,
+                               'autologin': autologin, 'live': False}) + '\n')
+    path.chmod(0o644)
+    # The prepared live /etc/sddm.conf can be copied with the live filesystem.
+    # The installed boot must regenerate it from its own verified policy.
+    (root / 'etc/sddm.conf').unlink(missing_ok=True)
+    (root / 'run/cybexos-live-session').unlink(missing_ok=True)
+    (root / 'var/lib/sddm/state.conf').unlink(missing_ok=True)
     record = root / 'etc/cybexos/installation.json'
     record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text(json.dumps({'username': username, 'encrypted': encrypted,
-                                 'autologin': bool(account.get('encrypted') and encrypted),
+                                 'autologin': autologin,
                                  'passwordsInitiallyShared': True,
-                                 'keyring': 'protected-first-use-unlock'}) + '\n')
+                                 'keyring': 'encrypted-boot-passphrase-or-prompt'}) + '\n')
     record.chmod(0o644)
 
 
@@ -66,7 +100,7 @@ def main():
     if policy.get('phase') != 'installing':
         return
     finalize(root, policy, root_is_encrypted(root))
-    subprocess.run(['chroot', str(root), 'restorecon', '-RF', '/etc/gdm', '/etc/cybexos'], check=True)
+    subprocess.run(['chroot', str(root), 'restorecon', '-RF', '/etc/cybexos'], check=True)
 
 
 if __name__ == '__main__':

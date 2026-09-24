@@ -55,13 +55,20 @@ if ! inventory_json=$(ansible-inventory "${inventory_args[@]}"); then
   printf 'FAIL  could not resolve inventory host %q from inventory/hosts.yml\n' "$inventory_host" >&2
   exit 2
 fi
+# ansible-inventory leaves group-variable templates unrendered. Resolve only
+# the known compatibility alias; arbitrary values still fail validation.
+inventory_json=$(jq '
+  if .desktop_autologin == "{{ gdm_autologin | default(false) }}" then
+    .desktop_autologin = (if has("gdm_autologin") then .gdm_autologin else false end)
+  else . end
+' <<<"$inventory_json")
 if ! jq -e '
   (.fedora_release | type == "string") and
   (.machine_hostname | type == "string") and
   (.machine_timezone | type == "string") and
   (.primary_user | type == "string") and
   (.primary_home | type == "string") and
-  (.gdm_autologin | type == "boolean") and
+  (.desktop_autologin | type == "boolean") and
   (.plymouth_theme | type == "string") and
   (.rust_toolchain | type == "string") and
   (.claude_code_version | type == "string") and
@@ -93,7 +100,7 @@ distrobox_images_json=$(jq -c .distrobox_images <<<"$inventory_json")
 firewall_zone=$(jq -r .firewall_zone <<<"$inventory_json")
 manage_system_identity=$(jq -r .manage_system_identity <<<"$inventory_json")
 manage_personal_dotfiles=$(jq -r .manage_personal_dotfiles <<<"$inventory_json")
-gdm_autologin=$(jq -r .gdm_autologin <<<"$inventory_json")
+desktop_autologin=$(jq -r .desktop_autologin <<<"$inventory_json")
 plymouth_theme=$(jq -r .plymouth_theme <<<"$inventory_json")
 feature_enabled() { jq -e --arg name "$1" '.features[$name] == true' >/dev/null <<<"$inventory_json"; }
 
@@ -525,25 +532,28 @@ if [[ $plymouth_theme == cybex ]]; then
   check_root 'Cybex script is embedded in the running-kernel initramfs' bash -c \
     'lsinitrd "/boot/initramfs-$(uname -r).img" | grep -Fq "usr/share/plymouth/themes/cybex/cybex.script"'
 fi
-check 'GDM retains GNOME session' bash -c 'compgen -G "/usr/share/wayland-sessions/*gnome*.desktop" >/dev/null'
-check 'Hyprland Quickshell GDM session exists' test -r /usr/share/wayland-sessions/hyprland-quickshell.desktop
-check 'Hyprland session launcher uses start-hyprland' grep -q '^start-hyprland --' /usr/local/bin/hyprland-quickshell
+check 'SDDM and its Wayland backend are installed' rpm -q sddm sddm-wayland-generic gnome-keyring-pam
+check 'SDDM is selected for the next boot' bash -c \
+  '[[ $(readlink -f /etc/systemd/system/display-manager.service) == /usr/lib/systemd/system/sddm.service ]]'
+check 'Hyprland Quickshell Wayland session exists' test -r /usr/share/wayland-sessions/hyprland-quickshell.desktop
+check 'Hyprland session launcher returns crashes to the login manager' grep -q '^Hyprland --config' /usr/local/bin/hyprland-quickshell
 check 'Quickshell Fedora package is installed' rpm -q quickshell
 check 'retired Noctalia package is absent' bash -c '! rpm -q noctalia'
 check 'retired Noctalia session is absent' bash -c \
   '[[ ! -e /usr/local/bin/hyprland-noctalia && ! -e /usr/share/wayland-sessions/hyprland-noctalia.desktop ]]'
 check 'retired Noctalia configuration is inactive' bash -c \
   '[[ ! -e $HOME/.config/noctalia && ! -e $HOME/.local/state/noctalia ]]'
-if [[ $gdm_autologin == true ]]; then
-  check 'GDM autologin is enabled by the inventory contract' \
-    grep -Eq '^AutomaticLoginEnable=True$' /etc/gdm/custom.conf
-  check_root 'GDM autologin Session selects Hyprland Quickshell' \
-    grep -qx 'Session=hyprland-quickshell' "/var/lib/AccountsService/users/$primary_user"
-  check_root 'GDM autologin XSession selects Hyprland Quickshell' \
-    grep -qx 'XSession=hyprland-quickshell' "/var/lib/AccountsService/users/$primary_user"
-else
-  check 'GDM autologin is disabled by the inventory contract' bash -c \
-    '! grep -Eq "^AutomaticLoginEnable=True$" /etc/gdm/custom.conf'
+check 'Desktop login policy matches the inventory contract' jq -e \
+  --arg user "$primary_user" --argjson autologin "$desktop_autologin" \
+  '.version == 1 and .user == $user and .autologin == $autologin and .live == false' \
+  /etc/cybexos/login.json
+check 'Boot-time encryption policy helper is executable' test -x /usr/libexec/cybexos-login-prepare
+check 'SDDM prepares policy before authentication' grep -q \
+  '^ExecStartPre=/usr/libexec/cybexos-login-prepare' /etc/systemd/system/sddm.service.d/50-cybexos.conf
+check 'Autologin can unlock the protected keyring using the boot credential' grep -q \
+  'pam_gnome_keyring.so' /etc/pam.d/sddm-autologin
+if unit_active gdm.service; then
+  warn 'GDM still owns the current session; SDDM takes over at the next boot'
 fi
 check 'no Hyprland git packages are installed' bash -c "! rpm -qa | grep -Eq '^(hyprland|hypridle|hyprlock|hyprpicker|hyprpolkitagent).*[-.]git([-.]|$)'"
 check 'portal preference exists' test -r "$HOME/.config/xdg-desktop-portal/hyprland-portals.conf"
@@ -574,7 +584,7 @@ else
   skip 'default AI agent selection (not chosen yet)'
 fi
 
-required_commands=(cybex Hyprland start-hyprland hypridle hyprlock hyprpicker satty qs qalc cliphist \
+required_commands=(cybex Hyprland hypridle hyprlock hyprpicker satty qs qalc cliphist \
   voxtype localsend cybexos-agent git gh python3 oh-my-posh kitty nvim fish zoxide fzf eza jq rg fd \
   dust bat btop fastfetch ffmpeg mpv yt-dlp imv)
 feature_enabled developer_tools && required_commands+=(lazygit lazydocker mdview bun balena \

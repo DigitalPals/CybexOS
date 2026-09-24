@@ -62,7 +62,7 @@ contract changes, not for cosmetic consistency.
 Run `./tests/run` on the branch and require its target-release CI job to pass.
 Exercise a disposable target-release VM or equivalent hardware-safe test host
 for package resolution and Ansible check mode. A container can validate source
-contracts, but it cannot validate GDM, user systemd, Secure Boot, DKMS, camera,
+contracts, but it cannot validate SDDM, user systemd, Secure Boot, DKMS, camera,
 audio, haptics, or the live Hyprland session.
 
 ## 3. Download and perform Fedora's offline upgrade

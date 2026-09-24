@@ -7,7 +7,7 @@ rootpw --lock
 authselect select sssd with-silent-lastlog --force
 selinux --enforcing
 firewall --enabled
-services --enabled=NetworkManager,gdm,firewalld,bluetooth,docker,tailscaled --disabled=sshd
+services --enabled=NetworkManager,sddm,firewalld,bluetooth,docker,tailscaled --disabled=sshd
 bootloader --timeout=5 --append="quiet rhgb"
 part / --size=61440 --fstype=ext4
 
@@ -44,7 +44,7 @@ libblockdev-plugins-all
 lvm2
 mdadm
 cryptsetup
-gdm
+sddm
 cybexos-desktop
 selinux-policy-targeted
 policycoreutils
@@ -93,15 +93,6 @@ systemctl set-default graphical.target
 # Both live boot and the installed LUKS prompt use the shared Cybex artwork.
 plymouth-set-default-theme cybex
 firewall-offline-cmd --set-default-zone=cybexos
-mkdir -p /etc/gdm
-cat > /etc/gdm/custom.conf <<'GDM'
-[daemon]
-DefaultSession=hyprland-quickshell.desktop
-[security]
-[xdmcp]
-[chooser]
-[debug]
-GDM
 mkdir -p /etc/dracut.conf.d
 cat > /etc/dracut.conf.d/99-live.conf <<'DRACUT'
 add_dracutmodules+=" dmsquash-live livenet "

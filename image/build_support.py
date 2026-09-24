@@ -18,6 +18,43 @@ import uuid
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+~^-]*\Z")
 
 
+def builder_cloud_config(public_key):
+    """Configure the disposable builder without an init-local hostname race."""
+    return {
+        "users": [{"name": "builder", "groups": ["wheel"], "shell": "/bin/bash",
+                   "sudo": "ALL=(ALL) NOPASSWD:ALL", "ssh_authorized_keys": [public_key]}],
+        "ssh_pwauth": False,
+        "disable_root": True,
+        # Fedora's hostnamectl requires services unavailable in init-local.
+        # Cloud-init records that early attempt as a degraded boot even when
+        # its later retry succeeds. Set it once during the final stage.
+        "preserve_hostname": True,
+        "runcmd": [["hostnamectl", "set-hostname", "image-builder"]],
+    }
+
+
+def wait_for_builder_initialization(ssh, output):
+    """Keep cloud-init failures strict and preserve their diagnosis on cleanup."""
+    output = Path(output)
+    result = subprocess.run([*ssh, "cloud-init status --wait --format=json"],
+                            capture_output=True, text=True, timeout=300, check=False)
+    status = output / "builder-cloud-init-status.log"
+    status.write_text(result.stdout + result.stderr)
+    if result.returncode:
+        # Status 2 means degraded, not successful. Do not waive arbitrary
+        # warnings; keep the useful guest evidence before deleting its disk.
+        with (output / "builder-cloud-init.log").open("w") as stream:
+            try:
+                subprocess.run([*ssh, "sudo -n tail -n 400 /var/log/cloud-init.log"],
+                               stdout=stream, stderr=subprocess.STDOUT, timeout=30,
+                               check=False)
+            except (OSError, subprocess.TimeoutExpired) as error:
+                stream.write(f"Could not collect guest cloud-init log: {error}\n")
+        raise RuntimeError(f"Builder cloud-init exited {result.returncode}; see {status.name} and builder-cloud-init.log")
+    subprocess.run([*ssh, 'test "$(hostname)" = image-builder && sudo -n true && mkdir -p /home/builder/source'],
+                   check=True, timeout=30)
+
+
 def digest(path):
     with Path(path).open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()

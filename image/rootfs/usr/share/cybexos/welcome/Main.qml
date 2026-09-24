@@ -125,7 +125,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         text: welcome.isLive
                             ? "Create your account, choose a disk, and review. Encryption and automatic login are selected by default."
-                            : "Choose your colors and wallpaper, then discover the keyboard shortcuts. Your app keyring stays protected and may ask for its password after automatic login."
+                            : "Choose your colors and wallpaper, then discover the keyboard shortcuts. Your app keyring stays encrypted and unlocks with the disk password when they match; otherwise an app will ask for its password."
                         color: "#b7b5a7"; wrapMode: Text.WordWrap; lineHeight: 1.3
                     }
                     Text {

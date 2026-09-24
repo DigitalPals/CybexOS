@@ -14,8 +14,9 @@ import tarfile
 import tempfile
 import time
 
-from build_support import (atomic_json, build_id, create_seed, deliver_artifacts,
-                           digest, phase, preflight, source_provenance, validate_qemu_path)
+from build_support import (atomic_json, build_id, builder_cloud_config, create_seed, deliver_artifacts,
+                           digest, phase, preflight, source_provenance, validate_qemu_path,
+                           wait_for_builder_initialization)
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = "Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2"
@@ -125,10 +126,9 @@ def main():
                 atomic_json(status_path, provenance)
                 key = work / "id_ed25519"
                 run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)])
-                (work / "user-data").write_text("#cloud-config\n" + json.dumps({
-                    "users": [{"name": "builder", "groups": ["wheel"], "shell": "/bin/bash", "sudo": "ALL=(ALL) NOPASSWD:ALL", "ssh_authorized_keys": [key.with_suffix(".pub").read_text().strip()]}],
-                    "ssh_pwauth": False, "disable_root": True}))
-                (work / "meta-data").write_text(f"instance-id: {identifier}\nlocal-hostname: image-builder\n")
+                (work / "user-data").write_text("#cloud-config\n" + json.dumps(
+                    builder_cloud_config(key.with_suffix(".pub").read_text().strip())))
+                (work / "meta-data").write_text(f"instance-id: {identifier}\n")
                 create_seed(work, resources["seed_tool"])
                 run(["qemu-img", "create", "-q", "-f", "qcow2", "-F", "qcow2", "-b", str(base), str(work / "system.qcow2"), "220G"])
                 with socket.socket() as sock:
@@ -153,7 +153,7 @@ def main():
                             time.sleep(2)
                         else:
                             raise RuntimeError("Builder SSH readiness timed out")
-                        run([*ssh, "cloud-init status --wait >/dev/null && mkdir -p /home/builder/source"], timeout=300)
+                        wait_for_builder_initialization(ssh, output)
                         with (work / "source.tar.gz").open("rb") as archive:
                             run([*ssh, "tar xzf - -C /home/builder/source"], stdin=archive)
                         cached = verified_entries(cache / "downloads", contract)

@@ -261,7 +261,7 @@ def repository_contract() -> None:
     assert ".config/quickshell" not in uninstall
     assert ".config/hypr" not in uninstall
     assert "cybexos-runtime exec quickshell" in quickshell_unit
-    assert 'start-hyprland -- --config "$hypr_config"' in launcher
+    assert 'Hyprland --config "$hypr_config"' in launcher
     assert 'dofile(user_dir .. "/user.lua")' in hypr
     assert (ROOT / "docs/architecture/ownership.md").is_file()
 

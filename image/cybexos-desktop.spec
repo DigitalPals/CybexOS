@@ -19,6 +19,7 @@ Obsoletes:      fedora-config-desktop < %{epoch}:%{version}-%{release}
 %global _binary_payload w3.zstdio
 %global _binary_filedigest_algorithm 8
 Requires:       bash coreutils util-linux systemd python3
+Requires:       sddm sddm-wayland-generic systemd-pam gnome-keyring-pam
 Requires:       hyprland hyprland-guiutils quickshell hypridle hyprlock hyprpolkitagent hyprsunset
 Requires:       xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-utils
 Requires:       qt6-qtwebsockets-devel qt6-qt5compat qt6-qtsvg
@@ -72,6 +73,7 @@ cp -a usr opt etc %{buildroot}/
 /usr/lib/systemd/user/hyprpolkitagent.service.d/
 /usr/lib/systemd/user/voxtype.service.d/
 /usr/lib/systemd/user/hyprland-session.target
+/usr/lib/systemd/system/sddm.service.d/
 /usr/share/cybexos/
 /usr/share/applications/cybex.desktop
 /usr/share/wayland-sessions/hyprland-quickshell.desktop
@@ -80,6 +82,11 @@ cp -a usr opt etc %{buildroot}/
 /usr/share/plymouth/themes/cybex/
 /usr/lib/sysctl.d/60-cybexos-hardening.conf
 /usr/lib/firewalld/zones/cybexos.xml
+
+%posttrans
+# The SDDM RPM owns /etc/pam.d/sddm-autologin. Install the shared policy after
+# all package payloads are present, preserving its initial configuration once.
+/usr/libexec/cybexos-login-prepare --install-pam
 
 %changelog
 * Sat Sep 05 2026 CybexOS <noreply@localhost> - 0.1.0-0.1.alpha

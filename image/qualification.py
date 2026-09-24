@@ -8,6 +8,7 @@ import subprocess
 import time
 
 from build_support import atomic_json, digest
+from login_qualification import qualify_login
 from vm_testing import TestVM, require_test_iso, run
 
 
@@ -55,13 +56,22 @@ done
 test "$(getenforce)" = Enforcing
 test "$(findmnt -n -o FSTYPE /)" = btrfs
 lsblk -s -n -o TYPE "$(findmnt -n -o SOURCE / | cut -d '[' -f 1)" | grep -qx crypt
+systemctl is-active --quiet sddm.service
+test "$(systemctl show sddm.service -p KeyringMode --value)" = inherit
+! rpm -q gdm >/dev/null
 python3 - <<'CHECK'
 import configparser,json
 from pathlib import Path
+policy=json.loads(Path('/etc/cybexos/login.json').read_text())
+assert policy == {'version':1, 'user':'qualification', 'autologin':True, 'live':False}
 config=configparser.ConfigParser()
-config.read('/etc/gdm/custom.conf')
-assert config.getboolean('daemon','AutomaticLoginEnable')
-assert config.get('daemon','AutomaticLogin') == 'qualification'
+config.read('/etc/sddm.conf')
+assert config.get('Autologin','User') == 'qualification'
+assert config.get('Autologin','Session') == 'hyprland-quickshell.desktop'
+assert not config.getboolean('Autologin','Relogin')
+marker=Path('/run/cybexos-login/autologin-used')
+assert marker.exists() and marker.stat().st_uid == 0
+assert not marker.stat().st_mode & 0o077
 plymouth=configparser.ConfigParser()
 plymouth.read('/etc/plymouth/plymouthd.conf')
 assert plymouth.get('Daemon','Theme') == 'cybex'
@@ -95,7 +105,7 @@ def main():
     vm = TestVM(args.output, args.firmware)
     password = secrets.token_urlsafe(24)
     report = {'iso_sha256': digest(iso), 'firmware': args.firmware, 'status': 'failed', 'checks': [],
-              'network': 'outbound-blocked', 'bootstrap': 'bounded graphical keyboard retries; no prompt recognition', 'scope': 'QEMU fixture; does not qualify physical hardware or Secure Boot'}
+              'network': 'outbound-blocked', 'bootstrap': 'recognized disk-unlock prompt; bounded graphical SSH setup', 'scope': 'QEMU fixture; does not qualify physical hardware or Secure Boot'}
     try:
         vm.prepare()
         vm.start(iso)
@@ -129,22 +139,12 @@ def main():
         vm.stop(graceful=True)
         (vm.work / 'known_hosts').unlink(missing_ok=True)
         vm.start(user='qualification')  # Intentionally no ISO/CD-ROM attached.
-        deadline = time.monotonic() + 300
-        while time.monotonic() < deadline:
-            vm.alive()
-            if vm.qmp_path.exists():
-                vm.type(password + '\n')
-                try:
-                    vm.wait_ssh(timeout=20, setup_password=password)
-                    break
-                except RuntimeError:
-                    pass
-            time.sleep(2)
-        else:
-            raise RuntimeError('Encrypted installed boot/autologin did not become ready')
+        vm.unlock_disk(password)
+        vm.wait_ssh(setup_password=password)
         vm.audit()
         root_script(vm, INSTALLED_AUDIT, password)
         report['checks'] += ['installed-boot-without-iso', 'encrypted-btrfs', 'autologin', 'desktop-parity', 'live-cleanup', 'selinux-enforcing']
+        qualify_login(vm, password, root_script, report, secrets.token_urlsafe(32))
         # Clear the temporary test access before stopping the disposable disk.
         vm.audit(applications=False)
         root_script(vm, 'rm -f /home/qualification/.ssh/authorized_keys /home/qualification/.bash_history\nsystemctl disable sshd.service\nsync\nsystemctl poweroff --no-block\n', password)

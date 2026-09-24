@@ -266,6 +266,42 @@
     executable: /bin/bash
   changed_when: true
 
+- name: Restore the login manager preserved before SDDM adoption
+  ansible.builtin.shell: |
+    set -euo pipefail
+    backup=/var/lib/cybexos/backups/login
+    marker=/var/lib/cybexos/backups/login-initial.complete
+    absent=/var/lib/cybexos/backups/login-initial.absent
+    [[ -f $marker ]] || exit 0
+    items=(
+      etc/systemd/system/display-manager.service
+      etc/sddm.conf
+      etc/pam.d/sddm-autologin
+      etc/systemd/system/sddm.service.d/50-cybexos.conf
+      etc/cybexos/login.json
+      usr/libexec/cybexos-login-prepare
+    )
+    for relative in "${items[@]}"; do
+      destination=/$relative
+      if [[ -e $backup/$relative || -L $backup/$relative ]]; then
+        install -d -m 0755 "$(dirname -- "$destination")"
+        rm -f -- "$destination"
+        cp -a -- "$backup/$relative" "$destination"
+        restorecon -F "$destination"
+      elif grep -Fqx -- "$relative" "$absent"; then
+        rm -f -- "$destination"
+      fi
+    done
+    # Only empty project-created directories are removed. Preserve unrelated
+    # SDDM drop-ins and all running login sessions; restore the next-boot alias.
+    rmdir /etc/systemd/system/sddm.service.d 2>/dev/null || true
+    rm -f /run/cybexos-login/autologin-used /run/cybexos-login/prepare.lock /run/cybexos-login/status.json
+    rmdir /run/cybexos-login 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  changed_when: true
+  when: not ansible_check_mode
+
 - name: Restore first-adoption NetworkManager profile zones
   ansible.builtin.shell: |
     set -euo pipefail

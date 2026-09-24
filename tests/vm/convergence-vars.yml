@@ -13,7 +13,7 @@ manage_system_identity: true
 manage_personal_dotfiles: true
 cleanup_legacy_xps_artifacts: false
 plymouth_theme: bgrt
-gdm_autologin: false
+desktop_autologin: false
 start_optional_hardware_services: false
 xps_2026_camera_enabled: false
 allow_insecure_sccache_transport: false

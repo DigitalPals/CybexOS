@@ -20,7 +20,7 @@ assert_system_enabled() {
 }
 
 for unit in NetworkManager.service firewalld.service bluetooth.service \
-  gdm.service; do
+  sddm.service; do
   assert_system_enabled "$unit"
 done
 
@@ -51,12 +51,25 @@ runtime=/home/fedora/.local/share/cybexos/runtime
 [[ -f $runtime/quickshell/shell.qml ]] || fail 'vendor shell.qml is missing'
 [[ -f $runtime/hypr/hyprland.lua ]] || fail 'vendor Hyprland entry point is missing'
 [[ -f /home/fedora/.config/systemd/user/cybexos-session-lock.service ]] || fail 'lock unit is missing'
-[[ -f /usr/share/wayland-sessions/hyprland-quickshell.desktop ]] || fail 'GDM session is missing'
+[[ -f /usr/share/wayland-sessions/hyprland-quickshell.desktop ]] || fail 'Wayland session is missing'
+grep -q '^Hyprland --config' /usr/local/bin/hyprland-quickshell ||
+  fail 'the session launcher can restart a crashed compositor without login'
+[[ $(readlink -f /etc/systemd/system/display-manager.service) == /usr/lib/systemd/system/sddm.service ]] ||
+  fail 'SDDM is not selected for the next boot'
+systemctl is-active --quiet sddm.service && fail 'convergence started the new display manager'
+[[ -x /usr/libexec/cybexos-login-prepare ]] || fail 'login policy helper is missing'
+[[ -f /var/lib/cybexos/backups/login-initial.complete ]] || fail 'login adoption was not recorded'
+jq -e '.version == 1 and .user == "fedora" and .autologin == false and .live == false' \
+  /etc/cybexos/login.json >/dev/null || fail 'installed login policy does not match inventory'
+grep -q 'pam_systemd_loadkey.so' /etc/pam.d/sddm-autologin || fail 'boot credential PAM is missing'
+assert_content /etc/sddm.conf $'[Theme]\nCurrent=original'
+assert_content /etc/systemd/system/sddm.service.d/99-personal.conf '# original personal drop-in'
 [[ $(plymouth-set-default-theme) == bgrt ]] || fail 'BGRT is not the selected Plymouth theme'
 
 assert_content /home/fedora/.config/hypr/bindings.lua 'original Hyprland bindings'
 assert_content /home/fedora/.config/quickshell/shell.qml 'original Quickshell root'
-assert_content /home/fedora/.config/cybexos/shell.json 'original shell settings'
+assert_content /home/fedora/.config/cybexos/shell.json \
+  '{"wall":"~/Pictures/personal-wallpaper.jpg","fixture":"original shell settings"}'
 assert_content /home/fedora/.config/cybexos/hypr/user.lua 'original user override'
 assert_content /home/fedora/.local/share/cybexos/themes/personal.theme 'original user theme'
 assert_content /home/fedora/.local/share/cybexos/plugins/personal.qml 'original user plugin'
@@ -109,12 +122,6 @@ if grep -Eq '(^|/)__pycache__/|\.py[co]$' \
     /home/fedora/.local/state/cybexos/quickshell-manifest.txt; then
   fail 'generated Python bytecode leaked into the managed shell manifest'
 fi
-
-for key in sleep-inactive-ac-timeout sleep-inactive-battery-timeout; do
-  value=$(sudo -u fedora env HOME=/home/fedora dbus-run-session \
-    gsettings get org.gnome.settings-daemon.plugins.power "$key")
-  [[ $value == 0 ]] || fail "$key is $value instead of 0"
-done
 
 python3 - <<'PY' || fail 'headless Quickshell deployment health is invalid'
 import json

@@ -130,6 +130,12 @@ def main():
     for name in ("cybexos-session-action", "hyprland-session-start"):
         output_name = name if name.startswith("cybexos") else "cybexos-" + name
         copy(f"roles/desktop/files/{name}", f"usr/libexec/{output_name}", True)
+    # Login policy and authentication use the same sources as workstation
+    # deployment. SDDM owns its PAM file; our post-transaction helper installs
+    # this template with a backup instead of creating an RPM file conflict.
+    copy("roles/desktop/files/login/cybexos-login-prepare", "usr/libexec/cybexos-login-prepare", True)
+    copy("roles/desktop/files/login/sddm-autologin", "usr/share/cybexos/login/sddm-autologin")
+    copy("roles/desktop/files/login/50-cybexos.conf", "usr/lib/systemd/system/sddm.service.d/50-cybexos.conf")
     for source in sorted((ROOT / "image/rootfs").rglob("*")):
         if source.is_file() and "__pycache__" not in source.parts and source.suffix != ".pyc":
             relative = source.relative_to(ROOT / "image/rootfs")

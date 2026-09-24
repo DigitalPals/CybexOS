@@ -91,8 +91,10 @@ authselect current --raw
 /usr/local/libexec/xps-fingerprint-check "$USER"
 ```
 
-GDM uses Fedora's dedicated fingerprint PAM conversation. Hyprlock continues to
-use the system PAM configuration with password authentication available as the
+SDDM recovery login retains Fedora's stock password PAM stack. Fingerprint
+login through its greeter is not qualified; GDM's former dedicated fingerprint
+conversation is not part of the replacement. Hyprlock continues to use the
+system PAM configuration with password authentication available as the
 fallback. Fedora has no stock `authselect` feature for inserting a lid-state
 command into PAM, so the role does not copy Omarchy's custom clamshell helper.
 This does not matter on the tested `0DB9` without a reader; on a future

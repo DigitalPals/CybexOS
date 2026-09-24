@@ -17,23 +17,24 @@ rm -f /etc/anaconda/conf.d/20-cybexos.conf
 rm -f /etc/dracut.conf.d/99-live.conf
 rm -f /etc/dracut.conf.d/99-liveos.conf
 rm -f /etc/ssh/ssh_host_*
-cat > /etc/gdm/custom.conf <<'GDM'
-[daemon]
-DefaultSession=hyprland-quickshell.desktop
-[security]
-[xdmcp]
-[chooser]
-[debug]
-GDM
+# Never copy a live autologin decision to the installed system. The final
+# target helper can opt in only after verifying the installed encrypted root.
+rm -f /run/cybexos-live-session /etc/sddm.conf
+rm -f /var/lib/sddm/state.conf
+install -d -m 0755 /etc/cybexos
+cat > /etc/cybexos/login.json <<'LOGIN'
+{"version":1,"user":"","autologin":false,"live":false}
+LOGIN
+chmod 0644 /etc/cybexos/login.json
 systemctl disable sshd.service
-systemctl enable gdm.service NetworkManager.service firewalld.service
+systemctl enable sddm.service NetworkManager.service firewalld.service
 systemctl set-default graphical.target
 # Anaconda adds SSH to its selected firewall zone unless explicitly disabled.
 # Restore the shipped CybexOS policy after its configuration task has finished.
 install -D -m 0644 /usr/lib/firewalld/zones/cybexos.xml /etc/firewalld/zones/cybexos.xml
 firewall-offline-cmd --set-default-zone=cybexos
-# GDM chooses its generic GNOME fallback for new users unless AccountsService
-# records the intended session. Set this after Anaconda creates the accounts.
+# Retain desktop metadata for account-aware applications. SDDM's prepared
+# configuration selects the shared CybexOS session independently.
 python3 - <<'PY'
 import configparser
 from pathlib import Path
@@ -58,7 +59,7 @@ for account in pwd.getpwall():
         settings.write(stream)
     path.chmod(0o600)
 PY
-restorecon -RF /etc/gdm /var/lib/AccountsService/users
+restorecon -RF /etc/cybexos /var/lib/AccountsService/users
 /usr/libexec/cybexos-seed-installed-users
 # Anaconda's initial initramfs was created before this post script removed the
 # live-only dracut settings. Rebuild from the final installed configuration.

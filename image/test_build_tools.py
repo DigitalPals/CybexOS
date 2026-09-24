@@ -3,12 +3,48 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from build_support import checksum_entries, deliver_artifacts, select_firmware
+from build_support import (builder_cloud_config, checksum_entries, deliver_artifacts,
+                           select_firmware, wait_for_builder_initialization)
 from download_cache import import_cache, merge_cache, verified_entries
 from pxe_publish import DEFAULT_CONTRACT, IVentoy, publish, validate_status
+
+
+class BuilderInitializationTests(unittest.TestCase):
+    def test_hostname_is_set_only_during_final_stage(self):
+        config = builder_cloud_config('ssh-ed25519 synthetic-public-fixture')
+        self.assertTrue(config['preserve_hostname'])
+        self.assertEqual(config['runcmd'], [['hostnamectl', 'set-hostname', 'image-builder']])
+        self.assertFalse(config['ssh_pwauth'])
+        self.assertTrue(config['disable_root'])
+        self.assertEqual(config['users'][0]['ssh_authorized_keys'], ['ssh-ed25519 synthetic-public-fixture'])
+
+    def test_success_verifies_hostname_and_sudo_before_source_transfer(self):
+        result = SimpleNamespace(returncode=0, stdout='{"status":"done"}\n', stderr='')
+        with tempfile.TemporaryDirectory() as directory, patch('build_support.subprocess.run', return_value=result) as run:
+            wait_for_builder_initialization(['ssh', 'builder-fixture'], directory)
+            self.assertEqual(run.call_args_list[0].args[0][-1], 'cloud-init status --wait --format=json')
+            command = run.call_args_list[1].args[0][-1]
+            self.assertIn('test "$(hostname)" = image-builder', command)
+            self.assertIn('sudo -n true', command)
+            self.assertTrue(run.call_args_list[1].kwargs['check'])
+            self.assertEqual((Path(directory) / 'builder-cloud-init-status.log').read_text(), result.stdout)
+
+    def test_degraded_or_failed_cloud_init_never_proceeds_and_keeps_evidence(self):
+        for code in (1, 2, 255):
+            result = SimpleNamespace(returncode=code, stdout='{"status":"done","recoverable_errors":["fixture"]}\n', stderr='fixture diagnostic\n')
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as directory, \
+                    patch('build_support.subprocess.run', return_value=result) as run:
+                with self.assertRaisesRegex(RuntimeError, f'cloud-init exited {code}'):
+                    wait_for_builder_initialization(['ssh', 'builder-fixture'], directory)
+                self.assertEqual(run.call_count, 2)
+                self.assertIn('tail -n 400 /var/log/cloud-init.log', run.call_args.args[0][-1])
+                self.assertNotIn('mkdir', run.call_args.args[0][-1])
+                self.assertTrue((Path(directory) / 'builder-cloud-init.log').exists())
+                self.assertIn('fixture diagnostic', (Path(directory) / 'builder-cloud-init-status.log').read_text())
 
 
 class DeliveryTests(unittest.TestCase):

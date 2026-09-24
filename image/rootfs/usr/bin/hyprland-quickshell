@@ -24,5 +24,7 @@ systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SES
 dbus-update-activation-environment --systemd XDG_SESSION_TYPE XDG_CURRENT_DESKTOP \
   XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL PATH XDG_DATA_DIRS QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND
 trap 'systemctl --user stop hyprland-session.target >/dev/null 2>&1 || true' EXIT
-start-hyprland -- --config /usr/share/cybexos/runtime/hypr/hyprland.lua "$@" \
+# Launch once: compositor failure ends this login and returns to SDDM's
+# password prompt. The watchdog's automatic safe-mode restart bypasses it.
+Hyprland --config /usr/share/cybexos/runtime/hypr/hyprland.lua "$@" \
   >>"${XDG_STATE_HOME:-$HOME/.local/state}/hyprland/session.log" 2>&1

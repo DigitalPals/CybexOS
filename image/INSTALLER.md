@@ -5,10 +5,11 @@ service. It uses Fedora's Anaconda storage and installation backend. It does not
 format devices itself, generate an unattended live Kickstart, or replace
 Anaconda's partition validation.
 
-This implementation has **source and fixture validation only**. The work that
-introduced it was explicitly limited to source changes: no ISO build, ISO boot,
-real installation, disk change, or host deployment was performed. Do not label
-an image containing it qualified until the opt-in installation tests pass.
+The complete installation has **not been qualified by an ISO boot**. The SDDM
+implementation has source, fixture and disposable desktop-RPM build checks;
+ISO creation and publication were deferred at the user's request. No real
+installation or host login-manager switch was performed. Do not label an image
+qualified until the opt-in installation tests pass.
 
 ## User flow
 
@@ -26,16 +27,26 @@ an image containing it qualified until the opt-in installation tests pass.
 The password is applied to the LUKS slot and hashed separately for the created
 administrator account. Root is locked. The post-install helper verifies that
 the target root filesystem has an encrypted block-device ancestor before
-enabling GDM autologin. Unencrypted and stock Advanced installations retain the
+requesting SDDM autologin. The shared login helper rechecks root encryption at
+boot and permits automatic login only on the first SDDM start in that boot.
+Unencrypted and stock Advanced installations retain the
 normal login screen. EFI and boot partitions follow Anaconda's platform rules;
 “encrypted installation” does not mean the firmware boot partition is encrypted.
 
-The app keyring remains protected. Automatic login does not transmit the boot
-passphrase to PAM or unlock a separately encrypted keyring, so an application
-may request a keyring password on first use. The UI states this; the installer
-does not blank a keyring password or weaken the PAM configuration. The disk and
-account passwords start equal, but later changes are independent. There is no
-automatic synchronization or new password-changing helper in this change.
+The app keyring remains encrypted. SDDM's autologin PAM stack uses systemd's
+`pam_systemd_loadkey` and GNOME Keyring's normal PAM integration to unlock it
+with the briefly cached boot passphrase when the passwords match. The cache
+retention is not extended. If the cache is absent or expired, or the keyring
+password differs, an application requests the keyring password normally. The
+installer never writes the passphrase to a file or creates a passwordless
+keyring. Disk, account and keyring passwords are not kept synchronized after
+installation; changing one later can require a separate keyring unlock.
+
+The RPM packages the same login preparation helper, PAM template and SDDM
+service drop-in as workstation deployment. Its post-transaction step installs
+the PAM template with an initial backup; the SDDM package retains ownership of
+`/etc/pam.d/sddm-autologin`. The helper prepares `/etc/sddm.conf` before SDDM
+starts. There is no permanently enabled autologin stanza in the image.
 
 ## Keyboard behavior
 
@@ -146,15 +157,25 @@ The shipped CybexOS firewall zone is restored after Anaconda's firewall task,
 which otherwise adds an SSH exception by default. A final
 non-chroot post hook invokes `cybexos-installer-target`, which checks the actual
 `/mnt/sysroot` mount, root encryption ancestry, created user, and locked root
-before setting GDM policy. `/etc/cybexos/installation.json` records only the
-nonsecret account/encryption/autologin/keyring policy.
+before writing `/etc/cybexos/login.json`. This versioned nonsecret policy names
+the installed user, requested autologin and `live: false`.
+`/etc/cybexos/installation.json` records installation and keyring policy metadata.
+
+The temporary live account has a separate policy with `live: true` and a
+root-owned `/run/cybexos-live-session` marker. The login helper accepts this
+exception only with the live kernel command-line flag. Target cleanup removes
+the marker and prepared SDDM configuration and writes a disabled installed
+policy before the final target helper runs. Stock Advanced installations keep
+that disabled policy. Boot-local autologin state lives in
+`/run/cybexos-login/autologin-used`; it cannot authorize a later boot.
 
 ## Tests and remaining qualification
 
 `image/test_installer.py` covers input/locale validation, disk identity changes,
 confirmation/replay, plan failures and retries, durable worker outcomes, monitor
 loss, strict Anaconda proxy members and ordering, password separation, keyboard
-commands, target autologin conditions, executable permissions, and browser URL
+commands, target autologin conditions, rejection of mixed encrypted/plaintext
+backing devices, live-policy cleanup, executable permissions, and browser URL
 validation. Node fixtures cover UI state, confirmation, navigation locks, and
 failure recovery. Existing image tests load the welcome QML offscreen. The
 headless browser fixture exercises the three pages with a mocked backend.
@@ -163,5 +184,10 @@ Still required before an ISO can be called working: actual Cockpit loading and
 authorization, Fedora DBus behavior, UEFI/BIOS boot, encrypted and unencrypted
 installation, keyboard input at LUKS unlock, autologin, post-script ordering,
 offline payload completeness, driver/hardware behavior, and clean installed
-services. The test harness must use its own isolated disks and require explicit
-opt-in. Source fixtures cannot establish those results.
+services. The SDDM migration additionally needs real boot-cache/keyring handoff,
+logout/relogin, compositor-crash and SDDM restart checks. The guest qualification
+harness also injects an early first-autologin launcher failure, verifies that
+the boot attempt remains consumed, and tests password-login recovery after a
+manager restart. It restores the original launcher in cleanup. These checks
+must run on isolated test disks with explicit opt-in; their presence in the
+harness and passing source fixtures do not establish a boot result.

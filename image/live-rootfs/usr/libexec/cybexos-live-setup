@@ -14,12 +14,12 @@ Session=hyprland-quickshell
 XSession=hyprland-quickshell
 SystemAccount=false
 ACCOUNT
-cat > /etc/gdm/custom.conf <<'GDM'
-[daemon]
-AutomaticLoginEnable=True
-AutomaticLogin=liveuser
-DefaultSession=hyprland-quickshell.desktop
-GDM
+install -d -m 0755 /etc/cybexos
+cat > /etc/cybexos/login.json <<'LOGIN'
+{"version":1,"user":"liveuser","autologin":true,"live":true}
+LOGIN
+printf '%s\n' liveuser > /run/cybexos-live-session
+chmod 0644 /etc/cybexos/login.json /run/cybexos-live-session
 # The permission exists only in this boot's live overlay. It is explicitly
 # removed by the Anaconda post-install script as an additional safeguard.
 cat > /etc/sudoers.d/cybexos-live <<'SUDO'
@@ -34,4 +34,4 @@ polkit.addRule(function(action, subject) {
     }
 });
 POLKIT
-restorecon -RF /home/liveuser /etc/gdm /var/lib/AccountsService/users /etc/sudoers.d
+restorecon -RF /home/liveuser /etc/cybexos /var/lib/AccountsService/users /etc/sudoers.d

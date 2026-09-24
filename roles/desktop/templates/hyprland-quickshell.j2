@@ -32,8 +32,8 @@ systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP \
 dbus-update-activation-environment --systemd XDG_SESSION_TYPE \
   XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL || true
 
-set +e
-start-hyprland -- --config "$hypr_config" "$@" >>"$session_log" 2>&1
-session_status=$?
-systemctl --user stop hyprland-session.target >/dev/null 2>&1 || true
-exit "$session_status"
+# A crashed compositor must end this login. start-hyprland's watchdog respawns
+# it inside the authenticated session, bypassing the next-login password gate.
+# Keep the wrapper alive only to stop session-owned services on every exit.
+trap 'systemctl --user stop hyprland-session.target >/dev/null 2>&1 || true' EXIT
+Hyprland --config "$hypr_config" "$@" >>"$session_log" 2>&1

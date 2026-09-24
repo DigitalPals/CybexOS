@@ -16,7 +16,7 @@ see [the operations guide](docs/operations.md#migrating-from-fedora-config).
 
 ## What it installs
 
-- Hyprland, a custom Quickshell menubar, GDM, portals, notifications, and
+- Hyprland, a custom Quickshell menubar, SDDM, portals, notifications, and
   desktop services
 - a portable Fedora package, Flatpak, shell, font, firewall, and recovery
   baseline
@@ -62,8 +62,17 @@ and keyboard settings and offers them as defaults. All application groups
 are selected by default, including in non-interactive installs; interactive
 setup allows explicit opt-outs. Fastfetch is a required baseline package.
 The installer explicitly asks whether to enable passwordless sudo, passwordless
-local Polkit authorization, and GDM autologin. The two passwordless choices
+local Polkit authorization, and encrypted-boot desktop autologin. The two passwordless choices
 have no implicit answer.
+
+On an encrypted single-user installation, SDDM can open the desktop after the
+LUKS unlock and unlock GNOME Keyring with the briefly cached boot password.
+Automatic login is attempted once per boot; logout, a desktop crash, or a
+login-manager restart requires password login. An unavailable or different
+boot password leaves the keyring protected and allows manual unlocking.
+Unencrypted systems use password login. See the [login design and validation
+status](docs/gdm-replacement-research.md). Existing installations change login
+managers on the next boot, preserving their previous configuration for uninstall.
 
 Answers are saved in `/etc/cybexos/config.yml`, outside versioned release
 trees, and are reused by later installs and updates. Existing explicit

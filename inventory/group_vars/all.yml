@@ -39,7 +39,9 @@ xps_2026_haptic_intensity: high
 # Explicitly accepted local-machine security tradeoffs.
 passwordless_wheel: false
 passwordless_local_polkit: false
-gdm_autologin: false
+# Saved gdm_autologin answers remain a compatibility alias. New installations
+# write desktop_autologin directly; boot-time policy also verifies encryption.
+desktop_autologin: "{{ gdm_autologin | default(false) }}"
 # Hardware-backed daemons should start immediately on the physical laptop.
 # Hardware-neutral convergence profiles can leave them enabled for boot while
 # avoiding perpetual start attempts against devices the VM cannot provide.

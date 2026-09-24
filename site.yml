@@ -67,6 +67,7 @@
           - start_optional_hardware_services is boolean
           - manage_system_identity is boolean
           - manage_personal_dotfiles is boolean
+          - desktop_autologin is boolean
           - cleanup_legacy_xps_artifacts is boolean
           - machine_keyboard_layout is string
           - machine_keyboard_layout | length > 0

@@ -14,13 +14,22 @@ assert_content() {
 
 assert_content /home/fedora/.config/hypr/bindings.lua 'original Hyprland bindings'
 assert_content /home/fedora/.config/quickshell/shell.qml 'original Quickshell root'
-assert_content /home/fedora/.config/cybexos/shell.json 'original shell settings'
+assert_content /home/fedora/.config/cybexos/shell.json \
+  '{"wall":"~/Pictures/personal-wallpaper.jpg","fixture":"original shell settings"}'
 assert_content /home/fedora/.config/cybexos/hypr/user.lua 'original user override'
 assert_content /home/fedora/.local/share/cybexos/themes/personal.theme 'original user theme'
 assert_content /home/fedora/.local/share/cybexos/plugins/personal.qml 'original user plugin'
 assert_content /home/fedora/.local/bin/spotify 'original Spotify helper'
 assert_content /home/fedora/.config/systemd/user/quickshell.service 'original user unit'
 assert_content /etc/gdm/custom.conf $'[daemon]\n# original GDM configuration'
+assert_content /etc/sddm.conf $'[Theme]\nCurrent=original'
+assert_content /etc/pam.d/sddm-autologin '# original SDDM autologin PAM'
+assert_content /etc/systemd/system/sddm.service.d/50-cybexos.conf '# original SDDM drop-in'
+assert_content /etc/systemd/system/sddm.service.d/99-personal.conf '# original personal drop-in'
+assert_content /etc/cybexos/login.json '{"original":true}'
+[[ $(readlink /etc/systemd/system/display-manager.service) == \
+  /etc/systemd/system/cybexos-original-display-manager.service ]] ||
+  fail 'the previous display manager selection was not restored'
 assert_content /etc/sudoers.d/10-wheel-nopasswd '# original sudo policy'
 assert_content /etc/polkit-1/rules.d/49-wheel-local.rules '// original Polkit policy'
 assert_content /home/fedora/.local/bin/sccache 'original sccache helper'
@@ -61,6 +70,7 @@ for path in \
   /usr/local/bin/hyprland-quickshell \
   /usr/share/wayland-sessions/hyprland-quickshell.desktop \
   /usr/local/libexec/cybexos-session-action \
+  /usr/libexec/cybexos-login-prepare \
   /usr/local/libexec/cybexos-system-snapshot \
   /etc/sysctl.d/60-cybexos-hardening.conf \
   /home/fedora/.config/hypr/features.lua \

@@ -21,7 +21,7 @@ from zoneinfo import available_timezones
 
 RUNTIME = Path('/run/cybexos-installer')
 RESERVED = {'root', 'liveuser', 'bin', 'daemon', 'adm', 'mail', 'ftp', 'nobody',
-            'dbus', 'systemd', 'gdm', 'sshd', 'polkitd', 'chrony'}
+            'dbus', 'systemd', 'gdm', 'sddm', 'sshd', 'polkitd', 'chrony'}
 
 
 class Invalid(ValueError):

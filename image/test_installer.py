@@ -123,6 +123,7 @@ class InstallerTests(unittest.TestCase):
         cases = [
             {"username": "root"},
             {"username": "liveuser"},
+            {"username": "sddm"},
             {"username": "alice\nuser"},
             {"password": "short", "confirm": "short"},
             {"confirm": "different"},
@@ -483,12 +484,39 @@ class TargetTests(unittest.TestCase):
         policy = {"account": {"username": "alice", "encrypted": True}}
         with self.assertRaises(RuntimeError):
             target.finalize(self.root, policy, False)
-        self.assertFalse((self.root / "etc/gdm/custom.conf").exists())
+        self.assertFalse((self.root / "etc/cybexos/login.json").exists())
         target.finalize(self.root, policy, True)
-        self.assertIn("AutomaticLogin = alice", (self.root / "etc/gdm/custom.conf").read_text())
+        login = self.root / "etc/cybexos/login.json"
+        self.assertEqual(json.loads(login.read_text()),
+                         {"version": 1, "user": "alice", "autologin": True, "live": False})
+        self.assertEqual(login.stat().st_mode & 0o777, 0o644)
+        record = json.loads((self.root / "etc/cybexos/installation.json").read_text())
+        self.assertEqual(record["keyring"], "encrypted-boot-passphrase-or-prompt")
+        self.assertNotIn("password", record)
         policy["account"]["encrypted"] = False
         target.finalize(self.root, policy, False)
-        self.assertNotIn("AutomaticLogin", (self.root / "etc/gdm/custom.conf").read_text())
+        self.assertFalse(json.loads(login.read_text())["autologin"])
+        target.finalize(self.root, policy, True)
+        self.assertFalse(json.loads(login.read_text())["autologin"])
+
+    def test_target_discards_live_decision_and_requires_boolean_encryption(self):
+        (self.root / "run").mkdir()
+        (self.root / "run/cybexos-live-session").write_text("liveuser\n")
+        (self.root / "etc/sddm.conf").write_text("[Autologin]\nUser=liveuser\n")
+        (self.root / "var/lib/sddm").mkdir(parents=True)
+        (self.root / "var/lib/sddm/state.conf").write_text("[Last]\nUser=liveuser\n")
+        target.finalize(self.root, {"account": {"username": "alice", "encrypted": False}}, False)
+        self.assertFalse((self.root / "run/cybexos-live-session").exists())
+        self.assertFalse((self.root / "etc/sddm.conf").exists())
+        self.assertFalse((self.root / "var/lib/sddm/state.conf").exists())
+        for invalid in ("false", "true", 1, None):
+            with self.subTest(value=invalid), self.assertRaises(RuntimeError):
+                target.finalize(self.root, {"account": {"username": "alice", "encrypted": invalid}}, True)
+
+    def test_missing_administrator_does_not_authorize_login(self):
+        with self.assertRaises(RuntimeError):
+            target.finalize(self.root, {"account": {"username": "missing", "encrypted": True}}, True)
+        self.assertFalse((self.root / "etc/cybexos/login.json").exists())
 
     def test_unlocked_root_fails_finalization(self):
         (self.root / "etc/shadow").write_text("root:fixture-hash:1::::::\n")
@@ -499,10 +527,11 @@ class TargetTests(unittest.TestCase):
         def run(command, **kwargs):
             if command[0] == "findmnt":
                 data = {
-                    "filesystems": [{"source": "/dev/mapper/root[/@]", "target": str(self.root)}]
+                    "filesystems": [{"source": "/dev/mapper/root", "target": str(self.root), "fstype": "ext4"}]
                 }
             else:
                 self.assertEqual(command[-1], "/dev/mapper/root")
+                self.assertIn('--tree', command)
                 data = {"blockdevices": [{"type": "part", "children": [{"type": "crypt"}]}]}
             return types.SimpleNamespace(stdout=json.dumps(data))
 
@@ -515,6 +544,45 @@ class TargetTests(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             target.root_is_encrypted(self.root, wrong_mount)
+
+    def test_encryption_check_rejects_mixed_and_plaintext_backing_devices(self):
+        def check(devices):
+            def run(command, **kwargs):
+                data = ({"filesystems": [{"source": "/dev/mapper/root", "target": str(self.root), "fstype": "ext4"}]}
+                        if command[0] == "findmnt" else {"blockdevices": devices})
+                return types.SimpleNamespace(stdout=json.dumps(data))
+            return target.root_is_encrypted(self.root, run)
+
+        self.assertFalse(check([]))
+        self.assertFalse(check([{"type": "part", "children": [{"type": "disk"}]}]))
+        self.assertFalse(check([{"type": "lvm", "children": [{"type": "crypt"}, {"type": "part"}]}]))
+        self.assertFalse(check([{"type": "crypt"}, {"type": "part"}]))
+        self.assertTrue(check([{"type": "lvm", "children": [{"type": "crypt"}, {"type": "crypt"}]}]))
+
+    def test_btrfs_encryption_checks_every_member_and_rejects_incomplete_reports(self):
+        report = ("Label: none  uuid: 12345678-1234-1234-1234-123456789abc\n"
+                  "\tTotal devices 2 FS bytes used 4096\n"
+                  "\tdevid 1 size 1048576 used 4096 path /dev/mapper/root\n"
+                  "\tdevid 2 size 1048576 used 4096 path /dev/second\n")
+        def check(output, second):
+            checked = []
+            def run(command, **kwargs):
+                if command[0] == 'findmnt':
+                    data = {'filesystems': [{'source': '/dev/mapper/root[/@]', 'target': str(self.root), 'fstype': 'btrfs'}]}
+                elif command[0] == 'btrfs':
+                    self.assertEqual(command[-1], str(self.root))
+                    return types.SimpleNamespace(stdout=output)
+                else:
+                    checked.append(command[-1])
+                    data = {'blockdevices': [{'type': second if command[-1] == '/dev/second' else 'crypt'}]}
+                return types.SimpleNamespace(stdout=json.dumps(data))
+            return target.root_is_encrypted(self.root, run), checked
+        self.assertEqual(check(report, 'crypt'), (True, ['/dev/mapper/root', '/dev/second']))
+        self.assertEqual(check(report, 'part'), (False, ['/dev/mapper/root', '/dev/second']))
+        for output in [report.replace('Total devices 2', 'Total devices 3'),
+                       report.replace('/dev/second', 'missing'), '', report + 'Some devices missing\n']:
+            with self.subTest(report=output):
+                self.assertEqual(check(output, 'crypt'), (False, []))
 
     def test_launcher_and_post_install_contract(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -549,6 +617,9 @@ class TargetTests(unittest.TestCase):
         self.assertIn("/usr/libexec/cybexos-seed-installed-users", hook)
         self.assertIn("%post --nochroot --erroronfail", hook)
         self.assertIn("rm -f /etc/anaconda/conf.d/20-cybexos.conf", hook)
+        self.assertIn("rm -f /run/cybexos-live-session /etc/sddm.conf", hook)
+        self.assertIn('"autologin":false,"live":false', hook)
+        self.assertIn("systemctl enable sddm.service", hook)
         self.assertIn(
             "install -D -m 0644 /usr/lib/firewalld/zones/cybexos.xml /etc/firewalld/zones/cybexos.xml",
             hook,

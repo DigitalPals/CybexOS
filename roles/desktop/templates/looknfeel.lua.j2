@@ -44,7 +44,8 @@ hl.config({
     shadow = { enabled = true, range = 4, render_power = 3, color = "rgba(1a1a1aee)" },
   },
   animations = { enabled = true },
-  misc = { force_default_wallpaper = 0, disable_hyprland_logo = true, focus_on_activate = false },
+  -- SDDM owns crash recovery: a new desktop requires a new authenticated login.
+  misc = { force_default_wallpaper = 0, disable_hyprland_logo = true, focus_on_activate = false, disable_watchdog_warning = true },
   xwayland = {
     force_zero_scaling = {{ (cybexos_xps_2026 | bool) | ternary('true', 'false') }},
   },

@@ -1,6 +1,7 @@
 """Explicitly invoked QEMU qualification support; safe to import in source checks."""
 import ctypes
 import os
+import re
 import signal
 from pathlib import Path
 import shlex
@@ -104,8 +105,44 @@ class TestVM:
         self.ssh_ready = False
         self.qmp_path = self.work / "qmp.sock"
 
+    def screen_text(self):
+        """Read a disposable guest screenshot; never retain password entry frames."""
+        if not shutil.which("tesseract"):
+            raise RuntimeError("Encrypted boot qualification requires tesseract for prompt recognition")
+        screenshot = self.work / "prompt.png"
+        qmp = Qmp(str(self.qmp_path))
+        try:
+            qmp.call("screendump", {"filename": str(screenshot), "format": "png"})
+            return run(["tesseract", str(screenshot), "stdout", "--psm", "11"],
+                       text=True, capture_output=True, timeout=20).stdout
+        finally:
+            qmp.stream.close()
+            qmp.socket.close()
+            screenshot.unlink(missing_ok=True)
+
+    def unlock_disk(self, password, timeout=180):
+        """Type once, only after recognizing the disk-unlock prompt.
+
+        The Cybex Plymouth theme intentionally hides its prompt text. Escape
+        exposes Plymouth's text display after firmware has had time to finish.
+        Failing recognition is safer than typing the boot secret into a desktop.
+        """
+        start = time.monotonic()
+        escaped = False
+        while time.monotonic() - start < timeout:
+            self.alive()
+            if self.qmp_path.exists():
+                if is_disk_prompt(self.screen_text()):
+                    self.type(password + "\n")
+                    return
+                if not escaped and time.monotonic() - start > 20:
+                    self.keypress("esc")
+                    escaped = True
+            time.sleep(2)
+        raise RuntimeError("Disk-unlock prompt was not recognized; no password was typed")
+
     def prepare(self):
-        for command in ("qemu-system-x86_64", "qemu-img", "ssh", "ssh-keygen"):
+        for command in ("qemu-system-x86_64", "qemu-img", "ssh", "ssh-keygen", "tesseract"):
             if not shutil.which(command):
                 raise RuntimeError(f"Missing VM prerequisite: {command}")
         if not os.access("/dev/kvm", os.R_OK | os.W_OK):
@@ -160,12 +197,13 @@ class TestVM:
             qmp.socket.close()
 
     def wait_ssh(self, timeout=300, setup=True, setup_password=None):
-        """Poll actual SSH readiness; retry graphical bootstrap while boot progresses.
+        """Poll SSH readiness and bootstrap only inside a recognized terminal.
 
         No guest debug agent is shipped. Keyboard injection remains the transport
         for initial test access, so the deadline includes firmware/desktop startup.
+        A fresh printf marker proves a shell executed before private setup input.
         """
-        deadline, next_attempt = time.monotonic() + timeout, 0
+        deadline, next_attempt, attempt = time.monotonic() + timeout, 0, 0
         public = self.key.with_suffix(".pub").read_text().strip()
         command = "mkdir -p ~/.ssh; printf '%s\\n' " + shlex.quote(public)
         command += " > ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys; "
@@ -186,7 +224,14 @@ class TestVM:
             if setup and time.monotonic() >= next_attempt and self.qmp_path.exists():
                 self.keypress("meta_l+ret")
                 time.sleep(1)
-                self.type(command)
+                attempt += 1
+                # The contiguous marker does not occur in the typed command;
+                # seeing it therefore proves that a shell ran printf.
+                marker = f"CYBEXOSREADY{7319 + attempt}"
+                self.type("HISTFILE=/dev/null; set +o history; printf 'CYBEXOSREADY%d\\n' $((7319 + " + str(attempt) + "))\n")
+                time.sleep(1)
+                if marker in re.sub(r"[^A-Z0-9]", "", self.screen_text().upper()):
+                    self.type(command)
                 next_attempt = time.monotonic() + 15
             time.sleep(1)
         raise RuntimeError("SSH/desktop readiness deadline exceeded; inspect VM through vm-control")
@@ -242,8 +287,15 @@ class TestVM:
         try:
             self.stop()
         finally:
-            for name in ("id_ed25519", "id_ed25519.pub", "known_hosts", "vm.json", "qmp.sock"):
+            for name in ("id_ed25519", "id_ed25519.pub", "known_hosts", "vm.json", "qmp.sock", "prompt.png"):
                 (self.work / name).unlink(missing_ok=True)
             if not keep_artifacts:
                 for name in ("installed.qcow2", "OVMF_VARS.fd", "OVMF_VARS.qcow2", "serial.log", "qemu.log"):
                     (self.work / name).unlink(missing_ok=True)
+
+
+def is_disk_prompt(text):
+    """Require an encryption context, not a generic login/keyring password box."""
+    compact = " ".join(text.lower().split())
+    return bool(re.search(r"(?:passphrase|password).{0,180}(?:disk|luks|volume|crypt)", compact)
+                or re.search(r"(?:disk|luks|volume|crypt).{0,180}(?:passphrase|password)", compact))

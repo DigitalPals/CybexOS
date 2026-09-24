@@ -1,4 +1,40 @@
 ---
+- name: Preserve the display manager before first SDDM adoption
+  ansible.builtin.shell: |
+    set -euo pipefail
+    backup=/var/lib/cybexos/backups/login
+    marker=/var/lib/cybexos/backups/login-initial.complete
+    absent=/var/lib/cybexos/backups/login-initial.absent
+    install -d -m 0700 "$backup"
+    temporary="$absent.new"
+    : >"$temporary"
+    items=(
+      etc/systemd/system/display-manager.service
+      etc/sddm.conf
+      etc/pam.d/sddm-autologin
+      etc/systemd/system/sddm.service.d/50-cybexos.conf
+      etc/cybexos/login.json
+      usr/libexec/cybexos-login-prepare
+    )
+    for relative in "${items[@]}"; do
+      source_path=/$relative
+      if [[ -e $source_path || -L $source_path ]]; then
+        install -d -m 0700 "$backup/$(dirname -- "$relative")"
+        cp -a -- "$source_path" "$backup/$relative"
+      else
+        printf '%s\n' "$relative" >>"$temporary"
+      fi
+    done
+    mv -f -- "$temporary" "$absent"
+    touch "$marker"
+  args:
+    executable: /bin/bash
+    creates: /var/lib/cybexos/backups/login-initial.complete
+  when: not ansible_check_mode
+  # A shell-only deployment also installs runtime RPMs. Preserve package
+  # defaults before that transaction even on an already adopted workstation.
+  tags: [quickshell]
+
 - name: Download the pinned Hyprland COPR signing key
   ansible.builtin.get_url:
     url: https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
@@ -28,11 +64,10 @@
 - name: Install stable Hyprland and desktop integration packages
   ansible.builtin.dnf:
     name:
-      - gdm
+      - sddm
+      - sddm-wayland-generic
       - gnome-keyring
-      # The idle-suspend preference below needs both the schema and a private
-      # D-Bus session on headless first boot, before the user has logged in.
-      - gnome-settings-daemon
+      - gnome-keyring-pam
       - dbus-daemon
       - hyprland
       - hypridle
@@ -114,54 +149,22 @@
   when: not ansible_check_mode
   tags: [quickshell]
 
-- name: Inspect the package-provided GDM configuration fallback
-  ansible.builtin.stat:
-    path: /var/lib/cybexos/backups/system/etc/gdm/custom.conf
-  register: desktop_gdm_fallback_backup
-
-- name: Inspect the installed GDM configuration
-  ansible.builtin.stat:
-    path: /etc/gdm/custom.conf
-  register: desktop_gdm_configuration
-
-- name: Check whether GDM was absent before first adoption
-  ansible.builtin.command:
-    argv:
-      - grep
-      - -Fqx
-      - etc/gdm/custom.conf
-      - /var/lib/cybexos/backups/initial-system.absent
-  register: desktop_gdm_initially_absent
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: Preserve GDM's package default when CybexOS installed it
-  ansible.builtin.copy:
-    src: /etc/gdm/custom.conf
-    dest: /var/lib/cybexos/backups/system/etc/gdm/custom.conf
-    remote_src: true
-    owner: root
-    group: root
-    mode: preserve
-  when:
-    - desktop_gdm_initially_absent.rc | default(1) == 0
-    - desktop_gdm_configuration.stat.exists
-    - not desktop_gdm_fallback_backup.stat.exists
-
-- name: Disable GNOME automatic idle suspend without changing blank or lock settings
-  become: true
-  become_user: "{{ primary_user }}"
-  ansible.builtin.command: >-
-    dbus-run-session gsettings set org.gnome.settings-daemon.plugins.power
-    {{ item }} 0
-  environment:
-    HOME: "{{ primary_home }}"
-  loop:
-    - sleep-inactive-ac-timeout
-    - sleep-inactive-battery-timeout
-  changed_when: false
+- name: Preserve Fedora's SDDM PAM default if the package was newly installed
+  ansible.builtin.shell: |
+    set -euo pipefail
+    backup=/var/lib/cybexos/backups/login/etc/pam.d/sddm-autologin
+    if [[ ! -e $backup ]] && grep -Fqx etc/pam.d/sddm-autologin \
+        /var/lib/cybexos/backups/login-initial.absent; then
+      install -d -m 0700 "$(dirname -- "$backup")"
+      cp -a -- /etc/pam.d/sddm-autologin "$backup"
+      printf 'CHANGED: preserved Fedora SDDM PAM defaults\n'
+    fi
+  args:
+    executable: /bin/bash
+  register: desktop_sddm_pam_backup
+  changed_when: "'CHANGED:' in desktop_sddm_pam_backup.stdout"
   when: not ansible_check_mode
+  tags: [quickshell]
 
 - name: Inspect CybexOS ownership of connected widgets
   ansible.builtin.stat:
@@ -212,10 +215,48 @@
       - _copr:copr.fedorainfracloud.org:sdegler:hyprland
   when: not ansible_check_mode
 
-- name: Ensure GDM is the display manager while preserving GNOME
-  ansible.builtin.systemd_service:
-    name: gdm.service
-    enabled: true
+- name: Install the boot-time login policy helper
+  ansible.builtin.copy:
+    src: login/cybexos-login-prepare
+    dest: /usr/libexec/cybexos-login-prepare
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the encrypted-autologin PAM integration
+  ansible.builtin.copy:
+    src: login/sddm-autologin
+    dest: /etc/pam.d/sddm-autologin
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create the SDDM service policy directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/sddm.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install SDDM login policy preparation
+  ansible.builtin.copy:
+    src: login/50-cybexos.conf
+    dest: /etc/systemd/system/sddm.service.d/50-cybexos.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Restore login integration SELinux labels
+  ansible.builtin.command:
+    argv:
+      - restorecon
+      - -F
+      - /usr/libexec/cybexos-login-prepare
+      - /etc/pam.d/sddm-autologin
+      - /etc/systemd/system/sddm.service.d/50-cybexos.conf
+  changed_when: false
+  when: not ansible_check_mode
 
 - name: Install Hyprland Quickshell session launcher
   ansible.builtin.template:
@@ -225,7 +266,7 @@
     group: root
     mode: "0755"
 
-- name: Register Hyprland Quickshell GDM session
+- name: Register the Hyprland Quickshell Wayland session
   ansible.builtin.copy:
     dest: /usr/share/wayland-sessions/hyprland-quickshell.desktop
     owner: root

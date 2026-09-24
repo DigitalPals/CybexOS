@@ -466,6 +466,8 @@ python_fixtures=(
   shell-health
   repository-policy
   application-defaults
+  login-policy
+  session-launcher
   omawrite
   ownership-layering
   plugin-packages
@@ -554,6 +556,7 @@ look = Path("roles/desktop/templates/looknfeel.lua.j2").read_text()
 theme = Path("roles/desktop/files/quickshell/Common/Theme.qml").read_text()
 live_helpers = Path("tests/lib/quickshell-live").read_text()
 snapshot = Path("tests/t3-contract-snapshot").read_text()
+login_policy = Path("roles/desktop/files/login/cybexos-login-prepare").read_text()
 
 assert Path("roles/desktop/files/quickshell/shell.qml").is_file()
 assert Path("roles/desktop/templates/quickshell.service.j2").is_file()
@@ -576,7 +579,8 @@ assert "(Type|Reference|Range)Error" in live_helpers
 assert 'hl.dsp.global("quickshell:launcherToggle")' in bindings
 assert "noctalia" not in autostart.lower()
 assert "qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|wallpaper)" in look
-assert "hyprland-quickshell" in finalize
+assert "hyprland-quickshell.desktop" in login_policy
+assert "/etc/cybexos/login.json" in finalize
 assert "noctalia-retired-" in finalize
 assert "/usr/share/wayland-sessions/hyprland-noctalia.desktop" in finalize
 assert "name: noctalia" in finalize

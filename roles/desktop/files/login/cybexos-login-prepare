@@ -1,0 +1,228 @@
+#!/usr/bin/python3
+"""Prepare SDDM's once-per-boot policy. Never read or handle credentials."""
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import pwd
+import re
+import secrets
+import stat
+import subprocess
+import tempfile
+
+
+def command(arguments):
+    return subprocess.check_output(arguments, text=True, timeout=15)
+
+
+def encrypted_paths(nodes):
+    """Every backing-device branch must pass through a crypt mapping."""
+    return bool(nodes) and all(node.get('type') == 'crypt' or
+                               encrypted_paths(node.get('children', [])) for node in nodes)
+
+
+def btrfs_members(output):
+    """Reject partial/missing-device reports rather than trusting one member."""
+    totals = re.findall(r'^\s*Total devices ([0-9]+) FS bytes used [0-9]+\s*$', output, re.MULTILINE)
+    devices = re.findall(r'^\s*devid\s+([0-9]+)\s+size\s+[0-9]+\s+used\s+[0-9]+\s+path\s+(/dev/\S+)\s*$',
+                         output, re.MULTILINE)
+    headers = re.findall(r'^Label:.*\buuid: [0-9a-fA-F-]{36}\s*$', output, re.MULTILINE)
+    if (len(headers) != 1 or len(totals) != 1 or not devices or
+            len(devices) != int(totals[0]) or
+            len({device[0] for device in devices}) != len(devices) or
+            len({device[1] for device in devices}) != len(devices) or
+            'missing' in output.lower()):
+        raise ValueError('The complete Btrfs device set could not be verified')
+    return [device[1] for device in devices]
+
+
+def encrypted_root(run=command):
+    try:
+        mounts = json.loads(run(['findmnt', '--json', '--mountpoint', '/', '--output', 'SOURCE,TARGET,FSTYPE']))['filesystems']
+        if len(mounts) != 1 or mounts[0]['target'] != '/':
+            return False
+        device = mounts[0]['source'].split('[', 1)[0]
+        if not device.startswith('/dev/'):
+            return False
+        devices = (btrfs_members(run(['btrfs', 'filesystem', 'show', '--raw', '/']))
+                   if mounts[0]['fstype'] == 'btrfs' else [device])
+        return all(encrypted_paths(json.loads(run(['lsblk', '--inverse', '--tree', '--json', '--output', 'TYPE', member]))['blockdevices'])
+                   for member in devices)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        return False
+
+
+def trusted_file(path, uid=0):
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != uid or info.st_mode & 0o022:
+        raise ValueError('Login policy must be a root-owned regular file without writable group/other permissions')
+    return path.read_text()
+
+
+def policy(root, uid=0):
+    value = json.loads(trusted_file(root / 'etc/cybexos/login.json', uid))
+    if not isinstance(value, dict) or type(value.get('version')) is not int or value['version'] != 1:
+        raise ValueError('Unsupported login policy')
+    if not isinstance(value.get('user'), str) or not re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}', value['user']):
+        raise ValueError('Invalid login owner')
+    if type(value.get('autologin')) is not bool or type(value.get('live', False)) is not bool:
+        raise ValueError('Login policy flags must be boolean')
+    users = [line.split(':') for line in (root / 'etc/passwd').read_text().splitlines()]
+    if not any(len(row) == 7 and row[0] == value['user'] and 1000 <= int(row[2]) < 65534 for row in users):
+        raise ValueError('Login owner must be an installed regular user')
+    return value
+
+
+def atomic_write(path, text, mode=0o644):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix='.' + path.name + '.', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            os.fchmod(stream.fileno(), mode)
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(name, path)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def config(user):
+    return ('# Managed by cybexos-login-prepare; configure /etc/cybexos/login.json.\n'
+            '[General]\nDisplayServer=wayland\n'
+            '[Theme]\nCurrent=\n'
+            '[Autologin]\nUser=' + user + '\nSession=hyprland-quickshell.desktop\nRelogin=false\n'
+            '[Users]\nRememberLastUser=true\nRememberLastSession=true\n'
+            '[Wayland]\nSessionDir=/usr/share/wayland-sessions\n')
+
+
+def seed_session(root, uid=0):
+    """Set the first password-login session without changing a user's choice."""
+    account = pwd.getpwnam('sddm')
+    directory = root / 'var/lib/sddm'
+    # Only SDDM's final directory may be owned/writable by the service user.
+    for parent in (root / 'var', root / 'var/lib'):
+        parent.mkdir(exist_ok=True)
+        info = parent.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != uid or info.st_mode & 0o022:
+            raise ValueError('Unsafe SDDM state parent directory')
+    try:
+        directory.mkdir(mode=0o1770)
+    except FileExistsError:
+        pass
+    else:
+        os.chown(directory, account.pw_uid, account.pw_gid)
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    temporary = '.cybexos-session-' + secrets.token_hex(16)
+    created = False
+    try:
+        info = os.fstat(descriptor)
+        if info.st_uid not in (uid, account.pw_uid) or info.st_mode & 0o007:
+            raise ValueError('Unsafe SDDM state directory')
+        try:
+            info = os.stat('state.conf', dir_fd=descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            if not stat.S_ISREG(info.st_mode):
+                raise ValueError('Unsafe SDDM state file')
+            return  # Do not read or replace SDDM's remembered session.
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                     0o600, dir_fd=descriptor)
+        created = True
+        with os.fdopen(fd, 'w') as stream:
+            stream.write('[Last]\nSession=hyprland-quickshell.desktop\n')
+            stream.flush()
+            os.fchown(stream.fileno(), account.pw_uid, account.pw_gid)
+            os.fsync(stream.fileno())
+        try:
+            os.link(temporary, 'state.conf', src_dir_fd=descriptor,
+                    dst_dir_fd=descriptor, follow_symlinks=False)
+        except FileExistsError:
+            pass  # A concurrent SDDM update owns the final selection.
+    finally:
+        if created:
+            os.unlink(temporary, dir_fd=descriptor)
+        os.close(descriptor)
+
+
+def prepare(root=Path('/'), uid=0, encryption=encrypted_root):
+    runtime = root / 'run/cybexos-login'
+    runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = runtime.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != uid or info.st_mode & 0o077:
+        raise ValueError('Unsafe login runtime directory')
+    lock = os.open(runtime / 'prepare.lock', os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        # Disable stale on-disk autologin before inspecting policy or consuming
+        # the boot marker. A preparation failure must never launch old policy.
+        atomic_write(root / 'etc/sddm.conf', config(''))
+        seed_session(root, uid)
+        selected = ''
+        reason = 'password-login'
+        try:
+            settings = policy(root, uid)
+            eligible = settings['autologin']
+            if settings.get('live', False):
+                try:
+                    live = trusted_file(root / 'run/cybexos-live-session', uid).strip()
+                    cmdline = (root / 'proc/cmdline').read_text().split()
+                    eligible = eligible and live == settings['user'] == 'liveuser' and any(
+                        part in ('rd.live.image', 'rd.live.image=1') for part in cmdline)
+                except (OSError, ValueError):
+                    eligible = False
+                reason = 'live-session' if eligible else 'unverified-live-session'
+            elif eligible:
+                eligible = encryption()
+                reason = 'encrypted-root' if eligible else 'unencrypted-or-unknown-root'
+            if eligible:
+                try:
+                    fd = os.open(runtime / 'autologin-used', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                except FileExistsError:
+                    reason = 'autologin-already-used'
+                else:
+                    # Consume before starting SDDM/PAM, including failed
+                    # attempts. This marker is intentionally never removed
+                    # by service-stop cleanup.
+                    os.close(fd)
+                    selected = settings['user']
+        except (OSError, ValueError, KeyError, TypeError):
+            reason = 'invalid-or-missing-policy'
+        atomic_write(root / 'etc/sddm.conf', config(selected))
+        result = dict(autologin=bool(selected), user=selected, reason=reason)
+        atomic_write(runtime / 'status.json', json.dumps(result) + '\n', 0o600)
+        return result
+    finally:
+        os.close(lock)
+
+
+def install_pam(root=Path('/')):
+    source = root / 'usr/share/cybexos/login/sddm-autologin'
+    target = root / 'etc/pam.d/sddm-autologin'
+    backup = root / 'var/lib/cybexos/backups/login-pam/sddm-autologin'
+    template = trusted_file(source)
+    if target.exists() and not backup.exists():
+        atomic_write(backup, trusted_file(target), 0o600)
+    atomic_write(target, template)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--install-pam', action='store_true', help='Apply the packaged PAM template after an RPM transaction')
+    args = parser.parse_args()
+    if os.geteuid() != 0:
+        parser.error('Run as root')
+    if args.install_pam:
+        install_pam()
+        subprocess.run(['restorecon', '/etc/pam.d/sddm-autologin'], check=True)
+    else:
+        result = prepare()
+        subprocess.run(['restorecon', '/etc/sddm.conf', '/var/lib/sddm/state.conf'], check=True)
+        print('CybexOS login: ' + result['reason'])
+
+
+if __name__ == '__main__':
+    main()

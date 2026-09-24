@@ -11,6 +11,11 @@ image in [VALIDATION.md](VALIDATION.md) predates this implementation and does
 not qualify it. See [IMPLEMENTATION-2026-09-23.md](IMPLEMENTATION-2026-09-23.md)
 for changes and remaining integration checks, and the historical
 [audit](AUDIT-2026-09-23.md) for the original findings.
+The September 24 source also replaces GDM with SDDM and shares the workstation's
+login policy. Earlier GDM boot results do not qualify this migration.
+The replacement desktop RPM built successfully in a disposable Fedora VM.
+ISO creation was then deferred at the user's request; no new ISO was completed
+or booted, and temporary build artifacts were removed.
 
 ## Installation experience
 
@@ -35,8 +40,10 @@ reload. A failed or lost installation worker requires inspection/restart;
 the UI does not automatically retry disk writes.
 
 The account and encryption passwords start equal; changing one later does
-not change the other. GNOME Keyring retains its protection, so applications
-may request a first-use unlock after automatic login. See
+not change the other. GNOME Keyring remains encrypted and can unlock through
+SDDM's PAM stack using the briefly cached boot passphrase. An absent/expired
+cache or different keyring password falls back to the application's unlock
+prompt. No passwordless keyring or longer-lived password cache is created. See
 [INSTALLER.md](INSTALLER.md) for interfaces, keyboard constraints and upstream
 version references.
 
@@ -70,13 +77,15 @@ seed rather than downloading a fallback during setup.
 The temporary live account has administrative access and autologin; live
 locking is disabled. The destination cleanup removes the account, its
 privileges and live-only services/installer files, sets the shared firewall
-policy, and rebuilds initramfs after removing live configuration. Autologin
-is enabled only after the mounted target root is verified as encrypted.
+policy, and rebuilds initramfs after removing live configuration. Installed
+autologin requires the requested policy and verified root encryption, is
+rechecked at boot, and is attempted only on the first SDDM start in each boot.
+Logout and later SDDM starts return to the login screen.
 
 ## Source checks: no ISO or VM
 
 ```bash
-# Fedora dependencies: python3-pyside6 python3-jinja2 python3-pyyaml
+# Fedora dependencies: python3-pyside6 python3-jinja2 python3-pyyaml python3-gobject-base glib2
 # pykickstart nodejs24 gnupg2 git ripgrep
 PYTHONDONTWRITEBYTECODE=1 python3 image/check-source
 ./tests/run
@@ -110,6 +119,12 @@ Python 3.11+, PyYAML and writable `/dev/kvm` are required. Host packages:
 
 - Fedora: `qemu-kvm qemu-img xorriso openssh-clients python3-pyyaml edk2-ovmf`.
 - Debian: `qemu-system-x86 qemu-utils cloud-image-utils openssh-client python3-yaml ovmf`.
+
+The VM smoke and installation tests also need Tesseract with English data:
+`tesseract tesseract-langpack-eng` on Fedora, or `tesseract-ocr tesseract-ocr-eng`
+on Debian. It recognizes the disk-unlock prompt and a terminal execution
+marker before the harness types private fixture input. The image builder
+itself does not require OCR.
 
 Allow approximately 180 GiB free staging space and 24 GiB available RAM for
 the complete application build. OVMF is needed for later UEFI qualification.
@@ -241,16 +256,44 @@ selects BIOS. An adjacent `ISO-FILENAME.iso.sha256` must verify before a VM
 can start. The smoke test checks the live desktop/applications; qualification
 also installs to its newly created, serial-identified virtual disk, reboots
 without the ISO, unlocks it and checks encryption, autologin, desktop defaults,
-SELinux and live-account cleanup. It drives the backend; the browser fixture
-separately covers frontend flow. A passing fixture is not a boot result.
+SELinux and live-account cleanup. It verifies an encrypted GNOME login keyring
+without requesting an unlock, stores a synthetic secret, and confirms that
+secret is available after another cold boot. Logout, compositor crash and
+SDDM restart must return to a greeter; password login must restore both the
+desktop and keyring. Another cold boot temporarily disables the cached-password
+PAM module in the disposable guest, checks that the vault stays locked, then
+verifies recovery through normal password login. The final cold boot injects
+a single early launcher failure in the guest. It requires a working greeter,
+a consumed autologin attempt, disabled autologin after restarting SDDM, and
+successful password-login recovery; the original launcher is then restored.
+It drives the backend; the
+browser fixture separately covers frontend flow. A passing fixture is not a
+boot result.
+
+Installation qualification uses four virtual CPUs, 16 GiB RAM and a new
+100 GiB sparse disk. It performs one live boot and four installed cold boots;
+the three logout/crash/restart cases reuse the running installation. The
+installer deadline defaults to 30 minutes (`--install-timeout 1800`); boot,
+application seeding and recovery have separate bounded waits. Runtime has not
+yet been benchmarked.
+
+The ISO path and checksum are mandatory even when QEMU runs locally. The
+harness resolves the path and rejects a symlink to an image outside
+`/data/pxe/iso`. `image/publish-pxe` runs on the actual iVentoy host and requires
+its local service and API; it cannot publish remotely using only an HTTP URL.
+A build workstation needs filesystem access to that verified publication or
+must run qualification on the PXE host. A local directory with the same name
+does not establish that PXE publication and refresh succeeded.
 
 `--hold` on the smoke test allows inspection using `image/vm-control` and
 `vm.json`. By default cleanup removes disks, credentials, screenshots and VM
 logs; small JSON reports remain. `--keep-artifacts` is only for unresolved
 diagnostics, and retained paths/sizes must be reported and later cleaned.
-Qualification's graphical keyboard bootstrap still needs real VM validation.
+Qualification's graphical keyboard bootstrap and greeter focus assumptions
+still need real VM validation; it stops instead of blindly retrying passwords.
 Physical GPUs, Secure Boot, international early-boot password entry, screen
-lock, suspend/resume and application credential behavior need separate checks.
+lock, suspend/resume and real application/account credential behavior need
+separate checks.
 
 ## Graphics and release boundary
 

@@ -20,6 +20,80 @@ APPLICATIONS = {
 
 
 class ApplicationDefaults(unittest.TestCase):
+    def test_login_adoption_restores_original_paths_and_display_manager_link(self):
+        tasks = yaml.safe_load((ROOT / "roles/desktop/tasks/main.yml").read_text())
+        backup = next(task for task in tasks
+                      if task.get("name") == "Preserve the display manager before first SDDM adoption")
+        uninstall = yaml.safe_load((ROOT / "roles/uninstall/tasks/main.yml").read_text())
+        restore = next(task for task in uninstall
+                       if task.get("name") == "Restore the login manager preserved before SDDM adoption")
+        with tempfile.TemporaryDirectory(prefix="cybex-login-backup.") as temporary:
+            root = Path(temporary)
+            originals = {
+                "etc/sddm.conf": "[Theme]\nCurrent=original\n",
+                "etc/pam.d/sddm-autologin": "original PAM policy\n",
+                "etc/systemd/system/sddm.service.d/50-cybexos.conf": "original drop-in\n",
+                "etc/cybexos/login.json": '{"original":true}\n',
+            }
+            for name, content in originals.items():
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content)
+            alias = root / "etc/systemd/system/display-manager.service"
+            alias.symlink_to("/usr/lib/systemd/system/gdm.service")
+            unrelated = root / "etc/systemd/system/sddm.service.d/99-personal.conf"
+            unrelated.write_text("personal drop-in\n")
+
+            def run_script(task):
+                script = task["ansible.builtin.shell"]
+                script = script.replace("/var/lib/cybexos", str(root / "var/lib/cybexos"))
+                script = script.replace("source_path=/$relative", f"source_path={shlex.quote(temporary)}/$relative")
+                script = script.replace("destination=/$relative", f"destination={shlex.quote(temporary)}/$relative")
+                script = script.replace("rmdir /etc/systemd", f"rmdir {shlex.quote(temporary)}/etc/systemd")
+                script = script.replace("/run/cybexos-login", str(root / "run/cybexos-login"))
+                subprocess.run(["bash", "-e", "-c", "restorecon() { :; }\n" + script], check=True)
+
+            run_script(backup)
+            for name in originals:
+                (root / name).write_text("CybexOS replacement\n")
+            alias.unlink()
+            alias.symlink_to("/usr/lib/systemd/system/sddm.service")
+            helper = root / "usr/libexec/cybexos-login-prepare"
+            helper.parent.mkdir(parents=True)
+            helper.write_text("managed helper\n")
+            run_script(restore)
+            for name, content in originals.items():
+                self.assertEqual((root / name).read_text(), content)
+            self.assertEqual(os.readlink(alias), "/usr/lib/systemd/system/gdm.service")
+            self.assertEqual(unrelated.read_text(), "personal drop-in\n")
+            self.assertFalse(helper.exists())
+            self.assertNotIn("systemctl", restore["ansible.builtin.shell"])
+
+    def test_display_manager_neutral_autologin_preserves_saved_choices(self):
+        with tempfile.TemporaryDirectory(prefix="cybex-login-migration.") as temporary:
+            config = Path(temporary) / "config.yml"
+            for answers, expected in (
+                ({}, False),
+                ({"gdm_autologin": True}, True),
+                ({"gdm_autologin": False}, False),
+                ({"gdm_autologin": True, "desktop_autologin": False}, False),
+                ({"desktop_autologin": True}, True),
+            ):
+                with self.subTest(answers=answers):
+                    config.write_text(yaml.safe_dump(answers))
+                    result = subprocess.check_output(
+                        [str(ROOT / "scripts/migrate-config"), str(config)], text=True,
+                    )
+                    self.assertIs(yaml.safe_load(result)["desktop_autologin"], expected)
+            for key in ("desktop_autologin", "gdm_autologin"):
+                config.write_text(yaml.safe_dump({key: "true"}))
+                result = subprocess.run(
+                    [str(ROOT / "scripts/migrate-config"), str(config)],
+                    capture_output=True, text=True,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f"{key} must be a boolean", result.stderr)
+
     def test_fresh_configuration_and_saved_opt_outs(self):
         defaults = yaml.safe_load((ROOT / "inventory/group_vars/all.yml").read_text())
         for key in APPLICATIONS:
@@ -82,7 +156,7 @@ class ApplicationDefaults(unittest.TestCase):
             for key in APPLICATIONS:
                 self.assertIs(config["features"][key], True, key)
             self.assertFalse((home / "absent.yml").exists())
-            for key in ("passwordless_wheel", "passwordless_local_polkit", "gdm_autologin"):
+            for key in ("passwordless_wheel", "passwordless_local_polkit", "desktop_autologin"):
                 self.assertIs(config[key], False)
             # hostnamectl succeeds with empty output when no static hostname
             # is configured; use the transient hostname in that case.
