@@ -2,9 +2,12 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 import "../Common/SettingsHelpers.js" as SettingsHelpers
+import "IdleTimelineModel.js" as IdleTimelineModel
 
 // Power: what happens while the computer sits idle, and how to hold that
-// off for a while.
+// off for a while. The timeline shows the three idle delays in order; each
+// is a dropdown, because seven choices on one track wrapped at ordinary
+// widths.
 SettingsPage {
     id: page
     pageReset: true
@@ -17,7 +20,7 @@ SettingsPage {
     function idleChoices(values) {
         return values.map(mins => ({
             value: mins,
-            label: mins === 0 ? "Never" : mins < 60 ? mins + " min" : mins / 60 + " h"
+            label: IdleTimelineModel.durationLabel(mins)
         }));
     }
 
@@ -36,21 +39,25 @@ SettingsPage {
             width: parent.width
             title: "Idle"
 
-            PickerRow {
+            IdleTimeline {
+                width: parent.width
+                overridden: SysInfo.idleUserConfig
+            }
+            SelectRow {
                 width: parent.width
                 label: "Lock screen"
                 settingKey: "idleLockMins"
                 model: page.idleChoices(SettingsHelpers.IDLE_LOCK_MINS)
                 disabledReason: page.idleOverrideReason
             }
-            PickerRow {
+            SelectRow {
                 width: parent.width
                 label: "Screen off"
                 settingKey: "idleScreenOffMins"
                 model: page.idleChoices(SettingsHelpers.IDLE_SCREEN_OFF_MINS)
                 disabledReason: page.idleOverrideReason
             }
-            PickerRow {
+            SelectRow {
                 width: parent.width
                 label: "Suspend"
                 settingKey: "idleSuspendMins"
@@ -96,19 +103,24 @@ SettingsPage {
                     { value: "unplugged", label: "Until unplugged" },
                     { value: "always", label: "Always" }
                 ]
-                hint: SysInfo.idleInhibited ? "Active · " + SysInfo.idleInhibitStatus
+                hint: SysInfo.idleInhibitError !== "" ? SysInfo.idleInhibitError
+                    : SysInfo.idleInhibited ? "Active · " + SysInfo.idleInhibitStatus
                     : "Keeps the screen on and the computer from sleeping"
-                hintTone: SysInfo.idleInhibited ? "active" : "info"
+                hintTone: SysInfo.idleInhibitError !== "" ? "error"
+                    : SysInfo.idleInhibited ? "active" : "info"
                 onPicked: value => SysInfo.setIdleInhibitMode(value)
             }
 
-            ResponsiveActionRow {
+            // The bar's stay-awake indicator keeps its own options with the
+            // other bar widgets; this row only points there.
+            ValueRow {
                 width: parent.width
-                description: "Defaults and sign-in behavior"
+                label: "Bar indicator"
+                hint: "What a click on it starts, and whether it stays on after you sign in"
 
                 SettingsAction {
                     text: "Indicator settings"
-                    glyph: "open_in_new"
+                    glyph: "arrow_forward"
                     Accessible.name: "Open Indicators widget settings"
                     onTriggered: Settings.openWidgetSettings("indicators")
                 }

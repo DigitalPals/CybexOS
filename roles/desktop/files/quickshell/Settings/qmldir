@@ -58,3 +58,8 @@ SettingsSelect SettingsSelect.qml
 ApplyBar ApplyBar.qml
 SettingsDisclosure SettingsDisclosure.qml
 SettingsTooltip SettingsTooltip.qml
+IdleTimeline IdleTimeline.qml
+ValueRow ValueRow.qml
+FieldRow FieldRow.qml
+RowCluster RowCluster.qml
+PluginRow PluginRow.qml

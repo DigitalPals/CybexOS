@@ -657,9 +657,23 @@ test("settings workspace uses shared responsive groups and bounded header lanes"
             "RegionPage", "TouchpadPage"])
         assert.match(read(`Settings/${page}.qml`), /SettingsGroup \{/,
             `${page} must use grouped settings sections`);
-    for (const page of ["WallpaperPage", "PowerPage", "AboutPage"])
+    for (const page of ["WallpaperPage"])
         assert.match(read(`Settings/${page}.qml`), /ResponsiveActionRow \{/,
             `${page} must use bounded responsive action copy`);
+    // Report and action rows (2026-09) keep a label and end their value and
+    // actions on the same right-hand edge as the settings rows around them.
+    const valueRow = read("Settings/ValueRow.qml");
+    assert.match(valueRow, /^SettingsRow \{$/m, "ValueRow builds on SettingsRow");
+    assert.match(valueRow, /x: root\.actionsLeft/);
+    assert.match(valueRow, /actionsLeft: contentRight - actionsWidth/,
+        "actions end at the control edge, not in the reset column");
+    assert.match(valueRow, /elide: Text\.ElideRight/, "a long value is bounded, not clipped");
+    for (const page of ["PowerPage", "AboutPage", "AccountsPage", "RecoveryGroup"])
+        assert.match(read(`Settings/${page}.qml`), /ValueRow \{/,
+            `${page} must put its actions on labeled rows`);
+    for (const page of ["PowerPage", "AboutPage", "AccountsPage", "PluginsPage", "RecoveryGroup"])
+        assert.doesNotMatch(read(`Settings/${page}.qml`), /ResponsiveActionRow \{/,
+            `${page} must not end actions outside the control column`);
 });
 
 // The menubar separates one run of modules from the next with a hairline and a

@@ -4,7 +4,9 @@ import Quickshell
 import "../Common"
 
 // Region & formats: how the shell writes the time and the temperature. Each
-// row's caption shows the result.
+// row's caption reads the result back just before its choices ("Now 19:16",
+// "15° outside"), in the interface face: it is a phrase, not a code, and a
+// mono caption beside a menu-face control read as a stray value.
 SettingsPage {
     id: page
     pageReset: true
@@ -35,7 +37,8 @@ SettingsPage {
                     { value: true, label: "24 h" },
                     { value: false, label: "12 h" }
                 ]
-                caption: Qt.formatDateTime(clock.date, Settings.clock24 ? "HH:mm" : "h:mm AP")
+                caption: "Now " + Qt.formatDateTime(clock.date, Settings.clock24 ? "HH:mm" : "h:mm AP")
+                captionMono: false
             }
             PickerRow {
                 width: parent.width
@@ -46,6 +49,7 @@ SettingsPage {
                     { value: "f", label: "°F" }
                 ]
                 caption: Weather.ready ? Weather.temp + "° outside" : ""
+                captionMono: false
             }
         }
     }
