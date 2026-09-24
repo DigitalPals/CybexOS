@@ -79,6 +79,29 @@ ShellRoot {
         }
     }
 
+    // Opens the Wallpaper page on its Online (Wallhaven) view, for a
+    // first-run "choose a wallpaper" step. The singleton is created by the
+    // first call, not at startup.
+    IpcHandler {
+        target: "wallpaper"
+
+        function browse(): void {
+            OnlineWallpapers.view = "online";
+            Settings.showPanel("wallpaper",
+                Screens.focused ? Screens.focused.name : "");
+        }
+
+        // Read-only diagnostics of the Online view's search and download.
+        function status(): string {
+            return JSON.stringify({view: OnlineWallpapers.view,
+                results: OnlineWallpapers.results.length,
+                page: OnlineWallpapers.page, lastPage: OnlineWallpapers.lastPage,
+                busy: OnlineWallpapers.busy, error: OnlineWallpapers.error,
+                downloading: OnlineWallpapers.downloadingId,
+                downloadError: OnlineWallpapers.downloadError});
+        }
+    }
+
     // Pinged by brightness-control after brightnessctl runs; volume needs
     // no IPC because the OSD watches Pipewire directly.
     IpcHandler {

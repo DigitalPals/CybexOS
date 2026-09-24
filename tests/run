@@ -461,6 +461,7 @@ python_fixtures=(
   quickshell-deployment
   user-plugins
   usage-fetch
+  wallpaper-download
   bluetooth-tool
   firmware-update
   shell-health

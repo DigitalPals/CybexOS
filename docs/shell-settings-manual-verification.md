@@ -63,6 +63,17 @@ is manual.
 - [ ] Grid lists the configured wallpaper folder; clicking a thumb swaps the
       wallpaper live and moves the accent ring + ✓.
 - [ ] "Shuffle now" picks a different wallpaper each press.
+- [ ] The page opens on Library and makes no network request. Choosing Online
+      (or `cybexos-runtime ipc wallpaper browse`) shows popular Wallhaven
+      results sized for the connected displays; Sort, Category and Size search
+      again, and their reset chips restore Popular / General / Fits my displays.
+      Scrolling to the end, or pressing Down on the last row, appends the next
+      24 results without jumping back to the top.
+- [ ] Picking an online result shows download progress on the tile, then saves
+      `wallhaven-<id>.<ext>` into the wallpaper folder and applies it (palette
+      follows). Picking another result mid-download cancels the first and leaves
+      no `.part` file. A saved result shows its download mark and applies
+      without a new download. Offline, the view reports a connection error.
 - [ ] Rotate 15 min / 1 hour / Daily arms the timer ("Off" disarms).
 - [ ] "Choose folder" stays inside the settings surface. Valid folders,
       including paths with spaces, preserve the current basename or choose the

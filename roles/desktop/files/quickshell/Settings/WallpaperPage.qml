@@ -6,10 +6,13 @@ import "../Common"
 
 // The gallery remains virtualized. Rotation and folder management are cards
 // that reserve enough room for their controls at both wide and narrow sizes.
+// The Online view (Wallhaven) is loaded only once it is chosen, so opening
+// the page never reaches the network by itself.
 Item {
     id: page
 
     readonly property string dirLabel: Settings.wallDir
+    readonly property bool online: OnlineWallpapers.view === "online"
 
     function basename(path) {
         return Wallpaper.basename(path);
@@ -33,9 +36,36 @@ Item {
         }
     }
 
+    PillRow {
+        id: viewTabs
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        model: [
+            { value: "library", label: "Library" },
+            { value: "online", label: "Online" }
+        ]
+        current: OnlineWallpapers.view
+        onPicked: value => OnlineWallpapers.view = value
+    }
+
+    Loader {
+        id: onlineView
+        anchors.top: viewTabs.bottom
+        anchors.topMargin: Theme.settingsGroupSpacing
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        active: page.online
+        visible: active
+        sourceComponent: WallpaperOnlineView {}
+    }
+
     SettingsGroup {
         id: galleryGroup
-        anchors.top: parent.top
+        visible: !page.online
+        anchors.top: viewTabs.bottom
+        anchors.topMargin: Theme.settingsGroupSpacing
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: rotationGroup.top
@@ -240,6 +270,7 @@ Item {
 
     SettingsGroup {
         id: rotationGroup
+        visible: !page.online
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: folderGroup.top
@@ -261,6 +292,7 @@ Item {
 
     SettingsGroup {
         id: folderGroup
+        visible: !page.online
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

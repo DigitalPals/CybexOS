@@ -46,7 +46,7 @@ var ROWS = [
     { page: "appearance", pageLabel: "Appearance", group: "Accessibility", label: "Reduce motion", key: "reducedMotion", terms: "animation accessibility" },
 
     // Wallpaper
-    { page: "wallpaper", pageLabel: "Wallpaper", group: "Image", label: "Wallpaper", key: "wall", terms: "desktop image background picture" },
+    { page: "wallpaper", pageLabel: "Wallpaper", group: "Image", label: "Wallpaper", key: "wall", terms: "desktop image background picture online wallhaven download" },
     { page: "wallpaper", pageLabel: "Wallpaper", group: "Image", label: "Folder", key: "wallDir", terms: "directory pictures" },
     { page: "wallpaper", pageLabel: "Wallpaper", group: "Rotation", label: "Shuffle", key: "shuffle", terms: "rotate slideshow interval" },
 

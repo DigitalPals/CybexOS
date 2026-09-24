@@ -38,6 +38,7 @@ singleton Osd Osd.qml
 singleton Weather Weather.qml
 singleton Calendar Calendar.qml
 singleton Wallpaper Wallpaper.qml
+singleton OnlineWallpapers OnlineWallpapers.qml
 singleton Settings Settings.qml
 singleton UserPlugins UserPlugins.qml
 singleton Audio Audio.qml

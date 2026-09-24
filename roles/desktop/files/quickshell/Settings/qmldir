@@ -24,6 +24,7 @@ SwitchRow SwitchRow.qml
 SystemPage SystemPage.qml
 UndoChip UndoChip.qml
 WallpaperPage WallpaperPage.qml
+WallpaperOnlineView WallpaperOnlineView.qml
 PluginsPage PluginsPage.qml
 SettingsSubsection SettingsSubsection.qml
 SettingsField SettingsField.qml
