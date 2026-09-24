@@ -20,7 +20,9 @@ for the transitional, pre-RPM layout.
 
 The session always starts Hyprland with the vendor entry point. Vendor modules
 load first, then the saved Settings → Displays choices;
-`~/.config/cybexos/hypr/user.lua`, when present, loads last.
+`~/.config/cybexos/hypr/user.lua`, when present, loads last. Bindings it
+adds with a `Group: Label` description appear in the Super+K cheatsheet
+([keyboard shortcuts](../keyboard-shortcuts.md)).
 The idle and lock services prefer their same-named user configuration files
 and otherwise use vendor defaults. A bad user override may break that component
 but is never silently replaced by an update. Without a user `hypridle.conf`,

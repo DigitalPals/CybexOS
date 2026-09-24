@@ -111,6 +111,10 @@ A lone tiled window on an external monitor is centered at 70% of the display's
 width, adapting to resolution, scaling, and rotation. Laptop panels and
 workspaces with multiple tiled windows use the normal small edge gaps.
 
+`Super+K` shows every keyboard shortcut, read live from Hyprland, including
+described bindings added in `~/.config/cybexos/hypr/user.lua`. See
+[keyboard shortcuts](docs/keyboard-shortcuts.md).
+
 Desktop runtime and user customization have a strict boundary. Verified
 releases reconcile `~/.local/share/cybexos/runtime`, while shell
 settings, Hyprland overrides, themes, and plugins live in user-owned roots
