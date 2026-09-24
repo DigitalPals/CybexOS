@@ -14,6 +14,10 @@ Column {
     property string text: "Advanced"
     property bool open: false
     property var keys: []
+    // A changed value inside a closed disclosure would otherwise be visible
+    // only through the page's reset: the toggle wears the rows' own mark.
+    readonly property bool dirty: Settings.revision >= 0 && keys.some(key =>
+        JSON.stringify(Settings[key]) !== JSON.stringify(Settings.defaults[key]))
 
     spacing: 0
 
@@ -34,6 +38,15 @@ Column {
         height: Theme.panelRowHeight
 
         Rectangle {
+            visible: root.dirty && !root.open
+            anchors.verticalCenter: parent.verticalCenter
+            width: 6
+            height: 6
+            radius: 3
+            color: Theme.accent
+        }
+
+        Rectangle {
             id: toggle
             x: Theme.settingsMarkInset - Theme.scaled(4)
             anchors.verticalCenter: parent.verticalCenter
@@ -46,7 +59,8 @@ Column {
             activeFocusOnTab: true
             Accessible.role: Accessible.Button
             Accessible.name: root.text
-            Accessible.description: root.open ? "Expanded" : "Collapsed"
+            Accessible.description: (root.open ? "Expanded" : "Collapsed")
+                + (root.dirty ? ", holds changed settings" : "")
             Accessible.onPressAction: root.open = !root.open
             Keys.onPressed: event => {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
