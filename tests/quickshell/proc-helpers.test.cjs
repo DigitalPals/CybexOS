@@ -148,6 +148,7 @@ test("a peer missing every field still renders as a row", () => {
 test("this machine's own status comes out of the same body as the peer list", () => {
     assert.deepEqual(H.tailscaleSelf(TS_JSON), {
         running: true,
+        backendState: "Running",
         host: "xps",
         net: "",
         ip: "100.93.129.14",

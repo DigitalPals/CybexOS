@@ -111,7 +111,7 @@ test("Tailscale is an overlay with a persistent drill-in, not the physical route
         /readonly property bool connected:\s*running && ip !== "" && statusError === ""/);
     assert.match(panel, /component TailscaleSummary:\s*Rectangle/);
     assert.match(panel, /TailscaleSummary\s*\{\}/);
-    assert.match(panel, /Stopped · open details to connect/);
+    assert.match(panel, /Tailscale\.statusText \+ " · open details"/);
     assert.match(panel, /exit node active/);
     assert.match(panel, /Popouts\.openPanel\("tailscale", "right"\)/);
 
@@ -164,8 +164,9 @@ test("the Tailscale switch issues exactly one requested state change", () => {
 
     assert.match(toggle, /onToggled:\s*value => Tailscale\.setRunning\(value\)/);
     assert.doesNotMatch(toggle, /execDetached/);
-    assert.match(singleton,
-        /function setRunning\(value\)[\s\S]{0,140}Quickshell\.execDetached\(\["tailscale", value \? "up" : "down"\]\)/);
+    assert.match(singleton, /function setRunning\(value\)/);
+    assert.doesNotMatch(singleton, /execDetached\(\["tailscale"/);
+    assert.match(singleton, /actionProc\.command = TailscaleHelpers\.command\(value, privileged, actionProc\.login\)/);
 });
 
 test("wired monitoring is ref-counted by each visible Network consumer", () => {

@@ -54,7 +54,7 @@ Surface {
         if (Tailscale.statusError !== "")
             return "Status unavailable · " + Tailscale.statusError;
         if (!Tailscale.running)
-            return "Stopped · open details to connect";
+            return Tailscale.statusText + " · open details";
         if (!Tailscale.connected)
             return "Connecting…";
         const parts = ["Connected"];

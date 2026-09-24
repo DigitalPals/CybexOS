@@ -306,6 +306,19 @@ them when changing the surrounding files.
   down. Tailscale polls every 120 s for plain `acquire()` claims and every
   30 s for `acquireLive()` views, neither while idle; a missing binary drops
   it to an hourly probe, and a view that opens probes at once.
+- **Tailscale sign-in** uses the Network overlay for first-use setup and the
+  shared `Tailscale` singleton for the pending session. Continue releases the
+  overlay's keyboard focus before browser handoff or a polkit prompt. Login
+  URLs stay in memory; closing the dialog keeps sign-in running. A two-second
+  status poll lasts up to five minutes, and only a successful status snapshot
+  with a Tailscale address reports connection success. `NeedsMachineAuth`
+  displays administrator approval separately. Stop connecting uses `down`,
+  preserving the account. Commands are bounded by `timeout`; permission
+  failures retry once through `pkexec`, without changing the machine's
+  operator or polkit policy. First sign-in consumes `up --json` incrementally;
+  reconnection uses bare `up` to preserve non-default preferences (even adding
+  `--json` changes Tailscale's preference checks). The existing-account path
+  also recognizes a standalone HTTPS authentication URL on stderr.
 - **The Network panel's live figures cost no process per sample.** Throughput
   reads `/sys/class/net/<if>/statistics` through FileView on the 1.5 s tick,
   and `primary` carries those live counters; latency comes from two

@@ -141,6 +141,7 @@ function tailscaleSelf(text) {
         return null;
     return {
         running: status.BackendState === "Running",
+        backendState: String(status.BackendState || ""),
         host: String(self.HostName || ""),
         net: String(status.MagicDNSSuffix || ""),
         ip: self.TailscaleIPs && self.TailscaleIPs[0] || "",

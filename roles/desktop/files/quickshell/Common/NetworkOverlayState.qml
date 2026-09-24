@@ -4,7 +4,7 @@ import Quickshell
 import "NetworkHelpers.js" as NetworkHelpers
 
 // Shell-wide modal route shared by the Network popover and its one overlay
-// window.  QR and speed-test pages are mutually exclusive by construction.
+// window. QR, speed-test and Tailscale pages are mutually exclusive.
 Singleton {
     id: root
 
@@ -14,6 +14,15 @@ Singleton {
     property string interfaceName: ""
     property var qrInfo: ({})
     property var speedDevices: []
+
+    function openTailscale() {
+        close();
+        Popouts.close();
+        Launcher.close();
+        root.screen = Screens.focused;
+        root.page = "tailscale";
+        root.open = true;
+    }
 
     function openQr(screen, interfaceName) {
         Popouts.close();

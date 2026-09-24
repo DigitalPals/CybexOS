@@ -93,7 +93,8 @@ PanelWindow {
 
                 Sym {
                     anchors.verticalCenter: parent.verticalCenter
-                    name: root.qrPageActive ? "qr_code_2" : "speed"
+                    name: root.qrPageActive ? "qr_code_2"
+                        : NetworkOverlayState.page === "tailscale" ? "vpn_key" : "speed"
                     size: Theme.iconLarge
                     color: Theme.accentText
                 }
@@ -101,8 +102,8 @@ PanelWindow {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - closeButton.width - 38
-                    text: NetworkOverlayState.page === "qr"
-                        ? "Share Wi-Fi" : "Internet speed"
+                    text: NetworkOverlayState.page === "qr" ? "Share Wi-Fi"
+                        : NetworkOverlayState.page === "tailscale" ? "Connect to Tailscale" : "Internet speed"
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.heading
                     font.weight: Theme.weightSemibold
@@ -162,7 +163,99 @@ PanelWindow {
                 x: 24
                 y: 72
                 width: parent.width - 48
-                sourceComponent: NetworkOverlayState.page === "qr" ? qrPage : speedPage
+                sourceComponent: NetworkOverlayState.page === "qr" ? qrPage
+                    : NetworkOverlayState.page === "tailscale" ? tailscalePage : speedPage
+            }
+        }
+    }
+
+    Component {
+        id: tailscalePage
+
+        Column {
+            id: tailscaleSetup
+            spacing: 18
+            property bool copied: false
+
+            Claim {
+                active: true
+                onClaimed: Tailscale.acquireLive()
+                onReleased: Tailscale.releaseLive()
+            }
+
+            Text {
+                width: parent.width
+                text: Tailscale.connected ? "This device is connected"
+                    : Tailscale.needsApproval ? "Waiting for administrator approval"
+                    : Tailscale.authPending ? Tailscale.statusText
+                    : "Connect this device to Tailscale"
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.heading
+                font.weight: Theme.weightSemibold
+                color: Theme.textHi
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                text: Tailscale.connected
+                    ? [Tailscale.host, Tailscale.net, Tailscale.ip].filter(s => s !== "").join(" · ")
+                    : Tailscale.needsApproval
+                        ? "Your organization needs to approve this device. Ask your Tailscale administrator to approve it; the connection will update automatically."
+                    : Tailscale.authPending
+                        ? "Finish signing in and approving this device in your browser. You can close this dialog while you finish."
+                        : "Sign in to add this computer to your private network. Your browser will open Tailscale’s sign-in page."
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.primary
+                color: Theme.textMid
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                visible: Tailscale.actionError !== "" || Tailscale.statusError !== "" || Tailscale.missing
+                width: parent.width
+                text: Tailscale.actionError || Tailscale.statusText
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                color: Theme.redText
+                wrapMode: Text.WordWrap
+                textFormat: Text.PlainText
+            }
+
+            Flow {
+                width: parent.width
+                spacing: 10
+
+                ModalButton {
+                    visible: !Tailscale.connected && !Tailscale.needsApproval
+                    primary: true
+                    label: Tailscale.authUrl !== "" ? "Open browser again"
+                        : Tailscale.busy ? "Preparing sign-in…"
+                        : Tailscale.actionError !== "" ? "Try again" : "Continue in browser"
+                    enabled: (!Tailscale.busy || Tailscale.authUrl !== "") && !Tailscale.missing
+                    onTriggered: Tailscale.signIn()
+                }
+
+                ModalButton {
+                    visible: Tailscale.authUrl !== ""
+                    label: tailscaleSetup.copied ? "Copied" : "Copy sign-in link"
+                    onTriggered: {
+                        Tailscale.copySignInLink();
+                        tailscaleSetup.copied = true;
+                    }
+                }
+
+                ModalButton {
+                    visible: Tailscale.authPending && !Tailscale.busy
+                    label: "Stop connecting"
+                    onTriggered: Tailscale.startAction(false)
+                }
+
+                ModalButton {
+                    label: Tailscale.connected ? "Done"
+                        : Tailscale.authPending || Tailscale.needsApproval ? "Close" : "Cancel"
+                    onTriggered: NetworkOverlayState.close()
+                }
             }
         }
     }

@@ -15,8 +15,8 @@ Surface {
     // disabled and therefore holds no long-lived polling claim of its own.
     Claim {
         active: root.visible
-        onClaimed: Tailscale.acquire()
-        onReleased: Tailscale.release()
+        onClaimed: Tailscale.acquireLive()
+        onReleased: Tailscale.releaseLive()
     }
 
     function copyIp(ip) {
@@ -60,6 +60,7 @@ Surface {
             anchors.rightMargin: 0
             anchors.verticalCenter: parent.verticalCenter
             checked: Tailscale.running
+            enabled: !Tailscale.busy
             accessibleName: "Tailscale"
             onToggled: value => Tailscale.setRunning(value)
         }
@@ -133,11 +134,22 @@ Surface {
         width: parent.width
         topPadding: 14
         bottomPadding: 14
-        text: "Tailscale is stopped"
+        text: Tailscale.statusText
+        wrapMode: Text.WordWrap
+        textFormat: Text.PlainText
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.secondary
         color: Theme.textDim
+    }
+
+    ActionButton {
+        visible: !Tailscale.connected
+        width: parent.width
+        label: Tailscale.needsApproval ? "View approval status"
+            : Tailscale.authPending ? "Continue sign-in"
+            : Tailscale.needsLogin ? "Sign in" : "Connection details"
+        onTriggered: Tailscale.showSetup()
     }
 
     Text {

@@ -407,7 +407,7 @@ Column {
                 horizontalAlignment: Text.AlignRight
                 text: Tailscale.connected
                     ? [Tailscale.host, Tailscale.ip].filter(s => s !== "").join(" · ")
-                    : Tailscale.statusError !== "" ? "unavailable" : "off"
+                    : Tailscale.statusText
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.secondary
                 color: Theme.textFaint
@@ -420,9 +420,18 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 metrics: Theme.switchCompact
                 checked: Tailscale.running
+                enabled: !Tailscale.busy
                 accessibleName: "Tailscale"
                 onToggled: value => Tailscale.setRunning(value)
             }
+        }
+
+        LinkText {
+            visible: !Tailscale.connected
+            text: Tailscale.needsApproval ? "View approval status"
+                : Tailscale.authPending ? "Continue sign-in"
+                : Tailscale.needsLogin ? "Sign in to Tailscale" : "Tailscale connection details"
+            onClicked: Tailscale.showSetup()
         }
 
         Item {

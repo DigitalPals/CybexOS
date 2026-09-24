@@ -206,7 +206,7 @@ test("one disposable network overlay is registered at shell scope", () => {
     assert.match(state, /Popouts\.close\(\)/);
     assert.match(state, /Launcher\.close\(\)/);
     assert.match(overlay, /active:\s*NetworkOverlayState\.open/);
-    assert.match(overlay, /sourceComponent:\s*NetworkOverlayState\.page === "qr" \? qrPage : speedPage/);
+    assert.match(overlay, /sourceComponent:\s*NetworkOverlayState\.page === "qr" \? qrPage\s*:\s*NetworkOverlayState\.page === "tailscale" \? tailscalePage : speedPage/);
     assert.match(overlay, /Keys\.onEscapePressed:\s*NetworkOverlayState\.close\(\)/);
     assert.match(overlay, /onClicked:\s*NetworkOverlayState\.close\(\)/);
 });
