@@ -733,7 +733,9 @@ if [[ ${XDG_CURRENT_DESKTOP:-} == *Hyprland* ]] && command_exists hyprctl && hyp
   errors=$(hyprctl configerrors 2>/dev/null || true)
   [[ -z $errors || $errors == 'no errors' ]] && pass 'Hyprland has no config errors' || fail "Hyprland config errors: $errors"
   check 'retired Noctalia process is absent' bash -c '! pgrep -x noctalia'
-  user_units=(quickshell hypridle hyprpolkitagent external-monitor-toggle)
+  user_units=(quickshell hypridle hyprpolkitagent)
+  # The external-monitor watcher is installed only on the gated XPS hardware.
+  $xps_2026 && user_units+=(external-monitor-toggle)
   feature_enabled developer_tools && user_units+=(voxtype)
   feature_enabled connected_widgets && user_units+=(hermes-menubar-bridge)
   for unit in "${user_units[@]}"; do
