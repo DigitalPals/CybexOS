@@ -53,6 +53,7 @@ function hl.bind(keys, dispatcher_value, options)
 end
 
 local optional = {
+  "SUPER + P",
   "SUPER + SHIFT + F",
   "SUPER + SHIFT + A",
   "SUPER + SHIFT + D",
@@ -71,10 +72,32 @@ package.preload.features = function()
     connected_widgets = true,
     proprietary_apps = true,
     xps_2026 = true,
+    private_portal = true,
   }
 end
+
+-- The Super+K cheatsheet is drawn from these descriptions ("Group: Label"),
+-- so a binding without one silently vanishes from it. Hide one deliberately
+-- by listing its keys here with the reason.
+local undescribed_allowed = {}
+
+local function assert_described(generation)
+  for keys, binding in pairs(active) do
+    local description = binding.options and binding.options.description
+    if undescribed_allowed[keys] then
+      assert(description == nil, keys .. " is allow-listed as hidden but has a description")
+    else
+      assert(type(description) == "string",
+        keys .. " has no description, so the " .. generation .. " cheatsheet omits it")
+      assert(description:match("^[^:]+: %S"),
+        keys .. " description is not \"Group: Label\": " .. description)
+    end
+  end
+end
+
 dofile(config)
 local first_generation = _G.__fedora_hypr_binds
+assert_described("full-feature")
 for _, keys in ipairs(optional) do
   assert(active[keys], "enabled optional feature omitted " .. keys)
 end
@@ -84,6 +107,13 @@ assert(active["SUPER + B"].dispatcher:match("^brave%-origin%-stable"),
   "proprietary browser selection did not use Brave")
 assert(active["XF86AudioRaiseVolume"].dispatcher:match("xps%-speaker%-tuning"),
   "XPS audio route omitted the hardware helper")
+-- Docker group membership is opt-in, so lazydocker falls back to sudo, with
+-- the binary resolved first because sudo's secure_path may omit it.
+local lazydocker = active["SUPER + D"].dispatcher
+assert(lazydocker:match("docker info >/dev/null 2>&1 && exec lazydocker;"),
+  "Super+D does not try lazydocker without sudo first")
+assert(lazydocker:find('exec sudo "$(command -v lazydocker)"', 1, true),
+  "Super+D does not fall back to sudo with a resolved lazydocker path")
 -- The shell runs by path, so a bare `qs ipc call` reaches nothing.
 local runtime = os.getenv("HOME") .. "/.local/bin/cybexos-runtime ipc "
 for keys, call in pairs({
@@ -109,9 +139,11 @@ package.preload.features = function()
     connected_widgets = false,
     proprietary_apps = false,
     xps_2026 = false,
+    private_portal = false,
   }
 end
 dofile(config)
+assert_described("minimal-feature")
 for _, keys in ipairs(optional) do
   assert(active[keys] == nil, "disabled optional feature retained " .. keys)
 end
