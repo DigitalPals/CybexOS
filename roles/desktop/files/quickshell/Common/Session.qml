@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "ProcHelpers.js" as ProcHelpers
+import "KeybindHelpers.js" as KeybindHelpers
 
 // Session actions used by the Control Panel and the keyboard cheatsheet
 // reachable from its footer or Super+K.
@@ -16,11 +17,25 @@ Singleton {
     property string actionOutput: ""
     readonly property bool actionBusy: sessionAction.running
 
+    // The cheatsheet's groups, read from Hyprland's live bindings each time
+    // it opens (KeybindHelpers.js documents the description convention). A
+    // binding added in user.lua therefore appears without a shell restart,
+    // and a failed read shows as an error rather than as a stale list.
+    property var shortcutGroups: []
+    property string shortcutsError: ""
+    readonly property bool shortcutsLoading: bindsQuery.running
+
+    function refreshShortcuts() {
+        if (!bindsQuery.running)
+            bindsQuery.running = true;
+    }
+
     function openKeys(targetScreen) {
         const popoutScreen = Screens.byName(Popouts.hostScreenName);
         screen = targetScreen ?? popoutScreen ?? Screens.focused;
         Popouts.close();
         Launcher.close();
+        refreshShortcuts();
         keysOpen = true;
     }
 
@@ -112,50 +127,42 @@ Singleton {
         }
     }
 
-    // The rows the cheatsheet draws. Kept here rather than in the overlay so
-    // the list is data the Control Panel could also summarise, and so it
-    // stays next to the actions it documents.
-    readonly property var shortcutGroups: [
-        {
-            title: "SHELL",
-            rows: [
-                { label: "Launcher", keys: ["Super", "Space"] },
-                { label: "Notifications", keys: ["Super", "N"] },
-                { label: "Control Panel", keys: ["Super", "A"] },
-                { label: "Shell settings", keys: ["Super", ","] },
-                { label: "AI agent", keys: ["Super", "Ctrl", "Shift", "A"] },
-                { label: "T3 Code", keys: ["Super", "T"] },
-                { label: "Lock", keys: ["Super", "L"] },
-                { label: "This overlay", keys: ["Super", "K"] }
-            ]
-        },
-        {
-            title: "WINDOWS",
-            rows: [
-                { label: "Close window", keys: ["Super", "Q"] },
-                { label: "Toggle float", keys: ["Super", "F"] },
-                { label: "Toggle split", keys: ["Super", "J"] },
-                { label: "Focus", keys: ["Super", "←", "→"] },
-                { label: "Fade window", keys: ["Super", "Backspace"] }
-            ]
-        },
-        {
-            title: "WORKSPACES",
-            rows: [
-                { label: "Switch", keys: ["Super", "1…9"] },
-                { label: "Send window", keys: ["Super", "Shift", "1…9"] },
-                { label: "Cycle", keys: ["Super", "Scroll"] }
-            ]
-        },
-        {
-            title: "CAPTURE & MEDIA",
-            rows: [
-                { label: "Region screenshot", keys: ["Print"] },
-                { label: "Whole screen", keys: ["Shift", "Print"] },
-                { label: "Record screen", keys: ["Super", "Shift", "`"] },
-                { label: "OCR a region", keys: ["Super", "Shift", "O"] },
-                { label: "Volume · brightness", keys: ["Fn"] }
-            ]
+    Process {
+        id: bindsQuery
+
+        property bool exitSeen: false
+        property int lastExit: ProcHelpers.NOT_STARTED
+        property string output: ""
+        property string errorText: ""
+
+        command: ["hyprctl", "binds", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: bindsQuery.output = text
         }
-    ]
+        stderr: StdioCollector {
+            onStreamFinished: bindsQuery.errorText = text
+        }
+        onExited: exitCode => {
+            exitSeen = true;
+            lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = ProcHelpers.NOT_STARTED;
+                output = "";
+                errorText = "";
+                return;
+            }
+            const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+            if (code !== 0) {
+                root.shortcutGroups = [];
+                root.shortcutsError = ProcHelpers.commandError("hyprctl", code, errorText);
+                return;
+            }
+            const result = KeybindHelpers.fromJson(output);
+            root.shortcutGroups = result.groups;
+            root.shortcutsError = result.error;
+        }
+    }
 }

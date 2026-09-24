@@ -7,10 +7,11 @@ import "Common"
 
 // The keyboard cheatsheet, from the Control Panel or Super+K.
 //
-// The bindings themselves live in Common/Session.qml, next to the actions they
-// document — a cheatsheet that drifts from what the keys actually do is worse
-// than none, and keeping the list beside the shell's own handlers is the
-// closest this can get to them being the same thing.
+// Its rows are Hyprland's live bindings: Common/Session.qml runs
+// `hyprctl binds -j` each time the sheet opens, and Common/KeybindHelpers.js
+// groups every binding that carries a "Group: Label" description. A
+// cheatsheet that drifts from what the keys actually do is worse than none,
+// so there is no hand-written list to drift.
 PanelWindow {
     id: root
 
@@ -154,12 +155,27 @@ PanelWindow {
                         width: Math.min(implicitWidth, body.width * 0.45)
                         elide: Text.ElideRight
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "hyprland.conf · press Esc to close"
+                        text: "Live from Hyprland · press Esc to close"
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.section
                         font.weight: Theme.weightBold
                         color: Theme.textFaint
                     }
+                }
+
+                Text {
+                    id: sheetStatus
+                    width: parent.width
+                    visible: text !== ""
+                    wrapMode: Text.Wrap
+                    text: Session.shortcutsError !== ""
+                        ? "Could not read the keybindings: " + Session.shortcutsError
+                        : Session.shortcutGroups.length > 0 ? ""
+                        : Session.shortcutsLoading ? "Reading keybindings…"
+                        : "No keybindings have a description yet."
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.typography.primary
+                    color: Session.shortcutsError !== "" ? Theme.redText : Theme.textMid
                 }
 
                 Grid {
@@ -199,6 +215,7 @@ PanelWindow {
 
                             Text {
                                 text: group.modelData.title
+                                font.capitalization: Font.AllUppercase
                                 font.family: Theme.fontMenu
                                 font.pixelSize: Theme.typography.section
                                 font.weight: Theme.weightMedium
@@ -219,18 +236,25 @@ PanelWindow {
                                         id: shortcut
 
                                         required property var modelData
+                                        // Keys that do not fit beside the label
+                                        // move onto their own line beneath it.
+                                        readonly property bool stacked: label.implicitWidth + keys.implicitWidth
+                                            + Theme.controlSpacing > width
 
                                         // Named, not `parent`: closing the sheet
                                         // clears the outer model, and each row is
                                         // unparented before its bindings go.
                                         width: rows.width
-                                        height: Math.max(Theme.settingsControlHeight, label.implicitHeight)
+                                        height: stacked
+                                            ? label.implicitHeight + Theme.iconTextSpacing + keys.implicitHeight
+                                            : Math.max(Theme.settingsControlHeight, label.implicitHeight)
 
                                         Text {
                                             id: label
                                             anchors.left: parent.left
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: Math.max(0, parent.width - keys.width - Theme.controlSpacing)
+                                            y: shortcut.stacked ? 0 : (parent.height - implicitHeight) / 2
+                                            width: shortcut.stacked ? parent.width
+                                                : Math.max(0, parent.width - keys.width - Theme.controlSpacing)
                                             text: shortcut.modelData.label
                                             font.family: Theme.fontMenu
                                             font.pixelSize: Theme.typography.primary
@@ -239,35 +263,62 @@ PanelWindow {
                                             elide: Text.ElideRight
                                         }
 
+                                        // Each combination is one key-cap row;
+                                        // alternatives for the same action are
+                                        // separated by "or".
                                         Row {
                                             id: keys
                                             anchors.right: parent.right
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            spacing: 4
+                                            y: shortcut.stacked ? label.implicitHeight + Theme.iconTextSpacing
+                                                : (parent.height - height) / 2
+                                            spacing: Theme.iconTextSpacing
 
                                             Repeater {
-                                                model: shortcut.modelData.keys
+                                                model: shortcut.modelData.combos
 
-                                                delegate: Rectangle {
-                                                    id: cap
+                                                delegate: Row {
+                                                    id: combo
 
-                                                    required property string modelData
+                                                    required property var modelData
+                                                    required property int index
 
-                                                    width: capLabel.implicitWidth + 14
-                                                    height: Theme.settingsControlHeight
-                                                    radius: 6
-                                                    color: Theme.chip
-                                                    border.width: 1
-                                                    border.color: Theme.stroke
+                                                    spacing: 4
 
                                                     Text {
-                                                        id: capLabel
-                                                        anchors.centerIn: parent
-                                                        text: cap.modelData
-                                                        font.family: Theme.fontMono
-                                                        font.pixelSize: Theme.typography.control
-                                                        font.weight: Theme.weightBold
-                                                        color: Theme.textHi
+                                                        visible: combo.index > 0
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        rightPadding: Theme.iconTextSpacing - combo.spacing
+                                                        text: "or"
+                                                        font.family: Theme.fontMenu
+                                                        font.pixelSize: Theme.typography.secondary
+                                                        color: Theme.textFaint
+                                                    }
+
+                                                    Repeater {
+                                                        model: combo.modelData
+
+                                                        delegate: Rectangle {
+                                                            id: cap
+
+                                                            required property string modelData
+
+                                                            width: capLabel.implicitWidth + 14
+                                                            height: Theme.settingsControlHeight
+                                                            radius: 6
+                                                            color: Theme.chip
+                                                            border.width: 1
+                                                            border.color: Theme.stroke
+
+                                                            Text {
+                                                                id: capLabel
+                                                                anchors.centerIn: parent
+                                                                text: cap.modelData
+                                                                font.family: Theme.fontMono
+                                                                font.pixelSize: Theme.typography.control
+                                                                font.weight: Theme.weightBold
+                                                                color: Theme.textHi
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
@@ -277,6 +328,16 @@ PanelWindow {
                             }
                         }
                     }
+                }
+
+                Text {
+                    width: parent.width
+                    visible: Session.shortcutGroups.length > 0
+                    wrapMode: Text.Wrap
+                    text: "Bindings you add in ~/.config/cybexos/hypr/user.lua appear here when they have a description."
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.typography.secondary
+                    color: Theme.textFaint
                 }
             }
             }

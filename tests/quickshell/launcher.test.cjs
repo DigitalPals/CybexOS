@@ -288,13 +288,11 @@ test("Super+Space uses Hyprland's in-process global shortcut", () => {
 });
 
 test("the default AI agent is discoverable from the launcher and shortcut sheet", () => {
-    const session = read("Common/Session.qml");
     const bindings = fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8");
 
+    // The sheet is drawn from the binding's own description.
     assert.match(bindings,
-        /mainMod \.\. " \+ CTRL \+ SHIFT \+ A"[\s\S]*cybex agent --window/);
-    assert.match(session,
-        /label:\s*"AI agent",\s*keys:\s*\["Super", "Ctrl", "Shift", "A"\]/);
+        /mainMod \.\. " \+ CTRL \+ SHIFT \+ A", hl\.dsp\.exec_cmd\([^)]*cybex agent --window"\),\s*\{ description = "Apps: AI agent" \}/);
 });
 
 test("launcher-only motion stays brief and cannot gate input", () => {
