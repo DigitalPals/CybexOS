@@ -657,9 +657,21 @@ test("settings workspace uses shared responsive groups and bounded header lanes"
             "RegionPage", "TouchpadPage"])
         assert.match(read(`Settings/${page}.qml`), /SettingsGroup \{/,
             `${page} must use grouped settings sections`);
-    for (const page of ["WallpaperPage", "PowerPage", "AboutPage"])
+    for (const page of ["PowerPage", "AboutPage"])
         assert.match(read(`Settings/${page}.qml`), /ResponsiveActionRow \{/,
             `${page} must use bounded responsive action copy`);
+    // The wallpaper folder is a row like any other now (2026-09): its path
+    // is the row's label, bounded by the actions beside it and eliding in
+    // its own lane, so a long folder never pushes Choose… and Open off the
+    // edge; on a narrow page the actions drop under it.
+    const wallpaper = read("Settings/WallpaperPage.qml");
+    const folder = wallpaper.slice(wallpaper.indexOf("id: folderRow"));
+    assert.match(folder, /id: folderPath[\s\S]{0,400}?: Math\.max\(0, folderActions\.x - Theme\.controlSpacing - x\)/,
+        "the folder path is bounded by the actions beside it");
+    assert.match(folder, /id: folderPath[\s\S]{0,800}?elide: Text\.ElideMiddle/,
+        "a long folder path elides in its own lane");
+    assert.match(folder, /x: folderRow\.narrow \? folderRow\.markInset : folderRow\.contentRight - width/,
+        "the folder actions end on the controls' edge and stack when narrow");
 });
 
 // The menubar separates one run of modules from the next with a hairline and a
@@ -719,13 +731,40 @@ test("progressive disclosure hides inactive controls without discarding latent v
     assert.match(appearance,
         /id:\s*fixedColorScrollTimer[\s\S]{0,120}?page\.revealFixedColorsNow\(\)/,
         "the scroll must wait for the fixed-color reveal before measuring it");
+    // The presets come first and the hue row closes the revealed block, so
+    // bringing the hue row's foot into view brings both.
+    assert.match(fixed, /id: swatchRepeater[\s\S]*id: accentHueRow/,
+        "the accent presets lead the revealed rows and the hue row closes them");
     assert.match(appearance,
-        /lastSwatch\s*=\s*swatchRepeater\.itemAt\([\s\S]{0,160}?page\.revealFocus\(lastSwatch/,
+        /function revealFixedColorsNow\(\) \{[\s\S]{0,200}?page\.revealFocus\(accentHueRow\)/,
         "Fixed must bring the revealed accent controls into view");
     assert.doesNotMatch(appearance, /Component\.onCompleted:/,
         "opening Appearance must not scroll past typography or override a search jump");
     assert.match(appearance, /label: "Interface font"\s+settingKey: "font"/,
         "the interface font must support the shared settings search and persistence");
+    // A dropdown that draws every face in itself, not six pills over two lines.
+    assert.match(appearance, /SelectRow \{\s*width: parent\.width\s*label: "Interface font"/);
+    assert.match(appearance, /fontFor: value => page\.fontFamily\(value\)/);
+    assert.match(appearance, /function fontFamily\(id\)[\s\S]{0,200}?Settings\.fontChoices\.find/);
+    // Three size controls stay in view under a live preview; the base size
+    // they multiply is an advanced option that a search jump still opens.
+    const sizing = appearance.slice(appearance.indexOf('title: "Text & size"'),
+        appearance.indexOf('title: "Colors"'));
+    assert.match(sizing, /^\s*TextSizePreview \{/m);
+    assert.doesNotMatch(sizing, /Text renders at/);
+    for (const [label, key] of [["Text size", "textScale"], ["Interface scale", "shellScale"],
+            ["Density", "interfaceDensity"], ["Base font size", "shellFontSize"]])
+        assert.match(sizing, new RegExp(`label: "${label}"\\s+settingKey: "${key}"`));
+    const advanced = sizing.slice(sizing.indexOf("SettingsDisclosure {"));
+    assert.match(advanced, /text: "Advanced text options"\s+keys: \["shellFontSize"\]/);
+    assert.match(advanced, /settingKey: "shellFontSize"/);
+    assert.doesNotMatch(sizing.slice(0, sizing.indexOf("SettingsDisclosure {")), /shellFontSize/,
+        "the base size is not also in view above the disclosure");
+    const preview = read("Settings/TextSizePreview.qml");
+    assert.match(preview, /"Preview · text renders at " \+ Theme\.metrics\.fontBase \+ " px"/);
+    assert.match(preview, /SystemClock \{\s*id:\s*clock\s*precision:\s*SystemClock\.Minutes\s*enabled:\s*root\.visible/,
+        "the preview clock ticks on the minute and only while shown");
+    assert.match(read("Settings/qmldir"), /^TextSizePreview TextSizePreview\.qml$/m);
     assert.ok(appearance.indexOf('title: "Text & size"') < fixedAt,
         "typography must be reachable before the long color controls");
     for (const key of ["barColorMode", "barCustomHue", "barCustomSaturation",
@@ -787,6 +826,14 @@ test("wallpaper and module layouts switch before content can collide", () => {
 
     assert.match(wallpaper, /columnCount:\s*width < Theme\.settingsNarrowWidth \? 1 : 2/);
     assert.match(wallpaper, /cellWidth:\s*Math\.floor\(width \/ columnCount\)/);
+    // One bounded column like every SettingsPage, with Library/Online as a
+    // row at its top and Shuffle now beside the current image's name.
+    assert.match(wallpaper, /width: Math\.min\(Theme\.scaled\(640, Theme\.typeScale\), Math\.max\(0, page\.width - 8\)\)/);
+    assert.match(wallpaper, /PickerRow \{\s*id: viewTabs\s*width: parent\.width\s*label: "Browse"/);
+    assert.match(wallpaper, /label: "Current"[\s\S]*?text: "Shuffle now"[\s\S]{0,200}?onTriggered: Wallpaper\.shuffle\(\)/);
+    for (const grid of [wallpaper, read("Settings/WallpaperOnlineView.qml")])
+        assert.match(grid, /x: Theme\.settingsMarkInset\s*width: Math\.max\(0, parent\.width - x - Theme\.chipHeight \+ 7\)/,
+            "the tiles sit in the row grid, ending where the controls do");
     assert.match(modules, /columns: Math.max\(1, Math.min\(3/);
     assert.match(read("Settings/WidgetPill.qml"), /elide:\s*Text\.ElideRight/);
 
@@ -811,6 +858,24 @@ test("notification settings drive the toasts and the notification center", () =>
     assert.match(notifs, /Settings\.notifDuration \* 1000/);
     assert.match(page, /Send test notification/);
     assert.match(page, /Critical alerts ignore the timer/);
+    // The preview heads the Style group as a block in the page's one column
+    // (2026-09), not a second column beside the rows.
+    const style = page.slice(page.indexOf('title: "Style"'), page.indexOf('title: "On-screen display"'));
+    assert.ok(style.indexOf("id: previewBlock") >= 0
+        && style.indexOf("id: previewBlock") < style.indexOf('label: "Density"'),
+        "the sample toast sits above the style rows");
+    assert.doesNotMatch(page, /sideBySide/);
+    assert.match(style, /id: sampleToast[\s\S]*id: sendTest/, "Send test sits at the preview's foot");
+    // Body preview offers exactly the line counts the store keeps.
+    const clamp = read("Common/SettingsHelpers.js")
+        .match(/notifBodyLines: intIn\(parsed\.notifBodyLines, (\d+), (\d+), 1,/);
+    assert.ok(clamp, "the body-lines clamp moved");
+    const body = style.slice(style.indexOf('label: "Body preview"'));
+    assert.match(body, /^\s*settingKey: "notifBodyLines"/m);
+    const values = [...body.slice(0, body.indexOf("]")).matchAll(/value: (\d+)/g)].map(m => Number(m[1]));
+    assert.deepEqual(values, Array.from({ length: Number(clamp[2]) - Number(clamp[1]) + 1 },
+        (_, i) => Number(clamp[1]) + i));
+    assert.doesNotMatch(style, /SliderRow \{/, "four line counts are choices, not a slider");
     // DND writers must go through the persisted setting, never the singleton.
     for (const name of ["Popovers/NotifsPopover.qml", "Popovers/ControlCenterPopover.qml"])
         assert.doesNotMatch(read(name), /Notifs\.dnd\s*=/,

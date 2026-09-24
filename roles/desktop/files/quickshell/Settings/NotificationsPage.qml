@@ -3,6 +3,10 @@ import Quickshell
 import "../Common"
 import "../Common/SettingsHelpers.js" as SettingsHelpers
 
+// Pop-ups, quiet hours and the on-screen display. The toast preview heads
+// the Style group, in the same column as its rows rather than a second
+// column beside them, so every row keeps the page's full control lane
+// (2026-09 redesign).
 SettingsPage {
     id: page
     pageReset: true
@@ -10,6 +14,12 @@ SettingsPage {
     readonly property var quietRange: SettingsHelpers.quietRange(Settings.notifQuiet,
         Settings.notifQuietStart, Settings.notifQuietEnd)
     property real previewProgress: 1
+    readonly property string densityLabel: Settings.notifDensity.charAt(0).toUpperCase()
+        + Settings.notifDensity.slice(1)
+    readonly property string positionLabel: {
+        const text = Settings.notifPosition.replace("-", " ");
+        return text.charAt(0).toUpperCase() + text.slice(1);
+    }
 
     function sendTest() {
         Quickshell.execDetached(["notify-send", "-a", "Shell settings",
@@ -52,13 +62,15 @@ SettingsPage {
                         + SettingsHelpers.formatMinutes(page.quietRange.end) : ""
             }
 
+            // Custom only: the two times sit directly under Quiet hours, as
+            // the options it revealed.
             Revealer {
                 id: quietReveal
                 width: parent.width
                 reveal: Settings.notifQuiet === "custom"
                 Column {
                     width: quietReveal.width
-                    spacing: 4
+                    spacing: Theme.settingsRowSpacing
                     TimeRow {
                         width: parent.width
                         label: "Quiet from"
@@ -97,93 +109,59 @@ SettingsPage {
             title: "Style"
 
             // The one preview that stays (turn-3 design): a toast is not
-            // otherwise on screen, so the style rows keep a live sample card
-            // beside them. Below the side-by-side breakpoint it drops under
-            // the rows instead.
+            // otherwise on screen, so the style rows keep a live sample card.
+            // It heads the group as a block in the row grid, from the label
+            // lane to at most a toast's width, with Send test at its foot to
+            // show the real thing.
             Item {
+                id: previewBlock
+                readonly property real laneWidth: Math.max(0,
+                    width - Theme.settingsMarkInset - Theme.chipHeight)
                 width: parent.width
-                readonly property bool sideBySide: width >= 640
-                height: sideBySide
-                    ? Math.max(styleRows.implicitHeight, previewColumn.implicitHeight)
-                    : styleRows.implicitHeight + 10 + previewColumn.implicitHeight
-
-                Column {
-                    id: styleRows
-                    x: 0
-                    y: 0
-                    width: parent.sideBySide ? parent.width - 284 : parent.width
-                    spacing: Theme.panelRowSpacing
-
-                    PickerRow {
-                        width: parent.width
-                        label: "Density"
-                        settingKey: "notifDensity"
-                        resetLabel: "Toast density"
-                        model: [
-                            { value: "compact", label: "Compact" },
-                            { value: "default", label: "Default" },
-                            { value: "roomy", label: "Roomy" }
-                        ]
-                    }
-                    SwitchRow {
-                        width: parent.width
-                        label: "App icons"
-                        settingKey: "notifIcons"
-                        description: "Show the sender's icon on each card"
-                    }
-                    SwitchRow {
-                        width: parent.width
-                        label: "Timeout progress"
-                        settingKey: "notifProgress"
-                        description: "A thin bar counts down the time a toast has left"
-                    }
-                    SliderRow {
-                        width: parent.width
-                        label: "Body preview"
-                        settingKey: "notifBodyLines"
-                        min: 0; max: 3; step: 1
-                        valueLabel: Settings.notifBodyLines === 0 ? "hidden"
-                            : Settings.notifBodyLines === 1 ? "1 line"
-                            : Settings.notifBodyLines + " lines"
-                        valueWidth: 52
-                    }
-                }
+                height: previewColumn.implicitHeight + Theme.scaled(4) * 2
 
                 Column {
                     id: previewColumn
-                    x: parent.sideBySide ? parent.width - width : 0
-                    y: parent.sideBySide ? 0 : styleRows.implicitHeight + 10
-                    width: parent.sideBySide ? 264 : Math.min(300, parent.width)
-                    spacing: 8
+                    x: Theme.settingsMarkInset
+                    y: Theme.scaled(4)
+                    width: Math.min(previewBlock.laneWidth, Theme.scaled(360))
+                    spacing: Theme.settingsContentSpacing
 
                     Rectangle {
                         id: sampleToast
-                        readonly property int pad: Settings.notifDensity === "compact" ? 8
-                            : Settings.notifDensity === "roomy" ? 14 : 11
+                        // The toast's own density padding (NotificationToasts).
+                        readonly property int padV: Theme.scaled(Settings.notifDensity === "compact" ? 8
+                            : Settings.notifDensity === "roomy" ? 15 : 11)
+                        readonly property int padH: Theme.scaled(Settings.notifDensity === "compact" ? 10
+                            : Settings.notifDensity === "roomy" ? 16 : 12)
                         width: parent.width
-                        height: sampleContent.implicitHeight + pad * 2 + 6
-                        radius: 12
+                        height: sampleContent.implicitHeight + padV * 2
+                            + (Settings.notifProgress ? padV / 2 : 0)
+                        radius: Math.min(Theme.panelRadius, Theme.scaled(16))
                         color: Theme.cardFill
-                        border.width: 1
-                        border.color: Theme.hairlineSoft
+                        border.width: Math.max(1, Theme.surfaceBorderWidth)
+                        border.color: Theme.surfaceBorderWidth > 0
+                            ? Theme.surfaceBorderColor : Theme.hairlineSoft
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: "Preview: a toast from WhatsApp, Sarah Jansen"
 
                         Row {
                             id: sampleContent
-                            x: sampleToast.pad
-                            y: sampleToast.pad
-                            width: parent.width - sampleToast.pad * 2
-                            spacing: 9
+                            x: sampleToast.padH
+                            y: sampleToast.padV
+                            width: parent.width - sampleToast.padH * 2
+                            spacing: Theme.scaled(10)
 
                             Rectangle {
                                 id: sampleIcon
                                 visible: Settings.notifIcons
-                                width: 30; height: 30
-                                radius: 9
+                                width: Theme.scaled(34); height: width
+                                radius: Theme.chipRadius + Theme.scaled(2)
                                 color: Theme.chip
 
                                 BrandIcon {
                                     anchors.centerIn: parent
-                                    width: 17; height: 17
+                                    width: Theme.scaled(20, Theme.typeScale); height: width
                                     name: "whatsapp"
                                 }
                             }
@@ -191,7 +169,7 @@ SettingsPage {
                             Column {
                                 width: sampleContent.width - (sampleIcon.visible
                                     ? sampleIcon.width + sampleContent.spacing : 0)
-                                spacing: 2
+                                spacing: Theme.scaled(2)
 
                                 Item {
                                     width: parent.width
@@ -200,7 +178,7 @@ SettingsPage {
                                     Text {
                                         id: sampleApp
                                         anchors.left: parent.left
-                                        width: Math.max(0, parent.width - sampleTime.width - 6)
+                                        width: Math.max(0, parent.width - sampleTime.width - Theme.iconTextSpacing)
                                         text: "WhatsApp"
                                         font.family: Theme.fontMenu
                                         font.pixelSize: Theme.typography.metadata
@@ -229,12 +207,13 @@ SettingsPage {
                                 Text {
                                     visible: Settings.notifBodyLines > 0
                                     width: parent.width
-                                    text: "Sure, see you at 12:30 tomorrow then! I'll bring the plans."
+                                    text: "Sure, see you at 12:30 tomorrow then! I'll bring the plans, "
+                                        + "the paint samples and the measurements for the kitchen."
                                     font.family: Theme.fontMenu
                                     font.pixelSize: Theme.typography.notification
                                     color: Theme.textMid
                                     wrapMode: Text.Wrap
-                                    maximumLineCount: Settings.notifBodyLines
+                                    maximumLineCount: Math.max(1, Settings.notifBodyLines)
                                     elide: Text.ElideRight
                                 }
                             }
@@ -245,9 +224,9 @@ SettingsPage {
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
-                            anchors.leftMargin: sampleToast.pad
-                            anchors.rightMargin: sampleToast.pad
-                            anchors.bottomMargin: 5
+                            anchors.leftMargin: sampleToast.padH
+                            anchors.rightMargin: sampleToast.padH
+                            anchors.bottomMargin: sampleToast.padV / 2
                             height: 2
                             radius: 1
                             color: Theme.activeFill
@@ -263,17 +242,18 @@ SettingsPage {
 
                     Item {
                         width: parent.width
-                        height: Theme.chipHeight
+                        height: Math.max(Theme.chipHeight, previewSummary.implicitHeight)
 
                         Text {
+                            id: previewSummary
                             anchors.left: parent.left
                             anchors.right: sendTest.left
-                            anchors.rightMargin: 8
+                            anchors.rightMargin: Theme.controlSpacing
                             anchors.verticalCenter: parent.verticalCenter
-                            text: Settings.notifPosition.replace("-", " ") + " · "
-                                + Settings.notifDuration + " s · " + Settings.notifDensity
+                            text: page.positionLabel + " · " + Settings.notifDuration + " s · "
+                                + page.densityLabel
                             font.family: Theme.fontMenu
-                            font.pixelSize: Theme.typography.metadata
+                            font.pixelSize: Theme.typography.secondary
                             color: Theme.textFaint
                             elide: Text.ElideRight
                         }
@@ -285,12 +265,60 @@ SettingsPage {
                             text: "Send test"
                             glyph: "notifications"
                             Accessible.name: Notifs.toastsSuppressed
-                                ? "Send test notification; toasts are silenced, it lands in the tab"
+                                ? "Send test notification; toasts are silenced, it lands in the center"
                                 : "Send test notification"
                             onTriggered: page.sendTest()
                         }
                     }
+
+                    // Said on screen, not only to a screen reader: a test sent
+                    // now makes no pop-up.
+                    SettingsHint {
+                        width: parent.width
+                        inset: false
+                        visible: Notifs.toastsSuppressed
+                        text: Notifs.dnd
+                            ? "Do Not Disturb is on, so a test only collects in the center"
+                            : "Quiet hours are on, so a test only collects in the center"
+                    }
                 }
+            }
+
+            PickerRow {
+                width: parent.width
+                label: "Density"
+                settingKey: "notifDensity"
+                resetLabel: "Toast density"
+                model: [
+                    { value: "compact", label: "Compact" },
+                    { value: "default", label: "Default" },
+                    { value: "roomy", label: "Roomy" }
+                ]
+            }
+            SwitchRow {
+                width: parent.width
+                label: "App icons"
+                settingKey: "notifIcons"
+                description: "Show the sender's icon on each card"
+            }
+            SwitchRow {
+                width: parent.width
+                label: "Timeout progress"
+                settingKey: "notifProgress"
+                description: "A thin bar counts down the time a toast has left"
+            }
+            // Four stops (the store keeps 0–3 lines) read better as choices
+            // than as a slider with four detents.
+            PickerRow {
+                width: parent.width
+                label: "Body preview"
+                settingKey: "notifBodyLines"
+                model: [
+                    { value: 0, label: "Off" },
+                    { value: 1, label: "1 line" },
+                    { value: 2, label: "2 lines" },
+                    { value: 3, label: "3 lines" }
+                ]
             }
         }
 

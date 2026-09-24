@@ -1,14 +1,15 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls as Controls
 import "../Common"
 import "../Common" as Common
 import "../Common/SettingsHelpers.js" as SettingsHelpers
 
 // Appearance owns theme, text and size, colors, and panel chrome. Every
-// control that changes how large the shell draws sits in one group, with the
-// size it produces spelled out, because the three multiply rather than
-// override one another. Bar geometry lives on the Bar page.
+// control that changes how large the shell draws sits in one group under a
+// live preview of the result, because they multiply rather than override one
+// another. Three stay in view; the base size they build on is an advanced
+// option (2026-09 redesign). Bar geometry and its background live on the Bar
+// page.
 SettingsPage {
     id: page
     pageReset: true
@@ -34,11 +35,13 @@ SettingsPage {
         { label: "Outline", color: Theme.stroke },
         { label: "Error", color: Theme.red }
     ]
-    readonly property string textScaleLabel: Settings.textScale === "larger" ? "Larger (×1.3)"
-        : Settings.textScale === "large" ? "Large (×1.15)" : "Default"
-    readonly property string sizeSummary: "Text renders at " + Theme.metrics.fontBase
-        + " px — " + Settings.shellFontSize + " px base, " + page.textScaleLabel
-        + " text size, " + Settings.shellScale + "% UI scale"
+    readonly property string paletteStatus: Common.Palette.busy
+        ? "Generating colors from the current wallpaper…"
+        : Common.Palette.ready
+        ? "Generated from " + Settings.wall
+        : Common.Palette.error !== ""
+        ? Common.Palette.error + " · using the fixed accent"
+        : "Waiting for the wallpaper palette"
 
     function accentName(value) {
         return page.accentNames[value] || value.toUpperCase();
@@ -48,13 +51,20 @@ SettingsPage {
         Settings.set("accent", value);
     }
 
+    // The interface font dropdown draws each choice in its own face.
+    function fontFamily(id) {
+        const choice = Settings.fontChoices.find(entry => entry.id === id);
+        return choice ? choice.family : Theme.fontMenu;
+    }
+
     function revealFixedColors() {
         fixedColorScrollTimer.restart();
     }
 
     function revealFixedColorsNow() {
-        const lastSwatch = swatchRepeater.itemAt(swatchRepeater.count - 1);
-        page.revealFocus(lastSwatch || fixedColorReveal);
+        // The hue row closes the revealed block; bringing its foot into view
+        // brings the presets above it along.
+        page.revealFocus(accentHueRow);
     }
 
     Timer {
@@ -99,19 +109,19 @@ SettingsPage {
             width: parent.width
             title: "Text & size"
 
-            PickerRow {
+            // Replaces the sentence that spelled out the rendered size: the
+            // bar and a popover, drawn at whatever the rows below produce.
+            TextSizePreview {
+                width: parent.width
+            }
+            SelectRow {
                 width: parent.width
                 label: "Interface font"
                 settingKey: "font"
                 model: Settings.fontChoices.map(choice => ({
                     value: choice.id, label: choice.label
                 }))
-            }
-            SliderRow {
-                width: parent.width
-                label: "Base font"
-                settingKey: "shellFontSize"
-                min: 10; max: 24; step: 1
+                fontFor: value => page.fontFamily(value)
             }
             PickerRow {
                 width: parent.width
@@ -122,11 +132,10 @@ SettingsPage {
                     { value: "large", label: "Large" },
                     { value: "larger", label: "Larger" }
                 ]
-                hint: "Enlarges text for readability on top of the base font"
             }
             SliderRow {
                 width: parent.width
-                label: "UI scale"
+                label: "Interface scale"
                 settingKey: "shellScale"
                 min: 75; max: 200; step: 5; unit: "%"
                 marks: [100]
@@ -134,7 +143,7 @@ SettingsPage {
             }
             PickerRow {
                 width: parent.width
-                label: "Control spacing"
+                label: "Density"
                 settingKey: "interfaceDensity"
                 model: [
                     { value: "compact", label: "Compact" },
@@ -143,10 +152,21 @@ SettingsPage {
                 ]
                 hint: "Row height and touch-target size"
             }
-            SettingsHint {
+            // The base size is what Text size and Interface scale multiply,
+            // so it is rarely the control to reach for; a search for it
+            // still opens the disclosure.
+            SettingsDisclosure {
                 width: parent.width
-                text: page.sizeSummary
-                tone: "active"
+                text: "Advanced text options"
+                keys: ["shellFontSize"]
+
+                SliderRow {
+                    width: parent.width
+                    label: "Base font size"
+                    settingKey: "shellFontSize"
+                    min: 10; max: 24; step: 1
+                    hint: "The size that Text size and Interface scale build on"
+                }
             }
         }
 
@@ -158,8 +178,12 @@ SettingsPage {
                 width: parent.width
                 label: "Accent source"
                 settingKey: "paletteMode"
+                // Returning to the wallpaper restores the fixed accent too:
+                // it is hidden under Wallpaper, and a reset should not leave
+                // a changed value out of sight.
+                resetKeys: ["paletteMode", "accent"]
                 hint: Settings.paletteMode === "wallpaper"
-                    ? "The accent follows the current wallpaper" : "Choose the accent yourself"
+                    ? "Follows the current wallpaper" : "Stays the same when the wallpaper changes"
                 model: [
                     { value: "wallpaper", label: "Wallpaper" },
                     { value: "fixed", label: "Fixed" }
@@ -172,153 +196,179 @@ SettingsPage {
                 }
             }
 
+            // Fixed: the presets and a hue for anything between them. The
+            // rows sit directly under Accent source, with no heading of
+            // their own, as the options it revealed.
             Revealer {
                 id: fixedColorReveal
                 width: parent.width
                 reveal: page.fixedPalette
 
-                SettingsSubsection {
+                Column {
                     width: fixedColorReveal.width
-                    title: "Accent"
-                    insetContent: false
-                    SliderRow {
+                    spacing: Theme.settingsRowSpacing
+
+                    SettingsRow {
+                        id: accentRow
+                        readonly property int swatchSize: Theme.settingsControlHeight
+                        readonly property real swatchesWidth: page.accentChoices.length * swatchSize
+                            + (page.accentChoices.length - 1) * swatchFlow.spacing
+
                         width: parent.width
-                        label: "Accent hue"
-                        resetKeys: ["accent"]
+                        label: "Accent color"
+                        settingKey: "accent"
                         resetLabel: "Accent"
-                        min: 0; max: 359; step: 1; unit: "°"
-                        value: page.accentHue
-                        hueTrack: true
-                        dirty: Settings.accent !== Settings.defaults.accent
-                        onMoved: value => page.pickAccent(SettingsHelpers.hueToHex(value))
-                    }
-                    Flow {
-                        x: Theme.settingsMarkInset
-                        width: parent.width - x
-                        spacing: Theme.controlSpacing
-                        Repeater {
-                            id: swatchRepeater
-                            model: page.accentChoices
-                            delegate: Item {
-                                id: swatch
-                                required property string modelData
-                                required property int index
-                                readonly property bool selected: Settings.accent === modelData
-                                width: Theme.settingsControlHeight; height: width
-                                activeFocusOnTab: selected || (index === 0
-                                    && page.accentChoices.indexOf(Settings.accent) === -1)
-                                Accessible.role: Accessible.RadioButton
-                                Accessible.name: page.accentName(modelData) + " accent"
-                                Accessible.checked: selected
-                                Accessible.onPressAction: page.pickAccent(modelData)
-                                Controls.ToolTip.visible: swatchMouse.containsMouse
-                                Controls.ToolTip.text: page.accentName(modelData) + " · " + modelData.toUpperCase()
-                                Keys.onPressed: event => {
-                                    let next = -1;
-                                    if (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
-                                        next = Math.max(0, index - 1);
-                                    else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down)
-                                        next = Math.min(page.accentChoices.length - 1, index + 1);
-                                    else if (event.key === Qt.Key_Home)
-                                        next = 0;
-                                    else if (event.key === Qt.Key_End)
-                                        next = page.accentChoices.length - 1;
-                                    else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
-                                            || event.key === Qt.Key_Space) {
-                                        page.pickAccent(modelData); event.accepted = true; return;
+                        hint: page.accentNames[Settings.accent]
+                            ? page.accentNames[Settings.accent] + " · " + Settings.accent.toUpperCase()
+                            : "Custom hue · " + Settings.accent.toUpperCase()
+                        wideHeight: Math.max(Theme.panelRowHeight, swatchFlow.implicitHeight) + rowPad * 2
+                        narrowHeight: Theme.settingsStackOffset + swatchFlow.implicitHeight
+                        narrowLabelInset: accentRow.undoWidth
+                        controlLeft: accentRow.narrow ? accentRow.labelWidth : swatchFlow.x
+
+                        // One tab stop; the arrow keys rove between the
+                        // presets and pick as they go, like a segmented row.
+                        Flow {
+                            id: swatchFlow
+                            width: accentRow.narrow
+                                ? Math.max(0, accentRow.contentRight - accentRow.markInset)
+                                : Math.min(accentRow.swatchesWidth,
+                                    Math.max(0, accentRow.contentRight - accentRow.labelWidth))
+                            x: accentRow.narrow ? accentRow.markInset : accentRow.contentRight - width
+                            y: accentRow.narrow ? Theme.settingsStackOffset
+                                : (accentRow.lineHeight - height) / 2
+                            spacing: Theme.controlSpacing
+                            opacity: accentRow.controlOpacity
+
+                            Repeater {
+                                id: swatchRepeater
+                                model: page.accentChoices
+                                delegate: Item {
+                                    id: swatch
+                                    required property string modelData
+                                    required property int index
+                                    readonly property bool selected: Settings.accent === modelData
+                                    width: accentRow.swatchSize; height: width
+                                    activeFocusOnTab: selected || (index === 0
+                                        && page.accentChoices.indexOf(Settings.accent) === -1)
+                                    Accessible.role: Accessible.RadioButton
+                                    Accessible.name: page.accentName(modelData) + " accent"
+                                    Accessible.checked: selected
+                                    Accessible.onPressAction: page.pickAccent(modelData)
+                                    Keys.onPressed: event => {
+                                        let next = -1;
+                                        if (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
+                                            next = Math.max(0, index - 1);
+                                        else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down)
+                                            next = Math.min(page.accentChoices.length - 1, index + 1);
+                                        else if (event.key === Qt.Key_Home)
+                                            next = 0;
+                                        else if (event.key === Qt.Key_End)
+                                            next = page.accentChoices.length - 1;
+                                        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                                || event.key === Qt.Key_Space) {
+                                            page.pickAccent(modelData); event.accepted = true; return;
+                                        }
+                                        // Focus before the pick: see PillRow.
+                                        if (next >= 0) {
+                                            swatchRepeater.itemAt(next).forceActiveFocus();
+                                            page.pickAccent(page.accentChoices[next]);
+                                            event.accepted = true;
+                                        }
                                     }
-                                    // Focus before the pick: see PillRow.
-                                    if (next >= 0) {
-                                        swatchRepeater.itemAt(next).forceActiveFocus();
-                                        page.pickAccent(page.accentChoices[next]);
-                                        event.accepted = true;
+                                    Rectangle {
+                                        anchors.centerIn: parent
+                                        width: Theme.scaled(18); height: width; radius: width / 2
+                                        color: swatch.modelData
                                     }
-                                }
-                                Rectangle {
-                                    anchors.centerIn: parent
-                                    width: Theme.scaled(18); height: width; radius: width / 2
-                                    color: swatch.modelData
-                                }
-                                Rectangle {
-                                    anchors.fill: parent
-                                    radius: width / 2
-                                    color: "transparent"
-                                    border.width: 1.5
-                                    border.color: swatch.activeFocus ? Theme.textHi : Theme.accentText
-                                    visible: swatch.selected || swatch.activeFocus || swatchMouse.containsMouse
-                                }
-                                MouseArea {
-                                    id: swatchMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        swatch.forceActiveFocus();
-                                        page.pickAccent(swatch.modelData);
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        radius: width / 2
+                                        color: "transparent"
+                                        border.width: 1.5
+                                        border.color: swatch.activeFocus ? Theme.textHi : Theme.accentText
+                                        visible: swatch.selected || swatch.activeFocus || swatchMouse.containsMouse
+                                    }
+                                    SettingsTooltip {
+                                        visible: swatchMouse.containsMouse
+                                        text: page.accentName(swatch.modelData) + " · "
+                                            + swatch.modelData.toUpperCase()
+                                    }
+                                    MouseArea {
+                                        id: swatchMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            swatch.forceActiveFocus();
+                                            page.pickAccent(swatch.modelData);
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                    SliderRow {
+                        id: accentHueRow
+                        width: parent.width
+                        label: "Accent hue"
+                        min: 0; max: 359; step: 1; unit: "°"
+                        value: page.accentHue
+                        hueTrack: true
+                        // The same stored color as the presets above; that
+                        // row carries its changed mark and its reset.
+                        dirty: false
+                        resetKeys: []
+                        onMoved: value => page.pickAccent(SettingsHelpers.hueToHex(value))
+                    }
                 }
             }
 
+            // Wallpaper: the generated palette, read-only, where the presets
+            // were. Its status line says what it was made from, or why it
+            // fell back.
             Revealer {
                 id: wallpaperPaletteReveal
                 width: parent.width
                 reveal: !page.fixedPalette
 
-                SettingsSubsection {
+                SettingsRow {
+                    id: paletteRow
                     width: wallpaperPaletteReveal.width
-                    title: "Wallpaper palette"
-                    insetContent: true
+                    label: "Wallpaper palette"
+                    hint: page.paletteStatus
+                    hintTone: Common.Palette.error !== "" ? "error" : "info"
+                    narrowLabelInset: paletteRow.undoWidth
+                    controlLeft: paletteRow.narrow ? paletteRow.labelWidth : paletteContent.x
 
-                    Item {
-                        width: parent.width
-                        height: paletteContent.implicitHeight
-                        Column {
-                            id: paletteContent
-                            width: parent.width
-                            spacing: Theme.settingsContentSpacing
-                            Flow {
-                                width: parent.width
-                                spacing: Theme.controlSpacing
-                                Repeater {
-                                    model: page.paletteSwatches
-                                    delegate: Row {
-                                        required property var modelData
-                                        spacing: Theme.iconTextSpacing
-                                        Accessible.role: Accessible.StaticText
-                                        Accessible.name: modelData.label + " palette color"
+                    Row {
+                        id: paletteContent
+                        x: paletteRow.narrow ? paletteRow.markInset : paletteRow.contentRight - width
+                        y: paletteRow.narrow
+                            ? Theme.settingsStackOffset + (Theme.settingsControlHeight - height) / 2
+                            : (paletteRow.lineHeight - height) / 2
+                        spacing: Theme.scaled(5)
 
-                                        Rectangle {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: Theme.iconSmall; height: width; radius: Theme.scaled(4)
-                                            color: parent.modelData.color
-                                            border.width: 1
-                                            border.color: Theme.stroke
-                                        }
-                                        Text {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: parent.modelData.label
-                                            font.family: Theme.fontMenu
-                                            font.pixelSize: Theme.typography.metadata
-                                            color: Theme.textDim
-                                        }
-                                    }
+                        Repeater {
+                            model: page.paletteSwatches
+                            delegate: Rectangle {
+                                id: paletteChip
+                                required property var modelData
+                                width: Theme.scaled(18, Theme.typeScale); height: width
+                                radius: Theme.scaled(5)
+                                color: modelData.color
+                                border.width: 1
+                                border.color: Theme.stroke
+                                Accessible.role: Accessible.StaticText
+                                Accessible.name: modelData.label + " palette color"
+
+                                SettingsTooltip {
+                                    visible: chipHover.hovered
+                                    text: paletteChip.modelData.label
                                 }
-                            }
-                            SettingsHint {
-                                width: parent.width
-                                inset: false
-                                text: Common.Palette.busy
-                                    ? "Generating colors from the current wallpaper…"
-                                    : Common.Palette.ready
-                                    ? "Palette ready"
-                                    : Common.Palette.error !== ""
-                                    ? Common.Palette.error + " · using the fixed accent"
-                                    : "Waiting for the wallpaper palette"
-                                tone: Common.Palette.error !== "" ? "error" : "info"
+                                HoverHandler {
+                                    id: chipHover
+                                }
                             }
                         }
                     }
@@ -335,17 +385,24 @@ SettingsPage {
                 label: "Border"
                 settingKey: "surfaceBorderMode"
                 resetLabel: "Panel border"
+                // The custom color only means something under Custom.
+                resetKeys: ["surfaceBorderMode", "surfaceBorderColor"]
                 model: [{ value: "accent", label: "Accent" }, { value: "subtle", label: "Subtle" },
                     { value: "custom", label: "Custom" }]
             }
-            SettingsTextRow {
+            Revealer {
+                id: borderColorReveal
                 width: parent.width
-                visible: Settings.surfaceBorderMode === "custom"
-                label: "Border color"
-                settingKey: "surfaceBorderColor"
-                resetLabel: "Panel border color"
-                hexColor: true
-                placeholder: "#9ecbeb"
+                reveal: Settings.surfaceBorderMode === "custom"
+
+                SettingsTextRow {
+                    width: borderColorReveal.width
+                    label: "Border color"
+                    settingKey: "surfaceBorderColor"
+                    resetLabel: "Panel border color"
+                    hexColor: true
+                    placeholder: "#9ecbeb"
+                }
             }
             SliderRow {
                 width: parent.width

@@ -87,9 +87,17 @@ is manual.
 
 ## Wallpaper page
 
-- [ ] Grid lists the configured wallpaper folder; clicking a thumb swaps the
-      wallpaper live and moves the accent ring + ✓.
-- [ ] "Shuffle now" picks a different wallpaper each press.
+- [ ] The page keeps the bounded, centered column of the other pages: on a
+      wide window its rows end on the same right-hand edge as Appearance's,
+      and moving between the two does not shift the column sideways.
+- [ ] A Browse row at the top chooses Library or Online on one segmented
+      track, with no changed mark or reset chip.
+- [ ] Grid lists the configured wallpaper folder inside the row grid (from
+      the label lane to the controls' edge); clicking a thumb swaps the
+      wallpaper live, moves the accent ring + ✓, and the Current row under the
+      grid names the new file.
+- [ ] "Shuffle now" on the Current row picks a different wallpaper each press
+      and is disabled while the folder holds fewer than two images.
 - [ ] `Super+K` opens the shortcut sheet at up to 1180 logical pixels wide with
       three balanced columns on a wide screen (fewer on a narrow one). There is
       no Hardware keys group, and a long row such as Resize window wraps its keys
@@ -98,6 +106,8 @@ is manual.
       (or `cybexos-runtime ipc wallpaper browse`) shows popular Wallhaven
       results sized for the connected displays; Sort, Category and Size search
       again, and their reset chips restore Popular / General / Fits my displays.
+      The Search row runs on Enter or its search button, never on leaving the
+      field, and Down moves from the field to the results.
       Scrolling to the end, or pressing Down on the last row, appends the next
       24 results without jumping back to the top.
 - [ ] Picking an online result shows download progress on the tile, then saves
@@ -106,13 +116,18 @@ is manual.
       no `.part` file. A saved result shows its download mark and applies
       without a new download. Offline, the view reports a connection error.
 - [ ] Rotate 15 min / 1 hour / Daily arms the timer ("Off" disarms).
-- [ ] "Choose folder" stays inside the settings surface. Valid folders,
+- [ ] The Folder row shows the folder path as its label in the mono face,
+      with the image count on its hint line; an unusable folder shows its error
+      there instead. A long path elides in the middle before it reaches
+      Choose… and Open.
+- [ ] "Choose…" stays inside the settings surface. Valid folders,
       including paths with spaces, preserve the current basename or choose the
       first alphabetic supported image. Empty/unreadable folders change nothing.
 - [ ] "Open" opens the selected directory in the file manager. Large folders
       scroll smoothly without constructing every thumbnail at once.
-- [ ] Narrow the content below 520px: the gallery switches to one column and
-      folder path/actions stack without clipping or covering each other.
+- [ ] Narrow the content below 520px: the gallery switches to one column, the
+      rows stack their controls under their labels, and the folder actions drop
+      under the path without clipping or covering each other.
 
 ## Appearance page
 
@@ -123,29 +138,53 @@ is manual.
 - [ ] Glass effect applies without closing Settings or remapping/flickering the
       bar. Toggle it twice quickly, then reload Hyprland and restart Quickshell;
       the final persisted state wins each time.
-- [ ] Wallpaper palette shows surface/primary/error swatches and generation
-      status. Switching Dark / Light selects the cached variant without a new
-      Matugen process; changing wallpaper regenerates once after the debounce.
-      Accent colors follow the wallpaper while the selected menubar background
-      remains unchanged.
+- [ ] Text & size opens with a live preview — a bar strip (workspaces, date
+      and clock, status icons) and a popover with two rows — captioned
+      "Preview · text renders at N px". Text size, Interface scale and Density
+      resize it along with the rest of the shell, and N matches the rendered
+      base size (12 at defaults, 14 at Large with 100%).
+- [ ] Text size, Interface scale and Density are in view; Base font size is
+      under "Advanced text options", which stays closed on opening. Searching
+      "Base font size" opens the disclosure and highlights the row. With a
+      changed base size and the disclosure closed, the page foot still offers
+      "Reset Appearance to defaults".
+- [ ] Interface font is a dropdown at the controls' edge. The closed button
+      and every option draw in their own face; picking one reflows the bar and
+      popovers instantly. Test every menu font: option names stay within the
+      list without clipping.
+- [ ] Accent source Wallpaper shows a Wallpaper palette row: six swatches at
+      the controls' edge (hover names each) and a hint that reads "Generated
+      from <file>" or the generation status. Switching Dark / Light selects the
+      cached variant without a new Matugen process; changing wallpaper
+      regenerates once after the debounce.
 - [ ] Change wallpapers rapidly: no stale palette flashes. Temporarily hide
       `matugen` or feed malformed output: the selector remains Wallpaper,
-      the fallback error appears, and the stored fixed palette renders.
-- [ ] Bar Background offers Shell Default, macOS, Black, Graphite, Slate, White,
-      and Custom in both Wallpaper and Fixed modes. Only the Accent area is
-      absent in Wallpaper mode, leaves Tab/Orca traversal immediately, and
-      returns with its values unchanged after switching back to Fixed.
+      the fallback error appears on the palette row, and the stored fixed
+      palette renders.
+- [ ] Accent source Fixed reveals an Accent color row (six presets, right
+      aligned, their name and hex on the hint line) and an Accent hue row
+      directly under Accent source, and scrolls them into view. The presets
+      are one Tab stop; arrow keys, Home and End move and pick. Presets and
+      hue recolor the whole shell, and in Wallpaper mode they are neither
+      focusable nor exposed.
+- [ ] Resetting Accent source returns to Wallpaper and restores the fixed
+      accent with it; Undo brings both back.
+- [ ] On the Bar page (moved there from Appearance), Background offers Shell
+      Default, macOS, Black, Graphite, Slate, White, and Custom in both
+      Wallpaper and Fixed accent modes, and the accent choice leaves it
+      unchanged.
 - [ ] A Black menubar changes its text/icons to light tones; White changes
       them to dark tones. Accent, warning, error, workspace, weather, and T3
       marks remain legible, with no change to popover colors.
 - [ ] Custom reveals Hue, Saturation, and Lightness sliders. Their tracks and
       the real bar update live, the chosen HSL survives a preset round-trip,
       and the Bar Background reset restores the adaptive Shell Default.
-- [ ] Font rows render their own family; picking one reflows the bar and
-      popovers instantly. Test every menu font: names and samples stay in
-      separate bounded lanes with no overlap.
-- [ ] Fixed accent swatches and hue recolor the whole shell in Fixed mode and
-      are not focusable or exposed in Wallpaper mode.
+- [ ] Panels: Border color appears directly under Border only for Custom, and
+      resetting Border also restores the custom color. Border opacity is
+      disabled and says why at width 0.
+- [ ] Plugins: with Match shell style off, Interface scale, Border and Corners
+      appear; Border color only for Custom, Border width and opacity for every
+      mode except Shell.
 - [ ] Appearance has no preset actions. Fresh settings use Dark mode, Hug,
       wallpaper colors, opaque surfaces, numbered workspaces, JetBrains Mono
       at size 12 and 100% scale, and no panel borders.
@@ -252,13 +291,22 @@ is manual.
 
 ## Notifications page
 
-- [ ] Preview updates live for position, duration, density, icons, body lines,
-      and timeout progress. “Timeout progress” and its description never
-      collide with the switch or reset lane.
-- [ ] Quiet Hours Off/Nights hides custom time sliders and removes them from
-      Tab/Orca traversal; Custom reveals both, preserving the stored range.
-- [ ] “Send test notification” and its current suppression explanation sit on
-      one line when they fit and stack cleanly on a narrow panel.
+- [ ] The sample toast heads the Style group, above Density, in the page's
+      one column (no second column beside the rows at any width). It updates
+      live for density, icons, body lines and timeout progress; the line under
+      it reads position · duration · density.
+- [ ] Body preview is a segmented choice of Off / 1 line / 2 lines / 3 lines,
+      and the sample and real toasts follow it.
+- [ ] Quiet hours Off/Nights hides the Quiet from / Quiet until rows and
+      removes them from Tab/Orca traversal; Custom reveals both directly under
+      Quiet hours, preserving the stored range. Nights and Custom show the
+      range beside the choices.
+- [ ] "Send test" sits at the sample's foot and sends a real toast using the
+      current settings. With Do Not Disturb or quiet hours active, a line
+      under it says the test only collects in the center.
+- [ ] On-screen display → Placement Top shows volume/brightness pills
+      top-center, clearing the bar; Bottom returns them; slide-in direction
+      matches the edge.
 
 ## System page
 
