@@ -72,6 +72,12 @@ for path in \
   /usr/local/libexec/cybexos-session-action \
   /usr/libexec/cybexos-login-prepare \
   /usr/local/libexec/cybexos-system-snapshot \
+  /etc/grub.d/42_cybexos_recovery \
+  /etc/kernel/install.d/95-cybexos-recovery.install \
+  /etc/systemd/system/cybexos-recovery-refresh.service \
+  /usr/lib/dracut/modules.d/90cybexos-recovery \
+  /etc/dracut.conf.d/90-cybexos-recovery.conf \
+  /boot/grub2/cybexos-recovery.cfg \
   /etc/sysctl.d/60-cybexos-hardening.conf \
   /home/fedora/.config/hypr/features.lua \
   /home/fedora/.local/share/cybexos/runtime \
@@ -81,6 +87,12 @@ for path in \
   /var/lib/cybexos; do
   [[ ! -e $path && ! -L $path ]] || fail "$path remains after uninstall"
 done
+
+! grep -qF '42_cybexos_recovery' /boot/grub2/grub.cfg ||
+  fail 'grub.cfg still sources the recovery submenu after uninstall'
+initramfs_listing=$(lsinitrd "/boot/initramfs-$(uname -r).img")
+! grep -q cybexos-recovery <<<"$initramfs_listing" ||
+  fail 'the initramfs still carries the recovery overlay module after uninstall'
 
 for unit in quickshell.service hypridle.service hyprpolkitagent.service; do
   [[ ! -L /home/fedora/.config/systemd/user/hyprland-session.target.wants/$unit ]] \

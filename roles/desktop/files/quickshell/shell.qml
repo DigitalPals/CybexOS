@@ -227,5 +227,7 @@ ShellRoot {
         void Recorder.active;
         void Dictation.state;
         void Reminders.count;
+        // A recovery boot must announce itself without waiting for Settings.
+        void Recovery.recoveryBoot;
     }
 }

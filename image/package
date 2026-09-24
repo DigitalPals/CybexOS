@@ -127,6 +127,18 @@ def main():
     write(f"{seed}/.npmrc", "prefix=${HOME}/.npm-global\n")
     write("usr/share/cybexos/applications.json", json.dumps(applications, indent=2) + "\n")
     copy("roles/base/files/cybexos-system-snapshot", "usr/libexec/cybexos-system-snapshot", True)
+    # Recovery booting: vendor locations for dracut and kernel-install; GRUB
+    # reads /etc/grub.d only. The installer's grub2-mkconfig and dracut runs
+    # pick these up for the installed system.
+    recovery = "roles/base/files/recovery"
+    copy(f"{recovery}/42_cybexos_recovery", "etc/grub.d/42_cybexos_recovery", True)
+    copy(f"{recovery}/95-cybexos-recovery.install", "usr/lib/kernel/install.d/95-cybexos-recovery.install", True)
+    copy(f"{recovery}/90-cybexos-recovery.conf", "usr/lib/dracut/dracut.conf.d/90-cybexos-recovery.conf")
+    for name in ("module-setup.sh", "cybexos-recovery-overlay.sh"):
+        copy(f"{recovery}/90cybexos-recovery/{name}", f"usr/lib/dracut/modules.d/90cybexos-recovery/{name}", True)
+    refresh = (ROOT / recovery / "cybexos-recovery-refresh.service").read_text()
+    write("usr/lib/systemd/system/cybexos-recovery-refresh.service",
+          refresh.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))
     for name in ("cybexos-session-action", "hyprland-session-start"):
         output_name = name if name.startswith("cybexos") else "cybexos-" + name
         copy(f"roles/desktop/files/{name}", f"usr/libexec/{output_name}", True)

@@ -1,0 +1,11 @@
+#!/usr/bin/sh
+# Include the CybexOS recovery submenu. grub2-mkconfig runs this once; after
+# that cybexos-system-snapshot rewrites only the sourced file, so creating or
+# pruning a recovery point never regenerates grub.cfg.
+cat <<'GRUB'
+if [ -f ${config_directory}/cybexos-recovery.cfg ]; then
+  source ${config_directory}/cybexos-recovery.cfg
+elif [ -z "${config_directory}" -a -f $prefix/cybexos-recovery.cfg ]; then
+  source $prefix/cybexos-recovery.cfg
+fi
+GRUB

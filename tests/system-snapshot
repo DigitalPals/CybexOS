@@ -1,48 +1,8 @@
 #!/usr/bin/env bash
+# Recovery points: creation and retention, the GRUB recovery submenu, restore
+# with interruption recovery, and the dracut overlay hook (fixture-based).
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-helper=$repo_root/roles/base/files/cybexos-system-snapshot
-fixture=$(mktemp -d)
-trap 'rm -rf -- "$fixture"' EXIT
-mock_bin=$fixture/bin
-top=$fixture/top
-mkdir -p "$mock_bin" "$top"
-
-write_mock() {
-  local name=$1
-  shift
-  printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' "$@" >"$mock_bin/$name"
-  chmod 0755 "$mock_bin/$name"
-}
-write_mock findmnt \
-  'if [[ " $* " == *" FSTYPE "* ]]; then printf "btrfs\n"' \
-  'elif [[ " $* " == *" FSROOT "* && " $* " == *" /home "* ]]; then printf "/home\n"' \
-  'elif [[ " $* " == *" FSROOT "* ]]; then printf "/root\n"' \
-  'else exit 2; fi'
-write_mock tar 'target=""; while (($#)); do [[ $1 == --file ]] && { shift; target=$1; }; shift; done; : >"$target"'
-write_mock sync 'exit 0'
-write_mock btrfs \
-  'if [[ ${1:-} == subvolume && ${2:-} == show ]]; then [[ -e $3/.subvolume ]]; exit; fi' \
-  'if [[ ${1:-} == subvolume && ${2:-} == create ]]; then mkdir -p "$3"; : >"$3/.subvolume"; exit; fi' \
-  'if [[ ${1:-} == subvolume && ${2:-} == snapshot ]]; then target=${@: -1}; mkdir -p "$target"; : >"$target/.snapshot"; exit; fi' \
-  'if [[ ${1:-} == subvolume && ${2:-} == delete ]]; then rm -rf -- "$3"; exit; fi' \
-  'exit 2'
-
-export PATH="$mock_bin:$PATH"
-export CYBEXOS_SYSTEM_SNAPSHOT_TESTING=1
-export CYBEXOS_SNAPSHOT_TOPLEVEL=$top
-for index in {1..7}; do
-  export CYBEXOS_SNAPSHOT_ID="2026090${index}T120000Z-$index"
-  [[ $($helper create "fixture $index") == "$CYBEXOS_SNAPSHOT_ID" ]]
-done
-
-store=$top/cybexos-snapshots
-[[ $(find "$store/root" -mindepth 1 -maxdepth 1 -type d | wc -l) -eq 5 ]]
-[[ $(find "$store/boot" -type f -name '*.tar' | wc -l) -eq 5 ]]
-[[ $(<"$store/latest") == 20260907T120000Z-7 ]]
-[[ ! -e $store/root/20260901T120000Z-1 ]]
-[[ -e $store/root/20260903T120000Z-3/.snapshot ]]
-grep -q 'fixture 7' "$store/metadata/20260907T120000Z-7.meta"
-
-printf 'Btrfs snapshot creation and paired retention passed\n'
+PYTHONDONTWRITEBYTECODE=1 python3 -B "$repo_root/tests/system-snapshot.py"
+printf 'Btrfs recovery points, boot menu, restore, and overlay hook passed\n'

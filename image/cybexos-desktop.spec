@@ -32,7 +32,7 @@ Requires:       gnome-online-accounts gnome-online-accounts-gtk evolution-data-s
 Requires:       glib2 NetworkManager-libnm nm-connection-editor pulseaudio-utils pavucontrol
 Requires:       grim slurp satty wl-clipboard cliphist wf-recorder libnotify
 Requires:       ImageMagick tesseract tesseract-langpack-eng btop matugen
-Requires:       btrfs-progs tar zstd fastfetch
+Requires:       btrfs-progs tar zstd fastfetch dracut grub2-tools coreutils >= 9.5
 Requires:       rsms-inter-fonts google-noto-sans-fonts google-noto-color-emoji-fonts
 Requires:       jetbrains-mono-fonts
 
@@ -81,12 +81,19 @@ cp -a usr opt etc %{buildroot}/
 /usr/share/licenses/cybexos-fonts/
 /usr/share/plymouth/themes/cybex/
 /usr/lib/sysctl.d/60-cybexos-hardening.conf
+/etc/grub.d/42_cybexos_recovery
+/usr/lib/kernel/install.d/95-cybexos-recovery.install
+/usr/lib/dracut/dracut.conf.d/90-cybexos-recovery.conf
+/usr/lib/dracut/modules.d/90cybexos-recovery/
+/usr/lib/systemd/system/cybexos-recovery-refresh.service
 /usr/lib/firewalld/zones/cybexos.xml
 
 %posttrans
 # The SDDM RPM owns /etc/pam.d/sddm-autologin. Install the shared policy after
 # all package payloads are present, preserving its initial configuration once.
 /usr/libexec/cybexos-login-prepare --install-pam
+# Bootable recovery points are refreshed at every boot; enabling is idempotent.
+systemctl enable cybexos-recovery-refresh.service >/dev/null 2>&1 || :
 
 %changelog
 * Sat Sep 05 2026 CybexOS <noreply@localhost> - 0.1.0-0.1.alpha

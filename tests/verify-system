@@ -267,6 +267,12 @@ if [[ $(findmnt --noheadings --output FSTYPE --target / 2>/dev/null | xargs) == 
   check 'weekly Btrfs scrub is enabled' unit_enabled cybexos-btrfs-scrub.timer
   check 'transactional Btrfs recovery helper is installed' \
     test -x /usr/local/libexec/cybexos-system-snapshot
+  check 'recovery boot menu is refreshed at boot' unit_enabled cybexos-recovery-refresh.service
+  check 'recovery boot menu hooks are installed' \
+    test -x /etc/grub.d/42_cybexos_recovery -a -x /etc/kernel/install.d/95-cybexos-recovery.install
+  check 'recovery overlay dracut module is installed' \
+    test -f /usr/lib/dracut/modules.d/90cybexos-recovery/module-setup.sh -a -f /etc/dracut.conf.d/90-cybexos-recovery.conf
+  check 'recovery point index is published' test -r /run/cybexos-snapshots/recovery-points.json
 else
   check 'Btrfs scrub is disabled on a non-Btrfs root' bash -c '! systemctl is-enabled --quiet cybexos-btrfs-scrub.timer'
 fi

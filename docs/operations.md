@@ -344,23 +344,83 @@ failed with phase `abandoned` instead of blocking all future updates.
 Before package work starts, the updater requires
 `/usr/local/libexec/cybexos-system-snapshot` on the managed Btrfs layout. It saves a
 read-only snapshot of the `root` subvolume and a matching archive of `/boot`
-(including the mounted EFI tree), then retains the five newest pairs. `/home`
-is a separate subvolume and is intentionally outside system rollback. A
-snapshot failure stops the update before DNF changes anything. On a non-Btrfs
-root the step records that no filesystem recovery point was required.
-
-List retained IDs and descriptions with:
+(including the mounted EFI tree), records the default kernel, then retains the
+five newest points. `/home` is a separate subvolume and is intentionally
+outside system rollback; on the standard layout `/var` (logs, containers,
+system Flatpaks) is inside `root` and rolls back with it. A snapshot failure
+stops the update before DNF changes anything. On a non-Btrfs root the step
+records that no filesystem recovery point was required.
 
 ```bash
-sudo cybexos-system-snapshot list
+sudo cybexos-system-snapshot list           # ID and description
+sudo cybexos-system-snapshot list --json    # also kernel and boot-menu status
 cybexos-update-run status --json | jq -r .snapshotId
 ```
 
-Rollback is deliberately a rescue operation, never an automatic action from a
-running, potentially damaged root. Boot Fedora rescue/live media, unlock the
-LUKS device, identify the root Btrfs filesystem and the separate `/boot` and
-EFI partitions with `lsblk -f`, then use the reviewed snapshot ID below. Device
-names are placeholders and must be replaced with the values from `lsblk`:
+### Trying a recovery point from the boot menu
+
+GRUB shows a **CybexOS recovery points** submenu with one entry per retained
+point whose kernel and initramfs are still in `/boot`. Fedora hides the menu
+after a successful boot: hold **Shift** (BIOS) or press **Esc** (UEFI) while
+the machine starts, or simply let a failed boot bring it up. An entry boots the
+read-only snapshot with its own kernel; the `cybexos-recovery` dracut module
+lays an in-memory overlay over it, so the system runs normally but nothing is
+written to the snapshot and every change disappears at the next restart.
+`/home` is the live one. The real `/boot` and EFI partitions are mounted
+read-only, so nothing installed during a recovery boot can leave a kernel
+behind without its modules. The desktop announces the recovery boot and offers
+to restore it; new recovery points, and therefore updates, are refused while it
+runs.
+
+Nothing here regenerates `grub.cfg` per snapshot. `/etc/grub.d/42_cybexos_recovery`
+makes `grub.cfg` source `/boot/grub2/cybexos-recovery.cfg`, which the helper
+rewrites atomically after every create, prune and restore, from a kernel-install
+hook when kernels change, and at boot (`cybexos-recovery-refresh.service`, which
+also publishes `/run/cybexos-snapshots/recovery-points.json` for the desktop).
+Entry titles and kernel arguments are reduced to a safe character set, so a
+description cannot inject GRUB commands. A kernel whose initramfs lacks the
+overlay module gets no entry; Ansible rebuilds initramfs images when the module
+or helper changes.
+
+### Restoring
+
+Restore from **Settings → System → Recovery points** (two presses; systemd asks
+the desktop's Polkit agent, as for updates) or from a terminal, in a normal or
+a recovery boot:
+
+```bash
+sudo cybexos-system-snapshot restore ID
+# From a recovery point older than this feature, use the helper the
+# initramfs provides instead:
+sudo /run/cybexos-recovery/cybexos-system-snapshot restore ID
+```
+
+Restore never reboots. It makes a writable copy of the point, puts back any of
+the point's kernels that `/boot` no longer has (from its archive), exchanges the
+copy with `root` in one atomic rename, and keeps the previous system as
+`root.replaced-TIMESTAMP`. It then retires kernels that the restored root has no
+modules for into the store and makes the point's kernel the GRUB default. The
+bootloader itself (GRUB, shim and the EFI tree) is left at its current version.
+Nested subvolumes such as `/var/lib/machines` are never part of a point and move
+to the restored root. An interrupted restore is finished or undone by the next
+`cybexos-system-snapshot refresh`, which runs at every boot.
+
+Restart to use the restored system, then review and reclaim space:
+
+```bash
+sudo cybexos-system-snapshot replaced
+sudo cybexos-system-snapshot discard root.replaced-TIMESTAMP
+```
+
+Discarding is refused while that root is still the running system.
+
+### Last resort: live media
+
+If neither the default entry nor a recovery entry boots, boot Fedora
+rescue/live media, unlock the LUKS device, identify the root Btrfs filesystem
+and the separate `/boot` and EFI partitions with `lsblk -f`, then use the
+reviewed snapshot ID below. Device names are placeholders and must be replaced
+with the values from `lsblk`:
 
 ```bash
 mount -o subvolid=5 /dev/mapper/ROOT_CRYPT /mnt
@@ -382,6 +442,12 @@ Reboot into the default entry and run `sudo restorecon -RF /boot` followed by
 and user session are confirmed healthy; deleting it is a separate, explicit
 space-reclamation decision. These recovery points do not replace backups:
 they share the same physical Btrfs filesystem and cannot survive device loss.
+
+`tests/system-snapshot` covers the helper against fixtures (retention, menu
+generation and escaping, kernel selection, restore ordering and interruption,
+the overlay hook). Booting a recovery entry and restoring from it on real
+hardware have not yet been qualified end to end; test them in a disposable VM
+before relying on them.
 
 Ansible's `cybexos` callback is intentionally compact: unchanged and skipped tasks
 are quiet, changes are one line, and failures include a bounded diagnostic.

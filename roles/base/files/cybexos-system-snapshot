@@ -1,141 +1,1022 @@
-#!/usr/bin/env bash
-# Create a bounded, read-only Btrfs recovery point before package/config work.
-# /home is a separate subvolume and is deliberately not rolled back.
-set -euo pipefail
-umask 077
+#!/usr/bin/python3
+"""Create, boot and restore bounded read-only Btrfs recovery points.
 
-usage() {
-  printf 'Usage: cybexos-system-snapshot create [DESCRIPTION]\n' >&2
-  printf '       cybexos-system-snapshot list\n' >&2
-  exit 2
+A recovery point is a read-only snapshot of the `root` subvolume plus an
+archive of /boot, taken before package or configuration work. /home is a
+separate subvolume and is never rolled back.
+
+  create [DESCRIPTION]  take a recovery point; prints its ID last
+  list [--json]         retained recovery points
+  restore ID            make a recovery point the next boot's `root`
+  replaced [--json]     roots that restore set aside
+  discard NAME          delete one set-aside root
+  refresh               rewrite the GRUB recovery submenu and desktop index
+
+Each retained point whose kernel is still installed gets a GRUB entry. That
+entry boots the read-only snapshot under an in-memory overlay (the
+cybexos-recovery dracut module), so trying a point never changes it.
+"""
+from __future__ import annotations
+
+import contextlib
+import datetime
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+PROGRAM = "cybexos-system-snapshot"
+KEEP = 5
+ID_PATTERN = re.compile(r"^[0-9]{8}T[0-9]{6}Z-[0-9]+$")
+STAMP_PATTERN = re.compile(r"^[0-9]{8}T[0-9]{6}Z$")
+REPLACED_PATTERN = re.compile(r"^root\.replaced-([0-9]{8}T[0-9]{6}Z)$")
+INCOMING_PATTERN = re.compile(r"^root\.incoming-([0-9]{8}T[0-9]{6}Z)$")
+KERNEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
+# Kernel arguments are copied from root-owned BLS entries, but grub.cfg is a
+# script: anything outside this set (GRUB variables, quotes, braces) is dropped.
+SAFE_ARGUMENT = re.compile(r"^[A-Za-z0-9_.,:/=+@%-]+$")
+SAFE_PATH = re.compile(r"^/[A-Za-z0-9_.+/-]+$")
+SAFE_UUID = re.compile(r"^[A-Za-z0-9-]{4,64}$")
+# Descriptions are free text; menu titles keep only plainly printable ASCII.
+UNSAFE_TITLE = re.compile(r"[^A-Za-z0-9 ._:+()-]")
+GRUB_MODULES = {"ext2": "ext2", "ext3": "ext2", "ext4": "ext2", "btrfs": "btrfs",
+                "xfs": "xfs", "vfat": "fat"}
+MENU_NAME = "cybexos-recovery.cfg"
+INDEX_NAME = "recovery-points.json"
+DRACUT_MARKER = "cybexos-recovery"
+
+
+class Failure(Exception):
+    """A refusal or failed step, reported without a traceback."""
+
+
+def setting(name: str, default: str) -> str:
+    return os.environ.get(name) or default
+
+
+BOOT = Path(setting("CYBEXOS_SNAPSHOT_BOOT", "/boot"))
+SYSROOT = Path(setting("CYBEXOS_SNAPSHOT_SYSROOT", "/"))
+CMDLINE = Path(setting("CYBEXOS_SNAPSHOT_CMDLINE", "/proc/cmdline"))
+RUNTIME = Path(setting("CYBEXOS_SNAPSHOT_RUNTIME", "/run/cybexos-snapshots"))
+RECOVERY_LOWER = Path(setting("CYBEXOS_SNAPSHOT_RECOVERY_LOWER", "/run/cybexos-recovery/lower"))
+
+
+def warn(message: str) -> None:
+    print(f"{PROGRAM}: {message}", file=sys.stderr, flush=True)
+
+
+def run(args: list[str], capture: bool = False, check: bool = True) -> subprocess.CompletedProcess:
+    try:
+        return subprocess.run(args, check=check, text=True,
+                              stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
+                              stderr=subprocess.PIPE if capture else None)
+    except FileNotFoundError as error:
+        raise Failure(f"required tool is missing: {args[0]}") from error
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or "").strip().splitlines()
+        raise Failure(f"{' '.join(args[:3])} failed" + (f": {detail[-1]}" if detail else "")) from error
+
+
+def output(args: list[str]) -> str:
+    return run(args, capture=True).stdout.strip()
+
+
+def optional_output(args: list[str]) -> str:
+    try:
+        result = subprocess.run(args, check=False, text=True, capture_output=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def findmnt(field: str, target: Path | str) -> str:
+    return optional_output(["findmnt", "--noheadings", "--output", field, "--target", str(target)])
+
+
+def now() -> datetime.datetime:
+    fixed = os.environ.get("CYBEXOS_SNAPSHOT_NOW")
+    if fixed:
+        return datetime.datetime.strptime(fixed, "%Y%m%dT%H%M%SZ").replace(tzinfo=datetime.timezone.utc)
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def stamp() -> str:
+    return now().strftime("%Y%m%dT%H%M%SZ")
+
+
+def iso_from_stamp(value: str) -> str:
+    return f"{value[0:4]}-{value[4:6]}-{value[6:8]}T{value[9:11]}:{value[11:13]}:{value[13:15]}Z"
+
+
+def version_key(version: str) -> list:
+    return [(0, int(part), "") if part.isdigit() else (1, 0, part)
+            for part in re.split(r"(\d+)", version) if part]
+
+
+def atomic_write(path: Path, text: str, mode: int = 0o644) -> bool:
+    """Replace path when its content differs; report whether it changed."""
+    try:
+        if path.read_text() == text:
+            return False
+    except OSError:
+        pass
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle, name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(handle, "w") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(name, mode)
+        os.replace(name, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(name)
+        raise
+    return True
+
+
+# ---- the running system ------------------------------------------------------
+
+def recovery_boot_id() -> str:
+    try:
+        tokens = CMDLINE.read_text().split()
+    except OSError:
+        return ""
+    for token in tokens:
+        if token.startswith("cybexos.recovery="):
+            value = token.split("=", 1)[1]
+            return value if ID_PATTERN.match(value) else ""
+    return ""
+
+
+class Layout:
+    """Where the root Btrfs filesystem is, or why this host is unsupported."""
+
+    def __init__(self, kind: str, uuid: str = "", message: str = "",
+                 recovery: str = "", running: str = "") -> None:
+        self.kind = kind            # btrfs | recovery | none | unsupported
+        self.uuid = uuid
+        self.message = message
+        self.recovery = recovery    # recovery point booted with an overlay
+        self.running = running      # subvolume path currently mounted as /
+
+    @property
+    def usable(self) -> bool:
+        return self.kind in ("btrfs", "recovery")
+
+    @property
+    def pending_reboot(self) -> bool:
+        return self.kind == "btrfs" and self.running != "/root"
+
+
+def detect_layout() -> Layout:
+    fstype = findmnt("FSTYPE", "/")
+    recovery = recovery_boot_id()
+    home = findmnt("FSROOT", "/home")
+    if fstype == "btrfs":
+        running = findmnt("FSROOT", "/")
+        # After a restore the running root keeps its mount but is renamed.
+        if (running != "/root" and not REPLACED_PATTERN.match(running.lstrip("/"))) or home != "/home":
+            return Layout("unsupported", message="unsupported Btrfs layout: expected separate /root and /home subvolumes")
+        uuid = findmnt("UUID", "/")
+        if not SAFE_UUID.match(uuid):
+            return Layout("unsupported", message="could not resolve the root Btrfs UUID")
+        return Layout("btrfs", uuid=uuid, running=running)
+    if fstype == "overlay" and recovery:
+        lower_root = findmnt("FSROOT", RECOVERY_LOWER)
+        if (findmnt("FSTYPE", RECOVERY_LOWER) != "btrfs"
+                or lower_root != f"/cybexos-snapshots/root/{recovery}" or home != "/home"):
+            return Layout("unsupported", recovery=recovery,
+                          message="this recovery boot does not have the expected snapshot mount")
+        uuid = findmnt("UUID", RECOVERY_LOWER)
+        if not SAFE_UUID.match(uuid):
+            return Layout("unsupported", recovery=recovery, message="could not resolve the recovery point's Btrfs UUID")
+        return Layout("recovery", uuid=uuid, recovery=recovery, running=lower_root)
+    return Layout("none", message="root filesystem is not Btrfs")
+
+
+@contextlib.contextmanager
+def opened_store(layout: Layout, create: bool):
+    """Mount the top level, lock the store, and yield it (None when absent)."""
+    with toplevel(layout.uuid) as top:
+        store = Store(top)
+        try:
+            yield store if store.open(create=create) else None
+        finally:
+            store.close()
+
+
+@contextlib.contextmanager
+def toplevel(uuid: str):
+    fixture = os.environ.get("CYBEXOS_SNAPSHOT_TOPLEVEL")
+    if fixture:
+        yield Path(fixture)
+        return
+    mountpoint = Path(tempfile.mkdtemp(prefix="cybexos-snapshot.", dir="/run"))
+    try:
+        run(["mount", "-t", "btrfs", "-o", "subvolid=5", f"UUID={uuid}", str(mountpoint)])
+        try:
+            yield mountpoint
+        finally:
+            subprocess.run(["umount", str(mountpoint)], check=False)
+    finally:
+        with contextlib.suppress(OSError):
+            mountpoint.rmdir()
+
+
+def is_subvolume(path: Path) -> bool:
+    return subprocess.run(["btrfs", "subvolume", "show", str(path)], check=False,
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
+def subvolume_uuid(path: Path) -> str:
+    text = optional_output(["btrfs", "subvolume", "show", str(path)])
+    for line in text.splitlines():
+        key, _, value = line.strip().partition(":")
+        if key == "UUID":
+            return value.strip()
+    return ""
+
+
+class Store:
+    def __init__(self, top: Path) -> None:
+        self.top = top
+        self.path = top / "cybexos-snapshots"
+        self.roots = self.path / "root"
+        self.boot = self.path / "boot"
+        self.metadata = self.path / "metadata"
+        self.replaced = self.path / "replaced"
+        self._lock = None
+
+    def open(self, create: bool) -> bool:
+        if not self.path.exists():
+            if not create:
+                return False
+            run(["btrfs", "subvolume", "create", str(self.path)])
+        elif not is_subvolume(self.path):
+            raise Failure(f"snapshot store exists but is not a Btrfs subvolume: {self.path}")
+        for directory in (self.roots, self.boot, self.metadata, self.replaced):
+            directory.mkdir(parents=True, exist_ok=True)
+        # Same lock file and flock semantics as earlier shell releases.
+        self._lock = open(self.path / ".lock", "a")
+        fcntl.flock(self._lock, fcntl.LOCK_EX)
+        return True
+
+    def close(self) -> None:
+        # An open lock keeps the temporary top-level mount busy.
+        if self._lock is not None:
+            self._lock.close()
+            self._lock = None
+
+    def ids(self) -> list[str]:
+        return sorted(entry.name for entry in self.roots.iterdir()
+                      if entry.is_dir() and ID_PATTERN.match(entry.name))
+
+    def description(self, point: str) -> str:
+        try:
+            return (self.metadata / f"{point}.meta").read_text().splitlines()[0]
+        except (OSError, IndexError):
+            return ""
+
+    def recorded_kernel(self, point: str) -> str:
+        try:
+            value = (self.metadata / f"{point}.kernel").read_text().strip()
+        except OSError:
+            return ""
+        return value if KERNEL_PATTERN.match(value) else ""
+
+
+def installed_kernels(root: Path) -> list[str]:
+    """Kernel versions whose modules (and image) exist below root."""
+    modules = root / "usr/lib/modules"
+    try:
+        return sorted((entry.name for entry in modules.iterdir()
+                       if KERNEL_PATTERN.match(entry.name) and (entry / "vmlinuz").is_file()),
+                      key=version_key)
+    except OSError:
+        return []
+
+
+def point_kernel(store: Store, point: str, entries: dict) -> str:
+    recorded = store.recorded_kernel(point)
+    if recorded:
+        return recorded
+    # Points from earlier releases recorded no kernel: prefer the newest one
+    # whose modules are inside the snapshot and whose entry is still in /boot.
+    candidates = [version for version in installed_kernels(store.roots / point) if version in entries]
+    return candidates[-1] if candidates else ""
+
+
+def current_kernel() -> str:
+    candidates = []
+    default = Path(optional_output(["grubby", "--default-kernel"])).name
+    if default.startswith("vmlinuz-"):
+        candidates.append(default[len("vmlinuz-"):])
+    candidates.append(optional_output(["uname", "-r"]))
+    installed = set(installed_kernels(SYSROOT))
+    for candidate in candidates:
+        if candidate in installed:
+            return candidate
+    return ""
+
+
+# ---- boot loader entries -----------------------------------------------------
+
+KERNEL_FILES = ("vmlinuz-{v}", "initramfs-{v}.img", "System.map-{v}", "config-{v}",
+                "symvers-{v}.xz", ".vmlinuz-{v}.hmac")
+
+
+def is_rescue(version: str) -> bool:
+    return version.startswith("0-rescue")
+
+
+def boot_entries() -> dict[str, dict]:
+    """BLS entries keyed by kernel version."""
+    entries: dict[str, dict] = {}
+    try:
+        files = sorted((BOOT / "loader/entries").glob("*.conf"))
+    except OSError:
+        return entries
+    for path in files:
+        entry: dict = {"id": path.stem, "path": path, "initrd": []}
+        try:
+            lines = path.read_text(errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            parts = line.strip().split(None, 1)
+            if len(parts) != 2 or parts[0].startswith("#"):
+                continue
+            key, value = parts[0], parts[1].strip()
+            if key == "initrd":
+                entry["initrd"].extend(value.split())
+            elif key in ("title", "version", "linux", "options"):
+                entry[key] = value
+        linux = Path(entry.get("linux", "")).name
+        version = entry.get("version") or (linux[len("vmlinuz-"):] if linux.startswith("vmlinuz-") else "")
+        if version and KERNEL_PATTERN.match(version):
+            entries.setdefault(version, entry)
+    return entries
+
+
+def grubenv_kernelopts() -> str:
+    text = optional_output(["grub2-editenv", str(BOOT / "grub2/grubenv"), "list"])
+    for line in text.splitlines():
+        if line.startswith("kernelopts="):
+            return line.split("=", 1)[1]
+    return ""
+
+
+def recovery_arguments(options: str, point: str) -> list[str] | None:
+    """The default entry's arguments, rooted in the read-only snapshot."""
+    arguments: list[str] = []
+    flags: list[str] = []
+    for token in options.split():
+        if "$" in token or token in ("ro", "rw") or token.startswith(("BOOT_IMAGE=", "cybexos.recovery=")):
+            continue
+        if token.startswith("rootflags="):
+            flags = [flag for flag in token.split("=", 1)[1].split(",")
+                     if flag and not flag.startswith(("subvol=", "subvolid="))]
+            continue
+        if not SAFE_ARGUMENT.match(token):
+            warn(f"leaving an unusual kernel argument out of the recovery entry: {token[:40]!r}")
+            continue
+        arguments.append(token)
+    if not any(token.startswith("root=") for token in arguments):
+        return None
+    flags.append(f"subvol=cybexos-snapshots/root/{point}")
+    return arguments + ["ro", "rootflags=" + ",".join(flags), f"cybexos.recovery={point}"]
+
+
+def initramfs_supports_recovery(image: Path) -> bool:
+    """Whether the image carries the overlay module; cached per image identity."""
+    try:
+        info = image.stat()
+    except OSError:
+        return False
+    identity = f"{image}:{info.st_size}:{info.st_mtime_ns}"
+    cache_path = RUNTIME / "recovery-initramfs.json"
+    try:
+        cache = json.loads(cache_path.read_text())
+        if not isinstance(cache, dict):
+            cache = {}
+    except (OSError, ValueError):
+        cache = {}
+    if identity in cache:
+        return bool(cache[identity])
+    listing = optional_output(["lsinitrd", str(image)])
+    supported = DRACUT_MARKER in listing
+    cache = {key: value for key, value in cache.items() if key.split(":", 1)[0] != str(image)}
+    cache[identity] = supported
+    with contextlib.suppress(OSError):
+        atomic_write(cache_path, json.dumps(cache, sort_keys=True) + "\n", 0o600)
+    return supported
+
+
+def menu_title(point: str, description: str) -> str:
+    when = f"{point[0:4]}-{point[4:6]}-{point[6:8]} {point[9:11]}:{point[11:13]} UTC"
+    clean = " ".join(UNSAFE_TITLE.sub(" ", description).split())[:60].strip()
+    return f"{when} - {clean}" if clean else when
+
+
+def quote(value: str) -> str:
+    # Every caller passes text already restricted to characters without quotes.
+    if "'" in value or "\n" in value:
+        raise Failure("refusing to quote unsafe boot menu text")
+    return f"'{value}'"
+
+
+def menu_entry(point: str, description: str, kernel: str, entry: dict | None,
+               boot_uuid: str, boot_module: str) -> tuple[list[str], str]:
+    """GRUB lines for one point, or the reason it cannot be booted."""
+    if not kernel:
+        return [], "no installed kernel matches this recovery point"
+    if entry is None:
+        return [], f"kernel {kernel} is no longer installed"
+    linux = entry.get("linux", "")
+    initrds = [path for path in entry["initrd"] if "$" not in path]
+    if not SAFE_PATH.match(linux) or not initrds or not all(SAFE_PATH.match(path) for path in initrds):
+        return [], f"the boot entry for kernel {kernel} has unusable paths"
+    for path in [linux, *initrds]:
+        if not (BOOT / Path(path).name).is_file():
+            return [], f"kernel {kernel} files are missing from /boot"
+    main_initrd = next((path for path in initrds if Path(path).name.startswith("initramfs-")), initrds[-1])
+    if not initramfs_supports_recovery(BOOT / Path(main_initrd).name):
+        return [], f"the kernel {kernel} initramfs lacks the recovery module"
+    arguments = recovery_arguments(entry.get("options", ""), point) \
+        or recovery_arguments(grubenv_kernelopts(), point)
+    if arguments is None:
+        return [], "the boot entry has no root= argument to reuse"
+    lines = [
+        f"  menuentry {quote(menu_title(point, description))} --id {quote('cybexos-recovery-' + point)} --class fedora {{",
+        "    load_video",
+        "    set gfxpayload=keep",
+        "    insmod gzio",
+        "    insmod part_gpt",
+        f"    insmod {boot_module}",
+        f"    search --no-floppy --fs-uuid --set=root {quote(boot_uuid)}",
+        f"    echo {quote('Starting CybexOS recovery point ' + point + '. Changes are kept in memory only.')}",
+        "    linux " + " ".join(quote(value) for value in [linux, *arguments]),
+        "    initrd " + " ".join(quote(value) for value in initrds),
+        "  }",
+    ]
+    return lines, ""
+
+
+# ---- regeneration --------------------------------------------------------------
+
+def describe_points(store: Store | None, entries: dict, with_menu: bool) -> tuple[list[dict], list[str]]:
+    points: list[dict] = []
+    menu: list[str] = []
+    if store is None:
+        return points, menu
+    boot_uuid = findmnt("UUID", BOOT)
+    boot_module = GRUB_MODULES.get(findmnt("FSTYPE", BOOT), "")
+    menu_possible = with_menu and bool(SAFE_UUID.match(boot_uuid)) and bool(boot_module)
+    for point in reversed(store.ids()):
+        description = store.description(point)
+        kernel = point_kernel(store, point, entries)
+        reason = "the boot menu is unavailable on this system"
+        lines: list[str] = []
+        if menu_possible:
+            lines, reason = menu_entry(point, description, kernel, entries.get(kernel), boot_uuid, boot_module)
+        menu.extend(lines)
+        points.append({
+            "id": point,
+            "description": description,
+            "created": iso_from_stamp(point.split("-", 1)[0]),
+            "kernel": kernel,
+            "bootable": bool(lines),
+            "reason": "" if lines else reason,
+            "archive": (store.boot / f"{point}.tar").is_file(),
+        })
+    return points, menu
+
+
+def replaced_roots(store: Store | None) -> list[dict]:
+    if store is None:
+        return []
+    roots = []
+    for entry in sorted(store.top.iterdir(), reverse=True):
+        match = REPLACED_PATTERN.match(entry.name)
+        if not match:
+            continue
+        record = read_record(store, entry.name)
+        roots.append({"name": entry.name, "created": iso_from_stamp(match.group(1)),
+                      "restoredFrom": record.get("point", ""), "state": record.get("state", "")})
+    return roots
+
+
+def write_menu(lines: list[str]) -> bool:
+    grub = BOOT / "grub2"
+    if not grub.is_dir():
+        return False
+    body = ["# Generated by cybexos-system-snapshot; `cybexos-system-snapshot refresh` rewrites it."]
+    if lines:
+        body += ["submenu 'CybexOS recovery points' --id 'cybexos-recovery' {", *lines, "}"]
+    return atomic_write(grub / MENU_NAME, "\n".join(body) + "\n", 0o600)
+
+
+def build_index(layout: Layout, store: Store | None, entries: dict, with_menu: bool) -> tuple[dict, list[str]]:
+    points, menu = describe_points(store, entries, with_menu)
+    index = {
+        "version": 1,
+        "supported": layout.usable,
+        "message": layout.message,
+        "recoveryBoot": layout.recovery,
+        "pendingReboot": layout.pending_reboot,
+        "bootMenu": bool(menu),
+        "points": points,
+        "replaced": replaced_roots(store),
+    }
+    return index, menu
+
+
+def regenerate(layout: Layout, store: Store | None) -> bool:
+    """Rewrite the boot submenu and the desktop index; report a menu change."""
+    entries = boot_entries() if layout.usable else {}
+    index, menu = build_index(layout, store, entries, with_menu=True)
+    # An unsupported host gets no menu file, but a stale one is emptied.
+    changed = False
+    if layout.usable or (BOOT / "grub2" / MENU_NAME).exists():
+        try:
+            changed = write_menu(menu)
+        except OSError as error:
+            # A recovery boot keeps /boot read-only; the next normal boot refreshes.
+            warn(f"could not rewrite the recovery boot menu: {error}")
+    try:
+        RUNTIME.mkdir(parents=True, exist_ok=True)
+        os.chmod(RUNTIME, 0o755)
+        atomic_write(RUNTIME / INDEX_NAME, json.dumps(index, indent=2) + "\n", 0o644)
+    except OSError as error:
+        warn(f"could not write the recovery index: {error}")
+    return changed
+
+
+def regenerate_quietly(layout: Layout, store: Store | None) -> None:
+    try:
+        regenerate(layout, store)
+    except (Failure, OSError) as error:
+        warn(f"could not refresh the recovery boot menu: {error}")
+
+
+# ---- restore records -------------------------------------------------------
+
+def record_path(store: Store, name: str) -> Path:
+    return store.replaced / f"{name}.json"
+
+
+def read_record(store: Store, name: str) -> dict:
+    try:
+        value = json.loads(record_path(store, name).read_text())
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def write_record(store: Store, name: str, record: dict) -> None:
+    atomic_write(record_path(store, name), json.dumps(record, indent=2, sort_keys=True) + "\n", 0o600)
+
+
+def boot_backup(store: Store, name: str) -> Path:
+    return store.replaced / f"{name}.boot"
+
+
+def selinux_enabled() -> bool:
+    return Path("/sys/fs/selinux/enforce").exists() and shutil.which("restorecon") is not None
+
+
+def relabel(paths: list[Path]) -> None:
+    existing = [str(path) for path in paths if path.exists()]
+    if existing and selinux_enabled():
+        subprocess.run(["restorecon", "-F", *existing], check=False)
+
+
+def stage_boot_files(store: Store, point: str, candidate: Path, name: str) -> list[Path]:
+    """Put every restored kernel back in /boot, taking missing files from the archive."""
+    wanted = []
+    entries = boot_entries()
+    for version in installed_kernels(candidate):
+        wanted += [f"boot/{pattern.format(v=version)}" for pattern in KERNEL_FILES
+                   if not (BOOT / pattern.format(v=version)).exists()]
+        if version not in entries:
+            wanted.append(f"entry:{version}")
+    if not wanted:
+        return []
+    archive = store.boot / f"{point}.tar"
+    if not archive.is_file():
+        raise Failure(f"recovery point {point} has no /boot archive")
+    members = set(output(["tar", "--list", "--file", str(archive)]).splitlines())
+    selected = []
+    for item in wanted:
+        if item.startswith("entry:"):
+            version = item.split(":", 1)[1]
+            selected += [member for member in members
+                         if member.startswith("boot/loader/entries/") and member.endswith(f"-{version}.conf")]
+        elif item in members:
+            selected.append(item)
+    if not selected:
+        return []
+    staging = BOOT / f".cybexos-restore-{name}"
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(mode=0o700)
+    placed = []
+    try:
+        run(["tar", "--extract", "--file", str(archive), "--directory", str(staging),
+             "--acls", "--xattrs", "--selinux", "--numeric-owner", *sorted(selected)])
+        for member in sorted(selected):
+            source = staging / member
+            target = BOOT / member[len("boot/"):]
+            if source.is_file() and not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                os.rename(source, target)
+                placed.append(target)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    relabel(placed)
+    return placed
+
+
+def reconcile_boot(store: Store, record: dict) -> None:
+    """Retire kernels the restored root cannot run and boot its own by default."""
+    restored = store.top / "root"
+    kept = set(installed_kernels(restored))
+    # Never retire kernels unless the restored root demonstrably has its own.
+    if record.get("kernel") not in kept:
+        raise Failure(f"the restored root does not contain kernel {record.get('kernel')}")
+    backup = boot_backup(store, record["name"])
+    for version, entry in boot_entries().items():
+        if is_rescue(version) or version in kept:
+            continue
+        backup.mkdir(parents=True, exist_ok=True)
+        moved = [entry["path"]] + [BOOT / pattern.format(v=version) for pattern in KERNEL_FILES]
+        for path in moved:
+            if path.exists():
+                destination = backup / path.relative_to(BOOT)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(path), str(destination))
+    entry = boot_entries().get(record["kernel"])
+    if entry is None:
+        raise Failure(f"no boot entry exists for the restored kernel {record['kernel']}")
+    grubenv = BOOT / "grub2/grubenv"
+    if grubenv.parent.is_dir():
+        # grubby --set-default writes the same variable; grub2-editenv creates
+        # a missing environment block.
+        run(["grub2-editenv", str(grubenv), "set", f"saved_entry={entry['id']}"])
+        subprocess.run(["grub2-editenv", str(grubenv), "unset", "next_entry"], check=False)
+
+
+def move_nested_subvolumes(store: Store, old_name: str) -> None:
+    """Nested subvolumes are never in recovery points; keep them with the live root."""
+    listing = optional_output(["btrfs", "subvolume", "list", "-o", str(store.top / old_name)])
+    prefix = f"{old_name}/"
+    for line in listing.splitlines():
+        path = line.split(" path ", 1)[-1].strip()
+        if not path.startswith(prefix):
+            continue
+        relative = path[len(prefix):]
+        source = store.top / old_name / relative
+        target = store.top / "root" / relative
+        try:
+            if not target.is_dir() or any(target.iterdir()):
+                warn(f"kept nested subvolume {relative} in {old_name}: the restored root has no empty place for it")
+                continue
+            target.rmdir()
+            os.rename(source, target)
+        except OSError as error:
+            warn(f"kept nested subvolume {relative} in {old_name}: {error}")
+
+
+def finish_restore(store: Store, name: str, record: dict) -> None:
+    if record.get("state") == "swapped":
+        reconcile_boot(store, record)
+        record["state"] = "complete"
+        write_record(store, name, record)
+
+
+def writable_boot() -> None:
+    options = findmnt("OPTIONS", BOOT).split(",")
+    if "ro" in options:
+        run(["mount", "-o", "remount,rw", str(BOOT)])
+
+
+def undo_prepared(store: Store, name: str, record: dict, incoming: Path) -> bool:
+    """Discard a restore that never exchanged roots. Refuses anything ambiguous."""
+    if incoming.exists():
+        incoming_uuid = subvolume_uuid(incoming)
+        if not incoming_uuid or incoming_uuid != record.get("newRoot") \
+                or subvolume_uuid(store.top / "root") != record.get("oldRoot"):
+            warn(f"left {incoming.name} for inspection: it is not an unused restore copy")
+            return False
+        subprocess.run(["btrfs", "subvolume", "delete", str(incoming)], check=False,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Staged kernels were absent before; the current root may not have their modules.
+    for relative in record.get("staged", []):
+        staged = BOOT / relative
+        if Path(relative).parts and ".." not in Path(relative).parts and staged.is_file():
+            with contextlib.suppress(OSError):
+                staged.unlink()
+    with contextlib.suppress(OSError):
+        record_path(store, name).unlink()
+    return True
+
+
+def complete_interrupted(store: Store) -> None:
+    """Finish or roll back a restore that stopped part-way."""
+    for path in sorted(store.replaced.glob("root.replaced-*.json")):
+        name = path.stem
+        match = REPLACED_PATTERN.match(name)
+        record = read_record(store, name)
+        if not match or record.get("state") not in ("prepared", "swapped"):
+            continue
+        incoming = store.top / f"root.incoming-{match.group(1)}"
+        if record["state"] == "prepared":
+            if incoming.exists() and subvolume_uuid(incoming) == record.get("oldRoot") \
+                    and subvolume_uuid(store.top / "root") == record.get("newRoot"):
+                # The exchange happened; only the rename to its final name is missing.
+                os.rename(incoming, store.top / name)
+            elif not (store.top / name).exists():
+                if undo_prepared(store, name, record, incoming):
+                    warn(f"removed an incomplete restore of {record.get('point', 'a recovery point')}")
+                continue
+            record["state"] = "swapped"
+            write_record(store, name, record)
+            move_nested_subvolumes(store, name)
+        try:
+            finish_restore(store, name, record)
+        except Failure as error:
+            warn(f"could not finish restoring /boot for {name}: {error}")
+
+
+# ---- commands --------------------------------------------------------------------
+
+def interrupt_for_test(stage: str) -> None:
+    if (os.environ.get("CYBEXOS_SYSTEM_SNAPSHOT_TESTING") == "1"
+            and os.environ.get("CYBEXOS_SNAPSHOT_TEST_INTERRUPT") == stage):
+        os._exit(9)
+
+
+def require_root() -> None:
+    if os.environ.get("CYBEXOS_SYSTEM_SNAPSHOT_TESTING") != "1" and os.geteuid() != 0:
+        raise Failure(f"{PROGRAM} must run as root")
+
+
+def command_create(arguments: list[str]) -> int:
+    if len(arguments) > 1:
+        return usage()
+    layout = detect_layout()
+    if layout.kind == "recovery":
+        raise Failure("refusing to create a recovery point from a temporary recovery boot; "
+                      "restore it or restart into the installed system first")
+    if layout.kind == "none":
+        print("skipped: root filesystem is not Btrfs")
+        return 0
+    if layout.kind == "unsupported":
+        raise Failure(layout.message)
+    if layout.pending_reboot:
+        raise Failure("a restored recovery point is waiting for a restart; restart before changing the system")
+    for tool in ("btrfs", "findmnt", "tar"):
+        if shutil.which(tool) is None:
+            raise Failure(f"required snapshot tool is missing: {tool}")
+    description = " ".join((arguments[0] if arguments else "manual recovery point").splitlines())[:120]
+    point = os.environ.get("CYBEXOS_SNAPSHOT_ID") or f"{stamp()}-{os.getpid()}"
+    if not ID_PATTERN.match(point):
+        raise Failure("invalid snapshot identifier")
+    with opened_store(layout, create=True) as store:
+        root_target = store.roots / point
+        archive = store.boot / f"{point}.tar"
+        if root_target.exists() or archive.exists():
+            raise Failure(f"snapshot already exists: {point}")
+        temporary = store.boot / f".{point}.tar.tmp"
+        try:
+            run(["tar", "--acls", "--xattrs", "--selinux", "--numeric-owner", "--create",
+                 "--file", str(temporary), "--directory", str(BOOT.parent), BOOT.name])
+            run(["sync", "-f", str(temporary)])
+            os.replace(temporary, archive)
+            run(["btrfs", "subvolume", "snapshot", "-r", str(SYSROOT), str(root_target)])
+            (store.metadata / f"{point}.meta").write_text(description + "\n")
+            # The kernel that boots this point from the recovery menu.
+            kernel = current_kernel()
+            if kernel:
+                (store.metadata / f"{point}.kernel").write_text(kernel + "\n")
+            (store.path / "latest").write_text(point + "\n")
+            run(["sync", "-f", str(store.path / "latest")])
+        except BaseException:
+            for leftover in (temporary, archive, store.metadata / f"{point}.meta",
+                             store.metadata / f"{point}.kernel"):
+                with contextlib.suppress(OSError):
+                    leftover.unlink()
+            if root_target.exists():
+                subprocess.run(["btrfs", "subvolume", "delete", str(root_target)], check=False,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            raise
+        # Five recovery points bound disk growth while retaining several
+        # independent transactions. Snapshots and archives rotate together.
+        snapshots = sorted(entry.name for entry in store.roots.iterdir() if entry.is_dir())
+        while len(snapshots) > KEEP:
+            oldest = snapshots.pop(0)
+            if not ID_PATTERN.match(oldest):
+                raise Failure(f"refusing to prune unexpected snapshot name: {oldest}")
+            run(["btrfs", "subvolume", "delete", str(store.roots / oldest)])
+            for leftover in (store.boot / f"{oldest}.tar", store.metadata / f"{oldest}.meta",
+                             store.metadata / f"{oldest}.kernel"):
+                with contextlib.suppress(FileNotFoundError):
+                    leftover.unlink()
+        regenerate_quietly(layout, store)
+    print(point, flush=True)
+    return 0
+
+
+def with_store(layout: Layout, create: bool, action):
+    with opened_store(layout, create) as store:
+        return action(store)
+
+
+def command_list(arguments: list[str]) -> int:
+    if arguments not in ([], ["--json"]):
+        return usage()
+    layout = detect_layout()
+
+    def action(store):
+        index, _ = build_index(layout, store, boot_entries(), with_menu=True)
+        return index
+
+    index = with_store(layout, False, action) if layout.usable else build_index(layout, None, {}, False)[0]
+    if arguments == ["--json"]:
+        print(json.dumps(index, indent=2))
+    else:
+        for point in sorted(index["points"], key=lambda item: item["id"]):
+            print(f"{point['id']}\t{point['description']}")
+    return 0
+
+
+def command_replaced(arguments: list[str]) -> int:
+    if arguments not in ([], ["--json"]):
+        return usage()
+    layout = detect_layout()
+    roots = with_store(layout, False, replaced_roots) if layout.usable else []
+    if arguments == ["--json"]:
+        print(json.dumps(roots, indent=2))
+    else:
+        for root in roots:
+            print(f"{root['name']}\trestored {root['restoredFrom'] or 'unknown'}\t{root['created']}")
+    return 0
+
+
+def command_refresh(arguments: list[str]) -> int:
+    if arguments not in ([], ["--quiet"]):
+        return usage()
+    layout = detect_layout()
+    if not layout.usable:
+        changed = regenerate(layout, None)
+    else:
+        def action(store):
+            if store is not None:
+                complete_interrupted(store)
+            return regenerate(layout, store)
+        changed = with_store(layout, False, action)
+    if changed and arguments != ["--quiet"]:
+        print("CHANGED")
+    return 0
+
+
+def command_restore(arguments: list[str]) -> int:
+    if len(arguments) != 1:
+        return usage()
+    point = arguments[0]
+    if not ID_PATTERN.match(point):
+        raise Failure("invalid recovery point identifier")
+    layout = detect_layout()
+    if not layout.usable:
+        raise Failure(layout.message or "restore needs the managed Btrfs layout")
+    if shutil.which("mv") is None or "--exchange" not in optional_output(["mv", "--help"]):
+        raise Failure("this system's mv cannot exchange subvolumes atomically (coreutils 9.5 or later)")
+    with opened_store(layout, create=False) as store:
+        if store is None:
+            raise Failure("there are no recovery points")
+        top = store.top
+        complete_interrupted(store)
+        source = store.roots / point
+        if not source.is_dir() or not is_subvolume(source):
+            raise Failure(f"recovery point not found: {point}")
+        live = top / "root"
+        if not live.is_dir() or not is_subvolume(live):
+            raise Failure("the root subvolume is missing; use the live-media rescue procedure")
+        kernel = point_kernel(store, point, boot_entries()) or next(iter(reversed(installed_kernels(source))), "")
+        if not kernel:
+            raise Failure(f"recovery point {point} contains no kernel")
+        name = f"root.replaced-{stamp()}"
+        incoming = top / f"root.incoming-{name.split('-', 1)[1]}"
+        if (top / name).exists() or incoming.exists():
+            raise Failure("a restore started this second already; try again")
+        # A recovery boot mounts the real /boot read-only; only restore writes it.
+        if layout.kind == "recovery":
+            writable_boot()
+        # 1. A writable copy, recorded so an interruption can be undone.
+        # Nothing that boots has changed yet.
+        run(["btrfs", "subvolume", "snapshot", str(source), str(incoming)])
+        record = {"name": name, "point": point, "kernel": kernel, "state": "prepared",
+                  "created": iso_from_stamp(name.split("-", 1)[1]), "staged": [],
+                  "oldRoot": subvolume_uuid(live), "newRoot": subvolume_uuid(incoming)}
+        placed: list[Path] = []
+        try:
+            write_record(store, name, record)
+            # 2. Make every kernel of the restored root bootable from /boot.
+            placed = stage_boot_files(store, point, incoming, name)
+            record["staged"] = [str(path.relative_to(BOOT)) for path in placed]
+            write_record(store, name, record)
+            if kernel not in boot_entries():
+                raise Failure(f"kernel {kernel} of {point} cannot be made bootable from /boot")
+            interrupt_for_test("before-exchange")
+            # 3. One atomic exchange: `root` is the restored copy from here on.
+            run(["mv", "--exchange", "--no-target-directory", str(incoming), str(live)])
+        except BaseException:
+            undo_prepared(store, name, record, incoming)
+            raise
+        interrupt_for_test("after-exchange")
+        os.rename(incoming, top / name)
+        record["state"] = "swapped"
+        write_record(store, name, record)
+        move_nested_subvolumes(store, name)
+        # 4. Retire kernels the restored root lacks and make its kernel the default.
+        try:
+            finish_restore(store, name, record)
+        except Failure as error:
+            regenerate_quietly(layout, store)
+            raise Failure(f"recovery point {point} is now the system root, but /boot could not be "
+                          f"updated ({error}). Choose kernel {kernel} in the boot menu, then run "
+                          f"`{PROGRAM} refresh`.") from error
+        regenerate_quietly(layout, store)
+        if layout.kind == "recovery":
+            subprocess.run(["mount", "-o", "remount,ro", str(BOOT)], check=False)
+    print(f"Restored recovery point {point}. Restart to use it; the previous system is kept as {name}.")
+    return 0
+
+
+def command_discard(arguments: list[str]) -> int:
+    if len(arguments) != 1:
+        return usage()
+    name = arguments[0]
+    if not REPLACED_PATTERN.match(name):
+        raise Failure("expected a root.replaced-YYYYMMDDTHHMMSSZ name")
+    layout = detect_layout()
+    if not layout.usable:
+        raise Failure(layout.message)
+    if layout.running.lstrip("/") == name:
+        raise Failure(f"{name} is the running system; restart before discarding it")
+
+    def action(store):
+        if store is None or not (store.top / name).exists():
+            raise Failure(f"no set-aside root named {name}")
+        run(["btrfs", "subvolume", "delete", "--recursive", str(store.top / name)])
+        shutil.rmtree(boot_backup(store, name), ignore_errors=True)
+        with contextlib.suppress(FileNotFoundError):
+            record_path(store, name).unlink()
+        regenerate_quietly(layout, store)
+
+    with_store(layout, False, action)
+    print(f"Discarded {name}.")
+    return 0
+
+
+COMMANDS = {
+    "create": command_create,
+    "list": command_list,
+    "restore": command_restore,
+    "replaced": command_replaced,
+    "discard": command_discard,
+    "refresh": command_refresh,
 }
 
-action=${1:-}
-shift || true
-[[ $action == create || $action == list ]] || usage
-[[ $# -le 1 ]] || usage
-if [[ ${CYBEXOS_SYSTEM_SNAPSHOT_TESTING:-0} != 1 && $EUID -ne 0 ]]; then
-  printf 'cybexos-system-snapshot must run as root\n' >&2
-  exit 1
-fi
 
-if [[ $(findmnt --noheadings --output FSTYPE --target / | xargs) != btrfs ]]; then
-  printf 'skipped: root filesystem is not Btrfs\n'
-  exit 0
-fi
-root_subvolume=$(findmnt --noheadings --output FSROOT --target / | xargs)
-home_subvolume=$(findmnt --noheadings --output FSROOT --target /home | xargs)
-[[ $root_subvolume == /root && $home_subvolume == /home ]] || {
-  printf 'unsupported Btrfs layout: expected separate /root and /home subvolumes\n' >&2
-  exit 1
-}
-for tool in btrfs findmnt tar flock; do
-  command -v "$tool" >/dev/null 2>&1 || {
-    printf 'required snapshot tool is missing: %s\n' "$tool" >&2
-    exit 1
-  }
-done
+def usage() -> int:
+    print("Usage: cybexos-system-snapshot create [DESCRIPTION]\n"
+          "       cybexos-system-snapshot list [--json]\n"
+          "       cybexos-system-snapshot restore ID\n"
+          "       cybexos-system-snapshot replaced [--json]\n"
+          "       cybexos-system-snapshot discard root.replaced-STAMP\n"
+          "       cybexos-system-snapshot refresh [--quiet]", file=sys.stderr)
+    return 2
 
-temporary_mount=''
-created_root=''
-boot_tmp=''
-boot_target=''
-committed=false
-cleanup() {
-  if ! $committed; then
-    [[ -z $boot_tmp ]] || rm -f -- "$boot_tmp"
-    [[ -z $boot_target ]] || rm -f -- "$boot_target"
-    if [[ -n $created_root && -e $created_root ]]; then
-      btrfs subvolume delete "$created_root" >/dev/null 2>&1 || true
-    fi
-  fi
-  if [[ -n $temporary_mount ]]; then
-    umount -- "$temporary_mount" 2>/dev/null || true
-    rmdir -- "$temporary_mount" 2>/dev/null || true
-  fi
-}
-trap cleanup EXIT INT TERM
 
-top=${CYBEXOS_SNAPSHOT_TOPLEVEL:-}
-if [[ -z $top ]]; then
-  uuid=$(findmnt --noheadings --output UUID --target / | xargs)
-  [[ $uuid =~ ^[0-9A-Fa-f-]{16,}$ ]] || {
-    printf 'could not resolve the root Btrfs UUID\n' >&2
-    exit 1
-  }
-  temporary_mount=$(mktemp -d /run/cybexos-snapshot.XXXXXX)
-  mount -t btrfs -o subvolid=5 "UUID=$uuid" "$temporary_mount"
-  top=$temporary_mount
-fi
+def main(argv: list[str]) -> int:
+    if not argv or argv[0] not in COMMANDS:
+        return usage()
+    # Archives and metadata stay root-only; published files set their own mode.
+    os.umask(0o077)
+    try:
+        require_root()
+        return COMMANDS[argv[0]](argv[1:])
+    except Failure as error:
+        warn(str(error))
+        return 1
 
-store=$top/cybexos-snapshots
-if [[ ! -e $store ]]; then
-  btrfs subvolume create "$store" >/dev/null
-elif ! btrfs subvolume show "$store" >/dev/null 2>&1; then
-  printf 'snapshot store exists but is not a Btrfs subvolume: %s\n' "$store" >&2
-  exit 1
-fi
-root_snapshots=$store/root
-boot_archives=$store/boot
-metadata=$store/metadata
-mkdir -p -- "$root_snapshots" "$boot_archives" "$metadata"
-exec 9>"$store/.lock"
-flock 9
 
-if [[ $action == list ]]; then
-  for file in "$metadata"/*.meta; do
-    [[ -f $file ]] || continue
-    name=${file##*/}
-    printf '%s\t%s\n' "${name%.meta}" "$(<"$file")"
-  done
-  exit 0
-fi
-
-description=${1:-manual recovery point}
-description=${description//$'\n'/ }
-description=${description:0:120}
-id=${CYBEXOS_SNAPSHOT_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}
-[[ $id =~ ^[0-9]{8}T[0-9]{6}Z-[0-9]+$ ]] || {
-  printf 'invalid snapshot identifier\n' >&2
-  exit 1
-}
-root_target=$root_snapshots/$id
-boot_target=$boot_archives/$id.tar
-[[ ! -e $root_target && ! -e $boot_target ]] || {
-  printf 'snapshot already exists: %s\n' "$id" >&2
-  exit 1
-}
-
-boot_tmp=$boot_archives/.$id.tar.tmp
-tar --acls --xattrs --selinux --numeric-owner --create --file "$boot_tmp" /boot
-sync -f "$boot_tmp"
-mv -f -- "$boot_tmp" "$boot_target"
-if ! btrfs subvolume snapshot -r / "$root_target" >/dev/null; then
-  rm -f -- "$boot_target"
-  exit 1
-fi
-created_root=$root_target
-printf '%s\n' "$description" >"$metadata/$id.meta"
-printf '%s\n' "$id" >"$store/latest"
-sync -f "$store/latest"
-committed=true
-
-# Five recovery points bound disk growth while retaining several independent
-# package/config transactions. Root snapshots and their /boot archives rotate
-# as one unit.
-mapfile -t snapshots < <(
-  find "$root_snapshots" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
-    | LC_ALL=C sort
-)
-while ((${#snapshots[@]} > 5)); do
-  oldest=${snapshots[0]}
-  [[ $oldest =~ ^[0-9]{8}T[0-9]{6}Z-[0-9]+$ ]] || {
-    printf 'refusing to prune unexpected snapshot name: %s\n' "$oldest" >&2
-    exit 1
-  }
-  btrfs subvolume delete "$root_snapshots/$oldest" >/dev/null
-  rm -f -- "$boot_archives/$oldest.tar" "$metadata/$oldest.meta"
-  snapshots=("${snapshots[@]:1}")
-done
-
-printf '%s\n' "$id"
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
