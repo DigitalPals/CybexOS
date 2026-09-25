@@ -15,6 +15,24 @@
       - google-noto-color-emoji-fonts
       - fontawesome-fonts-all
       - fontawesome-fonts-web
+      # Fedora Workstation's default font set (comps group "fonts" and the
+      # default UI fonts), so installations match an upgraded workstation.
+      - aajohan-comfortaa-fonts
+      - adobe-source-code-pro-fonts
+      - adwaita-mono-fonts
+      - adwaita-sans-fonts
+      - gdouros-symbola-fonts
+      - google-noto-emoji-fonts
+      - jomolhari-fonts
+      - julietaula-montserrat-fonts
+      - madan-fonts
+      - open-sans-fonts
+      - paktype-naskh-basic-fonts
+      - rit-meera-new-fonts
+      - rit-rachana-fonts
+      - sil-padauk-fonts
+      - stix-fonts
+      - vazirmatn-vf-fonts
     state: present
   register: apps_default_font_packages
 

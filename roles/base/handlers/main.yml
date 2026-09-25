@@ -7,6 +7,8 @@
 - name: Reload systemd
   ansible.builtin.systemd_service:
     daemon_reload: true
+  # Anaconda's offline target has no running systemd; its first boot loads units.
+  when: not cybexos_offline | default(false) | bool
 
 - name: Restart TuneD PPD bridge
   ansible.builtin.systemd_service:

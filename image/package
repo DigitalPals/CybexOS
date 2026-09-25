@@ -165,6 +165,9 @@ def main():
     prepare_defaults(ROOT, payload, environment, inventory)
     prepare_provision(ROOT, payload)
     copy("roles/apps/files/cybexos-repository-policy", "usr/libexec/cybexos-repository-policy", True)
+    # The workstation's font family mappings; roles/apps/tasks/fonts.yml
+    # installs the same file on checkout deployments.
+    copy("roles/apps/files/49-cybexos-defaults.conf", "etc/fonts/conf.d/49-cybexos-defaults.conf")
     for name in ("brave-browser", "1password", "chatgpt", "tailscale"):
         copy(f"roles/apps/files/{name}.repo", f"usr/share/cybexos/repository-policy/{name}.repo")
     # The fonts are already checksum-pinned by the project. Preserve upstream

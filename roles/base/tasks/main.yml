@@ -470,84 +470,8 @@
     state: absent
   when: not passwordless_local_polkit | bool
 
-- name: Read the root filesystem type
-  ansible.builtin.command: findmnt --noheadings --output FSTYPE --target /
-  register: base_root_filesystem
-  changed_when: false
-  check_mode: false
-
-- name: Install weekly Btrfs scrub unit
-  ansible.builtin.copy:
-    dest: /etc/systemd/system/cybexos-btrfs-scrub.service
-    owner: root
-    group: root
-    mode: "0644"
-    content: |
-      [Unit]
-      Description=Scrub all mounted Btrfs filesystems
-      ConditionPathIsMountPoint=/
-      # Persistent=true catches a missed run up at the next boot or resume;
-      # never spend a battery charge reading the whole disk.
-      ConditionACPower=true
-
-      [Service]
-      Type=oneshot
-      Nice=19
-      IOSchedulingClass=idle
-      # The idle I/O class needs a scheduler that honors it, and NVMe uses
-      # none. Cap the read rate so a scrub stays in the background regardless.
-      ExecStart=/usr/bin/btrfs scrub start -B -d --limit 200M /
-  notify: Reload systemd
-  when: base_root_filesystem.stdout | trim == 'btrfs'
-
-- name: Install weekly Btrfs scrub timer
-  ansible.builtin.copy:
-    dest: /etc/systemd/system/cybexos-btrfs-scrub.timer
-    owner: root
-    group: root
-    mode: "0644"
-    content: |
-      [Unit]
-      Description=Weekly Btrfs scrub
-
-      [Timer]
-      OnCalendar=Sun *-*-* 03:30:00
-      RandomizedDelaySec=45m
-      Persistent=true
-
-      [Install]
-      WantedBy=timers.target
-  notify: Reload systemd
-  when: base_root_filesystem.stdout | trim == 'btrfs'
-
-- name: Enable weekly Btrfs scrub
-  ansible.builtin.systemd_service:
-    name: cybexos-btrfs-scrub.timer
-    enabled: true
-    state: started
-    daemon_reload: true
-  when: base_root_filesystem.stdout | trim == 'btrfs'
-
-- name: Stop and disable the Btrfs scrub timer on other filesystems
-  ansible.builtin.systemd_service:
-    name: cybexos-btrfs-scrub.timer
-    enabled: false
-    state: stopped
-    daemon_reload: true
-  failed_when: false
-  when:
-    - base_root_filesystem.stdout | trim != 'btrfs'
-    - not ansible_check_mode
-
-- name: Remove Btrfs-only scrub units on other filesystems
-  ansible.builtin.file:
-    path: "/etc/systemd/system/{{ item }}"
-    state: absent
-  loop:
-    - cybexos-btrfs-scrub.service
-    - cybexos-btrfs-scrub.timer
-  notify: Reload systemd
-  when: base_root_filesystem.stdout | trim != 'btrfs'
+- name: Schedule weekly Btrfs scrubs
+  ansible.builtin.import_tasks: btrfs-scrub.yml
 
 # Bootable recovery points and restore: GRUB submenu, dracut overlay module,
 # kernel-install hook and boot-time refresh.

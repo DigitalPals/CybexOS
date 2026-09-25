@@ -29,6 +29,81 @@ base_required_packages:
 - upower
 - zram-generator-defaults
 - zstd
+# Hardware support. Fedora ships this firmware as weak dependencies of
+# linux-firmware, which the image does not install.
+- amd-ucode-firmware
+- atheros-firmware
+- b43-fwcutter
+- b43-openfwwf
+- brcmfmac-firmware
+- iwlegacy-firmware
+- iwlwifi-dvm-firmware
+- libertas-firmware
+- microcode_ctl
+- mt7xxx-firmware
+- nxpwireless-firmware
+- qcom-wwan-firmware
+- realtek-firmware
+- switcheroo-control
+- tiwilink-firmware
+- usb_modeswitch
+# System services that Fedora's presets enable when installed.
+- bluez-obexd
+- cronie
+- crontabs
+- irqbalance
+- logrotate
+- plocate
+- systemd-oomd-defaults
+- uresourced
+- xdg-user-dirs
+# Phones, cameras and network shares in the file manager.
+- gvfs-afc
+- gvfs-archive
+- gvfs-gphoto2
+- gvfs-mtp
+- gvfs-smb
+# VPN connection types for NetworkManager.
+- NetworkManager-openconnect-gnome
+- NetworkManager-openvpn-gnome
+- NetworkManager-ssh-gnome
+- NetworkManager-vpnc-gnome
+# Printing and scanning.
+- cups-browsed
+- gutenprint
+- gutenprint-cups
+- hplip
+- libsane-hpaio
+- sane-backends-drivers-scanners
+- simple-scan
+- system-config-printer-udev
+# GStreamer codecs; openh264 comes from Fedora's Cisco repository.
+- gstreamer1-plugin-libav
+- gstreamer1-plugin-openh264
+- gstreamer1-plugins-bad-free
+- gstreamer1-plugins-ugly-free
+# Input methods and accessibility.
+- ibus
+- ibus-anthy
+- ibus-chewing
+- ibus-gtk3
+- ibus-gtk4
+- ibus-hangul
+- ibus-libpinyin
+- ibus-m17n
+- ibus-typing-booster
+- orca
+- speech-dispatcher
+# Command-line tools.
+- bc
+- bind-utils
+- compsize
+- man-pages
+- mtr
+- nmap-ncat
+- tcpdump
+- traceroute
+- whois
 base_core_services:
 - NetworkManager.service
 - firewalld.service

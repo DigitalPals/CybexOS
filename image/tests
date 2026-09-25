@@ -9,6 +9,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import yaml
+
 from application_payload import relativize_seed_links, include_applications
 
 ROOT = Path(__file__).resolve().parent
@@ -65,6 +67,53 @@ class OfflineApplications(unittest.TestCase):
             self.assertEqual(os.readlink(seed / "bin/app"), "../tools/app")
             self.assertEqual((seed / "bin/app").read_text(), "offline")
             self.assertEqual(os.readlink(seed / "bin/system"), "/usr/bin/python3")
+
+    def test_every_package_task_is_in_the_image_or_deliberately_excluded(self):
+        # Tasks whose packages reach the image through package_names() by
+        # variable, by an explicit name, or as dependencies of those.
+        by_contract = {
+            ("roles/apps/tasks/packages.yml", "Install the required Fedora and RPM Fusion application packages"),
+            ("roles/apps/tasks/packages.yml", "Install the Tailscale package when selected"),
+            ("roles/apps/tasks/omawrite.yml", "Install Omawrite build and runtime dependencies"),
+            ("roles/apps/tasks/repos.yml", "Enable RPM Fusion free repository"),
+            ("roles/apps/tasks/repos.yml", "Enable RPM Fusion nonfree repository"),
+            ("roles/base/tasks/packages.yml", "Install Fedora baseline packages"),
+            # Pulled in by plymouth-plugin-script and the live kickstart.
+            ("roles/boot/tasks/main.yml", "Install Fedora BGRT and selected Plymouth theme support"),
+        }
+        excluded = {
+            # The first-boot hardware setup applies these on matching models.
+            ("roles/xps-2026/tasks/camera.yml", "Install Fedora-native camera runtime and build dependencies"),
+            ("roles/xps-2026/tasks/camera.yml", "Install the locally built, RPM-managed IPU7 userspace and DKMS sources"),
+            ("roles/xps-2026/tasks/camera.yml", "Reinstall the verified prior camera RPM after a failed refresh"),
+            ("roles/xps-2026/tasks/fingerprint.yml", "Install Fedora fingerprint support for the detected reader"),
+            ("roles/xps-2026/tasks/power.yml", "Install XPS 2026 thermal and low-power-mode services"),
+        }
+        included = {(path, name) for path, names in applications.PACKAGE_TASKS for name in names}
+
+        def install_tasks(tasks):
+            for task in tasks or []:
+                for key in ("block", "rescue", "always"):
+                    yield from install_tasks(task.get(key))
+                dnf = task.get("ansible.builtin.dnf") or task.get("dnf")
+                if dnf and dnf.get("name") and dnf.get("state", "present") in ("present", "latest"):
+                    yield task["name"]
+
+        found = {(str(path.relative_to(ROOT.parent)), name)
+                 for path in sorted((ROOT.parent / "roles").glob("*/tasks/*.yml"))
+                 for name in install_tasks(yaml.safe_load(path.read_text()))}
+        self.assertEqual(found - included - by_contract - excluded, set(),
+                         "Add new package tasks to image/applications PACKAGE_TASKS or exclude them here")
+        self.assertEqual((included | by_contract | excluded) - found, set(), "Stale task names")
+
+    def test_image_installs_the_workstation_fonts_and_mappings(self):
+        packages, _ = applications.package_names()
+        for package in ("google-noto-fonts-all", "google-noto-sans-cjk-vf-fonts", "fontawesome-fonts-web",
+                        "adwaita-sans-fonts", "adwaita-mono-fonts"):
+            self.assertIn(package, packages)
+        self.assertIn('"roles/apps/files/49-cybexos-defaults.conf", "etc/fonts/conf.d/49-cybexos-defaults.conf"',
+                      (ROOT / "package").read_text())
+        self.assertIn("/etc/fonts/conf.d/49-cybexos-defaults.conf", (ROOT / "cybexos-desktop.spec").read_text())
 
     def test_package_contract_contains_all_application_groups(self):
         packages, flatpaks = applications.package_names()

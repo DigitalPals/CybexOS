@@ -139,6 +139,14 @@ class InstalledPolicy(unittest.TestCase):
         self.assertTrue(set(baseline['base_required_packages']).issubset(packages))
         self.assertTrue({'nano', 'fuzzel', 'tuned-ppd', 'alsa-ucm', 'alsa-utils', 'alsa-sof-firmware',
                          'cirrus-audio-firmware', 'intel-vsc-firmware'}.issubset(packages))
+        # Weak dependencies are off in the image, so firmware, microcode and
+        # Fedora Workstation defaults must be named explicitly.
+        self.assertTrue({'realtek-firmware', 'amd-ucode-firmware', 'microcode_ctl', 'switcheroo-control',
+                         'xdg-user-dirs', 'gvfs-mtp', 'NetworkManager-openvpn-gnome', 'hplip',
+                         'gstreamer1-plugin-openh264', 'ibus', 'bind-utils'}.issubset(packages))
+        repositories = configparser.ConfigParser(interpolation=None)
+        repositories.read(ROOT / 'image/build.repo')
+        self.assertTrue(repositories['fedora-cisco-openh264'].getboolean('gpgcheck'))
 
     def test_repair_payload_uses_shared_sources_and_hardware_detection(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -146,7 +154,8 @@ class InstalledPolicy(unittest.TestCase):
             repair.prepare(payload)
             provision = payload / 'usr/share/cybexos/provision'
             for relative in ('roles/base/tasks/accounts.yml', 'roles/xps-2026/tasks/camera.yml',
-                             'roles/dotfiles/files/fish-config.fish'):
+                             'roles/dotfiles/files/fish-config.fish', 'roles/base/tasks/btrfs-scrub.yml',
+                             'roles/apps/tasks/mpv.yml'):
                 self.assertEqual((provision / relative).read_bytes(), (ROOT / relative).read_bytes())
             features = (payload / 'usr/share/cybexos/runtime/hypr/features.lua').read_text()
             self.assertIn('os.getenv("CYBEXOS_XPS_2026") == "1"', features)

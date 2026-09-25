@@ -169,7 +169,10 @@ test("Docker starts through its socket instead of at boot", () => {
 });
 
 test("the weekly Btrfs scrub waits for AC power and stays in the background", () => {
-    const scrub = task(read("roles/base/tasks/main.yml"), "Install weekly Btrfs scrub unit");
+    // Shared with installed-image provisioning; the workstation imports it.
+    assert.match(task(read("roles/base/tasks/main.yml"), "Schedule weekly Btrfs scrubs"),
+        /import_tasks: btrfs-scrub\.yml/);
+    const scrub = task(read("roles/base/tasks/btrfs-scrub.yml"), "Install weekly Btrfs scrub unit");
     assert.match(scrub, /\[Unit\][\s\S]*ConditionACPower=true[\s\S]*\[Service\]/);
     assert.match(scrub, /ExecStart=\/usr\/bin\/btrfs scrub start -B -d --limit \d+M \//);
 });
@@ -196,7 +199,9 @@ test("dictation runs only with developer tooling and loads its model on demand",
 test("mpv prefers reliable hardware decoding below every personal choice", () => {
     const packages = read("roles/apps/tasks/packages.yml");
     const uninstall = read("roles/uninstall/tasks/main.yml");
-    const vendor = task(packages, "Prefer reliable hardware video decoding in mpv");
+    // Shared with installed-image provisioning; the workstation imports it.
+    assert.match(task(packages, "Prefer reliable hardware video decoding in mpv"), /import_tasks: mpv\.yml/);
+    const vendor = task(read("roles/apps/tasks/mpv.yml"), "Prefer reliable hardware video decoding in mpv");
     assert.match(vendor, /path: \/etc\/mpv\/mpv\.conf/);
     assert.match(vendor, /insertbefore: BOF/,
         "an administrator's own lines must follow, and override, the vendor block");

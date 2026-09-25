@@ -30,6 +30,22 @@ def copy_tree(source, target):
         shutil.copy2(source, target)
 
 
+# Ansible tasks whose packages the image installs. image/tests checks that
+# every other package-installing task in roles/ is excluded deliberately.
+PACKAGE_TASKS = (
+    ("roles/apps/tasks/packages.yml", {
+        "Install signed vendor applications", "Install Steam 32-bit graphics userspace",
+    }),
+    ("roles/apps/tasks/fonts.yml", {"Install shell and browser fallback fonts"}),
+    ("roles/base/tasks/main.yml", {"Install Docker packages when selected"}),
+    # Firmware must be available at the first physical boot, before the
+    # detected hardware role runs its machine-specific configuration.
+    ("roles/xps-2026/tasks/packages.yml", {"Install explicit Panther Lake firmware, media, and regulatory packages"}),
+    ("roles/desktop/tasks/main.yml", {"Install stable Hyprland and desktop integration packages",
+                                      "Install Fedora fuzzel and matugen rather than COPR variants"}),
+)
+
+
 def package_names():
     """Read package groups from the application and desktop contracts."""
     defaults = yaml.safe_load((ROOT / "roles/apps/defaults/main.yml").read_text())
@@ -38,17 +54,7 @@ def package_names():
     for key in ("apps_required_fedora_packages", "apps_omawrite_packages", "apps_developer_fedora_packages",
                 "apps_podman_packages", "apps_steam_packages"):
         packages.extend(defaults[key])
-    for path, names in (
-        ("roles/apps/tasks/packages.yml", {
-            "Install signed vendor applications", "Install Steam 32-bit graphics userspace",
-        }),
-        ("roles/base/tasks/main.yml", {"Install Docker packages when selected"}),
-        # Firmware must be available at the first physical boot, before the
-        # detected hardware role runs its machine-specific configuration.
-        ("roles/xps-2026/tasks/packages.yml", {"Install explicit Panther Lake firmware, media, and regulatory packages"}),
-        ("roles/desktop/tasks/main.yml", {"Install stable Hyprland and desktop integration packages",
-                                               "Install Fedora fuzzel and matugen rather than COPR variants"}),
-    ):
+    for path, names in PACKAGE_TASKS:
         for task in yaml.safe_load((ROOT / path).read_text()):
             if task.get("name") in names:
                 packages.extend(task["ansible.builtin.dnf"]["name"])

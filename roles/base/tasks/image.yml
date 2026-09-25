@@ -25,6 +25,9 @@
 - name: Enable the shared workstation services
   ansible.builtin.import_tasks: services.yml
 
+- name: Schedule weekly Btrfs scrubs
+  ansible.builtin.import_tasks: btrfs-scrub.yml
+
 - name: Reload the repaired workstation firewall
   ansible.builtin.systemd_service:
     name: firewalld.service

@@ -57,6 +57,7 @@ cp -a usr opt etc %{buildroot}/
 
 %files
 %config(noreplace) /etc/yum.repos.d/cybexos-desktop.repo
+%config(noreplace) /etc/fonts/conf.d/49-cybexos-defaults.conf
 /opt/cybexos-apps/
 /opt/cybexos-builds/
 /usr/local/bin/*

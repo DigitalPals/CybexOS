@@ -5,7 +5,8 @@ import shutil
 def prepare_provision(root, payload):
     destination = payload / 'usr/share/cybexos/provision'
     for relative in ('image/provision.yml', 'image/provision.cfg', 'inventory/group_vars/all.yml',
-                     'roles/base', 'roles/xps-2026', 'roles/dotfiles/tasks/shell-defaults.yml',
+                     'roles/base', 'roles/xps-2026', 'roles/apps/tasks/mpv.yml',
+                     'roles/dotfiles/tasks/shell-defaults.yml',
                      'roles/dotfiles/files/fish-config.fish'):
         source = root / relative
         paths = sorted(source.rglob('*')) if source.is_dir() else [source]

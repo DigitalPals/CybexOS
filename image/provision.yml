@@ -27,6 +27,12 @@
         tasks_from: shell-defaults
       when: not cybexos_hardware_only | bool
 
+    - name: Prefer reliable hardware video decoding in mpv
+      ansible.builtin.include_role:
+        name: apps
+        tasks_from: mpv
+      when: not cybexos_hardware_only | bool
+
     - name: Detect hardware during offline installation as well as repair
       ansible.builtin.include_role:
         name: xps-2026

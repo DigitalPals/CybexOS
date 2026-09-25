@@ -1,0 +1,19 @@
+---
+# Shared by workstation convergence and installed-image provisioning.
+# The package's /etc/mpv holds no configuration; mpv reads this file before
+# ~/.config/mpv/mpv.conf, so a personal choice still wins. The block sits at
+# the top so an administrator's own lines below it win as well.
+- name: Prefer reliable hardware video decoding in mpv
+  ansible.builtin.blockinfile:
+    path: /etc/mpv/mpv.conf
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+    insertbefore: BOF
+    marker: "# {mark} CYBEXOS MANAGED DEFAULTS"
+    block: |
+      # Fedora's mpv decodes video in software by default. auto-safe uses only
+      # hardware decoders that mpv considers reliable and falls back to
+      # software for anything else.
+      hwdec=auto-safe

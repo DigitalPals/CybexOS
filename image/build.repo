@@ -12,6 +12,13 @@ enabled=1
 gpgcheck=1
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-44-x86_64
 
+[fedora-cisco-openh264]
+name=Fedora 44 openh264 (From Cisco)
+metalink=https://mirrors.fedoraproject.org/metalink?repo=fedora-cisco-openh264-44&arch=x86_64
+enabled=1
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-44-x86_64
+
 [hyprland]
 name=Hyprland COPR
 baseurl=https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/fedora-44-x86_64/
