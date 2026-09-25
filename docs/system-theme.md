@@ -70,7 +70,34 @@ colours.
 
 ### GTK
 
-(Target not yet documented.)
+`scripts/theme_gtk.py` sets three `org.gnome.desktop.interface` keys with
+`gsettings`, and records them in `gtk.json`:
+
+| Key | Value |
+| --- | --- |
+| `color-scheme` | `prefer-dark` or `prefer-light`, from `mode` |
+| `gtk-theme` | `adw-gtk3-dark` or `adw-gtk3` (package `adw-gtk3-theme`), so GTK 3 applications match libadwaita ones |
+| `accent-color` | the libadwaita accent (GNOME 47) nearest to `colors.accent` by hue; an accent with too little colour for a hue becomes `slate`. Skipped when the installed schema has no such key |
+
+Running GTK 3 and libadwaita applications follow the change, and so do
+Firefox, Chromium and Electron applications, which read the same keys through
+the settings portal (xdg-desktop-portal-gtk). `gtk.json` is only the record of
+what was last applied: the keys are set again only when it changes, so after
+changing one by hand run `cybexos-runtime ipc theme apply` to restore the
+shell's values.
+
+The shell owns these keys. The converge only gives a key still at its schema
+default (`color-scheme` `default`, `gtk-theme` `Adwaita`) the dark default a
+fresh install's first session shows until the shell has applied its tokens,
+so re-running Ansible never undoes a choice made in Settings.
+
+`GTK_THEME` is no longer set in `~/.config/environment.d`: it overrides
+`gtk-theme` for GTK 3 and forces libadwaita's stylesheet, so no mode change
+could reach either. The user manager lingers and read that file when it
+started, so the converge also removes the old `GTK_THEME=adw-gtk3-dark` from
+it; the shell and the applications it starts lose the variable at the next
+login (or `systemctl --user restart quickshell.service`). Until then those
+applications stay dark whatever the mode.
 
 ### Lock screen (hyprlock)
 
