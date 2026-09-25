@@ -92,12 +92,15 @@ Item {
 
     // Breathing room above and below the control line, inside the row, so the
     // divider between two rows has space on both sides.
-    readonly property int rowPad: narrow ? 0 : Theme.scaled(4)
+    readonly property int rowPad: narrow ? 0 : Theme.scaled(7)
     property real wideHeight: Theme.panelRowHeight + rowPad * 2
     // The control line. Controls centre on it rather than on the row, which
     // grows by the hint below.
     readonly property real lineHeight: narrow ? narrowHeight : wideHeight
-    height: lineHeight + (hintLine.visible ? hintLine.height : 0)
+    // Clear air between a bordered control's lower edge and the hint, which
+    // runs under the control column as well as under the label.
+    readonly property int hintGap: Theme.scaled(5)
+    height: lineHeight + (hintLine.visible ? hintLine.height + hintGap + Theme.scaled(2) : 0)
     enabled: !unavailable
 
     function commit(value) {
@@ -165,9 +168,9 @@ Item {
 
     SettingsHint {
         id: hintLine
-        // Tucked under the control line: the hint belongs to this row, not
-        // to the gap before the next one.
-        y: root.lineHeight - root.rowPad - Theme.scaled(2)
+        // Just under the control line: the hint belongs to this row, not to
+        // the gap before the next one.
+        y: root.lineHeight - root.rowPad + root.hintGap
         width: root.contentRight
         text: root.unavailable ? root.disabledReason : root.hint
         tone: root.unavailable ? "info" : root.hintTone
