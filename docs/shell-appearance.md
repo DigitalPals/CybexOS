@@ -19,6 +19,10 @@ and iA Writer (Mono, Duo, Quattro and Duospace), matching Omarchy’s base font
 coverage. These use the managed
 Fontconfig defaults independently of the shell font choice.
 
+Dark or light mode, the palette, the accent and the font also reach the desktop
+outside the shell: the terminal, window borders, GTK applications and the lock
+screen follow them (see [System theme](system-theme.md)).
+
 Fresh installations leave **System tray** disabled. Add it from Settings →
 Bar when wanted; existing saved widget choices are preserved.
 
