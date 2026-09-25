@@ -15,6 +15,7 @@ import tempfile
 import jinja2
 import yaml
 
+from desktop_payload import prepare_system_session
 from provision_payload import prepare_provision
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,9 +38,10 @@ def prepare(payload):
         shutil.copyfile(ROOT / source, target)
         target.chmod(0o755 if executable else 0o644)
 
-    for relative in ('usr/libexec/cybexos-configure-installed', 'usr/bin/cybex',
-                     'usr/bin/hyprland-quickshell',
+    for relative in ('usr/libexec/cybexos-configure-installed', 'usr/libexec/cybexos-config',
+                     'usr/bin/cybex', 'usr/bin/hyprland-quickshell',
                      'usr/lib/systemd/user/hyprland-session.target',
+                     'usr/lib/systemd/user/external-monitor-toggle.service',
                      'usr/lib/systemd/system/cybexos-hardware-setup.service',
                      'usr/lib/systemd/system/cybexos-hardware-setup.timer'):
         copy('image/rootfs/' + relative, relative, relative.startswith(('usr/bin/', 'usr/libexec/')))
@@ -58,6 +60,9 @@ def prepare(payload):
     environment = jinja2.Environment(undefined=jinja2.StrictUndefined, keep_trailing_newline=True)
     environment.filters.update(bool=bool, ternary=lambda value, yes, no: yes if value else no)
     inventory = yaml.safe_load((ROOT / 'inventory/group_vars/all.yml').read_text())
+    # Quickshell's feature-rendered unit, the packaged agent skill and the XPS
+    # monitor watcher. Provisioning then writes the Kitty fragment directly.
+    prepare_system_session(ROOT, payload, inventory)
     for name in ('features.lua', 'looknfeel.lua'):
         content = environment.from_string((ROOT / 'roles/desktop/templates' / (name + '.j2')).read_text()).render(
             features=inventory['features'], cybexos_dynamic_hardware=True)
@@ -178,6 +183,7 @@ def main():
                           'actions': ['repair session ordering', 'reconcile signed repositories',
                                       'apply shared baseline, firewall and account defaults',
                                       'install missing helpers and LocalSend integration',
+                                      'install the configure command, shell feature unit, agent skill and XPS watcher',
                                       'configure detected hardware'],
                           'apply': args.apply}, indent=2), flush=True)
         if args.apply:

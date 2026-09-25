@@ -57,6 +57,12 @@ def prepare_session(root, payload, inventory):
     kitty.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(root / "roles/dotfiles/files/kitty.conf", kitty / "cybexos.conf")
     (kitty / "kitty.conf").write_text(KITTY_INCLUDE)
+    prepare_system_session(root, payload, inventory)
+
+
+def prepare_system_session(root, payload, inventory):
+    """The system-wide session files; image/repair-installed stages these too."""
+    vendor = payload / "usr/share/cybexos"
     # Provisioning links every account's agent skill slots to this copy.
     skills = vendor / "agent-skills/cybexos"
     if skills.exists():

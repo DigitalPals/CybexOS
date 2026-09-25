@@ -101,6 +101,37 @@ its offline target. The installed account therefore starts with Fish and
 passwordless wheel sudo; an explicit saved `passwordless_wheel: false` wins.
 Both Codex and Claude use the interactive Fish aliases in the shared config.
 
+The installer records its choices in `/etc/cybexos/config.yml`, in the same
+schema as the checkout installer: the account, the identity Anaconda set, the
+inventory's feature defaults, personal defaults enabled for the new account
+and the autologin decision made after the encryption check. The identity stays
+Anaconda's (`manage_system_identity: false`). `cybex configure` asks the policy
+questions again (connected widgets, local-network ports, passwordless sudo and
+Polkit, sudoless Docker, autologin, personal defaults, Docker and Tailscale),
+saves the answers and reapplies them; `cybex configure --check` prints them.
+Autologin is saved only when the root filesystem is verifiably encrypted.
+`cybex repair` creates a missing file for older installations, without opting
+their account into personal defaults. `cybex uninstall` is not available: the
+desktop is the operating system of an ISO installation.
+
+Installed accounts receive the same user configuration as a checkout
+deployment, from shared task files: the session environment
+(`environment.d`), portal preferences, Git/SSH/XDG directory/Brave/Firefox
+defaults, the agent skill links and the Voxtype GPU backend (the CPU build
+remains where no GPU is usable). Kitty settings live in the managed
+`~/.config/kitty/cybexos.conf` fragment that repair keeps current; the user's
+`kitty.conf` only includes it. The shell unit carries the inventory's feature
+defaults, and `/etc/systemd/user/quickshell.service.d/50-cybexos-features.conf`
+applies the saved choice; deselected connected widgets also mask the Hermes
+bridge. Users are lingering, Docker is socket-activated rather than started
+at boot, and deselected Docker/Tailscale units are turned off. On detected XPS
+hardware, the session starts the external-monitor watcher.
+
+The image composes without weak dependencies, so packages Fedora normally
+pulls in that way are explicit shared selections: the GnuPG pinentry,
+`fwupd-efi`, the libcamera PipeWire camera path, `nss-mdns` (with authselect's
+`with-mdns4`), `hunspell-en`, `docker-buildx`, `ibus-setup` and common tools.
+
 After boot, `cybexos-hardware-setup.timer` applies the detected hardware role
 when network access is available. Failed setup remains visible in the service
 journal. A known camera ABI mismatch is cached for that kernel and provisioning
@@ -118,7 +149,8 @@ sudo ./image/repair-installed --apply --user "$USER"
 
 This installs missing packages, reconciles signed vendor repositories, applies
 shared machine/account settings, repairs session ordering and updates the
-affected desktop helpers. It backs up replaced files under
+affected desktop helpers, `cybex configure`, the shell unit, the agent skill and
+the XPS monitor watcher. It backs up replaced files under
 `/var/lib/cybexos/backups/install-repair-*`. Home data and independent user
 overrides remain in place; the managed Fish configuration is updated. Open a
 new terminal for Fish, and log out/in to load the detected hardware flag into

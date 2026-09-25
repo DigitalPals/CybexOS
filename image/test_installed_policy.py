@@ -212,6 +212,14 @@ class InstalledPolicy(unittest.TestCase):
                              'roles/dotfiles/files/fish-config.fish', 'roles/base/tasks/btrfs-scrub.yml',
                              'roles/apps/tasks/mpv.yml'):
                 self.assertEqual((provision / relative).read_bytes(), (ROOT / relative).read_bytes())
+            # Earlier installations receive the configure command, the
+            # feature-rendered shell unit, the agent skill and the XPS watcher.
+            for relative in ('usr/libexec/cybexos-config', 'usr/libexec/cybexos-external-monitor-toggle',
+                             'usr/lib/systemd/user/external-monitor-toggle.service',
+                             'usr/share/cybexos/agent-skills/cybexos/SKILL.md'):
+                self.assertTrue((payload / relative).is_file(), relative)
+            self.assertIn('CYBEXOS_CONNECTED_WIDGETS=1',
+                          (payload / 'usr/lib/systemd/user/quickshell.service').read_text())
             features = (payload / 'usr/share/cybexos/runtime/hypr/features.lua').read_text()
             self.assertIn('os.getenv("CYBEXOS_XPS_2026") == "1"', features)
             self.assertNotIn('{{', features)
