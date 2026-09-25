@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import types
 import unittest
@@ -666,6 +667,37 @@ class TargetTests(unittest.TestCase):
             with self.subTest(report=output):
                 self.assertEqual(check(output, 'crypt'), (False, []))
 
+    def assert_default_zone_block_is_idempotent(self, hook):
+        # Run the script's default-zone block under the %post shell options
+        # against a stand-in that fails like firewalld 2.4 when the zone is
+        # already the default (ZONE_ALREADY_SET, exit 16).
+        start = hook.index('if [ "$(firewall-offline-cmd --get-default-zone)"')
+        block = hook[start:hook.index("\nfi\n", start) + 4]
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            fake = directory / "firewall-offline-cmd"
+            fake.write_text(
+                "#!/bin/sh\n"
+                'case "$1" in\n'
+                '  --get-default-zone) cat "$ZONE_FILE" ;;\n'
+                '  --set-default-zone=*) zone=${1#*=}\n'
+                '    if [ "$zone" = "$(cat "$ZONE_FILE")" ]; then echo "ZONE_ALREADY_SET: $zone"; exit 16; fi\n'
+                '    echo "$zone" > "$ZONE_FILE"; echo set >> "$ZONE_FILE.calls" ;;\n'
+                "esac\n"
+            )
+            fake.chmod(0o755)
+            for initial, calls in (("cybexos", 0), ("FedoraWorkstation", 1)):
+                zone = directory / ("zone-" + initial)
+                zone.write_text(initial + "\n")
+                result = subprocess.run(
+                    ["bash", "-euc", block], capture_output=True, text=True,
+                    env={**os.environ, "PATH": f"{directory}:{os.environ['PATH']}", "ZONE_FILE": str(zone)},
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(zone.read_text().strip(), "cybexos")
+                recorded = Path(str(zone) + ".calls")
+                self.assertEqual(len(recorded.read_text().split()) if recorded.exists() else 0, calls)
+
     def test_launcher_and_post_install_contract(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
@@ -707,6 +739,7 @@ class TargetTests(unittest.TestCase):
             hook,
         )
         self.assertIn("firewall-offline-cmd --set-default-zone=cybexos", hook)
+        self.assert_default_zone_block_is_idempotent(hook)
         self.assertLess(
             hook.index("rm -f /etc/dracut.conf.d/99-live.conf"),
             hook.index("dracut --force --regenerate-all"),

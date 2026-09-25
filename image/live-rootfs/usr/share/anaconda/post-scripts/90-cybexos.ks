@@ -32,7 +32,11 @@ systemctl set-default graphical.target
 # Anaconda adds SSH to its selected firewall zone unless explicitly disabled.
 # Restore the shipped CybexOS policy after its configuration task has finished.
 install -D -m 0644 /usr/lib/firewalld/zones/cybexos.xml /etc/firewalld/zones/cybexos.xml
-firewall-offline-cmd --set-default-zone=cybexos
+# The live image already defaults to this zone, and firewalld reports setting
+# the current default again as an error (ZONE_ALREADY_SET, exit 16).
+if [ "$(firewall-offline-cmd --get-default-zone)" != cybexos ]; then
+  firewall-offline-cmd --set-default-zone=cybexos
+fi
 # Retain desktop metadata for account-aware applications. SDDM's prepared
 # configuration selects the shared CybexOS session independently.
 python3 - <<'PY'
