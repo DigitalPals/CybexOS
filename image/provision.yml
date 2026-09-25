@@ -33,6 +33,114 @@
         tasks_from: mpv
       when: not cybexos_hardware_only | bool
 
+    # The workstation installer manages personal defaults for accounts that
+    # have none of their own; every image account starts from the seed. A
+    # saved configuration's choice arrives as extra vars, which always win.
+    - name: Manage personal defaults on image installations by default
+      ansible.builtin.set_fact:
+        manage_personal_dotfiles: true
+      when: not cybexos_hardware_only | bool
+
+    - name: Apply the shared session environment
+      ansible.builtin.include_role:
+        name: dotfiles
+        tasks_from: environment
+      when: not cybexos_hardware_only | bool
+
+    # Runs before the account is seeded: the Kitty include and fragment it
+    # writes are what the seed would provide, so the seed leaves them alone.
+    - name: Apply the shared personal defaults
+      ansible.builtin.include_role:
+        name: dotfiles
+        tasks_from: personal
+      when: not cybexos_hardware_only | bool
+
+    - name: Link the packaged CybexOS agent skill for coding agents
+      ansible.builtin.include_role:
+        name: dotfiles
+        tasks_from: agent-skills
+      vars:
+        dotfiles_agent_skill_canonical: /usr/share/cybexos/agent-skills/cybexos
+      when: not cybexos_hardware_only | bool
+
+    - name: Apply the shared portal preferences
+      ansible.builtin.include_role:
+        name: desktop
+        tasks_from: portals
+      when: not cybexos_hardware_only | bool
+
+    # The compose installs the CPU-default selector; the image builder's own
+    # selection never reaches the image. A GPU-less machine keeps the CPU.
+    - name: Select the Voxtype GPU backend
+      ansible.builtin.include_role:
+        name: apps
+        tasks_from: voxtype-backend
+      vars:
+        apps_voxtype_gpu_optional: true
+      when:
+        - not cybexos_hardware_only | bool
+        - features.developer_tools | bool
+
+    # The package's user units carry the inventory's feature defaults. The
+    # saved configuration can differ; system-wide user-unit configuration
+    # applies it to every account without editing a packaged file.
+    - name: Apply the configured desktop features to every account
+      when: not cybexos_hardware_only | bool
+      block:
+        - name: Create the Quickshell feature drop-in directory
+          ansible.builtin.file:
+            path: /etc/systemd/user/quickshell.service.d
+            state: directory
+            mode: "0755"
+
+        - name: Record the configured shell features
+          ansible.builtin.copy:
+            dest: /etc/systemd/user/quickshell.service.d/50-cybexos-features.conf
+            mode: "0644"
+            content: |
+              [Service]
+              Environment=CYBEXOS_CONNECTED_WIDGETS={{ (features.connected_widgets | bool) | ternary('1', '0') }}
+              Environment=CYBEXOS_DEVELOPER_TOOLS={{ (features.developer_tools | bool) | ternary('1', '0') }}
+          register: image_shell_features
+
+        - name: Inspect the Hermes bridge mask
+          ansible.builtin.stat:
+            path: /etc/systemd/user/hermes-menubar-bridge.service
+            follow: false
+          register: image_hermes_mask
+
+        # The workstation installs the bridge only with connected widgets.
+        # The session target wants it, so a mask is how an image omits it.
+        - name: Mask the Hermes bridge when connected widgets are deselected
+          ansible.builtin.file:
+            src: /dev/null
+            dest: /etc/systemd/user/hermes-menubar-bridge.service
+            state: link
+          register: image_hermes_masked
+          when:
+            - not features.connected_widgets | bool
+            - not image_hermes_mask.stat.exists
+
+        - name: Unmask the Hermes bridge when connected widgets are selected
+          ansible.builtin.file:
+            path: /etc/systemd/user/hermes-menubar-bridge.service
+            state: absent
+          register: image_hermes_unmasked
+          when:
+            - features.connected_widgets | bool
+            - image_hermes_mask.stat.islnk | default(false)
+            - image_hermes_mask.stat.lnk_source | default('') == '/dev/null'
+
+        # The running shell keeps its environment; the next login applies it.
+        - name: Reload the account's user manager after a feature change
+          ansible.builtin.command:
+            argv: [systemctl, --user, "--machine={{ primary_user }}@.host", daemon-reload]
+          changed_when: true
+          failed_when: false
+          when:
+            - not cybexos_offline | bool
+            - image_shell_features is changed or image_hermes_masked is changed or image_hermes_unmasked is changed
+
     - name: Detect hardware during offline installation as well as repair
       ansible.builtin.include_role:
         name: xps-2026

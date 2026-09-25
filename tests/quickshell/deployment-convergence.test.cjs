@@ -153,15 +153,16 @@ test("disabled Docker and Tailscale retire activation and imported trust", () =>
 });
 
 test("Voxtype probes as the desktop user but activates its system backend as root", () => {
-    const tasks = read("roles/apps/tasks/devtools.yml");
+    // Shared by the workstation's developer tooling and image provisioning.
+    const tasks = read("roles/apps/tasks/voxtype-backend.yml");
+    assert.match(read("roles/apps/tasks/devtools.yml"), /import_tasks: voxtype-backend\.yml/);
     const handlers = read("roles/apps/handlers/main.yml");
     const config = read("roles/dotfiles/files/voxtype.toml");
     const statusBlock = tasks.slice(tasks.indexOf("Read Voxtype backend status"),
         tasks.indexOf("Select Voxtype GPU backend"));
     const activationBlock = tasks.slice(tasks.indexOf("Select Voxtype GPU backend"),
         tasks.indexOf("Verify the selected Voxtype GPU backend"));
-    const verificationBlock = tasks.slice(tasks.indexOf("Verify the selected Voxtype GPU backend"),
-        tasks.indexOf("Download Voxtype base English model"));
+    const verificationBlock = tasks.slice(tasks.indexOf("Verify the selected Voxtype GPU backend"));
 
     assert.match(statusBlock, /become_user:\s*"\{\{ primary_user \}\}"/,
         "status should reflect the desktop user's active backend");

@@ -1,0 +1,38 @@
+---
+# The workstation links the skill of its active release; installed images link
+# the one their desktop package ships (image/provision.yml sets the path).
+- name: Create the CybexOS state directory under the account's umask
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.local/state/cybexos"
+    state: directory
+    # Omitting mode keeps the account's umask. The helper creates its backup
+    # root under umask 077, which on a fresh account would make ~/.local and
+    # ~/.local/state private as well.
+
+- name: Inspect the canonical CybexOS agent skill
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.stat:
+    path: "{{ dotfiles_agent_skill_canonical | default(primary_home + '/.local/share/cybexos/current/agent-skills/cybexos') }}"
+    follow: true
+  register: dotfiles_active_agent_skill
+
+- name: Provision CybexOS agent skill discovery links
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv:
+      - "{{ config_repo }}/scripts/manage-agent-skills"
+      - provision
+      - --home
+      - "{{ primary_home }}"
+      - --canonical
+      - "{{ dotfiles_agent_skill_canonical | default(primary_home + '/.local/share/cybexos/current/agent-skills/cybexos') }}"
+  register: dotfiles_agent_skill_provision
+  changed_when: >-
+    (dotfiles_agent_skill_provision.stdout | default('')) is match('^CHANGED:')
+  when:
+    - not ansible_check_mode
+    - dotfiles_active_agent_skill.stat.isdir | default(false)

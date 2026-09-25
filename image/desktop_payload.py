@@ -39,6 +39,48 @@ def prepare_defaults(root, payload, environment, inventory):
     return contract
 
 
+# blockinfile's rendering of the workstation's managed Kitty include
+# (roles/dotfiles/tasks/personal.yml), so provisioning a seeded account finds
+# its block already present instead of appending a second one.
+KITTY_INCLUDE = "# BEGIN CYBEXOS MANAGED INCLUDE\ninclude cybexos.conf\n# END CYBEXOS MANAGED INCLUDE\n"
+
+
+def prepare_session(root, payload, inventory):
+    """Session pieces the workstation installs per user, packaged once.
+
+    The seed is copied into a home only where a file is absent, so the
+    vendor Kitty settings live in the managed fragment that provisioning
+    keeps current; the seeded kitty.conf only includes it and is the user's.
+    """
+    vendor = payload / "usr/share/cybexos"
+    kitty = vendor / "user-seed/.config/kitty"
+    kitty.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(root / "roles/dotfiles/files/kitty.conf", kitty / "cybexos.conf")
+    (kitty / "kitty.conf").write_text(KITTY_INCLUDE)
+    # Provisioning links every account's agent skill slots to this copy.
+    skills = vendor / "agent-skills/cybexos"
+    if skills.exists():
+        shutil.rmtree(skills)
+    shutil.copytree(root / "agent-skills/cybexos", skills)
+    # The workstation's user unit renders the same features. Installed
+    # systems apply their saved choice in a drop-in (image/provision.yml).
+    features = inventory["features"]
+    unit = payload / "usr/lib/systemd/user/quickshell.service"
+    unit.parent.mkdir(parents=True, exist_ok=True)
+    unit.write_text(
+        "[Unit]\nDescription=Quickshell desktop shell\nPartOf=hyprland-session.target\n\n"
+        "[Service]\nExecStart=/usr/share/cybexos/bin/cybexos-runtime exec quickshell\n"
+        f"Environment=CYBEXOS_CONNECTED_WIDGETS={int(bool(features['connected_widgets']))}\n"
+        f"Environment=CYBEXOS_DEVELOPER_TOOLS={int(bool(features['developer_tools']))}\n"
+        "Restart=on-failure\nRestartSec=2\n\n[Install]\nWantedBy=hyprland-session.target\n")
+    # XPS hardware only: the unit starts when the session exports
+    # CYBEXOS_XPS_2026=1 from /etc/cybexos/hardware.json.
+    watcher = payload / "usr/libexec/cybexos-external-monitor-toggle"
+    watcher.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(root / "roles/dotfiles/templates/external-monitor-toggle.j2", watcher)
+    watcher.chmod(0o755)
+
+
 def split_seed(vendor, contract):
     """Move small session defaults out of the expensive toolchain seed.
 

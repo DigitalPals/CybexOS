@@ -4,6 +4,6 @@ Description=CybexOS graphical session
 # target after every Wanted service, which would close a dependency cycle.
 DefaultDependencies=no
 BindsTo=graphical-session.target
-Wants=graphical-session-pre.target quickshell.service hyprpolkitagent.service hypridle.service voxtype.service hermes-menubar-bridge.service cybexos-welcome.service cybexos-app-seed.service cybexos-input-method.service
+Wants=graphical-session-pre.target quickshell.service hyprpolkitagent.service hypridle.service voxtype.service hermes-menubar-bridge.service cybexos-welcome.service cybexos-app-seed.service cybexos-input-method.service external-monitor-toggle.service
 After=graphical-session-pre.target
 Before=graphical-session.target

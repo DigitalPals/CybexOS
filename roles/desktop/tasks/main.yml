@@ -1236,16 +1236,7 @@
   tags: [quickshell]
 
 - name: Configure portal preference without patching Fedora files
-  become: true
-  become_user: "{{ primary_user }}"
-  ansible.builtin.copy:
-    dest: "{{ primary_home }}/.config/xdg-desktop-portal/hyprland-portals.conf"
-    mode: "0644"
-    content: |
-      [preferred]
-      default=hyprland;gtk
-      org.freedesktop.impl.portal.FileChooser=gtk
-      org.freedesktop.impl.portal.Secret=gnome-keyring
+  ansible.builtin.import_tasks: portals.yml
 
 - name: Install Hyprland graphical-session target
   become: true

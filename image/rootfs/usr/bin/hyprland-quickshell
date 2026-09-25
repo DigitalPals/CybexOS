@@ -6,11 +6,13 @@ export MOZ_ENABLE_WAYLAND=1 QT_QPA_PLATFORM=wayland
 # Wayland applications reach IBus through the input-method protocol;
 # XWayland applications need its XIM server.
 export XMODIFIERS=@im=ibus
-export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/Android/Sdk/platform-tools:/usr/local/bin:/usr/bin"
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/Android/Sdk/platform-tools:$HOME/Android/Sdk/cmdline-tools/latest/bin:/usr/local/bin:/usr/bin"
 export XDG_DATA_DIRS="$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export ANDROID_HOME="$HOME/Android/Sdk" ANDROID_SDK_ROOT="$HOME/Android/Sdk"
 /usr/libexec/cybexos-user-init --essential
 CYBEXOS_XPS_2026=$(python3 -c 'import json,pathlib; p=pathlib.Path("/etc/cybexos/hardware.json"); print("1" if p.is_file() and json.loads(p.read_text()).get("xps_2026") else "0")')
+# Units gated on the hardware (external-monitor-toggle.service) read it from
+# the user manager, so it is imported with the session environment below.
 export CYBEXOS_XPS_2026
 # Anaconda writes the system keyboard choice through locale1. Query it on
 # every login so the shared image never hardcodes the live account's layout.
@@ -25,9 +27,11 @@ export CYBEXOS_KEYBOARD_LAYOUT=${CYBEXOS_KEYBOARD_LAYOUT:-us}
 export CYBEXOS_KEYBOARD_VARIANT
 mkdir -p "${XDG_STATE_HOME:-$HOME/.local/state}/hyprland"
 systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP \
-  DESKTOP_SESSION DESKTOP_SHELL PATH XDG_DATA_DIRS QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND XMODIFIERS
+  DESKTOP_SESSION DESKTOP_SHELL PATH XDG_DATA_DIRS QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND XMODIFIERS \
+  CYBEXOS_XPS_2026
 dbus-update-activation-environment --systemd XDG_SESSION_TYPE XDG_CURRENT_DESKTOP \
-  XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL PATH XDG_DATA_DIRS QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND XMODIFIERS
+  XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL PATH XDG_DATA_DIRS QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND XMODIFIERS \
+  CYBEXOS_XPS_2026
 trap 'systemctl --user stop hyprland-session.target >/dev/null 2>&1 || true' EXIT
 # Launch once: compositor failure ends this login and returns to SDDM's
 # password prompt. The watchdog's automatic safe-mode restart bypasses it.

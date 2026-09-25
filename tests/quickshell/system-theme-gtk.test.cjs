@@ -180,12 +180,15 @@ test("environment.d no longer pins GTK_THEME", () => {
     const template = fs.readFileSync(
         path.join(repo, "roles/dotfiles/templates/environment.conf.j2"), "utf8");
     assert.doesNotMatch(template, /GTK_THEME/);
-    const tasks = fs.readFileSync(path.join(repo, "roles/dotfiles/tasks/main.yml"), "utf8");
-    assert.doesNotMatch(tasks, /gsettings set org\.gnome\.desktop\.interface color-scheme/);
+    for (const file of ["main.yml", "personal.yml"]) {
+        const tasks = fs.readFileSync(path.join(repo, "roles/dotfiles/tasks", file), "utf8");
+        assert.doesNotMatch(tasks, /gsettings set org\.gnome\.desktop\.interface color-scheme/);
+    }
 });
 
 test("the converge seeds dark GTK only on keys still at their schema default", t => {
-    const task = yamlTask("roles/dotfiles/tasks/main.yml",
+    // Shared with installed images, which also run it offline.
+    const task = yamlTask("roles/dotfiles/tasks/personal.yml",
         "Default GTK to dark until the shell applies its appearance");
     assert.deepEqual(task.when, ["manage_personal_dotfiles | bool", "not ansible_check_mode"]);
     assert.equal(task.become_user, "{{ primary_user }}");

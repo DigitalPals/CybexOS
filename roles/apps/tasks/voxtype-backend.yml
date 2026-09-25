@@ -1,0 +1,57 @@
+---
+# Replaces the root-owned /usr/bin/voxtype selector with the Vulkan build,
+# which itself falls back to the CPU when no Vulkan device is usable. Shared
+# with the image's installed-system provisioning (image/provision.yml): the
+# image builder's selection stays in its disposable VM.
+- name: Read Voxtype backend status
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command: >-
+    voxtype --config {{ primary_home }}/.config/voxtype/config.toml
+    setup gpu --status
+  register: apps_voxtype_status
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Refuse an unreadable Voxtype backend state
+  ansible.builtin.fail:
+    msg: >-
+      Voxtype backend status failed: {{ apps_voxtype_status.stderr
+      | default(apps_voxtype_status.stdout) | default('unknown failure') }}
+  when:
+    - not ansible_check_mode
+    - apps_voxtype_status.rc | default(1) != 0
+
+- name: Select Voxtype GPU backend
+  become: true
+  ansible.builtin.command: >-
+    voxtype --config {{ primary_home }}/.config/voxtype/config.toml
+    setup gpu --enable
+  register: apps_voxtype_gpu_enable
+  changed_when: apps_voxtype_gpu_enable.rc == 0
+  # Installed images must still install on machines without a usable GPU,
+  # such as virtual machines; they keep the CPU build there.
+  failed_when: >-
+    apps_voxtype_gpu_enable.rc != 0
+    and not apps_voxtype_gpu_optional | default(false) | bool
+  when:
+    - not ansible_check_mode
+    - apps_voxtype_status.rc | default(1) == 0
+    - "'Active backend: GPU' not in apps_voxtype_status.stdout"
+  notify: Restart Voxtype after updates
+
+- name: Verify the selected Voxtype GPU backend
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command: >-
+    voxtype --config {{ primary_home }}/.config/voxtype/config.toml
+    setup gpu --status
+  register: apps_voxtype_gpu_verify
+  changed_when: false
+  failed_when: >-
+    apps_voxtype_gpu_verify.rc != 0
+    or 'Active backend: GPU' not in apps_voxtype_gpu_verify.stdout
+  when:
+    - not ansible_check_mode
+    - apps_voxtype_gpu_enable is changed
