@@ -94,7 +94,55 @@ after the `CYBEXOS MANAGED INCLUDE` block.
 
 ### Hyprland
 
-(Target not yet documented.)
+`theme_hyprland.py` renders `hyprland.lua`: a data-only `return { ... }` of
+`hl.config` colours.
+
+| Key | Colour |
+| --- | --- |
+| `general.col.active_border`, `inactive_border` | `accent`, `stroke` |
+| `group.col.border_active`, `border_inactive` | `accent`, `stroke` |
+| `group.col.border_locked_active`, `border_locked_inactive` | `red`, `stroke` |
+| `group.groupbar.col.active`, `inactive`, `locked_active`, `locked_inactive` | `accent`, `stroke`, `red`, `stroke` |
+| `group.groupbar.text_color`, `text_color_locked_active` | `text` |
+| `group.groupbar.text_color_inactive`, `text_color_locked_inactive` | `textMuted` |
+| `decoration.shadow.color` | dark: `background` at 0xee; light: `text` at 0x30 |
+
+Window borders are 0 px in the vendor look, so their colours only show once
+`user.lua` sets a `border_size`. Rounding is not a theme value: it stays 16 px
+to match `Theme.surfaceRadius`, whatever the panel corner setting. Blur, the
+glass layer rule and power saver are untouched.
+
+`looknfeel.lua` applies the file right after its vendor `hl.config`, whose
+colours are this renderer's output for the default dark tokens (a test keeps
+them equal). A missing file keeps those colours. The file is read as text,
+loaded in an empty environment and checked key by key: a syntax error, a call,
+a value that is not `rgb(rrggbb)`/`rgba(rrggbbaa)` or an oversized file leaves
+the vendor colours in place and is reported by
+
+```bash
+hyprctl repl 'return __cybexos_system_theme.error'
+```
+
+Keys the compositor config does not know are ignored, so a newer renderer never
+costs an older config the whole theme.
+
+A theme change reaches the running compositor through
+`hyprctl eval 'cybexos_system_theme("<state dir>/hyprland.lua")'`, which
+applies the same checks and raises instead of half-applying. Without
+`HYPRLAND_INSTANCE_SIGNATURE` reload does nothing and the next compositor start
+reads the file. A full `hyprctl reload` was rejected: it re-reads glass from
+the saved setting (turning blur back on under high contrast), drops an
+unconfirmed display arrangement, and would run on every wallpaper change in
+wallpaper mode.
+
+**`user.lua` keeps winning.** It loads after `looknfeel.lua`, so at config load
+its colours override the theme's. For the live path, `looknfeel.lua` records
+what each theme key holds (`hl.get_config`) straight after it applies the
+theme, before `user.lua` runs. A live change applies a key only if it still
+holds that value; a key that `user.lua` — or a manual `hyprctl eval` — has set
+since is left alone until the next config reload, which takes a fresh
+baseline. A user value identical to the theme's is indistinguishable from it
+and follows the theme.
 
 ### GTK
 

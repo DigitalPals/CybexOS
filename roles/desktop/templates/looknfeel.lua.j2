@@ -25,7 +25,9 @@ hl.config({
     gaps_out = 10,
     border_size = 0,
     layout = "dwindle",
-    col = { active_border = "rgb(131419)", inactive_border = "rgb(131419)" },
+    -- The colours in this table are the system theme's for the default dark
+    -- appearance (theme_hyprland.py); the theme below replaces them.
+    col = { active_border = "rgb(d3d283)", inactive_border = "rgb(3a3936)" },
   },
   cursor = { no_hardware_cursors = false },
   decoration = {
@@ -41,7 +43,7 @@ hl.config({
       enabled = true, size = 6, passes = 3, new_optimizations = true,
       vibrancy = 0.25, noise = 0.012,
     },
-    shadow = { enabled = true, range = 4, render_power = 3, color = "rgba(1a1a1aee)" },
+    shadow = { enabled = true, range = 4, render_power = 3, color = "rgba(1a1917ee)" },
   },
   animations = { enabled = true },
   -- SDDM owns crash recovery: a new desktop requires a new authenticated login.
@@ -51,16 +53,155 @@ hl.config({
   },
   group = {
     col = {
-      border_active = "rgb(9ecbeb)", border_inactive = "rgb(131419)",
-      border_locked_active = "rgb(e8837a)", border_locked_inactive = "rgb(131419)",
+      border_active = "rgb(d3d283)", border_inactive = "rgb(3a3936)",
+      border_locked_active = "rgb(ff8f8f)", border_locked_inactive = "rgb(3a3936)",
     },
-    groupbar = { col = {
-      active = "rgb(9ecbeb)", inactive = "rgb(131419)",
-      locked_active = "rgb(e8837a)", locked_inactive = "rgb(131419)",
-    } },
+    groupbar = {
+      col = {
+        active = "rgb(d3d283)", inactive = "rgb(3a3936)",
+        locked_active = "rgb(ff8f8f)", locked_inactive = "rgb(3a3936)",
+      },
+      text_color = "rgb(f2f0ea)", text_color_inactive = "rgb(b3afa4)",
+      text_color_locked_active = "rgb(f2f0ea)", text_color_locked_inactive = "rgb(b3afa4)",
+    },
   },
   dwindle = { preserve_split = true, split_width_multiplier = 1.0 },
 })
+
+-- The system theme (docs/system-theme.md). The shell renders its colours into
+-- ~/.local/state/cybexos/theme/hyprland.lua, a data-only table of the keys
+-- below, and it is applied over the vendor colours above. That file is state
+-- the shell rewrites, so nothing in it may stop the compositor from starting:
+-- a missing file keeps the vendor colours, every file is loaded in an empty
+-- environment and checked key by key, and a damaged one is ignored. Diagnose
+-- one with
+--   hyprctl repl 'return __cybexos_system_theme.error'
+-- A theme change reaches a running compositor through
+--   hyprctl eval 'cybexos_system_theme(PATH)'
+-- rather than a config reload, which would also re-read glass and display
+-- state the shell changes at runtime. user.lua loads after this and keeps
+-- winning: a key whose live value is no longer the one the theme last applied
+-- was set by someone else, and a live change leaves it alone until the next
+-- config reload.
+local system_theme = rawget(_G, "__cybexos_system_theme") or {}
+_G.__cybexos_system_theme = system_theme
+local THEME_KEYS = {
+  "general.col.active_border", "general.col.inactive_border",
+  "decoration.shadow.color",
+  "group.col.border_active", "group.col.border_inactive",
+  "group.col.border_locked_active", "group.col.border_locked_inactive",
+  "group.groupbar.col.active", "group.groupbar.col.inactive",
+  "group.groupbar.col.locked_active", "group.groupbar.col.locked_inactive",
+  "group.groupbar.text_color", "group.groupbar.text_color_inactive",
+  "group.groupbar.text_color_locked_active", "group.groupbar.text_color_locked_inactive",
+}
+local THEME_MAX_BYTES = 65536
+
+local function system_theme_path()
+  local state = os.getenv("XDG_STATE_HOME")
+  if not state or state == "" then
+    local home = os.getenv("HOME")
+    if not home then return nil end
+    state = home .. "/.local/state"
+  end
+  return state .. "/cybexos/theme/hyprland.lua"
+end
+
+-- {dotted key = colour} for the theme keys a file sets, nil when there is no
+-- file, or an error. Keys this version does not know are ignored, so a newer
+-- renderer never makes an older compositor config drop the whole theme.
+local function read_system_theme(path)
+  local file, reason, code = io.open(path, "r")
+  if not file then
+    if code == 2 then return nil end
+    error(reason, 0)
+  end
+  local text = file:read(THEME_MAX_BYTES + 1)
+  file:close()
+  if not text or #text > THEME_MAX_BYTES then
+    error(path .. ": empty or too large", 0)
+  end
+  local chunk, syntax = load(text, "=" .. path, "t", {})
+  if not chunk then error(syntax, 0) end
+  local data = chunk()
+  if type(data) ~= "table" then error(path .. ": does not return a table", 0) end
+  local values = {}
+  for _, key in ipairs(THEME_KEYS) do
+    local node = data
+    for part in key:gmatch("[^.]+") do
+      if type(node) ~= "table" then node = nil break end
+      node = node[part]
+    end
+    if node ~= nil then
+      if type(node) ~= "string" or not (node:match("^rgb%(%x%x%x%x%x%x%)$")
+          or node:match("^rgba%(%x%x%x%x%x%x%x%x%)$")) then
+        error(path .. ": " .. key .. " is not rgb(rrggbb) or rgba(rrggbbaa)", 0)
+      end
+      values[key] = node
+    end
+  end
+  return values
+end
+
+local function apply_system_theme(values)
+  local config, any = {}, false
+  for key, value in pairs(values) do
+    local node, parts = config, {}
+    for part in key:gmatch("[^.]+") do parts[#parts + 1] = part end
+    for i = 1, #parts - 1 do
+      node[parts[i]] = node[parts[i]] or {}
+      node = node[parts[i]]
+    end
+    node[parts[#parts]] = value
+    any = true
+  end
+  if any then hl.config(config) end
+end
+
+-- What each key holds now, comparable across calls: hl.get_config returns a
+-- colour as "0xAARRGGBB" and a gradient as { colors = {...}, angle = n }.
+local function system_theme_snapshot()
+  local snapshot = {}
+  if type(hl.get_config) ~= "function" then return snapshot end
+  for _, key in ipairs(THEME_KEYS) do
+    local ok, value = pcall(hl.get_config, key)
+    if ok and type(value) == "table" then
+      local colors = {}
+      for i, color in ipairs(type(value.colors) == "table" and value.colors or {}) do
+        colors[i] = tostring(color)
+      end
+      value = table.concat(colors, " ") .. " " .. tostring(value.angle)
+    end
+    snapshot[key] = ok and tostring(value) or nil
+  end
+  return snapshot
+end
+
+function cybexos_system_theme(path)
+  local values = read_system_theme(path)
+  if not values then error(path .. ": no such file", 0) end
+  local applied, current, owned = system_theme.applied or {}, system_theme_snapshot(), {}
+  for key, value in pairs(values) do
+    if applied[key] == nil or applied[key] == current[key] then owned[key] = value end
+  end
+  apply_system_theme(owned)
+  local after = system_theme_snapshot()
+  for key in pairs(owned) do applied[key] = after[key] end
+  system_theme.applied = applied
+  system_theme.error = nil
+end
+
+system_theme.error = nil
+local theme_path = system_theme_path()
+if theme_path then
+  local theme_ok, theme_values = pcall(read_system_theme, theme_path)
+  if theme_ok and theme_values then
+    theme_ok, theme_values = pcall(apply_system_theme, theme_values)
+  end
+  if not theme_ok then system_theme.error = tostring(theme_values) end
+end
+-- The baseline a live change compares against, taken before user.lua runs.
+system_theme.applied = system_theme_snapshot()
 
 hl.curve("myBezier", { type = "bezier", points = { { 0.05, 0.9 }, { 0.1, 1.0 } } })
 hl.animation({ leaf = "windows", enabled = true, speed = 7, bezier = "myBezier" })
