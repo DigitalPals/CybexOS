@@ -62,7 +62,35 @@ colours.
 
 ### Kitty
 
-(Target not yet documented.)
+`scripts/theme_kitty.py` renders `kitty.conf`: foreground and background
+(`text`, `background`), the selection (`accentContainer` with the ink the shell
+draws on it), cursor and URLs (`accentText`, kept at 4.5:1 on the base), tabs
+(the active one filled `accent`/`onAccent`, inactive ones `surface` with
+`textMuted`), window borders, the three marker colours and `color0`–`color15`
+from `ansi_palette()`. Fonts and opacity stay in the vendor fragment.
+
+The vendor fragment, `roles/dotfiles/files/kitty.conf` (installed as
+`~/.config/kitty/cybexos.conf` and included from the user's `kitty.conf`),
+carries the same settings for the default dark theme as a fallback, and a test
+keeps it equal to that render. Its last line,
+`include ~/.local/state/cybexos/theme/kitty.conf`, loads the generated file
+over it. kitty expands `~` in `include` and only logs a missing file, so a
+terminal started before the shell's first export still opens with the
+fallback. `globinclude` is not usable here: it globs relative to the including
+file's directory, and kitty 0.47's Python refuses an absolute pattern, which
+aborts loading the configuration.
+
+Reload sends `SIGUSR1`, which makes kitty re-read its configuration and every
+include, to the user's GUI kitty processes:
+`pkill --signal USR1 --uid <uid> --full --exact '([^ ]*/)?kitty( \+open)?( [^+@].*)?'`.
+The command-line match mirrors kitty's own `is_kitty_gui_cmdline()`; a plain
+`pkill -x kitty` would also hit Python kittens (`kitty +runpy …`), which
+SIGUSR1 terminates. No running kitty (pkill status 1) is not an error. kitty's
+`auto_reload_config` watcher does not help: it watches only the top-level
+`kitty.conf`.
+
+User colours win when they come later: put them in `~/.config/kitty/kitty.conf`
+after the `CYBEXOS MANAGED INCLUDE` block.
 
 ### Hyprland
 
