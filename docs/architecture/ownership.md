@@ -30,7 +30,11 @@ the idle service applies the timeouts from Settings → System → Idle: the
 runtime resolver renders them from `shell.json` into
 `$XDG_RUNTIME_DIR/cybexos/hypridle.conf` at each start (falling back to
 the vendor file), and the shell restarts `hypridle.service` after a change is
-saved.
+saved. Without a user `hyprlock.conf`, the lock uses the lock screen the
+system theme renders in the shell's colours, font and wallpaper
+(`~/.local/state/cybexos/theme/hyprlock.conf`, state rather than
+configuration) when that file is present and carries the renderer's header,
+and the vendor file otherwise (docs/system-theme.md).
 
 Quickshell starts with an explicit `qs -p` path. The legacy
 `~/.config/quickshell` and `~/.config/hypr` trees are not runtime inputs after

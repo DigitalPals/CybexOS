@@ -199,8 +199,23 @@ render_hypridle_config() {
   fi
 }
 
+# Prints the lock screen the system theme rendered in the shell's colours
+# (docs/system-theme.md), or fails so the vendor file is used. Only a regular
+# file whose first line is the renderer's header counts: the renderer replaces
+# it atomically, and hyprlock skips entries it cannot parse rather than
+# refusing to lock, so a damaged file costs the look, never the lock.
+themed_hyprlock_config() {
+  local file first
+  file=${XDG_STATE_HOME:-$HOME/.local/state}/cybexos/theme/hyprlock.conf
+  [[ -f $file && ! -L $file && -s $file ]] || return 1
+  IFS= read -r first <"$file" || return 1
+  [[ $first == '# CybexOS lock screen, rendered by the system theme (theme_hyprlock.py).' ]] ||
+    return 1
+  printf '%s\n' "$file"
+}
+
 exec_runtime() {
-  local kind=$1 selected user_config
+  local kind=$1 selected user_config themed
   case $kind in
     quickshell)
       selected=$(runtime_path quickshell)
@@ -220,6 +235,10 @@ exec_runtime() {
       user_config=$config_root/hypr/$kind.conf
       selected=$runtime_root/hypr/$kind.conf
       [[ ! -f $user_config || -L $user_config ]] || selected=$user_config
+      if [[ $kind == hyprlock && $selected != "$user_config" ]] &&
+          themed=$(themed_hyprlock_config); then
+        selected=$themed
+      fi
       [[ -f $selected ]] || {
         printf 'cybexos-runtime: %s configuration is missing: %s\n' \
           "$kind" "$selected" >&2
