@@ -15,6 +15,7 @@ import jinja2
 import yaml
 from application_payload import relativize_seed_links, include_applications
 from desktop_payload import prepare_defaults, split_seed
+from provision_payload import prepare_provision
 from release_metadata import install_update_channel, render_spec
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,7 +48,8 @@ def main():
     environment.filters.update(bool=bool, ternary=lambda value, yes, no: yes if value else no,
                                to_json=json.dumps, quote=shlex.quote)
     values = {"features": inventory["features"], "cybexos_xps_2026": False,
-              "machine_keyboard_layout": "us", "machine_keyboard_variant": ""}
+              "machine_keyboard_layout": "us", "machine_keyboard_variant": "",
+              "cybexos_dynamic_hardware": True}
 
     def write(relative, content, executable=False):
         target = payload / str(relative).lstrip("/")
@@ -102,11 +104,16 @@ def main():
     (payload / seed / ".local/bin/t3code-update").unlink()
     for source, destination in (
         ("fastfetch.jsonc", ".config/fastfetch/config.jsonc"),
-        ("fish-config.fish", ".config/fish/conf.d/50-cybex.fish"),
+        ("fish-config.fish", ".config/fish/conf.d/50-cybexos.fish"),
         ("kitty.conf", ".config/kitty/kitty.conf"),
     ):
         copy(f"roles/dotfiles/files/{source}", f"{seed}/{destination}")
     copy("assets/EDM115-newline2.omp.json", f"{seed}/.config/oh-my-posh/EDM115-newline2.omp.json")
+    copy("assets/nautilus-localsend.py", f"{seed}/.local/share/nautilus-python/extensions/localsend.py")
+    for name in ("localsend-share-clipboard", "localsend-share-file", "localsend-share-folder"):
+        content = (ROOT / "roles/dotfiles/templates" / (name + ".desktop.j2")).read_text()
+        write(f"{seed}/.local/share/applications/{name}.desktop",
+              content.replace("{{ primary_home }}/.local/bin/", ""))
     for name in ("nvim-kitty", "brave-origin", "chatgpt", "com.onepassword.OnePassword"):
         copy(f"roles/dotfiles/files/{name}.desktop", f"{seed}/.local/share/applications/{name}.desktop")
     t3_desktop = (ROOT / "roles/dotfiles/templates/t3code-nightly.desktop.j2").read_text()
@@ -156,6 +163,10 @@ def main():
             relative = source.relative_to(ROOT / "image/rootfs")
             copy(source.relative_to(ROOT), relative, relative.parts[1] in ("bin", "libexec"))
     prepare_defaults(ROOT, payload, environment, inventory)
+    prepare_provision(ROOT, payload)
+    copy("roles/apps/files/cybexos-repository-policy", "usr/libexec/cybexos-repository-policy", True)
+    for name in ("brave-browser", "1password", "chatgpt", "tailscale"):
+        copy(f"roles/apps/files/{name}.repo", f"usr/share/cybexos/repository-policy/{name}.repo")
     # The fonts are already checksum-pinned by the project. Preserve upstream
     # license texts and fail the build on any mismatch.
     for font in inventory["pinned_font_files"]:

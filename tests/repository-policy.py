@@ -229,7 +229,7 @@ def verify_dependency_policy(values: dict) -> None:
 
     fish = (ROOT / "roles/dotfiles/files/fish-config.fish").read_text()
     assert "alias codex='codex --dangerously-bypass-approvals-and-sandbox'" in fish
-    assert "--dangerously-skip-permissions" not in fish
+    assert "alias claude='claude --dangerously-skip-permissions'" in fish
     assert "alias update='cybex update'" in fish
     assert "alias a='cybex agent'" in fish
 

@@ -293,7 +293,7 @@ install_hypr_module() {
     looknfeel.lua)
       sed -e '/^{% if cybexos_xps_2026 | bool %}$/d' \
           -e '/^{% endif %}$/d' \
-          -e "s/{{ (cybexos_xps_2026 | bool) | ternary('true', 'false') }}/false/" \
+          -e "s/{{ .* }}/false/" \
           roles/desktop/templates/looknfeel.lua.j2 >"$destination"
       ;;
     *) install -m 0644 "roles/desktop/files/$module" "$destination" ;;

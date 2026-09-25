@@ -53,7 +53,7 @@ hl.config({
   -- SDDM owns crash recovery: a new desktop requires a new authenticated login.
   misc = { force_default_wallpaper = 0, disable_hyprland_logo = true, focus_on_activate = false, disable_watchdog_warning = true },
   xwayland = {
-    force_zero_scaling = {{ (cybexos_xps_2026 | bool) | ternary('true', 'false') }},
+    force_zero_scaling = {{ 'os.getenv("CYBEXOS_XPS_2026") == "1"' if cybexos_dynamic_hardware | default(false) else ((cybexos_xps_2026 | bool) | ternary('true', 'false')) }},
   },
   group = {
     col = {

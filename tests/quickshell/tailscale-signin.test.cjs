@@ -68,12 +68,10 @@ test("only HTTPS authentication links without credentials or control characters 
     assert.doesNotMatch(H.errorMessage(1, "Error " + url, false), /example/);
 });
 
-test("first enable presents setup and duplicate clicks cannot spawn more login processes", () => {
+test("first enable starts browser login and duplicate clicks cannot spawn more login processes", () => {
     const { state: s, calls } = service();
     s.setRunning(true);
-    assert.equal(calls.setup, 1);
-    assert.equal(s.actionProc.running, false);
-    s.signIn();
+    assert.equal(s.actionProc.running, true);
     assert.equal(s.authPending, true);
     assert.equal(s.browserRequested, true);
     assert.deepEqual(s.actionProc.command, H.command(true, false));

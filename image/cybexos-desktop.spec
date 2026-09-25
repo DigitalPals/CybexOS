@@ -18,7 +18,7 @@ Obsoletes:      fedora-config-desktop < %{epoch}:%{version}-%{release}
 # filesystem separately. Avoid spending minutes recompressing user toolchains.
 %global _binary_payload w3.zstdio
 %global _binary_filedigest_algorithm 8
-Requires:       bash coreutils util-linux systemd python3
+Requires:       bash coreutils util-linux systemd python3 ansible-core
 Requires:       sddm sddm-wayland-generic systemd-pam gnome-keyring-pam
 Requires:       hyprland hyprland-guiutils quickshell hypridle hyprlock hyprpolkitagent hyprsunset
 Requires:       xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-utils
@@ -86,6 +86,8 @@ cp -a usr opt etc %{buildroot}/
 /usr/lib/dracut/dracut.conf.d/90-cybexos-recovery.conf
 /usr/lib/dracut/modules.d/90cybexos-recovery/
 /usr/lib/systemd/system/cybexos-recovery-refresh.service
+/usr/lib/systemd/system/cybexos-hardware-setup.service
+/usr/lib/systemd/system/cybexos-hardware-setup.timer
 /usr/lib/firewalld/zones/cybexos.xml
 
 %posttrans
@@ -94,6 +96,7 @@ cp -a usr opt etc %{buildroot}/
 /usr/libexec/cybexos-login-prepare --install-pam
 # Bootable recovery points are refreshed at every boot; enabling is idempotent.
 systemctl enable cybexos-recovery-refresh.service >/dev/null 2>&1 || :
+systemctl enable cybexos-hardware-setup.timer >/dev/null 2>&1 || :
 
 %changelog
 * Sat Sep 05 2026 CybexOS <noreply@localhost> - 0.1.0-0.1.alpha

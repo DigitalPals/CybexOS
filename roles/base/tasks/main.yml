@@ -123,39 +123,8 @@
     - not ansible_check_mode
   changed_when: true
 
-- name: Install Fedora baseline packages
-  ansible.builtin.dnf:
-    name:
-      - acl
-      - avahi
-      - bash-completion
-      - bluez
-      - btrfs-progs
-      - bolt
-      - cups
-      - firewalld
-      - fish
-      - flatpak
-      - fwupd
-      - "glibc-langpack-{{ machine_locale.split('_')[0] }}"
-      - "glibc-langpack-{{ regional_locale.split('_')[0] }}"
-      - gvfs
-      - gvfs-fuse
-      - mokutil
-      - NetworkManager
-      - pipewire
-      - pipewire-alsa
-      - pipewire-pulseaudio
-      - policycoreutils-python-utils
-      - polkit
-      - powertop
-      - tuned-ppd
-      - udisks2
-      - upower
-      - zram-generator-defaults
-      - zstd
-    state: present
-    allowerasing: true
+- name: Install the shared workstation package baseline
+  ansible.builtin.import_tasks: packages.yml
 
 - name: Install transactional Btrfs recovery helper
   ansible.builtin.copy:
@@ -327,35 +296,8 @@
     mode: "0644"
   notify: Reload firewalld
 
-- name: Enable core services
-  ansible.builtin.systemd_service:
-    name: "{{ item }}"
-    enabled: true
-    state: started
-  loop:
-    - NetworkManager.service
-    - firewalld.service
-    - avahi-daemon.service
-    - cups.service
-    - fstrim.timer
-    - fwupd-refresh.timer
-    - tuned.service
-    - tuned-ppd.service
-
-- name: Enable optional hardware-backed services for boot
-  ansible.builtin.systemd_service:
-    name: "{{ item }}"
-    enabled: true
-  loop:
-    - bluetooth.service
-
-- name: Start optional hardware-backed services on the physical workstation
-  ansible.builtin.systemd_service:
-    name: "{{ item }}"
-    state: started
-  loop:
-    - bluetooth.service
-  when: start_optional_hardware_services | bool
+- name: Enable the shared workstation services
+  ansible.builtin.import_tasks: services.yml
 
 - name: Apply the managed firewalld zone before using it
   ansible.builtin.meta: flush_handlers
@@ -460,20 +402,8 @@
     - not ansible_check_mode
     - base_network_profiles_outside_zone.stdout_lines | length > 0
 
-- name: Ensure local privilege groups exist
-  ansible.builtin.group:
-    name: "{{ item }}"
-    state: present
-  loop: "{{ ['wheel', 'video', 'input'] + (features.docker | bool | ternary(['docker'], [])) }}"
-
-# The docker group controls a root daemon, so membership is root-equivalent.
-# It is granted only when the saved docker_sudoless answer accepts that.
-- name: Configure primary user groups and Fish login shell
-  ansible.builtin.user:
-    name: "{{ primary_user }}"
-    groups: "{{ (['wheel', 'video', 'input'] + ((features.docker | bool and docker_sudoless | bool) | ternary(['docker'], []))) | join(',') }}"
-    append: true
-    shell: /usr/bin/fish
+- name: Configure the shared account defaults
+  ansible.builtin.import_tasks: accounts.yml
 
 - name: Inspect Docker group membership before revoking it
   ansible.builtin.getent:
@@ -519,22 +449,6 @@
   ansible.builtin.command: "loginctl enable-linger {{ primary_user }}"
   args:
     creates: "/var/lib/systemd/linger/{{ primary_user }}"
-
-- name: Configure passwordless wheel sudo
-  ansible.builtin.copy:
-    dest: /etc/sudoers.d/10-wheel-nopasswd
-    owner: root
-    group: root
-    mode: "0440"
-    validate: /usr/sbin/visudo -cf %s
-    content: "%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n"
-  when: passwordless_wheel | bool
-
-- name: Revoke passwordless wheel sudo when disabled
-  ansible.builtin.file:
-    path: /etc/sudoers.d/10-wheel-nopasswd
-    state: absent
-  when: not passwordless_wheel | bool
 
 - name: Configure active local wheel Polkit authorization
   ansible.builtin.copy:

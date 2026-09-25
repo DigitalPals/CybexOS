@@ -1,7 +1,7 @@
 FROM fedora:44
 RUN dnf install -y python3-pyside6 python3-jinja2 python3-pyyaml python3-gobject-base glib2 \
     ShellCheck pykickstart qt6-qtdeclarative-devel desktop-file-utils \
-    nodejs24 gnupg2 git ripgrep \
+    nodejs24 gnupg2 git ripgrep ansible-core \
     && dnf clean all
 ENV QT_QPA_PLATFORM=offscreen
 WORKDIR /source

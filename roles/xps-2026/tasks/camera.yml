@@ -77,13 +77,11 @@
   tags: [xps-2026, hardware, camera]
 
 - name: Preserve Fedora's generic camera relay configuration
-  ansible.builtin.copy:
-    src: /etc/v4l2-relayd.d/icamerasrc.conf
-    dest: /var/lib/cybexos/backups/system/etc/v4l2-relayd.d/icamerasrc.conf
-    remote_src: true
-    owner: root
-    group: root
-    mode: "0600"
+  # Fedora ships a symlink into /run; its target can be absent on first boot.
+  # Preserve the link itself, including when there is no generated target yet.
+  ansible.builtin.command:
+    argv: [cp, --archive, --no-dereference, /etc/v4l2-relayd.d/icamerasrc.conf, /var/lib/cybexos/backups/system/etc/v4l2-relayd.d/icamerasrc.conf]
+  changed_when: true
   when:
     - xps_2026_generic_camera_relay.stat.exists
     - not xps_2026_generic_camera_relay_backup.stat.exists

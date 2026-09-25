@@ -1,5 +1,8 @@
 [Unit]
 Description=CybexOS graphical session
+# Vendor services start after graphical-session.target; do not order the
+# target after every Wanted service, which would close a dependency cycle.
+DefaultDependencies=no
 BindsTo=graphical-session.target
 Wants=graphical-session-pre.target quickshell.service hyprpolkitagent.service hypridle.service voxtype.service hermes-menubar-bridge.service cybexos-welcome.service cybexos-app-seed.service
 After=graphical-session-pre.target

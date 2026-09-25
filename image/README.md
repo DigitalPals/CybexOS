@@ -91,6 +91,51 @@ autologin requires the requested policy and verified root encryption, is
 rechecked at boot, and is attempted only on the first SDDM start in each boot.
 Logout and later SDDM starts return to the login screen.
 
+## Shared installation policy and repair
+
+The image package includes the reviewed Ansible baseline, account, Fish and
+XPS hardware tasks under `/usr/share/cybexos/provision`. Package selection
+includes the shared baseline and hardware firmware lists. Anaconda applies
+account settings, service enablement, the firewall and hardware detection in
+its offline target. The installed account therefore starts with Fish and
+passwordless wheel sudo; an explicit saved `passwordless_wheel: false` wins.
+Both Codex and Claude use the interactive Fish aliases in the shared config.
+
+After boot, `cybexos-hardware-setup.timer` applies the detected hardware role
+when network access is available. Failed setup remains visible in the service
+journal. A known camera ABI mismatch is cached for that kernel and provisioning
+payload, avoiding repeated builds; a new kernel or changed payload retries it.
+`cybex doctor` reports a cached incompatibility, and `cybex repair --hardware`
+allows an explicit retry. Successful hardware setup is also keyed to the kernel.
+
+For installations made before this integration, preview and apply the migration
+from a reviewed checkout:
+
+```bash
+./image/repair-installed --user "$USER"
+sudo ./image/repair-installed --apply --user "$USER"
+```
+
+This installs missing packages, reconciles signed vendor repositories, applies
+shared machine/account settings, repairs session ordering and updates the
+affected desktop helpers. It backs up replaced files under
+`/var/lib/cybexos/backups/install-repair-*`. Home data and independent user
+overrides remain in place; the managed Fish configuration is updated. Open a
+new terminal for Fish, and log out/in to load the detected hardware flag into
+Hyprland. The desktop shell restarts once during repair.
+
+DNF checks initialize the user's missing metadata and signing-key cache while
+keeping signature verification enabled. Failed repositories fail the check.
+Vendor repository IDs are reconciled and DNF5 overrides preserve the reviewed
+key policy across vendor RPM updates. LocalSend gets TCP/UDP 53317 independently
+of optional Steam/network services, and selected files use the Flatpak document
+portal. The session target avoids the implicit ordering cycle with vendor
+services that start after `graphical-session.target`.
+
+This migration does not publish a CybexOS RPM update repository. A signed public
+channel is still required for future desktop RPM delivery; see the release
+instructions below. Fedora, vendor and Flatpak updates work independently.
+
 ## Source checks: no ISO or VM
 
 ```bash
@@ -304,8 +349,12 @@ does not establish that PXE publication and refresh succeeded.
 `vm.json`. By default cleanup removes disks, credentials, screenshots and VM
 logs; small JSON reports remain. `--keep-artifacts` is only for unresolved
 diagnostics, and retained paths/sizes must be reported and later cleaned.
-Qualification's graphical keyboard bootstrap and greeter focus assumptions
-still need real VM validation; it stops instead of blindly retrying passwords.
+The 2026-09-25 UEFI qualification passed a fresh encrypted installation,
+installed-account defaults, cold reboot, logout/crash/manager-restart recovery,
+and the encrypted-keyring fallback cases; see
+[the installation audit](INSTALL-AUDIT-2026-09-25.md). The graphical bootstrap
+waits for the desktop and a terminal execution marker before private input;
+it stops instead of blindly retrying passwords.
 Physical GPUs, Secure Boot, international early-boot password entry, screen
 lock, suspend/resume and real application/account credential behavior need
 separate checks.

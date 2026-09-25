@@ -62,6 +62,7 @@ for account in pwd.getpwall():
     path.chmod(0o600)
 PY
 restorecon -RF /etc/cybexos /var/lib/AccountsService/users
+/usr/libexec/cybexos-configure-installed --offline
 /usr/libexec/cybexos-seed-installed-users
 # Anaconda's initial initramfs was created before this post script removed the
 # live-only dracut settings. Rebuild from the final installed configuration.

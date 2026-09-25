@@ -8,7 +8,7 @@ const read = relative => fs.readFileSync(path.join(repo, relative), "utf8");
 
 test("the affected XPS OLED selects the working Xe VESA backlight path", () => {
     const defaults = read("roles/xps-2026/defaults/main.yml");
-    const main = read("roles/xps-2026/tasks/main.yml");
+    const main = read("roles/xps-2026/tasks/main.yml") + read("roles/xps-2026/tasks/detect.yml");
     const backlight = read("roles/xps-2026/tasks/backlight.yml");
     const verifier = read("tests/verify-system");
     const docs = read("docs/xps-2026-hardware.md");

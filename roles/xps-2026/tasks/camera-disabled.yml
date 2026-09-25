@@ -6,13 +6,9 @@
   tags: [xps-2026, hardware, camera]
 
 - name: Restore Fedora's generic camera relay configuration
-  ansible.builtin.copy:
-    src: /var/lib/cybexos/backups/system/etc/v4l2-relayd.d/icamerasrc.conf
-    dest: /etc/v4l2-relayd.d/icamerasrc.conf
-    remote_src: true
-    owner: root
-    group: root
-    mode: "0644"
+  ansible.builtin.command:
+    argv: [cp, --archive, --no-dereference, --remove-destination, /var/lib/cybexos/backups/system/etc/v4l2-relayd.d/icamerasrc.conf, /etc/v4l2-relayd.d/icamerasrc.conf]
+  changed_when: true
   when: xps_2026_disabled_camera_relay_backup.stat.exists
   notify: Reload XPS 2026 systemd
   tags: [xps-2026, hardware, camera]

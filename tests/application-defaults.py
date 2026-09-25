@@ -138,7 +138,7 @@ class ApplicationDefaults(unittest.TestCase):
             self.assertNotEqual(subprocess.run(
                 [str(ROOT / "scripts/migrate-config"), str(config)],
                 capture_output=True, text=True).returncode, 0)
-        tasks = yaml.safe_load((ROOT / "roles/base/tasks/main.yml").read_text())
+        tasks = yaml.safe_load((ROOT / "roles/base/tasks/accounts.yml").read_text())
         groups = next(task for task in tasks
                       if task.get("name") == "Configure primary user groups and Fish login shell")
         self.assertIn("docker_sudoless", groups["ansible.builtin.user"]["groups"])
@@ -183,7 +183,8 @@ class ApplicationDefaults(unittest.TestCase):
             for key in APPLICATIONS:
                 self.assertIs(config["features"][key], True, key)
             self.assertFalse((home / "absent.yml").exists())
-            for key in ("passwordless_wheel", "passwordless_local_polkit",
+            self.assertIs(config["passwordless_wheel"], True)
+            for key in ("passwordless_local_polkit",
                         "docker_sudoless", "desktop_autologin"):
                 self.assertIs(config[key], False)
             # hostnamectl succeeds with empty output when no static hostname

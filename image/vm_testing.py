@@ -14,6 +14,10 @@ from build_support import SAFE_NAME, atomic_json, prepare_firmware, validate_qem
 from qmp_control import Qmp, type_text
 
 
+# Virtio block identifiers are limited to 20 bytes in the guest protocol.
+QUALIFICATION_DISK_SERIAL = "CYBEXOS-QUALIFY"
+
+
 def run(args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
 
@@ -67,6 +71,22 @@ with (t3 / 'T3-Code-Nightly-x86_64.AppImage').open('rb') as stream:
     assert hashlib.file_digest(stream, 'sha256').hexdigest() == (t3 / 'digest').read_text().strip()
 assert (home / '.local/share/voxtype/models/ggml-base.bin').is_file()
 assert (home / '.local/state/cybexos/offline-apps-seeded').is_file()
+if not Path('/run/cybexos-live').exists():
+    import pwd
+    assert pwd.getpwuid(os.getuid()).pw_shell == '/usr/bin/fish'
+    subprocess.run(['sudo', '-k', '-n', 'true'], check=True)
+    assert Path('/etc/cybexos/hardware.json').is_file()
+    for unit in ('hyprpolkitagent', 'hypridle', 'voxtype'):
+        subprocess.run(['systemctl', '--user', 'is-active', unit], check=True)
+    for unit in ('tuned-ppd', 'fwupd-refresh.timer', 'cybexos-hardware-setup.timer'):
+        subprocess.run(['systemctl', 'is-enabled', unit], check=True)
+    for scope in ([], ['--permanent']):
+        for protocol in ('tcp', 'udp'):
+            subprocess.run(['sudo', '-n', 'firewall-cmd', *scope, '--zone=cybexos',
+                            '--query-port=53317/' + protocol], check=True)
+    aliases = subprocess.check_output(['fish', '-ic', 'functions codex claude'], text=True)
+    assert '--dangerously-bypass-approvals-and-sandbox' in aliases
+    assert '--dangerously-skip-permissions' in aliases
 print('Complete application manifest and offline user toolchains passed.')
 """
 
@@ -164,7 +184,8 @@ class TestVM:
                     "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={self.work / 'known_hosts'}", f"{user}@127.0.0.1"]
         firmware = prepare_firmware(self.work) if self.firmware == "uefi" else []
         args = ["qemu-system-x86_64", "-no-user-config", "-name", "cybexos-qualification", "-machine", "q35,accel=kvm", "-cpu", "host", "-smp", "4", "-m", str(self.memory),
-                "-drive", f"file={self.disk},format=qcow2,if=virtio,serial=CYBEXOS-QUALIFICATION,werror=report,rerror=report", *firmware,
+                "-drive", f"file={self.disk},format=qcow2,if=none,id=qualification-disk,werror=report,rerror=report",
+                "-device", f"virtio-blk-pci,drive=qualification-disk,serial={QUALIFICATION_DISK_SERIAL}", *firmware,
                 "-device", "virtio-vga", "-device", "qemu-xhci", "-device", "usb-tablet",
                 "-netdev", f"user,id=net,restrict=on,hostfwd=tcp:127.0.0.1:{self.port}-:22", "-device", "virtio-net-pci,netdev=net",
                 "-vnc", f"127.0.0.1:{self.vnc_port - 5900}", "-serial", f"file:{self.work / 'serial.log'}",
@@ -204,6 +225,7 @@ class TestVM:
         A fresh printf marker proves a shell executed before private setup input.
         """
         deadline, next_attempt, attempt = time.monotonic() + timeout, 0, 0
+        desktop_observed = False
         public = self.key.with_suffix(".pub").read_text().strip()
         command = "mkdir -p ~/.ssh; printf '%s\\n' " + shlex.quote(public)
         command += " > ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys; "
@@ -222,7 +244,26 @@ class TestVM:
                 self.ssh_ready = True
                 return
             if setup and time.monotonic() >= next_attempt and self.qmp_path.exists():
+                # Typing even public shell commands at GRUB can enter its
+                # editor and prevent boot. Both fresh fixtures show Welcome;
+                # require its actual desktop text before sending any keys.
+                if not desktop_observed:
+                    screen = " ".join(self.screen_text().lower().split())
+                    desktop_observed = any(phrase in screen for phrase in (
+                        "make yourself at home", "welcome to your new desktop"))
+                    if not desktop_observed:
+                        next_attempt = time.monotonic() + 5
+                        time.sleep(1)
+                        continue
+                # Keep the terminal away from the first-run welcome window;
+                # repeated tiled terminals make the OCR marker unreadable.
+                self.keypress("meta_l+9")
                 self.keypress("meta_l+ret")
+                time.sleep(1)
+                # Installed terminals now start Fish. Enter a history-free
+                # Bash before the readiness marker or any private fixture
+                # input, without putting that input in a bash -c argument.
+                self.type("exec env HISTFILE=/dev/null bash --noprofile --norc\n")
                 time.sleep(1)
                 attempt += 1
                 # The contiguous marker does not occur in the typed command;
@@ -232,6 +273,8 @@ class TestVM:
                 time.sleep(1)
                 if marker in re.sub(r"[^A-Z0-9]", "", self.screen_text().upper()):
                     self.type(command)
+                else:
+                    self.keypress("meta_l+q")
                 next_attempt = time.monotonic() + 15
             time.sleep(1)
         raise RuntimeError("SSH/desktop readiness deadline exceeded; inspect VM through vm-control")

@@ -131,7 +131,11 @@ Singleton {
     function setRunning(value) {
         if (busy)
             return;
-        if (value && (needsLogin || needsApproval || authPending || !statusKnown
+        if (value && needsLogin) {
+            signIn();
+            return;
+        }
+        if (value && (needsApproval || authPending || !statusKnown
                 || backendState !== "Stopped" && backendState !== "Running")) {
             showSetup();
             return;

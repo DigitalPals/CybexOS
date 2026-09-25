@@ -200,7 +200,7 @@ if [[ $non_interactive == true ]]; then
   tailscale=true
   connected_widgets=true
   proprietary_apps=true
-  passwordless_wheel=false
+  passwordless_wheel=true
   passwordless_local_polkit=false
   docker_sudoless=false
   desktop_autologin=false
@@ -229,7 +229,7 @@ else
   ask_bool local_network_services 'Open feature-selected local-network firewall ports?' false
   echo
   echo 'The following choices relax local authentication. Review each explicitly.'
-  ask_bool passwordless_wheel 'Allow the wheel group to use sudo without a password?'
+  ask_bool passwordless_wheel 'Allow the wheel group to use sudo without a password?' true
   ask_bool passwordless_local_polkit 'Authorize active local wheel users through Polkit without a password?'
   docker_sudoless=false
   if [[ $docker == true ]]; then

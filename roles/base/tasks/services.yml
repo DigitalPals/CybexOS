@@ -1,0 +1,22 @@
+---
+- name: Enable core services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: "{{ cybexos_offline | default(false) | bool | ternary(omit, 'started') }}"
+  loop: "{{ base_core_services }}"
+
+- name: Enable optional hardware-backed services for boot
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+  loop:
+    - bluetooth.service
+
+- name: Start optional hardware-backed services on the physical workstation
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: "{{ cybexos_offline | default(false) | bool | ternary(omit, 'started') }}"
+  loop:
+    - bluetooth.service
+  when: start_optional_hardware_services | bool

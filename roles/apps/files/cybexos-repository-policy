@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""Reconcile vendor repository IDs and persist reviewed DNF5 policy overrides."""
+import argparse
+import configparser
+import io
+import os
+from pathlib import Path
+import shutil
+import tempfile
+
+
+VENDORS = ('brave-browser', '1password', 'chatgpt', 'tailscale')
+
+
+def write(path, text, backup):
+    if path.exists() and path.read_text() == text:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and not backup.exists():
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, backup)
+        backup.chmod(0o600)
+    fd, temporary = tempfile.mkstemp(prefix='.cybexos-repo-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(text)
+            os.fchmod(stream.fileno(), 0o644)
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+    return True
+
+
+def render(config):
+    output = io.StringIO()
+    config.write(output)
+    return output.getvalue()
+
+
+def configure(root, policy_directory, vendors=VENDORS):
+    policies = configparser.ConfigParser(interpolation=None)
+    files = {}
+    for vendor in vendors:
+        if vendor not in VENDORS:
+            raise ValueError('Unknown managed vendor: ' + vendor)
+        source = policy_directory / (vendor + '.repo')
+        contents = source.read_text()
+        policy = configparser.ConfigParser(interpolation=None)
+        policy.read_string(contents)
+        for section in policy.sections():
+            entry = policy[section]
+            if not entry.getboolean('gpgcheck', fallback=False):
+                raise ValueError('Package signature verification is required: ' + section)
+            if not entry.get('gpgkey', '').startswith('file:///etc/pki/rpm-gpg/'):
+                raise ValueError('A reviewed local signing key is required: ' + section)
+            if section in policies:
+                raise ValueError('Duplicate managed repository ID: ' + section)
+            policies[section] = dict(entry)
+        files[vendor + '.repo'] = contents
+    repositories = root / 'etc/yum.repos.d'
+    backups = root / 'var/lib/cybexos/backups/repositories'
+    # Remove just the managed IDs from the old aggregate. Preserve any extra
+    # administrator-added sections and the original file in the backup store.
+    legacy = repositories / 'cybex-applications.repo'
+    changed = False
+    if legacy.exists():
+        remaining = configparser.ConfigParser(interpolation=None)
+        remaining.read(legacy)
+        for section in policies.sections():
+            remaining.remove_section(section)
+        changed |= write(legacy, render(remaining), backups / legacy.name)
+    for name, contents in files.items():
+        changed |= write(repositories / name, contents, backups / name)
+    # RPM scriptlets may replace their own .repo files on every upgrade.
+    # DNF5 overrides preserve the pinned keys and signature checks afterward.
+    override = root / 'etc/dnf/repos.override.d/90-cybexos-vendors.repo'
+    changed |= write(override, render(policies), backups / '90-cybexos-vendors.repo')
+    return changed
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--root', type=Path, default=Path('/'))
+    parser.add_argument('--policy-directory', type=Path,
+                        default=Path('/usr/share/cybexos/repository-policy'))
+    parser.add_argument('--repositories', nargs='+', choices=VENDORS, default=VENDORS)
+    args = parser.parse_args()
+    changed = configure(args.root, args.policy_directory, args.repositories)
+    print(('CHANGED' if changed else 'UNCHANGED') + ': vendor repository policy')
+
+
+if __name__ == '__main__':
+    main()

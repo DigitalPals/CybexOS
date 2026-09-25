@@ -15,11 +15,10 @@ import "UpdatesHelpers.js" as UpdatesHelpers
 // timer, at the interval the module's settings choose, plus a manual refresh
 // from the panel. Background checks do not install updates.
 //
-// The dnf side is deliberately `--cacheonly`: a refreshing check-update can
-// stop to ask whether to import a repository's signing key, and a shell poller
-// has no terminal to answer with — it simply hangs. Reading the cache that
-// dnf-makecache.timer already keeps warm is both the honest and the cheap
-// answer, and it is what the panel's footnote says it is doing.
+// DNF bootstraps missing/expired metadata in the checking user's own cache.
+// --assumeyes imports the configured signing keys without an interactive TTY;
+// signature verification remains enabled, and unavailable repositories fail
+// the complete check instead of silently producing an incomplete update count.
 //
 // The privileged run belongs to a transient service and publishes an
 // atomic status record plus append-only logs. This singleton is a client: it
@@ -94,8 +93,8 @@ Singleton {
     property var checkParts: UpdatesHelpers.allParts()
     property bool checkAgain: false
     property bool checkAgainForced: false
-    // dnf answers from repository metadata that dnf5-makecache.timer
-    // refreshes every few hours and an installed set that rarely changes,
+    // dnf answers from repository metadata refreshed by its own checks
+    // and the system makecache timer, plus an installed set that rarely changes,
     // yet each read costs most of a CPU-second and 200 MB. While the
     // signature of both (UpdatesHelpers.dnfSignature) matches the last
     // successful read's, that answer stands. A manual refresh and the
@@ -1479,8 +1478,9 @@ Singleton {
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["timeout", "10s", "find", "/var/cache/libdnf5",
-            "/usr/lib/sysimage/rpm", "/etc/yum.repos.d", "-maxdepth", "3",
+        command: ["timeout", "10s", "find", "/var/cache/libdnf5", "/usr/lib/sysimage/rpm",
+            (Quickshell.env("XDG_CACHE_HOME") || Quickshell.env("HOME") + "/.cache") + "/libdnf5",
+            "/etc/yum.repos.d", "/etc/dnf/repos.override.d", "-maxdepth", "3",
             "(", "-name", "repomd.xml", "-o", "-name", "rpmdb.sqlite",
             "-o", "-name", "rpmdb.sqlite-wal", "-o", "-name", "*.repo", ")",
             "-printf", "%p %s %T@\\n"]
@@ -1519,7 +1519,7 @@ Singleton {
         property string signature: ""
 
         command: ["timeout", "45s", "dnf", "--quiet",
-            "--cacheonly", "check-update"]
+            "--assumeyes", "--setopt=*.skip_if_unavailable=false", "check-update"]
         // Untranslated output, without an `env` process per check.
         // QML object literals convert to QVariantHash at runtime; the shipped
         // Quickshell type description reports them as QVariantMap to qmllint.
@@ -1560,7 +1560,7 @@ Singleton {
         property bool exitSeen: false
         property int lastExit: 0
 
-        command: ["timeout", "45s", "dnf", "--quiet", "--cacheonly",
+        command: ["timeout", "45s", "dnf", "--quiet", "--assumeyes", "--setopt=*.skip_if_unavailable=false",
             "advisory", "list", "--security", "--updates", "--json"]
         // qmllint disable incompatible-type
         environment: ({ LC_ALL: "C" })

@@ -1,0 +1,17 @@
+---
+- name: Create the Fish configuration directory
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.config/fish/conf.d"
+    state: directory
+    mode: "0755"
+
+- name: Install Fish shell configuration
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: fish-config.fish
+    dest: "{{ primary_home }}/.config/fish/conf.d/50-cybexos.fish"
+    mode: "0644"
+  tags: [shell-defaults]

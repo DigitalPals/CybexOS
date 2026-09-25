@@ -1,0 +1,6 @@
+---
+- name: Install Fedora baseline packages
+  ansible.builtin.dnf:
+    name: "{{ base_required_packages + ['glibc-langpack-' + machine_locale.split('_')[0], 'glibc-langpack-' + regional_locale.split('_')[0]] }}"
+    state: present
+    allowerasing: true

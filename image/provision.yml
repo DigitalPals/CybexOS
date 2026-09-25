@@ -1,0 +1,70 @@
+---
+- name: Configure an installed CybexOS account with the workstation policy
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    - ../inventory/group_vars/all.yml
+  tasks:
+    - name: Require the supported installation platform
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.distribution == 'Fedora'
+          - ansible_facts.distribution_major_version == fedora_release
+          - ansible_facts.architecture == 'x86_64'
+          - primary_user != 'root'
+          - primary_user != 'liveuser'
+
+    - name: Apply the common installed-system policy
+      ansible.builtin.include_role:
+        name: base
+        tasks_from: image
+      when: not cybexos_hardware_only | bool
+
+    - name: Apply the shared Fish configuration
+      ansible.builtin.include_role:
+        name: dotfiles
+        tasks_from: shell-defaults
+      when: not cybexos_hardware_only | bool
+
+    - name: Detect hardware during offline installation as well as repair
+      ansible.builtin.include_role:
+        name: xps-2026
+        tasks_from: detect
+      when: not cybexos_hardware_only | bool
+
+    - name: Create the machine policy directory
+      ansible.builtin.file:
+        path: /etc/cybexos
+        state: directory
+        mode: "0755"
+
+    - name: Record the detected desktop hardware policy
+      ansible.builtin.copy:
+        dest: /etc/cybexos/hardware.json
+        content: "{{ {'xps_2026': xps_2026_is_supported | bool} | to_json }}\n"
+        mode: "0644"
+      when: not cybexos_hardware_only | bool
+
+    - name: Read the hardware account identity
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ primary_user }}"
+      when: cybexos_hardware_only | bool
+
+    - name: Apply the detected workstation hardware role
+      ansible.builtin.include_role:
+        name: xps-2026
+      when: cybexos_hardware_only | bool
+
+    - name: Require a working or reboot-pending camera on matching hardware
+      ansible.builtin.assert:
+        that:
+          - xps_2026_camera_ready | default(false) | bool or xps_2026_camera_reboot_required | default(false) | bool or xps_2026_camera_preserve_previous | default(false) | bool
+        fail_msg: "The detected camera setup did not complete. Inspect the preceding hardware diagnostics and retry cybex repair --hardware."
+      when:
+        - cybexos_hardware_only | bool
+        - xps_2026_is_supported | bool
+        - xps_2026_camera_enabled | bool
+        - xps_2026_has_ovti08f4 | bool
+        - xps_2026_has_ipu7 | bool

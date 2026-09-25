@@ -33,7 +33,8 @@ def copy_tree(source, target):
 def package_names():
     """Read package groups from the application and desktop contracts."""
     defaults = yaml.safe_load((ROOT / "roles/apps/defaults/main.yml").read_text())
-    packages = []
+    baseline = yaml.safe_load((ROOT / "roles/base/defaults/main.yml").read_text())
+    packages = list(baseline["base_required_packages"])
     for key in ("apps_required_fedora_packages", "apps_omawrite_packages", "apps_developer_fedora_packages",
                 "apps_podman_packages", "apps_steam_packages"):
         packages.extend(defaults[key])
@@ -42,7 +43,11 @@ def package_names():
             "Install signed vendor applications", "Install Steam 32-bit graphics userspace",
         }),
         ("roles/base/tasks/main.yml", {"Install Docker packages when selected"}),
-        ("roles/desktop/tasks/main.yml", {"Install stable Hyprland and desktop integration packages"}),
+        # Firmware must be available at the first physical boot, before the
+        # detected hardware role runs its machine-specific configuration.
+        ("roles/xps-2026/tasks/packages.yml", {"Install explicit Panther Lake firmware, media, and regulatory packages"}),
+        ("roles/desktop/tasks/main.yml", {"Install stable Hyprland and desktop integration packages",
+                                               "Install Fedora fuzzel and matugen rather than COPR variants"}),
     ):
         for task in yaml.safe_load((ROOT / path).read_text()):
             if task.get("name") in names:

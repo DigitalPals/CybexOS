@@ -1,0 +1,43 @@
+---
+# The image installer and repair command reuse the actual workstation tasks.
+# In Anaconda's offline target the compose has already installed every package.
+- name: Install the shared baseline on existing image installations
+  ansible.builtin.import_tasks: packages.yml
+  when: not cybexos_offline | bool
+
+- name: Read the installed account identity
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ primary_user }}"
+
+- name: Apply the shared account policy
+  ansible.builtin.import_tasks: accounts.yml
+
+- name: Apply the shared workstation firewall
+  ansible.builtin.template:
+    src: cybexos-zone.xml.j2
+    dest: /etc/firewalld/zones/cybexos.xml
+    owner: root
+    group: root
+    mode: "0644"
+  register: image_firewall
+
+- name: Enable the shared workstation services
+  ansible.builtin.import_tasks: services.yml
+
+- name: Reload the repaired workstation firewall
+  ansible.builtin.systemd_service:
+    name: firewalld.service
+    state: reloaded
+  when:
+    - not cybexos_offline | bool
+    - image_firewall is changed
+
+- name: Enable feature-selected image services
+  ansible.builtin.systemd_service:
+    name: "{{ item.unit }}"
+    enabled: true
+  loop:
+    - { unit: docker.socket, feature: docker }
+    - { unit: tailscaled.service, feature: tailscale }
+  when: features[item.feature] | bool

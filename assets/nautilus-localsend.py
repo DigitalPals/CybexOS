@@ -12,7 +12,7 @@ class SendViaLocalSendAction(GObject.GObject, Nautilus.MenuProvider):
         localsend = shutil.which("localsend")
         if not localsend:
             return None
-        return [localsend, "--headless", "send"]
+        return [localsend]
 
     def _selected_paths(self, files):
         paths = []

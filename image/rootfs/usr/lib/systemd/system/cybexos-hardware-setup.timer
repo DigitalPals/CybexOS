@@ -1,0 +1,11 @@
+[Unit]
+Description=Complete detected hardware setup after installation
+ConditionPathExists=!/run/cybexos-live
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=15min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

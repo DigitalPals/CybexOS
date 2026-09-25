@@ -1,0 +1,42 @@
+---
+# Shared by workstation convergence, ISO composition, and installed-image repair.
+base_required_packages:
+- acl
+- alsa-ucm
+- alsa-utils
+- avahi
+- bash-completion
+- bluez
+- btrfs-progs
+- bolt
+- cups
+- firewalld
+- fish
+- flatpak
+- fwupd
+- gvfs
+- gvfs-fuse
+- mokutil
+- NetworkManager
+- pipewire
+- pipewire-alsa
+- pipewire-pulseaudio
+- policycoreutils-python-utils
+- polkit
+- powertop
+- tuned-ppd
+- udisks2
+- upower
+- zram-generator-defaults
+- zstd
+base_core_services:
+- NetworkManager.service
+- firewalld.service
+- avahi-daemon.service
+- cups.service
+- fstrim.timer
+- fwupd-refresh.timer
+- tuned.service
+- tuned-ppd.service
+base_login_shell: /usr/bin/fish
+base_account_groups: [wheel, video, input]

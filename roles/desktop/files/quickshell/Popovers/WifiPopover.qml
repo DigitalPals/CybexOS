@@ -457,7 +457,10 @@ Surface {
         Accessible.onPressAction: summary.openDetails()
 
         function openDetails() {
-            Popouts.openPanel("tailscale", "right");
+            if (Tailscale.needsLogin)
+                Tailscale.signIn();
+            else
+                Popouts.openPanel("tailscale", "right");
         }
 
         onActiveFocusChanged: if (activeFocus) root.ensureVisible(summary)

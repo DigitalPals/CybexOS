@@ -149,7 +149,7 @@ Surface {
         label: Tailscale.needsApproval ? "View approval status"
             : Tailscale.authPending ? "Continue sign-in"
             : Tailscale.needsLogin ? "Sign in" : "Connection details"
-        onTriggered: Tailscale.showSetup()
+        onTriggered: Tailscale.needsLogin ? Tailscale.signIn() : Tailscale.showSetup()
     }
 
     Text {

@@ -194,12 +194,39 @@
   when: cleanup_legacy_xps_artifacts | bool
   tags: [browser]
 
+- name: Install shared vendor repository reconciliation
+  ansible.builtin.copy:
+    src: cybexos-repository-policy
+    dest: /usr/local/libexec/cybexos-repository-policy
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Preserve reviewed repository policy across vendor package updates
+  ansible.builtin.command:
+    argv: "{{ ['/usr/local/libexec/cybexos-repository-policy', '--policy-directory', role_path + '/files', '--repositories'] + (features.proprietary_apps | bool | ternary(['brave-browser', '1password', 'chatgpt'], [])) + (features.tailscale | bool | ternary(['tailscale'], [])) }}"
+  register: apps_repo_policy
+  changed_when: "apps_repo_policy.stdout.startswith('CHANGED:')"
+  when:
+    - not ansible_check_mode
+    - features.proprietary_apps | bool or features.tailscale | bool
+  tags: [browser]
+
+- name: Remove managed repository overrides when every vendor is disabled
+  ansible.builtin.file:
+    path: /etc/dnf/repos.override.d/90-cybexos-vendors.repo
+    state: absent
+  when:
+    - not features.proprietary_apps | bool
+    - not features.tailscale | bool
+
 - name: Refresh DNF metadata after repository changes
   ansible.builtin.command: dnf -q -y makecache
   changed_when: true
   when:
     - not ansible_check_mode
-    - (apps_rpmfusion_free is defined and apps_rpmfusion_free is changed)
+    - (apps_repo_policy is defined and apps_repo_policy is changed)
+      or (apps_rpmfusion_free is defined and apps_rpmfusion_free is changed)
       or (apps_rpmfusion_nonfree is defined and apps_rpmfusion_nonfree is changed)
       or (apps_chatgpt_repo_key is defined and apps_chatgpt_repo_key is changed)
       or (apps_chatgpt_rpm_key is defined and apps_chatgpt_rpm_key is changed)

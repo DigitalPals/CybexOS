@@ -9,7 +9,7 @@ import time
 
 from build_support import atomic_json, digest
 from login_qualification import qualify_login
-from vm_testing import TestVM, require_test_iso, run
+from vm_testing import QUALIFICATION_DISK_SERIAL, TestVM, require_test_iso, run
 
 
 BACKEND = '/usr/libexec/cybexos-installer-backend'
@@ -26,6 +26,8 @@ def backend(vm, action, payload=None):
 
 def root_script(vm, script, password):
     # Password stays in memory/stdin and is never part of a command line or log.
+    if subprocess.run([*vm.ssh, "sudo -k -n true"], capture_output=True, timeout=15).returncode == 0:
+        return run([*vm.ssh, "sudo -n bash -e -s"], input=script, text=True, capture_output=True, timeout=120)
     return run([*vm.ssh, "sudo -k -S -p '' bash -e -s"], input=password + '\n' + script, text=True, capture_output=True, timeout=120)
 
 
@@ -113,7 +115,7 @@ def main():
         vm.audit()
         report['checks'].append('live-boot-and-offline-applications')
         serial = run([*vm.ssh, 'lsblk -dn -o SERIAL /dev/vda'], text=True, capture_output=True).stdout.strip()
-        if serial != 'CYBEXOS-QUALIFICATION':
+        if serial != QUALIFICATION_DISK_SERIAL:
             raise RuntimeError('Refusing installation: guest target is not the newly created qualification disk')
         run([*vm.ssh, 'XDG_RUNTIME_DIR=/run/user/1000 systemd-run --user --collect --unit=cybexos-qualification-anaconda /usr/bin/liveinst --nosave=all_ks'])
         deadline = time.monotonic() + 120

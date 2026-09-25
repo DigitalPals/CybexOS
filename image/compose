@@ -150,8 +150,7 @@ try:
                 raise RuntimeError(f"Vendor key is not a reviewed local key: {key_url}")
             key = Path(key_url.removeprefix("file://"))
             shutil.copy2(key, Path(creator._instroot) / "etc/pki/rpm-gpg" / key.name)
-    with (Path(creator._instroot) / "etc/yum.repos.d/cybex-applications.repo").open("w") as output:
-        vendor_policy.write(output)
+    subprocess.run(["chroot", creator._instroot, "/usr/libexec/cybexos-repository-policy"], check=True)
     # imgcreate stages its initrd before Kickstart post scripts run. Select
     # the branded theme and rebuild now, while all installed kernels exist.
     subprocess.run(["chroot", creator._instroot, "plymouth-set-default-theme", "cybex"], check=True)

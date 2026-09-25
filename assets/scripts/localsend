@@ -1,4 +1,23 @@
 #!/usr/bin/env bash
-# LocalSend is installed as a Flatpak; expose it as a plain command for the
-# share helpers, the Nautilus extension, and the terminal.
-exec flatpak run org.localsend.localsend_app "$@"
+# Export selected paths through the document portal so the Flatpak can read
+# files outside Downloads, without granting access to the whole home folder.
+set -euo pipefail
+args=()
+while (($#)); do
+  case $1 in
+    --text|-t|--share)
+      (($# >= 2)) || { echo "Missing LocalSend argument" >&2; exit 2; }
+      args+=("$1" "$2")
+      shift 2
+      ;;
+    *)
+      if [[ -e $1 ]]; then
+        args+=("@@" "$(realpath -- "$1")" "@@")
+      else
+        args+=("$1")
+      fi
+      shift
+      ;;
+  esac
+done
+exec flatpak run --file-forwarding org.localsend.localsend_app "${args[@]}"

@@ -340,13 +340,8 @@
     dest: "{{ primary_home }}/.local/share/nautilus-python/extensions/localsend.py"
     mode: "0644"
 
-- name: Install Fish shell configuration
-  become: true
-  become_user: "{{ primary_user }}"
-  ansible.builtin.copy:
-    src: fish-config.fish
-    dest: "{{ primary_home }}/.config/fish/conf.d/50-cybexos.fish"
-    mode: "0644"
+- name: Apply shared interactive shell defaults
+  ansible.builtin.import_tasks: shell-defaults.yml
   when: manage_personal_dotfiles | bool
   tags: [shell-defaults]
 

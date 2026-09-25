@@ -1,0 +1,31 @@
+---
+- name: Ensure local privilege groups exist
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ base_account_groups + (features.docker | bool | ternary(['docker'], [])) }}"
+
+# The docker group controls a root daemon, so membership is root-equivalent.
+# It is granted only when the saved docker_sudoless answer accepts that.
+- name: Configure primary user groups and Fish login shell
+  ansible.builtin.user:
+    name: "{{ primary_user }}"
+    groups: "{{ (base_account_groups + ((features.docker | bool and docker_sudoless | bool) | ternary(['docker'], []))) | join(',') }}"
+    append: true
+    shell: "{{ base_login_shell }}"
+
+- name: Configure passwordless wheel sudo
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/10-wheel-nopasswd
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+    content: "%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n"
+  when: passwordless_wheel | bool
+
+- name: Revoke passwordless wheel sudo when disabled
+  ansible.builtin.file:
+    path: /etc/sudoers.d/10-wheel-nopasswd
+    state: absent
+  when: not passwordless_wheel | bool

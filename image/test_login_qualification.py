@@ -10,10 +10,25 @@ import unittest
 from unittest.mock import Mock, patch
 
 import login_qualification
-from vm_testing import TestVM, is_disk_prompt
+import qualification
+from vm_testing import QUALIFICATION_DISK_SERIAL, TestVM, is_disk_prompt
 
 
 class DiskPromptTests(unittest.TestCase):
+    def test_disposable_disk_identity_fits_the_virtio_protocol(self):
+        self.assertGreater(len(QUALIFICATION_DISK_SERIAL), 0)
+        self.assertLessEqual(len(QUALIFICATION_DISK_SERIAL.encode('ascii')), 20)
+
+    def test_passwordless_sudo_never_receives_the_fixture_password_as_shell_code(self):
+        vm = SimpleNamespace(ssh=['ssh', 'disposable-fixture'])
+        for status in (0, 1):
+            with patch.object(qualification.subprocess, 'run', return_value=SimpleNamespace(returncode=status)), \
+                 patch.object(qualification, 'run') as execute:
+                qualification.root_script(vm, 'echo fixture\n', 'private-synthetic-fixture')
+            self.assertNotIn('private-synthetic-fixture', ' '.join(execute.call_args.args[0]))
+            expected = 'echo fixture\n' if status == 0 else 'private-synthetic-fixture\necho fixture\n'
+            self.assertEqual(execute.call_args.kwargs['input'], expected)
+
     def test_only_an_encryption_prompt_allows_password_injection(self):
         self.assertTrue(is_disk_prompt('Please enter passphrase for disk QEMU HARDDISK (luks-abcd):'))
         self.assertTrue(is_disk_prompt('Unlock encrypted volume\nPassword:'))
@@ -52,13 +67,31 @@ class DiskPromptTests(unittest.TestCase):
                 screen = 'CYBEXOSREADY7320' if recognized else 'Password:'
                 results = [SimpleNamespace(returncode=1), SimpleNamespace(returncode=0)]
                 with patch.object(vm, 'alive'), patch.object(vm, 'keypress'), \
-                        patch.object(vm, 'screen_text', return_value=screen), \
+                        patch.object(vm, 'screen_text', side_effect=['Make yourself at home.', screen]), \
                         patch('vm_testing.time.sleep'), patch('vm_testing.subprocess.run', side_effect=results), \
                         patch.object(vm, 'type') as typing:
                     vm.wait_ssh(setup_password='private-fixture')
                 payloads = [call.args[0] for call in typing.call_args_list]
                 self.assertEqual(any('private-fixture' in payload for payload in payloads), recognized)
                 self.assertNotIn('CYBEXOSREADY7320', payloads[0])
+
+    def test_ssh_bootstrap_never_types_shell_commands_into_grub(self):
+        for screen in ('GRUB version 2.12', '', 'Please enter passphrase for disk'):
+            with tempfile.TemporaryDirectory() as directory:
+                vm = TestVM(directory)
+                vm.ssh = ['ssh', 'synthetic-fixture']
+                vm.qmp_path.touch()
+                vm.key.with_suffix('.pub').write_text('ssh-ed25519 public-fixture')
+                with patch.object(vm, 'alive'), patch.object(vm, 'keypress') as keys, \
+                        patch.object(vm, 'screen_text', return_value=screen), \
+                        patch('vm_testing.time.monotonic', side_effect=[0, 1, 2, 3, 301]), \
+                        patch('vm_testing.time.sleep'), \
+                        patch('vm_testing.subprocess.run', return_value=SimpleNamespace(returncode=1)), \
+                        patch.object(vm, 'type') as typing:
+                    with self.assertRaisesRegex(RuntimeError, 'readiness deadline'):
+                        vm.wait_ssh()
+                keys.assert_not_called()
+                typing.assert_not_called()
 
 
 class KeyringProbeTests(unittest.TestCase):

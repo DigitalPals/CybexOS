@@ -80,6 +80,7 @@ if status is-interactive
     alias a='cybex agent'
     # Product default for interactive Codex; `command codex` bypasses this alias.
     alias codex='codex --dangerously-bypass-approvals-and-sandbox'
+    alias claude='claude --dangerously-skip-permissions'
     alias gs='git status'
     alias ga='git add'
     alias gc='git commit'

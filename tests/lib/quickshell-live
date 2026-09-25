@@ -69,6 +69,23 @@ qs_live_reconcile_processes() {
     uid=$(ps -o uid= -p "$pid" 2>/dev/null | tr -d '[:space:]')
     qs_live_error "extra qs PID $pid: command=${command:-unreadable}; cgroup=${process_cgroup:-unreadable}"
 
+    # IPC clients also use -p to select a configuration. They are not a second
+    # menubar, and may belong to a managed service such as Welcome. Let them
+    # finish normally before requiring the service to be the sole qs process.
+    if [[ $uid == "$(id -u)" &&
+          $command =~ ^([^[:space:]]*/)?qs[[:space:]]+ipc([[:space:]]|$) ]]; then
+      local ipc_deadline=$((SECONDS + 5))
+      qs_live_error "waiting for IPC client PID $pid to finish"
+      while kill -0 "$pid" 2>/dev/null && ((SECONDS < ipc_deadline)); do
+        sleep 0.1
+      done
+      if kill -0 "$pid" 2>/dev/null; then
+        unknown=1
+        qs_live_error "leaving active IPC client PID $pid running"
+      fi
+      continue
+    fi
+
     if [[ $uid == "$(id -u)" && -n $process_cgroup &&
           $process_cgroup != "$service_cgroup" &&
           $command =~ (^|[[:space:]])([^[:space:]]*/)?qs([[:space:]]|$) &&

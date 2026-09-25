@@ -1,0 +1,13 @@
+[Unit]
+Description=Configure detected CybexOS hardware with the shared workstation role
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=!/run/cybexos-live
+ConditionPathExists=/etc/cybexos/hardware.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/cybexos-configure-installed --hardware --automatic
+TimeoutStartSec=45min
+Nice=10
+

@@ -131,7 +131,7 @@ test("ChatGPT launcher follows portable desktop scaling", () => {
     assert.match(repository,
         /^gpgkey=file:\/\/\/etc\/pki\/rpm-gpg\/RPM-GPG-KEY-chatgpt$/m);
     assert.match(lookAndFeel,
-        /force_zero_scaling = \{\{ \(cybexos_xps_2026 \| bool\) \| ternary\('true', 'false'\) \}\}/,
+        /force_zero_scaling = \{\{ .*cybexos_dynamic_hardware.*cybexos_xps_2026.* \}\}/,
         "XWayland scaling keeps the XPS behavior behind the hardware gate");
     assert.match(dotfileTasks,
         /Install MIME defaults and desktop launchers[\s\S]{0,1200}?name: chatgpt\.desktop[\s\S]{0,120}?features\.proprietary_apps/,

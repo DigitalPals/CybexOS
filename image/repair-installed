@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""Repair an existing ISO installation without replacing its home or desktop ownership."""
+import argparse
+from datetime import datetime, timezone
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import pwd
+import shutil
+import subprocess
+import tempfile
+
+import jinja2
+import yaml
+
+from provision_payload import prepare_provision
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_applications():
+    loader = importlib.machinery.SourceFileLoader('repair_applications', str(ROOT / 'image/applications'))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def prepare(payload):
+    prepare_provision(ROOT, payload)
+
+    def copy(source, destination, executable=False):
+        target = payload / destination
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / source, target)
+        target.chmod(0o755 if executable else 0o644)
+
+    for relative in ('usr/libexec/cybexos-configure-installed', 'usr/bin/cybex',
+                     'usr/bin/hyprland-quickshell',
+                     'usr/lib/systemd/user/hyprland-session.target',
+                     'usr/lib/systemd/system/cybexos-hardware-setup.service',
+                     'usr/lib/systemd/system/cybexos-hardware-setup.timer'):
+        copy('image/rootfs/' + relative, relative, relative.startswith(('usr/bin/', 'usr/libexec/')))
+    copy('roles/apps/files/cybexos-repository-policy', 'usr/libexec/cybexos-repository-policy', True)
+    for vendor in ('brave-browser', '1password', 'chatgpt', 'tailscale'):
+        copy(f'roles/apps/files/{vendor}.repo', f'usr/share/cybexos/repository-policy/{vendor}.repo')
+    contract = json.loads((ROOT / 'assets/desktop-contract.json').read_text())
+    for name in contract['userHelpers']:
+        copy(f'assets/scripts/{name}', f'usr/share/cybexos/bin/{name}', True)
+    for relative in ('Common/Updates.qml', 'Common/Tailscale.qml',
+                     'Popovers/TailscalePopover.qml', 'Popovers/WifiPopover.qml'):
+        target = 'usr/share/cybexos/runtime/quickshell/' + relative
+        copy('roles/desktop/files/quickshell/' + relative, target)
+        path = payload / target
+        path.write_text(path.read_text().replace('/usr/local/libexec/cybexos-', '/usr/libexec/cybexos-'))
+    environment = jinja2.Environment(undefined=jinja2.StrictUndefined, keep_trailing_newline=True)
+    environment.filters.update(bool=bool, ternary=lambda value, yes, no: yes if value else no)
+    inventory = yaml.safe_load((ROOT / 'inventory/group_vars/all.yml').read_text())
+    for name in ('features.lua', 'looknfeel.lua'):
+        content = environment.from_string((ROOT / 'roles/desktop/templates' / (name + '.j2')).read_text()).render(
+            features=inventory['features'], cybexos_dynamic_hardware=True)
+        content = content.replace('/usr/local/libexec/cybexos-', '/usr/libexec/cybexos-')
+        if name == 'looknfeel.lua':
+            content += '\nhl.window_rule({ match = { class = [[^cybex$]] }, float = true, center = true, size = { 920, 620 } })\n'
+        target = payload / 'usr/share/cybexos/runtime/hypr' / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+    seed = 'usr/share/cybexos/essential-seed/' 
+    copy('roles/dotfiles/files/fish-config.fish', seed + '.config/fish/conf.d/50-cybexos.fish')
+    copy('assets/nautilus-localsend.py', seed + '.local/share/nautilus-python/extensions/localsend.py')
+    for name in ('localsend-share-clipboard', 'localsend-share-file', 'localsend-share-folder'):
+        path = payload / seed / f'.local/share/applications/{name}.desktop'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text((ROOT / f'roles/dotfiles/templates/{name}.desktop.j2').read_text()
+                        .replace('{{ primary_home }}/.local/bin/', ''))
+        path.chmod(0o644)
+
+
+def run(command, **kwargs):
+    return subprocess.run(command, check=True, **kwargs)
+
+
+def user_command(account, command):
+    return ['runuser', '-u', account.pw_name, '--', 'env',
+            'XDG_RUNTIME_DIR=/run/user/' + str(account.pw_uid),
+            'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/' + str(account.pw_uid) + '/bus',
+            'HOME=' + account.pw_dir, *command]
+
+
+def apply(payload, account, packages, hardware=False):
+    if os.geteuid() != 0:
+        raise PermissionError('Apply with sudo: ./image/repair-installed --apply --user ' + account.pw_name)
+    if not Path('/usr/share/cybexos/build.json').is_file():
+        raise RuntimeError('This repair is for installed CybexOS images')
+    if Path('/run/cybexos-live').exists():
+        raise RuntimeError('Do not repair a live installation session')
+    backup = Path('/var/lib/cybexos/backups') / ('install-repair-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
+    backup.mkdir(parents=True, mode=0o700, exist_ok=False)
+    print('Repair backup:', backup, flush=True)
+    files = [path for path in sorted(payload.rglob('*')) if path.is_file()]
+    changed = [path for path in files if not (Path('/') / path.relative_to(payload)).is_file()
+               or (Path('/') / path.relative_to(payload)).read_bytes() != path.read_bytes()]
+    (backup / 'manifest.json').write_text(json.dumps([str(p.relative_to(payload)) for p in changed], indent=2))
+    session = Path('/run/user/' + str(account.pw_uid) + '/bus').exists()
+    shell_active = session and subprocess.run(user_command(account, ['systemctl', '--user', 'is-active', '--quiet', 'quickshell.service'])).returncode == 0
+    for relative in ('etc/passwd', 'etc/group', 'etc/sudoers.d/10-wheel-nopasswd',
+                     'etc/firewalld/zones/cybexos.xml',
+                     str(Path(account.pw_dir).relative_to('/')) + '/.config/fish/conf.d/50-cybexos.fish'):
+        source = Path('/') / relative
+        if source.is_file() and not source.is_symlink():
+            saved = backup / relative
+            saved.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, saved)
+    try:
+        for path in changed:
+            relative = path.relative_to(payload)
+            target = Path('/') / relative
+            if target.is_symlink():
+                raise RuntimeError('Refusing to replace a system symlink: ' + str(target))
+            if target.exists():
+                saved = backup / relative
+                saved.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, saved)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            fd, temporary = tempfile.mkstemp(prefix='.cybexos-repair-', dir=target.parent)
+            try:
+                with os.fdopen(fd, 'wb') as output:
+                    output.write(path.read_bytes())
+                    os.fchmod(output.fileno(), path.stat().st_mode & 0o777)
+                os.replace(temporary, target)
+            finally:
+                Path(temporary).unlink(missing_ok=True)
+        run(['restorecon', '-RF', '/usr/share/cybexos/provision'])
+        if changed:
+            run(['restorecon', *[str(Path('/') / path.relative_to(payload)) for path in changed]])
+        # Reload changed shell files immediately; package downloads may take minutes.
+        if shell_active:
+            run(user_command(account, ['systemctl', '--user', 'restart', 'quickshell.service']))
+        run(['/usr/libexec/cybexos-repository-policy'])
+        if packages:
+            run(['dnf', '-y', '--setopt=*.skip_if_unavailable=false', 'install', *packages])
+        run(['systemctl', 'daemon-reload'])
+        run(['/usr/libexec/cybexos-configure-installed', '--user', account.pw_name])
+        run(user_command(account, ['/usr/libexec/cybexos-user-init', '--essential']))
+        if session:
+            run(user_command(account, ['systemctl', '--user', 'daemon-reload']))
+            run(user_command(account, ['systemctl', '--user', 'start',
+                                       'hyprpolkitagent.service', 'hypridle.service', 'voxtype.service']))
+    finally:
+        if shell_active:
+            run(user_command(account, ['systemctl', '--user', 'start', 'quickshell.service']))
+    # All machine and user changes have finished before the asynchronous
+    # hardware timer can begin a second package transaction.
+    if hardware:
+        run(['/usr/libexec/cybexos-configure-installed', '--hardware', '--user', account.pw_name])
+    run(['systemctl', 'enable', '--now', 'cybexos-hardware-setup.timer'])
+    print('Repair applied. Open a new terminal for Fish and the CLI aliases.', flush=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--hardware', action='store_true')
+    parser.add_argument('--user', default=os.environ.get('SUDO_USER', os.environ.get('USER')))
+    args = parser.parse_args()
+    account = pwd.getpwnam(args.user)
+    if account.pw_uid < 1000 or account.pw_name == 'liveuser' or Path(account.pw_dir).parent != Path('/home'):
+        parser.error('Select the installed desktop user')
+    packages, _ = load_applications().package_names()
+    installed = set(subprocess.check_output(['rpm', '-qa', '--qf', '%{NAME}\n%{NAME}.%{ARCH}\n'], text=True).splitlines())
+    missing = sorted(set(packages) - installed)
+    with tempfile.TemporaryDirectory(prefix='cybexos-install-repair-') as temporary:
+        payload = Path(temporary)
+        prepare(payload)
+        print(json.dumps({'user': account.pw_name, 'missingPackages': missing,
+                          'actions': ['repair session ordering', 'reconcile signed repositories',
+                                      'apply shared baseline, firewall and account defaults',
+                                      'install missing helpers and LocalSend integration',
+                                      'configure detected hardware'],
+                          'apply': args.apply}, indent=2), flush=True)
+        if args.apply:
+            apply(payload, account, missing, args.hardware)
+
+
+if __name__ == '__main__':
+    main()

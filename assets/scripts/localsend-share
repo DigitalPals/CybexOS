@@ -6,8 +6,6 @@ umask 077
 
 mode="${1:-}"
 shift || true
-script_path="$(readlink -f -- "$0")"
-stage_dir="${XDG_RUNTIME_DIR:-/tmp}/localsend-share-${UID}"
 
 if [ -z "$mode" ]; then
   echo "Usage: localsend-share <clipboard|file|folder> [path...]" >&2
@@ -26,33 +24,16 @@ candidates() {
 }
 
 case "$mode" in
-  _send-staged)
-    [[ $# == 1 ]] || exit 2
-    staged_file=$1
-    [[ $(dirname -- "$staged_file") == "$stage_dir" \
-        && $(basename -- "$staged_file") == clipboard-*.txt \
-        && -f $staged_file && ! -L $staged_file ]] || {
-      echo "Refusing staged clipboard path outside $stage_dir" >&2
-      exit 2
-    }
-    trap 'rm -f -- "$staged_file"' EXIT INT TERM
-    localsend --headless send "$staged_file"
-    ;;
   clipboard)
-    mkdir -p -- "$stage_dir"
-    chmod 0700 -- "$stage_dir"
-    find "$stage_dir" -maxdepth 1 -type f -name 'clipboard-*.txt' \
-      -mmin +1440 -delete
-    temp_file="$(mktemp "$stage_dir/clipboard-XXXXXXXX.txt")"
-    trap 'rm -f -- "$temp_file"' EXIT INT TERM
-    wl-paste > "$temp_file"
-    systemd-run --user --quiet --collect "$script_path" _send-staged "$temp_file"
-    # The transient worker owns cleanup after it has been successfully queued.
-    trap - EXIT INT TERM
+    text=$(wl-paste --no-newline)
+    [[ -n $text ]] || exit 0
+    # systemd's default description includes argv; never retain clipboard
+    # contents in the service-start journal entry.
+    systemd-run --user --quiet --collect --description='Share clipboard via LocalSend' localsend --text "$text"
     ;;
   file|folder)
     if [ "$#" -gt 0 ]; then
-      systemd-run --user --quiet --collect localsend --headless send "$@"
+      systemd-run --user --quiet --collect localsend "$@"
       exit 0
     fi
 
@@ -64,7 +45,7 @@ case "$mode" in
 
     [ -z "$selection" ] && exit 0
     mapfile -t paths <<< "$selection"
-    systemd-run --user --quiet --collect localsend --headless send "${paths[@]}"
+    systemd-run --user --quiet --collect localsend "${paths[@]}"
     ;;
   *)
     echo "Unknown share mode: $mode" >&2

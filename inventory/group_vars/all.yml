@@ -1,8 +1,8 @@
 ---
 # Opinionated product defaults. The interactive installer records machine-specific
 # answers in /etc/cybexos/config.yml and passes that file as extra vars.
-# Direct developer runs use the current account and avoid changing identity or
-# relaxing security unless explicitly requested.
+# Direct developer runs use the current account. Wheel sudo is passwordless
+# by product default; saved opt-outs remain authoritative.
 fedora_release: "44"
 config_schema_version: 1
 machine_hostname: "{{ ansible_facts.hostname | default('fedora') }}"
@@ -37,7 +37,7 @@ xps_2026_camera_enabled: true
 xps_2026_haptic_intensity: high
 
 # Explicitly accepted local-machine security tradeoffs.
-passwordless_wheel: false
+passwordless_wheel: true
 passwordless_local_polkit: false
 # Membership in the docker group grants root-equivalent control of the host,
 # so Docker requires sudo unless this is explicitly accepted.
@@ -81,8 +81,8 @@ private_services:
 
 firewall_zone: cybexos
 firewall_ports:
-  - { port: "53317", protocol: tcp, comment: LocalSend }
-  - { port: "53317", protocol: udp, comment: LocalSend }
+  - { port: "53317", protocol: tcp, comment: LocalSend, always: true }
+  - { port: "53317", protocol: udp, comment: LocalSend, always: true }
   - { port: "5353", protocol: udp, comment: mDNS }
   - { port: "27036-27037", protocol: tcp, comment: Steam Remote Play, feature: steam }
   - { port: "10400-10401", protocol: udp, comment: Steam Remote Play, feature: steam }

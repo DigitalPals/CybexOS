@@ -259,7 +259,22 @@
   loop: "{{ uninstall_xps_system_backups.results }}"
   loop_control:
     label: "/{{ item.item }}"
-  when: item.stat.exists
+  when:
+    - item.stat.exists
+    - not item.stat.islnk | default(false)
+
+- name: Restore symbolic links preserved before XPS adoption
+  ansible.builtin.file:
+    src: "{{ item.stat.lnk_target }}"
+    dest: "/{{ item.item }}"
+    state: link
+    force: true
+  loop: "{{ uninstall_xps_system_backups.results }}"
+  loop_control:
+    label: "/{{ item.item }}"
+  when:
+    - item.stat.exists
+    - item.stat.islnk | default(false)
 
 - name: Restart TuneD PPD after restoring its vendor configuration
   ansible.builtin.systemd_service:

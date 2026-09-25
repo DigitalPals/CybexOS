@@ -6,15 +6,20 @@ case $command_name in
   welcome|configure) exec /usr/bin/cybexos-welcome "$@" ;;
   update) exec /usr/share/cybexos/bin/cybexos-update-run run "$@" ;;
   prepare-apps) exec /usr/libexec/cybexos-user-init --background "$@" ;;
+  repair) exec sudo /usr/libexec/cybexos-configure-installed --user "${SUDO_USER:-$USER}" "$@" ;;
   agent) exec /usr/share/cybexos/bin/cybexos-agent "$@" ;;
   plugin|dev) exec /usr/share/cybexos/bin/cybexos-runtime "$command_name" "$@" ;;
   version|--version) exec rpm -q cybexos-desktop ;;
   verify|doctor)
     systemctl --user is-active quickshell.service
-    exec hyprctl configerrors
+    hyprctl configerrors
+    if [[ -f /var/lib/cybexos/hardware-unsupported ]]; then
+      echo 'Camera setup needs kernel compatibility review; see /var/lib/xps-hardware/ipu7/abi-failed.log.' >&2
+      exit 1
+    fi
     ;;
   help|-h|--help)
-    echo 'Usage: cybex {welcome|configure|update|prepare-apps|agent|plugin|dev|version|verify}'
+    echo 'Usage: cybex {welcome|configure|update|prepare-apps|repair|agent|plugin|dev|version|verify}'
     ;;
   *) echo "Unknown command: $command_name" >&2; exit 2 ;;
 esac
