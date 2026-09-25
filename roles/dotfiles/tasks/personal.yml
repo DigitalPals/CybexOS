@@ -1,0 +1,237 @@
+---
+# Personal defaults applied when manage_personal_dotfiles selects them. The
+# workstation converge and the image's installed-system provisioning
+# (image/provision.yml) share these tasks; they run as root with become_user,
+# offline in the installer's target as well as during repair, so none of them
+# may need a running user manager.
+- name: Create personal configuration directories
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ primary_home }}/Code"
+    - "{{ primary_home }}/.config/kitty"
+    - "{{ primary_home }}/.config/cybexos"
+    - "{{ primary_home }}/.ssh"
+    - "{{ primary_home }}/.ssh/config.d"
+  when: manage_personal_dotfiles | bool
+
+- name: Install the managed Kitty fragment
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: kitty.conf
+    dest: "{{ primary_home }}/.config/kitty/cybexos.conf"
+    mode: "0644"
+  when: manage_personal_dotfiles | bool
+
+- name: Include the managed Kitty fragment without replacing user configuration
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ primary_home }}/.config/kitty/kitty.conf"
+    create: true
+    backup: true
+    mode: "0644"
+    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
+    block: "include cybexos.conf"
+  when: manage_personal_dotfiles | bool
+
+- name: Install optional managed Git preferences
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.config/cybexos/gitconfig"
+    mode: "0644"
+    content: |
+      [core]
+        pager = delta
+      [interactive]
+        diffFilter = delta --color-only
+      [delta]
+        navigate = true
+        side-by-side = true
+      [credential "https://github.com"]
+        helper =
+        helper = !/usr/bin/gh auth git-credential
+      [credential "https://gist.github.com"]
+        helper =
+        helper = !/usr/bin/gh auth git-credential
+  when: manage_personal_dotfiles | bool
+
+- name: Include managed Git preferences without replacing user identity
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ primary_home }}/.gitconfig"
+    create: true
+    backup: true
+    mode: "0644"
+    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
+    block: |
+      [include]
+        path = ~/.config/cybexos/gitconfig
+  when: manage_personal_dotfiles | bool
+
+- name: Configure SSH to use the 1Password agent without private key references
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.ssh/config.d/cybexos.conf"
+    mode: "0600"
+    content: |
+      Host *
+        IdentityAgent ~/.1password/agent.sock
+        StrictHostKeyChecking accept-new
+        HashKnownHosts yes
+  when:
+    - manage_personal_dotfiles | bool
+    - features.proprietary_apps | bool
+
+- name: Include managed SSH preferences without replacing existing hosts
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ primary_home }}/.ssh/config"
+    create: true
+    backup: true
+    mode: "0600"
+    insertbefore: BOF
+    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
+    block: "Include ~/.ssh/config.d/cybexos.conf"
+  when:
+    - manage_personal_dotfiles | bool
+    - features.proprietary_apps | bool
+
+- name: Remove the CybexOS SSH include when proprietary integration is deselected
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.blockinfile:
+    path: "{{ primary_home }}/.ssh/config"
+    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
+    state: absent
+  failed_when: false
+  when:
+    - not features.proprietary_apps | bool
+    - apps_feature_owned.proprietary_apps | default(false) | bool
+
+- name: Remove the scoped SSH preferences when proprietary integration is deselected
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.ssh/config.d/cybexos.conf"
+    state: absent
+  when:
+    - not features.proprietary_apps | bool
+    - apps_feature_owned.proprietary_apps | default(false) | bool
+
+- name: Configure XDG user directories
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.config/user-dirs.dirs"
+    mode: "0644"
+    content: |
+      XDG_DESKTOP_DIR="$HOME/"
+      XDG_DOWNLOAD_DIR="$HOME/Downloads"
+      XDG_TEMPLATES_DIR="$HOME/"
+      XDG_PUBLICSHARE_DIR="$HOME/"
+      XDG_DOCUMENTS_DIR="$HOME/Documents"
+      XDG_MUSIC_DIR="$HOME/"
+      XDG_PICTURES_DIR="$HOME/Pictures"
+      XDG_VIDEOS_DIR="$HOME/"
+      XDG_CODE_DIR="$HOME/Code"
+  when: manage_personal_dotfiles | bool
+
+- name: Create Brave enterprise policy directory
+  ansible.builtin.file:
+    path: /etc/brave/policies/managed
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [browser]
+  when:
+    - features.proprietary_apps | bool
+    - manage_personal_dotfiles | bool
+
+- name: Configure Brave managed policies
+  ansible.builtin.copy:
+    dest: /etc/brave/policies/managed/cybexos.json
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      {
+        "RestoreOnStartup": 1,
+        "SpellcheckLanguage": ["{{ regional_locale.split('_')[0] | lower }}"],
+        "ExtensionInstallForcelist": [
+          "aeblfdkhhhdcdjpifhhbdiojplfjncoa;https://clients2.google.com/service/update2/crx"
+        ]
+      }
+  tags: [browser]
+  when:
+    - features.proprietary_apps | bool
+    - manage_personal_dotfiles | bool
+
+- name: Remove CybexOS Brave policy when it is not selected
+  ansible.builtin.file:
+    path: /etc/brave/policies/managed/cybexos.json
+    state: absent
+  when: not (features.proprietary_apps | bool and manage_personal_dotfiles | bool)
+  tags: [browser]
+
+- name: Install the scoped Firefox policy editor
+  ansible.builtin.copy:
+    src: manage-firefox-policy
+    dest: /usr/local/libexec/cybexos-firefox-policy
+    owner: root
+    group: root
+    mode: "0755"
+  tags: [browser]
+
+- name: Converge only the CybexOS Firefox policy entry
+  ansible.builtin.command:
+    argv:
+      - /usr/local/libexec/cybexos-firefox-policy
+      - "{{ (features.proprietary_apps | bool and manage_personal_dotfiles | bool) | ternary('enable', 'disable') }}"
+  changed_when: false
+  tags: [browser]
+
+# The shell owns the GTK appearance: scripts/theme_gtk.py sets these keys from
+# its mode and accent whenever they change. It only ever writes prefer-dark or
+# prefer-light and the adw-gtk3 pair, so a key still at its schema default has
+# never been chosen; only such keys get the dark default the first session
+# shows until the shell applies its own. A re-converge never overrides a choice.
+- name: Default GTK to dark until the shell applies its appearance
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    schema=org.gnome.desktop.interface
+    # dconf writes go through a session bus, which Ansible does not have.
+    gs() { dbus-run-session -- gsettings "$@"; }
+    if [[ $(gs get "$schema" color-scheme) == "'default'" ]]; then
+      gs set "$schema" color-scheme prefer-dark
+      printf 'CHANGED: color-scheme prefer-dark\n'
+    fi
+    if [[ $(gs get "$schema" gtk-theme) == "'Adwaita'" ]]; then
+      gs set "$schema" gtk-theme adw-gtk3-dark
+      printf 'CHANGED: gtk-theme adw-gtk3-dark\n'
+    fi
+  args:
+    executable: /bin/bash
+  register: dotfiles_gtk_default
+  changed_when: "'CHANGED:' in dotfiles_gtk_default.stdout"
+  # An installer target may be unable to start even a private bus. The shell
+  # applies its own appearance at the first login, so only a live converge or
+  # repair has to succeed here.
+  failed_when:
+    - dotfiles_gtk_default.rc != 0
+    - not cybexos_offline | default(false) | bool
+  when:
+    - manage_personal_dotfiles | bool
+    - not ansible_check_mode

@@ -1,0 +1,21 @@
+---
+# Shared with the image's installed-system provisioning (image/provision.yml).
+- name: Create the user portal configuration directory
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.config/xdg-desktop-portal"
+    state: directory
+    # Omitting mode leaves an existing directory's permissions to the user.
+
+- name: Configure portal preference without patching Fedora files
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    dest: "{{ primary_home }}/.config/xdg-desktop-portal/hyprland-portals.conf"
+    mode: "0644"
+    content: |
+      [preferred]
+      default=hyprland;gtk
+      org.freedesktop.impl.portal.FileChooser=gtk
+      org.freedesktop.impl.portal.Secret=gnome-keyring

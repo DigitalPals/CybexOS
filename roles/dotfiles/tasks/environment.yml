@@ -1,0 +1,19 @@
+---
+# The session environment every user unit, the shell included, starts with.
+# Shared with the image's installed-system provisioning (image/provision.yml).
+- name: Create the user environment directory
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.config/environment.d"
+    state: directory
+    mode: "0755"
+
+- name: Configure environment variables
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.template:
+    src: environment.conf.j2
+    dest: "{{ primary_home }}/.config/environment.d/10-cybexos.conf"
+    mode: "0644"
+  tags: [browser]

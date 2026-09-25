@@ -1,0 +1,17 @@
+[Unit]
+Description=Apply XPS lid and external display policy
+PartOf=hyprland-session.target
+After=graphical-session-pre.target
+StartLimitIntervalSec=0
+# hyprland-quickshell exports the detected hardware from
+# /etc/cybexos/hardware.json; every other machine skips this unit.
+ConditionEnvironment=CYBEXOS_XPS_2026=1
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/cybexos-external-monitor-toggle
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=hyprland-session.target

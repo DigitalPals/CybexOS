@@ -84,7 +84,8 @@ def main() -> None:
     assert "./tests/run" in managed and "ansible-playbook site.yml" in managed
     assert "Never substitute" in managed and "pkill qs" in managed
 
-    dotfiles = (ROOT / "roles/dotfiles/tasks/main.yml").read_text()
+    dotfiles = (ROOT / "roles/dotfiles/tasks/agent-skills.yml").read_text()
+    assert "import_tasks: agent-skills.yml" in (ROOT / "roles/dotfiles/tasks/main.yml").read_text()
     uninstall = (ROOT / "roles/uninstall/tasks/main.yml").read_text()
     update_worker = (ROOT / "assets/scripts/cybexos-update-run").read_text()
     release_updater = (ROOT / "assets/scripts/cybexos-release-update").read_text()

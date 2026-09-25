@@ -14,7 +14,7 @@ import urllib.request
 import jinja2
 import yaml
 from application_payload import relativize_seed_links, include_applications
-from desktop_payload import prepare_defaults, split_seed
+from desktop_payload import prepare_defaults, prepare_session, split_seed
 from provision_payload import prepare_provision
 from release_metadata import install_update_channel, render_spec
 
@@ -105,7 +105,6 @@ def main():
     for source, destination in (
         ("fastfetch.jsonc", ".config/fastfetch/config.jsonc"),
         ("fish-config.fish", ".config/fish/conf.d/50-cybexos.fish"),
-        ("kitty.conf", ".config/kitty/kitty.conf"),
     ):
         copy(f"roles/dotfiles/files/{source}", f"{seed}/{destination}")
     copy("assets/EDM115-newline2.omp.json", f"{seed}/.config/oh-my-posh/EDM115-newline2.omp.json")
@@ -163,6 +162,7 @@ def main():
             relative = source.relative_to(ROOT / "image/rootfs")
             copy(source.relative_to(ROOT), relative, relative.parts[1] in ("bin", "libexec"))
     prepare_defaults(ROOT, payload, environment, inventory)
+    prepare_session(ROOT, payload, inventory)
     prepare_provision(ROOT, payload)
     copy("roles/apps/files/cybexos-repository-policy", "usr/libexec/cybexos-repository-policy", True)
     # The workstation's font family mappings; roles/apps/tasks/fonts.yml

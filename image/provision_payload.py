@@ -6,8 +6,14 @@ def prepare_provision(root, payload):
     destination = payload / 'usr/share/cybexos/provision'
     for relative in ('image/provision.yml', 'image/provision.cfg', 'inventory/group_vars/all.yml',
                      'roles/base', 'roles/xps-2026', 'roles/apps/tasks/mpv.yml',
+                     'roles/apps/tasks/voxtype-backend.yml', 'roles/apps/handlers/main.yml',
                      'roles/dotfiles/tasks/shell-defaults.yml',
-                     'roles/dotfiles/files/fish-config.fish'):
+                     'roles/dotfiles/files/fish-config.fish',
+                     'roles/dotfiles/tasks/environment.yml', 'roles/dotfiles/templates/environment.conf.j2',
+                     'roles/dotfiles/tasks/personal.yml', 'roles/dotfiles/files/kitty.conf',
+                     'roles/dotfiles/files/manage-firefox-policy',
+                     'roles/dotfiles/tasks/agent-skills.yml', 'scripts/manage-agent-skills',
+                     'roles/desktop/tasks/portals.yml'):
         source = root / relative
         paths = sorted(source.rglob('*')) if source.is_dir() else [source]
         for path in paths:
