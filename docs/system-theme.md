@@ -171,9 +171,14 @@ so re-running Ansible never undoes a choice made in Settings.
 `gtk-theme` for GTK 3 and forces libadwaita's stylesheet, so no mode change
 could reach either. The user manager lingers and read that file when it
 started, so the converge also removes the old `GTK_THEME=adw-gtk3-dark` from
-it; the shell and the applications it starts lose the variable at the next
-login (or `systemctl --user restart quickshell.service`). Until then those
-applications stay dark whatever the mode.
+it (`unset-environment`, then a `daemon-reload`, because a value that came
+from environment.d survives the unset alone) and restarts the GTK portal, which
+draws every application's file chooser; the shell and the applications
+it starts lose the variable at the next login (or
+`systemctl --user restart quickshell.service`). Until then those applications
+stay dark whatever the mode. The session bus copied the old environment when it
+started, and it lingers too, so the few D-Bus-activated applications that are
+not started through systemd keep the pin until the next reboot.
 
 ### Lock screen (hyprlock)
 

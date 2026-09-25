@@ -769,8 +769,10 @@
 # forces libadwaita's stylesheet, so no mode change could reach either. The
 # lingering user manager read it when it started and hands it to the shell and
 # everything the shell launches; drop that value so the next shell start (a
-# re-login) follows gsettings without waiting for a reboot. A GTK_THEME of the
-# user's own, with any other value, is left alone.
+# re-login) follows gsettings without waiting for a reboot. unset-environment
+# alone does not drop a value that came from environment.d; the daemon-reload
+# re-runs the generator over the file that no longer sets it. A GTK_THEME of
+# the user's own, with any other value, is left alone.
 - name: Drop the retired GTK_THEME pin from the running user manager
   become: true
   become_user: "{{ primary_user }}"
@@ -779,6 +781,10 @@
     manager_env=$(systemctl --user show-environment 2>/dev/null) || exit 0
     if grep -qx 'GTK_THEME=adw-gtk3-dark' <<<"$manager_env"; then
       systemctl --user unset-environment GTK_THEME
+      systemctl --user daemon-reload
+      # The portal draws GTK file choosers for every application; it started
+      # with the pin and would keep drawing them dark.
+      systemctl --user try-restart xdg-desktop-portal-gtk.service
       printf 'CHANGED: unset GTK_THEME\n'
     fi
   args:

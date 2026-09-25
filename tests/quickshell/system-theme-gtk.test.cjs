@@ -249,9 +249,12 @@ test("the converge drops only CybexOS's GTK_THEME from the user manager", t => {
         fs.symlinkSync(grep, path.join(stub.bin, "grep"));
         const result = runTask(task, stub.bin);
         assert.equal(result.status, 0, result.stderr);
-        const unset = stub.calls().filter(line => line.includes("unset-environment"));
-        assert.deepEqual(unset, unsets ? ["systemctl --user unset-environment GTK_THEME"] : [],
-            String(environment));
+        // The daemon-reload is what drops a value environment.d supplied.
+        const unset = stub.calls().filter(line => !line.includes("show-environment"));
+        assert.deepEqual(unset, unsets ? ["systemctl --user unset-environment GTK_THEME",
+            "systemctl --user daemon-reload",
+            "systemctl --user try-restart xdg-desktop-portal-gtk.service"] : [],
+        String(environment));
         assert.equal(result.stdout.includes("CHANGED:"), unsets);
     }
 });
