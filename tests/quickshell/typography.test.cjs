@@ -306,13 +306,24 @@ test("low-emphasis text remains WCAG AA in both palettes", () => {
     // Glass has no fixed background, so contrast is checked against the opaque
     // reference each palette declares: what a panel reads as over the shell's
     // own dimmed wallpaper. The design's own low tone lands at 3.2:1 there,
-    // which is why these are lifted rather than copied.
+    // which is why these are lifted rather than copied. Light copy is held on
+    // its least favorable backdrop: a hovered chip over the grey base, which
+    // is darker than any panel.
+    const H = load("SettingsHelpers.js");
+    const hover = Number(theme.match(/readonly property real chipHoverAlpha:\s*([\d.]+)/)[1]);
+    const lightInk = theme.match(/readonly property color lightInk:[^\n]*"(#[0-9a-fA-F]{6})"/)[1];
+    const references = {
+        dark: [hexToken("darkPopBg")],
+        light: [hexToken("lightPopBg"), hexToken("lightBackground"),
+            H.mixHex(hexToken("lightBackground"), lightInk, hover)]
+    };
     for (const mode of ["dark", "light"]) {
-        const background = hexToken(`${mode}PopBg`);
-        for (const step of ["TextMid", "TextLow", "TextDim", "TextFaint", "Icon"]) {
-            const name = mode + step;
-            assert.ok(contrast(hexToken(name), background) >= 4.5,
-                `Theme.${name} must have at least 4.5:1 contrast against ${mode}PopBg`);
+        for (const background of references[mode]) {
+            for (const step of ["TextMid", "TextLow", "TextDim", "TextFaint", "Icon"]) {
+                const name = mode + step;
+                assert.ok(contrast(hexToken(name), background) >= 4.5,
+                    `Theme.${name} must have at least 4.5:1 contrast against ${background}`);
+            }
         }
     }
     // The one decorative token, and the reason the others cannot be lowered
@@ -320,6 +331,38 @@ test("low-emphasis text remains WCAG AA in both palettes", () => {
     assert.match(theme, /\/\/ Decorative only[\s\S]*?readonly property color dotDim/);
 });
 
+test("light mode rests on a soft base and raises only small surfaces", () => {
+    // Near-white slabs across the bar, its panels and every dialog read as
+    // glare. The base sits near L* 93, raised surfaces step up toward white,
+    // and the default bar shares the base so an attached panel stays one slab.
+    const H = load("SettingsHelpers.js");
+    const lstar = hex => {
+        const y = luminance(hex);
+        return y > 216 / 24389 ? 116 * Math.cbrt(y) - 16 : y * 24389 / 27;
+    };
+    const base = hexToken("lightBackground");
+    const pop = hexToken("lightPopBg");
+    const menu = hexToken("lightMenuBg");
+    assert.ok(lstar(base) >= 90 && lstar(base) <= 95,
+        `lightBackground sits at L* ${lstar(base).toFixed(1)}, outside 90–95`);
+    assert.ok(lstar(base) < lstar(pop) && lstar(pop) < lstar(menu),
+        "light surfaces must step up in lightness as they rise");
+    assert.ok(lstar(menu) < 99, "no fixed light surface is pure white");
+    assert.equal(H.resolveBarColor("default", "light", 0, 0, 0), base,
+        "the default light bar and its attached panels share the base");
+    assert.equal(H.resolveBarColor("white", "light", 0, 0, 0), "#ffffff",
+        "an explicit White bar stays white");
+
+    // Wallpaper palettes follow the same order: base on the high container,
+    // raised surfaces on the lighter tones.
+    assert.match(theme, /readonly property color background: paletteActive\s*\?\s*\(dark \? Common\.Palette\.background : Common\.Palette\.surfaceContainerHigh\)/);
+    assert.match(theme, /readonly property color menuBg: paletteActive\s*\?\s*\(dark \? Common\.Palette\.surfaceContainer : Common\.Palette\.surface\)/);
+
+    // Edges and modals darken rather than brighten in light mode.
+    assert.match(theme, /readonly property color scrim: dark[\s\S]*?: Qt\.rgba\(24 \/ 255, 22 \/ 255, 44 \/ 255, 0\.\d+\)/);
+    assert.doesNotMatch(theme, /dark \? Qt\.rgba\(1, 1, 1, 0\.13\) : Qt\.rgba\(1, 1, 1,/,
+        "light hairlines must be ink, not white on a pale surface");
+});
 
 // The one accent, enforced shell-wide. It is allowed on a mark — a glyph, a
 // dot, a piece of copy, a meter — and on exactly four fills: the current

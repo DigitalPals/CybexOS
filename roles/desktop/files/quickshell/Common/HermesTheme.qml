@@ -9,7 +9,9 @@ import "SettingsHelpers.js" as SettingsHelpers
 Singleton {
     readonly property color canvas: Theme.background
     readonly property color surface: Theme.popBg
-    readonly property color surfaceRaised: Theme.copyReferenceBg
+    // A card lifts off its panel: lighter than the base in light mode, where
+    // the copy reference is the darkest surface rather than a raised one.
+    readonly property color surfaceRaised: Theme.dark ? Theme.copyReferenceBg : Theme.popBg
     readonly property color overlay: Theme.menuBg
     readonly property color composer: Theme.surfaceMenu
     readonly property color composerGlass: Theme.surfaceMenu
@@ -24,7 +26,7 @@ Singleton {
     readonly property color hover: Theme.hoverFill
     readonly property color hoverStrong: Theme.hoverFillStrong
     readonly property color accent: SettingsHelpers.ensureContrast(
-        Theme.accent.toString(), surfaceRaised.toString(), 4.5)
+        Theme.accent.toString(), Theme.copyReferenceBg.toString(), 4.5)
     readonly property color accentHover: Theme.dark
         ? Qt.lighter(accent, 1.12) : Qt.darker(accent, 1.08)
     readonly property color accentForeground: SettingsHelpers.ensureContrast(

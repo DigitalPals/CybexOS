@@ -76,8 +76,10 @@ var BAR_COLOR_IDS = BAR_COLOR_CHOICES.map(function(choice) { return choice.id; }
 var BAR_COLOR_PRESETS = {
     // The 2026-09 "edge drawer" redesign (Claude Design project 8cf85161,
     // direction 2) rests the shell on a warm charcoal instead of the earlier
-    // cool near-black. The light half stays adaptive.
-    "default": { dark: "#1a1917", light: "#ffffff" },
+    // cool near-black. The light half is a soft grey, Theme.lightBackground,
+    // rather than white: a full-width white strip read as glare, and the
+    // bar's attached panels share its fill. "White" remains an explicit choice.
+    "default": { dark: "#1a1917", light: "#eae9ef" },
     "macos": { dark: "#1d1d1f", light: "#f5f5f7" },
     "black": { dark: "#000000", light: "#000000" },
     "graphite": { dark: "#2c2c2e", light: "#2c2c2e" },
@@ -1546,6 +1548,7 @@ var exported = {
     contrastRatio: contrastRatio,
     foregroundFor: foregroundFor,
     ensureContrast: ensureContrast,
+    mixHex: mixHex,
     barPalette: barPalette,
     semanticPalette: semanticPalette,
     clone: clone,

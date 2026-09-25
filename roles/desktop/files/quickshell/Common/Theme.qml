@@ -49,22 +49,36 @@ Singleton {
     // The dark references are the edge-drawer redesign's warm charcoal: the
     // panel surface matches the default bar colour exactly, so an attached
     // drawer and the bar read as one continuous slab.
+    //
+    // Light mode mirrors that layering instead of inverting it: the large
+    // surfaces (the default bar, its attached panels, dialogs) rest on a soft
+    // grey near L* 93, and only small raised things — menus, a selected
+    // segment — come up toward white. Near-white slabs read as glare at
+    // desktop scale, and without a darker base nothing can look raised.
+    readonly property color darkBackground: "#1a1917"
+    readonly property color lightBackground: "#eae9ef"
     readonly property color darkPopBg: "#201e1b"
-    readonly property color lightPopBg: "#eeedf3"
-    readonly property color background: paletteActive ? Common.Palette.background
-        : dark ? "#1a1917" : "#f7f5fb"
+    readonly property color lightPopBg: "#f1f0f5"
+    readonly property color background: paletteActive
+        ? (dark ? Common.Palette.background : Common.Palette.surfaceContainerHigh)
+        : dark ? darkBackground : lightBackground
     readonly property color popBg: paletteActive ? Common.Palette.surfaceContainerLow
         : dark ? darkPopBg : lightPopBg
     readonly property color darkMenuBg: "#26241f"
-    readonly property color lightMenuBg: "#fcfcff"
-    readonly property color menuBg: paletteActive ? Common.Palette.surfaceContainer
+    readonly property color lightMenuBg: "#f8f7fa"
+    readonly property color menuBg: paletteActive
+        ? (dark ? Common.Palette.surfaceContainer : Common.Palette.surface)
         : dark ? darkMenuBg : lightMenuBg
-    // The highest container is the least favorable opaque backdrop for copy:
-    // it is lightest in dark mode and darkest in light mode. Calibrating the
-    // shared copy colors here keeps one semantic ladder safe on every lower
-    // panel, menu, and group surface too.
-    readonly property color copyReferenceBg: paletteActive
-        ? Common.Palette.surfaceContainerHigh : popBg
+    // The least favorable opaque backdrop for copy. In dark mode that is the
+    // highest (lightest) container. In light mode it is the base with a
+    // hovered chip on it: the darkest thing copy is drawn over. Calibrating
+    // the shared copy colors here keeps one semantic ladder safe on every
+    // panel, menu, and group surface.
+    readonly property color copyReferenceBg: dark
+        ? (paletteActive ? Common.Palette.surfaceContainerHigh : popBg)
+        : SettingsHelpers.mixHex(background.toString(),
+            lightInk.toString(),
+            chipHoverAlpha)
     // The bar background is always the user's explicit bar-color choice.
     // Wallpaper mode still supplies accent/status colors, but never replaces
     // this surface. This is also the exact solid-mode fill.
@@ -94,16 +108,18 @@ Singleton {
     readonly property color surfaceStrong: glassActive ? glassStrong : popBg
     readonly property color surfaceMenu: glassActive ? glassMenu : menuBg
     readonly property color panelSurface: glassActive ? glassPanel : background
-    // Full-screen scrim behind the shortcut sheet.
+    // Full-screen scrim behind the shortcut sheet. It dims in both modes: a
+    // pale wash in light mode brightened the whole screen behind a modal.
     readonly property color scrim: dark
         ? Qt.rgba(10 / 255, 8 / 255, 22 / 255, 0.42)
-        : Qt.rgba(236 / 255, 236 / 255, 244 / 255, 0.5)
+        : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.28)
 
-    // Hairlines.
+    // Hairlines. Light mode draws them in ink: a white line on a pale
+    // surface is invisible, and every edge then melts into one white field.
     readonly property color stroke: Settings.highContrast
         ? (dark ? Qt.rgba(1, 1, 1, 0.42) : Qt.rgba(0, 0, 0, 0.44))
         : paletteActive ? Common.Palette.outlineVariant
-        : dark ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(1, 1, 1, 0.65)
+        : dark ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.13)
     readonly property color popBorder: stroke
     readonly property color hairline: stroke
     readonly property color hairlineSoft: paletteActive
@@ -194,21 +210,33 @@ Singleton {
     // ---- fills ------------------------------------------------------------
     // chip: a resting pill inside the bar. chipHover: the same pill lit, and
     // the open/held state. tile: a recessed block inside a panel.
-    readonly property color chip: paletteActive
-        ? Qt.rgba(Common.Palette.surfaceContainer.r, Common.Palette.surfaceContainer.g,
-            Common.Palette.surfaceContainer.b, 0.56)
-        : dark ? Qt.rgba(1, 1, 1, 0.08)
-        : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.07)
-    readonly property color chipHover: paletteActive
-        ? Qt.rgba(Common.Palette.surfaceContainerHigh.r, Common.Palette.surfaceContainerHigh.g,
-            Common.Palette.surfaceContainerHigh.b, 0.74)
-        : dark ? Qt.rgba(1, 1, 1, 0.16)
-        : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.13)
-    readonly property color tile: paletteActive
-        ? Qt.rgba(Common.Palette.surfaceContainerHigh.r, Common.Palette.surfaceContainerHigh.g,
-            Common.Palette.surfaceContainerHigh.b, 0.62)
-        : dark ? Qt.rgba(1, 1, 1, 0.09)
-        : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.06)
+    //
+    // Light mode draws all three as ink over whatever surface is below —
+    // Material's state-layer approach — in both palette modes. Tonal
+    // container fills could not recess: on the light base the highest
+    // container is the base itself, so hover and tiles disappeared.
+    readonly property color lightInk: paletteActive ? Common.Palette.onSurface : "#18162c"
+    readonly property real chipAlpha: 0.07
+    readonly property real chipHoverAlpha: 0.13
+    readonly property real tileAlpha: 0.06
+    readonly property color chip: dark
+        ? (paletteActive
+            ? Qt.rgba(Common.Palette.surfaceContainer.r, Common.Palette.surfaceContainer.g,
+                Common.Palette.surfaceContainer.b, 0.56)
+            : Qt.rgba(1, 1, 1, 0.08))
+        : Qt.rgba(lightInk.r, lightInk.g, lightInk.b, chipAlpha)
+    readonly property color chipHover: dark
+        ? (paletteActive
+            ? Qt.rgba(Common.Palette.surfaceContainerHigh.r, Common.Palette.surfaceContainerHigh.g,
+                Common.Palette.surfaceContainerHigh.b, 0.74)
+            : Qt.rgba(1, 1, 1, 0.16))
+        : Qt.rgba(lightInk.r, lightInk.g, lightInk.b, chipHoverAlpha)
+    readonly property color tile: dark
+        ? (paletteActive
+            ? Qt.rgba(Common.Palette.surfaceContainerHigh.r, Common.Palette.surfaceContainerHigh.g,
+                Common.Palette.surfaceContainerHigh.b, 0.62)
+            : Qt.rgba(1, 1, 1, 0.09))
+        : Qt.rgba(lightInk.r, lightInk.g, lightInk.b, tileAlpha)
     // The chosen option of a settings segmented control, raised out of its
     // chip-filled track: lighter than the track in dark mode, near white in
     // light mode, so the selection reads without borrowing the accent.
@@ -242,12 +270,14 @@ Singleton {
     readonly property color darkTextFaint: "#8e8a7f"
     readonly property color darkIcon: "#c8c5bb"
 
-    readonly property color lightTextHi: "#1c1a2e"
-    readonly property color lightTextMid: "#4a4860"
-    readonly property color lightTextLow: "#5b596f"
-    readonly property color lightTextDim: "#605e74"
-    readonly property color lightTextFaint: "#63617a"
-    readonly property color lightIcon: "#3a3850"
+    // The light ladder is held against `lightBackground` under a hovered
+    // chip, the darkest surface copy sits on, rather than a lighter panel.
+    readonly property color lightTextHi: "#1f1d2b"
+    readonly property color lightTextMid: "#43415a"
+    readonly property color lightTextLow: "#4f4d64"
+    readonly property color lightTextDim: "#535168"
+    readonly property color lightTextFaint: "#57556c"
+    readonly property color lightIcon: "#37354c"
 
     readonly property var textPalette: paletteActive
         ? SettingsHelpers.semanticPalette(copyReferenceBg.toString(),

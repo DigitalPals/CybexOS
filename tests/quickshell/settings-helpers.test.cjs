@@ -165,7 +165,7 @@ test("menubar presets are a small intentional neutral palette", () => {
     const resolve = (mode, theme = "dark") =>
         H.resolveBarColor(mode, theme, 230, 14, 9);
     assert.equal(resolve("default"), "#1a1917");
-    assert.equal(resolve("default", "light"), "#ffffff");
+    assert.equal(resolve("default", "light"), "#eae9ef");
     assert.equal(resolve("macos"), "#1d1d1f");
     assert.equal(resolve("macos", "light"), "#f5f5f7");
     assert.equal(resolve("black", "light"), "#000000");
@@ -688,7 +688,7 @@ test("schema-4 appearance choices survive later schema upgrades", () => {
     assert.equal(previous.paletteMode, "fixed");
     assert.equal(H.resolveBarColor(previous.barColorMode, previous.themeMode,
         previous.barCustomHue, previous.barCustomSaturation,
-        previous.barCustomLightness), "#ffffff");
+        previous.barCustomLightness), H.BAR_COLOR_PRESETS.default.light);
 });
 
 test("schema-9 adopts the classic bar only from untouched design values", () => {

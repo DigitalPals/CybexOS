@@ -22,9 +22,9 @@ test("T3 adapts the shell palette inside a wider content-sized panel", () => {
 
     assert.match(theme, /readonly property color canvas:\s*Theme\.background/);
     assert.match(theme, /readonly property color surface:\s*Theme\.popBg/);
-    assert.match(theme, /readonly property color surfaceRaised:\s*Theme\.copyReferenceBg/);
+    assert.match(theme, /readonly property color surfaceRaised:\s*Theme\.dark \? Theme\.copyReferenceBg : Theme\.popBg/);
     assert.match(theme, /readonly property color textPrimary:\s*Theme\.textHi/);
-    assert.match(theme, /readonly property color accent:\s*SettingsHelpers\.ensureContrast\([\s\S]*?Theme\.accent\.toString\(\),\s*surfaceRaised\.toString\(\), 4\.5\)/);
+    assert.match(theme, /readonly property color accent:\s*SettingsHelpers\.ensureContrast\([\s\S]*?Theme\.accent\.toString\(\),\s*Theme\.copyReferenceBg\.toString\(\), 4\.5\)/);
     assert.match(theme, /readonly property color accentForeground:\s*SettingsHelpers\.ensureContrast\([\s\S]*?Theme\.accentFg\.toString\(\),\s*accent\.toString\(\), 4\.5\)/);
     assert.doesNotMatch(theme, /#346bf1|#1b4ed8/,
         "T3 must not retain a competing hard-coded blue accent");
