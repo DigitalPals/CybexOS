@@ -849,6 +849,6 @@ Plugin widget details expose width, saved/default setting values, and an
 advanced key/JSON-value field. `configure-widget` changes widget enablement,
 width, or the destination of a newly added widget atomically. Removing a widget
 does not disable its package services or sibling instances. Settings are merged
-through the plugin registry, never written into `shell.json`. The Plugins page
-retains package installation, updates, cloning and removal; shared plugin
+through the plugin registry, never written into `shell.json`. The Omarchy plugins
+page retains package installation, updates, cloning and removal; shared plugin
 appearance controls live under Appearance.

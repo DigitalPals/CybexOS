@@ -34,7 +34,8 @@ Qt/Wayland alone applies output device scaling; these are logical pixels.
 Omarchy Style receives the same effective font and density, plus the optional
 plugin scale. Advanced Omarchy tokens can intentionally diverge from the shared
 settings. Existing explicit plugin border overrides remain valid; choose
-**Shell** under Settings → Plugins to inherit shared surface borders.
+**Shell** under Settings → Appearance → Omarchy plugins to inherit shared
+surface borders.
 
 The defaults use Dark mode, a Hug bar, wallpaper colors, opaque surfaces and
 numbered workspaces. Typography uses JetBrainsMono Nerd Font at 12px, 100% UI

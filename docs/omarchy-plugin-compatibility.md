@@ -24,7 +24,7 @@ development branch.
 | Six plugin kinds, defaults, service/UI lifecycle, repeated widgets, replacement bars | Implemented, with representative fixtures and the limits below; not universal package compatibility |
 | Git package management | `add`, `update [--preview]`, and `remove`; candidate manifests/entrypoints are validated before installation or fast-forward. Dirty/diverged checkouts are rejected; settings and data survive removal |
 | Built-in customization | `clone <id> <new-id> [--edit]`, with `--from <omarchy-checkout>` for built-in manifests and `clonePaths`. Installed originals are disabled and restored when the clone is removed. Native Cybex built-ins are not replaced by Omarchy clone IDs |
-| Management menus | Settings → Plugins supports trusted Git installs, enable/disable, update preview/update, clone and confirmed removal; built-in imports from an Omarchy checkout use the CLI |
+| Management menus | Settings → Omarchy plugins supports trusted Git installs, enable/disable, update preview/update, clone and confirmed removal; built-in imports from an Omarchy checkout use the CLI |
 | Code reload | Two-second discovery refresh detects package edits and loads versioned snapshots, including relative QML/JS imports. `keepLoaded` services survive code reload; disable/re-enable or `plugin restart` recreates them |
 | Shell IPC | Added configuration/theme refresh, placement and settings mutations, panel toggling, transparency and geometry methods. Mutations are queued, and Cybex schemas/validation differ; this is not exact signature/result parity |
 | First-party integrations | Full bars receive narrow idle, nightlight, notification and media adapters backed by Cybex. Authentication, Omarchy commands and external backends are not supplied |
@@ -109,7 +109,11 @@ the running shell. `cybex plugin restart` explicitly restarts the managed
 Disable with `cybex plugin disable <id>`; files and preferences remain.
 Deploy the updated Quickshell role before using this on an older desktop.
 
-Manage packages in **Settings → Plugins**, or from the CLI:
+Manage packages in **Settings → Omarchy plugins**, or from the CLI. The page
+links the community directory at <https://plugins.omarchy.org/>; its Source
+field takes a Git URL, a local path, or the whole `omarchy plugin add <url>`
+command the directory hands out (the command words and flags such as
+`--enable` are dropped, so the package still starts disabled).
 
 ```bash
 cybex plugin update markbusking.pomodoro --preview
@@ -179,7 +183,7 @@ enabled and configured in Settings → Bar like any built-in widget, and is
 updated with CybexOS; `scripts/sync-model-usage` re-vendors a new upstream
 commit.
 
-An installed copy of the package is listed under Settings → Plugins with that
+An installed copy of the package is listed under Settings → Omarchy plugins with that
 reason and is never loaded, so it cannot draw a second widget; `cybex plugin
 enable` and `add` refuse it. Remove it with `cybex plugin remove
 digitalpals.model-usage`. Its settings in `plugins.json` are not carried over,

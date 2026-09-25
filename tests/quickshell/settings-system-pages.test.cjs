@@ -89,7 +89,9 @@ test("each plugin is one row: an Enabled switch and a ⋯ menu", () => {
     const row = read("Settings/PluginRow.qml");
     assert.doesNotMatch(page, /Configure bar widgets/, "plugin widgets are added from the Bar page's tray");
     assert.match(page, /FieldRow \{[\s\S]{0,160}?label: "Source"/);
-    assert.match(page, /text: "Install"[\s\S]{0,80}?enabled: !UserPlugins\.busy && sourceRow\.text\.trim\(\) !== ""/);
+    assert.match(page, /text: "Install"[\s\S]{0,80}?enabled: !UserPlugins\.busy && page\.source !== ""/);
+    assert.match(page, /readonly property string source: PluginSource\.parse\(sourceRow\.text\)/,
+        "Install takes the URL out of a pasted omarchy plugin add command");
     assert.match(page, /Plugins run as your desktop user\. Install only packages you trust\. New packages start disabled\./);
     assert.match(page, /delegate: PluginRow \{/);
 
@@ -104,6 +106,36 @@ test("each plugin is one row: an Enabled switch and a ⋯ menu", () => {
         "Remove asks first");
     assert.match(row, /"bar-widget": "a bar widget"/, "the hint says what a plugin adds");
     assert.match(row, /dirty: false\s*resetKeys: \[\]/);
+});
+
+test("the Omarchy plugins page links the directory and explains adding one", () => {
+    const page = read("Settings/PluginsPage.qml");
+    const settings = read("Common/Settings.qml");
+    assert.match(settings, /id: "plugins", group: "System", label: "Omarchy plugins"/);
+    assert.match(page, /directoryUrl: "https:\/\/plugins\.omarchy\.org\/"/);
+    assert.match(page, /text: "Browse plugins"[\s\S]{0,160}?onTriggered: Qt\.openUrlExternally\(page\.directoryUrl\)/);
+    assert.equal((page.match(/^\s*Step \{/gm) ?? []).length, 3, "three numbered steps");
+    assert.match(page, /title: "Add a plugin"/);
+});
+
+test("a pasted install command installs its source", () => {
+    const PluginSource = require(path.join(shellDir, "Settings/PluginSource.js"));
+    const url = "https://github.com/acme/omarchy-weather.git";
+    for (const text of [
+        url,
+        `  ${url}  `,
+        `omarchy plugin add ${url}`,
+        `omarchy plugin add ${url} --enable`,
+        `omarchy plugin add --enable ${url}`,
+        `$ omarchy plugin add "${url}"`,
+        `cybex plugin add '${url}'`,
+        `Omarchy Plugin Install ${url}\n# then enable it`
+    ])
+        assert.equal(PluginSource.parse(text), url, JSON.stringify(text));
+    assert.equal(PluginSource.parse("~/Code/my plugin"), "~/Code/my plugin", "a bare path keeps its spaces");
+    assert.equal(PluginSource.parse("\"/tmp/my plugin\""), "/tmp/my plugin");
+    for (const empty of ["", "   ", null, undefined, "omarchy plugin add", "omarchy plugin add --enable"])
+        assert.equal(PluginSource.parse(empty), "", JSON.stringify(empty));
 });
 
 test("the new System page types are registered", () => {

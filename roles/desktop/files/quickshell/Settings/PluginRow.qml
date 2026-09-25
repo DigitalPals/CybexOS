@@ -3,9 +3,9 @@ import QtQuick
 import QtQuick.Controls as Controls
 import "../Common"
 
-// One installed plugin on the Plugins page: its name, what it is and what it
-// adds, and an Enabled switch — the one thing most people change. Update,
-// Preview update, Clone and Remove are for the people who develop or pin
+// One installed plugin on the Omarchy plugins page: its name, what it is and
+// what it adds, and an Enabled switch — the one thing most people change.
+// Update, Preview update, Clone and Remove are for the people who develop or pin
 // plugins, so they sit one step away in the ⋯ menu. Clone asks for the new
 // ID and Remove for confirmation in a row that opens under this one; the
 // result of the last action taken here, and any load error, read beneath.

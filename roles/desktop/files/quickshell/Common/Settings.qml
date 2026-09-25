@@ -194,8 +194,8 @@ Singleton {
             description: "Clock and temperature formats" },
         { id: "accounts", group: "System", label: "Online accounts", glyph: "account_circle",
             description: "Connected accounts and calendar access", system: true },
-        { id: "plugins", group: "System", label: "Plugins", glyph: "extension",
-            description: "Install and manage trusted desktop plugins" },
+        { id: "plugins", group: "System", label: "Omarchy plugins", glyph: "extension",
+            description: "Community widgets, panels and services from Omarchy" },
         { id: "about", group: "System", label: "About", glyph: "info",
             description: "Shell health, recovery points and the settings file" }
     ]

@@ -22,7 +22,7 @@ SettingsGroup {
     readonly property bool showOverrides: customizing || !matchesShell
 
     width: parent.width
-    title: "Plugins"
+    title: "Omarchy plugins"
 
     SwitchRow {
         width: parent.width

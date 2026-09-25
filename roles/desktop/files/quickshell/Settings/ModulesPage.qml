@@ -543,7 +543,7 @@ Item {
                         onTriggered: page.presetsOpen = true
                     }
                     Controls.MenuItem {
-                        text: "Manage plugins…"
+                        text: "Manage Omarchy plugins…"
                         onTriggered: Settings.page = "plugins"
                     }
                     Controls.MenuItem {

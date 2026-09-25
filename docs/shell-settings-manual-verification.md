@@ -453,10 +453,17 @@ is manual.
 - [ ] Stop the accounts helper (or break GOA): an error row with Refresh
       appears; Refresh clears it once the helper answers again.
 
-## Plugins page
+## Omarchy plugins page
 
+- [ ] The rail and header say "Omarchy plugins". Browse plugins opens
+      https://plugins.omarchy.org/ in the browser, as does the link in step 1.
+      Below 520 px the button drops under the intro copy.
+- [ ] Three numbered steps explain finding, pasting and enabling a plugin.
 - [ ] Install is disabled until Source holds text; Enter in the field installs.
-      The result or error reads under the Source row.
+      Pasting `omarchy plugin add <url> --enable` installs `<url>` (still
+      disabled). The result or error reads under the Source row.
+- [ ] With nothing installed, Installed shows the "No plugins yet" state;
+      otherwise its heading carries the count.
 - [ ] Each installed plugin is one row: name, "id · version · adds …", an
       Enabled switch and a ⋯ menu with Update, Preview update, Clone as a
       custom copy… and Remove…. Clone opens a New ID row under the plugin;

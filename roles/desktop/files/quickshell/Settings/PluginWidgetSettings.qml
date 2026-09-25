@@ -405,7 +405,7 @@ Column {
     }
     ResponsiveActionRow {
         width: parent.width
-        description: "Update, disable, or remove it on the Plugins page"
+        description: "Update, disable, or remove it on the Omarchy plugins page"
         SettingsAction {
             text: "Manage this plugin"
             glyph: "extension"
