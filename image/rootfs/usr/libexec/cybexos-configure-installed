@@ -4,14 +4,70 @@ import argparse
 import fcntl
 import grp
 import hashlib
+import importlib.machinery
+import importlib.util
 import json
 import os
 from pathlib import Path
 import pwd
 import subprocess
+import sys
 
 
 PROVISION = Path('/usr/share/cybexos/provision')
+CONFIG_TOOL = Path('/usr/libexec/cybexos-config')
+LOGIN_PREPARE = Path('/usr/libexec/cybexos-login-prepare')
+LOGIN = Path('/etc/cybexos/login.json')
+
+
+def load(name, path):
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def encrypted_root():
+    """Reuse the boot-time login check; anything unverifiable is unencrypted."""
+    try:
+        return load('cybexos_login_prepare', LOGIN_PREPARE).encrypted_root() is True
+    except (OSError, ImportError, SyntaxError):
+        return False
+
+
+def save_config(settings, text, user):
+    try:
+        values = settings.parse(text)
+    except ValueError as error:
+        raise SystemExit(f'The configuration was not saved: {error}') from None
+    if values['primary_user'] != user:
+        raise SystemExit('The configuration was not saved: it belongs to another account.')
+    if values['desktop_autologin'] and not encrypted_root():
+        raise SystemExit('The configuration was not saved: automatic login requires a root '
+                         'filesystem verified as encrypted.')
+    settings.write(settings.render(values))
+
+
+def record_login(settings):
+    """Keep login intent in step with the saved choice, like the finalize role.
+
+    cybexos-login-prepare still verifies root encryption on every boot.
+    """
+    if not settings.CONFIG.is_file():
+        return
+    try:
+        values = settings.current()
+    except ValueError as error:
+        print(f'Login policy unchanged: {error}', file=sys.stderr)
+        return
+    policy = {'version': 1, 'user': values['primary_user'], 'autologin': values['desktop_autologin'], 'live': False}
+    try:
+        if json.loads(LOGIN.read_text()) == policy:
+            return
+    except (OSError, ValueError):
+        pass
+    settings.write(json.dumps(policy) + '\n', LOGIN)
 
 
 def accounts(entries, selected=None):
@@ -69,6 +125,8 @@ def main():
     parser.add_argument('--hardware', action='store_true')
     parser.add_argument('--user')
     parser.add_argument('--automatic', action='store_true')
+    parser.add_argument('--save-config', action='store_true',
+                        help='Validate and save a configuration from standard input, then apply it')
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error('Run as root in the installed system')
@@ -76,6 +134,9 @@ def main():
         parser.error('Hardware setup requires the running installed system')
     if args.automatic and not args.hardware:
         parser.error('--automatic is only valid for hardware setup')
+    if args.save_config and (args.offline or args.hardware or not args.user):
+        parser.error('--save-config applies one account in the running installed system')
+    text = sys.stdin.read() if args.save_config else None
     lock_directory = Path('/run/lock/cybexos')
     lock_directory.mkdir(mode=0o755, exist_ok=True)
     lock = (lock_directory / 'provision.lock').open('a')
@@ -83,6 +144,13 @@ def main():
     users = accounts(pwd.getpwall(), args.user)
     if args.user and not users:
         parser.error('Select an existing installed desktop account')
+    settings = None if args.hardware else load('cybexos_config', CONFIG_TOOL)
+    if args.save_config:
+        save_config(settings, text, args.user)
+    elif settings and settings.ensure(fresh_account=args.offline):
+        # Installation and repair of an older ISO installation record the
+        # detected choices before provisioning consumes them.
+        print('Recorded the installation choices in /etc/cybexos/config.yml')
     digest = hashlib.sha256()
     for path in sorted(PROVISION.rglob('*')):
         if path.is_file():
@@ -110,6 +178,9 @@ def main():
             raise
         if not args.hardware:
             retire_legacy_fish(account)
+    # The Anaconda target helper decides login intent after verifying encryption.
+    if settings and not args.offline:
+        record_login(settings)
     if args.hardware and users:
         marker.parent.mkdir(parents=True, exist_ok=True)
         pending = marker.with_suffix('.pending')
