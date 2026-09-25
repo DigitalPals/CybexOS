@@ -126,6 +126,22 @@ ShellRoot {
         }
     }
 
+    // The desktop outside the shell (terminal, compositor, GTK, lock screen)
+    // follows the shell's appearance on its own; `apply` re-renders and
+    // reloads every target even when nothing changed, for an application
+    // that missed a reload or a target file edited by hand.
+    IpcHandler {
+        target: "theme"
+
+        function apply(): void {
+            SystemTheme.apply(true);
+        }
+
+        function status(): string {
+            return SystemTheme.status();
+        }
+    }
+
     // Pinged by brightness-control after brightnessctl runs; volume needs
     // no IPC because the OSD watches Pipewire directly.
     IpcHandler {
@@ -269,6 +285,7 @@ ShellRoot {
         void GitHub.pollEnabled;
         void Calendar.enabled;
         void Settings.loaded;
+        void SystemTheme.settled;
         void Updates.total;
         void Recorder.active;
         void Dictation.state;

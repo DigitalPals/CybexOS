@@ -13,6 +13,7 @@ singleton Theme Theme.qml
 singleton Activity Activity.qml
 singleton T3Theme T3Theme.qml
 singleton Palette Palette.qml
+singleton SystemTheme SystemTheme.qml
 singleton Popouts Popouts.qml
 singleton Screens Screens.qml
 singleton Launcher Launcher.qml
