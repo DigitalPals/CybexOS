@@ -166,7 +166,7 @@ Singleton {
     readonly property var barAccentPalette: SettingsHelpers.barPalette(
         barAccent.toString())
     readonly property color barAccentFg: paletteActive
-        ? SettingsHelpers.ensureContrast(Common.Palette.onPrimary.toString(),
+        ? SettingsHelpers.ensureContrast(Common.Palette.primaryInk.toString(),
             barAccent.toString(), 4.5) : barAccentPalette.foreground
     readonly property color barAccentGlow: Qt.rgba(
         barAccent.r, barAccent.g, barAccent.b, 0.50)
@@ -215,7 +215,7 @@ Singleton {
     // Material's state-layer approach — in both palette modes. Tonal
     // container fills could not recess: on the light base the highest
     // container is the base itself, so hover and tiles disappeared.
-    readonly property color lightInk: paletteActive ? Common.Palette.onSurface : "#18162c"
+    readonly property color lightInk: paletteActive ? Common.Palette.surfaceInk : "#18162c"
     readonly property real chipAlpha: 0.07
     readonly property real chipHoverAlpha: 0.13
     readonly property real tileAlpha: 0.06
@@ -281,7 +281,7 @@ Singleton {
 
     readonly property var textPalette: paletteActive
         ? SettingsHelpers.semanticPalette(copyReferenceBg.toString(),
-            Common.Palette.onSurface.toString(), Common.Palette.onSurfaceVariant.toString())
+            Common.Palette.surfaceInk.toString(), Common.Palette.surfaceVariantInk.toString())
         : null
     readonly property color textHi: paletteActive ? textPalette.textHi
         : dark ? darkTextHi : lightTextHi
@@ -312,7 +312,7 @@ Singleton {
     // Derived rather than fixed white: the redesign's chartreuse accent needs
     // dark ink on it, and any pale fixed accent has the same problem.
     readonly property color accentFg: paletteActive
-        ? SettingsHelpers.ensureContrast(Common.Palette.onPrimary.toString(),
+        ? SettingsHelpers.ensureContrast(Common.Palette.primaryInk.toString(),
             accent.toString(), 4.5)
         : (SettingsHelpers.foregroundFor(accent.toString()) === "#ffffff"
             ? "#ffffff" : "#1c1c12")

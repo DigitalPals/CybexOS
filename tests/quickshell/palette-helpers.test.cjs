@@ -154,3 +154,34 @@ test("representative Matugen copy roles retain AA contrast", () => {
             S.ensureContrast(roles.onPrimary, roles.primary, 4.5), roles.primary) >= 4.5);
     }
 });
+
+// QML takes a member named "on" plus a capital for a signal handler. One that
+// shadows a sibling property — Palette's onSurface beside surface — never
+// holds its binding and reads as the type's default (black for a colour).
+test("no QML property is named after a sibling as on<Name>", () => {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const { shellDir, isVendored } = require("./shell.cjs");
+    const files = [];
+    (function walk(dir) {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory() && !isVendored(full))
+                walk(full);
+            else if (entry.isFile() && entry.name.endsWith(".qml"))
+                files.push(full);
+        }
+    })(shellDir);
+    const declared = /^\s*(?:(?:readonly|required|default)\s+)*property\s+[\w<>.]+\s+(\w+)/gm;
+    for (const file of files) {
+        const names = new Set([...fs.readFileSync(file, "utf8").matchAll(declared)]
+            .map(match => match[1]));
+        for (const name of names) {
+            const shadowed = /^on[A-Z]/.test(name) && name[2].toLowerCase() + name.slice(3);
+            assert.ok(!shadowed || !names.has(shadowed),
+                `${path.relative(shellDir, file)}: ${name} shadows ${shadowed}`);
+        }
+    }
+    assert.match(fs.readFileSync(path.join(shellDir, "Common/Palette.qml"), "utf8"),
+        /readonly property color surfaceInk: active\.onSurface/);
+});

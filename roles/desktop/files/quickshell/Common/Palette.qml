@@ -35,21 +35,26 @@ Singleton {
         || (Settings.themeMode === "light" ? "#fcfcff" : "#1a182c")
     readonly property color surfaceContainerHigh: active.surfaceContainerHigh
         || (Settings.themeMode === "light" ? "#e6e4ec" : "#292637")
-    readonly property color onSurface: active.onSurface
+    // Material's on-* roles are held as *Ink. QML reads a member named "on"
+    // plus a capital as a signal handler, and one that shadows a sibling
+    // property (onSurface beside surface, onPrimary beside primary) silently
+    // stayed at its default, black, which made every wallpaper palette's
+    // copy a grey computed from black and its accent ink pure black.
+    readonly property color surfaceInk: active.onSurface
         || (Settings.themeMode === "light" ? "#1c1a2e" : "#f5f4fb")
-    readonly property color onSurfaceVariant: active.onSurfaceVariant
+    readonly property color surfaceVariantInk: active.onSurfaceVariant
         || (Settings.themeMode === "light" ? "#4a4860" : "#a1a0a9")
     readonly property color primary: active.primary || Settings.effectiveAccent
     readonly property color primaryContainer: active.primaryContainer
         || Settings.effectiveAccent
-    readonly property color onPrimary: active.onPrimary || "#ffffff"
+    readonly property color primaryInk: active.onPrimary || "#ffffff"
     readonly property color outlineVariant: active.outlineVariant
         || (Settings.themeMode === "light" ? "#c6c4cc" : "#45434f")
     readonly property color errorRole: active.error
         || (Settings.themeMode === "light" ? "#c22f2f" : "#ff8f8f")
     readonly property color errorContainer: active.errorContainer
         || (Settings.themeMode === "light" ? "#ffdad6" : "#93000a")
-    readonly property color onError: active.onError
+    readonly property color errorInk: active.onError
         || (Settings.themeMode === "light" ? "#ffffff" : "#690005")
 
     function usePalette(identity, palette) {
