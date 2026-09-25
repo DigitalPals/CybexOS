@@ -56,6 +56,14 @@ class VerifiedDnf(DnfLiveCD):
                 raise RuntimeError("Only the locally built RPM may be unsigned")
         return self.repos[name]
 
+    def fill_sack(self, *args, load_system_repo=False, **kwargs):
+        # livecd-tools only detects the BerkeleyDB rpmdb. Also load RPM 6's
+        # SQLite database, so a later pass sees the packages already installed.
+        root = Path(self.conf.installroot)
+        load_system_repo = load_system_repo or any(
+            (root / directory / "rpmdb.sqlite").exists() for directory in ("usr/lib/sysimage/rpm", "var/lib/rpm"))
+        return super().fill_sack(*args, load_system_repo=load_system_repo, **kwargs)
+
     def do_transaction(self, *args, **kwargs):
         for package in self.transaction.install_set:
             if not package.repo.gpgcheck:
@@ -84,6 +92,28 @@ class VerifiedDnf(DnfLiveCD):
 
 imgcreate.creator.DnfLiveCD = VerifiedDnf
 kickstart = imgcreate.read_kickstart(str(build / "live.ks"))
+# RPM 6 checks Requires(pretrans) against packages installed before the
+# transaction. These pretrans scriptlets need /bin/sh, rpm and sed, which an
+# empty image root lacks, so they are installed in a second transaction.
+PRETRANS_PACKAGES = ("chatgpt",)
+selected_packages = kickstart.handler.packages.packageList
+deferred_packages = [name for name in selected_packages if name in PRETRANS_PACKAGES]
+
+
+def install_packages(creator):
+    kickstart.handler.packages.packageList = [name for name in selected_packages if name not in deferred_packages]
+    creator.install()
+    if deferred_packages:
+        groups = kickstart.handler.packages.groupList
+        kickstart.handler.packages.packageList = deferred_packages
+        kickstart.handler.packages.groupList = []
+        try:
+            creator.install()
+        finally:
+            kickstart.handler.packages.groupList = groups
+    kickstart.handler.packages.packageList = selected_packages
+
+
 class CybexImageCreator(imgcreate.LiveImageCreator):
     def _configure_bootloader(self, isodir):
         super()._configure_bootloader(isodir)
@@ -102,7 +132,7 @@ logging.info("Live image compression: %s", compression)
 try:
     creator.mount(cachedir=str(build / "cache"))
     shutil.copyfile(source / "dracut-live.conf", Path(creator._instroot) / "etc/dracut.conf.d/99-liveos.conf")
-    creator.install()
+    install_packages(creator)
     # Flatpak validates signed OSTree commits during preparation. Copy the
     # complete system installation, including runtimes, before SELinux relabel.
     flatpak_root = Path(creator._instroot) / "var/lib/flatpak"
