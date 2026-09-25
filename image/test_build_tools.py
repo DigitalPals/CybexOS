@@ -1,6 +1,7 @@
 """Source-only fixtures: no ISO filesystem, QEMU process or PXE server is used."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -10,7 +11,7 @@ from unittest.mock import patch
 from build_support import (builder_cloud_config, checksum_entries, deliver_artifacts,
                            select_firmware, wait_for_builder_initialization)
 from download_cache import import_cache, merge_cache, verified_entries
-from pxe_publish import DEFAULT_CONTRACT, IVentoy, publish, validate_status
+from pxe_publish import DEFAULT_CONTRACT, IVentoy, publish, staging_parent, validate_status
 
 
 class BuilderInitializationTests(unittest.TestCase):
@@ -176,6 +177,34 @@ class PublisherTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 publish(source, served, 'fixture.iso')
             self.assertEqual(sorted(p.name for p in root.iterdir()), ['payload.bin', 'served'])
+
+    @unittest.skipIf(os.geteuid() == 0, 'root bypasses directory permissions')
+    def test_publication_stages_in_nearest_writable_ancestor(self):
+        # Mirrors a PXE host: root-owned /data/pxe, user-writable /data and /data/pxe/iso.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            parent = root / 'pxe'
+            served = parent / 'iso'
+            served.mkdir(parents=True)
+            source = root / 'payload.bin'
+            source.write_bytes(b'synthetic publication bytes')
+            parent.chmod(0o555)
+            try:
+                self.assertEqual(staging_parent(served), root.resolve())
+                destination, _ = publish(source, served, 'fixture.iso')
+                self.assertEqual(destination.read_bytes(), b'synthetic publication bytes')
+                self.assertEqual(sorted(p.name for p in root.iterdir()), ['payload.bin', 'pxe'])
+            finally:
+                parent.chmod(0o755)
+
+    def test_staging_inside_served_tree_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            served = Path(temporary) / 'served'
+            (served / 'incoming').mkdir(parents=True)
+            for requested in (served, served / 'incoming'):
+                with self.assertRaises(ValueError):
+                    staging_parent(served, requested)
+            self.assertEqual(staging_parent(served, Path(temporary)), Path(temporary).resolve())
 
 
 class QualificationSourceTests(unittest.TestCase):

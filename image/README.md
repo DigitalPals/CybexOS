@@ -135,6 +135,9 @@ on Debian. It recognizes the disk-unlock prompt and a terminal execution
 marker before the harness types private fixture input. The image builder
 itself does not require OCR.
 
+QEMU runs with `-no-user-config`, so host `/etc/qemu` configuration neither
+shapes nor blocks the builder or test VMs.
+
 Allow approximately 180 GiB free staging space and 24 GiB available RAM for
 the complete application build. OVMF is needed for later UEFI qualification.
 `cloud-localds`, `xorriso`, `genisoimage` or `mkisofs` can create the builder's
@@ -244,7 +247,10 @@ On the iVentoy host, `image/publish-pxe /path/to/artifacts` verifies the artifac
 set and prints a plan. Adding `--execute` copies the ISO/checksum through
 staging, verifies them before publication, preserves existing images, then
 requires iVentoy refresh success, completed refresh, running PXE, filename
-presence and an active service. Identical-file retries are supported. The
+presence and an active service. Identical-file retries are supported.
+Staging uses the nearest writable ancestor of the served directory on the same
+filesystem (for example `/data` when `/data/pxe` is root-owned), because
+completed files are hardlinked into place; `--staging` selects another one. The
 default API contract is iVentoy 1.0.41; review its installed UI after upgrades
 and provide `--api-contract` for a changed schema. A failed refresh retains
 the verified ISO for inspection and does not automatically restart PXE.

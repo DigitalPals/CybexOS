@@ -163,7 +163,7 @@ class TestVM:
         self.ssh = ["ssh", "-i", str(self.key), "-p", str(self.port), "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=10", "-o", "BatchMode=yes", "-o", "ConnectTimeout=3",
                     "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={self.work / 'known_hosts'}", f"{user}@127.0.0.1"]
         firmware = prepare_firmware(self.work) if self.firmware == "uefi" else []
-        args = ["qemu-system-x86_64", "-name", "cybexos-qualification", "-machine", "q35,accel=kvm", "-cpu", "host", "-smp", "4", "-m", str(self.memory),
+        args = ["qemu-system-x86_64", "-no-user-config", "-name", "cybexos-qualification", "-machine", "q35,accel=kvm", "-cpu", "host", "-smp", "4", "-m", str(self.memory),
                 "-drive", f"file={self.disk},format=qcow2,if=virtio,serial=CYBEXOS-QUALIFICATION,werror=report,rerror=report", *firmware,
                 "-device", "virtio-vga", "-device", "qemu-xhci", "-device", "usb-tablet",
                 "-netdev", f"user,id=net,restrict=on,hostfwd=tcp:127.0.0.1:{self.port}-:22", "-device", "virtio-net-pci,netdev=net",

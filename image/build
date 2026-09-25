@@ -121,8 +121,9 @@ def main():
                 additions["image/build-provenance.json"] = work / "build-provenance.json"
                 source_archive(work / "source.tar.gz", additions)
                 provenance["source"] = source_provenance(ROOT, work / "source.tar.gz")
-                provenance["tools"] = {name: subprocess.check_output([name, "--version"], text=True).splitlines()[0]
-                                       for name in ("qemu-system-x86_64", "qemu-img")}
+                # -no-user-config: host /etc/qemu may be unreadable and must not shape the builder.
+                provenance["tools"] = {command[0]: subprocess.check_output([*command, "--version"], text=True).splitlines()[0]
+                                       for command in (["qemu-system-x86_64", "-no-user-config"], ["qemu-img"])}
                 provenance["tools"]["python"] = sys.version
                 atomic_json(status_path, provenance)
                 key = work / "id_ed25519"
@@ -140,7 +141,7 @@ def main():
                 atomic_json(output / "builder.json", {"ssh": ssh, "work": str(work)})
             with (output / "builder-console.log").open("w") as console:
                 vm = subprocess.Popen([
-                    "qemu-system-x86_64", "-name", "cybexos-image-builder", "-machine", "q35,accel=kvm", "-cpu", "host", "-smp", str(args.cpus), "-m", str(args.memory),
+                    "qemu-system-x86_64", "-no-user-config", "-name", "cybexos-image-builder", "-machine", "q35,accel=kvm", "-cpu", "host", "-smp", str(args.cpus), "-m", str(args.memory),
                     "-drive", f"file={work / 'system.qcow2'},if=virtio,format=qcow2,werror=report,rerror=report", "-drive", f"file={work / 'seed.iso'},if=virtio,format=raw,readonly=on",
                     "-netdev", f"user,id=net,hostfwd=tcp:127.0.0.1:{port}-:22", "-device", "virtio-net-pci,netdev=net", "-display", "none", "-serial", "stdio", "-monitor", "none"], stdout=console, stderr=subprocess.STDOUT)
                 try:

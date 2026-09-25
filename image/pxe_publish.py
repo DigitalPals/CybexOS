@@ -100,13 +100,36 @@ class IVentoy:
             raise RuntimeError("iVentoy did not list the published filename")
 
 
-def publish(iso, served, filename, expected=None):
+def staging_parent(served, requested=None):
+    """Writable directory outside the served tree on the same filesystem.
+
+    Publication hardlinks complete files into place, so staging must share the
+    served directory's filesystem. Without a request, use its nearest writable
+    ancestor; the served parent may be root-owned on a PXE host.
+    """
+    if not Path(served).is_dir():
+        raise ValueError("Served ISO directory must exist")
+    served = Path(served).resolve()
+    candidates = [Path(requested).resolve()] if requested is not None else list(served.parents)
+    for candidate in candidates:
+        if candidate == served or served in candidate.parents:
+            raise ValueError("Staging must be outside the served ISO directory")
+        if (candidate.is_dir() and candidate.stat().st_dev == served.stat().st_dev
+                and os.access(candidate, os.W_OK | os.X_OK)):
+            return candidate
+    if requested is not None:
+        raise ValueError("Staging directory must be writable and on the served ISO filesystem")
+    raise ValueError("No writable ancestor shares the served ISO filesystem; pass --staging")
+
+
+def publish(iso, served, filename, expected=None, staging=None):
     """Caller has validated iVentoy. Existing files are never replaced."""
     iso, served = Path(iso), Path(served)
     if not SAFE_NAME.fullmatch(filename) or not filename.endswith(".iso"):
         raise ValueError("ISO filename must be ASCII without spaces and end with .iso")
     if served.is_symlink() or not served.is_dir():
         raise ValueError("Served ISO directory must exist and must not be a symlink")
+    staging = staging_parent(served, staging)
     destination, checksum = served / filename, served / (filename + ".sha256")
     actual = digest(iso)
     if expected is not None and actual != expected:
@@ -117,7 +140,7 @@ def publish(iso, served, filename, expected=None):
                 and digest(destination) == expected and checksum.read_text() == f"{expected}  {filename}\n"):
             return destination, expected  # Retry a failed refresh without replacing verified files.
         raise FileExistsError("Refusing to replace a different or incomplete existing ISO/checksum")
-    with tempfile.TemporaryDirectory(prefix=".cybexos-publish-", dir=served.parent) as temporary:
+    with tempfile.TemporaryDirectory(prefix=".cybexos-publish-", dir=staging) as temporary:
         stage = Path(temporary)
         image = stage / filename
         shutil.copyfile(iso, image)
@@ -150,6 +173,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("artifacts", type=Path, help="Verified build artifacts directory containing SHA256SUMS")
     parser.add_argument("--served", type=Path, default=Path("/data/pxe/iso"))
+    parser.add_argument("--staging", type=Path, help="Writable directory on the served filesystem, outside it (default: nearest writable ancestor)")
     parser.add_argument("--api-contract", type=Path, help="JSON pointers/values reviewed against the installed iVentoy UI")
     parser.add_argument("--url", default="http://127.0.0.1:26000/iventoy/json")
     parser.add_argument("--execute", action="store_true", help="Explicitly publish and refresh iVentoy; default only checks artifacts")
@@ -159,14 +183,16 @@ def main():
     if len(isos) != 1:
         parser.error("artifacts must contain exactly one checksummed ISO")
     name = isos[0]
+    staging = staging_parent(args.served, args.staging)
     if not args.execute:
-        print(json.dumps({"action": "publish-and-refresh", "filename": name, "sha256": entries[name], "destination": str(args.served / name), "executed": False}, indent=2))
+        print(json.dumps({"action": "publish-and-refresh", "filename": name, "sha256": entries[name], "destination": str(args.served / name),
+                          "staging": str(staging), "executed": False}, indent=2))
         return
     contract = json.loads(args.api_contract.read_text()) if args.api_contract else DEFAULT_CONTRACT
     client = IVentoy(args.url, contract)
     subprocess.run(["systemctl", "is-active", "--quiet", "iventoy.service"], check=True)
     client.wait_idle()
-    destination, checksum = publish(args.artifacts / name, args.served, name, entries[name])
+    destination, checksum = publish(args.artifacts / name, args.served, name, entries[name], staging)
     try:
         client.refresh(name)
         subprocess.run(["systemctl", "is-active", "--quiet", "iventoy.service"], check=True)

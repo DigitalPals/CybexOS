@@ -89,6 +89,7 @@ else
 fi
 
 qemu-system-x86_64 \
+  -no-user-config \
   -name cybexos-convergence \
   -machine q35 -accel "$accelerator" \
   -cpu "$cpu" -smp 4 -m 6144 \
