@@ -93,7 +93,7 @@ test("Control Center focus reaches rows, toggles, audio, capture, session, and f
         /id:\s*outputButton[\s\S]*Accessible\.name:\s*"Choose audio output"/);
     assert.match(control,
         /required property var modelData[\s\S]*Accessible\.name:\s*capture\.label[\s\S]*root\.runCapture/);
-    for (const label of ["Open shell settings", "Keyboard shortcuts"])
+    for (const label of ["Open CybexOS Settings", "Keyboard shortcuts"])
         assert.match(control, new RegExp(`Accessible\\.name: "${label}"`));
 });
 

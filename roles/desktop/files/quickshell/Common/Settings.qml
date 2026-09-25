@@ -562,7 +562,7 @@ Singleton {
     // `mv` has to start and finish first. The dependency rule above stands.
     function notifyCorruption(message) {
         Notifs.send({
-            appName: "Shell settings",
+            appName: "CybexOS Settings",
             appIcon: "preferences-system",
             urgency: NotificationUrgency.Critical,
             summary: "Settings file problem",

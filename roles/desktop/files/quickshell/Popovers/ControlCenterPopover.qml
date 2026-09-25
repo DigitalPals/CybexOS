@@ -1015,7 +1015,7 @@ Surface {
             border.width: activeFocus ? 1 : 0
             border.color: Theme.accentText
             Accessible.role: Accessible.Button
-            Accessible.name: "Open shell settings"
+            Accessible.name: "Open CybexOS Settings"
             Accessible.onPressAction: Settings.showPanel()
 
             Keys.onPressed: event => {

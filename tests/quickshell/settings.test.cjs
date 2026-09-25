@@ -96,7 +96,7 @@ test("the control dashboard uses a compact Settings action without a chevron", (
         "the Settings hit target should hug its visible content");
     assert.match(footer, /height:\s*Theme\.chipHeight/,
         "footer actions are chips, at the bar's own control height");
-    assert.doesNotMatch(footer, /Shell settings|chevron_right/);
+    assert.doesNotMatch(footer, /text:\s*"CybexOS Settings"|chevron_right/);
 });
 
 test("the panel card grows out of its trigger and never out of thin air", () => {

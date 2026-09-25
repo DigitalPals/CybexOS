@@ -417,7 +417,7 @@ Column {
 
             DrawerIconButton {
                 glyph: "settings"
-                accessibleName: "Shell settings"
+                accessibleName: "CybexOS Settings"
                 onClicked: {
                     Popouts.close();
                     Settings.showPanel(undefined, Popouts.hostScreenName);

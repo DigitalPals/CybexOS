@@ -146,7 +146,7 @@ test("the bar's drag handler leaves a plain click to the widget beneath it", () 
     assert.match(bar, /grabPermissions:[\s\S]{0,160}CanTakeOverFromItems/,
         "the drag has to take the grab from the widget's own MouseArea");
     assert.match(bar, /acceptedButtons:\s*Qt\.LeftButton/,
-        "right-click already opens Shell settings from the slab");
+        "right-click already opens CybexOS Settings from the slab");
 });
 
 test("the drag handler sits on the widgets' ancestor, not on a layer above them", () => {

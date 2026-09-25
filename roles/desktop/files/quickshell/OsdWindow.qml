@@ -15,7 +15,7 @@ PanelWindow {
     // Stay mapped through the fade-out; unmap once the pill is gone.
     visible: Osd.active || pill.opacity > 0.001
     screen: Screens.focused
-    // Placement follows Shell settings; when pill and bar share an edge the
+    // Placement follows CybexOS Settings; when pill and bar share an edge the
     // margin clears the bar zone instead of hugging the screen edge.
     readonly property bool atTop: Settings.osd === "top"
     readonly property int barClearance: Theme.barTopMargin + Theme.barHeight + 12

@@ -98,7 +98,7 @@ when the optional dotfiles integration is selected. Uninstall restores those
 pre-existing files. Managed Fish, Kitty, Git, and SSH settings use
 fragments/includes where those applications support them. Bundled wallpapers
 are installed into `~/Pictures/Wallpapers`, and a mountain wallpaper is selected when no wallpaper is configured. Existing selections and
-custom folders are preserved. Change the image in Shell Settings → Wallpaper.
+custom folders are preserved. Change the image in CybexOS Settings → Wallpaper.
 No avatar is imposed.
 
 To install or refresh only the wallpapers using the saved configuration:

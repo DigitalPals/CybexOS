@@ -52,7 +52,7 @@ bind(mainMod .. " + CTRL + SHIFT + A", hl.dsp.exec_cmd(home .. "/.local/bin/cybe
 -- The shell runs from the CybexOS runtime by path, where a bare
 -- `qs ipc call` finds no configuration; cybexos-runtime names the active one.
 bind(mainMod .. " + comma", hl.dsp.exec_cmd(home .. "/.local/bin/cybexos-runtime ipc settings toggle"),
-  { description = "Shell: Shell settings" })
+  { description = "Shell: CybexOS Settings" })
 -- Shell surfaces the menubar also opens by click.
 bind(mainMod .. " + N", hl.dsp.exec_cmd(home .. "/.local/bin/cybexos-runtime ipc popouts toggle notifications"),
   { description = "Shell: Notifications" })

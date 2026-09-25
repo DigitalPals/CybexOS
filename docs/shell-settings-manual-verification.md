@@ -1,6 +1,6 @@
-# Shell settings — manual verification
+# CybexOS Settings — manual verification
 
-The Shell settings workspace makes bar geometry, appearance,
+The CybexOS Settings workspace makes bar geometry, appearance,
 widgets, wallpaper, and system behavior live-configurable, persisted to
 `~/.config/cybexos/shell.json`. Automated coverage:
 `tests/run` — the Node suite (store merge/clamp rules, schema/property
@@ -233,7 +233,7 @@ is manual.
       (exclusive zone released; Hyprland re-tiles once per toggle).
 - [ ] Every connected output keeps its own bar while focus moves between
       monitors; hotplug creates/removes only that output's bar.
-- [ ] Opening a module or Shell settings from either bar shows exactly one
+- [ ] Opening a module or CybexOS Settings from either bar shows exactly one
       panel, attached to the bar that was clicked.
 
 ## Bar page — widgets

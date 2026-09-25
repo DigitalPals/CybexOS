@@ -22,7 +22,7 @@ SettingsPage {
     }
 
     function sendTest() {
-        Quickshell.execDetached(["notify-send", "-a", "Shell settings",
+        Quickshell.execDetached(["notify-send", "-a", "CybexOS Settings",
             "-i", "preferences-system-notifications", "Test notification",
             "Toasts use your current position, duration, and style settings."]);
     }

@@ -22,9 +22,9 @@ var TAB_IDS = ["apps", "emoji", "clipboard", "actions"];
 var BUILTIN_ACTIONS = [
     {
         id: "settings",
-        name: "Open shell settings",
+        name: "Open CybexOS Settings",
         subtitle: "Appearance, bar, widgets and system",
-        keywords: ["preferences", "configuration"],
+        keywords: ["preferences", "configuration", "shell"],
         glyph: "settings"
     },
     {
