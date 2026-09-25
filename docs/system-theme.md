@@ -130,10 +130,9 @@ A theme change reaches the running compositor through
 `hyprctl eval 'cybexos_system_theme("<state dir>/hyprland.lua")'`, which
 applies the same checks and raises instead of half-applying. Without
 `HYPRLAND_INSTANCE_SIGNATURE` reload does nothing and the next compositor start
-reads the file. A full `hyprctl reload` was rejected: it re-reads glass from
-the saved setting (turning blur back on under high contrast), drops an
-unconfirmed display arrangement, and would run on every wallpaper change in
-wallpaper mode.
+reads the file. A full `hyprctl reload` was rejected: it drops an unconfirmed
+display arrangement and would re-run the whole configuration on every
+wallpaper change in wallpaper mode.
 
 **`user.lua` keeps winning.** It loads after `looknfeel.lua`, so at config load
 its colours override the theme's. For the live path, `looknfeel.lua` records
