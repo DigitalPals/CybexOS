@@ -188,6 +188,13 @@ class InstalledPolicy(unittest.TestCase):
         self.assertFalse(any(task.get('ansible.builtin.systemd_service', {}).get('name') == 'docker.service'
                              and task['ansible.builtin.systemd_service'].get('enabled') is True
                              for task in image.values()))
+        # cybex configure can deselect services the image installs for everyone.
+        deselected = image['Turn off deselected image services']
+        self.assertEqual({(item['unit'], item['feature']) for item in deselected['loop']},
+                         {('docker.socket', 'docker'), ('docker.service', 'docker'),
+                          ('tailscaled.service', 'tailscale')})
+        self.assertIs(deselected['ansible.builtin.systemd_service']['enabled'], False)
+        self.assertIn('not features[item.feature] | bool', deselected['when'])
         # authselect keeps a custom profile: only an existing feature is added.
         mdns = image['Enable multicast DNS host resolution']
         self.assertEqual(mdns['ansible.builtin.command']['argv'], ['authselect', 'enable-feature', 'with-mdns4'])
