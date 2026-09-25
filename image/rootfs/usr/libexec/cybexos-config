@@ -1,0 +1,335 @@
+#!/usr/bin/env python3
+"""Record and change the installation choices saved in /etc/cybexos/config.yml.
+
+An ISO installation keeps the same schema that ./install writes on a
+workstation, so cybexos-configure-installed passes it to provisioning. This
+helper never reads, writes or asks for a password.
+"""
+import argparse
+import copy
+import grp
+import json
+import os
+from pathlib import Path
+import pwd
+import re
+import subprocess
+import sys
+import tempfile
+
+import yaml
+
+
+CONFIG = Path('/etc/cybexos/config.yml')
+INVENTORY = Path('/usr/share/cybexos/provision/inventory/group_vars/all.yml')
+APPLY = '/usr/libexec/cybexos-configure-installed'
+# Key order and quoting follow ./install's generated file.
+STRINGS = ('primary_user', 'primary_group', 'primary_home', 'machine_hostname', 'machine_timezone',
+           'machine_locale', 'regional_locale', 'machine_keyboard_layout', 'machine_keyboard_variant')
+BOOLEANS = ('manage_system_identity', 'manage_personal_dotfiles', 'cleanup_legacy_xps_artifacts',
+            'passwordless_wheel', 'passwordless_local_polkit', 'docker_sudoless', 'desktop_autologin',
+            'start_optional_hardware_services', 'allow_insecure_sccache_transport', 'xps_2026_camera_enabled')
+FEATURES = ('developer_tools', 'connected_widgets', 'proprietary_apps', 'tailscale', 'docker', 'podman',
+            'steam', 'private_hooks', 'apple_display', 'source_builds', 'local_network_services')
+PATTERNS = {
+    'machine_hostname': r'[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}',
+    'machine_timezone': r'[A-Za-z0-9_+-]+(?:/[A-Za-z0-9_+-]+)*',
+    'machine_locale': r'[A-Za-z][A-Za-z0-9_@.-]+',
+    'regional_locale': r'[A-Za-z][A-Za-z0-9_@.-]+',
+    'machine_keyboard_layout': r'[A-Za-z0-9_,-]+',
+    'machine_keyboard_variant': r'[A-Za-z0-9_,-]*',
+}
+FALLBACK = {'machine_hostname': 'fedora', 'machine_timezone': 'UTC', 'machine_locale': 'en_US.UTF-8',
+            'regional_locale': 'en_US.UTF-8', 'machine_keyboard_layout': 'us', 'machine_keyboard_variant': ''}
+
+
+def group_name(gid):
+    return grp.getgrgid(gid).gr_name
+
+
+def desktop_accounts(entries):
+    """The installed desktop accounts that cybexos-configure-installed serves."""
+    return [entry for entry in entries
+            if 1000 <= entry.pw_uid < 65534 and entry.pw_name != 'liveuser'
+            and Path(entry.pw_dir).parent == Path('/home')]
+
+
+def login_policy(root):
+    try:
+        value = json.loads((root / 'etc/cybexos/login.json').read_text())
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def assignments(path):
+    """Read a systemd KEY=value file such as locale.conf or vconsole.conf."""
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return {}
+    values = {}
+    for line in lines:
+        key, separator, value = line.strip().partition('=')
+        if separator and not key.startswith('#'):
+            values[key.strip()] = value.strip().strip('"\'')
+    return values
+
+
+def keyboard(root):
+    # localed prefers vconsole.conf's XKB keys and otherwise reads the X11
+    # file Anaconda writes; hyprland-quickshell reads the same through locale1.
+    console = assignments(root / 'etc/vconsole.conf')
+    if console.get('XKBLAYOUT'):
+        return console['XKBLAYOUT'], console.get('XKBVARIANT', '')
+    try:
+        text = (root / 'etc/X11/xorg.conf.d/00-keyboard.conf').read_text()
+    except OSError:
+        text = ''
+    options = dict(re.findall(r'^\s*Option\s+"(Xkb\w+)"\s+"([^"]*)"', text, re.MULTILINE))
+    return options.get('XkbLayout', ''), options.get('XkbVariant', '')
+
+
+def identity(root):
+    try:
+        hostname = (root / 'etc/hostname').read_text().strip()
+    except OSError:
+        hostname = ''
+    try:
+        timezone = os.readlink(root / 'etc/localtime').partition('zoneinfo/')[2]
+    except OSError:
+        timezone = ''
+    locale = assignments(root / 'etc/locale.conf').get('LANG', '')
+    if locale in ('C', 'POSIX') or locale.startswith('C.'):
+        locale = ''
+    layout, variant = keyboard(root)
+    values = {'machine_hostname': hostname, 'machine_timezone': timezone, 'machine_locale': locale,
+              'regional_locale': locale, 'machine_keyboard_layout': layout,
+              'machine_keyboard_variant': variant if layout else ''}
+    return {key: value if valid_identity(key, value, root) else FALLBACK[key]
+            for key, value in values.items()}
+
+
+def valid_identity(key, value, root=Path('/')):
+    if not isinstance(value, str) or not re.fullmatch(PATTERNS[key], value):
+        return False
+    return key != 'machine_timezone' or (root / 'usr/share/zoneinfo' / value).is_file()
+
+
+def detect(root=Path('/'), entries=None, group=group_name, inventory=INVENTORY, fresh_account=False):
+    """Describe an installed system in ./install's schema, or None if ambiguous."""
+    candidates = desktop_accounts(pwd.getpwall() if entries is None else entries)
+    login = login_policy(root)
+    account = next((entry for entry in candidates if entry.pw_name == login.get('user')), None)
+    if account is None and len(candidates) == 1:
+        account = candidates[0]
+    if account is None:
+        return None
+    defaults = yaml.safe_load(inventory.read_text()) or {}
+    features = defaults.get('features') or {}
+    values = {'config_schema_version': 1, 'primary_user': account.pw_name,
+              'primary_group': group(account.pw_gid), 'primary_home': account.pw_dir, **identity(root)}
+    # Unset, templated or non-boolean defaults fall back to the stricter choice.
+    values.update({key: defaults.get(key) is True for key in BOOLEANS})
+    # Anaconda and the OS settings own identity after an ISO installation; a
+    # later checkout run must not reset them to this installation-time record.
+    values['manage_system_identity'] = False
+    # Only a fresh installation account opts in without being asked.
+    values['manage_personal_dotfiles'] = fresh_account
+    values['desktop_autologin'] = login.get('user') == account.pw_name and login.get('autologin') is True
+    values['features'] = {key: features.get(key) is True for key in FEATURES}
+    return values
+
+
+def quoted(value):
+    return "'" + value.replace("'", "''") + "'"
+
+
+def render(values):
+    lines = ['---', 'config_schema_version: 1']
+    lines += [f'{key}: {quoted(values[key])}' for key in STRINGS]
+    lines += [f'{key}: {str(values[key]).lower()}' for key in BOOLEANS]
+    lines += ['features:'] + [f'  {key}: {str(values["features"][key]).lower()}' for key in FEATURES]
+    return '\n'.join(lines) + '\n'
+
+
+def validate(document, root=Path('/'), entries=None, group=group_name):
+    """Require the complete schema 1 shape and the installed account's identity."""
+    if not isinstance(document, dict) or set(document) != {'config_schema_version', 'features', *STRINGS, *BOOLEANS}:
+        raise ValueError('The configuration does not have the schema 1 keys.')
+    if type(document['config_schema_version']) is not int or document['config_schema_version'] != 1:
+        raise ValueError('Only configuration schema 1 is supported.')
+    features = document['features']
+    if not isinstance(features, dict) or set(features) != set(FEATURES):
+        raise ValueError('The configuration does not have the schema 1 features.')
+    if not all(type(value) is bool for value in [*features.values(), *(document[key] for key in BOOLEANS)]):
+        raise ValueError('Configuration choices must be true or false.')
+    for key in PATTERNS:
+        if not valid_identity(key, document[key], root):
+            raise ValueError(f'Invalid {key}: {document[key]!r}')
+    account = next((entry for entry in desktop_accounts(pwd.getpwall() if entries is None else entries)
+                    if entry.pw_name == document['primary_user']), None)
+    if account is None or account.pw_dir != document['primary_home'] or group(account.pw_gid) != document['primary_group']:
+        raise ValueError('primary_user must name an installed desktop account with its home and group.')
+    return document
+
+
+def parse(text, **options):
+    try:
+        document = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        raise ValueError(f'The configuration is not valid YAML: {error}') from None
+    return validate(document, **options)
+
+
+def write(text, path=CONFIG, replace=True):
+    """Write atomically as 0644; without replace, never overwrite a saved file."""
+    path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix='.' + path.name + '.', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            os.fchmod(stream.fileno(), 0o644)
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if replace:
+            os.replace(name, path)
+        else:
+            os.link(name, path)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def ensure(root=Path('/'), **options):
+    """Record a missing configuration; return whether one was written."""
+    path = root / 'etc/cybexos/config.yml'
+    if path.exists() or path.is_symlink():
+        return False
+    values = detect(root, **options)
+    if values is None:
+        return False
+    try:
+        write(render(values), path, replace=False)
+    except FileExistsError:
+        return False
+    return True
+
+
+def current(root=Path('/'), entries=None, group=group_name, inventory=INVENTORY):
+    """Saved choices, completed with detected values for any missing keys."""
+    path = root / 'etc/cybexos/config.yml'
+    values = detect(root, entries, group, inventory) or {}
+    try:
+        saved = yaml.safe_load(path.read_text())
+    except FileNotFoundError:
+        if not values:
+            raise ValueError('No single installed desktop account could be selected.') from None
+        saved = {}
+    except (OSError, yaml.YAMLError) as error:
+        raise ValueError(f'{path} could not be read: {error}') from None
+    if not isinstance(saved, dict):
+        raise ValueError(f'{path} does not contain a configuration.')
+    features = {**values.get('features', {}), **(saved.get('features') or {})}
+    values.update({key: saved[key] for key in ('config_schema_version', *STRINGS, *BOOLEANS) if key in saved})
+    values['features'] = {key: features[key] for key in FEATURES if key in features}
+    return validate(values, root, entries, group)
+
+
+def ask_bool(prompt, default, read=input):
+    suffix = ' [Y/n]: ' if default else ' [y/N]: '
+    while True:
+        answer = read(prompt + suffix).strip().lower()
+        if not answer:
+            return default
+        if answer in ('y', 'yes'):
+            return True
+        if answer in ('n', 'no'):
+            return False
+        print('Please answer yes or no.', file=sys.stderr)
+
+
+def questionnaire(values, read=input):
+    """Ask only the policy choices that installed-system provisioning applies."""
+    result = copy.deepcopy(values)
+    features = result['features']
+    print('CybexOS configuration')
+    print('Current choices are offered as the default. Hostname, timezone, language and')
+    print('keyboard are changed in the system settings, not here.')
+    print()
+    features['docker'] = ask_bool('Enable Docker?', features['docker'], read)
+    features['tailscale'] = ask_bool('Enable Tailscale?', features['tailscale'], read)
+    features['connected_widgets'] = ask_bool('Enable connected-service widgets?', features['connected_widgets'], read)
+    features['local_network_services'] = ask_bool('Open feature-selected local-network firewall ports?',
+                                                  features['local_network_services'], read)
+    print()
+    print('The following choices relax local authentication. Review each explicitly.')
+    result['passwordless_wheel'] = ask_bool('Allow the wheel group to use sudo without a password?',
+                                            result['passwordless_wheel'], read)
+    result['passwordless_local_polkit'] = ask_bool(
+        'Authorize active local wheel users through Polkit without a password?',
+        result['passwordless_local_polkit'], read)
+    result['docker_sudoless'] = features['docker'] and ask_bool(
+        f"Let {result['primary_user']} use Docker without sudo? (The docker group is equivalent to root access.)",
+        result['docker_sudoless'], read)
+    result['desktop_autologin'] = ask_bool(
+        'Automatically log this user into Hyprland when the root disk is encrypted?',
+        result['desktop_autologin'], read)
+    print()
+    result['manage_personal_dotfiles'] = ask_bool('Install the opinionated shell and application dotfiles?',
+                                                  result['manage_personal_dotfiles'], read)
+    return result
+
+
+def summary(values):
+    features = values['features']
+    print()
+    print('Configuration summary')
+    print(f"User: {values['primary_user']} ({values['primary_home']})\nHost: {values['machine_hostname']}")
+    print(f"Docker: {features['docker']}  Tailscale: {features['tailscale']}  "
+          f"Connected widgets: {features['connected_widgets']}  "
+          f"Local-network ports: {features['local_network_services']}")
+    print(f"Passwordless sudo: {values['passwordless_wheel']}  "
+          f"Passwordless Polkit: {values['passwordless_local_polkit']}  "
+          f"Sudoless Docker: {values['docker_sudoless']}  Autologin: {values['desktop_autologin']}")
+    print(f"Personal dotfiles: {values['manage_personal_dotfiles']}")
+    if values['desktop_autologin']:
+        print('Automatic login is saved only after the root filesystem is verified as encrypted,')
+        print('and every boot verifies it again before logging in.')
+
+
+def main(argv=None, read=input, run=subprocess.run, interactive=None, **options):
+    parser = argparse.ArgumentParser(prog='cybex configure',
+                                     description='Change the saved CybexOS installation choices and apply them.')
+    parser.add_argument('--check', action='store_true', help='Show the configuration; do not change it')
+    args = parser.parse_args(argv)
+    try:
+        values = current(**options)
+    except ValueError as error:
+        print(f'cybex configure: {error}', file=sys.stderr)
+        return 1
+    if args.check:
+        sys.stdout.write(render(values))
+        return 0
+    if not (sys.stdin.isatty() if interactive is None else interactive):
+        print('cybex configure: interactive setup needs a terminal (or use --check)', file=sys.stderr)
+        return 2
+    try:
+        changed = questionnaire(values, read)
+        summary(changed)
+        confirmed = ask_bool('Apply this configuration?', False, read)
+    except (EOFError, KeyboardInterrupt):
+        print('\nConfiguration cancelled.')
+        return 1
+    if not confirmed:
+        print('Configuration cancelled.')
+        return 0
+    # The root helper validates, saves atomically and reapplies the policy.
+    result = run(['sudo', APPLY, '--user', changed['primary_user'], '--save-config'],
+                 input=render(changed), text=True, check=False)
+    if result.returncode:
+        print('cybex configure: the configuration was not applied; see the messages above.', file=sys.stderr)
+    return result.returncode
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

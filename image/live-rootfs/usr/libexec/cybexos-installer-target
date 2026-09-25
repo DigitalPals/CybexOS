@@ -54,6 +54,28 @@ def root_is_encrypted(root, run=subprocess.run):
         return False
 
 
+def record_autologin(root, username, autologin):
+    """Keep the saved installation choices in step with the verified decision.
+
+    Provisioning inside the target recorded config.yml before encryption could
+    be verified from outside it; only its one autologin line changes here.
+    """
+    path = root / 'etc/cybexos/config.yml'
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        return
+    if not re.search(r"^primary_user: '" + re.escape(username) + "'$", text, re.MULTILINE):
+        return
+    updated = re.sub(r'^desktop_autologin: (?:true|false)$',
+                     'desktop_autologin: ' + ('true' if autologin else 'false'), text, count=1, flags=re.MULTILINE)
+    if updated != text:
+        temporary = path.with_name('.config.yml.cybexos-installer')
+        temporary.write_text(updated)
+        temporary.chmod(0o644)
+        temporary.replace(path)
+
+
 def finalize(root, policy, encrypted):
     account = policy.get('account', {})
     username = account.get('username', '')
@@ -75,6 +97,7 @@ def finalize(root, policy, encrypted):
     path.write_text(json.dumps({'version': 1, 'user': username,
                                'autologin': autologin, 'live': False}) + '\n')
     path.chmod(0o644)
+    record_autologin(root, username, autologin)
     # The prepared live /etc/sddm.conf can be copied with the live filesystem.
     # The installed boot must regenerate it from its own verified policy.
     (root / 'etc/sddm.conf').unlink(missing_ok=True)
