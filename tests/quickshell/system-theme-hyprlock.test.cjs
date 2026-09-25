@@ -199,7 +199,8 @@ test("apply writes the lock screen and reload touches nothing", t => {
     const again = runDriver(state, ["apply", "--force"], JSON.stringify(darkTokens()) + "\n",
         { bin: stubs.bin });
     assert.deepEqual(again.report.targets.hyprlock, { changed: false, error: null });
-    assert.deepEqual(stubs.calls(), []);
+    // pkill is the kitty target's reload; nothing may start or signal a lock.
+    assert.deepEqual(stubs.calls().filter(call => !call.startsWith("pkill ")), []);
 });
 
 test("the vendor lock screen is the dark default rendered without a wallpaper", () => {
