@@ -1,0 +1,12 @@
+{
+  "files": [
+    {"provider": "claude", "auth_index": "claude-exhausted", "email": "busy@example.invalid"},
+    {"provider": "claude", "auth_index": "claude-available", "email": "free@example.invalid"},
+    {"provider": "claude", "auth_index": "claude-expired"},
+    {"provider": "claude", "auth_index": "claude-disabled", "disabled": true},
+    {"type": "codex", "auth_index": "codex-account", "email": "codex@example.invalid",
+      "id_token": {"chatgpt_account_id": "chatgpt-account", "plan_type": "pro"}},
+    {"provider": "kimi", "auth_index": "kimi-account"},
+    {"provider": "gemini", "auth_index": "unsupported-account"}
+  ]
+}

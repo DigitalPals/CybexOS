@@ -73,6 +73,7 @@ var ROWS = [
     { page: "bar", pageLabel: "Bar", group: "Indicators", label: "Clock-side actions", key: "", terms: "indicator dictate recording ocr scan text clipboard reminder night light do not disturb dnd stay awake idle inhibit order startup duration" },
     { page: "bar", pageLabel: "Bar", group: "Notes", label: "AI note titles", key: "", terms: "codex claude model provider effort reasoning generate regenerate privacy" },
     { page: "bar", pageLabel: "Bar", group: "Weather", label: "Weather location", key: "", widget: "weather", terms: "clock city place search country region coordinates latitude longitude forecast" },
+    { page: "bar", pageLabel: "Bar", group: "Model Usage", label: "Model Usage", key: "", widget: "modelusage", terms: "ai claude codex kimi quota limits reset percentage providers cliproxy proxy accounts credentials cost tokens t3 refresh warning critical" },
 
     { page: "bar", pageLabel: "Bar", group: "Control Center", label: "Control Center widget", key: "", widget: "control", terms: "fedora button move drag reorder show hide drawer" },
 

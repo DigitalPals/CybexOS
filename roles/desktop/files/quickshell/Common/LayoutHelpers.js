@@ -5,7 +5,7 @@
 // weather conditions, while the clock's own date remains a late resort.
 var COMPACT_ORDER = ["media", "updates", "notifications", "t3", "hermes", "gh",
     "weather", "clock", "vol", "batt"];
-var OVERFLOW_ORDER = ["media", "updates", "gh", "t3", "hermes",
+var OVERFLOW_ORDER = ["media", "updates", "gh", "t3", "hermes", "modelusage",
     "weather", "tray", "bt", "notifications", "indicators"];
 
 // Consecutive modules that draw the same way share one layout group: the

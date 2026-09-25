@@ -64,10 +64,6 @@ def verify_dependency_policy(values: dict) -> None:
             )
 
     assert re.fullmatch(r"[0-9a-f]{40}", values["lazyvim_starter_commit"])
-    assert re.fullmatch(r"[0-9a-f]{40}", values["model_usage_plugin_commit"])
-    assert values["model_usage_plugin_repo"].startswith("https://")
-    desktop = (ROOT / "roles/desktop/tasks/main.yml").read_text()
-    assert '- "{{ model_usage_plugin_commit }}"' in desktop
     assert re.fullmatch(r"nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}", values["rust_toolchain"])
     assert SEMVER.fullmatch(values["claude_code_version"])
     assert SEMVER.fullmatch(values["opencode_version"])

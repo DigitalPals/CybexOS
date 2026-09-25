@@ -311,9 +311,12 @@ is manual.
       only while playing, Bluetooth only when connected, Battery on
       laptops).
 - [ ] Disabling a module whose popout is open closes that popout.
-- [ ] T3 Code and the Model Usage plugin can each be toggled, reordered, and
-      moved across columns; a fresh install shows Model Usage first in the
-      right section.
+- [ ] T3 Code and Model Usage can each be toggled, reordered, and moved
+      across columns, including between built-in widgets; a fresh install
+      with connected widgets shows Model Usage first in the right section.
+- [ ] Model Usage's options (bar display, bar providers, thresholds, refresh,
+      account privacy, square cards) apply live, and "Source and accounts" and
+      "Cost sources" open the panel's own settings.
 - [ ] Disabling T3 Code or Model Usage while its popout is open closes only
       that popout; the other widget still opens normally.
 - [ ] Volume, Network, Bluetooth, and Battery can be reordered within or

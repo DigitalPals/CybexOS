@@ -1,0 +1,57 @@
+{
+  "rateLimits": {
+    "limitId": "codex",
+    "planType": "pro",
+    "primary": {
+      "usedPercent": 42,
+      "windowDurationMins": 300,
+      "resetsAt": 1893474000
+    },
+    "secondary": {
+      "usedPercent": 80,
+      "windowDurationMins": 10080,
+      "resetsAt": 1893974400
+    }
+  },
+  "rateLimitsByLimitId": {
+    "codex": {
+      "limitId": "codex",
+      "planType": "pro",
+      "primary": {
+        "usedPercent": 42,
+        "windowDurationMins": 300,
+        "resetsAt": 1893474000
+      },
+      "secondary": {
+        "usedPercent": 80,
+        "windowDurationMins": 10080,
+        "resetsAt": 1893974400
+      },
+      "credits": {
+        "hasCredits": true,
+        "unlimited": false,
+        "balance": "17.50"
+      }
+    },
+    "gpt-5.2-codex-with-a-very-long-model-scope-name": {
+      "limitId": "gpt-5.2-codex-with-a-very-long-model-scope-name",
+      "limitName": "GPT-5.2 Codex Extra Long Context Preview",
+      "planType": "pro",
+      "primary": {
+        "usedPercent": 91,
+        "windowDurationMins": 1440,
+        "resetsAt": 1893560400
+      },
+      "individualLimit": {
+        "used": "$12.00",
+        "limit": "$50.00",
+        "remainingPercent": 76,
+        "resetsAt": 1896066000
+      }
+    }
+  },
+  "rateLimitResetCredits": {
+    "availableCount": 2,
+    "credits": []
+  }
+}

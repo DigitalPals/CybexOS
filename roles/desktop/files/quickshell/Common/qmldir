@@ -55,6 +55,7 @@ singleton BrandIcons BrandIcons.qml
 singleton TablerIcons TablerIcons.qml
 singleton WebIcons WebIcons.qml
 singleton Media Media.qml
+singleton ModelUsageHub ModelUsageHub.qml
 singleton Tailscale Tailscale.qml
 singleton Updates Updates.qml
 singleton Recorder Recorder.qml

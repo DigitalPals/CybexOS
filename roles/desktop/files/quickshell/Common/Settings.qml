@@ -34,7 +34,7 @@ Singleton {
             for (const column of ["left", "center", "right"])
                 value.mods[column] = value.mods[column].map(entry => ({
                     id: entry.id,
-                    on: ["gh", "t3", "hermes"].indexOf(entry.id) !== -1
+                    on: ["modelusage", "gh", "t3", "hermes"].indexOf(entry.id) !== -1
                         ? true : entry.on,
                     detail: entry.detail
                 }));
@@ -400,8 +400,8 @@ Singleton {
         return name === "everything"
             ? SettingsHelpers.MODULE_IDS
             : name === "connected"
-            ? ["ws", "media", "indicators", "clock", "weather", "notes", "updates", "gh",
-                "t3", "hermes", "tray", "notifications", "vol", "wifi", "bt", "batt", "control"]
+            ? ["ws", "media", "indicators", "clock", "weather", "notes", "modelusage",
+                "updates", "gh", "t3", "hermes", "tray", "notifications", "vol", "wifi", "bt", "batt", "control"]
             : ["ws", "media", "indicators", "clock", "weather", "notes", "updates", "tray",
                 "notifications", "vol", "wifi", "batt", "control"];
     }
@@ -615,7 +615,8 @@ Singleton {
             ready = true;
             return;
         }
-        const merged = SettingsHelpers.merge(parsed);
+        const merged = SettingsHelpers.merge(parsed,
+            { connectedWidgets: root.connectedWidgetsConfigured });
         if (loaded && SettingsHelpers.serialize(merged) === SettingsHelpers.serialize(snapshot())) {
             ready = true;
             return;

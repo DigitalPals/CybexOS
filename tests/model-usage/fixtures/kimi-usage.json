@@ -1,0 +1,52 @@
+{
+  "usage": {
+    "used": "40",
+    "limit": "1000",
+    "resetTime": "2030-01-07T00:00:00Z"
+  },
+  "limits": [
+    {
+      "name": "Kimi K2.5 five-hour window",
+      "window": {
+        "duration": 300,
+        "timeUnit": "TIME_UNIT_MINUTE"
+      },
+      "detail": {
+        "used": "75",
+        "limit": "100",
+        "resetTime": "2030-01-01T05:00:00Z"
+      }
+    },
+    {
+      "window": {
+        "duration": 1,
+        "timeUnit": "TIME_UNIT_DAY"
+      },
+      "detail": {
+        "limit": "200",
+        "reset_in": 3600
+      }
+    }
+  ],
+  "user": {
+    "membership": {
+      "level": "LEVEL_ULTRA"
+    }
+  },
+  "boosterWallet": {
+    "balance": {
+      "type": "BOOSTER",
+      "amount": "20000000000",
+      "amountLeft": "10000000000"
+    },
+    "monthlyChargeLimitEnabled": true,
+    "monthlyChargeLimit": {
+      "currency": "USD",
+      "priceInCents": "20000"
+    },
+    "monthlyUsed": {
+      "currency": "USD",
+      "priceInCents": "5000"
+    }
+  }
+}

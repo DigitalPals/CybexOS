@@ -85,23 +85,15 @@ def managed_directory(packages, plugin_id):
 # discovery and every other preference write. `lock` is taken only for the
 # final rename and registry write, after re-checking what the unlocked phase
 # assumed.
-#
-# `revision` pins the installed tree to one commit while keeping the default
-# branch and its upstream, so a later `update` can still fast-forward it.
-def install(packages, source, validate, read_object, lock=None, commit=None,
-            revision=None, expected_id=None):
+def install(packages, source, validate, read_object, lock=None, commit=None):
     packages.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".install-", dir=packages) as temporary:
         checkout = Path(temporary) / "checkout"
         git(packages, "clone", "--", source, str(checkout))
-        if revision:
-            git(checkout, "reset", "--hard", revision)
         plugin_id = read_object(checkout / "manifest.json").get("id")
         # Validate the ID before using it as a path.
         if not isinstance(plugin_id, str) or not plugin_id or "/" in plugin_id or plugin_id in (".", ".."):
             raise ValueError("Invalid manifest id")
-        if expected_id is not None and plugin_id != expected_id:
-            raise ValueError(f"Package id {plugin_id} does not match {expected_id}")
         candidate = Path(temporary) / plugin_id
         if candidate != checkout:
             checkout.rename(candidate)

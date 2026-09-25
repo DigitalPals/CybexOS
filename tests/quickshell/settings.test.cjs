@@ -285,7 +285,8 @@ test("the retired bell, idle, and usage modules leave nothing behind", () => {
     for (const [id, file] of [["bell", "Bell"], ["idle", "Idle"], ["usage", "Usage"]]) {
         assert.ok(!fs.existsSync(path.join(shellDir, `Bar/Modules/${file}.qml`)),
             `Bar/Modules/${file}.qml is still on disk`);
-        assert.doesNotMatch(bar, new RegExp(`${id}:\\s*"Modules/`),
+        // Word-bounded, so the built-in `modelusage` module is not `usage`.
+        assert.doesNotMatch(bar, new RegExp(`\\b${id}:\\s*"Modules/`),
             `the bar still maps a source for ${id}`);
         assert.doesNotMatch(modules, new RegExp(`^\\s*${id}:\\s*\\{ name:`, "m"),
             `the settings module list still names ${id}`);
@@ -304,7 +305,7 @@ test("T3 Code and Hermes Agent are separate reorderable widgets", () => {
     const catalog = read("Common/WidgetCatalog.js");
     const bar = read("Bar/Bar.qml");
 
-    assert.match(helpers, /"gh", "t3", "hermes"/,
+    assert.match(helpers, /"gh",\s*"t3", "hermes"/,
         "fresh layouts should keep the agent widgets adjacent");
     assert.match(catalog, /t3:\s*\{ name: "T3 Code"/);
     assert.match(catalog, /hermes:\s*\{ name: "Hermes Agent"/);
@@ -379,7 +380,7 @@ test("regression fixes keep asynchronous state identity-safe", () => {
 
 test("schema twenty-three keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 25/);
+    assert.match(helpers, /var VERSION = 26/);
     // Schema 17: the drawer becomes configurable (turn-3 settings design).
     assert.match(helpers, /drawerHover: "open"/);
     assert.match(helpers, /drawerWidth: 400/);
@@ -395,7 +396,7 @@ test("schema twenty-three keeps safe defaults and exposes accessibility preferen
     assert.match(helpers, /nightLight:\s*false/);
     assert.match(helpers, /idleInhibitMode:\s*"off"/);
     assert.match(helpers, /idleInhibitUntilMs:\s*0/);
-    assert.match(helpers, /"updates", "gh", "t3", "hermes",\s*"tray"/);
+    assert.match(helpers, /"modelusage", "updates", "gh",\s*"t3", "hermes", "tray"/);
     assert.match(helpers, /hermes:\s*\{ showLabel: true, activityDetail: "verb" \}/);
     assert.match(helpers,
         /notes:\s*\{[\s\S]*?titleProvider:\s*"off"[\s\S]*?codexModel:\s*"gpt-5\.6-luna"[\s\S]*?codexEffort:\s*"none"[\s\S]*?claudeModel:\s*"fable"[\s\S]*?claudeEffort:\s*"low"/);

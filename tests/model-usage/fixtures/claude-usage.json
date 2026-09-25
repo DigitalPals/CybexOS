@@ -1,0 +1,36 @@
+{
+  "five_hour": {
+    "utilization": 42.5,
+    "resets_at": "2030-01-01T05:00:00Z"
+  },
+  "seven_day_oauth_apps": {
+    "utilization": 74,
+    "resets_at": "2030-01-07T00:00:00Z"
+  },
+  "limits": [
+    {
+      "kind": "session",
+      "group": "session",
+      "percent": 42.5,
+      "resets_at": "2030-01-01T05:00:00Z"
+    },
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "percent": 91,
+      "scope": {
+        "model": {
+          "id": "claude-fable",
+          "display_name": "Fable 1M — an intentionally long model label"
+        }
+      },
+      "resets_at": "2030-01-06T12:00:00Z"
+    }
+  ],
+  "extra_usage": {
+    "is_enabled": true,
+    "used_credits": 1250,
+    "monthly_limit": 5000,
+    "currency": "usd"
+  }
+}

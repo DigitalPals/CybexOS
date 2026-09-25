@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 25);
+    assert.equal(H.VERSION, 26);
     assert.deepEqual(d.drawerTabs.map(t => t.id),
         ["overview", "sound", "network", "bluetooth", "power", "notifications"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
@@ -61,7 +61,7 @@ test("defaults carry the design values", () => {
         ["indicators", "clock", "weather", "notes"]);
     assert.equal(d.mods.center.find(m => m.id === "notes").on, true);
     assert.deepEqual(d.mods.right.map(m => m.id),
-        ["updates", "gh", "t3", "hermes", "tray", "notifications",
+        ["modelusage", "updates", "gh", "t3", "hermes", "tray", "notifications",
          "vol", "wifi", "bt", "batt", "control"]);
     assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
     assert.equal(d.mods.right.find(m => m.id === "bt").on, true,
@@ -69,7 +69,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.mods.right.find(m => m.id === "tray").on, false);
     assert.equal(d.mods.right.find(m => m.id === "updates").on, true);
     assert.equal(d.mods.right.find(m => m.id === "notifications").on, true);
-    for (const id of ["gh", "t3", "hermes"])
+    for (const id of ["modelusage", "gh", "t3", "hermes"])
         assert.equal(d.mods.right.find(m => m.id === id).on, false,
             `${id} is available through Connected without crowding a fresh bar`);
     const moduleIds = [...d.mods.left, ...d.mods.center, ...d.mods.right]
@@ -81,8 +81,8 @@ test("defaults carry the design values", () => {
     assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
         .every(module => module.detail === "auto"));
     assert.deepEqual(Object.keys(d.modOpts),
-        ["ws", "media", "indicators", "clock", "weather", "notes", "t3", "hermes", "gh", "updates",
-         "tray", "notifications", "vol", "batt"]);
+        ["ws", "media", "indicators", "clock", "weather", "notes", "t3", "hermes", "modelusage",
+         "gh", "updates", "tray", "notifications", "vol", "batt"]);
     assert.equal(d.modOpts.ws.minSlots, 5);
     assert.equal(d.modOpts.ws.style, "numbers");
     assert.equal(d.modOpts.media.maxWidth, 180);
@@ -596,7 +596,7 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.deepEqual(next.center.map(m => m.id),
         ["indicators", "clock", "weather", "notes"]);
     assert.deepEqual(next.right.map(m => m.id),
-        ["updates", "gh", "t3", "hermes", "tray", "notifications",
+        ["modelusage", "updates", "gh", "t3", "hermes", "tray", "notifications",
          "wifi", "bt", "batt", "control"]);
     assert.ok(next.right.some(m => m.id === "bt" && m.on === true),
         "appended module keeps its default enable flag");
@@ -777,7 +777,7 @@ test("schema-11 inserts notifications before the first right-side status widget"
 
     const migrated = H.merge({ v: 10, mods: raw }).mods.right;
     assert.deepEqual(migrated.map(mod => mod.id),
-        ["updates", "tray", "gh", "notifications", "wifi", "t3",
+        ["modelusage", "updates", "tray", "gh", "notifications", "wifi", "t3",
          "hermes", "vol", "bt", "batt", "control"]);
 });
 
@@ -872,7 +872,8 @@ test("version one layouts insert Hermes after t3 in its column", () => {
             right: [{ id: "vol", on: true }, { id: "t3", on: false }]
         }
     }).mods;
-    assert.deepEqual(disabled.right.slice(0, 4), [
+    assert.deepEqual(disabled.right.slice(0, 5), [
+        { id: "modelusage", on: false, detail: "auto" },
         { id: "notifications", on: true, detail: "auto" },
         { id: "vol", on: true, detail: "auto" },
         { id: "t3", on: false, detail: "auto" },
@@ -906,7 +907,8 @@ test("schema-8 inserts indicators immediately before the existing clock", () => 
         ]
     };
     const migrated = H.merge({ v: 7, mods: raw }).mods;
-    assert.deepEqual(migrated.right.slice(0, 5), [
+    assert.deepEqual(migrated.right.slice(0, 6), [
+        { id: "modelusage", on: false, detail: "auto" },
         { id: "notifications", on: true, detail: "auto" },
         { id: "vol", on: false, detail: "compact" },
         { id: "indicators", on: true, detail: "auto" },
@@ -1190,10 +1192,11 @@ test("Control Center placement and visibility survive reload", () => {
     }
 });
 
-test("schema 25 drops the retired Model usage widget, drawer tab, options and poll ceiling", () => {
-    // The bundled Model Usage plugin replaced the built-in widget. A settings
+test("schema 25 drops the retired usage widget, drawer tab, options and poll ceiling", () => {
+    // The Model Usage plugin replaced the first built-in widget. A settings
     // file written before that keeps every other choice but loses each trace
-    // of the old widget rather than reviving it.
+    // of the old widget rather than reviving it; schema 26's `modelusage` is
+    // a new widget, not the old `usage` coming back.
     const raw = {
         v: 24,
         pollMax: 900,
@@ -1219,7 +1222,8 @@ test("schema 25 drops the retired Model usage widget, drawer tab, options and po
     assert.ok(!ids.includes("usage"), "the usage module survived migration");
     assert.deepEqual([...ids].sort(), [...H.MODULE_IDS].sort());
     assert.deepEqual(merged.mods.left.slice(0, 1), [{ id: "ws", on: true, detail: "auto" }]);
-    assert.deepEqual(merged.mods.right.slice(0, 2), [
+    assert.deepEqual(merged.mods.right.slice(0, 3), [
+        { id: "modelusage", on: false, detail: "auto" },
         { id: "t3", on: true, detail: "auto" },
         { id: "hermes", on: false, detail: "auto" }
     ]);
@@ -1236,4 +1240,115 @@ test("schema 25 drops the retired Model usage widget, drawer tab, options and po
     assert.deepEqual(H.normalizeDrawerTabs([{ id: "usage", on: true }]).map(t => t.id),
         H.DRAWER_TAB_IDS);
     assert.ok(!("usage" in H.normalizeModOpts({ usage: { warnAt: 35 } })));
+});
+
+test("schema 26 builds Model Usage in at the front of the right column", () => {
+    // A v25 file predates the built-in widget. It lands where the plugin it
+    // replaces stood, on only when the install selected connected widgets,
+    // and nothing else in the layout moves.
+    const raw = H.defaultMods();
+    raw.right = raw.right.filter(m => m.id !== "modelusage");
+    raw.left.reverse();
+    raw.right.find(m => m.id === "gh").on = true;
+    raw.right.find(m => m.id === "hermes").detail = "compact";
+    const file = { v: 25, mods: raw };
+    const before = structuredClone(file);
+
+    const off = H.merge(file).mods;
+    assert.deepEqual(file, before, "migration must not mutate the parsed file");
+    assert.deepEqual(off.right[0], { id: "modelusage", on: false, detail: "auto" });
+    const on = H.merge(file, { connectedWidgets: true }).mods;
+    assert.deepEqual(on.right[0], { id: "modelusage", on: true, detail: "auto" });
+    assert.deepEqual(H.merge(file, { connectedWidgets: false }).mods, off);
+    for (const mods of [off, on]) {
+        for (const col of ["left", "center", "right"])
+            assert.deepEqual(mods[col].filter(m => m.id !== "modelusage"), raw[col],
+                `${col} entries changed while adding Model Usage`);
+        const all = [...mods.left, ...mods.center, ...mods.right].map(m => m.id);
+        assert.equal(all.filter(id => id === "modelusage").length, 1);
+    }
+});
+
+test("an existing Model Usage entry keeps its placement and flag on reload", () => {
+    const L = load("LayoutHelpers.js");
+    const settings = H.defaults();
+    settings.mods = L.moveWidget(settings.mods, "right", "modelusage", "left", 1).mods;
+    settings.mods.left[1].on = false;
+    settings.mods.left[1].detail = "compact";
+    const text = H.serialize(settings);
+    assert.deepEqual(H.merge(JSON.parse(text)).mods, settings.mods);
+    assert.deepEqual(H.merge(JSON.parse(text), { connectedWidgets: true }).mods,
+        settings.mods, "a current file is never re-enabled by the install feature");
+
+    // An older file that already names it (say, written by a newer shell and
+    // then downgraded) is not given a second copy or moved.
+    const older = JSON.parse(text);
+    older.v = 25;
+    const merged = H.merge(older, { connectedWidgets: true }).mods;
+    assert.deepEqual(merged.left[1], { id: "modelusage", on: false, detail: "compact" });
+    assert.equal([...merged.left, ...merged.center, ...merged.right]
+        .filter(m => m.id === "modelusage").length, 1);
+});
+
+test("Model Usage options keep valid values and reject or clamp the rest", () => {
+    const defaults = H.defaultModOpts().modelusage;
+    assert.equal(Object.keys(defaults).length, 16);
+    const valid = {
+        refreshIntervalSec: 1800,
+        enabledProviders: ["kimi", "claude"],
+        usageSource: "cliproxy",
+        cliproxyUrl: "http://127.0.0.1:9000",
+        cliproxyKeyFile: "~/.config/omarchy/cliproxy.key",
+        hideAccountEmails: false,
+        squareUsageCards: false,
+        barDisplayMode: "Icon",
+        barProviders: ["codex"],
+        warningThreshold: 40,
+        criticalThreshold: 0,
+        costPriceOverrides: "{\"claude\":{}}",
+        costKeeperUrl: "https://keeper.test",
+        costKeeperPasswordFile: "~/.config/omarchy/keeper.pass",
+        costLocalProviders: ["codex"],
+        costT3Servers: "[\"local\"]"
+    };
+    assert.deepEqual(H.normalizeModOpts({ modelusage: valid }).modelusage, valid);
+
+    const junk = H.normalizeModOpts({ modelusage: {
+        refreshIntervalSec: 30,
+        enabledProviders: "claude",
+        usageSource: "proxy",
+        cliproxyUrl: "   ",
+        hideAccountEmails: "yes",
+        barDisplayMode: "Bogus",
+        barProviders: ["kimi", "gemini", "claude", "kimi"],
+        warningThreshold: 0,
+        criticalThreshold: 250,
+        costLocalProviders: ["kimi", "codex"]
+    } }).modelusage;
+    assert.equal(junk.refreshIntervalSec, 60, "clamped to the one-minute floor");
+    assert.equal(H.normalizeModOpts({ modelusage: { refreshIntervalSec: 5000 } })
+        .modelusage.refreshIntervalSec, 3600);
+    assert.equal(H.normalizeModOpts({ modelusage: { refreshIntervalSec: 1000 } })
+        .modelusage.refreshIntervalSec, 1020, "snapped to whole minutes");
+    assert.deepEqual(junk.enabledProviders, defaults.enabledProviders);
+    assert.equal(junk.usageSource, "direct");
+    assert.equal(junk.cliproxyUrl, defaults.cliproxyUrl);
+    assert.equal(junk.hideAccountEmails, true);
+    assert.equal(junk.barDisplayMode, "Percentages");
+    assert.deepEqual(junk.barProviders, ["kimi", "claude"],
+        "unknown and repeated provider ids are dropped");
+    assert.equal(junk.warningThreshold, 1);
+    assert.equal(junk.criticalThreshold, 100);
+    assert.deepEqual(junk.costLocalProviders, ["codex"],
+        "only providers with local transcripts can be costed");
+
+    // Clearing an optional path or URL sticks rather than restoring a value.
+    const cleared = H.normalizeModOpts({ modelusage: Object.assign({}, valid, {
+        cliproxyKeyFile: "", costKeeperUrl: "", costKeeperPasswordFile: ""
+    }) }).modelusage;
+    assert.equal(cleared.cliproxyKeyFile, "");
+    assert.equal(cleared.costKeeperUrl, "");
+    assert.equal(cleared.costKeeperPasswordFile, "");
+    assert.equal(H.normalizeModOpts({ modelusage: { costKeeperUrl: 42 } })
+        .modelusage.costKeeperUrl, "");
 });

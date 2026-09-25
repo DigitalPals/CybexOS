@@ -106,12 +106,6 @@ codex_cli_version: latest
 # resolution remains governed by Neovim's own lazy-lock.json when present.
 lazyvim_starter_commit: 803bc181d7c0d6d5eeba9274d9be49b287294d99
 
-# The Model Usage bar widget is a default plugin with connected widgets. It is
-# installed at this revision only once, when plugins.json has no entry for it;
-# later updates, removal and placement are the user's (`cybex plugin update`).
-model_usage_plugin_repo: https://github.com/DigitalPals/omarchy-modelusage.git
-model_usage_plugin_commit: 8266a07495674d2d425f6d76b67833872a69d466
-
 # Distroboxes are created lazily and are never destroyed just because a pin is
 # changed. These manifest digests were resolved from the named upstream tags on
 # 2026-08-27; recreate a box explicitly after reviewing a refreshed digest.

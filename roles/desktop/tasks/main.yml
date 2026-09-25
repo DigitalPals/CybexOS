@@ -607,8 +607,8 @@
   when: cleanup_legacy_xps_artifacts | bool
   tags: [quickshell]
 
-# The Model Usage plugin replaced the built-in usage widget, whose quota cache
-# is never read again. Saved proxy management keys
+# The first built-in model usage widget (retired in settings schema 25) kept
+# a quota cache that nothing reads now. Saved proxy management keys
 # (~/.local/state/quickshell/model-usage-*.key) are the user's and stay.
 - name: Remove the retired built-in model usage cache
   become: true
@@ -1210,36 +1210,6 @@
     or quickshell_root_created is changed
     or quickshell_directories is changed
     or quickshell_unit is changed
-  tags: [quickshell]
-
-# Model Usage replaced the built-in usage widget and takes its place at the
-# leading edge of the right section. A running shell picks up the registry
-# change on its next plugin scan.
-- name: Provide the default Model Usage plugin once
-  become: true
-  become_user: "{{ primary_user }}"
-  ansible.builtin.command:
-    argv:
-      - python3
-      - "{{ cybexos_runtime_root }}/quickshell/scripts/user-plugins.py"
-      - provide
-      - digitalpals.model-usage
-      - "{{ model_usage_plugin_repo }}"
-      - "{{ model_usage_plugin_commit }}"
-      - --section
-      - right
-      - --order
-      - "0"
-  environment:
-    HOME: "{{ primary_home }}"
-    XDG_DATA_HOME: "{{ primary_home }}/.local/share"
-    CYBEXOS_USER_CONFIG_ROOT: "{{ cybexos_user_config_root }}"
-    CYBEXOS_PLUGIN_ROOT: "{{ cybexos_data_root }}/plugins"
-  register: desktop_model_usage_plugin
-  changed_when: desktop_model_usage_plugin.stdout is match('^CHANGED:')
-  when:
-    - features.connected_widgets | bool
-    - not ansible_check_mode
   tags: [quickshell]
 
 - name: Configure portal preference without patching Fedora files

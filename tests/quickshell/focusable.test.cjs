@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { shellDir } = require("./shell.cjs");
+const { shellDir, isVendored } = require("./shell.cjs");
 
 // Two rules the shell now follows, both easy to forget on the next widget:
 //
@@ -16,7 +16,8 @@ function qmlFiles(dir = ".") {
     const out = [];
     for (const e of fs.readdirSync(path.join(shellDir, dir), { withFileTypes: true })) {
         const rel = dir === "." ? e.name : path.join(dir, e.name);
-        if (e.isDirectory() && !["tests", "assets", "scripts"].includes(e.name))
+        if (e.isDirectory() && !["tests", "assets", "scripts"].includes(e.name)
+                && !isVendored(rel))
             out.push(...qmlFiles(rel));
         else if (e.name.endsWith(".qml"))
             out.push(rel);

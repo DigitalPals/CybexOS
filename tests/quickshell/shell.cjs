@@ -13,4 +13,18 @@ function load(name) {
     return require(path.join(shellDir, "Common", name));
 }
 
-module.exports = { shellDir, load };
+// Directories vendored from upstream projects, unchanged (see each one's
+// README.md). Repo style rules cannot be applied to code that must stay
+// byte-identical to its source, so the tree-wide scans skip them; the tests
+// for how the shell hosts them live elsewhere.
+const VENDORED_DIRS = ["ModelUsage"];
+
+// Whether `rel`, a path relative to shellDir (or an absolute one inside it),
+// lies in a vendored directory.
+function isVendored(rel) {
+    const relative = path.isAbsolute(rel) ? path.relative(shellDir, rel) : rel;
+    const top = path.normalize(relative).split(path.sep)[0];
+    return VENDORED_DIRS.includes(top);
+}
+
+module.exports = { shellDir, load, VENDORED_DIRS, isVendored };

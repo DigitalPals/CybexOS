@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { shellDir, load } = require("./shell.cjs");
+const { shellDir, load, isVendored } = require("./shell.cjs");
 
 const F = load("Format.js");
 
@@ -26,7 +26,8 @@ function qmlAndJs() {
     const walk = dir => {
         for (const e of fs.readdirSync(path.join(shellDir, dir), { withFileTypes: true })) {
             const rel = dir === "." ? e.name : path.join(dir, e.name);
-            if (e.isDirectory() && !["tests", "assets", "scripts"].includes(e.name))
+            if (e.isDirectory() && !["tests", "assets", "scripts"].includes(e.name)
+                    && !isVendored(rel))
                 walk(rel);
             else if (/\.(qml|js)$/.test(e.name))
                 out.push(rel);

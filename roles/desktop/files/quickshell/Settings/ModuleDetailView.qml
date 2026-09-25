@@ -247,6 +247,7 @@ SettingsPage {
                 case "notes": return notesOptions;
                 case "t3": return t3Options;
                 case "hermes": return hermesOptions;
+                case "modelusage": return modelUsageOptions;
                 case "gh": return ghOptions;
                 case "notifications": return notificationsOptions;
                 case "vol": return volOptions;
@@ -1013,6 +1014,135 @@ SettingsPage {
         DrawerPage {
             height: contentHeight
             interactive: false
+        }
+    }
+
+    // The bar-facing half of Model Usage's settings. Sources, credentials,
+    // accounts and cost servers stay in the panel's own forms, which store
+    // private keys through its helpers; the last row opens them.
+    Component {
+        id: modelUsageOptions
+
+        Column {
+            id: modelUsage
+
+            readonly property var providerOptions: [
+                { value: "claude", label: "Claude Code" },
+                { value: "codex", label: "OpenAI Codex" },
+                { value: "kimi", label: "Kimi Code" }
+            ]
+            readonly property var barProviders: view.opts.barProviders || []
+
+            spacing: Theme.settingsRowSpacing
+
+            PickerRow {
+                width: parent.width
+                label: "In the bar"
+                hint: "Percentages shows remaining quota per provider"
+                model: [
+                    { value: "Percentages", label: "Percentages" },
+                    { value: "Icon", label: "Icon" }
+                ]
+                current: view.opts.barDisplayMode
+                dirty: view.optDirty("barDisplayMode")
+                onPicked: value => view.setOpt("barDisplayMode", value)
+                onResetRequested: view.resetOpt("barDisplayMode")
+            }
+
+            ChipToggleRow {
+                width: parent.width
+                label: "Bar providers"
+                hint: "Hidden providers stay in the panel"
+                model: modelUsage.providerOptions
+                chosen: modelUsage.barProviders
+                dirty: JSON.stringify(modelUsage.barProviders)
+                    !== JSON.stringify(view.optDefaults.barProviders)
+                onToggledOption: value => view.setOpt("barProviders",
+                    modelUsage.barProviders.indexOf(value) === -1
+                        ? modelUsage.barProviders.concat([value])
+                        : modelUsage.barProviders.filter(id => id !== value))
+                onResetRequested: view.resetOpt("barProviders")
+            }
+
+            SliderRow {
+                width: parent.width
+                label: "Warn below"
+                min: 1
+                max: 100
+                step: 1
+                value: view.optValue("warningThreshold")
+                unit: "%"
+                dirty: view.optDirty("warningThreshold")
+                onMoved: value => view.settleOpt("warningThreshold", value)
+                onResetRequested: view.resetOpt("warningThreshold")
+            }
+
+            SliderRow {
+                width: parent.width
+                label: "Critical below"
+                min: 0
+                max: 100
+                step: 1
+                value: view.optValue("criticalThreshold")
+                unit: "%"
+                dirty: view.optDirty("criticalThreshold")
+                onMoved: value => view.settleOpt("criticalThreshold", value)
+                onResetRequested: view.resetOpt("criticalThreshold")
+            }
+
+            SliderRow {
+                width: parent.width
+                label: "Refresh every"
+                min: 60
+                max: 3600
+                step: 60
+                value: view.optValue("refreshIntervalSec")
+                valueLabel: Math.round(value / 60) + " min"
+                valueWidth: 56
+                dirty: view.optDirty("refreshIntervalSec")
+                onMoved: value => view.settleOpt("refreshIntervalSec", value)
+                onResetRequested: view.resetOpt("refreshIntervalSec")
+            }
+
+            SwitchRow {
+                width: parent.width
+                label: "Hide account emails"
+                description: "Show numbered accounts instead of usernames and emails"
+                checked: view.opts.hideAccountEmails
+                dirty: view.optDirty("hideAccountEmails")
+                onToggled: value => view.setOpt("hideAccountEmails", value)
+                onResetRequested: view.resetOpt("hideAccountEmails")
+            }
+
+            SwitchRow {
+                width: parent.width
+                label: "Square usage cards"
+                description: "Use square corners for the cards in Limits"
+                checked: view.opts.squareUsageCards
+                dirty: view.optDirty("squareUsageCards")
+                onToggled: value => view.setOpt("squareUsageCards", value)
+                onResetRequested: view.resetOpt("squareUsageCards")
+            }
+
+            ResponsiveActionRow {
+                width: parent.width
+                description: ModelUsageHub.available ? "Set in the panel"
+                    : "Add Model Usage to the bar first"
+
+                SettingsAction {
+                    text: "Source and accounts"
+                    glyph: "arrow_forward"
+                    enabled: ModelUsageHub.available
+                    onTriggered: ModelUsageHub.showSettings()
+                }
+
+                SettingsAction {
+                    text: "Cost sources"
+                    glyph: "arrow_forward"
+                    enabled: ModelUsageHub.available
+                    onTriggered: ModelUsageHub.showCostSettings()
+                }
+            }
         }
     }
 

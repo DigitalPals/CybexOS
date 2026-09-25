@@ -10,6 +10,7 @@ GitHub GitHub.qml
 Hermes Hermes.qml
 Indicators Indicators.qml
 Media Media.qml
+ModelUsage ModelUsage.qml
 Notes Notes.qml
 Notifications Notifications.qml
 T3 T3.qml

@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 25;
+var VERSION = 26;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -34,15 +34,21 @@ var IDLE_SUSPEND_MINS = [0, 15, 30, 60, 120];
 // `notifications` id rather than reviving that historical key. `idle` became
 // a Control Panel toggle. Schema 24 restores `control` as a configurable
 // widget, with the Fedora button's existing rightmost placement by default.
-// Schema 25 retires `usage`: the bundled Model Usage plugin
-// (digitalpals.model-usage) replaces the built-in widget and its drawer tab.
+// Schema 25 retired `usage`, the first built-in model usage widget, and its
+// drawer tab. Schema 26 builds Model Usage in as `modelusage`, vendored from
+// the digitalpals.model-usage Omarchy plugin (see ModelUsage/README.md).
 var MODULE_IDS = [
-    "ws", "media", "indicators", "clock", "weather", "notes", "updates", "gh", "t3", "hermes",
-    "tray",
+    "ws", "media", "indicators", "clock", "weather", "notes", "modelusage", "updates", "gh",
+    "t3", "hermes", "tray",
     "notifications", "vol", "wifi", "bt", "batt", "control"
 ];
 
 var RETIRED_MODULE_IDS = ["bell", "idle", "usage"];
+
+// Model Usage's quota providers, and the ones it can estimate costs for from
+// local transcripts.
+var MODEL_USAGE_PROVIDERS = ["claude", "codex", "kimi"];
+var MODEL_USAGE_COST_PROVIDERS = ["claude", "codex"];
 
 var DETAIL_IDS = ["media", "weather", "clock", "t3", "hermes", "gh", "updates",
     "notifications", "vol", "batt"];
@@ -97,7 +103,7 @@ var BAR_COLOR_PRESETS = {
 // per the edge-drawer design. Notifications can opt back out in modOpts.
 var MODULE_GROUPS = {
     ws: "solo", media: "solo", indicators: "solo", clock: "time", weather: "time",
-    notes: "solo", updates: "solo", gh: "chip", t3: "chip", hermes: "chip", tray: "solo",
+    notes: "solo", modelusage: "solo", updates: "solo", gh: "chip", t3: "chip", hermes: "chip", tray: "solo",
     notifications: "status",
     vol: "status", wifi: "status", bt: "status", batt: "status", control: "solo"
 };
@@ -210,7 +216,8 @@ function defaultMods() {
         center: [mod("indicators", true), mod("clock", true), mod("weather", false),
             mod("notes", true)],
         right: [
-            mod("updates", true), mod("gh", false), mod("t3", false), mod("hermes", false),
+            mod("modelusage", false), mod("updates", true), mod("gh", false), mod("t3", false),
+            mod("hermes", false),
             mod("tray", false), mod("notifications", true), mod("vol", true),
             mod("wifi", true), mod("bt", true), mod("batt", true), mod("control", true)
         ]
@@ -257,6 +264,26 @@ function defaultModOpts() {
         },
         t3: { showLabel: true },
         hermes: { showLabel: true, activityDetail: "verb" },
+        // The upstream plugin's manifest defaults, key for key. Its panel
+        // reads and saves this object as its settings.
+        modelusage: {
+            refreshIntervalSec: 900,
+            enabledProviders: MODEL_USAGE_PROVIDERS.slice(),
+            usageSource: "direct",
+            cliproxyUrl: "http://127.0.0.1:8317",
+            cliproxyKeyFile: "",
+            hideAccountEmails: true,
+            squareUsageCards: true,
+            barDisplayMode: "Percentages",
+            barProviders: MODEL_USAGE_PROVIDERS.slice(),
+            warningThreshold: 25,
+            criticalThreshold: 10,
+            costPriceOverrides: "{}",
+            costKeeperUrl: "",
+            costKeeperPasswordFile: "",
+            costLocalProviders: MODEL_USAGE_COST_PROVIDERS.slice(),
+            costT3Servers: "[]"
+        },
         gh: {
             badge: "dot", repos: 8, pollMins: 5, ciActivity: true,
             toasts: true, watch: []
@@ -442,6 +469,12 @@ function textIn(value, maxLen, fallback) {
         return fallback;
     var trimmed = value.trim();
     return trimmed !== "" && trimmed.length <= maxLen ? trimmed : fallback;
+}
+
+// Like textIn, but an empty string is a value of its own: clearing an
+// optional URL or credential path must stick rather than fall back.
+function optionalTextIn(value, maxLen) {
+    return value === "" ? "" : textIn(value, maxLen, "");
 }
 
 function orderedIdsIn(value, known, fallback, appendMissing) {
@@ -833,6 +866,32 @@ var MOD_OPT_CHECKS = {
             return enumIn(v, ["full", "verb", "generic"], d);
         }
     },
+    // The manifest schema's bounds. Paths and URLs are only checked for shape
+    // here; the panel validates them before saving and its scripts again.
+    modelusage: {
+        refreshIntervalSec: function(v, d) { return intIn(v, 60, 3600, 60, d); },
+        enabledProviders: function(v, d) {
+            return orderedIdsIn(v, MODEL_USAGE_PROVIDERS, d, false);
+        },
+        usageSource: function(v, d) { return enumIn(v, ["direct", "cliproxy"], d); },
+        cliproxyUrl: function(v, d) { return textIn(v, 400, d); },
+        cliproxyKeyFile: function(v) { return optionalTextIn(v, 4096); },
+        hideAccountEmails: boolIn,
+        squareUsageCards: boolIn,
+        barDisplayMode: function(v, d) { return enumIn(v, ["Icon", "Percentages"], d); },
+        barProviders: function(v, d) {
+            return orderedIdsIn(v, MODEL_USAGE_PROVIDERS, d, false);
+        },
+        warningThreshold: function(v, d) { return intIn(v, 1, 100, 1, d); },
+        criticalThreshold: function(v, d) { return intIn(v, 0, 100, 1, d); },
+        costPriceOverrides: function(v, d) { return textIn(v, 65536, d); },
+        costKeeperUrl: function(v) { return optionalTextIn(v, 400); },
+        costKeeperPasswordFile: function(v) { return optionalTextIn(v, 4096); },
+        costLocalProviders: function(v, d) {
+            return orderedIdsIn(v, MODEL_USAGE_COST_PROVIDERS, d, false);
+        },
+        costT3Servers: function(v, d) { return textIn(v, 65536, d); }
+    },
     gh: {
         badge: function(v, d) { return enumIn(v, ["dot", "count", "off"], d); },
         repos: function(v, d) { return intIn(v, 3, 15, 1, d); },
@@ -931,7 +990,7 @@ function migrateModOpts(raw, sourceVersion, rawSettings) {
 // policy; each schema addition below places its one new entry. Current-schema
 // layouts continue through normal normalization, where missing ids use their
 // defaults.
-function migrateMods(raw, sourceVersion) {
+function migrateMods(raw, sourceVersion, context) {
     if (!raw || typeof raw !== "object")
         return normalizeMods(raw);
 
@@ -1044,6 +1103,23 @@ function migrateMods(raw, sourceVersion) {
             });
             break;
         }
+    }
+
+    // Schema 26 builds Model Usage in where the plugin it replaces stood: the
+    // leading edge of the right column. Like the other connected-service
+    // widgets it starts on only when that install feature is selected.
+    var modelUsagePresent = ["left", "center", "right"].some(function(col) {
+        return migrated[col].some(function(entry) {
+            return entry && entry.id === "modelusage";
+        });
+    });
+    if ((typeof sourceVersion !== "number" || sourceVersion < 26)
+            && !modelUsagePresent) {
+        migrated.right.unshift({
+            id: "modelusage",
+            on: !!(context && context.connectedWidgets),
+            detail: "auto"
+        });
     }
     return normalizeMods(migrated);
 }
@@ -1208,7 +1284,9 @@ function migratePaletteMode(parsed, defaultsValue) {
         ? "wallpaper" : "fixed";
 }
 
-function merge(raw) {
+// `context.connectedWidgets` is the install's connected-service feature; it
+// decides whether a widget that schema migration adds starts on.
+function merge(raw, context) {
     var d = defaults();
     if (!raw || typeof raw !== "object")
         return d;
@@ -1297,7 +1375,7 @@ function merge(raw) {
         drawerOverview: normalizeDrawerOverview(parsed.drawerOverview),
         drawerHover: enumIn(parsed.drawerHover, DRAWER_HOVER_MODES, d.drawerHover),
         drawerWidth: intIn(parsed.drawerWidth, 320, 480, 10, d.drawerWidth),
-        mods: migrateMods(parsed.mods, parsed.v),
+        mods: migrateMods(parsed.mods, parsed.v, context),
         modOpts: migrateModOpts(parsed.modOpts, parsed.v, parsed)
     };
 }

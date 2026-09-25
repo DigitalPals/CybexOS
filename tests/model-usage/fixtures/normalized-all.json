@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2030-01-01T00:00:00+00:00",
+  "providers": [
+    {
+      "id": "claude",
+      "name": "Claude Code",
+      "status": "ok",
+      "errorKind": "",
+      "message": "",
+      "authCommand": "claude auth login",
+      "plan": "Claude Max 20x",
+      "account": "fixture@example.invalid",
+      "source": "Claude OAuth usage API",
+      "windows": [
+        { "id": "session", "label": "5 hour limit", "used": 42, "remaining": 58, "resetsAt": 1893474000, "windowSeconds": 18000, "detail": "" },
+        { "id": "weekly", "label": "Weekly limit", "used": 74, "remaining": 26, "resetsAt": 1893974400, "windowSeconds": 604800, "detail": "" },
+        { "id": "fable-weekly", "label": "Fable 1M — an intentionally long model label weekly", "used": 91, "remaining": 9, "resetsAt": 1893931200, "windowSeconds": 604800, "detail": "" }
+      ],
+      "credits": { "label": "Extra usage", "currency": "USD", "used": 12.5, "limit": 50, "remaining": 37.5, "total": null, "unlimited": false, "resetCreditsAvailable": null },
+      "notice": "",
+      "fetchedAt": "2030-01-01T00:00:00+00:00",
+      "history": { "h24": [5, 8, 12, 18, 24, 30, 42, 38, 33, 28, 25, 31, 44, 52, 60, 58, 62, 68, 70, 74, 77, 82, 87, 91], "d7": [20, 32, 45, 50, 66, 74, 91] }
+    },
+    {
+      "id": "codex",
+      "name": "OpenAI Codex",
+      "status": "ok",
+      "errorKind": "",
+      "message": "",
+      "authCommand": "codex login",
+      "plan": "ChatGPT Pro",
+      "account": "fixture@example.invalid",
+      "source": "Codex app-server RPC",
+      "windows": [
+        { "id": "codex-primary", "label": "5 hour limit", "used": 42, "remaining": 58, "resetsAt": 1893474000, "windowSeconds": 18000, "detail": "" },
+        { "id": "codex-secondary", "label": "Weekly limit", "used": 80, "remaining": 20, "resetsAt": 1893974400, "windowSeconds": 604800, "detail": "" },
+        { "id": "extra-primary", "label": "GPT-5.2 Codex Extra Long Context Preview · 1 day limit", "used": 91, "remaining": 9, "resetsAt": 1893560400, "windowSeconds": 86400, "detail": "" },
+        { "id": "extra-spend", "label": "GPT-5.2 Codex Extra Long Context Preview · Spend limit", "used": 24, "remaining": 76, "resetsAt": 1896066000, "windowSeconds": null, "detail": "$12.00 used of $50.00" }
+      ],
+      "credits": { "label": "Credits", "currency": "", "used": null, "limit": null, "remaining": 17.5, "total": null, "unlimited": false, "resetCreditsAvailable": 2 },
+      "notice": "",
+      "fetchedAt": "2030-01-01T00:00:00+00:00",
+      "history": { "h24": [4, 8, 11, 20, 25, 29, 35, 42], "d7": [12, 24, 36, 42, 58, 71, 80] }
+    },
+    {
+      "id": "kimi",
+      "name": "Kimi Code",
+      "status": "ok",
+      "errorKind": "",
+      "message": "",
+      "authCommand": "kimi login",
+      "plan": "Kimi Vivace",
+      "account": "fixture@example.invalid",
+      "source": "Kimi Code usage API",
+      "windows": [
+        { "id": "weekly", "label": "Weekly limit", "used": 4, "remaining": 96, "resetsAt": 1893974400, "windowSeconds": 604800, "detail": "" },
+        { "id": "limit-0", "label": "Kimi K2.5 five-hour window", "used": 75, "remaining": 25, "resetsAt": 1893474000, "windowSeconds": 18000, "detail": "" }
+      ],
+      "credits": { "label": "Extra usage", "currency": "USD", "used": 50, "limit": 200, "remaining": 100, "total": 200, "unlimited": false, "resetCreditsAvailable": null },
+      "notice": "",
+      "fetchedAt": "2030-01-01T00:00:00+00:00",
+      "history": { "h24": [0, 4, 8, 12, 18, 24, 31, 40, 52, 63, 70, 75], "d7": [4, 12, 23, 36, 49, 62, 75] }
+    }
+  ]
+}

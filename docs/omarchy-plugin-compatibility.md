@@ -169,28 +169,28 @@ restores the native bar and exposes an error. Top, bottom, left and right are
 supported by the tested upstream replacement; position is its configuration,
 not a change to Cybex's native bar preference.
 
-## Default plugins
+## Built-in Model Usage
 
-With the `connected_widgets` feature (the installer default), the desktop role
-provides `digitalpals.model-usage`, the
-[Model Usage](https://github.com/DigitalPals/omarchy-modelusage) widget. It
-replaced the built-in Model usage widget in settings schema 25. The role runs
-`user-plugins.py provide`, which clones the package at
-`model_usage_plugin_commit` (`inventory/group_vars/all.yml`) and enables it at
-the start of the right section, before the built-in widgets.
+The [Model Usage](https://github.com/DigitalPals/omarchy-modelusage) plugin
+(`digitalpals.model-usage`) ships inside the shell as the built-in `modelusage`
+widget: an unchanged copy in `ModelUsage/`, hosted by a native bar module
+through this adapter's bar facade (see `ModelUsage/README.md`). It is placed,
+enabled and configured in Settings → Bar like any built-in widget, and is
+updated with CybexOS; `scripts/sync-model-usage` re-vendors a new upstream
+commit.
 
-This happens only when `plugins.json` has no entry for the package. Once it
-does, whether the package is enabled, disabled or removed, later deployments
-leave it alone. A checkout already in the plugin directory is adopted as it
-is. The clone keeps its tracking branch, so `cybex plugin update
-digitalpals.model-usage` fast-forwards it from the pin. To move the default,
-update the pin; existing installs keep their own revision.
+An installed copy of the package is listed under Settings → Plugins with that
+reason and is never loaded, so it cannot draw a second widget; `cybex plugin
+enable` and `add` refuse it. Remove it with `cybex plugin remove
+digitalpals.model-usage`. Its settings in `plugins.json` are not carried over,
+but the scripts share their state and saved keys (`~/.local/state/omarchy/`,
+`~/.config/omarchy/model-usage/`), so re-enter only the source and server
+settings.
 
-The retired widget's quota cache (`~/.cache/quickshell/model-usage.json`) is
-deleted on deployment. Proxy management keys that it saved under
-`~/.local/state/quickshell/model-usage-*.key` are left in place. The plugin
-keeps its own credentials, so delete those files yourself if you no longer
-need them.
+The first built-in usage widget, retired in settings schema 25, left a quota
+cache (`~/.cache/quickshell/model-usage.json`) that deployment deletes. Proxy
+management keys it saved under `~/.local/state/quickshell/model-usage-*.key`
+are left in place; delete them yourself if you no longer need them.
 
 ## Host contract
 

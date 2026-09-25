@@ -816,10 +816,14 @@ opens this widget dialog too; there is no separate Control Center sidebar
 entry.
 
 Schema 24 adds the Fedora widget at the right edge of older layouts and keeps
-all other widget placements. Schema 25 retires the built-in Model usage widget,
-its drawer tab and its `modOpts.usage`/`pollMax` settings. The
-`digitalpals.model-usage` plugin replaces it as a default widget (see
-[default plugins](omarchy-plugin-compatibility.md#default-plugins)).
+all other widget placements. Schema 25 retires the first built-in Model usage
+widget (`usage`), its drawer tab and its `modOpts.usage`/`pollMax` settings.
+Schema 26 adds `modelusage`, the Model Usage widget vendored from the
+`digitalpals.model-usage` Omarchy plugin (see `ModelUsage/README.md`), at the
+start of the right section of older layouts. It starts on when the install
+has connected widgets. Its settings are `modOpts.modelusage`; sources,
+credentials and cost servers stay in the panel's own forms, which Settings
+opens.
 
 Drag a pill to reorder or move it between sections. The drag ghost and insertion
 marker follow wrapped grid positions and the arrangement scrolls near its edges.

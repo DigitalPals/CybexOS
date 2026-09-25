@@ -1,0 +1,232 @@
+{
+  "schemaVersion": 1,
+  "id": "digitalpals.model-usage",
+  "name": "Model Usage",
+  "version": "1.1.1",
+  "author": "DigitalPals",
+  "license": "MIT",
+  "description": "Track Claude Code, OpenAI Codex, and Kimi Code subscription limits from your Omarchy menu bar. Connect local CLIs or CLIProxyAPI to monitor multiple accounts, remaining quotas, reset times, and credits. Explore 24-hour, 7-day, and 30-day token history and estimated API costs from local Codex/Claude transcripts and remote T3 Code servers, with cache-aware pricing, custom model rates, and provider/model breakdowns. Includes private account labels, quota history, and keyboard-friendly settings.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "activation": "on-demand",
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Model Usage",
+    "description": "AI subscription quotas from local CLIs or CLIProxyAPI, per-account limits and resets, and combined Codex/Claude token history and API cost estimates from local and T3 Code sources.",
+    "category": "AI",
+    "defaultSection": "right",
+    "allowMultiple": false,
+    "defaults": {
+      "refreshIntervalSec": 900,
+      "enabledProviders": [
+        "claude",
+        "codex",
+        "kimi"
+      ],
+      "usageSource": "direct",
+      "cliproxyUrl": "http://127.0.0.1:8317",
+      "cliproxyKeyFile": "",
+      "hideAccountEmails": true,
+      "squareUsageCards": true,
+      "barDisplayMode": "Percentages",
+      "barProviders": [
+        "claude",
+        "codex",
+        "kimi"
+      ],
+      "warningThreshold": 25,
+      "criticalThreshold": 10,
+      "costPriceOverrides": "{}",
+      "costKeeperUrl": "",
+      "costKeeperPasswordFile": "",
+      "costLocalProviders": [
+        "claude",
+        "codex"
+      ],
+      "costT3Servers": "[]"
+    },
+    "schema": [
+      {
+        "key": "usageSource",
+        "type": "enum",
+        "label": "Quota source",
+        "options": [
+          "direct",
+          "cliproxy"
+        ],
+        "defaultValue": "direct",
+        "description": "Read local CLI sign-ins directly or query accounts managed by CLIProxyAPI. Costs has its own source setting."
+      },
+      {
+        "key": "cliproxyUrl",
+        "type": "string",
+        "label": "CLIProxyAPI server URL",
+        "defaultValue": "http://127.0.0.1:8317",
+        "description": "Server, management.html, or /v0/management URL. HTTPS certificates are verified."
+      },
+      {
+        "key": "cliproxyKeyFile",
+        "type": "string",
+        "label": "CLIProxyAPI management key file",
+        "defaultValue": "",
+        "description": "Managed automatically by the settings menu when saving a Management API key. Advanced users can supply an existing private key file path here."
+      },
+      {
+        "key": "hideAccountEmails",
+        "type": "boolean",
+        "label": "Hide account emails",
+        "defaultValue": true,
+        "description": "Replace account usernames and email addresses with numbered labels and hide account identity in settings."
+      },
+      {
+        "key": "squareUsageCards",
+        "type": "boolean",
+        "label": "Square usage cards",
+        "defaultValue": true,
+        "description": "Use square corners for cards in Limits instead of the theme's corner style."
+      },
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "description": "How often provider usage is refreshed. Manual refresh is always available.",
+        "min": 60,
+        "max": 3600,
+        "step": 60,
+        "defaultValue": 900
+      },
+      {
+        "key": "enabledProviders",
+        "type": "multiselect",
+        "label": "Providers",
+        "description": "Select local CLI providers. CLIProxyAPI discovers all managed providers automatically.",
+        "noSelectionText": "No providers",
+        "placeholderText": "Search providers...",
+        "emptyText": "No providers found",
+        "defaultValue": [
+          "claude",
+          "codex",
+          "kimi"
+        ],
+        "options": [
+          {
+            "value": "claude",
+            "label": "Claude Code"
+          },
+          {
+            "value": "codex",
+            "label": "OpenAI Codex"
+          },
+          {
+            "value": "kimi",
+            "label": "Kimi Code"
+          }
+        ]
+      },
+      {
+        "key": "barDisplayMode",
+        "type": "enum",
+        "label": "Bar display",
+        "options": [
+          "Icon",
+          "Percentages"
+        ],
+        "defaultValue": "Percentages",
+        "description": "Percentages shows compact remaining quota on horizontal bars and falls back to the icon on vertical bars."
+      },
+      {
+        "key": "barProviders",
+        "type": "multiselect",
+        "label": "Menu bar providers",
+        "description": "Enabled providers allowed to show percentage chips in the menu bar. Hidden providers remain in the popup.",
+        "defaultValue": [
+          "claude",
+          "codex",
+          "kimi"
+        ],
+        "options": [
+          {
+            "value": "claude",
+            "label": "Claude Code"
+          },
+          {
+            "value": "codex",
+            "label": "OpenAI Codex"
+          },
+          {
+            "value": "kimi",
+            "label": "Kimi Code"
+          }
+        ]
+      },
+      {
+        "key": "warningThreshold",
+        "type": "integer",
+        "label": "Warning at (% remaining)",
+        "min": 1,
+        "max": 100,
+        "step": 1,
+        "defaultValue": 25
+      },
+      {
+        "key": "criticalThreshold",
+        "type": "integer",
+        "label": "Critical at (% remaining)",
+        "min": 0,
+        "max": 100,
+        "step": 1,
+        "defaultValue": 10
+      },
+      {
+        "key": "costPriceOverrides",
+        "type": "string",
+        "label": "Custom model prices",
+        "defaultValue": "{}",
+        "description": "Managed by Custom model prices in Costs settings. Exact model IDs mapped to USD-per-million input/output and optional cache rates as JSON."
+      },
+      {
+        "key": "costKeeperUrl",
+        "type": "string",
+        "label": "CPA Usage Keeper URL",
+        "defaultValue": "",
+        "description": "Optional Keeper URL for last-used quota account activity. Not used for Costs."
+      },
+      {
+        "key": "costKeeperPasswordFile",
+        "type": "string",
+        "label": "Keeper password file",
+        "defaultValue": "",
+        "description": "Managed privately when saving the Keeper login password in settings. Advanced users can supply a private password file."
+      },
+      {
+        "key": "costLocalProviders",
+        "type": "multiselect",
+        "label": "Local cost sources",
+        "defaultValue": [
+          "claude",
+          "codex"
+        ],
+        "options": [
+          {
+            "value": "claude",
+            "label": "Claude Code"
+          },
+          {
+            "value": "codex",
+            "label": "Codex"
+          }
+        ]
+      },
+      {
+        "key": "costT3Servers",
+        "type": "string",
+        "label": "T3 Code cost servers",
+        "defaultValue": "[]",
+        "description": "Managed by Costs settings. Remote servers with private token file references."
+      }
+    ]
+  }
+}

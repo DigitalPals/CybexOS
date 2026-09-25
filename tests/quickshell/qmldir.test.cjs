@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { shellDir } = require("./shell.cjs");
+const { shellDir, VENDORED_DIRS, isVendored } = require("./shell.cjs");
 
 // Every directory holding QML types, discovered rather than listed. A
 // directory carrying a qmldir is no longer implicitly scanned by the
@@ -11,7 +11,9 @@ const { shellDir } = require("./shell.cjs");
 //
 // Derived on purpose: this list used to be hardcoded, and when Bar/Modules/
 // was added it escaped every assertion below until someone noticed. A new
-// directory of types now joins the check by existing.
+// directory of types now joins the check by existing. Vendored directories
+// are the exception: they ship without a qmldir, exactly as upstream does, and
+// resolve sibling types through the engine's implicit directory import.
 function typeDirs() {
     const out = [];
     const walk = (rel) => {
@@ -20,9 +22,11 @@ function typeDirs() {
         if (entries.some(e => e.isFile() && /^[A-Z].*\.qml$/.test(e.name)))
             out.push(rel);
         for (const e of entries) {
+            const child = rel === "." ? e.name : path.join(rel, e.name);
             if (e.isDirectory() && !e.name.startsWith(".")
-                    && !["tests", "assets", "scripts"].includes(e.name))
-                walk(rel === "." ? e.name : path.join(rel, e.name));
+                    && !["tests", "assets", "scripts"].includes(e.name)
+                    && !isVendored(child))
+                walk(child);
         }
     };
     walk(".");
@@ -137,4 +141,22 @@ test("T3Socket stays reachable by URL, since it is not a type", () => {
 test("HermesSocket stays reachable by URL, since it is not a type", () => {
     assert.match(read("Common/HermesConnection.qml"),
         /source:\s*"HermesSocket\.qml"/);
+});
+
+test("every vendored directory exists, says where it came from, and has no qmldir", () => {
+    // The scans that skip these directories are only justified while they
+    // stay unchanged upstream copies. A qmldir would be a local edit, and
+    // would also stop the implicit import their QML relies on.
+    assert.ok(VENDORED_DIRS.length > 0);
+    for (const dir of VENDORED_DIRS) {
+        assert.ok(fs.statSync(path.join(shellDir, dir), { throwIfNoEntry: false })
+            ?.isDirectory(), `vendored ${dir}/ is gone — drop it from VENDORED_DIRS`);
+        assert.ok(fs.existsSync(path.join(shellDir, dir, "README.md")),
+            `vendored ${dir}/ needs a README.md recording its upstream`);
+        assert.ok(!fs.existsSync(path.join(shellDir, dir, "qmldir")),
+            `vendored ${dir}/ must not carry a qmldir`);
+        assert.ok(isVendored(path.join(dir, "Type.qml")) && isVendored(path.join(shellDir, dir)));
+    }
+    assert.ok(!isVendored("Common/Settings.qml"));
+    assert.ok(!DIRS.some(isVendored), "a vendored directory reached the qmldir checks");
 });

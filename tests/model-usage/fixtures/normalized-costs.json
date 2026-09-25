@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2030-01-15T12:00:00Z",
+  "pricing": {
+    "status": "fresh",
+    "source": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+    "fetchedAt": "2030-01-15T12:00:00Z",
+    "knownModels": 900,
+    "message": ""
+  },
+  "coverage": [
+    { "id": "claude", "name": "Claude Code", "status": "ok", "message": "", "scannedFiles": 3, "skippedFiles": 1, "sessions": 2 },
+    { "id": "codex", "name": "OpenAI Codex", "status": "ok", "message": "", "scannedFiles": 4, "skippedFiles": 0, "sessions": 3 },
+    { "id": "kimi", "name": "Kimi Code", "status": "partial", "message": "Kimi records tokens but not reliable historical model names; cost is unavailable.", "scannedFiles": 1, "skippedFiles": 0, "sessions": 1 }
+  ],
+  "scanDurationMs": 37,
+  "period": { "days": 30, "resolution": "day", "since": "2029-12-17", "until": "2030-01-15", "label": "Past 30 days" },
+  "totals": { "costUsd": 12.34, "cacheSavingsUsd": 21.5, "uncachedInputTokens": 850000, "cachedInputTokens": 4200000, "cacheCreationTokens": 120000, "outputTokens": 330000, "reasoningTokens": 70000, "totalTokens": 5500000, "records": 42, "pricedRecords": 38, "unpricedRecords": 4, "sessions": 6, "costSource": "mixed" },
+  "providers": [
+    { "id": "claude", "name": "Claude Code", "status": "ok", "message": "", "costUsd": 7.5, "cacheSavingsUsd": 15, "uncachedInputTokens": 500000, "cachedInputTokens": 3000000, "cacheCreationTokens": 100000, "outputTokens": 200000, "reasoningTokens": 0, "totalTokens": 3800000, "records": 22, "pricedRecords": 22, "unpricedRecords": 0, "sessions": 2, "costSource": "modelPriced" },
+    { "id": "codex", "name": "OpenAI Codex", "status": "ok", "message": "", "costUsd": 4.84, "cacheSavingsUsd": 6.5, "uncachedInputTokens": 250000, "cachedInputTokens": 1100000, "cacheCreationTokens": 20000, "outputTokens": 100000, "reasoningTokens": 70000, "totalTokens": 1470000, "records": 16, "pricedRecords": 16, "unpricedRecords": 0, "sessions": 3, "costSource": "modelPriced" },
+    { "id": "kimi", "name": "Kimi Code", "status": "partial", "message": "Kimi records tokens but not reliable historical model names; cost is unavailable.", "costUsd": null, "cacheSavingsUsd": null, "uncachedInputTokens": 100000, "cachedInputTokens": 100000, "cacheCreationTokens": 0, "outputTokens": 30000, "reasoningTokens": 0, "totalTokens": 230000, "records": 4, "pricedRecords": 0, "unpricedRecords": 4, "sessions": 1, "costSource": "unpriced" }
+  ],
+  "models": [
+    { "provider": "claude", "providerName": "Claude Code", "model": "claude-opus-4-6", "costUsd": 7.5, "cacheSavingsUsd": 15, "uncachedInputTokens": 500000, "cachedInputTokens": 3000000, "cacheCreationTokens": 100000, "outputTokens": 200000, "reasoningTokens": 0, "totalTokens": 3800000, "records": 22, "pricedRecords": 22, "unpricedRecords": 0, "sessions": 2, "costSource": "modelPriced" },
+    { "provider": "codex", "providerName": "OpenAI Codex", "model": "gpt-5.6-sol", "costUsd": 4.84, "cacheSavingsUsd": 6.5, "uncachedInputTokens": 250000, "cachedInputTokens": 1100000, "cacheCreationTokens": 20000, "outputTokens": 100000, "reasoningTokens": 70000, "totalTokens": 1470000, "records": 16, "pricedRecords": 16, "unpricedRecords": 0, "sessions": 3, "costSource": "modelPriced" },
+    { "provider": "kimi", "providerName": "Kimi Code", "model": "Unknown model", "costUsd": null, "cacheSavingsUsd": null, "uncachedInputTokens": 100000, "cachedInputTokens": 100000, "cacheCreationTokens": 0, "outputTokens": 30000, "reasoningTokens": 0, "totalTokens": 230000, "records": 4, "pricedRecords": 0, "unpricedRecords": 4, "sessions": 1, "costSource": "unpriced" }
+  ],
+  "periods": [
+    { "start": "2030-01-09", "costUsd": 0.7, "totalTokens": 400000, "records": 4, "pricedRecords": 4, "unpricedRecords": 0, "sessions": 1, "providers": [{ "id": "claude", "costUsd": 0.5, "totalTokens": 300000 }, { "id": "codex", "costUsd": 0.2, "totalTokens": 100000 }, { "id": "kimi", "costUsd": 0, "totalTokens": 0 }] },
+    { "start": "2030-01-10", "costUsd": 1.2, "totalTokens": 600000, "records": 5, "pricedRecords": 5, "unpricedRecords": 0, "sessions": 2, "providers": [{ "id": "claude", "costUsd": 0.8, "totalTokens": 400000 }, { "id": "codex", "costUsd": 0.4, "totalTokens": 200000 }, { "id": "kimi", "costUsd": 0, "totalTokens": 0 }] },
+    { "start": "2030-01-11", "costUsd": 0.9, "totalTokens": 500000, "records": 4, "pricedRecords": 3, "unpricedRecords": 1, "sessions": 2, "providers": [{ "id": "claude", "costUsd": 0.6, "totalTokens": 300000 }, { "id": "codex", "costUsd": 0.3, "totalTokens": 150000 }, { "id": "kimi", "costUsd": null, "totalTokens": 50000 }] },
+    { "start": "2030-01-12", "costUsd": 2.4, "totalTokens": 1000000, "records": 7, "pricedRecords": 7, "unpricedRecords": 0, "sessions": 3, "providers": [{ "id": "claude", "costUsd": 1.5, "totalTokens": 650000 }, { "id": "codex", "costUsd": 0.9, "totalTokens": 350000 }, { "id": "kimi", "costUsd": 0, "totalTokens": 0 }] },
+    { "start": "2030-01-13", "costUsd": 1.8, "totalTokens": 800000, "records": 6, "pricedRecords": 5, "unpricedRecords": 1, "sessions": 3, "providers": [{ "id": "claude", "costUsd": 1.1, "totalTokens": 500000 }, { "id": "codex", "costUsd": 0.7, "totalTokens": 250000 }, { "id": "kimi", "costUsd": null, "totalTokens": 50000 }] },
+    { "start": "2030-01-14", "costUsd": 3.1, "totalTokens": 1300000, "records": 8, "pricedRecords": 7, "unpricedRecords": 1, "sessions": 4, "providers": [{ "id": "claude", "costUsd": 1.9, "totalTokens": 800000 }, { "id": "codex", "costUsd": 1.2, "totalTokens": 420000 }, { "id": "kimi", "costUsd": null, "totalTokens": 80000 }] },
+    { "start": "2030-01-15", "costUsd": 2.24, "totalTokens": 900000, "records": 8, "pricedRecords": 7, "unpricedRecords": 1, "sessions": 4, "providers": [{ "id": "claude", "costUsd": 1.1, "totalTokens": 500000 }, { "id": "codex", "costUsd": 1.14, "totalTokens": 330000 }, { "id": "kimi", "costUsd": null, "totalTokens": 70000 }] }
+  ]
+}

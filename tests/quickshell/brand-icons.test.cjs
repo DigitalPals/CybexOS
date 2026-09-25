@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { shellDir } = require("./shell.cjs");
+const { shellDir, isVendored } = require("./shell.cjs");
 
 const assetsDir = path.join(shellDir, "assets");
 const brands = [
@@ -19,7 +19,8 @@ function codeFiles(dir = shellDir) {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
         const file = path.join(dir, entry.name);
         if (entry.isDirectory())
-            return ["assets", "scripts"].includes(entry.name) ? [] : codeFiles(file);
+            return ["assets", "scripts"].includes(entry.name) || isVendored(file)
+                ? [] : codeFiles(file);
         return /\.(?:qml|js)$/.test(entry.name) ? [file] : [];
     });
 }

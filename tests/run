@@ -225,8 +225,11 @@ stage_source_syntax() {
   mapfile -t python_files < <(
     { rg --files . -g '*.py'; rg -l '^#!.*python' -g '!*.j2' .; } | LC_ALL=C sort -u
   )
+  # Model Usage's vendored UsageLogic.js is a QML `.pragma library`, which
+  # node cannot parse; tests/model-usage.py runs upstream's own test on it.
   mapfile -t node_files < <(
-    rg --files roles assets scripts -g '*.js' -g '*.mjs' -g '*.cjs' 2>/dev/null \
+    rg --files roles assets scripts -g '*.js' -g '*.mjs' -g '*.cjs' \
+      -g '!roles/desktop/files/quickshell/ModelUsage/**' 2>/dev/null \
       | LC_ALL=C sort
   )
   if ((${#bash_files[@]} == 0 || ${#python_files[@]} == 0 || ${#node_files[@]} == 0)); then
@@ -471,6 +474,7 @@ python_fixtures=(
   omawrite
   ownership-layering
   plugin-packages
+  model-usage
   installer-convergence
   user-adoption
   firefox-policy

@@ -22,6 +22,7 @@ var WIDGETS = {
     clock: { name: "Clock", short: "Clock", detail: true, glyph: "schedule", description: "Time, date, and calendar." },
     weather: { name: "Weather", short: "Weather", detail: true, glyph: "cloud", description: "Local conditions and forecast." },
     notes: { name: "Notes", short: "Notes", glyph: "edit_note", description: "Capture and revisit your notes." },
+    modelusage: { name: "Model Usage", short: "Model Usage", glyph: "monitoring", description: "Claude, Codex and Kimi quota limits, resets and API cost estimates." },
     t3: { name: "T3 Code", short: "T3 Code", detail: true, glyph: "code", description: "Follow T3 Code sessions." },
     hermes: { name: "Hermes Agent", short: "Hermes Agent", detail: true, glyph: "smart_toy", description: "Follow Hermes Agent activity." },
     gh: { name: "GitHub", short: "GitHub", detail: true, glyph: "code", description: "Watch GitHub repositories and activity." },
