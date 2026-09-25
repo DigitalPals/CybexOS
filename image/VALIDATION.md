@@ -120,3 +120,38 @@ outputs were removed. Only the delivered ISO and checksum remain from this
 build. Existing PXE images were preserved, and iVentoy remained running.
 Physical hardware, Secure Boot and BIOS installation were not tested for
 this image.
+
+## Simple installer VM installation — 2026-09-25
+
+Build `20260925T140839Z-5f33cb32` from commit `a2d31c2`, published as
+`CybexOS-Live-44-20260925T140839Z-5f33cb32.iso`.
+
+SHA-256:
+
+```text
+c8d527fef5628ffbf575414e962d27a44af483869a14d1a1703b79d96cad142b
+```
+
+This was a manual run on the PXE host, not `image/qualify`, which needs
+Tesseract there. The VM booted the ISO's kernel with a serial debug shell to
+enable SSH, launched `liveinst` inside the live Hyprland session and drove
+`cybexos-installer-backend` with the page's requests.
+
+| Check | Result |
+| --- | --- |
+| Inventory, geolocated timezone (Europe/Amsterdam), live keyboard | Passed |
+| Plan and confirmation of encrypted Btrfs on a blank 100 GiB virtual disk | Passed |
+| All 41 Anaconda steps, both CybexOS `%post` scripts | Passed |
+| Target policy: verified encrypted root, `autologin: true` | Passed |
+| UEFI boot from the installed disk, passphrase, automatic login to the welcome window | Passed |
+
+The previous build failed at "Running post-installation scripts":
+`firewall-offline-cmd --set-default-zone=cybexos` exits 16
+(`ZONE_ALREADY_SET`) because the live image already defaults to that zone.
+Anaconda then skipped the rest of both scripts plus its log copy and SELinux
+context tasks. Such installations boot, but show the SDDM greeter.
+
+Tests used QEMU/KVM, eight virtual CPUs, 16 GiB RAM, virtio graphics and OVMF
+without Secure Boot. Keyring unlock, logout/crash recovery, physical hardware
+and BIOS installation were not tested. The VM, its disk and screenshots were
+removed.
