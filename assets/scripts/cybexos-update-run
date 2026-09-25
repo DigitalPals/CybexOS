@@ -505,7 +505,10 @@ start_run() {
   prune_logs "$run_id"
 
   local worker_args=("$script_path" _worker "$run_id")
-  [[ $system_unit == true ]] && worker_args+=(--system-unit)
+  # SELinux keeps the system manager (init_t) from executing a release copy
+  # under ~/.local/share (data_home_t), so the system unit starts bash, which
+  # may read the script, rather than executing the script itself.
+  [[ $system_unit == true ]] && worker_args=(/usr/bin/bash "${worker_args[@]}" --system-unit)
   [[ $full == true ]] && worker_args+=(--full --repo "$repo")
   if [[ $release_transaction == true ]]; then
     worker_args+=(--release-version "$release_version"

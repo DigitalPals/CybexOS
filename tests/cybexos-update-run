@@ -241,6 +241,10 @@ polkit_id=$(jq -er .id <<<"$polkit_start")
 polkit_unit=$(jq -er .unit <<<"$polkit_start")
 [[ $(jq -r .systemUnit <<<"$polkit_start") == true ]]
 [[ -e $active_dir/$polkit_unit ]]
+# SELinux denies the system manager executing a release copy under the home
+# directory, so the system unit runs the worker through bash.
+grep -Fq -- "-- /usr/bin/bash $(readlink -f -- "$backend") _worker $polkit_id --system-unit" \
+  "$MOCK_SYSTEMD_ARGS_LOG"
 $backend cancel "$polkit_id" >/dev/null
 [[ $(jq -r .state <<<"$($backend status --json "$polkit_id")") == cancelled ]]
 [[ ! -e $active_dir/$polkit_unit ]]
