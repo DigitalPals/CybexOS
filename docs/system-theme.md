@@ -129,7 +129,46 @@ applications stay dark whatever the mode.
 
 ### Lock screen (hyprlock)
 
-(Target not yet documented.)
+`scripts/theme_hyprlock.py` renders `hyprlock.conf`: the vendor layout (clock,
+date and password field) in `font.ui`, with the clock in `text`, the date and
+the field's placeholder in `textMuted`, the field filled with `surface` at 85%
+and ringed with `stroke`, turning `accent` while checking and `red` on a
+failure.
+
+With a wallpaper, the background is that image, blurred (3 passes of size 8,
+enough to reduce it to soft fields of colour) under a full-screen scrim of
+`background`, with `background` as the colour hyprlock falls back to if the
+image cannot be loaded. The scrim does all of the dimming: hyprlock's
+`brightness` only darkens, which would sink the light mode's dark text, and
+its `contrast` curve never moves pure black or white, so both are set to 1.0.
+The scrim's opacity is the least step from 50% to 90% that keeps `text` at
+4.5:1 over a pure black *and* a pure white wallpaper (65% for the fixed dark
+palette, 60% for the light one), and every text colour is then moved toward
+black or white where needed to reach 4.5:1 on the worse of those two
+backdrops, and on the field's fill over them. In the dark mode that lifts the
+date nearly to `text`; the size difference carries the hierarchy. Without a
+wallpaper, or with a file name hyprlang would misread (`#`, `$`, braces or
+edge spaces), the background is plain `background`.
+
+`reload` does nothing: hyprlock runs only while the session is locked and reads
+its configuration at every lock, so the next lock shows the new look and one
+already on screen keeps the look it started with.
+
+`cybexos-runtime exec hyprlock` (the `cybexos-session-lock.service` command)
+picks the configuration in this order:
+
+1. `~/.config/cybexos/hypr/hyprlock.conf`, when it is a regular file;
+2. the rendered `$XDG_STATE_HOME/cybexos/theme/hyprlock.conf` (default
+   `~/.local/state/…`), when it is a non-empty regular file, not a link, whose
+   first line is the renderer's header;
+3. the vendor `~/.local/share/cybexos/runtime/hypr/hyprlock.conf`.
+
+The vendor file is the renderer's output for the fixed dark palette without a
+wallpaper, so the lock screen looks the same before the shell's first export;
+`tests/quickshell/system-theme-hyprlock.test.cjs` keeps the two equal. A
+damaged rendered file cannot prevent locking: the renderer replaces it
+atomically, and hyprlock ignores entries it cannot parse rather than refusing
+to lock.
 
 ## Adding a target
 
