@@ -26,6 +26,7 @@
       .config/systemd/user/external-monitor-toggle.service
       .config/systemd/user/hermes-menubar-bridge.service
       .config/systemd/user/cybexos-session-lock.service
+      .config/systemd/user/cybexos-input-method.service
       .config/systemd/user/xps-speaker-tuning.service
       .config/distrobox/distrobox.conf
       .local/bin/screenshot

@@ -513,6 +513,29 @@
     mode: "0755"
   tags: [browser, quickshell]
 
+- name: Install the IBus input method user unit
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: cybexos-input-method.service
+    dest: "{{ primary_home }}/.config/systemd/user/cybexos-input-method.service"
+    mode: "0644"
+  notify: Reload user systemd
+
+- name: Move the IBus switch shortcut off the launcher's Super+Space
+  ansible.builtin.copy:
+    src: 90-cybexos-ibus.gschema.override
+    dest: /usr/share/glib-2.0/schemas/90-cybexos-ibus.gschema.override
+    owner: root
+    group: root
+    mode: "0644"
+  register: desktop_ibus_schema_override
+
+- name: Compile GSettings schemas after changing the IBus defaults
+  ansible.builtin.command: glib-compile-schemas /usr/share/glib-2.0/schemas
+  changed_when: true
+  when: desktop_ibus_schema_override is changed
+
 - name: Install the singleton session-lock user unit before its callers
   become: true
   become_user: "{{ primary_user }}"
@@ -1337,7 +1360,7 @@
     state: link
     force: true
   loop: >-
-    {{ ['quickshell', 'hypridle', 'hyprpolkitagent']
+    {{ ['quickshell', 'hypridle', 'hyprpolkitagent', 'cybexos-input-method']
        + (features.developer_tools | bool | ternary(['voxtype'], [])) }}
   notify: Reload user systemd
 

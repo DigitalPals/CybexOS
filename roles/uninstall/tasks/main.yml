@@ -29,6 +29,7 @@
     - external-monitor-toggle.service
     - hermes-menubar-bridge.service
     - cybexos-session-lock.service
+    - cybexos-input-method.service
     - xps-speaker-tuning.service
   changed_when: false
   failed_when: false
@@ -102,6 +103,7 @@
     - "{{ primary_home }}/.config/systemd/user/external-monitor-toggle.service"
     - "{{ primary_home }}/.config/systemd/user/hermes-menubar-bridge.service"
     - "{{ primary_home }}/.config/systemd/user/cybexos-session-lock.service"
+    - "{{ primary_home }}/.config/systemd/user/cybexos-input-method.service"
     - "{{ primary_home }}/.config/systemd/user/xps-speaker-tuning.service"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants"
     - "{{ primary_home }}/.local/bin/cybex"
@@ -176,6 +178,7 @@
     - /etc/polkit-1/rules.d/49-wheel-local.rules
     - /etc/brave/policies/managed/cybexos.json
     - /etc/fonts/conf.d/49-cybexos-defaults.conf
+    - /usr/share/glib-2.0/schemas/90-cybexos-ibus.gschema.override
     - /usr/local/libexec/cybexos-github-release-install
     - /usr/local/libexec/cybexos-source-app-build
     - /usr/local/libexec/cybexos-android-sdk-update
@@ -204,6 +207,15 @@
     - /etc/systemd/system/xps-ipu7-camera.service
     - /etc/systemd/system/xps-ipu7-camera-resume.service
     - /etc/systemd/system/v4l2-relayd@ipu7.service.d/override.conf
+  register: uninstall_system_files
+
+- name: Recompile GSettings schemas without the IBus shortcut override
+  ansible.builtin.command: glib-compile-schemas /usr/share/glib-2.0/schemas
+  changed_when: true
+  when: >-
+    uninstall_system_files.results
+    | selectattr('item', 'equalto', '/usr/share/glib-2.0/schemas/90-cybexos-ibus.gschema.override')
+    | selectattr('changed') | list | length > 0
 
 # Recovery points themselves stay: they are data on the user's filesystem and
 # `cybexos-system-snapshot` can be reinstalled to restore from them.
@@ -526,6 +538,7 @@
       .config/systemd/user/external-monitor-toggle.service
       .config/systemd/user/hermes-menubar-bridge.service
       .config/systemd/user/cybexos-session-lock.service
+      .config/systemd/user/cybexos-input-method.service
       .config/systemd/user/xps-speaker-tuning.service
       .config/distrobox/distrobox.conf
       .local/bin/screenshot

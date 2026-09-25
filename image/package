@@ -168,6 +168,11 @@ def main():
     # The workstation's font family mappings; roles/apps/tasks/fonts.yml
     # installs the same file on checkout deployments.
     copy("roles/apps/files/49-cybexos-defaults.conf", "etc/fonts/conf.d/49-cybexos-defaults.conf")
+    # The same IBus unit and shortcut default as workstation deployment. Fedora's
+    # glib2 file trigger compiles the schema override when the RPM installs.
+    copy("roles/desktop/files/cybexos-input-method.service", "usr/lib/systemd/user/cybexos-input-method.service")
+    copy("roles/desktop/files/90-cybexos-ibus.gschema.override",
+         "usr/share/glib-2.0/schemas/90-cybexos-ibus.gschema.override")
     for name in ("brave-browser", "1password", "chatgpt", "tailscale"):
         copy(f"roles/apps/files/{name}.repo", f"usr/share/cybexos/repository-policy/{name}.repo")
     # The fonts are already checksum-pinned by the project. Preserve upstream

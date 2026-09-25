@@ -1,0 +1,4 @@
+# Super+Space opens the CybexOS launcher, and Hyprland handles bound keys
+# before the input method sees them. Switch input methods with Super+Shift+Space.
+[org.freedesktop.ibus.general.hotkey]
+triggers=['<Super><Shift>space']

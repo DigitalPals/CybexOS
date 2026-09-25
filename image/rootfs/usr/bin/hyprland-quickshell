@@ -3,6 +3,9 @@ set -euo pipefail
 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Hyprland XDG_SESSION_DESKTOP=Hyprland
 export DESKTOP_SESSION=hyprland-quickshell DESKTOP_SHELL=quickshell
 export MOZ_ENABLE_WAYLAND=1 QT_QPA_PLATFORM=wayland
+# Wayland applications reach IBus through the input-method protocol;
+# XWayland applications need its XIM server.
+export XMODIFIERS=@im=ibus
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/Android/Sdk/platform-tools:/usr/local/bin:/usr/bin"
 export XDG_DATA_DIRS="$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export ANDROID_HOME="$HOME/Android/Sdk" ANDROID_SDK_ROOT="$HOME/Android/Sdk"
@@ -22,9 +25,9 @@ export CYBEXOS_KEYBOARD_LAYOUT=${CYBEXOS_KEYBOARD_LAYOUT:-us}
 export CYBEXOS_KEYBOARD_VARIANT
 mkdir -p "${XDG_STATE_HOME:-$HOME/.local/state}/hyprland"
 systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP \
-  DESKTOP_SESSION DESKTOP_SHELL PATH XDG_DATA_DIRS QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND
+  DESKTOP_SESSION DESKTOP_SHELL PATH XDG_DATA_DIRS QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND XMODIFIERS
 dbus-update-activation-environment --systemd XDG_SESSION_TYPE XDG_CURRENT_DESKTOP \
-  XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL PATH XDG_DATA_DIRS QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND
+  XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL PATH XDG_DATA_DIRS QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND XMODIFIERS
 trap 'systemctl --user stop hyprland-session.target >/dev/null 2>&1 || true' EXIT
 # Launch once: compositor failure ends this login and returns to SDDM's
 # password prompt. The watchdog's automatic safe-mode restart bypasses it.

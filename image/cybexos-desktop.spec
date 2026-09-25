@@ -79,6 +79,7 @@ cp -a usr opt etc %{buildroot}/
 /usr/share/applications/cybex.desktop
 /usr/share/wayland-sessions/hyprland-quickshell.desktop
 /usr/share/fonts/cybexos/
+/usr/share/glib-2.0/schemas/90-cybexos-ibus.gschema.override
 /usr/share/licenses/cybexos-fonts/
 /usr/share/plymouth/themes/cybex/
 /usr/lib/sysctl.d/60-cybexos-hardening.conf

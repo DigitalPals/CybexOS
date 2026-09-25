@@ -8,6 +8,9 @@ export DESKTOP_SESSION=hyprland-quickshell
 export DESKTOP_SHELL=quickshell
 export MOZ_ENABLE_WAYLAND=1
 export QT_QPA_PLATFORM=wayland
+# Wayland applications reach IBus through the input-method protocol;
+# XWayland applications need its XIM server.
+export XMODIFIERS=@im=ibus
 
 mkdir -p "$XDG_RUNTIME_DIR" "${XDG_STATE_HOME:-$HOME/.local/state}/hyprland"
 printf '%s\n' quickshell > "$XDG_RUNTIME_DIR/desktop-shell"
@@ -28,9 +31,9 @@ if [[ ! -f $hypr_config ]]; then
 fi
 
 systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP \
-  XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL || true
+  XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL XMODIFIERS || true
 dbus-update-activation-environment --systemd XDG_SESSION_TYPE \
-  XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL || true
+  XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL XMODIFIERS || true
 
 # A crashed compositor must end this login. start-hyprland's watchdog respawns
 # it inside the authenticated session, bypassing the next-login password gate.

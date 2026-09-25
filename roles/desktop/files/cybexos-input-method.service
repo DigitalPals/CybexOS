@@ -1,0 +1,16 @@
+[Unit]
+Description=IBus input methods for Hyprland
+Documentation=https://github.com/ibus/ibus/wiki/WaylandDesktop
+PartOf=hyprland-session.target
+ConditionPathExists=/usr/libexec/ibus-ui-gtk3
+
+[Service]
+# What `ibus start --type wayland` spawns, kept in the foreground for systemd:
+# the panel serves Hyprland's input-method v2 protocol and starts ibus-daemon,
+# whose XIM server covers XWayland applications.
+ExecStart=/usr/libexec/ibus-ui-gtk3 --enable-wayland-im --exec-daemon --daemon-args "--xim --panel disable"
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=hyprland-session.target
