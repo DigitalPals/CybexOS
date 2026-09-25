@@ -161,18 +161,40 @@ class InstallerTests(unittest.TestCase):
                 if command[-1] == "instances"
                 else "ok\n"
             )
-            return types.SimpleNamespace(stdout=output)
+            return types.SimpleNamespace(stdout=output, returncode=0)
 
         with patch.object(
             backend.pwd, "getpwnam", return_value=types.SimpleNamespace(pw_uid=os.getuid())
         ):
             backend.apply_live_keyboard("us (dvorak)", run)
-        self.assertEqual(calls[-1][-3:], ["keyword", "input:kb_variant", "dvorak"])
+        # Lua-configured Hyprland refuses `hyprctl keyword`; one eval sets both.
+        self.assertEqual(
+            calls[-1][-2:],
+            ["eval", 'hl.config({ input = { kb_layout = "us", kb_variant = "dvorak" } })'],
+        )
+        self.assertEqual(len(calls), 2)
         self.assertTrue(
             all(command[:4] == ["runuser", "-u", "liveuser", "--"] for command in calls)
         )
         with self.assertRaises(backend.Invalid):
             backend.apply_live_keyboard("us; bad", run)
+
+    def test_live_keyboard_rejected_by_compositor_is_reported(self):
+        def run(command, **kwargs):
+            if command[-1] == "instances":
+                return types.SimpleNamespace(
+                    stdout=json.dumps([{"pid": os.getpid(), "instance": "fixture"}]), returncode=0
+                )
+            return types.SimpleNamespace(stdout=reply, returncode=code)
+
+        for reply, code in (
+            ("keyword can't work with non-legacy parsers. Use eval.\n", 0),
+            ("error: unknown config key 'input.kb_layout'\n", 7),
+        ):
+            with patch.object(
+                backend.pwd, "getpwnam", return_value=types.SimpleNamespace(pw_uid=os.getuid())
+            ), self.assertRaises(backend.Invalid):
+                backend.apply_live_keyboard("nl", run)
 
     def test_password_control_characters_rejected_without_echo(self):
         with self.assertRaises(backend.Invalid) as caught:

@@ -88,11 +88,15 @@ def apply_live_keyboard(layout, run=subprocess.run):
     signature = instances[0]['instance']
     if not re.fullmatch(r'[A-Za-z0-9_.-]+', signature):
         raise Invalid('The live desktop instance is invalid.')
-    command += [f'HYPRLAND_INSTANCE_SIGNATURE={signature}', '/usr/bin/hyprctl']
-    for key, value in [('input:kb_variant', ''), ('input:kb_layout', match[1]), ('input:kb_variant', match[2] or '')]:
-        result = run(command + ['keyword', key, value], check=True, capture_output=True, text=True)
-        if result.stdout.strip() != 'ok':
-            raise Invalid('The live keyboard could not be applied. Choose another layout.')
+    # The Lua-configured compositor refuses `hyprctl keyword`. Set layout and
+    # variant in one evaluation; the validated identifiers are safe Lua strings.
+    code = 'hl.config({ input = { kb_layout = %s, kb_variant = %s } })' % (
+        json.dumps(match[1]), json.dumps(match[2] or ''))
+    result = run(command + [f'HYPRLAND_INSTANCE_SIGNATURE={signature}', '/usr/bin/hyprctl', 'eval', code],
+                 capture_output=True, text=True)
+    # hyprctl reports a Lua error as output, sometimes with exit status 0.
+    if result.returncode != 0 or result.stdout.strip() != 'ok':
+        raise Invalid('The live keyboard could not be applied. Choose another layout.')
 
 
 class State:
