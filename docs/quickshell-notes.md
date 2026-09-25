@@ -282,7 +282,7 @@ them when changing the surrounding files.
   place: bind to `transcriptRevision`/`transcriptChanged`, not to
   `messagesByConversation`.
 - **Repeaters over derived lists take a structural key.** Bar clusters,
-  indicators, workspaces, usage chips, the drawer network list, and the
+  indicators, workspaces, the drawer network list, and the
   GitHub Inbox and repository rows parse their model from a JSON string of
   ids, and delegates look up live data by id, so a value change flows through
   bindings instead of recreating delegates. GitHub Inbox sections and drawer
@@ -332,10 +332,8 @@ them when changing the surrounding files.
   when its stat signature in `<runtime-root>/.revisions.json` changes. A
   registry error keeps the last good plugins.
 - **Long-lived helpers are bounded.** `gh` reads, brightness reads/writes,
-  matugen, `calendar-events.py`, `usage-fetch.py`, wallpaper thumbnails and
-  the plugin scanner each have a timeout or watchdog. `usage-fetch.py` ends
-  itself after 150 s and runs the Claude CLI in its own process group, which
-  goes with it, under Usage's 180 s watchdog. Helpers settle on the falling
+  matugen, `calendar-events.py`, wallpaper thumbnails and the plugin scanner
+  each have a timeout or watchdog. Helpers settle on the falling
   edge of `running`, so one that never starts cannot wedge its queue; that
   includes the Reminders list, the plugin writer, the launcher's search
   processes and the brightness re-read a mid-read refresh leaves pending.
@@ -353,7 +351,7 @@ them when changing the surrounding files.
   idle and refresh what went stale on `resumed`. A timer longer than an idle
   spell (wallpaper rotation) keeps running, and work that falls due while idle
   is owed to `resumed`.
-- **GitHub and Usage gate scheduled timers on `scheduleActive`**: the module
+- **GitHub gates scheduled timers on `scheduleActive`**: the module
   is on, the session is not idle, and the network is not known to be down.
   Manual refreshes are never gated.
 - **Poll only for a consumer.** Updates checks in the background only for its
@@ -545,9 +543,9 @@ The 2026-09-03 redesign ("Quickshell Menubar", Claude Design project
 
 - **The Control Dashboard** (`Popovers/Drawer/`) is one edge-drawer surface
   with six tabs —
-  Overview · Sound · Network · Power · Notifications · Usage. Every
+  Overview · Sound · Network · Bluetooth · Power · Notifications. Every
   established popout name (`control`, `audio`, `wifi`, `bluetooth`,
-  `tailscale`, `battery`, `notifications`, `usage`) still works from IPC and
+  `tailscale`, `battery`, `notifications`) still works from IPC and
   the bar; each one presents its tab of
   `DrawerPopover.qml`. The tab is derived from `Popouts.currentName` at
   creation, and the drawer's own tab strip navigates by reopening the
@@ -815,13 +813,13 @@ adds one to its own section; its ⋯ menu picks another. Control Center is a
 normal widget: the Fedora button can move, be removed, and be restored. Its
 options contain the tab, overview, and behavior controls. Settings search
 opens this widget dialog too; there is no separate Control Center sidebar
-entry. Model usage uses the same placement and visibility controls. An
-installed Model Usage plugin is a separate widget with its own preferences.
+entry.
 
 Schema 24 adds the Fedora widget at the right edge of older layouts and keeps
-all other widget placements. Model usage defaults to Provider CLIs. An older
-CLIProxyAPI selection with no server URL adopts this default; configured proxies
-and source selections saved under schema 24 are preserved.
+all other widget placements. Schema 25 retires the built-in Model usage widget,
+its drawer tab and its `modOpts.usage`/`pollMax` settings. The
+`digitalpals.model-usage` plugin replaces it as a default widget (see
+[default plugins](omarchy-plugin-compatibility.md#default-plugins)).
 
 Drag a pill to reorder or move it between sections. The drag ghost and insertion
 marker follow wrapped grid positions and the arrangement scrolls near its edges.

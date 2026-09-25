@@ -213,7 +213,7 @@ test("all visible bar values use the menu face with tabular figures", () => {
 
     // Every bar file that draws a changing number. The four modules joined
     // the list when Bar.qml stopped drawing any of them itself.
-    for (const name of ["BarIcon.qml", "T3Chip.qml", "UsageChips.qml", "Workspaces.qml",
+    for (const name of ["BarIcon.qml", "T3Chip.qml", "Workspaces.qml",
                         "Modules/Clock.qml", "Modules/Weather.qml",
                         "Modules/Battery.qml", "Modules/Volume.qml"]) {
         const source = fs.readFileSync(path.join(shellDir, "Bar", name), "utf8");

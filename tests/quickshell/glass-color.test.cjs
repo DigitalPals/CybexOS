@@ -155,8 +155,6 @@ test("menubar content uses its colour-derived palette", () => {
     assert.match(read("Bar/Modules/Weather.qml"), /Weather\.barGlyphColor/);
     assert.match(read("Bar/T3Chip.qml"),
         /BarBrandIcon\s*\{[\s\S]{0,500}?highlighted:\s*root\.held \|\| root\.hovered/);
-    assert.match(read("Bar/UsageChips.qml"),
-        /BarBrandIcon\s*\{[\s\S]{0,500}?highlighted:\s*root\.held \|\| emptyHover\.over/);
 });
 
 test("the named Hyprland blur rule persists and applies without remapping surfaces", () => {

@@ -8,11 +8,11 @@ const H = load("ProcHelpers.js");
 
 test("stderr speaks for a command whenever it said anything", () => {
     assert.equal(
-        H.commandError("usage-fetch.py", 2, "/usr/bin/python3: can't open file 'x': [Errno 2] No such file or directory\n"),
+        H.commandError("calendar-events.py", 2, "/usr/bin/python3: can't open file 'x': [Errno 2] No such file or directory\n"),
         "/usr/bin/python3: can't open file 'x': [Errno 2] No such file or directory");
     // A traceback ends with the line that matters.
     assert.equal(
-        H.commandError("usage-fetch.py", 1, "Traceback (most recent call last):\n  File \"x\", line 1\nValueError: bad\n"),
+        H.commandError("calendar-events.py", 1, "Traceback (most recent call last):\n  File \"x\", line 1\nValueError: bad\n"),
         "ValueError: bad");
 });
 

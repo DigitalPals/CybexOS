@@ -16,7 +16,5 @@ ModuleSlot ModuleSlot.qml
 PointerCheck PointerCheck.qml
 PopoutHost PopoutHost.qml
 T3Chip T3Chip.qml
-UsageChips UsageChips.qml
-UsageProviderItem UsageProviderItem.qml
 Workspaces Workspaces.qml
 UserWidgets UserWidgets.qml

@@ -132,6 +132,9 @@ no edits to built-in shell modules are needed. See the
 ownership guide also identifies remaining application-configuration gaps.
 The Omarchy compatibility adapter supports widgets, shared services, panels,
 overlays, menus, and replacement bars, with representative unchanged plugins tested. See [installation and limits](docs/omarchy-plugin-compatibility.md).
+With connected widgets selected, the installer adds the
+[Model Usage](https://github.com/DigitalPals/omarchy-modelusage) plugin as a
+default bar widget; it is yours to update, move, disable or remove.
 
 Each pre-existing `cybexos` skill slot is backed up independently before
 first adoption. Updates retarget all three paths through the atomic active

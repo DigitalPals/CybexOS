@@ -24,7 +24,6 @@ var WIDGETS = {
     notes: { name: "Notes", short: "Notes", glyph: "edit_note", description: "Capture and revisit your notes." },
     t3: { name: "T3 Code", short: "T3 Code", detail: true, glyph: "code", description: "Follow T3 Code sessions." },
     hermes: { name: "Hermes Agent", short: "Hermes Agent", detail: true, glyph: "smart_toy", description: "Follow Hermes Agent activity." },
-    usage: { name: "Model usage", short: "Model usage", detail: true, glyph: "monitoring", description: "Track model usage across your agents." },
     gh: { name: "GitHub", short: "GitHub", detail: true, glyph: "code", description: "Watch GitHub repositories and activity." },
     updates: { name: "Updates", short: "Updates", tag: "when pending", detail: true, glyph: "update", description: "Check software updates and installation progress." },
     tray: { name: "System tray", short: "System tray", tag: "when populated", glyph: "apps", description: "Access background applications." },

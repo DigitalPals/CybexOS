@@ -21,8 +21,7 @@ Rectangle {
         network: { glyph: "wifi", label: "Network" },
         bluetooth: { glyph: "bluetooth", label: "Bluetooth" },
         power: { glyph: "battery_5_bar", label: "Power" },
-        notifications: { glyph: "notifications", label: "Notifications" },
-        usage: { glyph: "insights", label: "Usage" }
+        notifications: { glyph: "notifications", label: "Notifications" }
     })
 
     // Order and visibility come from the Drawer settings page. A tab the user

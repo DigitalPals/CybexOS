@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 24;
+var VERSION = 25;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -10,7 +10,7 @@ var PALETTE_MODES = ["wallpaper", "fixed"];
 // front door — the Fedora button and the session footer live there — so it
 // can be reordered but never disabled.
 var DRAWER_TAB_IDS = ["overview", "sound", "network", "bluetooth", "power",
-    "notifications", "usage"];
+    "notifications"];
 
 // How hovering a status glyph treats the drawer. "open" is the desktop-menu
 // default: a click latches the session, then crossing switches tabs in place.
@@ -34,15 +34,17 @@ var IDLE_SUSPEND_MINS = [0, 15, 30, 60, 120];
 // `notifications` id rather than reviving that historical key. `idle` became
 // a Control Panel toggle. Schema 24 restores `control` as a configurable
 // widget, with the Fedora button's existing rightmost placement by default.
+// Schema 25 retires `usage`: the bundled Model Usage plugin
+// (digitalpals.model-usage) replaces the built-in widget and its drawer tab.
 var MODULE_IDS = [
     "ws", "media", "indicators", "clock", "weather", "notes", "updates", "gh", "t3", "hermes",
-    "usage", "tray",
+    "tray",
     "notifications", "vol", "wifi", "bt", "batt", "control"
 ];
 
-var RETIRED_MODULE_IDS = ["bell", "idle"];
+var RETIRED_MODULE_IDS = ["bell", "idle", "usage"];
 
-var DETAIL_IDS = ["media", "weather", "clock", "t3", "hermes", "usage", "gh", "updates",
+var DETAIL_IDS = ["media", "weather", "clock", "t3", "hermes", "gh", "updates",
     "notifications", "vol", "batt"];
 var DETAIL_POLICIES = ["auto", "prefer", "compact"];
 
@@ -95,7 +97,7 @@ var BAR_COLOR_PRESETS = {
 // per the edge-drawer design. Notifications can opt back out in modOpts.
 var MODULE_GROUPS = {
     ws: "solo", media: "solo", indicators: "solo", clock: "time", weather: "time",
-    notes: "solo", updates: "solo", gh: "chip", t3: "chip", hermes: "chip", usage: "chip", tray: "solo",
+    notes: "solo", updates: "solo", gh: "chip", t3: "chip", hermes: "chip", tray: "solo",
     notifications: "status",
     vol: "status", wifi: "status", bt: "status", batt: "status", control: "solo"
 };
@@ -209,7 +211,7 @@ function defaultMods() {
             mod("notes", true)],
         right: [
             mod("updates", true), mod("gh", false), mod("t3", false), mod("hermes", false),
-            mod("usage", false), mod("tray", false), mod("notifications", true), mod("vol", true),
+            mod("tray", false), mod("notifications", true), mod("vol", true),
             mod("wifi", true), mod("bt", true), mod("batt", true), mod("control", true)
         ]
     };
@@ -255,17 +257,6 @@ function defaultModOpts() {
         },
         t3: { showLabel: true },
         hermes: { showLabel: true, activityDetail: "verb" },
-        usage: {
-            source: "direct",
-            cliproxyUrl: "",
-            cliproxyTlsVerify: true,
-            sub2apiUrl: "",
-            sub2apiTlsVerify: true,
-            gemini: true,
-            claude: true, claudeAutoRefresh: true, codex: true, kimi: true,
-            xai: true,
-            warnAt: 25, critAt: 10
-        },
         gh: {
             badge: "dot", repos: 8, pollMins: 5, ciActivity: true,
             toasts: true, watch: []
@@ -375,7 +366,6 @@ function defaults() {
         unit: "c",
         warmth: 3400,
         osd: "bottom",
-        pollMax: 300,
         scrollFactor: 1.0,
         nightLight: false,
         // Idle timeouts in minutes; 0 disables that step. The defaults match
@@ -843,21 +833,6 @@ var MOD_OPT_CHECKS = {
             return enumIn(v, ["full", "verb", "generic"], d);
         }
     },
-    usage: {
-        source: function(v, d) { return enumIn(v, ["direct", "cliproxy", "sub2api"], d); },
-        cliproxyUrl: function(v, d) { return textIn(v, 400, d); },
-        cliproxyTlsVerify: boolIn,
-        sub2apiUrl: function(v, d) { return textIn(v, 400, d); },
-        sub2apiTlsVerify: boolIn,
-        gemini: boolIn,
-        claude: boolIn,
-        claudeAutoRefresh: boolIn,
-        codex: boolIn,
-        kimi: boolIn,
-        xai: boolIn,
-        warnAt: function(v, d) { return intIn(v, 10, 50, 5, d); },
-        critAt: function(v, d) { return intIn(v, 5, 25, 5, d); }
-    },
     gh: {
         badge: function(v, d) { return enumIn(v, ["dot", "count", "off"], d); },
         repos: function(v, d) { return intIn(v, 3, 15, 1, d); },
@@ -911,13 +886,6 @@ function normalizeModOpts(raw) {
 // requires a schema-21-or-newer settings write made through the current UI.
 function migrateModOpts(raw, sourceVersion, rawSettings) {
     var next = normalizeModOpts(raw);
-    // Adopt the new source only for an unconfigured old default. Configured
-    // proxies and every source chosen under schema 24 remain untouched.
-    var usage = raw && typeof raw === "object" ? raw.usage : null;
-    if ((typeof sourceVersion !== "number" || sourceVersion < 24)
-            && usage && usage.source === "cliproxy"
-            && (usage.cliproxyUrl === undefined || usage.cliproxyUrl === ""))
-        next.usage.source = "direct";
     if (typeof sourceVersion !== "number" || sourceVersion < 21)
         next.notes.titleProvider = "off";
     // The old persistent boolean meant the user explicitly chose Always.
@@ -959,10 +927,10 @@ function migrateModOpts(raw, sourceVersion, rawSettings) {
     return next;
 }
 
-// Schema 1 exposed T3 Code and model usage as one `t3` module. Preserve that
-// composite module's placement and visibility when loading an older layout by
-// inserting the new `usage` entry directly after it. Current-schema layouts
-// continue through normal normalization, where missing ids use their defaults.
+// Older layouts keep every user-chosen column, order, visibility and detail
+// policy; each schema addition below places its one new entry. Current-schema
+// layouts continue through normal normalization, where missing ids use their
+// defaults.
 function migrateMods(raw, sourceVersion) {
     if (!raw || typeof raw !== "object")
         return normalizeMods(raw);
@@ -981,29 +949,6 @@ function migrateMods(raw, sourceVersion) {
                 : entry;
         });
     });
-
-    // Schema 1 split model usage out of T3 Code. Keep that historical
-    // placement migration before applying newer additions.
-    var usagePresent = ["left", "center", "right"].some(function(col) {
-        return migrated[col].some(function(entry) { return entry && entry.id === "usage"; });
-    });
-    if ((sourceVersion === undefined || sourceVersion === 1) && !usagePresent) {
-        for (var i = 0; i < 3; i++) {
-            var col = ["left", "center", "right"][i];
-            var t3Index = migrated[col].findIndex(function(entry) {
-                return entry && entry.id === "t3";
-            });
-            if (t3Index === -1)
-                continue;
-            var t3 = migrated[col][t3Index];
-            migrated[col].splice(t3Index + 1, 0, {
-                id: "usage",
-                on: typeof t3.on === "boolean" ? t3.on : true,
-                detail: "auto"
-            });
-            break;
-        }
-    }
 
     // Schema 8 adds quick actions beside the clock. Older layouts retain
     // every user-chosen column, order, visibility, and detail policy; the one
@@ -1324,7 +1269,6 @@ function merge(raw) {
         unit: enumIn(parsed.unit, ["c", "f"], d.unit),
         warmth: intIn(parsed.warmth, 1900, 4500, 50, d.warmth),
         osd: enumIn(parsed.osd, ["top", "bottom"], d.osd),
-        pollMax: enumIn(parsed.pollMax, [60, 300, 600], d.pollMax),
         scrollFactor: realIn(parsed.scrollFactor, 0.2, 2.0, 0.1, d.scrollFactor),
         nightLight: boolIn(parsed.nightLight, d.nightLight),
         idleLockMins: enumIn(parsed.idleLockMins, IDLE_LOCK_MINS, d.idleLockMins),

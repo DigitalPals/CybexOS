@@ -538,6 +538,12 @@ def main() -> int:
     listing.add_argument("--live", action="store_true")
     add = commands.add_parser("add", help="Install a trusted Git package (disabled until enabled)")
     add.add_argument("source")
+    provide = commands.add_parser("provide", help="Install and enable a CybexOS default package once")
+    provide.add_argument("id")
+    provide.add_argument("source")
+    provide.add_argument("revision")
+    provide.add_argument("--section", choices=("left", "center", "right"))
+    provide.add_argument("--order", type=int)
     update = commands.add_parser("update", help="Validate and fast-forward a clean Git checkout")
     update.add_argument("id")
     update.add_argument("--preview", action="store_true")
@@ -625,6 +631,42 @@ def main() -> int:
 
             print(plugin_packages.install(packages, args.source, package, read_object,
                                           lock=lambda: locked(config), commit=register))
+            return 0
+        if args.command == "provide":
+            # A default is offered once. Any registry entry, whether enabled,
+            # disabled or left behind by `remove`, is the user's decision, so
+            # a later deployment never reinstalls or re-enables the package.
+            if not valid_id(args.id) or not re.fullmatch(r"[0-9a-f]{40}", args.revision):
+                raise ValueError("provide needs a valid id and a full commit hash")
+            with locked(config):
+                if args.id in preferences(config)["plugins"]:
+                    print("unchanged")
+                    return 0
+
+            def adopt(plugin_id: str) -> None:
+                value = preferences(config)
+                if plugin_id in value["plugins"]:
+                    raise ValueError("Plugin preferences changed during installation")
+                entry = {"enabled": True, "widgetEnabled": True}
+                for key in ("order", "section"):
+                    if getattr(args, key) is not None:
+                        entry[key] = getattr(args, key)
+                options(entry)
+                value["plugins"][plugin_id] = entry
+                write_preferences(config, value)
+                (state / plugin_id).mkdir(parents=True, exist_ok=True)
+
+            directory = packages / args.id
+            if directory.exists() or directory.is_symlink():
+                # A checkout the user placed there themselves is adopted as is.
+                with locked(config):
+                    package(packages, args.id)
+                    adopt(args.id)
+            else:
+                plugin_packages.install(packages, args.source, package, read_object,
+                                        lock=lambda: locked(config), commit=adopt,
+                                        revision=args.revision, expected_id=args.id)
+            print(f"CHANGED: provided {args.id}")
             return 0
         if args.command in ("update", "remove", "clone"):
             if not valid_id(args.id):

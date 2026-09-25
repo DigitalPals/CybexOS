@@ -49,7 +49,6 @@ var PANELS = [
     { name: "tailscale", island: "right", moduleId: "", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "network" },
     { name: "battery", island: "right", moduleId: "batt", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "power" },
     { name: "notifications", island: "right", moduleId: "notifications", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "notifications" },
-    { name: "usage", island: "right", moduleId: "usage", source: DRAWER_SOURCE, attached: true, edge: "right", tab: "usage" },
 
     // Updates keeps its purpose-built state machine and transaction transcript
     // in a dedicated drawer. It uses the redesign's attached right-edge

@@ -64,7 +64,7 @@ test("menubar modules rest directly on one shared slab", () => {
     const chip = read("Bar/BarChip.qml");
     const icon = read("Bar/BarIcon.qml");
     const t3 = read("Bar/T3Chip.qml");
-    const usage = read("Bar/UsageChips.qml");
+    const hermes = read("Bar/HermesChip.qml");
     const tray = read("Bar/Modules/Tray.qml");
     const media = read("Bar/Modules/Media.qml");
     const workspaces = read("Bar/Workspaces.qml");
@@ -72,10 +72,7 @@ test("menubar modules rest directly on one shared slab", () => {
     assert.match(chip, /property color restFill:\s*"transparent"/);
     assert.match(icon, /property color restFill:\s*"transparent"/);
     assert.match(t3, /restFill:\s*"transparent"/);
-    assert.match(usage,
-        /color:\s*root\.held \? Theme\.barChipHover : "transparent"/);
-    assert.match(usage,
-        /current \? Theme\.barChipHover[\s\S]{0,40}?: "transparent"/);
+    assert.match(hermes, /restFill:\s*"transparent"/);
     assert.match(tray, /id:\s*pill[\s\S]{0,180}?color:\s*"transparent"/);
     assert.doesNotMatch(media, /color:\s*Theme\.barChipHover/,
         "the media glyph must not retain a private resting disc");
@@ -90,7 +87,6 @@ test("every module family uses the shared bar hover surface", () => {
     const bar = read("Bar/Bar.qml");
     const cluster = read("Bar/Cluster.qml");
     const tray = read("Bar/Modules/Tray.qml");
-    const usage = read("Bar/UsageChips.qml");
     const indicators = read("Bar/Modules/Indicators.qml");
     const clock = read("Bar/Modules/Clock.qml");
     const weather = read("Bar/Modules/Weather.qml");
@@ -129,7 +125,7 @@ test("every module family uses the shared bar hover surface", () => {
         "the layout group must not draw a second hover target around its widgets");
 
     for (const [name, source] of [
-        ["tray", tray], ["usage", usage], ["indicators", indicators],
+        ["tray", tray], ["indicators", indicators],
         ["workspaces", workspaces]
     ])
         assert.match(source, /BarHover\s*\{/,
@@ -149,7 +145,6 @@ test("menubar icons keep bright system ink and shared monochrome brands", () => 
     const battery = read("Bar/Modules/Battery.qml");
     const github = read("Bar/Modules/GitHub.qml");
     const t3 = read("Bar/T3Chip.qml");
-    const usage = read("Bar/UsageChips.qml");
     const weather = read("Bar/Modules/Weather.qml");
     const brand = read("Bar/BarBrandIcon.qml");
 
@@ -198,12 +193,6 @@ test("menubar icons keep bright system ink and shared monochrome brands", () => 
     assert.match(t3, /opacity:\s*highlighted \|\| root\.live \? 1 : 0\.52/);
     assert.match(t3,
         /BarBrandIcon\s*\{[\s\S]{0,500}?highlighted:\s*root\.held \|\| root\.hovered/);
-    assert.match(usage,
-        /opacity:\s*highlighted \|\| chip\.status !== "error" \? 1 : 0\.52/);
-    assert.equal((usage.match(/BarBrandIcon\s*\{/g) || []).length, 2,
-        "model providers must use the shared monochrome bar presentation");
-    assert.match(usage, /highlighted:\s*root\.held \|\| emptyHover\.over/);
-    assert.match(usage, /highlighted:\s*chip\.current \|\| chipHover\.over/);
     assert.match(weather, /idleColor:\s*Weather\.barGlyphColor\(Weather\.code, Weather\.isDay\)/);
     assert.match(weather, /color:\s*chip\.fg/);
     assert.match(weather,

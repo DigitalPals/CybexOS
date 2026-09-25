@@ -6,9 +6,9 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 24);
+    assert.equal(H.VERSION, 25);
     assert.deepEqual(d.drawerTabs.map(t => t.id),
-        ["overview", "sound", "network", "bluetooth", "power", "notifications", "usage"]);
+        ["overview", "sound", "network", "bluetooth", "power", "notifications"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
     assert.deepEqual(d.drawerOverview,
         { media: true, sliders: true, tiles: true, updates: true });
@@ -38,7 +38,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.unit, "c");
     assert.equal(d.warmth, 3400);
     assert.equal(d.osd, "bottom");
-    assert.equal(d.pollMax, 300);
+    assert.ok(!("pollMax" in d), "the model-usage poll ceiling left with the widget");
     assert.equal(d.scrollFactor, 1.0);
     assert.equal(d.nightLight, false);
     assert.equal(d.idleInhibitMode, "off");
@@ -61,7 +61,7 @@ test("defaults carry the design values", () => {
         ["indicators", "clock", "weather", "notes"]);
     assert.equal(d.mods.center.find(m => m.id === "notes").on, true);
     assert.deepEqual(d.mods.right.map(m => m.id),
-        ["updates", "gh", "t3", "hermes", "usage", "tray", "notifications",
+        ["updates", "gh", "t3", "hermes", "tray", "notifications",
          "vol", "wifi", "bt", "batt", "control"]);
     assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
     assert.equal(d.mods.right.find(m => m.id === "bt").on, true,
@@ -69,7 +69,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.mods.right.find(m => m.id === "tray").on, false);
     assert.equal(d.mods.right.find(m => m.id === "updates").on, true);
     assert.equal(d.mods.right.find(m => m.id === "notifications").on, true);
-    for (const id of ["gh", "t3", "hermes", "usage"])
+    for (const id of ["gh", "t3", "hermes"])
         assert.equal(d.mods.right.find(m => m.id === id).on, false,
             `${id} is available through Connected without crowding a fresh bar`);
     const moduleIds = [...d.mods.left, ...d.mods.center, ...d.mods.right]
@@ -81,7 +81,7 @@ test("defaults carry the design values", () => {
     assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
         .every(module => module.detail === "auto"));
     assert.deepEqual(Object.keys(d.modOpts),
-        ["ws", "media", "indicators", "clock", "weather", "notes", "t3", "hermes", "usage", "gh", "updates",
+        ["ws", "media", "indicators", "clock", "weather", "notes", "t3", "hermes", "gh", "updates",
          "tray", "notifications", "vol", "batt"]);
     assert.equal(d.modOpts.ws.minSlots, 5);
     assert.equal(d.modOpts.ws.style, "numbers");
@@ -130,13 +130,6 @@ test("defaults carry the design values", () => {
     });
     assert.deepEqual(d.modOpts.t3, { showLabel: true });
     assert.deepEqual(d.modOpts.hermes, { showLabel: true, activityDetail: "verb" });
-    assert.equal(d.modOpts.usage.warnAt, 25);
-    assert.equal(d.modOpts.usage.critAt, 10);
-    assert.equal(d.modOpts.usage.claudeAutoRefresh, true);
-    assert.equal(d.modOpts.usage.source, "direct");
-    assert.equal(d.modOpts.usage.cliproxyUrl, "");
-    assert.equal(d.modOpts.usage.cliproxyTlsVerify, true);
-    assert.equal(d.modOpts.usage.xai, true);
     assert.equal(d.modOpts.vol.step, 5);
     assert.equal(d.modOpts.vol.middleClick, "mute");
     assert.deepEqual(d.modOpts.batt, { showPct: true, warnAt: 20, critAt: 10 });
@@ -285,11 +278,6 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
             claudeEffort: "none"
         },
         hermes: { showLabel: "yes", activityDetail: "full" },
-        usage: {
-            warnAt: 8, critAt: 60, claude: "yes", claudeAutoRefresh: false,
-            source: "unknown", cliproxyUrl: "  https://proxy.test/management.html  ",
-            cliproxyTlsVerify: true, xai: false
-        },
         gh: {
             badge: "flag", repos: 99, pollMins: 0,
             ciActivity: "sure", toasts: "sure"
@@ -390,14 +378,6 @@ test("normalizeModOpts clamps, snaps, and validates option values", () => {
     assert.equal(next.hermes.activityDetail, "full");
     assert.equal(H.normalizeModOpts({ hermes: { activityDetail: "generic" } })
         .hermes.activityDetail, "generic");
-    assert.equal(next.usage.warnAt, 10);
-    assert.equal(next.usage.critAt, 25);
-    assert.equal(next.usage.claude, true, "non-boolean falls back to default");
-    assert.equal(next.usage.claudeAutoRefresh, false);
-    assert.equal(next.usage.source, "direct");
-    assert.equal(next.usage.cliproxyUrl, "https://proxy.test/management.html");
-    assert.equal(next.usage.cliproxyTlsVerify, true);
-    assert.equal(next.usage.xai, false);
     assert.equal(next.vol.step, 1);
     assert.equal(next.vol.middleClick, "mute");
     assert.equal(next.batt.warnAt, 35, "snaps to step 5");
@@ -521,7 +501,8 @@ test("merge falls back on invalid enums, colors and names", () => {
     assert.equal(invalidAccessibility.reducedMotion, false);
     assert.equal(invalidAccessibility.textScale, "default");
     assert.equal(invalidAccessibility.interfaceDensity, "default");
-    assert.equal(H.merge({ pollMax: 120 }).pollMax, 300);
+    assert.ok(!("pollMax" in H.merge({ pollMax: 120 })),
+        "the retired model-usage poll ceiling must be ignored");
     assert.equal(H.merge({ accent: "red" }).accent, "#d3d283");
     assert.equal(H.merge({ accent: "#a992e0" }).accent, "#a992e0");
     assert.equal(H.merge({ wall: "../../etc/passwd" }).wall, H.defaults().wall);
@@ -615,7 +596,7 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.deepEqual(next.center.map(m => m.id),
         ["indicators", "clock", "weather", "notes"]);
     assert.deepEqual(next.right.map(m => m.id),
-        ["updates", "gh", "t3", "hermes", "usage", "tray", "notifications",
+        ["updates", "gh", "t3", "hermes", "tray", "notifications",
          "wifi", "bt", "batt", "control"]);
     assert.ok(next.right.some(m => m.id === "bt" && m.on === true),
         "appended module keeps its default enable flag");
@@ -792,12 +773,12 @@ test("schema-11 inserts notifications before the first right-side status widget"
     raw.right = raw.right.filter(mod => mod.id !== "notifications");
     const byId = Object.fromEntries(raw.right.map(mod => [mod.id, mod]));
     raw.right = [byId.updates, byId.tray, byId.gh, byId.wifi, byId.t3,
-        byId.usage, byId.vol, byId.bt, byId.batt];
+        byId.vol, byId.bt, byId.batt];
 
     const migrated = H.merge({ v: 10, mods: raw }).mods.right;
     assert.deepEqual(migrated.map(mod => mod.id),
         ["updates", "tray", "gh", "notifications", "wifi", "t3",
-         "hermes", "usage", "vol", "bt", "batt", "control"]);
+         "hermes", "vol", "bt", "batt", "control"]);
 });
 
 test("schema-11 appends notifications on the right when its status widgets moved", () => {
@@ -867,7 +848,7 @@ test("bell and idle remain retired after Control Center returns", () => {
     assert.deepEqual([...all].sort(), [...H.MODULE_IDS].sort());
 });
 
-test("version one layouts insert usage after t3 with its column and enabled state", () => {
+test("version one layouts insert Hermes after t3 in its column", () => {
     const enabled = H.merge({
         v: 1,
         mods: {
@@ -876,10 +857,9 @@ test("version one layouts insert usage after t3 with its column and enabled stat
             right: [{ id: "vol", on: true }]
         }
     }).mods;
-    assert.deepEqual(enabled.center.slice(0, 5), [
+    assert.deepEqual(enabled.center.slice(0, 4), [
         { id: "t3", on: true, detail: "auto" },
         { id: "hermes", on: true, detail: "auto" },
-        { id: "usage", on: true, detail: "auto" },
         { id: "indicators", on: true, detail: "auto" },
         { id: "clock", on: true, detail: "auto" }
     ]);
@@ -892,12 +872,11 @@ test("version one layouts insert usage after t3 with its column and enabled stat
             right: [{ id: "vol", on: true }, { id: "t3", on: false }]
         }
     }).mods;
-    assert.deepEqual(disabled.right.slice(0, 5), [
+    assert.deepEqual(disabled.right.slice(0, 4), [
         { id: "notifications", on: true, detail: "auto" },
         { id: "vol", on: true, detail: "auto" },
         { id: "t3", on: false, detail: "auto" },
-        { id: "hermes", on: true, detail: "auto" },
-        { id: "usage", on: false, detail: "auto" }
+        { id: "hermes", on: true, detail: "auto" }
     ]);
 });
 
@@ -909,10 +888,9 @@ test("unversioned layouts receive the same composite t3 migration", () => {
             right: []
         }
     }).mods;
-    assert.deepEqual(mods.left.slice(0, 4), [
+    assert.deepEqual(mods.left.slice(0, 3), [
         { id: "t3", on: false, detail: "auto" },
         { id: "hermes", on: true, detail: "auto" },
-        { id: "usage", on: false, detail: "auto" },
         { id: "media", on: true, detail: "auto" }
     ]);
 });
@@ -1029,21 +1007,6 @@ test("schema-22 migrates and validates restart-safe timed toggle state", () => {
     assert.equal(invalid.idleInhibitUntilMs, 0);
     assert.equal(invalid.notifDndUntilMs, 0,
         "an inactive DND state cannot retain a deadline that later revives it");
-});
-
-test("version two normalization preserves usage independently and uniquely", () => {
-    const mods = H.merge({
-        v: 2,
-        mods: {
-            left: [{ id: "usage", on: false }, { id: "usage", on: true }],
-            center: [{ id: "t3", on: true }],
-            right: []
-        }
-    }).mods;
-    assert.deepEqual(mods.left.slice(0, 1), [{ id: "usage", on: false, detail: "auto" }]);
-    assert.deepEqual(mods.center.slice(0, 1), [{ id: "t3", on: true, detail: "auto" }]);
-    assert.equal([...mods.left, ...mods.center, ...mods.right]
-        .filter(m => m.id === "usage").length, 1);
 });
 
 test("serialize is stable, versioned, and round-trips through merge", () => {
@@ -1167,31 +1130,15 @@ test("reset snapshots restore only the covered values", () => {
 });
 
 
-test("Sub2API connection settings round-trip independently of CLIProxyAPI", () => {
-    const settings = H.defaults();
-    settings.modOpts.usage.source = "sub2api";
-    settings.modOpts.usage.sub2apiUrl = "https://models.test/sub2api";
-    settings.modOpts.usage.sub2apiTlsVerify = false;
-    settings.modOpts.usage.gemini = false;
-    settings.modOpts.usage.cliproxyUrl = "https://existing.test";
-    const restored = H.merge(JSON.parse(H.serialize(settings)));
-    assert.equal(restored.modOpts.usage.source, "sub2api");
-    assert.equal(restored.modOpts.usage.sub2apiUrl, "https://models.test/sub2api");
-    assert.equal(restored.modOpts.usage.sub2apiTlsVerify, false);
-    assert.equal(restored.modOpts.usage.gemini, false);
-    assert.equal(restored.modOpts.usage.cliproxyUrl, "https://existing.test");
-    assert.equal(H.defaults().modOpts.usage.source, "direct");
-});
-
 test("Bluetooth migrates beside Network without changing existing drawer preferences", () => {
     const old = [
-        { id: "usage", on: false }, { id: "network", on: false },
+        { id: "network", on: false },
         { id: "overview", on: true }, { id: "sound", on: true },
         { id: "notifications", on: true }, { id: "power", on: false }
     ];
     const migrated = H.normalizeDrawerTabs(old);
     assert.deepEqual(migrated.filter(t => t.id !== "bluetooth"), old);
-    assert.deepEqual(migrated[2], { id: "bluetooth", on: true });
+    assert.deepEqual(migrated[1], { id: "bluetooth", on: true });
     const custom = [{ id: "bluetooth", on: false }, ...old];
     assert.deepEqual(H.normalizeDrawerTabs(custom), custom);
     assert.deepEqual(H.normalizeDrawerTabs(migrated), migrated);
@@ -1214,7 +1161,7 @@ test("schema 24 replaces fixed Control Center without changing other widgets", (
     const raw = H.defaultMods();
     raw.right = raw.right.filter(m => m.id !== "control");
     raw.left.reverse();
-    raw.right.find(m => m.id === "usage").detail = "compact";
+    raw.right.find(m => m.id === "hermes").detail = "compact";
     const migrated = H.merge({ v: 23, mods: raw });
     assert.deepEqual(migrated.mods.right.at(-1), { id: "control", on: true, detail: "auto" });
     for (const col of ["left", "center", "right"])
@@ -1224,12 +1171,12 @@ test("schema 24 replaces fixed Control Center without changing other widgets", (
     assert.deepEqual(H.merge({ v: 3, mods: stale }).mods, migrated.mods);
 });
 
-test("Control Center and Model usage placement and visibility survive reload", () => {
+test("Control Center placement and visibility survive reload", () => {
     const L = load("LayoutHelpers.js");
     const E = load("WidgetEditor.js");
     const C = load("WidgetCatalog.js");
     const settings = H.defaults();
-    for (const id of ["control", "usage"]) {
+    for (const id of ["control"]) {
         settings.mods = L.moveWidget(settings.mods, "right", id, "left", 0).mods;
         settings.mods.left[0].on = false;
         const restored = H.merge(JSON.parse(H.serialize(settings)));
@@ -1243,23 +1190,50 @@ test("Control Center and Model usage placement and visibility survive reload", (
     }
 });
 
-test("Provider CLIs is the default without replacing configured or current source choices", () => {
-    assert.equal(H.defaults().modOpts.usage.source, "direct");
-    for (const usage of [{}, { source: "cliproxy" }, { source: "cliproxy", cliproxyUrl: "" }]) {
-        const raw = { v: 23, modOpts: { usage } };
-        const before = structuredClone(raw);
-        const migrated = H.merge(raw);
-        assert.equal(migrated.modOpts.usage.source, "direct");
-        assert.deepEqual(raw, before);
-        assert.deepEqual(H.merge(JSON.parse(H.serialize(migrated))), migrated);
-    }
-    for (const usage of [
-        { source: "cliproxy", cliproxyUrl: "https://proxy.test/management.html" },
-        { source: "sub2api", sub2apiUrl: "https://models.test" },
-        { source: "direct" }
-    ]) {
-        assert.equal(H.merge({ v: 23, modOpts: { usage } }).modOpts.usage.source, usage.source);
-    }
-    assert.equal(H.merge({ v: 24, modOpts: { usage: { source: "cliproxy", cliproxyUrl: "" } } })
-        .modOpts.usage.source, "cliproxy");
+test("schema 25 drops the retired Model usage widget, drawer tab, options and poll ceiling", () => {
+    // The bundled Model Usage plugin replaced the built-in widget. A settings
+    // file written before that keeps every other choice but loses each trace
+    // of the old widget rather than reviving it.
+    const raw = {
+        v: 24,
+        pollMax: 900,
+        mods: {
+            left: [{ id: "ws", on: true }, { id: "usage", on: true, detail: "compact" }],
+            center: [{ id: "clock", on: true }],
+            right: [{ id: "t3", on: true }, { id: "hermes", on: false }]
+        },
+        drawerTabs: [
+            { id: "usage", on: true }, { id: "overview", on: true },
+            { id: "sound", on: false }
+        ],
+        modOpts: {
+            usage: { source: "cliproxy", cliproxyUrl: "https://proxy.test", warnAt: 35 },
+            batt: { warnAt: 30 }
+        }
+    };
+    const before = structuredClone(raw);
+    const merged = H.merge(raw);
+    assert.deepEqual(raw, before, "migration must not mutate the parsed file");
+    const ids = [...merged.mods.left, ...merged.mods.center, ...merged.mods.right]
+        .map(m => m.id);
+    assert.ok(!ids.includes("usage"), "the usage module survived migration");
+    assert.deepEqual([...ids].sort(), [...H.MODULE_IDS].sort());
+    assert.deepEqual(merged.mods.left.slice(0, 1), [{ id: "ws", on: true, detail: "auto" }]);
+    assert.deepEqual(merged.mods.right.slice(0, 2), [
+        { id: "t3", on: true, detail: "auto" },
+        { id: "hermes", on: false, detail: "auto" }
+    ]);
+    assert.ok(!merged.drawerTabs.some(t => t.id === "usage"), "the usage drawer tab survived");
+    assert.deepEqual(merged.drawerTabs.slice(0, 2),
+        [{ id: "overview", on: true }, { id: "sound", on: false }]);
+    assert.ok(!("usage" in merged.modOpts), "modOpts.usage survived migration");
+    assert.equal(merged.modOpts.batt.warnAt, 30);
+    assert.ok(!("pollMax" in merged), "the top-level pollMax survived migration");
+
+    const text = H.serialize(merged);
+    assert.doesNotMatch(text, /"usage"|pollMax/);
+    assert.deepEqual(H.merge(H.parse(text).value), merged);
+    assert.deepEqual(H.normalizeDrawerTabs([{ id: "usage", on: true }]).map(t => t.id),
+        H.DRAWER_TAB_IDS);
+    assert.ok(!("usage" in H.normalizeModOpts({ usage: { warnAt: 35 } })));
 });

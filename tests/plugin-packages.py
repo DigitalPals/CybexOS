@@ -106,5 +106,40 @@ with tempfile.TemporaryDirectory(prefix="cybex-plugin-packages-") as temporary:
     assert not (packages / "example.git").exists()
     saved = json.loads((base / "config/plugins.json").read_text())["plugins"]
     assert saved["example.git"]["settings"]["answer"] == 42
+
+    # CybexOS defaults are offered once. The removed package's surviving entry
+    # is a user decision, so provide neither reinstalls nor re-enables it.
+    pinned = git("rev-parse", "HEAD~1")
+    assert cli("provide", "example.git", source, pinned).strip() == "unchanged"
+    assert not (packages / "example.git").exists()
+    cli("provide", "example.git", source, "main", ok=False)
+    cli("provide", "example.other", source, pinned, ok=False)
+    assert not (packages / "example.other").exists()
+    registry = json.loads((base / "config/plugins.json").read_text())
+    del registry["plugins"]["example.git"]
+    (base / "config/plugins.json").write_text(json.dumps(registry))
+    # Source HEAD is the invalid update above; the pin installs the valid one
+    # and keeps the tracking branch, so a user can still update it later.
+    assert cli("provide", "example.git", source, pinned, "--section", "right",
+               "--order", "0").startswith("CHANGED:")
+    installed = packages / "example.git"
+    assert subprocess.check_output(["git", "-C", str(installed), "rev-parse", "HEAD"], text=True).strip() == pinned
+    assert subprocess.check_output(["git", "-C", str(installed), "symbolic-ref", "--short", "HEAD"], text=True).strip() == "main"
+    assert "manifest.json" in cli("update", "example.git", "--preview")
+    saved = json.loads((base / "config/plugins.json").read_text())["plugins"]["example.git"]
+    assert saved == {"enabled": True, "widgetEnabled": True, "order": 0, "section": "right"}
+    assert (base / "data/cybexos/plugin-data/example.git").is_dir()
+    widget = json.loads(cli("list"))["widgets"][0]
+    assert (widget["section"], widget["order"]) == ("right", 0)
+    cli("disable", "example.git")
+    assert cli("provide", "example.git", source, pinned).strip() == "unchanged"
+    assert not json.loads((base / "config/plugins.json").read_text())["plugins"]["example.git"]["enabled"]
+    # A checkout already in place without preferences is adopted, not replaced.
+    registry = json.loads((base / "config/plugins.json").read_text())
+    del registry["plugins"]["example.git"]
+    (base / "config/plugins.json").write_text(json.dumps(registry))
+    assert cli("provide", "example.git", base / "missing", pinned).startswith("CHANGED:")
+    assert json.loads((base / "config/plugins.json").read_text())["plugins"]["example.git"]["enabled"]
+    cli("remove", "example.git")
     assert not any(path.name.startswith(".") for path in packages.iterdir())
 print("Plugin Git transactions, clone restoration, and code snapshot identity passed")

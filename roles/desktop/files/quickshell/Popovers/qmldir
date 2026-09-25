@@ -46,6 +46,5 @@ T3RequestCard T3RequestCard.qml
 T3ThreadPage T3ThreadPage.qml
 TailscalePopover TailscalePopover.qml
 UpdatesPopover UpdatesPopover.qml
-UsagePopover UsagePopover.qml
 WeatherPopover WeatherPopover.qml
 WifiPopover WifiPopover.qml

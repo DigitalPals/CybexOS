@@ -667,7 +667,6 @@ PanelWindow {
         notes: "Modules/Notes.qml",
         indicators: "Modules/Indicators.qml",
         t3: "Modules/T3.qml", hermes: "Modules/Hermes.qml",
-        usage: "Modules/Usage.qml",
         gh: "Modules/GitHub.qml", updates: "Modules/Updates.qml",
         tray: "Modules/Tray.qml", notifications: "Modules/Notifications.qml",
         vol: "Modules/Volume.qml", wifi: "Modules/Wifi.qml",
@@ -723,21 +722,6 @@ PanelWindow {
             return;
         if (!Popouts.open && Settings.drawerHover !== "always")
             return;
-
-        // Usage owns one panel anchor but several provider targets. Resolve
-        // the provider first; treating the whole group as a generic anchor
-        // would open the right panel with whichever provider was selected last.
-        const usageItem = panelAnchors.usage;
-        if (usageItem && usageItem.visible
-                && usageItem.providerAtScenePoint !== undefined) {
-            const provider = usageItem.providerAtScenePoint(position);
-            if (provider !== "") {
-                Usage.selected = provider;
-                hoverPopout("usage",
-                    usageItem.isle || Popouts.defaultIsland.usage, usageItem);
-                return;
-            }
-        }
 
         for (const name of Object.keys(panelAnchors)) {
             const item = panelAnchors[name];

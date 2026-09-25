@@ -15,8 +15,7 @@ SettingsPage {
         network: { glyph: "wifi", label: "Network", from: "the network glyphs" },
         bluetooth: { glyph: "bluetooth", label: "Bluetooth", from: "the Bluetooth glyph" },
         power: { glyph: "battery_5_bar", label: "Power", from: "the battery glyph" },
-        notifications: { glyph: "notifications", label: "Notifications", from: "the bell" },
-        usage: { glyph: "insights", label: "Model usage", from: "the usage pill" }
+        notifications: { glyph: "notifications", label: "Notifications", from: "the bell" }
     })
 
     readonly property var overviewRows: [

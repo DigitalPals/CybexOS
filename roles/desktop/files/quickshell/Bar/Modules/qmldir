@@ -15,7 +15,6 @@ Notifications Notifications.qml
 T3 T3.qml
 Tray Tray.qml
 Updates Updates.qml
-Usage Usage.qml
 Volume Volume.qml
 Weather Weather.qml
 Wifi Wifi.qml

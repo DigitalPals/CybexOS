@@ -460,7 +460,6 @@ python_fixtures=(
   cybex-deployment
   quickshell-deployment
   user-plugins
-  usage-fetch
   wallpaper-download
   bluetooth-tool
   firmware-update

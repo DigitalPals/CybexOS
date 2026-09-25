@@ -248,9 +248,6 @@ test("the calendar helper answers within its own deadline", () => {
 });
 
 test("non-critical singletons stay out of the session-start burst", () => {
-    const usage = read("Common/Usage.qml");
-    assert.match(usage, /id: startupWarmUp\s*interval: 5000/);
-    assert.match(usage, /if \(source !== "direct"\)\s*root\.checkManagementKey/);
     const updates = read("Common/Updates.qml");
     assert.match(updates, /id: startupCheck\s*interval: 20000/);
     assert.match(updates, /Component\.onCompleted: \{\s*initialized = true;\s*startupCheck\.start\(\);\s*refreshRunStatus\(\);/);

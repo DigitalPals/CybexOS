@@ -276,12 +276,12 @@ is manual.
       widgets, and every glyph keeps its own click target inside the pill.
 - [ ] Per-module options apply live: clock seconds/date format, battery and
       volume percentage toggles and thresholds, media title format and width,
-      usage provider toggles and warn/critical thresholds, T3 label and pulse,
+      T3 label and pulse,
       workspaces min slots / hide empty / dots, notification grouping.
 - [ ] Option rows in the dialog follow the page grammar: controls end on one
       edge, rows are separated by hairlines, and explanatory copy (notes title
-      privacy, notification grouping, the usage key's state, the sign-in
-      policy) sits on the row's own hint line.
+      privacy, notification grouping, the sign-in policy) sits on the row's
+      own hint line.
 - [ ] Indicators expands inline with Clock hover / Always show / Active only,
       per-action switches, and drag/keyboard ordering. A hidden Dictation or
       Screen recording action returns while running so it can always be stopped.
@@ -311,10 +311,11 @@ is manual.
       only while playing, Bluetooth only when connected, Battery on
       laptops).
 - [ ] Disabling a module whose popout is open closes that popout.
-- [ ] T3 Code and Model usage can each be toggled, reordered, and moved across
-      columns; Claude, Codex, and Kimi remain grouped under Model usage.
-- [ ] Disabling T3 Code or Model usage while its popout is open closes only
-      that popout; the other module still opens normally.
+- [ ] T3 Code and the Model Usage plugin can each be toggled, reordered, and
+      moved across columns; a fresh install shows Model Usage first in the
+      right section.
+- [ ] Disabling T3 Code or Model Usage while its popout is open closes only
+      that popout; the other widget still opens normally.
 - [ ] Volume, Network, Bluetooth, and Battery can be reordered within or
       across columns; each dedicated popout follows its widget. The fixed
       Fedora Control Panel button remains at the right edge.
@@ -323,8 +324,6 @@ is manual.
       to the dropped row.
 - [ ] With the Everything preset, the preview's center section moves aside
       rather than painting over a crowded left or right section.
-- [ ] In the Usage widget's options, Poll every 1 min shortens the countdown;
-      the usage popover and the caption agree.
 
 ## Notifications page
 
@@ -491,12 +490,8 @@ is manual.
 - [ ] All popouts open/close/hover-switch as before at default settings;
       Calendar → Weather and other adjacent-module switches work without a
       second click; with Settings open, hovering a module also switches.
-- [ ] Click Claude once, then hover Codex and Kimi; the open Usage view changes
-      immediately while its panel stays anchored. From another open popout,
-      hovering a provider opens Usage after the normal hover delay and selects
-      the provider under the pointer.
 - [ ] Resize/hotplug from a wide output down to 800 logical px: detail compacts
-      Media → Weather → Clock date → T3 → Volume → Battery → Usage, every
+      Media → Weather → Clock date → T3 → Volume → Battery, every
       enabled module remains, clusters retain an 8px gutter, and the center
       shifts only after all eligible detail is compact.
 - [ ] Fine-grained touchpad scrolling over Volume changes it once per
@@ -532,8 +527,7 @@ is manual.
       modes. Test Enter, blur, Escape and normalized/rejected text edits.
 - [ ] In the drawer, Tab reaches the current tab; Left/Right and Home/End select
       adjacent/edge tabs. Labels elide before tabs overflow, and a single-tab
-      configuration fills the lane. Usage hides the provider selector when
-      there is no choice to make.
+      configuration fills the lane.
 - [ ] Pale fixed accents remain readable as text/icons/outlines in Light and
       High contrast. The actual swatch/fill is unchanged. Test default, larger
       text/comfortable density, and 80% UI scale/compact density.
@@ -561,7 +555,7 @@ normalization. See `tests/qml-lifecycle/shell.qml` and
 `tests/quickshell/settings-layout.test.cjs`.
 
 Service-dependent states need an appropriate account/device: this workstation
-presents T3/Hermes authentication screens, no managed usage providers, and an
+presents T3/Hermes authentication screens and an
 updater endpoint error. Those data sources and commands were not changed for
 visual verification. Existing compatibility surfaces keep their separate
 cursor-navigation and theme APIs; dense transaction/transcript/list layouts

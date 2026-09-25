@@ -1,10 +1,10 @@
 // Duration and ratio formatting shared across the shell. Pure — no Qt APIs —
 // so the same code runs under Node in tests.
 //
-// The five coarse duration labels (Usage's quota reset, the battery estimate,
-// Notifs' "5m ago", and T3's two working-timer variants) deliberately stay
-// with their surfaces: they render six different shapes for six different
-// contexts and share only the arithmetic below, which is what this file
+// The coarse duration labels (the battery estimate, Notifs' "5m ago", and
+// T3's two working-timer variants) deliberately stay with their surfaces:
+// they render different shapes for different contexts and share only the
+// arithmetic below, which is what this file
 // carries. Folding them into one function would need a format argument per
 // caller, which is the duplication again with extra indirection.
 

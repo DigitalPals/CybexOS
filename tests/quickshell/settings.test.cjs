@@ -259,7 +259,7 @@ test("the tray and the updates chip use the reorderable widget pipeline", () => 
     const bar = read("Bar/Bar.qml");
 
     assert.match(helpers, /"updates", "gh"/);
-    assert.match(helpers, /"usage", "tray"/);
+    assert.match(helpers, /"hermes",\s*"tray"/);
     assert.match(catalog, /updates:\s*\{ name: "Updates"/);
     assert.match(catalog, /tray:\s*\{ name: "System tray"/);
     assert.doesNotMatch(modules, /pinnedTail|text:\s*"pinned"/);
@@ -277,12 +277,12 @@ test("the tray and the updates chip use the reorderable widget pipeline", () => 
     assert.match(bar, /case "tray": return SystemTray\.items\.values\.length > 0;/);
 });
 
-test("the retired bell and idle modules leave nothing behind", () => {
+test("the retired bell, idle, and usage modules leave nothing behind", () => {
     const helpers = read("Common/SettingsHelpers.js");
     const modules = read("Settings/ModulesPage.qml");
     const bar = read("Bar/Bar.qml");
 
-    for (const [id, file] of [["bell", "Bell"], ["idle", "Idle"]]) {
+    for (const [id, file] of [["bell", "Bell"], ["idle", "Idle"], ["usage", "Usage"]]) {
         assert.ok(!fs.existsSync(path.join(shellDir, `Bar/Modules/${file}.qml`)),
             `Bar/Modules/${file}.qml is still on disk`);
         assert.doesNotMatch(bar, new RegExp(`${id}:\\s*"Modules/`),
@@ -290,27 +290,27 @@ test("the retired bell and idle modules leave nothing behind", () => {
         assert.doesNotMatch(modules, new RegExp(`^\\s*${id}:\\s*\\{ name:`, "m"),
             `the settings module list still names ${id}`);
     }
-    assert.match(helpers, /RETIRED_MODULE_IDS = \["bell", "idle"\]/);
+    assert.match(helpers, /RETIRED_MODULE_IDS = \["bell", "idle", "usage"\]/);
+    // The Model Usage plugin replaced the built-in widget wholesale: its
+    // singleton, chips, popover, drawer tab and fetch scripts went with it.
+    for (const file of ["Common/Usage.qml", "Common/UsageHelpers.js", "Bar/UsageChips.qml",
+                        "Popovers/UsagePopover.qml", "Popovers/Drawer/DrawerUsage.qml",
+                        "scripts/usage-fetch.py", "scripts/usage-credential.py"])
+        assert.ok(!fs.existsSync(path.join(shellDir, file)), `${file} is still on disk`);
 });
 
-test("T3 Code, Hermes Agent, and grouped model usage are separate reorderable widgets", () => {
+test("T3 Code and Hermes Agent are separate reorderable widgets", () => {
     const helpers = read("Common/SettingsHelpers.js");
     const catalog = read("Common/WidgetCatalog.js");
     const bar = read("Bar/Bar.qml");
 
-    assert.match(helpers, /"gh", "t3", "hermes",\s*"usage"/,
-        "fresh layouts should keep the three agent widgets adjacent");
+    assert.match(helpers, /"gh", "t3", "hermes"/,
+        "fresh layouts should keep the agent widgets adjacent");
     assert.match(catalog, /t3:\s*\{ name: "T3 Code"/);
     assert.match(catalog, /hermes:\s*\{ name: "Hermes Agent"/);
-    assert.match(catalog, /usage:\s*\{ name: "Model usage"/);
     assert.match(bar, /t3:\s*"Modules\/T3\.qml"/);
     assert.match(bar, /hermes:\s*"Modules\/Hermes\.qml"/);
-    assert.match(bar, /usage:\s*"Modules\/Usage\.qml"/);
     assert.match(read("Bar/Modules/T3.qml"), /panelName:\s*"t3code"/);
-    assert.match(read("Bar/Modules/Usage.qml"), /panelName:\s*"usage"/);
-    // Separate files make this structural rather than a span check.
-    assert.doesNotMatch(read("Bar/Modules/T3.qml"), /panelName:\s*"usage"/,
-        "the T3 module must not own the grouped usage popout");
 });
 
 test("the T3 running indicator is a static dot", () => {
@@ -323,58 +323,6 @@ test("the T3 running indicator is a static dot", () => {
     assert.doesNotMatch(dot, /\b(?:Timer|SequentialAnimation|PropertyAnimation)\s*\{/,
         "the five-pixel running indicator must not pulse");
     assert.doesNotMatch(chip, /modOpts\.t3\.pulse|heartbeat|pulseOpacity|pulseStartedAt|barVisible/);
-});
-
-test("usage chip hover joins the latched menu session", () => {
-    const bar = read("Bar/Bar.qml");
-    const usage = read("Bar/Modules/Usage.qml");
-    const chips = read("Bar/UsageChips.qml");
-
-    // A closed bar remains inert. Once any popout was clicked open, hovering a
-    // provider selects it and morphs the current view to Usage in place.
-    assert.match(usage,
-        /onChipEntered:\s*key => \{\s*if \(!Popouts\.open\)\s*return;[\s\S]{0,100}?if \(key !== ""\)[\s\S]{0,80}?Usage\.selected = key;\s*root\.host\.hoverPopout\("usage", root\.isle, usageChips\.anchorItem\);/,
-        "provider hover must be gated by, and participate in, the open menu session");
-    // Mapping the popout surface can cost Qt an enter event; motion over a
-    // chip still re-delivers the provider.
-    assert.match(chips, /onPositionChanged:[\s\S]{0,60}?chipEntered/);
-    assert.match(chips, /function providerAtScenePoint\(scenePoint\)/,
-        "the bar-wide fallback needs provider-level hit testing");
-    const fallback = bar.match(/function hoverPanelAt\(position\)[\s\S]*?\n    \}/)?.[0] ?? "";
-    assert.match(fallback, /providerAtScenePoint\(position\)/);
-    assert.ok(fallback.indexOf("providerAtScenePoint(position)")
-            < fallback.indexOf("Object.keys(panelAnchors)"),
-        "provider selection must happen before generic Usage hit testing");
-    assert.match(usage,
-        /root\.host\.openPopout\("usage", root\.isle, usageChips\.anchorItem\)/,
-        "all providers should retain the grouped UsageChips anchor");
-});
-
-test("model usage follows the source inventory and only shows real menubar values", () => {
-    const chips = read("Bar/UsageChips.qml");
-    const popover = read("Popovers/UsagePopover.qml");
-    const usage = read("Common/Usage.qml");
-    const drawer = read("Popovers/Drawer/DrawerUsage.qml");
-
-    assert.match(usage,
-        /providerKeys:\s*Helpers\.providerKeys\([\s\S]{0,100}?Settings\.modOpts\.usage\.source, data\)/,
-        "one reactive inventory must drive every model-usage surface");
-    assert.match(chips,
-        /availableKeys:\s*Usage\.providerKeys\.filter[\s\S]*?return Usage\.minRemaining\(k\) >= 0;\s*\}\)/,
-        "signed-out, failed, and valueless providers must not render as --% chips");
-    assert.doesNotMatch(chips, /p\.status === "ok" \|\| p\.kind !== "nocreds"/,
-        "provider errors are details for the popover, not menubar chips");
-    assert.match(popover, /model:\s*Usage\.providerKeys/,
-        "source-provided entries without a bar value remain reachable in the popover");
-    assert.match(drawer, /model:\s*Usage\.providerKeys/,
-        "the Usage tab must use the same source-provided inventory");
-    assert.match(chips,
-        /providerKey:\s*Usage\.providerKeys\.length > 0[\s\S]{0,100}?\? Usage\.providerKeys\[0\] : ""/,
-        "an empty proxy inventory must not retain the last provider brand");
-    assert.match(popover,
-        /hasProvider:[\s\S]{0,100}?Usage\.providerKeys\.indexOf\(sel\) !== -1/);
-    assert.match(drawer,
-        /hasProvider:[\s\S]{0,120}?Usage\.providerKeys\.indexOf\(selected\) !== -1/);
 });
 
 test("regression fixes keep asynchronous state identity-safe", () => {
@@ -431,7 +379,7 @@ test("regression fixes keep asynchronous state identity-safe", () => {
 
 test("schema twenty-three keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 24/);
+    assert.match(helpers, /var VERSION = 25/);
     // Schema 17: the drawer becomes configurable (turn-3 settings design).
     assert.match(helpers, /drawerHover: "open"/);
     assert.match(helpers, /drawerWidth: 400/);
@@ -447,9 +395,8 @@ test("schema twenty-three keeps safe defaults and exposes accessibility preferen
     assert.match(helpers, /nightLight:\s*false/);
     assert.match(helpers, /idleInhibitMode:\s*"off"/);
     assert.match(helpers, /idleInhibitUntilMs:\s*0/);
-    assert.match(helpers, /"updates", "gh", "t3", "hermes",\s*"usage", "tray"/);
+    assert.match(helpers, /"updates", "gh", "t3", "hermes",\s*"tray"/);
     assert.match(helpers, /hermes:\s*\{ showLabel: true, activityDetail: "verb" \}/);
-    assert.match(helpers, /claudeAutoRefresh:\s*true/);
     assert.match(helpers,
         /notes:\s*\{[\s\S]*?titleProvider:\s*"off"[\s\S]*?codexModel:\s*"gpt-5\.6-luna"[\s\S]*?codexEffort:\s*"none"[\s\S]*?claudeModel:\s*"fable"[\s\S]*?claudeEffort:\s*"low"/);
     assert.match(helpers, /mod\("tray", false\), mod\("notifications", true\), mod\("vol", true\)/);
@@ -483,7 +430,7 @@ test("Connected enables integration widgets including auto-hiding Bluetooth", ()
     const preset = settings.slice(settings.indexOf("function modulePresetIds(name)"),
         settings.indexOf("function resetKeys("));
     assert.match(preset,
-        /name === "connected"[\s\S]*?\["ws"[\s\S]*?"gh"[\s\S]*?"t3"[\s\S]*?"hermes"[\s\S]*?"usage"[\s\S]*?"bt"[\s\S]*?"batt"[\s\S]*?"control"\]/,
+        /name === "connected"[\s\S]*?\["ws"[\s\S]*?"gh"[\s\S]*?"t3"[\s\S]*?"hermes"[\s\S]*?"bt"[\s\S]*?"batt"[\s\S]*?"control"\]/,
         "Connected should enable every connection-driven widget; Bluetooth hides itself when idle");
 });
 

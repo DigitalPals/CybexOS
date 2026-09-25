@@ -36,7 +36,7 @@ test('Control Center widget reset and Undo preserve layout and other widget sett
     s.drawerHover = 'always';
     s.drawerOverview.media = false;
     s.drawerTabs.reverse();
-    s.modOpts.usage.warnAt = 35;
+    s.modOpts.batt.warnAt = 35;
     const before = JSON.stringify({ mods: s.mods, modOpts: s.modOpts });
     const drawer = JSON.stringify(s.sectionKeys.drawer.map(key => s[key]));
     assert.equal(s.moduleDirty('control'), true);
@@ -46,18 +46,4 @@ test('Control Center widget reset and Undo preserve layout and other widget sett
     s.undoReset();
     assert.equal(JSON.stringify(s.sectionKeys.drawer.map(key => s[key])), drawer);
     assert.equal(JSON.stringify({ mods: s.mods, modOpts: s.modOpts }), before);
-});
-
-test('Model usage reset adopts Provider CLIs and Undo restores source and polling', () => {
-    const s = settingsHarness();
-    s.modOpts.usage.source = 'cliproxy';
-    s.modOpts.usage.cliproxyUrl = 'https://proxy.test';
-    s.pollMax = 900;
-    const before = JSON.stringify({ options: s.modOpts.usage, pollMax: s.pollMax });
-    s.resetModule('usage', 'Model usage');
-    assert.equal(s.modOpts.usage.source, 'direct');
-    assert.equal(s.pollMax, s.defaults.pollMax);
-    assert.equal(s.moduleDirty('usage'), false);
-    s.undoReset();
-    assert.equal(JSON.stringify({ options: s.modOpts.usage, pollMax: s.pollMax }), before);
 });

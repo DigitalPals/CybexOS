@@ -34,7 +34,7 @@ Singleton {
             for (const column of ["left", "center", "right"])
                 value.mods[column] = value.mods[column].map(entry => ({
                     id: entry.id,
-                    on: ["gh", "t3", "hermes", "usage"].indexOf(entry.id) !== -1
+                    on: ["gh", "t3", "hermes"].indexOf(entry.id) !== -1
                         ? true : entry.on,
                     detail: entry.detail
                 }));
@@ -86,7 +86,6 @@ Singleton {
     property string unit: defaults.unit
     property int warmth: defaults.warmth
     property string osd: defaults.osd
-    property int pollMax: defaults.pollMax
     property real scrollFactor: defaults.scrollFactor
     property bool nightLight: defaults.nightLight
     property int idleLockMins: defaults.idleLockMins
@@ -245,12 +244,10 @@ Singleton {
             "font", "accent", "paletteMode",
             "pluginScale", "pluginBorderMode", "pluginBorderColor", "pluginBorderWidth", "pluginBorderOpacity", "pluginRadius", "pluginThemeOverrides"],
         // The widget layout and every widget's options belong to the Bar
-        // page, which also owns the bar's background color. The usage poll
-        // interval is the Usage widget's own option; it is a top-level key
-        // only because the service predates modOpts.
+        // page, which also owns the bar's background color.
         bar: ["position", "barStyle", "gap", "barHeight", "barRadius", "autoHide",
             "exclusive", "barColorMode", "barCustomHue", "barCustomSaturation",
-            "barCustomLightness", "mods", "modOpts", "pollMax"],
+            "barCustomLightness", "mods", "modOpts"],
         plugins: [],
         drawer: ["drawerTabs", "drawerOverview", "drawerHover", "drawerWidth"],
         notifications: ["notifDnd", "notifDndUntilMs", "notifQuiet", "notifQuietStart", "notifQuietEnd",
@@ -404,7 +401,7 @@ Singleton {
             ? SettingsHelpers.MODULE_IDS
             : name === "connected"
             ? ["ws", "media", "indicators", "clock", "weather", "notes", "updates", "gh",
-                "t3", "hermes", "usage", "tray", "notifications", "vol", "wifi", "bt", "batt", "control"]
+                "t3", "hermes", "tray", "notifications", "vol", "wifi", "bt", "batt", "control"]
             : ["ws", "media", "indicators", "clock", "weather", "notes", "updates", "tray",
                 "notifications", "vol", "wifi", "batt", "control"];
     }
@@ -453,8 +450,6 @@ Singleton {
         }
         migrationPending = false;
         resetSnapshot = { mods: SettingsHelpers.clone(mods), modOpts: SettingsHelpers.clone(modOpts) };
-        if (id === "usage")
-            resetSnapshot.pollMax = pollMax;
         resetLabel = label || "Widget";
         const next = { left: [], center: [], right: [] };
         for (const col of ["left", "center", "right"])
@@ -465,8 +460,6 @@ Singleton {
         if (options[id] !== undefined)
             options[id] = SettingsHelpers.clone(defaults.modOpts[id]);
         modOpts = SettingsHelpers.normalizeModOpts(options);
-        if (id === "usage")
-            pollMax = defaults.pollMax;
         announcement = resetLabel + " reset. Undo available for eight seconds.";
         resetTimer.restart();
     }
@@ -477,8 +470,7 @@ Singleton {
         const entry = ["left", "center", "right"]
             .map(col => mods[col].find(m => m.id === id)).find(m => m !== undefined);
         return (entry !== undefined && entry.detail !== "auto")
-            || JSON.stringify(modOpts[id]) !== JSON.stringify(defaults.modOpts[id])
-            || (id === "usage" && pollMax !== defaults.pollMax);
+            || JSON.stringify(modOpts[id]) !== JSON.stringify(defaults.modOpts[id]);
     }
 
     function resetSection(section, label) {
@@ -836,7 +828,6 @@ Singleton {
     onUnitChanged: scheduleSave()
     onWarmthChanged: scheduleSave()
     onOsdChanged: scheduleSave()
-    onPollMaxChanged: scheduleSave()
     onNightLightChanged: scheduleSave()
     onIdleLockMinsChanged: scheduleSave()
     onIdleScreenOffMinsChanged: scheduleSave()

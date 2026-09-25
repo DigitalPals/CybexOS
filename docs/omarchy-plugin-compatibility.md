@@ -169,6 +169,29 @@ restores the native bar and exposes an error. Top, bottom, left and right are
 supported by the tested upstream replacement; position is its configuration,
 not a change to Cybex's native bar preference.
 
+## Default plugins
+
+With the `connected_widgets` feature (the installer default), the desktop role
+provides `digitalpals.model-usage`, the
+[Model Usage](https://github.com/DigitalPals/omarchy-modelusage) widget. It
+replaced the built-in Model usage widget in settings schema 25. The role runs
+`user-plugins.py provide`, which clones the package at
+`model_usage_plugin_commit` (`inventory/group_vars/all.yml`) and enables it at
+the start of the right section, before the built-in widgets.
+
+This happens only when `plugins.json` has no entry for the package. Once it
+does, whether the package is enabled, disabled or removed, later deployments
+leave it alone. A checkout already in the plugin directory is adopted as it
+is. The clone keeps its tracking branch, so `cybex plugin update
+digitalpals.model-usage` fast-forwards it from the pin. To move the default,
+update the pin; existing installs keep their own revision.
+
+The retired widget's quota cache (`~/.cache/quickshell/model-usage.json`) is
+deleted on deployment. Proxy management keys that it saved under
+`~/.local/state/quickshell/model-usage-*.key` are left in place. The plugin
+keeps its own credentials, so delete those files yourself if you no longer
+need them.
+
 ## Host contract
 
 | Area | Implemented behavior |

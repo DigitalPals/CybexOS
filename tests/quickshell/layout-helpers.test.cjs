@@ -28,7 +28,7 @@ test("the clock pill and the status pill group per the edge-drawer design", () =
     assert.equal(agentGroup.kind, "chip");
     assert.ok(!SettingsHelpers.groupFilled("chip"));
     assert.deepEqual(agentGroup.items.map(item => item.entry.id),
-        ["gh", "t3", "hermes", "usage"]);
+        ["gh", "t3", "hermes"]);
     // Notifications and the four status glyphs share one filled pill; each keeps its own
     // pointer target inside it (the pill is furniture, not a hit area).
     const statusGroup = right.find(group =>
@@ -163,8 +163,8 @@ test("narrow bars overflow low-priority modules but retain core status", () => {
     assert.ok(result.overflow.includes("media") || result.overflow.includes("gh"));
     for (const critical of ["ws", "clock", "wifi", "batt"])
         assert.equal(result.overflow.includes(critical), false);
-    assert.deepEqual(H.OVERFLOW_ORDER.slice(0, 6),
-        ["media", "updates", "gh", "t3", "hermes", "usage"]);
+    assert.deepEqual(H.OVERFLOW_ORDER.slice(0, 5),
+        ["media", "updates", "gh", "t3", "hermes"]);
 });
 
 test("asymmetric center extents pin the clock while actions reveal on its left", () => {

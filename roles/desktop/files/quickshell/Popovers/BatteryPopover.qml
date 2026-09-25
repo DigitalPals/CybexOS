@@ -226,7 +226,7 @@ Surface {
         }
     }
 
-    // Match the model-usage meter. Only a discharging battery enters warning
+    // Only a discharging battery enters warning
     // colours; active charging adds a low-amplitude pulse over the accent.
     BlockMeter {
         id: chargeMeter

@@ -17,7 +17,6 @@ singleton Popouts Popouts.qml
 singleton Screens Screens.qml
 singleton Launcher Launcher.qml
 singleton LauncherProviders LauncherProviders.qml
-singleton Usage Usage.qml
 singleton T3Code T3Code.qml
 singleton T3Connection T3Connection.qml
 singleton T3Rpc T3Rpc.qml

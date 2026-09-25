@@ -79,7 +79,7 @@ test("the module id space and the panel space account for each other", () => {
 
 test("every panel the bar claims is a registry panel", () => {
     // Modules declare ownership as `panelName: "x"` on a BarIcon/BarChip/
-    // T3Chip/UsageChips; the primitive turns that into the registerPanel
+    // T3Chip; the primitive turns that into the registerPanel
     // call, the held state and the hover/click wiring.
     const registered = [...claimedPanels()];
     assert.ok(registered.length > 0, "no panelName declarations found — did Bar/Modules/ move?");
@@ -280,7 +280,7 @@ test("every drawer name carries a tab and the strip can route to each tab", () =
         assert.ok(typeof panel.tab === "string" && panel.tab !== "",
             `${panel.name} names no drawer tab`);
     }
-    const tabs = ["overview", "sound", "network", "bluetooth", "power", "notifications", "usage"];
+    const tabs = ["overview", "sound", "network", "bluetooth", "power", "notifications"];
     assert.deepEqual([...new Set(drawerPanels.map(p => p.tab))].sort(),
         [...tabs].sort());
     for (const tab of tabs) {
@@ -327,8 +327,7 @@ test("names sharing one view switch the front slot in place, never cross-fade a 
 
 test("panelName is what actually drives the panel wiring", () => {
     // Otherwise the assertions above would pass against a dead property.
-    for (const file of ["Bar/BarIcon.qml", "Bar/BarChip.qml",
-                        "Bar/UsageChips.qml"]) {
+    for (const file of ["Bar/BarIcon.qml", "Bar/BarChip.qml"]) {
         const src = read(file);
         assert.match(src, /property string panelName/, `${file} must accept panelName`);
         assert.match(src, /host\.registerPanel\(panelName/, `${file} must register it`);
@@ -343,10 +342,6 @@ test("a primitive that registers a panel also opens it", () => {
     // The half that registration does not cover: a chip whose own click is
     // unwired looks dead. T3Chip shipped that way once — it registered,
     // derived held, and did nothing when clicked.
-    //
-    // UsageChips is the exception, and the test below pins it as the only
-    // one: its per-provider clicks select a provider or close, which the
-    // generic toggle cannot express, so Usage.qml wires those at the module.
     for (const file of ["Bar/BarIcon.qml", "Bar/BarChip.qml"]) {
         const src = read(file);
         assert.match(src, /host\.togglePopout\(\s*(root\.)?panelName/,
@@ -355,8 +350,6 @@ test("a primitive that registers a panel also opens it", () => {
 });
 
 test("no bar module hand-wires a panel the primitive already owns", () => {
-    // One exception, commented as such: the usage module's per-provider clicks
-    // select a provider or close, which the generic toggle cannot express.
     const bar = barSources();
     for (const call of ["registerPanel", "unregisterPanel", "togglePopout"]) {
         assert.doesNotMatch(bar, new RegExp(`barWindow\\.${call}\\(`),

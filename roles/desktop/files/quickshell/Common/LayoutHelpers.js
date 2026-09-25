@@ -3,13 +3,13 @@
 // Which module gives up its detail text first when the bar runs out of room.
 // Notification/update counts and other expendable labels give way before
 // weather conditions, while the clock's own date remains a late resort.
-var COMPACT_ORDER = ["media", "updates", "notifications", "t3", "hermes", "usage", "gh",
+var COMPACT_ORDER = ["media", "updates", "notifications", "t3", "hermes", "gh",
     "weather", "clock", "vol", "batt"];
-var OVERFLOW_ORDER = ["media", "updates", "gh", "t3", "hermes", "usage",
+var OVERFLOW_ORDER = ["media", "updates", "gh", "t3", "hermes",
     "weather", "tray", "bt", "notifications", "indicators"];
 
 // Consecutive modules that draw the same way share one layout group: the
-// T3/Hermes/usage/GitHub chips retain their ordering and separator contract. "solo"
+// T3/Hermes/GitHub chips retain their ordering and separator contract. "solo"
 // modules bring their own pill and never merge, so two of them in a row stay
 // two independent pointer targets.
 //

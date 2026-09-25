@@ -38,8 +38,6 @@ Singleton {
         if (root.hermesOn && HermesConnection.state === "offline"
                 && HermesConnection.connectionError !== "")
             issues.push("Hermes: " + HermesConnection.connectionError);
-        if (Usage.fetchError !== "")
-            issues.push("Usage: " + Usage.fetchError);
         if (GitHub.inboxError !== "")
             issues.push("GitHub: " + GitHub.inboxError);
         return issues;
