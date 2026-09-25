@@ -13,6 +13,9 @@
 - name: Apply the shared account policy
   ansible.builtin.import_tasks: accounts.yml
 
+- name: Resolve .local names through multicast DNS
+  ansible.builtin.import_tasks: mdns.yml
+
 - name: Apply the shared workstation firewall
   ansible.builtin.template:
     src: cybexos-zone.xml.j2
@@ -36,11 +39,23 @@
     - not cybexos_offline | bool
     - image_firewall is changed
 
-- name: Enable feature-selected image services
+- name: Enable Tailscale when selected
   ansible.builtin.systemd_service:
-    name: "{{ item.unit }}"
+    name: tailscaled.service
     enabled: true
-  loop:
-    - { unit: docker.socket, feature: docker }
-    - { unit: tailscaled.service, feature: tailscale }
-  when: features[item.feature] | bool
+  when: features.tailscale | bool
+
+- name: Start Docker on demand
+  ansible.builtin.import_tasks: docker-activation.yml
+
+# Earlier images enabled docker.service at boot from the kickstart whatever
+# the saved feature choice. The image installs Docker itself, so repair owns
+# that boot-time start even when the feature is off.
+- name: Stop starting a deselected Docker at boot
+  ansible.builtin.systemd_service:
+    name: docker.service
+    enabled: false
+  failed_when: false
+  when:
+    - not features.docker | bool
+    - not ansible_check_mode

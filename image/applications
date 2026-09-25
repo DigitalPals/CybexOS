@@ -51,8 +51,11 @@ def package_names():
     defaults = yaml.safe_load((ROOT / "roles/apps/defaults/main.yml").read_text())
     baseline = yaml.safe_load((ROOT / "roles/base/defaults/main.yml").read_text())
     packages = list(baseline["base_required_packages"])
-    for key in ("apps_required_fedora_packages", "apps_omawrite_packages", "apps_developer_fedora_packages",
-                "apps_podman_packages", "apps_steam_packages"):
+    # The workstation skips unavailable optional packages at converge time.
+    # The compose has no --ignoremissing, so one Fedora drops fails the build
+    # visibly instead of shipping an image that silently lacks it.
+    for key in ("apps_required_fedora_packages", "apps_optional_fedora_packages", "apps_omawrite_packages",
+                "apps_developer_fedora_packages", "apps_podman_packages", "apps_steam_packages"):
         packages.extend(defaults[key])
     for path, names in PACKAGE_TASKS:
         for task in yaml.safe_load((ROOT / path).read_text()):

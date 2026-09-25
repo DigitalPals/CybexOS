@@ -124,6 +124,25 @@ class OfflineApplications(unittest.TestCase):
         self.assertIn("com.spotify.Client", flatpaks)
         self.assertIn("net.davidotek.pupgui2", flatpaks)
 
+    def test_image_selects_packages_fedora_installs_only_as_weak_dependencies(self):
+        # The compose disables weak dependencies; the workstation gets these
+        # implicitly, so both paths must name them.
+        packages, _ = applications.package_names()
+        for package in ("pinentry-gnome3", "fwupd-efi", "libcamera", "libcamera-ipa",
+                        "pipewire-plugin-libcamera", "nss-mdns", "hunspell-en", "bzip2", "7zip",
+                        "cifs-utils", "kernel-tools", "docker-buildx", "ibus-setup",
+                        "intel-compute-runtime", "igt-gpu-tools"):
+            self.assertIn(package, packages)
+
+    def test_kickstart_leaves_docker_on_demand_and_resolves_local_names(self):
+        source = (ROOT / "live.ks").read_text()
+        services = next(line for line in source.splitlines() if line.startswith("services "))
+        enabled = services.split("--enabled=", 1)[1].split()[0].split(",")
+        self.assertNotIn("docker", enabled)
+        self.assertIn("NetworkManager", enabled)
+        authselect = next(line for line in source.splitlines() if line.startswith("authselect "))
+        self.assertIn("with-mdns4", authselect.split())
+
     def test_offline_seed_is_portable_and_preserves_user_files(self):
         with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {}, clear=True):
             root = Path(temporary)

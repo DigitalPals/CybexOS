@@ -29,3 +29,41 @@
     path: /etc/sudoers.d/10-wheel-nopasswd
     state: absent
   when: not passwordless_wheel | bool
+
+- name: Configure active local wheel Polkit authorization
+  ansible.builtin.copy:
+    dest: /etc/polkit-1/rules.d/49-wheel-local.rules
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      polkit.addRule(function(action, subject) {
+        if (subject.isInGroup("wheel") && subject.active && subject.local) {
+          return polkit.Result.YES;
+        }
+      });
+  when: passwordless_local_polkit | bool
+
+- name: Revoke passwordless local Polkit authorization when disabled
+  ansible.builtin.file:
+    path: /etc/polkit-1/rules.d/49-wheel-local.rules
+    state: absent
+  when: not passwordless_local_polkit | bool
+
+# Lingering starts the user's systemd manager at boot, so user services run
+# before the first login. Anaconda's offline target has no logind; the marker
+# file is all loginctl enable-linger persists.
+- name: Enable user lingering
+  ansible.builtin.command: "loginctl enable-linger {{ primary_user }}"
+  args:
+    creates: "/var/lib/systemd/linger/{{ primary_user }}"
+  when: not cybexos_offline | default(false) | bool
+
+- name: Enable user lingering in the offline installation target
+  ansible.builtin.copy:
+    dest: "/var/lib/systemd/linger/{{ primary_user }}"
+    content: ""
+    owner: root
+    group: root
+    mode: "0644"
+  when: cybexos_offline | default(false) | bool

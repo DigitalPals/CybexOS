@@ -104,6 +104,7 @@ apps_developer_fedora_packages:
 
 # Hardware diagnostics may be unavailable on a Fedora release. Applications
 # belong in the required list so an incomplete install cannot silently succeed.
+# The image composes these strictly; move one out when Fedora drops it.
 apps_optional_fedora_packages:
   - intel-compute-runtime
   - igt-gpu-tools

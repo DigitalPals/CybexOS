@@ -127,6 +127,9 @@
 - name: Install the shared workstation package baseline
   ansible.builtin.import_tasks: packages.yml
 
+- name: Resolve .local names through multicast DNS
+  ansible.builtin.import_tasks: mdns.yml
+
 - name: Install transactional Btrfs recovery helper
   ansible.builtin.copy:
     src: cybexos-system-snapshot
@@ -200,6 +203,9 @@
 - name: Install Docker packages when selected
   ansible.builtin.dnf:
     name:
+      # Modern `docker build` delegates to BuildKit through the buildx plugin,
+      # which Fedora installs only as a weak dependency.
+      - docker-buildx
       - docker-compose
       - moby-engine
     state: present
@@ -210,6 +216,7 @@
 - name: Remove CybexOS-owned Docker packages when deselected
   ansible.builtin.dnf:
     name:
+      - docker-buildx
       - docker-compose
       - moby-engine
     state: absent
@@ -218,26 +225,8 @@
     - not features.docker | bool
     - base_docker_marker.stat.exists
 
-# Socket activation starts dockerd, and with it containerd, on the first
-# client request instead of keeping both resident and waking while idle.
-- name: Enable Docker socket activation when requested
-  ansible.builtin.systemd_service:
-    name: docker.socket
-    enabled: true
-    state: started
-  when:
-    - features.docker | bool
-    - not ansible_check_mode
-
-# Only the boot-time start is dropped; a daemon already running is left alone
-# rather than stopping its containers in the middle of a converge.
-- name: Start Docker on demand rather than at boot
-  ansible.builtin.systemd_service:
-    name: docker.service
-    enabled: false
-  when:
-    - features.docker | bool
-    - not ansible_check_mode
+- name: Start Docker on demand
+  ansible.builtin.import_tasks: docker-activation.yml
 
 - name: Set hostname
   ansible.builtin.hostname:
@@ -445,31 +434,6 @@
   when:
     - not features.docker | bool
     - base_docker_marker.stat.exists
-
-- name: Enable user lingering
-  ansible.builtin.command: "loginctl enable-linger {{ primary_user }}"
-  args:
-    creates: "/var/lib/systemd/linger/{{ primary_user }}"
-
-- name: Configure active local wheel Polkit authorization
-  ansible.builtin.copy:
-    dest: /etc/polkit-1/rules.d/49-wheel-local.rules
-    owner: root
-    group: root
-    mode: "0644"
-    content: |
-      polkit.addRule(function(action, subject) {
-        if (subject.isInGroup("wheel") && subject.active && subject.local) {
-          return polkit.Result.YES;
-        }
-      });
-  when: passwordless_local_polkit | bool
-
-- name: Revoke passwordless local Polkit authorization when disabled
-  ansible.builtin.file:
-    path: /etc/polkit-1/rules.d/49-wheel-local.rules
-    state: absent
-  when: not passwordless_local_polkit | bool
 
 - name: Schedule weekly Btrfs scrubs
   ansible.builtin.import_tasks: btrfs-scrub.yml

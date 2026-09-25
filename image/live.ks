@@ -4,10 +4,13 @@ lang en_US.UTF-8
 keyboard us
 timezone UTC --utc
 rootpw --lock
-authselect select sssd with-silent-lastlog --force
+# with-mdns4 lets nss-mdns resolve .local names, matching the workstation.
+authselect select sssd with-silent-lastlog with-mdns4 --force
 selinux --enforcing
 firewall --enabled
-services --enabled=NetworkManager,sddm,firewalld,bluetooth,docker,tailscaled --disabled=sshd
+# Docker is socket-activated on demand by roles/base/tasks/docker-activation.yml,
+# as on the workstation, rather than started at boot.
+services --enabled=NetworkManager,sddm,firewalld,bluetooth,tailscaled --disabled=sshd
 bootloader --timeout=5 --append="quiet rhgb"
 part / --size=61440 --fstype=ext4
 

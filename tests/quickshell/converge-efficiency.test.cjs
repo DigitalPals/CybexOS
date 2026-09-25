@@ -159,13 +159,16 @@ test("pinned single-file fonts are verified in one pass", () => {
 });
 
 test("Docker starts through its socket instead of at boot", () => {
+    // Shared with installed-image provisioning; the workstation imports it.
     const base = read("roles/base/tasks/main.yml");
-    assert.match(task(base, "Enable Docker socket activation when requested"),
-        /name: docker\.socket\s+enabled: true\s+state: started/);
-    const service = task(base, "Start Docker on demand rather than at boot");
+    assert.match(task(base, "Start Docker on demand"), /import_tasks: docker-activation\.yml/);
+    const activation = read("roles/base/tasks/docker-activation.yml");
+    assert.match(task(activation, "Enable Docker socket activation when requested"),
+        /name: docker\.socket\s+enabled: true\s+state: .*'started'/);
+    const service = task(activation, "Start Docker on demand rather than at boot");
     assert.match(service, /name: docker\.service\s+enabled: false/);
     assert.doesNotMatch(service, /state:/, "a running daemon must not be stopped mid-converge");
-    assert.doesNotMatch(base, /name: docker\.service\s+enabled: true/);
+    assert.doesNotMatch(base + activation, /name: docker\.service\s+enabled: true/);
 });
 
 test("the weekly Btrfs scrub waits for AC power and stays in the background", () => {

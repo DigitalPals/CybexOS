@@ -148,12 +148,60 @@ class InstalledPolicy(unittest.TestCase):
         repositories.read(ROOT / 'image/build.repo')
         self.assertTrue(repositories['fedora-cisco-openh264'].getboolean('gpgcheck'))
 
+    def test_installed_images_share_the_workstation_account_and_service_policy(self):
+        tasks_dir = ROOT / 'roles/base/tasks'
+
+        def flatten(name):
+            for task in yaml.safe_load((tasks_dir / name).read_text()):
+                if 'ansible.builtin.import_tasks' in task:
+                    yield from flatten(task['ansible.builtin.import_tasks'])
+                else:
+                    yield task
+
+        # The workstation and installed images apply the same task files.
+        for entry in ('main.yml', 'image.yml'):
+            imported = {task['ansible.builtin.import_tasks'] for task in yaml.safe_load((tasks_dir / entry).read_text())
+                        if 'ansible.builtin.import_tasks' in task}
+            self.assertTrue({'accounts.yml', 'mdns.yml', 'docker-activation.yml'}.issubset(imported), entry)
+        image = {task['name']: task for task in flatten('image.yml')}
+        workstation = {task['name']: task for task in flatten('main.yml')}
+        for name in ('Enable user lingering', 'Enable user lingering in the offline installation target',
+                     'Configure active local wheel Polkit authorization',
+                     'Revoke passwordless local Polkit authorization when disabled',
+                     'Enable Docker socket activation when requested', 'Start Docker on demand rather than at boot',
+                     'Enable multicast DNS host resolution'):
+            self.assertIn(name, image)
+            self.assertEqual(image[name], workstation[name])
+        # Anaconda's target has no logind: write the marker loginctl would.
+        online = image['Enable user lingering']
+        self.assertIn('loginctl enable-linger', online['ansible.builtin.command'])
+        self.assertIn('not cybexos_offline', online['when'])
+        offline = image['Enable user lingering in the offline installation target']['ansible.builtin.copy']
+        self.assertEqual((offline['dest'], offline['owner'], offline['mode']),
+                         ('/var/lib/systemd/linger/{{ primary_user }}', 'root', '0644'))
+        self.assertEqual(image['Configure active local wheel Polkit authorization']['when'],
+                         'passwordless_local_polkit | bool')
+        inventory = yaml.safe_load((ROOT / 'inventory/group_vars/all.yml').read_text())
+        self.assertIs(inventory['passwordless_local_polkit'], False)
+        self.assertEqual(image['Start Docker on demand rather than at boot']['ansible.builtin.systemd_service'],
+                         {'name': 'docker.service', 'enabled': False})
+        self.assertFalse(any(task.get('ansible.builtin.systemd_service', {}).get('name') == 'docker.service'
+                             and task['ansible.builtin.systemd_service'].get('enabled') is True
+                             for task in image.values()))
+        # authselect keeps a custom profile: only an existing feature is added.
+        mdns = image['Enable multicast DNS host resolution']
+        self.assertEqual(mdns['ansible.builtin.command']['argv'], ['authselect', 'enable-feature', 'with-mdns4'])
+        self.assertIn("'with-mdns4' not in base_authselect_current.stdout.split()", mdns['when'])
+        self.assertFalse(any('select' in task.get('ansible.builtin.command', {}).get('argv', [])
+                             for task in image.values() if isinstance(task.get('ansible.builtin.command'), dict)))
+
     def test_repair_payload_uses_shared_sources_and_hardware_detection(self):
         with tempfile.TemporaryDirectory() as temporary:
             payload = Path(temporary)
             repair.prepare(payload)
             provision = payload / 'usr/share/cybexos/provision'
-            for relative in ('roles/base/tasks/accounts.yml', 'roles/xps-2026/tasks/camera.yml',
+            for relative in ('roles/base/tasks/accounts.yml', 'roles/base/tasks/mdns.yml',
+                             'roles/base/tasks/docker-activation.yml', 'roles/xps-2026/tasks/camera.yml',
                              'roles/dotfiles/files/fish-config.fish', 'roles/base/tasks/btrfs-scrub.yml',
                              'roles/apps/tasks/mpv.yml'):
                 self.assertEqual((provision / relative).read_bytes(), (ROOT / relative).read_bytes())

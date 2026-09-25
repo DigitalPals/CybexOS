@@ -1,0 +1,46 @@
+---
+# nss-mdns only takes part in host lookups once nsswitch.conf names it.
+# authselect owns that file, so enable the feature through the current
+# profile instead of selecting a profile over a customised configuration.
+- name: Read the current authselect profile
+  ansible.builtin.command:
+    argv: [authselect, current, --raw]
+  register: base_authselect_current
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Read the multicast DNS features the profile supports
+  ansible.builtin.command:
+    argv: [authselect, list-features, "{{ base_authselect_current.stdout.split()[0] }}"]
+  register: base_authselect_features
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when:
+    - base_authselect_current.rc == 0
+    - base_authselect_current.stdout | trim | length > 0
+
+# An existing IPv4 or IPv6 multicast choice is kept as configured.
+- name: Enable multicast DNS host resolution
+  ansible.builtin.command:
+    argv: [authselect, enable-feature, with-mdns4]
+  register: base_authselect_mdns
+  changed_when: base_authselect_mdns.rc == 0
+  failed_when: false
+  when:
+    - not ansible_check_mode
+    - base_authselect_current.rc == 0
+    - "'with-mdns4' in (base_authselect_features.stdout_lines | default([]))"
+    - "'with-mdns4' not in base_authselect_current.stdout.split()"
+    - "'with-mdns6' not in base_authselect_current.stdout.split()"
+
+- name: Report a multicast DNS feature authselect refused
+  ansible.builtin.debug:
+    msg: >-
+      authselect could not enable with-mdns4, so .local names do not resolve.
+      Diagnose with 'authselect check' before retrying.
+      {{ base_authselect_mdns.stderr | default('') }}
+  when:
+    - base_authselect_mdns is not skipped
+    - base_authselect_mdns.rc | default(0) != 0

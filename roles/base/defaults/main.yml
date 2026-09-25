@@ -5,6 +5,8 @@ base_required_packages:
 - alsa-ucm
 - alsa-utils
 - avahi
+# Resolves .local names; authselect's with-mdns4 feature enables it.
+- nss-mdns
 - bash-completion
 - bluez
 - btrfs-progs
@@ -14,6 +16,8 @@ base_required_packages:
 - fish
 - flatpak
 - fwupd
+# UEFI capsule updates for cybexos-firmware-update.
+- fwupd-efi
 - gvfs
 - gvfs-fuse
 - mokutil
@@ -21,6 +25,10 @@ base_required_packages:
 - pipewire
 - pipewire-alsa
 - pipewire-pulseaudio
+# PipeWire's camera path for browsers and the camera portal.
+- libcamera
+- libcamera-ipa
+- pipewire-plugin-libcamera
 - policycoreutils-python-utils
 - polkit
 - powertop
@@ -91,13 +99,23 @@ base_required_packages:
 - ibus-hangul
 - ibus-libpinyin
 - ibus-m17n
+- ibus-setup
 - ibus-typing-booster
 - orca
 - speech-dispatcher
+# GnuPG's passphrase prompt; the GNOME variant uses gcr and works under
+# Hyprland. GnuPG has no pinentry at all without it.
+- pinentry-gnome3
+# English spell-check dictionary for GTK and Qt applications.
+- hunspell-en
 # Command-line tools.
+- 7zip
 - bc
 - bind-utils
+- bzip2
+- cifs-utils
 - compsize
+- kernel-tools
 - man-pages
 - mtr
 - nmap-ncat
