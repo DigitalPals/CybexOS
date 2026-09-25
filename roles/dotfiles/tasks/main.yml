@@ -736,14 +736,58 @@
   changed_when: false
   tags: [browser]
 
-- name: Prefer dark GTK appearance
+# The shell owns the GTK appearance: scripts/theme_gtk.py sets these keys from
+# its mode and accent whenever they change. It only ever writes prefer-dark or
+# prefer-light and the adw-gtk3 pair, so a key still at its schema default has
+# never been chosen; only such keys get the dark default the first session
+# shows until the shell applies its own. A re-converge never overrides a choice.
+- name: Default GTK to dark until the shell applies its appearance
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.command: dbus-run-session gsettings set org.gnome.desktop.interface color-scheme prefer-dark
-  changed_when: false
+  ansible.builtin.shell: |
+    set -euo pipefail
+    schema=org.gnome.desktop.interface
+    # dconf writes go through a session bus, which Ansible does not have.
+    gs() { dbus-run-session -- gsettings "$@"; }
+    if [[ $(gs get "$schema" color-scheme) == "'default'" ]]; then
+      gs set "$schema" color-scheme prefer-dark
+      printf 'CHANGED: color-scheme prefer-dark\n'
+    fi
+    if [[ $(gs get "$schema" gtk-theme) == "'Adwaita'" ]]; then
+      gs set "$schema" gtk-theme adw-gtk3-dark
+      printf 'CHANGED: gtk-theme adw-gtk3-dark\n'
+    fi
+  args:
+    executable: /bin/bash
+  register: dotfiles_gtk_default
+  changed_when: "'CHANGED:' in dotfiles_gtk_default.stdout"
   when:
     - manage_personal_dotfiles | bool
     - not ansible_check_mode
+
+# environment.d used to pin GTK_THEME, which overrides gtk-theme for GTK 3 and
+# forces libadwaita's stylesheet, so no mode change could reach either. The
+# lingering user manager read it when it started and hands it to the shell and
+# everything the shell launches; drop that value so the next shell start (a
+# re-login) follows gsettings without waiting for a reboot. A GTK_THEME of the
+# user's own, with any other value, is left alone.
+- name: Drop the retired GTK_THEME pin from the running user manager
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.shell: |
+    set -euo pipefail
+    manager_env=$(systemctl --user show-environment 2>/dev/null) || exit 0
+    if grep -qx 'GTK_THEME=adw-gtk3-dark' <<<"$manager_env"; then
+      systemctl --user unset-environment GTK_THEME
+      printf 'CHANGED: unset GTK_THEME\n'
+    fi
+  args:
+    executable: /bin/bash
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+  register: dotfiles_gtk_theme_pin
+  changed_when: "'CHANGED:' in dotfiles_gtk_theme_pin.stdout"
+  when: not ansible_check_mode
 
 - name: Check whether Neovim configuration already exists
   ansible.builtin.stat:

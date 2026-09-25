@@ -9,7 +9,6 @@ BROWSER={{ (features.proprietary_apps | bool) | ternary('brave-origin-stable', '
 TERMINAL=kitty
 MOZ_ENABLE_WAYLAND=1
 QT_QPA_PLATFORM=wayland
-GTK_THEME=adw-gtk3-dark
 {% if features.developer_tools | bool %}
 RUSTC_WRAPPER=sccache
 CARGO_INCREMENTAL=0
