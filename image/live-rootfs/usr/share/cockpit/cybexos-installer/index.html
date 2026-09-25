@@ -38,7 +38,8 @@
       <p class="hint">Use at least 12 characters. Your chosen layout will also be used at the boot unlock screen.</p>
       <details><summary>Language and computer details</summary>
         <label>System language<select id="locale"></select></label>
-        <label>Timezone<input id="timezone" required placeholder="Europe/Amsterdam"></label>
+        <label>Timezone<select id="timezone" required></select></label>
+        <p id="timezone-status" class="hint" role="status"></p>
         <label>Computer name<input id="hostname" value="cybexos" required maxlength="63"></label>
       </details>
       <footer><button type="submit" class="primary">Choose install location →</button></footer>

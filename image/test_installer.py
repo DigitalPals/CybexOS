@@ -41,6 +41,7 @@ CHOICES = dict(
     locales=["en_US.UTF-8", "nl_NL.UTF-8"],
     locale="en_US.UTF-8",
     keyboard="us",
+    timezones=["Europe/Amsterdam", "UTC"],
     timezone="UTC",
 )
 ACCOUNT = dict(
@@ -447,13 +448,72 @@ class AdapterContractTests(unittest.TestCase):
             {"layout-id": "us", "description": "English"}
         ]
         localization._methods["GetCommonLocales"] = lambda: ["en_US.UTF-8"]
-        self.modules[("Timezone", "")]._values["Timezone"] = "UTC"
+        timezone = self.modules[("Timezone", "")]
+        timezone._values.update(Timezone="America/New_York", GeolocationResult={"territory": "", "timezone": ""})
+        timezone._methods["GetAllValidTimezones"] = lambda: {
+            "America": ["New_York"], "Europe": ["Amsterdam", "Berlin"]
+        }
         self.modules[("Payloads", "")] = StrictProxy(
             methods={"CalculateRequiredSpace": lambda: 70 * 1024**3}
         )
         inventory = self.adapter.inventory()
         self.assertEqual([item["name"] for item in inventory["disks"]], ["vda"])
         self.assertEqual(inventory["required_bytes"], 70 * 1024**3)
+        self.assertEqual(
+            inventory["timezones"], ["America/New_York", "Europe/Amsterdam", "Europe/Berlin", "UTC"]
+        )
+        self.assertEqual((inventory["timezone"], inventory["detected_timezone"]), ("America/New_York", ""))
+        # A geolocation result that arrived after Anaconda's startup wait is preselected.
+        timezone.GeolocationResult = {"territory": "NL", "timezone": "Europe/Amsterdam"}
+        inventory = self.adapter.inventory()
+        self.assertEqual((inventory["timezone"], inventory["detected_timezone"]),
+                         ("Europe/Amsterdam", "Europe/Amsterdam"))
+        timezone.GeolocationResult = {"territory": "", "timezone": "Mars/Olympus"}
+        timezone.Timezone = "Mars/Olympus"
+        inventory = self.adapter.inventory()
+        self.assertEqual((inventory["timezone"], inventory["detected_timezone"]), ("UTC", ""))
+
+    def test_geolocation_runs_only_without_an_earlier_result(self):
+        timezone = self.modules[("Timezone", "")]
+        timezone._values["GeolocationResult"] = {"territory": "", "timezone": ""}
+
+        def start():
+            self.calls.append(("geolocate",))
+            return "/geolocation"
+
+        timezone._methods["StartGeolocationWithTask"] = start
+        tasks = []
+
+        def task(module, path, result=False, timeout=300):
+            tasks.append((module, path))
+            timezone.GeolocationResult = {"territory": "NL", "timezone": "Europe/Amsterdam"}
+
+        self.adapter.task = task
+        self.assertEqual(self.adapter.geolocate(), {"timezone": "Europe/Amsterdam"})
+        self.assertEqual(tasks, [("Timezone", "/geolocation")])
+        self.assertEqual(self.adapter.geolocate(), {"timezone": "Europe/Amsterdam"})
+        self.assertEqual(self.calls, [("geolocate",)])
+
+    def test_plan_check_ignores_anaconda_action_reordering(self):
+        actions = [
+            {"action-type": "create", "device-name": "vda1", "attrs": {"mount-point": "/boot/efi"}},
+            {"action-type": "create", "device-name": "vda2", "attrs": {"mount-point": "/boot"}},
+            {"action-type": "create", "device-name": "vda3", "attrs": {"mount-point": ""}},
+        ]
+        state = {"partitioning": "/partitioning", "disk": DISK, "actions": actions}
+        self.modules[("Storage", "/DiskSelection")].SelectedDisks = ["vda"]
+        tree = self.modules[("Storage", "/DeviceTree")]
+        # GetActions() re-sorts in place; blivet's tsort reverses independent actions.
+        tree._methods["GetActions"] = lambda: list(reversed(actions))
+        self.adapter.check_plan(state)
+        tree._methods["GetActions"] = lambda: actions[:2]
+        with self.assertRaises(backend.Invalid):
+            self.adapter.check_plan(state)
+        changed = copy.deepcopy(actions)
+        changed[2]["device-name"] = "vdb3"
+        tree._methods["GetActions"] = lambda: changed
+        with self.assertRaises(backend.Invalid):
+            self.adapter.check_plan(state)
 
     def test_task_finish_is_checked_after_stopped_and_before_result(self):
         events = []

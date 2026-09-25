@@ -15,6 +15,8 @@ qualified until the opt-in installation tests pass.
 
 1. **Your setup:** select a keyboard, test it, and enter username/password twice.
    Language, timezone, and hostname are available under an expandable section.
+   The timezone is a dropdown of Anaconda's valid timezones, preselected from
+   Anaconda's geolocation (Fedora's GeoIP service) unless the user chose one.
 2. **Install location:** choose a disk. The default is automatic Btrfs with
    LUKS2 encryption. The full disk is erased only after the final confirmation.
    The advanced section can disable encryption or open the stock Anaconda Web
@@ -110,7 +112,8 @@ guards or invoke a real installation.
 
 | Command | Input | Result |
 | --- | --- | --- |
-| `inventory` | `{}` | Available disks, layouts, locales, timezone, payload space requirement |
+| `inventory` | `{}` | Available disks, layouts, locales, timezones and any detected one, payload space requirement |
+| `geolocate` | `{}` | Timezone from Anaconda's geolocation task, or empty; changes no selection |
 | `keyboard` | `{"keyboard":"us"}` | Applied live keyboard and boot keymap |
 | `plan` | Account fields below | Review token, disk identity, account policy, disk actions, warnings |
 | `install` | Token, disk, explicit erase confirmation | Starts the independent worker and returns `phase: installing` |
@@ -127,8 +130,11 @@ The final record is `{"event":"result","ok":true,"data":{…}}`, or
 `worker` is an internal systemd entry point and does not accept user settings.
 
 The review token expires after 30 minutes. Before installation, the controller
-rechecks disk identity, selected disks, applied partitioning, exact pending
-actions, and storage validation. It never retries a started install. A failed
+rechecks disk identity, selected disks, applied partitioning, the exact set of
+pending actions, and storage validation. The set is compared without order:
+`GetActions()` re-sorts blivet's list on every call, and its topological sort
+reverses independent actions each time. A rejected confirmation returns to disk
+selection. It never retries a started install. A failed
 worker or interrupted task requires diagnosis, and the state continues to
 block a replacement storage transaction. Status reads never overwrite worker
 progress or completion. The startup grace prevents a queued service from being

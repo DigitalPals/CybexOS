@@ -6,6 +6,7 @@ let initializing = true;
 let polling;
 let installationComplete = false;
 let appliedKeyboard = null;
+let timezoneChosen = false;
 
 function fail(error) {
     $("error").textContent = error.message || "The installer could not complete this operation.";
@@ -63,6 +64,34 @@ function options(id, values, selected) {
     }));
     if (selected) $(id).value = selected;
 }
+function timezoneOptions(zones, selected) {
+    const groups = new Map();
+    for (const zone of zones) {
+        const [region, ...place] = zone.split("/");
+        const option = document.createElement("option");
+        option.value = zone;
+        option.textContent = place.length ? place.join(" / ").replaceAll("_", " ") : zone;
+        if (!place.length) { groups.set(zone, option); continue; }
+        if (!groups.has(region)) {
+            const group = document.createElement("optgroup");
+            group.label = region;
+            groups.set(region, group);
+        }
+        groups.get(region).append(option);
+    }
+    $("timezone").replaceChildren(...groups.values());
+    $("timezone").value = selected;
+}
+function showDetectedTimezone(zone) {
+    $("timezone").value = zone;
+    $("timezone-status").textContent = "Detected from your network location.";
+}
+function detectTimezone(zones) {
+    // Geolocation waits for the network; never hold setup up for it.
+    call("geolocate").then(result => {
+        if (!timezoneChosen && zones.includes(result.timezone)) showDetectedTimezone(result.timezone);
+    }, () => {});
+}
 function waitForBackend() {
     return new Promise((resolve, reject) => {
         const ready = cockpit.file("/run/anaconda/backend_ready");
@@ -113,7 +142,9 @@ async function initialize() {
         const data = await call("inventory");
         options("keyboard", data.keyboards, data.keyboard);
         options("locale", data.locales, data.locale);
-        $("timezone").value = data.timezone;
+        timezoneOptions(data.timezones, data.timezone);
+        if (data.detected_timezone) showDetectedTimezone(data.detected_timezone);
+        else detectTimezone(data.timezones);
         options("disk", [{id: "", label: "Select a disk…"}, ...data.disks.map(disk => ({
             id: disk.name, label: `${disk.model} — ${(disk.size / 1024**3).toFixed(1)} GiB — ${disk.path}${disk.removable ? " (removable)" : ""}`
         }))]);
@@ -132,6 +163,10 @@ $("keyboard").addEventListener("change", () => {
         appliedKeyboard = result.keyboard;
         $("keyboard-status").textContent = `Keyboard applied. Boot unlock layout: ${result.boot_keyboard}.`;
     });
+});
+$("timezone").addEventListener("change", () => {
+    timezoneChosen = true;
+    $("timezone-status").textContent = "";
 });
 $("account-form").addEventListener("submit", event => {
     event.preventDefault();
@@ -174,10 +209,23 @@ $("install").addEventListener("click", () => {
     try { confirmation = wizard.confirmation($("erase").checked); } catch (error) { fail(error); return; }
     run("Installing CybexOS…", async () => {
         // Drop browser copies before the destructive transaction starts.
+        const entered = [$("password").value, $("confirm").value];
         $("password").value = ""; $("confirm").value = "";
         showProgress({phase: "installing"});
         try { showProgress(await call("install", confirmation, showProgress)); monitor(); }
-        catch (error) { showProgress(await call("status")); throw error; }
+        catch (error) {
+            const state = await call("status").catch(() => null);
+            if (state && !["installing", "complete", "failed-install"].includes(state.phase)) {
+                // Rejected before Anaconda started: this review is no longer valid.
+                // Nothing was written, so keep the entered passwords for a new review.
+                [$("password").value, $("confirm").value] = entered;
+                wizard.plan = null; wizard.page = "location";
+            } else if (state) {
+                showProgress(state);
+                if (state.phase === "installing") monitor();
+            }
+            throw error;
+        }
     });
 });
 $("advanced").addEventListener("click", () => run("Opening the full installer…", async () => {

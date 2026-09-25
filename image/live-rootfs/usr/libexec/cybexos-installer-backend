@@ -17,7 +17,6 @@ import secrets
 import sys
 import subprocess
 import time
-from zoneinfo import available_timezones
 
 RUNTIME = Path('/run/cybexos-installer')
 RESERVED = {'root', 'liveuser', 'bin', 'daemon', 'adm', 'mail', 'ftp', 'nobody',
@@ -56,8 +55,8 @@ def validate_account(data, choices):
     if locale not in choices['locales']:
         raise Invalid('Choose an available system language.')
     timezone = data.get('timezone', '')
-    if timezone not in available_timezones():
-        raise Invalid('Choose a valid timezone.')
+    if timezone not in choices['timezones']:
+        raise Invalid('Choose a timezone from the list.')
     hostname = data.get('hostname') or 'cybexos'
     if not isinstance(hostname, str) or not re.fullmatch(r'[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?', hostname):
         raise Invalid('The computer name must contain 1–63 letters, numbers or dashes.')
@@ -66,6 +65,15 @@ def validate_account(data, choices):
         raise Invalid('The encryption choice is invalid.')
     return dict(username=username, keyboard=keyboard, locale=locale, timezone=timezone,
                 hostname=hostname, encrypted=encrypted)
+
+
+def action_set(actions):
+    """Order-free comparison key for Anaconda's planned device actions.
+
+    DeviceTree.GetActions() re-sorts blivet's action list in place, and its
+    topological sort reverses the order of independent actions on each call.
+    """
+    return sorted(json.dumps(action, sort_keys=True) for action in actions)
 
 
 def fingerprint(disk):
@@ -233,6 +241,9 @@ class Installer:
         self.state.write(state)
         return state
 
+    def geolocate(self):
+        return self.backend.geolocate()
+
     def reset(self):
         self.require_idle()
         self.backend.reset()
@@ -295,11 +306,28 @@ class Anaconda:
         locales = list(localization.GetCommonLocales())
         if localization.Language and localization.Language not in locales:
             locales.append(localization.Language)
-        timezone = self.proxy('Timezone').Timezone or 'UTC'
+        timezone = self.proxy('Timezone')
+        timezones = sorted({f'{region}/{city}' for region, cities in plain(timezone.GetAllValidTimezones()).items()
+                            for city in cities} | {'UTC'})
+        # Anaconda geolocates at startup but applies the result only if it
+        # arrives within seconds; a later result is still recorded here.
+        detected = plain(timezone.GeolocationResult).get('timezone', '')
+        detected = detected if detected in timezones else ''
+        selected = detected or timezone.Timezone
         return dict(disks=disks, keyboards=keyboard_choices, locales=locales,
                     locale=localization.Language or 'en_US.UTF-8',
-                    keyboard=(list(localization.XLayouts) or ['us'])[0], timezone=timezone,
+                    keyboard=(list(localization.XLayouts) or ['us'])[0],
+                    timezones=timezones, timezone=selected if selected in timezones else 'UTC',
+                    detected_timezone=detected,
                     required_bytes=int(self.proxy('Payloads').CalculateRequiredSpace()))
+
+    def geolocate(self):
+        """Look up the timezone once the network is up. Selects nothing itself."""
+        timezone = self.proxy('Timezone')
+        if not plain(timezone.GeolocationResult).get('timezone'):
+            # The task waits for networking and returns an empty result on failure.
+            self.task('Timezone', timezone.StartGeolocationWithTask(), timeout=90)
+        return {'timezone': plain(timezone.GeolocationResult).get('timezone', '')}
 
     def reset(self):
         self.proxy('Storage').ResetPartitioning()
@@ -375,7 +403,7 @@ class Anaconda:
         if list(self.proxy('Storage', '/DiskSelection').SelectedDisks) != [state['disk']['name']]:
             raise Invalid('The selected storage changed. Review the installation again.')
         actions = plain(self.proxy('Storage', '/DeviceTree').GetActions())
-        if actions != state['actions']:
+        if action_set(actions) != action_set(state['actions']):
             raise Invalid('The planned disk changes changed. Review the installation again.')
         partitioning = self.bus.get_proxy('org.fedoraproject.Anaconda.Modules.Storage', state['partitioning'])
         report = self.task('Storage', partitioning.ValidateWithTask(), result=True)
@@ -413,13 +441,15 @@ def check_live_environment(require_backend=True):
 def main():
     os.umask(0o077)
     command = sys.argv[1] if len(sys.argv) == 2 else ''
-    if command not in ('inventory', 'keyboard', 'plan', 'install', 'status', 'reset', 'advanced', 'worker', 'reboot'):
+    if command not in ('inventory', 'keyboard', 'plan', 'install', 'status', 'geolocate', 'reset', 'advanced',
+                       'worker', 'reboot'):
         raise Invalid('Unknown installer request.')
     check_live_environment(require_backend=command not in ('status', 'reboot'))
     RUNTIME.mkdir(mode=0o700, parents=True, exist_ok=True)
-    # Serialize planning and commit. Status remains readable during installation.
+    # Serialize planning and commit. Status remains readable during installation,
+    # and a slow geolocation lookup, which changes no selection, never blocks setup.
     lock = (RUNTIME / 'lock').open('a')
-    if command != 'status':
+    if command not in ('status', 'geolocate'):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | (0 if command == 'worker' else fcntl.LOCK_NB))
         except BlockingIOError:
@@ -445,6 +475,8 @@ def main():
     installer = Installer(Anaconda(), State(), emit)
     if command == 'inventory':
         return installer.inventory()
+    if command == 'geolocate':
+        return installer.geolocate()
     if command in ('reset', 'advanced'):
         return installer.reset()
     return getattr(installer, command)(data)

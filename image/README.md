@@ -21,7 +21,7 @@ or booted, and temporary build artifacts were removed.
 
 | Screen | Required choices | Defaults |
 | --- | --- | --- |
-| Your setup | Username, password/confirmation, keyboard | Language, timezone and hostname under More options; live keyboard applied before password entry, with a test field |
+| Your setup | Username, password/confirmation, keyboard | Language, detected timezone (dropdown) and hostname under More options; live keyboard applied before password entry, with a test field |
 | Install location | Disk, identified by model and capacity | LUKS2-encrypted Btrfs, shared initial disk/account password, automatic login |
 | Review and install | Explicit confirmation to erase the selected disk | Anaconda's actual partition plan, progress, completion and reboot |
 

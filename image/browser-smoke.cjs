@@ -20,15 +20,17 @@ window.cockpit = {
     then(callback) { done = callback; return this; },
     input(raw) {
       const data = JSON.parse(raw || "{}"), command = args[1];
-      fixtureRequests.push({ command, hasPassword: !!data.password });
+      fixtureRequests.push({ command, hasPassword: !!data.password, timezone: data.timezone });
       let result;
       if (command === "status") result = { phase: fixturePhase, message: "Fixture progress" };
       else if (command === "inventory") result = {
         disks: [{ name: "vda", path: "/dev/vda", size: 107374182400, model: "Fixture NVMe" }],
         keyboards: [{ id: "us", label: "English (US)" }, { id: "nl", label: "Dutch" }],
         locales: ["en_US.UTF-8", "nl_NL.UTF-8"], locale: "en_US.UTF-8",
-        keyboard: "us", timezone: "Europe/Amsterdam"
+        keyboard: "us", timezones: ["America/Argentina/Buenos_Aires", "Europe/Amsterdam", "UTC"],
+        timezone: "UTC", detected_timezone: ""
       };
+      else if (command === "geolocate") result = { timezone: "Europe/Amsterdam" };
       else if (command === "keyboard") result = { keyboard: data.keyboard, boot_keyboard: data.keyboard };
       else if (command === "plan") result = {
         phase: "review", token: "fixture-token",
@@ -39,6 +41,16 @@ window.cockpit = {
         actions: [{ "action-description": "Create", "object-description": "encrypted Btrfs", "device-name": "vda" }],
         warnings: []
       };
+      else if (command === "install" && !sessionStorage.getItem("fixtureRejected")) {
+        // Anaconda's plan check rejects the first confirmation; nothing starts.
+        sessionStorage.setItem("fixtureRejected", "1");
+        setTimeout(() => {
+          stream(JSON.stringify({ event: "result", ok: false,
+            error: "The planned disk changes changed. Review the installation again." }) + "\\n");
+          done();
+        }, 5);
+        return this;
+      }
       else if (command === "install") {
         fixturePhase = "installing";
         sessionStorage.setItem("fixturePhase", fixturePhase);
@@ -109,6 +121,11 @@ async function main() {
     await page.waitForFunction(() => !document.querySelector("#password").disabled);
     assert.equal(await page.inputValue("#password"), "");
     assert.equal(await page.inputValue("#confirm"), "");
+    // Geolocation fills the dropdown in the background unless a timezone was chosen.
+    await page.waitForFunction(() => document.querySelector("#timezone").value === "Europe/Amsterdam");
+    assert.equal(await page.textContent("#timezone-status"), "Detected from your network location.");
+    assert.equal(await page.locator("#timezone option[value='America/Argentina/Buenos_Aires']").textContent(),
+      "Argentina / Buenos Aires");
     await page.fill("#keyboard-test", "ordinary test characters");
     await page.fill("#password", "fixture secret 123");
     await page.fill("#confirm", "fixture secret 123");
@@ -123,17 +140,26 @@ async function main() {
     await screenshot(page, "installer-review");
     await page.check("#erase");
     await page.click("#install");
+    // A rejected confirmation returns to disk selection instead of waiting on progress.
+    await page.locator("#location").waitFor({ state: "visible" });
+    assert.match(await page.textContent("#error"), /planned disk changes changed/);
+    await page.getByRole("button", { name: "Review installation" }).click();
+    await page.locator("#review").waitFor({ state: "visible" });
+    assert.equal(await page.isChecked("#erase"), false);
+    await page.check("#erase");
+    await page.click("#install");
     await page.getByRole("heading", { name: "Your workspace is ready." }).waitFor({ timeout: 10000 });
     assert.equal(await page.inputValue("#password"), "");
     assert.equal(await page.inputValue("#confirm"), "");
-    assert.equal(await page.evaluate(() => fixtureRequests.filter(request => request.command === "install").length), 1);
+    assert.equal(await page.evaluate(() => fixtureRequests.filter(request => request.command === "install").length), 2);
+    assert.equal(await page.evaluate(() => fixtureRequests.find(request => request.command === "plan").timezone), "Europe/Amsterdam");
     await page.reload();
     await page.getByRole("heading", { name: "Your workspace is ready." }).waitFor();
     await page.setViewportSize({ width: 390, height: 844 });
     await screenshot(page, "installer-narrow");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
     assert.deepEqual(errors, []);
-    console.log("PASS: three-screen flow, keyboard change, encryption default, erase confirmation, password clearing, progress/reload recovery, narrow layout");
+    console.log("PASS: three-screen flow, keyboard change, timezone detection, rejected-install recovery, encryption default, erase confirmation, password clearing, progress/reload recovery, narrow layout");
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));
