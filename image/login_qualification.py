@@ -6,7 +6,7 @@ values, sent over the guest's private SSH connection on stdin, never in argv.
 import json
 import time
 
-from vm_testing import run
+from vm_testing import poweroff_guest, run
 
 
 USER_ENV = ('export XDG_RUNTIME_DIR=/run/user/$(id -u); '
@@ -239,11 +239,7 @@ def wait_login_state(vm, desktop, timeout=90, stable_for=0):
 
 
 def reboot_installed(vm, password, root_script, expect_desktop=True):
-    root_script(vm, 'sync\nsystemctl poweroff --no-block\n', password)
-    vm.ssh_ready = False
-    vm.process.wait(timeout=60)
-    if vm.console:
-        vm.console.close()
+    poweroff_guest(vm, password, root_script, timeout=60)
     vm.start(user='qualification')
     vm.unlock_disk(password)
     vm.wait_ssh(setup=False, redactions=(password,))

@@ -13,7 +13,7 @@ from browser_qualification import browser_dependencies, qualify_browser
 from login_qualification import qualify_login
 from upgrade_qualification import (create_recovery_point, prepare_user_choices, select_recovery_boot,
                                    upgrade, verify_recovery_boot, verify_restored, verify_user_choices)
-from vm_testing import QUALIFICATION_DISK_SERIAL, QUALIFICATION_UNUSED_SERIAL, TestVM, require_test_iso, run
+from vm_testing import QUALIFICATION_DISK_SERIAL, QUALIFICATION_UNUSED_SERIAL, TestVM, poweroff_guest, require_test_iso, run
 
 
 BACKEND = '/usr/libexec/cybexos-installer-backend'
@@ -224,12 +224,7 @@ def boot_installed(vm, password, encrypted, *, autologin=None):
 
 
 def poweroff_installed(vm, password):
-    root_script(vm, 'sync\nsystemctl poweroff --no-block\n', password)
-    vm.ssh_ready = False
-    vm.process.wait(timeout=90)
-    if vm.console:
-        vm.console.close()
-        vm.console = None
+    poweroff_guest(vm, password, root_script)
 
 
 def main():
@@ -348,9 +343,9 @@ def main():
                 report['checks'].append('recovery-boot-restore')
         # Clear the temporary test access before stopping the disposable disk.
         vm.audit(applications=False)
-        root_script(vm, 'rm -f /home/qualification/.ssh/authorized_keys /home/qualification/.bash_history\nsystemctl disable sshd.service\nsync\nsystemctl poweroff --no-block\n', password)
-        vm.ssh_ready = False
-        vm.process.wait(timeout=60)
+        poweroff_guest(vm, password, root_script, timeout=60, cleanup_script=(
+            'rm -f /home/qualification/.ssh/authorized_keys /home/qualification/.bash_history\n'
+            'systemctl disable sshd.service\n'))
         if digest(vm.unused_disk) != untouched_sha:
             raise RuntimeError('The unused disposable guard disk changed after installed boot')
         report['status'] = 'passed'

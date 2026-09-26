@@ -2,6 +2,7 @@
 import ctypes
 import os
 import re
+import secrets
 import signal
 from pathlib import Path
 import shlex
@@ -21,6 +22,34 @@ QUALIFICATION_UNUSED_SERIAL = "CYBEXOS-UNUSED"
 
 def run(args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
+
+
+def poweroff_guest(vm, password, root_script, *, timeout=90, cleanup_script=''):
+    """Accept a shutdown SSH disconnect only after preparation and clean QEMU exit."""
+    root_script(vm, 'sync\n', password)
+    marker = 'CYBEXOS_POWEROFF_READY_' + secrets.token_hex(16)
+    # Final access removal must share this connection with shutdown: no new
+    # SSH connection can authenticate after authorized_keys has been removed.
+    script = cleanup_script + "\nsync\nprintf '%s\\n' " + shlex.quote(marker)
+    script += '\nsystemctl poweroff --no-block\n'
+    disconnected = False
+    try:
+        root_script(vm, script, password)
+    except subprocess.CalledProcessError as error:
+        if error.returncode != 255 or marker not in (error.stdout or '').splitlines():
+            raise
+        disconnected = True
+    vm.ssh_ready = False
+    try:
+        code = vm.process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        detail = ' after SSH disconnected' if disconnected else ''
+        raise RuntimeError(f'Guest poweroff did not stop QEMU within {timeout}s{detail}') from error
+    if code != 0:
+        raise RuntimeError(f'Guest poweroff ended with QEMU exit {code}')
+    if vm.console:
+        vm.console.close()
+        vm.console = None
 
 
 def free_port():

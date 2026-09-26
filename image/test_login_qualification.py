@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 
 import login_qualification
 import qualification
-from vm_testing import QUALIFICATION_DISK_SERIAL, TestVM, is_disk_prompt
+from vm_testing import QUALIFICATION_DISK_SERIAL, TestVM, is_disk_prompt, poweroff_guest
 
 
 class DiskPromptTests(unittest.TestCase):
@@ -94,6 +94,68 @@ class DiskPromptTests(unittest.TestCase):
                 typing.assert_not_called()
 
 
+class GuestPoweroffTests(unittest.TestCase):
+    def exercise_shutdown(self, *, disconnected=True, exit_code=0, preparation='',
+                          marker_present=True, command_status=255, sync_status=0):
+        vm = Mock(ssh_ready=True)
+        vm.process.wait.return_value = exit_code
+        if isinstance(exit_code, Exception):
+            vm.process.wait.side_effect = exit_code
+        calls = []
+        def execute(_vm, script, _password):
+            calls.append(script)
+            # Run the preparation and marker using the production bash -e
+            # contract; command stubs never touch host services or files.
+            stubs = f'sync() {{ return {sync_status}; }}\nsystemctl() {{ return 0; }}\n'
+            result = subprocess.run(['bash', '-e', '-s'], input=stubs + script,
+                                    text=True, capture_output=True, check=True)
+            if disconnected and 'systemctl poweroff' in script:
+                raise subprocess.CalledProcessError(command_status, ['ssh', 'fixture'],
+                                                    output=result.stdout if marker_present else '')
+            return result
+        try:
+            poweroff_guest(vm, 'fixture-password', execute, timeout=60, cleanup_script=preparation)
+        except Exception as error:
+            return vm, calls, error
+        return vm, calls, None
+
+    def test_acknowledged_disconnect_requires_clean_qemu_exit(self):
+        for disconnected in (False, True):
+            with self.subTest(disconnected=disconnected):
+                vm, calls, error = self.exercise_shutdown(disconnected=disconnected)
+                self.assertIsNone(error)
+                self.assertEqual(calls[0], 'sync\n')
+                vm.process.wait.assert_called_once_with(timeout=60)
+                self.assertFalse(vm.ssh_ready)
+                self.assertIsNone(vm.console)
+                vm.process.terminate.assert_not_called()
+
+    def test_disconnect_cannot_hide_guest_shutdown_timeout_or_crash(self):
+        for exit_code in (subprocess.TimeoutExpired('qemu-fixture', 60), 1, -15):
+            with self.subTest(exit_code=exit_code):
+                vm, _calls, error = self.exercise_shutdown(exit_code=exit_code)
+                self.assertIsInstance(error, RuntimeError)
+                self.assertIn('QEMU', str(error))
+                self.assertFalse(vm.ssh_ready)
+                vm.process.terminate.assert_not_called()
+                vm.process.kill.assert_not_called()
+
+    def test_sync_authentication_cleanup_and_missing_ack_fail_without_wait(self):
+        for options in ({'sync_status': 1}, {'command_status': 1},
+                        {'preparation': 'false\n'}, {'marker_present': False}):
+            with self.subTest(options=options):
+                vm, _calls, error = self.exercise_shutdown(**options)
+                self.assertIsInstance(error, subprocess.CalledProcessError)
+                vm.process.wait.assert_not_called()
+
+    def test_cleanup_finishes_in_same_request_before_shutdown_marker(self):
+        vm, calls, error = self.exercise_shutdown(preparation="printf 'cleanup-complete\\n'\n")
+        self.assertIsNone(error)
+        self.assertEqual(len(calls), 2)
+        self.assertIn('cleanup-complete', calls[1])
+        vm.process.wait.assert_called_once_with(timeout=60)
+
+
 class SshTimeoutDiagnosticsTests(unittest.TestCase):
     def test_timeout_reports_redacted_ssh_and_ocr_and_removes_frame(self):
         for ocr_fails in (False, True):
@@ -144,6 +206,7 @@ class SshTimeoutDiagnosticsTests(unittest.TestCase):
 
     def test_cold_reboot_passes_password_redaction_without_retrying_login(self):
         vm = Mock()
+        vm.process.wait.return_value = 0
         with patch.object(login_qualification, 'wait_login_state'):
             login_qualification.reboot_installed(vm, 'private-fixture', Mock())
         vm.unlock_disk.assert_called_once_with('private-fixture')
