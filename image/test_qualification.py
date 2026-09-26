@@ -1,5 +1,7 @@
 """Source-only safety checks for the real-browser VM qualification path."""
 from pathlib import Path
+import importlib.machinery
+import importlib.util
 import json
 import os
 import subprocess
@@ -71,6 +73,33 @@ class BrowserTransportTests(unittest.TestCase):
 
 
 class UpgradeTests(unittest.TestCase):
+    def test_recovery_requires_exact_booted_point_from_snapshot_index(self):
+        source = Path(__file__).resolve().parents[1] / 'roles/base/files/cybexos-system-snapshot'
+        loader = importlib.machinery.SourceFileLoader('qualification_snapshot_fixture', str(source))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        snapshot = importlib.util.module_from_spec(spec)
+        loader.exec_module(snapshot)
+        point = '20260901T120000Z-1'
+        for booted in (point, False, True, '', '20260901T120000Z-2'):
+            with self.subTest(booted=booted):
+                # Build the response with the real producer: recoveryBoot is
+                # the booted ID, whereas bootMenu and bootable are booleans.
+                layout = snapshot.Layout('recovery', recovery=booted)
+                with patch.object(snapshot, 'describe_points',
+                                  return_value=([{'id': point, 'bootable': True}], ['menu'])):
+                    index, _ = snapshot.build_index(layout, None, {}, with_menu=True)
+                calls = []
+                def root_script(vm, script, password, **kwargs):
+                    calls.append(script)
+                    return types.SimpleNamespace(stdout=json.dumps(index))
+                if booted == point:
+                    upgrade.verify_recovery_boot(None, point, 'fixture-password', root_script)
+                    self.assertEqual(calls[-1], f'{upgrade.SNAPSHOT} restore {point}\n')
+                else:
+                    with self.assertRaisesRegex(RuntimeError, 'requested recovery point'):
+                        upgrade.verify_recovery_boot(None, point, 'fixture-password', root_script)
+                    self.assertEqual(len(calls), 1, 'Restore must not run after a mismatched boot')
+
     def test_preference_fixture_changes_effective_default_and_rejects_invalid_position(self):
         for initial, expected in (({}, 'bottom'), ({'position': 'top'}, 'bottom'),
                                   ({'position': 'bottom'}, 'top'), ({'position': 'invalid'}, None)):

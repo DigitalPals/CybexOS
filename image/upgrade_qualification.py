@@ -138,7 +138,7 @@ def select_recovery_boot(vm, point, password, root_script):
 
 def verify_recovery_boot(vm, point, password, root_script):
     index = json.loads(root_script(vm, f'{SNAPSHOT} list --json\n', password).stdout)
-    if index.get('recoveryBoot') is not True:
+    if index.get('recoveryBoot') != point:
         raise RuntimeError('VM did not boot the requested recovery point')
     if not any(item.get('id') == point for item in index.get('points', [])):
         raise RuntimeError('Requested recovery point was unavailable after boot')
