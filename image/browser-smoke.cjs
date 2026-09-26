@@ -20,9 +20,18 @@ window.cockpit = {
     then(callback) { done = callback; return this; },
     input(raw) {
       const data = JSON.parse(raw || "{}"), command = args[1];
-      fixtureRequests.push({ command, hasPassword: !!data.password, timezone: data.timezone });
+      fixtureRequests.push({ command, hasPassword: !!data.password, timezone: data.timezone, source: data.source });
       let result;
-      if (command === "status") result = { phase: fixturePhase, message: "Fixture progress" };
+      if (command === "status") result = fixturePhase === "failed-install"
+        ? { phase: fixturePhase, message: "Installation stopped during “Running post-installation scripts”.",
+            failed_step: "Running post-installation scripts", log_source: "post" }
+        : { phase: fixturePhase, message: "Fixture progress" };
+      else if (command === "log") result = { source: data.source, available: true,
+        text: Array.from({ length: 200 }, (_, line) => \`fixture \${data.source} log line \${line}\`).join("\\n") };
+      else if (command === "log-destinations") result = { destinations: [
+        { name: "sdb1", path: "/dev/sdb1", label: "STICK", fstype: "exfat", size: 32 * 1024 ** 3, mountpoint: "" }] };
+      else if (command === "export-logs") result = { file: "cybexos-install-logs-fixture.tar.gz",
+        device: "/dev/" + data.device, label: "STICK" };
       else if (command === "inventory") result = {
         disks: [{ name: "vda", path: "/dev/vda", size: 107374182400, model: "Fixture NVMe" }],
         keyboards: [{ id: "us", label: "English (US)" }, { id: "nl", label: "Dutch" }],
@@ -114,7 +123,9 @@ async function main() {
     await page.locator("#setup").waitFor({ state: "visible" });
     await page.waitForFunction(() => !document.querySelector("#password").disabled);
     await screenshot(page, "installer-setup");
-    await page.fill("#username", "alice");
+    // Capitals become the lowercase account name as they are typed.
+    await page.locator("#username").pressSequentially("Alice");
+    assert.equal(await page.inputValue("#username"), "alice");
     await page.fill("#password", "fixture secret 123");
     await page.fill("#confirm", "fixture secret 123");
     await page.selectOption("#keyboard", "nl");
@@ -158,8 +169,29 @@ async function main() {
     await page.setViewportSize({ width: 390, height: 844 });
     await screenshot(page, "installer-narrow");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    // The details panel follows a chosen log at any stage.
+    await page.locator("#log-panel summary").click();
+    await page.waitForFunction(() => document.querySelector("#log").textContent.includes("fixture steps log line 199"));
+    await page.selectOption("#log-source", "storage");
+    await page.waitForFunction(() => document.querySelector("#log").textContent.includes("fixture storage log line"));
+    // A failed installation names its step and opens the explaining log.
+    await page.evaluate(() => sessionStorage.setItem("fixturePhase", "failed-install"));
+    await page.reload();
+    await page.getByRole("heading", { name: "Installation needs attention." }).waitFor();
+    assert.match(await page.textContent("#progress-message"), /Running post-installation scripts/);
+    await page.waitForFunction(() => document.querySelector("#log-panel").open
+      && document.querySelector("#log").textContent.includes("fixture post log line 199"));
+    assert.equal(await page.inputValue("#log-source"), "post");
+    await page.click("#find-destinations");
+    await page.waitForFunction(() => document.querySelector("#log-destination").value === "sdb1");
+    await page.click("#export-logs");
+    await page.waitForFunction(() => document.querySelector("#export-status").textContent.startsWith("Saved"));
+    assert.equal(await page.textContent("#export-status"),
+      "Saved cybexos-install-logs-fixture.tar.gz to STICK. You can remove the drive.");
+    await screenshot(page, "installer-failed-details");
     assert.deepEqual(errors, []);
-    console.log("PASS: three-screen flow, keyboard change, timezone detection, rejected-install recovery, encryption default, erase confirmation, password clearing, progress/reload recovery, narrow layout");
+    console.log("PASS: three-screen flow, lowercase username, keyboard change, timezone detection, rejected-install recovery, encryption default, erase confirmation, password clearing, progress/reload recovery, narrow layout, log panel, failed-step log, log export");
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));
