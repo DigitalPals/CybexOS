@@ -44,8 +44,11 @@ def fixture_script() -> str:
             "loaded_transaction_needs_reboot",
             "reboot_marker_state",
             "write_reboot_marker",
+            "required_dkms_modules",
+            "camera_modules_loaded",
         )
     )
+    functions = functions.replace("/sys/module", "$FIXTURE_ROOT/sys-module")
     return f"""#!/usr/bin/bash
 set -euo pipefail
 rpm_dir=$FIXTURE_ROOT/rpms
@@ -110,6 +113,23 @@ printf '%s\n' "$new_manifest" >"$output_manifest"
 FIXTURE_CACHED_NEVRA=$target_nevra
 
 case $SCENARIO in
+  native-cvs)
+    modinfo() {{ printf '%s\n' Y; }}
+    [[ $(required_dkms_modules fixture-kernel) == ipu7-drivers ]]
+    mkdir -p "$FIXTURE_ROOT/sys-module/intel_cvs"
+    : >"$FIXTURE_ROOT/sys-module/intel_cvs/taint"
+    ! camera_modules_loaded
+    ;;
+  external-cvs)
+    modinfo() {{ return 1; }}
+    [[ $(required_dkms_modules fixture-kernel) == $'ipu7-drivers\nvision-drivers' ]]
+    ;;
+  loaded-external-cvs-native-on-disk)
+    modinfo() {{ printf '%s\n' Y; }}
+    mkdir -p "$FIXTURE_ROOT/sys-module/intel_cvs"
+    printf 'OE\n' >"$FIXTURE_ROOT/sys-module/intel_cvs/taint"
+    camera_modules_loaded
+    ;;
   retained)
     prepare_rollback "manifest=$old_manifest"
     rollback=$(rollback_rpm "manifest=$old_manifest")
@@ -260,3 +280,8 @@ for scenario in (
     assert rejected.returncode != 0, f"{scenario} opened a resumed transaction"
 
 print("camera rollback and multi-invocation transaction fixtures passed")
+
+for scenario in ("native-cvs", "external-cvs", "loaded-external-cvs-native-on-disk"):
+    selected = run(scenario)
+    assert selected.returncode == 0, (scenario, selected.stdout, selected.stderr)
+print("camera native/external CVS ownership fixtures passed")

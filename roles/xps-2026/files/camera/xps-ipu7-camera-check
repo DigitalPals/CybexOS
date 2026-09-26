@@ -58,14 +58,8 @@ check 'no IPU7 kernel fault in this boot' bash -c \
   "! journalctl -k -b --no-pager 2>/dev/null | grep -Eq 'RIP: .*ipu7|BUG:.*ipu7'"
 
 if [[ ${XPS_CAMERA_FRAME_TEST:-0} == 1 ]]; then
-  frame_log=$(mktemp)
-  timeout 10s v4l2-ctl --device=/dev/video50 --stream-mmap \
-    --stream-count=3 --stream-to=/dev/null --verbose >"$frame_log" 2>&1 || true
-  if [[ $(grep -c 'cap dqbuf:' "$frame_log") -ge 3 ]]; then
-    pass 'captured three frames from the Hardware ISP camera'
-  else
-    fail "frame capture smoke test (details: $frame_log)"
-  fi
+  check_diagnostic 'three fresh Hardware ISP camera frames after warm-up' \
+    /usr/local/libexec/xps-ipu7-camera-frame-check
 fi
 
 ((failures == 0))

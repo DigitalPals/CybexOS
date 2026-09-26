@@ -706,7 +706,7 @@ assert "ExecStart=/usr/bin/systemctl start v4l2-relayd@ipu7.service" in resume_u
 assert "module_status=$(dkms status" in camera_builder
 assert 'dkms status -m "$module" -v "$bundle_version" 2>/dev/null | grep -q' not in camera_builder
 assert '"$stage/usr/src/vision-drivers-$dkms_version/xps-ipu7-abi-check"' in camera_builder
-assert "MAKE=\"./xps-ipu7-abi-check $kernelver" in camera_builder
+assert "MAKE=\"./xps-ipu7-abi-check --external-cvs $kernelver" in camera_builder
 assert 'BUILD_DEPENDS[0]="ipu7-drivers"' in camera_builder
 assert 'dkms_version=$(dkms_version_for_manifest "$inputs")' in camera_builder
 assert 'dkms status -m "$module" -v "$dkms_version"' in camera_builder
@@ -811,6 +811,10 @@ PY
 
   if ((rc == 0)); then
     out=$(python3 tests/camera-transaction.py 2>&1) || rc=1
+  fi
+
+  if ((rc == 0)); then
+    out=$(python3 tests/camera-frame.py 2>&1) || rc=1
   fi
 
   if ((rc == 0)); then

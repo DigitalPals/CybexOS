@@ -1,0 +1,85 @@
+From: CybexOS <cybexos@localhost>
+Subject: [PATCH] camera-hal: follow the native CVS bridge on OV08X40
+
+Fedora's native CVS exposes sensor -> CVS -> IPU7 CSI2. Resolve the actual
+sensor I2C address through that bridge and configure its two pads and links.
+Retain the direct sensor topology used with the legacy CVS driver.
+
+--- a/src/v4l2/MediaControl.cpp
++++ b/src/v4l2/MediaControl.cpp
+@@ -1074,22 +1074,16 @@
+          sinkEntityName.c_str());
+     CheckAndLogError(!i2cBus, UNKNOWN_ERROR, "i2cBus is nullptr");
+ 
++    // Native CVS inserts a bridge between the sensor and CSI receiver. Match
++    // the actual sensor entity reachable from that receiver, not the bridge's
++    // name interpreted as an I2C address.
++    MediaEntity* sink = getEntityByName(sinkEntityName);
++    CheckAndLogError(!sink, UNKNOWN_ERROR, "CSI receiver is missing");
++    const std::string prefix = sensorEntityName + " ";
+     for (auto& entity : mEntities) {
+-        int linksCount = entity.info.links;
+-        MediaLink* links = entity.links;
+-        char* entityName = nullptr;
+-        size_t sensorEntityNameLen = sensorEntityName.length();
+-        for (int i = 0; i < linksCount; i++) {
+-            if (strcmp(links[i].sink->entity->info.name, sinkEntityName.c_str()) == 0) {
+-                entityName = entity.info.name;
+-                break;
+-            }
+-        }
+-
+-        // entityName example: "imx319 10-0010", sensorEntityName example: "imx319"
+-        if (entityName && (strlen(entityName) > (sensorEntityNameLen + 1U))) {
+-            *i2cBus = entityName + sensorEntityNameLen + 1;
+-            LOG1("i2cBus is %s", i2cBus->c_str());
++        if (strncmp(entity.info.name, prefix.c_str(), prefix.size()) == 0 &&
++            checkHasSource(sink, entity.info.name)) {
++            *i2cBus = entity.info.name + prefix.size();
+             return OK;
+         }
+     }
+--- a/src/platformdata/CameraSensorsParser.cpp
++++ b/src/platformdata/CameraSensorsParser.cpp
+@@ -210,7 +210,23 @@
+         if (ele.isMember("enable")) {
+             link.enable = ele["enable"].asBool();
+         }
+-        conf->links.push_back(link);
++        // The native CVS driver is a CSI bridge; legacy CVS has no media
++        // entity. Adapt the OV08X40 profile only when that bridge is present.
++        if (mMediaCtl && link.srcEntityName.find("ov08x40 ") == 0 &&
++            link.sinkEntityName.find("Intel IPU7 CSI2 ") == 0 &&
++            mMediaCtl->checkAvailableSensor("Intel CVS")) {
++            McLink downstream = link;
++            downstream.srcEntityName = "Intel CVS";
++            downstream.srcEntity = mMediaCtl->getEntityIdByName("Intel CVS");
++            downstream.srcPad = 1;
++            link.sinkEntityName = "Intel CVS";
++            link.sinkEntity = downstream.srcEntity;
++            link.sinkPad = 0;
++            conf->links.push_back(link);
++            conf->links.push_back(downstream);
++        } else {
++            conf->links.push_back(link);
++        }
+     }
+ }
+ 
+@@ -275,6 +291,16 @@
+ 
+         fmt.formatType = FC_FORMAT;
+         conf->formats.push_back(fmt);
++        if (mMediaCtl && fmt.entityName.find("ov08x40 ") == 0 && fmt.pad == 0 &&
++            mMediaCtl->checkAvailableSensor("Intel CVS")) {
++            McFormat bridge = fmt;
++            bridge.entityName = "Intel CVS";
++            bridge.entity = mMediaCtl->getEntityIdByName("Intel CVS");
++            bridge.pad = 0;
++            conf->formats.push_back(bridge);
++            bridge.pad = 1;
++            conf->formats.push_back(bridge);
++        }
+     }
+ }
+ 

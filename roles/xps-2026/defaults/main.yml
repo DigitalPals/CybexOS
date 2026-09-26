@@ -19,7 +19,7 @@ xps_2026_vesa_backlight_edid_products:
 xps_2026_haptic_intensity: high
 
 xps_2026_camera_enabled: true
-xps_2026_camera_bundle_version: 1.0.5.xps6
+xps_2026_camera_bundle_version: 1.0.5.xps7
 xps_2026_camera_sources:
   - name: ipu7-drivers
     commit: a88b19096a738d0708742a78d6540d6d4a3021ff
