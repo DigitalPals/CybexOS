@@ -9,7 +9,7 @@ import sys
 import time
 
 from build_support import atomic_json, digest
-from browser_qualification import qualify_browser
+from browser_qualification import browser_dependencies, qualify_browser
 from login_qualification import qualify_login
 from upgrade_qualification import (create_recovery_point, prepare_user_choices, select_recovery_boot,
                                    upgrade, verify_recovery_boot, verify_restored, verify_user_choices)
@@ -230,6 +230,9 @@ def main():
     if args.candidate_rpm and (args.candidate_rpm.is_symlink() or not args.candidate_rpm.is_file()
                                or args.candidate_rpm.suffix != '.rpm'):
         parser.error('--candidate-rpm must be a regular .rpm file')
+    # Direct invocations need the same early host check as release-gate.
+    # Missing browser/Node dependencies must not consume a live boot or disk.
+    browser_dependencies()
     encrypted, keyboard, locale, timezone = SCENARIOS[args.scenario]
     vm = TestVM(args.output, args.firmware, guard_disk=True)
     # Hex uses the same physical keys under US, NL and DE layouts, including

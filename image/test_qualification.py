@@ -12,6 +12,23 @@ from vm_testing import QUALIFICATION_DISK_SERIAL, QUALIFICATION_UNUSED_SERIAL, T
 
 
 class BrowserTransportTests(unittest.TestCase):
+    def test_missing_browser_dependencies_fail_before_vm_or_output_creation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'qualification'
+            iso = Path('/data/pxe/iso/fixture.iso')
+            arguments = ['qualify', str(iso), '--output', str(output),
+                         '--execute-vm', '--erase-disposable-disk']
+            with patch('sys.argv', arguments), patch.object(qualification.signal, 'signal'), \
+                    patch.object(qualification, 'require_test_iso', return_value=iso), \
+                    patch.object(qualification, 'browser_dependencies',
+                                 side_effect=RuntimeError('Missing playwright-core')) as dependencies, \
+                    patch.object(qualification, 'TestVM') as vm:
+                with self.assertRaisesRegex(RuntimeError, 'Missing playwright-core'):
+                    qualification.main()
+            dependencies.assert_called_once_with()
+            vm.assert_not_called()
+            self.assertFalse(output.exists())
+
     def test_only_exact_guest_loopback_installer_url_is_accepted(self):
         self.assertEqual(browser.validate_guest_url(
             'http://127.0.0.1:8080/cockpit/@localhost/cybexos-installer/index.html'), 8080)
