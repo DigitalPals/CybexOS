@@ -162,7 +162,10 @@ ${waitForStreamEnd}
     assert.match(calls, /eval .*output = "eDP-1".*disabled = false/);
     assert.doesNotMatch(calls, /reload|disabled = true/);
     assert.match(result.stderr, /enabling eDP-1 after stable lid\/output state/);
-    assert.match(result.stderr, /Hyprland event stream disconnected/);
+    // Both fake streams exit after the monitor call; their disconnect order
+    // depends on process scheduling, and either must request a restart.
+    assert.match(result.stderr,
+        /(Hyprland event stream disconnected|logind lid event stream disconnected)/);
 });
 
 test("the safety poll still catches a lid change logind never announced", async () => {

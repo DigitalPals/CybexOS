@@ -35,23 +35,63 @@ Before the first public release:
   does not settle redistribution rights for third-party software and bundled
   assets. Complete that audit before public distribution; see
   [licensing and asset provenance](licensing.md).
-- Enable a trusted Debian 13 x86_64 self-hosted GitHub Actions runner on the
-  PXE host with labels `self-hosted`, `linux`, `x64`, and `cybexos-iso`. It
-  needs `/dev/kvm`, at least 180 GiB staging space and 24 GiB available RAM,
-  the `image/build --preflight` dependencies, a Chromium browser executable,
-  access to `/data/pxe/iso`, and a running `iventoy.service`. The job installs
-  Node 24 and `playwright-core` in its isolated workspace. It is restricted to
-  this repository's `main` and version tag refs; never expose it to
-  untrusted pull request code. The runner builds and qualifies only; the
-  GitHub-hosted signing job uses the protected environment secret.
+- Use the trusted Debian 13 x86_64 PXE operator account with `/dev/kvm`,
+  at least 180 GiB staging space and 24 GiB available RAM, the
+  `image/build --preflight` dependencies, a Chromium browser, write access to
+  `/data/pxe/iso`, and an active `iventoy.service`. The workflow provides Node
+  24 and isolated `playwright-core`. The operator also needs authenticated
+  `gh` access with permission to manage this repository's runners, Python
+  3.12 or newer, the GitHub runner's native .NET dependencies, and a reachable
+  systemd user manager. Keep signing material on GitHub's hosted signing job.
 - Repository variable `CYBEXOS_BASELINE_ISO` is configured as
   `/data/pxe/iso/CybexOS-Live-44-20260926T055804Z-dbdd33d6.iso`. Keep this older
   supported ISO and its matching `.sha256` sidecar in place. The qualification
   job requires a regular, checksum-verified ISO under `/data/pxe/iso`.
-- The runner must be enabled and all release gates must pass. The qualification
+- Start an ephemeral runner only for the reviewed queued run below, and pass all release gates. The qualification
   has to pass on the exact release build; configuring Pages, the baseline
   variable, and signing environment alone does not make a public desktop
   channel available.
+
+The PXE machine does not keep a public-repository runner listening. Once a
+reviewed `release.yml` or `desktop-release.yml` run has its qualification job
+queued, use a clean checkout whose `HEAD` exactly matches that run. From the
+unprivileged PXE operator's authenticated session:
+
+```bash
+gh auth status --hostname github.com
+systemctl --user show --property=Version --value
+run_id=REVIEWED_RUN_ID
+./image/release-runner --run-id "$run_id"
+./image/release-runner --run-id "$run_id" --execute \
+  --work-root /data/cybexos-runners
+```
+
+The first helper command only validates the API run, job, source commit and
+checkout. `--execute` downloads the current Linux x64 runner with the SHA-256
+pin supplied by GitHub's API and registers one ephemeral runner. Its only
+label is `cybexos-iso-RUN_ID`; it has no generic `self-hosted`, `linux`, `x64`,
+or `cybexos-iso` labels. The workflow requests that exact run-specific label.
+The helper refuses pull requests, other source repositories, non-release
+workflows, refs outside `main` or version tags, dirty or mismatched checkouts,
+an existing runner for the run, or another queued job targeting its label.
+No runner has been registered by this setup; registration is an explicit
+operator action when a reviewed job is queued.
+
+The listener runs in a transient user systemd service with a seven-hour limit
+(`--timeout` accepts 60 seconds through eight hours). Cancellation allows
+120 seconds for job cleanup, then systemd terminates the complete service
+cgroup, including build and VM processes that created separate sessions.
+The helper stops and verifies this exact unit before unregistering the runner
+and removing its unique task directory. If it cannot confirm the unit stopped,
+it reports and retains that directory for diagnosis instead of deleting live
+VM files. A failed API cleanup reports the exact registration to remove.
+The registration token stays out of command arguments and logs, and the runner
+gets an isolated home and environment without the operator's GitHub tokens.
+
+This is a trusted-code runner, not a sandbox. Do not approve or queue untrusted
+workflows while it is active: someone allowed to execute a workflow could
+intentionally request the known run-specific label. Signing keys are available
+only to the separate GitHub-hosted `sign` job and never to this PXE listener.
 
 The release checks the source contract, image-source contract, and a
 twice-converged generic Fedora VM before calling
@@ -159,5 +199,5 @@ fingerprint as a routine update.
 The current GitHub repository has not published its first public release and
 the Pages endpoint is still empty. The repository has selected the MIT
 License for its code, but the bundled software and asset redistribution audit
-still applies. The enabled trusted runner and complete release workflow must
+still applies. The explicitly started ephemeral runner and complete release workflow must
 pass before signed desktop metadata is available to users.
