@@ -1,0 +1,25 @@
+{
+  "bootstrap": "recognized disk-unlock prompt; bounded graphical SSH setup",
+  "candidate_rpm_sha256": null,
+  "checks": [
+    "live-boot-and-offline-applications",
+    "graphical-installer",
+    "plain-installation",
+    "unused-disk-unchanged",
+    "installed-boot-without-iso",
+    "plain-btrfs",
+    "password-login",
+    "desktop-parity",
+    "selected-locale-timezone-keyboard",
+    "live-cleanup",
+    "selinux-enforcing",
+    "sudo-requires-password"
+  ],
+  "firmware": "uefi",
+  "iso_sha256": "dfc118250a2bf40e8c765332ad1d94f22e6ae861d3d0642fe028d6fd8ec6e975",
+  "network": "outbound-blocked",
+  "scenario": "plain-us",
+  "scope": "QEMU fixture; does not qualify physical hardware or Secure Boot",
+  "source_revision": "79b16cc20fd14284547dee5d9e671b3aef6ef55b",
+  "status": "passed"
+}

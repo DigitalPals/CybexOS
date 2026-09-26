@@ -32,11 +32,11 @@ the new filename was listed, PXE reported running, and the service was active.
 
 | Final UEFI scenario | Status |
 | --- | --- |
-| Unencrypted US | Rerun running after shell-audit correction |
-| Encrypted Dutch | Rerun pending after console OCR correction |
-| Encrypted US | Installed boot reached; audit failure under investigation |
-| Unencrypted Dutch | Pending |
-| Older-ISO RPM upgrade and GRUB recovery | Diagnostic rerun running |
+| Unencrypted US | Passed: [12 checks](qualification-results/2026-09-26/plain-us.json), harness `79b16cc` |
+| Encrypted Dutch | Passed: [25 checks](qualification-results/2026-09-26/encrypted-nl.json), harness `cd24f0f` |
+| Encrypted US | Corrected `79b16cc` run in progress |
+| Unencrypted Dutch | `79b16cc` run in progress |
+| Older-ISO RPM upgrade and GRUB recovery | RPM upgrade and user-edit preservation passed; corrected recovery-login rerun queued |
 
 Every scenario uses disposable serial-identified installation and guard disks,
 with outbound guest networking blocked. The guard disk must remain unchanged.
@@ -71,7 +71,7 @@ was inspected but was not upgraded, reconfigured, or rebooted for these tests.
 | Check | Result |
 | --- | --- |
 | Local repository suite | All 17 stages passed, including 1,157 JavaScript tests. The opt-in live Quickshell stage was skipped. |
-| GitHub checks | Both required Fedora source/image checks passed through `37dbdad`; final-head results pending. |
+| GitHub checks | Both required Fedora source/image checks passed through `79b16cc`; final-head results pending. |
 | Real RPM signing integration | Disposable RPM signed using a signing-subkey-only keyring; independent RPM/repository signatures, metadata binding, and tamper rejection passed. Nothing was installed or published. |
 | Generic Fedora 44 VM at `86f185f` | First convergence: 135 changes. Second convergence: zero changes (`ok 220`). Uninstall: 22 changes; adopted files restored and project state removed. |
 | Ephemeral PXE runner service | Actual transient user-service startup and cleanup passed. No GitHub runner was registered. |
@@ -102,7 +102,24 @@ removed.
   with a bound and the same final sole-managed-PID requirement. The historical
   extra PID from the failed US run could not be classified retrospectively.
 - Missing browser dependencies now fail before a VM/output directory is
-  created. Installed-audit failures retain bounded, password-redacted details.
+  created. Installed-audit failures retain bounded, password-redacted details
+  without echoing whole Python heredocs over the useful traceback.
+- The US installed audit reported `Installed timezone differs` even though
+  Anaconda had selected UTC correctly. This Fedora workstation uses hardlinks
+  for `UTC` and `Etc/UTC`; the audit now compares file identity rather than
+  resolved path names. A generated-code regression covers hardlink and symlink
+  aliases and rejects a different zone.
+- Recovery verification now requires the exact requested snapshot ID, matching
+  the snapshot tool's `recoveryBoot` string. Its regression uses the actual
+  index producer. The user-preference fixture also handles an omitted bar
+  position as the desktop's effective `top` default.
+- Recovery uses an in-memory root overlay, whose encryption ancestry cannot be
+  verified by normal login policy. The real older-ISO run upgraded successfully
+  and preserved user choices, then its harness incorrectly expected autologin
+  on recovery boot. Recovery qualification now unlocks the encrypted disk,
+  waits for the SDDM greeter, signs in with the fixture password, and requires a
+  working desktop before restore. Session readiness precedes VT discovery,
+  because SSH can become available before SDDM has created a login session.
 
 Modified diagnostic guests and superseded images cannot count as final proof.
 Their useful findings are recorded here instead of retaining large artifacts.
@@ -141,5 +158,12 @@ GitHub environment secret. The public fingerprint is
 
 ## Cleanup
 
-Final cleanup and retained-artifact inventory are pending qualification.
-Pre-existing baseline and Alpine PXE images must remain intact.
+The superseded task ISO `CybexOS-Live-44-20260926T114433Z-a107c90a.iso` and
+its checksum, plus `/data/cybexos-candidate-rpm-20260926`, were removed. iVentoy
+refresh returned success, the removed image was absent, the current candidate
+and pre-existing baseline/Alpine remained listed, and PXE/service status stayed
+running/active. The final served checksum passed again.
+
+Remaining task cleanup and the final retained-artifact inventory are pending
+qualification. Only two qualification VMs run concurrently after a third
+exceeded live-startup readiness under load; that failed before installation.
