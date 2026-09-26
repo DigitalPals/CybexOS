@@ -16,6 +16,7 @@ import imgcreate.creator
 from imgcreate.dnfinst import DnfLiveCD
 import rpm
 from boot_branding import brand_boot_menu
+from post_install_check import check_post_install
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 source = Path(__file__).resolve().parent
@@ -180,6 +181,10 @@ try:
         metadata = (Path(creator._instroot) / relative).stat()
         if metadata.st_uid != 0 or metadata.st_gid != 0 or metadata.st_mode & 0o022:
             raise RuntimeError(f"Unsafe image ownership or permissions: /{relative}")
+    # Run the installer's own post-install scripts against this image, as
+    # Anaconda will, so a failing step stops the build instead of every install.
+    logging.info("Checking the installer post-install scripts against the composed image")
+    check_post_install(creator._instroot, build / "tmp")
     with Path("/home/builder/artifacts/packages.txt").open("w") as manifest:
         subprocess.run(["rpm", "--root", creator._instroot, "-qa", "--qf", "%{NEVRA}\n"],
                        check=True, stdout=manifest)
