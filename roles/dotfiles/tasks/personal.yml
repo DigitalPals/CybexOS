@@ -213,12 +213,26 @@
     set -euo pipefail
     schema=org.gnome.desktop.interface
     # dconf writes go through a session bus, which Ansible does not have.
-    gs() { dbus-run-session -- gsettings "$@"; }
-    if [[ $(gs get "$schema" color-scheme) == "'default'" ]]; then
+    # Activated services must not inherit Ansible/command-substitution pipes:
+    # gvfsd-fuse can outlive its private bus and keep those pipes open forever.
+    capture=$(mktemp -d)
+    trap 'rm -rf -- "$capture"' EXIT
+    gs() {
+      local output status=0
+      output=$(mktemp -d "$capture/call.XXXXXXXX") || return
+      GIO_USE_VFS=local timeout --kill-after=2s 15s dbus-run-session -- gsettings "$@" \
+        >"$output/stdout" 2>"$output/stderr" || status=$?
+      cat "$output/stderr" >&2
+      cat "$output/stdout"
+      return "$status"
+    }
+    color_scheme=$(gs get "$schema" color-scheme)
+    if [[ $color_scheme == "'default'" ]]; then
       gs set "$schema" color-scheme prefer-dark
       printf 'CHANGED: color-scheme prefer-dark\n'
     fi
-    if [[ $(gs get "$schema" gtk-theme) == "'Adwaita'" ]]; then
+    gtk_theme=$(gs get "$schema" gtk-theme)
+    if [[ $gtk_theme == "'Adwaita'" ]]; then
       gs set "$schema" gtk-theme adw-gtk3-dark
       printf 'CHANGED: gtk-theme adw-gtk3-dark\n'
     fi
@@ -226,12 +240,9 @@
     executable: /bin/bash
   register: dotfiles_gtk_default
   changed_when: "'CHANGED:' in dotfiles_gtk_default.stdout"
-  # An installer target may be unable to start even a private bus. The shell
-  # applies its own appearance at the first login, so only a live converge or
-  # repair has to succeed here.
-  failed_when:
-    - dotfiles_gtk_default.rc != 0
-    - not cybexos_offline | default(false) | bool
+  # Offline targets have no desktop session. The shell applies these defaults
+  # at first login; only a live converge or repair initializes dconf here.
   when:
     - manage_personal_dotfiles | bool
     - not ansible_check_mode
+    - not cybexos_offline | default(false) | bool
