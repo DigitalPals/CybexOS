@@ -80,5 +80,17 @@ class UpgradeTests(unittest.TestCase):
                 upgrade.copy_candidate(types.SimpleNamespace(), link)
 
 
+class InstalledAuditTests(unittest.TestCase):
+    def test_selected_install_settings_are_checked_in_target_and_desktop(self):
+        script = qualification.installed_audit(True, True, 'nl', 'nl', 'nl_NL.UTF-8', 'Europe/Amsterdam')
+        self.assertIn('export EXPECTED_KEYBOARD=nl', script)
+        self.assertIn('export EXPECTED_BOOT_KEYMAP=nl', script)
+        self.assertIn('export EXPECTED_LOCALE=nl_NL.UTF-8', script)
+        self.assertIn('export EXPECTED_TIMEZONE=Europe/Amsterdam', script)
+        guest = script.split("python3 - <<'CHECK'\n", 1)[1].split('\nCHECK\n', 1)[0]
+        compile(guest, '<installed-audit>', 'exec')
+        compile(qualification.DESKTOP_KEYBOARD_AUDIT, '<desktop-keyboard-audit>', 'exec')
+
+
 if __name__ == '__main__':
     unittest.main()

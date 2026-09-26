@@ -305,34 +305,67 @@ class TestVM:
         self.type("qualification\n")
         self._wait_password_prompt(deadline)
         self.type(password + "\n")
-        time.sleep(2)
-        self.type("echo CYBEXOSTTYREADY\n")
+        # A fresh standalone output line proves execution; the echoed command
+        # cannot satisfy it. These letters also work before US/NL/DE keymap
+        # normalization. Probe Y separately because German swaps Y and Z.
+        shell_command = "echo CONSOLEWORKS y\n"
+        last_screen, next_probe, probes = "", time.monotonic() + 2, 0
         while time.monotonic() < deadline:
-            if self.screen_text().upper().count('CYBEXOSTTYREADY') >= 2:
+            last_screen = self.screen_text()
+            lines = [re.sub(r"[^A-Z]", "", line.upper()) for line in last_screen.splitlines()]
+            match = next((re.fullmatch(r"CONSOLEWORKS([YZ])", line) for line in lines
+                          if re.fullmatch(r"CONSOLEWORKS([YZ])", line)), None)
+            if match:
+                y_key = "z" if match.group(1) == "Z" else "y"
                 break
+            if re.search(r'login incorrect|authentication failure', last_screen, re.IGNORECASE):
+                raise RuntimeError("Installed console login failed; no setup commands were sent")
+            # PAM or Fish initialization can flush an early line. Retry only
+            # this harmless probe, at most three times; never resend a secret.
+            if probes < 3 and time.monotonic() >= next_probe:
+                self.type(shell_command)
+                probes += 1
+                next_probe = time.monotonic() + 10
             self.alive()
             time.sleep(1)
         else:
-            raise RuntimeError("Installed text-console shell was not confirmed")
+            detail = last_screen.replace(password, '[redacted]')[-1800:]
+            raise RuntimeError(f"Installed text-console shell was not confirmed: {detail}")
         self.type("clear\n")
-        # `sudo loadkeys us` contains only letters and spaces, so its physical
-        # keystrokes are stable under the supported US/NL/DE layouts.
-        time.sleep(2)
-        self.type("sudo loadkeys us\n")
+        time.sleep(1)
+        # A command-output marker handles both passwordless baseline sudo and
+        # current passworded sudo without assuming Fish's prompt contains @.
+        self.type("sudo echo CONSOLEAUTH\n")
+        sent_password = False
         while time.monotonic() < deadline:
-            screen = " ".join(self.screen_text().lower().split())
-            if re.search(r'password\s*:|passwort\s*:|wachtwoord\s*:', screen):
-                self.type(password + "\n")
+            last_screen = self.screen_text()
+            if console_output(last_screen, "CONSOLEAUTH"):
                 break
-            # Older baseline images may already have passwordless sudo. After
-            # the clear above, two prompts show that loadkeys returned.
-            if screen.count('qualification@') >= 2:
+            if sudo_password_prompt(last_screen):
+                if not sent_password:
+                    self.type(password + "\n")
+                    sent_password = True
+            self.alive()
+            time.sleep(1)
+        else:
+            detail = last_screen.replace(password, '[redacted]')[-1800:]
+            raise RuntimeError(f"Installed sudo authentication was not confirmed: {detail}")
+        self.type("sudo loadke" + y_key + "s us\n")
+        time.sleep(2)
+        self.type("exec env HISTFILE=/dev/null bash --noprofile --norc\n")
+        time.sleep(1)
+        # Confirm the Bash transition and punctuation/keymap before setup.
+        # The contiguous marker appears only in printf's output.
+        self.type("HISTFILE=/dev/null; set +o history; printf 'CONSOLE%sREADY\\n' \"${BASH_VERSION:+BASH}\"\n")
+        while time.monotonic() < deadline:
+            last_screen = self.screen_text()
+            if console_output(last_screen, "CONSOLEBASHREADY"):
                 break
             self.alive()
             time.sleep(1)
         else:
-            raise RuntimeError("Sudo keymap setup did not reach a prompt or return")
-        time.sleep(2)
+            detail = last_screen.replace(password, '[redacted]')[-1800:]
+            raise RuntimeError(f"Installed Bash/keymap setup was not confirmed: {detail}")
         public = self.key.with_suffix(".pub").read_text().strip()
         command = "HISTFILE=/dev/null; set +o history; mkdir -p ~/.ssh; printf '%s\\n' "
         command += shlex.quote(public) + " > ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys; "
@@ -418,3 +451,16 @@ def is_disk_prompt(text):
     compact = " ".join(text.lower().split())
     return bool(re.search(r"(?:passphrase|password).{0,180}(?:disk|luks|volume|crypt)", compact)
                 or re.search(r"(?:disk|luks|volume|crypt).{0,180}(?:passphrase|password)", compact))
+
+
+def console_output(text, marker):
+    """Match an output line, never a prompt's echoed command containing it."""
+    return any(re.sub(r"[^A-Z0-9]", "", line.upper()) == marker
+               for line in text.splitlines())
+
+
+def sudo_password_prompt(text):
+    """Only recognize a sudo password request for the disposable account."""
+    return bool(re.search(
+        r'(?:\[sudo\]\s*)?(?:password\s+for|passwort\s+f[uü]r|wachtwoord\s+voor)\s+qualification\s*:',
+        text, re.IGNORECASE))

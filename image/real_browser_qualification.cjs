@@ -69,8 +69,11 @@ async function main() {
         await page.locator("#disk-form button[type=submit]").click();
         await page.locator("#review").waitFor({state: "visible", timeout: 180000});
         const summary = await page.locator("#summary").textContent();
+        const bootKeyboard = await page.locator("#summary dt").evaluateAll(items =>
+            items.find(item => item.textContent.trim() === "Boot keyboard")?.nextElementSibling?.textContent.trim() || "");
         assert.match(summary, /qualification/);
         if (input.require_policy_controls) {
+            assert.match(bootKeyboard, /^[a-z0-9_-]+$/, "Planned boot keyboard is missing");
             assert.match(summary, /CYBEXOS-QUALIFY/);
             assert.match(summary, /ask for your account password/);
         }
@@ -83,7 +86,8 @@ async function main() {
         assert.equal(await page.inputValue("#password"), "");
         assert.equal(await page.inputValue("#confirm"), "");
         process.stdout.write(JSON.stringify({check: "graphical-installer", selected_disk: input.target_disk,
-            encrypted: input.encrypted, keyboard: input.keyboard, locale: input.locale}) + "\n");
+            encrypted: input.encrypted, keyboard: input.keyboard,
+            boot_keyboard: bootKeyboard || input.keyboard, locale: input.locale}) + "\n");
     } finally {
         await browser.close();
     }

@@ -66,6 +66,8 @@ python3 - <<'CHECK'
 import configparser,json
 import os
 from pathlib import Path
+import re
+import subprocess
 encrypted=os.environ['EXPECTED_ENCRYPTED'] == 'true'
 policy=json.loads(Path('/etc/cybexos/login.json').read_text())
 assert policy == {'version':1, 'user':'qualification', 'autologin':encrypted, 'live':False}
@@ -88,13 +90,49 @@ for key,value in contract['shell'].items():
     assert settings.get(key) == value, f'Desktop default mismatch: {key}'
 assert not Path('/home/qualification/.config/cybexos/hypr/user.lua').exists()
 assert Path('/home/qualification/.local/state/cybexos/offline-apps-seeded').exists()
+expected_locale=os.environ['EXPECTED_LOCALE']
+expected_timezone=os.environ['EXPECTED_TIMEZONE']
+expected_keyboard=os.environ['EXPECTED_KEYBOARD']
+expected_boot_keymap=os.environ['EXPECTED_BOOT_KEYMAP']
+locale=dict(line.split('=', 1) for line in Path('/etc/locale.conf').read_text().splitlines()
+            if line.startswith('LANG='))
+assert locale['LANG'].strip('"') == expected_locale
+assert Path('/etc/localtime').resolve() == (Path('/usr/share/zoneinfo') / expected_timezone).resolve()
+console=dict(line.split('=', 1) for line in Path('/etc/vconsole.conf').read_text().splitlines()
+             if line.startswith('KEYMAP='))
+assert console['KEYMAP'].strip('"') == expected_boot_keymap
+localectl=subprocess.check_output(['localectl', 'status'], text=True,
+                                 env={**os.environ, 'LC_ALL': 'C'})
+assert re.search(r'^\s*X11 Layout:\s*' + re.escape(expected_keyboard) + r'\s*$', localectl, re.M)
 CHECK
 '''
 
 
-def installed_audit(encrypted, require_secure_sudo):
+DESKTOP_KEYBOARD_AUDIT = r'''
+import json
+import os
+import subprocess
+import sys
+
+expected = sys.argv[1]
+manager = subprocess.check_output(['systemctl', '--user', 'show-environment'], text=True)
+for line in manager.splitlines():
+    if line.startswith(('HYPRLAND_INSTANCE_SIGNATURE=', 'WAYLAND_DISPLAY=')):
+        key, value = line.split('=', 1)
+        os.environ[key] = value
+assert os.environ.get('HYPRLAND_INSTANCE_SIGNATURE')
+result = subprocess.check_output(['hyprctl', '-j', 'getoption', 'input:kb_layout'], text=True)
+assert json.loads(result)['str'] == expected, 'Desktop keyboard differs from installed choice'
+'''
+
+
+def installed_audit(encrypted, require_secure_sudo, keyboard, boot_keymap, locale, timezone):
     return (f'export EXPECTED_ENCRYPTED={str(encrypted).lower()}\n'
-            f'export REQUIRE_SECURE_SUDO={str(require_secure_sudo).lower()}\n' + INSTALLED_AUDIT)
+            f'export REQUIRE_SECURE_SUDO={str(require_secure_sudo).lower()}\n'
+            f'export EXPECTED_KEYBOARD={keyboard}\n'
+            f'export EXPECTED_BOOT_KEYMAP={boot_keymap}\n'
+            f'export EXPECTED_LOCALE={locale}\n'
+            f'export EXPECTED_TIMEZONE={timezone}\n' + INSTALLED_AUDIT)
 
 
 def qualification_disks(vm):
@@ -228,9 +266,9 @@ def main():
         report['checks'].append('live-boot-and-offline-applications')
         target_disk, unused_disk = qualification_disks(vm)
         run([*vm.ssh, 'XDG_RUNTIME_DIR=/run/user/1000 systemd-run --user --collect --unit=cybexos-qualification-anaconda /usr/bin/liveinst --nosave=all_ks'])
-        qualify_browser(vm, password=password, target_disk=target_disk, unused_disk=unused_disk,
-                        encrypted=encrypted, keyboard=keyboard, locale=locale, timezone=timezone,
-                        install_timeout=args.install_timeout, require_policy_controls=not args.legacy_installer)
+        browser_result = qualify_browser(vm, password=password, target_disk=target_disk, unused_disk=unused_disk,
+                                         encrypted=encrypted, keyboard=keyboard, locale=locale, timezone=timezone,
+                                         install_timeout=args.install_timeout, require_policy_controls=not args.legacy_installer)
         report['checks'].append('graphical-installer')
         report['checks'].append('encrypted-installation' if encrypted else 'plain-installation')
         # Audit live state before a graceful shutdown; target mounts are left
@@ -243,9 +281,13 @@ def main():
         (vm.work / 'known_hosts').unlink(missing_ok=True)
         boot_installed(vm, password, encrypted)  # No ISO/CD-ROM attached.
         vm.audit()
-        root_script(vm, installed_audit(encrypted, not args.legacy_installer), password)
+        root_script(vm, installed_audit(encrypted, not args.legacy_installer,
+                                        keyboard, browser_result['boot_keyboard'], locale, timezone), password)
+        run([*vm.ssh, f'python3 - {keyboard}'], input=DESKTOP_KEYBOARD_AUDIT,
+            text=True, capture_output=True, timeout=20)
         report['checks'] += ['installed-boot-without-iso', 'encrypted-btrfs' if encrypted else 'plain-btrfs',
-                             'autologin' if encrypted else 'password-login', 'desktop-parity', 'live-cleanup', 'selinux-enforcing']
+                             'autologin' if encrypted else 'password-login', 'desktop-parity',
+                             'selected-locale-timezone-keyboard', 'live-cleanup', 'selinux-enforcing']
         if not args.legacy_installer:
             sudo = subprocess.run([*vm.ssh, 'sudo -k -n true'], capture_output=True, timeout=15)
             if sudo.returncode == 0:
