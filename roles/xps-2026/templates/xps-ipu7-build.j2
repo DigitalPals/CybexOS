@@ -322,7 +322,9 @@ validate_installed() {
   modinfo -k "$kernel" v4l2loopback >/dev/null
   modinfo -k "$kernel" intel_ipu7_psys >/dev/null
   modinfo -k "$kernel" intel_cvs >/dev/null
-  for module in ipu7-drivers vision-drivers; do
+  local -a required_modules
+  mapfile -t required_modules < <(required_dkms_modules "$kernel")
+  for module in "${required_modules[@]}"; do
     module_status=$(dkms status -m "$module" -v "$dkms_version" -k "$kernel" 2>/dev/null || true)
     [[ $module_status =~ :[[:space:]]+installed$ ]]
   done
@@ -431,6 +433,8 @@ build_rpm() {
     <"$support_dir/patches/0005-ipu7-psys-stock-core-layout.patch"
   patch --batch --forward -d "$work/vision-drivers" -p1 \
     <"$support_dir/patches/0003-vision-ptl-cvs-owns-rgb-power.patch"
+  patch --batch --forward -d "$work/ipu7-camera-hal" -p1 \
+    <"$support_dir/patches/0006-camera-hal-native-cvs-bridge.patch"
   find "$work/ipu7-drivers" "$work/vision-drivers" \
     -type f \( -name '*.orig' -o -name '*.rej' \) -delete
 
@@ -498,7 +502,7 @@ build_rpm() {
     -e 's/^PACKAGE_NAME=.*/PACKAGE_NAME="vision-drivers"/' \
     -e "s/^PACKAGE_VERSION=.*/PACKAGE_VERSION=\"$dkms_version\"/" \
     "$stage/usr/src/vision-drivers-$dkms_version/dkms.conf"
-  sed -i 's|^MAKE="|MAKE="./xps-ipu7-abi-check $kernelver \&\& |' \
+  sed -i 's|^MAKE="|MAKE="./xps-ipu7-abi-check --external-cvs $kernelver \&\& |' \
     "$stage/usr/src/vision-drivers-$dkms_version/dkms.conf"
   printf '\nBUILD_DEPENDS[0]="ipu7-drivers"\n' >> \
     "$stage/usr/src/vision-drivers-$dkms_version/dkms.conf"
@@ -589,8 +593,26 @@ prune_dkms() {
   fi
 }
 
+required_dkms_modules() {
+  local kernel=$1
+  printf '%s\n' ipu7-drivers
+  # Keep the native CVS driver and its media bridge when Fedora provides it.
+  # The ABI guard additionally verifies its in-tree path and rejects shadowing.
+  if [[ $(modinfo -k "$kernel" -F intree intel_cvs 2>/dev/null || true) != Y ]]; then
+    printf '%s\n' vision-drivers
+  fi
+}
+
 camera_modules_loaded() {
-  [[ -d /sys/module/intel_ipu7_psys || -d /sys/module/intel_cvs ]]
+  local cvs_taint
+  [[ -d /sys/module/intel_ipu7_psys ]] && return 0
+  [[ -d /sys/module/intel_cvs ]] || return 1
+  # A loaded stock CVS is not replaced by this transaction, so it must not
+  # impose a reboot on a first-time PSYS-only installation.
+  # Check the in-memory module too: DKMS removal may have restored the native
+  # file on disk while an old external CVS remains loaded until reboot.
+  cvs_taint=$(cat /sys/module/intel_cvs/taint 2>/dev/null) || return 0
+  [[ $cvs_taint == *O* || $(modinfo -F intree intel_cvs 2>/dev/null || true) != Y ]]
 }
 
 loaded_transaction_needs_reboot() {
@@ -632,6 +654,7 @@ install_dkms() {
   local actual marker_previous marker_target modules_loaded=false reboot_satisfied=false
   local transaction_pending=false
   local changed=0
+  local -a required_modules
   kernel=${2:-$(uname -r)}
   force=${3:-false}
   rollback=${4:-false}
@@ -661,11 +684,12 @@ install_dkms() {
     echo "IPU7_STOCK_ABI_CHANGED: refusing optional PSYS/CVS installation for $kernel" >&2
     return 78
   fi
+  mapfile -t required_modules < <(required_dkms_modules "$kernel")
 
   # RPM Fusion akmods and DKMS share one locally generated signing key. This
   # makes Secure Boot enrollment a single, explicit owner action.
   /usr/bin/kmodgenca -a >/dev/null
-  for module in ipu7-drivers vision-drivers; do
+  for module in "${required_modules[@]}"; do
     # Do not pipe `dkms status` into `grep -q` under pipefail: when multiple
     # kernels are installed, grep exits after the first line and DKMS can get
     # SIGPIPE, making an existing registration look absent.
@@ -678,12 +702,12 @@ install_dkms() {
   # Build both modules before installing either one. This limits a failed
   # forced rollback/rebuild to the existing on-disk module pair.
   if [[ $force == true ]]; then
-    for module in ipu7-drivers vision-drivers; do
+    for module in "${required_modules[@]}"; do
       dkms build --force -m "$module" -v "$dkms_version" -k "$kernel"
       changed=1
     done
   fi
-  for module in ipu7-drivers vision-drivers; do
+  for module in "${required_modules[@]}"; do
     module_status=$(dkms status -m "$module" -v "$dkms_version" -k "$kernel" 2>/dev/null || true)
     if [[ $force == true || ! $module_status =~ :[[:space:]]+installed$ ]]; then
       dkms install --force -m "$module" -v "$dkms_version" -k "$kernel"

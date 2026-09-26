@@ -3,6 +3,7 @@
 import argparse
 import fcntl
 import json
+import importlib.util
 import os
 from pathlib import Path
 import shutil
@@ -82,6 +83,46 @@ def write_status(path, status):
         Path(temporary).unlink(missing_ok=True)
 
 
+def reconcile_defaults(home, vendor, state):
+    """Update owned fragments independently of the one-time application seed.
+
+    Personal edits, symlinks and deletions survive; originals are backed up
+    before replacement. A failed publication leaves a recoverable ledger.
+    """
+    manifest = vendor / "managed-defaults.json"
+    if not manifest.exists():
+        return
+    spec = importlib.util.spec_from_file_location("cybexos_managed_files", vendor / "lib/managed_files.py")
+    managed = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(managed)
+    release = (vendor / "reconcile-version").read_text().strip()
+    status_path = state / "defaults-progress.json"
+    status = json.loads(status_path.read_text()) if status_path.exists() else {}
+    if status.get("version") == release and status.get("state") == "ready":
+        return
+    status = {"version": release, "state": "running", "preserved": []}
+    write_status(status_path, status)
+    try:
+        for relative in json.loads(manifest.read_text()):
+            path = Path(relative)
+            if path.is_absolute() or ".." in path.parts:
+                raise ValueError("Invalid managed default path")
+            source, target = vendor / "managed-seed" / path, home / path
+            if not directory(target.parent):
+                status["preserved"].append(relative)
+                continue
+            result = managed.manage(target, source.read_bytes(), state / "defaults/ownership.json",
+                                    mode=source.stat().st_mode & 0o777)
+            if result["preserved"]:
+                status["preserved"].append(relative)
+        status["state"] = "ready"
+    except BaseException:
+        status["state"] = "error"
+        write_status(status_path, status)
+        raise
+    write_status(status_path, status)
+
+
 def notify(message, urgency="normal"):
     if shutil.which("notify-send"):
         try:
@@ -103,6 +144,7 @@ def initialize(home, vendor=Path("/usr/share/cybexos"), mode="all", notification
     descriptor = os.open(state / "seed.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     with os.fdopen(descriptor, "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
+        reconcile_defaults(home, vendor, state)
         essential = vendor / "essential-seed"
         if essential.is_dir():
             seed_applications(essential, home)

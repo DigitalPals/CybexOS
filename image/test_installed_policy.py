@@ -39,13 +39,19 @@ class InstalledPolicy(unittest.TestCase):
             provision = root / 'provision'
             provision.mkdir()
             (provision / 'policy').write_text('fixture')
+            (root / 'run/lock').mkdir(parents=True)
             def paths(value):
                 return root / value.lstrip('/') if value.startswith(('/var/', '/run/')) else Path(value)
-            (root / 'run/lock').mkdir(parents=True)
             kernel = types.SimpleNamespace(release='kernel-one')
+            boot = ['boot-one']
+            def applied(*_args):
+                result = root / 'var/lib/cybexos/hardware-result.json'
+                result.parent.mkdir(parents=True, exist_ok=True)
+                result.write_text('{"reboot_required": false, "camera_ready": true}')
             with patch.object(configure, 'PROVISION', provision), patch.object(configure, 'Path', side_effect=paths), \
                  patch.object(configure.os, 'geteuid', return_value=0), patch.object(configure.os, 'uname', return_value=kernel), \
-                 patch.object(configure.pwd, 'getpwall', return_value=[account]), patch.object(configure, 'configure') as apply, \
+                 patch.object(configure, 'boot_id', side_effect=lambda: boot[0]), \
+                 patch.object(configure.pwd, 'getpwall', return_value=[account]), patch.object(configure, 'configure', side_effect=applied) as apply, \
                  patch('sys.argv', ['configure-installed', '--hardware', '--automatic']):
                 configure.main()
                 configure.main()
@@ -59,6 +65,102 @@ class InstalledPolicy(unittest.TestCase):
                 configure.main()
                 self.assertEqual(apply.call_count, 2)
                 self.assertFalse(marker.with_name('hardware-unsupported').exists())
+
+    def test_pending_camera_resumes_once_after_same_kernel_reboot(self):
+        import pwd
+        import types
+        account = pwd.struct_passwd(('john', 'x', 1000, 1000, '', '/home/john', '/usr/bin/fish'))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            provision = root / 'provision'
+            provision.mkdir()
+            (provision / 'policy').write_text('fixture')
+            (root / 'run/lock').mkdir(parents=True)
+            def paths(value):
+                return root / value.lstrip('/') if value.startswith(('/var/', '/run/')) else Path(value)
+            boot = ['boot-one']
+            outcomes = [True, False]
+            def applied(*_args):
+                result = root / 'var/lib/cybexos/hardware-result.json'
+                result.parent.mkdir(parents=True, exist_ok=True)
+                result.write_text(json.dumps({'reboot_required': outcomes.pop(0), 'camera_ready': not outcomes}))
+            with patch.object(configure, 'PROVISION', provision), patch.object(configure, 'Path', side_effect=paths), \
+                 patch.object(configure.os, 'geteuid', return_value=0), \
+                 patch.object(configure.os, 'uname', return_value=types.SimpleNamespace(release='same-kernel')), \
+                 patch.object(configure, 'boot_id', side_effect=lambda: boot[0]), \
+                 patch.object(configure.pwd, 'getpwall', return_value=[account]), \
+                 patch.object(configure, 'configure', side_effect=applied) as apply, \
+                 patch('sys.argv', ['configure-installed', '--hardware', '--automatic']):
+                configure.main()
+                status = json.loads((root / 'var/lib/cybexos/hardware-status.json').read_text())
+                self.assertEqual(status['state'], 'pending')
+                self.assertFalse((root / 'var/lib/cybexos/hardware-configured').exists())
+                configure.main()
+                self.assertEqual(apply.call_count, 1)
+                boot[0] = 'boot-two'
+                configure.main()
+                self.assertEqual(apply.call_count, 2)
+                configure.main()
+                self.assertEqual(apply.call_count, 2)
+                self.assertEqual(json.loads((root / 'var/lib/cybexos/hardware-status.json').read_text())['state'], 'completed')
+
+    def test_missing_hardware_result_is_failure_not_completion(self):
+        import pwd
+        import types
+        account = pwd.struct_passwd(('john', 'x', 1000, 1000, '', '/home/john', '/usr/bin/fish'))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            provision = root / 'provision'
+            provision.mkdir()
+            (root / 'run/lock').mkdir(parents=True)
+            def paths(value):
+                return root / value.lstrip('/') if value.startswith(('/var/', '/run/')) else Path(value)
+            with patch.object(configure, 'PROVISION', provision), patch.object(configure, 'Path', side_effect=paths), \
+                 patch.object(configure.os, 'geteuid', return_value=0), \
+                 patch.object(configure.os, 'uname', return_value=types.SimpleNamespace(release='kernel')), \
+                 patch.object(configure, 'boot_id', return_value='boot'), \
+                 patch.object(configure.pwd, 'getpwall', return_value=[account]), \
+                 patch.object(configure, 'configure'), \
+                 patch('sys.argv', ['configure-installed', '--hardware', '--automatic']):
+                with self.assertRaisesRegex(SystemExit, 'did not report an outcome'):
+                    configure.main()
+            self.assertEqual(json.loads((root / 'var/lib/cybexos/hardware-status.json').read_text())['state'], 'failed')
+            self.assertFalse((root / 'var/lib/cybexos/hardware-configured').exists())
+
+    def test_legacy_completion_marker_is_validated_once_and_config_changes_invalidate_it(self):
+        import pwd
+        import types
+        account = pwd.struct_passwd(('john', 'x', 1000, 1000, '', '/home/john', '/usr/bin/fish'))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            provision = root / 'provision'
+            provision.mkdir()
+            (root / 'run/lock').mkdir(parents=True)
+            saved = root / 'etc/cybexos/config.yml'
+            saved.parent.mkdir(parents=True)
+            saved.write_text('xps_2026_camera_enabled: true\n')
+            def paths(value):
+                return root / value.lstrip('/') if value.startswith(('/var/', '/run/', '/etc/')) else Path(value)
+            def applied(*_args):
+                result = root / 'var/lib/cybexos/hardware-result.json'
+                result.parent.mkdir(parents=True, exist_ok=True)
+                result.write_text('{"reboot_required":false,"camera_ready":true}')
+            with patch.object(configure, 'PROVISION', provision), patch.object(configure, 'Path', side_effect=paths), \
+                 patch.object(configure.os, 'geteuid', return_value=0), \
+                 patch.object(configure.os, 'uname', return_value=types.SimpleNamespace(release='same-kernel')), \
+                 patch.object(configure, 'boot_id', return_value='same-boot'), \
+                 patch.object(configure.pwd, 'getpwall', return_value=[account]), \
+                 patch.object(configure, 'configure', side_effect=applied) as apply, \
+                 patch('sys.argv', ['configure-installed', '--hardware', '--automatic']):
+                configure.main()
+                (root / 'var/lib/cybexos/hardware-status.json').unlink()
+                configure.main()
+                self.assertEqual(apply.call_count, 2, 'Legacy marker alone cannot prove completion')
+                configure.main()
+                self.assertEqual(apply.call_count, 2)
+                saved.write_text('xps_2026_camera_enabled: false\n')
+                configure.main()
+                self.assertEqual(apply.call_count, 3, 'Saved hardware choices invalidate prior completion')
 
     def test_camera_backup_and_restore_preserve_a_dangling_vendor_symlink(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -92,7 +194,10 @@ class InstalledPolicy(unittest.TestCase):
                          'hermes-menubar-bridge', 'cybexos-welcome', 'cybexos-app-seed'):
                 (units / (name + '.service')).write_text(
                     '[Unit]\nAfter=graphical-session.target\n[Service]\nExecStart=/usr/bin/true\n')
-            environment = {**os.environ, 'SYSTEMD_UNIT_PATH': str(units) + ':/usr/lib/systemd/user'}
+            runtime = units / 'runtime'
+            runtime.mkdir(mode=0o700)
+            environment = {**os.environ, 'SYSTEMD_UNIT_PATH': str(units) + ':/usr/lib/systemd/user',
+                           'XDG_RUNTIME_DIR': str(runtime)}
             def verify():
                 return subprocess.run(['systemd-analyze', '--user', 'verify', str(units / target.name)],
                                       env=environment, text=True, capture_output=True)
@@ -166,6 +271,7 @@ class InstalledPolicy(unittest.TestCase):
         image = {task['name']: task for task in flatten('image.yml')}
         workstation = {task['name']: task for task in flatten('main.yml')}
         for name in ('Enable user lingering', 'Enable user lingering in the offline installation target',
+                     'Create the offline user lingering directory',
                      'Configure active local wheel Polkit authorization',
                      'Revoke passwordless local Polkit authorization when disabled',
                      'Enable Docker socket activation when requested', 'Start Docker on demand rather than at boot',
@@ -176,6 +282,9 @@ class InstalledPolicy(unittest.TestCase):
         online = image['Enable user lingering']
         self.assertIn('loginctl enable-linger', online['ansible.builtin.command'])
         self.assertIn('not cybexos_offline', online['when'])
+        directory = image['Create the offline user lingering directory']['ansible.builtin.file']
+        self.assertEqual((directory['path'], directory['state'], directory['mode']),
+                         ('/var/lib/systemd/linger', 'directory', '0755'))
         offline = image['Enable user lingering in the offline installation target']['ansible.builtin.copy']
         self.assertEqual((offline['dest'], offline['owner'], offline['mode']),
                          ('/var/lib/systemd/linger/{{ primary_user }}', 'root', '0644'))
@@ -201,6 +310,35 @@ class InstalledPolicy(unittest.TestCase):
         self.assertIn("'with-mdns4' not in base_authselect_current.stdout.split()", mdns['when'])
         self.assertFalse(any('select' in task.get('ansible.builtin.command', {}).get('argv', [])
                              for task in image.values() if isinstance(task.get('ansible.builtin.command'), dict)))
+
+    def test_offline_linger_marker_is_created_when_parent_directory_is_absent(self):
+        tasks = yaml.safe_load((ROOT / 'roles/base/tasks/accounts.yml').read_text())
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            linger = root / 'var/lib/systemd/linger'
+            selected = [dict(task) for task in tasks if task['name'] in (
+                'Create the offline user lingering directory',
+                'Enable user lingering in the offline installation target')]
+            self.assertEqual(len(selected), 2)
+            self.assertEqual(selected[0]['name'], 'Create the offline user lingering directory')
+            selected[0]['ansible.builtin.file'] = {
+                **selected[0]['ansible.builtin.file'], 'path': str(linger)}
+            selected[1]['ansible.builtin.copy'] = {
+                **selected[1]['ansible.builtin.copy'], 'dest': str(linger / '{{ primary_user }}')}
+            for task in selected:
+                module = task.get('ansible.builtin.file') or task['ansible.builtin.copy']
+                module.pop('owner', None)
+                module.pop('group', None)
+            playbook = root / 'offline-linger.yml'
+            playbook.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'become': False,
+                                                 'gather_facts': False, 'vars': {
+                                                     'primary_user': 'fixture', 'cybexos_offline': True},
+                                                 'tasks': selected}]))
+            for _ in range(2):
+                result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                                        text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertTrue((linger / 'fixture').is_file())
 
     def test_repair_payload_uses_shared_sources_and_hardware_detection(self):
         with tempfile.TemporaryDirectory() as temporary:

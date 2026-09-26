@@ -419,10 +419,11 @@ if $xps_2026; then
 
   panther_packages=(
     alsa-sof-firmware linux-firmware cirrus-audio-firmware
-    intel-audio-firmware intel-gpu-firmware intel-vsc-firmware
+    intel-audio-firmware intel-gpu-firmware intel-npu-firmware intel-vsc-firmware
     iwlwifi-mld-firmware libva-intel-media-driver libvpl intel-vpl-gpu-rt
     wireless-regdb pipewire-module-filter-chain-lv2 lsp-plugins-lv2
   )
+  feature_enabled proprietary_apps && panther_packages+=(intel-media-driver)
   check 'explicit Panther Lake media/firmware RPMs' rpm -q "${panther_packages[@]}"
 
   check 'XPS speaker tuning user unit is enabled' systemctl --user is-enabled --quiet xps-speaker-tuning.service
@@ -484,8 +485,13 @@ if $xps_2026; then
       /usr/lib/systemd/system-sleep/xps-ipu7-camera
     check 'IPU7 PSYS DKMS built for the running kernel' bash -c \
       'dkms status -m ipu7-drivers -v "$1" -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"' _ "$camera_dkms_version"
-    check 'Intel CVS DKMS built for the running kernel' bash -c \
-      'dkms status -m vision-drivers -v "$1" -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"' _ "$camera_dkms_version"
+    if [[ $(modinfo -F intree intel_cvs 2>/dev/null) == Y ]]; then
+      check 'Fedora native Intel CVS retained' bash -c \
+        '[[ $(modinfo -n intel_cvs) == */kernel/* ]]'
+    else
+      check 'Intel CVS DKMS built for the running kernel' bash -c \
+        'dkms status -m vision-drivers -v "$1" -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"' _ "$camera_dkms_version"
+    fi
     if [[ -r /var/lib/xps-hardware/ipu7/reboot-required ]] &&
        grep -q "^boot_id=$(cat /proc/sys/kernel/random/boot_id) " \
          /var/lib/xps-hardware/ipu7/reboot-required; then

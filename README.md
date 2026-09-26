@@ -1,10 +1,11 @@
 # CybexOS
 
-CybexOS stands for **Cybex Opinionated System**. It is an opinionated Hyprland
-and Quickshell desktop for Fedora Linux, installed and
-kept current with Ansible. The core configuration is hardware-neutral. A
-separate, precisely gated role preserves extra support for the 2026 Dell XPS
-14 and 16.
+CybexOS stands for **Cybex Opinionated System**. It is an opinionated Fedora
+Linux desktop built around Hyprland and Quickshell. The primary installation
+path is the bootable CybexOS ISO; a source-checkout installer remains available
+for development and existing checkout deployments. The core configuration is
+hardware-neutral. A separate, precisely gated role preserves extra support
+for the 2026 Dell XPS 14 and 16.
 
 The current release target is Fedora 44 on x86_64. Fedora remains responsible
 for the kernel, drivers, SELinux, and base operating system.
@@ -27,25 +28,46 @@ see [the operations guide](docs/operations.md#migrating-from-fedora-config).
   enabled by default
 - automatically detected XPS 2026 speaker, camera, haptic, fingerprint,
   backlight, firmware, and power support
-- a persistent installer configuration, verifier, uninstaller, and verified
-  GitHub release updater
+- persistent installer configuration and lifecycle tools for source-checkout
+  deployments, plus a verified source release updater
 - one release-scoped CybexOS skill discoverable by compatible coding
   agents for safe installed-system diagnosis and customization
 - a user-selectable default AI coding agent with terminal, launcher, and
   keyboard entry points
 
-There is no desktop-preset selection: every installation gets the same core
-Hyprland/Quickshell desktop. The installer asks only about the target machine,
-security decisions, personal dotfiles, and application opt-outs.
+Source-checkout installs have no desktop-preset selection: every installation
+gets the same core Hyprland/Quickshell desktop. That installer asks about the
+target machine, security decisions, personal dotfiles, and application opt-outs.
 
-On an installed CybexOS desktop, apply only Omawrite and the managed file
+On a source-checkout installation, apply only Omawrite and the managed file
 associations with the saved configuration:
 
 ```bash
 ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags omawrite,mime-defaults
 ```
 
-## Install
+## Install from the ISO
+
+For a normal installation, boot the CybexOS ISO and follow the on-screen
+installer. It installs the desktop RPM and offline application set, then
+configures the target system without requiring a Git checkout or a network
+connection for the desktop payload. The image's [installation guide](image/README.md)
+describes disk requirements, encryption, first boot and recovery. Use the
+release instructions in [docs/releasing.md](docs/releasing.md) for current
+artifact availability and checksums.
+
+The installed desktop is delivered by `cybexos-desktop`; its packaged files
+live under `/usr/share/cybexos`. The first-login account is configured by the
+image installer, and subsequent package upgrades use the system update path.
+
+## Install from a source checkout
+
+This supported path is intended for development and existing checkout-based
+deployments. For a regular new installation, use the ISO above.
+
+The commands below install from this repository with Ansible; they do not
+install or update the ISO's `cybexos-desktop` RPM. Repository-based options and
+the saved installer configuration described here apply to this checkout path.
 
 Start with Fedora 44 and a user that can run `sudo`:
 
@@ -168,6 +190,16 @@ updates and uninstall because it is user data rather than Ansible policy.
 
 ## Update
 
+On ISO installations, `cybex update` updates Fedora packages, Flatpaks, and
+the desktop RPM when a signed update channel has been enrolled. The default
+ISO configuration does not enable a desktop RPM channel. Inspect it with
+`cybex update-channel status --json`; enabling one requires its reviewed public
+configuration and full signing-key fingerprint. See the
+[release guide](docs/releasing.md) for channel setup.
+
+On source-checkout installations, use the release updater described below.
+These releases are separate from the ISO desktop RPM channel.
+
 After the first install, use:
 
 ```bash
@@ -203,15 +235,15 @@ Useful commands:
 
 | Command | Purpose |
 | --- | --- |
-| `cybex update --check` | Check the configured GitHub channel |
-| `cybex update --system-only` | Update Fedora and Flatpak only |
+| `cybex update --check` (source checkout) | Check the configured GitHub channel |
+| `cybex update --system-only` (source checkout) | Update Fedora and Flatpak only |
 | `cybex agent` | Launch or choose the per-user default AI coding agent |
 | `cybex dev status` | Show whether the verified or a development runtime is active |
 | `cybex plugin list` | Inspect personal widgets and API compatibility |
 | `cybex verify` | Check the installed system (`--source` opts into developer checks) |
 | `cybex doctor` | Alias for `verify` |
-| `cybex configure` | Re-run the installer questions |
-| `cybex uninstall` | Remove project-managed configuration; retain applications |
+| `cybex configure` (source checkout) | Re-run the installer questions |
+| `cybex uninstall` (source checkout) | Remove project-managed configuration; retain applications |
 
 Detailed updater status, logs, cancellation, Btrfs recovery, and advanced
 Ansible tags are documented in [the operations guide](docs/operations.md).
@@ -253,7 +285,7 @@ Key documentation:
 - [Quickshell development notes](docs/quickshell-notes.md)
 
 > [!IMPORTANT]
-> The repository does not yet contain a repository-wide software license.
-> Select one before calling the project open source or publishing a public
-> release. Undocumented bundled raster assets were removed from the release
-> payload; `assets/PROVENANCE.json` enforces that boundary.
+> The repository's original code and configuration are MIT-licensed. This
+> license does not cover third-party packages, artwork, fonts, trademarks, or
+> images. Audit those separate redistribution terms before publishing bundled
+> release media; see [licensing and asset provenance](docs/licensing.md).

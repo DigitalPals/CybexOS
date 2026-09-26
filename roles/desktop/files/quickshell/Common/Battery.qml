@@ -19,11 +19,11 @@ Singleton {
 
     readonly property real percent: StatusHelpers.batteryPercent(device)
 
-    // "charging" | "discharging" | "full" | "" — full stays distinct from
-    // charging. The bar draws both as plugged in and only its tooltip says
-    // which; the popover names them apart.
+    // Power source and charge state are independent at a firmware charge limit.
     readonly property string state: StatusHelpers.chargeState(device)
-    readonly property bool pluggedIn: StatusHelpers.isPluggedIn(device)
+    readonly property bool pluggedIn: StatusHelpers.isPluggedIn(device, UPower.onBattery)
     readonly property bool charging: state === "charging"
     readonly property bool full: state === "full"
+    readonly property string statusText: StatusHelpers.batteryStatus(
+        state, pluggedIn, BatteryHealth.known && BatteryHealth.enabled)
 }

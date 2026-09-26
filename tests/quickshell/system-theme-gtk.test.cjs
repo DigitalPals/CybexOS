@@ -171,8 +171,10 @@ function runTask(task, bin, env = {}) {
     const script = task["ansible.builtin.shell"];
     assert.equal(task.args.executable, "/bin/bash");
     assert.doesNotMatch(script, /\{\{/, "the stubbed script must not need templating");
+    for (const name of ["mktemp", "rm", "cat", "timeout"])
+        if (!fs.existsSync(path.join(bin, name))) fs.symlinkSync(which(name), path.join(bin, name));
     return spawnSync(bash, ["-c", script], {
-        encoding: "utf8", env: { PATH: bin, HOME: bin, ...env },
+        encoding: "utf8", env: { PATH: bin, HOME: bin, ...env }, timeout: 3000,
     });
 }
 
@@ -187,10 +189,11 @@ test("environment.d no longer pins GTK_THEME", () => {
 });
 
 test("the converge seeds dark GTK only on keys still at their schema default", t => {
-    // Shared with installed images, which also run it offline.
+    // Shared with installed images; offline targets defer it to first login.
     const task = yamlTask("roles/dotfiles/tasks/personal.yml",
         "Default GTK to dark until the shell applies its appearance");
-    assert.deepEqual(task.when, ["manage_personal_dotfiles | bool", "not ansible_check_mode"]);
+    assert.deepEqual(task.when, ["manage_personal_dotfiles | bool", "not ansible_check_mode",
+        "not cybexos_offline | default(false) | bool"]);
     assert.equal(task.become_user, "{{ primary_user }}");
     assert.equal(task.changed_when, "'CHANGED:' in dotfiles_gtk_default.stdout");
 
@@ -228,6 +231,88 @@ test("the converge seeds dark GTK only on keys still at their schema default", t
         assert.equal(stub.calls().filter(line => line.startsWith("dbus-run-session")).length,
             stub.calls().filter(line => line.startsWith("gsettings")).length);
     }
+});
+
+test("GTK initialization does not wait for a private-bus descendant holding output open", async t => {
+    const task = yamlTask("roles/dotfiles/tasks/personal.yml",
+        "Default GTK to dark until the shell applies its appearance");
+    const state = scratch(t), pids = path.join(state, "pids");
+    const stub = stubBin(t, {
+        "dbus-run-session": `[ "$GIO_USE_VFS" = local ] || exit 90\n`
+            + `${which("sleep")} 30 &\nprintf '%s\\n' "$!" >> "$PIDS"\n`
+            + `[ "$1" = -- ] && shift\nexec "$@"`,
+        gsettings: `if [ "$1" = get ]; then printf "'chosen'\\n"; fi`,
+    });
+    try {
+        const result = runTask(task, stub.bin, { PIDS: pids, TMPDIR: state });
+        assert.equal(result.status, 0, String(result.error || result.stderr));
+        assert.equal(fs.readFileSync(pids, "utf8").trim().split("\n").length, 2);
+        assert.deepEqual(fs.readdirSync(state), ["pids"], "capture directories must be removed");
+    } finally {
+        if (fs.existsSync(pids)) {
+            const owned = fs.readFileSync(pids, "utf8").trim().split("\n").map(Number);
+            for (const pid of owned) {
+                try { process.kill(pid, "SIGTERM"); } catch (error) { if (error.code !== "ESRCH") throw error; }
+            }
+            // They are children of the stub process. PID 1 reaps them; wait
+            // until each has exited rather than leaving test sleepers behind.
+            for (let attempt = 0; attempt < 100; attempt++) {
+                const alive = owned.filter(pid => {
+                    try { return !/\) Z /.test(fs.readFileSync(`/proc/${pid}/stat`, "utf8")); }
+                    catch (error) { if (error.code === "ENOENT") return false; throw error; }
+                });
+                if (!alive.length) break;
+                assert.ok(attempt < 99, "fixture sleeper did not exit");
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+        }
+    }
+});
+
+test("a previous private-bus descendant cannot contaminate the next settings read", t => {
+    const task = yamlTask("roles/dotfiles/tasks/personal.yml",
+        "Default GTK to dark until the shell applies its appearance");
+    const state = scratch(t), pidfile = path.join(state, "pid");
+    const stub = stubBin(t, {
+        "dbus-run-session": `[ "$1" = -- ] && shift\n`
+            + `if [ "$2" = get ] && [ "$4" = color-scheme ]; then\n`
+            + `  ( while [ ! -f "$STATE/second-read" ]; do ${which("sleep")} 0.01; done\n`
+            + `    printf "'late-daemon-output'\\n"\n`
+            + `    printf done > "$STATE/written" ) &\n`
+            + `  printf '%s\\n' "$!" > "$STATE/pid"\nfi\nexec "$@"`,
+        gsettings: `if [ "$1" = get ]; then\n`
+            + `  if [ "$3" = color-scheme ]; then printf "'prefer-light'\\n"; else\n`
+            + `    printf "'Adwaita'\\n"\n    printf ready > "$STATE/second-read"\n`
+            + `    while [ ! -f "$STATE/written" ]; do ${which("sleep")} 0.01; done\n`
+            + `  fi\nfi`,
+    });
+    try {
+        const result = runTask(task, stub.bin, { STATE: state, TMPDIR: state });
+        assert.equal(result.status, 0, String(result.error || result.stderr));
+        assert.deepEqual(stub.calls().filter(line => line.startsWith("gsettings set")),
+            [`gsettings set ${SCHEMA} gtk-theme adw-gtk3-dark`]);
+        assert.doesNotMatch(result.stdout, /late-daemon-output/);
+        assert.ok(!fs.readdirSync(state).some(name => name.startsWith("tmp.")));
+    } finally {
+        // Normal completion proves the child finished its final write. On a
+        // failed assertion/timeout, terminate only this fixture's recorded PID.
+        if (fs.existsSync(pidfile)) {
+            try { process.kill(Number(fs.readFileSync(pidfile, "utf8").trim()), "SIGTERM"); }
+            catch (error) { if (error.code !== "ESRCH") throw error; }
+        }
+    }
+});
+
+test("GTK initialization reports failed settings reads", t => {
+    const task = yamlTask("roles/dotfiles/tasks/personal.yml",
+        "Default GTK to dark until the shell applies its appearance");
+    const stub = stubBin(t, {
+        "dbus-run-session": `[ "$1" = -- ] && shift\nexec "$@"`,
+        gsettings: `printf 'settings read failed\\n' >&2\nexit 7`,
+    });
+    const result = runTask(task, stub.bin);
+    assert.equal(result.status, 7, result.stderr);
+    assert.match(result.stderr, /settings read failed/);
 });
 
 test("the converge drops only CybexOS's GTK_THEME from the user manager", t => {

@@ -23,7 +23,7 @@ test("battery popover keeps the hero, meter, telemetry, profile hierarchy", () =
         /batteryGlyph:[\s\S]{0,420}?battery_full[\s\S]{0,360}?battery_1_bar/,
         "the hero glyph must reflect charge level");
     assert.match(battery,
-        /statusText:\s*Battery\.full \? "Fully charged"[\s\S]{0,100}?"Charging"[\s\S]{0,80}?"On battery"/);
+        /statusText:\s*Battery\.statusText/);
     assert.match(battery,
         /id:\s*heroNumber[\s\S]{0,260}?font\.pixelSize:\s*Theme\.typography\.displayLarge[\s\S]{0,160}?font\.features:\s*Theme\.tabularNumberFeatures/);
 });

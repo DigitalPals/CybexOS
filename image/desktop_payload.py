@@ -113,3 +113,23 @@ def split_seed(vendor, contract):
                 if file.is_file() and not file.is_symlink())
     (vendor / "seed-groups.json").write_text(json.dumps({"totalBytes": total}) + "\n")
     return total
+
+
+def prepare_managed_defaults(vendor):
+    """Version only vendor fragments; application stores and user settings stay seeded once."""
+    paths = (
+        '.config/fish/conf.d/50-cybexos.fish',
+        '.config/kitty/cybexos.conf',
+        '.local/share/nautilus-python/extensions/localsend.py',
+    )
+    selected = []
+    for relative in paths:
+        for tree in ('essential-seed', 'user-seed', 'final-seed'):
+            source = vendor / tree / relative
+            if source.is_file() and not source.is_symlink():
+                destination = vendor / 'managed-seed' / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(source, destination)
+                selected.append(relative)
+                break
+    (vendor / 'managed-defaults.json').write_text(json.dumps(selected) + '\n')

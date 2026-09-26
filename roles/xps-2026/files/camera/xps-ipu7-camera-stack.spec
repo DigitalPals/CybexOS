@@ -21,7 +21,8 @@ Requires:       gstreamer1-plugins-base
 The Fedora-specific extension required to expose the OVTI08F4/OV08X40 camera
 on the 2026 Dell XPS. Fedora's stock kernel continues to supply IPU7 base/ISYS,
 the sensor driver, ACPI bridge, and firmware. This package carries only pinned
-PSYS and CVS DKMS sources plus the Intel HAL, binary interface, and icamerasrc.
+PSYS and optional legacy CVS DKMS sources plus the Intel HAL, binary interface,
+and icamerasrc. The native CVS driver is retained when provided by Fedora.
 
 %prep
 

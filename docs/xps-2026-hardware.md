@@ -109,11 +109,12 @@ OV08X40 sensor driver, and `intel/ipu/ipu7ptl_fw.bin`. Those remain owned by the
 normal Fedora kernel and `intel-vsc-firmware` packages. Verification rejects an
 out-of-tree replacement for either `intel_ipu7` or `intel_ipu7_isys`.
 
-Two missing hardware companions use DKMS:
+Missing hardware companions use DKMS:
 
 - Intel IPU7 PSYS, compiled in PSYS-only mode against Fedora's stock core ABI.
-- Intel CVS, which acquires Panther Lake's camera power/ownership path before
-  the OV08X40 sensor probes.
+- Intel CVS only on kernels which do not supply it. Fedora's native CVS is
+  retained when present; its runtime PM and media bridge manage camera
+  ownership. The legacy CVS DKMS build refuses to shadow a native module.
 
 RPM Fusion's `akmod-v4l2loopback` supplies the third out-of-tree module. Intel's
 HAL, redistributable IPU75XA libraries, and `icamerasrc` are built into the
@@ -142,8 +143,19 @@ BTF with `pahole` and compares the private `ipu7_device`, `ipu7_bus_device`, and
 tied to an exact kernel version. If Fedora changes that internal ABI, it emits
 `IPU7_STOCK_ABI_CHANGED` and refuses the optional camera build/start while
 leaving the stock modules and normal kernel update path untouched.
-It also refuses DKMS if a future Fedora kernel starts shipping PSYS or CVS
-itself, preventing the optional bundle from shadowing a new native companion.
+The guard also covers callback, shared queue, and firmware boot structures.
+The reviewed Fedora 7.2 layout accounts for the public `auxiliary_device`
+growing by eight bytes: the PSYS build uses the target kernel headers and the
+private structure offsets are checked as a complete signature. Unrecognized
+layouts still fail closed. It refuses PSYS DKMS if Fedora starts shipping
+PSYS itself. Native CVS does not require replacement or an extra reboot when
+installing PSYS for the first time.
+
+With native CVS the graph is `OV08X40 -> Intel CVS -> IPU7 CSI2`. A narrow HAL
+patch resolves the sensor's actual I2C address across this bridge and programs
+its sink/source formats and links. Older direct sensor-to-CSI configurations
+remain supported. Merely registering the sensor does not prove frame capture;
+validate processed frames after installation.
 
 The complete build-input hash is embedded in the RPM release, its installed
 manifest, and both DKMS package versions. Consequently, changing a source pin,
@@ -235,6 +247,12 @@ smoke test explicitly:
 ```bash
 XPS_CAMERA_FRAME_TEST=1 /usr/local/libexec/xps-ipu7-camera-check
 ```
+
+The frame check skips the relay's initial splash buffers and verifies three
+complete, changing images in memory; it saves no images. An identical/covered
+scene can make this proof inconclusive. The relay disables its producer's
+last-sample retention so GStreamer mmap consumers copy and immediately requeue
+loopback buffers across the splash-to-camera transition.
 
 The Fedora package's unused generic `icamerasrc` generator trigger is removed
 on this hardware; the role's `ipu7` relay is the only camera relay instance.

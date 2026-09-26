@@ -2,12 +2,14 @@
 import ctypes
 import os
 import re
+import secrets
 import signal
 from pathlib import Path
 import shlex
 import shutil
 import socket
 import subprocess
+import tempfile
 import time
 
 from build_support import SAFE_NAME, atomic_json, prepare_firmware, validate_qemu_path, verify_sidecar
@@ -16,10 +18,40 @@ from qmp_control import Qmp, type_text
 
 # Virtio block identifiers are limited to 20 bytes in the guest protocol.
 QUALIFICATION_DISK_SERIAL = "CYBEXOS-QUALIFY"
+QUALIFICATION_UNUSED_SERIAL = "CYBEXOS-UNUSED"
 
 
 def run(args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
+
+
+def poweroff_guest(vm, password, root_script, *, timeout=90, cleanup_script=''):
+    """Accept a shutdown SSH disconnect only after preparation and clean QEMU exit."""
+    root_script(vm, 'sync\n', password)
+    marker = 'CYBEXOS_POWEROFF_READY_' + secrets.token_hex(16)
+    # Final access removal must share this connection with shutdown: no new
+    # SSH connection can authenticate after authorized_keys has been removed.
+    script = cleanup_script + "\nsync\nprintf '%s\\n' " + shlex.quote(marker)
+    script += '\nsystemctl poweroff --no-block\n'
+    disconnected = False
+    try:
+        root_script(vm, script, password)
+    except subprocess.CalledProcessError as error:
+        if error.returncode != 255 or marker not in (error.stdout or '').splitlines():
+            raise
+        disconnected = True
+    vm.ssh_ready = False
+    try:
+        code = vm.process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        detail = ' after SSH disconnected' if disconnected else ''
+        raise RuntimeError(f'Guest poweroff did not stop QEMU within {timeout}s{detail}') from error
+    if code != 0:
+        raise RuntimeError(f'Guest poweroff ended with QEMU exit {code}')
+    if vm.console:
+        vm.console.close()
+        vm.console = None
+    vm.release_runtime()
 
 
 def free_port():
@@ -74,16 +106,11 @@ assert (home / '.local/state/cybexos/offline-apps-seeded').is_file()
 if not Path('/run/cybexos-live').exists():
     import pwd
     assert pwd.getpwuid(os.getuid()).pw_shell == '/usr/bin/fish'
-    subprocess.run(['sudo', '-k', '-n', 'true'], check=True)
     assert Path('/etc/cybexos/hardware.json').is_file()
     for unit in ('hyprpolkitagent', 'hypridle', 'voxtype'):
         subprocess.run(['systemctl', '--user', 'is-active', unit], check=True)
     for unit in ('tuned-ppd', 'fwupd-refresh.timer', 'cybexos-hardware-setup.timer'):
         subprocess.run(['systemctl', 'is-enabled', unit], check=True)
-    for scope in ([], ['--permanent']):
-        for protocol in ('tcp', 'udp'):
-            subprocess.run(['sudo', '-n', 'firewall-cmd', *scope, '--zone=cybexos',
-                            '--query-port=53317/' + protocol], check=True)
     aliases = subprocess.check_output(['fish', '-ic', 'functions codex claude'], text=True)
     assert '--dangerously-bypass-approvals-and-sandbox' in aliases
     assert '--dangerously-skip-permissions' in aliases
@@ -110,10 +137,11 @@ def stop_with_harness():
 
 class TestVM:
     """Own exactly one disposable virtual disk; never attach host block devices."""
-    def __init__(self, work, firmware="uefi", memory=16384):
+    def __init__(self, work, firmware="uefi", memory=16384, guard_disk=False):
         self.work = validate_qemu_path(Path(work).resolve())
         self.firmware = firmware
         self.memory = memory
+        self.guard_disk = guard_disk
         self.owned = False
         self.process = None
         self.console = None
@@ -121,24 +149,40 @@ class TestVM:
         self.port = free_port()
         self.vnc_port = free_port()
         self.disk = self.work / "installed.qcow2"
+        self.unused_disk = self.work / "unused.qcow2"
         self.key = self.work / "id_ed25519"
         self.ssh_ready = False
         self.qmp_path = self.work / "qmp.sock"
+        self.runtime = None
 
-    def screen_text(self):
+    def release_runtime(self):
+        """Discard only this VM's private socket directory after it stops."""
+        if self.runtime is None:
+            return
+        if self.process is not None and self.process.poll() is None:
+            raise RuntimeError("Cannot remove QMP runtime while the VM is running")
+        shutil.rmtree(self.runtime)
+        self.runtime = None
+
+    def screen_text(self, timeout=20):
         """Read a disposable guest screenshot; never retain password entry frames."""
-        if not shutil.which("tesseract"):
-            raise RuntimeError("Encrypted boot qualification requires tesseract for prompt recognition")
         screenshot = self.work / "prompt.png"
-        qmp = Qmp(str(self.qmp_path))
+        qmp = None
         try:
+            if not shutil.which("tesseract"):
+                raise RuntimeError("Encrypted boot qualification requires tesseract for prompt recognition")
+            qmp = Qmp(str(self.qmp_path))
+            qmp.socket.settimeout(min(10, timeout))
             qmp.call("screendump", {"filename": str(screenshot), "format": "png"})
             return run(["tesseract", str(screenshot), "stdout", "--psm", "11"],
-                       text=True, capture_output=True, timeout=20).stdout
+                       text=True, capture_output=True, timeout=timeout).stdout
         finally:
-            qmp.stream.close()
-            qmp.socket.close()
             screenshot.unlink(missing_ok=True)
+            if qmp is not None:
+                try:
+                    qmp.stream.close()
+                finally:
+                    qmp.socket.close()
 
     def unlock_disk(self, password, timeout=180):
         """Type once, only after recognizing the disk-unlock prompt.
@@ -173,12 +217,25 @@ class TestVM:
         self.work.chmod(0o700)
         self.owned = True
         run(["qemu-img", "create", "-q", "-f", "qcow2", str(self.disk), "100G"])
+        if self.guard_disk:
+            run(["qemu-img", "create", "-q", "-f", "qcow2", str(self.unused_disk), "100G"])
         run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(self.key)])
 
     def start(self, iso=None, user="liveuser"):
         if self.process is not None and self.process.poll() is None:
             raise RuntimeError("Test VM is already running")
-        self.qmp_path.unlink(missing_ok=True)
+        self.release_runtime()
+        # Workflow artifact paths can exceed AF_UNIX's 107-byte pathname
+        # limit. Do not inherit a similarly long RUNNER_TEMP/TMPDIR here.
+        self.runtime = Path(tempfile.mkdtemp(prefix="cybexos-qmp-", dir="/tmp"))
+        self.qmp_path = self.runtime / "qmp.sock"
+        try:
+            self._start(iso, user)
+        except BaseException:
+            self.stop()
+            raise
+
+    def _start(self, iso, user):
         self.ssh_ready = False
         self.ssh = ["ssh", "-i", str(self.key), "-p", str(self.port), "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=10", "-o", "BatchMode=yes", "-o", "ConnectTimeout=3",
                     "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={self.work / 'known_hosts'}", f"{user}@127.0.0.1"]
@@ -190,12 +247,18 @@ class TestVM:
                 "-netdev", f"user,id=net,restrict=on,hostfwd=tcp:127.0.0.1:{self.port}-:22", "-device", "virtio-net-pci,netdev=net",
                 "-vnc", f"127.0.0.1:{self.vnc_port - 5900}", "-serial", f"file:{self.work / 'serial.log'}",
                 "-qmp", f"unix:{self.qmp_path},server=on,wait=off", "-monitor", "none"]
+        if self.guard_disk:
+            args += ["-drive", f"file={self.unused_disk},format=qcow2,if=none,id=unused-disk,werror=report,rerror=report",
+                     "-device", f"virtio-blk-pci,drive=unused-disk,serial={QUALIFICATION_UNUSED_SERIAL}"]
         if iso is not None:
             args += ["-cdrom", str(require_test_iso(iso)), "-boot", "d"]
         self.console = (self.work / "qemu.log").open("a")
         self.process = subprocess.Popen(args, stdout=self.console, stderr=subprocess.STDOUT,
                                         process_group=0, preexec_fn=stop_with_harness)
-        atomic_json(self.work / "vm.json", {"pid": self.process.pid, "ssh": self.ssh, "vnc_port": self.vnc_port, "qmp": str(self.qmp_path), "disk": str(self.disk)})
+        state = {"pid": self.process.pid, "ssh": self.ssh, "vnc_port": self.vnc_port, "qmp": str(self.qmp_path), "disk": str(self.disk)}
+        if self.guard_disk:
+            state['unused_disk'] = str(self.unused_disk)
+        atomic_json(self.work / "vm.json", state)
 
     def alive(self):
         if self.process.poll() is not None:
@@ -217,7 +280,7 @@ class TestVM:
             qmp.stream.close()
             qmp.socket.close()
 
-    def wait_ssh(self, timeout=300, setup=True, setup_password=None):
+    def wait_ssh(self, timeout=300, setup=True, setup_password=None, *, redactions=()):
         """Poll SSH readiness and bootstrap only inside a recognized terminal.
 
         No guest debug agent is shipped. Keyboard injection remains the transport
@@ -226,6 +289,7 @@ class TestVM:
         """
         deadline, next_attempt, attempt = time.monotonic() + timeout, 0, 0
         desktop_observed = False
+        last_error = "No SSH attempt completed"
         public = self.key.with_suffix(".pub").read_text().strip()
         command = "mkdir -p ~/.ssh; printf '%s\\n' " + shlex.quote(public)
         command += " > ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys; "
@@ -238,19 +302,30 @@ class TestVM:
         else:
             command += "sudo restorecon -RF ~/.ssh; sudo systemctl start sshd; sudo firewall-cmd --add-service=ssh"
         command = "HISTFILE=/dev/null; set +o history; " + command + "; exit\n"
-        while time.monotonic() < deadline:
+        while (remaining := deadline - time.monotonic()) > 0:
             self.alive()
-            if subprocess.run([*self.ssh, "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
-                self.ssh_ready = True
-                return
+            try:
+                result = subprocess.run([*self.ssh, "true"], stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.PIPE, text=True, timeout=min(10, remaining))
+            except subprocess.TimeoutExpired as error:
+                detail = error.stderr or ""
+                if isinstance(detail, bytes):
+                    detail = detail.decode(errors="replace")
+                last_error = "SSH probe timed out: " + detail
+            else:
+                if result.returncode == 0:
+                    self.ssh_ready = True
+                    return
+                last_error = f"SSH exit {result.returncode}: {getattr(result, 'stderr', '') or ''}"
             if setup and time.monotonic() >= next_attempt and self.qmp_path.exists():
                 # Typing even public shell commands at GRUB can enter its
-                # editor and prevent boot. Both fresh fixtures show Welcome;
-                # require its actual desktop text before sending any keys.
+                # editor and prevent boot. Require an actual desktop surface;
+                # the installer may cover Welcome on current live images.
                 if not desktop_observed:
                     screen = " ".join(self.screen_text().lower().split())
                     desktop_observed = any(phrase in screen for phrase in (
-                        "make yourself at home", "welcome to your new desktop"))
+                        "make yourself at home", "welcome to your new desktop",
+                        "your next workspace", "make it yours"))
                     if not desktop_observed:
                         next_attempt = time.monotonic() + 5
                         time.sleep(1)
@@ -277,7 +352,118 @@ class TestVM:
                     self.keypress("meta_l+q")
                 next_attempt = time.monotonic() + 15
             time.sleep(1)
-        raise RuntimeError("SSH/desktop readiness deadline exceeded; inspect VM through vm-control")
+        # Collect one read-only frame after the unchanged readiness deadline.
+        # OCR/QMP failures must not hide the SSH failure or retain the frame.
+        try:
+            screen = self.screen_text(timeout=5)
+        except Exception as error:
+            screen = f"Unavailable ({type(error).__name__}: {error})"
+        def redacted(value, limit):
+            for secret in (setup_password, *redactions):
+                if secret:
+                    value = value.replace(secret, "[redacted]")
+            return value.strip()[-limit:]
+        raise RuntimeError("SSH/desktop readiness deadline exceeded; "
+                           f"last SSH: {redacted(last_error, 1800)}; "
+                           f"screen OCR: {redacted(screen, 2200)}")
+
+    def bootstrap_installed_ssh(self, password, timeout=120):
+        """Use a verified text console, then switch its keymap to US for setup.
+
+        This works after a plain install without desktop autologin and after a
+        non-US install without guessing how punctuation maps in Hyprland.
+        Passwords are typed only at a recognized login/sudo prompt.
+        """
+        self.keypress("ctrl+alt+f3")
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if re.search(r'login\s*:', self.screen_text(), re.IGNORECASE):
+                break
+            self.alive()
+            time.sleep(2)
+        else:
+            raise RuntimeError("Installed text-console login prompt was not recognized")
+        self.type("qualification\n")
+        self._wait_password_prompt(deadline)
+        self.type(password + "\n")
+        # A fresh standalone output line proves execution; the echoed command
+        # cannot satisfy it. These letters also work before US/NL/DE keymap
+        # normalization. Probe Y separately because German swaps Y and Z.
+        shell_command = "echo CONSOLEWORKS y\n"
+        last_screen, next_probe, probes = "", time.monotonic() + 2, 0
+        while time.monotonic() < deadline:
+            last_screen = self.screen_text()
+            lines = [re.sub(r"[^A-Z]", "", line.upper()) for line in last_screen.splitlines()]
+            match = next((re.fullmatch(r"CONSOLEWORKS([YZ])", line) for line in lines
+                          if re.fullmatch(r"CONSOLEWORKS([YZ])", line)), None)
+            if match:
+                y_key = "z" if match.group(1) == "Z" else "y"
+                break
+            if re.search(r'login incorrect|authentication failure', last_screen, re.IGNORECASE):
+                raise RuntimeError("Installed console login failed; no setup commands were sent")
+            # PAM or Fish initialization can flush an early line. Retry only
+            # this harmless probe, at most three times; never resend a secret.
+            if probes < 3 and time.monotonic() >= next_probe:
+                self.type(shell_command)
+                probes += 1
+                next_probe = time.monotonic() + 10
+            self.alive()
+            time.sleep(1)
+        else:
+            detail = last_screen.replace(password, '[redacted]')[-1800:]
+            raise RuntimeError(f"Installed text-console shell was not confirmed: {detail}")
+        self.type("clear\n")
+        time.sleep(1)
+        # A command-output marker handles both passwordless baseline sudo and
+        # current passworded sudo without assuming Fish's prompt contains @.
+        self.type("sudo echo CONSOLEAUTH\n")
+        sent_password = False
+        while time.monotonic() < deadline:
+            last_screen = self.screen_text()
+            if console_output(last_screen, "CONSOLEAUTH"):
+                break
+            if sudo_password_prompt(last_screen):
+                if not sent_password:
+                    self.type(password + "\n")
+                    sent_password = True
+            self.alive()
+            time.sleep(1)
+        else:
+            detail = last_screen.replace(password, '[redacted]')[-1800:]
+            raise RuntimeError(f"Installed sudo authentication was not confirmed: {detail}")
+        self.type("sudo loadke" + y_key + "s us\n")
+        time.sleep(2)
+        self.type("exec env HISTFILE=/dev/null bash --noprofile --norc\n")
+        time.sleep(1)
+        # Confirm the Bash transition and punctuation/keymap before setup.
+        # The contiguous marker appears only in printf's output.
+        self.type("HISTFILE=/dev/null; set +o history; printf 'CONSOLE%sREADY\\n' \"${BASH_VERSION:+BASH}\"\n")
+        while time.monotonic() < deadline:
+            last_screen = self.screen_text()
+            if console_output(last_screen, "CONSOLEBASHREADY"):
+                break
+            self.alive()
+            time.sleep(1)
+        else:
+            detail = last_screen.replace(password, '[redacted]')[-1800:]
+            raise RuntimeError(f"Installed Bash/keymap setup was not confirmed: {detail}")
+        public = self.key.with_suffix(".pub").read_text().strip()
+        command = "HISTFILE=/dev/null; set +o history; mkdir -p ~/.ssh; printf '%s\\n' "
+        command += shlex.quote(public) + " > ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys; "
+        command += "sudo -n restorecon -RF /home/qualification/.ssh; sudo -n systemctl start sshd; "
+        command += "sudo -n firewall-cmd --add-service=ssh; exit\n"
+        self.type(command)
+        self.wait_ssh(timeout=max(15, int(deadline - time.monotonic())), setup=False,
+                      redactions=(password,))
+
+    def _wait_password_prompt(self, deadline):
+        while time.monotonic() < deadline:
+            screen = " ".join(self.screen_text().lower().split())
+            if re.search(r'password\s*:|passwort\s*:|wachtwoord\s*:', screen):
+                return
+            self.alive()
+            time.sleep(1)
+        raise RuntimeError("Installed password prompt was not recognized; no password was typed")
 
     def wait_desktop(self, timeout=120):
         deadline = time.monotonic() + timeout
@@ -287,7 +473,12 @@ class TestVM:
             if subprocess.run([*self.ssh, command], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
                 return
             time.sleep(1)
-        raise RuntimeError("Quickshell readiness deadline exceeded")
+        diagnosis = subprocess.run(
+            [*self.ssh, "systemctl --user status quickshell.service --no-pager; "
+             "journalctl --user -b -u quickshell.service --no-pager -n 35"],
+            capture_output=True, text=True, timeout=20)
+        details = (diagnosis.stdout + diagnosis.stderr).strip()[-6000:]
+        raise RuntimeError(f"Quickshell readiness deadline exceeded: {details}")
 
     def audit(self, applications=True):
         self.wait_desktop()
@@ -322,7 +513,9 @@ class TestVM:
                     self.process.wait()
             if self.console:
                 self.console.close()
+                self.console = None
             self.ssh_ready = False
+            self.release_runtime()
 
     def cleanup(self, keep_artifacts=False):
         if not self.owned:
@@ -333,7 +526,7 @@ class TestVM:
             for name in ("id_ed25519", "id_ed25519.pub", "known_hosts", "vm.json", "qmp.sock", "prompt.png"):
                 (self.work / name).unlink(missing_ok=True)
             if not keep_artifacts:
-                for name in ("installed.qcow2", "OVMF_VARS.fd", "OVMF_VARS.qcow2", "serial.log", "qemu.log"):
+                for name in ("installed.qcow2", "unused.qcow2", "OVMF_VARS.fd", "OVMF_VARS.qcow2", "serial.log", "qemu.log"):
                     (self.work / name).unlink(missing_ok=True)
 
 
@@ -342,3 +535,21 @@ def is_disk_prompt(text):
     compact = " ".join(text.lower().split())
     return bool(re.search(r"(?:passphrase|password).{0,180}(?:disk|luks|volume|crypt)", compact)
                 or re.search(r"(?:disk|luks|volume|crypt).{0,180}(?:passphrase|password)", compact))
+
+
+def console_output(text, marker):
+    """Match an output line, never a prompt's echoed command containing it."""
+    return any(re.sub(r"[^A-Z0-9]", "", line.upper()) == marker
+               for line in text.splitlines())
+
+
+def sudo_password_prompt(text):
+    """Only recognize a sudo password request for the disposable account."""
+    canonical = re.search(
+        r'(?:\[sudo\]\s*)?(?:password\s+for|passwort\s+f[uü]r|wachtwoord\s+voor)\s+qualification\s*:',
+        text, re.IGNORECASE)
+    # Tesseract read the Dutch sudo prompt's initial w as u on a real boot.
+    # Require the full sudo prefix and fixture account for that one OCR form.
+    dutch_ocr = re.search(r'\[sudo\]\s*uachtwoord\s+voor\s+qualification\s*:',
+                          text, re.IGNORECASE)
+    return bool(canonical or dutch_ocr)

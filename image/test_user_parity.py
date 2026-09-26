@@ -58,6 +58,30 @@ def unit(text):
 
 
 class ProvisioningContract(unittest.TestCase):
+    def test_offline_gtk_task_skips_private_bus_creation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            attempted = root / 'bus-started'
+            bus = root / 'dbus-run-session'
+            bus.write_text('#!/bin/sh\nprintf attempted > "' + str(attempted) + '"\nexit 99\n')
+            bus.chmod(0o755)
+            gtk = dict(task('roles/dotfiles/tasks/personal.yml',
+                            'Default GTK to dark until the shell applies its appearance'))
+            gtk['become'] = False
+            gtk['environment'] = {'PATH': str(root) + ':/usr/bin:/bin'}
+            playbook = root / 'offline-gtk.yml'
+            playbook.write_text(yaml.safe_dump([{
+                'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
+                'vars': {'primary_user': 'fixture', 'cybexos_offline': True,
+                         'manage_personal_dotfiles': True},
+                'tasks': [gtk, {'ansible.builtin.assert': {
+                    'that': ['dotfiles_gtk_default.skipped | default(false)']}}],
+            }]))
+            result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                                    text=True, capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertFalse(attempted.exists())
+
     def test_workstation_and_image_share_the_same_user_tasks(self):
         imports = {
             'roles/dotfiles/tasks/main.yml': ['environment.yml', 'personal.yml', 'agent-skills.yml'],
@@ -98,10 +122,10 @@ class ProvisioningContract(unittest.TestCase):
                       task(personal, 'Configure XDG user directories')['ansible.builtin.copy']['content'])
         firefox = task(personal, 'Converge only the CybexOS Firefox policy entry')
         self.assertIn('manage_personal_dotfiles', firefox['ansible.builtin.command']['argv'][1])
-        # Offline, the installer target may not start a bus; online it must.
+        # Offline targets leave GTK initialization to the first desktop login.
         gtk = task(personal, 'Default GTK to dark until the shell applies its appearance')
-        self.assertEqual(gtk['failed_when'], ['dotfiles_gtk_default.rc != 0',
-                                              'not cybexos_offline | default(false) | bool'])
+        self.assertIn('not cybexos_offline | default(false) | bool', gtk['when'])
+        self.assertNotIn('failed_when', gtk)
         portals = task('roles/desktop/tasks/portals.yml', 'Configure portal preference without patching Fedora files')
         content = portals['ansible.builtin.copy']['content']
         self.assertIn('org.freedesktop.impl.portal.FileChooser=gtk', content)

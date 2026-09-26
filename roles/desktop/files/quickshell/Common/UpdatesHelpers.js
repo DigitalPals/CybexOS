@@ -739,10 +739,17 @@ function projectErrorOf(record) {
 // the channel has nothing published yet. Not an error, so it never feeds
 // projectError; anything else (including older updaters) is "".
 function projectStatusOf(record) {
-    return record && record.status === "no-release" ? "no-release" : "";
+    var known = ["no-release", "desktop-channel-ready", "desktop-channel-disabled", "desktop-channel-invalid"];
+    return record && known.indexOf(record.status) >= 0 ? record.status : "";
 }
 
 function projectStatusLabel(status) {
+    if (status === "desktop-channel-disabled")
+        return "CybexOS desktop updates are not configured";
+    if (status === "desktop-channel-invalid")
+        return "CybexOS desktop update channel needs repair";
+    if (status === "desktop-channel-ready")
+        return "CybexOS desktop updates arrive with system packages";
     return status === "no-release" ? "No CybexOS release published yet" : "";
 }
 

@@ -7,6 +7,8 @@
       - cirrus-audio-firmware
       - intel-audio-firmware
       - intel-gpu-firmware
+      # NPU firmware is a separate Fedora subpackage from September 2026.
+      - intel-npu-firmware
       # Fedora owns and updates intel/ipu/ipu7ptl_fw.bin through this package.
       - intel-vsc-firmware
       - iwlwifi-mld-firmware
@@ -21,4 +23,15 @@
       - lsp-plugins-lv2
     state: present
   when: not ansible_check_mode
+  tags: [xps-2026, hardware, packages]
+
+- name: Install full Panther Lake video-codec acceleration
+  ansible.builtin.dnf:
+    # RPM Fusion installs into dri-nonfree, ahead of the retained Fedora
+    # driver in libva's search path, and includes H.264/HEVC support.
+    name: intel-media-driver
+    state: present
+  when:
+    - features.proprietary_apps | bool
+    - not ansible_check_mode
   tags: [xps-2026, hardware, packages]

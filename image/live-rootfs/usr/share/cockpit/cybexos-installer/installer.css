@@ -97,6 +97,9 @@ input:focus, select:focus, button:focus-visible, a:focus-visible, summary:focus-
   margin: 24px 0;
 }
 .card p { margin-bottom: 0; font-size: 14px; }
+#disk-details { white-space: pre-line; line-height: 1.6; overflow-wrap: anywhere; }
+#rescan-disks { margin-top: 12px; }
+#failure-help button { margin-top: 12px; }
 details { border-top: 1px solid var(--line); margin: 24px 0; padding-top: 16px; }
 summary { cursor: pointer; font-size: 14px; color: var(--muted); }
 button, a { font: inherit; }
@@ -135,7 +138,7 @@ footer {
 .erase { padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
 dl { display: grid; grid-template-columns: 130px 1fr; gap: 14px; padding: 24px; background: var(--surface); border-radius: 16px; }
 dt { color: var(--muted); font-size: 14px; }
-dd { margin: 0; overflow-wrap: anywhere; }
+dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
 #error { padding: 17px 20px; border: 1px solid var(--accent-text); background: var(--surface); color: var(--accent-text); border-radius: 12px; margin-bottom: 22px; }
 #busy { padding: 20px; color: var(--muted); }
 #actions { padding-left: 18px; font-size: 13px; color: var(--muted); }

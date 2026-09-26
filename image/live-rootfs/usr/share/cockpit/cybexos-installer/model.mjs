@@ -1,4 +1,6 @@
 // Pure state and validation shared by the real UI and fixture tests.
+const reserved = new Set(["root", "liveuser", "bin", "daemon", "adm", "mail", "ftp", "nobody",
+    "dbus", "systemd", "gdm", "sddm", "sshd", "polkitd", "chrony"]);
 export class Wizard {
     constructor() { this.page = "setup"; this.busy = false; this.plan = null; }
     move(page) {
@@ -14,8 +16,11 @@ export class Wizard {
         try { return await work(); } finally { this.busy = false; }
     }
     account(data) {
-        if (!/^[a-z_][a-z0-9_-]{0,30}$/.test(data.username)) throw new Error("Choose a valid lowercase username.");
-        if (data.password.length < 12) throw new Error("Use at least 12 characters for your password.");
+        if (typeof data.username !== "string" || !/^[a-z_][a-z0-9_-]{0,30}$/.test(data.username) || reserved.has(data.username))
+            throw new Error("Choose a username of 1–31 lowercase letters, numbers, underscores or dashes, starting with a letter. System names are reserved.");
+        if (typeof data.password !== "string" || Array.from(data.password).length < 12 || Array.from(data.password).length > 512)
+            throw new Error("Use a password of 12–512 characters.");
+        if (/[\x00-\x1f\x7f]/.test(data.password)) throw new Error("The password cannot contain control characters.");
         if (data.password !== data.confirm) throw new Error("The passwords do not match.");
         return data;
     }

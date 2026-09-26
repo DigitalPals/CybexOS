@@ -60,57 +60,72 @@ qs_live_reconcile_processes() {
     qs_live_error "$QS_LIVE_SERVICE has no MainPID"
     return 1
   }
-  mapfile -t pids < <(pgrep -x qs 2>/dev/null || true)
+  local scan_deadline=$((SECONDS + QS_LIVE_TIMEOUT)) expired deadline
+  while :; do
+    unknown=0
+    expired=0
+    ((SECONDS < scan_deadline)) || expired=1
+    mapfile -t pids < <(pgrep -x qs 2>/dev/null || true)
+    if ((${#pids[@]} == 1)) && [[ ${pids[0]} == "$main" && $(qs_live_main_pid) == "$main" ]]; then
+      return 0
+    fi
 
-  for pid in "${pids[@]}"; do
-    [[ $pid == "$main" ]] && continue
-    command=$(qs_live_pid_command "$pid" || true)
-    process_cgroup=$(qs_live_pid_cgroup "$pid" || true)
-    uid=$(ps -o uid= -p "$pid" 2>/dev/null | tr -d '[:space:]')
-    qs_live_error "extra qs PID $pid: command=${command:-unreadable}; cgroup=${process_cgroup:-unreadable}"
+    for pid in "${pids[@]}"; do
+      [[ $pid == "$main" ]] && continue
+      command=$(qs_live_pid_command "$pid" || true)
+      process_cgroup=$(qs_live_pid_cgroup "$pid" || true)
+      uid=$(ps -o uid= -p "$pid" 2>/dev/null | tr -d '[:space:]' || true)
+      qs_live_error "extra qs PID $pid: command=${command:-unreadable}; cgroup=${process_cgroup:-unreadable}"
+      # Short-lived clients can exit between pgrep and /proc inspection.
+      kill -0 "$pid" 2>/dev/null || continue
 
-    # IPC clients also use -p to select a configuration. They are not a second
-    # menubar, and may belong to a managed service such as Welcome. Let them
-    # finish normally before requiring the service to be the sole qs process.
-    if [[ $uid == "$(id -u)" &&
-          $command =~ ^([^[:space:]]*/)?qs[[:space:]]+ipc([[:space:]]|$) ]]; then
-      local ipc_deadline=$((SECONDS + 5))
-      qs_live_error "waiting for IPC client PID $pid to finish"
-      while kill -0 "$pid" 2>/dev/null && ((SECONDS < ipc_deadline)); do
-        sleep 0.1
-      done
-      if kill -0 "$pid" 2>/dev/null; then
+      # IPC clients also use -p, but never create another menubar. Welcome
+      # can start its next request as the previous one finishes, so every
+      # subsequent snapshot must be inspected, not just the first one.
+      if [[ $uid == "$(id -u)" &&
+            $command =~ ^([^[:space:]]*/)?qs[[:space:]]+ipc([[:space:]]|$) ]]; then
+        deadline=$((SECONDS + 5))
+        ((deadline <= scan_deadline)) || deadline=$scan_deadline
+        qs_live_error "waiting for IPC client PID $pid to finish"
+        while kill -0 "$pid" 2>/dev/null && ((SECONDS < deadline)); do
+          sleep 0.1
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+          unknown=1
+          qs_live_error "leaving active IPC client PID $pid running"
+        fi
+        continue
+      fi
+
+      if [[ $uid == "$(id -u)" && -n $process_cgroup &&
+            $process_cgroup != "$service_cgroup" &&
+            $command =~ (^|[[:space:]])([^[:space:]]*/)?qs([[:space:]]|$) &&
+            $command =~ (^|[[:space:]])-(d|p)([[:space:]]|$) ]]; then
+        qs_live_error "terminating confirmed unmanaged developer PID $pid"
+        kill -TERM "$pid"
+        deadline=$((SECONDS + 5))
+        ((deadline <= scan_deadline)) || deadline=$scan_deadline
+        while kill -0 "$pid" 2>/dev/null && ((SECONDS < deadline)); do
+          sleep 0.1
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+          qs_live_error "developer PID $pid ignored SIGTERM; terminating it"
+          kill -KILL "$pid"
+        fi
+      else
         unknown=1
-        qs_live_error "leaving active IPC client PID $pid running"
+        qs_live_error "leaving unconfirmed extra PID $pid running"
       fi
-      continue
-    fi
+    done
 
-    if [[ $uid == "$(id -u)" && -n $process_cgroup &&
-          $process_cgroup != "$service_cgroup" &&
-          $command =~ (^|[[:space:]])([^[:space:]]*/)?qs([[:space:]]|$) &&
-          $command =~ (^|[[:space:]])-(d|p)([[:space:]]|$) ]]; then
-      qs_live_error "terminating confirmed unmanaged developer PID $pid"
-      kill -TERM "$pid"
-      local deadline=$((SECONDS + 5))
-      while kill -0 "$pid" 2>/dev/null && ((SECONDS < deadline)); do
-        sleep 0.1
-      done
-      if kill -0 "$pid" 2>/dev/null; then
-        qs_live_error "developer PID $pid ignored SIGTERM; terminating it"
-        kill -KILL "$pid"
-      fi
-    else
-      unknown=1
-      qs_live_error "leaving unconfirmed extra PID $pid running"
+    if ((unknown != 0 || expired != 0)); then
+      qs_live_error "expected $main to be the sole qs PID; inspected: ${pids[*]:-none}"
+      return 1
     fi
+    # A bounded rescan must observe the managed service alone. Never infer
+    # quiescence merely from the old clients having finished.
+    sleep 0.1
   done
-
-  mapfile -t pids < <(pgrep -x qs 2>/dev/null || true)
-  if ((unknown != 0)) || ((${#pids[@]} != 1)) || [[ ${pids[0]:-} != "$main" ]]; then
-    qs_live_error "expected $main to be the sole qs PID; found: ${pids[*]:-none}"
-    return 1
-  fi
 }
 
 qs_live_begin() {

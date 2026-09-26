@@ -1,17 +1,51 @@
 """Source-only fixtures: no ISO filesystem, QEMU process or PXE server is used."""
 import hashlib
+import importlib.machinery
+import importlib.util
 import json
 import os
+import socket
 from pathlib import Path
 import tempfile
+import tarfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+import urllib.error
+from unittest.mock import Mock, patch
 
 from build_support import (builder_cloud_config, checksum_entries, deliver_artifacts,
                            select_firmware, wait_for_builder_initialization)
 from download_cache import import_cache, merge_cache, verified_entries
 from pxe_publish import DEFAULT_CONTRACT, IVentoy, publish, staging_parent, validate_status
+
+
+class SourceArchiveTests(unittest.TestCase):
+    def test_disposable_builder_receives_skill_license_and_provisioning_helper(self):
+        loader = importlib.machinery.SourceFileLoader('archive_build', str(Path(__file__).with_name('build')))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        builder = importlib.util.module_from_spec(spec)
+        loader.exec_module(builder)
+        from desktop_payload import prepare_session
+        from provision_payload import prepare_provision
+        import yaml
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / 'source.tar.gz'
+            builder.source_archive(archive)
+            extracted = root / 'source'
+            with tarfile.open(archive) as stream:
+                stream.extractall(extracted, filter='data')
+            payload = root / 'payload'
+            inventory = yaml.safe_load((extracted / 'inventory/group_vars/all.yml').read_text())
+            # Exercise the actual packager against only what crosses the VM
+            # boundary; testing against the full checkout hid missing inputs.
+            prepare_session(extracted, payload, inventory)
+            prepare_provision(extracted, payload)
+            self.assertTrue((extracted / 'LICENSE').is_file())
+            self.assertTrue((payload / 'usr/share/cybexos/agent-skills/cybexos/SKILL.md').is_file())
+            helper = payload / 'usr/share/cybexos/provision/scripts/manage-agent-skills'
+            self.assertTrue(helper.is_file())
+            self.assertTrue(helper.stat().st_mode & 0o111)
 
 
 class BuilderInitializationTests(unittest.TestCase):
@@ -138,6 +172,74 @@ class FirmwareTests(unittest.TestCase):
 
 
 class PublisherTests(unittest.TestCase):
+    def fixture_client(self, responses, timeout=180):
+        clock = [0]
+        methods = []
+        responses = iter(responses)
+        def request(method):
+            methods.append(method)
+            clock[0] += 1
+            response = next(responses)
+            if isinstance(response, Exception):
+                raise response
+            return response
+        def sleep(seconds):
+            clock[0] += seconds
+        client = IVentoy('http://127.0.0.1:26000/iventoy/json', DEFAULT_CONTRACT,
+                         request=request, timeout=timeout, sleep=sleep, clock=lambda: clock[0])
+        return client, methods, clock
+
+    def test_accepted_refresh_retries_only_status_timeouts(self):
+        client, methods, _ = self.fixture_client([
+            {'status': 'running'}, {'result': 'success'}, TimeoutError('timed out'),
+            urllib.error.URLError(TimeoutError('timed out')), {'status': 'refreshing'},
+            {'status': 'running'}, [{'name': 'fixture.iso'}],
+        ])
+        client.refresh('fixture.iso')
+        self.assertEqual(methods.count('refresh_img_list'), 1)
+        self.assertEqual(methods.count('query_status'), 5)
+        self.assertEqual(methods[-1], 'get_img_tree')
+
+    def test_polling_uses_one_deadline_for_the_whole_refresh(self):
+        client, methods, clock = self.fixture_client([
+            {'status': 'refreshing'}, {'status': 'running'}, {'result': 'success'},
+            TimeoutError('timed out')], timeout=8)
+        with self.assertRaisesRegex(RuntimeError, 'deadline'):
+            client.refresh('fixture.iso')
+        self.assertEqual(clock[0], 8)
+        self.assertEqual(methods, ['query_status', 'query_status', 'refresh_img_list', 'query_status'])
+
+    def test_ambiguous_refresh_timeout_is_never_repeated(self):
+        client, methods, _ = self.fixture_client([{'status': 'running'}, TimeoutError('timed out')])
+        with self.assertRaises(TimeoutError):
+            client.refresh('fixture.iso')
+        self.assertEqual(methods, ['query_status', 'refresh_img_list'])
+
+    def test_status_json_and_other_transport_errors_are_not_retried(self):
+        for error in (json.JSONDecodeError('bad JSON', '!', 0),
+                      urllib.error.URLError(ConnectionRefusedError('refused'))):
+            with self.subTest(error=type(error).__name__):
+                client, methods, _ = self.fixture_client([
+                    {'status': 'running'}, {'result': 'success'}, error])
+                with self.assertRaises(type(error)):
+                    client.refresh('fixture.iso')
+                self.assertEqual(methods, ['query_status', 'refresh_img_list', 'query_status'])
+
+    def test_timeout_recovery_still_requires_running_pxe_and_expected_filename(self):
+        for remaining, message in (([{'status': 'stopped'}], 'not running'),
+                                   ([{'status': 'running'}, [{'name': 'other.iso'}]], 'published filename')):
+            client, _, _ = self.fixture_client([
+                {'status': 'running'}, {'result': 'success'}, TimeoutError('timed out'), *remaining])
+            with self.assertRaisesRegex(RuntimeError, message):
+                client.refresh('fixture.iso')
+
+    def test_http_request_timeout_cannot_exceed_remaining_deadline(self):
+        client = IVentoy('http://127.0.0.1:26000/iventoy/json', DEFAULT_CONTRACT, clock=lambda: 5)
+        with patch('pxe_publish.urllib.request.urlopen', side_effect=TimeoutError) as request:
+            with self.assertRaises(TimeoutError):
+                client._query('query_status', 8)
+        self.assertEqual(request.call_args.kwargs['timeout'], 3)
+
     def test_refresh_polls_known_iventoy_contract_and_verifies_tree(self):
         responses = iter([{'status': 'running'}, {'result': 'success'}, {'status': 'refreshing'}, {'status': 'running'}, [{'name': 'fixture.iso'}]])
         methods = []
@@ -208,6 +310,91 @@ class PublisherTests(unittest.TestCase):
 
 
 class QualificationSourceTests(unittest.TestCase):
+    def test_long_artifact_paths_use_bindable_private_qmp_runtime_across_boots(self):
+        from vm_testing import TestVM, poweroff_guest
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / ('a' * 80) / ('b' * 80)
+            root.mkdir(parents=True)
+            vm = TestVM(root, firmware='bios')
+            vm.owned = True
+            sockets = []
+            def launch(arguments, **kwargs):
+                option = arguments[arguments.index('-qmp') + 1]
+                path = option.removeprefix('unix:').split(',')[0]
+                connection = socket.socket(socket.AF_UNIX)
+                connection.bind(path)  # Real kernel pathname-length check.
+                sockets.append(connection)
+                process = Mock(pid=12345)
+                process.poll.return_value = None
+                def finish(*args, **kwargs):
+                    connection.close()
+                    process.poll.return_value = 0
+                    return 0
+                process.wait.side_effect = finish
+                process.terminate.side_effect = finish
+                return process
+            try:
+                with patch('vm_testing.subprocess.Popen', side_effect=launch), \
+                        patch.dict(os.environ, {'TMPDIR': str(root)}):
+                    paths = []
+                    for poweroff in (True, False):
+                        vm.start()
+                        runtime = vm.runtime
+                        paths.append(runtime)
+                        self.assertEqual(runtime.stat().st_mode & 0o777, 0o700)
+                        self.assertLess(len(os.fsencode(vm.qmp_path)), 108)
+                        self.assertEqual(json.loads((root / 'vm.json').read_text())['qmp'], str(vm.qmp_path))
+                        if poweroff:
+                            poweroff_guest(vm, 'fixture-password', Mock())
+                        else:
+                            vm.cleanup(keep_artifacts=True)
+                        self.assertFalse(runtime.exists())
+                        self.assertIsNone(vm.runtime)
+                    self.assertNotEqual(*paths)
+                    self.assertTrue((root / 'qemu.log').exists(), 'Requested diagnostic outputs stay retained')
+            finally:
+                vm.stop()
+                for connection in sockets:
+                    connection.close()
+
+    def test_failed_vm_launch_cleans_private_qmp_runtime(self):
+        from vm_testing import TestVM
+        with tempfile.TemporaryDirectory() as temporary:
+            vm = TestVM(temporary, firmware='bios')
+            runtimes = []
+            def fail(*args, **kwargs):
+                runtimes.append(vm.runtime)
+                raise OSError('fixture launch failure')
+            with patch('vm_testing.subprocess.Popen', side_effect=fail):
+                with self.assertRaisesRegex(OSError, 'fixture launch failure'):
+                    vm.start()
+            self.assertFalse(runtimes[0].exists())
+            self.assertIsNone(vm.runtime)
+            self.assertIsNone(vm.console)
+
+    def test_state_publication_failure_stops_guest_before_removing_runtime(self):
+        from vm_testing import TestVM
+        with tempfile.TemporaryDirectory() as temporary:
+            vm = TestVM(temporary, firmware='bios')
+            process = Mock(pid=12345)
+            process.poll.return_value = None
+            runtimes = []
+            def terminate():
+                self.assertTrue(vm.runtime.is_dir())
+                process.poll.return_value = 0
+            process.terminate.side_effect = terminate
+            process.wait.return_value = 0
+            def fail(*args):
+                runtimes.append(vm.runtime)
+                raise OSError('fixture state publication failure')
+            with patch('vm_testing.subprocess.Popen', return_value=process), \
+                    patch('vm_testing.atomic_json', side_effect=fail):
+                with self.assertRaisesRegex(OSError, 'fixture state publication failure'):
+                    vm.start()
+            process.terminate.assert_called_once()
+            self.assertFalse(runtimes[0].exists())
+            self.assertIsNone(vm.runtime)
+
     def test_installation_requires_both_explicit_execution_flags(self):
         import qualification
         for flags in ([], ['--execute-vm'], ['--erase-disposable-disk']):

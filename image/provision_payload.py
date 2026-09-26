@@ -4,7 +4,7 @@ import shutil
 
 def prepare_provision(root, payload):
     destination = payload / 'usr/share/cybexos/provision'
-    for relative in ('image/provision.yml', 'image/provision.cfg', 'inventory/group_vars/all.yml',
+    for relative in ('image/provision.yml', 'image/provision.cfg', 'image/library', 'inventory/group_vars/all.yml',
                      'roles/base', 'roles/xps-2026', 'roles/apps/tasks/mpv.yml',
                      'roles/apps/tasks/voxtype-backend.yml', 'roles/apps/handlers/main.yml',
                      'roles/dotfiles/tasks/shell-defaults.yml',

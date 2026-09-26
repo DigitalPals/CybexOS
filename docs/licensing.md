@@ -1,17 +1,12 @@
 # Licensing and asset provenance
 
-There is currently no repository-root `LICENSE` or `COPYING` file. Repository
-visibility and a Git commit history do not themselves grant permission to copy,
-modify, or redistribute the original configuration code. This document records
-that boundary; it does not choose a software license on the owner's behalf.
+The repository's original code and configuration are licensed under the MIT
+License; see the repository-root `LICENSE`. That grant applies to CybexOS
+copyrighted code and does not replace licenses or permissions for third-party
+software, assets, product names, or marks included in a source archive, ISO, or
+RPM.
 
-## Repository code and configuration
-
-The owner must choose the intended terms, confirm that every contributor can
-license their contribution on those terms, and add the corresponding canonical
-license text at the repository root. If different directories need different
-terms, add unambiguous per-directory notices and a root summary. Until then,
-downstream users should not infer an open-source license.
+## Third-party software and branding
 
 Files copied or downloaded from other projects remain under their upstream
 terms. In particular:
@@ -23,10 +18,13 @@ terms. In particular:
 - the Cybex role checks out a pinned upstream artwork revision and then overlays
   repository-local theme files; and
 - product names, logos, and brand SVGs may also be subject to trademark rules,
-  independently of any software license eventually selected here.
+  independently of the MIT License.
 
-A repository-wide software license must not be presented as relicensing those
-third-party materials.
+A public source archive, desktop RPM, or ISO bundles more than original CybexOS
+code. Complete and document the software and asset redistribution audit for the
+actual release payload before public distribution. The MIT License does not
+itself grant rights to redistribute third-party packages, artwork, fonts,
+wallpapers, or trademarks.
 
 ## Repository assets
 

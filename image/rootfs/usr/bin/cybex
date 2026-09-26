@@ -6,19 +6,13 @@ case $command_name in
   welcome) exec /usr/bin/cybexos-welcome "$@" ;;
   configure) exec /usr/libexec/cybexos-config "$@" ;;
   update) exec /usr/share/cybexos/bin/cybexos-update-run run "$@" ;;
+  update-channel) exec /usr/libexec/cybexos-update-channel "$@" ;;
   prepare-apps) exec /usr/libexec/cybexos-user-init --background "$@" ;;
   repair) exec sudo /usr/libexec/cybexos-configure-installed --user "${SUDO_USER:-$USER}" "$@" ;;
   agent) exec /usr/share/cybexos/bin/cybexos-agent "$@" ;;
   plugin|dev) exec /usr/share/cybexos/bin/cybexos-runtime "$command_name" "$@" ;;
   version|--version) exec rpm -q cybexos-desktop ;;
-  verify|doctor)
-    systemctl --user is-active quickshell.service
-    hyprctl configerrors
-    if [[ -f /var/lib/cybexos/hardware-unsupported ]]; then
-      echo 'Camera setup needs kernel compatibility review; see /var/lib/xps-hardware/ipu7/abi-failed.log.' >&2
-      exit 1
-    fi
-    ;;
+  verify|doctor) exec /usr/libexec/cybexos-doctor "$@" ;;
   uninstall)
     # The desktop is the operating system of an ISO installation; there is no
     # separate workstation layer to remove.
@@ -35,13 +29,14 @@ Commands:
   welcome       Open the CybexOS welcome window
   configure     Change installation choices and apply them (--check prints them)
   update        Check for and apply CybexOS and system updates
+  update-channel Inspect or enroll the desktop RPM update channel
   prepare-apps  Prepare the offline applications for this account
   repair        Reapply the installed-system policy to this account
   agent         Launch or choose the default AI coding agent
   plugin        Install, update, clone, remove, or configure desktop plugins
   dev           Select, inspect, or disable a live development checkout
   version       Print the installed CybexOS package version
-  verify        Check the running desktop session
+  verify        Check installed-system health (--json for machine-readable output)
   doctor        Alias for verify
 EOF
     ;;

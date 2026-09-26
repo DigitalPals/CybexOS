@@ -6,6 +6,7 @@ const fs = require("node:fs/promises");
 const http = require("node:http");
 const path = require("node:path");
 const { chromium } = require("playwright-core");
+const { waitForInitialSetup } = require("./real_browser_qualification.cjs");
 const root = path.join(__dirname, "live-rootfs/usr/share/cockpit/cybexos-installer");
 
 const transport = `
@@ -20,11 +21,34 @@ window.cockpit = {
     then(callback) { done = callback; return this; },
     input(raw) {
       const data = JSON.parse(raw || "{}"), command = args[1];
-      fixtureRequests.push({ command, hasPassword: !!data.password, timezone: data.timezone });
+      fixtureRequests.push({ command, hasPassword: !!data.password,
+        locale: data.locale, timezone: data.timezone, encrypted: data.encrypted });
+      const busyRemaining = Number(sessionStorage.getItem("fixtureBusyRemaining") || "0");
+      if (command === "inventory" && busyRemaining > 0) {
+        sessionStorage.setItem("fixtureBusyRemaining", String(busyRemaining - 1));
+        setTimeout(() => {
+          stream(JSON.stringify({ event: "result", ok: false,
+            error: "Another installer operation is still running." }) + "\\n");
+          done();
+        }, 5);
+        return this;
+      }
+      const initialError = command === "inventory" && sessionStorage.getItem("fixtureInitialError");
+      if (initialError && initialError !== "done") {
+        sessionStorage.setItem("fixtureInitialError", "done");
+        setTimeout(() => {
+          stream(JSON.stringify({ event: "result", ok: false,
+            error: "Anaconda inventory failed." }) + "\\n");
+          done();
+        }, 5);
+        return this;
+      }
       let result;
       if (command === "status") result = { phase: fixturePhase, message: "Fixture progress" };
-      else if (command === "inventory") result = {
-        disks: [{ name: "vda", path: "/dev/vda", size: 107374182400, model: "Fixture NVMe" }],
+      else if (command === "inventory" || command === "rescan") result = {
+        disks: [{ name: "vda", path: "/dev/vda", size: 107374182400, model: "Fixture NVMe",
+                  serial: "FIXTURE-SERIAL", wwn: "FIXTURE-WWN",
+                  partitions: [{ path: "/dev/vda1", size: 2147483648, filesystem: "vfat" }] }],
         keyboards: [{ id: "us", label: "English (US)" }, { id: "nl", label: "Dutch" }],
         locales: ["en_US.UTF-8", "nl_NL.UTF-8"], locale: "en_US.UTF-8",
         keyboard: "us", timezones: ["America/Argentina/Buenos_Aires", "Europe/Amsterdam", "UTC"],
@@ -34,9 +58,12 @@ window.cockpit = {
       else if (command === "keyboard") result = { keyboard: data.keyboard, boot_keyboard: data.keyboard };
       else if (command === "plan") result = {
         phase: "review", token: "fixture-token",
-        disk: { name: "vda", path: "/dev/vda", model: "Fixture NVMe" },
+        disk: { name: "vda", path: "/dev/vda", size: 107374182400, model: "Fixture NVMe",
+                serial: "FIXTURE-SERIAL", wwn: "FIXTURE-WWN",
+                partitions: [{ path: "/dev/vda1", size: 2147483648, filesystem: "vfat" }] },
         account: { username: data.username, encrypted: data.encrypted,
-                   locale: data.locale, timezone: data.timezone },
+                   locale: data.locale, timezone: data.timezone,
+                   passwordless_wheel: data.passwordless_wheel },
         boot_keyboard: data.keyboard,
         actions: [{ "action-description": "Create", "object-description": "encrypted Btrfs", "device-name": "vda" }],
         warnings: []
@@ -59,7 +86,11 @@ window.cockpit = {
           fixturePhase = "complete";
           sessionStorage.setItem("fixturePhase", fixturePhase);
         }, 100);
-      } else result = { phase: "setup" };
+      } else if (command === "diagnostics") result = {
+        schema: 1, installer: { phase: fixturePhase, message: "Installation did not finish." },
+        worker: { ActiveState: "failed", Result: "exit-code" }, backend_ready: true
+      };
+      else result = { phase: "setup" };
       setTimeout(() => {
         stream(JSON.stringify({ event: "result", ok: true, data: result }) + "\\n");
         done();
@@ -106,6 +137,22 @@ async function main() {
       headless: true,
       args: ["--disable-dev-shm-usage"],
     });
+    const busyPage = await browser.newPage();
+    await busyPage.addInitScript(() => sessionStorage.setItem("fixtureBusyRemaining", "4"));
+    await busyPage.goto(`http://127.0.0.1:${server.address().port}/cockpit/@localhost/cybexos-installer/index.html`);
+    await waitForInitialSetup(busyPage, 5000, [10, 20, 40, 80, 160, 320, 320]);
+    assert.equal(await busyPage.locator("#setup").isVisible(), true);
+    assert.equal(await busyPage.evaluate(() => fixtureRequests.filter(request => request.command === "inventory").length), 5);
+    await busyPage.close();
+
+    const otherErrorPage = await browser.newPage();
+    await otherErrorPage.addInitScript(() => sessionStorage.setItem("fixtureInitialError", "other"));
+    await otherErrorPage.goto(`http://127.0.0.1:${server.address().port}/cockpit/@localhost/cybexos-installer/index.html`);
+    await assert.rejects(waitForInitialSetup(otherErrorPage, 250));
+    assert.equal(await otherErrorPage.locator("#setup").isVisible(), false);
+    assert.equal(await otherErrorPage.evaluate(() => fixtureRequests.filter(request => request.command === "inventory").length), 1);
+    await otherErrorPage.close();
+
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.emulateMedia({ reducedMotion: "reduce" });
     const errors = [];
@@ -115,8 +162,17 @@ async function main() {
     await page.waitForFunction(() => !document.querySelector("#password").disabled);
     await screenshot(page, "installer-setup");
     await page.fill("#username", "alice");
+    assert.equal(await page.inputValue("#disk"), "");
+    assert.equal(await page.isChecked("#passwordless-wheel"), false);
+    await page.fill("#username", "root");
     await page.fill("#password", "fixture secret 123");
     await page.fill("#confirm", "fixture secret 123");
+    await page.getByRole("button", { name: "Choose install location" }).click();
+    assert.match(await page.textContent("#error"), /System names are reserved/);
+    await page.fill("#username", "alice");
+    await page.fill("#password", "fixture secret 123");
+    await page.fill("#confirm", "fixture secret 123");
+    await page.check("#passwordless-wheel");
     await page.selectOption("#keyboard", "nl");
     await page.waitForFunction(() => !document.querySelector("#password").disabled);
     assert.equal(await page.inputValue("#password"), "");
@@ -129,13 +185,23 @@ async function main() {
     await page.fill("#keyboard-test", "ordinary test characters");
     await page.fill("#password", "fixture secret 123");
     await page.fill("#confirm", "fixture secret 123");
+    await page.locator("#account-form details > summary").click();
+    await page.selectOption("#locale", "nl_NL.UTF-8");
+    await page.selectOption("#timezone", "Europe/Amsterdam");
     await page.getByRole("button", { name: "Choose install location" }).click();
     await page.locator("#location").waitFor({ state: "visible" });
     assert.equal(await page.isChecked("#encrypted"), true);
+    await page.click("#rescan-disks");
+    await page.waitForFunction(() => !document.querySelector("#rescan-disks").disabled);
+    assert.equal(await page.inputValue("#disk"), "");
     await screenshot(page, "installer-location");
     await page.selectOption("#disk", "vda");
+    assert.match(await page.textContent("#disk-details"), /FIXTURE-SERIAL/);
+    assert.match(await page.textContent("#disk-details"), /\/dev\/vda1.*2\.0 GiB/);
     await page.getByRole("button", { name: "Review installation" }).click();
     await page.locator("#review").waitFor({ state: "visible" });
+    assert.match(await page.textContent("#summary"), /Administrator commands do not ask for a password/);
+    assert.match(await page.textContent("#summary"), /FIXTURE-WWN/);
     assert.equal(await page.isDisabled("#install"), true);
     await screenshot(page, "installer-review");
     await page.check("#erase");
@@ -153,13 +219,44 @@ async function main() {
     assert.equal(await page.inputValue("#confirm"), "");
     assert.equal(await page.evaluate(() => fixtureRequests.filter(request => request.command === "install").length), 2);
     assert.equal(await page.evaluate(() => fixtureRequests.find(request => request.command === "plan").timezone), "Europe/Amsterdam");
+    assert.equal(await page.evaluate(() => fixtureRequests.find(request => request.command === "plan").locale), "nl_NL.UTF-8");
     await page.reload();
     await page.getByRole("heading", { name: "Your workspace is ready." }).waitFor();
+    await page.evaluate(() => sessionStorage.setItem("fixturePhase", "failed-install"));
+    await page.reload();
+    await page.getByRole("heading", { name: "Installation needs attention." }).waitFor();
+    assert.equal(await page.isVisible("#failure-help"), true);
+    const downloadPromise = page.waitForEvent("download");
+    await page.click("#save-diagnostics");
+    const download = await downloadPromise;
+    assert.equal(download.suggestedFilename(), "cybexos-installer-diagnostics.json");
+    assert.equal(await page.evaluate(() => fixtureRequests.some(request => request.command === "diagnostics")), true);
     await page.setViewportSize({ width: 390, height: 844 });
     await screenshot(page, "installer-narrow");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    const plain = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    plain.on("pageerror", error => errors.push(error.message));
+    await plain.goto(`http://127.0.0.1:${server.address().port}/cockpit/@localhost/cybexos-installer/index.html`);
+    await plain.locator("#setup").waitFor({ state: "visible" });
+    await plain.waitForFunction(() => !document.querySelector("#password").disabled);
+    await plain.fill("#username", "qualification");
+    await plain.fill("#password", "fixture secret 123");
+    await plain.fill("#confirm", "fixture secret 123");
+    await plain.locator("#account-form details > summary").click();
+    await plain.selectOption("#locale", "en_US.UTF-8");
+    await plain.selectOption("#timezone", "UTC");
+    await plain.getByRole("button", { name: "Choose install location" }).click();
+    await plain.locator("#location").waitFor({ state: "visible" });
+    await plain.selectOption("#disk", "vda");
+    await plain.locator("#disk-form details > summary").click();
+    await plain.uncheck("#encrypted");
+    await plain.getByRole("button", { name: "Review installation" }).click();
+    await plain.locator("#review").waitFor({ state: "visible" });
+    assert.match(await plain.textContent("#summary"), /unencrypted/);
+    assert.equal(await plain.evaluate(() => fixtureRequests.find(request => request.command === "plan").encrypted), false);
+    await plain.close();
     assert.deepEqual(errors, []);
-    console.log("PASS: three-screen flow, keyboard change, timezone detection, rejected-install recovery, encryption default, erase confirmation, password clearing, progress/reload recovery, narrow layout");
+    console.log("PASS: three-screen flow, keyboard/locale/timezone choices, encrypted and plain disk paths, rejected-install recovery, erase confirmation, password clearing, progress/reload recovery, narrow layout");
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));

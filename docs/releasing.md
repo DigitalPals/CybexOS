@@ -1,20 +1,47 @@
 # Publishing CybexOS releases
 
-Public updates are built from semantic-version Git tags by
-`.github/workflows/release.yml`. The workflow will not publish unless the full
-source contract and a twice-converged generic Fedora VM both pass.
+CybexOS has two release surfaces. Source-checkout releases publish a
+versioned source archive; ISO releases publish a signed desktop RPM, bootable
+ISO, and RPM update metadata. Both use a semantic-version Git tag and share
+the repository source contract and generic Fedora VM gate. The release also
+runs the image-source contract, then requires trusted PXE-host qualification
+before publication. See [ISO and desktop RPM releases](iso-releases.md) for
+runner setup, signing, the installer matrix, reconstruction, and channel
+enrollment.
 
-## One-time repository setup
+The source archive is published by `.github/workflows/release.yml` after all
+required jobs pass. Its prerequisite job checks the tag against `VERSION`,
+requires a non-empty `CYBEXOS_BASELINE_ISO` repository variable and a root
+license file, and validates semantic versioning. The ISO job additionally
+validates that the baseline file and checksum sidecar exist on the PXE host.
 
-1. Enable immutable releases in the GitHub repository settings.
-2. Keep Actions permitted to create attestations and write release contents;
-   the workflow grants only those job-level permissions.
-3. Protect the default branch and require the source and generic-VM checks.
+## Source archive setup
+
+1. Immutable GitHub Releases are enabled for the repository. Keep Actions
+   permitted to create attestations and write release contents; the workflow
+   grants only those job-level permissions.
+2. The `desktop-release` environment and its `CYBEXOS_RPM_SIGNING_KEY` secret
+   provide signing access only to the GitHub-hosted signing job. The PXE
+   qualification runner never receives that secret. The `github-pages`
+   environment deploys stable repository metadata after release publication.
+3. Keep `CYBEXOS_BASELINE_ISO` set to the verified older ISO and configure the
+   on-demand trusted self-hosted PXE runner as described in
+   [the ISO release guide](iso-releases.md).
+4. Branch protection requires pull requests, up-to-date branches, and the
+   GitHub Actions checks `Fedora 44 source contract` and `Image tooling,
+   installer fixtures and account isolation`. Admins are subject to the rule;
+   force pushes and branch deletion are disabled. The generic Fedora VM is a
+   release-tag gate, not a required branch check.
 
 The updater refuses a release when GitHub reports `immutable: false`, even if
 the archive checksum is otherwise correct.
 
-## Release checklist
+GitHub Pages is configured at the desktop update URL but is currently empty;
+the first stable ISO release workflow will deploy signed metadata there.
+Prerelease tags publish downloadable assets but do not update the stable Pages
+repository.
+
+## Source archive release checklist
 
 1. Review `release-manifest.json`, `VERSION`, the Fedora release,
    configuration schema, minimum updater version, and all dependency pins.
@@ -45,7 +72,7 @@ deployed from the failed candidate stay in place; the run records
 `~/.local/share/cybexos/current/install` restores the previous release's files
 in the meantime.
 
-## What the workflow publishes
+## What the source workflow publishes
 
 The release contains a versioned source archive, its provenance bundle
 `cybexos-VERSION.tar.zst.sigstore.jsonl`, and `SHA256SUMS`. The checksum
@@ -71,6 +98,9 @@ SHA-256 digest form the updater trust boundary. Updating needs no GitHub
 login, and a release without its bundle is refused. Files copied from an
 arbitrary branch or mutable URL are not accepted as updates.
 
-Until the first release is published, `cybex update --check` reports that no
-release exists on the channel, and updates install Fedora and Flatpak
-packages only. That is expected, not a failure.
+Until a source archive release is published, source-checkout
+`cybex update --check` reports that no release exists on its channel. On ISO
+installations, use `cybex update-channel status --json`; that command's channel
+status is separate from source archive discovery. See [ISO and desktop RPM
+releases](iso-releases.md) for channel enrollment after the first stable
+desktop release has been published.

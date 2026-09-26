@@ -31,8 +31,9 @@ def run(args, **kwargs):
 def source_archive(destination, additions=None):
     roots = ["image", "roles/desktop", "assets/scripts", "assets/EDM115-newline2.omp.json",
              "assets/desktop-contract.json", "assets/wallpapers", "assets/PROVENANCE.json",
-             "roles/boot/files", "roles/boot/defaults/main.yml", "inventory/group_vars/all.yml", "VERSION",
+             "roles/boot/files", "roles/boot/defaults/main.yml", "inventory/group_vars/all.yml", "VERSION", "LICENSE",
              "roles/dotfiles", "roles/apps", "roles/base", "roles/xps-2026",
+             "agent-skills/cybexos", "scripts/manage-agent-skills",
              "assets/nautilus-localsend.py"]
     excluded = {"image/update-channel.json", "image/update-key.asc", "image/build-provenance.json"}
     with tarfile.open(destination, "w:gz") as archive:

@@ -6,6 +6,11 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const helper = path.resolve(__dirname, "../../assets/scripts/quickshell-reminder");
+const fixtureRoots = new Set();
+test.after(() => {
+    for (const root of fixtureRoots)
+        fs.rmSync(root, { recursive: true, force: true });
+});
 
 function executable(file, source) {
     fs.writeFileSync(file, source, { mode: 0o755 });
@@ -13,6 +18,7 @@ function executable(file, source) {
 
 function fixture() {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "quickshell-reminder-"));
+    fixtureRoots.add(root);
     const bin = path.join(root, "bin");
     const state = path.join(root, "state");
     const active = path.join(root, "active");

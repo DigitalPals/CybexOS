@@ -31,7 +31,7 @@ ApplicationWindow {
     width: Math.max(minimumWidth, Math.round(Screen.width * 0.5))
     height: Math.max(minimumHeight, Math.round(Screen.height * 0.48))
     minimumWidth: 760
-    minimumHeight: 580
+    minimumHeight: 660
     visible: true
     title: "Welcome to CybexOS"
     color: "#0e0e10"
@@ -290,7 +290,93 @@ ApplicationWindow {
             lineHeight: 1.35
         }
 
-        Item { Layout.preferredHeight: 34 }
+        Item { Layout.preferredHeight: welcome.isLive ? 34 : 20 }
+
+        Rectangle {
+            visible: !welcome.isLive
+            Layout.fillWidth: true
+            Layout.preferredHeight: setupRows.implicitHeight + 24
+            radius: 12
+            color: window.surface
+            ColumnLayout {
+                id: setupRows
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 12
+                spacing: 7
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        Layout.fillWidth: true
+                        text: welcome.networkState === "connected" ? "Network connected"
+                            : welcome.networkState === "checking" ? "Checking network…" : "Network connection needed"
+                        color: welcome.networkState === "connected" ? window.inkMid : window.accentText
+                        font.pixelSize: 13
+                    }
+                    Button {
+                        visible: welcome.networkState === "offline"
+                        text: "Open network settings"
+                        flat: true
+                        onClicked: welcome.openSettings("network")
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        Layout.fillWidth: true
+                        text: welcome.hardwareState === "completed" ? "Hardware setup complete"
+                            : welcome.hardwareState === "skipped" ? "Hardware setup: no special device support needed"
+                            : welcome.hardwareState === "pending" && welcome.hardwareNote.indexOf("reboot") >= 0
+                                ? "Camera update installed — reboot to finish validation"
+                            : welcome.hardwareState === "running" ? "Hardware setup in progress"
+                            : welcome.hardwareState === "failed" ? "Hardware setup needs another attempt"
+                            : "Hardware setup pending"
+                        color: welcome.hardwareState === "failed" || welcome.hardwareState === "pending"
+                            ? window.accentText : window.inkMid
+                        font.pixelSize: 13
+                        wrapMode: Text.WordWrap
+                    }
+                    Button {
+                        visible: welcome.hardwareState === "failed"
+                        text: "Retry hardware"
+                        flat: true
+                        onClicked: welcome.retryHardware()
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        Layout.fillWidth: true
+                        text: welcome.seedState === "ready" ? "Offline applications ready"
+                            : welcome.seedState === "copying" ? "Preparing offline applications…"
+                            : welcome.seedState === "error" ? "Offline application preparation interrupted"
+                            : "Offline applications waiting to prepare"
+                        color: welcome.seedState === "error" ? window.accentText : window.inkMid
+                        font.pixelSize: 13
+                    }
+                    Button {
+                        visible: welcome.seedState === "error"
+                        text: "Retry apps"
+                        flat: true
+                        onClicked: welcome.retryApps()
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    visible: welcome.reconcileState !== "ready"
+                    text: welcome.reconcileState === "error" || welcome.reconcileState === "blocked"
+                        ? "Desktop policy update needs attention. Run cybex doctor for details."
+                        : "Applying desktop policy updates…"
+                    color: welcome.reconcileState === "error" || welcome.reconcileState === "blocked"
+                        ? window.accentText : window.inkMid
+                    font.pixelSize: 13
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+
+        Item { Layout.preferredHeight: welcome.isLive ? 0 : 14 }
 
         // ---- installed: make it yours ---------------------------------
         ColumnLayout {

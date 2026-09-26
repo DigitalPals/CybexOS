@@ -223,6 +223,8 @@
       dest: /usr/local/share/xps-2026/camera/patches/0004-ipu7-psys-register-bus.patch
     - src: camera/patches/0005-ipu7-psys-stock-core-layout.patch
       dest: /usr/local/share/xps-2026/camera/patches/0005-ipu7-psys-stock-core-layout.patch
+    - src: camera/patches/0006-camera-hal-native-cvs-bridge.patch
+      dest: /usr/local/share/xps-2026/camera/patches/0006-camera-hal-native-cvs-bridge.patch
     - src: camera/xps-ipu7-camera-stack.spec
       dest: /usr/local/share/xps-2026/camera/xps-ipu7-camera-stack.spec
   tags: [xps-2026, hardware, camera]
@@ -341,7 +343,9 @@
     - src: v4l2-relayd-override.conf
       dest: /etc/systemd/system/v4l2-relayd@ipu7.service.d/override.conf
       mode: "0644"
-  notify: Reload XPS 2026 systemd
+  notify:
+    - Reload XPS 2026 systemd
+    - Restart XPS 2026 camera
   tags: [xps-2026, hardware, camera]
 
 - name: Load the fail-closed relay condition before package work
@@ -1170,6 +1174,9 @@
   loop:
     - src: xps-ipu7-camera-check
       dest: /usr/local/libexec/xps-ipu7-camera-check
+      mode: "0755"
+    - src: xps-ipu7-camera-frame-check
+      dest: /usr/local/libexec/xps-ipu7-camera-frame-check
       mode: "0755"
     - src: xps-ipu7-camera-sleep
       dest: /usr/lib/systemd/system-sleep/xps-ipu7-camera
