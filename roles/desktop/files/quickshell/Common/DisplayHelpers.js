@@ -146,15 +146,22 @@ function displayName(monitor) {
     return label === "" ? String(monitor.name) : label;
 }
 
+function connectorEntry(monitors, monitor) {
+    if (!Object.prototype.hasOwnProperty.call(monitors, monitor.name))
+        return null;
+    var entry = monitors[monitor.name];
+    // Early saved files used connector names without recording a description.
+    // They still target this output; a recorded different description does not.
+    return entry && (!entry.description || entry.description === (monitor.description || ""))
+        ? entry : null;
+}
+
 function storedEntry(document, monitor, key) {
     var monitors = document && document.monitors && typeof document.monitors === "object"
         ? document.monitors : {};
     if (Object.prototype.hasOwnProperty.call(monitors, key))
         return monitors[key];
-    if (Object.prototype.hasOwnProperty.call(monitors, monitor.name)
-            && (monitors[monitor.name].description || "") === (monitor.description || ""))
-        return monitors[monitor.name];
-    return null;
+    return connectorEntry(monitors, monitor);
 }
 
 function currentMode(monitor) {
@@ -488,13 +495,13 @@ function buildDocument(previous, drafts) {
         .map(function(draft) { return draft.key; });
     for (var i = 0; i < drafts.length; i++) {
         var draft = drafts[i];
-        // A monitor saved under its connector while a twin was attached moves
-        // to its description key (and back) instead of keeping two entries.
-        if (draft.key !== draft.name && monitors[draft.name]
-                && (monitors[draft.name].description || "") === draft.description)
+        // Move legacy connector entries to the physical identity, including
+        // entries with no description. Keeping both lets the stale connector
+        // rule override this edit when displays.lua emits sorted rules.
+        var legacy = connectorEntry(monitors, draft);
+        var entry = Object.assign({}, legacy || {}, monitors[draft.key] || {});
+        if (draft.key !== draft.name && legacy)
             delete monitors[draft.name];
-        var entry = monitors[draft.key] && typeof monitors[draft.key] === "object"
-            ? monitors[draft.key] : {};
         entry.description = draft.description;
         entry.connector = draft.name;
         entry.enabled = draft.enabled;

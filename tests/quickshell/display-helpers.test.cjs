@@ -160,6 +160,53 @@ test("the saved document keeps other monitors and unknown fields and records com
     assert.equal(previous.monitors[EXTERNAL].vrr, 2, "the previous document is not mutated");
 });
 
+test("legacy connector settings migrate without a stored description", () => {
+    const previous = { v: 1, monitors: {
+        "eDP-1": { mode: "preferred", scale: "auto", vrr: 0, custom: { keep: true } },
+    } };
+    const list = D.draftsFromSnapshot(docked, previous);
+    const laptop = byKey(list, LAPTOP);
+    assert.equal(laptop.mode, "preferred");
+    assert.equal(laptop.scale, "auto");
+    assert.equal(laptop.vrr, 0);
+    const document = D.buildDocument(previous, list);
+    assert.equal(document.monitors["eDP-1"], undefined);
+    assert.deepEqual(document.monitors[LAPTOP].custom, { keep: true });
+    assert.ok(previous.monitors["eDP-1"], "migration does not mutate the saved document");
+});
+
+test("Apply removes a stale connector alias that would override the edited display", () => {
+    // Sorted Lua entries emit desc: before eDP-1. Hyprland uses the last
+    // matching rule, so keeping this alias silently restores y=0 and scale=2.
+    const previous = { v: 1, monitors: {
+        "eDP-1": { scale: 2, position: { x: 0, y: 0 }, legacy: true, custom: "old" },
+        [LAPTOP]: { scale: 2, position: { x: 0, y: 540 }, custom: "new" },
+        "desc:Disconnected Projector": { scale: 1, custom: "preserved" },
+    } };
+    const list = D.draftsFromSnapshot(docked, previous);
+    Object.assign(byKey(list, LAPTOP), { x: 0, y: 540, scale: 1.5 });
+    const document = D.buildDocument(previous, list);
+    const matching = Object.keys(document.monitors).filter(key => D.keyMatches(key, docked[0]));
+    assert.deepEqual(matching, [LAPTOP], "only the edited rule can match this display");
+    assert.deepEqual(document.monitors[LAPTOP].position, { x: 0, y: 540 });
+    assert.equal(document.monitors[LAPTOP].scale, 1.5);
+    assert.equal(document.monitors[LAPTOP].legacy, true);
+    assert.equal(document.monitors[LAPTOP].custom, "new", "canonical fields win when merging aliases");
+    assert.deepEqual(document.monitors["desc:Disconnected Projector"], previous.monitors["desc:Disconnected Projector"]);
+    assert.deepEqual(D.buildDocument(document, list), document, "repeated saves stay canonical");
+});
+
+test("connector settings explicitly belonging to different hardware are preserved", () => {
+    const previous = { v: 1, monitors: {
+        "DP-1": { description: "Different monitor", mode: "preferred", scale: "auto", custom: "kept" },
+    } };
+    const list = D.draftsFromSnapshot(docked, previous);
+    assert.equal(byKey(list, EXTERNAL).scale, 1.5, "unrelated automatic settings are not inherited");
+    const document = D.buildDocument(previous, list);
+    assert.deepEqual(document.monitors["DP-1"], previous.monitors["DP-1"]);
+    assert.equal(document.monitors[EXTERNAL].custom, undefined);
+});
+
 test("the trial countdown never goes negative", () => {
     assert.equal(D.secondsLeft(100, 90000), 10);
     assert.equal(D.secondsLeft(100, 100500), 0);
