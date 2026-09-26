@@ -123,6 +123,8 @@ class TestVM:
         self.disk = self.work / "installed.qcow2"
         self.key = self.work / "id_ed25519"
         self.ssh_ready = False
+        # The installation-only live session deliberately runs no Quickshell.
+        self.expect_shell = True
         self.qmp_path = self.work / "qmp.sock"
 
     def screen_text(self):
@@ -327,7 +329,10 @@ class TestVM:
     def stop(self, graceful=False):
         try:
             if self.process and self.process.poll() is None and self.ssh_ready:
-                run([*self.ssh, "bash -s"], input=audit_script(), text=True, timeout=45)
+                if self.expect_shell:
+                    run([*self.ssh, "bash -s"], input=audit_script(), text=True, timeout=45)
+                else:
+                    run([*self.ssh, "! pgrep -x qs"], timeout=45)
                 run([*self.ssh, "sync"], timeout=45)
                 if graceful:
                     subprocess.run([*self.ssh, "sudo systemctl poweroff"], timeout=20, check=False)

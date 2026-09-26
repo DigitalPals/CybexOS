@@ -282,6 +282,21 @@ class InstallBootEntryTests(unittest.TestCase):
             vm.select_boot_entry('live')
             self.assertEqual(keys, ['down', 'ret'])
 
+    def test_stopping_the_installation_session_requires_no_shell_instead_of_one(self):
+        from vm_testing import TestVM
+        with tempfile.TemporaryDirectory() as directory:
+            vm = TestVM(Path(directory) / 'vm')
+            vm.process = SimpleNamespace(poll=lambda: None, terminate=lambda: None, wait=lambda timeout=None: None)
+            vm.ssh, vm.ssh_ready = ['ssh-fixture'], True
+            for expect_shell, audit in ((False, ['ssh-fixture', '! pgrep -x qs']), (True, ['ssh-fixture', 'bash -s'])):
+                vm.expect_shell, vm.ssh_ready = expect_shell, True
+                with patch('vm_testing.run') as run, patch('vm_testing.audit_script', return_value='fixture audit'):
+                    vm.stop()
+                self.assertEqual(run.call_args_list[0].args[0], audit)
+        source = (Path(__file__).with_name('qualification.py')).read_text()
+        self.assertIn("vm.expect_shell = args.boot_entry == 'live'", source)
+        self.assertLess(source.index('vm.expect_shell = True'), source.index("vm.start(user='qualification')"))
+
     def test_install_mode_audit_is_valid_and_checks_the_small_session(self):
         from qualification import INSTALL_MODE_AUDIT
         self.assertEqual(subprocess.run(['bash', '-n'], input=INSTALL_MODE_AUDIT, text=True).returncode, 0)

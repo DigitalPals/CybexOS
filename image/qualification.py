@@ -129,6 +129,7 @@ def main():
     try:
         vm.prepare()
         vm.start(iso)
+        vm.expect_shell = args.boot_entry == 'live'
         vm.select_boot_entry(args.boot_entry)
         vm.wait_ssh()
         if args.boot_entry == 'install':
@@ -167,6 +168,7 @@ def main():
             vm.audit(applications=False)
         vm.stop(graceful=True)
         (vm.work / 'known_hosts').unlink(missing_ok=True)
+        vm.expect_shell = True
         vm.start(user='qualification')  # Intentionally no ISO/CD-ROM attached.
         vm.unlock_disk(password)
         vm.wait_ssh(setup_password=password)
