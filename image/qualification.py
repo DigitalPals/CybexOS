@@ -50,6 +50,22 @@ def wait_install(vm, timeout):
     raise RuntimeError('Installer completion deadline exceeded')
 
 
+# The default "Install CybexOS" boot entry: only the installer session runs,
+# and its window has already started Anaconda.
+INSTALL_MODE_AUDIT = r'''
+set -eu
+test -e /run/cybexos-install-mode
+tr ' ' '\n' </proc/cmdline | grep -qx cybexos.install
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+systemctl --user is-active --quiet cybexos-install-session.target
+systemctl --user is-active --quiet cybexos-install-welcome.service
+for unit in hyprland-session.target quickshell.service cybexos-app-seed.service voxtype.service; do
+  ! systemctl --user is-active --quiet "$unit"
+done
+pgrep -f /usr/bin/liveinst >/dev/null
+'''
+
+
 INSTALLED_AUDIT = r'''
 ! getent passwd liveuser
 for path in /etc/sudoers.d/cybexos-live /etc/polkit-1/rules.d/49-cybexos-live.rules /usr/lib/systemd/system/cybexos-live.service; do
@@ -100,24 +116,32 @@ def main():
     parser.add_argument('--erase-disposable-disk', action='store_true', help='Explicitly allow installation onto the new task-owned virtual disk')
     parser.add_argument('--keep-artifacts', action='store_true', help='Retain task-owned disk/logs for unresolved diagnostics')
     parser.add_argument('--install-timeout', type=int, default=1800)
+    parser.add_argument('--boot-entry', choices=('install', 'live'), default='install',
+                        help='ISO menu entry: the default installation-only session, or the live desktop')
     args = parser.parse_args()
     if not args.execute_vm or not args.erase_disposable_disk:
         parser.error('qualification requires --execute-vm --erase-disposable-disk; no VM or installer starts without both')
     iso = require_test_iso(args.iso)
     vm = TestVM(args.output, args.firmware)
     password = secrets.token_urlsafe(24)
-    report = {'iso_sha256': digest(iso), 'firmware': args.firmware, 'status': 'failed', 'checks': [],
+    report = {'iso_sha256': digest(iso), 'firmware': args.firmware, 'boot_entry': args.boot_entry, 'status': 'failed', 'checks': [],
               'network': 'outbound-blocked', 'bootstrap': 'recognized disk-unlock prompt; bounded graphical SSH setup', 'scope': 'QEMU fixture; does not qualify physical hardware or Secure Boot'}
     try:
         vm.prepare()
         vm.start(iso)
+        vm.select_boot_entry(args.boot_entry)
         vm.wait_ssh()
-        vm.audit()
-        report['checks'].append('live-boot-and-offline-applications')
+        if args.boot_entry == 'install':
+            run([*vm.ssh, 'bash -s'], input=INSTALL_MODE_AUDIT, text=True, timeout=45)
+            report['checks'].append('installation-only-session')
+        else:
+            vm.audit()
+            report['checks'].append('live-boot-and-offline-applications')
         serial = run([*vm.ssh, 'lsblk -dn -o SERIAL /dev/vda'], text=True, capture_output=True).stdout.strip()
         if serial != QUALIFICATION_DISK_SERIAL:
             raise RuntimeError('Refusing installation: guest target is not the newly created qualification disk')
-        run([*vm.ssh, 'XDG_RUNTIME_DIR=/run/user/1000 systemd-run --user --collect --unit=cybexos-qualification-anaconda /usr/bin/liveinst --nosave=all_ks'])
+        if args.boot_entry == 'live':
+            run([*vm.ssh, 'XDG_RUNTIME_DIR=/run/user/1000 systemd-run --user --collect --unit=cybexos-qualification-anaconda /usr/bin/liveinst --nosave=all_ks'])
         deadline = time.monotonic() + 120
         while True:
             try:
@@ -137,7 +161,10 @@ def main():
         report['checks'].append('encrypted-installation')
         # Audit live state before a graceful shutdown; target mounts are left
         # to Anaconda/systemd. Do not assume /mnt/sysroot survives completion.
-        vm.audit(applications=False)
+        if args.boot_entry == 'install':
+            run([*vm.ssh, 'bash -s'], input=INSTALL_MODE_AUDIT, text=True, timeout=45)
+        else:
+            vm.audit(applications=False)
         vm.stop(graceful=True)
         (vm.work / 'known_hosts').unlink(missing_ok=True)
         vm.start(user='qualification')  # Intentionally no ISO/CD-ROM attached.

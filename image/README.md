@@ -342,6 +342,12 @@ When boot tests are separately authorized:
   --output /path/to/new-install-test --execute-vm --erase-disposable-disk
 ```
 
+Qualification boots the ISO's default **Install CybexOS** entry, checks that
+only the installation session runs, and drives the installer that session
+opened. `--boot-entry live` instead selects **Try CybexOS live** with arrow keys,
+audits the live desktop and offline applications, and starts the installer
+itself. The smoke test (`image/test-live`) always selects the live entry.
+
 The harness detects Fedora/Debian UEFI firmware (raw or qcow2), uses bounded
 readiness checks and blocks guest outbound networking. `--firmware bios`
 selects BIOS. An adjacent `ISO-FILENAME.iso.sha256` must verify before a VM

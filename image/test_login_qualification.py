@@ -259,5 +259,36 @@ class FailedAutologinTests(unittest.TestCase):
         self.assertEqual(root_script.call_args.args[1], login_qualification.RESTORE_LAUNCHER)
 
 
+
+class InstallBootEntryTests(unittest.TestCase):
+    def test_ocr_phrases_ignore_typographic_punctuation(self):
+        from vm_testing import screen_phrases
+        self.assertIn('lets install cybexos', screen_phrases('Let\u2019s install\nCybexOS.'))
+        self.assertIn('try cybexos live', screen_phrases('  Install CybexOS\n  Try CybexOS live \n'))
+
+    def test_live_entry_is_selected_with_arrow_keys_only(self):
+        from vm_testing import TestVM
+        with tempfile.TemporaryDirectory() as directory:
+            vm = TestVM(Path(directory) / 'vm')
+            vm.process = SimpleNamespace(poll=lambda: None)
+            vm.qmp_path = Path(directory) / 'qmp'
+            vm.qmp_path.touch()
+            keys = []
+            vm.keypress = keys.append
+            vm.select_boot_entry('install')
+            self.assertEqual(keys, [])
+            screens = iter(['UEFI firmware', 'Install CybexOS\nTry CybexOS live\nTroubleshooting'])
+            vm.screen_text = lambda: next(screens)
+            vm.select_boot_entry('live')
+            self.assertEqual(keys, ['down', 'ret'])
+
+    def test_install_mode_audit_is_valid_and_checks_the_small_session(self):
+        from qualification import INSTALL_MODE_AUDIT
+        self.assertEqual(subprocess.run(['bash', '-n'], input=INSTALL_MODE_AUDIT, text=True).returncode, 0)
+        for text in ('cybexos-install-session.target', 'quickshell.service', 'cybexos-app-seed.service',
+                     '/run/cybexos-install-mode', 'liveinst'):
+            self.assertIn(text, INSTALL_MODE_AUDIT)
+
+
 if __name__ == '__main__':
     unittest.main()
