@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import browser_qualification as browser
 import qualification
@@ -155,6 +155,21 @@ class UpgradeTests(unittest.TestCase):
 
 
 class InstalledAuditTests(unittest.TestCase):
+    def test_disk_unlock_and_desktop_login_are_independent_for_recovery(self):
+        for encrypted, options, autologin in ((True, {}, True), (False, {}, False),
+                                             (True, {'autologin': False}, False)):
+            with self.subTest(encrypted=encrypted, options=options):
+                vm = Mock()
+                with patch.object(qualification, 'focus_installed_desktop') as focus:
+                    qualification.boot_installed(vm, 'fixture-password', encrypted, **options)
+                vm.start.assert_called_once_with(user='qualification')
+                if encrypted:
+                    vm.unlock_disk.assert_called_once_with('fixture-password')
+                else:
+                    vm.unlock_disk.assert_not_called()
+                vm.wait_ssh.assert_called_once_with(timeout=12, setup=False)
+                focus.assert_called_once_with(vm, 'fixture-password', autologin)
+
     def test_generated_timezone_check_accepts_file_aliases_but_rejects_other_zone(self):
         script = qualification.installed_audit(False, False, 'us', 'us', 'en_US.UTF-8', 'UTC')
         guest = script.split("python3 - <<'CHECK'\n", 1)[1].split('\nCHECK\n', 1)[0]

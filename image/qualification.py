@@ -175,7 +175,7 @@ def qualification_disks(vm):
     return devices[QUALIFICATION_DISK_SERIAL], devices[QUALIFICATION_UNUSED_SERIAL]
 
 
-def focus_installed_desktop(vm, password, encrypted):
+def focus_installed_desktop(vm, password, autologin):
     """Return from the verified text console to the graphical session."""
     from login_qualification import wait_login_state
     script = '''python3 - <<'PY'
@@ -184,23 +184,23 @@ for line in subprocess.check_output(['loginctl', 'list-sessions', '--no-legend',
     identifier = line.split()[0]
     values = dict(item.split('=', 1) for item in subprocess.check_output(
         ['loginctl', 'show-session', identifier, '-p', 'Class', '-p', 'Name', '-p', 'Type', '-p', 'VTNr'], text=True).splitlines())
-    if ((values.get('Class') == 'greeter' and not ENCRYPTED) or
+    if ((values.get('Class') == 'greeter' and not AUTOLOGIN) or
             (values.get('Class') == 'user' and values.get('Name') == 'qualification' and
-             values.get('Type') == 'wayland' and ENCRYPTED)) and values.get('VTNr', '').isdigit():
+             values.get('Type') == 'wayland' and AUTOLOGIN)) and values.get('VTNr', '').isdigit():
         print(values['VTNr'])
         raise SystemExit(0)
 raise SystemExit(1)
 PY
 '''
-    script = script.replace('import subprocess\n', f'import subprocess\nENCRYPTED = {encrypted!r}\n', 1)
+    script = script.replace('import subprocess\n', f'import subprocess\nAUTOLOGIN = {autologin!r}\n', 1)
     vt = int(run([*vm.ssh, 'bash -s'], input=script, text=True, capture_output=True,
                  timeout=20).stdout.strip())
     if not 1 <= vt <= 6:
         raise RuntimeError('Installed greeter was not on an expected virtual terminal')
-    if not encrypted:
+    if not autologin:
         wait_login_state(vm, desktop=False)
     vm.keypress(f'ctrl+alt+f{vt}')
-    if encrypted:
+    if autologin:
         vm.wait_desktop()
         wait_login_state(vm, desktop=True)
         return
@@ -210,7 +210,9 @@ PY
     wait_login_state(vm, desktop=True)
 
 
-def boot_installed(vm, password, encrypted):
+def boot_installed(vm, password, encrypted, *, autologin=None):
+    if autologin is None:
+        autologin = encrypted
     vm.start(user='qualification')
     if encrypted:
         vm.unlock_disk(password)
@@ -218,7 +220,7 @@ def boot_installed(vm, password, encrypted):
         vm.wait_ssh(timeout=12, setup=False)
     except RuntimeError:
         vm.bootstrap_installed_ssh(password)
-    focus_installed_desktop(vm, password, encrypted)
+    focus_installed_desktop(vm, password, autologin)
 
 
 def poweroff_installed(vm, password):
@@ -335,7 +337,9 @@ def main():
             if point:
                 select_recovery_boot(vm, point, password, root_script)
                 poweroff_installed(vm, password)
-                boot_installed(vm, password, encrypted)
+                # The recovery overlay cannot prove encrypted root ancestry,
+                # so login policy requires a password even after LUKS unlock.
+                boot_installed(vm, password, encrypted, autologin=False)
                 verify_recovery_boot(vm, point, password, root_script)
                 poweroff_installed(vm, password)
                 boot_installed(vm, password, encrypted)
