@@ -44,6 +44,7 @@ def root_script(vm, script, password, timeout=120):
 
 
 INSTALLED_AUDIT = r'''
+trap 'printf "Installed audit shell check failed at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 ! getent passwd liveuser
 for path in /etc/sudoers.d/cybexos-live /etc/polkit-1/rules.d/49-cybexos-live.rules /usr/lib/systemd/system/cybexos-live.service; do
   test ! -e "$path"
@@ -133,6 +134,17 @@ def installed_audit(encrypted, require_secure_sudo, keyboard, boot_keymap, local
             f'export EXPECTED_BOOT_KEYMAP={boot_keymap}\n'
             f'export EXPECTED_LOCALE={locale}\n'
             f'export EXPECTED_TIMEZONE={timezone}\n' + INSTALLED_AUDIT)
+
+
+def verify_installed_audit(vm, encrypted, require_secure_sudo, keyboard, boot_keymap,
+                           locale, timezone, password):
+    script = installed_audit(encrypted, require_secure_sudo, keyboard, boot_keymap, locale, timezone)
+    try:
+        return root_script(vm, script, password)
+    except subprocess.CalledProcessError as error:
+        details = '\n'.join(str(part or '') for part in (error.stdout, error.stderr))
+        details = details.replace(password, '[redacted]')[-3000:].strip()
+        raise RuntimeError(f'Installed audit failed (exit {error.returncode}): {details}') from error
 
 
 def qualification_disks(vm):
@@ -284,8 +296,8 @@ def main():
         (vm.work / 'known_hosts').unlink(missing_ok=True)
         boot_installed(vm, password, encrypted)  # No ISO/CD-ROM attached.
         vm.audit()
-        root_script(vm, installed_audit(encrypted, not args.legacy_installer,
-                                        keyboard, browser_result['boot_keyboard'], locale, timezone), password)
+        verify_installed_audit(vm, encrypted, not args.legacy_installer,
+                               keyboard, browser_result['boot_keyboard'], locale, timezone, password)
         run([*vm.ssh, f'python3 - {keyboard}'], input=DESKTOP_KEYBOARD_AUDIT,
             text=True, capture_output=True, timeout=20)
         report['checks'] += ['installed-boot-without-iso', 'encrypted-btrfs' if encrypted else 'plain-btrfs',

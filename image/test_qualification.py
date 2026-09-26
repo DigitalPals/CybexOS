@@ -1,5 +1,6 @@
 """Source-only safety checks for the real-browser VM qualification path."""
 from pathlib import Path
+import subprocess
 import tempfile
 import types
 import unittest
@@ -107,6 +108,17 @@ class InstalledAuditTests(unittest.TestCase):
         guest = script.split("python3 - <<'CHECK'\n", 1)[1].split('\nCHECK\n', 1)[0]
         compile(guest, '<installed-audit>', 'exec')
         compile(qualification.DESKTOP_KEYBOARD_AUDIT, '<desktop-keyboard-audit>', 'exec')
+
+    def test_failed_installed_audit_reports_check_without_exposing_password(self):
+        failure = subprocess.CalledProcessError(1, ['ssh', 'guest'],
+                                                output='earlier output fixture-secret',
+                                                stderr='Installed audit shell check failed at line 7: test condition')
+        with patch.object(qualification, 'root_script', side_effect=failure):
+            with self.assertRaisesRegex(RuntimeError, 'line 7: test condition') as caught:
+                qualification.verify_installed_audit(None, True, False, 'us', 'us',
+                                                      'en_US.UTF-8', 'UTC', 'fixture-secret')
+        self.assertNotIn('fixture-secret', str(caught.exception))
+        self.assertIn('[redacted]', str(caught.exception))
 
 
 if __name__ == '__main__':
