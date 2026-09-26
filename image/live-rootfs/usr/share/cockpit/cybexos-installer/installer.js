@@ -7,6 +7,8 @@ let polling;
 let installationComplete = false;
 let appliedKeyboard = null;
 let timezoneChosen = false;
+let logTimer;
+let logPending = false;
 
 function fail(error) {
     $("error").textContent = error.message || "The installer could not complete this operation.";
@@ -18,7 +20,8 @@ function render() {
         item.removeAttribute("aria-current");
         if (index === ids.indexOf(wizard.page)) item.setAttribute("aria-current", "step");
     });
-    document.querySelectorAll("button, input, select").forEach(item => { item.disabled = wizard.busy; });
+    // The log panel stays usable while an operation runs; that is when it helps.
+    document.querySelectorAll("button, input, select").forEach(item => { item.disabled = wizard.busy && !item.closest("#log-panel"); });
     $("install").disabled = wizard.busy || !$("erase").checked;
     ["password", "confirm", "keyboard-test"].forEach(id => { $(id).disabled = wizard.busy || appliedKeyboard !== $("keyboard").value; });
     $("busy").hidden = !initializing && !wizard.busy;
@@ -120,8 +123,23 @@ function showProgress(data) {
     } else if (data.phase === "failed-install") {
         clearInterval(polling);
         $("progress-title").textContent = "Installation needs attention.";
+        showLog(data.log_source || "steps");
     }
     render();
+}
+// Diagnostics bypass run(): they never mark the wizard busy or block a step.
+function refreshLog() {
+    if (logPending || !$("log-panel").open) return;
+    logPending = true;
+    call("log", {source: $("log-source").value}).then(data => {
+        const log = $("log"), following = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+        log.textContent = data.available ? data.text : "This log has not been written yet.";
+        if (following) log.scrollTop = log.scrollHeight;
+    }, error => { $("log").textContent = error.message; }).finally(() => { logPending = false; });
+}
+function showLog(source) {
+    if (!$("log-panel").open) { $("log-source").value = source; $("log-panel").open = true; }
+    refreshLog();
 }
 function monitor() {
     clearInterval(polling);
@@ -241,6 +259,31 @@ $("advanced").addEventListener("click", () => run("Opening the full installer…
 }));
 $("refresh-status").addEventListener("click", () => run("Checking installation status…", async () => showProgress(await call("status"))));
 $("retry").addEventListener("click", initialize);
+$("log-panel").addEventListener("toggle", () => {
+    clearInterval(logTimer);
+    if (!$("log-panel").open) return;
+    $("log").scrollTop = $("log").scrollHeight;
+    refreshLog();
+    logTimer = setInterval(refreshLog, 2000);
+});
+$("log-source").addEventListener("change", () => { $("log").textContent = ""; refreshLog(); });
+$("find-destinations").addEventListener("click", () => {
+    $("export-status").textContent = "Searching for USB drives…";
+    call("log-destinations").then(data => {
+        options("log-destination", data.destinations.length
+            ? data.destinations.map(item => ({id: item.name,
+                label: `${item.label || item.name} — ${item.fstype} — ${(item.size / 1024**3).toFixed(1)} GiB — ${item.path}`}))
+            : [{id: "", label: "No writable USB drive found"}]);
+        $("export-status").textContent = "";
+    }, error => { $("export-status").textContent = error.message; });
+});
+$("export-logs").addEventListener("click", () => {
+    if (!$("log-destination").value) { $("export-status").textContent = "Search for a USB drive first."; return; }
+    $("export-status").textContent = "Saving logs…";
+    call("export-logs", {device: $("log-destination").value}).then(
+        data => { $("export-status").textContent = `Saved ${data.file} to ${data.label || data.device}. You can remove the drive.`; },
+        error => { $("export-status").textContent = error.message; });
+});
 $("reboot").addEventListener("click", () => run("Restarting…", () => call("reboot")));
 window.addEventListener("beforeunload", event => {
     if ((wizard.page === "progress" && !installationComplete) || wizard.busy) { event.preventDefault(); event.returnValue = ""; }

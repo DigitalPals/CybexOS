@@ -255,6 +255,34 @@ class InstallerTests(unittest.TestCase):
         with self.assertRaises(backend.Invalid):
             self.plan()
 
+    def test_failed_worker_names_its_step_and_explaining_log(self):
+        self.commit(self.plan())
+        self.adapter.failed = True
+        self.adapter.run_install = lambda state, progress, store: (
+            progress(40, 41, "Running post-installation scripts"),
+            (_ for _ in ()).throw(RuntimeError("There was an error running the kickstart script at line 1.")))
+        with self.assertRaises(RuntimeError):
+            self.installer.worker()
+        state = self.state.read()
+        self.assertEqual((state["phase"], state["failed_step"], state["log_source"]),
+                         ("failed-install", "Running post-installation scripts", "post"))
+        self.assertIn("Running post-installation scripts", state["message"])
+        steps = (Path(self.temporary.name) / "worker.log").read_text()
+        self.assertIn("Installing to /dev/vda (Fixture disk), encrypted.", steps)
+        self.assertIn("[40/41] Running post-installation scripts", steps)
+        self.assertIn("RuntimeError: There was an error running the kickstart script at line 1.", steps)
+        self.assertNotIn(ACCOUNT["password"], steps + json.dumps(state))
+
+    def test_new_installation_starts_a_new_step_log(self):
+        log = Path(self.temporary.name) / "worker.log"
+        log.write_text("an earlier attempt\n")
+        self.commit(self.plan())
+        self.installer.worker()
+        self.assertNotIn("an earlier attempt", log.read_text())
+        self.assertTrue(log.read_text().rstrip().endswith("Installation finished."))
+        # Other failures point at the step log itself.
+        self.assertEqual(backend.failure_state({"message": "Installing the software"})["log_source"], "steps")
+
     def test_disconnected_browser_cannot_allow_retry_after_worker_loss(self):
         self.commit(self.plan())
         def active(*args, **kwargs):
@@ -317,6 +345,106 @@ class Structure:
             for name in data.__slots__
             if hasattr(data, name)
         }
+
+
+LSBLK = {"blockdevices": [
+    {"name": "nvme0n1", "path": "/dev/nvme0n1", "type": "disk", "fstype": None, "label": None, "size": 512 * 1024**3,
+     "hotplug": False, "rm": False, "ro": False, "mountpoints": [None],
+     "children": [{"name": "nvme0n1p1", "path": "/dev/nvme0n1p1", "type": "part", "fstype": "vfat", "label": None,
+                   "size": 600 * 1024**2, "hotplug": False, "rm": False, "ro": False, "mountpoints": [None]}]},
+    {"name": "sda", "path": "/dev/sda", "type": "disk", "fstype": "iso9660", "label": "CYBEXOS-LIVE-44",
+     "size": 8 * 1024**3, "hotplug": True, "rm": True, "ro": False, "mountpoints": ["/run/initramfs/live"],
+     "children": [{"name": "sda2", "path": "/dev/sda2", "type": "part", "fstype": "vfat", "label": "ANACONDA",
+                   "size": 10 * 1024**2, "hotplug": True, "rm": True, "ro": False, "mountpoints": [None]}]},
+    {"name": "sdb", "path": "/dev/sdb", "type": "disk", "fstype": None, "label": None, "size": 32 * 1024**3,
+     "hotplug": True, "rm": True, "ro": False, "mountpoints": [None],
+     "children": [{"name": "sdb1", "path": "/dev/sdb1", "type": "part", "fstype": "exfat", "label": "STICK",
+                   "size": 32 * 1024**3, "hotplug": True, "rm": True, "ro": False, "mountpoints": [None]},
+                  {"name": "sdb2", "path": "/dev/sdb2", "type": "part", "fstype": "ntfs", "label": "WIN",
+                   "size": 1024**3, "hotplug": True, "rm": True, "ro": False, "mountpoints": [None]}]},
+    {"name": "sdc", "path": "/dev/sdc", "type": "disk", "fstype": "vfat", "label": "MOUNTED", "size": 16 * 1024**3,
+     "hotplug": True, "rm": False, "ro": False, "mountpoints": ["/run/media/liveuser/MOUNTED"]},
+    {"name": "vda", "path": "/dev/vda", "type": "disk", "fstype": "ext4", "label": None, "size": 100 * 1024**3,
+     "hotplug": True, "rm": False, "ro": False, "mountpoints": [None]},
+]}
+
+
+class DiagnosticsTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+
+    def test_log_reading_is_allow_listed_and_bounded(self):
+        first, second = self.root / "one.log", self.root / "two.log"
+        first.write_text("".join(f"line {number}\n" for number in range(100)))
+        sources = {"one": [first], "both": [first, second], "missing": [self.root / "absent.log"]}
+        with self.assertRaises(backend.Invalid):
+            backend.read_log("../../etc/shadow", sources)
+        with self.assertRaises(backend.Invalid):
+            backend.read_log("/tmp/sensitive-info.log")
+        tail = backend.read_log("one", sources, limit=30)["text"]
+        self.assertTrue(tail.startswith("line ") and tail.endswith("line 99\n"))
+        self.assertLessEqual(len(tail), 30)
+        self.assertEqual(backend.read_log("missing", sources), {"source": "missing", "available": False, "text": ""})
+        second.write_text("second\n")
+        both = backend.read_log("both", sources)["text"]
+        self.assertLess(both.index(f"==> {first} <=="), both.index(f"==> {second} <=="))
+        self.assertNotIn(Path("/tmp/sensitive-info.log"), [path for paths in backend.LOG_SOURCES.values() for path in paths])
+        # Post-install output lands in the target (chroot) and the live system (nochroot).
+        self.assertEqual(backend.LOG_SOURCES["post"], [Path("/mnt/sysroot/var/log/anaconda/cybexos-cleanup.log"),
+                                                     Path("/var/log/anaconda/cybexos-target-policy.log")])
+        hook = (ROOT / "live-rootfs/usr/share/anaconda/post-scripts/90-cybexos.ks").read_text()
+        self.assertIn("--log=/var/log/anaconda/cybexos-cleanup.log", hook)
+        self.assertIn("--log=/var/log/anaconda/cybexos-target-policy.log", hook)
+
+    def test_page_offers_exactly_the_backend_logs(self):
+        import re
+        page = (ROOT / "live-rootfs/usr/share/cockpit/cybexos-installer/index.html").read_text()
+        select = page[page.index('<select id="log-source">'):page.index("</select>", page.index('<select id="log-source">'))]
+        self.assertEqual(re.findall(r'value="([a-z]+)"', select), list(backend.LOG_SOURCES))
+
+    def lsblk(self, *args, **kwargs):
+        return types.SimpleNamespace(stdout=json.dumps(LSBLK), returncode=0)
+
+    def test_destinations_exclude_live_medium_target_and_internal_disks(self):
+        destinations = backend.log_destinations({"disk": {"name": "vda"}}, self.lsblk)
+        self.assertEqual([(item["name"], item["mountpoint"]) for item in destinations],
+                         [("sdb1", ""), ("sdc", "/run/media/liveuser/MOUNTED")])
+
+    def export_runner(self, calls):
+        def run(command, **kwargs):
+            calls.append(command)
+            if command[0] == "lsblk":
+                return self.lsblk()
+            if command[0] == "journalctl":
+                return types.SimpleNamespace(stdout="fixture journal\n", returncode=0)
+            return types.SimpleNamespace(stdout="", returncode=0)
+        return run
+
+    def test_export_mounts_unmounted_drive_and_always_unmounts(self):
+        calls = []
+        (self.root / "state.json").write_text('{"phase": "failed-install"}')
+        with patch.object(backend, "LOG_SOURCES", {"steps": [self.root / "worker.log"]}):
+            (self.root / "worker.log").write_text("[40/41] Running post-installation scripts\n")
+            result = backend.export_logs("sdb1", {"disk": {"name": "vda"}}, self.export_runner(calls), self.root)
+        mountpoint = self.root / "export-mount"
+        self.assertIn(["mount", "-o", "nosuid,nodev,noexec", "/dev/sdb1", str(mountpoint)], calls)
+        self.assertEqual(calls[-1], ["umount", str(mountpoint)])
+        saved = mountpoint / result["file"]
+        self.assertEqual(saved.stat().st_mode & 0o777, 0o644)
+        import tarfile
+        with tarfile.open(saved) as archive:
+            names = archive.getnames()
+            self.assertEqual(archive.extractfile("cybexos-install-logs/journal.txt").read(), b"fixture journal\n")
+        self.assertEqual(sorted(names), ["cybexos-install-logs/journal.txt", "cybexos-install-logs/state.json",
+                                         "cybexos-install-logs/steps/worker.log"])
+        self.assertEqual([path.name for path in self.root.iterdir() if path.name.startswith(".export-")], [])
+
+    def test_export_rejects_unlisted_devices(self):
+        for name in ("sda2", "vda", "nvme0n1p1", "sdb2", "../sdb1"):
+            with self.assertRaises(backend.Invalid):
+                backend.export_logs(name, {"disk": {"name": "vda"}}, self.export_runner([]), self.root)
 
 
 class AdapterContractTests(unittest.TestCase):

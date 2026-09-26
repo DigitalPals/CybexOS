@@ -8,19 +8,37 @@ See image/INSTALLER.md for the versioned upstream interface and test limits.
 """
 import fcntl
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import pwd
 import re
 import secrets
+import shutil
 import sys
 import subprocess
+import tarfile
 import time
 
 RUNTIME = Path('/run/cybexos-installer')
 RESERVED = {'root', 'liveuser', 'bin', 'daemon', 'adm', 'mail', 'ftp', 'nobody',
             'dbus', 'systemd', 'gdm', 'sddm', 'sshd', 'polkitd', 'chrony'}
+# Logs the installer page may show and export. Anaconda writes the /tmp logs;
+# a chroot %post --log lands in the target, a --nochroot one in the live system.
+# Never add /tmp/sensitive-info.log or a path chosen by the request.
+LOG_SOURCES = {
+    'steps': [RUNTIME / 'worker.log'],
+    'anaconda': [Path('/tmp/anaconda.log')],
+    'programs': [Path('/tmp/program.log')],
+    'storage': [Path('/tmp/storage.log')],
+    'software': [Path('/tmp/packaging.log')],
+    'post': [Path('/mnt/sysroot/var/log/anaconda/cybexos-cleanup.log'),
+             Path('/var/log/anaconda/cybexos-target-policy.log')],
+}
+LOG_LIMIT = 96 * 1024
+EXPORT_FILESYSTEMS = {'vfat', 'exfat', 'ext2', 'ext3', 'ext4', 'btrfs', 'xfs'}
+LIVE_LABEL = 'CYBEXOS-LIVE-44'
 
 
 class Invalid(ValueError):
@@ -127,6 +145,124 @@ class State:
         temporary.replace(self.directory / 'state.json')
 
 
+class StepLog:
+    """Timestamped installer steps and the error that stopped them, for the page."""
+    def __init__(self, path=RUNTIME / 'worker.log'):
+        self.path = path
+
+    def reset(self):
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.path.write_text('')
+
+    def write(self, text):
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        with self.path.open('a', encoding='utf-8') as stream:
+            stream.write(time.strftime('%H:%M:%S ') + text + '\n')
+
+
+def read_log(source, sources=LOG_SOURCES, limit=LOG_LIMIT):
+    """The end of one allow-listed log; several files are shown one after another."""
+    if source not in sources:
+        raise Invalid('Choose one of the installer logs.')
+    parts = []
+    for path in sources[source]:
+        try:
+            with path.open('rb') as stream:
+                size = stream.seek(0, os.SEEK_END)
+                stream.seek(max(0, size - limit))
+                text = stream.read().decode('utf-8', 'replace')
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        if size > limit:
+            text = text.partition('\n')[2]  # Drop the partial first line.
+        parts.append(f'==> {path} <==\n{text}' if len(sources[source]) > 1 else text)
+    return {'source': source, 'available': bool(parts), 'text': '\n'.join(parts)}
+
+
+def failure_state(state, error=None):
+    """Name the step Anaconda was running and the log that explains it."""
+    step = state.get('message') or 'Preparing the installation'
+    source = 'post' if 'post-install' in step.lower() else 'steps'
+    state.update(phase='failed-install', failed_step=step, log_source=source,
+                 message=f'Installation stopped during “{step}”. The installation details below show what went wrong. '
+                         'Keep this session open.')
+    return state
+
+
+def log_destinations(state, run=subprocess.run):
+    """Writable filesystems on removable drives, never the live medium or target disk."""
+    output = run(['lsblk', '--json', '--bytes', '--output',
+                  'NAME,PATH,TYPE,FSTYPE,LABEL,SIZE,HOTPLUG,RM,RO,MOUNTPOINTS'],
+                 check=True, capture_output=True, text=True, timeout=15).stdout
+    target = state.get('disk', {}).get('name')
+
+    def flatten(device):
+        yield device
+        for child in device.get('children', []):
+            yield from flatten(child)
+
+    destinations = []
+    for disk in json.loads(output)['blockdevices']:
+        devices = list(flatten(disk))
+        if (not (disk.get('hotplug') or disk.get('rm')) or disk.get('name') == target or disk.get('ro')
+                or any(item.get('label') == LIVE_LABEL or item.get('fstype') == 'iso9660'
+                       or '/run/initramfs/live' in (item.get('mountpoints') or []) for item in devices)):
+            continue
+        for device in devices:
+            if device.get('fstype') in EXPORT_FILESYSTEMS and not device.get('ro'):
+                mounted = [point for point in device.get('mountpoints') or [] if point]
+                destinations.append(dict(name=device['name'], path=device['path'], label=device.get('label') or '',
+                                         fstype=device['fstype'], size=int(device.get('size') or 0),
+                                         mountpoint=mounted[0] if mounted else ''))
+    return destinations
+
+
+def log_archive(path, state_file, run=subprocess.run):
+    journal = run(['journalctl', '--boot', '--no-pager', '--output=short-iso'],
+                  capture_output=True, text=True, timeout=120).stdout
+    with tarfile.open(path, 'w:gz') as archive:
+        def add_text(name, text):
+            data = text.encode()
+            info = tarfile.TarInfo(name)
+            info.size, info.mtime, info.mode = len(data), int(time.time()), 0o644
+            archive.addfile(info, io.BytesIO(data))
+        for source, paths in LOG_SOURCES.items():
+            for item in paths:
+                if item.is_file():
+                    add_text(f'cybexos-install-logs/{source}/{item.name}', item.read_text(errors='replace'))
+        if state_file.is_file():
+            # The state file is secret-free: no password, hash or raw request.
+            add_text('cybexos-install-logs/state.json', state_file.read_text())
+        add_text('cybexos-install-logs/journal.txt', journal)
+
+
+def export_logs(name, state, run=subprocess.run, runtime=RUNTIME):
+    destination = next((item for item in log_destinations(state, run) if item['name'] == name), None)
+    if destination is None:
+        raise Invalid('Choose a connected USB drive to save the logs to.')
+    filename = time.strftime('cybexos-install-logs-%Y%m%d-%H%M%S.tar.gz')
+    archive = runtime / ('.export-' + secrets.token_hex(8) + '.tar.gz')
+    mountpoint, mounted = destination['mountpoint'], False
+    try:
+        log_archive(archive, runtime / 'state.json', run)
+        if not mountpoint:
+            mountpoint = str(runtime / 'export-mount')
+            Path(mountpoint).mkdir(mode=0o700, exist_ok=True)
+            run(['mount', '-o', 'nosuid,nodev,noexec', destination['path'], mountpoint], check=True, timeout=60)
+            mounted = True
+        target = Path(mountpoint) / filename
+        shutil.copyfile(archive, target)
+        target.chmod(0o644)
+        run(['sync', '--file-system', str(target)], check=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        raise Invalid('The logs could not be saved to that drive. Check that it is writable and try again.') from None
+    finally:
+        archive.unlink(missing_ok=True)
+        if mounted:
+            run(['umount', mountpoint], check=False, timeout=60)
+    return {'file': filename, 'device': destination['path'], 'label': destination['label']}
+
+
 def installation_status(store, run=subprocess.run):
     state = store.read()
     if state.get('phase') == 'installing':
@@ -136,15 +272,16 @@ def installation_status(store, run=subprocess.run):
                 and service.stdout.strip() not in ('active', 'activating', 'reloading', 'deactivating')):
             # A killed worker does not prove that Anaconda's storage task stopped.
             # Fail closed: never report success or permit a replacement install.
-            state.update(phase='failed-install', message='The installation monitor stopped unexpectedly. Anaconda may still be writing the disk. Keep this session open and inspect the installer diagnostics before restarting.')
+            state.update(phase='failed-install', log_source='anaconda', message='The installation monitor stopped unexpectedly. Anaconda may still be writing the disk. Keep this session open and inspect the installation details before restarting.')
             # This status reader never writes: the worker alone owns progress
             # and completion. Its concurrent final update must win this race.
     return state
 
 
 class Installer:
-    def __init__(self, backend, state, emit=lambda event: None):
+    def __init__(self, backend, state, emit=lambda event: None, steps=None):
         self.backend, self.state, self.emit = backend, state, emit
+        self.steps = steps or StepLog(state.directory / 'worker.log')
 
     def require_idle(self):
         if self.state.read().get('phase') in ('installing', 'complete', 'failed-install'):
@@ -211,11 +348,15 @@ class Installer:
         state['worker_queued_at'] = time.time()
         state.pop('token')
         self.state.write(state)
+        self.steps.reset()
+        self.steps.write(f"Installing to {state['disk']['path']} ({state['disk']['model']}), "
+                         f"{'encrypted' if state['account']['encrypted'] else 'unencrypted'}.")
 
         try:
             self.backend.start_install(state)
         except Exception:
-            state.update(phase='failed-install', message='The installation worker could not start. Review its status before restarting the installer.')
+            state.update(phase='failed-install', log_source='steps', message='The installation worker could not start. Review its status before restarting the installer.')
+            self.steps.write('The installation worker could not start.')
             self.state.write(state)
             raise
         return state
@@ -226,6 +367,8 @@ class Installer:
             raise Invalid('No new confirmed installation is queued.')
 
         def progress(step, total, message):
+            if message != state.get('message'):
+                self.steps.write(f'[{step}/{total}] {message}')
             state.update(step=step, total=total, message=message)
             self.state.write(state)
             self.emit({'event': 'progress', 'phase': 'installing', 'step': step,
@@ -234,10 +377,15 @@ class Installer:
         try:
             self.backend.run_install(state, progress, self.state)
             state.update(phase='complete', message='CybexOS is installed. Restart and remove the installation medium.')
-        except Exception:
-            state.update(phase='failed-install', message='Installation did not finish. Keep this session open and review Anaconda diagnostics before retrying.')
+        except Exception as error:
+            failure_state(state)
+            self.steps.write(f"Installation stopped during: {state['failed_step']}")
+            # Anaconda's own error text; its installation task takes no
+            # parameters, so no request or secret can be part of it.
+            self.steps.write(f'{type(error).__name__}: {error}')
             self.state.write(state)
             raise
+        self.steps.write('Installation finished.')
         self.state.write(state)
         return state
 
@@ -442,14 +590,16 @@ def main():
     os.umask(0o077)
     command = sys.argv[1] if len(sys.argv) == 2 else ''
     if command not in ('inventory', 'keyboard', 'plan', 'install', 'status', 'geolocate', 'reset', 'advanced',
-                       'worker', 'reboot'):
+                       'worker', 'reboot', 'log', 'log-destinations', 'export-logs'):
         raise Invalid('Unknown installer request.')
-    check_live_environment(require_backend=command not in ('status', 'reboot'))
+    diagnostics = command in ('log', 'log-destinations', 'export-logs')
+    check_live_environment(require_backend=command not in ('status', 'reboot') and not diagnostics)
     RUNTIME.mkdir(mode=0o700, parents=True, exist_ok=True)
-    # Serialize planning and commit. Status remains readable during installation,
-    # and a slow geolocation lookup, which changes no selection, never blocks setup.
+    # Serialize planning and commit. Status and logs remain readable during
+    # installation, and a slow geolocation lookup, which changes no selection,
+    # never blocks setup.
     lock = (RUNTIME / 'lock').open('a')
-    if command not in ('status', 'geolocate'):
+    if command not in ('status', 'geolocate') and not diagnostics:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | (0 if command == 'worker' else fcntl.LOCK_NB))
         except BlockingIOError:
@@ -472,6 +622,12 @@ def main():
         raise Invalid('Installer request is invalid.') from None
     if not isinstance(data, dict):
         raise Invalid('Installer request is invalid.')
+    if command == 'log':
+        return read_log(data.get('source', 'steps'))
+    if command == 'log-destinations':
+        return {'destinations': log_destinations(State().read())}
+    if command == 'export-logs':
+        return export_logs(data.get('device', ''), State().read())
     installer = Installer(Anaconda(), State(), emit)
     if command == 'inventory':
         return installer.inventory()
