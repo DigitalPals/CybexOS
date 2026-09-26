@@ -1,4 +1,6 @@
 // Pure state and validation shared by the real UI and fixture tests.
+// Linux account names are lowercase; typing "John" creates the account "john".
+export const accountName = value => value.toLowerCase();
 export class Wizard {
     constructor() { this.page = "setup"; this.busy = false; this.plan = null; }
     move(page) {

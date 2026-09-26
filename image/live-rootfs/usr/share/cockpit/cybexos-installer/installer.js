@@ -1,4 +1,4 @@
-import {Wizard} from "./model.mjs";
+import {Wizard, accountName} from "./model.mjs";
 const wizard = new Wizard();
 const $ = id => document.getElementById(id);
 const ids = ["setup", "location", "review", "progress"];
@@ -163,6 +163,12 @@ $("keyboard").addEventListener("change", () => {
         appliedKeyboard = result.keyboard;
         $("keyboard-status").textContent = `Keyboard applied. Boot unlock layout: ${result.boot_keyboard}.`;
     });
+});
+$("username").addEventListener("input", () => {
+    const field = $("username"), name = accountName(field.value);
+    if (name === field.value) return;
+    const {selectionStart, selectionEnd} = field;
+    field.value = name; field.setSelectionRange(selectionStart, selectionEnd);
 });
 $("timezone").addEventListener("change", () => {
     timezoneChosen = true;
