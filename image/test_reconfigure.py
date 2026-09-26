@@ -109,7 +109,8 @@ class Generation(Fixture):
                           saved['machine_keyboard_variant']),
                          ('studio', 'Europe/Amsterdam', 'nl_NL.UTF-8', 'nl_NL.UTF-8', 'us', 'dvorak'))
         self.assertEqual(saved['features'], inventory['features'])
-        for key in ('passwordless_wheel', 'passwordless_local_polkit', 'docker_sudoless',
+        self.assertIs(saved['passwordless_wheel'], False)
+        for key in ('passwordless_local_polkit', 'docker_sudoless',
                     'xps_2026_camera_enabled', 'allow_insecure_sccache_transport'):
             self.assertIs(saved[key], inventory[key], key)
         self.assertIs(saved['manage_system_identity'], False)
@@ -206,13 +207,15 @@ class InstallerTarget(Fixture):
         self.assertEqual(sorted(path.name for path in self.path.parent.iterdir()),
                          ['config.yml', 'installation.json', 'login.json'])
 
-    def test_configuration_for_another_account_or_none_is_left_alone(self):
+    def test_configuration_for_another_account_or_none_fails_closed(self):
         text = self.path.read_text().replace("primary_user: 'alice'", "primary_user: 'bob'")
         self.path.write_text(text)
-        target.record_autologin(self.root, 'alice', True)
+        with self.assertRaises(RuntimeError):
+            target.finalize(self.root, {'account': {'username': 'alice', 'encrypted': True}}, True)
         self.assertEqual(self.path.read_text(), text)
         self.path.unlink()
-        target.finalize(self.root, {'account': {'username': 'alice', 'encrypted': True}}, True)
+        with self.assertRaises(FileNotFoundError):
+            target.finalize(self.root, {'account': {'username': 'alice', 'encrypted': True}}, True)
         self.assertFalse(self.path.exists())
 
 
@@ -282,7 +285,7 @@ class ConfigureInstalled(Fixture):
         settings, calls = self.run_main(['--offline'])
         self.assertEqual([call[0] for call in calls], ['ensure', 'configure'])
         self.assertEqual(calls[0][1], {'fresh_account': True})
-        self.assertEqual(calls[1][2:], (True, False))
+        self.assertEqual(calls[1][2:], (True, False, False))
         settings, calls = self.run_main(['--user', 'alice'])
         self.assertEqual([call[0] for call in calls], ['ensure', 'configure', 'login'])
         self.assertEqual(calls[0][1], {'fresh_account': False})

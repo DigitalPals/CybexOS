@@ -1,0 +1,12 @@
+[Unit]
+Description=Apply pending CybexOS desktop policy and initialize new accounts
+ConditionPathExists=!/run/cybexos-live
+
+[Timer]
+OnBootSec=2min
+OnActiveSec=2min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

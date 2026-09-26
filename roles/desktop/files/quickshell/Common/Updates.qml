@@ -154,6 +154,8 @@ Singleton {
             return total + (total === 1 ? " update" : " updates") + " available";
         if (checkError !== "")
             return checkError;
+        if (projectStatus === "desktop-channel-disabled" || projectStatus === "desktop-channel-invalid")
+            return "System checked · Desktop updates unavailable";
         return "Up to date";
     }
 

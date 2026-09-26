@@ -1,0 +1,215 @@
+#!/usr/bin/python3
+"""Inspect or explicitly enroll an ISO installation in a signed desktop channel."""
+import argparse
+import configparser
+from datetime import datetime, timezone
+import fcntl
+import json
+import os
+from pathlib import Path
+import platform
+import subprocess
+import sys
+import tempfile
+from urllib.parse import urlsplit
+from urllib.request import urlopen
+
+sys.path.insert(0, '/usr/share/cybexos/lib')
+from release_metadata import fingerprint, public_key, repository_url  # noqa: E402
+
+
+REPO = 'etc/yum.repos.d/cybexos-desktop.repo'
+KEY = 'etc/pki/rpm-gpg/CYBEXOS-desktop.asc'
+CONFIG = 'etc/cybexos/update-channel.json'
+
+
+def read_json(path):
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict):
+        raise ValueError('Channel configuration must be a JSON object')
+    return value
+
+
+def status(root=Path('/')):
+    record = {'available': False, 'availableVersion': '', 'currentVersion': '',
+              'managed': True, 'enabled': False, 'configured': False,
+              'channel': 'rpm', 'status': 'desktop-channel-disabled',
+              'note': 'CybexOS desktop updates are not configured. Fedora and application updates remain available.'}
+    if root == Path('/'):
+        result = subprocess.run(['rpm', '-q', 'cybexos-desktop'], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            record['currentVersion'] = result.stdout.strip()
+    try:
+        parser = configparser.ConfigParser(interpolation=None)
+        with (root / REPO).open() as stream:
+            parser.read_file(stream)
+        repo = parser['cybexos-desktop']
+        if not repo.getboolean('enabled', fallback=True):
+            return record
+        record['enabled'] = True
+        if not all(repo.getboolean(key, fallback=False) for key in ('gpgcheck', 'repo_gpgcheck')):
+            raise ValueError('Both package and repository signature verification must be enabled')
+        configured = root / CONFIG
+        settings = read_json(configured if configured.exists() else root / 'usr/share/cybexos/update-channel.json')
+        expected = fingerprint(settings.get('fingerprint', ''))
+        baseurl = repository_url(repo.get('baseurl', ''))
+        if baseurl != repository_url(settings.get('baseurl', '')):
+            raise ValueError('Repository URL differs from the enrolled channel')
+        key_url = urlsplit(repo.get('gpgkey', ''))
+        if key_url.scheme != 'file' or key_url.netloc or key_url.query or key_url.fragment:
+            raise ValueError('The enrolled public key must be a local file')
+        if key_url.path not in ('/' + KEY, '/usr/share/cybexos/update-key.asc'):
+            raise ValueError('The repository uses an unrecognized public key path')
+        public_key(root / key_url.path.lstrip('/'), expected)
+        record.update(configured=True, status='desktop-channel-ready', baseurl=baseurl,
+                      fingerprint=expected, note='CybexOS desktop updates are delivered with system packages.')
+    except FileNotFoundError:
+        if record['enabled']:
+            record.update(status='desktop-channel-invalid', note='The enabled desktop channel is missing its configuration or public key.')
+    except (OSError, ValueError, KeyError, configparser.Error, subprocess.SubprocessError):
+        record.update(status='desktop-channel-invalid', note='The desktop update channel is invalid. Run cybex update-channel enroll with its reviewed configuration.')
+    return record
+
+
+def resolved_url(url, root):
+    release = {}
+    for line in (root / 'etc/os-release').read_text().splitlines():
+        key, sep, value = line.partition('=')
+        if sep:
+            release[key] = value.strip('"\'')
+    version = release.get('VERSION_ID', '')
+    if release.get('ID') != 'fedora' or not version.isdecimal() or platform.machine() != 'x86_64':
+        raise ValueError('Desktop channels require a supported Fedora x86_64 installation')
+    return url.replace('$releasever', version).replace('$basearch', 'x86_64')
+
+
+def verify_repository(url, armor):
+    """Verify bounded metadata in an isolated keyring before changing trust."""
+    with tempfile.TemporaryDirectory(prefix='cybexos-channel-') as directory:
+        work = Path(directory)
+        key = work / 'public.asc'
+        key.write_bytes(armor)
+        for name in ('repomd.xml', 'repomd.xml.asc'):
+            with urlopen(url + '/repodata/' + name, timeout=30) as response:
+                if urlsplit(response.url).scheme != 'https':
+                    raise ValueError('Repository metadata redirected to an insecure URL')
+                content = response.read(4 * 1024 * 1024 + 1)
+            if len(content) > 4 * 1024 * 1024:
+                raise ValueError('Repository metadata exceeds the size limit')
+            (work / name).write_bytes(content)
+        gpg = ['gpg', '--no-options', '--homedir', str(work), '--batch', '--no-autostart']
+        subprocess.run([*gpg, '--import', str(key)], check=True, capture_output=True, timeout=15)
+        subprocess.run([*gpg, '--verify', str(work / 'repomd.xml.asc'), str(work / 'repomd.xml')],
+                       check=True, capture_output=True, timeout=15)
+
+
+def atomic_write(path, content):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise ValueError(f'Refusing to replace a non-regular channel file: {path}')
+    fd, temporary = tempfile.mkstemp(prefix='.cybexos-channel-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            os.fchmod(stream.fileno(), 0o644)
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        parent = os.open(path.parent, os.O_DIRECTORY)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def enroll(config, expected, root=Path('/'), check=False):
+    expected = fingerprint(expected)
+    settings = read_json(config)
+    if set(settings) != {'baseurl', 'fingerprint', 'key_file'} or fingerprint(settings['fingerprint']) != expected:
+        raise ValueError('Configuration does not match the explicitly trusted fingerprint')
+    url = repository_url(settings['baseurl'])
+    armor = public_key(config.parent / settings['key_file'], expected)
+    # A broken or temporarily disabled repo does not discard previously pinned
+    # trust. Read the enrollment record independently of its readiness status.
+    for pinned in (root / CONFIG, root / 'usr/share/cybexos/update-channel.json'):
+        if pinned.is_file():
+            recorded = read_json(pinned).get('fingerprint')
+            if recorded and fingerprint(recorded) != expected:
+                raise ValueError('Signing-key rotation requires a separate reviewed migration')
+            if recorded:
+                break
+    verify_repository(resolved_url(url, root), armor)
+    if check:
+        return {'checked': True, 'baseurl': url, 'fingerprint': expected}
+    repo = ('# Enrolled with cybex update-channel; local policy survives RPM updates.\n'
+            '[cybexos-desktop]\nname=CybexOS desktop updates\nenabled=1\n'
+            'gpgcheck=1\nrepo_gpgcheck=1\nskip_if_unavailable=0\nmetadata_expire=6h\n'
+            f'baseurl={url}\ngpgkey=file:///{KEY}\n').encode()
+    values = {KEY: armor, CONFIG: (json.dumps({'enabled': True, 'baseurl': url, 'fingerprint': expected}, indent=2) + '\n').encode(), REPO: repo}
+    before = {}
+    for name in values:
+        path = root / name
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            raise ValueError('Refusing to replace a non-regular channel file')
+        before[name] = path.read_bytes() if path.exists() else None
+    if all(before[name] == value for name, value in values.items()):
+        return status(root)
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+    backup = root / 'var/lib/cybexos/backups' / ('update-channel-' + stamp)
+    backup.mkdir(parents=True, mode=0o700)
+    for name, content in before.items():
+        if content is not None:
+            atomic_write(backup / name, content)
+    written = []
+    try:
+        for name, content in values.items():
+            # atomic_write can fail after rename (for example directory fsync).
+            # Include the in-flight destination in rollback before publishing.
+            written.append(name)
+            atomic_write(root / name, content)
+    except BaseException:
+        for name in reversed(written):
+            if before[name] is None:
+                (root / name).unlink(missing_ok=True)
+            else:
+                atomic_write(root / name, before[name])
+        raise
+    return {**status(root), 'backup': str(backup)}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    actions = parser.add_subparsers(dest='action', required=True)
+    state = actions.add_parser('status')
+    state.add_argument('--json', action='store_true')
+    enable = actions.add_parser('enroll')
+    enable.add_argument('configuration', type=Path)
+    enable.add_argument('--fingerprint', required=True, help='Independently reviewed complete signing fingerprint')
+    enable.add_argument('--check', action='store_true', help='Verify public key and signed repository without changing configuration')
+    args = parser.parse_args()
+    try:
+        if args.action == 'status':
+            value = status()
+            print(json.dumps(value) if args.json else value['note'])
+            return 0
+        if not args.check and os.geteuid() != 0:
+            parser.error('Enrollment requires sudo; --check is available without root')
+        if args.check:
+            value = enroll(args.configuration.resolve(strict=True), args.fingerprint, check=True)
+        else:
+            lockdir = Path('/run/lock/cybexos')
+            lockdir.mkdir(mode=0o755, parents=True, exist_ok=True)
+            descriptor = os.open(lockdir / 'update-channel.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(descriptor, 'w') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                value = enroll(args.configuration.resolve(strict=True), args.fingerprint)
+        print(json.dumps(value, indent=2))
+        return 0
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        parser.exit(1, f'update-channel: {error}\n')
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -5,17 +5,14 @@ application set. The proposed boot path is **Cybex firmware menu → Cybex
 Plymouth → live desktop/welcome → three-screen installer**. After an encrypted
 installation, it is **disk unlock → automatic login → desktop**.
 
-The September 23 implementation has source, Qt, backend-fixture and browser
-checks only. **No ISO was built or booted for these changes.** The earlier
-image in [VALIDATION.md](VALIDATION.md) predates this implementation and does
-not qualify it. See [IMPLEMENTATION-2026-09-23.md](IMPLEMENTATION-2026-09-23.md)
-for changes and remaining integration checks, and the historical
-[audit](AUDIT-2026-09-23.md) for the original findings.
-The September 24 source also replaces GDM with SDDM and shares the workstation's
-login policy. Earlier GDM boot results do not qualify this migration.
-The replacement desktop RPM built successfully in a disposable Fedora VM.
-ISO creation was then deferred at the user's request; no new ISO was completed
-or booted, and temporary build artifacts were removed.
+The 2026-09-25 UEFI qualification passed a fresh encrypted installation,
+installed-account defaults, cold reboot, logout/crash/manager-restart recovery,
+and encrypted-keyring fallback cases; see the
+[installation audit](INSTALL-AUDIT-2026-09-25.md). Changes made after that
+qualification have source-level checks only until a new ISO is built and
+qualified. Earlier implementation and audit notes are historical: the
+[September 23 implementation](IMPLEMENTATION-2026-09-23.md) and
+[September 23 audit](AUDIT-2026-09-23.md).
 
 ## Installation experience
 
@@ -97,8 +94,9 @@ The image package includes the reviewed Ansible baseline, account, Fish and
 XPS hardware tasks under `/usr/share/cybexos/provision`. Package selection
 includes the shared baseline and hardware firmware lists. Anaconda applies
 account settings, service enablement, the firewall and hardware detection in
-its offline target. The installed account therefore starts with Fish and
-passwordless wheel sudo; an explicit saved `passwordless_wheel: false` wins.
+its offline target. The installed account starts with Fish and password-required
+sudo. The installer offers an explicit opt-in to passwordless sudo; existing
+saved choices are preserved on later configuration runs.
 Both Codex and Claude use the interactive Fish aliases in the shared config.
 
 The installer records its choices in `/etc/cybexos/config.yml`, in the same
@@ -136,8 +134,20 @@ After boot, `cybexos-hardware-setup.timer` applies the detected hardware role
 when network access is available. Failed setup remains visible in the service
 journal. A known camera ABI mismatch is cached for that kernel and provisioning
 payload, avoiding repeated builds; a new kernel or changed payload retries it.
-`cybex doctor` reports a cached incompatibility, and `cybex repair --hardware`
-allows an explicit retry. Successful hardware setup is also keyed to the kernel.
+`cybex doctor --json` reports installed-system diagnostics. Hardware setup
+status lives in `/var/lib/cybexos/hardware-status.json` and is shown in the
+welcome window; a pending camera setup resumes after rebooting into the same
+kernel. Successful hardware setup is also keyed to the kernel.
+
+ISO installations use RPM upgrades for desktop changes. The default image has
+no enabled desktop RPM update channel; inspect channel state with
+`cybex update-channel status --json`. Enrolling a channel requires its reviewed
+public configuration and complete signing-key fingerprint. RPM upgrades
+schedule versioned account and machine policy through
+`cybexos-reconcile.service` and its timer. Inspect or retry that work with
+`sudo /usr/libexec/cybexos-reconcile --status` or `--retry`. `cybex repair`
+reapplies the policy bundled with the installed RPM; it does not deploy a
+source checkout.
 
 For installations made before this integration, preview and apply the migration
 from a reviewed checkout:
@@ -164,9 +174,16 @@ of optional Steam/network services, and selected files use the Flatpak document
 portal. The session target avoids the implicit ordering cycle with vendor
 services that start after `graphical-session.target`.
 
-This migration does not publish a CybexOS RPM update repository. A signed public
-channel is still required for future desktop RPM delivery; see the release
-instructions below. Fedora, vendor and Flatpak updates work independently.
+The release tooling prepares immutable-tagged desktop RPM releases and signed
+repository metadata for
+[`https://digitalpals.github.io/CybexOS/44/x86_64`](https://digitalpals.github.io/CybexOS/44/x86_64).
+The public channel configuration is `image/channels/stable.json`. The tooling
+is prepared, but Pages is empty pending a configured trusted PXE runner,
+baseline ISO and passing release gates; see the
+[release instructions](../docs/releasing.md). The repository code is MIT
+licensed; a separate third-party software and asset redistribution audit is
+still required before public distribution. Until publication and channel
+enrollment, Fedora, vendor and Flatpak updates work independently.
 
 ## Source checks: no ISO or VM
 
@@ -276,9 +293,10 @@ versions come from `VERSION`, with a timestamp/revision release suffix and
 installed provenance. Epoch 1 permits upgrading the older hardcoded alpha
 version. Existing checkout installations retain their source updater.
 
-A default build ships a **disabled** desktop update channel. Enabling actual
-desktop updates requires your HTTPS repository URL and existing signing key.
-Prepare a public configuration before building, for example:
+A default build ships a **disabled** desktop update channel. The public stable
+channel configuration is `image/channels/stable.json`; a custom or private
+channel can be supplied with `--update-channel` at build time. For such a
+channel, prepare a public configuration, for example:
 
 ```json
 {
@@ -311,14 +329,19 @@ verifies the RPM signatures using only the public key, signs/verifies metadata
 and the release manifest, writes checksums, and atomically publishes a new
 local directory. Original RPMs and the system RPM keyring remain untouched.
 `--gnupghome` can select an existing signing keyring. Hosting/deployment is a
-separate action; the tool does not upload anything or create signing keys.
-No real signed repository was created for this implementation.
+separate action; the tool does not upload anything or create signing keys. The
+public GitHub Pages/RPM release tooling is prepared, but its first publication
+still awaits the trusted PXE runner, baseline ISO configuration, and passing
+release gates. The repository-code MIT license does not resolve the separate
+third-party software and asset redistribution audit. See
+[the release instructions](../docs/releasing.md).
 
-## Future ISO qualification and PXE publication
+## ISO qualification and PXE publication
 
-These commands are opt-in operations, **not part of source checks**. They were
-not executed for the September 23 changes. Completed testing ISOs belong in
-`/data/pxe/iso`; keep incomplete builds outside that tree.
+These commands are opt-in operations, **not part of source checks**. The
+September 25 qualification is recorded above; later source changes require a
+new build and qualification before they are covered. Completed testing ISOs
+belong in `/data/pxe/iso`; keep incomplete builds outside that tree.
 
 On the iVentoy host, `image/publish-pxe /path/to/artifacts` verifies the artifact
 set and prints a plan. Adding `--execute` copies the ISO/checksum through
@@ -381,12 +404,8 @@ does not establish that PXE publication and refresh succeeded.
 `vm.json`. By default cleanup removes disks, credentials, screenshots and VM
 logs; small JSON reports remain. `--keep-artifacts` is only for unresolved
 diagnostics, and retained paths/sizes must be reported and later cleaned.
-The 2026-09-25 UEFI qualification passed a fresh encrypted installation,
-installed-account defaults, cold reboot, logout/crash/manager-restart recovery,
-and the encrypted-keyring fallback cases; see
-[the installation audit](INSTALL-AUDIT-2026-09-25.md). The graphical bootstrap
-waits for the desktop and a terminal execution marker before private input;
-it stops instead of blindly retrying passwords.
+The graphical bootstrap waits for the desktop and a terminal execution marker
+before private input; it stops instead of blindly retrying passwords.
 Physical GPUs, Secure Boot, international early-boot password entry, screen
 lock, suspend/resume and real application/account credential behavior need
 separate checks.
@@ -400,7 +419,9 @@ NVIDIA drivers are not bundled. Investigate graphics with `lspci -nnk`,
 `hyprctl monitors all` and `journalctl -b -k`; basic-graphics recovery intentionally
 disables normal modesetting.
 
-This remains a private alpha. The repository has no software license;
-`LicenseRef-Not-Licensed` grants no distribution rights. Public distribution
-requires the project's licensing/redistribution decisions, actual update
-hosting and successful release/hardware qualification.
+The repository's original code and configuration are MIT-licensed. That does
+not grant redistribution rights for third-party packages, artwork, fonts,
+trademarks, or bundled images. The ISO and its application payload still need
+a documented redistribution audit before public release; see
+[licensing and asset provenance](../docs/licensing.md). A passing VM gate
+also does not qualify physical hardware or Secure Boot.

@@ -16,6 +16,7 @@ from qmp_control import Qmp, type_text
 
 # Virtio block identifiers are limited to 20 bytes in the guest protocol.
 QUALIFICATION_DISK_SERIAL = "CYBEXOS-QUALIFY"
+QUALIFICATION_UNUSED_SERIAL = "CYBEXOS-UNUSED"
 
 
 def run(args, **kwargs):
@@ -74,16 +75,11 @@ assert (home / '.local/state/cybexos/offline-apps-seeded').is_file()
 if not Path('/run/cybexos-live').exists():
     import pwd
     assert pwd.getpwuid(os.getuid()).pw_shell == '/usr/bin/fish'
-    subprocess.run(['sudo', '-k', '-n', 'true'], check=True)
     assert Path('/etc/cybexos/hardware.json').is_file()
     for unit in ('hyprpolkitagent', 'hypridle', 'voxtype'):
         subprocess.run(['systemctl', '--user', 'is-active', unit], check=True)
     for unit in ('tuned-ppd', 'fwupd-refresh.timer', 'cybexos-hardware-setup.timer'):
         subprocess.run(['systemctl', 'is-enabled', unit], check=True)
-    for scope in ([], ['--permanent']):
-        for protocol in ('tcp', 'udp'):
-            subprocess.run(['sudo', '-n', 'firewall-cmd', *scope, '--zone=cybexos',
-                            '--query-port=53317/' + protocol], check=True)
     aliases = subprocess.check_output(['fish', '-ic', 'functions codex claude'], text=True)
     assert '--dangerously-bypass-approvals-and-sandbox' in aliases
     assert '--dangerously-skip-permissions' in aliases
@@ -110,10 +106,11 @@ def stop_with_harness():
 
 class TestVM:
     """Own exactly one disposable virtual disk; never attach host block devices."""
-    def __init__(self, work, firmware="uefi", memory=16384):
+    def __init__(self, work, firmware="uefi", memory=16384, guard_disk=False):
         self.work = validate_qemu_path(Path(work).resolve())
         self.firmware = firmware
         self.memory = memory
+        self.guard_disk = guard_disk
         self.owned = False
         self.process = None
         self.console = None
@@ -121,6 +118,7 @@ class TestVM:
         self.port = free_port()
         self.vnc_port = free_port()
         self.disk = self.work / "installed.qcow2"
+        self.unused_disk = self.work / "unused.qcow2"
         self.key = self.work / "id_ed25519"
         self.ssh_ready = False
         self.qmp_path = self.work / "qmp.sock"
@@ -173,6 +171,8 @@ class TestVM:
         self.work.chmod(0o700)
         self.owned = True
         run(["qemu-img", "create", "-q", "-f", "qcow2", str(self.disk), "100G"])
+        if self.guard_disk:
+            run(["qemu-img", "create", "-q", "-f", "qcow2", str(self.unused_disk), "100G"])
         run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(self.key)])
 
     def start(self, iso=None, user="liveuser"):
@@ -190,12 +190,18 @@ class TestVM:
                 "-netdev", f"user,id=net,restrict=on,hostfwd=tcp:127.0.0.1:{self.port}-:22", "-device", "virtio-net-pci,netdev=net",
                 "-vnc", f"127.0.0.1:{self.vnc_port - 5900}", "-serial", f"file:{self.work / 'serial.log'}",
                 "-qmp", f"unix:{self.qmp_path},server=on,wait=off", "-monitor", "none"]
+        if self.guard_disk:
+            args += ["-drive", f"file={self.unused_disk},format=qcow2,if=none,id=unused-disk,werror=report,rerror=report",
+                     "-device", f"virtio-blk-pci,drive=unused-disk,serial={QUALIFICATION_UNUSED_SERIAL}"]
         if iso is not None:
             args += ["-cdrom", str(require_test_iso(iso)), "-boot", "d"]
         self.console = (self.work / "qemu.log").open("a")
         self.process = subprocess.Popen(args, stdout=self.console, stderr=subprocess.STDOUT,
                                         process_group=0, preexec_fn=stop_with_harness)
-        atomic_json(self.work / "vm.json", {"pid": self.process.pid, "ssh": self.ssh, "vnc_port": self.vnc_port, "qmp": str(self.qmp_path), "disk": str(self.disk)})
+        state = {"pid": self.process.pid, "ssh": self.ssh, "vnc_port": self.vnc_port, "qmp": str(self.qmp_path), "disk": str(self.disk)}
+        if self.guard_disk:
+            state['unused_disk'] = str(self.unused_disk)
+        atomic_json(self.work / "vm.json", state)
 
     def alive(self):
         if self.process.poll() is not None:
@@ -245,12 +251,13 @@ class TestVM:
                 return
             if setup and time.monotonic() >= next_attempt and self.qmp_path.exists():
                 # Typing even public shell commands at GRUB can enter its
-                # editor and prevent boot. Both fresh fixtures show Welcome;
-                # require its actual desktop text before sending any keys.
+                # editor and prevent boot. Require an actual desktop surface;
+                # the installer may cover Welcome on current live images.
                 if not desktop_observed:
                     screen = " ".join(self.screen_text().lower().split())
                     desktop_observed = any(phrase in screen for phrase in (
-                        "make yourself at home", "welcome to your new desktop"))
+                        "make yourself at home", "welcome to your new desktop",
+                        "your next workspace", "make it yours"))
                     if not desktop_observed:
                         next_attempt = time.monotonic() + 5
                         time.sleep(1)
@@ -278,6 +285,70 @@ class TestVM:
                 next_attempt = time.monotonic() + 15
             time.sleep(1)
         raise RuntimeError("SSH/desktop readiness deadline exceeded; inspect VM through vm-control")
+
+    def bootstrap_installed_ssh(self, password, timeout=120):
+        """Use a verified text console, then switch its keymap to US for setup.
+
+        This works after a plain install without desktop autologin and after a
+        non-US install without guessing how punctuation maps in Hyprland.
+        Passwords are typed only at a recognized login/sudo prompt.
+        """
+        self.keypress("ctrl+alt+f3")
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if re.search(r'login\s*:', self.screen_text(), re.IGNORECASE):
+                break
+            self.alive()
+            time.sleep(2)
+        else:
+            raise RuntimeError("Installed text-console login prompt was not recognized")
+        self.type("qualification\n")
+        self._wait_password_prompt(deadline)
+        self.type(password + "\n")
+        time.sleep(2)
+        self.type("echo CYBEXOSTTYREADY\n")
+        while time.monotonic() < deadline:
+            if self.screen_text().upper().count('CYBEXOSTTYREADY') >= 2:
+                break
+            self.alive()
+            time.sleep(1)
+        else:
+            raise RuntimeError("Installed text-console shell was not confirmed")
+        self.type("clear\n")
+        # `sudo loadkeys us` contains only letters and spaces, so its physical
+        # keystrokes are stable under the supported US/NL/DE layouts.
+        time.sleep(2)
+        self.type("sudo loadkeys us\n")
+        while time.monotonic() < deadline:
+            screen = " ".join(self.screen_text().lower().split())
+            if re.search(r'password\s*:|passwort\s*:|wachtwoord\s*:', screen):
+                self.type(password + "\n")
+                break
+            # Older baseline images may already have passwordless sudo. After
+            # the clear above, two prompts show that loadkeys returned.
+            if screen.count('qualification@') >= 2:
+                break
+            self.alive()
+            time.sleep(1)
+        else:
+            raise RuntimeError("Sudo keymap setup did not reach a prompt or return")
+        time.sleep(2)
+        public = self.key.with_suffix(".pub").read_text().strip()
+        command = "HISTFILE=/dev/null; set +o history; mkdir -p ~/.ssh; printf '%s\\n' "
+        command += shlex.quote(public) + " > ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys; "
+        command += "sudo -n restorecon -RF /home/qualification/.ssh; sudo -n systemctl start sshd; "
+        command += "sudo -n firewall-cmd --add-service=ssh; exit\n"
+        self.type(command)
+        self.wait_ssh(timeout=max(15, int(deadline - time.monotonic())), setup=False)
+
+    def _wait_password_prompt(self, deadline):
+        while time.monotonic() < deadline:
+            screen = " ".join(self.screen_text().lower().split())
+            if re.search(r'password\s*:|passwort\s*:|wachtwoord\s*:', screen):
+                return
+            self.alive()
+            time.sleep(1)
+        raise RuntimeError("Installed password prompt was not recognized; no password was typed")
 
     def wait_desktop(self, timeout=120):
         deadline = time.monotonic() + timeout
@@ -333,7 +404,7 @@ class TestVM:
             for name in ("id_ed25519", "id_ed25519.pub", "known_hosts", "vm.json", "qmp.sock", "prompt.png"):
                 (self.work / name).unlink(missing_ok=True)
             if not keep_artifacts:
-                for name in ("installed.qcow2", "OVMF_VARS.fd", "OVMF_VARS.qcow2", "serial.log", "qemu.log"):
+                for name in ("installed.qcow2", "unused.qcow2", "OVMF_VARS.fd", "OVMF_VARS.qcow2", "serial.log", "qemu.log"):
                     (self.work / name).unlink(missing_ok=True)
 
 

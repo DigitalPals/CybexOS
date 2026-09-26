@@ -63,12 +63,16 @@ class FakeBackend:
         self.choices = copy.deepcopy(CHOICES)
         self.started = False
         self.failed = False
+        self.rescanned = False
 
     def inventory(self):
         return self.choices
 
     def reset(self):
         pass
+
+    def rescan(self):
+        self.rescanned = True
 
     def keyboard(self, layout):
         return {"keyboard": layout, "boot_keyboard": layout}
@@ -146,6 +150,20 @@ class InstallerTests(unittest.TestCase):
         )
         self.assertEqual(plan["account"]["locale"], "nl_NL.UTF-8")
         self.assertFalse(plan["account"]["encrypted"])
+        self.assertFalse(plan["account"]["passwordless_wheel"])
+
+    def test_sudo_requires_explicit_boolean_opt_in(self):
+        self.assertTrue(self.plan(passwordless_wheel=True)["account"]["passwordless_wheel"])
+        for invalid in ("true", 1, None):
+            with self.subTest(invalid=invalid), self.assertRaises(backend.Invalid):
+                self.plan(passwordless_wheel=invalid)
+
+    def test_rescan_invalidates_confirmation_and_returns_new_inventory(self):
+        old = self.plan()
+        self.assertEqual(self.installer.rescan()["disks"][0]["name"], "vda")
+        self.assertTrue(self.adapter.rescanned)
+        with self.assertRaises(backend.Invalid):
+            self.commit(old)
 
     def test_keyboard_change_invalidates_old_confirmation(self):
         plan = self.plan()
@@ -216,6 +234,29 @@ class InstallerTests(unittest.TestCase):
         with self.assertRaises(backend.Invalid):
             self.commit(plan)
         self.assertFalse(self.adapter.started)
+        self.adapter.choices["disks"][0]["serial"] = "FIXTURE-ONLY"
+        new = self.plan()
+        self.adapter.choices["disks"][0]["partitions"] = [
+            {"path": "/dev/vda1", "size": 1024, "filesystem": "ext4"}
+        ]
+        with self.assertRaises(backend.Invalid):
+            self.commit(new)
+
+    def test_status_and_diagnostics_redact_policy_and_worker_text(self):
+        plan = self.plan(passwordless_wheel=True)
+        self.commit(plan)
+        state = self.state.read()
+        state.update(step=1, total=2, message="private /home/alice fixture phrase never real")
+        self.state.write(state)
+        status = backend.installation_status(self.state, lambda *args, **kwargs: types.SimpleNamespace(stdout="active\n"))
+        self.assertEqual(status["phase"], "installing")
+        self.assertNotIn("account", status)
+        self.assertNotIn("private", json.dumps(status))
+        report = backend.diagnostics(self.state, lambda *args, **kwargs: types.SimpleNamespace(
+            stdout="ActiveState=active\nSubState=running\nResult=success\nEnvironment=SECRET=leak\n"))
+        self.assertEqual(report["worker"], {"ActiveState": "active", "SubState": "running", "Result": "success"})
+        self.assertNotIn("alice", json.dumps(report))
+        self.assertNotIn("SECRET", json.dumps(report))
 
     def test_confirmation_and_replay_protection(self):
         plan = self.plan()
@@ -431,6 +472,14 @@ class AdapterContractTests(unittest.TestCase):
         self.assertFalse(any(call[0] == "passphrase" for call in self.calls))
 
     def test_inventory_excludes_protected_media_and_reads_payload_size(self):
+        lsblk_calls = []
+        def lsblk(command, **kwargs):
+            lsblk_calls.append(command)
+            return types.SimpleNamespace(stdout=json.dumps({"blockdevices": [{
+                "path": "/dev/vda", "type": "disk", "children": [
+                    {"path": "/dev/vda1", "size": 2 * 1024**3, "type": "part", "fstype": "vfat"}
+                ]}]}))
+        patch.object(backend.subprocess, "run", side_effect=lsblk).start()
         self.modules[("Storage", "/DiskSelection")]._methods["GetUsableDisks"] = lambda: [
             "vda",
             "live",
@@ -459,6 +508,10 @@ class AdapterContractTests(unittest.TestCase):
         )
         inventory = self.adapter.inventory()
         self.assertEqual([item["name"] for item in inventory["disks"]], ["vda"])
+        self.assertEqual(inventory["disks"][0]["partitions"], [
+            {"path": "/dev/vda1", "size": 2 * 1024**3, "filesystem": "vfat"}
+        ])
+        self.assertEqual(lsblk_calls[0][-2:], ["--", "/dev/vda"])
         self.assertEqual(inventory["required_bytes"], 70 * 1024**3)
         self.assertEqual(
             inventory["timezones"], ["America/New_York", "Europe/Amsterdam", "Europe/Berlin", "UTC"]
@@ -473,6 +526,14 @@ class AdapterContractTests(unittest.TestCase):
         timezone.Timezone = "Mars/Olympus"
         inventory = self.adapter.inventory()
         self.assertEqual((inventory["timezone"], inventory["detected_timezone"]), ("UTC", ""))
+
+    def test_rescan_uses_anaconda_scan_task(self):
+        storage = self.modules[("Storage", "")]
+        storage._methods["ScanDevicesWithTask"] = lambda: "/scan"
+        calls = []
+        self.adapter.task = lambda module, path, **kwargs: calls.append((module, path, kwargs))
+        self.adapter.rescan()
+        self.assertEqual(calls, [("Storage", "/scan", {"timeout": 300})])
 
     def test_geolocation_runs_only_without_an_earlier_result(self):
         timezone = self.modules[("Timezone", "")]
@@ -562,6 +623,10 @@ class TargetTests(unittest.TestCase):
             "root:x:0:0::/root:/bin/bash\nalice:x:1000:1000::/home/alice:/bin/bash\n"
         )
         (self.root / "etc/shadow").write_text("root:!:1::::::\nalice:fixture-hash:1::::::\n")
+        (self.root / "etc/cybexos").mkdir()
+        (self.root / "etc/cybexos/config.yml").write_text(
+            "primary_user: 'alice'\ndesktop_autologin: false\npasswordless_wheel: false\n"
+        )
 
     def test_autologin_requires_both_request_and_verified_encryption(self):
         policy = {"account": {"username": "alice", "encrypted": True}}
@@ -576,6 +641,7 @@ class TargetTests(unittest.TestCase):
         record = json.loads((self.root / "etc/cybexos/installation.json").read_text())
         self.assertEqual(record["keyring"], "encrypted-boot-passphrase-or-prompt")
         self.assertNotIn("password", record)
+        self.assertFalse(record["passwordless_wheel"])
         policy["account"]["encrypted"] = False
         target.finalize(self.root, policy, False)
         self.assertFalse(json.loads(login.read_text())["autologin"])
@@ -595,6 +661,37 @@ class TargetTests(unittest.TestCase):
         for invalid in ("false", "true", 1, None):
             with self.subTest(value=invalid), self.assertRaises(RuntimeError):
                 target.finalize(self.root, {"account": {"username": "alice", "encrypted": invalid}}, True)
+
+    def test_sudo_policy_requires_explicit_choice_and_records_it(self):
+        path = self.root / "etc/sudoers.d/10-wheel-nopasswd"
+        path.parent.mkdir()
+        path.write_text("inherited image policy\n")
+        target.finalize(self.root, {"account": {"username": "alice", "encrypted": False,
+                                                     "passwordless_wheel": False}}, False)
+        self.assertFalse(path.exists())
+        target.finalize(self.root, {"account": {"username": "alice", "encrypted": False,
+                                                     "passwordless_wheel": True}}, False)
+        self.assertEqual(path.read_text(), "%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n")
+        self.assertEqual(path.stat().st_mode & 0o777, 0o440)
+        self.assertIn("passwordless_wheel: true\n", (self.root / "etc/cybexos/config.yml").read_text())
+        self.assertTrue(json.loads((self.root / "etc/cybexos/installation.json").read_text())["passwordless_wheel"])
+        for invalid in ("true", 1, None):
+            with self.subTest(invalid=invalid), self.assertRaises(RuntimeError):
+                target.finalize(self.root, {"account": {"username": "alice", "encrypted": False,
+                                                         "passwordless_wheel": invalid}}, False)
+
+    def test_missing_or_ambiguous_saved_policy_fails_closed(self):
+        config = self.root / "etc/cybexos/config.yml"
+        config.unlink()
+        with self.assertRaises(FileNotFoundError):
+            target.finalize(self.root, {"account": {"username": "alice", "encrypted": False,
+                                                     "passwordless_wheel": True}}, False)
+        self.assertFalse((self.root / "etc/sudoers.d/10-wheel-nopasswd").exists())
+        config.write_text("primary_user: 'alice'\ndesktop_autologin: false\npasswordless_wheel: false\npasswordless_wheel: true\n")
+        with self.assertRaises(RuntimeError):
+            target.finalize(self.root, {"account": {"username": "alice", "encrypted": False,
+                                                     "passwordless_wheel": True}}, False)
+        self.assertFalse((self.root / "etc/sudoers.d/10-wheel-nopasswd").exists())
 
     def test_missing_administrator_does_not_authorize_login(self):
         with self.assertRaises(RuntimeError):
@@ -732,6 +829,7 @@ class TargetTests(unittest.TestCase):
         self.assertIn("%post --nochroot --erroronfail", hook)
         self.assertIn("rm -f /etc/anaconda/conf.d/20-cybexos.conf", hook)
         self.assertIn("rm -f /run/cybexos-live-session /etc/sddm.conf", hook)
+        self.assertIn("rm -f /etc/sudoers.d/10-wheel-nopasswd", hook)
         self.assertIn('"autologin":false,"live":false', hook)
         self.assertIn("systemctl enable sddm.service", hook)
         self.assertIn(

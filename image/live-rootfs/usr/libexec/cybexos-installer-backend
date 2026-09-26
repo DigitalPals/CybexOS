@@ -63,8 +63,11 @@ def validate_account(data, choices):
     encrypted = data.get('encrypted', True)
     if not isinstance(encrypted, bool):
         raise Invalid('The encryption choice is invalid.')
+    passwordless_wheel = data.get('passwordless_wheel', False)
+    if not isinstance(passwordless_wheel, bool):
+        raise Invalid('The sudo password choice is invalid.')
     return dict(username=username, keyboard=keyboard, locale=locale, timezone=timezone,
-                hostname=hostname, encrypted=encrypted)
+                hostname=hostname, encrypted=encrypted, passwordless_wheel=passwordless_wheel)
 
 
 def action_set(actions):
@@ -78,6 +81,7 @@ def action_set(actions):
 
 def fingerprint(disk):
     identity = {key: disk.get(key) for key in ('name', 'path', 'size', 'serial', 'wwn', 'device_id')}
+    identity['partitions'] = sorted(disk.get('partitions', []), key=lambda item: item.get('path', ''))
     return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
 
@@ -139,7 +143,38 @@ def installation_status(store, run=subprocess.run):
             state.update(phase='failed-install', message='The installation monitor stopped unexpectedly. Anaconda may still be writing the disk. Keep this session open and inspect the installer diagnostics before restarting.')
             # This status reader never writes: the worker alone owns progress
             # and completion. Its concurrent final update must win this race.
-    return state
+    return public_status(state)
+
+
+def public_status(state):
+    """Never send persisted account, disk plan, or Anaconda text to the browser."""
+    allowed = ('setup', 'planning', 'review', 'failed-plan', 'installing', 'complete', 'failed-install')
+    phase = state.get('phase') if state.get('phase') in allowed else 'failed-install'
+    messages = {
+        'installing': 'Anaconda is installing CybexOS. Keep this session open.',
+        'complete': 'CybexOS is installed. Restart and remove the installation medium.',
+        'failed-install': 'Installation did not finish. Save diagnostics and check the installer logs before restarting.',
+    }
+    result = {'phase': phase, 'message': messages.get(phase, '')}
+    for key in ('step', 'total'):
+        if type(state.get(key)) is int and 0 <= state[key] <= 100000:
+            result[key] = state[key]
+    return result
+
+
+def diagnostics(store, run=subprocess.run):
+    """Export useful status without raw logs, credentials, disk IDs, or usernames."""
+    state = store.read()
+    service = run(['systemctl', 'show', 'cybexos-installer-worker.service',
+                   '--property=ActiveState,SubState,Result', '--no-pager'],
+                  capture_output=True, text=True, timeout=10)
+    fields = {}
+    for line in service.stdout.splitlines():
+        key, separator, value = line.partition('=')
+        if separator and key in ('ActiveState', 'SubState', 'Result') and re.fullmatch(r'[a-z-]{1,32}', value):
+            fields[key] = value
+    return {'schema': 1, 'installer': public_status(state), 'worker': fields,
+            'backend_ready': Path('/run/anaconda/backend_ready').exists()}
 
 
 class Installer:
@@ -152,6 +187,13 @@ class Installer:
 
     def inventory(self):
         return self.backend.inventory()
+
+    def rescan(self):
+        self.require_idle()
+        # Invalidate every review before the device tree is refreshed.
+        self.state.write({'phase': 'setup'})
+        self.backend.rescan()
+        return self.inventory()
 
     def keyboard(self, data):
         self.require_idle()
@@ -218,7 +260,7 @@ class Installer:
             state.update(phase='failed-install', message='The installation worker could not start. Review its status before restarting the installer.')
             self.state.write(state)
             raise
-        return state
+        return public_status(state)
 
     def worker(self):
         state = self.state.read()
@@ -226,10 +268,11 @@ class Installer:
             raise Invalid('No new confirmed installation is queued.')
 
         def progress(step, total, message):
-            state.update(step=step, total=total, message=message)
+            # Anaconda's free-form task text can contain paths or user data.
+            state.update(step=step, total=total)
             self.state.write(state)
             self.emit({'event': 'progress', 'phase': 'installing', 'step': step,
-                       'total': total, 'message': message})
+                       'total': total, 'message': 'Installing CybexOS…'})
 
         try:
             self.backend.run_install(state, progress, self.state)
@@ -296,10 +339,26 @@ class Anaconda:
             if not device.get('is-disk') or device.get('protected'):
                 continue
             attrs = device.get('attrs', {})
+            partitions = []
+            try:
+                report = subprocess.run(['lsblk', '--json', '--bytes', '--output',
+                                         'PATH,SIZE,TYPE,FSTYPE', '--', device['path']],
+                                        check=True, capture_output=True, text=True, timeout=8)
+                def visit(nodes):
+                    for node in nodes:
+                        if node.get('type') == 'part':
+                            partitions.append({'path': node.get('path', ''), 'size': node.get('size', 0),
+                                               'filesystem': node.get('fstype') or ''})
+                        visit(node.get('children', []))
+                visit(json.loads(report.stdout).get('blockdevices', []))
+            except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+                # Anaconda remains the authority for whether this disk is safe to select.
+                pass
             disks.append(dict(name=name, path=device['path'], size=device['size'],
                               model=attrs.get('model') or device.get('description') or name,
                               serial=attrs.get('serial', ''), wwn=attrs.get('wwn', ''),
-                              device_id=device.get('device-id', ''), removable=device.get('removable', False)))
+                              device_id=device.get('device-id', ''), removable=device.get('removable', False),
+                              partitions=partitions))
         localization = self.proxy('Localization')
         keyboards = plain(localization.GetKeyboardLayouts())
         keyboard_choices = [{'id': item['layout-id'], 'label': item['description']} for item in keyboards]
@@ -337,6 +396,9 @@ class Anaconda:
         initialization.InitializationMode = 0
         initialization.DrivesToClear = []
         initialization.DevicesToClear = []
+
+    def rescan(self):
+        self.task('Storage', self.proxy('Storage').ScanDevicesWithTask(), timeout=300)
 
     def keyboard(self, layout):
         localization = self.proxy('Localization')
@@ -441,10 +503,10 @@ def check_live_environment(require_backend=True):
 def main():
     os.umask(0o077)
     command = sys.argv[1] if len(sys.argv) == 2 else ''
-    if command not in ('inventory', 'keyboard', 'plan', 'install', 'status', 'geolocate', 'reset', 'advanced',
+    if command not in ('inventory', 'rescan', 'diagnostics', 'keyboard', 'plan', 'install', 'status', 'geolocate', 'reset', 'advanced',
                        'worker', 'reboot'):
         raise Invalid('Unknown installer request.')
-    check_live_environment(require_backend=command not in ('status', 'reboot'))
+    check_live_environment(require_backend=command not in ('status', 'diagnostics', 'reboot'))
     RUNTIME.mkdir(mode=0o700, parents=True, exist_ok=True)
     # Serialize planning and commit. Status remains readable during installation,
     # and a slow geolocation lookup, which changes no selection, never blocks setup.
@@ -456,6 +518,8 @@ def main():
             raise Invalid('Another installer operation is still running.') from None
     if command == 'status':
         return installation_status(State())
+    if command == 'diagnostics':
+        return diagnostics(State())
     if command == 'reboot':
         if State().read().get('phase') != 'complete':
             raise Invalid('Wait for installation to finish before restarting.')
@@ -475,6 +539,8 @@ def main():
     installer = Installer(Anaconda(), State(), emit)
     if command == 'inventory':
         return installer.inventory()
+    if command == 'rescan':
+        return installer.rescan()
     if command == 'geolocate':
         return installer.geolocate()
     if command in ('reset', 'advanced'):

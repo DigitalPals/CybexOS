@@ -15,10 +15,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prerequisites:
+    name: Release prerequisites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Require reviewed license, version and older ISO
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          BASELINE_ISO: ${{ vars.CYBEXOS_BASELINE_ISO }}
+        run: |
+          set -euo pipefail
+          test -s LICENSE || test -s LICENSE.md
+          test -n "$BASELINE_ISO"
+          version=${RELEASE_TAG#v}
+          scripts/semver validate "$version"
+          test "$(cat VERSION)" = "$version"
+
   source:
     name: Source contract
     # The exact job that gates main: same packages, same verified COPR key.
     uses: ./.github/workflows/tests.yml
+
+  image-source:
+    name: Image source contract
+    uses: ./.github/workflows/live-image.yml
 
   vm:
     name: Generic Fedora VM install
@@ -32,17 +53,33 @@ jobs:
           if test -e /dev/kvm; then sudo chmod a+rw /dev/kvm; fi
       - run: ./tests/fedora-vm-convergence
 
+  iso:
+    name: ISO install, upgrade and recovery
+    needs: [prerequisites, source, image-source, vm]
+    uses: ./.github/workflows/desktop-release.yml
+    with:
+      tag: ${{ github.ref_name }}
+      baseline_iso: ${{ vars.CYBEXOS_BASELINE_ISO }}
+    secrets: inherit
+
   publish:
     name: Build, attest, and publish release asset
-    needs: [source, vm]
+    needs: [source, vm, iso]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     permissions:
       contents: write
       id-token: write
       attestations: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Download qualified desktop assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: cybexos-desktop-release
+          path: dist/desktop-release
+      - name: Require a repository distribution license
+        run: test -s LICENSE || test -s LICENSE.md
       - name: Install release build dependencies
         run: |
           sudo apt-get update
@@ -117,9 +154,10 @@ jobs:
             --generate-notes --title "CybexOS $version" "${prerelease[@]}"
           gh release upload "$RELEASE_TAG" \
             "dist/cybexos-$version.tar.zst" \
-            "dist/cybexos-$version.tar.zst.sigstore.jsonl" dist/SHA256SUMS
+            "dist/cybexos-$version.tar.zst.sigstore.jsonl" dist/SHA256SUMS \
+            dist/desktop-release/assets/*
           gh release edit "$RELEASE_TAG" --draft=false
-          for attempt in $(seq 1 12); do
+          for _attempt in $(seq 1 12); do
             if test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .immutable)" = true; then
               exit 0
             fi
@@ -127,3 +165,29 @@ jobs:
           done
           echo "GitHub did not make $RELEASE_TAG immutable after publication" >&2
           exit 1
+
+  pages:
+    name: Publish signed desktop repository metadata
+    needs: publish
+    # Prerelease assets are downloadable but must never advance stable clients.
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: cybexos-desktop-release
+          path: desktop-release
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa
+        with:
+          path: desktop-release/pages
+      - name: Deploy verified metadata after RPM assets exist
+        id: deploy
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e

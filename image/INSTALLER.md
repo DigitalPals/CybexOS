@@ -84,6 +84,10 @@ These are the Fedora 44 versions used as the source reference.
   validation task, then review. CybexOS sets both selected disks and
   `DrivesToClear` to the one chosen disk. It obtains candidate disks from
   `GetUsableDisks` and excludes protected/non-disk devices.
+- [Storage scan interface](https://github.com/rhinstaller/anaconda/blob/anaconda-44.30/pyanaconda/modules/storage/storage_interface.py)
+  provides `ScanDevicesWithTask` for an explicit rescan. A rescan invalidates
+  the prior review token. Existing partition details come from read-only
+  `lsblk`; Anaconda remains the authority for disk selection.
 - [Disk initialization interface](https://github.com/rhinstaller/anaconda/blob/anaconda-44.30/pyanaconda/modules/storage/disk_initialization/initialization_interface.py)
   defines the clearing scope. [PartitioningRequest](https://github.com/rhinstaller/anaconda/blob/anaconda-44.30/pyanaconda/modules/common/structures/partitioning.py)
   supplies Btrfs scheme `1`, LUKS2, and encryption policy.
@@ -112,7 +116,9 @@ guards or invoke a real installation.
 
 | Command | Input | Result |
 | --- | --- | --- |
-| `inventory` | `{}` | Available disks, layouts, locales, timezones and any detected one, payload space requirement |
+| `inventory` | `{}` | Available disks with model, capacity, serial, WWN and existing partitions; layouts, locales, timezones and payload space requirement |
+| `rescan` | `{}` | Invalidates any review, asks Anaconda to scan again, and returns a fresh inventory |
+| `diagnostics` | `{}` | Allowlisted installer phase, progress, worker service state and backend readiness; no raw logs or personal data |
 | `geolocate` | `{}` | Timezone from Anaconda's geolocation task, or empty; changes no selection |
 | `keyboard` | `{"keyboard":"us"}` | Applied live keyboard and boot keymap |
 | `plan` | Account fields below | Review token, disk identity, account policy, disk actions, warnings |
@@ -122,7 +128,8 @@ guards or invoke a real installation.
 | `reboot` | `{}` | Reboots only when installation state is complete |
 
 `plan` fields are `username`, `password`, `confirm`, `keyboard`, `locale`,
-`timezone`, `hostname`, `disk`, and optional boolean `encrypted` (default true).
+`timezone`, `hostname`, `disk`, optional boolean `encrypted` (default true),
+and optional boolean `passwordless_wheel` (default false).
 `disk` is an Anaconda disk name such as `vda`, not an arbitrary path.
 `install` input is `{"token":"…","confirmed_disk":"vda","erase_confirmed":true}`.
 The final record is `{"event":"result","ok":true,"data":{…}}`, or
@@ -130,7 +137,7 @@ The final record is `{"event":"result","ok":true,"data":{…}}`, or
 `worker` is an internal systemd entry point and does not accept user settings.
 
 The review token expires after 30 minutes. Before installation, the controller
-rechecks disk identity, selected disks, applied partitioning, the exact set of
+rechecks disk identity and existing partitions, selected disks, applied partitioning, the exact set of
 pending actions, and storage validation. The set is compared without order:
 `GetActions()` re-sorts blivet's list on every call, and its topological sort
 reverses independent actions each time. A rejected confirmation returns to disk
@@ -154,6 +161,10 @@ token before commit, task path, and progress. The browser uses a disposable
 runtime profile with password saving, form history, and crash-session restore
 disabled. Exceptions returned to the UI exclude raw DBus parameters. The welcome
 launcher requests `--nosave=all_ks` to avoid saving generated account metadata.
+Status and exported diagnostics expose only allowlisted phase, progress and
+service fields. Anaconda's free-form task messages and journals are never
+copied into the browser export because they may contain personal data. A failed
+installation stays blocked pending diagnosis; the page never retries disk writes.
 
 The existing post-install hook removes the live account, temporary permissions,
 live installer page/helpers/browser configuration, and live services. It calls
@@ -166,6 +177,11 @@ non-chroot post hook invokes `cybexos-installer-target`, which checks the actual
 before writing `/etc/cybexos/login.json`. This versioned nonsecret policy names
 the installed user, requested autologin and `live: false`.
 `/etc/cybexos/installation.json` records installation and keyring policy metadata.
+The target hook removes any wheel sudo rule inherited from the live image.
+Fresh offline configuration also defaults `passwordless_wheel` to false, so a
+stock Advanced installation requires an administrator password. The guided
+installer changes that policy and installs a mode-0440 sudoers rule only after
+the user explicitly selects passwordless sudo and confirms the review.
 
 The temporary live account has a separate policy with `live: true` and a
 root-owned `/run/cybexos-live-session` marker. The login helper accepts this
@@ -186,8 +202,24 @@ validation. Node fixtures cover UI state, confirmation, navigation locks, and
 failure recovery. Image tests load the welcome QML offscreen in both modes and
 drive its wallpaper row against a scripted shell. The
 headless browser fixture exercises the three pages with a mocked backend.
+`image/test_qualification.py` checks URL and disk identity guards without
+starting a VM.
 
-Still required before an ISO can be called working: actual Cockpit loading and
+The opt-in `image/qualify` harness drives the guest's actual Cockpit page
+through a local SSH tunnel and host Playwright. It discovers the guest URL from
+the live browser command line, selects only the disk with the fixed disposable
+serial, and verifies that a second attached disk's image hash is unchanged.
+`--scenario` selects encrypted/plain storage and US/NL (or DE) keyboard and
+locale. A `--candidate-rpm` must have a newer installed RPM version; the
+optional `--recovery-check` creates a point before upgrade, boots its GRUB
+entry, restores it and verifies the baseline RPM returned. The report at
+`OUTPUT/qualification.json` records the exact ISO and candidate RPM SHA-256,
+scenario, checks and final status. Credentials are passed to the browser driver
+on stdin and excluded from its output. Source tests do not establish a
+successful VM installation.
+
+Still required before an ISO can be called working: execution and observation
+of actual Cockpit loading and
 authorization, Fedora DBus behavior, UEFI/BIOS boot, encrypted and unencrypted
 installation, keyboard input at LUKS unlock, autologin, post-script ordering,
 offline payload completeness, driver/hardware behavior, and clean installed

@@ -14,7 +14,7 @@ import urllib.request
 import jinja2
 import yaml
 from application_payload import relativize_seed_links, include_applications
-from desktop_payload import prepare_defaults, prepare_session, split_seed
+from desktop_payload import prepare_defaults, prepare_session, split_seed, prepare_managed_defaults
 from provision_payload import prepare_provision
 from release_metadata import install_update_channel, render_spec
 
@@ -64,6 +64,7 @@ def main():
         target.chmod(0o755 if executable else 0o644)
 
     runtime = "usr/share/cybexos/runtime"
+    copy("LICENSE", "usr/share/licenses/cybexos-desktop/LICENSE")
     quickshell = ROOT / "roles/desktop/files/quickshell"
     for source in sorted(quickshell.rglob("*")):
         if not source.is_file() or source.is_symlink() or "__pycache__" in source.parts or source.suffix == ".pyc":
@@ -83,8 +84,6 @@ def main():
         if name == "input.lua":
             content = content.replace('kb_layout = "us"', 'kb_layout = os.getenv("CYBEXOS_KEYBOARD_LAYOUT") or "us"')
             content = content.replace('kb_variant = ""', 'kb_variant = os.getenv("CYBEXOS_KEYBOARD_VARIANT") or ""')
-        if name == "looknfeel.lua":
-            content += '\nhl.window_rule({ match = { class = [[^cybex$]] }, float = true, center = true, size = { 920, 620 } })\n'
         write(f"{runtime}/hypr/{name}", content)
     contract = json.loads((ROOT / "assets/desktop-contract.json").read_text())
     helpers = contract["userHelpers"] + ["cybexos-runtime", "cybexos-update-run"]
@@ -125,9 +124,9 @@ def main():
         write(f"{seed}/.local/share/applications/dev-{box['name']}.desktop",
               desktop.replace("{{ primary_home }}/.local/bin/", ""))
     # Systemd's %h resolves at service start, after account creation.
-    hermes = environment.from_string((ROOT / "roles/desktop/templates/hermes-menubar-bridge.service.j2").read_text()).render(primary_home="%h")
+    hermes = environment.from_string((ROOT / "roles/desktop/templates/hermes-menubar-bridge.service.j2").read_text()).render(primary_home="%h", hermes_bridge_executable="/usr/libexec/cybexos-hermes-menubar-bridge")
     write("usr/lib/systemd/user/hermes-menubar-bridge.service", hermes)
-    copy("roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py", f"{seed}/.local/libexec/hermes-menubar-bridge", True)
+    copy("roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py", "usr/libexec/cybexos-hermes-menubar-bridge", True)
     # Voxtype's RPM owns its system user unit. The session target starts that
     # unit; do not collide with it by packaging our per-user Ansible template.
     write(f"{seed}/.npmrc", "prefix=${HOME}/.npm-global\n")
@@ -164,6 +163,8 @@ def main():
     prepare_defaults(ROOT, payload, environment, inventory)
     prepare_session(ROOT, payload, inventory)
     prepare_provision(ROOT, payload)
+    copy("image/library/cybexos_managed_file.py", "usr/share/cybexos/lib/managed_files.py")
+    copy("image/release_metadata.py", "usr/share/cybexos/lib/release_metadata.py")
     copy("roles/apps/files/cybexos-repository-policy", "usr/libexec/cybexos-repository-policy", True)
     # The workstation's font family mappings; roles/apps/tasks/fonts.yml
     # installs the same file on checkout deployments.
@@ -196,6 +197,7 @@ def main():
             destination.chmod(0o644)
     relativize_seed_links(payload / seed, seed_home)
     split_seed(payload / "usr/share/cybexos", contract)
+    prepare_managed_defaults(payload / "usr/share/cybexos")
     manifest = {}
     for file in sorted(payload.rglob("*")):
         if file.is_symlink():
@@ -206,6 +208,10 @@ def main():
                 manifest[str(file.relative_to(payload))] = hashlib.file_digest(stream, "sha256").hexdigest()
         elif file.is_dir():
             file.chmod(0o755)
+    # The complete payload identity changes on every effective package change.
+    identity = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+    write("usr/share/cybexos/reconcile-version", identity + "\n")
+    manifest["usr/share/cybexos/reconcile-version"] = hashlib.sha256((identity + "\n").encode()).hexdigest()
     (build / "package-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     sources = build / "rpmbuild/SOURCES"
     sources.mkdir(parents=True)

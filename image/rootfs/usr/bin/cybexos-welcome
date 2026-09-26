@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import QObject, Property, QProcess, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, Property, QProcess, QProcessEnvironment, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtQml import QQmlApplicationEngine
@@ -26,12 +26,14 @@ class Welcome(QObject):
     activate = Signal()
     wallpapersChanged = Signal()
     wallpaperStateChanged = Signal()
+    setupChanged = Signal()
 
     # Shell IPC calls the window's buttons make, by the name QML passes.
     SHELL_PAGES = {
         "appearance": ["settings", "open", "appearance"],
         # Settings → Wallpaper, on its Online (Wallhaven) view.
         "wallpaper": ["wallpaper", "browse"],
+        "network": ["settings", "open", "network"],
     }
 
     def __init__(self):
@@ -70,6 +72,61 @@ class Welcome(QObject):
         self.retry_timer.setSingleShot(True)
         self.retry_timer.setInterval(SHELL_RETRY_MS)
         self.retry_timer.timeout.connect(self.request_popular)
+        self._hardware_state = 'pending'
+        self._hardware_note = ''
+        self._seed_state = 'pending'
+        self._network_state = 'checking'
+        self._reconcile_state = 'pending'
+        self.setup_timer = QTimer(self)
+        self.setup_timer.setInterval(4000)
+        self.setup_timer.timeout.connect(self.refreshSetup)
+        self.network_process = QProcess(self)
+        network_environment = QProcessEnvironment.systemEnvironment()
+        network_environment.insert("LC_ALL", "C")
+        self.network_process.setProcessEnvironment(network_environment)
+        self.network_process.finished.connect(self.networkFinished)
+        self.network_process.errorOccurred.connect(self.networkFailed)
+        self.reconcile_process = QProcess(self)
+        self.reconcile_process.finished.connect(self.reconcileFinished)
+        self.reconcile_process.errorOccurred.connect(self.reconcileFailed)
+        self.setup_timeout = QTimer(self)
+        self.setup_timeout.setSingleShot(True)
+        self.setup_timeout.setInterval(8000)
+        self.setup_timeout.timeout.connect(self.setupTimedOut)
+
+    def startSetup(self):
+        # Start only after singleton/autostart checks and successful QML load.
+        if not self.live:
+            self.setup_timer.start()
+            self.refreshSetup()
+
+    def stopSetup(self):
+        self.setup_timer.stop()
+        self.setup_timeout.stop()
+        for process in (self.network_process, self.reconcile_process):
+            # Destruction can emit errors; disconnect before stopping children.
+            process.finished.disconnect()
+            process.errorOccurred.disconnect()
+            if process.state() != QProcess.NotRunning:
+                process.terminate()
+                if not process.waitForFinished(200):
+                    process.kill()
+                    process.waitForFinished(200)
+
+    def setupTimedOut(self):
+        for process in (self.network_process, self.reconcile_process):
+            if process.state() != QProcess.NotRunning:
+                process.kill()
+
+    def networkFailed(self, _error):
+        if self._network_state != 'offline':
+            self._network_state = 'offline'
+            self.setupChanged.emit()
+
+    def reconcileFailed(self, _error):
+        if self._reconcile_state != 'error':
+            self._reconcile_state = 'error'
+            self.setupChanged.emit()
 
     @Property(bool, constant=True)
     def isLive(self):
@@ -82,6 +139,92 @@ class Welcome(QObject):
     @Property(str, notify=changed)
     def status(self):
         return self.message
+
+    @Property(str, notify=setupChanged)
+    def hardwareState(self):
+        return self._hardware_state
+
+    @Property(str, notify=setupChanged)
+    def hardwareNote(self):
+        return self._hardware_note
+
+    @Property(str, notify=setupChanged)
+    def seedState(self):
+        return self._seed_state
+
+    @Property(str, notify=setupChanged)
+    def networkState(self):
+        return self._network_state
+
+    @Property(str, notify=setupChanged)
+    def reconcileState(self):
+        return self._reconcile_state
+
+    @staticmethod
+    def local_json(path):
+        try:
+            value = json.loads(path.read_text())
+            return value if isinstance(value, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    @Slot()
+    def refreshSetup(self):
+        if self.live:
+            return
+        hardware = self.local_json(Path('/var/lib/cybexos/hardware-status.json'))
+        policy = self.local_json(Path('/etc/cybexos/hardware.json'))
+        state_dir = Path(os.environ.get('XDG_STATE_HOME', str(Path.home() / '.local/state'))) / 'cybexos'
+        seed = self.local_json(state_dir / 'seed-progress.json')
+        values = {
+            '_hardware_state': 'skipped' if not policy.get('xps_2026') and not hardware else hardware.get('state', 'pending'),
+            '_hardware_note': str(hardware.get('reason', '')),
+            '_seed_state': 'ready' if (state_dir / 'offline-apps-seeded').is_file() else seed.get('state', 'pending'),
+        }
+        if Path('/var/lib/cybexos/hardware-unsupported').is_file():
+            values['_hardware_state'] = 'failed'
+        if any(getattr(self, key) != value for key, value in values.items()):
+            for key, value in values.items():
+                setattr(self, key, value)
+            self.setupChanged.emit()
+        started = False
+        if self.network_process.state() == QProcess.NotRunning:
+            started = True
+            self.network_process.start('/usr/bin/nmcli', ['-t', '-f', 'STATE', 'general'])
+        if self.reconcile_process.state() == QProcess.NotRunning:
+            started = True
+            self.reconcile_process.start('/usr/libexec/cybexos-reconcile', ['--status'])
+        if started and not self.setup_timeout.isActive():
+            self.setup_timeout.start()
+
+    def reconcileFinished(self, code, _status):
+        output = bytes(self.reconcile_process.readAllStandardOutput()).decode('utf-8', 'replace')
+        try:
+            state = json.loads(output).get('state', 'error') if code == 0 else 'error'
+        except (ValueError, AttributeError):
+            state = 'error'
+        if self._reconcile_state != state:
+            self._reconcile_state = state
+            self.setupChanged.emit()
+
+    def networkFinished(self, code, _status):
+        output = bytes(self.network_process.readAllStandardOutput()).decode('utf-8', 'replace').strip()
+        state = 'connected' if code == 0 and output.splitlines()[:1] == ['connected'] else 'offline'
+        if self._network_state != state:
+            self._network_state = state
+            self.setupChanged.emit()
+
+    @Slot()
+    def retryApps(self):
+        if self.live:
+            return
+        QProcess.startDetached('/usr/bin/cybex', ['prepare-apps'])
+
+    @Slot()
+    def retryHardware(self):
+        if self.live:
+            return
+        QProcess.startDetached('/usr/bin/kitty', ['-e', '/usr/bin/cybex', 'repair', '--hardware'])
 
     @Slot()
     def install(self):
@@ -361,6 +504,8 @@ def main():
     engine.load(QUrl.fromLocalFile(str(QML)))
     if not engine.rootObjects():
         return 1
+    app.aboutToQuit.connect(backend.stopSetup)
+    backend.startSetup()
     return app.exec()
 
 

@@ -77,7 +77,7 @@ def accounts(entries, selected=None):
             and (selected is None or entry.pw_name == selected)]
 
 
-def configure(account, offline=False, hardware=False):
+def configure(account, offline=False, hardware=False, reconcile=False):
     # Do not inherit a user's callback plugins, Ansible configuration or Python
     # path into a root provisioning process. The payload contains reviewed roles.
     environment = {
@@ -93,6 +93,7 @@ def configure(account, offline=False, hardware=False):
         'primary_group': grp.getgrgid(account.pw_gid).gr_name,
         'config_repo': str(PROVISION), 'cybexos_offline': offline,
         'cybexos_hardware_only': hardware,
+        'cybexos_reconcile': reconcile,
         'start_optional_hardware_services': not offline,
     }
     # Seeding a later non-admin account must not promote it to wheel.
@@ -119,10 +120,30 @@ def retire_legacy_fish(account):
                         str(legacy), str(vendor)], check=True)
 
 
+def boot_id():
+    return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+
+
+def read_hardware_status(path):
+    try:
+        value = json.loads(path.read_text())
+        return value if isinstance(value, dict) and value.get('state') in ('pending', 'completed', 'failed', 'running') else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_hardware_status(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix('.tmp')
+    temporary.write_text(json.dumps(value, sort_keys=True) + '\n')
+    temporary.replace(path)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--offline', action='store_true')
     parser.add_argument('--hardware', action='store_true')
+    parser.add_argument('--reconcile', action='store_true')
     parser.add_argument('--user')
     parser.add_argument('--automatic', action='store_true')
     parser.add_argument('--save-config', action='store_true',
@@ -130,63 +151,106 @@ def main():
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error('Run as root in the installed system')
-    if args.offline and args.hardware:
-        parser.error('Hardware setup requires the running installed system')
+    if sum((args.offline, args.hardware, args.reconcile)) > 1:
+        parser.error('--offline, --hardware, and --reconcile are mutually exclusive')
     if args.automatic and not args.hardware:
         parser.error('--automatic is only valid for hardware setup')
-    if args.save_config and (args.offline or args.hardware or not args.user):
+    if args.save_config and (args.offline or args.hardware or args.reconcile or not args.user):
         parser.error('--save-config applies one account in the running installed system')
     text = sys.stdin.read() if args.save_config else None
     lock_directory = Path('/run/lock/cybexos')
     lock_directory.mkdir(mode=0o755, exist_ok=True)
-    lock = (lock_directory / 'provision.lock').open('a')
-    fcntl.flock(lock, fcntl.LOCK_EX)
-    users = accounts(pwd.getpwall(), args.user)
-    if args.user and not users:
-        parser.error('Select an existing installed desktop account')
-    settings = None if args.hardware else load('cybexos_config', CONFIG_TOOL)
-    if args.save_config:
-        save_config(settings, text, args.user)
-    elif settings and settings.ensure(fresh_account=args.offline):
-        # Installation and repair of an older ISO installation record the
-        # detected choices before provisioning consumes them.
-        print('Recorded the installation choices in /etc/cybexos/config.yml')
-    digest = hashlib.sha256()
-    for path in sorted(PROVISION.rglob('*')):
-        if path.is_file():
-            digest.update(str(path.relative_to(PROVISION)).encode())
-            digest.update(path.read_bytes())
-    identity = digest.hexdigest() + ':' + os.uname().release + ':' + ','.join(user.pw_name for user in users)
-    marker = Path('/var/lib/cybexos/hardware-configured')
-    unsupported = marker.with_name('hardware-unsupported')
-    if args.automatic and marker.is_file() and marker.read_text() == identity:
-        return
-    if args.automatic and unsupported.is_file() and unsupported.read_text() == identity:
-        raise SystemExit('Camera setup needs kernel compatibility review; see /var/lib/xps-hardware/ipu7/abi-failed.log. Automatic retry waits for a changed kernel or provisioning payload.')
-    for account in users:
-        try:
-            configure(account, args.offline, args.hardware)
-        except subprocess.CalledProcessError:
-            diagnostic = Path('/var/lib/xps-hardware/ipu7/abi-failed.log')
-            # The hardware role deliberately reuses a cached ABI diagnostic
-            # for an unchanged kernel; its timestamp need not be from this run.
-            if (args.hardware and diagnostic.is_file()
-                    and 'IPU7_STOCK_ABI_CHANGED' in diagnostic.read_text()
-                    and os.uname().release in diagnostic.read_text()):
-                unsupported.parent.mkdir(parents=True, exist_ok=True)
-                unsupported.write_text(identity)
-            raise
-        if not args.hardware:
-            retire_legacy_fish(account)
-    # The Anaconda target helper decides login intent after verifying encryption.
-    if settings and not args.offline:
-        record_login(settings)
-    if args.hardware and users:
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        pending = marker.with_suffix('.pending')
-        pending.write_text(identity)
-        pending.replace(marker)
-        unsupported.unlink(missing_ok=True)
+    with (lock_directory / 'provision.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        users = accounts(pwd.getpwall(), args.user)
+        if args.user and not users:
+            parser.error('Select an existing installed desktop account')
+        settings = None if args.hardware or args.reconcile else load('cybexos_config', CONFIG_TOOL)
+        if args.save_config:
+            save_config(settings, text, args.user)
+        elif settings and settings.ensure(fresh_account=args.offline):
+            # Installation and repair of an older ISO installation record the
+            # detected choices before provisioning consumes them.
+            print('Recorded the installation choices in /etc/cybexos/config.yml')
+        digest = hashlib.sha256()
+        for path in sorted(PROVISION.rglob('*')):
+            if path.is_file():
+                digest.update(str(path.relative_to(PROVISION)).encode())
+                digest.update(path.read_bytes())
+        saved_config = Path('/etc/cybexos/config.yml')
+        if saved_config.is_file():
+            digest.update(saved_config.read_bytes())
+        identity = digest.hexdigest() + ':' + os.uname().release + ':' + ','.join(user.pw_name for user in users)
+        marker = Path('/var/lib/cybexos/hardware-configured')
+        unsupported = marker.with_name('hardware-unsupported')
+        status_path = marker.with_name('hardware-status.json')
+        status = read_hardware_status(status_path) if args.hardware else {}
+        this_boot = boot_id() if args.hardware else ''
+        same_identity = status.get('identity') == identity
+        if args.automatic and unsupported.is_file() and unsupported.read_text() == identity:
+            raise SystemExit('Camera setup needs kernel compatibility review; see /var/lib/xps-hardware/ipu7/abi-failed.log. Automatic retry waits for a changed kernel or provisioning payload.')
+        if args.automatic and same_identity:
+            if status['state'] == 'completed':
+                return
+            if status['state'] == 'pending' and status.get('boot_id') == this_boot:
+                return
+            if status['state'] == 'failed' and status.get('boot_id') == this_boot:
+                return
+            if status.get('resume_boot_id') == this_boot:
+                return
+        # A legacy marker did not distinguish success from reboot-pending.
+        # Validate it once and produce a structured outcome before skipping.
+        if args.hardware and users:
+            resumed = bool(same_identity and status.get('state') == 'pending' and status.get('boot_id') != this_boot)
+            write_hardware_status(status_path, {'version': 1, 'state': 'running', 'identity': identity,
+                                                'boot_id': this_boot, 'resume_boot_id': this_boot if resumed else ''})
+            marker.with_name('hardware-result.json').unlink(missing_ok=True)
+        for account in users:
+            try:
+                configure(account, args.offline, args.hardware, args.reconcile)
+            except subprocess.CalledProcessError:
+                diagnostic = Path('/var/lib/xps-hardware/ipu7/abi-failed.log')
+                # The hardware role deliberately reuses a cached ABI diagnostic
+                # for an unchanged kernel; its timestamp need not be from this run.
+                if (args.hardware and diagnostic.is_file()
+                        and 'IPU7_STOCK_ABI_CHANGED' in diagnostic.read_text()
+                        and os.uname().release in diagnostic.read_text()):
+                    unsupported.parent.mkdir(parents=True, exist_ok=True)
+                    unsupported.write_text(identity)
+                if args.hardware:
+                    write_hardware_status(status_path, {'version': 1, 'state': 'failed', 'identity': identity,
+                                                        'boot_id': this_boot, 'reason': 'hardware role failed; run cybex repair --hardware'})
+                raise
+            if not args.hardware and not args.reconcile:
+                retire_legacy_fish(account)
+        # The Anaconda target helper decides login intent after verifying encryption.
+        if settings and not args.offline:
+            record_login(settings)
+        if args.hardware and users:
+            # The role result is a separate schema, so read it directly.
+            try:
+                result = json.loads(marker.with_name('hardware-result.json').read_text())
+            except (OSError, ValueError):
+                result = None
+            if not isinstance(result, dict) or not isinstance(result.get('reboot_required'), bool):
+                write_hardware_status(status_path, {'version': 1, 'state': 'failed', 'identity': identity,
+                                                    'boot_id': this_boot, 'reason': 'hardware role did not report an outcome'})
+                raise SystemExit('Hardware role did not report an outcome; run cybex repair --hardware')
+            pending_reboot = result['reboot_required']
+            preserved = bool(result.get('preserved_previous') and not result.get('camera_ready'))
+            state = 'pending' if pending_reboot else 'failed' if preserved else 'completed'
+            reason = ('reboot required for camera validation' if pending_reboot else
+                      'previous camera stack retained after a failed refresh; run cybex repair --hardware' if preserved else '')
+            write_hardware_status(status_path, {'version': 1, 'state': state,
+                                                'identity': identity, 'boot_id': this_boot,
+                                                'reason': reason,
+                                                'camera_ready': result.get('camera_ready', False),
+                                                'preserved_previous': result.get('preserved_previous', False)})
+            if state == 'completed':
+                pending = marker.with_suffix('.pending')
+                pending.write_text(identity)
+                pending.replace(marker)
+            unsupported.unlink(missing_ok=True)
 
 
 if __name__ == '__main__':

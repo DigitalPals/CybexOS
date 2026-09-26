@@ -30,9 +30,22 @@ function monitor(name, disabled, description = "") {
 const LID_SIGNAL = "/org/freedesktop/login1: org.freedesktop.DBus.Properties."
     + "PropertiesChanged ('org.freedesktop.login1.Manager', {'LidClosed': <false>}, @as [])";
 
-// Scenarios end when the socat stub exits (the helper then exits 75), so a
-// gdbus stub must outlive it or the helper stops on the lid stream instead.
-async function runScenario({ initialMonitors, socatBody, gdbusBody = "sleep 0.6\n",
+// Keep both event streams alive until the behavior under test has occurred.
+// Fixed subsecond stream lifetimes race with process scheduling in the full suite.
+const waitForCall = `
+for attempt in {1..500}; do
+    [[ ! -s $MONITOR_TEST_CALLS ]] || break
+    sleep 0.01
+done
+[[ -s $MONITOR_TEST_CALLS ]]
+`;
+const waitForStreamEnd = `
+for attempt in {1..600}; do
+    [[ ! -e $MONITOR_TEST_STREAM_DONE ]] || break
+    sleep 0.01
+done
+`;
+async function runScenario({ initialMonitors, socatBody, gdbusBody = waitForStreamEnd,
     pollSeconds = "30" }) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "monitor-toggle-state-"));
     const bin = path.join(tmp, "bin");
@@ -63,7 +76,7 @@ case "\${1:-}" in
   *) exit 1 ;;
 esac
 `);
-    executable(path.join(bin, "socat"), socatBody);
+    executable(path.join(bin, "socat"), `trap 'touch "$MONITOR_TEST_STREAM_DONE"' EXIT\n${socatBody}`);
     executable(path.join(bin, "gdbus"), gdbusBody);
 
     const server = net.createServer();
@@ -76,7 +89,7 @@ esac
     try {
         result = spawnSync("bash", [helper], {
             encoding: "utf8",
-            timeout: 3000,
+            timeout: 8000,
             env: {
                 ...process.env,
                 PATH: `${bin}:/usr/bin:/bin`,
@@ -92,6 +105,7 @@ esac
                 MONITOR_TEST_DP_STATUS: path.join(dpDir, "status"),
                 MONITOR_TEST_LID_STATE: path.join(lid, "state"),
                 MONITOR_TEST_TMP: tmp,
+                MONITOR_TEST_STREAM_DONE: path.join(tmp, "stream-done"),
             },
         });
         return {
@@ -117,7 +131,7 @@ sleep 0.02
 printf '%s' '${external}' >"$MONITOR_TEST_STATE"
 printf 'connected\\n' >"$MONITOR_TEST_DP_STATUS"
 printf 'monitoradded>>DP-1\\n'
-sleep 0.30
+${waitForCall}
 `,
     });
 
@@ -133,13 +147,13 @@ test("opening the lid enables eDP once without reloading the config", async () =
     // logind signal can have woken the helper.
     const { result, calls } = await runScenario({
         initialMonitors: [monitor("eDP-1", true, "Internal")],
-        socatBody: "sleep 0.45\n",
+        socatBody: waitForCall,
         gdbusBody: `
 printf '%s\\n' 'Monitoring signals on object /org/freedesktop/login1 owned by org.freedesktop.login1'
 sleep 0.12
 printf 'state: open\\n' >"$MONITOR_TEST_LID_STATE"
 printf '%s\\n' "${LID_SIGNAL}"
-sleep 0.6
+${waitForStreamEnd}
 `,
     });
 
@@ -158,7 +172,7 @@ test("the safety poll still catches a lid change logind never announced", async 
         socatBody: `
 sleep 0.12
 printf 'state: open\\n' >"$MONITOR_TEST_LID_STATE"
-sleep 0.30
+${waitForCall}
 `,
     });
 

@@ -131,6 +131,11 @@ def detect(root=Path('/'), entries=None, group=group_name, inventory=INVENTORY, 
               'primary_group': group(account.pw_gid), 'primary_home': account.pw_dir, **identity(root)}
     # Unset, templated or non-boolean defaults fall back to the stricter choice.
     values.update({key: defaults.get(key) is True for key in BOOLEANS})
+    # A live ISO cannot inherit the build host's sudo choice. The guided
+    # installer applies a confirmed opt-in after provisioning; Advanced has
+    # no such prompt and keeps the password-required default.
+    if fresh_account:
+        values['passwordless_wheel'] = False
     # Anaconda and the OS settings own identity after an ISO installation; a
     # later checkout run must not reset them to this installation-time record.
     values['manage_system_identity'] = False

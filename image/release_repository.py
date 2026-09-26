@@ -78,12 +78,17 @@ def verify_embedded_channel(path, baseurl, key_id, armor):
             raise ValueError("RPM update channel does not match this release. Build it with the same --update-channel first.")
 
 
-def create_repository(packages, output, key_file, key_id, baseurl, gnupghome=None):
+def create_repository(packages, output, key_file, key_id, baseurl, gnupghome=None,
+                      packages_baseurl=None):
     output = Path(output).absolute()
     if output.exists() or output.is_symlink():
         raise ValueError("Repository output must be a new directory; existing releases are preserved")
     expected = fingerprint(key_id)
     url = repository_url(baseurl)
+    if packages_baseurl:
+        packages_baseurl = repository_url(packages_baseurl)
+        if '$' in packages_baseurl:
+            raise ValueError('RPM download URLs must identify an immutable release')
     armor = public_key(key_file, expected)
     packages = [Path(path).resolve(strict=True) for path in packages]
     if not packages or len({path.name for path in packages}) != len(packages):
@@ -122,9 +127,18 @@ def create_repository(packages, output, key_file, key_id, baseurl, gnupghome=Non
             verify_embedded_channel(destination, url, expected, armor)
             run([*command, str(destination)], env=signing_environment)
             verify_signed_rpm(destination, key, work)
-            records.append({**identity, "file": str(destination.relative_to(stage)),
-                            "sha256": sha256(destination), "unsigned_input_sha256": sha256(original)})
-        run(["createrepo_c", "--checksum", "sha256", str(stage)])
+            record = {**identity, "file": str(destination.relative_to(stage)),
+                      "sha256": sha256(destination), "unsigned_input_sha256": sha256(original)}
+            if packages_baseurl:
+                record['url'] = packages_baseurl + '/' + destination.name
+            records.append(record)
+        if packages_baseurl:
+            # GitHub Pages serves only metadata; large RPMs are release assets.
+            # Scan Packages itself so relative locations are bare asset names.
+            run(["createrepo_c", "--checksum", "sha256", "--general-compress-type", "gz", "--outputdir", str(stage),
+                 "--baseurl", packages_baseurl + '/', str(target_packages)])
+        else:
+            run(["createrepo_c", "--checksum", "sha256", "--general-compress-type", "gz", str(stage)])
         metadata = stage / "repodata/repomd.xml"
         run([*signing, "--armor", "--detach-sign", "--output", str(metadata) + ".asc", str(metadata)])
         manifest = stage / "release.json"
@@ -166,10 +180,11 @@ def main(argv=None):
     parser.add_argument("--key", required=True, help="Complete fingerprint of an existing signing key")
     parser.add_argument("--baseurl", required=True, help="HTTPS URL where this repository will be hosted")
     parser.add_argument("--gnupghome", type=Path)
+    parser.add_argument("--packages-baseurl", help="HTTPS release-asset directory; keep large RPMs off the metadata host")
     args = parser.parse_args(argv)
     try:
         destination = create_repository(args.packages, args.output, args.public_key, args.key,
-                                        args.baseurl, args.gnupghome)
+                                        args.baseurl, args.gnupghome, args.packages_baseurl)
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"release-repository: {error}\n")
     print(f"Signed repository ready for explicit hosting: {destination}")

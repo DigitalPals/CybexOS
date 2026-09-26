@@ -5,9 +5,9 @@ Epoch:          1
 Version:        0.1.0
 Release:        0.1.alpha%{?dist}
 Summary:        CybexOS Hyprland and Quickshell desktop
-# No repository license has been selected. These are private evaluation
-# artifacts; this label does not grant redistribution rights.
-License:        LicenseRef-Not-Licensed
+# CybexOS code is MIT. Bundled upstream software/artwork retains its own terms;
+# aggregate redistribution clearance is still pending (docs/licensing.md).
+License:        MIT AND LicenseRef-CybexOS-Bundled-Components
 URL:            https://github.com/DigitalPals/CybexOS
 Source0:        desktop.tar
 BuildArch:      x86_64
@@ -18,7 +18,7 @@ Obsoletes:      fedora-config-desktop < %{epoch}:%{version}-%{release}
 # filesystem separately. Avoid spending minutes recompressing user toolchains.
 %global _binary_payload w3.zstdio
 %global _binary_filedigest_algorithm 8
-Requires:       bash coreutils util-linux systemd python3 ansible-core
+Requires:       bash coreutils util-linux systemd python3 ansible-core gnupg2
 Requires:       sddm sddm-wayland-generic systemd-pam gnome-keyring-pam
 Requires:       hyprland hyprland-guiutils quickshell hypridle hyprlock hyprpolkitagent hyprsunset
 Requires:       xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-utils
@@ -56,6 +56,7 @@ mkdir -p %{buildroot}
 cp -a usr opt etc %{buildroot}/
 
 %files
+%license /usr/share/licenses/cybexos-desktop/LICENSE
 %config(noreplace) /etc/yum.repos.d/cybexos-desktop.repo
 %config(noreplace) /etc/fonts/conf.d/49-cybexos-defaults.conf
 /opt/cybexos-apps/
@@ -88,14 +89,23 @@ cp -a usr opt etc %{buildroot}/
 /usr/lib/dracut/dracut.conf.d/90-cybexos-recovery.conf
 /usr/lib/dracut/modules.d/90cybexos-recovery/
 /usr/lib/systemd/system/cybexos-recovery-refresh.service
+/usr/lib/systemd/system/cybexos-reconcile.service
+/usr/lib/systemd/system/cybexos-reconcile.timer
 /usr/lib/systemd/system/cybexos-hardware-setup.service
 /usr/lib/systemd/system/cybexos-hardware-setup.timer
 /usr/lib/firewalld/zones/cybexos.xml
 
 %posttrans
+# Record work only inside the RPM transaction. A timer runs it after RPM releases
+# its transaction lock, and repeats only for changed payloads/new accounts.
+/usr/libexec/cybexos-reconcile --queue
+systemctl enable --now --no-block cybexos-reconcile.timer >/dev/null 2>&1 || :
 # The SDDM RPM owns /etc/pam.d/sddm-autologin. Install the shared policy after
-# all package payloads are present, preserving its initial configuration once.
-/usr/libexec/cybexos-login-prepare --install-pam
+# all package payloads are present on a fresh installation. Upgrades use the
+# ownership-aware deferred policy so local PAM edits are retained.
+if [ "$1" -eq 1 ]; then
+    /usr/libexec/cybexos-login-prepare --install-pam
+fi
 # Bootable recovery points are refreshed at every boot; enabling is idempotent.
 systemctl enable cybexos-recovery-refresh.service >/dev/null 2>&1 || :
 systemctl enable cybexos-hardware-setup.timer >/dev/null 2>&1 || :

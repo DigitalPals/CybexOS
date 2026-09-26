@@ -1,0 +1,12 @@
+[Unit]
+Description=Reconcile installed CybexOS policy after a desktop upgrade
+After=local-fs.target systemd-user-sessions.service
+ConditionPathExists=!/run/cybexos-live
+ConditionPathExists=/usr/share/cybexos/reconcile-version
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/cybexos-reconcile
+TimeoutStartSec=45min
+Nice=10
+UMask=0022

@@ -1,0 +1,192 @@
+#!/usr/bin/python3
+"""Deferred, bounded baseline/account convergence for installed RPM upgrades."""
+import argparse
+from contextlib import contextmanager
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import pwd
+import subprocess
+import tempfile
+import time
+
+VENDOR = Path('/usr/share/cybexos')
+STATE = Path('/var/lib/cybexos/reconcile')
+CONFIG = Path('/etc/cybexos/config.yml')
+MAX_ATTEMPTS = 3
+
+
+def write(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+    fd, temporary = tempfile.mkstemp(prefix='.reconcile-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            json.dump(value, stream, sort_keys=True)
+            stream.write('\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+            os.fchmod(stream.fileno(), 0o644)
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def read(path, default):
+    return json.loads(path.read_text()) if path.exists() else default
+
+
+def version():
+    value = (VENDOR / 'reconcile-version').read_text().strip()
+    if len(value) != 64 or any(c not in '0123456789abcdef' for c in value):
+        raise ValueError('Invalid packaged reconciliation version')
+    return value
+
+
+def accounts():
+    return [entry for entry in pwd.getpwall() if 1000 <= entry.pw_uid < 65534
+            and entry.pw_name != 'liveuser' and Path(entry.pw_dir).parent == Path('/home')]
+
+
+def identity(account, release):
+    config = CONFIG.read_bytes() if CONFIG.is_file() else b''
+    return hashlib.sha256(json.dumps([release, hashlib.sha256(config).hexdigest(),
+                                     account.pw_uid, account.pw_gid, account.pw_dir]).encode()).hexdigest()
+
+
+def status():
+    value = read(STATE / 'status.json', {'state': 'pending', 'accounts': {}})
+    desired = version()
+    value['desiredVersion'] = desired
+    value['pending'] = value.get('version') != desired or value.get('state') != 'ready'
+    if value.get('version') != desired:
+        value['state'] = 'pending'
+    return value
+
+
+@contextmanager
+def rpm_idle():
+    """Share RPM's POSIX transaction lock; never race a package payload change.
+
+    Baseline reconciliation deliberately contains no package operations. The
+    lock also prevents DNF from replacing our helper/payload halfway through.
+    """
+    location = next((p for p in (Path('/usr/lib/sysimage/rpm/.rpm.lock'),
+                                Path('/var/lib/rpm/.rpm.lock')) if p.is_file()), None)
+    if location is None:
+        raise BlockingIOError('RPM transaction lock is unavailable; retry after boot')
+    with location.open('rb') as lock:
+        fcntl.lockf(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        yield
+
+
+def apply(account):
+    env = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'HOME': '/root',
+           'LANG': 'C.UTF-8', 'PYTHONDONTWRITEBYTECODE': '1'}
+    subprocess.run(['/usr/libexec/cybexos-configure-installed', '--reconcile',
+                    '--user', account.pw_name], env=env, check=True, timeout=600)
+    # All home traversal runs with that account's privilege, never as root.
+    subprocess.run(['/usr/sbin/runuser', '-u', account.pw_name, '--', '/usr/bin/env', '-i',
+                    'HOME=' + account.pw_dir, 'USER=' + account.pw_name,
+                    'PATH=/usr/bin:/bin', 'LANG=C.UTF-8', 'PYTHONDONTWRITEBYTECODE=1',
+                    '/usr/libexec/cybexos-user-init', '--essential'],
+                   env=env, check=True, timeout=120)
+    # New packaged unit definitions take effect at the next service start;
+    # do not disrupt a running desktop or the user's in-flight app state.
+    if Path(f'/run/user/{account.pw_uid}/bus').exists():
+        subprocess.run(['/usr/bin/systemctl', '--user', '--machine=' + account.pw_name + '@.host',
+                        'daemon-reload'], env=env, check=True, timeout=30)
+
+
+def reconcile(retry=False):
+    release = version()
+    previous = read(STATE / 'status.json', {'accounts': {}})
+    state = {'version': release, 'state': 'pending', 'accounts': {}, 'lastAttempt': int(time.time())}
+    users = accounts()
+    for account in users:
+        key = identity(account, release)
+        old = previous.get('accounts', {}).get(account.pw_name, {})
+        entry = dict(old) if old.get('identity') == key else {
+            'identity': key, 'uid': account.pw_uid, 'home': account.pw_dir,
+            'version': release, 'attempts': 0, 'state': 'pending'}
+        if retry and entry['state'] != 'ready':
+            entry.update(attempts=0, state='pending')
+        state['accounts'][account.pw_name] = entry
+    # Empty installations still need their first account reconciled later.
+    if not users:
+        state.update(state='pending', error='Waiting for an installed desktop account')
+        write(STATE / 'status.json', state)
+        return state
+    if all(entry['state'] == 'ready' for entry in state['accounts'].values()):
+        state['state'] = 'ready'
+        (STATE / 'pending.json').unlink(missing_ok=True)
+        if previous.get('version') == release and previous.get('state') == 'ready' and previous.get('accounts') == state['accounts']:
+            return previous
+        write(STATE / 'status.json', state)
+        (STATE / 'pending.json').unlink(missing_ok=True)
+        return state
+    write(STATE / 'status.json', state)
+    try:
+        with rpm_idle():
+            for account in users:
+                entry = state['accounts'][account.pw_name]
+                if entry['state'] == 'ready' or entry['attempts'] >= MAX_ATTEMPTS:
+                    continue
+                entry.update(state='running', attempts=entry['attempts'] + 1)
+                state['state'] = 'running'
+                write(STATE / 'status.json', state)
+                try:
+                    apply(account)
+                except (OSError, subprocess.SubprocessError) as error:
+                    entry.update(state='error', error=str(error))
+                else:
+                    entry.update(state='ready', identity=identity(account, release))
+                    entry.pop('error', None)
+                write(STATE / 'status.json', state)
+    except BlockingIOError as error:
+        state.update(state='pending', error=str(error))
+        write(STATE / 'status.json', state)
+        return state
+    unfinished = [entry for entry in state['accounts'].values() if entry['state'] != 'ready']
+    state['state'] = ('blocked' if all(entry['attempts'] >= MAX_ATTEMPTS for entry in unfinished)
+                      else 'error') if unfinished else 'ready'
+    if unfinished:
+        state['error'] = 'Reconciliation failed; inspect journalctl -u cybexos-reconcile and retry with sudo /usr/libexec/cybexos-reconcile --retry'
+    else:
+        state.pop('error', None)
+        (STATE / 'pending.json').unlink(missing_ok=True)
+    write(STATE / 'status.json', state)
+    return state
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    choice = parser.add_mutually_exclusive_group()
+    choice.add_argument('--queue', action='store_true', help='Record pending work only; safe in RPM posttrans')
+    choice.add_argument('--status', action='store_true', help='Print read-only JSON status')
+    choice.add_argument('--retry', action='store_true', help='Reset failed attempt budgets and retry now')
+    args = parser.parse_args()
+    if args.status:
+        print(json.dumps(status(), sort_keys=True))
+        return
+    if os.geteuid() != 0:
+        parser.error('Run as root')
+    if args.queue:
+        write(STATE / 'pending.json', {'version': version()})
+        return
+    if Path('/run/cybexos-live').exists():
+        return
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o755)
+    with (STATE / 'lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        result = reconcile(args.retry)
+    if result['state'] in ('error', 'blocked'):
+        raise SystemExit(1)
+
+
+if __name__ == '__main__':
+    main()

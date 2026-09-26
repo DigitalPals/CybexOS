@@ -80,6 +80,13 @@ class PrivateStateTests(unittest.TestCase):
                     directory.mkdir()
                     directory.chmod(mode)
                     path = directory / "cache.json" if leaf else directory / "private" / "cache.json"
+                    if mode == 0o1777 and not leaf and os.getuid() == 0:
+                        # Root-owned sticky ancestors intentionally support /tmp.
+                        # CI runs as root, so this fixture has that same policy.
+                        common.atomic_write_json(path, {})
+                        self.assertEqual(stat.S_IMODE(directory.stat().st_mode), mode)
+                        self.assertEqual(stat.S_IMODE(path.parent.stat().st_mode), 0o700)
+                        continue
                     with self.assertRaises(PermissionError):
                         common.atomic_write_json(path, {})
                     self.assertEqual(stat.S_IMODE(directory.stat().st_mode), mode)

@@ -2,30 +2,10 @@ name: Live image integration
 
 on:
   pull_request:
-    paths:
-      - image/**
-      - roles/apps/**
-      - roles/base/**
-      - roles/desktop/**
-      - roles/boot/**
-      - roles/dotfiles/**
-      - assets/**
-      - VERSION
-      - inventory/group_vars/all.yml
-      - .github/workflows/live-image.yml
   push:
-    paths:
-      - image/**
-      - roles/apps/**
-      - roles/base/**
-      - roles/desktop/**
-      - roles/boot/**
-      - roles/dotfiles/**
-      - assets/**
-      - VERSION
-      - inventory/group_vars/all.yml
-      - .github/workflows/live-image.yml
+    branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

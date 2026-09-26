@@ -54,26 +54,38 @@ def root_is_encrypted(root, run=subprocess.run):
         return False
 
 
-def record_autologin(root, username, autologin):
+def record_install_choices(root, username, autologin, passwordless_wheel):
     """Keep the saved installation choices in step with the verified decision.
 
     Provisioning inside the target recorded config.yml before encryption could
-    be verified from outside it; only its one autologin line changes here.
+    be verified from outside it; update only the confirmed policy lines.
     """
     path = root / 'etc/cybexos/config.yml'
-    try:
-        text = path.read_text()
-    except FileNotFoundError:
-        return
+    text = path.read_text()
     if not re.search(r"^primary_user: '" + re.escape(username) + "'$", text, re.MULTILINE):
+        raise RuntimeError('The installed configuration does not match the selected account.')
+    updated = text
+    for key, choice in (('desktop_autologin', autologin), ('passwordless_wheel', passwordless_wheel)):
+        pattern = rf'^{key}: (?:true|false)$'
+        if len(re.findall(pattern, updated, re.MULTILINE)) != 1:
+            raise RuntimeError(f'The installed configuration has no unique {key} choice.')
+        updated = re.sub(pattern, f'{key}: {str(choice).lower()}', updated, count=1, flags=re.MULTILINE)
+    temporary = path.with_name('.config.yml.cybexos-installer')
+    temporary.write_text(updated)
+    temporary.chmod(0o644)
+    temporary.replace(path)
+
+
+def apply_sudo_policy(root, passwordless_wheel):
+    path = root / 'etc/sudoers.d/10-wheel-nopasswd'
+    if not passwordless_wheel:
+        path.unlink(missing_ok=True)
         return
-    updated = re.sub(r'^desktop_autologin: (?:true|false)$',
-                     'desktop_autologin: ' + ('true' if autologin else 'false'), text, count=1, flags=re.MULTILINE)
-    if updated != text:
-        temporary = path.with_name('.config.yml.cybexos-installer')
-        temporary.write_text(updated)
-        temporary.chmod(0o644)
-        temporary.replace(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name('.10-wheel-nopasswd.cybexos-installer')
+    temporary.write_text('%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n')
+    temporary.chmod(0o440)
+    temporary.replace(path)
 
 
 def finalize(root, policy, encrypted):
@@ -83,6 +95,9 @@ def finalize(root, policy, encrypted):
         raise RuntimeError('Installation policy does not name a valid account.')
     if not isinstance(account.get('encrypted'), bool) or not isinstance(encrypted, bool):
         raise RuntimeError('Installation policy does not name a valid encryption choice.')
+    if type(account.get('passwordless_wheel', False)) is not bool:
+        raise RuntimeError('Installation policy does not name a valid sudo choice.')
+    passwordless_wheel = account.get('passwordless_wheel', False)
     users = [line.split(':') for line in (root / 'etc/passwd').read_text().splitlines()]
     if not any(row[0] == username and 1000 <= int(row[2]) < 65534 for row in users):
         raise RuntimeError('The installed administrator account is missing.')
@@ -97,7 +112,8 @@ def finalize(root, policy, encrypted):
     path.write_text(json.dumps({'version': 1, 'user': username,
                                'autologin': autologin, 'live': False}) + '\n')
     path.chmod(0o644)
-    record_autologin(root, username, autologin)
+    record_install_choices(root, username, autologin, passwordless_wheel)
+    apply_sudo_policy(root, passwordless_wheel)
     # The prepared live /etc/sddm.conf can be copied with the live filesystem.
     # The installed boot must regenerate it from its own verified policy.
     (root / 'etc/sddm.conf').unlink(missing_ok=True)
@@ -107,6 +123,7 @@ def finalize(root, policy, encrypted):
     record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text(json.dumps({'username': username, 'encrypted': encrypted,
                                  'autologin': autologin,
+                                 'passwordless_wheel': passwordless_wheel,
                                  'passwordsInitiallyShared': True,
                                  'keyring': 'encrypted-boot-passphrase-or-prompt'}) + '\n')
     record.chmod(0o644)

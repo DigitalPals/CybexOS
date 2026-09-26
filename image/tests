@@ -131,7 +131,7 @@ class OfflineApplications(unittest.TestCase):
         for package in ("pinentry-gnome3", "fwupd-efi", "libcamera", "libcamera-ipa",
                         "pipewire-plugin-libcamera", "nss-mdns", "hunspell-en", "bzip2", "7zip",
                         "cifs-utils", "kernel-tools", "docker-buildx", "ibus-setup",
-                        "intel-compute-runtime", "igt-gpu-tools"):
+                        "intel-compute-runtime", "igt-gpu-tools", "intel-media-driver"):
             self.assertIn(package, packages)
 
     def test_kickstart_leaves_docker_on_demand_and_resolves_local_names(self):
@@ -307,6 +307,7 @@ class WelcomeTests(unittest.TestCase):
         self.assertEqual(self.module.Welcome.SHELL_PAGES, {
             "appearance": ["settings", "open", "appearance"],
             "wallpaper": ["wallpaper", "browse"],
+            "network": ["settings", "open", "network"],
         })
         backend = self.backend()
         with patch.object(self.module.QProcess, "startDetached", return_value=(True, 0)) as start:

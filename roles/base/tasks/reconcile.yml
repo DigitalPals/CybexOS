@@ -1,0 +1,72 @@
+---
+# Upgrade reconciliation runs outside RPM, performs no package operations, and
+# never resets a person's login shell or replaces locally edited policy files.
+- name: Read the installed account identity
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ primary_user }}"
+
+- name: Ensure selected account groups exist
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ base_account_groups + ((features.docker | bool and docker_sudoless | bool) | ternary(['docker'], [])) }}"
+
+- name: Add selected account groups while preserving the login shell
+  ansible.builtin.user:
+    name: "{{ primary_user }}"
+    groups: "{{ (base_account_groups + ((features.docker | bool and docker_sudoless | bool) | ternary(['docker'], []))) | join(',') }}"
+    append: true
+
+- name: Reconcile owned sudo policy
+  cybexos_managed_file:
+    dest: /etc/sudoers.d/10-wheel-nopasswd
+    mode: "0440"
+    state: "{{ passwordless_wheel | bool | ternary('present', 'absent') }}"
+    content: "%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n"
+
+- name: Reconcile owned local Polkit policy
+  cybexos_managed_file:
+    dest: /etc/polkit-1/rules.d/49-wheel-local.rules
+    state: "{{ passwordless_local_polkit | bool | ternary('present', 'absent') }}"
+    content: |
+      polkit.addRule(function(action, subject) {
+        if (subject.isInGroup("wheel") && subject.active && subject.local) {
+          return polkit.Result.YES;
+        }
+      });
+
+- name: Reconcile owned firewall defaults
+  cybexos_managed_file:
+    dest: /etc/firewalld/zones/cybexos.xml
+    content: "{{ lookup('template', 'cybexos-zone.xml.j2') }}"
+  register: reconcile_firewall
+
+- name: Reload updated firewall policy
+  ansible.builtin.systemd_service:
+    name: firewalld.service
+    state: reloaded
+  when: reconcile_firewall is changed
+
+- name: Preserve the selected authselect profile while enabling multicast DNS
+  ansible.builtin.import_tasks: mdns.yml
+
+- name: Enable the account user manager
+  ansible.builtin.command:
+    argv: [loginctl, enable-linger, "{{ primary_user }}"]
+    creates: "/var/lib/systemd/linger/{{ primary_user }}"
+
+- name: Reconcile owned filesystem maintenance defaults
+  ansible.builtin.import_tasks: reconcile-scrub.yml
+
+- name: Reconcile owned login policy
+  cybexos_managed_file:
+    dest: /etc/pam.d/sddm-autologin
+    content: "{{ lookup('file', '/usr/share/cybexos/login/sddm-autologin', rstrip=false) }}"
+  register: reconcile_login
+
+- name: Restore the login policy security label
+  ansible.builtin.command:
+    argv: [restorecon, /etc/pam.d/sddm-autologin]
+  changed_when: false
+  when: reconcile_login is changed
