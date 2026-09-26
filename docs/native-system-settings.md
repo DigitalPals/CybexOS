@@ -110,6 +110,23 @@ The saved file is JSON owned by the user, keyed per physical monitor:
 
 Entries for monitors that are not connected are kept.
 
+When a connected monitor moves from a connector key to its physical identity,
+Apply merges the old entry into the physical entry and removes the connector
+alias. This includes early files whose connector entries have no description.
+Unknown fields survive, with the physical entry taking precedence. Keeping
+both entries could silently undo an edit: `displays.lua` emits sorted keys,
+and Hyprland's [monitor rule manager](https://github.com/hyprwm/Hyprland/blob/v0.56.2/src/config/shared/monitor/MonitorRuleManager.cpp)
+chooses the last matching rule. A stale `eDP-1` entry therefore overrode the
+new `desc:LG Display ...` position, scale and mode. Connector entries explicitly
+describing other hardware are left intact.
+
+Live verification on Hyprland 0.56.2 reproduced an Apply requesting the
+built-in display at `(0, 540)` while the stale connector rule kept it at
+`(0, 0)`. With the alias migrated, Apply and Keep placed it at `(0, 540)` and
+the layout survived a reload. A 160% / 60 Hz trial applied and reverted to
+200% / 120 Hz; an unattended arrangement trial also restored through the
+systemd watchdog. The repaired preferences work with the installed runtime.
+
 `roles/desktop/files/displays.lua` reads the file with a strict, size- and
 depth-bounded JSON parser and never executes it:
 
