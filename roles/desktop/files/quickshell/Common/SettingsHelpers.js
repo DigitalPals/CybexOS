@@ -359,7 +359,7 @@ function defaults() {
         glassEnabled: false,
         highContrast: false,
         reducedMotion: false,
-        shellFontSize: 12,
+        shellFontSize: 14,
         shellScale: 100,
         surfaceBorderMode: "accent",
         surfaceBorderColor: "#9ecbeb",

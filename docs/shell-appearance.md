@@ -42,18 +42,20 @@ settings. Existing explicit plugin border overrides remain valid; choose
 surface borders.
 
 The defaults use Dark mode, a Hug bar, wallpaper colors, opaque surfaces and
-numbered workspaces. Typography uses JetBrainsMono Nerd Font at 12px, 100% UI
+numbered workspaces. Typography uses JetBrainsMono Nerd Font at 14px, 100% UI
 scale and standard spacing. Panels have 16px corners and no border (width 0);
 plugins inherit the shared appearance. Appearance has no preset actions.
 Existing saved preferences remain in effect; section resets use these defaults.
 
 The shared library and usage rules are documented in [Shell typography](shell-typography.md).
 
-Typography follows [Omarchy's default scale](https://github.com/omacom/omarchy/blob/quattro/default/themed/shell.toml.tpl)
-and [default monospace family](https://github.com/omacom/omarchy/blob/quattro/default/fontconfig/conf.avail/50-omarchy.conf):
-10px captions, 11px secondary copy, 12px body/control/bar text, 14px titles,
-16px headings, and 24/28px display values. Settings labels, inputs, pickers,
-and actions use the same body role as plugin controls. Regular copy uses
+Typography derives from [Omarchy's scale](https://github.com/omacom/omarchy/blob/quattro/default/themed/shell.toml.tpl)
+and [default monospace family](https://github.com/omacom/omarchy/blob/quattro/default/fontconfig/conf.avail/50-omarchy.conf),
+with a larger default base: 12px captions, 13px secondary copy,
+14px body/control/bar text, 16px titles, 18px headings, and 28/33px display
+values. The heading multiplier is tuned to 18px at the new base.
+Settings labels, inputs, pickers and actions use the same body role as plugin
+controls. Regular copy uses
 weight 400; headings can use medium, semibold or bold.
 
 Native body/caption and plugin body/caption share the same reference sizes.

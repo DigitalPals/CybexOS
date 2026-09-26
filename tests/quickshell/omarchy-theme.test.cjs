@@ -16,7 +16,8 @@ test("Omarchy adapter maps the default font, geometry and supplied palette borde
     assert.equal(p.font, "mono");
     assert.equal(p.surfaceCornerRadius, 16);
     const v = values(p);
-    assert.equal(Math.round(420 * Number(v["font.base-size"]) / 12), 420);
+    assert.equal(v["font.base-size"], "14");
+    assert.equal(Math.round(420 * Number(v["font.base-size"]) / 12), 490);
     for (const surface of ["popups", "tooltip", "menu", "launcher", "notifications"]) {
         assert.equal(v[surface + ".border"], palette.surfaceBorder);
         assert.equal(v[surface + ".border-width"], "2");
@@ -52,7 +53,7 @@ test("plugin overrides stay independent and shared border opacity is applied onc
     const p = prefs({ pluginScale: 150, textScale: "large", pluginBorderMode: "custom",
         pluginBorderColor: "#abcdef", pluginBorderWidth: 4, pluginBorderOpacity: 50, pluginRadius: 0 });
     const v = values(p);
-    assert.equal(v["font.base-size"], "21");
+    assert.equal(v["font.base-size"], "24");
     assert.equal(v["popups.border"], "#abcdef");
     assert.equal(v["popups.border-alpha"], "0.5");
     const shared = values(prefs(), { ...palette, surfaceBorder: "#fedcba",

@@ -1,10 +1,11 @@
 // Shared native/plugin typography. Logical pixels; output scale belongs to Qt.
 // Reference: Omarchy 961ec7f39fd0d70c7d2944c5b80585a86713693d,
-// shell/Commons/Style.qml. Usage rationale: docs/shell-typography.md.
+// shell/Commons/Style.qml. CybexOS uses a 14px default with 18px headings.
+// Usage rationale: docs/shell-typography.md.
 var SCALE = {
     caption: ["caption", 0.833], bodySmall: ["body-small", 0.917],
     body: ["body", 1], subtitle: ["subtitle", 1.083],
-    title: ["title", 1.167], heading: ["heading", 1.333],
+    title: ["title", 1.167], heading: ["heading", 18 / 14],
     display: ["display", 2], displayLarge: ["display-large", 2.333],
     iconSmall: ["icon-small", 0.917], icon: ["icon", 1.167],
     iconLarge: ["icon-large", 1.5],
@@ -25,7 +26,7 @@ function pixels(base, multiplier) {
 
 function resolve(base, overrides) {
     base = Number(base);
-    if (!isFinite(base) || base <= 0) base = 12;
+    if (!isFinite(base) || base <= 0) base = 14;
     overrides = overrides || {};
     var sizes = {};
     Object.keys(SCALE).forEach(function(name) {
