@@ -1,66 +1,66 @@
 {
   "artifacts": {
-    "CybexOS-Live-44-20260926T123305Z-901ef7db.iso": "dfc118250a2bf40e8c765332ad1d94f22e6ae861d3d0642fe028d6fd8ec6e975",
+    "CybexOS-Live-44-20260926T150946Z-99900b99.iso": "7b192a15375fd5f6132ce82626dbbce9171d6f297d4bbc4defee32340303d635",
     "applications.json": "952ccf1a5e7673b01a0f2143668d70303f971065be25bd35d21d946d17689f36",
-    "build-provenance.json": "0a2aa67257583e37b793b3b11225c98e33747dc4fcef1537b7a3bb1c70aa19c9",
+    "build-provenance.json": "016a81a05571e2b095459a0d05c51666acb7611c31cbee4658ad5b8a65dfa581",
     "builder-packages.txt": "c47a03ea52d880785d72c15396b6f66edcacced34b27fc5005e23a377bb7018d",
-    "cybexos-desktop-0.0.0~dev-1.20260926123305.ga1713ff0a45f.fc44.x86_64.rpm": "5b006d8d627ed80396d9bcdc3ec50e44b872a3a00686577291e56231bdd87cb8",
+    "cybexos-desktop-0.0.0~dev-1.20260926150946.ga991a97d0999.fc44.x86_64.rpm": "e42fa8fdab34eab40d32e93fea9b8c9399abdff1c5be40d8f60207984c41ed8b",
     "mdview-0.0.1-1.fc44.x86_64.rpm": "2100ed7607ffb6b49fdaca46fd14d09da6f716bcdac8fa8596e5f051f199d83d",
-    "package-manifest.json": "79be91a787032cb013dca4d7f1d5a5b400f613f9ba64140d5915600e9dd608e8",
-    "packages.txt": "f73a2236c82f18da7b9c555e75ca75839d17dd19f0f93dfe608e89d0058d28b7",
+    "package-manifest.json": "6a99aaffc29a432d301f507a1439cfffdd6baa6d212472426d1413e71df4d8dc",
+    "packages.txt": "ac068e4d42f5502c65268c5f10ce76953c6502e4f25ad869bb678b5f2aa481d9",
     "voxtype-0.7.5-1.x86_64.rpm": "50dd10fe8dcdd0f0d7a2796ca8d628e21810c81e2ae1c365075643e552e79c61"
   },
-  "build_id": "20260926T123305Z-901ef7db",
+  "build_id": "20260926T150946Z-99900b99",
   "compression": "xz",
   "download_cache_hits": 51,
   "phases": [
     {
       "phase": "Validate public update channel",
       "seconds": 0.01,
-      "started_utc": "2026-09-26T12:33:05.167406+00:00",
+      "started_utc": "2026-09-26T15:09:46.164249+00:00",
       "status": "complete"
     },
     {
       "phase": "Verify cached Fedora builder",
-      "seconds": 0.33,
-      "started_utc": "2026-09-26T12:33:05.177137+00:00",
+      "seconds": 0.34,
+      "started_utc": "2026-09-26T15:09:46.178644+00:00",
       "status": "complete"
     },
     {
       "phase": "Record source and prepare isolated VM",
-      "seconds": 0.96,
-      "started_utc": "2026-09-26T12:33:05.502639+00:00",
+      "seconds": 0.98,
+      "started_utc": "2026-09-26T15:09:46.514244+00:00",
       "status": "complete"
     },
     {
       "phase": "Wait for builder and restore verified downloads",
-      "seconds": 12.96,
-      "started_utc": "2026-09-26T12:33:06.466879+00:00",
+      "seconds": 12.92,
+      "started_utc": "2026-09-26T15:09:47.491321+00:00",
       "status": "complete"
     },
     {
       "phase": "Build applications, desktop RPM and compressed image",
-      "seconds": 1242.43,
-      "started_utc": "2026-09-26T12:33:19.424802+00:00",
+      "seconds": 1168.17,
+      "started_utc": "2026-09-26T15:10:00.409922+00:00",
       "status": "complete"
     },
     {
       "phase": "Save verified download cache",
-      "seconds": 3.1,
-      "started_utc": "2026-09-26T12:54:01.854701+00:00",
+      "seconds": 3.3,
+      "started_utc": "2026-09-26T15:29:28.582309+00:00",
       "status": "complete"
     },
     {
       "phase": "Verify and atomically deliver completed artifacts",
-      "seconds": 49.25,
-      "started_utc": "2026-09-26T12:54:04.959260+00:00",
+      "seconds": 55.94,
+      "started_utc": "2026-09-26T15:29:31.887078+00:00",
       "status": "complete"
     }
   ],
   "resources": {
     "cpus": 8,
     "free_gib": {
-      "/data/cybexos-candidate-20260926-installer-qualification/cache": 1683.7
+      "/data/cybexos-candidate-20260926-installer-qualification/cache": 1624.6
     },
     "memory_mib": 24576,
     "seed_tool": "cloud-localds"
@@ -68,17 +68,17 @@
   "source": {
     "changes": [],
     "configuration_sha256": "e0a03813306db3a615ac54a2b331c0d023fedee0d5b8d240c902509ff89808f6",
-    "revision": "a1713ff0a45f6c7ddabfd67afb6edbf4b6d5ee1a",
-    "source_archive_sha256": "4fcf4af109fd6d4afd0213da7ab508aeb2e38db941eae9ec84c69b5c61ab2f5a"
+    "revision": "a991a97d099936298edfa7ad4c1747a3d0261f74",
+    "source_archive_sha256": "a0f0462f828f637c68c5dcb8233a78e5f32541223aef1b76f60cdc0d040bb1cc"
   },
   "source_dirty": false,
-  "source_epoch": 1790425913,
-  "source_revision": "a1713ff0a45f6c7ddabfd67afb6edbf4b6d5ee1a",
+  "source_epoch": 1790435325,
+  "source_revision": "a991a97d099936298edfa7ad4c1747a3d0261f74",
   "status": "complete",
   "tools": {
     "python": "3.13.5 (main, Aug 10 2026, 12:06:59) [GCC 14.2.0]",
     "qemu-img": "qemu-img version 10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)",
     "qemu-system-x86_64": "QEMU emulator version 10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)"
   },
-  "utc": "2026-09-26T12:33:05.153878+00:00"
+  "utc": "2026-09-26T15:09:46.150792+00:00"
 }

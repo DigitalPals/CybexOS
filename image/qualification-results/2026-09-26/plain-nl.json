@@ -18,7 +18,7 @@
   "firmware": "uefi",
   "iso_sha256": "7b192a15375fd5f6132ce82626dbbce9171d6f297d4bbc4defee32340303d635",
   "network": "outbound-blocked",
-  "scenario": "plain-us",
+  "scenario": "plain-nl",
   "scope": "QEMU fixture; does not qualify physical hardware or Secure Boot",
   "source_revision": "bd049540852c2c6442e8d7ed694e2c27de4f3550",
   "status": "passed"

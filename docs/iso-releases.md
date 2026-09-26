@@ -100,9 +100,10 @@ PXE runner. Its `qualify` job builds the ISO with the public stable channel,
 publishes the completed testing ISO and checksum to iVentoy, and runs five
 QEMU guests with isolated disposable disks. It uploads only the raw build
 artifacts and bounded qualification reports as `cybexos-qualified-desktop` for
-two days. The separate GitHub-hosted `sign` job downloads that exact artifact
-and produces `cybexos-desktop-release`; it retains the prepared assets for two
-days and qualification evidence for fourteen days. The signing job needs a
+two days. The `qualify` job also retains compact qualification evidence for
+fourteen days. The separate GitHub-hosted `sign` job downloads that exact
+artifact and produces `cybexos-desktop-release`, retaining the prepared assets
+for two days. The signing job needs a
 Docker-capable GitHub-hosted runner with at least 24 GiB free staging space.
 
 | Scenario | Encryption | Keyboard and locale | Timezone |
@@ -161,8 +162,10 @@ Until both jobs complete successfully, the channel is not ready for enrollment.
 
 ## Enroll the installed RPM channel
 
-The default ISO bundles a disabled channel. Check the installed system with
-read-only diagnostics:
+An ISO built without `--update-channel` bundles a disabled channel. The release
+gate explicitly enables the pinned stable channel. Check the installed system
+with read-only diagnostics; channel status describes local configuration and
+does not test remote availability:
 
 ```bash
 cybex doctor --json

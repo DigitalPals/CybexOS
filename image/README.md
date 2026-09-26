@@ -5,13 +5,11 @@ application set. The proposed boot path is **Cybex firmware menu → Cybex
 Plymouth → live desktop/welcome → three-screen installer**. After an encrypted
 installation, it is **disk unlock → automatic login → desktop**.
 
-The 2026-09-25 UEFI qualification passed a fresh encrypted installation,
-installed-account defaults, cold reboot, logout/crash/manager-restart recovery,
-and encrypted-keyring fallback cases; see the
-[installation audit](INSTALL-AUDIT-2026-09-25.md). Changes made after that
-qualification have source-level checks only until a new ISO is built and
-qualified. Current lifecycle validation is tracked in the
-[September 26 qualification report](QUALIFICATION-2026-09-26-LIFECYCLE.md).
+Current ISO installation, desktop RPM upgrade, and recovery results are in the
+[September 26 qualification report](QUALIFICATION-2026-09-26-LIFECYCLE.md),
+including exact image hashes, harness revisions, and remaining release limits.
+The earlier encrypted-login results are recorded in the
+[September 25 installation audit](INSTALL-AUDIT-2026-09-25.md).
 Earlier implementation and audit notes are historical: the
 [September 23 implementation](IMPLEMENTATION-2026-09-23.md) and
 [September 23 audit](AUDIT-2026-09-23.md).
@@ -295,10 +293,11 @@ versions come from `VERSION`, with a timestamp/revision release suffix and
 installed provenance. Epoch 1 permits upgrading the older hardcoded alpha
 version. Existing checkout installations retain their source updater.
 
-A default build ships a **disabled** desktop update channel. The public stable
-channel configuration is `image/channels/stable.json`; a custom or private
-channel can be supplied with `--update-channel` at build time. For such a
-channel, prepare a public configuration, for example:
+A build without `--update-channel` ships a **disabled** desktop update channel.
+The release gate explicitly enables `image/channels/stable.json`; a custom or
+private channel can also be supplied with `--update-channel` at build time.
+Local `cybex update-channel status` output does not prove that remote metadata
+is available. For a custom channel, prepare a public configuration, for example:
 
 ```json
 {
@@ -332,18 +331,20 @@ and the release manifest, writes checksums, and atomically publishes a new
 local directory. Original RPMs and the system RPM keyring remain untouched.
 `--gnupghome` can select an existing signing keyring. Hosting/deployment is a
 separate action; the tool does not upload anything or create signing keys. The
-public GitHub Pages/RPM release tooling is prepared, but its first publication
-still awaits the trusted PXE runner, baseline ISO configuration, and passing
-release gates. The repository-code MIT license does not resolve the separate
+public GitHub Pages/RPM release tooling, baseline ISO variable, and signing
+environment are configured. First publication still requires a reviewed
+queued release, an operator-started ephemeral PXE runner, and passing release
+gates. The repository-code MIT license does not resolve the separate
 third-party software and asset redistribution audit. See
 [the release instructions](../docs/releasing.md).
 
 ## ISO qualification and PXE publication
 
 These commands are opt-in operations, **not part of source checks**. The
-September 25 qualification is recorded above; later source changes require a
-new build and qualification before they are covered. Completed testing ISOs
-belong in `/data/pxe/iso`; keep incomplete builds outside that tree.
+qualification report above identifies the exact tested runtime source and
+artifacts; later runtime changes require a new build and qualification.
+Completed testing ISOs belong in `/data/pxe/iso`; keep incomplete builds outside
+that tree.
 
 On the iVentoy host, `image/publish-pxe /path/to/artifacts` verifies the artifact
 set and prints a plan. Adding `--execute` copies the ISO/checksum through
@@ -371,11 +372,13 @@ The harness detects Fedora/Debian UEFI firmware (raw or qcow2), uses bounded
 readiness checks and blocks guest outbound networking. `--firmware bios`
 selects BIOS. An adjacent `ISO-FILENAME.iso.sha256` must verify before a VM
 can start. The smoke test checks the live desktop/applications; qualification
-also installs to its newly created, serial-identified virtual disk, reboots
-without the ISO, unlocks it and checks encryption, autologin, desktop defaults,
-SELinux and live-account cleanup. It verifies an encrypted GNOME login keyring
-without requesting an unlock, stores a synthetic secret, and confirms that
-secret is available after another cold boot. Logout, compositor crash and
+also installs to its newly created, serial-identified virtual disk, checks that
+a second guard disk is unchanged, and reboots without the ISO. It verifies the
+selected locale, timezone and keyboard, desktop defaults, SELinux and
+live-account cleanup. Plain scenarios require password login; encrypted
+scenarios check disk unlock and autologin, then verify an encrypted GNOME login
+keyring without requesting an unlock, store a synthetic secret, and confirm
+that secret is available after another cold boot. Logout, compositor crash and
 SDDM restart must return to a greeter; password login must restore both the
 desktop and keyring. Another cold boot temporarily disables the cached-password
 PAM module in the disposable guest, checks that the vault stays locked, then
@@ -383,14 +386,16 @@ verifies recovery through normal password login. The final cold boot injects
 a single early launcher failure in the guest. It requires a working greeter,
 a consumed autologin attempt, disabled autologin after restarting SDDM, and
 successful password-login recovery; the original launcher is then restored.
-It drives the backend; the
-browser fixture separately covers frontend flow. A passing fixture is not a
-boot result.
+Chromium and Playwright operate the actual guest Cockpit installer through a
+restricted SSH tunnel. The separate browser smoke fixture provides source
+checks; it does not replace the graphical installation and boot results.
 
-Installation qualification uses four virtual CPUs, 16 GiB RAM and a new
-100 GiB sparse disk. It performs one live boot and four installed cold boots;
-the three logout/crash/restart cases reuse the running installation. The
-installer deadline defaults to 30 minutes (`--install-timeout 1800`); boot,
+Installation qualification uses four virtual CPUs, 16 GiB RAM and two new
+100 GiB sparse disks: an installation disk and an untouched guard. Fresh encrypted
+scenarios perform one live boot and four installed cold boots; the three
+logout/crash/restart cases reuse the running installation. Plain scenarios
+perform one live boot and one installed boot. The installer deadline defaults
+to 30 minutes (`--install-timeout 1800`); boot,
 application seeding and recovery have separate bounded waits. Runtime has not
 yet been benchmarked.
 
