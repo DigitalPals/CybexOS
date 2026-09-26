@@ -178,6 +178,8 @@ def qualification_disks(vm):
 def focus_installed_desktop(vm, password, autologin):
     """Return from the verified text console to the graphical session."""
     from login_qualification import wait_login_state
+    # On subsequent boots SSH can become ready before SDDM creates its VT.
+    wait_login_state(vm, desktop=autologin)
     script = '''python3 - <<'PY'
 import subprocess
 for line in subprocess.check_output(['loginctl', 'list-sessions', '--no-legend', '--no-pager'], text=True).splitlines():
@@ -197,8 +199,6 @@ PY
                  timeout=20).stdout.strip())
     if not 1 <= vt <= 6:
         raise RuntimeError('Installed greeter was not on an expected virtual terminal')
-    if not autologin:
-        wait_login_state(vm, desktop=False)
     vm.keypress(f'ctrl+alt+f{vt}')
     if autologin:
         vm.wait_desktop()

@@ -155,6 +155,29 @@ class UpgradeTests(unittest.TestCase):
 
 
 class InstalledAuditTests(unittest.TestCase):
+    def test_session_readiness_precedes_virtual_terminal_lookup(self):
+        for autologin in (False, True):
+            with self.subTest(autologin=autologin):
+                vm = Mock(ssh=['ssh', 'fixture'])
+                states = []
+                def ready(_vm, *, desktop):
+                    states.append(desktop)
+                def lookup(*args, **kwargs):
+                    self.assertEqual(states, [autologin],
+                                     'VT discovery ran before session readiness')
+                    return types.SimpleNamespace(stdout='1\n')
+                with patch('login_qualification.wait_login_state', side_effect=ready), \
+                        patch.object(qualification, 'run', side_effect=lookup), \
+                        patch.object(qualification.time, 'sleep'):
+                    qualification.focus_installed_desktop(vm, 'fixture-password', autologin)
+                vm.keypress.assert_called_once_with('ctrl+alt+f1')
+                vm.wait_desktop.assert_called_once_with()
+                self.assertEqual(states, [autologin, True])
+                if autologin:
+                    vm.type.assert_not_called()
+                else:
+                    vm.type.assert_called_once_with('fixture-password\n')
+
     def test_disk_unlock_and_desktop_login_are_independent_for_recovery(self):
         for encrypted, options, autologin in ((True, {}, True), (False, {}, False),
                                              (True, {'autologin': False}, False)):
