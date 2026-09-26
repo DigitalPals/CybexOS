@@ -1,5 +1,6 @@
 """Source-only safety checks for the real-browser VM qualification path."""
 from pathlib import Path
+import ast
 import importlib.machinery
 import importlib.util
 import json
@@ -154,6 +155,37 @@ class UpgradeTests(unittest.TestCase):
 
 
 class InstalledAuditTests(unittest.TestCase):
+    def test_generated_timezone_check_accepts_file_aliases_but_rejects_other_zone(self):
+        script = qualification.installed_audit(False, False, 'us', 'us', 'en_US.UTF-8', 'UTC')
+        guest = script.split("python3 - <<'CHECK'\n", 1)[1].split('\nCHECK\n', 1)[0]
+        assertion = next(node for node in ast.parse(guest).body
+                         if isinstance(node, ast.Assert) and isinstance(node.msg, ast.Constant)
+                         and node.msg.value == 'Installed timezone differs')
+        check = compile(ast.Module(body=[assertion], type_ignores=[]), '<guest-timezone-check>', 'exec')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            zones = root / 'usr/share/zoneinfo'
+            (zones / 'Etc').mkdir(parents=True)
+            utc = zones / 'UTC'
+            utc.write_bytes(b'fixture UTC zone')
+            (zones / 'Etc/UTC').hardlink_to(utc)
+            (zones / 'UTC-symlink').symlink_to('UTC')
+            (zones / 'other-zone').write_bytes(b'fixture different zone')
+            localtime = root / 'etc/localtime'
+            localtime.parent.mkdir()
+            for target, succeeds in (('UTC', True), ('Etc/UTC', True),
+                                     ('UTC-symlink', True), ('other-zone', False)):
+                with self.subTest(target=target):
+                    localtime.unlink(missing_ok=True)
+                    localtime.symlink_to('../usr/share/zoneinfo/' + target)
+                    environment = {'Path': lambda value: root / value.lstrip('/'),
+                                   'expected_timezone': 'UTC'}
+                    if succeeds:
+                        exec(check, environment)
+                    else:
+                        with self.assertRaisesRegex(AssertionError, 'Installed timezone differs'):
+                            exec(check, environment)
+
     def test_python_traceback_survives_bounded_shell_failure_output(self):
         trap = next(line for line in qualification.INSTALLED_AUDIT.splitlines()
                     if line.startswith('trap '))

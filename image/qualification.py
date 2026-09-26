@@ -111,7 +111,8 @@ expected_boot_keymap=os.environ['EXPECTED_BOOT_KEYMAP']
 locale=dict(line.split('=', 1) for line in Path('/etc/locale.conf').read_text().splitlines()
             if line.startswith('LANG='))
 assert locale['LANG'].strip('"') == expected_locale, 'Installed locale differs'
-assert Path('/etc/localtime').resolve() == (Path('/usr/share/zoneinfo') / expected_timezone).resolve(), 'Installed timezone differs'
+# Fedora's UTC aliases can be hardlinks, whose resolved path names differ.
+assert Path('/etc/localtime').samefile(Path('/usr/share/zoneinfo') / expected_timezone), 'Installed timezone differs'
 console=dict(line.split('=', 1) for line in Path('/etc/vconsole.conf').read_text().splitlines()
              if line.startswith('KEYMAP='))
 assert console['KEYMAP'].strip('"') == expected_boot_keymap, 'Installed console keymap differs'
