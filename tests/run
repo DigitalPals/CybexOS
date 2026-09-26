@@ -481,6 +481,7 @@ python_fixtures=(
   hermes-bridge
   hermes-webui-auth
   hermes-remote-runtime
+  remote-server
 )
 python_fixture_limit=300
 

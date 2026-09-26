@@ -48,3 +48,4 @@ TailscalePopover TailscalePopover.qml
 UpdatesPopover UpdatesPopover.qml
 WeatherPopover WeatherPopover.qml
 WifiPopover WifiPopover.qml
+RemoteServerPopover RemoteServerPopover.qml

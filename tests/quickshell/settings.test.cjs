@@ -259,7 +259,7 @@ test("the tray and the updates chip use the reorderable widget pipeline", () => 
     const bar = read("Bar/Bar.qml");
 
     assert.match(helpers, /"updates", "gh"/);
-    assert.match(helpers, /"hermes",\s*"tray"/);
+    assert.match(helpers, /"hermes",\s*"remote",\s*"tray"/);
     assert.match(catalog, /updates:\s*\{ name: "Updates"/);
     assert.match(catalog, /tray:\s*\{ name: "System tray"/);
     assert.doesNotMatch(modules, /pinnedTail|text:\s*"pinned"/);
@@ -396,7 +396,7 @@ test("schema twenty-three keeps safe defaults and exposes accessibility preferen
     assert.match(helpers, /nightLight:\s*false/);
     assert.match(helpers, /idleInhibitMode:\s*"off"/);
     assert.match(helpers, /idleInhibitUntilMs:\s*0/);
-    assert.match(helpers, /"modelusage", "updates", "gh",\s*"t3", "hermes", "tray"/);
+    assert.match(helpers, /"modelusage", "updates", "gh",\s*"t3", "hermes", "remote", "tray"/);
     assert.match(helpers, /hermes:\s*\{ showLabel: true, activityDetail: "verb" \}/);
     assert.match(helpers,
         /notes:\s*\{[\s\S]*?titleProvider:\s*"off"[\s\S]*?codexModel:\s*"gpt-5\.6-luna"[\s\S]*?codexEffort:\s*"none"[\s\S]*?claudeModel:\s*"fable"[\s\S]*?claudeEffort:\s*"low"/);

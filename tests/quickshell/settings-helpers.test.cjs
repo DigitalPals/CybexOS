@@ -61,7 +61,7 @@ test("defaults carry the design values", () => {
         ["indicators", "clock", "weather", "notes"]);
     assert.equal(d.mods.center.find(m => m.id === "notes").on, true);
     assert.deepEqual(d.mods.right.map(m => m.id),
-        ["modelusage", "updates", "gh", "t3", "hermes", "tray", "notifications",
+        ["modelusage", "updates", "gh", "t3", "hermes", "remote", "tray", "notifications",
          "vol", "wifi", "bt", "batt", "control"]);
     assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
     assert.equal(d.mods.right.find(m => m.id === "bt").on, true,
@@ -81,7 +81,7 @@ test("defaults carry the design values", () => {
     assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
         .every(module => module.detail === "auto"));
     assert.deepEqual(Object.keys(d.modOpts),
-        ["ws", "media", "indicators", "clock", "weather", "notes", "t3", "hermes", "modelusage",
+        ["ws", "media", "indicators", "clock", "remote", "weather", "notes", "t3", "hermes", "modelusage",
          "gh", "updates", "tray", "notifications", "vol", "batt"]);
     assert.equal(d.modOpts.ws.minSlots, 5);
     assert.equal(d.modOpts.ws.style, "numbers");
@@ -608,7 +608,7 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.deepEqual(next.center.map(m => m.id),
         ["indicators", "clock", "weather", "notes"]);
     assert.deepEqual(next.right.map(m => m.id),
-        ["modelusage", "updates", "gh", "t3", "hermes", "tray", "notifications",
+        ["modelusage", "updates", "gh", "t3", "hermes", "remote", "tray", "notifications",
          "wifi", "bt", "batt", "control"]);
     assert.ok(next.right.some(m => m.id === "bt" && m.on === true),
         "appended module keeps its default enable flag");
@@ -790,7 +790,7 @@ test("schema-11 inserts notifications before the first right-side status widget"
     const migrated = H.merge({ v: 10, mods: raw }).mods.right;
     assert.deepEqual(migrated.map(mod => mod.id),
         ["modelusage", "updates", "tray", "gh", "notifications", "wifi", "t3",
-         "hermes", "vol", "bt", "batt", "control"]);
+         "hermes", "vol", "bt", "batt", "remote", "control"]);
 });
 
 test("schema-11 appends notifications on the right when its status widgets moved", () => {
