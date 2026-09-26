@@ -107,8 +107,10 @@ if not Path('/run/cybexos-live').exists():
     import pwd
     assert pwd.getpwuid(os.getuid()).pw_shell == '/usr/bin/fish'
     assert Path('/etc/cybexos/hardware.json').is_file()
-    for unit in ('hyprpolkitagent', 'hypridle', 'voxtype'):
+    for unit in ('quickshell', 'hypridle', 'voxtype'):
         subprocess.run(['systemctl', '--user', 'is-active', unit], check=True)
+    status = json.loads(subprocess.check_output(['cybexos-runtime', 'ipc', 'polkit', 'status'], text=True))
+    assert status['registered'], 'Quickshell Polkit agent did not register'
     for unit in ('tuned-ppd', 'fwupd-refresh.timer', 'cybexos-hardware-setup.timer'):
         subprocess.run(['systemctl', 'is-enabled', unit], check=True)
     aliases = subprocess.check_output(['fish', '-ic', 'functions codex claude'], text=True)

@@ -190,7 +190,7 @@ class InstalledPolicy(unittest.TestCase):
             (units / target.name).write_text(target.read_text())
             for unit in ('graphical-session', 'graphical-session-pre'):
                 (units / (unit + '.target')).write_text('[Unit]\nDescription=Fixture\n')
-            for name in ('quickshell', 'hyprpolkitagent', 'hypridle', 'voxtype',
+            for name in ('quickshell', 'hypridle', 'voxtype',
                          'hermes-menubar-bridge', 'cybexos-welcome', 'cybexos-app-seed'):
                 (units / (name + '.service')).write_text(
                     '[Unit]\nAfter=graphical-session.target\n[Service]\nExecStart=/usr/bin/true\n')

@@ -48,6 +48,7 @@ Controls.ComboBox {
 
     contentItem: Text {
         text: combo.displayText
+        textFormat: Text.PlainText
         color: Theme.textHi
         font.family: combo.fontFor && combo.currentIndex >= 0
             ? combo.fontFor(combo.model[combo.currentIndex].value) : Theme.fontMenu
@@ -86,6 +87,7 @@ Controls.ComboBox {
                 anchors.rightMargin: Theme.controlSpacing
                 anchors.verticalCenter: parent.verticalCenter
                 text: option.modelData.label
+                textFormat: Text.PlainText
                 color: Theme.textHi
                 font.family: combo.fontFor ? combo.fontFor(option.modelData.value) : Theme.fontMenu
                 font.pixelSize: Theme.typography.control

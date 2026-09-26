@@ -20,7 +20,7 @@ Obsoletes:      fedora-config-desktop < %{epoch}:%{version}-%{release}
 %global _binary_filedigest_algorithm 8
 Requires:       bash coreutils util-linux systemd python3 ansible-core gnupg2
 Requires:       sddm sddm-wayland-generic systemd-pam gnome-keyring-pam
-Requires:       hyprland hyprland-guiutils quickshell hypridle hyprlock hyprpolkitagent hyprsunset
+Requires:       hyprland hyprland-guiutils quickshell hypridle hyprlock hyprsunset
 Requires:       xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-utils
 Requires:       qt6-qtwebsockets-devel qt6-qt5compat qt6-qtsvg
 Requires:       qt6-qtbase qt6-qtdeclarative qt6-qtwayland
@@ -72,7 +72,6 @@ cp -a usr opt etc %{buildroot}/
 /usr/libexec/cybexos-*
 /usr/lib/systemd/user/*.service
 /usr/lib/systemd/user/hypridle.service.d/
-/usr/lib/systemd/user/hyprpolkitagent.service.d/
 /usr/lib/systemd/user/voxtype.service.d/
 /usr/lib/systemd/user/hyprland-session.target
 /usr/lib/systemd/system/sddm.service.d/

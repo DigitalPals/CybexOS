@@ -28,6 +28,7 @@ ShellRoot {
     }
 
     function runLifecycle() {
+        runPolkitLifecycle();
         root.revealer = revealerComponent.createObject(harness, { reveal: false });
         root.toggle = toggleComponent.createObject(harness);
         root.action = actionComponent.createObject(harness);
@@ -64,6 +65,114 @@ ShellRoot {
         // after logging; timeout remains the outer leak guard.
         Quickshell.execDetached(["/usr/bin/bash", "-c",
             "sleep 0.2; kill -TERM -- \"$1\"", "bash", String(Quickshell.processId)]);
+    }
+
+    function descendant(item, name) {
+        if (item.objectName === name) return item;
+        for (const child of item.children || []) {
+            const result = descendant(child, name);
+            if (result) return result;
+        }
+        return null;
+    }
+
+    // Drive the shipped view with a PAM-like conversation: these fixtures
+    // never register an agent or authenticate against the host system.
+    function runPolkitLifecycle() {
+        const conversation = polkitFlow.createObject(harness);
+        const next = polkitFlow.createObject(harness);
+        const view = polkitView.createObject(harness, { flow: conversation });
+        root.check(view !== null, "Polkit prompt did not construct");
+        if (!view) return;
+        const field = descendant(view, "polkitResponse");
+        const reveal = descendant(view, "polkitReveal");
+        root.check(field !== null && reveal !== null, "Polkit controls are missing");
+        if (field && reveal) {
+            view.focusResponse();
+            root.check(field.focus, "Polkit did not focus the response field");
+            root.check(field.echoMode === TextInput.Password, "secret prompt is not masked");
+            field.text = "fixture response";
+            reveal.triggered();
+            root.check(field.echoMode === TextInput.Normal, "reveal does not show the response");
+            view.submit();
+            root.check(conversation.received === "fixture response", "response was not submitted intact");
+            root.check(field.text === "" && !view.revealed, "submit retained a response or reveal state");
+            view.submit();
+            root.check(conversation.submissions === 1, "double submission was accepted while waiting");
+
+            conversation.authenticationFailed();
+            conversation.isResponseRequired = true;
+            root.check(view.hasError, "retry lacks an error indication");
+            root.check(field.echoMode === TextInput.Password, "retry reused reveal state");
+            field.text = "discard on account switch";
+            conversation.selectedIdentity = conversation.identities[1];
+            root.check(field.text === "" && !view.attemptFailed, "account switch retained response or error");
+            root.check(view.account === "Admin (admin)", "selected identity label is incorrect");
+
+            conversation.inputPrompt = "Verification code:";
+            conversation.responseVisible = true;
+            root.check(field.echoMode === TextInput.Normal && !reveal.visible,
+                "visible PAM response is incorrectly treated as a password");
+            field.text = "discard on prompt change";
+            conversation.inputPrompt = "Password:";
+            conversation.responseVisible = false;
+            root.check(field.text === "", "new prompt retained the previous response");
+
+            field.text = "discard on next request";
+            view.detailsOpen = true;
+            view.flow = next;
+            root.check(field.text === "" && !view.detailsOpen, "next request retained conversation state");
+            field.text = "discard on cancellation";
+            view.cancel();
+            root.check(next.isCancelled && field.text === "", "cancel did not clear and abort the request");
+
+            view.flow = conversation;
+            field.text = "discard on remote cancellation";
+            conversation.isCancelled = true;
+            root.check(field.text === "" && !field.enabled, "remote cancellation retained an enabled input");
+            conversation.isCancelled = false;
+            field.text = "discard on success";
+            conversation.isCompleted = true;
+            root.check(field.text === "" && !field.enabled, "completed flow retained an enabled input");
+            view.flow = null;
+            root.check(view.finished, "removed flow is still actionable");
+        }
+        view.destroy();
+        conversation.destroy();
+        next.destroy();
+    }
+
+    Component {
+        id: polkitView
+        PolkitPrompt { width: 392 }
+    }
+    Component {
+        id: polkitFlow
+        QtObject {
+            property string message: "Authenticate to unlock the fixture"
+            property string actionId: "org.cybexos.fixture"
+            property var identities: [
+                { string: "john", displayName: "John Example" },
+                { string: "admin", displayName: "Admin" }
+            ]
+            property var selectedIdentity: identities[0]
+            property bool isResponseRequired: true
+            property bool isCompleted: false
+            property bool isCancelled: false
+            property bool responseVisible: false
+            property string inputPrompt: "Password:"
+            property string supplementaryMessage: ""
+            property bool supplementaryIsError: false
+            property string received: ""
+            property int submissions: 0
+            signal authenticationFailed()
+            function submit(value) {
+                received = value;
+                submissions++;
+                isResponseRequired = false;
+            }
+            function cancelAuthenticationRequest() { isCancelled = true; }
+        }
     }
 
     Component {

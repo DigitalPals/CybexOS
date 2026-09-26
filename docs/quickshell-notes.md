@@ -33,6 +33,10 @@ you need the reasoning behind a particular change; `git log --oneline
 
 ## Testing without a GUI
 
+The built-in [authentication dialog](authentication-dialog.md) uses Quickshell's
+Polkit service. Its presentation and startup checks are covered below; its
+authentication backend remains the system Polkit/PAM stack.
+
 Run `./tests/run` first; it needs no live shell. External widget tests require
 `sway` for a disposable headless Wayland compositor (also installed by CI);
 this is a test dependency, not a change to the desktop's compositor.
