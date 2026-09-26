@@ -1,9 +1,12 @@
 """Source-only fixtures: no ISO filesystem, QEMU process or PXE server is used."""
 import hashlib
+import importlib.machinery
+import importlib.util
 import json
 import os
 from pathlib import Path
 import tempfile
+import tarfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -12,6 +15,35 @@ from build_support import (builder_cloud_config, checksum_entries, deliver_artif
                            select_firmware, wait_for_builder_initialization)
 from download_cache import import_cache, merge_cache, verified_entries
 from pxe_publish import DEFAULT_CONTRACT, IVentoy, publish, staging_parent, validate_status
+
+
+class SourceArchiveTests(unittest.TestCase):
+    def test_disposable_builder_receives_skill_license_and_provisioning_helper(self):
+        loader = importlib.machinery.SourceFileLoader('archive_build', str(Path(__file__).with_name('build')))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        builder = importlib.util.module_from_spec(spec)
+        loader.exec_module(builder)
+        from desktop_payload import prepare_session
+        from provision_payload import prepare_provision
+        import yaml
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / 'source.tar.gz'
+            builder.source_archive(archive)
+            extracted = root / 'source'
+            with tarfile.open(archive) as stream:
+                stream.extractall(extracted, filter='data')
+            payload = root / 'payload'
+            inventory = yaml.safe_load((extracted / 'inventory/group_vars/all.yml').read_text())
+            # Exercise the actual packager against only what crosses the VM
+            # boundary; testing against the full checkout hid missing inputs.
+            prepare_session(extracted, payload, inventory)
+            prepare_provision(extracted, payload)
+            self.assertTrue((extracted / 'LICENSE').is_file())
+            self.assertTrue((payload / 'usr/share/cybexos/agent-skills/cybexos/SKILL.md').is_file())
+            helper = payload / 'usr/share/cybexos/provision/scripts/manage-agent-skills'
+            self.assertTrue(helper.is_file())
+            self.assertTrue(helper.stat().st_mode & 0o111)
 
 
 class BuilderInitializationTests(unittest.TestCase):

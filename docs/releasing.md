@@ -24,8 +24,9 @@ validates that the baseline file and checksum sidecar exist on the PXE host.
    provide signing access only to the GitHub-hosted signing job. The PXE
    qualification runner never receives that secret. The `github-pages`
    environment deploys stable repository metadata after release publication.
-3. Configure the required `CYBEXOS_BASELINE_ISO` repository variable and
-   trusted self-hosted PXE runner as described in [the ISO release guide](iso-releases.md).
+3. Keep `CYBEXOS_BASELINE_ISO` set to the verified older ISO and configure the
+   on-demand trusted self-hosted PXE runner as described in
+   [the ISO release guide](iso-releases.md).
 4. Branch protection requires pull requests, up-to-date branches, and the
    GitHub Actions checks `Fedora 44 source contract` and `Image tooling,
    installer fixtures and account isolation`. Admins are subject to the rule;

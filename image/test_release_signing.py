@@ -25,6 +25,8 @@ class RealReleaseSigning(unittest.TestCase):
             work = Path(temporary)
             home = work / 'keyring'
             home.mkdir(mode=0o700)
+            signing_home = work / 'signing-subkey-only'
+            signing_home.mkdir(mode=0o700)
             try:
                 gpg = ['gpg', '--homedir', str(home), '--batch', '--pinentry-mode',
                        'loopback', '--passphrase', '']
@@ -37,6 +39,11 @@ class RealReleaseSigning(unittest.TestCase):
                 key = work / 'fixture.asc'
                 key.write_text(run([*gpg, '--armor', '--export', fingerprint]))
                 armor = public_key(key, fingerprint)
+                # CI receives only the signing subkey, with a primary-key
+                # stub. Exercise that exact custody split in a fresh keyring.
+                subkey = run([*gpg, '--armor', '--export-secret-subkeys', fingerprint])
+                subprocess.run(['gpg', '--homedir', str(signing_home), '--batch', '--import'],
+                               input=subkey, text=True, capture_output=True, check=True)
                 baseurl = 'https://fixtures.invalid/CybexOS/44/x86_64'
                 payload = work / 'payload'
                 for relative, content in channel_payload(baseurl, fingerprint, armor).items():
@@ -65,7 +72,7 @@ cp -a ''' + str(payload) + '''/. %{buildroot}/
                 run(['rpmbuild', '--define', '_topdir ' + str(top), '-bb', str(spec)])
                 package = next(top.rglob('*.rpm'))
                 output = work / 'signed'
-                create_repository([package], output, key, fingerprint, baseurl, home,
+                create_repository([package], output, key, fingerprint, baseurl, signing_home,
                                   'https://github.com/DigitalPals/CybexOS/releases/download/v1.0.0')
                 verify_checksums(output)
                 verify_release(output, fingerprint, work)
@@ -81,8 +88,9 @@ cp -a ''' + str(payload) + '''/. %{buildroot}/
                 with self.assertRaises(subprocess.CalledProcessError):
                     verify_release(output, fingerprint, verify_home)
             finally:
-                subprocess.run(['gpgconf', '--homedir', str(home), '--kill', 'all'],
-                               check=False, capture_output=True)
+                for keyring in (home, signing_home):
+                    subprocess.run(['gpgconf', '--homedir', str(keyring), '--kill', 'all'],
+                                   check=False, capture_output=True)
 
 
 if __name__ == '__main__':
