@@ -74,7 +74,7 @@ qs_live_reconcile_processes() {
       [[ $pid == "$main" ]] && continue
       command=$(qs_live_pid_command "$pid" || true)
       process_cgroup=$(qs_live_pid_cgroup "$pid" || true)
-      uid=$(ps -o uid= -p "$pid" 2>/dev/null | tr -d '[:space:]')
+      uid=$(ps -o uid= -p "$pid" 2>/dev/null | tr -d '[:space:]' || true)
       qs_live_error "extra qs PID $pid: command=${command:-unreadable}; cgroup=${process_cgroup:-unreadable}"
       # Short-lived clients can exit between pgrep and /proc inspection.
       kill -0 "$pid" 2>/dev/null || continue

@@ -1,5 +1,6 @@
 """Source-only safety checks for the real-browser VM qualification path."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 import types
@@ -99,6 +100,48 @@ class UpgradeTests(unittest.TestCase):
 
 
 class InstalledAuditTests(unittest.TestCase):
+    def test_shell_assertions_fail_on_forbidden_state_and_probe_errors(self):
+        # Exercise the generated audit using the same bash -e mode as root_script.
+        # Guest commands are stubs so no host accounts, packages or disks are read.
+        stubs = r'''
+getent() { return "${FIXTURE_GETENT:-2}"; }
+getenforce() { echo Enforcing; }
+findmnt() {
+  if [[ "$*" == *FSTYPE* ]]; then echo btrfs; else
+    echo '/dev/fixture[/root]'; return "${FIXTURE_FINDMNT:-0}"
+  fi
+}
+lsblk() { printf '%s\n' "${FIXTURE_TYPES:-part}"; return "${FIXTURE_LSBLK:-0}"; }
+systemctl() { if [[ "$1" == show ]]; then echo inherit; fi; }
+rpm() { return "${FIXTURE_RPM:-1}"; }
+python3() { cat >/dev/null; echo fixture-audit-complete; }
+test() {
+  if [[ "$1" == '!' && "$2" == '-e' ]]; then return 0; fi
+  builtin test "$@"
+}
+'''
+        cases = [
+            ('plain', False, {}, True),
+            ('encrypted', True, {'FIXTURE_TYPES': 'crypt\npart'}, True),
+            ('live account', False, {'FIXTURE_GETENT': '0'}, False),
+            ('account query error', False, {'FIXTURE_GETENT': '3'}, False),
+            ('gdm installed', False, {'FIXTURE_RPM': '0'}, False),
+            ('package query error', False, {'FIXTURE_RPM': '2'}, False),
+            ('unexpected encryption', False, {'FIXTURE_TYPES': 'crypt\npart'}, False),
+            ('missing encryption', True, {}, False),
+            ('block query error', False, {'FIXTURE_LSBLK': '1'}, False),
+            ('mount query error', False, {'FIXTURE_FINDMNT': '1'}, False),
+        ]
+        for name, encrypted, environment, succeeds in cases:
+            with self.subTest(name=name):
+                script = qualification.installed_audit(encrypted, False, 'us', 'us',
+                                                       'en_US.UTF-8', 'UTC')
+                result = subprocess.run(['bash', '-e', '-s'], input=stubs + script,
+                                        env={**os.environ, **environment}, text=True,
+                                        capture_output=True, timeout=10)
+                self.assertEqual(result.returncode == 0, succeeds, result.stderr)
+                self.assertEqual('fixture-audit-complete' in result.stdout, succeeds)
+
     def test_selected_install_settings_are_checked_in_target_and_desktop(self):
         script = qualification.installed_audit(True, True, 'nl', 'nl', 'nl_NL.UTF-8', 'Europe/Amsterdam')
         self.assertIn('export EXPECTED_KEYBOARD=nl', script)

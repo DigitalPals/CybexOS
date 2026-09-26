@@ -48,13 +48,13 @@ qs_live_reconcile_processes
 
 
 test("live guard inspects successive IPC clients and still requires final quiescence", () => {
-    for (const mode of ["successive", "persistent", "unknown", "managed"]) {
+    for (const mode of ["successive", "vanished", "persistent", "unknown", "managed"]) {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-qs-successors-"));
         try {
             fs.writeFileSync(path.join(directory, "pid"), "222");
             fs.writeFileSync(path.join(directory, "signals"), "");
             const result = spawnSync("bash", ["-c", String.raw`
-set -eu
+set -euo pipefail
 source "$1"
 qs_live_main_pid() { echo 111; }
 qs_live_control_group() { echo /fixture/quickshell.service; }
@@ -69,7 +69,10 @@ qs_live_pid_cgroup() {
   else echo /fixture/cybexos-welcome.service; fi
 }
 id() { echo 1000; }
-ps() { echo 1000; }
+ps() {
+  if [[ $QS_TEST_MODE == vanished ]]; then : > "$QS_TEST_DIR/pid"; return 1; fi
+  echo 1000
+}
 pgrep() { echo 111; cat "$QS_TEST_DIR/pid"; }
 kill() {
   if [[ $1 == -0 ]]; then [[ $2 == "$(cat "$QS_TEST_DIR/pid")" ]]; return; fi
@@ -90,14 +93,14 @@ qs_live_reconcile_processes
                 encoding: "utf8",
                 env: {...process.env, QS_TEST_DIR: directory, QS_TEST_MODE: mode},
             });
-            assert.equal(result.status, mode === "successive" ? 0 : 1, result.stderr);
+            assert.equal(result.status, ["successive", "vanished"].includes(mode) ? 0 : 1, result.stderr);
             assert.equal(fs.readFileSync(path.join(directory, "signals"), "utf8"), "");
             if (mode === "successive") {
                 assert.match(result.stderr, /extra qs PID 222: command=qs ipc/);
                 assert.match(result.stderr, /extra qs PID 333: command=qs ipc/);
                 assert.match(result.stderr, /extra qs PID 444: command=qs ipc/);
                 assert.match(result.stderr, /cgroup=\/fixture\/cybexos-welcome.service/);
-            } else {
+            } else if (mode !== "vanished") {
                 assert.match(result.stderr, /expected 111 to be the sole qs PID/);
             }
         } finally {

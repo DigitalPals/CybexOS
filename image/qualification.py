@@ -45,20 +45,33 @@ def root_script(vm, script, password, timeout=120):
 
 INSTALLED_AUDIT = r'''
 trap 'printf "Installed audit shell check failed at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
-! getent passwd liveuser
+if getent passwd liveuser; then
+  echo 'Installed audit failed: liveuser still exists' >&2
+  exit 1
+else
+  test "$?" -eq 2
+fi
 for path in /etc/sudoers.d/cybexos-live /etc/polkit-1/rules.d/49-cybexos-live.rules /usr/lib/systemd/system/cybexos-live.service; do
   test ! -e "$path"
 done
 test "$(getenforce)" = Enforcing
 test "$(findmnt -n -o FSTYPE /)" = btrfs
+root_source=$(findmnt -n -o SOURCE /)
+root_types=$(lsblk -s -n -o TYPE "${root_source%%\[*}")
 if [ "${EXPECTED_ENCRYPTED}" = true ]; then
-  lsblk -s -n -o TYPE "$(findmnt -n -o SOURCE / | cut -d '[' -f 1)" | grep -qx crypt
-else
-  ! lsblk -s -n -o TYPE "$(findmnt -n -o SOURCE / | cut -d '[' -f 1)" | grep -qx crypt
+  grep -qx crypt <<< "$root_types"
+elif grep -qx crypt <<< "$root_types"; then
+  echo 'Installed audit failed: plain installation uses encryption' >&2
+  exit 1
 fi
 systemctl is-active --quiet sddm.service
 test "$(systemctl show sddm.service -p KeyringMode --value)" = inherit
-! rpm -q gdm >/dev/null
+if rpm -q gdm >/dev/null; then
+  echo 'Installed audit failed: GDM is installed' >&2
+  exit 1
+else
+  test "$?" -eq 1
+fi
 if [ "${REQUIRE_SECURE_SUDO}" = true ]; then
   grep -qx 'passwordless_wheel: false' /etc/cybexos/config.yml
   test ! -e /etc/sudoers.d/10-wheel-nopasswd
