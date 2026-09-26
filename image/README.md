@@ -10,7 +10,9 @@ installed-account defaults, cold reboot, logout/crash/manager-restart recovery,
 and encrypted-keyring fallback cases; see the
 [installation audit](INSTALL-AUDIT-2026-09-25.md). Changes made after that
 qualification have source-level checks only until a new ISO is built and
-qualified. Earlier implementation and audit notes are historical: the
+qualified. Current lifecycle validation is tracked in the
+[September 26 qualification report](QUALIFICATION-2026-09-26-LIFECYCLE.md).
+Earlier implementation and audit notes are historical: the
 [September 23 implementation](IMPLEMENTATION-2026-09-23.md) and
 [September 23 audit](AUDIT-2026-09-23.md).
 
@@ -177,9 +179,9 @@ services that start after `graphical-session.target`.
 The release tooling prepares immutable-tagged desktop RPM releases and signed
 repository metadata for
 [`https://digitalpals.github.io/CybexOS/44/x86_64`](https://digitalpals.github.io/CybexOS/44/x86_64).
-The public channel configuration is `image/channels/stable.json`. The tooling
-is prepared, but Pages is empty pending a configured trusted PXE runner,
-baseline ISO and passing release gates; see the
+The public channel configuration is `image/channels/stable.json`. The signing
+environment and baseline ISO are configured; Pages remains empty until a
+reviewed release passes its gates using an on-demand PXE runner. See the
 [release instructions](../docs/releasing.md). The repository code is MIT
 licensed; a separate third-party software and asset redistribution audit is
 still required before public distribution. Until publication and channel
