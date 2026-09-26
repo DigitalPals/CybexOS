@@ -1,5 +1,6 @@
 """Source-only safety checks for the real-browser VM qualification path."""
 from pathlib import Path
+import json
 import os
 import subprocess
 import tempfile
@@ -70,6 +71,30 @@ class BrowserTransportTests(unittest.TestCase):
 
 
 class UpgradeTests(unittest.TestCase):
+    def test_preference_fixture_changes_effective_default_and_rejects_invalid_position(self):
+        for initial, expected in (({}, 'bottom'), ({'position': 'top'}, 'bottom'),
+                                  ({'position': 'bottom'}, 'top'), ({'position': 'invalid'}, None)):
+            with self.subTest(initial=initial), tempfile.TemporaryDirectory() as directory:
+                home = Path(directory)
+                kitty = home / '.config/kitty/cybexos.conf'
+                settings = home / '.config/cybexos/shell.json'
+                kitty.parent.mkdir(parents=True)
+                settings.parent.mkdir(parents=True)
+                kitty.write_text('font_size 12\n')
+                settings.write_text(json.dumps(initial))
+                def root_script(vm, script, password):
+                    guest = script.split("python3 - <<'PY'\n", 1)[1].split('\nPY\n', 1)[0]
+                    guest = guest.replace("Path('/home/qualification')", f'Path({directory!r})')
+                    return subprocess.run(['python3', '-'], input=guest, text=True,
+                                          capture_output=True, check=True, timeout=10)
+                if expected is None:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        upgrade.prepare_user_choices(None, 'fixture-password', root_script)
+                else:
+                    self.assertEqual(upgrade.prepare_user_choices(None, 'fixture-password', root_script), expected)
+                    self.assertEqual(json.loads(settings.read_text())['position'], expected)
+                    self.assertIn(upgrade.MANAGED_MARKER, kitty.read_text())
+
     def test_user_preference_fixture_is_valid_guest_python(self):
         captured = []
         def root_script(vm, script, password):

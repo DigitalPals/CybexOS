@@ -24,8 +24,10 @@ assert marker not in original
 managed.write_bytes(original + marker)
 settings = home / '.config/cybexos/shell.json'
 data = json.loads(settings.read_text())
-assert data.get('position') in ('top', 'bottom')
-data['position'] = 'bottom' if data['position'] == 'top' else 'top'
+# A pristine seed can omit position; the desktop's effective default is top.
+position = data.get('position', 'top')
+assert position in ('top', 'bottom')
+data['position'] = 'bottom' if position == 'top' else 'top'
 settings.write_text(json.dumps(data, indent=2) + '\n')
 (home / 'qualification-personal-marker').write_text('qualification-preserve\n')
 print(data['position'])
