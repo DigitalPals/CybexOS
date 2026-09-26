@@ -246,7 +246,7 @@ def reboot_installed(vm, password, root_script, expect_desktop=True):
         vm.console.close()
     vm.start(user='qualification')
     vm.unlock_disk(password)
-    vm.wait_ssh(setup=False)
+    vm.wait_ssh(setup=False, redactions=(password,))
     if expect_desktop:
         vm.wait_desktop()
     wait_login_state(vm, desktop=expect_desktop, stable_for=0 if expect_desktop else 10)

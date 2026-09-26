@@ -217,7 +217,7 @@ def boot_installed(vm, password, encrypted, *, autologin=None):
     if encrypted:
         vm.unlock_disk(password)
     try:
-        vm.wait_ssh(timeout=12, setup=False)
+        vm.wait_ssh(timeout=12, setup=False, redactions=(password,))
     except RuntimeError:
         vm.bootstrap_installed_ssh(password)
     focus_installed_desktop(vm, password, autologin)

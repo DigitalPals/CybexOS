@@ -94,6 +94,63 @@ class DiskPromptTests(unittest.TestCase):
                 typing.assert_not_called()
 
 
+class SshTimeoutDiagnosticsTests(unittest.TestCase):
+    def test_timeout_reports_redacted_ssh_and_ocr_and_removes_frame(self):
+        for ocr_fails in (False, True):
+            with self.subTest(ocr_fails=ocr_fails), tempfile.TemporaryDirectory() as directory:
+                vm = TestVM(directory)
+                vm.ssh = ['ssh', 'fixture']
+                vm.key.with_suffix('.pub').write_text('ssh-ed25519 fixture')
+                qmp = Mock()
+                def capture_frame(command, arguments):
+                    self.assertEqual(command, 'screendump')
+                    Path(arguments['filename']).write_bytes(b'transient private-fixture frame')
+                qmp.call.side_effect = capture_frame
+                ocr = (subprocess.TimeoutExpired('tesseract private-fixture', 5) if ocr_fails
+                       else SimpleNamespace(stdout='Emergency console private-fixture'))
+                with patch.object(vm, 'alive'), patch.object(vm, 'type') as typing, \
+                        patch.object(vm, 'keypress') as keys, \
+                        patch('vm_testing.time.monotonic', side_effect=[0, 1, 301]), \
+                        patch('vm_testing.time.sleep'), \
+                        patch('vm_testing.subprocess.run', return_value=SimpleNamespace(
+                            returncode=255, stderr='Connection refused private-fixture')), \
+                        patch('vm_testing.Qmp', return_value=qmp), \
+                        patch('vm_testing.shutil.which', return_value='/fixture/tesseract'), \
+                        patch('vm_testing.run', side_effect=ocr if ocr_fails else None,
+                              return_value=ocr) as recognize:
+                    with self.assertRaisesRegex(RuntimeError, 'readiness deadline') as caught:
+                        vm.wait_ssh(setup=False, redactions=('private-fixture',))
+                message = str(caught.exception)
+                self.assertIn('SSH exit 255: Connection refused [redacted]', message)
+                self.assertNotIn('private-fixture', message)
+                self.assertIn('Unavailable (TimeoutExpired:' if ocr_fails else 'Emergency console', message)
+                self.assertEqual(recognize.call_args.kwargs['timeout'], 5)
+                self.assertFalse((vm.work / 'prompt.png').exists())
+                qmp.stream.close.assert_called_once()
+                qmp.socket.close.assert_called_once()
+                typing.assert_not_called()
+                keys.assert_not_called()
+
+    def test_screen_capture_connection_failure_removes_frame(self):
+        with tempfile.TemporaryDirectory() as directory:
+            vm = TestVM(directory)
+            frame = vm.work / 'prompt.png'
+            frame.write_bytes(b'transient frame')
+            with patch('vm_testing.shutil.which', return_value='/fixture/tesseract'), \
+                    patch('vm_testing.Qmp', side_effect=OSError('QMP unavailable')):
+                with self.assertRaisesRegex(OSError, 'QMP unavailable'):
+                    vm.screen_text(timeout=5)
+            self.assertFalse(frame.exists())
+
+    def test_cold_reboot_passes_password_redaction_without_retrying_login(self):
+        vm = Mock()
+        with patch.object(login_qualification, 'wait_login_state'):
+            login_qualification.reboot_installed(vm, 'private-fixture', Mock())
+        vm.unlock_disk.assert_called_once_with('private-fixture')
+        vm.wait_ssh.assert_called_once_with(setup=False, redactions=('private-fixture',))
+        vm.type.assert_not_called()
+
+
 class KeyringProbeTests(unittest.TestCase):
     def test_synthetic_secret_never_becomes_an_ssh_argument(self):
         vm = SimpleNamespace(ssh=['ssh', 'disposable-fixture'])

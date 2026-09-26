@@ -190,7 +190,8 @@ class InstalledAuditTests(unittest.TestCase):
                     vm.unlock_disk.assert_called_once_with('fixture-password')
                 else:
                     vm.unlock_disk.assert_not_called()
-                vm.wait_ssh.assert_called_once_with(timeout=12, setup=False)
+                vm.wait_ssh.assert_called_once_with(timeout=12, setup=False,
+                                                   redactions=('fixture-password',))
                 focus.assert_called_once_with(vm, 'fixture-password', autologin)
 
     def test_generated_timezone_check_accepts_file_aliases_but_rejects_other_zone(self):

@@ -123,20 +123,25 @@ class TestVM:
         self.ssh_ready = False
         self.qmp_path = self.work / "qmp.sock"
 
-    def screen_text(self):
+    def screen_text(self, timeout=20):
         """Read a disposable guest screenshot; never retain password entry frames."""
-        if not shutil.which("tesseract"):
-            raise RuntimeError("Encrypted boot qualification requires tesseract for prompt recognition")
         screenshot = self.work / "prompt.png"
-        qmp = Qmp(str(self.qmp_path))
+        qmp = None
         try:
+            if not shutil.which("tesseract"):
+                raise RuntimeError("Encrypted boot qualification requires tesseract for prompt recognition")
+            qmp = Qmp(str(self.qmp_path))
+            qmp.socket.settimeout(min(10, timeout))
             qmp.call("screendump", {"filename": str(screenshot), "format": "png"})
             return run(["tesseract", str(screenshot), "stdout", "--psm", "11"],
-                       text=True, capture_output=True, timeout=20).stdout
+                       text=True, capture_output=True, timeout=timeout).stdout
         finally:
-            qmp.stream.close()
-            qmp.socket.close()
             screenshot.unlink(missing_ok=True)
+            if qmp is not None:
+                try:
+                    qmp.stream.close()
+                finally:
+                    qmp.socket.close()
 
     def unlock_disk(self, password, timeout=180):
         """Type once, only after recognizing the disk-unlock prompt.
@@ -223,7 +228,7 @@ class TestVM:
             qmp.stream.close()
             qmp.socket.close()
 
-    def wait_ssh(self, timeout=300, setup=True, setup_password=None):
+    def wait_ssh(self, timeout=300, setup=True, setup_password=None, *, redactions=()):
         """Poll SSH readiness and bootstrap only inside a recognized terminal.
 
         No guest debug agent is shipped. Keyboard injection remains the transport
@@ -232,6 +237,7 @@ class TestVM:
         """
         deadline, next_attempt, attempt = time.monotonic() + timeout, 0, 0
         desktop_observed = False
+        last_error = "No SSH attempt completed"
         public = self.key.with_suffix(".pub").read_text().strip()
         command = "mkdir -p ~/.ssh; printf '%s\\n' " + shlex.quote(public)
         command += " > ~/.ssh/authorized_keys; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys; "
@@ -244,11 +250,21 @@ class TestVM:
         else:
             command += "sudo restorecon -RF ~/.ssh; sudo systemctl start sshd; sudo firewall-cmd --add-service=ssh"
         command = "HISTFILE=/dev/null; set +o history; " + command + "; exit\n"
-        while time.monotonic() < deadline:
+        while (remaining := deadline - time.monotonic()) > 0:
             self.alive()
-            if subprocess.run([*self.ssh, "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
-                self.ssh_ready = True
-                return
+            try:
+                result = subprocess.run([*self.ssh, "true"], stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.PIPE, text=True, timeout=min(10, remaining))
+            except subprocess.TimeoutExpired as error:
+                detail = error.stderr or ""
+                if isinstance(detail, bytes):
+                    detail = detail.decode(errors="replace")
+                last_error = "SSH probe timed out: " + detail
+            else:
+                if result.returncode == 0:
+                    self.ssh_ready = True
+                    return
+                last_error = f"SSH exit {result.returncode}: {getattr(result, 'stderr', '') or ''}"
             if setup and time.monotonic() >= next_attempt and self.qmp_path.exists():
                 # Typing even public shell commands at GRUB can enter its
                 # editor and prevent boot. Require an actual desktop surface;
@@ -284,7 +300,20 @@ class TestVM:
                     self.keypress("meta_l+q")
                 next_attempt = time.monotonic() + 15
             time.sleep(1)
-        raise RuntimeError("SSH/desktop readiness deadline exceeded; inspect VM through vm-control")
+        # Collect one read-only frame after the unchanged readiness deadline.
+        # OCR/QMP failures must not hide the SSH failure or retain the frame.
+        try:
+            screen = self.screen_text(timeout=5)
+        except Exception as error:
+            screen = f"Unavailable ({type(error).__name__}: {error})"
+        def redacted(value, limit):
+            for secret in (setup_password, *redactions):
+                if secret:
+                    value = value.replace(secret, "[redacted]")
+            return value.strip()[-limit:]
+        raise RuntimeError("SSH/desktop readiness deadline exceeded; "
+                           f"last SSH: {redacted(last_error, 1800)}; "
+                           f"screen OCR: {redacted(screen, 2200)}")
 
     def bootstrap_installed_ssh(self, password, timeout=120):
         """Use a verified text console, then switch its keymap to US for setup.
@@ -372,7 +401,8 @@ class TestVM:
         command += "sudo -n restorecon -RF /home/qualification/.ssh; sudo -n systemctl start sshd; "
         command += "sudo -n firewall-cmd --add-service=ssh; exit\n"
         self.type(command)
-        self.wait_ssh(timeout=max(15, int(deadline - time.monotonic())), setup=False)
+        self.wait_ssh(timeout=max(15, int(deadline - time.monotonic())), setup=False,
+                      redactions=(password,))
 
     def _wait_password_prompt(self, deadline):
         while time.monotonic() < deadline:
