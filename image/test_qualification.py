@@ -125,6 +125,18 @@ class UpgradeTests(unittest.TestCase):
 
 
 class InstalledAuditTests(unittest.TestCase):
+    def test_python_traceback_survives_bounded_shell_failure_output(self):
+        trap = next(line for line in qualification.INSTALLED_AUDIT.splitlines()
+                    if line.startswith('trap '))
+        script = trap + "\npython3 - <<'PY'\n#" + 'long fixture comment ' * 300
+        script += "\nraise AssertionError('specific audit assertion')\nPY\n"
+        result = subprocess.run(['bash', '-e', '-s'], input=script, text=True,
+                                capture_output=True, timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('AssertionError: specific audit assertion', result.stderr[-1000:])
+        self.assertIn('Installed audit shell check failed at line', result.stderr)
+        self.assertNotIn('long fixture comment', result.stderr)
+
     def test_shell_assertions_fail_on_forbidden_state_and_probe_errors(self):
         # Exercise the generated audit using the same bash -e mode as root_script.
         # Guest commands are stubs so no host accounts, packages or disks are read.

@@ -44,7 +44,7 @@ def root_script(vm, script, password, timeout=120):
 
 
 INSTALLED_AUDIT = r'''
-trap 'printf "Installed audit shell check failed at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
+trap 'printf "Installed audit shell check failed at line %s\n" "$LINENO" >&2' ERR
 if getent passwd liveuser; then
   echo 'Installed audit failed: liveuser still exists' >&2
   exit 1
@@ -84,40 +84,40 @@ import re
 import subprocess
 encrypted=os.environ['EXPECTED_ENCRYPTED'] == 'true'
 policy=json.loads(Path('/etc/cybexos/login.json').read_text())
-assert policy == {'version':1, 'user':'qualification', 'autologin':encrypted, 'live':False}
+assert policy == {'version':1, 'user':'qualification', 'autologin':encrypted, 'live':False}, 'Installed login policy differs'
 config=configparser.ConfigParser()
 config.read('/etc/sddm.conf')
-assert config.get('Autologin','User',fallback='') == ('qualification' if encrypted else '')
+assert config.get('Autologin','User',fallback='') == ('qualification' if encrypted else ''), 'SDDM login user differs'
 if encrypted:
-    assert config.get('Autologin','Session') == 'hyprland-quickshell.desktop'
-    assert not config.getboolean('Autologin','Relogin')
+    assert config.get('Autologin','Session') == 'hyprland-quickshell.desktop', 'SDDM session differs'
+    assert not config.getboolean('Autologin','Relogin'), 'SDDM permits repeated autologin'
 marker=Path('/run/cybexos-login/autologin-used')
 if encrypted:
-    assert marker.exists() and marker.stat().st_uid == 0
-    assert not marker.stat().st_mode & 0o077
+    assert marker.exists() and marker.stat().st_uid == 0, 'Autologin marker missing or not root-owned'
+    assert not marker.stat().st_mode & 0o077, 'Autologin marker permissions are too broad'
 plymouth=configparser.ConfigParser()
 plymouth.read('/etc/plymouth/plymouthd.conf')
-assert plymouth.get('Daemon','Theme') == 'cybex'
+assert plymouth.get('Daemon','Theme') == 'cybex', 'Plymouth theme differs'
 contract=json.loads(Path('/usr/share/cybexos/desktop-contract.json').read_text())
 settings=json.loads(Path('/home/qualification/.config/cybexos/shell.json').read_text())
 for key,value in contract['shell'].items():
     assert settings.get(key) == value, f'Desktop default mismatch: {key}'
-assert not Path('/home/qualification/.config/cybexos/hypr/user.lua').exists()
-assert Path('/home/qualification/.local/state/cybexos/offline-apps-seeded').exists()
+assert not Path('/home/qualification/.config/cybexos/hypr/user.lua').exists(), 'Unexpected personal Hyprland override'
+assert Path('/home/qualification/.local/state/cybexos/offline-apps-seeded').exists(), 'Offline application seed marker missing'
 expected_locale=os.environ['EXPECTED_LOCALE']
 expected_timezone=os.environ['EXPECTED_TIMEZONE']
 expected_keyboard=os.environ['EXPECTED_KEYBOARD']
 expected_boot_keymap=os.environ['EXPECTED_BOOT_KEYMAP']
 locale=dict(line.split('=', 1) for line in Path('/etc/locale.conf').read_text().splitlines()
             if line.startswith('LANG='))
-assert locale['LANG'].strip('"') == expected_locale
-assert Path('/etc/localtime').resolve() == (Path('/usr/share/zoneinfo') / expected_timezone).resolve()
+assert locale['LANG'].strip('"') == expected_locale, 'Installed locale differs'
+assert Path('/etc/localtime').resolve() == (Path('/usr/share/zoneinfo') / expected_timezone).resolve(), 'Installed timezone differs'
 console=dict(line.split('=', 1) for line in Path('/etc/vconsole.conf').read_text().splitlines()
              if line.startswith('KEYMAP='))
-assert console['KEYMAP'].strip('"') == expected_boot_keymap
+assert console['KEYMAP'].strip('"') == expected_boot_keymap, 'Installed console keymap differs'
 localectl=subprocess.check_output(['localectl', 'status'], text=True,
                                  env={**os.environ, 'LC_ALL': 'C'})
-assert re.search(r'^\s*X11 Layout:\s*' + re.escape(expected_keyboard) + r'\s*$', localectl, re.M)
+assert re.search(r'^\s*X11 Layout:\s*' + re.escape(expected_keyboard) + r'\s*$', localectl, re.M), 'Installed X11 keyboard differs'
 CHECK
 '''
 
