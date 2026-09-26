@@ -9,6 +9,7 @@ import tempfile
 import tarfile
 from types import SimpleNamespace
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 from build_support import (builder_cloud_config, checksum_entries, deliver_artifacts,
@@ -170,6 +171,74 @@ class FirmwareTests(unittest.TestCase):
 
 
 class PublisherTests(unittest.TestCase):
+    def fixture_client(self, responses, timeout=180):
+        clock = [0]
+        methods = []
+        responses = iter(responses)
+        def request(method):
+            methods.append(method)
+            clock[0] += 1
+            response = next(responses)
+            if isinstance(response, Exception):
+                raise response
+            return response
+        def sleep(seconds):
+            clock[0] += seconds
+        client = IVentoy('http://127.0.0.1:26000/iventoy/json', DEFAULT_CONTRACT,
+                         request=request, timeout=timeout, sleep=sleep, clock=lambda: clock[0])
+        return client, methods, clock
+
+    def test_accepted_refresh_retries_only_status_timeouts(self):
+        client, methods, _ = self.fixture_client([
+            {'status': 'running'}, {'result': 'success'}, TimeoutError('timed out'),
+            urllib.error.URLError(TimeoutError('timed out')), {'status': 'refreshing'},
+            {'status': 'running'}, [{'name': 'fixture.iso'}],
+        ])
+        client.refresh('fixture.iso')
+        self.assertEqual(methods.count('refresh_img_list'), 1)
+        self.assertEqual(methods.count('query_status'), 5)
+        self.assertEqual(methods[-1], 'get_img_tree')
+
+    def test_polling_uses_one_deadline_for_the_whole_refresh(self):
+        client, methods, clock = self.fixture_client([
+            {'status': 'refreshing'}, {'status': 'running'}, {'result': 'success'},
+            TimeoutError('timed out')], timeout=8)
+        with self.assertRaisesRegex(RuntimeError, 'deadline'):
+            client.refresh('fixture.iso')
+        self.assertEqual(clock[0], 8)
+        self.assertEqual(methods, ['query_status', 'query_status', 'refresh_img_list', 'query_status'])
+
+    def test_ambiguous_refresh_timeout_is_never_repeated(self):
+        client, methods, _ = self.fixture_client([{'status': 'running'}, TimeoutError('timed out')])
+        with self.assertRaises(TimeoutError):
+            client.refresh('fixture.iso')
+        self.assertEqual(methods, ['query_status', 'refresh_img_list'])
+
+    def test_status_json_and_other_transport_errors_are_not_retried(self):
+        for error in (json.JSONDecodeError('bad JSON', '!', 0),
+                      urllib.error.URLError(ConnectionRefusedError('refused'))):
+            with self.subTest(error=type(error).__name__):
+                client, methods, _ = self.fixture_client([
+                    {'status': 'running'}, {'result': 'success'}, error])
+                with self.assertRaises(type(error)):
+                    client.refresh('fixture.iso')
+                self.assertEqual(methods, ['query_status', 'refresh_img_list', 'query_status'])
+
+    def test_timeout_recovery_still_requires_running_pxe_and_expected_filename(self):
+        for remaining, message in (([{'status': 'stopped'}], 'not running'),
+                                   ([{'status': 'running'}, [{'name': 'other.iso'}]], 'published filename')):
+            client, _, _ = self.fixture_client([
+                {'status': 'running'}, {'result': 'success'}, TimeoutError('timed out'), *remaining])
+            with self.assertRaisesRegex(RuntimeError, message):
+                client.refresh('fixture.iso')
+
+    def test_http_request_timeout_cannot_exceed_remaining_deadline(self):
+        client = IVentoy('http://127.0.0.1:26000/iventoy/json', DEFAULT_CONTRACT, clock=lambda: 5)
+        with patch('pxe_publish.urllib.request.urlopen', side_effect=TimeoutError) as request:
+            with self.assertRaises(TimeoutError):
+                client._query('query_status', 8)
+        self.assertEqual(request.call_args.kwargs['timeout'], 3)
+
     def test_refresh_polls_known_iventoy_contract_and_verifies_tree(self):
         responses = iter([{'status': 'running'}, {'result': 'success'}, {'status': 'refreshing'}, {'status': 'running'}, [{'name': 'fixture.iso'}]])
         methods = []
