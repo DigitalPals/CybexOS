@@ -69,3 +69,82 @@ test("history is bounded and reboot or long disconnection starts a new series", 
     assert.equal(H.historyAppend(history, s, 900000).length, 1);
     assert.equal(history[0].network[0].name, "eth0");
 });
+test("readings warn at their thresholds and load is judged per logical CPU", () => {
+    assert.equal(H.level(null), "unknown");
+    assert.equal(H.level(84), "ok");
+    assert.equal(H.level(85), "warn");
+    assert.equal(H.level(95), "critical");
+    assert.equal(H.level(74, "celsius"), "ok");
+    assert.equal(H.level(75, "celsius"), "warn");
+    assert.equal(H.level(90, "celsius"), "critical");
+    const s = sample();
+    s.meta.cores = 1;
+    assert.equal(H.metricLevel(s, { metric: "load" }), "critical");
+    s.meta.cores = 2;
+    assert.equal(H.metricLevel(s, { metric: "load" }), "ok");
+    assert.equal(H.metricLevel(s, { metric: "cpu" }), "ok");
+    assert.equal(H.metricLevel(s, { metric: "diskFree", mount: "/" }), "ok");
+    assert.equal(H.metricLevel(s, { metric: "rx" }), "ok");
+    assert.equal(H.metricLevel(null, { metric: "cpu" }), "unknown");
+});
+test("the dashboard opens on the reading the menubar shows", () => {
+    const views = H.VIEWS.map(v => v.value);
+    for (const { value } of H.METRICS)
+        assert.ok(views.includes(H.viewFor(value)), value);
+    assert.equal(H.viewFor("memoryFree"), "memory");
+    assert.equal(H.viewFor("diskFree"), "storage");
+    assert.equal(H.viewFor("temperature"), "temperature");
+    assert.equal(H.viewFor("rx"), "cpu");
+});
+test("chart windows grow with history and rate scales use whole binary steps", () => {
+    assert.equal(H.chartSpan(0), 120000);
+    assert.equal(H.chartSpan(121000), 180000);
+    assert.equal(H.chartSpan(3600000), 600000);
+    assert.equal(H.chartCeiling(null), 1024);
+    assert.equal(H.chartCeiling(530000), 1048576);
+    assert.equal(H.chartCeiling(1048576), 1048576);
+    assert.deepEqual(H.summary([{ value: 10 }, { value: null }, { value: 30 }]),
+        { average: 20, peak: 30, low: 10 });
+    assert.equal(H.summary([{ value: null }]), null);
+});
+test("filesystems collapse bind mounts, drop firmware stores and lead with the selection", () => {
+    const s = sample();
+    s.storage = [
+        { device: "tank/ROOT", type: "zfs", mount: "/", total: 10, free: 5, percent: 50 },
+        { device: "efivarfs", type: "efivarfs", mount: "/sys/firmware/efi/efivars", total: 1, free: 0, percent: 78 },
+        { device: "/dev/loop0", type: "btrfs", mount: "/var/lib/incus/devices/a/config.mount", total: 4, free: 1, percent: 79 },
+        { device: "/dev/loop0", type: "btrfs", mount: "/var/lib/incus/pool", total: 4, free: 1, percent: 79 }
+    ];
+    assert.deepEqual(H.storageRows(s, "/").map(d => d.mount), ["/", "/var/lib/incus/pool"]);
+    assert.deepEqual(H.storageRows(s, "/var/lib/incus/devices/a/config.mount").map(d => d.mount),
+        ["/var/lib/incus/devices/a/config.mount", "/"]);
+    assert.deepEqual(H.storageRows(null, "/"), []);
+});
+test("repeated sensor names identify their chip and sort hottest first", () => {
+    const s = sample();
+    s.temperatures = [{ name: "nvme · Composite", celsius: 30 }, { name: "k10temp · Tctl", celsius: 58 },
+        { name: "nvme · Composite", celsius: 27 }];
+    assert.deepEqual(H.sensorRows(s).map(t => t.name),
+        ["k10temp · Tctl", "nvme 1 · Composite", "nvme 2 · Composite"]);
+});
+test("interfaces list the default route, then addressed, then busy links", () => {
+    const s = sample();
+    s.network.push({ name: "veth0", addresses: [], rx: 5000000, tx: 0 });
+    assert.deepEqual(H.interfaceRows(s).map(n => n.name), ["eth0", "docker0", "veth0"]);
+});
+test("relative ages and compact rates stay short", () => {
+    assert.equal(H.ago(2000), "just now");
+    assert.equal(H.ago(42000), "42s ago");
+    assert.equal(H.ago(125000), "2 min ago");
+    assert.equal(H.ago(7200000), "2 h ago");
+    assert.equal(H.ago(null), "");
+    assert.equal(H.compactRate(900), "900 B/s");
+    assert.equal(H.compactRate(425984), "416 K/s");
+    assert.equal(H.compactRate(1300000), "1.2 M/s");
+    assert.equal(H.compactRate(null), "—");
+});
+test("history keeps the hottest reading for the temperature chart", () => {
+    const [point] = H.historyAppend([], sample(), 1000);
+    assert.equal(point.temperature, 54);
+    assert.equal(point.cpu, 25);
+});

@@ -24,10 +24,13 @@ Singleton {
     readonly property bool busy: worker.running && updatedAt === 0
     readonly property bool stale: sample !== null && (error !== "" || !worker.running
         || now - updatedAt > Math.max(15000, cadence * 3000))
-    readonly property string age: updatedAt > 0
-        ? Math.max(0, Math.floor((now - updatedAt) / 1000)) + "s ago" : "No readings yet"
-    readonly property string status: !host ? "Set up SSH" : error ? "Disconnected"
-        : stale ? "Stale" : sample ? "Connected" : "Connecting…"
+    readonly property string age: updatedAt > 0 ? Helpers.ago(now - updatedAt) : "No readings yet"
+    // One connection state for the chip, the dashboard and IPC. An error wins
+    // over retained readings: they stay on screen, marked as old.
+    readonly property string connection: !host ? "setup" : error ? "offline"
+        : stale ? "stale" : sample ? "live" : "connecting"
+    readonly property string status: ({ setup: "Set up SSH", offline: "Disconnected",
+        stale: "Stale", live: "Connected", connecting: "Connecting…" })[connection]
     readonly property string barValue: Helpers.metric(sample, options)
     readonly property var selectedNetwork: Helpers.network(sample, options.interface)
 
@@ -84,8 +87,8 @@ Singleton {
     IpcHandler {
         target: "remoteServer"
         function status(): string {
-            return JSON.stringify({ host: root.host, label: root.label, status: root.status,
-                updatedAt: root.updatedAt, stale: root.stale, error: root.error,
+            return JSON.stringify({ host: root.host, label: root.label, connection: root.connection,
+                status: root.status, updatedAt: root.updatedAt, stale: root.stale, error: root.error,
                 cadence: root.cadence, watchers: root.watchers, running: worker.running,
                 metric: root.options.metric, value: root.barValue, sample: root.sample });
         }
