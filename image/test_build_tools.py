@@ -1,9 +1,12 @@
 """Source-only fixtures: no ISO filesystem, QEMU process or PXE server is used."""
 import hashlib
+import importlib.machinery
+import importlib.util
 import json
 import os
 from pathlib import Path
 import tempfile
+import tarfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -12,6 +15,32 @@ from build_support import (builder_cloud_config, checksum_entries, deliver_artif
                            select_firmware, wait_for_builder_initialization)
 from download_cache import import_cache, merge_cache, verified_entries
 from pxe_publish import DEFAULT_CONTRACT, IVentoy, publish, staging_parent, validate_status
+
+
+class SourceArchiveTests(unittest.TestCase):
+    def test_archived_source_can_package_shared_session_and_provisioning(self):
+        import yaml
+        from desktop_payload import prepare_session
+        from provision_payload import prepare_provision
+
+        loader = importlib.machinery.SourceFileLoader('image_builder', str(Path(__file__).with_name('build')))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        builder = importlib.util.module_from_spec(spec)
+        loader.exec_module(builder)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / 'source.tar.gz'
+            builder.source_archive(archive)
+            source = root / 'source'
+            with tarfile.open(archive) as stream:
+                stream.extractall(source, filter='data')
+            payload = root / 'payload'
+            inventory = yaml.safe_load((source / 'inventory/group_vars/all.yml').read_text())
+            prepare_session(source, payload, inventory)
+            prepare_provision(source, payload)
+            vendor = payload / 'usr/share/cybexos'
+            self.assertTrue((vendor / 'agent-skills/cybexos/SKILL.md').is_file())
+            self.assertTrue(os.access(vendor / 'provision/scripts/manage-agent-skills', os.X_OK))
 
 
 class BuilderInitializationTests(unittest.TestCase):
