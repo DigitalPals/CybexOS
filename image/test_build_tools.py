@@ -4,13 +4,14 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import socket
 from pathlib import Path
 import tempfile
 import tarfile
 from types import SimpleNamespace
 import unittest
 import urllib.error
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from build_support import (builder_cloud_config, checksum_entries, deliver_artifacts,
                            select_firmware, wait_for_builder_initialization)
@@ -309,6 +310,91 @@ class PublisherTests(unittest.TestCase):
 
 
 class QualificationSourceTests(unittest.TestCase):
+    def test_long_artifact_paths_use_bindable_private_qmp_runtime_across_boots(self):
+        from vm_testing import TestVM, poweroff_guest
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / ('a' * 80) / ('b' * 80)
+            root.mkdir(parents=True)
+            vm = TestVM(root, firmware='bios')
+            vm.owned = True
+            sockets = []
+            def launch(arguments, **kwargs):
+                option = arguments[arguments.index('-qmp') + 1]
+                path = option.removeprefix('unix:').split(',')[0]
+                connection = socket.socket(socket.AF_UNIX)
+                connection.bind(path)  # Real kernel pathname-length check.
+                sockets.append(connection)
+                process = Mock(pid=12345)
+                process.poll.return_value = None
+                def finish(*args, **kwargs):
+                    connection.close()
+                    process.poll.return_value = 0
+                    return 0
+                process.wait.side_effect = finish
+                process.terminate.side_effect = finish
+                return process
+            try:
+                with patch('vm_testing.subprocess.Popen', side_effect=launch), \
+                        patch.dict(os.environ, {'TMPDIR': str(root)}):
+                    paths = []
+                    for poweroff in (True, False):
+                        vm.start()
+                        runtime = vm.runtime
+                        paths.append(runtime)
+                        self.assertEqual(runtime.stat().st_mode & 0o777, 0o700)
+                        self.assertLess(len(os.fsencode(vm.qmp_path)), 108)
+                        self.assertEqual(json.loads((root / 'vm.json').read_text())['qmp'], str(vm.qmp_path))
+                        if poweroff:
+                            poweroff_guest(vm, 'fixture-password', Mock())
+                        else:
+                            vm.cleanup(keep_artifacts=True)
+                        self.assertFalse(runtime.exists())
+                        self.assertIsNone(vm.runtime)
+                    self.assertNotEqual(*paths)
+                    self.assertTrue((root / 'qemu.log').exists(), 'Requested diagnostic outputs stay retained')
+            finally:
+                vm.stop()
+                for connection in sockets:
+                    connection.close()
+
+    def test_failed_vm_launch_cleans_private_qmp_runtime(self):
+        from vm_testing import TestVM
+        with tempfile.TemporaryDirectory() as temporary:
+            vm = TestVM(temporary, firmware='bios')
+            runtimes = []
+            def fail(*args, **kwargs):
+                runtimes.append(vm.runtime)
+                raise OSError('fixture launch failure')
+            with patch('vm_testing.subprocess.Popen', side_effect=fail):
+                with self.assertRaisesRegex(OSError, 'fixture launch failure'):
+                    vm.start()
+            self.assertFalse(runtimes[0].exists())
+            self.assertIsNone(vm.runtime)
+            self.assertIsNone(vm.console)
+
+    def test_state_publication_failure_stops_guest_before_removing_runtime(self):
+        from vm_testing import TestVM
+        with tempfile.TemporaryDirectory() as temporary:
+            vm = TestVM(temporary, firmware='bios')
+            process = Mock(pid=12345)
+            process.poll.return_value = None
+            runtimes = []
+            def terminate():
+                self.assertTrue(vm.runtime.is_dir())
+                process.poll.return_value = 0
+            process.terminate.side_effect = terminate
+            process.wait.return_value = 0
+            def fail(*args):
+                runtimes.append(vm.runtime)
+                raise OSError('fixture state publication failure')
+            with patch('vm_testing.subprocess.Popen', return_value=process), \
+                    patch('vm_testing.atomic_json', side_effect=fail):
+                with self.assertRaisesRegex(OSError, 'fixture state publication failure'):
+                    vm.start()
+            process.terminate.assert_called_once()
+            self.assertFalse(runtimes[0].exists())
+            self.assertIsNone(vm.runtime)
+
     def test_installation_requires_both_explicit_execution_flags(self):
         import qualification
         for flags in ([], ['--execute-vm'], ['--erase-disposable-disk']):

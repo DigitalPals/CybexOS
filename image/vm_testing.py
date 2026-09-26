@@ -9,6 +9,7 @@ import shlex
 import shutil
 import socket
 import subprocess
+import tempfile
 import time
 
 from build_support import SAFE_NAME, atomic_json, prepare_firmware, validate_qemu_path, verify_sidecar
@@ -50,6 +51,7 @@ def poweroff_guest(vm, password, root_script, *, timeout=90, cleanup_script=''):
     if vm.console:
         vm.console.close()
         vm.console = None
+    vm.release_runtime()
 
 
 def free_port():
@@ -151,6 +153,16 @@ class TestVM:
         self.key = self.work / "id_ed25519"
         self.ssh_ready = False
         self.qmp_path = self.work / "qmp.sock"
+        self.runtime = None
+
+    def release_runtime(self):
+        """Discard only this VM's private socket directory after it stops."""
+        if self.runtime is None:
+            return
+        if self.process is not None and self.process.poll() is None:
+            raise RuntimeError("Cannot remove QMP runtime while the VM is running")
+        shutil.rmtree(self.runtime)
+        self.runtime = None
 
     def screen_text(self, timeout=20):
         """Read a disposable guest screenshot; never retain password entry frames."""
@@ -212,7 +224,18 @@ class TestVM:
     def start(self, iso=None, user="liveuser"):
         if self.process is not None and self.process.poll() is None:
             raise RuntimeError("Test VM is already running")
-        self.qmp_path.unlink(missing_ok=True)
+        self.release_runtime()
+        # Workflow artifact paths can exceed AF_UNIX's 107-byte pathname
+        # limit. Do not inherit a similarly long RUNNER_TEMP/TMPDIR here.
+        self.runtime = Path(tempfile.mkdtemp(prefix="cybexos-qmp-", dir="/tmp"))
+        self.qmp_path = self.runtime / "qmp.sock"
+        try:
+            self._start(iso, user)
+        except BaseException:
+            self.stop()
+            raise
+
+    def _start(self, iso, user):
         self.ssh_ready = False
         self.ssh = ["ssh", "-i", str(self.key), "-p", str(self.port), "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=10", "-o", "BatchMode=yes", "-o", "ConnectTimeout=3",
                     "-o", "StrictHostKeyChecking=accept-new", "-o", f"UserKnownHostsFile={self.work / 'known_hosts'}", f"{user}@127.0.0.1"]
@@ -490,7 +513,9 @@ class TestVM:
                     self.process.wait()
             if self.console:
                 self.console.close()
+                self.console = None
             self.ssh_ready = False
+            self.release_runtime()
 
     def cleanup(self, keep_artifacts=False):
         if not self.owned:
