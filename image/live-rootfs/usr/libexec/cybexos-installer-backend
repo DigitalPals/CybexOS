@@ -362,7 +362,11 @@ class Anaconda:
         localization = self.proxy('Localization')
         keyboards = plain(localization.GetKeyboardLayouts())
         keyboard_choices = [{'id': item['layout-id'], 'label': item['description']} for item in keyboards]
-        locales = list(localization.GetCommonLocales())
+        # Common locales are only Anaconda's short list of popular choices.
+        # Enumerate its supported languages and regional locales so installed
+        # translations such as Dutch remain selectable.
+        locales = sorted({locale for language in localization.GetLanguages()
+                          for locale in localization.GetLocales(language)})
         if localization.Language and localization.Language not in locales:
             locales.append(localization.Language)
         timezone = self.proxy('Timezone')

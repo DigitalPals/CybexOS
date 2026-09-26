@@ -497,7 +497,8 @@ class AdapterContractTests(unittest.TestCase):
         localization._methods["GetKeyboardLayouts"] = lambda: [
             {"layout-id": "us", "description": "English"}
         ]
-        localization._methods["GetCommonLocales"] = lambda: ["en_US.UTF-8"]
+        localization._methods["GetLanguages"] = lambda: ["en"]
+        localization._methods["GetLocales"] = lambda language: ["en_US.UTF-8"]
         timezone = self.modules[("Timezone", "")]
         timezone._values.update(Timezone="America/New_York", GeolocationResult={"territory": "", "timezone": ""})
         timezone._methods["GetAllValidTimezones"] = lambda: {
@@ -526,6 +527,32 @@ class AdapterContractTests(unittest.TestCase):
         timezone.Timezone = "Mars/Olympus"
         inventory = self.adapter.inventory()
         self.assertEqual((inventory["timezone"], inventory["detected_timezone"]), ("UTC", ""))
+
+    def test_inventory_lists_all_supported_regional_locales_not_only_common_choices(self):
+        self.modules[("Storage", "/DiskSelection")]._methods["GetUsableDisks"] = lambda: []
+        localization = self.modules[("Localization", "")]
+        localization.Language = "fr_CA.UTF-8"
+        available = {"en": ["en_US.UTF-8", "en_GB.UTF-8"],
+                     "nl": ["nl_NL.UTF-8", "nl_BE.UTF-8", "nl_NL.UTF-8"]}
+        localization._methods.update(
+            GetKeyboardLayouts=lambda: [],
+            GetCommonLocales=lambda: ["en_US.UTF-8"],
+            GetLanguages=lambda: list(available),
+            GetLocales=lambda language: available[language],
+        )
+        timezone = self.modules[("Timezone", "")]
+        timezone._values.update(Timezone="UTC", GeolocationResult={})
+        timezone._methods["GetAllValidTimezones"] = lambda: {}
+        self.modules[("Payloads", "")] = StrictProxy(methods={"CalculateRequiredSpace": lambda: 1})
+        inventory = self.adapter.inventory()
+        self.assertEqual(inventory["locales"], [
+            "en_GB.UTF-8", "en_US.UTF-8", "nl_BE.UTF-8", "nl_NL.UTF-8", "fr_CA.UTF-8"
+        ])
+        self.assertEqual(inventory["locale"], "fr_CA.UTF-8")
+        self.assertEqual(backend.validate_account(
+            {**ACCOUNT, "locale": "nl_NL.UTF-8"},
+            {**CHOICES, "locales": inventory["locales"]}
+        )["locale"], "nl_NL.UTF-8")
 
     def test_rescan_uses_anaconda_scan_task(self):
         storage = self.modules[("Storage", "")]
