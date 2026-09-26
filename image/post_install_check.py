@@ -42,6 +42,7 @@ def verify_target(root, username=ACCOUNT):
     """The installed-system state the post-install scripts must leave behind."""
     problems = []
     for path in ('etc/sudoers.d/cybexos-live', 'usr/lib/systemd/system/cybexos-live.service',
+                 'usr/lib/systemd/user/cybexos-install-session.target',
                  'usr/libexec/cybexos-installer-backend', 'usr/share/cockpit/cybexos-installer',
                  'etc/dracut.conf.d/99-live.conf', 'etc/anaconda/conf.d/20-cybexos.conf'):
         if (root / path).exists():

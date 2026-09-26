@@ -447,6 +447,71 @@ class DiagnosticsTests(unittest.TestCase):
                 backend.export_logs(name, {"disk": {"name": "vda"}}, self.export_runner([]), self.root)
 
 
+class InstallModeTests(unittest.TestCase):
+    """The "Install CybexOS" boot entry's session, without booting anything."""
+
+    def run_block(self, script, start, end, replacements, env=None):
+        text = script.read_text()
+        block = text[text.index(start):text.index(end, text.index(start)) + len(end)]
+        for old, new in replacements.items():
+            block = block.replace(old, new)
+        return subprocess.run(["bash", "-euc", block + '\nprintf "%s" "${CYBEXOS_SESSION_TARGET:-}"'],
+                              capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", **(env or {})})
+
+    def test_boot_argument_marks_installation_only_mode(self):
+        setup = ROOT / "live-rootfs/usr/libexec/cybexos-live-setup"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for cmdline, expected in (("BOOT_IMAGE=vmlinuz0 rd.live.image quiet cybexos.install", True),
+                                      ("rd.live.image cybexos.installer cybexos.install=0", False)):
+                (root / "cmdline").write_text(cmdline + "\n")
+                marker = root / "cybexos-install-mode"
+                marker.unlink(missing_ok=True)
+                result = self.run_block(setup, "if tr ' '", "\nfi\n",
+                                        {"/proc/cmdline": str(root / "cmdline"), "/run/cybexos-install-mode": str(marker)})
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(marker.exists(), expected, cmdline)
+
+    def test_launcher_selects_the_install_target_only_in_the_marked_live_session(self):
+        launcher = ROOT / "rootfs/usr/bin/hyprland-quickshell"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for live, marked, expected in ((True, True, "cybexos-install-session.target"),
+                                           (False, True, "hyprland-session.target"),
+                                           (True, False, "hyprland-session.target")):
+                for name, present in (("cybexos-live", live), ("cybexos-install-mode", marked)):
+                    (root / name).unlink(missing_ok=True)
+                    if present:
+                        (root / name).touch()
+                result = self.run_block(launcher, "if [[ -e /run/cybexos-live", "\nfi\n",
+                                        {"/run/": str(root) + "/"})
+                self.assertEqual(result.stdout, expected, (live, marked))
+        text = launcher.read_text()
+        self.assertIn('systemctl --user stop hyprland-session.target "$CYBEXOS_SESSION_TARGET"', text)
+        self.assertLess(text.index("export CYBEXOS_SESSION_TARGET"), text.index("Hyprland --config"))
+
+    def test_install_session_starts_only_the_installer(self):
+        import configparser
+        units = ROOT / "live-rootfs/usr/lib/systemd/user"
+        target = configparser.ConfigParser()
+        target.read(units / "cybexos-install-session.target")
+        self.assertEqual(set(target["Unit"]["Wants"].split()),
+                         {"graphical-session-pre.target", "hyprpolkitagent.service", "cybexos-install-welcome.service"})
+        self.assertEqual(target["Unit"]["BindsTo"], "graphical-session.target")
+        window = configparser.ConfigParser()
+        window.read(units / "cybexos-install-welcome.service")
+        self.assertEqual(window["Service"]["ExecStart"], "/usr/bin/cybexos-welcome --install-mode")
+        self.assertEqual(window["Unit"]["PartOf"], "cybexos-install-session.target")
+        with tempfile.TemporaryDirectory() as directory:
+            tree.install_tree(ROOT / "live-rootfs", Path(directory))
+            installed = Path(directory) / "usr/lib/systemd/user/cybexos-install-session.target"
+            self.assertEqual(installed.stat().st_mode & 0o777, 0o644)
+        # Live-only files never reach an installed system.
+        hook = (ROOT / "live-rootfs/usr/share/anaconda/post-scripts/90-cybexos.ks").read_text()
+        self.assertIn("rm -f /usr/lib/systemd/user/cybexos-install-session.target "
+                      "/usr/lib/systemd/user/cybexos-install-welcome.service", hook)
+
+
 class AdapterContractTests(unittest.TestCase):
     def setUp(self):
         self.calls = []

@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -12,7 +13,7 @@ from unittest.mock import patch
 import jinja2
 import yaml
 
-from boot_branding import brand_boot_menu
+from boot_branding import brand_boot_menu, grub_install_entries
 from desktop_payload import prepare_defaults, split_seed
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -188,19 +189,43 @@ class BootMenu(unittest.TestCase):
             grub.parent.mkdir(parents=True)
             original = """set timeout=3
 search --set=root -l CYBEXOS-LIVE-44
-menuentry 'Start CybexOS' { linux /vmlinuz root=live:LABEL=CYBEXOS-LIVE-44 quiet rhgb; initrd /initrd.img; }
+menuentry 'Start CybexOS' --class fedora {
+	linuxefi /vmlinuz root=live:LABEL=CYBEXOS-LIVE-44 quiet rhgb 
+	initrdefi /initrd.img
+}
 menuentry 'Check media' { linux /vmlinuz rd.live.check; }
 menuentry 'Basic graphics' { linux /vmlinuz nomodeset; }
 """
             grub.write_text(original)
             bios = iso / "isolinux/isolinux.cfg"
             bios.parent.mkdir()
-            bios.write_text("menu background splash.jpg\nmenu title Linux\nlabel linux\n  kernel /vmlinuz\n  append initrd=/initrd.img root=live:CDLABEL=CYBEXOS-LIVE-44\n")
+            bios.write_text("menu background splash.jpg\nmenu title Linux\nlabel linux0\n  menu label ^Start CybexOS\n"
+                            "  kernel /vmlinuz\n  append initrd=/initrd.img root=live:CDLABEL=CYBEXOS-LIVE-44 quiet \n"
+                            "  menu default\nmenu separator\nlabel basic0\n  menu label Start CybexOS in ^basic graphics mode.\n"
+                            "  kernel /vmlinuz\n  append initrd=/initrd.img nomodeset\nlabel memtest\n  menu label Run a ^memory test.\n"
+                            "  kernel memtest\n")
             art = install / "usr/share/plymouth/themes/cybex/logo.png"
             art.parent.mkdir(parents=True)
             art.write_bytes(b"logo fixture")
             brand_boot_menu(iso, install)
-            self.assertTrue(grub.read_text().startswith(original))
+            branded = grub.read_text()
+            self.assertTrue(branded.startswith(grub_install_entries(original)))
+            # Installation-only entries come first, so the default boot installs;
+            # every generated live entry, check and recovery entry remains.
+            self.assertEqual(re.findall(r"menuentry '([^']+)'", branded),
+                             ["Install CybexOS", "Try CybexOS live", "Check media", "Basic graphics"])
+            installer, live = re.findall(r"(?m)^\tlinuxefi (.*)$", branded)
+            self.assertTrue(installer.endswith(" cybexos.install"))
+            self.assertEqual(installer.removesuffix(" cybexos.install"), live.rstrip())
+            menu = bios.read_text()
+            self.assertEqual(re.findall(r"(?m)^label (\S+)", menu), ["install-linux0", "linux0", "install-basic0", "basic0", "memtest"])
+            self.assertEqual(re.findall(r"(?m)^\s*menu label (.*)", menu),
+                             ["^Install CybexOS", "^Try CybexOS live", "Install CybexOS in basic graphics mode.",
+                              "Try CybexOS live in ^basic graphics mode.", "Run a ^memory test."])
+            self.assertEqual(menu.count("menu default"), 1)
+            self.assertLess(menu.index("menu default"), menu.index("label linux0"))
+            appends = re.findall(r"(?m)^\s*append (.*)", menu)
+            self.assertEqual([line.endswith("cybexos.install") for line in appends], [True, False, True, False])
             self.assertIn("menu title CybexOS", bios.read_text())
             self.assertIn("root=live:CDLABEL=CYBEXOS-LIVE-44", bios.read_text())
             self.assertNotIn("menu background", bios.read_text())

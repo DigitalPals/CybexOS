@@ -10,6 +10,7 @@ rm -f /var/lib/AccountsService/users/liveuser
 rm -f /etc/systemd/system/multi-user.target.wants/cybexos-live.service
 rm -f /usr/lib/systemd/system/cybexos-live.service
 rm -f /usr/libexec/cybexos-live-setup
+rm -f /usr/lib/systemd/user/cybexos-install-session.target /usr/lib/systemd/user/cybexos-install-welcome.service
 rm -f /usr/libexec/cybexos-installer-backend /usr/libexec/cybexos-installer-target
 rm -f /usr/bin/cybexos-installer-browser
 rm -rf /usr/share/cockpit/cybexos-installer

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+import unittest.mock
 from unittest.mock import patch
 
 import yaml
@@ -294,6 +295,43 @@ class WelcomeTests(unittest.TestCase):
             window.close()
             del window
             del engine
+
+    def test_install_mode_opens_the_installer_and_keeps_its_window(self):
+        backend = self.backend(live=True)
+        backend.install_mode = True
+        engine = self.module.QQmlApplicationEngine()
+        warnings = []
+        engine.warnings.connect(lambda found: warnings.extend(w.toString() for w in found))
+        engine.rootContext().setContextProperty("welcome", backend)
+        with patch.object(Path, "is_file", return_value=True), patch.object(backend.process, "start") as start:
+            engine.load(self.module.QUrl.fromLocalFile(str(self.module.QML)))
+            start.assert_called_once_with("/usr/bin/liveinst", ["--nosave=all_ks"])
+        self.assertEqual(warnings, [])
+        window = engine.rootObjects()[0]
+        # There is no desktop behind this window: closing it is refused.
+        window.close()
+        self.assertTrue(window.property("visible"))
+        del window
+        del engine
+
+    def test_install_mode_needs_the_live_image_and_guards_its_actions(self):
+        self.assertFalse(self.module.Welcome(install_mode=True).install_mode and not Path("/run/cybexos-live").exists())
+        for install_mode in (False, True):
+            backend = self.backend(live=True)
+            backend.install_mode = install_mode
+            with patch.object(self.module.QProcess, "startDetached", return_value=(True, 0)) as start, \
+                    patch.object(self.module.QGuiApplication, "quit") as quit:
+                backend.power("halt")
+                backend.power("reboot")
+                backend.startDesktop()
+            if install_mode:
+                self.assertEqual(start.call_args_list, [
+                    unittest.mock.call("systemctl", ["reboot"]),
+                    unittest.mock.call("systemctl", ["--user", "start", "--no-block", "hyprland-session.target"])])
+                quit.assert_called_once_with()
+            else:
+                start.assert_not_called()
+                quit.assert_not_called()
 
     def test_closing_an_installed_welcome_records_completion(self):
         with tempfile.TemporaryDirectory() as temporary:

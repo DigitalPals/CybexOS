@@ -3,6 +3,11 @@ set -euo pipefail
 # This runs in the writable live overlay, never during image construction.
 grep -qw rd.live.image /proc/cmdline || exit 0
 touch /run/cybexos-live
+# The "Install CybexOS" boot entry opens only the installer: the session
+# starts cybexos-install-session.target instead of the full desktop.
+if tr ' ' '\n' </proc/cmdline | grep -qx cybexos.install; then
+  touch /run/cybexos-install-mode
+fi
 if ! id liveuser >/dev/null 2>&1; then
   useradd --create-home --uid 1000 --groups wheel,docker --shell /bin/bash liveuser
   passwd --delete liveuser
