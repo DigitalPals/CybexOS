@@ -510,6 +510,10 @@ class InstallModeTests(unittest.TestCase):
         hook = (ROOT / "live-rootfs/usr/share/anaconda/post-scripts/90-cybexos.ks").read_text()
         self.assertIn("rm -f /usr/lib/systemd/user/cybexos-install-session.target "
                       "/usr/lib/systemd/user/cybexos-install-welcome.service", hook)
+        # No wallpaper covers the installation-only session's background, where
+        # Hyprland would draw a random splash such as "Segmentation fault".
+        looknfeel = (ROOT.parent / "roles/desktop/templates/looknfeel.lua.j2").read_text()
+        self.assertIn("disable_splash_rendering = true", looknfeel)
 
 
 class AdapterContractTests(unittest.TestCase):

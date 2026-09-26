@@ -51,7 +51,11 @@ hl.config({
   },
   animations = { enabled = true },
   -- SDDM owns crash recovery: a new desktop requires a new authenticated login.
-  misc = { force_default_wallpaper = 0, disable_hyprland_logo = true, focus_on_activate = false, disable_watchdog_warning = true },
+  -- Hyprland's random splash line (one reads "Segmentation fault (core
+  -- dumped)") shows wherever no wallpaper covers the background, as in the
+  -- image's installation-only session.
+  misc = { force_default_wallpaper = 0, disable_hyprland_logo = true, disable_splash_rendering = true,
+           focus_on_activate = false, disable_watchdog_warning = true },
   xwayland = {
     force_zero_scaling = {{ 'os.getenv("CYBEXOS_XPS_2026") == "1"' if cybexos_dynamic_hardware | default(false) else ((cybexos_xps_2026 | bool) | ternary('true', 'false')) }},
   },
