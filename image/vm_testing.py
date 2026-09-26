@@ -461,6 +461,11 @@ def console_output(text, marker):
 
 def sudo_password_prompt(text):
     """Only recognize a sudo password request for the disposable account."""
-    return bool(re.search(
+    canonical = re.search(
         r'(?:\[sudo\]\s*)?(?:password\s+for|passwort\s+f[uü]r|wachtwoord\s+voor)\s+qualification\s*:',
-        text, re.IGNORECASE))
+        text, re.IGNORECASE)
+    # Tesseract read the Dutch sudo prompt's initial w as u on a real boot.
+    # Require the full sudo prefix and fixture account for that one OCR form.
+    dutch_ocr = re.search(r'\[sudo\]\s*uachtwoord\s+voor\s+qualification\s*:',
+                          text, re.IGNORECASE)
+    return bool(canonical or dutch_ocr)

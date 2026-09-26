@@ -7,7 +7,8 @@ from vm_testing import TestVM, console_output, sudo_password_prompt
 
 
 class ConsoleBootstrapTests(unittest.TestCase):
-    def exercise(self, *, passworded=False, german=False, failure=None):
+    def exercise(self, *, passworded=False, german=False, failure=None,
+                 sudo_prompt='[sudo] password for qualification:'):
         password = 'private-fixture-secret'
         state = {'phase': 'login', 'time': 0, 'typed': []}
         def clock():
@@ -36,7 +37,7 @@ class ConsoleBootstrapTests(unittest.TestCase):
                 'shell': 'a custom Fish prompt without user or host',
                 'probe': ('custom prompt echo CONSOLEWORKS y' if failure == 'shell' else
                           'custom prompt echo CONSOLEWORKS y\nCONSOLE WORKS ' + ('z' if german else 'y')),
-                'sudo': '[sudo] password for qualification:',
+                'sudo': sudo_prompt,
                 'authorized': 'CONSOLE AUTH',
                 'bash': ('echo ' + password if failure == 'bash' else
                          "bash-5.3$ printf 'CONSOLE%sREADY' BASH\nCONSOLEBASHREADY"),
@@ -72,6 +73,12 @@ class ConsoleBootstrapTests(unittest.TestCase):
         self.assertEqual(typed.count('private-fixture-secret\n'), 2)
         self.assertIn('sudo loadkeys us\n', typed)
 
+    def test_dutch_sudo_ocr_misread_authenticates_once(self):
+        typed = self.exercise(passworded=True,
+                              sudo_prompt='[sudo] uachtwoord voor qualification:')
+        self.assertEqual(typed.count('private-fixture-secret\n'), 2)
+        self.assertIn('sudo loadkeys us\n', typed)
+
     def test_echoed_command_alone_never_proves_shell(self):
         typed = self.exercise(failure='shell')
         self.assertEqual(typed.count('echo CONSOLEWORKS y\n'), 3)
@@ -85,9 +92,10 @@ class ConsoleBootstrapTests(unittest.TestCase):
         self.assertFalse(console_output('prompt sudo echo CONSOLEAUTH', 'CONSOLEAUTH'))
         self.assertTrue(console_output('CONSOLE AUTH', 'CONSOLEAUTH'))
         for prompt in ('[sudo] password for qualification:', 'Passwort für qualification:',
-                       'wachtwoord voor qualification:'):
+                       'wachtwoord voor qualification:', '[sudo] uachtwoord voor qualification:'):
             self.assertTrue(sudo_password_prompt(prompt))
-        for prompt in ('Password:', 'password for john:', 'qualification login:'):
+        for prompt in ('Password:', 'password for john:', 'qualification login:',
+                       'uachtwoord voor qualification:', '[sudo] uachtwoord voor john:'):
             self.assertFalse(sudo_password_prompt(prompt))
 
 

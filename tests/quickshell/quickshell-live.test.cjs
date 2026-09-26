@@ -46,6 +46,66 @@ qs_live_reconcile_processes
     }
 });
 
+
+test("live guard inspects successive IPC clients and still requires final quiescence", () => {
+    for (const mode of ["successive", "persistent", "unknown", "managed"]) {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-qs-successors-"));
+        try {
+            fs.writeFileSync(path.join(directory, "pid"), "222");
+            fs.writeFileSync(path.join(directory, "signals"), "");
+            const result = spawnSync("bash", ["-c", String.raw`
+set -eu
+source "$1"
+qs_live_main_pid() { echo 111; }
+qs_live_control_group() { echo /fixture/quickshell.service; }
+qs_live_pid_command() {
+  touch "$QS_TEST_DIR/inspected-$1"
+  if [[ $QS_TEST_MODE == unknown ]]; then echo 'qs --help';
+  elif [[ $QS_TEST_MODE == managed ]]; then echo 'qs -p /fixture/quickshell';
+  else echo 'qs ipc --any-display -p /fixture/quickshell call wallpaper results'; fi
+}
+qs_live_pid_cgroup() {
+  if [[ $QS_TEST_MODE == managed ]]; then echo /fixture/quickshell.service;
+  else echo /fixture/cybexos-welcome.service; fi
+}
+id() { echo 1000; }
+ps() { echo 1000; }
+pgrep() { echo 111; cat "$QS_TEST_DIR/pid"; }
+kill() {
+  if [[ $1 == -0 ]]; then [[ $2 == "$(cat "$QS_TEST_DIR/pid")" ]]; return; fi
+  printf '%s\n' "$*" >> "$QS_TEST_DIR/signals"
+}
+sleep() {
+  if [[ $QS_TEST_MODE == persistent ]]; then SECONDS=30; return; fi
+  [[ -e "$QS_TEST_DIR/inspected-$(cat "$QS_TEST_DIR/pid")" ]] || return 0
+  case $(cat "$QS_TEST_DIR/pid") in
+    222) printf 333 > "$QS_TEST_DIR/pid" ;;
+    333) printf 444 > "$QS_TEST_DIR/pid" ;;
+    444) : > "$QS_TEST_DIR/pid" ;;
+  esac
+}
+qs_live_reconcile_processes
+`, "quickshell-successor-test", liveHelper], {
+                cwd: repoDir,
+                encoding: "utf8",
+                env: {...process.env, QS_TEST_DIR: directory, QS_TEST_MODE: mode},
+            });
+            assert.equal(result.status, mode === "successive" ? 0 : 1, result.stderr);
+            assert.equal(fs.readFileSync(path.join(directory, "signals"), "utf8"), "");
+            if (mode === "successive") {
+                assert.match(result.stderr, /extra qs PID 222: command=qs ipc/);
+                assert.match(result.stderr, /extra qs PID 333: command=qs ipc/);
+                assert.match(result.stderr, /extra qs PID 444: command=qs ipc/);
+                assert.match(result.stderr, /cgroup=\/fixture\/cybexos-welcome.service/);
+            } else {
+                assert.match(result.stderr, /expected 111 to be the sole qs PID/);
+            }
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    }
+});
+
 function checkJournal(log) {
     return spawnSync("bash", ["-c", String.raw`
 set -u
