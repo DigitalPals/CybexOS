@@ -20,7 +20,8 @@ window.cockpit = {
     then(callback) { done = callback; return this; },
     input(raw) {
       const data = JSON.parse(raw || "{}"), command = args[1];
-      fixtureRequests.push({ command, hasPassword: !!data.password, timezone: data.timezone });
+      fixtureRequests.push({ command, hasPassword: !!data.password,
+        locale: data.locale, timezone: data.timezone, encrypted: data.encrypted });
       let result;
       if (command === "status") result = { phase: fixturePhase, message: "Fixture progress" };
       else if (command === "inventory" || command === "rescan") result = {
@@ -147,6 +148,9 @@ async function main() {
     await page.fill("#keyboard-test", "ordinary test characters");
     await page.fill("#password", "fixture secret 123");
     await page.fill("#confirm", "fixture secret 123");
+    await page.locator("#account-form details > summary").click();
+    await page.selectOption("#locale", "nl_NL.UTF-8");
+    await page.selectOption("#timezone", "Europe/Amsterdam");
     await page.getByRole("button", { name: "Choose install location" }).click();
     await page.locator("#location").waitFor({ state: "visible" });
     assert.equal(await page.isChecked("#encrypted"), true);
@@ -178,6 +182,7 @@ async function main() {
     assert.equal(await page.inputValue("#confirm"), "");
     assert.equal(await page.evaluate(() => fixtureRequests.filter(request => request.command === "install").length), 2);
     assert.equal(await page.evaluate(() => fixtureRequests.find(request => request.command === "plan").timezone), "Europe/Amsterdam");
+    assert.equal(await page.evaluate(() => fixtureRequests.find(request => request.command === "plan").locale), "nl_NL.UTF-8");
     await page.reload();
     await page.getByRole("heading", { name: "Your workspace is ready." }).waitFor();
     await page.evaluate(() => sessionStorage.setItem("fixturePhase", "failed-install"));
@@ -192,8 +197,29 @@ async function main() {
     await page.setViewportSize({ width: 390, height: 844 });
     await screenshot(page, "installer-narrow");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    const plain = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    plain.on("pageerror", error => errors.push(error.message));
+    await plain.goto(`http://127.0.0.1:${server.address().port}/cockpit/@localhost/cybexos-installer/index.html`);
+    await plain.locator("#setup").waitFor({ state: "visible" });
+    await plain.waitForFunction(() => !document.querySelector("#password").disabled);
+    await plain.fill("#username", "qualification");
+    await plain.fill("#password", "fixture secret 123");
+    await plain.fill("#confirm", "fixture secret 123");
+    await plain.locator("#account-form details > summary").click();
+    await plain.selectOption("#locale", "en_US.UTF-8");
+    await plain.selectOption("#timezone", "UTC");
+    await plain.getByRole("button", { name: "Choose install location" }).click();
+    await plain.locator("#location").waitFor({ state: "visible" });
+    await plain.selectOption("#disk", "vda");
+    await plain.locator("#disk-form details > summary").click();
+    await plain.uncheck("#encrypted");
+    await plain.getByRole("button", { name: "Review installation" }).click();
+    await plain.locator("#review").waitFor({ state: "visible" });
+    assert.match(await plain.textContent("#summary"), /unencrypted/);
+    assert.equal(await plain.evaluate(() => fixtureRequests.find(request => request.command === "plan").encrypted), false);
+    await plain.close();
     assert.deepEqual(errors, []);
-    console.log("PASS: three-screen flow, keyboard change, timezone detection, rejected-install recovery, encryption default, erase confirmation, password clearing, progress/reload recovery, narrow layout");
+    console.log("PASS: three-screen flow, keyboard/locale/timezone choices, encrypted and plain disk paths, rejected-install recovery, erase confirmation, password clearing, progress/reload recovery, narrow layout");
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));

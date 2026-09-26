@@ -17,10 +17,13 @@ class BrowserTransportTests(unittest.TestCase):
             'http://127.0.0.1:8080/cockpit/@localhost/cybexos-installer/index.html'), 8080)
         self.assertEqual(browser.validate_guest_url(
             'http://localhost/cockpit/@localhost/cybexos-installer/index.html'), 80)
+        # Anaconda passes its original URL to the wrapper, which redirects the
+        # actual browser to the CybexOS page. Both use the same loopback port.
+        self.assertEqual(browser.validate_guest_url(
+            'http://127.0.0.1/cockpit/@localhost/anaconda-webui/index.html'), 80)
         for value in ('http://example.com/cockpit/@localhost/cybexos-installer/index.html',
                       'http://127.0.0.1@evil.invalid/cockpit/@localhost/cybexos-installer/index.html',
                       'https://127.0.0.1/cockpit/@localhost/cybexos-installer/index.html',
-                      'http://127.0.0.1/cockpit/@localhost/anaconda-webui/index.html',
                       'http://127.0.0.1/cockpit/@localhost/cybexos-installer/index.html?x=1'):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 browser.validate_guest_url(value)

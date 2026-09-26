@@ -5,6 +5,7 @@ from pathlib import Path
 import secrets
 import signal
 import subprocess
+import sys
 import time
 
 from build_support import atomic_json, digest
@@ -205,6 +206,24 @@ def main():
         untouched_sha = digest(vm.unused_disk)
         vm.start(iso)
         vm.wait_ssh()
+        if args.legacy_installer:
+            # The retained N image deliberately starts an installer-only
+            # session target in live mode. Activate its full desktop target
+            # only in this disposable older guest for the shell/application
+            # audit. New images must pass normal startup without this branch.
+            live_shell = subprocess.run(
+                [*vm.ssh, 'systemctl --user is-active --quiet quickshell.service'],
+                capture_output=True, timeout=15)
+            if live_shell.returncode:
+                installer_only = subprocess.run(
+                    [*vm.ssh, 'test -e /run/cybexos-install-mode && '
+                     'systemctl --user is-active --quiet cybexos-install-session.target'],
+                    capture_output=True, timeout=15)
+                if installer_only.returncode:
+                    raise RuntimeError('Legacy guest shell is inactive outside the expected installer-only session')
+                run([*vm.ssh, 'systemctl --user start hyprland-session.target'], timeout=30)
+                report['legacy_session_bootstrap'] = 'activated full desktop target from baseline installer-only session'
+                report['checks'].append('legacy-installer-only-session-desktop-bootstrap')
         vm.audit()
         report['checks'].append('live-boot-and-offline-applications')
         target_disk, unused_disk = qualification_disks(vm)
@@ -265,11 +284,14 @@ def main():
         raise
     finally:
         if vm.owned:
+            failed_before_cleanup = sys.exc_info()[0] is not None
             try:
                 vm.cleanup(args.keep_artifacts)
-            except BaseException:
+            except BaseException as cleanup_error:
                 report['status'] = 'failed'
-                raise
+                report['cleanup_error'] = str(cleanup_error) or type(cleanup_error).__name__
+                if not failed_before_cleanup:
+                    raise
             finally:
                 atomic_json(args.output / 'qualification.json', report)
     print(f"Qualification passed: {args.output / 'qualification.json'}")

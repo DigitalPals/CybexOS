@@ -358,7 +358,12 @@ class TestVM:
             if subprocess.run([*self.ssh, command], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
                 return
             time.sleep(1)
-        raise RuntimeError("Quickshell readiness deadline exceeded")
+        diagnosis = subprocess.run(
+            [*self.ssh, "systemctl --user status quickshell.service --no-pager; "
+             "journalctl --user -b -u quickshell.service --no-pager -n 35"],
+            capture_output=True, text=True, timeout=20)
+        details = (diagnosis.stdout + diagnosis.stderr).strip()[-6000:]
+        raise RuntimeError(f"Quickshell readiness deadline exceeded: {details}")
 
     def audit(self, applications=True):
         self.wait_desktop()

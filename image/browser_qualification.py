@@ -34,7 +34,8 @@ def validate_guest_url(value):
     parsed = urlsplit(value)
     if (parsed.scheme != 'http' or parsed.hostname not in ('127.0.0.1', 'localhost')
             or parsed.username or parsed.password or parsed.query or parsed.fragment
-            or parsed.path != '/cockpit/@localhost/cybexos-installer/index.html'):
+            or parsed.path not in ('/cockpit/@localhost/cybexos-installer/index.html',
+                                   '/cockpit/@localhost/anaconda-webui/index.html')):
         raise ValueError('Guest installer URL was not the expected loopback Cockpit page')
     port = parsed.port or 80
     if not 1 <= port <= 65535:
@@ -100,8 +101,14 @@ def qualify_browser(vm, *, password, target_disk, unused_disk, encrypted, keyboa
                    'encrypted': encrypted, 'keyboard': keyboard, 'locale': locale,
                    'timezone': timezone, 'install_timeout_ms': install_timeout * 1000,
                    'require_policy_controls': require_policy_controls}
-        result = run(['node', str(DRIVER)], input=json.dumps(payload), text=True,
-                     capture_output=True, timeout=install_timeout + 240)
+        try:
+            result = run(['node', str(DRIVER)], input=json.dumps(payload), text=True,
+                         capture_output=True, timeout=install_timeout + 240)
+        except subprocess.CalledProcessError as error:
+            # Playwright prints the failed assertion/locator to stderr. Keep
+            # the useful part without ever including the fixture password.
+            detail = ((error.stderr or '') + '\n' + (error.stdout or '')).replace(password, '[redacted]')
+            raise RuntimeError(f'Installer browser driver failed: {detail[-5000:]}') from error
         data = json.loads(result.stdout)
         if data.get('check') != 'graphical-installer' or data.get('selected_disk') != target_disk:
             raise RuntimeError('Browser driver did not confirm the selected disposable disk')

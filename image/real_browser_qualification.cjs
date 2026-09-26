@@ -4,9 +4,11 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const {chromium} = require("playwright-core");
+let secret = "";
 
 async function main() {
     const input = JSON.parse(fs.readFileSync(0, "utf8"));
+    secret = input.password;
     const url = new URL(input.url);
     assert.equal(url.hostname, "127.0.0.1");
     assert.equal(url.pathname, "/cockpit/@localhost/cybexos-installer/index.html");
@@ -33,6 +35,7 @@ async function main() {
         await page.fill("#username", "qualification");
         await page.fill("#password", input.password);
         await page.fill("#confirm", input.password);
+        await page.locator("#account-form details > summary").click();
         await page.selectOption("#locale", input.locale);
         await page.selectOption("#timezone", input.timezone);
         const sudo = page.locator("#passwordless-wheel");
@@ -59,6 +62,7 @@ async function main() {
             assert.match(await details.textContent(), /CYBEXOS-QUALIFY/);
             assert.match(await details.textContent(), /Existing partitions:/);
         }
+        await page.locator("#disk-form details > summary").click();
         const encrypted = page.locator("#encrypted");
         assert.equal(await encrypted.isChecked(), true);
         if (!input.encrypted) await encrypted.uncheck();
@@ -85,4 +89,9 @@ async function main() {
     }
 }
 
-main().catch(() => { process.stderr.write("Graphical installer qualification failed; inspect the VM and redacted installer diagnostics.\n"); process.exitCode = 1; });
+main().catch(error => {
+    const detail = String(error.stack || error);
+    const redacted = secret ? detail.replaceAll(secret, "[redacted]") : detail;
+    process.stderr.write(`Graphical installer qualification failed: ${redacted}\n`);
+    process.exitCode = 1;
+});
