@@ -566,6 +566,18 @@ test("schema-6 migration preserves module order and adds clock-side indicators",
     assert.equal(migrated.mods.right[0].id, "batt");
 });
 
+test("missing font preferences use the current default across first-run and legacy settings", () => {
+    for (const raw of [null, {}, { wall: "mountain.jpg" }, { v: 3 }, { v: 6 }, { v: H.VERSION }]) {
+        const merged = H.merge(raw);
+        assert.equal(merged.font, "mono", JSON.stringify(raw));
+        assert.equal(H.FONT_CHOICES.find(choice => choice.id === merged.font).family,
+            "JetBrainsMono Nerd Font");
+    }
+    for (const font of H.FONT_IDS)
+        assert.equal(H.merge({ v: H.VERSION, font }).font, font,
+            "an explicitly saved font remains selectable");
+});
+
 test("schema-7 adopts Google Sans only from the previous default", () => {
     assert.equal(H.merge({ v: 6, font: "urbanist" }).font, "google",
         "the old untouched default follows the softer typography pass");
@@ -620,7 +632,7 @@ test("a schema-3 file adopts the redesign only where it was left untouched", () 
     assert.equal(untouched.barRadius, 11);
     assert.equal(untouched.gap, 8);
     assert.equal(untouched.accent, "#d3d283");
-    assert.equal(untouched.font, "google");
+    assert.equal(untouched.font, "mono");
     assert.equal(untouched.osd, "bottom");
     assert.equal(untouched.modOpts.ws.style, "numbers");
     assert.equal(untouched.modOpts.media.maxWidth, 180);

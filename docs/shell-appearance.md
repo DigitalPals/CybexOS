@@ -46,6 +46,9 @@ numbered workspaces. Typography uses JetBrainsMono Nerd Font at 14px, 100% UI
 scale and standard spacing. Panels have 16px corners and no border (width 0);
 plugins inherit the shared appearance. Appearance has no preset actions.
 Existing saved preferences remain in effect; section resets use these defaults.
+New ISO-installed accounts explicitly seed the same JetBrainsMono font choice.
+Empty or older settings without a font also inherit this default; the historical
+Google Sans migration applies only to a stored pre-schema-7 Urbanist value.
 
 The shared library and usage rules are documented in [Shell typography](shell-typography.md).
 

@@ -1168,12 +1168,14 @@ function adoptRedesign(parsed) {
 // Schema 7 makes the softer variable face the shell default. As with the
 // schema-4 redesign, a stored value equal to the previous default is treated
 // as untouched; every other valid font remains an explicit user choice.
+// A missing font must use today's default, including unversioned installer
+// seeds. It is not evidence of a saved schema-6 font preference.
 function adoptSofterTypography(parsed) {
     if (!parsed || typeof parsed !== "object"
             || (typeof parsed.v === "number" && parsed.v >= 7))
         return parsed;
     var next = clone(parsed);
-    if (next.font === undefined || next.font === "urbanist")
+    if (next.font === "urbanist")
         next.font = "google";
     return next;
 }
