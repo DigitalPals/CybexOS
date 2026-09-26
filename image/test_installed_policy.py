@@ -271,6 +271,7 @@ class InstalledPolicy(unittest.TestCase):
         image = {task['name']: task for task in flatten('image.yml')}
         workstation = {task['name']: task for task in flatten('main.yml')}
         for name in ('Enable user lingering', 'Enable user lingering in the offline installation target',
+                     'Create the offline user lingering directory',
                      'Configure active local wheel Polkit authorization',
                      'Revoke passwordless local Polkit authorization when disabled',
                      'Enable Docker socket activation when requested', 'Start Docker on demand rather than at boot',
@@ -281,6 +282,9 @@ class InstalledPolicy(unittest.TestCase):
         online = image['Enable user lingering']
         self.assertIn('loginctl enable-linger', online['ansible.builtin.command'])
         self.assertIn('not cybexos_offline', online['when'])
+        directory = image['Create the offline user lingering directory']['ansible.builtin.file']
+        self.assertEqual((directory['path'], directory['state'], directory['mode']),
+                         ('/var/lib/systemd/linger', 'directory', '0755'))
         offline = image['Enable user lingering in the offline installation target']['ansible.builtin.copy']
         self.assertEqual((offline['dest'], offline['owner'], offline['mode']),
                          ('/var/lib/systemd/linger/{{ primary_user }}', 'root', '0644'))
@@ -306,6 +310,35 @@ class InstalledPolicy(unittest.TestCase):
         self.assertIn("'with-mdns4' not in base_authselect_current.stdout.split()", mdns['when'])
         self.assertFalse(any('select' in task.get('ansible.builtin.command', {}).get('argv', [])
                              for task in image.values() if isinstance(task.get('ansible.builtin.command'), dict)))
+
+    def test_offline_linger_marker_is_created_when_parent_directory_is_absent(self):
+        tasks = yaml.safe_load((ROOT / 'roles/base/tasks/accounts.yml').read_text())
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            linger = root / 'var/lib/systemd/linger'
+            selected = [dict(task) for task in tasks if task['name'] in (
+                'Create the offline user lingering directory',
+                'Enable user lingering in the offline installation target')]
+            self.assertEqual(len(selected), 2)
+            self.assertEqual(selected[0]['name'], 'Create the offline user lingering directory')
+            selected[0]['ansible.builtin.file'] = {
+                **selected[0]['ansible.builtin.file'], 'path': str(linger)}
+            selected[1]['ansible.builtin.copy'] = {
+                **selected[1]['ansible.builtin.copy'], 'dest': str(linger / '{{ primary_user }}')}
+            for task in selected:
+                module = task.get('ansible.builtin.file') or task['ansible.builtin.copy']
+                module.pop('owner', None)
+                module.pop('group', None)
+            playbook = root / 'offline-linger.yml'
+            playbook.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'become': False,
+                                                 'gather_facts': False, 'vars': {
+                                                     'primary_user': 'fixture', 'cybexos_offline': True},
+                                                 'tasks': selected}]))
+            for _ in range(2):
+                result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                                        text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertTrue((linger / 'fixture').is_file())
 
     def test_repair_payload_uses_shared_sources_and_hardware_detection(self):
         with tempfile.TemporaryDirectory() as temporary:
