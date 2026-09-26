@@ -18,8 +18,13 @@ async function main() {
     assert.notEqual(input.target_disk, input.unused_disk);
     const browser = await chromium.launch({executablePath: input.browser, headless: true,
         args: ["--disable-dev-shm-usage"]});
+    let page;
+    const pageErrors = [];
     try {
-        const page = await browser.newPage({viewport: {width: 1280, height: 900}});
+        page = await browser.newPage({viewport: {width: 1280, height: 900}});
+        page.on("pageerror", error => {
+            if (pageErrors.length < 4) pageErrors.push(String(error.stack || error).slice(0, 500));
+        });
         // The guest remains offline; the browser may only talk to its tunnel.
         await page.route("**/*", route => {
             const request = new URL(route.request().url());
@@ -88,6 +93,17 @@ async function main() {
         process.stdout.write(JSON.stringify({check: "graphical-installer", selected_disk: input.target_disk,
             encrypted: input.encrypted, keyboard: input.keyboard,
             boot_keyboard: bootKeyboard || input.keyboard, locale: input.locale}) + "\n");
+    } catch (error) {
+        let visibleText = "(unavailable)";
+        if (page) {
+            try {
+                visibleText = await page.locator("body").innerText({timeout: 3000});
+            } catch { /* Keep the original browser failure. */ }
+        }
+        const details = [`Visible installer text: ${visibleText.slice(0, 1800)}`];
+        if (pageErrors.length) details.push(`Page errors: ${pageErrors.join(" | ")}`);
+        error.stack = `${String(error.stack || error)}\n${details.join("\n")}`;
+        throw error;
     } finally {
         await browser.close();
     }
