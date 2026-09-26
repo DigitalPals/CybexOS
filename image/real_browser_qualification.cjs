@@ -6,6 +6,35 @@ const fs = require("node:fs");
 const {chromium} = require("playwright-core");
 let secret = "";
 
+async function waitForInitialSetup(page, timeoutMs = 120000,
+    retryDelays = [1000, 2000, 4000, 8000, 16000, 32000, 32000]) {
+    const deadline = Date.now() + timeoutMs;
+    let retries = 0;
+    while (true) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw new Error("Installer setup did not become ready before its deadline");
+        await page.waitForFunction(() => {
+            const setup = document.querySelector("#setup");
+            if (setup && !setup.hidden) return true;
+            const retry = document.querySelector("#startup-retry");
+            const error = document.querySelector("#error");
+            return setup?.hidden && retry && !retry.hidden && error && !error.hidden &&
+                error.textContent.trim() === "Another installer operation is still running.";
+        }, null, {timeout: remaining});
+        if (await page.locator("#setup").isVisible()) return;
+        if (retries >= retryDelays.length) throw new Error("Installer setup remained busy after bounded initialization retries");
+        await page.waitForTimeout(Math.min(retryDelays[retries], Math.max(0, deadline - Date.now())));
+        if (await page.locator("#setup").isVisible()) return;
+        const error = await page.locator("#error").textContent();
+        if (error?.trim() !== "Another installer operation is still running." ||
+            !await page.locator("#startup-retry").isVisible()) continue;
+        const clickTimeout = deadline - Date.now();
+        if (clickTimeout <= 0) throw new Error("Installer setup did not become ready before its deadline");
+        await page.locator("#retry").click({timeout: clickTimeout});
+        retries++;
+    }
+}
+
 async function main() {
     const input = JSON.parse(fs.readFileSync(0, "utf8"));
     secret = input.password;
@@ -32,7 +61,7 @@ async function main() {
                 ? route.continue() : route.abort();
         });
         await page.goto(input.url, {waitUntil: "domcontentloaded", timeout: 30000});
-        await page.locator("#setup").waitFor({state: "visible", timeout: 120000});
+        await waitForInitialSetup(page);
         await page.waitForFunction(() => !document.querySelector("#password").disabled);
         await page.selectOption("#keyboard", input.keyboard);
         await page.waitForFunction(expected => document.querySelector("#keyboard").value === expected &&
@@ -109,9 +138,11 @@ async function main() {
     }
 }
 
-main().catch(error => {
+if (require.main === module) main().catch(error => {
     const detail = String(error.stack || error);
     const redacted = secret ? detail.replaceAll(secret, "[redacted]") : detail;
     process.stderr.write(`Graphical installer qualification failed: ${redacted}\n`);
     process.exitCode = 1;
 });
+
+module.exports = {waitForInitialSetup};

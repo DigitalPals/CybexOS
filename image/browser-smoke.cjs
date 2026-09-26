@@ -6,6 +6,7 @@ const fs = require("node:fs/promises");
 const http = require("node:http");
 const path = require("node:path");
 const { chromium } = require("playwright-core");
+const { waitForInitialSetup } = require("./real_browser_qualification.cjs");
 const root = path.join(__dirname, "live-rootfs/usr/share/cockpit/cybexos-installer");
 
 const transport = `
@@ -22,6 +23,26 @@ window.cockpit = {
       const data = JSON.parse(raw || "{}"), command = args[1];
       fixtureRequests.push({ command, hasPassword: !!data.password,
         locale: data.locale, timezone: data.timezone, encrypted: data.encrypted });
+      const busyRemaining = Number(sessionStorage.getItem("fixtureBusyRemaining") || "0");
+      if (command === "inventory" && busyRemaining > 0) {
+        sessionStorage.setItem("fixtureBusyRemaining", String(busyRemaining - 1));
+        setTimeout(() => {
+          stream(JSON.stringify({ event: "result", ok: false,
+            error: "Another installer operation is still running." }) + "\\n");
+          done();
+        }, 5);
+        return this;
+      }
+      const initialError = command === "inventory" && sessionStorage.getItem("fixtureInitialError");
+      if (initialError && initialError !== "done") {
+        sessionStorage.setItem("fixtureInitialError", "done");
+        setTimeout(() => {
+          stream(JSON.stringify({ event: "result", ok: false,
+            error: "Anaconda inventory failed." }) + "\\n");
+          done();
+        }, 5);
+        return this;
+      }
       let result;
       if (command === "status") result = { phase: fixturePhase, message: "Fixture progress" };
       else if (command === "inventory" || command === "rescan") result = {
@@ -116,6 +137,22 @@ async function main() {
       headless: true,
       args: ["--disable-dev-shm-usage"],
     });
+    const busyPage = await browser.newPage();
+    await busyPage.addInitScript(() => sessionStorage.setItem("fixtureBusyRemaining", "4"));
+    await busyPage.goto(`http://127.0.0.1:${server.address().port}/cockpit/@localhost/cybexos-installer/index.html`);
+    await waitForInitialSetup(busyPage, 5000, [10, 20, 40, 80, 160, 320, 320]);
+    assert.equal(await busyPage.locator("#setup").isVisible(), true);
+    assert.equal(await busyPage.evaluate(() => fixtureRequests.filter(request => request.command === "inventory").length), 5);
+    await busyPage.close();
+
+    const otherErrorPage = await browser.newPage();
+    await otherErrorPage.addInitScript(() => sessionStorage.setItem("fixtureInitialError", "other"));
+    await otherErrorPage.goto(`http://127.0.0.1:${server.address().port}/cockpit/@localhost/cybexos-installer/index.html`);
+    await assert.rejects(waitForInitialSetup(otherErrorPage, 250));
+    assert.equal(await otherErrorPage.locator("#setup").isVisible(), false);
+    assert.equal(await otherErrorPage.evaluate(() => fixtureRequests.filter(request => request.command === "inventory").length), 1);
+    await otherErrorPage.close();
+
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.emulateMedia({ reducedMotion: "reduce" });
     const errors = [];
