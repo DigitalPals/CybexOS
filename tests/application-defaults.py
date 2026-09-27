@@ -166,6 +166,7 @@ class ApplicationDefaults(unittest.TestCase):
                 "hostnamectl": "printf '%s\\n' cybex-test",
                 "timedatectl": "printf '%s\\n' UTC",
                 "localectl": "exit 0",
+                "findmnt": "exit 1",
                 "sudo": "echo 'sudo must not run during --check' >&2; exit 97",
             }
             for name, body in probes.items():
@@ -183,7 +184,9 @@ class ApplicationDefaults(unittest.TestCase):
             for key in APPLICATIONS:
                 self.assertIs(config["features"][key], True, key)
             self.assertFalse((home / "absent.yml").exists())
-            self.assertIs(config["passwordless_wheel"], True)
+            self.assertIs(config["passwordless_wheel"], False)
+            self.assertIs(config["manage_personal_dotfiles"], True)
+            self.assertIs(config["manage_system_identity"], False)
             for key in ("passwordless_local_polkit",
                         "docker_sudoless", "desktop_autologin"):
                 self.assertIs(config[key], False)

@@ -322,6 +322,8 @@
   when: manage_personal_dotfiles | bool
   tags: [shell-defaults]
 
+# Match the ISO's one-time user seed: these files become user-owned after
+# first creation. Managed Fish/Kitty fragments remain separately updateable.
 - name: Install application configuration
   become: true
   become_user: "{{ primary_user }}"
@@ -329,6 +331,7 @@
     src: "{{ item.src }}"
     dest: "{{ primary_home }}/{{ item.dest }}"
     mode: "{{ item.mode | default('0644') }}"
+    force: false
   loop:
     - { src: fastfetch.jsonc, dest: .config/fastfetch/config.jsonc }
   when: manage_personal_dotfiles | bool
@@ -343,6 +346,7 @@
     src: voxtype.toml
     dest: "{{ primary_home }}/.config/voxtype/config.toml"
     mode: "0644"
+    force: false
   notify: Restart Voxtype after configuration updates
   when: manage_personal_dotfiles | bool
 
@@ -353,6 +357,7 @@
     src: "{{ config_repo }}/assets/EDM115-newline2.omp.json"
     dest: "{{ primary_home }}/.config/oh-my-posh/EDM115-newline2.omp.json"
     mode: "0644"
+    force: false
   when: manage_personal_dotfiles | bool
 
 - name: Configure environment variables
@@ -436,6 +441,7 @@
     src: mimeapps.list.j2
     dest: "{{ primary_home }}/.config/mimeapps.list"
     mode: "0644"
+    force: false
   when: manage_personal_dotfiles | bool
   tags: [browser, mime-defaults]
 
@@ -514,6 +520,7 @@
     dest: "{{ primary_home }}/.npmrc"
     mode: "0644"
     content: "prefix=${HOME}/.npm-global\n"
+    force: false
   when:
     - manage_personal_dotfiles | bool
     - features.developer_tools | bool

@@ -469,6 +469,7 @@ python_fixtures=(
   shell-health
   repository-policy
   application-defaults
+  installation-parity
   login-policy
   session-launcher
   omawrite

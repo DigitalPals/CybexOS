@@ -19,6 +19,13 @@ import tempfile
 
 import yaml
 
+# Source fixtures must exercise this checkout, even on a machine with an older
+# packaged policy installed. The installed helper reads its RPM-owned library.
+source_image = Path(__file__).resolve().parent.parent.parent.parent
+sys.path.insert(0, str(source_image) if (source_image / 'installation_policy.py').is_file()
+                else '/usr/share/cybexos/lib')
+from installation_policy import BOOLEANS, FEATURES, defaults as installation_defaults  # noqa: E402
+
 
 CONFIG = Path('/etc/cybexos/config.yml')
 INVENTORY = Path('/usr/share/cybexos/provision/inventory/group_vars/all.yml')
@@ -26,11 +33,6 @@ APPLY = '/usr/libexec/cybexos-configure-installed'
 # Key order and quoting follow ./install's generated file.
 STRINGS = ('primary_user', 'primary_group', 'primary_home', 'machine_hostname', 'machine_timezone',
            'machine_locale', 'regional_locale', 'machine_keyboard_layout', 'machine_keyboard_variant')
-BOOLEANS = ('manage_system_identity', 'manage_personal_dotfiles', 'cleanup_legacy_xps_artifacts',
-            'passwordless_wheel', 'passwordless_local_polkit', 'docker_sudoless', 'desktop_autologin',
-            'start_optional_hardware_services', 'allow_insecure_sccache_transport', 'xps_2026_camera_enabled')
-FEATURES = ('developer_tools', 'connected_widgets', 'proprietary_apps', 'tailscale', 'docker', 'podman',
-            'steam', 'private_hooks', 'apple_display', 'source_builds', 'local_network_services')
 PATTERNS = {
     'machine_hostname': r'[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}',
     'machine_timezone': r'[A-Za-z0-9_+-]+(?:/[A-Za-z0-9_+-]+)*',
@@ -125,24 +127,12 @@ def detect(root=Path('/'), entries=None, group=group_name, inventory=INVENTORY, 
         account = candidates[0]
     if account is None:
         return None
-    defaults = yaml.safe_load(inventory.read_text()) or {}
-    features = defaults.get('features') or {}
     values = {'config_schema_version': 1, 'primary_user': account.pw_name,
               'primary_group': group(account.pw_gid), 'primary_home': account.pw_dir, **identity(root)}
-    # Unset, templated or non-boolean defaults fall back to the stricter choice.
-    values.update({key: defaults.get(key) is True for key in BOOLEANS})
-    # A live ISO cannot inherit the build host's sudo choice. The guided
-    # installer applies a confirmed opt-in after provisioning; Advanced has
-    # no such prompt and keeps the password-required default.
-    if fresh_account:
-        values['passwordless_wheel'] = False
-    # Anaconda and the OS settings own identity after an ISO installation; a
-    # later checkout run must not reset them to this installation-time record.
-    values['manage_system_identity'] = False
-    # Only a fresh installation account opts in without being asked.
-    values['manage_personal_dotfiles'] = fresh_account
+    values.update(installation_defaults(inventory, fresh_account=fresh_account))
+    # Only the target helper's verified decision (or a saved login policy)
+    # can enable automatic login; the build host is never an input.
     values['desktop_autologin'] = login.get('user') == account.pw_name and login.get('autologin') is True
-    values['features'] = {key: features.get(key) is True for key in FEATURES}
     return values
 
 

@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Read the ISO's fresh-install defaults without changing the machine."""
+import importlib.machinery
+import importlib.util
+import argparse
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'image'))
+from installation_policy import defaults  # noqa: E402
+import yaml  # noqa: E402
+
+
+def encrypted_root():
+    # The same complete-device check used at every ISO-installed boot.
+    loader = importlib.machinery.SourceFileLoader(
+        'installer_login_policy', str(ROOT / 'roles/desktop/files/login/cybexos-login-prepare'))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    policy = importlib.util.module_from_spec(spec)
+    loader.exec_module(policy)
+    return policy.encrypted_root()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--config', type=Path)
+    args = parser.parse_args()
+    encrypted = encrypted_root()
+    values = defaults(ROOT / 'inventory/group_vars/all.yml', encrypted=encrypted)
+    if args.config:
+        saved = yaml.safe_load(args.config.read_text())
+        if not isinstance(saved, dict) or not isinstance(saved.get('features', {}), dict):
+            raise ValueError('Saved installation choices must be a mapping')
+        for destination, source in ((values, saved), (values['features'], saved.get('features', {}))):
+            for key in destination:
+                if key == 'features' or key not in source:
+                    continue
+                if type(source[key]) is not bool:
+                    raise ValueError(f'{key} must be a boolean')
+                destination[key] = source[key]
+        if 'desktop_autologin' not in saved and 'gdm_autologin' in saved:
+            if type(saved['gdm_autologin']) is not bool:
+                raise ValueError('gdm_autologin must be a boolean')
+            values['desktop_autologin'] = saved['gdm_autologin']
+    # The ISO does not offer autologin on an unverified/plaintext root.
+    values['desktop_autologin'] = values['desktop_autologin'] and encrypted
+    print(f'root_encrypted={str(encrypted).lower()}')
+    # Only fixed policy keys and booleans cross into Bash; there is no eval.
+    for key, value in {**{key: value for key, value in values.items() if key != 'features'},
+                       **values['features']}.items():
+        print(f'{key}={str(value).lower()}')
+
+
+if __name__ == '__main__':
+    main()
