@@ -18,7 +18,7 @@ Obsoletes:      fedora-config-desktop < %{epoch}:%{version}-%{release}
 # filesystem separately. Avoid spending minutes recompressing user toolchains.
 %global _binary_payload w3.zstdio
 %global _binary_filedigest_algorithm 8
-Requires:       bash coreutils util-linux systemd python3 ansible-core gnupg2
+Requires:       bash coreutils util-linux systemd python3 ansible-core gnupg2 openssh-clients
 Requires:       sddm sddm-wayland-generic systemd-pam gnome-keyring-pam
 Requires:       hyprland hyprland-guiutils quickshell hypridle hyprlock hyprsunset
 Requires:       xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-utils

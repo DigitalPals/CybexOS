@@ -1,10 +1,14 @@
 # Remote Server widget
 
-Add **Remote Server** from Settings → Menubar → Widgets, then open its options.
-Set **SSH host** to an existing SSH alias or `user@hostname`, and optionally set
-a display name. For example: `john@10.10.0.7`, **The Beast**. These are personal
-settings, not distribution defaults; new installations leave the widget disabled
-and its host empty, and its dashboard offers **Choose SSH host** until one is set.
+**Remote Server** is included and enabled in the menubar on new installations,
+including ISO installations. Its host and display name start empty: the bar
+shows **Set up** and the dashboard offers **Choose SSH host**. No SSH connection
+starts until a host is configured. Existing visibility and host preferences are
+preserved when upgrading.
+
+Open its options in Settings → Menubar → Widgets. Set **SSH host** to an existing
+SSH alias or `user@hostname`, and optionally set a display name. For example:
+`user@server.example.com`, **My server**. These are personal settings.
 
 The default menubar statistic is CPU utilization. Options include load average,
 memory used percent/bytes or available bytes, filesystem used percent/free bytes,
@@ -49,8 +53,8 @@ dashboard while its header and footer stay fixed.
 - OpenSSH and Python 3 on the desktop. GNU `df` provides local filesystem stats;
   `ip` provides optional addresses/default-route discovery on the server.
 - Working noninteractive SSH key/agent authentication. First connect in a
-  terminal, for example `ssh john@10.10.0.7`, to verify its host key. Unknown or
-  changed keys are rejected; the widget never accepts them automatically.
+  terminal, for example `ssh user@server.example.com`, to verify its host key.
+  Unknown or changed keys are rejected; the widget never accepts them automatically.
 - Configure ports, identities and jump hosts in `~/.ssh/config`. The host field
   accepts a destination, not SSH options or a shell command.
 

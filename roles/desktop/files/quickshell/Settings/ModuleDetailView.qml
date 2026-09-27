@@ -911,7 +911,7 @@ SettingsPage {
             SettingsTextRow {
                 width: parent.width
                 label: "SSH host"
-                placeholder: "john@10.10.0.7 or SSH alias"
+                placeholder: "user@hostname or SSH alias"
                 hint: "Uses your SSH config and keys. Connect once in a terminal to verify the host key. Requires Linux and Python 3.9+."
                 value: view.opts.host
                 dirty: view.optDirty("host")
@@ -921,7 +921,7 @@ SettingsPage {
             SettingsTextRow {
                 width: parent.width
                 label: "Display name"
-                placeholder: "The Beast"
+                placeholder: "My server"
                 value: view.opts.label
                 dirty: view.optDirty("label")
                 onCommitted: text => view.setOpt("label", text)

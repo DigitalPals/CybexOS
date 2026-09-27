@@ -646,10 +646,14 @@ glass and detached panels. What that added, and what it needs:
   artwork and functional shapes such as switch tracks and progress meters
   retain their own presentation.
   Update assets with `scripts/update-tabler-icons`; see `assets/tabler/README.md`.
-- **Blur is the compositor's.** `roles/desktop/files/looknfeel.lua` exports the
-  named `quickshell_blur_rule` matching the `qs-*` namespaces. The Appearance
-  switch calls that handle through `hyprctl eval`; its initial `enabled` value
-  is read from the persisted JSON so compositor reloads retain the choice.
+- **Blur is the compositor's.** `roles/desktop/templates/looknfeel.lua.j2`
+  defaults to one blur pass to reduce desktop GPU work while keeping
+  animations and display refresh rates unchanged. Both Ansible deployment
+  and the ISO desktop package render this template.
+  It exports the named `quickshell_blur_rule` matching the `qs-*` namespaces.
+  The Appearance switch calls that handle through `hyprctl eval`; its initial
+  `enabled` value is read from the persisted JSON so compositor reloads retain
+  the choice.
   Layer namespaces stay fixed because changing one after a Wayland surface is
   connected does not update the compositor rule safely.
 - **Nothing that floats over the desktop may draw a drop shadow.** Blur is

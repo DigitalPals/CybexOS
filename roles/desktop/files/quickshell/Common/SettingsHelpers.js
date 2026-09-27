@@ -217,7 +217,7 @@ function defaultMods() {
             mod("notes", true)],
         right: [
             mod("modelusage", false), mod("updates", true), mod("gh", false), mod("t3", false),
-            mod("hermes", false), mod("remote", false),
+            mod("hermes", false), mod("remote", true),
             mod("tray", false), mod("notifications", true), mod("vol", true),
             mod("wifi", true), mod("bt", true), mod("batt", true), mod("control", true)
         ]

@@ -961,7 +961,7 @@ Singleton {
     }
 
     // Power saver takes the compositor's polish too: cybexos_power_saver() in
-    // looknfeel.lua drops blur to one pass and turns animations off, and
+    // looknfeel.lua uses one blur pass and turns animations off, and
     // holds that across a config reload. It is sent on startup as well, which
     // also lifts a saver left behind by a shell that exited meanwhile.
     property bool dispatchedPowerSaver: false
