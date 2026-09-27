@@ -38,6 +38,7 @@ def prepare(payload):
         shutil.copyfile(ROOT / source, target)
         target.chmod(0o755 if executable else 0o644)
 
+    copy('image/installation_policy.py', 'usr/share/cybexos/lib/installation_policy.py')
     for relative in ('usr/libexec/cybexos-configure-installed', 'usr/libexec/cybexos-config',
                      'usr/bin/cybex', 'usr/bin/hyprland-quickshell',
                      'usr/lib/systemd/user/hyprland-session.target',

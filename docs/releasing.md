@@ -46,6 +46,11 @@ repository.
 1. Review `release-manifest.json`, `VERSION`, the Fedora release,
    configuration schema, minimum updater version, and all dependency pins.
 2. Run `./tests/run` and `./tests/fedora-vm-convergence` locally when practical.
+   Run `python3 -B image/check-source` as well. Both source suites enforce the
+   [ISO-leading installation contract](installation-parity.md); changes to
+   applications, defaults or policy must cover both installation paths. Build
+   and qualify ISO/RPM artifacts from the same release revision rather than
+   reusing an older image as parity evidence.
    The source gate includes an N to N+1 ownership test that advances vendor
    runtime while requiring every user customization sentinel to remain
    byte-identical.

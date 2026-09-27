@@ -26,6 +26,9 @@ chmod 0755 "$fixture/release/cybexos-1.2.3/install" \
   "$fixture/release/cybexos-1.2.3/scripts/manage-agent-skills"
 cp "$repo_root/scripts/migrate-config" \
   "$fixture/release/cybexos-1.2.3/scripts/migrate-config"
+mkdir -p "$fixture/release/cybexos-1.2.3/inventory/group_vars"
+cp "$repo_root/inventory/group_vars/all.yml" \
+  "$fixture/release/cybexos-1.2.3/inventory/group_vars/all.yml"
 cp "$repo_root/scripts/semver" \
   "$fixture/release/cybexos-1.2.3/scripts/semver"
 printf '1.2.3\n' >"$fixture/release/cybexos-1.2.3/VERSION"

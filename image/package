@@ -165,6 +165,7 @@ def main():
     prepare_provision(ROOT, payload)
     copy("image/library/cybexos_managed_file.py", "usr/share/cybexos/lib/managed_files.py")
     copy("image/release_metadata.py", "usr/share/cybexos/lib/release_metadata.py")
+    copy("image/installation_policy.py", "usr/share/cybexos/lib/installation_policy.py")
     copy("roles/apps/files/cybexos-repository-policy", "usr/libexec/cybexos-repository-policy", True)
     # The workstation's font family mappings; roles/apps/tasks/fonts.yml
     # installs the same file on checkout deployments.

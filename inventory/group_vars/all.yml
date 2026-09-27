@@ -1,8 +1,9 @@
 ---
 # Opinionated product defaults. The interactive installer records machine-specific
 # answers in /etc/cybexos/config.yml and passes that file as extra vars.
-# Direct developer runs use the current account. Wheel sudo is passwordless
-# by product default; saved opt-outs remain authoritative.
+# Direct developer runs use the current account. The ISO defines fresh-install
+# policy: password-required sudo and the complete managed personal defaults.
+# Explicit saved choices remain authoritative on every deployment path.
 fedora_release: "44"
 config_schema_version: 1
 machine_hostname: "{{ ansible_facts.hostname | default('fedora') }}"
@@ -12,7 +13,7 @@ regional_locale: en_US.UTF-8
 machine_keyboard_layout: us
 machine_keyboard_variant: ""
 manage_system_identity: false
-manage_personal_dotfiles: false
+manage_personal_dotfiles: true
 cleanup_legacy_xps_artifacts: false
 cybexos_xps_2026: false
 plymouth_theme: cybex
@@ -37,7 +38,7 @@ xps_2026_camera_enabled: true
 xps_2026_haptic_intensity: high
 
 # Explicitly accepted local-machine security tradeoffs.
-passwordless_wheel: true
+passwordless_wheel: false
 passwordless_local_polkit: false
 # Membership in the docker group grants root-equivalent control of the host,
 # so Docker requires sudo unless this is explicitly accepted.

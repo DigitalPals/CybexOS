@@ -49,6 +49,9 @@ version references.
 Both deployment paths consume [the shared desktop contract](../assets/desktop-contract.json),
 wallpaper collection, existing Cybex Plymouth artwork, helpers, firewall zone
 and sysctl policy. Bluetooth visibility matches the workstation default.
+The ISO is authoritative for both paths' installation defaults; the checkout
+installer consumes the same [installation policy](installation_policy.py).
+The [parity contract](../docs/installation-parity.md) describes its checks.
 The image contains the repository desktop and default applications; it does
 not export personal plugins (including the Omarchy plugin), credentials,
 monitor overrides or private launchers from the build machine. The private

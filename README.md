@@ -80,14 +80,16 @@ cd CybexOS
 
 No inventory or configuration file needs to be edited first. The installer
 detects the current desktop user, home directory, hostname, timezone, locale,
-and keyboard settings and offers them as defaults. All application groups
-are selected by default, including in non-interactive installs; interactive
-setup allows explicit opt-outs. Fastfetch is a required baseline package.
-The installer explicitly asks whether to enable passwordless sudo, passwordless
-local Polkit authorization, and encrypted-boot desktop autologin. The two passwordless choices
-have no implicit answer. When Docker is selected, it also asks whether the
-desktop user may run Docker without sudo; the default is no, because the
-`docker` group grants root-equivalent control of the machine.
+and keyboard settings and offers them as defaults. The ISO defines the shared
+fresh-install policy: all application groups and personal dotfiles are enabled,
+sudo and local Polkit require authentication, and Docker requires sudo.
+Automatic login defaults on only when the complete root filesystem is verified
+as encrypted. These defaults also apply in non-interactive installs; interactive
+setup allows explicit opt-outs. Existing saved choices remain authoritative.
+Fastfetch is a required baseline package. Passwordless sudo, local Polkit and
+Docker access remain explicit opt-ins; the `docker` group grants root-equivalent
+control of the machine. See [installation parity](docs/installation-parity.md)
+for the shared contract and release checks.
 
 On an encrypted single-user installation, SDDM can open the desktop after the
 LUKS unlock and unlock GNOME Keyring with the briefly cached boot password.
