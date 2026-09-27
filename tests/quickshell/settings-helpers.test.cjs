@@ -61,7 +61,7 @@ test("defaults carry the design values", () => {
         ["indicators", "clock", "weather", "notes"]);
     assert.equal(d.mods.center.find(m => m.id === "notes").on, true);
     assert.deepEqual(d.mods.right.map(m => m.id),
-        ["modelusage", "updates", "gh", "t3", "hermes", "tray", "notifications",
+        ["modelusage", "updates", "gh", "t3", "hermes", "remote", "tray", "notifications",
          "vol", "wifi", "bt", "batt", "control"]);
     assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
     assert.equal(d.mods.right.find(m => m.id === "bt").on, true,
@@ -81,7 +81,7 @@ test("defaults carry the design values", () => {
     assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
         .every(module => module.detail === "auto"));
     assert.deepEqual(Object.keys(d.modOpts),
-        ["ws", "media", "indicators", "clock", "weather", "notes", "t3", "hermes", "modelusage",
+        ["ws", "media", "indicators", "clock", "remote", "weather", "notes", "t3", "hermes", "modelusage",
          "gh", "updates", "tray", "notifications", "vol", "batt"]);
     assert.equal(d.modOpts.ws.minSlots, 5);
     assert.equal(d.modOpts.ws.style, "numbers");
@@ -566,6 +566,18 @@ test("schema-6 migration preserves module order and adds clock-side indicators",
     assert.equal(migrated.mods.right[0].id, "batt");
 });
 
+test("missing font preferences use the current default across first-run and legacy settings", () => {
+    for (const raw of [null, {}, { wall: "mountain.jpg" }, { v: 3 }, { v: 6 }, { v: H.VERSION }]) {
+        const merged = H.merge(raw);
+        assert.equal(merged.font, "mono", JSON.stringify(raw));
+        assert.equal(H.FONT_CHOICES.find(choice => choice.id === merged.font).family,
+            "JetBrainsMono Nerd Font");
+    }
+    for (const font of H.FONT_IDS)
+        assert.equal(H.merge({ v: H.VERSION, font }).font, font,
+            "an explicitly saved font remains selectable");
+});
+
 test("schema-7 adopts Google Sans only from the previous default", () => {
     assert.equal(H.merge({ v: 6, font: "urbanist" }).font, "google",
         "the old untouched default follows the softer typography pass");
@@ -596,7 +608,7 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.deepEqual(next.center.map(m => m.id),
         ["indicators", "clock", "weather", "notes"]);
     assert.deepEqual(next.right.map(m => m.id),
-        ["modelusage", "updates", "gh", "t3", "hermes", "tray", "notifications",
+        ["modelusage", "updates", "gh", "t3", "hermes", "remote", "tray", "notifications",
          "wifi", "bt", "batt", "control"]);
     assert.ok(next.right.some(m => m.id === "bt" && m.on === true),
         "appended module keeps its default enable flag");
@@ -620,7 +632,7 @@ test("a schema-3 file adopts the redesign only where it was left untouched", () 
     assert.equal(untouched.barRadius, 11);
     assert.equal(untouched.gap, 8);
     assert.equal(untouched.accent, "#d3d283");
-    assert.equal(untouched.font, "google");
+    assert.equal(untouched.font, "mono");
     assert.equal(untouched.osd, "bottom");
     assert.equal(untouched.modOpts.ws.style, "numbers");
     assert.equal(untouched.modOpts.media.maxWidth, 180);
@@ -778,7 +790,7 @@ test("schema-11 inserts notifications before the first right-side status widget"
     const migrated = H.merge({ v: 10, mods: raw }).mods.right;
     assert.deepEqual(migrated.map(mod => mod.id),
         ["modelusage", "updates", "tray", "gh", "notifications", "wifi", "t3",
-         "hermes", "vol", "bt", "batt", "control"]);
+         "hermes", "vol", "bt", "batt", "remote", "control"]);
 });
 
 test("schema-11 appends notifications on the right when its status widgets moved", () => {

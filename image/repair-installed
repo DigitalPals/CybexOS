@@ -152,7 +152,7 @@ def apply(payload, account, packages, hardware=False):
         if session:
             run(user_command(account, ['systemctl', '--user', 'daemon-reload']))
             run(user_command(account, ['systemctl', '--user', 'start',
-                                       'hyprpolkitagent.service', 'hypridle.service', 'voxtype.service']))
+                                       'hypridle.service', 'voxtype.service']))
     finally:
         if shell_active:
             run(user_command(account, ['systemctl', '--user', 'start', 'quickshell.service']))

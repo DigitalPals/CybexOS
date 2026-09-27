@@ -18,7 +18,7 @@ test("IBus runs as a session unit on Hyprland's input-method v2 protocol", () =>
 test("the workstation and the image start the same IBus unit", () => {
     const desktop = read("roles/desktop/tasks/main.yml");
     assert.match(desktop, /src: cybexos-input-method\.service\s+dest: "\{\{ primary_home \}\}\/\.config\/systemd\/user\/cybexos-input-method\.service"/);
-    assert.match(desktop, /\['quickshell', 'hypridle', 'hyprpolkitagent', 'cybexos-input-method'\]/);
+    assert.match(desktop, /\['quickshell', 'hypridle', 'cybexos-input-method'\]/);
     const target = read("image/rootfs/usr/lib/systemd/user/hyprland-session.target");
     assert.match(target, /^Wants=.*\bcybexos-input-method\.service\b/m);
     assert.match(read("image/package"),

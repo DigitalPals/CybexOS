@@ -25,7 +25,7 @@ import "../Common/Typography.js" as Typography
 // padding, controls, and panel dimensions while preserving each component's
 // proportions; by default it also tracks `base-size`. `[bar]
 // size-horizontal` / `size-vertical` set the cross-axis dimension for
-// top/bottom and left/right bars at the default 12px font size; by default
+// top/bottom and left/right bars at the 12px reference font size; by default
 // those dimensions scale with `base-size` so larger fonts don't clip.
 QtObject {
   id: root
@@ -283,7 +283,7 @@ QtObject {
 
   // The only sanity floor is 1px. Themes and users can make this as large
   // as they like; if the shell gets ridiculous, that's their call.
-  property int fontBaseSize: 12
+  property int fontBaseSize: 14
 
   property var fontOverrides: ({})
   property var barOverrides: ({})
@@ -373,7 +373,7 @@ QtObject {
     var barOut = {}
     var styleOut = {}
     var spacingOut = {}
-    var nextBase = 12
+    var nextBase = 14
     var nextSpacingScale = 1.0
     var nextSpacingScaleWithFont = true
     var nextBarScaleWithFont = true

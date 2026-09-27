@@ -270,6 +270,7 @@ ShellRoot {
     NotificationToasts {}
     OsdWindow {}
     ShortcutsOverlay {}
+    PolkitWindow {}
 
     // Reading a singleton's property is what constructs it. Notifications
     // must start collecting, GitHub must start polling — GitHub

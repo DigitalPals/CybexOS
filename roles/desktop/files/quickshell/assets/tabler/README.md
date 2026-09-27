@@ -15,6 +15,9 @@ Controls communicate selection through their existing colour, background,
 border, checkmark, label or switch position. Pinned thread actions use accent
 ink; favourite stars retain their amber tint and stronger opacity. Icon colour
 fades, button press motion, spinners and panel transitions remain in place.
+`Sym` draws `loader-2` (also named `progress_activity`) from its original arc
+geometry, centered in the icon slot, so font baseline rounding cannot make
+the spinner wobble during rotation. Its outline and stroke match Tabler.
 The old `fill`, `animateFill`, `glyphFill` and `symbolFill` component properties
 remain accepted as inert compatibility inputs for existing plugins.
 

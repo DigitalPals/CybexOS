@@ -21,6 +21,7 @@ var WIDGETS = {
     indicators: { name: "Indicators", short: "Indicators", tag: "clock-side", glyph: "tune", description: "Quick actions and recording indicators beside the clock." },
     clock: { name: "Clock", short: "Clock", detail: true, glyph: "schedule", description: "Time, date, and calendar." },
     weather: { name: "Weather", short: "Weather", detail: true, glyph: "cloud", description: "Local conditions and forecast." },
+    remote: { name: "Remote Server", short: "Server", detail: true, glyph: "dns", description: "Monitor CPU, memory, storage and network over SSH." },
     notes: { name: "Notes", short: "Notes", glyph: "edit_note", description: "Capture and revisit your notes." },
     modelusage: { name: "Model Usage", short: "Model Usage", glyph: "monitoring", description: "Claude, Codex and Kimi quota limits, resets and API cost estimates." },
     t3: { name: "T3 Code", short: "T3 Code", detail: true, glyph: "code", description: "Follow T3 Code sessions." },

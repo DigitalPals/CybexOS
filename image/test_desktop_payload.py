@@ -45,6 +45,23 @@ class DesktopPayload(unittest.TestCase):
             split_seed(vendor, contract)
             defaults = json.loads((vendor / "essential-seed/.config/cybexos/shell.json").read_text())
             self.assertEqual(defaults, contract["shell"])
+            # Exercise first-login seeding followed by the real shell merger:
+            # an unversioned seed must not revive a historical font default.
+            (vendor / "bin").mkdir()
+            (vendor / "runtime").mkdir()
+            home = payload / "installed-user"
+            with patch.dict(os.environ, {}, clear=True):
+                INIT.initialize(home, vendor, mode="essential")
+            preferences = home / ".config/cybexos/shell.json"
+            result = subprocess.run([
+                "node", "-e",
+                "const fs = require('fs'), H = require(process.argv[1]); "
+                "const s = H.merge(JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))); "
+                "console.log(H.FONT_CHOICES.find(f => f.id === s.font).family);",
+                str(ROOT / "roles/desktop/files/quickshell/Common/SettingsHelpers.js"),
+                str(preferences),
+            ], text=True, capture_output=True, check=True)
+            self.assertEqual(result.stdout.strip(), "JetBrainsMono Nerd Font")
             wallpaper = vendor / "essential-seed/Pictures/Wallpapers" / defaults["wall"]
             self.assertEqual(wallpaper.read_bytes(), (ROOT / "assets/wallpapers" / defaults["wall"]).read_bytes())
             self.assertTrue(app.is_file())

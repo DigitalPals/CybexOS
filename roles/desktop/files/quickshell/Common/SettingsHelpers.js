@@ -39,7 +39,7 @@ var IDLE_SUSPEND_MINS = [0, 15, 30, 60, 120];
 // the digitalpals.model-usage Omarchy plugin (see ModelUsage/README.md).
 var MODULE_IDS = [
     "ws", "media", "indicators", "clock", "weather", "notes", "modelusage", "updates", "gh",
-    "t3", "hermes", "tray",
+    "t3", "hermes", "remote", "tray",
     "notifications", "vol", "wifi", "bt", "batt", "control"
 ];
 
@@ -50,7 +50,7 @@ var RETIRED_MODULE_IDS = ["bell", "idle", "usage"];
 var MODEL_USAGE_PROVIDERS = ["claude", "codex", "kimi"];
 var MODEL_USAGE_COST_PROVIDERS = ["claude", "codex"];
 
-var DETAIL_IDS = ["media", "weather", "clock", "t3", "hermes", "gh", "updates",
+var DETAIL_IDS = ["remote", "media", "weather", "clock", "t3", "hermes", "gh", "updates",
     "notifications", "vol", "batt"];
 var DETAIL_POLICIES = ["auto", "prefer", "compact"];
 
@@ -217,7 +217,7 @@ function defaultMods() {
             mod("notes", true)],
         right: [
             mod("modelusage", false), mod("updates", true), mod("gh", false), mod("t3", false),
-            mod("hermes", false),
+            mod("hermes", false), mod("remote", false),
             mod("tray", false), mod("notifications", true), mod("vol", true),
             mod("wifi", true), mod("bt", true), mod("batt", true), mod("control", true)
         ]
@@ -254,6 +254,7 @@ function defaultModOpts() {
             seconds: false, showDate: true, dateFormat: "ddd dd",
             showEvents: true, daysAhead: 14, pollMins: 15
         },
+        remote: { host: "", label: "", metric: "cpu", mount: "/", interface: "", showLabel: true, pollSecs: 5 },
         weather: { place: "", lat: 0, lon: 0, pollMins: 20 },
         notes: {
             titleProvider: "off",
@@ -359,7 +360,7 @@ function defaults() {
         glassEnabled: false,
         highContrast: false,
         reducedMotion: false,
-        shellFontSize: 12,
+        shellFontSize: 14,
         shellScale: 100,
         surfaceBorderMode: "accent",
         surfaceBorderColor: "#9ecbeb",
@@ -844,6 +845,15 @@ var MOD_OPT_CHECKS = {
             return enumIn(v, ["ddd dd", "ddd d MMM", "dd MMM", "dd-MM"], d);
         }
     },
+    remote: {
+        host: function(v, d) { return textIn(v, 254, d).trim(); },
+        label: function(v, d) { return textIn(v, 40, d).trim(); },
+        metric: function(v, d) { return enumIn(v, ["cpu", "load", "memory", "memoryUsed", "memoryFree", "disk", "diskFree", "rx", "tx", "temperature"], d); },
+        mount: function(v, d) { return textIn(v, 256, d); },
+        interface: function(v, d) { return textIn(v, 64, d).trim(); },
+        showLabel: boolIn,
+        pollSecs: function(v, d) { return intIn(v, 2, 60, 1, d); }
+    },
     weather: {
         place: function(v, d) { return textIn(v, 40, d); },
         lat: function(v, d) { return realIn(v, -90, 90, 0.0001, d); },
@@ -1168,12 +1178,14 @@ function adoptRedesign(parsed) {
 // Schema 7 makes the softer variable face the shell default. As with the
 // schema-4 redesign, a stored value equal to the previous default is treated
 // as untouched; every other valid font remains an explicit user choice.
+// A missing font must use today's default, including unversioned installer
+// seeds. It is not evidence of a saved schema-6 font preference.
 function adoptSofterTypography(parsed) {
     if (!parsed || typeof parsed !== "object"
             || (typeof parsed.v === "number" && parsed.v >= 7))
         return parsed;
     var next = clone(parsed);
-    if (next.font === undefined || next.font === "urbanist")
+    if (next.font === "urbanist")
         next.font = "google";
     return next;
 }

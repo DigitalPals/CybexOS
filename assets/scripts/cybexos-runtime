@@ -224,6 +224,20 @@ exec_runtime() {
           "$selected" >&2
         return 1
       }
+      # The authentication UI belongs to the selected shell. Stop the old
+      # agent synchronously before QML registers its listener; this also
+      # handles an upgrade while the previous agent is still running.
+      # Older releases remain usable when rolling back or leaving dev mode.
+      if [[ ${CYBEXOS_RUNTIME_TESTING:-0} != 1 ]] && {
+          systemctl --user is-active --quiet hyprpolkitagent.service ||
+          [[ $(systemctl --user show hyprpolkitagent.service -p LoadState --value 2>/dev/null) == loaded ]];
+        }; then
+        if [[ -f $selected/PolkitWindow.qml ]]; then
+          systemctl --user stop hyprpolkitagent.service
+        else
+          systemctl --user start --no-block hyprpolkitagent.service
+        fi
+      fi
       export CYBEXOS_USER_CONFIG_ROOT=$config_root
       export CYBEXOS_THEME_ROOT=$data_root/themes
       export CYBEXOS_PLUGIN_ROOT=$data_root/plugins

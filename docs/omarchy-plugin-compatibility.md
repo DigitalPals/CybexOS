@@ -259,10 +259,10 @@ accessibility scale, spacing density, border and corner settings described in
 [Shell appearance](shell-appearance.md). Appearance settings apply individually;
 there are no appearance presets.
 
-The defaults use JetBrainsMono Nerd Font at 12px, standard spacing, no panel
+The defaults use JetBrainsMono Nerd Font at 14px, standard spacing, no panel
 border and 16px panel corners. At the default accessibility scale,
 Model Usage's `Style.space(420)`
-is 420 logical pixels (840 image pixels on a 200% output). Qt applies monitor
+is 490 logical pixels (980 image pixels on a 200% output). Qt applies monitor
 scaling; the shell never multiplies geometry by monitor scale itself.
 
 Settings → Appearance → Plugins provides an additional interface scale (75–200%). Border mode

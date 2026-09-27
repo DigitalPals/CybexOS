@@ -105,7 +105,6 @@
           - start
           - quickshell.service
           - hypridle.service
-          - hyprpolkitagent.service
       changed_when: true
 
     - name: Confirm the restored desktop services are active
@@ -120,7 +119,6 @@
       loop:
         - quickshell
         - hypridle
-        - hyprpolkitagent
       changed_when: false
 
   rescue:

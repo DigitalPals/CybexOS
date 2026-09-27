@@ -237,6 +237,7 @@ var ALIASES = {
     "videocam": "video",
     "view_quilt": "layout",
     "visibility": "eye",
+    "visibility_off": "eye-off",
     "volume_down": "volume-2",
     "volume_mute": "volume-3",
     "volume_off": "volume-off",
@@ -515,6 +516,9 @@ var GLYPHS = {
     },
     "eye": {
         "outline": "\uea9a"
+    },
+    "eye-off": {
+        "outline": "\uecf0"
     },
     "file-text": {
         "outline": "\ueaa2"

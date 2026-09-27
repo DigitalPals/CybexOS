@@ -21,7 +21,8 @@ PanelWindow {
     readonly property string speedHelper: Quickshell.shellDir + "/scripts/network-speedtest.py"
     readonly property bool qrPageActive: NetworkOverlayState.page === "qr"
 
-    visible: NetworkOverlayState.open || scrim.opacity > 0.001
+    visible: !NetworkOverlayState.authenticationActive
+        && (NetworkOverlayState.open || scrim.opacity > 0.001)
     screen: NetworkOverlayState.screen ?? Screens.focused
     anchors { top: true; left: true; right: true; bottom: true }
     exclusionMode: ExclusionMode.Ignore
@@ -29,13 +30,13 @@ PanelWindow {
 
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "qs-network-overlay"
-    WlrLayershell.keyboardFocus: NetworkOverlayState.open
+    WlrLayershell.keyboardFocus: NetworkOverlayState.open && !NetworkOverlayState.authenticationActive
         ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     HyprlandFocusGrab {
-        active: NetworkOverlayState.open
+        active: NetworkOverlayState.open && !NetworkOverlayState.authenticationActive
         windows: [root]
-        onCleared: NetworkOverlayState.close()
+        onCleared: if (!NetworkOverlayState.authenticationActive) NetworkOverlayState.close()
     }
 
     Rectangle {
@@ -57,7 +58,7 @@ PanelWindow {
 
     FocusScope {
         anchors.fill: parent
-        focus: NetworkOverlayState.open
+        focus: NetworkOverlayState.open && !NetworkOverlayState.authenticationActive
         Keys.onEscapePressed: NetworkOverlayState.close()
 
         Rectangle {

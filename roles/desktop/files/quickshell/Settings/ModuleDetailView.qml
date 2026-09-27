@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 import "../Common/SettingsHelpers.js" as SettingsHelpers
+import "../Common/RemoteServerHelpers.js" as RemoteHelpers
 
 // Built-in options shared by the bar editor and standalone detail view.
 // The detail policy control lives here (storage stays in Settings.mods);
@@ -244,6 +245,7 @@ SettingsPage {
                 case "indicators": return indicatorsOptions;
                 case "clock": return clockOptions;
                 case "weather": return weatherOptions;
+                case "remote": return remoteOptions;
                 case "notes": return notesOptions;
                 case "t3": return t3Options;
                 case "hermes": return hermesOptions;
@@ -892,6 +894,91 @@ SettingsPage {
 
             WeatherLocationPicker {
                 width: parent.width
+            }
+        }
+    }
+
+    Component {
+        id: remoteOptions
+        Column {
+            id: remoteSettings
+            spacing: Theme.settingsRowSpacing
+            Claim {
+                active: remoteSettings.visible
+                onClaimed: RemoteServer.acquire()
+                onReleased: RemoteServer.release()
+            }
+            SettingsTextRow {
+                width: parent.width
+                label: "SSH host"
+                placeholder: "john@10.10.0.7 or SSH alias"
+                hint: "Uses your SSH config and keys. Connect once in a terminal to verify the host key. Requires Linux and Python 3.9+."
+                value: view.opts.host
+                dirty: view.optDirty("host")
+                onCommitted: text => view.setOpt("host", text)
+                onResetRequested: view.resetOpt("host")
+            }
+            SettingsTextRow {
+                width: parent.width
+                label: "Display name"
+                placeholder: "The Beast"
+                value: view.opts.label
+                dirty: view.optDirty("label")
+                onCommitted: text => view.setOpt("label", text)
+                onResetRequested: view.resetOpt("label")
+            }
+            SelectRow {
+                width: parent.width
+                label: "Menubar statistic"
+                model: RemoteHelpers.METRICS
+                current: view.opts.metric
+                dirty: view.optDirty("metric")
+                onPicked: value => view.setOpt("metric", value)
+                onResetRequested: view.resetOpt("metric")
+            }
+            SwitchRow {
+                width: parent.width
+                label: "Show server name"
+                checked: view.opts.showLabel
+                dirty: view.optDirty("showLabel")
+                onToggled: value => view.setOpt("showLabel", value)
+                onResetRequested: view.resetOpt("showLabel")
+            }
+            SettingsTextRow {
+                width: parent.width
+                label: "Filesystem"
+                hint: "Mount point used for the menubar storage statistic."
+                placeholder: "/"
+                value: view.opts.mount
+                dirty: view.optDirty("mount")
+                onCommitted: text => view.setOpt("mount", text)
+                onResetRequested: view.resetOpt("mount")
+            }
+            SettingsTextRow {
+                width: parent.width
+                label: "Network interface"
+                hint: "Leave empty to use the default route. Enter an interface name to pin it."
+                placeholder: "Automatic"
+                value: view.opts.interface
+                dirty: view.optDirty("interface")
+                onCommitted: text => view.setOpt("interface", text)
+                onResetRequested: view.resetOpt("interface")
+            }
+            SliderRow {
+                width: parent.width
+                label: "Update every"
+                hint: "The open dashboard updates every 2 seconds."
+                min: 2; max: 60; step: 1
+                value: view.optValue("pollSecs")
+                unit: "s"
+                dirty: view.optDirty("pollSecs")
+                onMoved: value => view.settleOpt("pollSecs", value)
+                onResetRequested: view.resetOpt("pollSecs")
+            }
+            SettingsAction {
+                text: "Refresh connection"
+                enabled: RemoteServer.host !== ""
+                onTriggered: RemoteServer.refresh()
             }
         }
     }

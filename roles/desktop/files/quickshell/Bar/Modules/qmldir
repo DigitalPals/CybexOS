@@ -20,3 +20,4 @@ Volume Volume.qml
 Weather Weather.qml
 Wifi Wifi.qml
 Workspaces Workspaces.qml
+Remote Remote.qml

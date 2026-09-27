@@ -9,6 +9,8 @@ Singleton {
     id: root
 
     property bool open: false
+    // Keep an authorizing helper alive while Polkit owns the keyboard.
+    property bool authenticationActive: false
     property string page: ""
     property var screen: null
     property string interfaceName: ""

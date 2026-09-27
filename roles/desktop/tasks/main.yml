@@ -73,7 +73,6 @@
       - hypridle
       - hyprlock
       - hyprpicker
-      - hyprpolkitagent
       - hyprsunset
       - quickshell
       - ImageMagick
@@ -1261,10 +1260,22 @@
     mode: "0644"
   loop:
     - hypridle
-    - hyprpolkitagent
   notify:
     - Reload user systemd
     - Restart hypridle
+
+- name: Retire standalone Polkit agent startup now provided by Quickshell
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.config/systemd/user/{{ item }}"
+    state: absent
+  loop:
+    - hyprland-session.target.wants/hyprpolkitagent.service
+    - graphical-session.target.wants/hyprpolkitagent.service
+    - hyprpolkitagent.service
+  notify: Reload user systemd
+  tags: [quickshell]
 
 # Dictation follows the developer tooling feature, which also selects its GPU
 # backend, downloads its model, and binds its keys. Without that model an
@@ -1351,7 +1362,7 @@
     state: link
     force: true
   loop: >-
-    {{ ['quickshell', 'hypridle', 'hyprpolkitagent', 'cybexos-input-method']
+    {{ ['quickshell', 'hypridle', 'cybexos-input-method']
        + (features.developer_tools | bool | ternary(['voxtype'], [])) }}
   notify: Reload user systemd
 
