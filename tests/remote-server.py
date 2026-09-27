@@ -81,7 +81,7 @@ class RemoteServerTests(unittest.TestCase):
             self.assertEqual(disks.call_count, 2)
 
     def test_ssh_destination_is_data_and_host_verification_is_required(self):
-        for host in ["john@10.10.0.7", "beast", "john@[2001:db8::1]"]:
+        for host in ["user@192.0.2.10", "server", "user@[2001:db8::1]"]:
             command = launcher.command(host)
             self.assertEqual(command[-2], host)
             for flag in ["BatchMode=yes", "StrictHostKeyChecking=yes", "ControlPath=none", "ClearAllForwardings=yes", "ForwardAgent=no"]:

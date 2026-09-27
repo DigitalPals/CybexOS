@@ -623,6 +623,6 @@ their isolated offscreen process.
 
 The power saver profile is a reduced-motion request too, for as long as it is
 on; it changes neither this variable nor **Settings → Appearance → Reduce
-motion**. The compositor follows it as well: blur drops to one pass and
+motion**. The compositor follows it as well: it uses one blur pass and
 Hyprland animations turn off, and the values it replaced return when power
 saver ends.

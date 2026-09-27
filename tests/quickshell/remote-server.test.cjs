@@ -5,28 +5,37 @@ const S = require("../../roles/desktop/files/quickshell/Common/SettingsHelpers.j
 
 function sample() {
     return { version: 1, boot: "a", uptime: 1200, cpu: 25, perCore: [20, 30], load: [1, 2, 3],
-        meta: { hostname: "beast", os: "Linux", defaultInterface: "eth0" },
+        meta: { hostname: "server", os: "Linux", defaultInterface: "eth0" },
         memory: { total: 16 * 1024 ** 3, available: 12 * 1024 ** 3, used: 4 * 1024 ** 3 },
         storage: [{ mount: "/", total: 1000, free: 400, percent: 60 }],
         temperatures: [{ name: "CPU", celsius: 54 }],
-        network: [{ name: "eth0", addresses: ["10.10.0.7"], rx: 1024, tx: 2048 },
+        network: [{ name: "eth0", addresses: ["192.0.2.10"], rx: 1024, tx: 2048 },
             { name: "docker0", addresses: ["172.17.0.1"], rx: 999999, tx: 999999 }] };
 }
-test("remote widget migrates as disabled and preserves user options", () => {
+test("remote widget starts enabled with an empty host and preserves user choices", () => {
     const old = S.defaults();
     old.mods.right = old.mods.right.filter(m => m.id !== "remote");
     delete old.modOpts.remote;
     const migrated = S.merge(old);
-    assert.equal(migrated.mods.right.find(m => m.id === "remote").on, false);
+    assert.equal(migrated.mods.right.find(m => m.id === "remote").on, true);
     assert.equal(migrated.modOpts.remote.host, "");
+    assert.equal(migrated.modOpts.remote.label, "");
     assert.equal(migrated.modOpts.remote.metric, "cpu");
-    const normalized = S.normalizeModOpts({ remote: { host: " john@10.10.0.7 ", label: "The Beast",
+    const normalized = S.normalizeModOpts({ remote: { host: " user@192.0.2.10 ", label: "My server",
         metric: "diskFree", mount: "/data", interface: "eth0", pollSecs: 999 } }).remote;
-    assert.equal(normalized.host, "john@10.10.0.7");
+    assert.equal(normalized.host, "user@192.0.2.10");
     assert.equal(normalized.metric, "diskFree");
     assert.equal(normalized.mount, "/data");
     assert.equal(normalized.pollSecs, 60);
     assert.equal(S.normalizeModOpts({ remote: { metric: "bogus" } }).remote.metric, "cpu");
+
+    const saved = S.defaults();
+    saved.v = S.VERSION;
+    saved.mods.right.find(m => m.id === "remote").on = false;
+    saved.modOpts.remote = normalized;
+    const restored = S.merge(saved);
+    assert.equal(restored.mods.right.find(m => m.id === "remote").on, false);
+    assert.deepEqual(restored.modOpts.remote, normalized);
 });
 test("every menu metric produces the intended unit and missing readings stay unknown", () => {
     const s = sample();

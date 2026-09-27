@@ -38,13 +38,11 @@ hl.config({
     -- Match Quickshell's Theme.hugCornerSize so tiled window corners continue
     -- the menubar's inverted edge curve at the reserved boundary.
     rounding = 16,
-    -- In glass mode every menubar and panel surface is a translucent tint over
-    -- whatever is behind it, and without a real blur they read as smeared
-    -- plastic. Three passes at this radius
-    -- is the point where the wallpaper stops being legible through the bar;
+    -- Blur separates translucent surfaces from the wallpaper. One pass keeps
+    -- compositing work down on high-resolution, high-refresh-rate displays;
     -- vibrancy stands in for the design's saturate(1.7).
     blur = {
-      enabled = true, size = 6, passes = 3, new_optimizations = true,
+      enabled = true, size = 6, passes = 1, new_optimizations = true,
       vibrancy = 0.25, noise = 0.012,
     },
     shadow = { enabled = true, range = 4, render_power = 3, color = "rgba(1a1917ee)" },
@@ -246,7 +244,7 @@ quickshell_blur_rule = hl.layer_rule({
   ignore_alpha = 0.1,
 })
 
--- Power saver trades compositor polish for battery: one blur pass and no
+-- Power saver keeps blur to one pass and disables
 -- animations. Quickshell calls cybexos_power_saver() through `hyprctl eval`
 -- when it starts and whenever the power profile changes. What the saver
 -- replaced is read live and kept in _G, which outlives a config reload: a

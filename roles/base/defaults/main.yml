@@ -22,6 +22,8 @@ base_required_packages:
 - gvfs-fuse
 - mokutil
 - NetworkManager
+# Remote Server's SSH transport is available on every installation.
+- openssh-clients
 - pipewire
 - pipewire-alsa
 - pipewire-pulseaudio

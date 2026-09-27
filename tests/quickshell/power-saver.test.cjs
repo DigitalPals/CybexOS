@@ -1,6 +1,6 @@
 // Power saver is the user's explicit request to trade polish for battery.
 // The shell follows it with its reduced-motion path; the compositor follows
-// it with fewer blur passes and no animations.
+// it with one blur pass and no animations.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const childProcess = require("node:child_process");
@@ -130,7 +130,7 @@ test("power saver drops compositor blur and animations, and restores what it rep
     { skip: luajit ? false : "luajit is not installed" }, () => {
     runLookAndFeel(`
 dofile(look)
-assert(passes() == 3 and animations() == true, "the configured values")
+assert(passes() == 1 and animations() == true, "the configured values")
 -- A user.lua override is what comes back afterwards.
 hl.config({ decoration = { blur = { passes = 2 } } })
 
@@ -153,7 +153,7 @@ assert(calls() == before, "the shell's startup request touches nothing when off"
 -- A compositor restart starts a fresh state; the shell re-sends its request.
 _G.__cybexos_power_saver = nil
 dofile(look)
-assert(passes() == 3 and animations() == true)
+assert(passes() == 1 and animations() == true)
 `);
 });
 
