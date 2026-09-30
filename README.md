@@ -14,6 +14,14 @@ The application command is `cybex`; paths, services, and packages use the
 `./install` from a CybexOS checkout moves such an installation to the new names;
 see [the operations guide](docs/operations.md#migrating-from-fedora-config).
 
+## Try the browser desktop
+
+The [browser experience](web/README.md) recreates the CybexOS menubar,
+workspaces, launcher, windows, terminal, files, notes, and appearance settings.
+It runs as a standalone web app, with Docker Compose serving it on port 5174.
+Notes and preferences stay in the visitor's browser; the demo does not run
+Linux or execute commands on the host.
+
 ## What it installs
 
 - Hyprland, a custom Quickshell menubar, SDDM, portals, notifications, and

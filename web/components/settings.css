@@ -1,0 +1,143 @@
+:root {
+  --wallpaper-aurora: radial-gradient(ellipse at 26% 16%, #a1c2a848, transparent 46%), radial-gradient(ellipse at 80% 25%, #7172a849, transparent 52%), linear-gradient(140deg, #183e3b 0%, #192e32 43%, #111a28 100%);
+  --wallpaper-dusk: radial-gradient(ellipse at 52% 42%, #de997957, transparent 51%), linear-gradient(165deg, #383042 0%, #865c65 44%, #453c53 68%, #202738 100%);
+}
+
+.wallpaper-mountains { background-image: url('/wallpapers/moon-mountains.jpg'); background-size: cover; background-position: center; }
+.wallpaper-aurora { background-image: var(--wallpaper-aurora); background-size: cover; background-position: center; }
+.wallpaper-dusk { background-image: var(--wallpaper-dusk); background-size: cover; background-position: center; }
+
+.settings-app { display: flex; height: 100%; min-height: 0; color: var(--text); font-size: 12px; overflow: hidden; container-type: inline-size; }
+.settings-app button, .settings-app select, .settings-app input { font: inherit; }
+.settings-app button, .settings-app label, .settings-app select, .settings-app a { -webkit-tap-highlight-color: transparent; }
+.settings-app button { cursor: pointer; }
+.settings-app button:focus-visible, .settings-app select:focus-visible, .settings-app a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.settings-sidebar { width: 174px; flex: 0 0 174px; background: color-mix(in srgb, var(--bg) 46%, transparent); border-right: 1px solid var(--line); padding: 24px 12px 17px; display: flex; flex-direction: column; }
+.settings-sidebar-heading { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 10px; padding: 0 9px 22px; }
+.settings-navigation { display: flex; flex-direction: column; gap: 5px; }
+.settings-navigation button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; color: var(--muted); }
+.settings-navigation button:hover { color: var(--text); background: color-mix(in srgb, var(--raised) 65%, transparent); }
+.settings-navigation button.is-current { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.settings-sidebar-footer { margin-top: auto; padding: 24px 6px 0; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 8px; white-space: nowrap; }
+.settings-local-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.settings-main { flex: 1; min-width: 0; padding: 29px 29px 22px; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.settings-page-heading { margin-bottom: 26px; }
+.settings-eyebrow { color: var(--muted); letter-spacing: 1.2px; font-size: 8px; }
+.settings-page-heading h2 { color: var(--text); font-size: 24px; font-weight: 500; letter-spacing: -.8px; line-height: 1.3; margin: 7px 0 7px; }
+.settings-page-heading p { color: var(--muted); font-size: 10px; line-height: 1.7; margin: 0; }
+.settings-fieldset { border: 0; padding: 0; margin: 0 0 23px; min-width: 0; }
+.settings-fieldset legend { color: var(--text); padding: 0; margin-bottom: 12px; font-size: 11px; }
+.settings-theme-options { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.settings-theme-option, .settings-accent-option, .settings-wallpaper-option { position: relative; cursor: pointer; }
+.settings-theme-option input, .settings-accent-option input, .settings-wallpaper-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.settings-theme-preview { position: relative; height: 97px; border-radius: 11px; border: 2px solid transparent; display: block; overflow: hidden; box-shadow: inset 0 0 0 1px #ffffff0c; }
+.settings-theme-dark .settings-theme-preview { background: #1a1c1d; }
+.settings-theme-light .settings-theme-preview { background: #e8e5dc; }
+.settings-theme-option input:checked + .settings-theme-preview { border-color: var(--accent); }
+.settings-theme-option input:focus-visible + .settings-theme-preview, .settings-accent-option input:focus-visible + span, .settings-wallpaper-option input:focus-visible + .settings-wallpaper-image { outline: 2px solid var(--accent); outline-offset: 4px; }
+.settings-mini-bar { display: flex; align-items: center; gap: 4px; height: 11px; background: #343536; border-radius: 4px; position: absolute; left: 12%; right: 12%; top: 10px; padding-left: 6px; }
+.settings-mini-bar i { width: 3px; height: 3px; border-radius: 50%; background: #aaa897; }
+.settings-mini-window { position: absolute; display: flex; flex-direction: column; gap: 5px; left: 17%; top: 32px; width: 58%; height: 48px; background: #303132; border-radius: 5px; padding: 12px 10px; }
+.settings-mini-window i { display: block; width: 70%; height: 3px; border-radius: 3px; background: #616363; }
+.settings-mini-window i:first-child { width: 45%; background: var(--accent); }
+.settings-mini-window i:last-child { width: 56%; }
+.settings-theme-light .settings-mini-bar { background: #faf8f1; }
+.settings-theme-light .settings-mini-bar i { background: #b7b3a6; }
+.settings-theme-light .settings-mini-window { background: #faf8f1; }
+.settings-theme-light .settings-mini-window i { background: #d2cec2; }
+.settings-theme-light .settings-mini-window i:first-child { background: #8c8e48; }
+.settings-theme-check { display: none; position: absolute; right: 7px; bottom: 7px; width: 20px; height: 20px; background: var(--accent); color: var(--accent-ink); border-radius: 50%; align-items: center; justify-content: center; }
+.settings-theme-option input:checked + .settings-theme-preview .settings-theme-check { display: flex; }
+.settings-theme-label { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 10px; color: var(--muted); font-size: 11px; }
+.settings-theme-option:has(input:checked) .settings-theme-label { color: var(--text); }
+.settings-accent-colors { display: flex; align-items: center; gap: 11px; padding: 2px; flex-wrap: wrap; }
+.settings-accent-option > span { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: var(--picker-accent); border-radius: 50%; color: #22231e; border: 2px solid transparent; }
+.settings-accent-option input:checked + span { outline: 1px solid var(--picker-accent); outline-offset: 3px; }
+.settings-accent-option:hover > span { transform: translateY(-1px); }
+.settings-accent-name { color: var(--muted); font-size: 10px; margin-left: 4px; }
+.settings-group { border-radius: 12px; background: color-mix(in srgb, var(--raised) 65%, transparent); overflow: hidden; }
+.settings-row { display: flex; align-items: center; gap: 12px; padding: 16px 14px; }
+.settings-row + .settings-row { border-top: 1px solid var(--line); }
+.settings-row-icon { color: var(--muted); display: flex; flex-shrink: 0; }
+.settings-row-copy { min-width: 0; flex: 1; }
+.settings-row-title { color: var(--text); font-size: 11px; line-height: 1.6; }
+.settings-row-copy p { margin: 3px 0 0; color: var(--muted); line-height: 1.6; font-size: 9px; }
+.settings-row-control { flex-shrink: 0; }
+.settings-row select { color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 8px 5px; max-width: 146px; font-size: 9px; cursor: pointer; color-scheme: inherit; }
+.settings-toggle { width: 34px; height: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); display: flex; align-items: center; padding: 3px; }
+.settings-toggle span { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); transition: transform .15s ease; }
+.settings-toggle[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+.settings-toggle[aria-checked="true"] span { transform: translateX(13px); background: var(--accent-ink); }
+.settings-wallpapers { display: grid; grid-template-columns: 1fr 1fr; gap: 22px 15px; }
+.settings-wallpaper-option:first-child { grid-column: 1 / -1; }
+.settings-wallpaper-image { display: block; border: 2px solid transparent; height: 109px; border-radius: 11px; position: relative; }
+.settings-wallpaper-option:first-child .settings-wallpaper-image { height: 183px; }
+.settings-wallpaper-option input:checked + .settings-wallpaper-image { border-color: var(--accent); }
+.settings-wallpaper-check { display: none; position: absolute; right: 10px; bottom: 10px; width: 23px; height: 23px; align-items: center; justify-content: center; background: var(--accent); color: var(--accent-ink); border-radius: 50%; }
+.settings-wallpaper-option input:checked + .settings-wallpaper-image .settings-wallpaper-check { display: flex; }
+.settings-wallpaper-name { display: block; margin-top: 10px; font-size: 11px; }
+.settings-wallpaper-description { display: block; color: var(--muted); font-size: 9px; line-height: 1.6; margin-top: 4px; }
+.settings-help-note { display: flex; align-items: flex-start; gap: 10px; margin-top: 22px; color: var(--muted); }
+.settings-help-note > svg { flex-shrink: 0; margin-top: 1px; }
+.settings-help-note p { font-size: 10px; margin: 0; line-height: 1.8; }
+.settings-clock-preview { padding: 30px 18px; display: flex; flex-direction: column; align-items: center; gap: 13px; background: color-mix(in srgb, var(--bg) 65%, transparent); border-radius: 12px; margin-bottom: 22px; color: var(--accent); }
+.settings-clock-preview > span { color: var(--text); font-size: 37px; font-variant-numeric: tabular-nums; letter-spacing: -1.8px; }
+.settings-clock-preview > small { color: var(--muted); font-size: 9px; }
+.settings-about-brand { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 29px 16px 35px; }
+.settings-about-brand > span { color: var(--text); font-size: 39px; letter-spacing: -3px; font-weight: 600; display: flex; align-items: baseline; }
+.settings-about-brand > span > span { color: var(--accent); }
+.settings-about-brand i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: 5px; }
+.settings-about-brand small { color: var(--muted); font-size: 8px; letter-spacing: 1.5px; }
+.settings-about-facts > div { display: flex; align-items: center; justify-content: space-between; padding: 13px 15px; gap: 14px; font-size: 10px; }
+.settings-about-facts > div + div { border-top: 1px solid var(--line); }
+.settings-about-facts > div > span { color: var(--muted); }
+.settings-about-facts strong { font-weight: 400; text-align: right; }
+.settings-about-note { color: var(--muted); }
+.settings-repository-link { display: inline-flex; align-items: center; gap: 8px; color: var(--accent); font-size: 10px; text-decoration: none; margin-top: 22px; line-height: 1.6; }
+.settings-repository-link:hover { text-decoration: underline; }
+.settings-footer { margin-top: 27px; padding-top: 18px; border-top: 1px solid var(--line); }
+.settings-reset { display: inline-flex; align-items: center; gap: 7px; background: none; border: none; color: var(--muted); padding: 3px 0; font-size: 9px !important; }
+.settings-reset:hover { color: var(--text); }
+.settings-reset-confirmation { background: var(--raised); border-radius: 9px; padding: 13px; margin-top: 13px; }
+.settings-reset-confirmation p { color: var(--muted); line-height: 1.7; font-size: 10px; margin: 0 0 12px; }
+.settings-reset-confirmation > div { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.settings-reset-confirmation button { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 6px; padding: 7px 10px; font-size: 9px; }
+.settings-reset-confirmation .settings-confirm-button { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.settings-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+@container (max-width: 610px) {
+  .settings-sidebar { width: 135px; flex-basis: 135px; padding-left: 7px; padding-right: 7px; }
+  .settings-sidebar-heading { font-size: 8px; gap: 6px; padding-left: 5px; }
+  .settings-navigation button { gap: 7px; padding: 10px 7px; font-size: 10px; }
+  .settings-sidebar-footer { font-size: 7px; padding-left: 1px; gap: 4px; }
+  .settings-main { padding: 23px 19px 19px; }
+  .settings-row { flex-wrap: wrap; gap: 9px; padding: 14px 11px; }
+  .settings-row:has(select) .settings-row-control { width: 100%; padding-left: 27px; }
+  .settings-row select { max-width: 100%; width: 100%; }
+  .settings-accent-colors { gap: 10px; }
+  .settings-accent-name { flex-basis: 100%; margin-top: 4px; margin-left: 0; }
+}
+
+@container (max-width: 430px) {
+  .settings-sidebar { width: 49px; flex-basis: 49px; padding: 20px 5px 12px; }
+  .settings-sidebar-heading, .settings-sidebar-footer { display: none; }
+  .settings-navigation { gap: 10px; }
+  .settings-navigation button { position: relative; justify-content: center; padding: 10px 0; }
+  .settings-navigation button > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .settings-main { padding: 22px 16px 17px; }
+  .settings-page-heading h2 { font-size: 22px; }
+  .settings-page-heading p { font-size: 9px; }
+  .settings-eyebrow { font-size: 7px; letter-spacing: .8px; }
+  .settings-theme-options { gap: 10px; }
+  .settings-row-icon { display: none; }
+  .settings-row:has(select) .settings-row-control { padding-left: 0; }
+  .settings-wallpapers { gap: 17px 10px; }
+  .settings-wallpaper-option:first-child .settings-wallpaper-image { height: 147px; }
+  .settings-wallpaper-image { height: 85px; }
+  .settings-wallpaper-description { font-size: 8px; }
+  .settings-about-facts > div { font-size: 9px; padding: 13px 10px; gap: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-toggle span { transition: none; }
+}
