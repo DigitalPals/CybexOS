@@ -40,7 +40,8 @@ test("Hyprland loads saved displays after vendor monitors and before user.lua, c
     assert.ok(install.indexOf("- autostart.lua") < install.indexOf("- displays.lua")
         && install.indexOf("- displays.lua") < install.indexOf("- hyprland.lua"),
         "the module lands before the entrypoint that requires it");
-    assert.match(tasks, /'displays\.lua', 'hyprland\.lua'/, "stale-entry pruning keeps the module");
+    const prune = tasks.split('\n').find(line => line.includes('item.path | basename not in'));
+    assert.ok(prune && prune.includes("'displays.lua'"), "stale-entry pruning keeps the module");
     assert.match(fs.readFileSync(path.join(repo, "image/package"), "utf8"), /"autostart\.lua", "displays\.lua"/);
 });
 

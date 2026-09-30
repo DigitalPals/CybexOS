@@ -66,8 +66,8 @@ test("the vendor fragment includes the generated file after its fallback", () =>
     assert.equal(lines.at(-1), INCLUDE, "the include is the last setting, so it wins");
     assert.equal(lines.filter(line => /^(glob|env|gen)?include /.test(line)).length, 1);
     const tasks = fs.readFileSync(path.join(repoRoot, "roles/dotfiles/tasks/personal.yml"), "utf8");
-    assert.match(tasks, /src: kitty\.conf\n\s+dest: "\{\{ primary_home \}\}\/\.config\/kitty\/cybexos\.conf"/);
-    assert.match(tasks, /block: "include cybexos\.conf"/);
+    assert.match(tasks, /content:.*files\/kitty\.conf[^\n]*\n\s+dest: "\{\{ primary_home \}\}\/\.config\/kitty\/cybexos\.conf"/);
+    assert.match(tasks, /cybexos_user_include:[\s\S]*?kind: kitty/);
 });
 
 test("kitty is signalled only when its file changed, or on --force", t => {

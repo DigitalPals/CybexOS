@@ -5,6 +5,7 @@ import Quickshell.Io
 import Quickshell.Services.Notifications
 import "SettingsHelpers.js" as SettingsHelpers
 import "ProcHelpers.js" as ProcHelpers
+import "Persistence"
 
 // Shell settings store (design v2, "Shell settings"). Single source of truth
 // for user-tunable shell configuration: merged over defaults on load,
@@ -135,12 +136,13 @@ Singleton {
     // Change counter for dirty-state bindings; see scheduleSave().
     property int revision: 0
     property bool migrationPending: false
-    property bool writeInFlight: false
-    property string writeSnapshot: ""
-    property string lastPersistedText: ""
-    // What FileView compares the next setText against: the bytes it last
-    // read or tried to write, which after a failed save is not the file.
-    // See saveNow().
+    property alias writeInFlight: document.busy
+    property alias writeSnapshot: document.submitted
+    property alias lastPersistedText: document.baseline
+    property alias sourceDocument: document.source
+    property alias explicitOverrides: document.explicitKeys
+    property var resetOverrides: []
+    // Last observed file bytes, retained for read-error diagnostics.
     property string storeText: ""
     // A reload that came due while a write was in flight; see reloadStore().
     property bool reloadAfterWrite: false
@@ -187,11 +189,13 @@ Singleton {
         { id: "network", group: "Devices", label: "Network", glyph: "wifi",
             description: "Connections, IP addresses and DNS", system: true },
         { id: "touchpad", group: "Devices", label: "Touchpad", glyph: "mouse",
-            description: "Scrolling" },
+            description: "Tap, natural scrolling and sensitivity", system: true },
+        { id: "keyboard", group: "Devices", label: "Keyboard", glyph: "keyboard",
+            description: "Layouts and layout switching", system: true },
         { id: "power", group: "System", label: "Power", glyph: "power",
             description: "Screen off, lock, suspend and stay awake" },
         { id: "region", group: "System", label: "Region & formats", glyph: "language",
-            description: "Clock and temperature formats" },
+            description: "Timezone, language, clock and temperature formats" },
         { id: "accounts", group: "System", label: "Online accounts", glyph: "account_circle",
             description: "Connected accounts and calendar access", system: true },
         { id: "plugins", group: "System", label: "Omarchy plugins", glyph: "extension",
@@ -319,9 +323,22 @@ Singleton {
         resetLabel = "";
     }
 
-    function set(key, value) {
-        clearUndo();
+    function markExplicit(key) {
+        if (!Object.prototype.hasOwnProperty.call(defaults, key))
+            return false;
         migrationPending = false;
+        if (explicitOverrides.indexOf(key) === -1)
+            explicitOverrides = explicitOverrides.concat([key]);
+        // Selecting the current default is still an explicit choice, even
+        // when QML emits no property change signal for its equal value.
+        scheduleSave();
+        return true;
+    }
+
+    function set(key, value) {
+        if (!markExplicit(key))
+            return;
+        clearUndo();
         root[key] = SettingsHelpers.normalizeKey(key, value);
     }
 
@@ -332,7 +349,7 @@ Singleton {
 
     function setModuleEnabled(id, on) {
         clearUndo();
-        migrationPending = false;
+        markExplicit("mods");
         const next = { left: [], center: [], right: [] };
         for (const col of ["left", "center", "right"])
             next[col] = mods[col].map(m => m.id === id
@@ -342,7 +359,7 @@ Singleton {
 
     function setModuleDetail(id, detail) {
         clearUndo();
-        migrationPending = false;
+        markExplicit("mods");
         const next = { left: [], center: [], right: [] };
         for (const col of ["left", "center", "right"])
             next[col] = mods[col].map(m => m.id === id
@@ -358,7 +375,7 @@ Singleton {
 
     function setModuleOptions(id, changes) {
         clearUndo();
-        migrationPending = false;
+        markExplicit("modOpts");
         const next = SettingsHelpers.clone(modOpts);
         for (const key of Object.keys(changes || ({})))
             next[id][key] = changes[key];
@@ -367,20 +384,20 @@ Singleton {
 
     function setModuleOrder(left, center, right) {
         clearUndo();
-        migrationPending = false;
+        markExplicit("mods");
         mods = SettingsHelpers.normalizeMods({ left: left, center: center, right: right });
     }
 
     function setDrawerTabEnabled(id, on) {
         clearUndo();
-        migrationPending = false;
+        markExplicit("drawerTabs");
         drawerTabs = SettingsHelpers.normalizeDrawerTabs(drawerTabs.map(tab =>
             tab.id === id ? ({ id: tab.id, on: on }) : tab));
     }
 
     function setDrawerTabOrder(ids) {
         clearUndo();
-        migrationPending = false;
+        markExplicit("drawerTabs");
         const held = {};
         for (const tab of drawerTabs)
             held[tab.id] = tab.on;
@@ -390,7 +407,7 @@ Singleton {
 
     function setDrawerOverviewKey(key, on) {
         clearUndo();
-        migrationPending = false;
+        markExplicit("drawerOverview");
         const next = SettingsHelpers.clone(drawerOverview);
         next[key] = on;
         drawerOverview = SettingsHelpers.normalizeDrawerOverview(next);
@@ -410,6 +427,8 @@ Singleton {
         const enabled = modulePresetIds(name);
         clearUndo();
         migrationPending = false;
+        resetOverrides = explicitOverrides.slice();
+        markExplicit("mods");
         resetSnapshot = { mods: SettingsHelpers.clone(mods) };
         resetLabel = "Widget profile";
         const next = { left: [], center: [], right: [] };
@@ -427,6 +446,8 @@ Singleton {
 
     function resetKeys(keys, label) {
         migrationPending = false;
+        resetOverrides = explicitOverrides.slice();
+        explicitOverrides = explicitOverrides.filter(key => keys.indexOf(key) === -1);
         const previous = {};
         for (const key of keys)
             previous[key] = SettingsHelpers.clone(root[key]);
@@ -436,6 +457,7 @@ Singleton {
             root[key] = key === "mods" ? SettingsHelpers.clone(defaults.mods)
                 : key === "modOpts" ? SettingsHelpers.defaultModOpts()
                 : defaults[key];
+        scheduleSave();
         announcement = resetLabel + " reset. Undo available for eight seconds.";
         resetTimer.restart();
     }
@@ -449,6 +471,9 @@ Singleton {
             return;
         }
         migrationPending = false;
+        resetOverrides = explicitOverrides.slice();
+        markExplicit("mods");
+        markExplicit("modOpts");
         resetSnapshot = { mods: SettingsHelpers.clone(mods), modOpts: SettingsHelpers.clone(modOpts) };
         resetLabel = label || "Widget";
         const next = { left: [], center: [], right: [] };
@@ -460,6 +485,7 @@ Singleton {
         if (options[id] !== undefined)
             options[id] = SettingsHelpers.clone(defaults.modOpts[id]);
         modOpts = SettingsHelpers.normalizeModOpts(options);
+        scheduleSave();
         announcement = resetLabel + " reset. Undo available for eight seconds.";
         resetTimer.restart();
     }
@@ -487,12 +513,14 @@ Singleton {
         if (!resetSnapshot)
             return;
         const previous = resetSnapshot;
+        explicitOverrides = resetOverrides.slice();
         resetTimer.stop();
         for (const key of Object.keys(previous))
             root[key] = SettingsHelpers.clone(previous[key]);
         resetSnapshot = null;
         const label = resetLabel;
         resetLabel = "";
+        scheduleSave();
         announcement = label + " restored.";
     }
 
@@ -516,6 +544,16 @@ Singleton {
         for (const key of Object.keys(root.defaults))
             out[key] = root[key];
         return out;
+    }
+
+    SettingsDocument {
+        id: document
+        values: root.snapshot()
+        context: ({ connectedWidgets: root.connectedWidgetsConfigured })
+    }
+
+    function documentText() {
+        return document.text();
     }
 
     // One-time migration of the old QS_WEATHER_* env configuration: only a
@@ -604,7 +642,22 @@ Singleton {
         }
         if (newerSchema)
             protectNewerFile(result.value.v);
-        const parsed = result.value;
+        let parsed = result.value;
+        if (loaded && savePending && !newerSchema && result.status === "ok") {
+            try {
+                parsed = SettingsHelpers.rebaseDocuments(sourceDocument,
+                    SettingsHelpers.parse(documentText()).value, parsed);
+            } catch (error) {
+                // The authoritative writer will refuse the conflict and keep
+                // the pending candidate in a recoverable sidecar before the
+                // external values replace the form. Keep this base unchanged.
+                announcement = String(error);
+                reloadAfterWrite = true;
+                saveTimer.restart();
+                return;
+            }
+        }
+        const retainPending = savePending;
         const previousText = lastPersistedText;
         if (result.status !== "corrupt")
             lastPersistedText = rawText;
@@ -615,6 +668,8 @@ Singleton {
             ready = true;
             return;
         }
+        sourceDocument = result.value || ({});
+        explicitOverrides = SettingsHelpers.overrideKeys(parsed);
         const merged = SettingsHelpers.merge(parsed,
             { connectedWidgets: root.connectedWidgetsConfigured });
         if (loaded && SettingsHelpers.serialize(merged) === SettingsHelpers.serialize(snapshot())) {
@@ -633,13 +688,21 @@ Singleton {
         // The one key that is not a straight copy: a file predating modOpts
         // (or no file at all) still takes the retired QS_WEATHER_* env
         // configuration on its way in.
-        assignChanged("modOpts", seedWeatherFromEnv(parsed, merged.modOpts));
+        const seededOptions = seedWeatherFromEnv(parsed, merged.modOpts);
+        assignChanged("modOpts", seededOptions);
+        if (JSON.stringify(seededOptions) !== JSON.stringify(merged.modOpts)
+                && explicitOverrides.indexOf("modOpts") === -1)
+            explicitOverrides = explicitOverrides.concat(["modOpts"]);
         ready = true;
         migrationPending = parsed !== null && parsed.v !== SettingsHelpers.VERSION;
         firstRun = result.status === "empty";
         loaded = true;
         applyScrollFactor();
         applyGlassEffect();
+        if (retainPending && !newerSchema) {
+            migrationPending = false;
+            scheduleSave();
+        }
     }
 
     // After a rollback to an older shell the file carries keys and option
@@ -708,26 +771,27 @@ Singleton {
         }
     }
 
-    function handleSaveSucceeded() {
-        const completedSnapshot = writeSnapshot;
-        lastPersistedText = completedSnapshot;
-        storeText = completedSnapshot;
+    function handleSaveSucceeded(committed) {
         const wasRetry = saveError;
+        const state = document.complete(committed || writeSnapshot);
+        storeText = lastPersistedText;
+        ready = false;
+        for (const key of Object.keys(root.defaults))
+            assignChanged(key, state.values[key]);
+        ready = true;
         releaseWriteGuard();
         saveError = false;
         lastSavedAt = Date.now();
-        const changedWhileSaving = !sameContent(SettingsHelpers.serialize(snapshot()),
-            completedSnapshot);
-        savePending = changedWhileSaving;
+        savePending = state.pending;
         if (wasRetry)
             announcement = "Settings saved.";
-        if (changedWhileSaving)
+        if (state.pending)
             saveTimer.restart();
     }
 
     function handleSaveFailure(error) {
-        // FileView keeps the attempted bytes even though they never reached
-        // the file; saveNow() has to write around them.
+        // Keep the pending document available for retry. The transaction
+        // helper preserves the old file when publication fails.
         storeText = writeSnapshot;
         releaseWriteGuard();
         savePending = false;
@@ -740,7 +804,7 @@ Singleton {
         if (!ready || migrationPending || corruptBackupPending || loadError
                 || writeInFlight)
             return;
-        const next = SettingsHelpers.serialize(snapshot());
+        const next = documentText();
         // Already on disk: settle without writing. That includes a failed
         // save whose change was undone before Retry — the atomic write left
         // the previous file in place.
@@ -752,23 +816,38 @@ Singleton {
             }
             return;
         }
-        // FileView.setText compares against the bytes the view last read or
-        // tried to write, not against the file, and skips a match without
-        // emitting saved or saveFailed. After a failed save that is the
-        // attempt itself, so a Retry of the same content would hold the write
-        // guard for the rest of the session. The same JSON with one more
-        // trailing newline makes it a real write.
-        writeSnapshot = next === storeText ? next + "\n" : next;
-        writeInFlight = true;
-        try {
-            // Completion arrives only through saved/saveFailed. Quickshell
-            // logs a failed atomic commit (the fsync or the rename) and still
-            // emits saved, so saved means the bytes were written, not that
-            // they replaced the file.
-            store.setText(writeSnapshot);
-        } catch (error) {
-            handleSaveFailure(FileViewError.Unknown);
-            console.warn("settings save threw:", error);
+        if (!document.begin())
+            return;
+        settingsWriter.inputText = JSON.stringify({ baseline: lastPersistedText,
+            candidate: writeSnapshot, version: SettingsHelpers.VERSION }) + "\n";
+        settingsWriter.running = true;
+    }
+
+    CommandRequest {
+        id: settingsWriter
+        command: ["python3", "-B", Quickshell.shellDir + "/scripts/settings-store", root.filePath]
+        stdinEnabled: true
+        timeoutMs: 10000
+        timeoutMessage: "Saving settings timed out. Your previous file is intact."
+        onCompleted: (code, body, error) => {
+            let result = {};
+            try { result = JSON.parse(body); } catch (_) {}
+            if (code === 0 && result.ok && typeof result.text === "string") {
+                try {
+                    root.handleSaveSucceeded(result.text);
+                    return;
+                } catch (failure) {
+                    result.error = String(failure);
+                }
+            }
+            root.handleSaveFailure(FileViewError.Unknown);
+            root.announcement = result.error || error || "Could not save settings. Retry is available.";
+            if (result.error && result.error.indexOf("Your pending edit is saved at ") !== -1) {
+                // The rejected edit is retained byte-for-byte in its sidecar;
+                // refresh the form so Retry cannot repeat the same conflict.
+                root.saveError = false;
+                store.reload();
+            }
         }
     }
 
@@ -1038,10 +1117,9 @@ Singleton {
         id: store
         path: root.filePath
         printErrors: false
+        // Reads/watch notifications only. The settings-store process verifies
+        // merge, fsync and atomic publication before reporting save success.
         atomicWrites: true
-        // The atomic write syncs to disk before its rename, which can take
-        // seconds under heavy IO; off the GUI thread the shell keeps drawing
-        // meanwhile. saveNow() never starts a write under another one.
         blockWrites: false
         blockLoading: true
         watchChanges: true
@@ -1055,8 +1133,6 @@ Singleton {
         }
         onLoaded: root.applyLoaded(text())
         onLoadFailed: error => root.handleLoadFailure(error)
-        onSaved: root.handleSaveSucceeded()
-        onSaveFailed: error => root.handleSaveFailure(error)
     }
 
     // Force the load to complete during singleton construction so the first

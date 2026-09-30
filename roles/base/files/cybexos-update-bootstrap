@@ -1,0 +1,282 @@
+#!/usr/bin/python3
+"""Safely introduce durable updates on installations predating the journal.
+
+The untouched legacy recovery point is required before deployment. A second
+point includes a root-owned recovery bundle and login barrier, so boot recovery
+survives an interrupted rollback even when the original system had no hook.
+"""
+from __future__ import annotations
+
+import argparse
+import contextlib
+import fcntl
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import types
+
+HOST = Path('/')
+ROOT_UID = 0
+BUNDLES = Path('/usr/local/libexec/cybexos-update-bootstrap.d')
+UNIT = Path('/etc/systemd/system/cybexos-update-recover.service')
+VENDOR_UNIT = Path('/usr/lib/systemd/system/cybexos-update-recover.service')
+FILES = ('cybexos-system-snapshot', 'cybexos-update-transaction',
+         'cybexos-update-recover', 'cybexos-major-upgrade',
+         'cybexos-update-bootstrap', 'cybexos-vendor-paths.json',
+         'cybexos-update-recover.service', 'cybexos-update-recover-login.conf')
+POINT = re.compile(r'^[0-9]{8}T[0-9]{6}Z-[0-9]+$')
+IDENTIFIER = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$')
+TERMINAL = {'committed', 'aborted', 'rolled-back'}
+
+
+class Failure(Exception):
+    pass
+
+
+def execute(command):
+    return subprocess.run(command, check=True, capture_output=True, text=True,
+                          timeout=120).stdout.strip()
+
+
+def secure(path):
+    """No root boot code or its parents may be writable by another account."""
+    path = Path(path)
+    while True:
+        info = path.lstat()
+        if stat.S_ISLNK(info.st_mode) or info.st_uid != ROOT_UID or info.st_mode & 0o022:
+            raise Failure(f'Unsafe privileged recovery path: {path}')
+        if path == HOST:
+            return
+        if HOST not in path.parents:
+            raise Failure('Recovery path escapes the system root')
+        path = path.parent
+
+
+def directory(path):
+    if not path.exists():
+        directory(path.parent)
+        path.mkdir(mode=0o755)
+    secure(path)
+
+
+def complete(libexec):
+    for name in FILES[:6]:
+        path = libexec / name
+        secure(path)
+        if not path.is_file() or (not name.endswith('.json') and not os.access(path, os.X_OK)):
+            raise Failure(f'Incomplete recovery bundle: {path}')
+
+
+def ready(libexec):
+    complete(libexec)
+    if execute(['systemctl', 'is-enabled', 'cybexos-update-recover.service']) != 'enabled':
+        raise Failure('Boot recovery is not enabled')
+    invocation = execute(['systemctl', 'show', 'cybexos-update-recover.service',
+                          '-p', 'ExecStart', '--value'])
+    if f'path={libexec}/cybexos-update-recover ;' not in invocation:
+        raise Failure('Boot recovery does not use this installed bundle')
+    for unit in ('systemd-user-sessions.service', 'sddm.service'):
+        requirements = execute(['systemctl', 'show', unit, '-p', 'Requires', '--value']).split()
+        ordering = execute(['systemctl', 'show', unit, '-p', 'After', '--value']).split()
+        if 'cybexos-update-recover.service' not in requirements or 'cybexos-update-recover.service' not in ordering:
+            raise Failure(f'{unit} has no enforced recovery barrier')
+
+
+def read_sources(source):
+    contents = {}
+    for name in FILES:
+        # The source is the explicitly selected checkout/release or installed
+        # helper set. Only these fixed regular files become privileged code.
+        with os.fdopen(os.open(source / name, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise Failure(f'Recovery source is not a regular file: {name}')
+            contents[name] = stream.read(1024 * 1024 + 1)
+        if len(contents[name]) > 1024 * 1024:
+            raise Failure(f'Recovery source is too large: {name}')
+    return contents
+
+
+def snapshot_module(contents):
+    module = types.ModuleType('cybexos_bootstrap_snapshot')
+    module.__file__ = str(BUNDLES / 'cybexos-system-snapshot')
+    exec(compile(contents['cybexos-system-snapshot'], module.__file__, 'exec'), module.__dict__)
+    return module
+
+
+def validate_checkpoint(snapshot, point):
+    if not POINT.fullmatch(point):
+        raise Failure('Invalid pre-bootstrap checkpoint')
+    layout = snapshot.detect_layout()
+    if not layout.usable or layout.pending_reboot or layout.kind == 'recovery':
+        raise Failure('Bootstrap requires the active managed Btrfs root')
+    with snapshot.opened_store(layout, create=False) as store:
+        if store is None or not (store.roots / point).is_dir():
+            raise Failure('The untouched pre-bootstrap recovery point is missing')
+        for journal in (store.path / 'transactions').glob('*/transaction.json'):
+            if json.loads(journal.read_text()).get('state') not in TERMINAL:
+                raise Failure('An earlier update must recover before bootstrapping')
+
+
+def atomic_write(path, contents, mode=0o644):
+    directory(path.parent)
+    if path.is_symlink():
+        raise Failure(f'Refusing to replace a recovery symlink: {path}')
+    descriptor, name = tempfile.mkstemp(prefix=f'.{path.name}.', dir=path.parent)
+    try:
+        with os.fdopen(descriptor, 'wb') as stream:
+            stream.write(contents)
+            stream.flush()
+            os.fchmod(stream.fileno(), mode)
+            os.fsync(stream.fileno())
+        os.replace(name, path)
+        descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def install_bundle(contents):
+    digest = hashlib.sha256()
+    for name in FILES:
+        digest.update(name.encode() + b'\0' + contents[name] + b'\0')
+    bundle = BUNDLES / digest.hexdigest()
+    directory(BUNDLES)
+    if bundle.exists():
+        secure(bundle)
+        for name in FILES:
+            secure(bundle / name)
+            if (bundle / name).read_bytes() != contents[name]:
+                raise Failure('An existing recovery bundle has changed')
+        return bundle
+    staging = Path(tempfile.mkdtemp(prefix='.stage.', dir=BUNDLES))
+    try:
+        for name in FILES:
+            mode = 0o644 if name.endswith(('.json', '.service', '.conf')) else 0o755
+            atomic_write(staging / name, contents[name], mode)
+        staging.chmod(0o755)
+        os.rename(staging, bundle)
+        execute(['sync', '-f', str(BUNDLES)])
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+    return bundle
+
+
+def prepare(source, point, identifier):
+    if not IDENTIFIER.fullmatch(identifier):
+        raise Failure('Invalid update identifier')
+    contents = read_sources(source)
+    snapshot = snapshot_module(contents)
+    # This validation deliberately precedes the first installed file write.
+    validate_checkpoint(snapshot, point)
+    bundle = install_bundle(contents)
+    unit = contents['cybexos-update-recover.service'].decode()
+    unit, count = re.subn(r'^ExecStart=/(?:usr/local|usr)/libexec/cybexos-update-recover$',
+                         f'ExecStart={bundle}/cybexos-update-recover', unit, flags=re.MULTILINE)
+    if count != 1:
+        raise Failure('Unsupported recovery unit template')
+    atomic_write(UNIT, unit.encode())
+    for relative in ('systemd-user-sessions.service.d/60-cybexos-update-recover.conf',
+                     'sddm.service.d/60-cybexos-update-recover.conf'):
+        atomic_write(UNIT.parent / relative, contents['cybexos-update-recover-login.conf'])
+    # Atomic replacements and a newly created bundle need their final labels
+    # before systemd can read/execute them under Fedora's enforcing policy.
+    execute(['restorecon', '-RF', str(bundle), str(UNIT),
+             str(UNIT.parent / 'systemd-user-sessions.service.d/60-cybexos-update-recover.conf'),
+             str(UNIT.parent / 'sddm.service.d/60-cybexos-update-recover.conf')])
+    execute(['systemctl', 'daemon-reload'])
+    execute(['systemctl', 'enable', 'cybexos-update-recover.service'])
+    ready(bundle)
+    execute(['sync', '-f', str(UNIT)])
+    # Calling the captured module avoids mixing APIs with the legacy helper.
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        snapshot.command_create([f'update {identifier} (recovery bootstrap)'])
+    lines = output.getvalue().strip().splitlines()
+    checkpoint = lines[-1] if lines else ''
+    if not POINT.fullmatch(checkpoint) or checkpoint == point:
+        raise Failure('Bootstrap did not create a distinct protected recovery point')
+    return {'snapshot': checkpoint, 'previousSnapshot': point,
+            'transactionHelper': str(bundle / 'cybexos-update-transaction')}
+
+
+def finalize(bundle):
+    """Retire only our bootstrap files after normal helpers have converged."""
+    if bundle.parent != BUNDLES or not re.fullmatch(r'[0-9a-f]{64}', bundle.name):
+        raise Failure('Invalid bootstrap bundle path')
+    secure(bundle)
+    snapshot = snapshot_module(read_sources(bundle))
+    layout = snapshot.detect_layout()
+    if not layout.usable or layout.pending_reboot or layout.kind == 'recovery':
+        raise Failure('Recovery bootstrap must remain until the active root is healthy')
+    with snapshot.opened_store(layout, create=False) as store:
+        if store is None:
+            raise Failure('Recovery store is unavailable')
+        for journal in (store.path / 'transactions').glob('*/transaction.json'):
+            if json.loads(journal.read_text()).get('state') not in TERMINAL:
+                raise Failure('An unfinished update still needs boot recovery')
+    for libexec in (HOST / 'usr/local/libexec', HOST / 'usr/libexec'):
+        try:
+            complete(libexec)
+            bootstrap_line = f'ExecStart={bundle}/cybexos-update-recover'
+            if UNIT.is_file() and bootstrap_line in UNIT.read_text().splitlines():
+                secure(VENDOR_UNIT)
+                if f'ExecStart={libexec}/cybexos-update-recover' not in VENDOR_UNIT.read_text().splitlines():
+                    continue
+                UNIT.unlink()
+                execute(['systemctl', 'daemon-reload'])
+            ready(libexec)
+        except (Failure, OSError, subprocess.SubprocessError):
+            continue
+        shutil.rmtree(bundle)
+        execute(['sync', '-f', str(BUNDLES)])
+        return
+    # Package-only updates may not yet deliver the new role/RPM. This bundle
+    # remains the installed recovery implementation until full convergence.
+    print('Recovery bootstrap retained until normal recovery helpers converge', file=sys.stderr)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest='command', required=True)
+    check = commands.add_parser('ready')
+    check.add_argument('--libexec', type=Path, required=True)
+    bootstrap = commands.add_parser('prepare')
+    bootstrap.add_argument('--source', type=Path, required=True)
+    bootstrap.add_argument('--checkpoint', required=True)
+    bootstrap.add_argument('--id', required=True)
+    cleanup = commands.add_parser('finalize')
+    cleanup.add_argument('--bundle', type=Path, required=True)
+    args = parser.parse_args()
+    if os.geteuid() != 0:
+        parser.error('Run the recovery bootstrap as root')
+    os.umask(0o022)
+    try:
+        if args.command == 'ready':
+            ready(args.libexec)
+        else:
+            with Path('/run/cybexos-update-bootstrap.lock').open('a') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                if args.command == 'prepare':
+                    print(json.dumps(prepare(args.source, args.checkpoint, args.id)))
+                else:
+                    finalize(args.bundle)
+    except Exception as error:
+        print(f'cybexos-update-bootstrap: {error}', file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

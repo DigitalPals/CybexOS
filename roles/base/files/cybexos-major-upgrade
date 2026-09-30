@@ -1,0 +1,717 @@
+#!/usr/bin/python3
+"""Prepare a qualified Fedora upgrade, reboot explicitly, and validate or roll back.
+
+Target support comes from an explicitly selected compatible source release or
+signed desktop RPM, never from incrementing this machine's Fedora version.
+"""
+from __future__ import annotations
+
+import argparse
+from contextlib import contextmanager
+from datetime import datetime, timezone
+import configparser
+import fcntl
+import grp
+import hashlib
+import json
+import os
+from pathlib import Path
+import platform
+import pwd
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
+
+import yaml
+
+STATE = Path('/var/lib/cybexos/major-upgrade')
+PAYLOADS = Path('/var/lib/cybexos/major-upgrade-payloads')
+CONFIG = Path('/etc/cybexos/config.yml')
+OFFLINE = Path('/usr/lib/sysimage/libdnf5/offline')
+TRIGGER = Path('/system-update')
+LIBEXEC = Path(__file__).resolve().parent
+TRANSACTION = LIBEXEC / 'cybexos-update-transaction'
+SNAPSHOT = LIBEXEC / 'cybexos-system-snapshot'
+TERMINAL = {'committed', 'cancelled', 'failed', 'rolled-back'}
+
+
+class Failure(Exception):
+    pass
+
+
+class Busy(Failure):
+    pass
+
+
+def run(command, timeout=120, env=None):
+    environment = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'HOME': '/root',
+                   'LANG': 'C.UTF-8', 'LC_ALL': 'C', 'PYTHONDONTWRITEBYTECODE': '1'}
+    if env:
+        environment.update(env)
+    process = subprocess.Popen([str(value) for value in command], env=environment,
+                               text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               start_new_session=True)
+    try:
+        output, error = process.communicate(timeout=timeout)
+    except BaseException:
+        # Rollback must not race a grandchild still applying packages/config.
+        # Every command owns a separate group; never signal unrelated writers.
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.communicate()
+        # A descendant may close inherited pipes and outlive an exited parent.
+        # Reaping the parent alone is not proof that its process group is gone.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        raise
+    if process.returncode:
+        raise Failure(f'{command[0]} failed: {(error or output).strip()[-1600:]}')
+    return output.strip()
+
+
+def write(value):
+    STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix='.status-', dir=STATE)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            json.dump(value, stream, sort_keys=True, indent=2)
+            stream.write('\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(name, STATE / 'status.json')
+        descriptor = os.open(STATE, os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def status():
+    try:
+        value = json.loads((STATE / 'status.json').read_text())
+    except FileNotFoundError:
+        return {'v': 1, 'state': 'idle'}
+    if not isinstance(value, dict) or value.get('v') != 1:
+        raise Failure('Upgrade status is damaged; inspect the transaction recovery journal')
+    return value
+
+
+def transaction(action, identifier, *extra):
+    return json.loads(run([TRANSACTION, action, identifier, *extra], timeout=900))
+
+
+def boot_id():
+    return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+
+
+def fedora_release():
+    values = dict(line.split('=', 1) for line in Path('/etc/os-release').read_text().splitlines() if '=' in line)
+    if values.get('ID', '').strip('"') != 'fedora':
+        raise Failure('Major upgrades require Fedora')
+    release = values.get('VERSION_ID', '').strip('"')
+    if not release.isdecimal():
+        raise Failure('Cannot identify the installed Fedora release')
+    return release
+
+
+def digest(path):
+    result = hashlib.sha256()
+    with path.open('rb') as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            result.update(chunk)
+    return result.hexdigest()
+
+
+def tree_digest(path):
+    result = hashlib.sha256()
+    if (path / '.git').exists():
+        names = run(['git', '-c', 'safe.directory=' + str(path), '-C', str(path), 'ls-files', '-z'])
+        items = [path / name for name in names.split('\0') if name]
+    else:
+        items = path.rglob('*')
+    for item in sorted(items):
+        relative = item.relative_to(path)
+        if '.git' in relative.parts or '__pycache__' in relative.parts or item.suffix == '.pyc':
+            continue
+        if item.is_symlink():
+            link = os.readlink(item)
+            # Executable source cannot escape the frozen reviewed tree.
+            if not item.resolve().is_relative_to(path.resolve()):
+                raise Failure(f'Source symlink escapes its tree: {relative}')
+            value = 'link:' + link
+        elif item.is_file():
+            value = digest(item) + ':' + str(bool(item.stat().st_mode & 0o111))
+        elif item.is_dir():
+            continue
+        else:
+            raise Failure(f'Unsupported source file: {relative}')
+        result.update((str(relative) + '\0' + value + '\0').encode())
+    return result.hexdigest()
+
+
+def compatible(manifest, target, architecture, schema):
+    if (not isinstance(manifest, dict) or manifest.get('product') != 'cybexos'
+            or target not in manifest.get('supportedFedora', [])
+            or architecture not in manifest.get('architectures', [])
+            or manifest.get('configSchema') != schema):
+        raise Failure(f'The selected release does not support Fedora {target}, {architecture}, and this saved configuration schema')
+
+
+def inspect_target(target, source=None, rpm=None):
+    saved = yaml.safe_load(CONFIG.read_text())
+    if not isinstance(saved, dict):
+        raise Failure('A saved CybexOS installation configuration is required')
+    architecture = platform.machine()
+    if source:
+        source = Path(source).resolve(strict=True)
+        manifest = json.loads((source / 'release-manifest.json').read_text())
+        compatible(manifest, target, architecture, saved.get('config_schema_version'))
+        inventory = yaml.safe_load((source / 'inventory/group_vars/all.yml').read_text())
+        if str(inventory.get('fedora_release')) != target:
+            raise Failure('Source inventory and target release manifest disagree')
+        for name in ('site.yml', 'ansible.cfg', 'inventory/hosts.yml', 'verify'):
+            if not (source / name).is_file():
+                raise Failure(f'The selected source release is incomplete: {name}')
+        revision = ''
+        if (source / '.git').exists():
+            # The administrator explicitly selects this source. Its clean
+            # commit is frozen, not pulled or switched during an upgrade.
+            prefix = ['git', '-c', 'safe.directory=' + str(source), '-C', str(source)]
+            if run([*prefix, 'status', '--porcelain', '--untracked-files=normal']):
+                raise Failure('The target checkout has local changes; select a clean reviewed release')
+            revision = run([*prefix, 'rev-parse', 'HEAD'])
+        return {'kind': 'source', 'path': str(source), 'digest': tree_digest(source),
+                'revision': revision, 'manifest': manifest}
+    if rpm:
+        rpm = Path(rpm).resolve(strict=True)
+        signature = run(['rpmkeys', '--checksig', str(rpm)])
+        if 'signatures OK' not in signature or any(word in signature for word in ('NOKEY', 'NOT OK', 'NOTTRUSTED')):
+            raise Failure('The target desktop RPM must have a signature verified by the installed trusted keyring')
+        identity = run(['rpm', '-qp', '--qf', '%{NAME}\n%{RELEASE}\n%{ARCH}\n%{VERSION}', str(rpm)]).splitlines()
+        if (len(identity) != 4 or identity[0] != 'cybexos-desktop'
+                or not re.search(r'\.fc' + re.escape(target) + r'(?:\.|$)', identity[1])
+                or identity[2] != architecture):
+            raise Failure('The signed RPM is not a desktop release for the target Fedora and architecture')
+        # An explicit signed capability avoids equating a dist tag with a
+        # qualification claim. Older packages without it cannot opt in.
+        provides = run(['rpm', '-qp', '--provides', str(rpm)]).splitlines()
+        if f'cybexos-supported-fedora = {target}' not in provides:
+            raise Failure('The signed desktop RPM does not declare support for the target Fedora release')
+        return {'kind': 'rpm', 'path': str(rpm), 'digest': digest(rpm), 'identity': identity}
+    raise Failure('Select a compatible reviewed --source directory or signed --rpm; no next release is assumed supported')
+
+
+def verify_backup(manifest_path, account):
+    if not manifest_path:
+        raise Failure('Provide --backup with a recent off-disk backup manifest; a root snapshot does not back up personal data')
+    path = Path(manifest_path).resolve(strict=True)
+    manifest = json.loads(path.read_text())
+    if manifest.get('v') != 1 or not isinstance(manifest.get('archives'), list):
+        raise Failure('Backup manifest needs v=1, createdAt and an archives list')
+    created = datetime.fromisoformat(manifest.get('createdAt', '').replace('Z', '+00:00'))
+    if created.tzinfo is None or not 0 <= time.time() - created.timestamp() <= 7 * 86400:
+        raise Failure('Verify a backup made within the last seven days')
+    root_device = run(['findmnt', '-n', '-o', 'UUID', '-T', '/'])
+    backup_device = run(['findmnt', '-n', '-o', 'UUID', '-T', str(path)])
+    if not root_device or not backup_device or root_device == backup_device:
+        raise Failure('The backup must be on a different filesystem with a verifiable UUID')
+    required = {str(Path(account.pw_dir)), '/etc'}
+    for name in ('/var/lib/xps-hardware', '/etc/pki/akmods'):
+        if Path(name).exists():
+            required.add(name)
+    covered = set()
+    receipts = []
+    for archive in manifest['archives']:
+        relative = Path(archive.get('path', ''))
+        if relative.is_absolute() or '..' in relative.parts or not relative.parts:
+            raise Failure('Backup archive paths must stay beside their manifest')
+        file = path.parent / relative
+        if file.is_symlink() or not file.is_file() or digest(file) != archive.get('sha256'):
+            raise Failure(f'Backup checksum verification failed: {relative}')
+        # Read the entire archive through tar's parser; no archive member is
+        # extracted or trusted as executable code.
+        listing = run(['tar', '-tf', str(file)], timeout=3600).splitlines()
+        members = {('/' + entry.removeprefix('./').lstrip('/')).rstrip('/') for entry in listing}
+        for scope in archive.get('covers', []):
+            if scope in members and any(member.startswith(scope.rstrip('/') + '/') for member in members):
+                covered.add(scope)
+        receipts.append({'path': str(file), 'sha256': archive['sha256']})
+    if required - covered:
+        raise Failure('Backup archives do not cover: ' + ', '.join(sorted(required - covered)))
+    return {'manifest': str(path), 'sha256': digest(path), 'archives': receipts,
+            'verifiedAt': datetime.now(timezone.utc).isoformat()}
+
+
+def offline_digest():
+    if not OFFLINE.is_dir():
+        return ''
+    entries = [p for p in sorted(OFFLINE.rglob('*')) if p.is_file() and p.suffix != '.rpm']
+    if not entries:
+        return ''
+    total = hashlib.sha256()
+    for item in entries:
+        if item.is_symlink() or item.stat().st_size > 64 * 1024 * 1024:
+            raise Failure('Unexpected offline transaction metadata')
+        total.update((str(item.relative_to(OFFLINE)) + '\0' + digest(item)).encode())
+    return total.hexdigest()
+
+
+def check_repositories(current, kind):
+    repos = []
+    for file in sorted(Path('/etc/yum.repos.d').glob('*.repo')):
+        parser = configparser.ConfigParser(interpolation=None)
+        parser.read(file)
+        for name in parser.sections():
+            section = parser[name]
+            if not section.getboolean('enabled', fallback=True):
+                continue
+            if kind == 'rpm' and name == 'cybexos-desktop':
+                continue  # The explicitly signed staged RPM replaces it after boot.
+            if not section.getboolean('gpgcheck', fallback=True):
+                raise Failure(f'Repository {name} disables signature verification')
+            urls = ' '.join(section.get(key, '') for key in ('baseurl', 'metalink', 'mirrorlist'))
+            if re.search(r'(?:/|fc)' + re.escape(current) + r'(?:/|\b)', urls):
+                raise Failure(f'Repository {name} pins Fedora {current}; provide a reviewed target-compatible repository before preparing')
+            repos.append(name)
+    if not repos:
+        raise Failure('No verified target-capable Fedora repositories are enabled')
+    return repos
+
+
+def preflight(target, candidate, backup, uid):
+    current = fedora_release()
+    if not target.isdecimal() or not 1 <= int(target) - int(current) <= 2:
+        raise Failure('Select a newer Fedora release, at most two releases ahead')
+    account = pwd.getpwuid(uid)
+    if uid < 1000 or uid >= 65534:
+        raise Failure('Select the installed desktop account with --uid')
+    if TRIGGER.exists() or TRIGGER.is_symlink() or offline_digest():
+        raise Failure('Another offline transaction exists; finish or cancel it before preparing a major upgrade')
+    for path, minimum in (('/', 15 * 1024**3), ('/var', 15 * 1024**3), ('/boot', 512 * 1024**2)):
+        if shutil.disk_usage(path).free < minimum:
+            raise Failure(f'{path} needs at least {minimum // 1024**2} MiB free for the upgrade and recovery')
+    latest = run(['rpm', '-q', '--qf', '%{VERSION}-%{RELEASE}.%{ARCH}\n', 'kernel-core']).splitlines()
+    if platform.release() not in latest:
+        raise Failure('Boot an installed Fedora kernel before upgrading')
+    # `grubby --default-kernel` names the latest/default boot entry without
+    # making lexical version ordering assumptions.
+    if Path(run(['grubby', '--default-kernel'])).name != 'vmlinuz-' + platform.release():
+        raise Failure('Reboot into the default updated kernel before upgrading')
+    for marker in ('/var/lib/xps-hardware/ipu7/reboot-required', '/var/run/reboot-required'):
+        if Path(marker).exists():
+            raise Failure(f'A pending hardware/system reboot must be resolved first: {marker}')
+    recovery = json.loads(run([SNAPSHOT, 'list', '--json']))
+    if not recovery.get('supported') or recovery.get('recoveryBoot') or recovery.get('pendingReboot'):
+        raise Failure('Major upgrades require the managed Btrfs layout booted into its normal root')
+    hardware = []
+    for name in ('xps-ipu7-abi-check', 'xps-ipu7-userspace-check'):
+        helper = Path('/usr/local/libexec') / name
+        if helper.exists():
+            run([helper, platform.release()] if name.endswith('abi-check') else [helper], timeout=120)
+            hardware.append(str(helper))
+    run(['rpm', '--verifydb'])
+    run(['dnf5', 'check'], timeout=600)
+    try:
+        run(['dnf5', '--refresh', 'check-upgrade'], timeout=600)
+    except Failure as error:
+        raise Failure('Finish current-release updates and resolve repository errors before upgrading: ' + str(error)) from None
+    run(['dnf5', 'system-upgrade', 'download', '--help'])
+    secure_boot = run(['mokutil', '--sb-state']) if Path('/sys/firmware/efi').exists() else 'legacy boot'
+    # Existing camera signing health is a baseline, not a promise that the
+    # next kernel works. A qualified target is still required.
+    if 'SecureBoot enabled' in secure_boot and Path('/etc/pki/akmods/certs/public_key.der').exists():
+        run(['mokutil', '--test-key', '/etc/pki/akmods/certs/public_key.der'])
+    return {'currentFedora': current, 'targetFedora': target, 'uid': uid,
+            'home': account.pw_dir, 'kernel': platform.release(), 'secureBoot': secure_boot,
+            'hardwareChecks': hardware,
+            'repositories': check_repositories(current, candidate['kind']),
+            'backup': verify_backup(backup, account)}
+
+
+@contextmanager
+def operation_lock(uid=None, wait=False):
+    STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with (STATE / 'lock').open('a') as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
+        except BlockingIOError:
+            raise Busy('Another major-upgrade operation is running; do not interrupt its DNF download') from None
+        # Cooperate with install/uninstall/the ordinary updater for this user.
+        shared = None
+        if uid is not None:
+            runtime = Path(f'/run/user/{uid}')
+            if runtime.is_dir():
+                lock_path = runtime / 'update.lock'
+                try:
+                    descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                    os.fchown(descriptor, uid, pwd.getpwuid(uid).pw_gid)
+                except FileExistsError:
+                    descriptor = os.open(lock_path, os.O_RDWR | os.O_NOFOLLOW)
+                shared = os.fdopen(descriptor, 'a')
+                try:
+                    fcntl.flock(shared, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
+                except BlockingIOError:
+                    shared.close()
+                    raise Busy('Another CybexOS install/update operation is running') from None
+        try:
+            yield
+        finally:
+            if shared:
+                shared.close()
+
+
+def prepare(args):
+    previous = status()
+    if previous['state'] not in TERMINAL | {'idle'}:
+        raise Failure('An existing major upgrade needs completion or cancellation first')
+    candidate = inspect_target(args.target, args.source, args.rpm)
+    baseline = preflight(args.target, candidate, args.backup, args.uid)
+    identifier = 'major-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]
+    PAYLOADS.mkdir(mode=0o755, parents=True, exist_ok=True)
+    os.chmod(PAYLOADS, 0o755)
+    staging = PAYLOADS / identifier
+    staging.mkdir(mode=0o755)
+    os.chmod(staging, 0o755)
+    record = {'v': 1, 'id': identifier, 'state': 'preparing', 'bootId': boot_id(),
+              'candidate': candidate, **baseline, 'rebootRequested': False}
+    write(record)
+    begun = False
+    try:
+        source = Path(candidate['path'])
+        if candidate['kind'] == 'source':
+            staged = staging / 'source'
+            if (source / '.git').exists():
+                staged.mkdir(mode=0o755)
+                run(['git', '-c', 'safe.directory=' + str(source), '-C', str(source),
+                     'checkout-index', '--all', '--prefix=' + str(staged) + '/'])
+            else:
+                shutil.copytree(source, staged, symlinks=True,
+                                ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+            for item in [staged, *staged.rglob('*')]:
+                if not item.is_symlink():
+                    item.chmod(0o755 if item.is_dir() or item.stat().st_mode & 0o111 else 0o644)
+            if tree_digest(staged) != candidate['digest']:
+                raise Failure('The source changed while it was staged')
+        else:
+            staged = staging / 'desktop.rpm'
+            shutil.copyfile(source, staged)
+            if digest(staged) != candidate['digest']:
+                raise Failure('The RPM changed while it was staged')
+            inspect_target(args.target, rpm=staged)
+        candidate['path'] = str(staged)
+        write(record)
+        point = run([SNAPSHOT, 'create', f'Before Fedora {args.target} major upgrade'], timeout=900).splitlines()[-1]
+        transaction('begin', identifier, point, '--uid', str(args.uid))
+        begun = True
+        record['downloadUnit'] = 'cybexos-major-download-' + identifier
+        record['state'] = 'downloading'
+        write(record)
+        run(['systemd-run', '--unit=' + record['downloadUnit'], '--collect',
+             '--property=Type=exec', '--property=RuntimeMaxSec=3h',
+             '--property=KillMode=control-group', '--property=UMask=0077',
+             str(Path(__file__).resolve()), 'download', identifier])
+        return record
+    except BaseException as error:
+        record.update(state='failed', error=str(error))
+        write(record)
+        if begun:
+            transaction('abort', identifier)
+        shutil.rmtree(staging)
+        raise
+
+
+def download(identifier):
+    record = status()
+    if record.get('id') != identifier or record['state'] != 'downloading':
+        raise Failure('Download request no longer matches the prepared major upgrade')
+    owns_download = False
+    try:
+        if offline_digest() or TRIGGER.exists() or TRIGGER.is_symlink():
+            raise Failure('Another offline transaction appeared before the download began')
+        owns_download = True
+        command = ['dnf5', '--assumeyes', '--refresh', '--releasever=' + record['targetFedora'],
+                   '--setopt=*.skip_if_unavailable=false', '--setopt=gpgcheck=true']
+        if record['candidate']['kind'] == 'rpm':
+            command += ['--disable-repo=cybexos-desktop']
+        run([*command, 'system-upgrade', 'download'], timeout=7200)
+        record['offlineDigest'] = offline_digest()
+        if not record['offlineDigest']:
+            raise Failure('DNF did not publish an offline transaction')
+        record['state'] = 'ready'
+        transaction('arm-upgrade', identifier, '--metadata', json.dumps(record))
+        write(record)
+        return record
+    except BaseException as error:
+        # Retain failed-download diagnostics and payload until an explicit
+        # cancel. Never cancel a still-running DNF or an unknown transaction.
+        record.update(state='download-failed' if owns_download else 'failed', error=str(error),
+                      offlineDigest=offline_digest() if owns_download else '')
+        write(record)
+        if not owns_download:
+            transaction('abort', identifier)
+            shutil.rmtree(PAYLOADS / identifier)
+        raise
+
+
+def ensure_ours(record):
+    if record.get('state') not in {'ready', 'download-failed'} or record.get('rebootRequested'):
+        raise Failure('The offline upgrade is already scheduled or has started; cancellation is no longer safe')
+    if TRIGGER.exists() or TRIGGER.is_symlink():
+        raise Failure('An offline reboot is already scheduled; do not cancel or interrupt it')
+    if record.get('bootId') != boot_id() and fedora_release() != record.get('currentFedora'):
+        raise Failure('The installed Fedora release changed since preparation; inspect recovery before proceeding')
+    if offline_digest() != record.get('offlineDigest', ''):
+        raise Failure('The DNF offline transaction changed; refusing to cancel or reboot an unrecognized transaction')
+
+
+def cancel():
+    record = status()
+    ensure_ours(record)
+    journal = transaction('status', record['id'])
+    if journal['state'] not in {'prepared', 'awaiting-upgrade', 'aborted'}:
+        raise Failure('The upgrade checkpoint has begun applying; inspect recovery before cancelling')
+    run(['dnf5', 'offline', 'clean'])
+    # Boot recovery can already abort a prepared checkpoint after a failed
+    # download. Its unchanged cached metadata can still be explicitly cleaned.
+    if journal['state'] != 'aborted':
+        transaction('abort', record['id'])
+    record['state'] = 'cancelled'
+    write(record)
+    shutil.rmtree(PAYLOADS / record['id'])
+    return record
+
+
+def reboot():
+    record = status()
+    if record['state'] == 'rolled-back':
+        run(['systemctl', '--no-block', 'reboot'])
+        return record
+    ensure_ours(record)
+    if record['state'] != 'ready' or not record.get('offlineDigest'):
+        raise Failure('The complete offline download must be ready before rebooting')
+    # A normal reboot before scheduling the offline upgrade is harmless. The
+    # next boot boundary must refer to the explicit offline reboot, otherwise
+    # the timer could start convergence while this old-release boot is active.
+    record['bootId'] = boot_id()
+    record['rebootRequested'] = True
+    write(record)
+    try:
+        run(['dnf5', 'offline', 'reboot'])
+    except BaseException:
+        if not TRIGGER.exists() and not TRIGGER.is_symlink():
+            record['rebootRequested'] = False
+            write(record)
+        raise
+    return record
+
+
+def converge(record):
+    candidate = record['candidate']
+    path = Path(candidate['path'])
+    actual = tree_digest(path) if candidate['kind'] == 'source' else digest(path)
+    if actual != candidate['digest']:
+        raise Failure('The staged upgrade payload changed after preparation')
+    account = pwd.getpwuid(record['uid'])
+    if candidate['kind'] == 'source':
+        env = {'ANSIBLE_CONFIG': str(path / 'ansible.cfg'),
+               'ANSIBLE_ROLES_PATH': str(path / 'roles'),
+               'ANSIBLE_FORCE_HANDLERS': 'true'}
+        values = {'primary_user': account.pw_name, 'primary_home': account.pw_dir,
+                  'primary_group': grp.getgrgid(account.pw_gid).gr_name,
+                  'config_repo': str(path)}
+        run(['ansible-playbook', '-i', path / 'inventory/hosts.yml', path / 'site.yml',
+             '--extra-vars', '@' + str(CONFIG), '--extra-vars', json.dumps(values)], timeout=3600, env=env)
+        # Keep the qualified source as the active release; do not leave managed
+        # scripts referring to an input checkout that the user may delete.
+        record['retainedSource'] = str(path)
+    else:
+        inspect_target(record['targetFedora'], rpm=path)
+        run(['dnf5', '--assumeyes', '--setopt=gpgcheck=true', '--setopt=localpkg_gpgcheck=true',
+             'install', path], timeout=1800)
+        run(['/usr/libexec/cybexos-reconcile', '--retry'], timeout=1200)
+        reconciled = json.loads(run(['/usr/libexec/cybexos-reconcile', '--status']))
+        accounts = reconciled.get('accounts')
+        desired = reconciled.get('desiredVersion')
+        if (reconciled.get('pending') is not False or reconciled.get('state') != 'ready'
+                or not desired or reconciled.get('version') != desired
+                or not isinstance(accounts, dict) or not accounts
+                or any(not isinstance(entry, dict) or entry.get('state') != 'ready'
+                       or entry.get('version') != desired for entry in accounts.values())
+                or accounts.get(account.pw_name, {}).get('uid') != account.pw_uid):
+            raise Failure('The target desktop package has not finished account reconciliation')
+
+
+def finish_committed(record):
+    """Retry bookkeeping without crossing a durable transaction commit."""
+    record['state'] = 'committed'
+    packaged = record['candidate']['kind'] == 'rpm'
+    if packaged:
+        record['cleanupPending'] = True
+    write(record)
+    if packaged:
+        try:
+            shutil.rmtree(PAYLOADS / record['id'])
+        except FileNotFoundError:
+            pass
+        record.pop('cleanupPending', None)
+        write(record)
+    return record
+
+
+def finalize(identifier):
+    record = status()
+    if record.get('id') != identifier:
+        raise Failure('The boot recovery transaction does not match the staged major upgrade')
+    journal = transaction('status', identifier)
+    if journal['state'] in {'committed', 'aborted', 'rolled-back'}:
+        if journal['state'] == 'committed':
+            return finish_committed(record), 0
+        record['state'] = {'aborted': 'cancelled'}.get(journal['state'], journal['state'])
+        write(record)
+        return record, 0
+    if journal['state'] == 'awaiting-upgrade':
+        if not record.get('rebootRequested') or record['bootId'] == boot_id():
+            return record, 0
+        try:
+            if fedora_release() != record['targetFedora']:
+                raise Failure('The offline upgrade did not boot the requested Fedora release')
+            transaction('applying', identifier)
+            record['state'] = 'converging'
+            write(record)
+            converge(record)
+            if not re.search(r'\.fc' + re.escape(record['targetFedora']) + r'(?:\.|$)', platform.release()):
+                raise Failure('The running kernel is not from the target Fedora release')
+            if 'SecureBoot enabled' in record.get('secureBoot', ''):
+                if 'SecureBoot enabled' not in run(['mokutil', '--sb-state']):
+                    raise Failure('Secure Boot changed during the upgrade')
+            for helper in record.get('hardwareChecks', []):
+                run([helper, platform.release()] if helper.endswith('abi-check') else [helper], timeout=120)
+            transaction('await-desktop', identifier)
+            record['state'] = 'awaiting-desktop'
+            write(record)
+        except BaseException as error:
+            transaction('rollback', identifier)
+            record.update(state='rolled-back', error=str(error), restartRequired=True)
+            write(record)
+            return record, 75
+    elif journal['state'] in {'awaiting-desktop', 'validating'}:
+        account = pwd.getpwuid(record['uid'])
+        bus = Path(f'/run/user/{account.pw_uid}/bus')
+        if not bus.exists():
+            return record, 0
+        session = ['runuser', '-u', account.pw_name, '--', 'env',
+                   'XDG_RUNTIME_DIR=' + str(bus.parent),
+                   'DBUS_SESSION_BUS_ADDRESS=unix:path=' + str(bus), 'systemctl', '--user']
+        try:
+            run([*session, 'is-active', 'hyprland-session.target'])
+        except Failure:
+            return record, 0
+        try:
+            # Once the real session started, failure is actionable; do not
+            # wait forever for a failed shell or report the recovery bar as healthy.
+            transaction('commit', identifier)
+        except BaseException as error:
+            # The command can lose its output after durably committing. Check
+            # that journal first; if it cannot be read, leave recovery pending
+            # rather than guessing that a committed update may be reverted.
+            observed = transaction('status', identifier)
+            if observed['state'] != 'committed':
+                transaction('rollback', identifier)
+                record.update(state='rolled-back', error=str(error), restartRequired=True)
+                write(record)
+                return record, 75
+        record['validatedBoot'] = boot_id()
+        # Failure to save status or remove an RPM payload is bookkeeping work,
+        # not permission to roll back a successfully committed transaction.
+        return finish_committed(record), 0
+    return record, 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest='command', required=True)
+    for name in ('check', 'prepare'):
+        command = commands.add_parser(name)
+        command.add_argument('--target', required=True)
+        target = command.add_mutually_exclusive_group(required=True)
+        target.add_argument('--source', type=Path)
+        target.add_argument('--rpm', type=Path)
+        command.add_argument('--backup', type=Path)
+        command.add_argument('--uid', type=int, default=int(os.environ.get('SUDO_UID', '0')))
+    for name in ('status', 'reboot', 'cancel', 'finalize-current'):
+        commands.add_parser(name)
+    commands.add_parser('finalize').add_argument('id')
+    commands.add_parser('download').add_argument('id')
+    args = parser.parse_args(argv)
+    if os.geteuid() != 0:
+        parser.error('Run through sudo with the installed desktop account in SUDO_UID or --uid')
+    os.umask(0o077)
+    def interrupted(_signum, _frame):
+        raise InterruptedError('Upgrade helper interrupted; child processes were stopped before recovery')
+    signal.signal(signal.SIGTERM, interrupted)
+    try:
+        if args.command == 'status':
+            print(json.dumps(status(), sort_keys=True))
+            return 0
+        if args.command == 'finalize-current':
+            current = status()
+            if current['state'] in TERMINAL | {'idle', 'preparing', 'downloading', 'download-failed'}:
+                if current['state'] != 'committed' or not current.get('cleanupPending'):
+                    return 0
+            if current['state'] == 'ready' and (not current.get('rebootRequested') or current['bootId'] == boot_id()):
+                return 0
+        owner = getattr(args, 'uid', None)
+        if args.command == 'download':
+            owner = status().get('uid')
+        with operation_lock(owner, wait=args.command == 'download'):
+            if args.command == 'check':
+                candidate = inspect_target(args.target, args.source, args.rpm)
+                result = {'supported': True, 'candidate': candidate,
+                          **preflight(args.target, candidate, args.backup, args.uid)}
+            elif args.command == 'prepare':
+                result = prepare(args)
+            elif args.command == 'download':
+                result = download(args.id)
+            elif args.command == 'cancel':
+                result = cancel()
+            elif args.command == 'reboot':
+                result = reboot()
+            else:
+                identifier = args.id if args.command == 'finalize' else status().get('id')
+                if not identifier:
+                    return 0
+                result, code = finalize(identifier)
+                print(json.dumps(result, sort_keys=True))
+                return code
+        print(json.dumps(result, sort_keys=True))
+    except Busy as error:
+        if args.command == 'finalize-current':
+            return 0
+        print('cybexos-major-upgrade: ' + str(error), file=sys.stderr)
+        return 1
+    except (Failure, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        print('cybexos-major-upgrade: ' + str(error), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

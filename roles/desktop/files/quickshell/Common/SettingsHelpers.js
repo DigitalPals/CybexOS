@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 26;
+var VERSION = 27;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -980,18 +980,7 @@ function migrateModOpts(raw, sourceVersion, rawSettings) {
         next.indicators.order.splice(recordingIndex === -1
             ? next.indicators.order.length : recordingIndex + 1, 0, "ocr");
 
-        var priorIds = INDICATOR_ACTION_IDS.filter(function(id) {
-            return id !== "ocr";
-        });
-        var priorEnabled = Array.isArray(rawIndicators.enabled)
-            && priorIds.every(function(id) {
-                return rawIndicators.enabled.indexOf(id) !== -1;
-            });
-        if (priorEnabled) {
-            var enabledRecordingIndex = next.indicators.enabled.indexOf("recording");
-            next.indicators.enabled.splice(enabledRecordingIndex === -1
-                ? next.indicators.enabled.length : enabledRecordingIndex + 1, 0, "ocr");
-        }
+
     }
     return next;
 }
@@ -1134,145 +1123,20 @@ function migrateMods(raw, sourceVersion, context) {
     return normalizeMods(migrated);
 }
 
-// Schema 4 is the glass menubar: a taller bar, full-radius corners, a wider
-// floating gap and the design's accent. A settings file written by schema 3
-// carries the old geometry for every one of those keys, so loading it as-is
-// would silently keep the previous design's proportions.
-//
-// Only values the user never moved are adopted — a key still holding its
-// schema-3 default takes the schema-4 one, anything else is theirs and stays.
-var V3_DEFAULTS = {
-    barHeight: 30, barRadius: 9, gap: 8, accent: "#9ecbeb", font: "oppo",
-    osd: "top"
-};
+// Stored legacy values are explicit choices, even when equal to an old
+// default. Visual redesigns must never infer ownership from value equality.
 
-var V3_MOD_OPT_DEFAULTS = {
-    ws: { style: "numbers" },
-    media: { maxWidth: 220 },
-    clock: { dateFormat: "ddd dd" }
-};
-
-function adoptRedesign(parsed) {
-    if (!parsed || typeof parsed !== "object"
-            || (typeof parsed.v === "number" && parsed.v >= 4))
-        return parsed;
-    var next = clone(parsed);
-    Object.keys(V3_DEFAULTS).forEach(function(key) {
-        if (next[key] === V3_DEFAULTS[key])
-            delete next[key];
-    });
-    if (next.modOpts && typeof next.modOpts === "object") {
-        Object.keys(V3_MOD_OPT_DEFAULTS).forEach(function(id) {
-            var entry = next.modOpts[id];
-            if (!entry || typeof entry !== "object")
-                return;
-            Object.keys(V3_MOD_OPT_DEFAULTS[id]).forEach(function(key) {
-                if (entry[key] === V3_MOD_OPT_DEFAULTS[id][key])
-                    delete entry[key];
-            });
-        });
-    }
-    return next;
-}
-
-// Schema 7 makes the softer variable face the shell default. As with the
-// schema-4 redesign, a stored value equal to the previous default is treated
-// as untouched; every other valid font remains an explicit user choice.
-// A missing font must use today's default, including unversioned installer
-// seeds. It is not evidence of a saved schema-6 font preference.
-function adoptSofterTypography(parsed) {
-    if (!parsed || typeof parsed !== "object"
-            || (typeof parsed.v === "number" && parsed.v >= 7))
-        return parsed;
-    var next = clone(parsed);
-    if (next.font === "urbanist")
-        next.font = "google";
-    return next;
-}
-
-// Schema 10 restores the compact August menubar shown in the repository's
-// desktop screenshot, without reviving its fixed layout. As with the earlier
-// redesign migration, only values still equal to schema 9's defaults move to
-// the new visual baseline; customized geometry, glass, colors and workspace
-// presentation remain the user's choices.
-var V9_CLASSIC_DEFAULTS = {
-    glassEnabled: true,
-    barHeight: 46,
-    barRadius: 23,
-    gap: 10,
-    accent: "#5e9bff"
-};
-
-var V9_CLASSIC_MOD_OPT_DEFAULTS = {
-    ws: { style: "dots" },
-    clock: { dateFormat: "ddd d MMM" }
-};
-
-function adoptClassicMenubar(parsed) {
-    if (!parsed || typeof parsed !== "object"
-            || (typeof parsed.v === "number" && parsed.v >= 10))
-        return parsed;
-    // Schema 3 and unversioned files first pass through adoptRedesign(),
-    // which already removes their untouched defaults. Do not then mistake a
-    // deliberate old-style value for schema 9's default on the second hop.
-    if (typeof parsed.v !== "number" || parsed.v < 4)
-        return parsed;
-    var next = clone(parsed);
-    var untouchedCustomColor = (next.barColorMode === undefined
-            || next.barColorMode === "default")
-        && next.barCustomHue === 247
-        && next.barCustomSaturation === 29
-        && next.barCustomLightness === 11;
-    if (untouchedCustomColor) {
-        delete next.barCustomHue;
-        delete next.barCustomSaturation;
-        delete next.barCustomLightness;
-    }
-    Object.keys(V9_CLASSIC_DEFAULTS).forEach(function(key) {
-        if (next[key] === V9_CLASSIC_DEFAULTS[key])
-            delete next[key];
-    });
-    if (next.modOpts && typeof next.modOpts === "object") {
-        Object.keys(V9_CLASSIC_MOD_OPT_DEFAULTS).forEach(function(id) {
-            var entry = next.modOpts[id];
-            if (!entry || typeof entry !== "object")
-                return;
-            Object.keys(V9_CLASSIC_MOD_OPT_DEFAULTS[id]).forEach(function(key) {
-                if (entry[key] === V9_CLASSIC_MOD_OPT_DEFAULTS[id][key])
-                    delete entry[key];
-            });
-        });
-    }
-    return next;
-}
-
-// Schema 6 replaces two booleans with explicit visual modes. A v5 floating
-// bar whose geometry was never changed becomes the new edge-hugging default;
-// customized floating geometry remains floating, and the old edge-to-edge
-// option remains attached. The fixed color values are intentionally never
-// discarded: paletteMode only chooses which palette is active.
-var V5_DEFAULTS = {
-    barHeight: 46,
-    barRadius: 23,
-    gap: 10,
-    accent: "#5e9bff",
-    barColorMode: "default",
-    barCustomHue: 247,
-    barCustomSaturation: 29,
-    barCustomLightness: 11
-};
-
+// Structural migration keeps the old mode and every explicit value. A
+// legacy file with geometry/color fields but no mode retains its old mode;
+// a sparse file with neither follows today's default.
 function migrateBarStyle(parsed, defaultsValue) {
     if (typeof parsed.v === "number" && parsed.v >= 6)
         return enumIn(parsed.barStyle, BAR_STYLES, defaultsValue);
     if (parsed.floating === false)
         return "attached";
-    var pristine = intIn(parsed.barHeight, 28, 60, 1, V5_DEFAULTS.barHeight)
-            === V5_DEFAULTS.barHeight
-        && intIn(parsed.barRadius, 0, 30, 1, V5_DEFAULTS.barRadius)
-            === V5_DEFAULTS.barRadius
-        && intIn(parsed.gap, 4, 24, 1, V5_DEFAULTS.gap) === V5_DEFAULTS.gap;
-    return pristine ? "hug" : "floating";
+    return parsed.floating === true || ["barHeight", "barRadius", "gap"].some(function(key) {
+        return Object.prototype.hasOwnProperty.call(parsed, key);
+    }) ? "floating" : defaultsValue;
 }
 
 function migratePaletteMode(parsed, defaultsValue) {
@@ -1280,30 +1144,27 @@ function migratePaletteMode(parsed, defaultsValue) {
         return enumIn(parsed.paletteMode, PALETTE_MODES, defaultsValue);
     if (parsed.accentWall === true)
         return "wallpaper";
-    var accent = hexIn(parsed.accent, V5_DEFAULTS.accent).toLowerCase();
-    var barMode = enumIn(parsed.barColorMode, BAR_COLOR_IDS,
-        V5_DEFAULTS.barColorMode);
-    var customHue = intIn(parsed.barCustomHue, 0, 359, 1,
-        V5_DEFAULTS.barCustomHue);
-    var customSaturation = intIn(parsed.barCustomSaturation, 0, 100, 1,
-        V5_DEFAULTS.barCustomSaturation);
-    var customLightness = intIn(parsed.barCustomLightness, 0, 100, 1,
-        V5_DEFAULTS.barCustomLightness);
-    return accent === V5_DEFAULTS.accent && barMode === V5_DEFAULTS.barColorMode
-        && customHue === V5_DEFAULTS.barCustomHue
-        && customSaturation === V5_DEFAULTS.barCustomSaturation
-        && customLightness === V5_DEFAULTS.barCustomLightness
-        ? "wallpaper" : "fixed";
+    return parsed.accentWall === false || ["accent", "barColorMode", "barCustomHue",
+        "barCustomSaturation", "barCustomLightness"].some(function(key) {
+        return Object.prototype.hasOwnProperty.call(parsed, key);
+    }) ? "fixed" : defaultsValue;
 }
 
 // `context.connectedWidgets` is the install's connected-service feature; it
 // decides whether a widget that schema migration adds starts on.
 function merge(raw, context) {
     var d = defaults();
+    if (context && context.connectedWidgets) {
+        ["left", "center", "right"].forEach(function(column) {
+            d.mods[column].forEach(function(entry) {
+                if (["modelusage", "gh", "t3", "hermes"].indexOf(entry.id) !== -1)
+                    entry.on = true;
+            });
+        });
+    }
     if (!raw || typeof raw !== "object")
         return d;
-    var parsed = adoptClassicMenubar(
-        adoptSofterTypography(adoptRedesign(raw)));
+    var parsed = raw;
     var idleMode = enumIn(parsed.idleInhibitMode,
         ["off", "30m", "1h", "unplugged", "always"],
         parsed.idleInhibited === true ? "always" : d.idleInhibitMode);
@@ -1387,7 +1248,7 @@ function merge(raw, context) {
         drawerOverview: normalizeDrawerOverview(parsed.drawerOverview),
         drawerHover: enumIn(parsed.drawerHover, DRAWER_HOVER_MODES, d.drawerHover),
         drawerWidth: intIn(parsed.drawerWidth, 320, 480, 10, d.drawerWidth),
-        mods: migrateMods(parsed.mods, parsed.v, context),
+        mods: parsed.mods === undefined ? d.mods : migrateMods(parsed.mods, parsed.v, context),
         modOpts: migrateModOpts(parsed.modOpts, parsed.v, parsed)
     };
 }
@@ -1499,6 +1360,131 @@ function serialize(settings) {
     return JSON.stringify(ordered, null, 2) + "\n";
 }
 
+// Presence is ownership: a value explicitly set to today's default remains
+// an override. New files are sparse; every stored legacy key is conservatively
+// adopted as explicit. Unknown fields are carried through without validation.
+function overrideKeys(raw) {
+    var known = defaults();
+    return Object.keys(raw || {}).filter(function(key) {
+        return Object.prototype.hasOwnProperty.call(known, key)
+            && JSON.stringify(unknownFields(raw[key], known[key])) !== JSON.stringify(raw[key]);
+    });
+}
+
+function unknownFields(original, schema) {
+    if (!original || typeof original !== "object")
+        return undefined;
+    if (Array.isArray(original)) {
+        if (!Array.isArray(schema))
+            return undefined;
+        var entries = [];
+        original.forEach(function(item) {
+            if (!item || typeof item.id !== "string")
+                return;
+            var known = schema.find(function(value) { return value && value.id === item.id; });
+            if (!known) {
+                entries.push(clone(item));
+                return;
+            }
+            var extra = unknownFields(item, known);
+            if (extra) {
+                extra.id = item.id;
+                entries.push(extra);
+            }
+        });
+        return entries.length ? entries : undefined;
+    }
+    if (!schema || typeof schema !== "object")
+        return undefined;
+    var out = {};
+    Object.keys(original).forEach(function(key) {
+        if (key === "__proto__" || key === "constructor" || key === "prototype")
+            return;
+        var value = Object.prototype.hasOwnProperty.call(schema, key)
+            ? unknownFields(original[key], schema[key]) : clone(original[key]);
+        if (value !== undefined)
+            out[key] = value;
+    });
+    return Object.keys(out).length ? out : undefined;
+}
+
+function preserveUnknown(original, replacement) {
+    if (Array.isArray(replacement)) {
+        if (!Array.isArray(original))
+            return clone(replacement);
+        // Layout entries carry stable ids. Preserve future entries and fields
+        // while retaining the current user's ordering of understood entries.
+        if (replacement.every(function(item) { return item && typeof item.id === "string"; })) {
+            var result = replacement.map(function(item) {
+                return preserveUnknown(original.find(function(old) {
+                    return old && old.id === item.id;
+                }), item);
+            });
+            original.forEach(function(item) {
+                if (item && typeof item.id === "string"
+                        && !replacement.some(function(next) { return next.id === item.id; }))
+                    result.push(clone(item));
+            });
+            return result;
+        }
+        return clone(replacement);
+    }
+    if (!replacement || typeof replacement !== "object")
+        return clone(replacement);
+    var out = original && typeof original === "object" && !Array.isArray(original)
+        ? clone(original) : {};
+    Object.keys(replacement).forEach(function(key) {
+        if (key !== "__proto__" && key !== "constructor" && key !== "prototype")
+            out[key] = preserveUnknown(out[key], replacement[key]);
+    });
+    return out;
+}
+
+function rebaseDocuments(base, desired, current, path) {
+    if (JSON.stringify(desired) === JSON.stringify(base)
+            || JSON.stringify(desired) === JSON.stringify(current))
+        return current;
+    if (JSON.stringify(current) === JSON.stringify(base))
+        return desired;
+    if (base && desired && current && [base, desired, current].every(function(value) {
+        return typeof value === "object" && !Array.isArray(value);
+    })) {
+        var out = clone(current);
+        Object.keys(base).concat(Object.keys(desired)).forEach(function(key) {
+            if (key === "__proto__" || key === "constructor" || key === "prototype")
+                return;
+            if (!path && key === "v") {
+                out.v = desired.v;
+                return;
+            }
+            var result = rebaseDocuments(base[key], desired[key], current[key], (path || "") + "/" + key);
+            if (result === undefined)
+                delete out[key];
+            else
+                out[key] = result;
+        });
+        return out;
+    }
+    throw new Error("Another writer changed " + (path || "/") + "; reload before retrying");
+}
+
+function serializeDocument(settings, original, explicitKeys) {
+    var out = clone(original || {});
+    out.v = VERSION;
+    Object.keys(defaults()).forEach(function(key) {
+        if (explicitKeys.indexOf(key) !== -1)
+            out[key] = preserveUnknown(out[key], settings[key]);
+        else {
+            var extra = unknownFields(out[key], defaults()[key]);
+            if (extra === undefined)
+                delete out[key];
+            else
+                out[key] = extra;
+        }
+    });
+    return JSON.stringify(out, null, 2) + "\n";
+}
+
 // Distinguishing "no settings yet" from "settings we could not read" is what
 // keeps a corrupt file recoverable: both merge to defaults, but only the empty
 // case may be overwritten. Returns { status, value } where status is one of:
@@ -1591,6 +1577,11 @@ var exported = {
     normalizeKey: normalizeKey,
     isNewerSchema: isNewerSchema,
     serialize: serialize,
+    overrideKeys: overrideKeys,
+    preserveUnknown: preserveUnknown,
+    unknownFields: unknownFields,
+    serializeDocument: serializeDocument,
+    rebaseDocuments: rebaseDocuments,
     parse: parse
 };
 

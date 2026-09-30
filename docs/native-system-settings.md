@@ -1,6 +1,7 @@
 # Native system settings
 
-CybexOS Settings now includes Network, Sound, Displays and Online Accounts. The
+CybexOS Settings includes Network, Sound, Displays, Keyboard, Touchpad, Region
+and Online Accounts. The
 Wi-Fi popover, network details, sound drawer and calendar account action open
 these pages. Settings search includes them too. The compact controls remain
 available.
@@ -13,6 +14,9 @@ available.
 | Sound | Output and input device lists (network outputs folded), volume and mute, microphone level meter; ports of the default devices, output balance, hardware profiles, and per-application level, mute and playback/recording routing | `pavucontrol` for advanced controls |
 | Online Accounts | Provider, identity and attention status; calendar enable/disable; confirmed local removal; administrator locks | `gnome-online-accounts-gtk` for provider setup, browser authentication and reconnection |
 | Displays | Arrangement preview that also selects the display to edit, with drag and keyboard placement; per display: on/off, resolution, refresh rate, scale, rotation, flip, mirroring and adaptive sync; a 15-second trial before anything is saved | `~/.config/cybexos/hypr/user.lua` for monitor rules the page does not cover (bit depth, HDR, reserved areas) |
+| Keyboard | Search installed XKB layouts and variants; add, remove and reorder up to four layouts; configure switching shortcuts and switch immediately | Personal `user.lua` rules retain final precedence |
+| Touchpad | Tap to click, natural scroll direction and pointer sensitivity, drafted behind Apply; existing scroll speed control applies immediately | Pointer sensitivity is Hyprland's shared mouse/touchpad setting; per-device rules remain available in `user.lua` |
+| Region & formats | Search installed timezones and locales, then explicitly apply system timezone or language; existing clock and temperature format controls | Normal system Polkit authorization; additional locales require Fedora language packs |
 
 GOA continues to own account authentication and credentials. The shell reads
 metadata and never requests access tokens or passwords. Calendar data still
@@ -155,6 +159,51 @@ Not covered: per-dock profiles for different sets of monitors, HDR and
 bit-depth controls, and custom modelines. Use `user.lua` for those.
 
 ## Validation and maintenance
+
+### Keyboard, touchpad and system region
+
+Input preferences are user-owned data in
+`$XDG_CONFIG_HOME/cybexos/input.json` (normally `~/.config/cybexos/input.json`).
+Only edited fields are saved. Unknown top-level, section and unchanged-layout
+metadata survive; version hashes reject concurrent writes. A malformed file or
+symlink is left untouched and explained in Settings. The helper takes an
+exclusive lock, atomically writes the new file, and reloads Hyprland. A rejected
+reload restores the original bytes and reloads again; failure of that recovery
+is explicitly reported. It never rewrites `user.lua`.
+
+The shared `input_preferences.lua` loader uses the existing bounded JSON
+parser, validates all fields before applying any, and contains corrupt-file
+errors so the compositor can start. It loads after the release's input defaults
+and before `user.lua`. Therefore a personal override can intentionally supersede
+a saved setting. Settings reads effective compositor values when refreshed.
+Layout switching retains the release's compose/third-level options; selecting
+Caps Lock as a switch replaces its Compose role. Switching to the next layout
+changes the current session only, while the first saved layout is the sign-in
+default. Shell reset/undo does not reset these input preferences.
+
+Region changes go through `org.freedesktop.timedate1.SetTimezone` and
+`org.freedesktop.locale1.SetLocale` on the system bus, with normal interactive
+Polkit authorization. No privileged helper, password capture or custom Polkit
+exception is installed. Choices come from the installed timezone and locale
+catalogs. Requests reject stale values, preserve existing `LC_*` overrides,
+verify the resulting properties, and report authorization denial, cancellation
+or service failure. Changing the system language sets `LANG`; applications use
+it after signing out and back in. Separate timezone/language Apply actions
+avoid a misleading partially successful combined change. Shell clock and
+temperature formats remain independent personal settings.
+
+`tests/native-input-region.py` exercises the production helpers with isolated
+preferences and mocked compositor/system buses, including failed reload
+recovery, unknown-field preservation, stale writes, invalid inputs, symlinks,
+real stdin/subprocess failure handling, authorization requests and preserved
+locale categories. `tests/hyprland-input` executes the shipped Lua loader under
+LuaJIT. `tests/qml/tst_input_draft.qml` exercises the pages' draft, reorder and
+filter functions with Qt's JavaScript engine. These tests do not claim a live
+authorization prompt, physical keyboard/touchpad or fresh-install validation.
+
+Both installation paths ship the same loader, pages and helpers, and use the
+same XKB/timezone package resources. No installer applies these personal or
+system region choices implicitly during reconfiguration.
 
 Run the normal repository gate before deployment:
 

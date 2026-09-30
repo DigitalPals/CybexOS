@@ -42,6 +42,9 @@
   loop:
     - cybexos-btrfs-scrub.timer
     - cybexos-recovery-refresh.service
+    - cybexos-update-recover.service
+    - cybexos-major-upgrade-validate.timer
+    - cybexos-major-upgrade-validate.service
     - xps-haptic-touchpad.service
     - xps-ipu7-camera-init.service
     - xps-ipu7-camera.service
@@ -135,6 +138,7 @@
     - "{{ primary_home }}/.local/bin/dev-arch-shell"
     - "{{ primary_home }}/.local/bin/dev-debian-shell"
     - "{{ primary_home }}/.local/libexec/hermes-menubar-bridge"
+    - "{{ primary_home }}/.local/libexec/cybex_hermes"
     - "{{ primary_home }}/.local/libexec/cybexos-migrate-layering"
     - "{{ primary_home }}/.local/share/nautilus-python/extensions/localsend.py"
     - "{{ primary_home }}/.config/distrobox/distrobox.conf"
@@ -169,6 +173,13 @@
     - /usr/local/libexec/cybexos-hyprland-session-start
     - /usr/local/libexec/cybexos-session-action
     - /usr/local/libexec/cybexos-system-snapshot
+    - /usr/local/libexec/cybexos-update-transaction
+    - /usr/local/libexec/cybexos-update-bootstrap
+    - /usr/local/libexec/cybexos-update-recover
+    - /usr/local/libexec/cybexos-update-recover.service
+    - /usr/local/libexec/cybexos-update-recover-login.conf
+    - /usr/local/libexec/cybexos-vendor-paths.json
+    - /usr/local/libexec/cybexos-major-upgrade
     - /usr/local/sbin/cybexos-system-snapshot
     - /usr/local/libexec/cybexos-common.sh
     - /etc/sysctl.d/60-cybexos-hardening.conf
@@ -179,6 +190,7 @@
     - /etc/brave/policies/managed/cybexos.json
     - /etc/fonts/conf.d/49-cybexos-defaults.conf
     - /usr/share/glib-2.0/schemas/90-cybexos-ibus.gschema.override
+    - /usr/share/glib-2.0/schemas/90-cybexos-smb.gschema.override
     - /usr/local/libexec/cybexos-github-release-install
     - /usr/local/libexec/cybexos-source-app-build
     - /usr/local/libexec/cybexos-android-sdk-update
@@ -217,6 +229,14 @@
     | selectattr('item', 'equalto', '/usr/share/glib-2.0/schemas/90-cybexos-ibus.gschema.override')
     | selectattr('changed') | list | length > 0
 
+- name: Recompile GSettings schemas without the SMB workgroup override
+  ansible.builtin.command: glib-compile-schemas /usr/share/glib-2.0/schemas
+  changed_when: true
+  when: >-
+    uninstall_system_files.results
+    | selectattr('item', 'equalto', '/usr/share/glib-2.0/schemas/90-cybexos-smb.gschema.override')
+    | selectattr('changed') | list | length > 0
+
 # Recovery points themselves stay: they are data on the user's filesystem and
 # `cybexos-system-snapshot` can be reinstalled to restore from them.
 - name: Remove recovery booting from the boot chain
@@ -227,6 +247,11 @@
     - /etc/grub.d/42_cybexos_recovery
     - /etc/kernel/install.d/95-cybexos-recovery.install
     - /etc/systemd/system/cybexos-recovery-refresh.service
+    - /etc/systemd/system/cybexos-update-recover.service
+    - /etc/systemd/system/systemd-user-sessions.service.d/60-cybexos-update-recover.conf
+    - /etc/systemd/system/sddm.service.d/60-cybexos-update-recover.conf
+    - /etc/systemd/system/cybexos-major-upgrade-validate.service
+    - /etc/systemd/system/cybexos-major-upgrade-validate.timer
     - /usr/lib/dracut/modules.d/90cybexos-recovery
     - /etc/dracut.conf.d/90-cybexos-recovery.conf
     - /boot/grub2/cybexos-recovery.cfg
@@ -238,12 +263,18 @@
     cmd: grub2-mkconfig -o /boot/grub2/grub.cfg
     removes: /boot/grub2/grub.cfg
   changed_when: true
-  when: uninstall_recovery_boot.results[0] is changed
+  when: >-
+    uninstall_recovery_boot.results
+    | selectattr('item', 'equalto', '/etc/grub.d/42_cybexos_recovery')
+    | selectattr('changed') | list | length > 0
 
 - name: Rebuild initramfs images without the recovery overlay module
   ansible.builtin.command: dracut --regenerate-all --force
   changed_when: true
-  when: uninstall_recovery_boot.results[3] is changed or uninstall_recovery_boot.results[4] is changed
+  when: >-
+    uninstall_recovery_boot.results
+    | selectattr('item', 'in', ['/usr/lib/dracut/modules.d/90cybexos-recovery', '/etc/dracut.conf.d/90-cybexos-recovery.conf'])
+    | selectattr('changed') | list | length > 0
 
 - name: Remove the managed mpv defaults
   ansible.builtin.blockinfile:

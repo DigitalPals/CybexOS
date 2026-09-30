@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""Merge a settings edit with current disk contents and atomically commit it."""
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+MISSING = object()
+LIMIT = 2 * 1024 * 1024
+
+
+def parse(text):
+    value = json.loads(text) if text.strip() else {}
+    if not isinstance(value, dict):
+        raise ValueError('Settings must contain a JSON object')
+    return value
+
+
+def merge(base, desired, current, path=''):
+    """Three-way merge: unrelated edits survive; conflicting edits are refused."""
+    if desired == base or desired == current:
+        return current
+    if current == base:
+        return desired
+    if all(isinstance(value, dict) for value in (base, desired, current)):
+        out = dict(current)
+        for key in set(base) | set(desired):
+            # The caller separately verifies that the running schema supports
+            # the latest file; a concurrent migration to that schema is safe.
+            if not path and key == 'v':
+                out[key] = desired.get(key, current.get(key))
+                continue
+            value = merge(base.get(key, MISSING), desired.get(key, MISSING),
+                          current.get(key, MISSING), path + '/' + key)
+            if value is MISSING:
+                out.pop(key, None)
+            else:
+                out[key] = value
+        return out
+    raise ValueError('Another writer changed ' + (path or '/') + '; reload before retrying')
+
+
+def backup(path, text, label):
+    saved = path.with_name(path.name + '.' + label + '-' + hashlib.sha256(text.encode()).hexdigest()[:16])
+    try:
+        with saved.open('x') as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except FileExistsError:
+        pass
+    return str(saved)
+
+
+def commit(path, baseline, candidate, version):
+    path = Path(path)
+    if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
+        raise ValueError('Settings path must not contain symlinks')
+    base, desired = parse(baseline), parse(candidate)
+    if desired.get('v') != version:
+        raise ValueError('Candidate settings schema does not match the running shell')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.with_name(path.name + '.lock').open('a') as lock:
+        os.fchmod(lock.fileno(), 0o600)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        for _attempt in range(3):
+            if path.exists() and path.stat().st_size > LIMIT:
+                raise ValueError('Settings file is too large')
+            current_text = path.read_text() if path.exists() else ''
+            current = parse(current_text)
+            if isinstance(current.get('v'), (int, float)) and current['v'] > version:
+                raise ValueError('Settings were saved by a newer shell; refusing to downgrade them')
+            try:
+                merged = merge(base, desired, current)
+            except ValueError as error:
+                saved = backup(path, candidate, 'conflict')
+                raise ValueError(str(error) + '. Your pending edit is saved at ' + saved) from error
+            text = json.dumps(merged, indent=2, ensure_ascii=False) + '\n'
+            if text == current_text:
+                return text
+            if current_text and current.get('v') != version:
+                backup(path, current_text, 'before-migration')
+            fd, temporary = tempfile.mkstemp(prefix='.shell-settings-', dir=path.parent)
+            try:
+                with os.fdopen(fd, 'w') as stream:
+                    os.fchmod(stream.fileno(), 0o600)
+                    stream.write(text)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                # Cooperative writers are locked. A normal editor is not, so
+                # re-read immediately before publication and retry its edit.
+                if (path.read_text() if path.exists() else '') != current_text:
+                    continue
+                os.replace(temporary, path)
+                directory = os.open(path.parent, os.O_DIRECTORY)
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+                return text
+            finally:
+                Path(temporary).unlink(missing_ok=True)
+    raise ValueError('Settings changed repeatedly; retry after the other editor finishes')
+
+
+def main():
+    try:
+        request = json.loads(sys.stdin.readline(LIMIT + 1))
+        text = commit(sys.argv[1], request['baseline'], request['candidate'], request['version'])
+        print(json.dumps({'ok': True, 'text': text}))
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as error:
+        print(json.dumps({'ok': False, 'error': str(error)}))
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

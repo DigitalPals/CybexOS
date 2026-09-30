@@ -98,7 +98,8 @@ The stable role boundaries are `base`, `desktop`, `apps`, `xps-2026` (also
 `hardware`), `dotfiles`, `private-hooks`, `boot`, and `finalize`. Narrow tags
 currently exist for `browser`, `onepassword`, `fonts`, `font-defaults`, `packages`, `quickshell`,
 `quickshell-lint`, `shell-defaults`, `user-tools`, `camera`, `fingerprint`,
-`speaker`, and `touchpad`. The
+`speaker`, `touchpad`, and `display`. The `display` tag applies the measured
+XPS panel self-refresh quirk; see [hardware notes](xps-2026-hardware.md#internal-panel-black-flashes). The
 narrow tags are development tools, not independent installation profiles;
 their prerequisites can live in an earlier role.
 
@@ -265,16 +266,23 @@ The verified archive is extracted into a new versioned directory. A dedicated
 durable system worker owns configuration migration, candidate application,
 agent-skill reconciliation, rollback, and the atomic `current` symlink change.
 Detaching the terminal cannot split those steps, and an unrelated active
-update is never accepted as the candidate transaction. Apply failure restores
-the pre-migration configuration; activation failure also restores the prior
-`current` target and every agent-skill slot. Files that Ansible had already
-deployed from the candidate are not rolled back, so after a failed or
-abandoned apply the run's `status.json` records `mixedState: true`: the
-machine runs the previous release with some newer managed files. Retry
-`cybex update` once the cause is fixed, or converge the active release again
-with `~/.local/share/cybexos/current/install`. The active release plus two
-recent release directories are retained as recovery material; filesystem
-rollback remains the supported way to reverse system package changes.
+update is never accepted as the candidate transaction. On the managed Btrfs
+layout, the worker checkpoints root, `/boot`, and the exact vendor-owned home
+paths before applying changes. It downloads RPMs first, applies the update,
+waits for RPM desktop reconciliation where applicable, and validates system
+and desktop health before committing. Failure or cancellation after application
+selects the previous root and restores the vendor desktop; restart when status
+reports `rollbackState: restart-required`. Personal preferences, themes, plugins
+and application data under home are excluded from this restore. The active
+release plus two recent release directories are retained, with pruning deferred
+until the health check succeeds.
+
+On other filesystems `transactionProtection` is `unavailable`: release activation
+still restores the prior `current` and saved configuration on failure, but
+already-deployed files and package changes require manual recovery. Such a failed
+apply reports `mixedState: true`; converge the active release again with
+`~/.local/share/cybexos/current/install` after fixing the cause. See the recovery
+limits below before relying on rollback.
 
 Useful release commands are:
 
@@ -328,7 +336,7 @@ contract is not cancellable. `dismiss` only changes the completed status shown
 by the UI and does not delete its logs.
 
 `--firmware` (also accepted by `cybex update`) installs available fwupd device
-firmware in the same worker after the package phase, through
+firmware in the same worker after the reversible update has committed, through
 `cybexos-firmware-update`. A firmware failure never fails the run; the final
 message notes the helper's status, and a capsule staged for the next boot
 recommends a restart for the rest of that boot. With `--no-packages`,
@@ -339,8 +347,8 @@ directory under `logs/<run-id>/` containing:
 
 - `status.json`: atomic machine-readable phase, result, component exit codes,
   timestamps, transient unit name, the pre-update `snapshotId` when one was
-  created, and `mixedState` when a release apply stopped after Ansible began
-  changing files;
+  created, `transactionProtection` (`btrfs` or `unavailable`), `rollbackState`,
+  and `mixedState` when the running root still needs recovery or a restart;
 - `run.log`: the complete combined stream with `dnf`, `flatpak`, `firmware`,
   `tests`, and `ansible` prefixes;
 - component logs such as `dnf.log`, `flatpak.log`, `firmware.log`,
@@ -368,6 +376,40 @@ outside system rollback; on the standard layout `/var` (logs, containers,
 system Flatpaks) is inside `root` and rolls back with it. A snapshot failure
 stops the update before DNF changes anything. On a non-Btrfs root the step
 records that no filesystem recovery point was required.
+
+The transaction journal and vendor checkpoint live in the Btrfs top-level
+recovery store, outside the root that is restored. An active checkpoint pins
+its recovery point against ordinary retention. `cybexos-update-recover.service`
+resolves interrupted updates before login, retrying an interrupted restoration
+without exchanging the root twice. A prepared transaction with no applied
+changes is abandoned safely. A failed restoration enters emergency mode instead
+of starting a desktop with incomplete recovery.
+
+The first update from an older installation creates an untouched recovery point,
+installs a root-owned recovery bundle and login dependency, then creates a second
+point containing that hook. Package changes begin only after the second point
+and vendor checkpoint succeed. This keeps recovery available if power fails
+between restoring root and restoring vendor files in home. Normal convergence
+replaces the bootstrap hook; a package-only update can retain it until that
+convergence. Starting the boot service during the current update never rolls
+back that same-boot worker.
+
+Commit checks the RPM database and newly failed system services. When the
+desktop was active, it also requires the managed Quickshell service to own the
+sole shell process, complete read-only IPC initialization, remain stable, and
+report no QML errors for that invocation. Safe mode is not successful update
+validation. Headless updates validate system health; they cannot validate a
+desktop session that is not running.
+
+These are recoverable filesystem transactions, not whole-machine snapshots.
+Root selection takes effect after restart, and a new kernel that cannot boot
+after an otherwise successful commit still needs the recovery boot menu.
+User Flatpaks, independently updated application/tool stores in home, external
+filesystems, remote effects and firmware are outside the checkpoint. Firmware
+runs only after commit. Keep external backups; root rollback also reverts data
+in `/var` on the standard layout. Guided Fedora release upgrades use the same
+journal with separate offline-boot and desktop validation stages; see
+[the major-upgrade workflow](fedora-major-upgrade.md).
 
 ```bash
 sudo cybexos-system-snapshot list           # ID and description

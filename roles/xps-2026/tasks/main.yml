@@ -9,6 +9,10 @@
     - xps_2026_is_supported | bool
     - xps_2026_needs_vesa_backlight | bool
 
+- name: Select reliable refresh for the affected XPS internal panel
+  ansible.builtin.import_tasks: display.yml
+  when: xps_2026_is_supported | bool
+
 - name: Install explicit Panther Lake media and firmware support
   ansible.builtin.import_tasks: packages.yml
   when: xps_2026_is_supported | bool

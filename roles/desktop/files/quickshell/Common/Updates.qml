@@ -1274,105 +1274,31 @@ Singleton {
         }
     }
 
-    Process {
+    UpdateLogReader {
         id: dnfLogReadProc
-        property string targetRunStamp: ""
-        property int sourceOffset: 0
-        property int targetOffset: 0
-        property string body: ""
-        property bool exitSeen: false
-        property int lastExit: -1
-        stdout: StdioCollector {
-            onStreamFinished: dnfLogReadProc.body = text
-        }
-        onExited: (exitCode, exitStatus) => {
-            dnfLogReadProc.exitSeen = true;
-            dnfLogReadProc.lastExit = exitCode;
-        }
-        onRunningChanged: {
-            if (running) {
-                body = "";
-                exitSeen = false;
-                lastExit = -1;
-            } else if (UpdatesHelpers.acceptsLogRead(root.runStamp,
-                    root.dnfLogOffset, targetRunStamp, sourceOffset,
-                    targetOffset, exitSeen, lastExit)) {
-                root.consumeBackendLog("dnf", body, targetOffset);
-            } else if (exitSeen && (targetRunStamp !== root.runStamp
-                    || sourceOffset !== root.dnfLogOffset)) {
-                // The process slot is free again; immediately service the
-                // current run rather than waiting for its next status poll.
-                root.drainBackendLogs();
-            } else if (exitSeen && lastExit !== 0) {
-                console.warn("dnf update log read exited with status", lastExit);
-            }
-        }
+        kind: "dnf"
+        currentRun: root.runStamp
+        currentOffset: root.dnfLogOffset
+        onAccepted: (body, offset) => root.consumeBackendLog("dnf", body, offset)
+        onStale: root.drainBackendLogs()
     }
 
-    Process {
+    UpdateLogReader {
         id: flatpakLogReadProc
-        property string targetRunStamp: ""
-        property int sourceOffset: 0
-        property int targetOffset: 0
-        property string body: ""
-        property bool exitSeen: false
-        property int lastExit: -1
-        stdout: StdioCollector {
-            onStreamFinished: flatpakLogReadProc.body = text
-        }
-        onExited: (exitCode, exitStatus) => {
-            flatpakLogReadProc.exitSeen = true;
-            flatpakLogReadProc.lastExit = exitCode;
-        }
-        onRunningChanged: {
-            if (running) {
-                body = "";
-                exitSeen = false;
-                lastExit = -1;
-            } else if (UpdatesHelpers.acceptsLogRead(root.runStamp,
-                    root.flatpakLogOffset, targetRunStamp, sourceOffset,
-                    targetOffset, exitSeen, lastExit)) {
-                root.consumeBackendLog("flatpak", body, targetOffset);
-            } else if (exitSeen && (targetRunStamp !== root.runStamp
-                    || sourceOffset !== root.flatpakLogOffset)) {
-                root.drainBackendLogs();
-            } else if (exitSeen && lastExit !== 0) {
-                console.warn("flatpak update log read exited with status", lastExit);
-            }
-        }
+        kind: "flatpak"
+        currentRun: root.runStamp
+        currentOffset: root.flatpakLogOffset
+        onAccepted: (body, offset) => root.consumeBackendLog("flatpak", body, offset)
+        onStale: root.drainBackendLogs()
     }
 
-    Process {
+    UpdateLogReader {
         id: firmwareLogReadProc
-        property string targetRunStamp: ""
-        property int sourceOffset: 0
-        property int targetOffset: 0
-        property string body: ""
-        property bool exitSeen: false
-        property int lastExit: -1
-        stdout: StdioCollector {
-            onStreamFinished: firmwareLogReadProc.body = text
-        }
-        onExited: (exitCode, exitStatus) => {
-            firmwareLogReadProc.exitSeen = true;
-            firmwareLogReadProc.lastExit = exitCode;
-        }
-        onRunningChanged: {
-            if (running) {
-                body = "";
-                exitSeen = false;
-                lastExit = -1;
-            } else if (UpdatesHelpers.acceptsLogRead(root.runStamp,
-                    root.firmwareLogOffset, targetRunStamp, sourceOffset,
-                    targetOffset, exitSeen, lastExit)) {
-                root.consumeBackendLog("firmware", body, targetOffset);
-            } else if (exitSeen && (targetRunStamp !== root.runStamp
-                    || sourceOffset !== root.firmwareLogOffset)) {
-                root.drainBackendLogs();
-            } else if (exitSeen && lastExit !== 0) {
-                console.warn("firmware update log read exited with status", lastExit);
-            }
-        }
+        kind: "firmware"
+        currentRun: root.runStamp
+        currentOffset: root.firmwareLogOffset
+        onAccepted: (body, offset) => root.consumeBackendLog("firmware", body, offset)
+        onStale: root.drainBackendLogs()
     }
 
     // The falling edge, so a cancel client that never started still asks

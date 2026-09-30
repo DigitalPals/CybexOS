@@ -189,6 +189,17 @@ def verify_qualifications(paths, iso_digest, packages):
         if not isinstance(prior, str) or not re.fullmatch(r'[0-9a-f]{64}', prior):
             raise ValueError('Qualification must identify the tested ISO SHA-256')
         if prior == iso_digest and 'graphical-installer' in checks and report.get('scenario') in scenarios:
+            if report['scenario'].startswith('plain-'):
+                checkout = report.get('checkout_parity', {})
+                content = report.get('source_content_sha256', '')
+                if (not isinstance(content, str) or not re.fullmatch(r'[0-9a-f]{64}', content)
+                        or not {'installed-parity-fresh', 'installed-parity-saved'} <= set(checks)
+                        or checkout.get('status') != 'passed' or checkout.get('scenario') != report['scenario']
+                        or checkout.get('source_content_sha256') != content
+                        or checkout.get('source_revision') != report.get('source_revision')
+                        or not {'full-checkout-installation', 'installed-parity-fresh', 'installed-parity-saved',
+                                'full-graphical-session'} <= set(checkout.get('checks', []))):
+                    raise ValueError('Release requires same-source real checkout/ISO parity for fresh and saved choices')
             fresh.add(report['scenario'])
         if (prior != iso_digest and report.get('candidate_rpm_sha256') in candidates
                 and {'installed-rpm-upgrade', 'recovery-boot-restore'} <= set(checks)):

@@ -118,6 +118,8 @@
       # link telemetry.
       - NetworkManager
       - NetworkManager-libnm
+      - xkeyboard-config
+      - tzdata
       - glib2
       - nm-connection-editor
       - pulseaudio-utils
@@ -197,6 +199,7 @@
     state: absent
   loop:
     - "{{ primary_home }}/.local/libexec/hermes-menubar-bridge"
+    - "{{ primary_home }}/.local/libexec/cybex_hermes"
     - "{{ primary_home }}/.config/systemd/user/hermes-menubar-bridge.service"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/hermes-menubar-bridge.service"
   notify: Reload user systemd
@@ -488,6 +491,7 @@
     - bindings.lua
     - autostart.lua
     - displays.lua
+    - input_preferences.lua
     # This entrypoint requires every module above. Keeping it last makes an
     # empty live configuration valid at each observable deployment boundary.
     - hyprland.lua
@@ -534,6 +538,20 @@
   ansible.builtin.command: glib-compile-schemas /usr/share/glib-2.0/schemas
   changed_when: true
   when: desktop_ibus_schema_override is changed
+
+- name: Default Files SMB connections to WORKGROUP
+  ansible.builtin.copy:
+    src: 90-cybexos-smb.gschema.override
+    dest: /usr/share/glib-2.0/schemas/90-cybexos-smb.gschema.override
+    owner: root
+    group: root
+    mode: "0644"
+  register: desktop_smb_schema_override
+
+- name: Compile GSettings schemas after changing the SMB default
+  ansible.builtin.command: glib-compile-schemas /usr/share/glib-2.0/schemas
+  changed_when: true
+  when: desktop_smb_schema_override is changed
 
 - name: Install the singleton session-lock user unit before its callers
   become: true
@@ -597,7 +615,7 @@
     label: "{{ item.path }}"
   when:
     - not hypr_runtime_path_normalization_pending | bool
-    - item.path | basename not in ['features.lua', 'monitors.lua', 'input.lua', 'looknfeel.lua', 'bindings.lua', 'autostart.lua', 'displays.lua', 'hyprland.lua', 'hypridle.conf', 'hyprlock.conf']
+    - item.path | basename not in ['features.lua', 'monitors.lua', 'input.lua', 'looknfeel.lua', 'bindings.lua', 'autostart.lua', 'displays.lua', 'input_preferences.lua', 'hyprland.lua', 'hypridle.conf', 'hyprlock.conf']
   tags: [browser]
 
 - name: Install the guarded desktop runtime resolver

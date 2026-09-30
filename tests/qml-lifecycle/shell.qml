@@ -57,6 +57,63 @@ ShellRoot {
             root.action.destroy();
             root.status.destroy();
         }
+        runCommandLifecycle();
+    }
+
+    property int commandStage: 0
+    property int commandCompletions: 0
+    property bool commandsFinished: false
+    property Common.CommandRequest request: null
+
+    function runCommandLifecycle() {
+        request = requestComponent.createObject(harness);
+        check(request !== null, "CommandRequest did not construct");
+        if (!request) { finishLifecycle(); return; }
+        request.available.connect(() => Qt.callLater(root.nextCommand));
+        request.completed.connect((code, body, error) => {
+            commandCompletions++;
+            if (commandStage === 0) {
+                check(code === 0 && body === "ready", "successful command lost stdout");
+            } else if (commandStage === 1) {
+                check(code === -1, "missing executable did not settle as launch failure");
+            } else if (commandStage === 2) {
+                check(code === 124 && body === "", "timeout published partial output or success");
+            } else if (commandStage === 3) {
+                check(code === 0 && body === "after-timeout", "request slot did not recover after timeout");
+            } else if (commandStage === 4) {
+                check(code === 0 && body === "payload", "stdin request was not delivered");
+            }
+            commandStage++;
+            Qt.callLater(root.nextCommand);
+        });
+        nextCommand();
+    }
+
+    function nextCommand() {
+        if (commandsFinished || request.running)
+            return;
+        if (commandStage >= 5) {
+            commandsFinished = true;
+            check(commandCompletions === 5, "a command completed more than once");
+            request.destroy();
+            finishLifecycle();
+            return;
+        }
+        request.timeoutMs = commandStage === 2 ? 80 : 1000;
+        request.killGraceMs = 80;
+        request.stdinEnabled = commandStage === 4;
+        request.inputText = "payload\n";
+        request.command = commandStage === 0 ? ["/usr/bin/printf", "ready"]
+            : commandStage === 1 ? ["/cybexos-test-executable-does-not-exist"]
+            : commandStage === 2 ? ["/bin/sh", "-c", "trap '' TERM; printf partial; exec sleep 10"]
+            : commandStage === 3 ? ["/usr/bin/printf", "after-timeout"]
+            : ["/bin/sh", "-c", "IFS= read -r value; printf '%s' \"$value\""];
+        request.running = true;
+    }
+
+    Component { id: requestComponent; Common.CommandRequest {} }
+
+    function finishLifecycle() {
         // Warnings are mirrored to stderr by qs even without detailed-log
         // decoding, which makes the result observable to the shell driver.
         console.warn(root.failed ? "LIFECYCLE_RESULT fail" : "LIFECYCLE_RESULT pass");

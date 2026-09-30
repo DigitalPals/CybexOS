@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 """Maintain vendor defaults only while their bytes still match our last write."""
+import fcntl
 import hashlib
 import json
 import os
@@ -20,7 +21,19 @@ def atomic(path, data, mode=0o600):
         Path(temporary).unlink(missing_ok=True)
 
 
-def manage(destination, content, ledger, absent=False, mode=0o644, check=False):
+def manage(destination, content, ledger, absent=False, mode=0o644, check=False, baseline=None):
+    if check:
+        return _manage(destination, content, ledger, absent, mode, check, baseline)
+    ledger = Path(ledger)
+    ledger.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    # Login seeding and an explicit converge can target the same account.
+    with ledger.with_name(ledger.name + '.lock').open('a') as lock:
+        os.fchmod(lock.fileno(), 0o600)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _manage(destination, content, ledger, absent, mode, check, baseline)
+
+
+def _manage(destination, content, ledger, absent=False, mode=0o644, check=False, baseline=None):
     """Unknown/custom files and symlinks are never adopted or overwritten.
 
     Persist ownership before publishing new bytes, recording both old and new
@@ -39,6 +52,8 @@ def manage(destination, content, ledger, absent=False, mode=0o644, check=False):
     current = destination.read_bytes() if destination.exists() else None
     digest = hashlib.sha256(current).hexdigest() if current is not None else None
     desired = None if absent else hashlib.sha256(content).hexdigest()
+    if baseline is not None and current == baseline:
+        old = [digest]
     if digest is not None and digest != desired and digest not in old:
         return {'changed': False, 'preserved': True}
     # A user deletion is an override once we have adopted an existing file.
@@ -71,14 +86,18 @@ def main():
     module = AnsibleModule(argument_spec={
         'dest': {'type': 'path', 'required': True},
         'content': {'type': 'str', 'default': ''},
+        'ledger': {'type': 'path', 'default': '/var/lib/cybexos/reconcile/managed-files.json'},
+        'baseline': {'type': 'str', 'default': None},
         'state': {'choices': ['present', 'absent'], 'default': 'present'},
         'mode': {'type': 'str', 'default': '0644'},
     }, supports_check_mode=True)
     try:
         result = manage(module.params['dest'], module.params['content'].encode(),
-                        '/var/lib/cybexos/reconcile/managed-files.json',
+                        module.params['ledger'],
                         absent=module.params['state'] == 'absent',
-                        mode=int(module.params['mode'], 8), check=module.check_mode)
+                        mode=int(module.params['mode'], 8), check=module.check_mode,
+                        baseline=(module.params['baseline'].encode()
+                                  if module.params['baseline'] is not None else None))
     except (OSError, ValueError) as error:
         module.fail_json(msg=str(error))
     module.exit_json(**result)

@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for the first desktop session after a Fedora major upgrade
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+Unit=cybexos-major-upgrade-validate.service
+
+[Install]
+WantedBy=timers.target

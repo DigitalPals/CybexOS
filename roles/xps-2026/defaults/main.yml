@@ -14,6 +14,12 @@ xps_2026_speaker_skus:
 xps_2026_vesa_backlight_edid_products:
   - "30e4"
 
+# Panel self-refresh causes black flashes and a sink link CRC error on this
+# measured XPS 14 panel. Bytes 8..11 identify LGD / product 0x07c6 (little
+# endian product bytes); do not apply this to every LG panel or XPS chassis.
+xps_2026_psr_disabled_panels:
+  - { sku: "0DB9", edid: "30e4c607" }
+
 # Supported values are low, mid, and high. They map to the current Synaptics
 # HID scale used by the 2026 XPS touchpad (10, 50, and 100 respectively).
 xps_2026_haptic_intensity: high

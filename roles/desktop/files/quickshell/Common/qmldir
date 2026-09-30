@@ -21,6 +21,7 @@ singleton LauncherProviders LauncherProviders.qml
 singleton T3Code T3Code.qml
 singleton T3Connection T3Connection.qml
 singleton T3Rpc T3Rpc.qml
+singleton T3Actions T3Actions.qml
 singleton T3Detail T3Detail.qml
 singleton T3Drafts T3Drafts.qml
 singleton T3Favorites T3Favorites.qml
@@ -97,3 +98,6 @@ singleton SystemSettings SystemSettings.qml
 singleton DisplaySettings DisplaySettings.qml
 SystemSettingsBackend SystemSettingsBackend.qml
 singleton RemoteServer RemoteServer.qml
+
+CommandRequest CommandRequest.qml
+UpdateLogReader UpdateLogReader.qml

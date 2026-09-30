@@ -39,9 +39,8 @@ def prepare_defaults(root, payload, environment, inventory):
     return contract
 
 
-# blockinfile's rendering of the workstation's managed Kitty include
-# (roles/dotfiles/tasks/personal.yml), so provisioning a seeded account finds
-# its block already present instead of appending a second one.
+# The shared cybexos_user_include module's first-run Kitty block. User
+# preferences follow it, so explicit values have precedence over defaults.
 KITTY_INCLUDE = "# BEGIN CYBEXOS MANAGED INCLUDE\ninclude cybexos.conf\n# END CYBEXOS MANAGED INCLUDE\n"
 
 

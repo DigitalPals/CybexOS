@@ -80,7 +80,7 @@ test("Podman inventory controls packages, helpers, keybindings, and desktop entr
     assert.match(desktopTasks.slice(featureInstallAt, luaConsumersAt),
         /- features\.lua\s+- monitors\.lua\s+- input\.lua\s+- looknfeel\.lua/,
         "all imported leaf modules must precede the activating entrypoint");
-    assert.match(hyprland, /\{ "features", "monitors", "input", "bindings"/,
+    assert.match(hyprland, /\{ "features", "monitors", "input", "input_preferences", "bindings"/,
         "a config reload must evict the rendered feature module before reloading bindings");
     assert.match(bindings, /local features = require\("features"\)/);
     const optionalBinds = bindings.slice(bindings.indexOf("if features.podman then"),

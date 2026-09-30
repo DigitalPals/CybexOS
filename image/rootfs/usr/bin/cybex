@@ -6,11 +6,12 @@ case $command_name in
   welcome) exec /usr/bin/cybexos-welcome "$@" ;;
   configure) exec /usr/libexec/cybexos-config "$@" ;;
   update) exec /usr/share/cybexos/bin/cybexos-update-run run "$@" ;;
+  upgrade-system) exec sudo /usr/libexec/cybexos-major-upgrade "$@" ;;
   update-channel) exec /usr/libexec/cybexos-update-channel "$@" ;;
   prepare-apps) exec /usr/libexec/cybexos-user-init --background "$@" ;;
   repair) exec sudo /usr/libexec/cybexos-configure-installed --user "${SUDO_USER:-$USER}" "$@" ;;
   agent) exec /usr/share/cybexos/bin/cybexos-agent "$@" ;;
-  plugin|dev) exec /usr/share/cybexos/bin/cybexos-runtime "$command_name" "$@" ;;
+  plugin|dev|shell) exec /usr/share/cybexos/bin/cybexos-runtime "$command_name" "$@" ;;
   version|--version) exec rpm -q cybexos-desktop ;;
   verify|doctor) exec /usr/libexec/cybexos-doctor "$@" ;;
   uninstall)
@@ -29,11 +30,13 @@ Commands:
   welcome       Open the CybexOS welcome window
   configure     Change installation choices and apply them (--check prints them)
   update        Check for and apply CybexOS and system updates
+  upgrade-system Prepare, perform, or inspect a supported Fedora major upgrade
   update-channel Inspect or enroll the desktop RPM update channel
   prepare-apps  Prepare the offline applications for this account
   repair        Reapply the installed-system policy to this account
   agent         Launch or choose the default AI coding agent
   plugin        Install, update, clone, remove, or configure desktop plugins
+  shell         Inspect shell health, enter safe mode, or retry the full desktop
   dev           Select, inspect, or disable a live development checkout
   version       Print the installed CybexOS package version
   verify        Check installed-system health (--json for machine-readable output)

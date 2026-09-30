@@ -1,0 +1,21 @@
+[Unit]
+Description=Recover an interrupted CybexOS update before login
+Wants=network-online.target
+Requires=dbus.service
+After=local-fs.target network-online.target dbus.service
+RequiresMountsFor=/home /var
+Before=systemd-user-sessions.service display-manager.service
+Conflicts=shutdown.target
+Before=shutdown.target
+ConditionPathExists=!/run/cybexos-live
+OnFailure=emergency.target
+OnFailureJobMode=isolate
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/cybexos-update-recover
+TimeoutStartSec=75min
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

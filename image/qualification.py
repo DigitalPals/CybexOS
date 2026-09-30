@@ -11,6 +11,8 @@ import time
 from build_support import atomic_json, digest
 from browser_qualification import browser_dependencies, qualify_browser
 from login_qualification import qualify_login
+from installed_outcomes import capture_guest
+from parity_qualification import desktop_lifecycle, prepare_saved_choices, verify_saved_choices
 from upgrade_qualification import (create_recovery_point, prepare_user_choices, select_recovery_boot,
                                    upgrade, verify_recovery_boot, verify_restored, verify_user_choices)
 from vm_testing import QUALIFICATION_DISK_SERIAL, QUALIFICATION_UNUSED_SERIAL, TestVM, poweroff_guest, require_test_iso, run
@@ -244,11 +246,14 @@ def main():
     parser.add_argument('--erase-disposable-disk', action='store_true', help='Explicitly allow installation onto the new task-owned virtual disk')
     parser.add_argument('--keep-artifacts', action='store_true', help='Retain task-owned disk/logs for unresolved diagnostics')
     parser.add_argument('--install-timeout', type=int, default=1800)
+    parser.add_argument('--capture-outcomes', action='store_true', help='Capture fresh and saved-choice outcomes for same-source checkout comparison')
     args = parser.parse_args()
     if not args.execute_vm or not args.erase_disposable_disk:
         parser.error('qualification requires --execute-vm --erase-disposable-disk; no VM or installer starts without both')
     if args.recovery_check and not args.candidate_rpm:
         parser.error('--recovery-check requires --candidate-rpm')
+    if args.capture_outcomes and (args.candidate_rpm or args.legacy_installer):
+        parser.error('Outcome parity capture requires the fresh candidate ISO')
     iso = require_test_iso(args.iso)
     if args.candidate_rpm and (args.candidate_rpm.is_symlink() or not args.candidate_rpm.is_file()
                                or args.candidate_rpm.suffix != '.rpm'):
@@ -341,6 +346,25 @@ def main():
                 verify_restored(vm, versions['installed'], password, root_script)
                 verify_user_choices(vm, password, root_script, preference)
                 report['checks'].append('recovery-boot-restore')
+        if args.capture_outcomes:
+            desktop_lifecycle(vm)
+            fresh = capture_guest(vm, root_script, password, installation='iso', scenario=args.scenario,
+                                  profile='fresh', manifest='/usr/share/cybexos/applications.json',
+                                  provenance='/usr/share/cybexos/build.json')
+            atomic_json(args.output / 'outcomes-fresh.json', fresh)
+            prepare_saved_choices(vm, password, root_script)
+            root_script(vm, '/usr/libexec/cybexos-configure-installed --user qualification\n', password, timeout=1800)
+            poweroff_installed(vm, password)
+            boot_installed(vm, password, encrypted)
+            verify_saved_choices(vm, password, root_script)
+            desktop_lifecycle(vm)
+            saved = capture_guest(vm, root_script, password, installation='iso', scenario=args.scenario,
+                                  profile='saved', manifest='/usr/share/cybexos/applications.json',
+                                  provenance='/usr/share/cybexos/build.json')
+            atomic_json(args.output / 'outcomes-saved.json', saved)
+            report['source_revision'] = fresh['source_revision']
+            report['source_content_sha256'] = fresh['source_content_sha256']
+            report['checks'] += ['installed-outcomes-captured', 'saved-choice-reconfiguration', 'native-settings-lifecycle']
         # Clear the temporary test access before stopping the disposable disk.
         vm.audit(applications=False)
         poweroff_guest(vm, password, root_script, timeout=60, cleanup_script=(

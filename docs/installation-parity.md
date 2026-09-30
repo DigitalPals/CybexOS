@@ -15,6 +15,7 @@ Fresh installations use these ISO defaults:
 | Docker administrator access | Sudo required |
 | Desktop automatic login | Enabled only after complete root encryption is verified |
 | Additional local-network firewall ports | Disabled; LocalSend retains its shared ports |
+| Files SMB workgroup | `WORKGROUP`; explicit per-user workgroups take precedence |
 | Machine identity | Preserve the identity already configured by Fedora/Anaconda |
 
 `inventory/group_vars/all.yml` is the common default input.
@@ -34,8 +35,9 @@ identity change in the checkout questionnaire still applies that choice.
 Neither parity nor a release update authorizes repartitioning an existing
 Fedora installation or resetting user settings to match a clean account.
 Fastfetch, Voxtype, Oh My Posh, MIME associations, and npm configuration are
-seeded only when absent, as on the ISO. Managed Fish and Kitty fragments remain
-updateable independently of those personal files.
+seeded only when absent, as on the ISO. Managed Fish, Kitty, Git and SSH fragments remain updateable while their bytes
+match the shared ownership ledger. Conflicting edits and deletions are preserved
+on both paths. Git/Kitty includes precede user values; SSH fallbacks follow them.
 
 The checkout path installs onto existing Fedora and retains source-release
 updates and uninstall; the ISO uses Anaconda for disk/account creation and RPM
@@ -65,3 +67,68 @@ revision and artifact digests in the qualification evidence. Fixture checks
 compare the installation contract; they are not evidence that fresh physical
 or VM installations have been performed. Do not use an older ISO qualification
 as evidence for a newer checkout.
+
+## Real installed-outcome gate
+
+`image/release-gate` requires two full checkout installations, `plain-us` and
+`plain-nl`, in addition to the existing four graphical ISO installations and
+prior-release RPM upgrade/recovery check. They use a checksum-pinned Fedora 44
+Cloud image, the same QEMU hardware/UEFI configuration as the ISO guests, all
+normal feature defaults, the public `./install --non-interactive` entry point,
+and real SDDM password login after reboot. `tests/fedora-vm-convergence` remains
+a separate convergence/uninstall test; its feature opt-outs cannot satisfy
+this gate.
+
+The builder includes the complete reviewed source set in `source.tar.gz`
+alongside its ISO/RPM artifacts. A canonical digest covers file names, content
+and executable bits, including intentional non-ignored working-tree changes.
+It is embedded in the ISO's existing `build.json`. The builder verifies that
+the archived content matches, so an edit during source capture aborts the
+build. Checkout qualification extracts this exact archive, validates its
+checksum and content, and requires the ISO qualification to identify that
+exact source and ISO digest. Extraction rejects links, traversal and duplicate
+paths. The runner's newer checkout cannot substitute for the tested source.
+
+Each guest produces `outcomes-fresh.json`, then saves explicit shell/input
+preferences, a valid personal Hyprland override and unknown future settings
+fields. It reapplies its own installation path, reboots, verifies those values
+survived and produces `outcomes-saved.json`. Captures require a running desktop
+and exactly one Quickshell process owned by `quickshell.service`. The managed
+Settings lifecycle test exercises Network, Sound, Online Accounts, Keyboard,
+Touchpad and Region, including watcher cleanup and the current QML journal.
+
+`image/installed_outcomes.py` compares effective shell/input settings, saved
+installer choices, login policy, actual sudo authorization, Polkit policy,
+account groups/shell, required RPM versions, Flatpaks, application commands and
+associations, service enablement/activation, firewall policy, SELinux, recovery
+support, filesystem and personal-file identities. It retains the complete RPM
+inventories. Every additional package difference needs a reasoned entry in
+`image/parity-exceptions.json`; required package/version differences always
+fail. Initial exceptions cover only the ISO delivery RPM and Cloud provisioning
+tools. Review new actual baseline differences before extending that file.
+
+`parity-fresh.json` and `parity-saved.json` name mismatches. The release gate
+embeds passed same-source checkout evidence in both plain ISO reports.
+`image/prepare-github-release` also rejects missing, stale or fixture-only
+parity evidence when invoked independently.
+
+To rerun checkout comparison against a completed candidate (its corresponding
+ISO qualification must have used `--capture-outcomes`):
+
+```sh
+image/qualify-checkout --execute-vm --scenario plain-us \
+  --artifacts /path/to/build/artifacts \
+  --iso-results /path/to/qualification/plain-us \
+  --output /path/to/new-task-specific-checkout-output
+```
+
+The runner removes task-owned VM disks, SSH keys, cloud seeds, transient logs
+and screenshots on success/failure, retaining compact reports.
+`--keep-artifacts` retains unresolved diagnostics, but never the cloud seed or
+SSH private key. Testing OS ISOs still use `/data/pxe/iso` and the existing
+checksum/iVentoy workflow. Existing Fedora hosts are never repartitioned.
+
+`image/test_installed_outcomes.py` tests content identities, archive validation,
+comparison guards and guest workflow construction without booting a VM. These
+source tests do not qualify an installation or imply the expanded matrix ran.
+New release evidence must come from executing the gate.

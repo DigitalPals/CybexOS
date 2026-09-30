@@ -312,11 +312,10 @@ if command_exists firewall-cmd && unit_active firewalld.service; then
   ports=$(firewall-cmd --permanent --zone="$firewall_zone" --list-ports 2>/dev/null | tr ' ' '\n' | sort | tr '\n' ' ')
   expected=$(jq -r '
     . as $root
-    | if $root.features.local_network_services then
-        $root.firewall_ports[]
-        | select((.feature == null) or ($root.features[.feature] == true))
-        | "\(.port)/\(.protocol)"
-      else empty end
+    | $root.firewall_ports[]
+    | select(.always == true or $root.features.local_network_services)
+    | select((.feature == null) or ($root.features[.feature] == true))
+    | "\(.port)/\(.protocol)"
   ' <<<"$inventory_json" | sort | tr '\n' ' ')
   [[ $ports == "$expected" ]] && pass 'firewall exposes only declared ports' || fail "firewall ports differ: $ports"
   services=$(firewall-cmd --permanent --zone="$firewall_zone" --list-services 2>/dev/null || true)
@@ -351,10 +350,17 @@ else
 fi
 
 cmdline=$(</proc/cmdline)
-if grep -Eq 'iwlwifi[.]disable_11be|(^| )fred=on|xe[.](enable_guc|force_probe)|enable_panel_replay|enable_psr' <<<"$cmdline"; then
+# Xe's panel-specific PSR quirk is supported; the old i915 argument is not.
+if grep -Eq 'iwlwifi[.]disable_11be|(^| )fred=on|xe[.](enable_guc|force_probe)|enable_panel_replay|i915[.]enable_psr' <<<"$cmdline"; then
   fail "obsolete XPS kernel workaround is present: $cmdline"
 else
   pass 'no obsolete XPS kernel workarounds'
+fi
+if grep -Eq '(^| )xe[.]enable_psr=0( |$)' <<<"$cmdline"; then
+  check_root 'Xe panel self-refresh workaround is active in this boot' \
+    grep -qx '0' /sys/module/xe/parameters/enable_psr
+elif grep -Eq '(^| )xe[.]enable_psr=0( |$)' /etc/kernel/cmdline 2>/dev/null; then
+  warn 'Xe panel self-refresh workaround is configured and awaits reboot'
 fi
 if command_exists mokutil; then
   mokutil --sb-state >/dev/null 2>&1 && pass 'Secure Boot state is readable' || warn 'Secure Boot state could not be read'

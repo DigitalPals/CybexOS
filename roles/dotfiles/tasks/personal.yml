@@ -22,71 +22,61 @@
 - name: Install the managed Kitty fragment
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.copy:
-    src: kitty.conf
+  cybexos_managed_file:
+    content: "{{ lookup('file', role_path + '/files/kitty.conf', rstrip=false) }}"
     dest: "{{ primary_home }}/.config/kitty/cybexos.conf"
+    ledger: "{{ primary_home }}/.local/state/cybexos/defaults/ownership.json"
     mode: "0644"
   when: manage_personal_dotfiles | bool
 
 - name: Include the managed Kitty fragment without replacing user configuration
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.blockinfile:
+  cybexos_user_include:
     path: "{{ primary_home }}/.config/kitty/kitty.conf"
-    create: true
-    backup: true
-    mode: "0644"
-    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
-    block: "include cybexos.conf"
+    kind: kitty
+  when: manage_personal_dotfiles | bool
+
+- name: Inspect personal Git credential helpers without changing them
+  become: true
+  become_user: "{{ primary_user }}"
+  cybexos_user_include:
+    path: "{{ primary_home }}/.gitconfig"
+    kind: git
+    inspect_git_credentials: true
+  register: dotfiles_git_credentials
   when: manage_personal_dotfiles | bool
 
 - name: Install optional managed Git preferences
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.copy:
+  cybexos_managed_file:
     dest: "{{ primary_home }}/.config/cybexos/gitconfig"
+    ledger: "{{ primary_home }}/.local/state/cybexos/defaults/ownership.json"
     mode: "0644"
-    content: |
-      [core]
-        pager = delta
-      [interactive]
-        diffFilter = delta --color-only
-      [delta]
-        navigate = true
-        side-by-side = true
-      [credential "https://github.com"]
-        helper =
-        helper = !/usr/bin/gh auth git-credential
-      [credential "https://gist.github.com"]
-        helper =
-        helper = !/usr/bin/gh auth git-credential
+    baseline: "{{ lookup('file', role_path + '/files/gitconfig', rstrip=false) }}"
+    content: >-
+      {{ lookup('file', role_path + '/files/gitconfig', rstrip=false).split('[credential')[0]
+         if dotfiles_git_credentials.personal_credentials | bool
+         else lookup('file', role_path + '/files/gitconfig', rstrip=false) }}
   when: manage_personal_dotfiles | bool
 
 - name: Include managed Git preferences without replacing user identity
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.blockinfile:
+  cybexos_user_include:
     path: "{{ primary_home }}/.gitconfig"
-    create: true
-    backup: true
-    mode: "0644"
-    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
-    block: |
-      [include]
-        path = ~/.config/cybexos/gitconfig
+    kind: git
   when: manage_personal_dotfiles | bool
 
 - name: Configure SSH to use the 1Password agent without private key references
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.copy:
-    dest: "{{ primary_home }}/.ssh/config.d/cybexos.conf"
+  cybexos_managed_file:
+    dest: "{{ primary_home }}/.config/cybexos/ssh.conf"
+    ledger: "{{ primary_home }}/.local/state/cybexos/defaults/ownership.json"
     mode: "0600"
-    content: |
-      Host *
-        IdentityAgent ~/.1password/agent.sock
-        StrictHostKeyChecking accept-new
-        HashKnownHosts yes
+    content: "{{ lookup('file', role_path + '/files/ssh.conf', rstrip=false) }}"
   when:
     - manage_personal_dotfiles | bool
     - features.proprietary_apps | bool
@@ -94,35 +84,46 @@
 - name: Include managed SSH preferences without replacing existing hosts
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.blockinfile:
+  cybexos_user_include:
     path: "{{ primary_home }}/.ssh/config"
-    create: true
-    backup: true
-    mode: "0600"
-    insertbefore: BOF
-    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
-    block: "Include ~/.ssh/config.d/cybexos.conf"
+    kind: ssh
+  register: dotfiles_ssh_include
   when:
     - manage_personal_dotfiles | bool
     - features.proprietary_apps | bool
 
+# Retire only the byte-identical old default. Keeping vendor defaults inside
+# config.d made a user's wildcard Include apply them before their own values.
+- name: Retire the unedited legacy SSH fragment
+  become: true
+  become_user: "{{ primary_user }}"
+  cybexos_managed_file:
+    dest: "{{ primary_home }}/.ssh/config.d/cybexos.conf"
+    state: absent
+    ledger: "{{ primary_home }}/.local/state/cybexos/defaults/ownership.json"
+    baseline: "{{ lookup('file', role_path + '/files/ssh.conf', rstrip=false) }}"
+  when:
+    - manage_personal_dotfiles | bool
+    - features.proprietary_apps | bool
+    - not dotfiles_ssh_include.preserved | default(true) | bool
+
 - name: Remove the CybexOS SSH include when proprietary integration is deselected
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.blockinfile:
+  cybexos_user_include:
     path: "{{ primary_home }}/.ssh/config"
-    marker: "# {mark} CYBEXOS MANAGED INCLUDE"
+    kind: ssh
     state: absent
-  failed_when: false
   when:
     - not features.proprietary_apps | bool
     - apps_feature_owned.proprietary_apps | default(false) | bool
 
-- name: Remove the scoped SSH preferences when proprietary integration is deselected
+- name: Remove unedited scoped SSH preferences when proprietary integration is deselected
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.file:
-    path: "{{ primary_home }}/.ssh/config.d/cybexos.conf"
+  cybexos_managed_file:
+    dest: "{{ primary_home }}/.config/cybexos/ssh.conf"
+    ledger: "{{ primary_home }}/.local/state/cybexos/defaults/ownership.json"
     state: absent
   when:
     - not features.proprietary_apps | bool
@@ -133,6 +134,7 @@
   become_user: "{{ primary_user }}"
   ansible.builtin.copy:
     dest: "{{ primary_home }}/.config/user-dirs.dirs"
+    force: false
     mode: "0644"
     content: |
       XDG_DESKTOP_DIR="$HOME/"
