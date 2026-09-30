@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useReducer, useRef, useState, type CSSProperties } from 'react';
-import { ArrowRight, BatteryFull, Bell, BellOff, Bluetooth, Check, ChevronLeft, ChevronRight, Command, Expand, Folder, Grid2X2, Keyboard, LockKeyhole, Monitor, Moon, Search, Settings2, SlidersHorizontal, StickyNote, Sun, Terminal, Volume2, VolumeX, Wifi, WifiOff, X } from 'lucide-react';
-import { APP_DESCRIPTIONS, APP_IDS, APP_NAMES, STORAGE_KEY, accentInk, initialWindow, readPreferences, windowReducer } from '../lib/desktop';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
+import { ArrowRight, BatteryFull, Bell, BellOff, Bluetooth, Check, ChevronLeft, ChevronRight, Command, Expand, Folder, Grid2X2, Keyboard, LockKeyhole, Monitor, Moon, PanelsTopLeft, Search, Settings2, SlidersHorizontal, StickyNote, Sun, Terminal, Volume2, VolumeX, Wifi, WifiOff, X } from 'lucide-react';
+import { APP_DESCRIPTIONS, APP_IDS, APP_NAMES, STORAGE_KEY, accentInk, initialWindow, readPreferences, windowReducer, type WindowAction } from '../lib/desktop';
+import { directionalNeighbor, layoutWorkspace, tiledWindows, type Direction } from '../lib/tiling';
 import { DEFAULT_PREFERENCES, type AppId, type Preferences } from '../lib/types';
 import { Window } from './Window';
 import { WelcomeApp, ShortcutsApp } from './WelcomeApp';
@@ -15,7 +16,7 @@ import { ModelUsageBar, ModelUsagePanel } from './ModelUsagePanel';
 import { createUsageState, usageReducer, type ProviderId } from '../lib/model-usage';
 
 const ICONS = { welcome: Command, terminal: Terminal, files: Folder, notes: StickyNote, settings: Settings2, shortcuts: Keyboard, usage: SlidersHorizontal };
-type Panel = 'launcher' | 'controls' | 'calendar' | 'notifications' | 'usage' | null;
+type Panel = 'launcher' | 'controls' | 'calendar' | 'notifications' | 'usage' | 'layout' | null;
 
 function Calendar({ now, close }: { now: Date; close: () => void }) {
   const [view, setView] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
@@ -31,6 +32,10 @@ export default function Desktop() {
   const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
   const [windows, dispatch] = useReducer(windowReducer, [initialWindow('welcome', 1)]);
   const [workspace, setWorkspace] = useState(1);
+  const [viewport, setViewport] = useState({ width: 1280, height: 800 });
+  const [ratios, setRatios] = useState<Record<number, number>>({});
+  const windowLayer = useRef<HTMLDivElement>(null);
+  const draggingSplit = useRef(false);
   const [panel, setPanel] = useState<Panel>(null);
   const [usage, usageDispatch] = useReducer(usageReducer, undefined, () => createUsageState());
   const [usageProvider, setUsageProvider] = useState<ProviderId>('codex');
@@ -47,6 +52,56 @@ export default function Desktop() {
   const [notices, setNotices] = useState(['Welcome to your CybexOS browser desktop.']);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restored = useRef(false);
+  const ratio = ratios[workspace] ?? 0.5;
+  const visible = useMemo(() => windows.filter(w => w.workspace === workspace && !w.minimized), [windows, workspace]);
+  const focused = visible.at(-1)?.id;
+  const maximized = visible.find(w => w.maximized)?.id;
+  const tiles = tiledWindows(windows, workspace);
+  const geometry = useMemo(() => layoutWorkspace(windows, workspace, viewport, ratio), [windows, workspace, viewport, ratio]);
+  const canvasHeight = maximized ? viewport.height : Math.max(viewport.height, ...Object.values(geometry).map(rect => rect.y + rect.height + 48));
+  const firstTile = tiles[0] && geometry[tiles[0].id];
+
+  useEffect(() => {
+    const resize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    // Match the real viewport after hydration, keeping the server snapshot stable.
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+
+  useEffect(() => {
+    if (windowLayer.current) windowLayer.current.scrollTop = 0;
+  }, [workspace, maximized]);
+
+  const focusApp = useCallback((id?: AppId) => {
+    if (!id) return;
+    requestAnimationFrame(() => {
+      const app = document.querySelector<HTMLElement>(`[data-app="${id}"]`);
+      if (!app || app.closest('[hidden]')) return;
+      const editor = app.querySelector<HTMLElement>('input:not([type="radio"]):not([type="range"]),textarea');
+      (editor || app).focus({ preventScroll: true });
+      if (window.innerWidth < 760) app.scrollIntoView?.({ block: 'nearest' });
+    });
+  }, []);
+
+  const selectWorkspace = useCallback((next: number) => {
+    setWorkspace(next);
+    setPanel(null);
+    focusApp(windows.filter(w => w.workspace === next && !w.minimized).at(-1)?.id);
+  }, [windows, focusApp]);
+
+  const actOnWindow = useCallback((action: WindowAction) => {
+    dispatch(action);
+    const leavesWorkspace = action.type === 'close' || action.type === 'minimize'
+      || (action.type === 'workspace' && action.workspace !== workspace);
+    if (leavesWorkspace && action.id === focused) {
+      focusApp(visible.filter(win => win.id !== action.id).at(-1)?.id);
+    }
+  }, [workspace, focused, visible, focusApp]);
+
+  function setRatio(next: number) {
+    setRatios(current => ({ ...current, [workspace]: Math.max(0.3, Math.min(0.7, next)) }));
+  }
 
   useEffect(() => {
     usageDispatch({ type: 'initialize', now: Date.now() });
@@ -93,13 +148,8 @@ export default function Desktop() {
     dispatch({ type: 'open', id, workspace, viewportWidth: window.innerWidth });
     setPanel(null);
     setQuery('');
-    requestAnimationFrame(() => {
-      const app = document.querySelector<HTMLElement>(`[data-app="${id}"]`);
-      if (!app || app.closest('[hidden]')) return;
-      const editor = app.querySelector<HTMLElement>('input:not([type="radio"]):not([type="range"]),textarea');
-      (editor || app).focus({ preventScroll: true });
-    });
-  }, [workspace]);
+    focusApp(id);
+  }, [workspace, focusApp]);
 
   function togglePanel(next: Panel) {
     setPanel(current => current === next ? null : next);
@@ -109,20 +159,43 @@ export default function Desktop() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (locked) { if (event.key === 'Escape') setLocked(false); return; }
-      if (event.key === 'Escape') setPanel(null);
+      if (event.key === 'Escape') { setPanel(null); return; }
       if (!event.altKey || event.ctrlKey || event.metaKey) return;
-      if (event.code === 'Space') { event.preventDefault(); setPanel(p => p === 'launcher' ? null : 'launcher'); setQuery(''); setSelected(0); }
-      if (/^[1-5]$/.test(event.key)) { event.preventDefault(); setWorkspace(Number(event.key)); setPanel(null); }
-      if (event.key === 'Enter') { event.preventDefault(); openApp('terminal'); }
-      if (event.key.toLowerCase() === 'k') { event.preventDefault(); openApp('shortcuts'); }
+      if (event.code === 'Space') {
+        event.preventDefault(); setPanel(p => p === 'launcher' ? null : 'launcher'); setQuery(''); setSelected(0); return;
+      }
+      // Shell panels own input while open; window shortcuts must not act behind them.
+      if (panel) return;
+      const digit = /^Digit[1-5]$/.test(event.code) ? Number(event.code.slice(-1)) : /^[1-5]$/.test(event.key) ? Number(event.key) : null;
+      if (digit) {
+        event.preventDefault();
+        if (event.shiftKey) {
+          if (focused && digit !== workspace) {
+            dispatch({ type: 'workspace', id: focused, workspace: digit });
+            focusApp(visible.filter(w => w.id !== focused).at(-1)?.id);
+          }
+        } else selectWorkspace(digit);
+        return;
+      }
+      if (event.key === 'Enter') { event.preventDefault(); openApp('terminal'); return; }
+      if (event.key.toLowerCase() === 'k') { event.preventDefault(); openApp('shortcuts'); return; }
+      if (!focused) return;
+      if (event.key.toLowerCase() === 'v' && !maximized) { event.preventDefault(); dispatch({ type: 'toggle-floating', id: focused }); return; }
+      if (event.key.toLowerCase() === 'f') { event.preventDefault(); dispatch({ type: 'maximize', id: focused }); return; }
+      if (/^Arrow(Left|Right|Up|Down)$/.test(event.key)) {
+        event.preventDefault();
+        if (maximized) return;
+        const targetId = directionalNeighbor(windows, workspace, geometry, focused, event.key.slice(5).toLowerCase() as Direction);
+        if (!targetId) return;
+        if (event.shiftKey) dispatch({ type: 'swap', id: focused, targetId });
+        else { dispatch({ type: 'focus', id: targetId }); focusApp(targetId); }
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [openApp, locked]);
+  }, [openApp, locked, panel, focused, maximized, windows, workspace, geometry, visible, focusApp, selectWorkspace]);
 
   const filtered = APP_IDS.filter(id => `${APP_NAMES[id]} ${id} ${APP_DESCRIPTIONS[id]}`.toLowerCase().includes(query.toLowerCase()));
-  const visible = windows.filter(w => w.workspace === workspace && !w.minimized);
-  const focused = visible.at(-1)?.id;
   const props = { openApp, notify };
   const time = now?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: !preferences.clock24 });
   const date = now?.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit' });
@@ -140,17 +213,44 @@ export default function Desktop() {
     <div className="desktop-vignette" />
     <div className="desktop-interface" inert={locked || undefined}>
       <header className="menubar" aria-label="Desktop menubar">
-        <div className="bar-left"><button className={`bar-button launcher-button ${panel === 'launcher' ? 'selected' : ''}`} title="Applications · Alt+Space" aria-label="Open app launcher" onClick={() => togglePanel('launcher')}><Grid2X2 size={17} /></button><div className="bar-divider" /><nav className="workspaces" aria-label="Workspaces">{[1, 2, 3, 4, 5].map(n => <button className={workspace === n ? 'current' : ''} key={n} aria-label={`Workspace ${n}`} aria-current={workspace === n ? 'page' : undefined} title={`Workspace ${n} · Alt+${n}`} onClick={() => { setWorkspace(n); setPanel(null); }}>{workspace === n || windows.some(w => w.workspace === n) ? n : <span className="workspace-dot" />}</button>)}</nav><div className="bar-divider optional" /><span className="active-app-name">{focused ? APP_NAMES[focused] : 'Desktop'}</span></div>
+        <div className="bar-left"><button className={`bar-button launcher-button ${panel === 'launcher' ? 'selected' : ''}`} title="Applications · Alt+Space" aria-label="Open app launcher" onClick={() => togglePanel('launcher')}><Grid2X2 size={17} /></button><div className="bar-divider" /><nav className="workspaces" aria-label="Workspaces">{[1, 2, 3, 4, 5].map(n => <button className={workspace === n ? 'current' : ''} key={n} aria-label={`Workspace ${n}`} aria-current={workspace === n ? 'page' : undefined} title={`Workspace ${n} · Alt+${n}`} onClick={() => selectWorkspace(n)}>{workspace === n || windows.some(w => w.workspace === n) ? n : <span className="workspace-dot" />}</button>)}</nav><div className="bar-divider optional" /><span className="active-app-name">{focused ? APP_NAMES[focused] : 'Desktop'}</span></div>
         <div className="bar-center"><button className={`bar-button clock-button ${panel === 'calendar' ? 'selected' : ''}`} aria-label="Open calendar" onClick={() => togglePanel('calendar')}><span>{date || 'CybexOS'}</span><span className="clock-separator">·</span><span>{time || 'Desktop'}</span></button><button className="bar-button notes-button" title="Omawrite" aria-label="Open notes" onClick={() => openApp('notes')}><StickyNote size={15} /></button></div>
         <div className="bar-right"><ModelUsageBar state={usage} active={panel === 'usage' ? usageProvider : null} open={provider => { setUsageProvider(provider); setPanel(current => current === 'usage' && usageProvider === provider ? null : 'usage'); }} /><span className="bar-demo-label">BROWSER DEMO</span><button className={`bar-button ${panel === 'notifications' ? 'selected' : ''}`} aria-label="Notifications" onClick={() => togglePanel('notifications')}>{dnd ? <BellOff size={15} /> : <Bell size={15} />}{notices.length > 0 && <span className="notification-dot" />}</button><button className={`bar-button status-cluster ${panel === 'controls' ? 'selected' : ''}`} aria-label="Open control panel" onClick={() => togglePanel('controls')}>{volume ? <Volume2 size={15} /> : <VolumeX size={15} />}{wifi ? <Wifi size={15} /> : <WifiOff size={15} />}<Bluetooth className="optional" size={14} /><BatteryFull className="optional" size={19} /><span className="optional">100%</span><SlidersHorizontal size={15} /></button></div>
       </header>
 
       {!visible.length && <div className="empty-desktop"><span className="empty-workspace-number">0{workspace}</span><h1>A little room to think.</h1><p>Workspace {workspace} is yours to make.</p><button className="desktop-start-button" onClick={() => togglePanel('launcher')}><Grid2X2 size={16} />Open an app<ArrowRight size={16} /></button></div>}
-      <div className="window-layer">{windows.map((win, index) => <div key={win.id} hidden={win.workspace !== workspace || win.minimized}><Window win={win} active={focused === win.id} zIndex={10 + index} dispatch={dispatch}>{win.id === 'welcome' ? <WelcomeApp {...props} /> : win.id === 'terminal' ? <TerminalApp {...props} /> : win.id === 'files' ? <FilesApp {...props} /> : win.id === 'notes' ? <NotesApp {...props} /> : win.id === 'settings' ? <SettingsApp preferences={preferences} updatePreferences={updatePreferences} notify={notify} /> : <ShortcutsApp />}</Window></div>)}</div>
+      <div className="window-layer" ref={windowLayer}><div className="window-canvas" style={{ height: canvasHeight }}>
+        {[...windows].sort((a, b) => a.createdOrder - b.createdOrder).map(win => {
+          const tileIndex = tiles.findIndex(tile => tile.id === win.id);
+          const nextTileId = tileIndex >= 0 && tiles.length > 1 ? tiles[(tileIndex + 1) % tiles.length].id : undefined;
+          return <div key={win.id} hidden={win.workspace !== workspace || win.minimized || !!maximized && maximized !== win.id}>
+            <Window win={win} rect={geometry[win.id]} nextTileId={nextTileId} active={focused === win.id} zIndex={(win.floating ? 40 : 10) + windows.indexOf(win)} dispatch={actOnWindow}>{win.id === 'welcome' ? <WelcomeApp {...props} /> : win.id === 'terminal' ? <TerminalApp {...props} /> : win.id === 'files' ? <FilesApp {...props} /> : win.id === 'notes' ? <NotesApp {...props} /> : win.id === 'settings' ? <SettingsApp preferences={preferences} updatePreferences={updatePreferences} notify={notify} /> : <ShortcutsApp />}</Window>
+          </div>;
+        })}
+        {viewport.width >= 760 && tiles.length > 1 && !maximized && firstTile && <div className="split-divider" role="separator" tabIndex={0} aria-label="Main tile split" aria-orientation="vertical" aria-valuemin={30} aria-valuemax={70} aria-valuenow={Math.round(ratio * 100)} style={{ left: firstTile.x + firstTile.width, top: firstTile.y, height: firstTile.height, zIndex: 30 }}
+          onPointerDown={event => { if (event.button !== 0) return; draggingSplit.current = true; event.currentTarget.setPointerCapture?.(event.pointerId); }}
+          onPointerMove={event => { if (draggingSplit.current) setRatio((event.clientX - 10) / Math.max(1, viewport.width - 30)); }}
+          onPointerUp={() => { draggingSplit.current = false; }} onPointerCancel={() => { draggingSplit.current = false; }}
+          onKeyDown={event => {
+            if (event.altKey || event.ctrlKey || event.metaKey) return;
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); setRatio(ratio + (event.key === 'ArrowLeft' ? -0.02 : 0.02)); }
+            if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); setRatio(event.key === 'Home' ? 0.3 : 0.7); }
+          }} />}
+      </div></div>
 
-      <footer className="desktop-footer"><span className="desktop-signature"><span className="status-dot" />CYBEX<span className="signature-os">OS</span><span className="footer-preview"> / browser preview</span></span><div className="desktop-taskbar" aria-label="Open applications">{windows.filter(w => w.workspace === workspace).map(w => { const Icon = ICONS[w.id]; return <button key={w.id} title={`${w.minimized ? 'Restore' : 'Focus'} ${APP_NAMES[w.id]}`} aria-label={`${w.minimized ? 'Restore' : 'Focus'} ${APP_NAMES[w.id]}`} className={focused === w.id ? 'focused' : ''} onClick={() => openApp(w.id)}><Icon size={15} /><span>{APP_NAMES[w.id]}</span>{w.minimized && <span className="minimized-dot" />}</button>; })}</div><div className="desktop-hints"><button onClick={() => togglePanel('launcher')} title="Open app launcher"><kbd>alt</kbd><kbd>space</kbd><span>to explore</span></button><button className="fullscreen-button" aria-label="Toggle fullscreen" title="Toggle fullscreen" onClick={fullscreen}><Expand size={16} /></button></div></footer>
+      <footer className="desktop-footer"><span className="desktop-signature"><span className="status-dot" />CYBEX<span className="signature-os">OS</span><span className="footer-preview"> / browser preview</span></span><div className="desktop-taskbar" aria-label="Open applications">{windows.filter(w => w.workspace === workspace).map(w => { const Icon = ICONS[w.id]; return <button key={w.id} title={`${w.minimized ? 'Restore' : 'Focus'} ${APP_NAMES[w.id]}`} aria-label={`${w.minimized ? 'Restore' : 'Focus'} ${APP_NAMES[w.id]}`} className={focused === w.id ? 'focused' : ''} onClick={() => openApp(w.id)}><Icon size={15} /><span>{APP_NAMES[w.id]}</span>{w.minimized && <span className="minimized-dot" />}</button>; })}</div><div className="desktop-hints"><button onClick={() => togglePanel('launcher')} title="Open app launcher"><kbd>alt</kbd><kbd>space</kbd><span>to explore</span></button><button className="layout-toggle" aria-label="Tiling layout" title="Hyprland · dwindle layout" aria-expanded={panel === 'layout'} onClick={() => togglePanel('layout')}><PanelsTopLeft size={16} /></button><button className="fullscreen-button" aria-label="Toggle fullscreen" title="Toggle fullscreen" onClick={fullscreen}><Expand size={16} /></button></div></footer>
 
       {panel === 'launcher' && <Overlay label="App launcher" className="launcher-panel" close={() => setPanel(null)}><div className="launcher-search"><Search size={20} /><input autoComplete="off" aria-label="Search applications" placeholder="What would you like to do?" value={query} onChange={e => { setQuery(e.target.value); setSelected(0); }} onKeyDown={e => { if (e.key === 'ArrowDown') { e.preventDefault(); setSelected(i => (i + 1) % Math.max(1, filtered.length)); } if (e.key === 'ArrowUp') { e.preventDefault(); setSelected(i => (i + filtered.length - 1) % Math.max(1, filtered.length)); } if (e.key === 'Enter' && filtered[selected]) { e.preventDefault(); openApp(filtered[selected]); } }} /><kbd>esc</kbd></div><div className="launcher-section-label">APPLICATIONS <span>{filtered.length}</span></div><div className="launcher-results">{filtered.length ? filtered.map((id, index) => { const Icon = ICONS[id]; return <button key={id} className={selected === index ? 'highlighted' : ''} onPointerMove={() => setSelected(index)} onClick={() => openApp(id)}><span className={`launcher-app-icon icon-${id}`}><Icon size={21} /></span><span><strong>{APP_NAMES[id]}</strong><small>{APP_DESCRIPTIONS[id]}</small></span>{selected === index && <span className="launcher-enter">↵</span>}</button>; }) : <div className="launcher-empty"><Search size={28} /><p>No apps found for “{query}”.</p><button className="text-button" onClick={() => setQuery('')}>Show all applications</button></div>}</div><div className="launcher-footer"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span>CYBEXOS</span></div></Overlay>}
+
+      {panel === 'layout' && <Overlay label="Tiling layout" className="layout-panel" close={() => setPanel(null)}>
+        <div className="panel-heading"><div><h2>Hyprland</h2><p>dwindle · workspace {workspace}</p></div><button className="icon-button" aria-label="Close tiling layout" onClick={() => setPanel(null)}><X size={18} /></button></div>
+        <p className="layout-description">Open an app and the workspace makes room. Drag a titlebar onto another tile to swap them, or float a window to place it freely.</p>
+        <label className="layout-slider"><span>Main split</span><input aria-label="Main tile width" type="range" min="30" max="70" value={Math.round(ratio * 100)} onChange={event => setRatio(Number(event.target.value) / 100)} /><output>{Math.round(ratio * 100)}%</output></label>
+        <p className="inline-note">{viewport.width < 760 ? 'Narrow screens use a scrollable stack. Your split is kept for wider screens.' : 'Applies to two or more tiles. You can also drag the gap between them.'}</p>
+        <div className="layout-actions"><button className="text-button" onClick={() => setRatio(0.5)}>Reset split</button><span>{tiles.length} tiled · {visible.filter(win => win.floating).length} floating</span></div>
+        <div className="layout-shortcuts"><span>Focus a tile<kbd>alt + arrows</kbd></span><span>Swap tiles<kbd>alt + shift + arrows</kbd></span><span>Toggle floating<kbd>alt + V</kbd></span><span>Maximize / restore<kbd>alt + F</kbd></span></div>
+        <button className="text-button" onClick={() => openApp('shortcuts')}>All keyboard shortcuts<ArrowRight size={13} /></button>
+      </Overlay>}
 
       {panel === 'calendar' && now && <Calendar now={now} close={() => setPanel(null)} />}
 

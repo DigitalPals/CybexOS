@@ -38,7 +38,7 @@ describe('desktop window sessions', () => {
     const next = windowReducer(state, { type: 'open', id: 'terminal', workspace: 3, viewportWidth: 1600 });
 
     expect(next).toHaveLength(2);
-    expect(next.at(-1)).toEqual({ ...terminal, workspace: 3, minimized: false });
+    expect(next.at(-1)).toEqual({ ...terminal, workspace: 3, minimized: false, maximized: false });
     expect(next[0]).toBe(welcome);
     expect(terminal.minimized).toBe(true);
     expect(terminal.workspace).toBe(1);

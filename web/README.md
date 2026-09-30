@@ -1,7 +1,7 @@
 # CybexOS in your browser
 
 An interactive recreation of the CybexOS desktop: the Quickshell-inspired
-menubar, workspaces, application launcher, movable windows, control drawer,
+menubar, workspaces, application launcher, Hyprland-style tiling, control drawer,
 terminal, sample files, Omawrite notes, and appearance settings. The default
 mountain wallpaper and Cybex wordmark come from the native desktop.
 
@@ -65,26 +65,60 @@ host's HTTPS reverse proxy or use the Sites build.
 
 Click the launcher to open applications, the workspace numbers to switch
 desktops, the clock to open the day sheet, or the status icons to open the
-control drawer. Drag a window by its title bar; its controls close, minimize,
-and maximize it. Settings changes apply to this browser desktop.
+control drawer. Settings changes apply to this browser desktop.
+
+Windows tile by default in a dwindle-inspired layout with 10 px gaps. A single
+window is centered on wide screens; opening another divides the available
+space. Drag a tile's title onto another tile to swap them. Floating windows
+move freely. Use the floating control before dragging a corner to resize.
+Window controls close, minimize, maximize, or toggle floating. Double-clicking
+a title also maximizes or restores the window.
+
+Drag the main divider or open **Tiling layout** in the footer to adjust the
+workspace split. The panel also shows shortcut hints and links to the full
+keyboard guide. Moving a window leaves the current workspace selected. Narrow
+screens use a vertical stack with no overlapping tiles.
 
 | Shortcut | Action |
 | --- | --- |
 | Alt + Space | Open the app launcher |
 | Alt + 1–5 | Switch workspace |
+| Alt + Shift + 1–5 | Move focused window to workspace without following |
 | Alt + Enter | Open the terminal |
 | Alt + K | Open keyboard shortcuts |
+| Alt + arrows | Focus a neighboring tile |
+| Alt + Shift + arrows | Swap neighboring tiles |
+| Alt + V | Toggle floating / tiling |
+| Alt + F | Maximize / restore |
 | Escape | Close the launcher or open panel |
-| Up / Down in the terminal | Browse command history |
+| Tab in the terminal | Complete commands and sample paths |
+| Up / Down in the terminal | Browse history and return to the current draft |
+| Ctrl + C in the terminal | Cancel the current command |
 | Ctrl + L in the terminal | Clear terminal output |
+| Ctrl + U in the terminal | Clear the command line |
 
-The native desktop uses Super-based shortcuts. The web version uses Alt, but
-some browsers or operating systems reserve these combinations. The same
-actions remain available through clickable controls.
+Native Hyprland uses Super-based shortcuts. This browser preview adapts them
+to Alt; some browsers or operating systems reserve these combinations.
+Clickable controls are also available.
 
-The terminal interprets a small, fixed command set against an in-memory sample
-filesystem. Try `help`, `fastfetch`, `ls`, `cd Documents`, `cat Shortcuts.txt`,
-or `cybex settings`. It never passes input to a real shell.
+## Terminal and Fedora overview
+
+The Kitty-inspired terminal has a Fish-style prompt and a small, fixed command
+set against an in-memory sample filesystem. `fastfetch` and `neofetch` show a
+blue Fedora ASCII logo beside Fedora Linux 44, Hyprland on Wayland, Quickshell,
+Kitty, and sample kernel, CPU, GPU, package, memory, and disk information. The
+overview identifies its data as simulated and adapts to narrow tiled windows.
+No hardware, installed packages, or kernel information is read from the host.
+
+Try `help`, `ls`, `cd Documents`, `cat Shortcuts.txt`, or `cybex settings`.
+`hostname`, `uptime`, `uname -a`, `free -h`, and `df -h` report the same sample
+workstation. Tab completes commands, desktop app names, and virtual paths,
+including quoted filenames with spaces. History preserves an unfinished draft;
+`history` lists submitted commands. Ctrl+C cancels a draft without running it.
+
+The terminal never passes input to a real shell. Shell operators, substitutions,
+and variables remain literal text; commands cannot run programs, install
+packages, access the host filesystem, or make network requests.
 
 ## Model Usage and CLIProxyAPI demo
 
@@ -137,16 +171,20 @@ npm run test:render
 
 The [web workflow](../.github/workflows/web.yml) runs these checks and a
 production HTTP smoke test for changes in `web/`. Native desktop checks remain
-separate. Key native references are
+separate. Layout and interaction coverage includes nonoverlapping tiles,
+floating and minimized reflow, stable editor focus, swaps, workspace moves,
+main split controls, narrow-screen stacking, and Fedora terminal completion.
+Key native references are
 [`Common/Theme.qml`](../roles/desktop/files/quickshell/Common/Theme.qml),
 [`Common/SettingsHelpers.js`](../roles/desktop/files/quickshell/Common/SettingsHelpers.js),
+[Hyprland layout settings](../roles/desktop/templates/looknfeel.lua.j2),
 and the [welcome window](../image/rootfs/usr/share/cybexos/welcome/Main.qml).
 Asset sources and license information are recorded in
 [ASSETS.md](ASSETS.md).
 
 ## Validation and current deployment
 
-Validated on 2026-09-30: lint, TypeScript, 59 interaction/state tests, two
+Validated on 2026-09-30: lint, TypeScript, 106 interaction/state tests, two
 production Worker/asset tests, and the production build pass. The npm audit
 reports no known vulnerabilities for the locked dependencies. Production HTTP
 checks verified the page, its script/style/font assets, the provider marks,

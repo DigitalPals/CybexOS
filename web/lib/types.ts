@@ -18,6 +18,9 @@ export interface DesktopWindow {
   workspace: number;
   minimized: boolean;
   maximized: boolean;
+  floating: boolean;
+  tileOrder: number;
+  createdOrder: number;
   x: number;
   y: number;
   width: number;
