@@ -668,8 +668,8 @@ if feature_enabled proprietary_apps; then
   check 'ChatGPT repository key matches the reviewed OpenAI key' \
   cmp -s "$repo_root/roles/apps/files/chatgpt-repository-key.asc" \
   /etc/pki/rpm-gpg/RPM-GPG-KEY-chatgpt
-  check 'ChatGPT launcher follows the desktop display scale' \
-  grep -qx 'Exec=chatgpt %U' \
+  check 'ChatGPT launcher uses native Wayland for desktop display scaling' \
+  grep -qx 'Exec=chatgpt --ozone-platform=wayland %U' \
   "$HOME/.local/share/applications/chatgpt.desktop"
   check 'Brave restore, locale spellcheck, and 1Password policy is valid JSON' \
   jq -e --arg language "${regional_locale%%_*}" \
