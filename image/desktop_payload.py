@@ -45,6 +45,16 @@ def prepare_defaults(root, payload, environment, inventory):
 KITTY_INCLUDE = "# BEGIN CYBEXOS MANAGED INCLUDE\ninclude cybexos.conf\n# END CYBEXOS MANAGED INCLUDE\n"
 
 
+def prepare_app_launchers(root, payload):
+    """Package the same desktop launchers that checkout installs deploy."""
+    applications = payload / 'usr/share/cybexos/user-seed/.local/share/applications'
+    applications.mkdir(parents=True, exist_ok=True)
+    for name in ('nvim-kitty', 'brave-origin', 'chatgpt', 'com.onepassword.OnePassword'):
+        target = applications / (name + '.desktop')
+        shutil.copyfile(root / 'roles/dotfiles/files' / target.name, target)
+        target.chmod(0o644)
+
+
 def prepare_session(root, payload, inventory):
     """Session pieces the workstation installs per user, packaged once.
 

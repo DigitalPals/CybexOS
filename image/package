@@ -14,7 +14,7 @@ import urllib.request
 import jinja2
 import yaml
 from application_payload import relativize_seed_links, include_applications
-from desktop_payload import prepare_defaults, prepare_session, split_seed, prepare_managed_defaults
+from desktop_payload import prepare_defaults, prepare_session, split_seed, prepare_managed_defaults, prepare_app_launchers
 from provision_payload import prepare_provision
 from release_metadata import install_update_channel, render_spec
 
@@ -112,8 +112,7 @@ def main():
         content = (ROOT / "roles/dotfiles/templates" / (name + ".desktop.j2")).read_text()
         write(f"{seed}/.local/share/applications/{name}.desktop",
               content.replace("{{ primary_home }}/.local/bin/", ""))
-    for name in ("nvim-kitty", "brave-origin", "chatgpt", "com.onepassword.OnePassword"):
-        copy(f"roles/dotfiles/files/{name}.desktop", f"{seed}/.local/share/applications/{name}.desktop")
+    prepare_app_launchers(ROOT, payload)
     t3_desktop = (ROOT / "roles/dotfiles/templates/t3code-nightly.desktop.j2").read_text()
     write(f"{seed}/.local/share/applications/t3code-nightly.desktop",
           t3_desktop.replace("{{ primary_home }}/.local/bin/", ""))

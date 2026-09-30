@@ -188,6 +188,37 @@ class InstallationParity(Fixture):
             with self.assertRaisesRegex(ValueError, 'both installer schemas'):
                 defaults(Path('fixture'))
 
+    def test_chatgpt_launcher_matches_checkout_and_iso_at_native_display_scale(self):
+        from desktop_payload import prepare_app_launchers
+        from test_desktop_payload import INIT
+
+        launcher = '.local/share/applications/chatgpt.desktop'
+        (self.home / launcher).parent.mkdir(parents=True)
+        task = next(task for task in yaml.safe_load(
+            (ROOT / 'roles/dotfiles/tasks/main.yml').read_text())
+            if task.get('name') == 'Install MIME defaults and desktop launchers')
+        task['become'] = False
+        task['loop'] = [item for item in task['loop'] if item['name'] == 'chatgpt.desktop']
+        task['ansible.builtin.copy']['src'] = str(ROOT / 'roles/dotfiles/files') + '/{{ item.name }}'
+        playbook = self.root / 'chatgpt-launcher.yml'
+        playbook.write_text(yaml.safe_dump([{
+            'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
+            'vars': {'primary_home': str(self.home), 'primary_user': 'fixture',
+                     'features': {'proprietary_apps': True}},
+            'tasks': [task],
+        }]))
+        result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                                env=os.environ, text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        payload = self.root / 'payload'
+        prepare_app_launchers(ROOT, payload)
+        iso_home = self.root / 'iso-account'
+        INIT.seed_applications(payload / 'usr/share/cybexos/user-seed', iso_home)
+        self.assertEqual((self.home / launcher).read_bytes(), (iso_home / launcher).read_bytes())
+        self.assertIn('Exec=chatgpt --ozone-platform=wayland %U',
+                      (iso_home / launcher).read_text().splitlines())
+
 
 if __name__ == '__main__':
     unittest.main()

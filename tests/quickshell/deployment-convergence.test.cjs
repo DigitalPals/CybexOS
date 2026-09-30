@@ -136,8 +136,8 @@ test("ChatGPT launcher follows portable desktop scaling", () => {
     assert.match(dotfileTasks,
         /Install MIME defaults and desktop launchers[\s\S]{0,1200}?name: chatgpt\.desktop[\s\S]{0,120}?features\.proprietary_apps/,
         "the launcher must be deployed as a per-user package override");
-    assert.match(launcher, /^Exec=chatgpt %U$/m,
-        "ChatGPT follows the display scale selected by the desktop");
+    assert.match(launcher, /^Exec=chatgpt --ozone-platform=wayland %U$/m,
+        "native Wayland follows the display scale even when XWayland scaling is disabled");
 });
 
 test("disabled Docker and Tailscale retire activation and imported trust", () => {
