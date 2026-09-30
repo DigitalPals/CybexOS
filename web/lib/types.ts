@@ -1,4 +1,4 @@
-export type AppId = 'welcome' | 'terminal' | 'files' | 'notes' | 'settings' | 'shortcuts';
+export type AppId = 'welcome' | 'terminal' | 'files' | 'notes' | 'settings' | 'shortcuts' | 'usage';
 export type SettingsPage = 'appearance' | 'wallpaper' | 'bar' | 'about';
 export interface Preferences {
   theme: 'dark' | 'light';

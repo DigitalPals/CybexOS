@@ -15,3 +15,12 @@ Do not apply a repository-wide code license to third-party images or brand
 marks without checking their original terms. Replace the mountain photograph
 with a rights-cleared image if its existing provenance is insufficient for a
 particular distribution.
+
+## Model Usage provider marks
+
+`public/providers/codex.svg` and `public/providers/claude.svg` are unchanged
+copies from the native `roles/desktop/files/quickshell/ModelUsage/assets/`
+widget. Its notices identify their source as `basecamp/omarchy` commit
+`2c247e390e357ae0fee3f8565b0c816adb705e6a` (MIT). The corresponding notice is
+shipped at `public/licenses/model-usage-marks.txt`. Provider marks belong to
+their owners and do not imply affiliation or endorsement.

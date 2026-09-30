@@ -86,6 +86,36 @@ The terminal interprets a small, fixed command set against an in-memory sample
 filesystem. Try `help`, `fastfetch`, `ls`, `cd Documents`, `cat Shortcuts.txt`,
 or `cybex settings`. It never passes input to a real shell.
 
+## Model Usage and CLIProxyAPI demo
+
+Click the Codex or Claude mark in the menubar, choose **Model Usage** from the
+launcher, use the welcome window's subscription shortcut, or run `cybex usage`
+in the simulated terminal. Each provider has three fictional subscriptions:
+Codex Pro 20×, Pro 5× and Plus; Claude Max 20×, Max 5× and Pro.
+
+The **Limits** view shows individual weekly and five-hour quotas, reset
+countdowns, last-used indicators, pause/resume controls, and account email
+visibility. Bar percentages use the last-used account's lowest remaining
+quota, matching the native widget. They do not average or add account quotas.
+
+**Send demo request** consumes a small amount of quota and records an activity
+entry. **Auto** generates a request every five seconds while the panel is open;
+closing the panel, pausing Auto, or entering Proxy settings stops the traffic.
+The **Activity** view shows account routing, request counts, tokens and sample
+latency. All values are illustrative, not provider limits or billing estimates.
+
+The **Proxy** view presents CLIProxyAPI's local endpoint and lets visitors try
+round-robin or fill-first routing. Paused and exhausted accounts are skipped.
+Refresh preserves usage unless a quota window has elapsed. Reset restores the
+six sample subscriptions after confirmation, without touching notes or desktop
+preferences. Usage simulation state lasts for the page session; reloading starts
+a new sample session. It is not persisted or uploaded.
+
+The endpoint is display-only. There are no real proxy connections, credentials,
+OAuth sessions, provider API calls or paid subscriptions. Demo identities use
+reserved `example.com` addresses. Only the web app and its local assets are
+requested by the browser.
+
 ## Browser storage
 
 Appearance preferences use the localStorage key `cybexos-web-preferences-v1`.
@@ -116,11 +146,11 @@ Asset sources and license information are recorded in
 
 ## Validation and current deployment
 
-Validated on 2026-09-30: lint, TypeScript, 36 interaction/state tests, two
+Validated on 2026-09-30: lint, TypeScript, 59 interaction/state tests, two
 production Worker/asset tests, and the production build pass. The npm audit
 reports no known vulnerabilities for the locked dependencies. Production HTTP
-checks verified the page, its script/style/font assets, and the original
-wallpaper checksum. Browser visual testing was not performed.
+checks verified the page, its script/style/font assets, the provider marks,
+and the original wallpaper checksum. Browser visual testing was not performed.
 
 The task's Docker Compose service is running on `thebeast` at
 <http://10.10.0.7:5174> (network/VPN access required). Sites publishing was

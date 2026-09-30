@@ -183,9 +183,9 @@ This terminal is simulated. Commands never run on your device.`);
       }).join('\n'));
     }
     case 'cybex': {
-      const appNames: Record<string, AppId> = { settings: 'settings', files: 'files', notes: 'notes', welcome: 'welcome', shortcuts: 'shortcuts' };
+      const appNames: Record<string, AppId> = { settings: 'settings', files: 'files', notes: 'notes', welcome: 'welcome', shortcuts: 'shortcuts', usage: 'usage' };
       if (args.length === 1 && Object.hasOwn(appNames, args[0])) return { ...base, output: `Opening ${args[0]}…`, openApp: appNames[args[0]] };
-      return result('CybexOS desktop commands\n\n  cybex settings    Personalize your desktop\n  cybex files       Browse sample files\n  cybex notes       Open Omawrite\n  cybex welcome     About CybexOS\n  cybex shortcuts   Keyboard shortcuts');
+      return result('CybexOS desktop commands\n\n  cybex settings    Personalize your desktop\n  cybex files       Browse sample files\n  cybex notes       Open Omawrite\n  cybex welcome     About CybexOS\n  cybex shortcuts   Keyboard shortcuts\n  cybex usage       Codex & Claude subscription usage');
     }
     case 'sudo':
     case 'apt':

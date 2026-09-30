@@ -7,6 +7,7 @@
 @import '@fontsource/figtree/700.css';
 @import '../components/settings.css';
 @import '../components/apps.css';
+@import '../components/model-usage.css';
 
 :root { color-scheme: dark; font-family: 'JetBrains Mono', monospace; font-synthesis: none; }
 * { box-sizing: border-box; }

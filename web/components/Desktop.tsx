@@ -11,9 +11,11 @@ import { FilesApp } from './FilesApp';
 import { NotesApp } from './NotesApp';
 import { SettingsApp } from './SettingsApp';
 import { Overlay } from './Overlay';
+import { ModelUsageBar, ModelUsagePanel } from './ModelUsagePanel';
+import { createUsageState, usageReducer, type ProviderId } from '../lib/model-usage';
 
-const ICONS = { welcome: Command, terminal: Terminal, files: Folder, notes: StickyNote, settings: Settings2, shortcuts: Keyboard };
-type Panel = 'launcher' | 'controls' | 'calendar' | 'notifications' | null;
+const ICONS = { welcome: Command, terminal: Terminal, files: Folder, notes: StickyNote, settings: Settings2, shortcuts: Keyboard, usage: SlidersHorizontal };
+type Panel = 'launcher' | 'controls' | 'calendar' | 'notifications' | 'usage' | null;
 
 function Calendar({ now, close }: { now: Date; close: () => void }) {
   const [view, setView] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
@@ -30,6 +32,8 @@ export default function Desktop() {
   const [windows, dispatch] = useReducer(windowReducer, [initialWindow('welcome', 1)]);
   const [workspace, setWorkspace] = useState(1);
   const [panel, setPanel] = useState<Panel>(null);
+  const [usage, usageDispatch] = useReducer(usageReducer, undefined, () => createUsageState());
+  const [usageProvider, setUsageProvider] = useState<ProviderId>('codex');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
   const [now, setNow] = useState<Date | null>(null);
@@ -43,6 +47,12 @@ export default function Desktop() {
   const [notices, setNotices] = useState(['Welcome to your CybexOS browser desktop.']);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restored = useRef(false);
+
+  useEffect(() => {
+    usageDispatch({ type: 'initialize', now: Date.now() });
+    const timer = setInterval(() => usageDispatch({ type: 'refresh', now: Date.now() }), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const notify = useCallback((message: string) => {
     setNotices(items => [message, ...items].slice(0, 20));
@@ -79,6 +89,7 @@ export default function Desktop() {
   }, []);
 
   const openApp = useCallback((id: AppId) => {
+    if (id === 'usage') { setPanel('usage'); setQuery(''); return; }
     dispatch({ type: 'open', id, workspace, viewportWidth: window.innerWidth });
     setPanel(null);
     setQuery('');
@@ -131,7 +142,7 @@ export default function Desktop() {
       <header className="menubar" aria-label="Desktop menubar">
         <div className="bar-left"><button className={`bar-button launcher-button ${panel === 'launcher' ? 'selected' : ''}`} title="Applications · Alt+Space" aria-label="Open app launcher" onClick={() => togglePanel('launcher')}><Grid2X2 size={17} /></button><div className="bar-divider" /><nav className="workspaces" aria-label="Workspaces">{[1, 2, 3, 4, 5].map(n => <button className={workspace === n ? 'current' : ''} key={n} aria-label={`Workspace ${n}`} aria-current={workspace === n ? 'page' : undefined} title={`Workspace ${n} · Alt+${n}`} onClick={() => { setWorkspace(n); setPanel(null); }}>{workspace === n || windows.some(w => w.workspace === n) ? n : <span className="workspace-dot" />}</button>)}</nav><div className="bar-divider optional" /><span className="active-app-name">{focused ? APP_NAMES[focused] : 'Desktop'}</span></div>
         <div className="bar-center"><button className={`bar-button clock-button ${panel === 'calendar' ? 'selected' : ''}`} aria-label="Open calendar" onClick={() => togglePanel('calendar')}><span>{date || 'CybexOS'}</span><span className="clock-separator">·</span><span>{time || 'Desktop'}</span></button><button className="bar-button notes-button" title="Omawrite" aria-label="Open notes" onClick={() => openApp('notes')}><StickyNote size={15} /></button></div>
-        <div className="bar-right"><span className="bar-demo-label">BROWSER DEMO</span><button className={`bar-button ${panel === 'notifications' ? 'selected' : ''}`} aria-label="Notifications" onClick={() => togglePanel('notifications')}>{dnd ? <BellOff size={15} /> : <Bell size={15} />}{notices.length > 0 && <span className="notification-dot" />}</button><button className={`bar-button status-cluster ${panel === 'controls' ? 'selected' : ''}`} aria-label="Open control panel" onClick={() => togglePanel('controls')}>{volume ? <Volume2 size={15} /> : <VolumeX size={15} />}{wifi ? <Wifi size={15} /> : <WifiOff size={15} />}<Bluetooth className="optional" size={14} /><BatteryFull className="optional" size={19} /><span className="optional">100%</span><SlidersHorizontal size={15} /></button></div>
+        <div className="bar-right"><ModelUsageBar state={usage} active={panel === 'usage' ? usageProvider : null} open={provider => { setUsageProvider(provider); setPanel(current => current === 'usage' && usageProvider === provider ? null : 'usage'); }} /><span className="bar-demo-label">BROWSER DEMO</span><button className={`bar-button ${panel === 'notifications' ? 'selected' : ''}`} aria-label="Notifications" onClick={() => togglePanel('notifications')}>{dnd ? <BellOff size={15} /> : <Bell size={15} />}{notices.length > 0 && <span className="notification-dot" />}</button><button className={`bar-button status-cluster ${panel === 'controls' ? 'selected' : ''}`} aria-label="Open control panel" onClick={() => togglePanel('controls')}>{volume ? <Volume2 size={15} /> : <VolumeX size={15} />}{wifi ? <Wifi size={15} /> : <WifiOff size={15} />}<Bluetooth className="optional" size={14} /><BatteryFull className="optional" size={19} /><span className="optional">100%</span><SlidersHorizontal size={15} /></button></div>
       </header>
 
       {!visible.length && <div className="empty-desktop"><span className="empty-workspace-number">0{workspace}</span><h1>A little room to think.</h1><p>Workspace {workspace} is yours to make.</p><button className="desktop-start-button" onClick={() => togglePanel('launcher')}><Grid2X2 size={16} />Open an app<ArrowRight size={16} /></button></div>}
@@ -142,6 +153,8 @@ export default function Desktop() {
       {panel === 'launcher' && <Overlay label="App launcher" className="launcher-panel" close={() => setPanel(null)}><div className="launcher-search"><Search size={20} /><input autoComplete="off" aria-label="Search applications" placeholder="What would you like to do?" value={query} onChange={e => { setQuery(e.target.value); setSelected(0); }} onKeyDown={e => { if (e.key === 'ArrowDown') { e.preventDefault(); setSelected(i => (i + 1) % Math.max(1, filtered.length)); } if (e.key === 'ArrowUp') { e.preventDefault(); setSelected(i => (i + filtered.length - 1) % Math.max(1, filtered.length)); } if (e.key === 'Enter' && filtered[selected]) { e.preventDefault(); openApp(filtered[selected]); } }} /><kbd>esc</kbd></div><div className="launcher-section-label">APPLICATIONS <span>{filtered.length}</span></div><div className="launcher-results">{filtered.length ? filtered.map((id, index) => { const Icon = ICONS[id]; return <button key={id} className={selected === index ? 'highlighted' : ''} onPointerMove={() => setSelected(index)} onClick={() => openApp(id)}><span className={`launcher-app-icon icon-${id}`}><Icon size={21} /></span><span><strong>{APP_NAMES[id]}</strong><small>{APP_DESCRIPTIONS[id]}</small></span>{selected === index && <span className="launcher-enter">↵</span>}</button>; }) : <div className="launcher-empty"><Search size={28} /><p>No apps found for “{query}”.</p><button className="text-button" onClick={() => setQuery('')}>Show all applications</button></div>}</div><div className="launcher-footer"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span>CYBEXOS</span></div></Overlay>}
 
       {panel === 'calendar' && now && <Calendar now={now} close={() => setPanel(null)} />}
+
+      {panel === 'usage' && <ModelUsagePanel state={usage} dispatch={usageDispatch} provider={usageProvider} setProvider={setUsageProvider} now={now?.getTime() ?? usage.updatedAt} close={() => setPanel(null)} />}
 
       {panel === 'controls' && <Overlay label="Control panel" className="control-panel" close={() => setPanel(null)}><div className="panel-heading"><div><h2>Control panel</h2><p>Your desktop, at a glance.</p></div><button className="icon-button" aria-label="Close control panel" onClick={() => setPanel(null)}><X size={18} /></button></div><div className="control-identity"><div className="identity-icon"><Monitor size={24} /></div><div><strong>visitor@cybexos</strong><span>Browser session</span></div><span className="demo-tag">DEMO</span></div><div className="control-toggles"><button className={wifi ? 'on' : ''} aria-pressed={wifi} onClick={() => setWifi(v => !v)}>{wifi ? <Wifi size={22} /> : <WifiOff size={22} />}<strong>Wi-Fi</strong><small>{wifi ? 'Cybex network' : 'Disconnected'}</small></button><button className={bluetooth ? 'on' : ''} aria-pressed={bluetooth} onClick={() => setBluetooth(v => !v)}><Bluetooth size={22} /><strong>Bluetooth</strong><small>{bluetooth ? 'Discoverable' : 'Off'}</small></button><button className={preferences.theme === 'dark' ? 'on' : ''} aria-pressed={preferences.theme === 'dark'} onClick={() => updatePreferences({ theme: preferences.theme === 'dark' ? 'light' : 'dark' })}><Moon size={22} /><strong>Dark mode</strong><small>{preferences.theme === 'dark' ? 'A softer glow' : 'Light & bright'}</small></button><button className={dnd ? 'on' : ''} aria-pressed={dnd} onClick={() => { setDnd(v => !v); setToast(''); }}><BellOff size={22} /><strong>Focus</strong><small>{dnd ? 'Do not disturb' : 'Notifications on'}</small></button></div><div className="control-sliders"><label><Sun size={18} /><span>Brightness</span><input aria-label="Demo wallpaper brightness" type="range" min="30" max="100" value={brightness} onChange={e => setBrightness(Number(e.target.value))} /><output>{brightness}%</output></label><label>{volume ? <Volume2 size={18} /> : <VolumeX size={18} />}<span>Volume</span><input aria-label="Demo volume" type="range" min="0" max="100" value={volume} onChange={e => setVolume(Number(e.target.value))} /><output>{volume}%</output></label></div><p className="control-note">Network, audio, and battery are simulated. Brightness changes the demo wallpaper.</p><div className="control-links"><button onClick={() => openApp('settings')}><Settings2 size={17} /><span>Settings</span><ChevronRight size={16} /></button><button onClick={() => openApp('shortcuts')}><Keyboard size={17} /><span>Keyboard shortcuts</span><ChevronRight size={16} /></button></div><div className="control-bottom"><span><BatteryFull size={19} />100% · Demo battery</span><button className="icon-button" title="Lock demo" aria-label="Lock demo" onClick={() => { setPanel(null); setLocked(true); }}><LockKeyhole size={17} /></button></div></Overlay>}
 

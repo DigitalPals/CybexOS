@@ -11,7 +11,7 @@ test('production Worker renders the desktop and its metadata', async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type'), /text\/html/);
   const html = await response.text();
-  for (const content of ['Welcome home', 'Open app launcher', 'Workspace 5', 'WEB PREVIEW', 'No installation needed', 'CybexOS']) assert.ok(html.includes(content), content);
+  for (const content of ['Welcome home', 'Open app launcher', 'Workspace 5', 'WEB PREVIEW', 'No installation needed', 'CybexOS', 'Open Codex model usage', 'Open Claude model usage']) assert.ok(html.includes(content), content);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|Your site is taking shape/);
   assert.match(html, /<title>CybexOS/);
   assert.match(html, /og:title/);
@@ -22,4 +22,7 @@ test('production assets and Sites metadata are packaged', async () => {
   await access(new URL('../dist/client/cybex-wordmark.svg', import.meta.url));
   const [packaged, source] = await Promise.all(['../dist/.openai/hosting.json', '../.openai/hosting.json'].map(path => readFile(new URL(path, import.meta.url), 'utf8')));
   assert.deepEqual(JSON.parse(packaged), JSON.parse(source));
+  for (const asset of ['providers/codex.svg', 'providers/claude.svg', 'licenses/model-usage-marks.txt']) {
+    await access(new URL(`../dist/client/${asset}`, import.meta.url));
+  }
 });

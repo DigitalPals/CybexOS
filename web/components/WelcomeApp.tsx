@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowDownToLine, ArrowRight, Command, ExternalLink, Folder, Keyboard, Palette, Terminal, Zap } from 'lucide-react';
+import { ArrowDownToLine, ArrowRight, Command, ExternalLink, Folder, Keyboard, Palette, Terminal } from 'lucide-react';
 import { REPOSITORY_URL, type AppProps } from '../lib/types';
 
 export function WelcomeApp({ openApp }: AppProps) {
@@ -20,7 +20,7 @@ export function WelcomeApp({ openApp }: AppProps) {
         <button onClick={() => openApp('files')}><span className="feature-icon"><Folder size={21} /></span><span><strong>Look around</strong><small>A place for everything you do.</small></span><ArrowRight size={16} /></button>
         <button onClick={() => openApp('shortcuts')}><span className="feature-icon"><Keyboard size={21} /></span><span><strong>Find your flow</strong><small>A few keys go a long way.</small></span><ArrowRight size={16} /></button>
       </div>
-      <div className="welcome-tip"><Zap size={16} /><span>Five workspaces. Room for every train of thought.</span><span className="mini-workspaces"><b>1</b>2 3 4 5</span></div>
+      <button className="welcome-tip welcome-usage-tip" onClick={() => openApp('usage')}><span aria-hidden="true" className="usage-provider-mark usage-mark-codex" /><span aria-hidden="true" className="usage-provider-mark usage-mark-claude" /><span>Six subscriptions. One place to keep track.</span><ArrowRight size={14} /></button>
       <div className="welcome-bottom"><a href={`${REPOSITORY_URL}#install`} target="_blank" rel="noreferrer" className="red-button"><ArrowDownToLine size={16} />Get CybexOS<ExternalLink size={13} /></a><button className="text-button" onClick={() => openApp('notes')}>Start with a note<ArrowRight size={15} /></button></div>
       <p className="welcome-disclaimer">An interactive browser demo. No installation needed.<br />Files and system information are examples; notes stay in this browser.</p>
     </div>
