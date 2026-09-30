@@ -11,6 +11,7 @@ License:        MIT AND LicenseRef-CybexOS-Bundled-Components
 URL:            https://github.com/DigitalPals/CybexOS
 Source0:        desktop.tar
 BuildArch:      x86_64
+Provides:       cybexos-supported-fedora = %{fedora}
 AutoReqProv:    no
 # Replaces the alpha package published under the project's former name.
 Obsoletes:      fedora-config-desktop < %{epoch}:%{version}-%{release}
@@ -35,6 +36,7 @@ Requires:       ImageMagick tesseract tesseract-langpack-eng btop matugen
 Requires:       btrfs-progs tar zstd fastfetch dracut grub2-tools coreutils >= 9.5
 Requires:       rsms-inter-fonts google-noto-sans-fonts google-noto-color-emoji-fonts
 Requires:       jetbrains-mono-fonts
+Requires:       xkeyboard-config tzdata
 
 %description
 CybexOS (Cybex Opinionated System) is a Hyprland and Quickshell desktop for Fedora.
@@ -70,6 +72,7 @@ cp -a usr opt etc %{buildroot}/
 /usr/bin/cybexos-*
 /usr/bin/hyprland-quickshell
 /usr/libexec/cybexos-*
+/usr/libexec/cybex_hermes/
 /usr/lib/systemd/user/*.service
 /usr/lib/systemd/user/hypridle.service.d/
 /usr/lib/systemd/user/voxtype.service.d/
@@ -80,6 +83,7 @@ cp -a usr opt etc %{buildroot}/
 /usr/share/wayland-sessions/hyprland-quickshell.desktop
 /usr/share/fonts/cybexos/
 /usr/share/glib-2.0/schemas/90-cybexos-ibus.gschema.override
+/usr/share/glib-2.0/schemas/90-cybexos-smb.gschema.override
 /usr/share/licenses/cybexos-fonts/
 /usr/share/plymouth/themes/cybex/
 /usr/lib/sysctl.d/60-cybexos-hardening.conf
@@ -88,6 +92,10 @@ cp -a usr opt etc %{buildroot}/
 /usr/lib/dracut/dracut.conf.d/90-cybexos-recovery.conf
 /usr/lib/dracut/modules.d/90cybexos-recovery/
 /usr/lib/systemd/system/cybexos-recovery-refresh.service
+/usr/lib/systemd/system/cybexos-update-recover.service
+/usr/lib/systemd/system/systemd-user-sessions.service.d/60-cybexos-update-recover.conf
+/usr/lib/systemd/system/cybexos-major-upgrade-validate.service
+/usr/lib/systemd/system/cybexos-major-upgrade-validate.timer
 /usr/lib/systemd/system/cybexos-reconcile.service
 /usr/lib/systemd/system/cybexos-reconcile.timer
 /usr/lib/systemd/system/cybexos-hardware-setup.service
@@ -107,6 +115,8 @@ if [ "$1" -eq 1 ]; then
 fi
 # Bootable recovery points are refreshed at every boot; enabling is idempotent.
 systemctl enable cybexos-recovery-refresh.service >/dev/null 2>&1 || :
+systemctl enable cybexos-update-recover.service >/dev/null 2>&1 || :
+systemctl enable cybexos-major-upgrade-validate.timer >/dev/null 2>&1 || :
 systemctl enable cybexos-hardware-setup.timer >/dev/null 2>&1 || :
 
 %changelog

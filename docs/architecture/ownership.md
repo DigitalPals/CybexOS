@@ -57,6 +57,16 @@ installed runtime. The command records only the canonical path and reloads
 managed desktop components; it never fetches, resets, merges, commits, or
 writes inside the checkout.
 
+The Hyprland startup hook must also work when the development checkout is
+selected on an ISO installation. Checkout installs place the ordered session
+starter in `/usr/local/libexec`; ISO/RPM installs place it in `/usr/libexec`.
+`autostart.lua` resolves an executable helper at login, including when the
+checkout is loaded verbatim without the image packager's path rewriting.
+Otherwise Hyprland can start with `hyprland-session.target` inactive, leaving
+Quickshell, wallpaper, idle handling and desktop portals unavailable. The
+session startup fixtures exercise checkout, packaged and ISO development
+layouts in both source gates.
+
 Use `cybex dev status` to show the active source and `cybex dev disable` to
 return to the verified vendor runtime. Internet updates continue to stage and
 activate releases while development mode is on; they do not modify the selected
@@ -90,23 +100,43 @@ preserve unknown fields, retain a recoverable original, and avoid downgrading
 data on rollback. A new API or schema needs a compatibility plan and
 upgrade/rollback fixtures before it is released.
 
-That target is not yet enforced for every application. Remaining work:
+Shell settings now use a sparse schema-27 document: the presence of a known
+key records an explicit choice, including a choice equal to the current
+default. Reset removes the override; Undo restores its ownership as well as
+its value. Legacy stored values are conservatively treated as explicit. Visual
+redesigns no longer infer an untouched preference from equality with an old
+default. Unknown JSON fields survive edits and resets, and a newer schema is
+read-only on an older shell.
 
-- Shell settings currently normalize to known keys and have visual migrations
-  that infer an untouched value from equality with a previous default. Replace
-  that inference with explicit override tracking; treat legacy stored choices
-  conservatively. Keep unsupported future schemas read-only on older hosts.
-- Personal-dotfile deployment still replaces files such as Fastfetch,
-  Voxtype, MIME associations, and XDG user directories. Move defaults into
-  vendor fragments where supported, or seed only absent user files. Migrate
-  adopted files using a last-installed baseline and preserve conflicting edits.
-- Includes need application-specific precedence tests. Git and Kitty commonly
-  use later values; SSH commonly uses the first obtained value. The current
-  SSH include at the beginning can take precedence over personal choices.
-- Extend release checks beyond file sentinels: verify settings behavior, an
-  enabled API fixture, service overrides, app defaults, failed updates, and
-  rollback against supported previous releases. Preserve user-created package
-  and service additions when optional distro features change.
+The asynchronous settings writer merges independent external edits, rejects
+conflicting writes, and confirms fsync and atomic publication before reporting
+success. A rejected edit is retained in a `shell.json.conflict-*` sidecar before
+the form reloads the external values. The first schema migration retains the
+exact original in `shell.json.before-migration-*`. These files live beside the
+user's settings and are retained for recovery; the shell never prunes them.
+The production Qt document component has real-engine lifecycle tests for
+queued changes, retries and unknown data, alongside filesystem transaction tests.
 
-Until those changes land, the widget contract does not imply that every
-existing application setting already survives distro convergence unchanged.
+Personal application stores (Fastfetch, Voxtype, Oh My Posh, MIME associations,
+XDG directories and npm configuration) are seeded only when absent. Shared
+Fish, Kitty, Git and SSH fragments use the same ownership ledger on checkout
+and ISO paths. A fragment advances only if it still matches its last installed
+bytes; conflicting edits, symlinks and explicit deletions survive. Adopted
+bytes are backed up before replacement. Unknown legacy fragments remain
+user-owned instead of being guessed at from their filename.
+
+Managed includes follow each application's precedence: Git/Kitty defaults
+come first, while SSH fallbacks come last in an explicit `Host *` scope.
+Git credential helpers accumulate instead of overriding, so vendor credential
+helpers are omitted when personal configuration provides its own chain. The
+SSH vendor fragment lives outside `.ssh/config.d` so wildcard includes cannot
+accidentally give it priority over a personal host. Moving an old unedited
+include retains its original file; edited include blocks are left intact.
+
+Remaining release coverage should exercise service overrides, optional package
+and service additions, and supported previous releases across failure and
+rollback, beyond file sentinels. Application ownership is scoped to these
+managed fragments; independent application databases remain the application's
+responsibility.
+
+The widget contract does not imply ownership of unrelated application state.

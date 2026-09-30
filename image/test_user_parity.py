@@ -1,4 +1,6 @@
 """Regressions for per-user workstation policy that ISO installations lacked."""
+import ast
+import shutil
 import configparser
 import importlib.machinery
 import importlib.util
@@ -58,6 +60,45 @@ def unit(text):
 
 
 class ProvisioningContract(unittest.TestCase):
+    def test_smb_default_matches_both_paths_and_preserves_user_choice(self):
+        relative = 'roles/desktop/tasks/main.yml'
+        install = task(relative, 'Default Files SMB connections to WORKGROUP')['ansible.builtin.copy']
+        source = ROOT / 'roles/desktop/files' / install['src']
+        destination = install['dest']
+        # Resolve the actual RPM copy mapping rather than assuming a shared file.
+        copies = [node for node in ast.walk(ast.parse((ROOT / 'image/package').read_text()))
+                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                  and node.func.id == 'copy' and len(node.args) >= 2
+                  and isinstance(node.args[1], ast.Constant)
+                  and node.args[1].value == destination.lstrip('/')]
+        self.assertEqual(len(copies), 1)
+        packaged_source = ROOT / ast.literal_eval(copies[0].args[0])
+        self.assertEqual(packaged_source, source)
+        self.assertIn(destination, (ROOT / 'image/cybexos-desktop.spec').read_text().splitlines())
+        compile_task = task(relative, 'Compile GSettings schemas after changing the SMB default')
+        self.assertEqual(compile_task['when'], 'desktop_smb_schema_override is changed')
+        uninstall = (ROOT / 'roles/uninstall/tasks/main.yml').read_text()
+        self.assertIn('    - ' + destination, uninstall)
+        self.assertIn("selectattr('item', 'equalto', '" + destination + "')", uninstall)
+        for override in (source, packaged_source):
+            with tempfile.TemporaryDirectory(prefix='cybexos-smb-') as temporary:
+                schemas = Path(temporary)
+                shutil.copy('/usr/share/glib-2.0/schemas/org.gnome.system.smb.gschema.xml', schemas)
+                shutil.copy('/usr/share/glib-2.0/schemas/org.gnome.system.gvfs.enums.xml', schemas)
+                shutil.copy(override, schemas)
+                subprocess.run(['glib-compile-schemas', '--strict', str(schemas)], check=True)
+                result = subprocess.run(['/usr/bin/python3', '-c',
+                    "from gi.repository import Gio; "
+                    "s = Gio.Settings.new('org.gnome.system.smb'); "
+                    "assert s.get_string('workgroup') == 'WORKGROUP'; "
+                    "assert s.set_string('workgroup', 'OFFICE'); "
+                    "assert Gio.Settings.new('org.gnome.system.smb').get_string('workgroup') == 'OFFICE'; "
+                    "s.reset('workgroup'); "
+                    "assert s.get_string('workgroup') == 'WORKGROUP'"],
+                    env={**os.environ, 'GSETTINGS_SCHEMA_DIR': str(schemas),
+                         'GSETTINGS_BACKEND': 'memory'}, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_offline_gtk_task_skips_private_bus_creation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -218,14 +259,15 @@ class SessionPayload(unittest.TestCase):
         prepare_session(ROOT, self.payload, INVENTORY)
         kitty = self.vendor / 'user-seed/.config/kitty'
         self.assertEqual((kitty / 'cybexos.conf').read_bytes(), (ROOT / 'roles/dotfiles/files/kitty.conf').read_bytes())
-        # Exactly what blockinfile writes for the workstation task, so repair
-        # recognizes a seeded kitty.conf instead of appending a second include.
+        # The shared include editor produces the packaged first-run block.
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('include_policy', ROOT / 'image/library/cybexos_user_include.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
         include = task('roles/dotfiles/tasks/personal.yml',
                        'Include the managed Kitty fragment without replacing user configuration')
-        options = include['ansible.builtin.blockinfile']
-        marker = options['marker']
-        self.assertEqual(KITTY_INCLUDE, '\n'.join((marker.replace('{mark}', 'BEGIN'), options['block'],
-                                                   marker.replace('{mark}', 'END'))) + '\n')
+        self.assertEqual(include['cybexos_user_include']['kind'], 'kitty')
+        self.assertEqual(KITTY_INCLUDE, module.render('', 'kitty')[0])
         self.assertEqual((kitty / 'kitty.conf').read_text(), KITTY_INCLUDE)
         # The theme integration expects the generated palette to be included
         # from the fragment, after its fallback colours.

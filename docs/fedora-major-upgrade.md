@@ -1,5 +1,107 @@
 # Fedora major-upgrade runbook
 
+## Guided upgrade workflow
+
+`cybex upgrade-system` now coordinates preflight, a durable background DNF5
+**download**, an explicit offline reboot, target convergence and rollback. It
+requires a separately reviewed target release; the current source manifest
+supports **Fedora 44 only**. This workflow does not qualify or advertise Fedora
+45. Incrementing a release number is insufficient.
+
+Select either a clean reviewed target checkout/release directory whose
+`release-manifest.json` **and** inventory declare the target, or a signed
+`cybexos-desktop` RPM for that release and architecture which provides
+`cybexos-supported-fedora = <next>`. The RPM signature must verify against the
+installed trusted keyring. Selecting local source is an explicit administrator
+trust decision, as with bootstrap; the workflow verifies compatibility and
+freezes the selected bytes, but does not claim a local checkout hash proves its
+author. A Git checkout must be clean and only tracked files enter the frozen
+payload. No branch is pulled, reset or switched.
+
+Make and test an external backup first. Supply a JSON receipt beside its tar
+archives, with paths relative to the receipt:
+
+```json
+{
+  "v": 1,
+  "createdAt": "2030-01-01T12:00:00Z",
+  "archives": [{
+    "path": "workstation.tar.zst",
+    "sha256": "REPLACE_WITH_THE_ARCHIVE_SHA256",
+    "covers": ["/home/john", "/etc", "/var/lib/xps-hardware", "/etc/pki/akmods"]
+  }]
+}
+```
+
+Use the actual backup timestamp, account home and checksum. The validator
+requires a backup from the last seven days on another filesystem UUID, hashes
+each archive, reads it completely through tar and verifies its declared
+coverage. The account home and `/etc` are mandatory, plus the hardware/signing
+paths when present. Archive members should be root-relative (`home/john/…`,
+`etc/…`). This verifies integrity and coverage; the independent restore test
+remains part of preparing the backup.
+
+```sh
+cybex upgrade-system check --target <next> --source /path/to/reviewed-release --backup /mnt/backup/receipt.json
+cybex upgrade-system prepare --target <next> --source /path/to/reviewed-release --backup /mnt/backup/receipt.json
+# On an RPM installation, use --rpm /path/to/signed-target.rpm instead.
+cybex upgrade-system status
+# Once status is ready, close applications and explicitly start the offline upgrade:
+cybex upgrade-system reboot
+```
+
+`prepare` returns after starting a durable root service. It does not reboot or
+install packages into the running OS. Status becomes `ready` only after the
+DNF download succeeds and the rollback checkpoint is armed. Closing the terminal
+does not cancel the service. Its journal is under the `downloadUnit` named by
+status. The helper never adds `--allowerasing` or disables signatures.
+
+Preflight requires the normal managed Btrfs root, free space on root/var/boot,
+a clean RPM database, completed current-release updates, the default current
+kernel, no pending hardware reboot, usable signed repositories, and healthy
+installed camera ABI/userspace checks. Enabled repository URLs must follow
+`$releasever` or be release independent; a URL pinned to the old Fedora release
+must be reviewed first. Do not point the running system at target-only package
+repositories. For an RPM target, the old CybexOS channel is omitted from the
+offline download and the explicitly signed target RPM is applied after boot.
+
+`cybex upgrade-system cancel` is available after a completed or failed download,
+before reboot is scheduled. It checks the saved metadata fingerprint before
+cleaning DNF's offline state. It refuses to interrupt active DNF work or delete
+an offline transaction that another operation replaced. An interrupted worker
+retains diagnostic state rather than guessing which cached transaction to erase.
+A normal reboot before scheduling the upgrade does not strand the download:
+cancel or schedule it afterwards if the installed Fedora release and the saved
+offline metadata are unchanged and no offline reboot is already scheduled.
+
+The first target boot converges the frozen source with the saved installation
+choices, or installs/reconciles the staged RPM. RPM convergence requires the
+current package's durable reconciliation status and every account to be ready;
+a successful command exit alone is insufficient. Recovery waits for mounts,
+the system bus and network availability, with login ordered after recovery.
+Failed convergence, root health,
+kernel or signing checks select the previous root and vendor desktop checkpoint
+and reboot before allowing login. Successful root checks produce
+`awaiting-desktop`, not success: the validation timer waits for an actual
+Hyprland session, then verifies the managed shell through the transaction health
+checks. A recovery bar does not count as a healthy desktop. A failed desktop
+check selects rollback and records `restartRequired`; the active session is not
+abruptly rebooted. Use `cybex upgrade-system reboot` to enter that restored root.
+
+Status is private under `/var/lib/cybexos/major-upgrade/`. Frozen release payloads
+are under `/var/lib/cybexos/major-upgrade-payloads/<id>/`; source is retained for
+reproducibility, while a committed RPM payload or explicitly cancelled payload
+is removed. The transaction journal and checkpoint are independently stored in
+the Btrfs recovery store. Personal files and settings are never reverted by the
+vendor checkpoint. The backup covers data outside that checkpoint.
+
+`tests/major-upgrade.py` exercises artifact compatibility, signature gates,
+staging, the download/reboot boundary, cancellation ownership, backup checks,
+boot failure/rollback, deferred desktop validation and process-group cleanup
+using fixtures. It is not an end-to-end Fedora major-upgrade qualification.
+
+## Release engineer preparation
+
 The playbook supports exactly the release named by `fedora_release`; this is a
 safety boundary, not a default. Prepare and test repository support for the
 next Fedora release before upgrading the workstation. Do not change the value
@@ -21,8 +123,9 @@ branch for all compatibility changes.
 4. Make and test a backup that covers the user's home, repository checkout,
    `/etc`, `/var/lib/xps-hardware`, and `/etc/pki/akmods`. Also record
    `rpm -qa`, `flatpak list --system`, enabled repositories, and the current
-   kernel. The rollback for a failed major upgrade is restore/reinstall, not an
-   attempted mass package downgrade.
+   kernel. The guided workflow restores its pre-upgrade root/vendor checkpoint on
+   failure; the external backup and recovery media cover unsupported layouts
+   and personal data. Never attempt a mass package downgrade.
 5. Ensure the prepared target-release branch and recovery media are available
    without relying on this machine's graphical session.
 

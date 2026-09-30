@@ -217,9 +217,9 @@ def verify_dependency_policy(values: dict) -> None:
     assert "git" in required_commands.group(1).split()
 
     runner = (ROOT / "tests/run").read_text()
-    assert "rg -l '^#!.*(bash|sh)' -g '!*.j2' ." in runner
+    assert r"rg -Ul '\A#![^\n]*(bash|sh)' -g '!*.j2' ." in runner
     assert "rg --files . -g '*.py'" in runner
-    assert "rg -l '^#!.*python' -g '!*.j2' ." in runner
+    assert r"rg -Ul '\A#![^\n]*python' -g '!*.j2' ." in runner
 
     verifier = (ROOT / "tests/verify-system").read_text()
     assert not re.search(

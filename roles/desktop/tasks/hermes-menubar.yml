@@ -138,6 +138,17 @@
   notify: Restart Hermes menubar bridge
   tags: [quickshell, hermes-menubar]
 
+- name: Install the remote Hermes domain modules
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: hermes-menubar-bridge/cybex_hermes/
+    dest: "{{ primary_home }}/.local/libexec/cybex_hermes/"
+    mode: "0644"
+    directory_mode: "0755"
+  notify: Restart Hermes menubar bridge
+  tags: [quickshell, hermes-menubar]
+
 - name: Install the remote Hermes menubar bridge user unit
   become: true
   become_user: "{{ primary_user }}"

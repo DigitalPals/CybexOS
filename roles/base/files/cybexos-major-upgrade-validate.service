@@ -1,0 +1,14 @@
+[Unit]
+Description=Validate the desktop after a CybexOS Fedora major upgrade
+After=systemd-user-sessions.service
+ConditionPathExists=!/run/cybexos-live
+ConditionPathExists=/var/lib/cybexos/major-upgrade/status.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/cybexos-major-upgrade finalize-current
+TimeoutStartSec=75min
+UMask=0077
+# Rollback selection can succeed while the running session still needs a
+# restart. Preserve that state for the explicit upgrade-system reboot action.
+SuccessExitStatus=75

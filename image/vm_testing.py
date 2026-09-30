@@ -139,11 +139,13 @@ def stop_with_harness():
 
 class TestVM:
     """Own exactly one disposable virtual disk; never attach host block devices."""
-    def __init__(self, work, firmware="uefi", memory=16384, guard_disk=False):
+    def __init__(self, work, firmware="uefi", memory=16384, guard_disk=False, network_restricted=True):
         self.work = validate_qemu_path(Path(work).resolve())
         self.firmware = firmware
         self.memory = memory
         self.guard_disk = guard_disk
+        self.network_restricted = network_restricted
+        self.seed = None
         self.owned = False
         self.process = None
         self.console = None
@@ -246,7 +248,7 @@ class TestVM:
                 "-drive", f"file={self.disk},format=qcow2,if=none,id=qualification-disk,werror=report,rerror=report",
                 "-device", f"virtio-blk-pci,drive=qualification-disk,serial={QUALIFICATION_DISK_SERIAL}", *firmware,
                 "-device", "virtio-vga", "-device", "qemu-xhci", "-device", "usb-tablet",
-                "-netdev", f"user,id=net,restrict=on,hostfwd=tcp:127.0.0.1:{self.port}-:22", "-device", "virtio-net-pci,netdev=net",
+                "-netdev", f"user,id=net,{'restrict=on,' if self.network_restricted else ''}hostfwd=tcp:127.0.0.1:{self.port}-:22", "-device", "virtio-net-pci,netdev=net",
                 "-vnc", f"127.0.0.1:{self.vnc_port - 5900}", "-serial", f"file:{self.work / 'serial.log'}",
                 "-qmp", f"unix:{self.qmp_path},server=on,wait=off", "-monitor", "none"]
         if self.guard_disk:
@@ -254,6 +256,10 @@ class TestVM:
                      "-device", f"virtio-blk-pci,drive=unused-disk,serial={QUALIFICATION_UNUSED_SERIAL}"]
         if iso is not None:
             args += ["-cdrom", str(require_test_iso(iso)), "-boot", "d"]
+        if self.seed is not None:
+            if self.seed.parent != self.work or self.seed.is_symlink() or not self.seed.is_file():
+                raise ValueError('Cloud seed must be a task-owned regular file')
+            args += ["-drive", f"file={self.seed},format=raw,if=virtio,readonly=on"]
         self.console = (self.work / "qemu.log").open("a")
         self.process = subprocess.Popen(args, stdout=self.console, stderr=subprocess.STDOUT,
                                         process_group=0, preexec_fn=stop_with_harness)

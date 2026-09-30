@@ -70,7 +70,7 @@ test("every schema key has a property that defaults to it", () => {
 
 test("saving and loading enumerate the schema rather than restating it", () => {
     const snapshot = SETTINGS.slice(SETTINGS.indexOf("function snapshot()"),
-        SETTINGS.indexOf("function seedWeatherFromEnv"));
+        SETTINGS.indexOf("    SettingsDocument {"));
     assert.match(snapshot, /for \(const key of Object\.keys\(root\.defaults\)\)/,
         "snapshot() must loop the schema");
     assert.ok(snapshot.split("\n").length < 15,

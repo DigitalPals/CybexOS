@@ -9,6 +9,13 @@
 // against SettingsHelpers' schema under Node.
 
 var ROWS = [
+    { page: "keyboard", pageLabel: "Keyboard", group: "Keyboard layouts", label: "Keyboard layouts", key: "", terms: "input language variant qwerty azerty dvorak colemak" },
+    { page: "keyboard", pageLabel: "Keyboard", group: "Switch layouts", label: "Layout switching", key: "", terms: "keyboard shortcut caps lock alt shift next layout" },
+    { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Tap to click", key: "", terms: "touchpad tapping click input" },
+    { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Natural scrolling", key: "", terms: "touchpad reverse scroll direction" },
+    { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Pointer sensitivity", key: "", terms: "touchpad mouse speed acceleration" },
+    { page: "region", pageLabel: "Region & formats", group: "System timezone", label: "Timezone", key: "", terms: "time zone city country daylight saving clock" },
+    { page: "region", pageLabel: "Region & formats", group: "System language", label: "System language", key: "", terms: "locale language region lang regional formats" },
     // Appearance
     { page: "network", pageLabel: "Network", group: "Connections", label: "Network connections", key: "", terms: "wifi ethernet saved profile adapter vpn advanced editor" },
     { page: "network", pageLabel: "Network", group: "Connection", label: "Autoconnect and metered", key: "", terms: "automatic join metered data limit background" },

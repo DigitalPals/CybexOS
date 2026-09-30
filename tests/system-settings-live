@@ -19,17 +19,18 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
-for page in sound network accounts network; do
+for page in sound network accounts keyboard touchpad region network; do
   qs_live_wait_ipc 10 settings open "$page" >/dev/null
   ready=false
-  for _ in {1..40}; do
+  for _ in {1..100}; do
     state=$(qs_live_wait_ipc 5 settings status)
     if python3 - "$state" "$page" <<'PY'
 import json, sys
 state, page = json.loads(sys.argv[1]), sys.argv[2]
-service = state['services'][page]
+domain = 'input' if page in ('keyboard', 'touchpad') else page
+service = state['services'][domain]
 sys.exit(0 if state['open'] and state['page'] == page and service['loaded']
-         and service['watchers'] == 1 and service['watching'] and not service['failed']
+         and service['watchers'] == 1 and service['watching'] == (domain not in ('input', 'region')) and not service['failed']
          and not service['busy'] and not service['loading'] else 1)
 PY
     then ready=true; break; fi

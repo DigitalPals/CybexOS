@@ -11,7 +11,8 @@ def prepare_provision(root, payload):
                      'roles/dotfiles/files/fish-config.fish',
                      'roles/dotfiles/tasks/environment.yml', 'roles/dotfiles/templates/environment.conf.j2',
                      'roles/dotfiles/tasks/personal.yml', 'roles/dotfiles/files/kitty.conf',
-                     'roles/dotfiles/files/manage-firefox-policy',
+                     'roles/dotfiles/files/manage-firefox-policy', 'roles/dotfiles/files/ssh.conf',
+                     'roles/dotfiles/files/gitconfig',
                      'roles/dotfiles/tasks/agent-skills.yml', 'scripts/manage-agent-skills',
                      'roles/desktop/tasks/portals.yml'):
         source = root / relative

@@ -70,12 +70,15 @@ repository.
 Do not edit an existing release. Immutability makes correction explicit: fix
 forward, increment the version, and publish a new tag. If rollout must stop,
 remove the bad release from channel discovery and publish a corrected release.
-Users whose system apply failed keep their previous active release (`current`)
-and their prior saved configuration, but files that Ansible had already
-deployed from the failed candidate stay in place; the run records
-`mixedState: true`. The corrected release converges them, and
-`~/.local/share/cybexos/current/install` restores the previous release's files
-in the meantime.
+On the managed Btrfs layout, failed application or health validation selects
+the previous root and restores the vendor desktop checkpoint while preserving
+personal settings; users must restart to enter the restored root. Interrupted
+application is recovered before login. On other filesystems the updater reports
+`transactionProtection: unavailable`: failed activation restores the previous
+`current` and saved configuration, but partially deployed files can remain
+(`mixedState: true`). Converge the active release with
+`~/.local/share/cybexos/current/install` or apply a corrected release.
+See [update recovery and its limits](operations.md#update-recovery-points).
 
 ## What the source workflow publishes
 

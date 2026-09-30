@@ -15,12 +15,15 @@ local function persisted_scroll_factor()
   return 1.0
 end
 
+-- Saved input preferences reuse the release's option defaults.
+_G.__cybexos_vendor_keyboard_options = "compose:caps,lv3:ralt_switch"
+
 hl.config({
   input = {
     kb_layout = {{ machine_keyboard_layout | to_json }},
     kb_variant = {{ machine_keyboard_variant | to_json }},
     -- Keep left Alt available to applications (for example Codex Alt+Up).
-    kb_options = "compose:caps,lv3:ralt_switch",
+    kb_options = _G.__cybexos_vendor_keyboard_options,
     follow_mouse = 1,
     natural_scroll = true,
     repeat_rate = 40,

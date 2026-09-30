@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "GitHubHelpers.js" as Helpers
+import "GitHubQueue.js" as Queue
 import "ProcHelpers.js" as ProcHelpers
 import "ExternalUrl.js" as ExternalUrl
 
@@ -264,45 +265,15 @@ Singleton {
     property var active: null
 
     function jobKey(job) {
-        switch (job.kind) {
-        case "watch": return "watch:" + job.slug;
-        case "commits": return "commits:" + job.slug;
-        case "stats": return "stats:" + job.sha;
-        case "runs": return "runs:" + job.slug + ":" + job.generation;
-        case "events": return "events:" + job.slug + ":" + job.generation;
-        case "notifications": return "notifications:" + job.generation;
-        default: return job.kind;
-        }
+        return Queue.jobKey(job);
     }
 
     function enqueue(job) {
-        const key = jobKey(job);
-        if (active !== null && jobKey(active) === key)
-            return false;
-        const queuedAt = queue.findIndex(queued => jobKey(queued) === key);
-        if (queuedAt >= 0) {
-            // A popover request can overlap a background toast/cache read.
-            // Keep the richer existing job, but move it into the interactive
-            // lane so deduplication never costs the user's priority.
-            if (job.interactive === true && !queue[queuedAt].interactive) {
-                const promoted = Object.assign({}, queue[queuedAt], { interactive: true });
-                const without = queue.slice(0, queuedAt).concat(queue.slice(queuedAt + 1));
-                const firstBackground = without.findIndex(queued => !queued.interactive);
-                const at = firstBackground < 0 ? without.length : firstBackground;
-                queue = without.slice(0, at).concat([promoted], without.slice(at));
-            }
-            return false;
-        }
-        const next = Object.assign({}, job, { interactive: job.interactive === true });
-        if (!next.interactive) {
-            queue = queue.concat([next]);
-        } else {
-            const firstBackground = queue.findIndex(queued => !queued.interactive);
-            const at = firstBackground < 0 ? queue.length : firstBackground;
-            queue = queue.slice(0, at).concat([next], queue.slice(at));
-        }
-        pump();
-        return true;
+        const result = Queue.enqueue(queue, active, job);
+        queue = result.queue;
+        if (result.added)
+            pump();
+        return result.added;
     }
 
     function pump() {
@@ -333,8 +304,8 @@ Singleton {
         ghProc.command = command;
         // Armed before the launch: a binary that cannot start reports its
         // falling edge at once, and that edge is what stops the watchdog.
-        ghWatchdog.interval = Helpers.ghTimeoutMs(job);
-        ghWatchdog.restart();
+        ghProc.timeoutMs = Helpers.ghTimeoutMs(job);
+        ghProc.timeoutMessage = Helpers.ghTimeoutMessage(job);
         ghProc.running = true;
     }
 
@@ -361,31 +332,6 @@ Singleton {
         default:
             return { etag: "", lastModified: "" };
         }
-    }
-
-    // A stalled `gh api` would otherwise hold `active` forever: the queue
-    // stops, and `polling`/`inboxPolling` never fall, so no refresh can start.
-    // First firing: SIGTERM, reported through the normal falling edge as a
-    // timeout. If that edge still has not arrived after the grace period,
-    // SIGKILL and settle the job here so the flags are released regardless.
-    function ghWatchdogFired() {
-        if (active === null)
-            return;
-        if (ghProc.running && !ghProc.timedOut) {
-            ghProc.timedOut = true;
-            ghProc.timeoutText = Helpers.ghTimeoutMessage(active);
-            console.warn("github:", ghProc.timeoutText + ":", jobKey(active));
-            ghWatchdog.interval = Helpers.GH_KILL_GRACE_MS;
-            ghWatchdog.restart();
-            ghProc.running = false;
-            return;
-        }
-        const message = ghProc.timeoutText !== "" ? ghProc.timeoutText
-            : Helpers.ghTimeoutMessage(active);
-        if (ghProc.running)
-            ghProc.signal(9);
-        ghProc.abandoned = true;
-        settle(Helpers.GH_TIMEOUT_EXIT, "", message);
     }
 
     // Rate-limit headers arrive on every included response, 304s too.
@@ -1153,58 +1099,11 @@ Singleton {
         });
     }
 
-    Process {
+    CommandRequest {
         id: ghProc
-        property string body: ""
-        property string errText: ""
-        property bool exitSeen: false
-        property int lastExit: 0
-        // Watchdog state for the current run; see root.ghWatchdogFired().
-        property bool timedOut: false
-        property bool abandoned: false
-        property string timeoutText: ""
-
-        stdout: StdioCollector {
-            onStreamFinished: ghProc.body = text
-        }
-        stderr: StdioCollector {
-            onStreamFinished: ghProc.errText = text
-        }
-        onExited: (exitCode, exitStatus) => {
-            ghProc.exitSeen = true;
-            ghProc.lastExit = exitCode;
-        }
-        onRunningChanged: {
-            if (running) {
-                body = "";
-                errText = "";
-                exitSeen = false;
-                lastExit = 0;
-                timedOut = false;
-                abandoned = false;
-                timeoutText = "";
-                return;
-            }
-            ghWatchdog.stop();
-            if (abandoned) {
-                // The watchdog already settled this job as timed out.
-                abandoned = false;
-                root.pump();
-                return;
-            }
-            // A terminated run's partial output is not a response, and its
-            // exit status is whatever the signal left — it may even read as 0.
-            if (timedOut)
-                root.settle(Helpers.GH_TIMEOUT_EXIT, "", timeoutText);
-            else
-                root.settle(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, body, errText);
-        }
-    }
-
-    Timer {
-        id: ghWatchdog
-        interval: Helpers.GH_TIMEOUT_MS
-        onTriggered: root.ghWatchdogFired()
+        killGraceMs: Helpers.GH_KILL_GRACE_MS
+        onCompleted: (code, body, error) => root.settle(code, body, error)
+        onAvailable: root.pump()
     }
 
     Timer {

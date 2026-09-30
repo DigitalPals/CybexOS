@@ -19,6 +19,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_PATH = ROOT / "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py"
+sys.path.insert(0, str(BRIDGE_PATH.parent))
 SPEC = importlib.util.spec_from_file_location("hermes_remote_auth_fixture", BRIDGE_PATH)
 assert SPEC and SPEC.loader
 BRIDGE = importlib.util.module_from_spec(SPEC)

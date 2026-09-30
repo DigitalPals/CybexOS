@@ -1,8 +1,11 @@
 FROM fedora:44
-RUN dnf install -y python3-pyside6 python3-jinja2 python3-pyyaml python3-gobject-base glib2 \
+RUN dnf install -y python3-pyside6 python3-jinja2 python3-pyyaml python3-gobject-base glib2 gvfs \
     ShellCheck pykickstart qt6-qtdeclarative-devel desktop-file-utils \
-    nodejs24 gnupg2 git ripgrep ansible-core rpm-build rpm-sign createrepo_c \
+    nodejs24 gnupg2 git ripgrep luajit ansible-core rpm-build rpm-sign createrepo_c \
     && dnf clean all
+# CI mounts the host-owned checkout read-only while this test image runs as
+# root. Trust only that explicit mount for source archive enumeration.
+RUN git config --system --add safe.directory /source
 ENV QT_QPA_PLATFORM=offscreen
 WORKDIR /source
 ENV PYTHONDONTWRITEBYTECODE=1

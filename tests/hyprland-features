@@ -267,7 +267,7 @@ install_feature_provider() {
 
 install_leaf_modules() {
   local destination=$1 scenario_root=$2 module
-  for module in monitors.lua input.lua looknfeel.lua bindings.lua autostart.lua displays.lua; do
+  for module in monitors.lua input.lua looknfeel.lua bindings.lua autostart.lua displays.lua input_preferences.lua; do
     install_hypr_module "$module" "$destination/$module"
     if [[ -f $destination/hyprland.lua ]]; then
       assert_hypr_tree_loadable "$scenario_root" "after $module"

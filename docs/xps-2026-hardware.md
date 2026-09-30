@@ -37,6 +37,39 @@ brightnessctl set 40%
 The first two commands should report `xe.enable_dpcd_backlight=1` and `1`; the
 last should visibly change panel luminance.
 
+## Internal-panel black flashes
+
+On the XPS 14 DA14260 (SKU `0DB9`) with LGD product `0x07c6`, Fedora kernel
+`7.2.7-200.fc44` exhibited repeated full-screen black flashes at 120 Hz.
+The panel reported a PSR link CRC error, PSR2 selective fetch was enabled,
+and the boot journal recorded `Selective fetch area calculation failed in
+pipe A`. Disabling PSR live stopped the flashes without changing brightness,
+resolution or refresh rate. This is separate from an absent Quickshell
+wallpaper when the desktop session target has not started.
+
+The shared hardware role limits `xe.enable_psr=0` to this SKU and the full
+EDID manufacturer/product bytes `30e4c607`. Both checkout provisioning and
+ISO hardware setup use this task. `grubby --update-kernel=ALL` applies it to
+installed kernels and the defaults for future kernels. Disabling PSR costs
+some idle display power; it retains 120 Hz. The `display` tag applies only
+this quirk, after the role's read-only hardware detection:
+
+```bash
+ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags display --check --diff
+ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags display
+```
+
+The boot argument takes effect on the next normal boot. On a running system,
+`/sys/kernel/debug/dri/0/i915_edp_psr_status` reports the active PSR mode
+(the debugfs name is retained by the Xe driver). During diagnosis, writing
+`1` to `i915_edp_psr_debug` disables PSR for the current boot; `0` restores
+the driver's default. Verify the DRM device before using either path.
+
+Keep `xps_2026_psr_disabled_panels: []` in the saved Ansible configuration to
+opt out of further enforcement when evaluating a driver fix, then remove
+`xe.enable_psr` with `grubby --update-kernel=ALL --remove-args=xe.enable_psr`.
+No other panel or machine receives the workaround.
+
 ## Internal speakers
 
 SKU `0DB9` (plus Quattro-listed XPS 16 SKU `0DBA`) gets Omarchy Quattro's current

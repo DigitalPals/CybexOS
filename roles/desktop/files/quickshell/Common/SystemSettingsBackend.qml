@@ -40,7 +40,9 @@ Item {
         if (watchers && !busy)
             snapshotProc.running = true;
     }
-    onWatchersChanged: monitor.running = watchers > 0
+    // Input is polled: no extra compositor socket reader lives beyond the page.
+    readonly property bool hasMonitor: domain !== "input" && domain !== "region"
+    onWatchersChanged: monitor.running = watchers > 0 && hasMonitor
     function run(value) {
         if (busy)
             return false;
@@ -76,7 +78,7 @@ Item {
         repeat: true
         onTriggered: {
             root.refresh();
-            if (!monitor.running)
+            if (root.hasMonitor && !monitor.running)
                 monitor.running = true;
         }
     }

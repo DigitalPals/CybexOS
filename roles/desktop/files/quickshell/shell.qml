@@ -66,10 +66,13 @@ ShellRoot {
             Settings.closePanel();
         }
 
+        // Read-only effective preferences for same-source installation audits.
+        function values(): string { return JSON.stringify(Settings.snapshot()); }
+
         // Read-only lifecycle diagnostics; no device or account metadata.
         function status(): string {
             const services = {};
-            for (const name of ["sound", "network", "accounts"]) {
+            for (const name of ["sound", "network", "accounts", "input", "region"]) {
                 const service = SystemSettings[name];
                 services[name] = {loaded: service.loaded, busy: service.busy,
                     loading: service.loading, watchers: service.watchers,

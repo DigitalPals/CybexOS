@@ -29,6 +29,7 @@ import websockets
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_PATH = ROOT / "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py"
+sys.path.insert(0, str(BRIDGE_PATH.parent))
 SPEC = importlib.util.spec_from_file_location(
     "hermes_remote_runtime_fixture", BRIDGE_PATH
 )

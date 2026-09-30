@@ -25,6 +25,7 @@ SwitchRow SwitchRow.qml
 PowerPage PowerPage.qml
 RegionPage RegionPage.qml
 TouchpadPage TouchpadPage.qml
+KeyboardPage KeyboardPage.qml
 NightLightGroup NightLightGroup.qml
 RecoveryGroup RecoveryGroup.qml
 UndoChip UndoChip.qml

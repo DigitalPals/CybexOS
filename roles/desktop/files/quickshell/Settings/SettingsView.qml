@@ -612,6 +612,7 @@ PopoutPanel {
                 case "sound": return soundPage;
                 case "network": return networkPage;
                 case "touchpad": return touchpadPage;
+                case "keyboard": return keyboardPage;
                 case "power": return powerPage;
                 case "region": return regionPage;
                 case "accounts": return accountsPage;
@@ -801,6 +802,7 @@ PopoutPanel {
         Component { id: displaysPage; DisplaysPage {} }
         Component { id: accountsPage; AccountsPage {} }
         Component { id: touchpadPage; TouchpadPage {} }
+        Component { id: keyboardPage; KeyboardPage {} }
         Component { id: powerPage; PowerPage {} }
         Component { id: regionPage; RegionPage {} }
         Component { id: aboutPage; AboutPage {} }

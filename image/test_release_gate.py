@@ -41,6 +41,24 @@ class ReleaseGate(unittest.TestCase):
                 (artifacts / 'cybexos-desktop-1.2.3.rpm').write_bytes(b'RPM')
             if command[0].endswith('/image/publish-pxe'):
                 (pxe / 'iso/candidate.iso').write_bytes(b'candidate')
+            if command[0].endswith('/image/qualify') and '--capture-outcomes' in command:
+                destination = Path(command[command.index('--output') + 1])
+                destination.mkdir()
+                scenario = command[command.index('--scenario') + 1]
+                (destination / 'qualification.json').write_text(json.dumps({
+                    'status': 'passed', 'scenario': scenario, 'source_revision': 'a' * 40,
+                    'source_content_sha256': 'b' * 64, 'checks': ['graphical-installer']}))
+            if command[0].endswith('/image/qualify-checkout'):
+                destination = Path(command[command.index('--output') + 1])
+                destination.mkdir()
+                scenario = command[command.index('--scenario') + 1]
+                (destination / 'checkout-qualification.json').write_text(json.dumps({
+                    'status': 'passed', 'scenario': scenario, 'source_revision': 'a' * 40,
+                    'source_content_sha256': 'b' * 64, 'checks': ['full-checkout-installation',
+                        'installed-parity-fresh', 'installed-parity-saved', 'full-graphical-session']}))
+                for profile in ('fresh', 'saved'):
+                    (destination / ('parity-' + profile + '.json')).write_text(json.dumps({
+                        'status': 'passed', 'scenario': scenario, 'profile': profile, 'source_content_sha256': 'b' * 64}))
         return checkout, baseline, output, paths, run, commands
 
     def invoke(self, root, same_iso=False):
@@ -77,6 +95,13 @@ class ReleaseGate(unittest.TestCase):
             self.assertIn('--candidate-rpm', upgrade)
             self.assertIn('--recovery-check', upgrade)
             self.assertIn('--legacy-installer', upgrade)
+            checkout = [command for command in commands if command[0].endswith('/image/qualify-checkout')]
+            self.assertEqual(len(checkout), 2)
+            self.assertEqual([command[command.index('--scenario') + 1] for command in checkout], ['plain-us', 'plain-nl'])
+            for scenario in ('plain-us', 'plain-nl'):
+                qualified = json.loads((output / scenario / 'qualification.json').read_text())
+                self.assertIn('installed-parity-saved', qualified['checks'])
+                self.assertEqual(qualified['checkout_parity']['status'], 'passed')
             self.assertEqual(json.loads((output / 'release-gate.json').read_text())['status'], 'passed')
 
     def test_interruption_terminates_owned_process_group_before_returning(self):

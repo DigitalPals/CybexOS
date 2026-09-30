@@ -65,6 +65,7 @@ def main():
 
     runtime = "usr/share/cybexos/runtime"
     copy("LICENSE", "usr/share/licenses/cybexos-desktop/LICENSE")
+    copy("release-manifest.json", "usr/share/cybexos/release-manifest.json")
     quickshell = ROOT / "roles/desktop/files/quickshell"
     for source in sorted(quickshell.rglob("*")):
         if not source.is_file() or source.is_symlink() or "__pycache__" in source.parts or source.suffix == ".pyc":
@@ -74,7 +75,7 @@ def main():
         if source.suffix in (".qml", ".js"):
             target = payload / relative
             target.write_text(target.read_text().replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))
-    for name in ("hyprland.lua", "bindings.lua", "autostart.lua", "displays.lua"):
+    for name in ("hyprland.lua", "bindings.lua", "autostart.lua", "displays.lua", "input_preferences.lua"):
         content = (ROOT / "roles/desktop/files" / name).read_text()
         content = content.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-")
         write(f"{runtime}/hypr/{name}", content)
@@ -126,11 +127,27 @@ def main():
     hermes = environment.from_string((ROOT / "roles/desktop/templates/hermes-menubar-bridge.service.j2").read_text()).render(primary_home="%h", hermes_bridge_executable="/usr/libexec/cybexos-hermes-menubar-bridge")
     write("usr/lib/systemd/user/hermes-menubar-bridge.service", hermes)
     copy("roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py", "usr/libexec/cybexos-hermes-menubar-bridge", True)
+    for source in sorted((ROOT / "roles/desktop/files/hermes-menubar-bridge/cybex_hermes").glob("*.py")):
+        copy(source.relative_to(ROOT), f"usr/libexec/cybex_hermes/{source.name}")
     # Voxtype's RPM owns its system user unit. The session target starts that
     # unit; do not collide with it by packaging our per-user Ansible template.
     write(f"{seed}/.npmrc", "prefix=${HOME}/.npm-global\n")
     write("usr/share/cybexos/applications.json", json.dumps(applications, indent=2) + "\n")
     copy("roles/base/files/cybexos-system-snapshot", "usr/libexec/cybexos-system-snapshot", True)
+    for name in ("cybexos-update-transaction", "cybexos-update-bootstrap", "cybexos-update-recover", "cybexos-vendor-paths.json", "cybexos-major-upgrade"):
+        copy(f"roles/base/files/{name}", f"usr/libexec/{name}", not name.endswith('.json'))
+    for name in ("cybexos-update-recover.service", "cybexos-update-recover-login.conf"):
+        copy(f"roles/base/files/{name}", f"usr/libexec/{name}")
+    recover = (ROOT / "roles/base/files/cybexos-update-recover.service").read_text()
+    write("usr/lib/systemd/system/cybexos-update-recover.service",
+          recover.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))
+    for unit in ("systemd-user-sessions.service", "sddm.service"):
+        copy("roles/base/files/cybexos-update-recover-login.conf",
+             f"usr/lib/systemd/system/{unit}.d/60-cybexos-update-recover.conf")
+    for name in ("cybexos-major-upgrade-validate.service", "cybexos-major-upgrade-validate.timer"):
+        content = (ROOT / "roles/base/files" / name).read_text()
+        write(f"usr/lib/systemd/system/{name}",
+              content.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))
     # `sudo cybexos-system-snapshot ...`, as documented; libexec is not on PATH.
     (payload / "usr/bin").mkdir(parents=True, exist_ok=True)
     (payload / "usr/bin/cybexos-system-snapshot").symlink_to("../libexec/cybexos-system-snapshot")
@@ -174,6 +191,9 @@ def main():
     copy("roles/desktop/files/cybexos-input-method.service", "usr/lib/systemd/user/cybexos-input-method.service")
     copy("roles/desktop/files/90-cybexos-ibus.gschema.override",
          "usr/share/glib-2.0/schemas/90-cybexos-ibus.gschema.override")
+    # Share the Files/GVfs default with checkout installations.
+    copy("roles/desktop/files/90-cybexos-smb.gschema.override",
+         "usr/share/glib-2.0/schemas/90-cybexos-smb.gschema.override")
     for name in ("brave-browser", "1password", "chatgpt", "tailscale"):
         copy(f"roles/apps/files/{name}.repo", f"usr/share/cybexos/repository-policy/{name}.repo")
     # The fonts are already checksum-pinned by the project. Preserve upstream

@@ -10,13 +10,13 @@ import signal
 import socket
 import subprocess
 import sys
-import tarfile
 import tempfile
 import time
 
 from build_support import (atomic_json, build_id, builder_cloud_config, create_seed, deliver_artifacts,
                            digest, phase, preflight, source_provenance, validate_qemu_path,
                            wait_for_builder_initialization)
+from source_snapshot import archive_identity, tree_identity, write_archive
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = "Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2"
@@ -29,26 +29,7 @@ def run(args, **kwargs):
 
 
 def source_archive(destination, additions=None):
-    roots = ["image", "roles/desktop", "assets/scripts", "assets/EDM115-newline2.omp.json",
-             "assets/desktop-contract.json", "assets/wallpapers", "assets/PROVENANCE.json",
-             "roles/boot/files", "roles/boot/defaults/main.yml", "inventory/group_vars/all.yml", "VERSION", "LICENSE",
-             "roles/dotfiles", "roles/apps", "roles/base", "roles/xps-2026",
-             "agent-skills/cybexos", "scripts/manage-agent-skills",
-             "assets/nautilus-localsend.py"]
-    excluded = {"image/update-channel.json", "image/update-key.asc", "image/build-provenance.json"}
-    with tarfile.open(destination, "w:gz") as archive:
-        for name in roots:
-            path = ROOT / name
-            if not path.exists():
-                raise FileNotFoundError(f"Missing image source input: {name}")
-            for item in sorted(path.rglob("*")) if path.is_dir() else [path]:
-                relative = str(item.relative_to(ROOT))
-                if item.is_file() and not item.is_symlink() and relative not in excluded and "__pycache__" not in item.parts and item.suffix != ".pyc":
-                    archive.add(item, arcname=relative, recursive=False)
-        for name, path in (additions or {}).items():
-            if name not in excluded:
-                raise ValueError("Unexpected generated source input")
-            archive.add(path, arcname=name, recursive=False)
+    write_archive(ROOT, destination, additions)
 
 
 def stop(process):
@@ -116,9 +97,12 @@ def main():
                                   source_dirty=bool(subprocess.check_output(["git", "-C", str(ROOT), "status", "--porcelain"], text=True).strip()),
                                   source_epoch=int(subprocess.check_output(["git", "-C", str(ROOT), "show", "-s", "--format=%ct", "HEAD"], text=True)))
                 installed = {key: provenance[key] for key in ("utc", "build_id", "source_revision", "source_dirty", "source_epoch")}
+                installed.update(tree_identity(ROOT))
                 atomic_json(work / "build-provenance.json", installed)
                 additions["image/build-provenance.json"] = work / "build-provenance.json"
                 source_archive(work / "source.tar.gz", additions)
+                if archive_identity(work / "source.tar.gz") != {key: installed[key] for key in ('source_content_sha256', 'source_file_count')}:
+                    raise RuntimeError('Source changed while preparing the build archive; retry from a stable checkout')
                 provenance["source"] = source_provenance(ROOT, work / "source.tar.gz")
                 # -no-user-config: host /etc/qemu may be unreadable and must not shape the builder.
                 provenance["tools"] = {command[0]: subprocess.check_output([*command, "--version"], text=True).splitlines()[0]
@@ -182,6 +166,7 @@ def main():
                             run(["scp", *ssh_options, "-P", str(port), "-r", "builder@127.0.0.1:/home/builder/artifacts/.", staging])
                             from build_support import checksum_entries
                             checksum_entries(staging)
+                            shutil.copyfile(work / "source.tar.gz", Path(staging) / "source.tar.gz")
                             original = Path(staging) / "CybexOS-Live-44.iso"
                             original.rename(Path(staging) / f"CybexOS-Live-44-{identifier}.iso")
                             files = sorted(path for path in Path(staging).iterdir() if path.name != "SHA256SUMS")

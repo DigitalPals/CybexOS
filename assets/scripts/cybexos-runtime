@@ -17,6 +17,7 @@ Usage:
   cybexos-runtime dev enable CHECKOUT
   cybexos-runtime dev disable
   cybexos-runtime dev status
+  cybexos-runtime shell status|safe|recover
   cybexos-runtime plugin add|update|clone|remove|list|enable|disable|set|reload|restart [arguments]
 
 The development switch only records a validated checkout. It never fetches,
@@ -243,6 +244,9 @@ exec_runtime() {
       export CYBEXOS_PLUGIN_ROOT=$data_root/plugins
       export OMARCHY_PATH=$selected/compat/omarchy
       export PATH=$OMARCHY_PATH/bin:$PATH
+      if [[ -f $selected/scripts/shell-recovery.py ]]; then
+        exec python3 "$selected/scripts/shell-recovery.py" run "$selected"
+      fi
       exec /usr/bin/qs -p "$selected"
       ;;
     hypridle|hyprlock)
@@ -280,6 +284,9 @@ exec_runtime() {
 ipc_call() {
   local selected
   selected=$(runtime_path quickshell)
+  if [[ -f $selected/scripts/shell-recovery.py ]]; then
+    selected=$(python3 "$selected/scripts/shell-recovery.py" path "$selected")
+  fi
   # --any-display: a caller started by systemd (a reminder timer) need not
   # carry the session's display. The -- keeps function names that shadow qs
   # subcommands (e.g. show) positional.
@@ -303,6 +310,21 @@ case $command_name in
     ipc_call "$@"
     ;;
   dev) dev_command "$@" ;;
+  shell)
+    [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+    case $1 in status|safe|recover|record-stop) ;; *) usage >&2; exit 2 ;; esac
+    selected=$(runtime_path quickshell)
+    # A previous release without recovery support remains rollback-compatible.
+    [[ -f $selected/scripts/shell-recovery.py ]] || {
+      [[ $1 != record-stop ]] || exit 0
+      printf 'cybexos-runtime: this desktop release has no recovery mode\n' >&2
+      exit 1
+    }
+    python3 "$selected/scripts/shell-recovery.py" "$1" "$selected"
+    if [[ $1 == safe || $1 == recover ]]; then
+      exec systemctl --user restart quickshell.service
+    fi
+    ;;
   plugin)
     selected=$(runtime_path quickshell)
     if [[ ${1:-} == reload ]]; then

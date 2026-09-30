@@ -221,9 +221,11 @@ stage_source_syntax() {
   # Give content searches an explicit root. Some ripgrep builds treat a
   # non-interactive empty stdin as the search input when no path is supplied,
   # which made CI discover zero shell sources despite a complete checkout.
-  mapfile -t bash_files < <(rg -l '^#!.*(bash|sh)' -g '!*.j2' . | LC_ALL=C sort)
+  # Only the first line declares a file's language; fixtures contain script
+  # heredocs whose embedded shebang must not classify the enclosing file.
+  mapfile -t bash_files < <(rg -Ul '\A#![^\n]*(bash|sh)' -g '!*.j2' . | LC_ALL=C sort)
   mapfile -t python_files < <(
-    { rg --files . -g '*.py'; rg -l '^#!.*python' -g '!*.j2' .; } | LC_ALL=C sort -u
+    { rg --files . -g '*.py'; rg -Ul '\A#![^\n]*python' -g '!*.j2' .; } | LC_ALL=C sort -u
   )
   # Model Usage's vendored UsageLogic.js is a QML `.pragma library`, which
   # node cannot parse; tests/model-usage.py runs upstream's own test on it.
@@ -309,6 +311,7 @@ stage_hyprland_workspaces() {
     r=0
     bash tests/hyprland-workspaces || r=1
     bash tests/hyprland-features || r=1
+    bash tests/hyprland-input || r=1
     exit "$r"
   } 2>&1) || rc=$?
   elapsed=$(( $(now_ms) - t0 ))
@@ -467,13 +470,19 @@ python_fixtures=(
   bluetooth-tool
   firmware-update
   shell-health
+  shell-recovery
   repository-policy
   application-defaults
   installation-parity
   login-policy
   session-launcher
+  update-transaction
+  update-bootstrap
+  major-upgrade
+  native-input-region
   omawrite
   ownership-layering
+  settings-ownership
   plugin-packages
   model-usage
   installer-convergence

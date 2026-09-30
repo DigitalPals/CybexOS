@@ -380,7 +380,7 @@ test("regression fixes keep asynchronous state identity-safe", () => {
 
 test("schema twenty-three keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 26/);
+    assert.match(helpers, /var VERSION = 27/);
     // Schema 17: the drawer becomes configurable (turn-3 settings design).
     assert.match(helpers, /drawerHover: "open"/);
     assert.match(helpers, /drawerWidth: 400/);
@@ -413,17 +413,15 @@ test("schema twenty-three keeps safe defaults and exposes accessibility preferen
     assert.match(helpers, /barStyle:\s*"hug"/);
     assert.match(helpers, /function migrateBarStyle\(parsed, defaultsValue\)/);
     assert.match(helpers, /function migratePaletteMode\(parsed, defaultsValue\)/);
-    assert.match(helpers, /function adoptSofterTypography\(parsed\)/);
+    assert.doesNotMatch(helpers, /function adoptSofterTypography\(parsed\)/);
     assert.match(helpers, /mod\("media", true\)/);
     assert.match(helpers, /mod\("bt", true\)/);
     assert.match(helpers, /wallDir:\s*"~\/Pictures\/Wallpapers"/);
     assert.match(helpers, /DETAIL_POLICIES/);
-    // A settings file written by the previous schema must adopt the redesign
-    // wherever the user never chose otherwise, or the redesign never appears.
-    assert.match(helpers, /function adoptRedesign\(parsed\)/);
-    assert.match(helpers, /V3_DEFAULTS = \{[\s\S]*?barHeight: 30/);
-    assert.match(helpers, /function adoptClassicMenubar\(parsed\)/);
-    assert.match(helpers, /V9_CLASSIC_DEFAULTS = \{[\s\S]*?barHeight: 46/);
+    // Stored legacy defaults are indistinguishable from explicit choices.
+    assert.doesNotMatch(helpers, /function adoptRedesign|function adoptClassicMenubar/);
+    assert.match(helpers, /function serializeDocument/);
+
 });
 
 test("Connected enables integration widgets including auto-hiding Bluetooth", () => {
@@ -562,7 +560,7 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
     const schemaKeys = Object.keys(load("SettingsHelpers.js").defaults());
     const validPages = [...settings.matchAll(/\{ id: "([a-z]+)", group: "/g)].map(m => m[1]);
     assert.deepEqual(validPages, ["appearance", "wallpaper", "bar", "notifications", "displays",
-        "sound", "network", "touchpad", "power", "region", "accounts", "plugins", "about"]);
+        "sound", "network", "touchpad", "keyboard", "power", "region", "accounts", "plugins", "about"]);
     const rows = load("SettingsSearchData.js").ROWS;
     assert.ok(rows.length >= 30, "the search index must cover the workspace");
     for (const row of rows) {
@@ -969,53 +967,23 @@ test("FileView failures cannot become empty settings or false save success", () 
         /function handleLoadFailure\(error\)[\s\S]*?ready = false;[\s\S]*?loadError = true;/,
         "other read errors must retain memory state and disable writes");
     assert.doesNotMatch(settings, /onLoadFailed:\s*root\.applyLoaded\(""\)/);
-    assert.match(settings, /onSaved: root\.handleSaveSucceeded\(\)/);
-    assert.match(settings,
-        /onSaveFailed: error => root\.handleSaveFailure\(error\)/);
+    assert.match(settings, /root\.handleSaveSucceeded\(result\.text\)/);
+    assert.match(settings, /root\.handleSaveFailure\(FileViewError\.Unknown\)/);
+    assert.match(settings, /CommandRequest \{\s*id: settingsWriter/);
     const saveNow = settings.slice(settings.indexOf("function saveNow()"),
         settings.indexOf("function scheduleSave()"));
     assert.doesNotMatch(saveNow, /lastSavedAt\s*=/,
         "starting a write is not evidence that it succeeded");
     assert.match(settings,
-        /function handleSaveSucceeded\(\)[\s\S]*lastSavedAt = Date\.now\(\)/);
+        /function handleSaveSucceeded\(committed\)[\s\S]*lastSavedAt = Date\.now\(\)/);
 });
 
-test("an unchanged save cannot block subsequent widget changes", () => {
-    const vm = require("node:vm");
+test("settings use the verified atomic writer and production document queue", () => {
     const source = read("Common/Settings.qml");
-    let value = { mods: { left: [{ id: "ws", on: true }] } };
-    let disk = JSON.stringify(value);
-    let writes = 0;
-    const context = vm.createContext({
-        ready: true, migrationPending: false, corruptBackupPending: false, loadError: false,
-        writeInFlight: false, writeSnapshot: "", lastPersistedText: disk, storeText: disk,
-        reloadAfterWrite: false,
-        saveError: false, savePending: true, lastSavedAt: 0,
-        SettingsHelpers: { serialize: JSON.stringify }, snapshot: () => value,
-        saveTimer: { restart() {} }, FileViewError: { Unknown: 1 },
-        store: { setText(text) {
-            if (text === disk) return; // FileView emits no saved signal for a no-op.
-            writes++; disk = text; context.handleSaveSucceeded();
-        } }
-    });
-    for (const name of ["sameContent", "releaseWriteGuard", "saveNow", "handleSaveSucceeded",
-            "handleSaveFailure"]) {
-        const body = source.match(new RegExp("    function " + name + "\\([^]*?^    }", "m"))[0];
-        vm.runInContext(body, context);
-    }
-    context.saveNow();
-    assert.equal(context.writeInFlight, false);
-    assert.equal(context.savePending, false);
-    assert.equal(writes, 0);
-    for (const on of [false, true]) {
-        value = { mods: { left: [{ id: "ws", on }] } };
-        context.savePending = true;
-        context.saveNow();
-        assert.equal(context.writeInFlight, false);
-        assert.equal(context.savePending, false);
-        assert.equal(JSON.parse(disk).mods.left[0].on, on);
-        context.saveNow(); // Opening a form can schedule the same value again.
-        assert.equal(context.writeInFlight, false);
-    }
-    assert.equal(writes, 2);
+    assert.match(source, /if \(!document\.begin\(\)\)/);
+    assert.match(source, /candidate: writeSnapshot, version: SettingsHelpers\.VERSION/);
+    assert.match(source, /sameContent\(next, lastPersistedText\)/);
+    assert.doesNotMatch(source, /store\.setText/);
+    // Real QML asynchronous transitions are exercised in tst_settings_document,
+    // and settings-ownership.py exercises the actual atomic filesystem writer.
 });

@@ -87,8 +87,34 @@ def main():
         report['testing_iso'] = str(iso)
         report['testing_iso_bytes'] = iso.stat().st_size
         for scenario in ('encrypted-us', 'plain-us', 'encrypted-nl', 'plain-nl'):
-            run_child([str(ROOT / 'image/qualify'), str(iso), '--output', str(output / scenario),
-                            '--execute-vm', '--erase-disposable-disk', '--scenario', scenario])
+            command = [str(ROOT / 'image/qualify'), str(iso), '--output', str(output / scenario),
+                       '--execute-vm', '--erase-disposable-disk', '--scenario', scenario]
+            if scenario.startswith('plain-'):
+                command.append('--capture-outcomes')
+            run_child(command)
+        report['installation_parity'] = []
+        for scenario in ('plain-us', 'plain-nl'):
+            directory = output / ('checkout-' + scenario)
+            run_child([str(ROOT / 'image/qualify-checkout'), '--artifacts', str(artifacts),
+                       '--iso-results', str(output / scenario), '--scenario', scenario,
+                       '--output', str(directory), '--execute-vm'])
+            checkout = json.loads((directory / 'checkout-qualification.json').read_text())
+            fresh = json.loads((output / scenario / 'qualification.json').read_text())
+            if (checkout.get('status') != 'passed' or checkout.get('scenario') != scenario
+                    or not checkout.get('source_content_sha256')
+                    or checkout['source_content_sha256'] != fresh.get('source_content_sha256')
+                    or checkout.get('source_revision') != fresh.get('source_revision')):
+                raise RuntimeError('Checkout parity did not qualify the exact ISO source')
+            for profile in ('fresh', 'saved'):
+                parity = json.loads((directory / ('parity-' + profile + '.json')).read_text())
+                if (parity.get('status') != 'passed' or parity.get('source_content_sha256') != checkout['source_content_sha256']
+                        or parity.get('scenario') != scenario or parity.get('profile') != profile):
+                    raise RuntimeError('Missing or mismatched real installed parity result')
+            fresh['checkout_parity'] = checkout
+            fresh['checks'] += ['installed-parity-fresh', 'installed-parity-saved']
+            atomic_json(output / scenario / 'qualification.json', fresh)
+            report['installation_parity'].append({'scenario': scenario, 'source_content_sha256': checkout['source_content_sha256'],
+                                                 'checkout_report_sha256': digest(directory / 'checkout-qualification.json')})
         run_child([str(ROOT / 'image/qualify'), str(baseline), '--output', str(output / 'upgrade'),
                         '--execute-vm', '--erase-disposable-disk', '--scenario', 'encrypted-us',
                         '--candidate-rpm', str(rpms[0]), '--recovery-check', '--legacy-installer'])

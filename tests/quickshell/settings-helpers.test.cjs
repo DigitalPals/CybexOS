@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 26);
+    assert.equal(H.VERSION, 27);
     assert.deepEqual(d.drawerTabs.map(t => t.id),
         ["overview", "sound", "network", "bluetooth", "power", "notifications"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
@@ -514,7 +514,7 @@ test("merge falls back on invalid enums, colors and names", () => {
 test("schema-5 bar modes migrate without losing customized geometry", () => {
     assert.equal(H.merge({
         v: 5, floating: true, barHeight: 46, barRadius: 23, gap: 10
-    }).barStyle, "hug", "pristine floating geometry adopts the new default");
+    }).barStyle, "floating", "an explicit old floating mode remains floating");
     assert.equal(H.merge({
         v: 5, floating: true, barHeight: 44, barRadius: 23, gap: 10
     }).barStyle, "floating", "a customized height remains floating");
@@ -530,7 +530,7 @@ test("schema-5 colors select wallpaper or fixed mode and remain stored", () => {
     const pristine = H.merge({
         v: 5, accent: "#5e9bff", barColorMode: "default"
     });
-    assert.equal(pristine.paletteMode, "wallpaper");
+    assert.equal(pristine.paletteMode, "fixed");
 
     const oldWallpaperAccent = H.merge({
         v: 5, accentWall: true, accent: "#a992e0", barColorMode: "black"
@@ -578,9 +578,9 @@ test("missing font preferences use the current default across first-run and lega
             "an explicitly saved font remains selectable");
 });
 
-test("schema-7 adopts Google Sans only from the previous default", () => {
-    assert.equal(H.merge({ v: 6, font: "urbanist" }).font, "google",
-        "the old untouched default follows the softer typography pass");
+test("legacy fonts remain explicit even when equal to an old default", () => {
+    assert.equal(H.merge({ v: 6, font: "urbanist" }).font, "urbanist",
+        "a saved former default is still the user choice");
     assert.equal(H.merge({ v: 6, font: "plex" }).font, "plex",
         "an explicit previous-schema choice survives");
     assert.equal(H.merge({ v: H.VERSION, font: "urbanist" }).font, "urbanist",
@@ -619,7 +619,7 @@ test("normalizeMods falls back to the default flag for a non-boolean", () => {
     assert.equal(next.left[0].on, true);
 });
 
-test("a schema-3 file adopts the redesign only where it was left untouched", () => {
+test("a schema-3 file retains every saved choice across visual redesigns", () => {
     // The glass menubar changed the bar's proportions, and a settings file
     // written by the previous schema carries the old ones for every key. A
     // value the user never moved takes the new default; one they did is theirs.
@@ -628,14 +628,14 @@ test("a schema-3 file adopts the redesign only where it was left untouched", () 
         font: "oppo", osd: "top",
         modOpts: { ws: { style: "numbers" }, media: { maxWidth: 220 } }
     });
-    assert.equal(untouched.barHeight, 36);
-    assert.equal(untouched.barRadius, 11);
+    assert.equal(untouched.barHeight, 30);
+    assert.equal(untouched.barRadius, 9);
     assert.equal(untouched.gap, 8);
-    assert.equal(untouched.accent, "#d3d283");
-    assert.equal(untouched.font, "mono");
-    assert.equal(untouched.osd, "bottom");
+    assert.equal(untouched.accent, "#9ecbeb");
+    assert.equal(untouched.font, "oppo");
+    assert.equal(untouched.osd, "top");
     assert.equal(untouched.modOpts.ws.style, "numbers");
-    assert.equal(untouched.modOpts.media.maxWidth, 180);
+    assert.equal(untouched.modOpts.media.maxWidth, 220);
 
     const chosen = H.merge({
         v: 3, barHeight: 36, accent: "#a992e0", font: "mono",
@@ -684,7 +684,7 @@ test("schema-4 appearance choices survive later schema upgrades", () => {
         previous.barCustomLightness), H.BAR_COLOR_PRESETS.default.light);
 });
 
-test("schema-9 adopts the classic bar only from untouched design values", () => {
+test("schema-9 retains explicit former defaults across the classic redesign", () => {
     const untouched = H.merge({
         v: 9,
         glassEnabled: true,
@@ -701,18 +701,18 @@ test("schema-9 adopts the classic bar only from untouched design values", () => 
             clock: { dateFormat: "ddd d MMM" }
         }
     });
-    assert.equal(untouched.glassEnabled, false);
-    assert.equal(untouched.barHeight, 36);
-    assert.equal(untouched.barRadius, 11);
-    assert.equal(untouched.gap, 8);
-    assert.equal(untouched.accent, "#d3d283");
+    assert.equal(untouched.glassEnabled, true);
+    assert.equal(untouched.barHeight, 46);
+    assert.equal(untouched.barRadius, 23);
+    assert.equal(untouched.gap, 10);
+    assert.equal(untouched.accent, "#5e9bff");
     assert.deepEqual([
         untouched.barCustomHue,
         untouched.barCustomSaturation,
         untouched.barCustomLightness
-    ], [230, 14, 9]);
-    assert.equal(untouched.modOpts.ws.style, "numbers");
-    assert.equal(untouched.modOpts.clock.dateFormat, "ddd dd");
+     ], [247, 29, 11]);
+    assert.equal(untouched.modOpts.ws.style, "dots");
+    assert.equal(untouched.modOpts.clock.dateFormat, "ddd d MMM");
 
     const chosen = H.merge({
         v: 9,
@@ -961,9 +961,8 @@ test("pre-OCR action lists place OCR beside recording without overriding visibil
     assert.deepEqual(untouched.order, [
         "dictation", "recording", "ocr", "reminder", "night-light", "dnd", "stay-awake"
     ]);
-    assert.deepEqual(untouched.enabled, [
-        "dictation", "recording", "ocr", "reminder", "night-light", "dnd", "stay-awake"
-    ]);
+    assert.deepEqual(untouched.enabled, priorIds,
+        "a stored enabled list never implies permission to enable a new action");
 
     const customized = H.merge({
         v: H.VERSION,

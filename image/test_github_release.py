@@ -80,11 +80,30 @@ class GitHubRelease(unittest.TestCase):
 
     def report(self, scenario, iso, checks, rpm=None):
         path = self.root / (scenario + '.json')
-        path.write_text(json.dumps({'scenario': scenario, 'iso_sha256': iso,
-                                    'status': 'passed', 'checks': checks,
-                                    'candidate_rpm_sha256': rpm}))
+        report = {'scenario': scenario, 'iso_sha256': iso, 'status': 'passed', 'checks': checks,
+                  'candidate_rpm_sha256': rpm}
+        if scenario.startswith('plain-'):
+            report.update(source_revision='a' * 40, source_content_sha256='d' * 64,
+                          checkout_parity={'status': 'passed', 'scenario': scenario, 'source_revision': 'a' * 40,
+                            'source_content_sha256': 'd' * 64, 'checks': ['full-checkout-installation',
+                                'installed-parity-fresh', 'installed-parity-saved', 'full-graphical-session']})
+            report['checks'] += ['installed-parity-fresh', 'installed-parity-saved']
+        path.write_text(json.dumps(report))
         self.reports.append(path)
         return path
+
+    def test_checkout_parity_cannot_be_missing_stale_or_fixture_only(self):
+        target = self.root / 'plain-us.json'
+        original = json.loads(target.read_text())
+        for replacement in ({}, {'status': 'passed', 'source_content_sha256': 'e' * 64},
+                            {**original['checkout_parity'], 'checks': ['source-fixtures']},
+                            {**original['checkout_parity'], 'source_revision': 'b' * 40}):
+            with self.subTest(replacement=replacement):
+                target.write_text(json.dumps({**original, 'checkout_parity': replacement}))
+                with self.assertRaisesRegex(ValueError, 'same-source real checkout/ISO parity'):
+                    self.prepare()
+                self.assertFalse(self.output.exists())
+        target.write_text(json.dumps(original))
 
     def prepare(self):
         # These fixtures are deliberately not signed releases or VM evidence.

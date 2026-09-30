@@ -26,7 +26,7 @@ package.path = source_dir .. "/?.lua;" .. source_dir .. "/?/init.lua;"
   .. generated_dir .. "/?.lua;" .. generated_dir .. "/?/init.lua;"
   .. user_dir .. "/?.lua;" .. user_dir .. "/?/init.lua;" .. package.path
 
-for _, module in ipairs({ "features", "monitors", "input", "bindings", "looknfeel", "autostart", "displays" }) do
+for _, module in ipairs({ "features", "monitors", "input", "input_preferences", "bindings", "looknfeel", "autostart", "displays" }) do
   package.loaded[module] = nil
 end
 
@@ -40,6 +40,8 @@ if not displays_ok then
   _G.__cybexos_displays_error = tostring(displays_error)
 end
 require("input")
+local input_ok, input_error = pcall(require, "input_preferences")
+if not input_ok then _G.__cybexos_input_error = tostring(input_error) end
 require("bindings")
 require("looknfeel")
 require("autostart")
