@@ -185,8 +185,17 @@ function errorTitle(provider) {
 
 function preserveProxyReadings(previous, next) {
   if (!previous || previous.source !== "cliproxy") return next
+  if (previous.proxyImplementation && next.proxyImplementation
+      && previous.proxyImplementation !== next.proxyImplementation) return next
+  if (!next.proxyImplementation && previous.proxyImplementation)
+    next.proxyImplementation = previous.proxyImplementation
   function retain(old, fresh) {
     if (!old || !fresh || fresh.status !== "error" || old.status !== "ok") return fresh
+    if (old.proxyImplementation && fresh.proxyImplementation
+        && old.proxyImplementation !== fresh.proxyImplementation) return fresh
+    if (fresh.errorKind === "malformed" || fresh.supportsBankedReset === false
+        && fresh.proxyImplementation !== old.proxyImplementation) return fresh
+    if (fresh.proxyImplementation === "rust" && fresh.errorKind === "quota_unavailable") return fresh
     return Object.assign({}, fresh, {
       status: "ok", stale: true, windows: old.windows, credits: old.credits,
       plan: old.plan, account: old.account, fetchedAt: old.fetchedAt,

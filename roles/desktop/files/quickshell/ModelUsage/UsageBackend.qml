@@ -25,6 +25,7 @@ Item {
   readonly property string cliproxyUrl: String(setting("cliproxyUrl", "http://127.0.0.1:8317"))
   readonly property string cliproxyKeyFile: String(setting("cliproxyKeyFile", ""))
   readonly property var providers: payload ? UsageLogic.listOrEmpty(payload.providers) : []
+  readonly property string proxyImplementation: String(payload && payload.proxyImplementation || "")
   readonly property string connectionId: JSON.stringify([usageSource, cliproxyUrl, cliproxyKeyFile])
   readonly property string scriptPath: localPath(Qt.resolvedUrl("scripts/usage-fetch.py"))
   readonly property double nextRefreshAt: lastAttemptAt > 0

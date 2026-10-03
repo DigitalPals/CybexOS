@@ -260,6 +260,7 @@ Ui.Panel {
     if (account.reading && account.reading.status === "disabled") text += "\nThis account is now paused."
     if (account.reading && account.reading.stale) text += "\nQuota is a last-known reading."
     if (activityBackend.fetchError !== "" && account.reading) text += "\nShowing last-known account activity."
+    if (activityBackend.rustProxy) text += "\nLatest completed request, including failures; activity resets when the proxy restarts."
     return text
   }
 
@@ -1108,6 +1109,7 @@ Ui.Panel {
             objectName: "accountResetAction"
             anchors.fill: parent
             enabled: root.proxyMode && accountCard.account.status === "ok"
+              && accountCard.account.supportsBankedReset !== false
               && Number(accountCard.account.credits && accountCard.account.credits.resetCreditsAvailable) > 0
               && !resetBackend.active && !resetBackend.busy
             hoverEnabled: true

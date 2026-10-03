@@ -1,0 +1,6 @@
+[
+  {"id":"file:claude-one.json","file":"claude-one.json","provider":"claude","kind":"oauth","disabled":false,"email":"one@example.invalid","label":"Claude One","last_used":"2030-01-01T00:00:30.123456789Z","quota":{"updated_at":"2030-01-01T00:00:00Z","windows":[{"name":"5h","used":25,"resets_at":"2030-01-01T05:00:00Z"},{"name":"week","used":50,"resets_at":"2030-01-08T00:00:00Z"},{"name":"week opus","model":"opus","used":70,"resets_at":"2030-01-08T00:00:00Z"}]}},
+  {"id":"file:claude-two.json","file":"claude-two.json","provider":"claude","kind":"oauth","disabled":true,"label":"Paused","last_used":"2030-01-01T00:00:31Z","quota":{"updated_at":null,"windows":[]}},
+  {"id":"file:codex-one.json","file":"codex-one.json","provider":"codex","kind":"oauth","disabled":false,"email":"codex@example.invalid","last_used":"2030-01-01T00:00:25Z","quota":{"updated_at":"2030-01-01T00:00:00Z","plan":"pro","windows":[{"name":"week","used":0,"resets_at":"2030-01-08T00:00:00Z"}]}},
+  {"id":"gemini:opaque","file":null,"provider":"gemini","kind":"api-key","disabled":false,"label":"API key","last_used":null,"quota":{"updated_at":null,"windows":[]}}
+]

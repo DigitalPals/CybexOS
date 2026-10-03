@@ -14,7 +14,7 @@ import urllib.request
 import jinja2
 import yaml
 from application_payload import relativize_seed_links, include_applications
-from desktop_payload import prepare_defaults, prepare_session, split_seed, prepare_managed_defaults, prepare_app_launchers
+from desktop_payload import prepare_defaults, prepare_session, split_seed, prepare_managed_defaults, prepare_app_launchers, prepare_quickshell
 from provision_payload import prepare_provision
 from release_metadata import install_update_channel, render_spec
 
@@ -66,15 +66,7 @@ def main():
     runtime = "usr/share/cybexos/runtime"
     copy("LICENSE", "usr/share/licenses/cybexos-desktop/LICENSE")
     copy("release-manifest.json", "usr/share/cybexos/release-manifest.json")
-    quickshell = ROOT / "roles/desktop/files/quickshell"
-    for source in sorted(quickshell.rglob("*")):
-        if not source.is_file() or source.is_symlink() or "__pycache__" in source.parts or source.suffix == ".pyc":
-            continue
-        relative = f"{runtime}/quickshell/{source.relative_to(quickshell)}"
-        copy(source.relative_to(ROOT), relative, source.parent.name == "scripts" and source.suffix != ".py")
-        if source.suffix in (".qml", ".js"):
-            target = payload / relative
-            target.write_text(target.read_text().replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))
+    prepare_quickshell(ROOT, payload)
     for name in ("hyprland.lua", "bindings.lua", "autostart.lua", "displays.lua", "input_preferences.lua"):
         content = (ROOT / "roles/desktop/files" / name).read_text()
         content = content.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-")

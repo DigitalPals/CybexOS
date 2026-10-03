@@ -16,8 +16,9 @@ Item {
   property string scriptPath: usageBackend.localPath(Qt.resolvedUrl("scripts/proxy-activity.py"))
   readonly property string keeperUrl: String(settings.costKeeperUrl || "")
   readonly property string passwordFile: String(settings.costKeeperPasswordFile || "")
-  readonly property bool trackingEnabled: usageBackend.usageSource === "cliproxy" && keeperUrl.trim() !== ""
-  readonly property string connectionId: JSON.stringify([usageBackend.connectionId, keeperUrl, passwordFile])
+  readonly property bool rustProxy: usageBackend.proxyImplementation === "rust"
+  readonly property bool trackingEnabled: usageBackend.usageSource === "cliproxy" && (rustProxy || keeperUrl.trim() !== "")
+  readonly property string connectionId: JSON.stringify([usageBackend.connectionId, usageBackend.proxyImplementation, keeperUrl, passwordFile])
   readonly property string notice: !trackingEnabled
     ? "Configure CPA Usage Keeper in settings to track the last-used account."
     : fetchError !== "" ? fetchError : lastSuccessAt <= 0 ? "Loading account activity…" : ""
@@ -28,9 +29,10 @@ Item {
     launchPending = true
     pendingRefresh = false
     var command = ["python3", scriptPath, "--cliproxy-url", usageBackend.cliproxyUrl,
-      "--keeper-url", keeperUrl, "--timeout", "10"]
+      "--timeout", "10"]
+    if (!rustProxy && keeperUrl.trim() !== "") command.push("--keeper-url", keeperUrl)
     if (usageBackend.cliproxyKeyFile !== "") command.push("--cliproxy-key-file", usageBackend.cliproxyKeyFile)
-    if (passwordFile !== "") command.push("--keeper-password-file", passwordFile)
+    if (!rustProxy && passwordFile !== "") command.push("--keeper-password-file", passwordFile)
     process.command = command
     process.connectionId = connectionId
     process.running = true
