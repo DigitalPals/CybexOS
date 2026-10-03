@@ -3,7 +3,7 @@
 This directory is the [Model Usage](https://github.com/DigitalPals/omarchy-modelusage)
 Omarchy plugin, vendored as the shell's built-in Model Usage widget.
 
-Commit: `8266a07495674d2d425f6d76b67833872a69d466` (version 1.1.1)
+Commit: `bc771a070ba1a18a3566a7006ecd1ba8c000713c` (version 1.2.0)
 
 Everything here except this README is upstream's, unchanged: the QML and
 JavaScript, `assets/`, `scripts/`, `LICENSE` and `THIRD_PARTY_NOTICES.md`. The

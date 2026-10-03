@@ -121,6 +121,17 @@ const resetStale = context.preserveProxyReadings({ source: "cliproxy", providers
   { source: "cliproxy", providers: [{ ...resetFailure, accounts: [resetFailure] }] });
 assert.equal(context.accountResetLabel(resetStale.providers[0].accounts[0]), "2 banked resets");
 assert.equal(resetStale.providers[0].accounts[0].stale, true);
+const goSnapshot = { source: "cliproxy", proxyImplementation: "go",
+  providers: [{ ...resetAccount, proxyImplementation: "go", accounts: [{ ...resetAccount, proxyImplementation: "go" }] }] };
+const nativeFailure = { ...resetFailure, windows: [], proxyImplementation: "rust", supportsBankedReset: false };
+const rustSnapshot = context.preserveProxyReadings(goSnapshot,
+  { source: "cliproxy", proxyImplementation: "rust", providers: [{ ...nativeFailure, accounts: [nativeFailure] }] });
+assert.equal(rustSnapshot.providers[0].accounts[0].credits, null, "implementation changes never restore Go reset credits");
+assert.equal(rustSnapshot.providers[0].accounts[0].windows.length, 0);
+const malformedNative = context.preserveProxyReadings(
+  { source: "cliproxy", providers: [{ ...priorAccount, proxyImplementation: "rust" }] },
+  { source: "cliproxy", providers: [{ ...failedAccount, proxyImplementation: "rust", errorKind: "malformed" }] });
+assert.equal(malformedNative.providers[0].status, "error", "invalid native data cannot become a successful retained reading");
 
 const customRows = [{model: " vendor/Model[1m] ", inputCostPerMillionTokens: "2",
   outputCostPerMillionTokens: "8", cacheReadCostPerMillionTokens: "0", cacheWriteCostPerMillionTokens: ""}];

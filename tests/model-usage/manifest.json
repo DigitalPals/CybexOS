@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "digitalpals.model-usage",
   "name": "Model Usage",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "author": "DigitalPals",
   "license": "MIT",
   "description": "Track Claude Code, OpenAI Codex, and Kimi Code subscription limits from your Omarchy menu bar. Connect local CLIs or CLIProxyAPI to monitor multiple accounts, remaining quotas, reset times, and credits. Explore 24-hour, 7-day, and 30-day token history and estimated API costs from local Codex/Claude transcripts and remote T3 Code servers, with cache-aware pricing, custom model rates, and provider/model breakdowns. Includes private account labels, quota history, and keyboard-friendly settings.",
@@ -58,7 +58,7 @@
           "cliproxy"
         ],
         "defaultValue": "direct",
-        "description": "Read local CLI sign-ins directly or query accounts managed by CLIProxyAPI. Costs has its own source setting."
+        "description": "Read local CLI sign-ins or query CLIProxyAPI and CLIProxyAPI-Rust accounts. Proxy implementations are detected automatically. Costs has its own source setting."
       },
       {
         "key": "cliproxyUrl",
@@ -192,7 +192,7 @@
         "type": "string",
         "label": "CPA Usage Keeper URL",
         "defaultValue": "",
-        "description": "Optional Keeper URL for last-used quota account activity. Not used for Costs."
+        "description": "Optional Keeper URL for Go proxy account activity. Rust proxies report activity directly. Not used for Costs."
       },
       {
         "key": "costKeeperPasswordFile",

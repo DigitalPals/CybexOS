@@ -4,6 +4,21 @@ from pathlib import Path
 import shutil
 
 
+def prepare_quickshell(root, payload):
+    """Package the same shell sources deployed by the checkout desktop role."""
+    quickshell = root / "roles/desktop/files/quickshell"
+    runtime = payload / "usr/share/cybexos/runtime/quickshell"
+    for source in sorted(quickshell.rglob("*")):
+        if not source.is_file() or source.is_symlink() or "__pycache__" in source.parts or source.suffix == ".pyc":
+            continue
+        target = runtime / source.relative_to(quickshell)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        target.chmod(0o755 if source.parent.name == "scripts" and source.suffix != ".py" else 0o644)
+        if source.suffix in (".qml", ".js"):
+            target.write_text(target.read_text().replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))
+
+
 def prepare_defaults(root, payload, environment, inventory):
     contract = json.loads((root / "assets/desktop-contract.json").read_text())
     vendor = payload / "usr/share/cybexos"

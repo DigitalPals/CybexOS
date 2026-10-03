@@ -280,7 +280,7 @@ Column {
     Hint { text: "Save to discover the proxy’s providers and accounts." }
     Section {
       title: "Learn more"
-      Hint { text: "Use the key for the CLIProxyAPI management panel. It is saved privately on this device. Quota limits and estimated costs use separate data sources." }
+      Hint { text: "Use the management key for CLIProxyAPI or CLIProxyAPI-Rust. The implementation is detected automatically. The key is saved privately on this device. Quota limits and estimated costs use separate data sources." }
     }
   }
 
@@ -411,7 +411,7 @@ Column {
     Hint { text: "Show the last-used account in the percentage menu bar." }
     Section {
       title: "Learn more"
-      Hint { text: "Use the Keeper connected to this proxy. Account activity updates every 15 seconds, independently of Costs. Leave the URL blank to disable this integration." }
+      Hint { text: "Go proxies use Keeper for account activity. Rust proxies report activity directly and do not need Keeper. Activity updates every 15 seconds, independently of Costs." }
     }
   }
 

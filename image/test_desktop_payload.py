@@ -13,7 +13,7 @@ import jinja2
 import yaml
 
 from boot_branding import brand_boot_menu
-from desktop_payload import prepare_defaults, split_seed
+from desktop_payload import prepare_defaults, split_seed, prepare_quickshell
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,6 +31,23 @@ ACCOUNTS = load("desktop_seed_accounts", "image/rootfs/usr/libexec/cybexos-seed-
 
 
 class DesktopPayload(unittest.TestCase):
+    def test_model_usage_runtime_matches_checkout_including_rust_adapter(self):
+        source = ROOT / "roles/desktop/files/quickshell/ModelUsage"
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            prepare_quickshell(ROOT, payload)
+            installed = payload / "usr/share/cybexos/runtime/quickshell/ModelUsage"
+            files = {p.relative_to(source): p for p in source.rglob("*")
+                     if p.is_file() and not p.is_symlink() and "__pycache__" not in p.parts and p.suffix != ".pyc"}
+            self.assertEqual(set(files), {p.relative_to(installed) for p in installed.rglob("*") if p.is_file()})
+            for relative, path in files.items():
+                expected = path.read_bytes()
+                if path.suffix in (".qml", ".js"):
+                    expected = expected.replace(b"/usr/local/libexec/cybexos-", b"/usr/libexec/cybexos-")
+                self.assertEqual((installed / relative).read_bytes(), expected, str(relative))
+            self.assertIn(b"def fetch_rust_account", (installed / "scripts/usage-fetch.py").read_bytes())
+            self.assertIn(b"normalize_rust_activity", (installed / "scripts/proxy-activity.py").read_bytes())
+
     def test_portable_defaults_and_boot_assets_share_workstation_sources(self):
         environment = jinja2.Environment(undefined=jinja2.StrictUndefined)
         environment.filters.update(bool=bool, ternary=lambda value, yes, no: yes if value else no)
