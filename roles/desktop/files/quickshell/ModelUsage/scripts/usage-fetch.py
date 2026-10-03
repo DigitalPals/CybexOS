@@ -1120,6 +1120,10 @@ def rust_timestamp(value: Any, *, observed: bool = False, now: float | None = No
     try:
         if not isinstance(value, str) or not 0 < len(value) <= 64:
             raise ValueError
+        # Rust emits nanoseconds; Python 3.10's ISO parser accepts only
+        # millisecond or microsecond precision. Normalize to microseconds.
+        value = re.sub(r"(:\d{2}\.)(\d+)(?=(?:Z|[+-]\d{2}:\d{2})$)",
+                       lambda match: match[1] + (match[2] + "000000")[:6], value)
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         stamp = parsed.timestamp()
         current = time.time() if now is None else now

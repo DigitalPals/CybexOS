@@ -182,8 +182,11 @@ The native adapter was implemented and applied to the workstation on
 2026-10-03 at the user's request. Model Usage 1.2.0 is pinned to upstream
 commit `d34db479f99ea4afc3edb539cfb8775a50a57433`, published to
 `DigitalPals/omarchy-modelusage`'s `main` branch at the user's request. The
-CybexOS vendored runtime and test manifest use that exact commit. No
-proxy-server change was made.
+CybexOS vendored runtime and test manifest now pin the follow-up commit
+`bc771a070ba1a18a3566a7006ecd1ba8c000713c`, which also accepts Rust nanosecond timestamps on
+Python 3.10. The original live RPM below was built from `d34db47`; its
+Python 3.14 runtime already accepts those timestamps. No proxy-server
+change was made.
 
 The adapter detects a validated native account inventory after an unsupported
 legacy endpoint response. Discovery shares one timeout budget. It normalizes
@@ -224,6 +227,12 @@ Verification completed:
   `quickshell.service` was active, its MainPID was the sole `qs` process, and
   its current invocation journal contained no QML/runtime errors. Live checks
   used `tests/lib/quickshell-live` with cleanup traps.
+
+After publishing, upstream CI exposed Python 3.10 rejecting native
+nanosecond timestamps. The follow-up normalizes fractional seconds to
+microsecond precision and adds coverage for one through nine fractional
+digits and timezone offsets. All 159 upstream Python tests and JavaScript
+assertions passed locally after that correction.
 
 The development RPM is retained for reinstalling the tested payload in
 `/home/john/.local/share/cybexos/images/rust-widget-live.GHVEIEZX/` alongside

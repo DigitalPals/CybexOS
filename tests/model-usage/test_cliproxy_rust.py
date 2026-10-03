@@ -254,3 +254,11 @@ class RustActivityTests(unittest.TestCase):
         for value in ("2030-01-01T00:00:00", "bad", "2031-01-01T00:00:00Z", 123):
             with self.subTest(value=value), self.assertRaises(self.activity.usage.ProviderFailure):
                 self.activity.normalize_rust_activity([account(last_used=value)], now=NOW)
+
+    def test_activity_timestamps_accept_rust_fractional_precision(self):
+        for fraction in ("1", "12", "123", "1234", "12345", "123456", "123456789"):
+            for timestamp in (f"2030-01-01T00:00:30.{fraction}Z",
+                              f"2030-01-01T01:00:30.{fraction}+01:00"):
+                with self.subTest(timestamp=timestamp):
+                    expected = NOW - 30 + int((fraction + "000000")[:6]) / 1_000_000
+                    self.assertEqual(self.activity.usage.rust_timestamp(timestamp, observed=True, now=NOW), expected)
