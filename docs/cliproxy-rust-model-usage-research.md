@@ -243,6 +243,90 @@ test logs, and desktop screenshots were removed after verification. No test
 VMs or mounts were created. No ISO was built or qualified; release qualification
 remains separate from this live development test.
 
+## Fusebox live account activity assessment (2026-10-08)
+
+Adding a live account indicator is feasible at the inspected deployment's
+scale. Use one persistent WebSocket connection per configured proxy, shared
+by all bars, rather than increasing the frequency of the existing Python
+activity subprocess. This assessment does not implement or deploy the feature.
+
+The service at `root@10.10.0.235` runs
+`0.3.2+gui.93d3af0bb855`. Its deployment record identifies clean source commit
+`fecb778830c13e80c1cd24e041da2107e9917a51`, also the Fusebox repository's HEAD
+at inspection. The deployed README matched that commit byte-for-byte by
+SHA-256. There were five configured accounts across Claude and Codex.
+
+The authenticated `wss://aiproxy.risk-bull.ts.net/api/live` endpoint already
+sends `load` events with account IDs and `{in_flight, sessions}` counts. A
+connection receives an initial snapshot; the server samples every second
+and sends another snapshot only when its serialized contents change.
+Bearer authentication in the upgrade headers worked, so a desktop helper
+does not need to put the management key in its URL. The existing
+`GET /api/accounts` response does not contain these live counts.
+
+- `in_flight` counts actual account request attempts, including unfinished
+  streams. The request guard decrements on completion or cancellation.
+- `sessions` counts distinct assigned sessions seen in the last five minutes,
+  plus sessions with a call still in flight, subject to the configured shorter
+  affinity expiry. It does not mean that every session is generating now.
+- `last_used` remains the latest completed request, including failures. Keep
+  this separate from a new "Serving now" indicator. Concurrent accounts can
+  all be serving; do not choose one by its quota or last-used timestamp.
+
+The load computation reads the account pool, atomic request counters, and
+the in-memory session registry. It performs no provider quota call or SQLite
+query. The full dashboard socket additionally sends request metadata,
+account-change notifications, and five-second totals ticks.
+
+Read-only production measurements, with ordinary model traffic continuing:
+
+| Measurement | Result |
+| --- | --- |
+| Account inventory GET | 10.62 ms; approximately 6.7 KB of reserialized JSON |
+| WebSocket connection | 11.68 ms; header authentication accepted |
+| Load event size | 169 bytes in the observed snapshots |
+| 30-second WebSocket observation | 6 load events, 6 ticks, 7 completed-request events; 7,963 payload bytes total (265 bytes/second) |
+| Desktop observer CPU | 9.37 ms over 30 seconds, about 0.031% of one core |
+| Desktop observer memory | Approximately 33.1 MiB RSS for the whole Python observer; 28 KiB growth during observation |
+| Fusebox CPU before connection | 80 ms over 15.24 seconds, about 0.53% of one core |
+| Fusebox CPU during connection | 140 ms over approximately 30 seconds, about 0.47% of one core |
+| Existing activity helper, three invocations | 87–96 ms elapsed and 75–83 ms child CPU per invocation |
+
+The desktop observer imported the existing adapter and used the installed
+Python `websockets` library; its memory is not a measured incremental
+Quickshell allocation. Server CPU and memory include concurrent production
+work, so these observations cannot isolate the socket's overhead or prove
+performance under a much larger workload. They showed no material CPU
+increase at the current scale. No synthetic model requests were generated.
+
+For implementation, replace Rust activity polling with a bounded persistent
+collector and keep the slower quota refresh independent. Publish only changes
+to QML, use static indicators, preserve hashed identity matching and hidden
+emails, and mark live activity unknown on disconnect. Reconnect with bounded
+backoff and stop the collector when its feature is disabled. Python
+`websockets` is already included by both the desktop role and RPM dependency
+contract. Implement upstream in Model Usage and import through the existing
+vendor workflow, including source/image payload parity coverage.
+
+No Fusebox change is required for one desktop. For wider deployment, an
+activity-only subscription would avoid forwarding request metadata and
+totals. Compute a shared load snapshot once per second for all subscribers:
+the current implementation scans the session registry separately for each
+socket while holding its mutex, and the registry can contain up to 10,000
+assignments. Bound slow-client sends and recover with a complete snapshot
+after reconnect or lag. These changes would protect scaling without adding
+work to every token or provider request.
+
+Source references at the deployed commit:
+
+- [Live load snapshots and WebSocket loop](https://github.com/DigitalPals/Fusebox/blob/fecb778830c13e80c1cd24e041da2107e9917a51/src/mgmt.rs#L912).
+- [Request guards](https://github.com/DigitalPals/Fusebox/blob/fecb778830c13e80c1cd24e041da2107e9917a51/src/accounts.rs#L366).
+- [Recent-session counting](https://github.com/DigitalPals/Fusebox/blob/fecb778830c13e80c1cd24e041da2107e9917a51/src/affinity.rs#L272).
+- [Dashboard consumption of load events](https://github.com/DigitalPals/Fusebox/blob/fecb778830c13e80c1cd24e041da2107e9917a51/ui/app.js#L347).
+
+Temporary source inspection files were removed. No runtime code,
+configuration, credentials, service, RPM, or ISO was changed.
+
 ## Sources
 
 - [Rust v0.3.2 release](https://github.com/IuCC123/CLIProxyAPI-Rust/releases/tag/v0.3.2).
@@ -255,3 +339,56 @@ remains separate from this live development test.
 - Live observations from `root@10.10.0.235`, its local deployment records,
   updater status, authenticated native API, and Keeper error logs on the
   research date. No credentials or raw account identities are reproduced.
+
+
+### Implemented session badges
+
+Model Usage 1.3.1 uses one shared, reference-counted live collector per proxy
+URL/key-file connection. Fusebox and its deployment are unchanged. The menubar
+shows quota percentages only. A badge at the upper-right of each account card,
+aligned with its subscription title, shows Fusebox's recent assigned-session
+count. The count is not an unfinished-request count and may stay positive after
+requests finish. Tooltip and keyboard-accessible expandable details explain
+this. Broken, stale or unsupported streams display “Sessions unknown”. Models
+are not displayed or queried. Quota layout, last-used selection, account order,
+and saved email privacy are preserved. Obsolete bar-count and separate
+recent-session settings are dropped by normalization.
+
+The collector reads only cached native inventory, coalesces changes to at most
+one inventory request per 15 seconds, refreshes idle inventory every 60 seconds,
+and throttles stdout heartbeats to five seconds. Frames, queues and QML stdout
+are bounded. Initial load and heartbeat expiry prevent false zero counts;
+reconnect backoff caps at 60 seconds. Older Rust endpoints retain cached
+last-used activity with live activity unavailable. Go/Keeper retains its
+existing polling path. No server changes, new connections, per-session queries,
+model discovery or extra polling are required for the badge.
+
+A final 20-second live sample measured 0.1% of one core and 32.3 MiB RSS for the
+shared helper; the entire shell consumed 1.2% of one core. The presentation-only
+revision retains the existing collector and protocol. This short observation
+does not claim a stress benchmark.
+
+Validation covers real WebSocket authentication, normalization, idle,
+disconnect, malformed counts, missing initial snapshots, reconnect backoff and
+shared QML lifetime. Badge tests distinguish session counts from unfinished
+requests, including zero requests with positive recent sessions. Checkout
+settings and ISO desktop payload fixtures share the same settings and transport
+dependency. Live verification confirmed quota-only chips and the upper-right
+session badge beside “Codex Pro · 20×”. The managed service's current invocation
+passed QML journal and sole-managed-`qs` checks. Its development source selection
+was preserved. Deployment uses a scoped development RPM preserving the installed
+payload's unrelated files, dependencies and scriptlets; this is not a rebuilt or
+end-to-end-qualified ISO release.
+
+### Fusebox naming and repository link
+
+Model Usage 1.3.2 names the native Rust connection Fusebox in Limits settings,
+quota source diagnostics and account notices. Limits settings expose a visible,
+keyboard-accessible “Fusebox on GitHub” link to
+`https://github.com/DigitalPals/Fusebox`. Before discovery, the source option says
+“Fusebox / CLIProxyAPI”; detected Go connections retain the CLIProxyAPI name.
+The existing source value, URL/key settings and Rust protocol marker are
+unchanged, so saved connections continue to work. This is a presentation change
+with no new network calls, polling or processes. The desktop payload equality
+fixture covers both checkout and ISO/RPM source packaging. The scoped desktop
+RPM is a development update, not an end-to-end-qualified ISO release.

@@ -274,6 +274,7 @@ function defaultModOpts() {
             cliproxyUrl: "http://127.0.0.1:8317",
             cliproxyKeyFile: "",
             hideAccountEmails: true,
+            liveAccountActivity: true,
             squareUsageCards: true,
             barDisplayMode: "Percentages",
             barProviders: MODEL_USAGE_PROVIDERS.slice(),
@@ -887,6 +888,7 @@ var MOD_OPT_CHECKS = {
         cliproxyUrl: function(v, d) { return textIn(v, 400, d); },
         cliproxyKeyFile: function(v) { return optionalTextIn(v, 4096); },
         hideAccountEmails: boolIn,
+        liveAccountActivity: boolIn,
         squareUsageCards: boolIn,
         barDisplayMode: function(v, d) { return enumIn(v, ["Icon", "Percentages"], d); },
         barProviders: function(v, d) {

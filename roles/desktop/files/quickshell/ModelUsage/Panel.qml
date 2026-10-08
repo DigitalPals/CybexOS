@@ -553,6 +553,7 @@ Ui.Panel {
               font.pixelSize: Style.font.bodySmall
               font.weight: Font.Medium
             }
+
           }
         }
       }
@@ -764,6 +765,7 @@ Ui.Panel {
             fontFamily: root.fontFamily
             accountDetails: root.accountTooltip(root.provider)
             proxyProviders: root.proxyMode ? backend.providers : []
+            proxyImplementation: backend.proxyImplementation
             onSaveRequested: function(values) { root.saveSettings(values) }
             onCancelRequested: root.leaveSettings()
             onRevealRequested: function(item) {
@@ -793,6 +795,18 @@ Ui.Panel {
             visible: root.viewMode === "limits" && root.accountOverview
             width: parent.width
             spacing: Style.spacing.lg
+
+            Text {
+              objectName: "liveActivityStatus"
+              width: parent.width
+              visible: activityBackend.useLive
+              text: activityBackend.liveNotice
+              textFormat: Text.PlainText
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+            }
 
             Repeater {
               id: accountRepeater
@@ -825,7 +839,7 @@ Ui.Panel {
             bottomPadding: Style.spacing.huge
             text: backend.loading
               ? "Loading AI subscription usage…"
-              : root.proxyMode ? "No enabled managed accounts found. Check the accounts configured in CLIProxyAPI."
+              : root.proxyMode ? "No enabled managed accounts found. Check the accounts configured in " + UsageLogic.proxyName(backend.proxyImplementation) + "."
               : "No connected providers found. Enable a provider in the widget settings and sign in to its CLI."
             color: root.dim
             font.family: root.fontFamily
@@ -1020,6 +1034,8 @@ Ui.Panel {
     objectName: "proxyAccountCard"
     property var account: ({})
     property int accountNumber: 0
+    property bool activityExpanded: false
+    readonly property var load: UsageLogic.accountLoad(account, activityBackend)
     readonly property var windows: UsageLogic.accountWindows(account, root.expandedAccountLimits)
     readonly property bool healthy: account.status === "ok"
     implicitHeight: accountContent.implicitHeight + contentTopInset + contentBottomInset
@@ -1041,7 +1057,8 @@ Ui.Panel {
       Item {
         width: parent.width
         implicitHeight: Math.max(accountLogo.height, accountPlan.implicitHeight,
-          resetBadge.visible ? resetBadge.implicitHeight : 0)
+          resetBadge.visible ? resetBadge.implicitHeight : 0,
+          sessionBadge.visible ? sessionBadge.implicitHeight : 0)
 
         Item {
           id: accountLogo
@@ -1076,7 +1093,8 @@ Ui.Panel {
           anchors.leftMargin: Style.spacing.md
           anchors.verticalCenter: parent.verticalCenter
           width: Math.max(0, parent.width - accountLogo.width - Style.spacing.md
-            - (resetBadge.visible ? resetBadge.width + Style.spacing.md : 0))
+            - (resetBadge.visible ? resetBadge.width + Style.spacing.md : 0)
+            - (sessionBadge.visible ? sessionBadge.width + Style.spacing.md : 0))
           text: UsageLogic.accountPlanLabel(accountCard.account)
           textFormat: Text.PlainText
           color: root.foreground
@@ -1087,10 +1105,30 @@ Ui.Panel {
           wrapMode: Text.WordWrap
         }
 
+        Ui.Button {
+          id: sessionBadge
+          objectName: "accountSessionBadge"
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          visible: activityBackend.useLive
+          text: UsageLogic.sessionBadgeText(accountCard.load)
+          focusable: true
+          bordered: true
+          horizontalPadding: Style.spacing.sm
+          verticalPadding: Style.spacing.xs
+          foreground: accountCard.load !== null && accountCard.load.sessions > 0 ? root.foreground : root.dim
+          fontFamily: root.fontFamily
+          fontSize: Style.font.caption
+          tooltipText: UsageLogic.sessionDetails(accountCard.load)
+          Accessible.name: text + (accountCard.activityExpanded ? ", hide session details" : ", show session details")
+          onClicked: accountCard.activityExpanded = !accountCard.activityExpanded
+        }
+
         Rectangle {
           id: resetBadge
           objectName: "accountResetBadge"
-          anchors.right: parent.right
+          anchors.right: sessionBadge.visible ? sessionBadge.left : parent.right
+          anchors.rightMargin: sessionBadge.visible ? Style.spacing.md : 0
           anchors.verticalCenter: parent.verticalCenter
           visible: resetLabel.text !== ""
           implicitWidth: resetLabel.implicitWidth + Style.spacing.lg * 2
@@ -1136,6 +1174,7 @@ Ui.Panel {
         }
       }
       Text {
+        objectName: "accountName"
         width: parent.width
         text: root.accountDisplayName(accountCard.account, accountCard.accountNumber)
         textFormat: Text.PlainText
@@ -1143,6 +1182,17 @@ Ui.Panel {
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
         elide: Text.ElideMiddle
+      }
+      Text {
+        objectName: "accountActivityDetails"
+        width: parent.width
+        visible: activityBackend.useLive && accountCard.activityExpanded
+        text: UsageLogic.sessionDetails(accountCard.load)
+        textFormat: Text.PlainText
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.WordWrap
       }
 
       Repeater {

@@ -29,6 +29,9 @@ Column {
   property var pendingKeys: ({})
   property bool keySaveDecided: false
   property var proxyProviders: []
+  property string proxyImplementation: ""
+  readonly property string proxyName: UsageLogic.proxyName(proxyImplementation)
+  readonly property string fuseboxRepositoryUrl: "https://github.com/DigitalPals/Fusebox"
   readonly property var providerOptions: proxyMode ? UsageLogic.listOrEmpty(proxyProviders) : [
     { id: "claude", name: "Claude Code" },
     { id: "codex", name: "OpenAI Codex" },
@@ -80,6 +83,7 @@ Column {
       costKeeperPasswordFile: String(value("costKeeperPasswordFile", "")),
       enabledProviders: value("enabledProviders", ["claude", "codex", "kimi"]),
       barProviders: value("barProviders", ["claude", "codex", "kimi"]),
+      liveAccountActivity: value("liveAccountActivity", true) !== false,
       hideAccountEmails: value("hideAccountEmails", true) !== false,
       squareUsageCards: value("squareUsageCards", true) === true,
       barDisplayMode: value("barDisplayMode", "Percentages"),
@@ -240,7 +244,7 @@ Column {
       objectName: "usageSourceControl"
       width: Math.min(implicitWidth, parent.width * 0.6)
       label: "Quota source"
-      options: [{ value: "direct", label: "Local CLIs" }, { value: "cliproxy", label: "CLIProxyAPI" }]
+      options: [{ value: "direct", label: "Local CLIs" }, { value: "cliproxy", label: root.proxyName }]
       value: String(root.draft.usageSource || "direct")
       foreground: root.foreground
       surface: root.surface
@@ -252,19 +256,35 @@ Column {
     }
   }
 
+  Ui.Button {
+    objectName: "fuseboxRepositoryLink"
+    visible: root.proxyMode
+    text: "Fusebox on GitHub ↗"
+    tooltipText: root.fuseboxRepositoryUrl
+    foreground: root.foreground
+    fontFamily: root.fontFamily
+    fontSize: Style.font.caption
+    horizontalPadding: Style.spacing.sm
+    verticalPadding: Style.spacing.xs
+    focusable: true
+    Accessible.name: "Open the Fusebox repository on GitHub"
+    onClicked: Qt.openUrlExternally(root.fuseboxRepositoryUrl)
+    onActiveFocusChanged: if (activeFocus) root.revealRequested(this)
+  }
+
   Section {
     id: connectionSection
     objectName: "quotaConnectionSection"
     visible: root.proxyMode
     title: "Connection details"
     summary: root.draft.cliproxyKeyFile ? "Configured" : "Setup"
-    Label { text: "CLIProxyAPI server URL" }
+    Label { text: root.proxyName + " server URL" }
     Field {
       id: proxyUrlField
       objectName: "cliproxyUrlField"
       settingKey: "cliproxyUrl"
       placeholderText: "http://127.0.0.1:8317"
-      Accessible.name: "CLIProxyAPI server URL"
+      Accessible.name: root.proxyName + " server URL"
     }
     SettingsCredential {
       id: managementCredential
@@ -280,7 +300,7 @@ Column {
     Hint { text: "Save to discover the proxy’s providers and accounts." }
     Section {
       title: "Learn more"
-      Hint { text: "Use the management key for CLIProxyAPI or CLIProxyAPI-Rust. The implementation is detected automatically. The key is saved privately on this device. Quota limits and estimated costs use separate data sources." }
+      Hint { text: "Use the management key for Fusebox or CLIProxyAPI. The implementation is detected automatically. The key is saved privately on this device. Quota limits and estimated costs use separate data sources." }
     }
   }
 
@@ -387,8 +407,21 @@ Column {
     id: activitySection
     objectName: "accountActivitySection"
     visible: root.proxyMode
-    title: "Last-used account"
-    summary: root.draft.costKeeperUrl ? "Configured" : "Optional"
+    title: "Account activity"
+    summary: root.draft.liveAccountActivity !== false ? "Live on Fusebox" : "Last used"
+    Row {
+      width: parent.width
+      Label { width: parent.width - liveAccountActivitySwitch.width; text: "Live account activity"; anchors.verticalCenter: parent.verticalCenter }
+      ProviderToggle {
+        id: liveAccountActivitySwitch
+        objectName: "liveAccountActivityToggle"
+        width: Style.space(82)
+        checked: root.draft.liveAccountActivity !== false
+        Accessible.name: "Live account activity"
+        onToggled: root.setValue("liveAccountActivity", !checked)
+      }
+    }
+    Hint { text: "Fusebox session counts appear beside the subscription title. Sessions may remain assigned after requests finish." }
     Label { text: "CPA Usage Keeper URL" }
     Field {
       id: keeperUrlField
@@ -411,7 +444,7 @@ Column {
     Hint { text: "Show the last-used account in the percentage menu bar." }
     Section {
       title: "Learn more"
-      Hint { text: "Go proxies use Keeper for account activity. Rust proxies report activity directly and do not need Keeper. Activity updates every 15 seconds, independently of Costs." }
+      Hint { text: "CLIProxyAPI uses Keeper for account activity. Fusebox streams live activity without Keeper. One connection is shared by all panels. With live activity off, last-used accounts update every 15 seconds, independently of Costs." }
     }
   }
 

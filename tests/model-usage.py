@@ -8,6 +8,7 @@ vendored manifest: the same keys and defaults, and every declared bound and
 option accepted as is.
 """
 import os
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -69,6 +70,29 @@ def main() -> None:
             raise SystemExit(result.stdout + result.stderr)
         subprocess.run(["node", str(package / "tests/test_usage_logic.js")], check=True,
                        stdout=subprocess.DEVNULL)
+        # Never create a developer shell beside the managed desktop. CI (or
+        # an explicitly stopped service) also exercises the real QML lifetime.
+        if shutil.which("qs") and subprocess.run(["pgrep", "-x", "qs"],
+                stdout=subprocess.DEVNULL).returncode != 0:
+            harness = Path(temporary) / "live"
+            harness.mkdir()
+            shutil.copyfile(package / "tests/qml/live-shell.qml", harness / "shell.qml")
+            marker = harness / "events.jsonl"
+            result = subprocess.run(["timeout", "10", "qs", "-p", str(harness), "--no-color"],
+                env={**env, "QT_QPA_PLATFORM": "offscreen", "QT_LOGGING_RULES": "qml.debug=true",
+                     "MODEL_USAGE_REPO_URL": package.as_uri(),
+                     "MODEL_USAGE_FAKE_LIVE": str(package / "tests/fake_live.py"),
+                     "MODEL_USAGE_LIVE_MARKER": str(marker)}, capture_output=True, text=True)
+            output = result.stdout + result.stderr
+            if result.returncode or any(error in output for error in
+                    ("Error:", "ReferenceError", "TypeError", "invalid context", "LIVE TEST FAILED")):
+                raise SystemExit(output)
+            rows = [json.loads(line) for line in marker.read_text().splitlines()]
+            starts = [row for row in rows if row["event"] == "start"]
+            stops = [row for row in rows if row["event"] == "stop"]
+            assert len(starts) == 2 and len(stops) == 2, rows
+            assert {row["pid"] for row in starts} == {row["pid"] for row in stops}, rows
+            print("Model Usage shared live QML lifetime passed")
     print("Model Usage upstream tests and settings contract passed")
 
 

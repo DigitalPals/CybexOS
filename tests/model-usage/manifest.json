@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "digitalpals.model-usage",
   "name": "Model Usage",
-  "version": "1.2.0",
+  "version": "1.3.2",
   "author": "DigitalPals",
   "license": "MIT",
-  "description": "Track Claude Code, OpenAI Codex, and Kimi Code subscription limits from your Omarchy menu bar. Connect local CLIs or CLIProxyAPI to monitor multiple accounts, remaining quotas, reset times, and credits. Explore 24-hour, 7-day, and 30-day token history and estimated API costs from local Codex/Claude transcripts and remote T3 Code servers, with cache-aware pricing, custom model rates, and provider/model breakdowns. Includes private account labels, quota history, and keyboard-friendly settings.",
+  "description": "Track Claude Code, OpenAI Codex, and Kimi Code subscription limits from your Omarchy menu bar. Connect local CLIs, Fusebox, or CLIProxyAPI to monitor multiple accounts, remaining quotas, reset times, and credits. Explore 24-hour, 7-day, and 30-day token history and estimated API costs from local Codex/Claude transcripts and remote T3 Code servers, with cache-aware pricing, custom model rates, and provider/model breakdowns. Includes private account labels, quota history, and keyboard-friendly settings.",
   "kinds": [
     "bar-widget"
   ],
@@ -15,7 +15,7 @@
   },
   "barWidget": {
     "displayName": "Model Usage",
-    "description": "AI subscription quotas from local CLIs or CLIProxyAPI, per-account limits and resets, and combined Codex/Claude token history and API cost estimates from local and T3 Code sources.",
+    "description": "AI subscription quotas from local CLIs, Fusebox, or CLIProxyAPI, per-account limits and resets, and combined Codex/Claude token history and API cost estimates from local and T3 Code sources.",
     "category": "AI",
     "defaultSection": "right",
     "allowMultiple": false,
@@ -46,7 +46,8 @@
         "claude",
         "codex"
       ],
-      "costT3Servers": "[]"
+      "costT3Servers": "[]",
+      "liveAccountActivity": true
     },
     "schema": [
       {
@@ -58,19 +59,19 @@
           "cliproxy"
         ],
         "defaultValue": "direct",
-        "description": "Read local CLI sign-ins or query CLIProxyAPI and CLIProxyAPI-Rust accounts. Proxy implementations are detected automatically. Costs has its own source setting."
+        "description": "Read local CLI sign-ins or query Fusebox and CLIProxyAPI accounts. Proxy implementations are detected automatically. Costs has its own source setting."
       },
       {
         "key": "cliproxyUrl",
         "type": "string",
-        "label": "CLIProxyAPI server URL",
+        "label": "Fusebox / CLIProxyAPI server URL",
         "defaultValue": "http://127.0.0.1:8317",
         "description": "Server, management.html, or /v0/management URL. HTTPS certificates are verified."
       },
       {
         "key": "cliproxyKeyFile",
         "type": "string",
-        "label": "CLIProxyAPI management key file",
+        "label": "Proxy management key file",
         "defaultValue": "",
         "description": "Managed automatically by the settings menu when saving a Management API key. Advanced users can supply an existing private key file path here."
       },
@@ -102,7 +103,7 @@
         "key": "enabledProviders",
         "type": "multiselect",
         "label": "Providers",
-        "description": "Select local CLI providers. CLIProxyAPI discovers all managed providers automatically.",
+        "description": "Select local CLI providers. Fusebox and CLIProxyAPI discover all managed providers automatically.",
         "noSelectionText": "No providers",
         "placeholderText": "Search providers...",
         "emptyText": "No providers found",
@@ -192,7 +193,7 @@
         "type": "string",
         "label": "CPA Usage Keeper URL",
         "defaultValue": "",
-        "description": "Optional Keeper URL for Go proxy account activity. Rust proxies report activity directly. Not used for Costs."
+        "description": "Optional Keeper URL for Go proxy account activity. Fusebox reports activity directly. Not used for Costs."
       },
       {
         "key": "costKeeperPasswordFile",
@@ -226,6 +227,13 @@
         "label": "T3 Code cost servers",
         "defaultValue": "[]",
         "description": "Managed by Costs settings. Remote servers with private token file references."
+      },
+      {
+        "key": "liveAccountActivity",
+        "type": "boolean",
+        "label": "Live account activity",
+        "defaultValue": true,
+        "description": "Use one shared Fusebox stream for requests serving now. Older Rust proxies show unavailable activity."
       }
     ]
   }
