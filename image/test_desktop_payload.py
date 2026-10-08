@@ -31,7 +31,7 @@ ACCOUNTS = load("desktop_seed_accounts", "image/rootfs/usr/libexec/cybexos-seed-
 
 
 class DesktopPayload(unittest.TestCase):
-    def test_model_usage_runtime_matches_checkout_including_rust_adapter(self):
+    def test_model_usage_runtime_matches_checkout_including_rust_live_activity(self):
         source = ROOT / "roles/desktop/files/quickshell/ModelUsage"
         with tempfile.TemporaryDirectory() as temporary:
             payload = Path(temporary)
@@ -47,6 +47,16 @@ class DesktopPayload(unittest.TestCase):
                 self.assertEqual((installed / relative).read_bytes(), expected, str(relative))
             self.assertIn(b"def fetch_rust_account", (installed / "scripts/usage-fetch.py").read_bytes())
             self.assertIn(b"normalize_rust_activity", (installed / "scripts/proxy-activity.py").read_bytes())
+            self.assertIn(b"additional_headers", (installed / "scripts/proxy-live.py").read_bytes())
+            self.assertIn(b"UsageLogic.acquireLive", (installed / "UsageActivityBackend.qml").read_bytes())
+            self.assertTrue((installed / "UsageLiveConnection.qml").is_file())
+            helpers = payload / "usr/share/cybexos/runtime/quickshell/Common/SettingsHelpers.js"
+            self.assertIn(b"liveAccountActivity: true", helpers.read_bytes())
+            self.assertNotIn(b"showBarActivity", helpers.read_bytes())
+            self.assertNotIn(b"showRecentSessions", helpers.read_bytes())
+            # Both installation contracts provide the optional transport.
+            self.assertIn("python3-websockets", (ROOT / "image/cybexos-desktop.spec").read_text())
+            self.assertIn("python3-websockets", (ROOT / "roles/desktop/tasks/main.yml").read_text())
 
     def test_portable_defaults_and_boot_assets_share_workstation_sources(self):
         environment = jinja2.Environment(undefined=jinja2.StrictUndefined)

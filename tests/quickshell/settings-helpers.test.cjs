@@ -1303,7 +1303,7 @@ test("an existing Model Usage entry keeps its placement and flag on reload", () 
 
 test("Model Usage options keep valid values and reject or clamp the rest", () => {
     const defaults = H.defaultModOpts().modelusage;
-    assert.equal(Object.keys(defaults).length, 16);
+    assert.equal(Object.keys(defaults).length, 17);
     const valid = {
         refreshIntervalSec: 1800,
         enabledProviders: ["kimi", "claude"],
@@ -1311,6 +1311,7 @@ test("Model Usage options keep valid values and reject or clamp the rest", () =>
         cliproxyUrl: "http://127.0.0.1:9000",
         cliproxyKeyFile: "~/.config/omarchy/cliproxy.key",
         hideAccountEmails: false,
+        liveAccountActivity: false,
         squareUsageCards: false,
         barDisplayMode: "Icon",
         barProviders: ["codex"],
@@ -1330,6 +1331,9 @@ test("Model Usage options keep valid values and reject or clamp the rest", () =>
         usageSource: "proxy",
         cliproxyUrl: "   ",
         hideAccountEmails: "yes",
+        liveAccountActivity: "yes",
+        showBarActivity: 4,
+        showRecentSessions: "yes",
         barDisplayMode: "Bogus",
         barProviders: ["kimi", "gemini", "claude", "kimi"],
         warningThreshold: 0,
@@ -1345,6 +1349,9 @@ test("Model Usage options keep valid values and reject or clamp the rest", () =>
     assert.equal(junk.usageSource, "direct");
     assert.equal(junk.cliproxyUrl, defaults.cliproxyUrl);
     assert.equal(junk.hideAccountEmails, true);
+    assert.equal(junk.liveAccountActivity, true);
+    assert.equal(junk.showBarActivity, undefined, "obsolete menubar setting is dropped");
+    assert.equal(junk.showRecentSessions, undefined, "sessions are always in the card badge");
     assert.equal(junk.barDisplayMode, "Percentages");
     assert.deepEqual(junk.barProviders, ["kimi", "claude"],
         "unknown and repeated provider ids are dropped");

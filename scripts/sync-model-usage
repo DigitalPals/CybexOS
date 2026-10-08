@@ -39,7 +39,8 @@ def test_file(name):
     # docs), which are not vendored; tests/qml and the fakes drive an Omarchy
     # shell harness.
     return (re.fullmatch(r"tests/test_[a-z_]+\.(py|js)", name) is not None
-            and name != "tests/test_project.py") or name.startswith("tests/fixtures/")
+            and name != "tests/test_project.py") or name.startswith("tests/fixtures/") or name in (
+                "tests/qml/live-shell.qml", "tests/fake_live.py")
 
 
 def replace(directory, files, extract, strip=""):

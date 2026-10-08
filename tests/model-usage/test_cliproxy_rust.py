@@ -228,7 +228,7 @@ class RustIntegrationTests(unittest.TestCase):
                     "--cliproxy-url", url, "--cliproxy-key-file", str(key), "--account-id", account_id]
             result = json.loads(subprocess.check_output(args))
             self.assertFalse(result["ok"])
-            self.assertIn("unavailable through CLIProxyAPI-Rust", result["message"])
+            self.assertIn("unavailable through Fusebox", result["message"])
             self.assertTrue(all(method == "GET" for method, _ in requests))
 
 

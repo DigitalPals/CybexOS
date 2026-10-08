@@ -3,7 +3,7 @@
 This directory is the [Model Usage](https://github.com/DigitalPals/omarchy-modelusage)
 Omarchy plugin, vendored as the shell's built-in Model Usage widget.
 
-Commit: `bc771a070ba1a18a3566a7006ecd1ba8c000713c` (version 1.2.0)
+Commit: `d4986628d0493aa303d02de0d9017237747704ec` (version 1.3.2)
 
 Everything here except this README is upstream's, unchanged: the QML and
 JavaScript, `assets/`, `scripts/`, `LICENSE` and `THIRD_PARTY_NOTICES.md`. The
@@ -28,3 +28,8 @@ How the shell hosts it:
 To update, run `scripts/sync-model-usage <commit>` from the repository root,
 review the diff, and run `./tests/run`. If the manifest's settings changed,
 update `modelusage` in `Common/SettingsHelpers.js` to match.
+
+The native Rust integration is displayed as [Fusebox](https://github.com/DigitalPals/Fusebox).
+Limits settings include a link to that repository. The saved `cliproxy` source,
+URL/key settings and `rust` protocol marker remain compatible with existing
+installations; the Go integration retains its CLIProxyAPI name.

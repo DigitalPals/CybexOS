@@ -874,18 +874,18 @@ def read_cliproxy_key(path: Path) -> str:
         try:
             info = os.fstat(fd)
             if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
-                raise ProviderFailure("config", "CLIProxyAPI key file must be a regular file owned by you with mode 0600.")
+                raise ProviderFailure("config", "Proxy key file must be a regular file owned by you with mode 0600.")
             raw = os.read(fd, 8193)
         finally:
             os.close(fd)
     except OSError:
-        raise ProviderFailure("config", "CLIProxyAPI management key could not be read. Enter your Management API key in widget settings.") from None
+        raise ProviderFailure("config", "Proxy management key could not be read. Enter your Management API key in widget settings.") from None
     try:
         key = raw.decode("utf-8").strip()
     except UnicodeDecodeError:
         key = ""
     if len(raw) > 8192 or not key or any(ord(char) < 32 or ord(char) > 126 for char in key):
-        raise ProviderFailure("config", "CLIProxyAPI management key file must contain one nonempty ASCII key.")
+        raise ProviderFailure("config", "Proxy management key file must contain one nonempty ASCII key.")
     return key
 
 
@@ -908,7 +908,7 @@ def normalize_cliproxy_url(address: str) -> str:
             raise ValueError
         return urllib.parse.urlunsplit((parts.scheme, parts.netloc, path, "", ""))
     except (TypeError, ValueError):
-        raise ProviderFailure("config", "CLIProxyAPI URL must be an HTTP(S) server or management URL without credentials, query, or fragment.") from None
+        raise ProviderFailure("config", "Proxy URL must be an HTTP(S) server or management URL without credentials, query, or fragment.") from None
 
 
 class CliProxyClient:
@@ -919,6 +919,7 @@ class CliProxyClient:
 
     def request(self, path: str, timeout: float, payload: dict[str, Any] | None = None,
                 *, native: bool = False) -> Any:
+        name = "Fusebox" if native or self.implementation == "rust" else "CLIProxyAPI"
         headers = {"Authorization": "Bearer " + self.key, "Accept": "application/json"}
         body = None
         if payload is not None:
@@ -933,24 +934,24 @@ class CliProxyClient:
         except urllib.error.HTTPError as exc:
             exc.close()
             if exc.code in (401, 403):
-                error = ProviderFailure("config", "CLIProxyAPI rejected the management key or remote management access.")
+                error = ProviderFailure("config", f"{name} rejected the management key or remote management access.")
             elif exc.code == 429:
-                error = ProviderFailure("rate_limited", "CLIProxyAPI is rate limiting management requests.")
+                error = ProviderFailure("rate_limited", f"{name} is rate limiting management requests.")
             else:
-                error = ProviderFailure("http", f"CLIProxyAPI management endpoint returned HTTP {exc.code}.")
+                error = ProviderFailure("http", f"{name} management endpoint returned HTTP {exc.code}.")
             error.http_status = exc.code
             raise error from None
         except (TimeoutError, urllib.error.URLError, OSError) as exc:
             reason = getattr(exc, "reason", exc)
             if isinstance(reason, TimeoutError) or "timed out" in str(reason).lower():
-                raise ProviderFailure("timeout", "CLIProxyAPI usage request timed out.") from None
-            raise ProviderFailure("network", "Could not reach CLIProxyAPI. Check the server URL, network, and TLS certificate.") from None
+                raise ProviderFailure("timeout", f"{name} usage request timed out.") from None
+            raise ProviderFailure("network", f"Could not reach {name}. Check the server URL, network, and TLS certificate.") from None
         if len(raw) > MAX_HTTP_RESPONSE_BYTES:
-            raise ProviderFailure("malformed", "CLIProxyAPI returned unexpectedly large usage data.")
+            raise ProviderFailure("malformed", f"{name} returned unexpectedly large usage data.")
         try:
             return json.loads(raw)
         except (ValueError, UnicodeDecodeError, RecursionError):
-            raise ProviderFailure("malformed", "CLIProxyAPI returned unreadable JSON.") from None
+            raise ProviderFailure("malformed", f"{name} returned unreadable JSON.") from None
 
     def auth_files(self, timeout: float) -> list[dict[str, Any]]:
         deadline = time.monotonic() + timeout
@@ -980,7 +981,7 @@ class CliProxyClient:
     def rust_accounts(self, timeout: float) -> list[dict[str, Any]]:
         payload = self.request("accounts", timeout, native=True)
         if not isinstance(payload, list) or len(payload) > 4096:
-            raise ProviderFailure("malformed", "CLIProxyAPI-Rust returned an invalid account list.")
+            raise ProviderFailure("malformed", "Fusebox returned an invalid account list.")
         entries, seen = [], set()
         for row in payload:
             if (not isinstance(row, dict) or not isinstance(row.get("id"), str)
@@ -988,7 +989,7 @@ class CliProxyClient:
                     or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", row["provider"])
                     or not isinstance(row.get("disabled"), bool)
                     or row.get("kind") not in ("oauth", "api-key", "service-account")):
-                raise ProviderFailure("malformed", "CLIProxyAPI-Rust returned an invalid account list.")
+                raise ProviderFailure("malformed", "Fusebox returned an invalid account list.")
             identity = row["id"]
             # Go's OAuth auth-file ID is its filename. Keep hashes/private
             # labels stable across a Go-to-Rust migration of the same files.
@@ -996,20 +997,20 @@ class CliProxyClient:
                 filename = identity[5:]
                 if (not filename or filename in (".", "..") or "/" in filename or "\\" in filename
                         or row.get("file") != filename):
-                    raise ProviderFailure("malformed", "CLIProxyAPI-Rust returned an invalid account identity.")
+                    raise ProviderFailure("malformed", "Fusebox returned an invalid account identity.")
                 identity = filename
             marker = (row["provider"], identity)
             if marker in seen:
-                raise ProviderFailure("malformed", "CLIProxyAPI-Rust returned duplicate account identities.")
+                raise ProviderFailure("malformed", "Fusebox returned duplicate account identities.")
             seen.add(marker)
-            entries.append(dict(row, id=identity, _rust=True))
+            entries.append(dict(row, id=identity, _native_id=row["id"], _rust=True))
         self.implementation = "rust"
         return entries
 
     def usage(self, entry: dict[str, Any], url: str, headers: dict[str, str], timeout: float,
               data: dict[str, Any] | None = None) -> Any:
         if entry.get("_rust") is True or self.implementation == "rust":
-            raise ProviderFailure("unsupported", "CLIProxyAPI-Rust does not expose upstream account actions.")
+            raise ProviderFailure("unsupported", "Fusebox does not expose upstream account actions.")
         index = entry.get("auth_index") or entry.get("authIndex")
         if not isinstance(index, str) or not index.strip():
             raise ProviderFailure("config", "CLIProxyAPI account has no auth_index. Check the account in its management panel.")
@@ -1131,38 +1132,38 @@ def rust_timestamp(value: Any, *, observed: bool = False, now: float | None = No
             raise ValueError
         return stamp
     except (ValueError, TypeError, OverflowError):
-        raise ProviderFailure("malformed", "CLIProxyAPI-Rust returned an invalid quota or activity timestamp.") from None
+        raise ProviderFailure("malformed", "Fusebox returned an invalid quota or activity timestamp.") from None
 
 
 def fetch_rust_account(provider_id: str, entry: dict[str, Any]) -> dict[str, Any]:
     result = cliproxy_account_record(provider_id, entry)
-    result.update(source="CLIProxyAPI-Rust accounts API", supportsBankedReset=False)
+    result.update(source="Fusebox accounts API", supportsBankedReset=False)
     if entry.get("disabled") is True:
-        result.update(status="disabled", notice="This account is paused in CLIProxyAPI.")
+        result.update(status="disabled", notice="This account is paused in Fusebox.")
         return result
     if provider_id not in ("claude", "codex") or entry.get("kind") != "oauth":
-        result.update(status="unsupported", notice="CLIProxyAPI-Rust does not expose subscription quotas for this account.")
+        result.update(status="unsupported", notice="Fusebox does not expose subscription quotas for this account.")
         return result
     try:
         quota = entry.get("quota")
         if not isinstance(quota, dict) or not isinstance(quota.get("windows"), list) or len(quota["windows"]) > 128:
-            raise ProviderFailure("malformed", "CLIProxyAPI-Rust returned invalid quota data.")
+            raise ProviderFailure("malformed", "Fusebox returned invalid quota data.")
         now = time.time()
         observed = rust_timestamp(quota.get("updated_at"), observed=True, now=now)
         windows, seen = [], set()
         for row in quota["windows"]:
             if not isinstance(row, dict) or not isinstance(row.get("name"), str) or not 0 < len(row["name"]) <= 128:
-                raise ProviderFailure("malformed", "CLIProxyAPI-Rust returned an invalid quota window.")
+                raise ProviderFailure("malformed", "Fusebox returned an invalid quota window.")
             used = number(row.get("used")) if isinstance(row.get("used"), (int, float)) else None
             model = row.get("model")
             if used is None or not 0 <= used <= 100 or (model is not None and (not isinstance(model, str) or not 0 < len(model) <= 128)):
-                raise ProviderFailure("malformed", "CLIProxyAPI-Rust returned an invalid quota amount or model scope.")
+                raise ProviderFailure("malformed", "Fusebox returned an invalid quota amount or model scope.")
             name = row["name"]
             window_id = {"5h": "session" if provider_id == "claude" else "codex-primary",
                          "week": "weekly" if provider_id == "claude" else "codex-secondary"}.get(name)
             window_id = window_id if window_id and not model else "rust-" + hashlib.sha256(json.dumps([name, model]).encode()).hexdigest()[:16]
             if window_id in seen:
-                raise ProviderFailure("malformed", "CLIProxyAPI-Rust returned duplicate quota windows.")
+                raise ProviderFailure("malformed", "Fusebox returned duplicate quota windows.")
             seen.add(window_id)
             reset = rust_timestamp(row.get("resets_at"), now=now)
             # A cached window past its reset cannot claim fresh capacity.
@@ -1174,17 +1175,17 @@ def fetch_rust_account(provider_id: str, entry: dict[str, Any]) -> dict[str, Any
                 label = model.title() + " · " + label
             windows.append(make_window(window_id, label, used, reset, seconds))
         if observed is None or not windows:
-            raise ProviderFailure("quota_unavailable", "Subscription quotas are not available in the Rust proxy cache yet.")
+            raise ProviderFailure("quota_unavailable", "Subscription quotas are not available in the Fusebox cache yet.")
         raw_plan = quota.get("plan")
         if raw_plan is not None and (not isinstance(raw_plan, str) or len(raw_plan) > 128):
-            raise ProviderFailure("malformed", "CLIProxyAPI-Rust returned invalid plan metadata.")
+            raise ProviderFailure("malformed", "Fusebox returned invalid plan metadata.")
         result.update(windows=windows, quotaUpdatedAt=observed,
                       fetchedAt=datetime.fromtimestamp(observed, timezone.utc).isoformat(),
                       planType=clean_message(raw_plan or ""),
                       plan=clean_message(CODEX_PLAN_LABELS.get(raw_plan, raw_plan or "") if provider_id == "codex" else raw_plan or ""),
                       stale=now - observed > RUST_QUOTA_STALE_SECONDS)
         if result["stale"]:
-            result["notice"] = "Last known reading · The Rust proxy's quota cache is more than 10 minutes old."
+            result["notice"] = "Last known reading · The Fusebox quota cache is more than 10 minutes old."
     except ProviderFailure as exc:
         result.update(status="error", errorKind=exc.kind, message=exc.message)
     return result

@@ -1,5 +1,88 @@
 .pragma library
 
+// One observer per connection across bars, monitors and open panels. The
+// shared object has no panel parent; the final consumer explicitly stops it.
+var liveConnections = ({})
+
+function acquireLive(key, factory, properties) {
+  var entry = liveConnections[key]
+  if (!entry) {
+    // Create in this engine-wide library context, not a consumer's context.
+    // A parentless object alone still loses its functions when its creator dies.
+    if (!factory) factory = Qt.createComponent("UsageLiveConnection.qml")
+    var object = factory.createObject(null, properties)
+    if (!object) return null
+    entry = { object: object, references: 0 }
+    liveConnections[key] = entry
+  }
+  entry.references++
+  return entry.object
+}
+
+function releaseLive(key) {
+  var entry = liveConnections[key]
+  if (!entry) return
+  entry.references--
+  if (entry.references <= 0) {
+    delete liveConnections[key]
+    entry.object.stop()
+  }
+}
+
+function validLivePayload(payload) {
+  if (!payload || payload.schemaVersion !== 1) return false
+  if (payload.heartbeat === true) return true
+  if (!contains(["live", "reconnecting", "unavailable"], payload.state)
+      || typeof payload.message !== "string" || payload.message.length > 256
+      || !isListLike(payload.providers) || payload.providers.length > 4096
+      || !isListLike(payload.accounts) || payload.accounts.length > 4096) return false
+  var seen = ({})
+  for (var p = 0; p < payload.providers.length; p++) {
+    var provider = payload.providers[p]
+    if (!provider || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(provider.id)
+        || !contains(["ok", "ambiguous"], provider.status)
+        || (provider.status === "ok" && !/^[a-f0-9]{16}$/.test(provider.accountId))
+        || typeof provider.lastUsedAt !== "number" || !isFinite(provider.lastUsedAt)
+        || provider.lastUsedAt <= 0) return false
+  }
+  for (var i = 0; i < payload.accounts.length; i++) {
+    var row = payload.accounts[i]
+    if (!row || !/^[a-f0-9]{16}$/.test(row.accountId)
+        || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(row.provider)) return false
+    if (seen[row.accountId]) return false
+    seen[row.accountId] = true
+    var counts = [row.inFlight, row.sessions]
+    for (var j = 0; j < counts.length; j++)
+      if (typeof counts[j] !== "number" || !isFinite(counts[j])
+          || Math.floor(counts[j]) !== counts[j] || counts[j] < 0 || counts[j] > 1000000) return false
+  }
+  return payload.state === "live" || payload.accounts.length === 0
+}
+
+function accountLoad(account, activity) {
+  if (!account || !activity || activity.liveState !== "live") return null
+  var rows = listOrEmpty(activity.liveAccounts)
+  for (var i = 0; i < rows.length; i++)
+    if (rows[i].accountId === account.accountId && rows[i].provider === account.id) return rows[i]
+  return null
+}
+
+function sessionBadgeText(load) {
+  if (!load) return "Sessions unknown"
+  return load.sessions + (load.sessions === 1 ? " session" : " sessions")
+}
+
+function sessionDetails(load) {
+  if (!load) return "Session counts are unknown until Fusebox reconnects."
+  return sessionBadgeText(load) + " assigned to this account recently. Sessions may remain assigned after a request finishes."
+}
+
+function proxyName(implementation) {
+  if (implementation === "rust") return "Fusebox"
+  if (implementation === "go") return "CLIProxyAPI"
+  return "Fusebox / CLIProxyAPI"
+}
+
 function clamp(value, minimum, maximum) {
   var number = Number(value)
   if (!isFinite(number)) return minimum
@@ -173,7 +256,7 @@ function errorTitle(provider) {
   if (!provider) return "Provider unavailable"
   var name = String(provider.name || provider.id || "Provider")
   switch (provider.errorKind) {
-  case "config": return "CLIProxyAPI configuration required"
+  case "config": return proxyName(provider.proxyImplementation) + " configuration required"
   case "no_credentials": return name + " sign-in required"
   case "expired": return name + " sign-in expired"
   case "rate_limited": return name + " is rate limited"
