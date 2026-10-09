@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 27;
+var VERSION = 28;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -37,13 +37,18 @@ var IDLE_SUSPEND_MINS = [0, 15, 30, 60, 120];
 // Schema 25 retired `usage`, the first built-in model usage widget, and its
 // drawer tab. Schema 26 builds Model Usage in as `modelusage`, vendored from
 // the digitalpals.model-usage Omarchy plugin (see ModelUsage/README.md).
+// Schema 28 adds `fusebox`, the Fusebox server widget, beside Model Usage.
 var MODULE_IDS = [
-    "ws", "media", "indicators", "clock", "weather", "notes", "modelusage", "updates", "gh",
+    "ws", "media", "indicators", "clock", "weather", "notes", "modelusage", "fusebox", "updates", "gh",
     "t3", "hermes", "remote", "tray",
     "notifications", "vol", "wifi", "bt", "batt", "control"
 ];
 
 var RETIRED_MODULE_IDS = ["bell", "idle", "usage"];
+
+// Widgets for services the user signs in to. They start on only when the
+// install's connected-service feature is selected (CYBEXOS_CONNECTED_WIDGETS).
+var CONNECTED_WIDGET_IDS = ["modelusage", "fusebox", "gh", "t3", "hermes"];
 
 // Model Usage's quota providers, and the ones it can estimate costs for from
 // local transcripts.
@@ -216,7 +221,8 @@ function defaultMods() {
         center: [mod("indicators", true), mod("clock", true), mod("weather", false),
             mod("notes", true)],
         right: [
-            mod("modelusage", false), mod("updates", true), mod("gh", false), mod("t3", false),
+            mod("modelusage", false), mod("fusebox", false), mod("updates", true), mod("gh", false),
+            mod("t3", false),
             mod("hermes", false), mod("remote", true),
             mod("tray", false), mod("notifications", true), mod("vol", true),
             mod("wifi", true), mod("bt", true), mod("batt", true), mod("control", true)
@@ -265,6 +271,9 @@ function defaultModOpts() {
         },
         t3: { showLabel: true },
         hermes: { showLabel: true, activityDetail: "verb" },
+        // The management key is not a setting: scripts/fusebox.py keeps it in
+        // a private file of its own.
+        fusebox: { url: "", metric: "sessions", quotaDisplay: "used", hideEmails: true, notify: false },
         // The upstream plugin's manifest defaults, key for key. Its panel
         // reads and saves this object as its settings.
         modelusage: {
@@ -871,6 +880,13 @@ var MOD_OPT_CHECKS = {
         claudeEffort: function(v, d) { return enumIn(v, NOTE_CLAUDE_EFFORTS, d); }
     },
     t3: { showLabel: boolIn },
+    fusebox: {
+        url: function(v, d) { return textIn(v, 512, d).trim(); },
+        metric: function(v, d) { return enumIn(v, ["sessions", "serving", "rpm", "faults"], d); },
+        quotaDisplay: function(v, d) { return enumIn(v, ["used", "remaining"], d); },
+        hideEmails: boolIn,
+        notify: boolIn
+    },
     hermes: {
         showLabel: boolIn,
         activityDetail: function(v, d) {
@@ -1122,6 +1138,30 @@ function migrateMods(raw, sourceVersion, context) {
             detail: "auto"
         });
     }
+
+    // Schema 28 adds the Fusebox server widget immediately after Model Usage,
+    // following it to whichever column and position the user chose. It is a
+    // connected-service widget too.
+    var fuseboxPresent = ["left", "center", "right"].some(function(col) {
+        return migrated[col].some(function(entry) {
+            return entry && entry.id === "fusebox";
+        });
+    });
+    if ((typeof sourceVersion !== "number" || sourceVersion < 28)
+            && !fuseboxPresent) {
+        var fusebox = { id: "fusebox", on: !!(context && context.connectedWidgets), detail: "auto" };
+        var placed = ["left", "center", "right"].some(function(col) {
+            var usageIndex = migrated[col].findIndex(function(entry) {
+                return entry && entry.id === "modelusage";
+            });
+            if (usageIndex === -1)
+                return false;
+            migrated[col].splice(usageIndex + 1, 0, fusebox);
+            return true;
+        });
+        if (!placed)
+            migrated.right.unshift(fusebox);
+    }
     return normalizeMods(migrated);
 }
 
@@ -1159,7 +1199,7 @@ function merge(raw, context) {
     if (context && context.connectedWidgets) {
         ["left", "center", "right"].forEach(function(column) {
             d.mods[column].forEach(function(entry) {
-                if (["modelusage", "gh", "t3", "hermes"].indexOf(entry.id) !== -1)
+                if (CONNECTED_WIDGET_IDS.indexOf(entry.id) !== -1)
                     entry.on = true;
             });
         });
@@ -1514,6 +1554,7 @@ var exported = {
     PALETTE_MODES: PALETTE_MODES,
     MODULE_IDS: MODULE_IDS,
     RETIRED_MODULE_IDS: RETIRED_MODULE_IDS,
+    CONNECTED_WIDGET_IDS: CONNECTED_WIDGET_IDS,
     MODULE_GROUPS: MODULE_GROUPS,
     NOTIFICATION_GROUPS: NOTIFICATION_GROUPS,
     INDICATOR_ACTION_CHOICES: INDICATOR_ACTION_CHOICES,

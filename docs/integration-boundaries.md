@@ -19,6 +19,12 @@ transport lifetime, domain state and view code have separate owners:
   feedback. The RPC facade forwards its existing command methods and
   properties, preserving callers. Request acceptance still does not resolve
   provider approvals; a disconnected or partially accepted batch never replays.
+- **Fusebox:** `scripts/fusebox.py` owns the management key file, the
+  authenticated transport, reconnects and the allowlist of what reaches QML.
+  `Fusebox.qml` owns connection state, the request history, fault
+  notifications and one-shot breaker requests through `CommandRequest`;
+  `FuseboxHelpers.js` owns the dashboard-equivalent rules. Popovers and
+  Settings retain presentation only.
 - **Updates:** `UpdateLogReader.qml` owns bounded byte-range transport and
   run/offset validation. `Updates.qml` owns transaction state and parses only
   accepted log data. The privileged updater still owns the transaction; a shell

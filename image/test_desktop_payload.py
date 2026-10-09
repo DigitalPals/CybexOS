@@ -58,6 +58,34 @@ class DesktopPayload(unittest.TestCase):
             self.assertIn("python3-websockets", (ROOT / "image/cybexos-desktop.spec").read_text())
             self.assertIn("python3-websockets", (ROOT / "roles/desktop/tasks/main.yml").read_text())
 
+    def test_fusebox_widget_ships_identically_with_the_same_layout_on_both_paths(self):
+        checkout = ROOT / "roles/desktop/files/quickshell"
+        files = ["scripts/fusebox.py", "Common/Fusebox.qml", "Common/FuseboxHelpers.js",
+                 "Bar/Modules/Fusebox.qml", "Popovers/FuseboxPopover.qml", "assets/fusebox.svg",
+                 "assets/fusebox-white.svg", "Common/SettingsHelpers.js", "Common/BrandIcons.qml"]
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            prepare_quickshell(ROOT, payload)
+            installed = payload / "usr/share/cybexos/runtime/quickshell"
+            for relative in files:
+                self.assertEqual((installed / relative).read_bytes(), (checkout / relative).read_bytes(), relative)
+            # The checkout and the ISO derive the layout from the same helpers and
+            # the same connected-widgets flag, so both start Fusebox the same way.
+            script = ("const H = require(process.argv[1]); "
+                      "console.log(JSON.stringify([false, true].map(connected => "
+                      "H.merge(null, { connectedWidgets: connected }).mods.right.map(m => m.id + ':' + m.on))));")
+            layouts = [subprocess.run(["node", "-e", script, str(base / "Common/SettingsHelpers.js")],
+                                      text=True, capture_output=True, check=True).stdout
+                       for base in (checkout, installed)]
+            self.assertEqual(layouts[0], layouts[1])
+            plain, connected = json.loads(layouts[1])
+            self.assertIn("fusebox:false", plain)
+            self.assertIn("fusebox:true", connected)
+            self.assertEqual(connected[connected.index("modelusage:true") + 1], "fusebox:true")
+        unit = (ROOT / "image/provision.yml").read_text()
+        self.assertIn("CYBEXOS_CONNECTED_WIDGETS", unit)
+        self.assertIn("CYBEXOS_CONNECTED_WIDGETS", (ROOT / "image/desktop_payload.py").read_text())
+
     def test_portable_defaults_and_boot_assets_share_workstation_sources(self):
         environment = jinja2.Environment(undefined=jinja2.StrictUndefined)
         environment.filters.update(bool=bool, ternary=lambda value, yes, no: yes if value else no)

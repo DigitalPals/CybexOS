@@ -98,6 +98,7 @@ singleton SystemSettings SystemSettings.qml
 singleton DisplaySettings DisplaySettings.qml
 SystemSettingsBackend SystemSettingsBackend.qml
 singleton RemoteServer RemoteServer.qml
+singleton Fusebox Fusebox.qml
 
 CommandRequest CommandRequest.qml
 UpdateLogReader UpdateLogReader.qml

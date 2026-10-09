@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 27);
+    assert.equal(H.VERSION, 28);
     assert.deepEqual(d.drawerTabs.map(t => t.id),
         ["overview", "sound", "network", "bluetooth", "power", "notifications"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
@@ -61,7 +61,7 @@ test("defaults carry the design values", () => {
         ["indicators", "clock", "weather", "notes"]);
     assert.equal(d.mods.center.find(m => m.id === "notes").on, true);
     assert.deepEqual(d.mods.right.map(m => m.id),
-        ["modelusage", "updates", "gh", "t3", "hermes", "remote", "tray", "notifications",
+        ["modelusage", "fusebox", "updates", "gh", "t3", "hermes", "remote", "tray", "notifications",
          "vol", "wifi", "bt", "batt", "control"]);
     assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
     assert.equal(d.mods.right.find(m => m.id === "bt").on, true,
@@ -69,7 +69,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.mods.right.find(m => m.id === "tray").on, false);
     assert.equal(d.mods.right.find(m => m.id === "updates").on, true);
     assert.equal(d.mods.right.find(m => m.id === "notifications").on, true);
-    for (const id of ["modelusage", "gh", "t3", "hermes"])
+    for (const id of H.CONNECTED_WIDGET_IDS)
         assert.equal(d.mods.right.find(m => m.id === id).on, false,
             `${id} is available through Connected without crowding a fresh bar`);
     const moduleIds = [...d.mods.left, ...d.mods.center, ...d.mods.right]
@@ -81,8 +81,8 @@ test("defaults carry the design values", () => {
     assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
         .every(module => module.detail === "auto"));
     assert.deepEqual(Object.keys(d.modOpts),
-        ["ws", "media", "indicators", "clock", "remote", "weather", "notes", "t3", "hermes", "modelusage",
-         "gh", "updates", "tray", "notifications", "vol", "batt"]);
+        ["ws", "media", "indicators", "clock", "remote", "weather", "notes", "t3", "hermes", "fusebox",
+         "modelusage", "gh", "updates", "tray", "notifications", "vol", "batt"]);
     assert.equal(d.modOpts.ws.minSlots, 5);
     assert.equal(d.modOpts.ws.style, "numbers");
     assert.equal(d.modOpts.media.maxWidth, 180);
@@ -608,7 +608,7 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.deepEqual(next.center.map(m => m.id),
         ["indicators", "clock", "weather", "notes"]);
     assert.deepEqual(next.right.map(m => m.id),
-        ["modelusage", "updates", "gh", "t3", "hermes", "remote", "tray", "notifications",
+        ["modelusage", "fusebox", "updates", "gh", "t3", "hermes", "remote", "tray", "notifications",
          "wifi", "bt", "batt", "control"]);
     assert.ok(next.right.some(m => m.id === "bt" && m.on === true),
         "appended module keeps its default enable flag");
@@ -789,7 +789,7 @@ test("schema-11 inserts notifications before the first right-side status widget"
 
     const migrated = H.merge({ v: 10, mods: raw }).mods.right;
     assert.deepEqual(migrated.map(mod => mod.id),
-        ["modelusage", "updates", "tray", "gh", "notifications", "wifi", "t3",
+        ["modelusage", "fusebox", "updates", "tray", "gh", "notifications", "wifi", "t3",
          "hermes", "vol", "bt", "batt", "remote", "control"]);
 });
 
@@ -884,8 +884,9 @@ test("version one layouts insert Hermes after t3 in its column", () => {
             right: [{ id: "vol", on: true }, { id: "t3", on: false }]
         }
     }).mods;
-    assert.deepEqual(disabled.right.slice(0, 5), [
+    assert.deepEqual(disabled.right.slice(0, 6), [
         { id: "modelusage", on: false, detail: "auto" },
+        { id: "fusebox", on: false, detail: "auto" },
         { id: "notifications", on: true, detail: "auto" },
         { id: "vol", on: true, detail: "auto" },
         { id: "t3", on: false, detail: "auto" },
@@ -919,8 +920,9 @@ test("schema-8 inserts indicators immediately before the existing clock", () => 
         ]
     };
     const migrated = H.merge({ v: 7, mods: raw }).mods;
-    assert.deepEqual(migrated.right.slice(0, 6), [
+    assert.deepEqual(migrated.right.slice(0, 7), [
         { id: "modelusage", on: false, detail: "auto" },
+        { id: "fusebox", on: false, detail: "auto" },
         { id: "notifications", on: true, detail: "auto" },
         { id: "vol", on: false, detail: "compact" },
         { id: "indicators", on: true, detail: "auto" },
@@ -1233,8 +1235,9 @@ test("schema 25 drops the retired usage widget, drawer tab, options and poll cei
     assert.ok(!ids.includes("usage"), "the usage module survived migration");
     assert.deepEqual([...ids].sort(), [...H.MODULE_IDS].sort());
     assert.deepEqual(merged.mods.left.slice(0, 1), [{ id: "ws", on: true, detail: "auto" }]);
-    assert.deepEqual(merged.mods.right.slice(0, 3), [
+    assert.deepEqual(merged.mods.right.slice(0, 4), [
         { id: "modelusage", on: false, detail: "auto" },
+        { id: "fusebox", on: false, detail: "auto" },
         { id: "t3", on: true, detail: "auto" },
         { id: "hermes", on: false, detail: "auto" }
     ]);

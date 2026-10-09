@@ -68,6 +68,7 @@ var PANELS = [
     { name: "t3code", island: "right", moduleId: "t3", source: "Popovers/T3CodePopover.qml", attached: true },
     { name: "hermes", island: "right", moduleId: "hermes", source: "Popovers/HermesPopover.qml" },
     { name: "remote", island: "right", moduleId: "remote", source: "Popovers/RemoteServerPopover.qml" },
+    { name: "fusebox", island: "right", moduleId: "fusebox", source: "Popovers/FuseboxPopover.qml" },
     { name: "github", island: "right", moduleId: "gh", source: "Popovers/GitHubPopover.qml" },
     { name: "overflow", island: "right", moduleId: "", source: "Popovers/OverflowPopover.qml" },
 

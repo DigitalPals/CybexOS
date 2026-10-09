@@ -380,7 +380,7 @@ test("regression fixes keep asynchronous state identity-safe", () => {
 
 test("schema twenty-three keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 27/);
+    assert.match(helpers, /var VERSION = 28/);
     // Schema 17: the drawer becomes configurable (turn-3 settings design).
     assert.match(helpers, /drawerHover: "open"/);
     assert.match(helpers, /drawerWidth: 400/);
@@ -396,7 +396,7 @@ test("schema twenty-three keeps safe defaults and exposes accessibility preferen
     assert.match(helpers, /nightLight:\s*false/);
     assert.match(helpers, /idleInhibitMode:\s*"off"/);
     assert.match(helpers, /idleInhibitUntilMs:\s*0/);
-    assert.match(helpers, /"modelusage", "updates", "gh",\s*"t3", "hermes", "remote", "tray"/);
+    assert.match(helpers, /"modelusage", "fusebox", "updates", "gh",\s*"t3", "hermes", "remote", "tray"/);
     assert.match(helpers, /hermes:\s*\{ showLabel: true, activityDetail: "verb" \}/);
     assert.match(helpers,
         /notes:\s*\{[\s\S]*?titleProvider:\s*"off"[\s\S]*?codexModel:\s*"gpt-5\.6-luna"[\s\S]*?codexEffort:\s*"none"[\s\S]*?claudeModel:\s*"fable"[\s\S]*?claudeEffort:\s*"low"/);
