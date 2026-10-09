@@ -67,7 +67,13 @@ Singleton {
         offline: "Offline", connecting: "Connecting…" })[connection]
     readonly property bool stale: hasData && connection !== "live"
     readonly property var figures: Helpers.figures(series, requests, serving, now, load)
-    readonly property string faultLevel: Helpers.faultLevel(faults)
+    // An unresolved reset spend blocks further resets: at least an amber badge.
+    readonly property int resetReviews: accounts.filter(a => a.bankedReview).length
+    readonly property string faultLevel: {
+        const level = Helpers.faultLevel(faults);
+        return level === "ok" && resetReviews > 0 ? "warn" : level;
+    }
+    readonly property bool resetsEnabled: overview !== null && overview.bankedResets === true
     readonly property string barValue: Helpers.barValue(options.metric, figures, faults)
     readonly property var startedAt: overview ? overview.startedAt : null
 
@@ -120,7 +126,7 @@ Singleton {
     function clearData() {
         overview = null; accounts = []; load = ({}); faults = []; faultSource = "";
         requests = []; series = []; totals = null; serving = 0; updatedAt = 0;
-        activity = ({}); actionResult = null;
+        activity = ({}); actionResult = null; resets = ({});
     }
 
     function start() {
@@ -288,6 +294,151 @@ Singleton {
         }
     }
 
+    // ---- banked resets ----------------------------------------------------
+    // Per account: { view, fetchedAt, error, uncertain, message, dialog }, where a
+    // dialog is { action: redeem | retry | resolve, request, grant, inventory,
+    // startedAt }. Spending is only ever a click on a confirmation in the
+    // dashboard view; there is deliberately no IPC or command for it.
+    property var resets: ({})
+    property string resetAccount: ""
+    property string resetOperation: ""
+    readonly property bool resetBusy: resetRequest.running
+
+    function resetState(id) {
+        return resets[id] || null;
+    }
+
+    function patchReset(id, change) {
+        const next = Object.assign({}, resets);
+        next[id] = Object.assign({}, resets[id] || {}, change);
+        resets = next;
+    }
+
+    function runReset(id, operation, command) {
+        if (resetRequest.running || !keySaved || !url)
+            return false;
+        resetAccount = id;
+        resetOperation = operation;
+        patchReset(id, { error: "" });
+        resetRequest.command = ["python3", "-B", script].concat(command);
+        resetRequest.running = true;
+        return true;
+    }
+
+    // Reads status (Fusebox asks the provider; nothing is spent).
+    function loadReset(id) {
+        runReset(id, "load", ["banked", "--url", url, id]);
+    }
+
+    function refreshReset(id) {
+        runReset(id, "refresh", ["banked-refresh", "--url", url, id]);
+    }
+
+    // "Use 1 reset" reads status again, then confirms against exactly that
+    // inventory and its quote, as Fusebox's own dialog does.
+    function beginRedeem(id) {
+        runReset(id, "open", ["banked", "--url", url, id]);
+    }
+
+    function beginRecovery(id, action) {
+        const state = resetState(id);
+        const op = state && state.view ? state.view.operation : null;
+        if (!op || !op.requestId || resetRequest.running)
+            return;
+        patchReset(id, { dialog: { action: action, request: op.requestId, grant: "", startedAt: Date.now() },
+            error: "", message: "" });
+    }
+
+    function chooseResetGrant(id, grant) {
+        const state = resetState(id);
+        if (state && state.dialog && state.dialog.action === "redeem")
+            patchReset(id, { dialog: Object.assign({}, state.dialog, { grant: grant }) });
+    }
+
+    function cancelReset(id) {
+        patchReset(id, { dialog: null });
+    }
+
+    // The only path that spends: the confirmation's own button.
+    function confirmReset(id, resolution) {
+        const state = resetState(id);
+        const d = state ? state.dialog : null;
+        if (!d)
+            return;
+        const action = d.action === "resolve" ? resolution : d.action;
+        if (["redeem", "retry", "resolve-used", "resolve-unused"].indexOf(action) === -1)
+            return;
+        if (d.action === "redeem" && Helpers.quoteLeft(d.startedAt, Date.now()) <= 0) {
+            expireReset(id);
+            return;
+        }
+        const command = ["banked-action", "--url", url, "--action", action, "--request", d.request];
+        if (d.grant)
+            command.push("--grant", d.grant);
+        command.push(id);
+        runReset(id, "confirm", command);
+    }
+
+    function expireReset(id) {
+        const state = resetState(id);
+        patchReset(id, { dialog: null, view: state && state.view ? Object.assign({}, state.view, { quote: null }) : null,
+            error: "The confirmation expired. Refresh to try again." });
+    }
+
+    function resetDone(code, body, failure) {
+        const id = resetAccount;
+        const operation = resetOperation;
+        let reply = null;
+        try {
+            reply = JSON.parse(body);
+        } catch (e) {
+            reply = null;
+        }
+        const ok = code === 0 && reply !== null && reply.ok === true && reply.view;
+        if (operation === "confirm") {
+            if (ok) {
+                const op = reply.view.operation;
+                patchReset(id, { view: reply.view, fetchedAt: Date.now(), dialog: null, uncertain: false,
+                    message: op && op.message ? op.message : "" });
+                return;
+            }
+            // Never resend. Show what happened, then read the status again.
+            const uncertain = code === 124 || !reply || reply.state === "uncertain";
+            const state = resetState(id);
+            patchReset(id, { dialog: null, uncertain: uncertain, message: "",
+                view: state && state.view ? Object.assign({}, state.view, { quote: null }) : null,
+                error: uncertain ? "The reset request didn't finish, so a reset may have been used. Checking its status…"
+                    : privateText(reply.error) + " Refresh the status before continuing." });
+            Qt.callLater(() => loadReset(id));
+            return;
+        }
+        if (!ok) {
+            patchReset(id, { error: code === 124 ? "Fusebox took too long to answer."
+                : reply && reply.error ? privateText(reply.error) : failure ? "The request didn't complete." : "Couldn't read reset status." });
+            return;
+        }
+        const now = Date.now();
+        const change = { view: reply.view, fetchedAt: now };
+        if (operation === "open") {
+            const account = accountById(id);
+            const block = account ? Helpers.resetBlock(reply.view, account, now) : "Unknown account.";
+            const grants = Helpers.usableGrants(reply.view);
+            // Codex picks its grant on the provider side, so it may list none.
+            if (block === "" && (grants.length > 0 || account.provider === "codex")) {
+                const selected = reply.view.inventory.selectedGrant;
+                change.dialog = { action: "redeem", request: reply.view.quote, inventory: reply.view.inventory,
+                    startedAt: now,
+                    // Codex chooses its own grant; Claude defaults to the provider's choice.
+                    grant: account.provider === "codex" ? ""
+                        : grants.some(g => g.id === selected) ? selected : grants.length ? grants[0].id : "" };
+                change.message = "";
+            } else {
+                change.error = block || "No reset can be used right now.";
+            }
+        }
+        patchReset(id, change);
+    }
+
     // ---- breaker actions and account details ----------------------------
     function runAction(accountId, name, disabled) {
         if (actionRequest.running || !keySaved || !url)
@@ -382,6 +533,7 @@ Singleton {
                 watchers: root.watchers, updatedAt: root.updatedAt, version: root.overview ? root.overview.version : null,
                 accounts: root.accounts.length, faults: root.faults.length, faultSource: root.faultSource,
                 sessions: root.figures.sessions, serving: root.serving, metric: root.options.metric,
+                resetReviews: root.resetReviews,
                 value: root.barValue });
         }
         function refresh(): void { root.refresh(); }
@@ -398,6 +550,12 @@ Singleton {
         repeat: true
         onTriggered: {
             root.now = Date.now();
+            // A confirmation Fusebox would refuse is withdrawn here first.
+            for (const id in root.resets) {
+                const d = root.resets[id].dialog;
+                if (d && d.action === "redeem" && Helpers.quoteLeft(d.startedAt, root.now) <= 0)
+                    root.expireReset(id);
+            }
             // The helper prints at least every five seconds while it runs.
             if (worker.running && root.now - root.heartbeat > 30000) {
                 root.error = "The Fusebox helper stopped responding; reconnecting…";
@@ -454,6 +612,14 @@ Singleton {
         timeoutMs: 60000
         timeoutMessage: "Fusebox took too long to answer."
         onCompleted: (code, body, failure) => root.actionDone(code, body, failure)
+    }
+    CommandRequest {
+        id: resetRequest
+        // A spend waits for Fusebox's provider calls; the helper itself gives up
+        // at 90 seconds and reports that outcome as uncertain.
+        timeoutMs: 100000
+        timeoutMessage: "Fusebox took too long to answer."
+        onCompleted: (code, body, failure) => root.resetDone(code, body, failure)
     }
     CommandRequest {
         id: activityRequest

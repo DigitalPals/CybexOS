@@ -52,6 +52,16 @@ OVERVIEW = {"version": "0.3.2", "started_at": "2026-10-09T08:00:00Z", "uptime_se
             "accounts": {"total": 1, "active": 1, "cooling": 0, "disabled": 0, "providers": {"claude": 1}},
             "models": 14, "config_path": "/etc/fusebox/config.yaml", "auth_dir": "/var/lib/fusebox/auth"}
 
+QUOTE = "6f1c2d3e-4b5a-4c6d-8e7f-90a1b2c3d4e5"
+GRANT = "grant_01HX9Z"
+BANKED_VIEW = {"checked_at": "2026-10-09T10:00:00.123456789Z", "error": None, "quote": QUOTE, "retryable": False,
+               "operation": None,
+               "inventory": {"available": 2, "applicable": 1, "eligible": True, "reason": None, "selected_grant": GRANT,
+                             "grants": [{"id": GRANT, "label": "Weekly reset", "remaining": 2,
+                                         "expires_at": "2026-10-20T00:00:00Z", "starts_at": None,
+                                         "clears": ["5-hour", "weekly"], "usable": True, "reason": None},
+                                        {"id": "bad id!", "label": "x"}, "junk"]}}
+
 FAULT = {"key": "quota:file:claude-a.json", "kind": "quota", "level": "warn", "provider": "claude",
          "provider_name": "Claude", "account_id": "file:claude-a.json", "label": "person@example.com",
          "title": "Weekly limit used up", "detail": None, "until": "2026-10-12T09:00:00+00:00",
@@ -68,6 +78,8 @@ class FakeFusebox:
         self.accounts = [account()]
         self.frames = []
         self.hold = 0.0
+        self.spend = "applied"   # applied | conflict | hang | crash | garbage
+        self.spends = []
         fake = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -82,7 +94,10 @@ class FakeFusebox:
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
-                self.wfile.write(data)
+                try:
+                    self.wfile.write(data)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass  # The client gave up first, as the timeout tests intend.
 
             def handle_any(self, method):
                 length = int(self.headers.get("Content-Length") or 0)
@@ -102,6 +117,26 @@ class FakeFusebox:
                 if method == "GET" and self.path == "/api/faults":
                     # Older releases route unknown /api paths to client-key auth.
                     return self.reply(200, [FAULT]) if fake.faults else self.reply(401, {"error": "invalid api key"})
+                if self.path == "/api/accounts/file%3Aclaude-a.json/banked-resets":
+                    if method == "GET":
+                        return self.reply(200, BANKED_VIEW)
+                    fake.spends.append(body)
+                    if fake.spend == "conflict":
+                        return self.reply(409, {"error": "Reset inventory changed; refresh and confirm again"})
+                    if fake.spend == "crash":
+                        return self.reply(500, {"error": "Reset operation interrupted; refresh its status"})
+                    if fake.spend == "hang":
+                        time.sleep(1.5)
+                        return self.reply(200, BANKED_VIEW)
+                    if fake.spend == "garbage":
+                        return self.reply(200, ["not", "a", "view"])
+                    applied = {**BANKED_VIEW, "quote": None, "operation": {
+                        "request_id": body["request_id"], "grant_id": body["grant_id"], "status": "applied",
+                        "message": "One banked reset applied", "created_at": "2026-10-09T10:00:01Z",
+                        "retry_until": "2026-10-09T10:10:01Z"}}
+                    return self.reply(200, applied)
+                if self.path == "/api/accounts/file%3Aclaude-a.json/quota/refresh":
+                    return self.reply(200, BANKED_VIEW)
                 if self.path.startswith("/api/accounts/file%3Aclaude-a.json/"):
                     if self.path.endswith("/activity"):
                         return self.reply(200, {"sessions": [{"session": "s1", "last_seen": "2026-10-09T10:00:00Z",
@@ -448,6 +483,90 @@ class LiveStream(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             fusebox.live("https://fusebox.invalid", out, lambda *a, **k: None, sleep=sleep, clock=time.monotonic)
         self.assertEqual(out.of("state")[0]["state"], "setup")
+
+
+class BankedResets(unittest.TestCase):
+    """Spending can't be undone: every POST goes once, with the confirmed quote."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        environment = patch.dict(os.environ, {"XDG_CONFIG_HOME": self.temporary.name})
+        environment.start()
+        self.addCleanup(environment.stop)
+        fusebox.store_key(KEY)
+        self.fake = FakeFusebox()
+        self.addCleanup(self.fake.close)
+
+    def test_status_keeps_what_the_panel_shows_and_valid_tokens_only(self):
+        for read in (fusebox.run_banked, fusebox.run_banked_refresh):
+            view = read(self.fake.base, "file:claude-a.json")["view"]
+            self.assertEqual((view["quote"], view["inventory"]["selectedGrant"], view["checkedAt"]),
+                             (QUOTE, GRANT, 1791540000123))
+            self.assertEqual(view["inventory"]["grants"], [{
+                "id": GRANT, "label": "Weekly reset", "remaining": 2, "expiresAt": 1792454400000, "startsAt": None,
+                "clears": ["5-hour", "weekly"], "usable": True, "reason": None}], "invalid grants are dropped")
+        self.assertEqual(self.fake.spends, [], "reading status never spends")
+        broken = fusebox.banked_view({**BANKED_VIEW, "quote": "x y", "operation": {"status": "exploded",
+                                                                                "request_id": QUOTE}})
+        self.assertIsNone(broken["quote"])
+        self.assertEqual(broken["operation"]["status"], "unknown", "an unknown state fails closed, as needing review")
+        with self.assertRaises(fusebox.Failure):
+            fusebox.banked_view({"inventory": {}})
+
+    def test_redeem_sends_the_confirmed_quote_and_grant_once(self):
+        result = fusebox.run_banked_action(self.fake.base, "file:claude-a.json", "redeem", QUOTE, GRANT)
+        self.assertEqual(self.fake.spends, [{"action": "redeem", "request_id": QUOTE, "grant_id": GRANT,
+                                             "confirmed": True}])
+        self.assertEqual(result["view"]["operation"]["status"], "applied")
+        self.assertEqual(result["view"]["operation"]["message"], "One banked reset applied")
+        self.assertIsNone(result["view"]["quote"], "a used confirmation is gone")
+
+    def test_a_changed_inventory_is_refused_by_fusebox_and_reported(self):
+        self.fake.spend = "conflict"
+        with self.assertRaises(fusebox.Failure) as refused:
+            fusebox.run_banked_action(self.fake.base, "file:claude-a.json", "redeem", QUOTE, "")
+        self.assertEqual(refused.exception.message, "Reset inventory changed; refresh and confirm again")
+        self.assertEqual(len(self.fake.spends), 1)
+
+    def test_an_unanswered_spend_is_uncertain_and_never_resent(self):
+        for mode in ("hang", "crash", "garbage"):
+            self.fake.spends.clear()
+            self.fake.spend = mode
+            with patch.object(fusebox, "SPEND_TIMEOUT", 0.5), self.assertRaises(fusebox.Failure) as unclear:
+                fusebox.run_banked_action(self.fake.base, "file:claude-a.json", "redeem", QUOTE, GRANT)
+            self.assertEqual(unclear.exception.state, "uncertain", mode)
+            self.assertIn("may have been used", unclear.exception.message)
+            time.sleep(1.2 if mode == "hang" else 0)
+            self.assertEqual(len(self.fake.spends), 1, f"{mode}: sent exactly once")
+
+    def test_recovery_actions_and_invalid_requests(self):
+        for action in ("retry", "resolve-used", "resolve-unused"):
+            fusebox.run_banked_action(self.fake.base, "file:claude-a.json", action, QUOTE)
+        self.assertEqual([(b["action"], b["grant_id"]) for b in self.fake.spends],
+                         [("retry", ""), ("resolve-used", ""), ("resolve-unused", "")])
+        for action, request, grant in (("spend-all", QUOTE, ""), ("redeem", "", ""), ("redeem", "a b", ""),
+                                       ("redeem", QUOTE, "../x")):
+            with self.assertRaises(fusebox.Failure):
+                fusebox.run_banked_action(self.fake.base, "file:claude-a.json", action, request, grant)
+        self.assertEqual(len(self.fake.spends), 3, "invalid requests never reach Fusebox")
+
+    def test_cli_requires_an_explicit_action_and_request(self):
+        environment = dict(os.environ, XDG_CONFIG_HOME=self.temporary.name)
+        missing = subprocess.run([sys.executable, "-B", str(SCRIPT), "banked-action", "--url", self.fake.base,
+                                  "file:claude-a.json"], capture_output=True, text=True, timeout=20, env=environment)
+        self.assertEqual(missing.returncode, 2)
+        self.assertEqual(self.fake.spends, [])
+        read = subprocess.run([sys.executable, "-B", str(SCRIPT), "banked", "--url", self.fake.base,
+                               "file:claude-a.json"], capture_output=True, text=True, timeout=20, env=environment)
+        self.assertEqual(json.loads(read.stdout)["view"]["quote"], QUOTE)
+
+    def test_live_accounts_flag_an_unresolved_spend(self):
+        pending = {**account(), "banked_resets": {"operation": {"status": "pending"}, "inventory": {"available": 1}}}
+        settled = {**account(), "banked_resets": {"operation": {"status": "applied"}}}
+        odd = {**account(), "banked_resets": {"operation": {"status": "something-new"}}}
+        flags = [fusebox.account(row)["bankedReview"] for row in (pending, settled, odd, account())]
+        self.assertEqual(flags, [True, False, True, False])
 
 
 class OneShot(unittest.TestCase):

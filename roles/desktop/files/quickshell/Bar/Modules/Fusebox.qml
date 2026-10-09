@@ -36,6 +36,9 @@ BarModule {
             if (first)
                 lines.push(Fusebox.faults.length === 1 ? "1 fault: " + first.title
                     : Fusebox.faults.length + " faults · " + first.title);
+            if (Fusebox.resetReviews > 0)
+                lines.push(Fusebox.resetReviews === 1 ? "A banked reset needs review"
+                    : Fusebox.resetReviews + " banked resets need review");
             if (Fusebox.error)
                 lines.push(Fusebox.error);
             return lines.join("\n");

@@ -304,6 +304,97 @@ function pauseText(a, now) {
         }).join("\n");
 }
 
+// ---- banked resets -------------------------------------------------------------
+// The rules of Fusebox's own reset dialog: spending needs fresh status, an
+// eligible inventory, a confirmation (quote) and no unresolved earlier spend.
+
+var RESET_FRESH_MS = 5 * MINUTE;
+// Fusebox's confirmation lasts two minutes from the status read; expire it a
+// little sooner here so a quote the server would refuse is never offered.
+var QUOTE_MS = 110 * 1000;
+var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function resetsSupported(a, enabled) {
+    return !!enabled && !!a && a.kind === "oauth" && (a.provider === "claude" || a.provider === "codex");
+}
+
+function resetUnresolved(view) {
+    var op = view && view.operation;
+    return !!op && (op.status === "pending" || op.status === "unknown");
+}
+
+// A usable grant that has expired or not started yet means the status is out of date.
+function grantTimingChanged(view, now) {
+    var grants = view && view.inventory ? view.inventory.grants : [];
+    return grants.some(function(g) {
+        return g.usable && ((g.expiresAt && g.expiresAt <= now) || (g.startsAt && g.startsAt > now));
+    });
+}
+
+// Why "Use 1 reset" can't open a confirmation now, or "" when it can.
+function resetBlock(view, a, now) {
+    if (!view)
+        return "Checking reset status…";
+    if (a.disabled)
+        return "Turn this account on to use a reset.";
+    if (view.error)
+        return view.error;
+    if (resetUnresolved(view))
+        return "A reset may have been used. New resets are blocked until it's resolved.";
+    if (!(view.checkedAt > now - RESET_FRESH_MS) || grantTimingChanged(view, now))
+        return "Refresh to check availability.";
+    var inv = view.inventory;
+    if (!inv || !inv.eligible)
+        return (inv && inv.reason) || "No reset can be used right now.";
+    return view.quote ? "" : "Refresh to check availability.";
+}
+
+function usableGrants(view) {
+    return (view && view.inventory ? view.inventory.grants : []).filter(function(g) { return g.usable; });
+}
+
+// Claude can retry an unresolved spend with its saved IDs for ten minutes; Codex
+// can only have its outcome recorded.
+function retryAllowed(view, a, now) {
+    return a.provider === "claude" && !!view && view.retryable && resetUnresolved(view)
+        && view.operation.retryUntil > now;
+}
+
+function dateText(at, now) {
+    if (Math.abs(at - now) < DAY)
+        return when(at, now);
+    var d = new Date(at);
+    return MONTHS[d.getMonth()] + " " + d.getDate();
+}
+
+function grantDetail(g, now) {
+    return (g.expiresAt ? "Expires " + dateText(g.expiresAt, now) : "No expiry reported")
+        + " · Clears " + (g.clears.length ? g.clears.join(", ") : "provider limits");
+}
+
+// "1:42" left to confirm; 0 or less means the confirmation has lapsed.
+function quoteLeft(startedAt, now) {
+    return startedAt + QUOTE_MS - now;
+}
+
+function countdown(ms) {
+    var s = Math.max(0, Math.ceil(ms / 1000));
+    return Math.floor(s / 60) + ":" + pad(s % 60);
+}
+
+function resetCountText(n) {
+    return n + (n === 1 ? " banked reset" : " banked resets");
+}
+
+// How a settled spend reads: used is good news, the rest is information.
+function operationTone(op) {
+    if (!op)
+        return "info";
+    if (op.status === "applied" || op.status === "reconciled_used")
+        return "ok";
+    return op.status === "pending" || op.status === "unknown" ? "warn" : "info";
+}
+
 // ---- requests and load -----------------------------------------------------
 
 // What a request came from: the program when its User-Agent named one, else the
@@ -456,6 +547,8 @@ if (typeof module !== "undefined" && module.exports)
     module.exports = { METRICS, QUOTA_DISPLAYS, quotaShare, quotaWord, providerName, providerMark,
         planName, span, when, ago, number, seconds, percent, maskEmails, accountName, quota, windowOf,
         windowLabel, windowTitle, inFlight, sessions, accountState, statusText, groupAccounts, authName,
-        accountSubtitle, accountFacts, resetFacts, pauseText, clientLabel, requestTags, requestMetrics,
+        accountSubtitle, accountFacts, resetFacts, pauseText, resetsSupported, resetUnresolved,
+        grantTimingChanged, resetBlock, usableGrants, retryAllowed, dateText, grantDetail, quoteLeft,
+        countdown, resetCountText, operationTone, QUOTE_MS, clientLabel, requestTags, requestMetrics,
         outcome, trimSeries, applyRequest, bars, median, figures, faultLevel, faultTiming, newFaults,
         barValue, dashboardUrl };

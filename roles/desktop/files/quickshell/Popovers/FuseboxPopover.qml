@@ -540,6 +540,401 @@ PopoutPanel {
         }
     }
 
+    // Banked resets, natively: the grants, a confirmation for the one spend, what
+    // came of it, and recovery when an earlier spend's outcome is unknown. Fusebox
+    // enforces the rules; this keeps a spend to two deliberate clicks (Use 1
+    // reset, then Apply reset) against the exact inventory that was shown.
+    component ResetPanel: Rectangle {
+        id: panel
+
+        required property var account
+        readonly property var resetInfo: Fusebox.resetState(account.id)
+        // Always null rather than undefined, so every binding can test them plainly.
+        readonly property var view: resetInfo && resetInfo.view ? resetInfo.view : null
+        readonly property var dialog: resetInfo && resetInfo.dialog ? resetInfo.dialog : null
+        readonly property bool busy: Fusebox.resetBusy
+        readonly property bool mine: Fusebox.resetBusy && Fusebox.resetAccount === account.id
+        readonly property bool review: Helpers.resetUnresolved(view) || (!view && account.bankedReview)
+        readonly property string mode: dialog ? dialog.action : review ? "review" : view ? "inventory" : "summary"
+        readonly property bool asking: mode === "redeem" || mode === "retry" || mode === "resolve"
+        readonly property bool warn: review || mode === "retry" || mode === "resolve"
+        readonly property string block: Helpers.resetBlock(view, account, root.now)
+        readonly property var grants: view && view.inventory ? view.inventory.grants : []
+        readonly property var choices: dialog && dialog.inventory ? dialog.inventory.grants.filter(g => g.usable) : []
+        readonly property var chosen: dialog && dialog.inventory
+            ? dialog.inventory.grants.find(g => g.id === dialog.grant) || null : null
+        readonly property int available: view && view.inventory && view.inventory.available !== null
+            ? view.inventory.available : account.banked
+        readonly property var operation: view ? view.operation : null
+        readonly property string settled: resetInfo && resetInfo.message ? resetInfo.message
+            : operation && !Helpers.resetUnresolved(view) && operation.message ? operation.message : ""
+
+        width: parent ? parent.width : 0
+        height: panelBody.implicitHeight + Theme.scaled(20)
+        radius: Theme.chipRadius
+        color: panel.warn ? Theme.amberBgSoft : root.surfaceColor
+        border.width: 1
+        border.color: panel.warn || panel.mode === "redeem" ? Theme.amberBorder : Theme.hairlineSoft
+        Accessible.role: Accessible.Grouping
+        Accessible.name: "Banked resets for " + Fusebox.accountName(panel.account)
+
+        // A question gets the keyboard on its safe answer.
+        onModeChanged: if (panel.asking) Qt.callLater(() => backButton.forceActiveFocus())
+
+        Behavior on color {
+            ColorAnimation { duration: Theme.chipFadeDuration }
+        }
+
+        Column {
+            id: panelBody
+            x: Theme.scaled(12)
+            y: Theme.scaled(10)
+            width: parent.width - x * 2
+            spacing: Theme.scaled(7)
+
+            Item {
+                width: parent.width
+                height: Math.max(panelTitle.implicitHeight, Theme.iconSmall)
+
+                Sym {
+                    id: panelGlyph
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: panel.warn ? "warning" : "restart_alt"
+                    size: Theme.iconSmall
+                    color: panel.warn || panel.mode === "redeem" ? Theme.amber : Theme.textMid
+                }
+                Text {
+                    id: panelTitle
+                    anchors.left: panelGlyph.right
+                    anchors.leftMargin: Theme.scaled(8)
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, parent.width - x - panelAside.implicitWidth - Theme.scaled(10))
+                    elide: Text.ElideRight
+                    textFormat: Text.PlainText
+                    font.family: Theme.fontMenu
+                    font.pixelSize: Theme.typography.metadata
+                    font.weight: Theme.weightSemibold
+                    color: panel.warn ? Theme.amber : Theme.textHi
+                    text: {
+                        switch (panel.mode) {
+                        case "redeem": return "Use 1 reset on " + Fusebox.accountName(panel.account) + "?";
+                        case "retry": return "Retry the reset request?";
+                        case "resolve": return "Record the reset's outcome";
+                        case "review": return "A reset may have been used";
+                        default:
+                            return Helpers.resetCountText(panel.available)
+                                + (panel.account.provider === "claude" && panel.view && panel.view.inventory
+                                    && panel.view.inventory.applicable !== null
+                                    && panel.view.inventory.applicable !== panel.available
+                                    ? " · " + panel.view.inventory.applicable + " usable now" : "");
+                        }
+                    }
+                }
+                Caption {
+                    id: panelAside
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    font.features: Theme.tabularNumberFeatures
+                    color: panel.mode === "redeem" ? Theme.amber : Theme.textFaint
+                    text: {
+                        if (panel.mode === "redeem")
+                            return "Confirm within " + Helpers.countdown(Helpers.quoteLeft(panel.dialog.startedAt, root.now));
+                        if (panel.mode === "retry" && panel.operation && panel.operation.retryUntil)
+                            return "Possible for " + Helpers.span(panel.operation.retryUntil - root.now);
+                        if (panel.view && panel.view.checkedAt && !panel.asking)
+                            return "Checked " + Helpers.ago(root.now - panel.view.checkedAt);
+                        return "";
+                    }
+                }
+            }
+
+            Caption {
+                visible: text !== ""
+                width: parent.width
+                wrapMode: Text.Wrap
+                elide: Text.ElideNone
+                lineHeight: 1.15
+                color: Theme.textMid
+                text: {
+                    switch (panel.mode) {
+                    case "summary":
+                        return "Clears a usage limit early. Always asks before spending.";
+                    case "review":
+                        return "New resets are blocked until it's resolved. Check the provider account, then record what happened"
+                            + (Helpers.retryAllowed(panel.view, panel.account, root.now) ? ", or retry the saved request." : ".");
+                    case "redeem":
+                        return "This spends one saved reset and can't be undone."
+                            + (panel.account.provider === "codex" ? " Codex chooses the reset and restores its subscription limits." : "");
+                    case "retry":
+                        return "A reset may already have been used. This sends the saved request again, with the same IDs.";
+                    case "resolve":
+                        return "Check your provider account first. This only records what happened; nothing is sent to the provider.";
+                    default:
+                        return "";
+                    }
+                }
+            }
+
+            // The grants, as the dashboard lists them.
+            Repeater {
+                model: panel.mode === "inventory" ? panel.grants : []
+
+                Column {
+                    id: grantRow
+                    required property var modelData
+                    width: parent ? parent.width : 0
+                    spacing: Theme.scaled(1)
+
+                    Item {
+                        width: parent.width
+                        height: grantLabel.implicitHeight
+
+                        Text {
+                            id: grantLabel
+                            width: Math.min(implicitWidth, parent.width - grantLeft.implicitWidth - Theme.scaled(10))
+                            elide: Text.ElideRight
+                            textFormat: Text.PlainText
+                            text: grantRow.modelData.label
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.typography.metadata
+                            font.weight: Theme.weightMedium
+                            color: grantRow.modelData.usable ? Theme.textHi : Theme.textLow
+                        }
+                        Caption {
+                            id: grantLeft
+                            anchors.right: parent.right
+                            font.features: Theme.tabularNumberFeatures
+                            color: Theme.textLow
+                            text: grantRow.modelData.remaining + " left"
+                        }
+                    }
+                    Caption {
+                        width: parent.width
+                        font.features: Theme.tabularNumberFeatures
+                        color: Theme.textFaint
+                        text: Helpers.grantDetail(grantRow.modelData, root.now)
+                    }
+                    Caption {
+                        visible: !!grantRow.modelData.reason
+                        width: parent.width
+                        wrapMode: Text.Wrap
+                        elide: Text.ElideNone
+                        color: Theme.textLow
+                        text: grantRow.modelData.reason || ""
+                    }
+                }
+            }
+
+            // Claude may offer more than one usable grant; Codex picks its own.
+            Repeater {
+                model: panel.mode === "redeem" && panel.account.provider === "claude" && panel.choices.length > 1
+                    ? panel.choices : []
+
+                Rectangle {
+                    id: choice
+                    required property var modelData
+                    readonly property bool selected: panel.dialog && panel.dialog.grant === modelData.id
+
+                    function pick() {
+                        if (!panel.busy)
+                            Fusebox.chooseResetGrant(panel.account.id, choice.modelData.id);
+                    }
+
+                    width: parent ? parent.width : 0
+                    height: choiceText.implicitHeight + Theme.scaled(12)
+                    radius: Theme.chipRadius
+                    color: choice.selected ? Theme.chip : choiceMouse.containsMouse ? Theme.hoverFill : "transparent"
+                    border.width: choice.selected || choice.activeFocus ? 1 : 0
+                    border.color: choice.activeFocus ? Theme.accentText : Theme.amberBorder
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: choice.modelData.label
+                    Accessible.description: Helpers.grantDetail(choice.modelData, root.now)
+                    Accessible.checked: choice.selected
+                    Accessible.onPressAction: choice.pick()
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                            choice.pick();
+                            event.accepted = true;
+                        }
+                    }
+
+                    Rectangle {
+                        id: choiceDot
+                        x: Theme.scaled(8)
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Theme.scaled(10)
+                        height: width
+                        radius: width / 2
+                        color: "transparent"
+                        border.width: 1
+                        border.color: choice.selected ? Theme.amber : Theme.textFaint
+
+                        Rectangle {
+                            visible: choice.selected
+                            anchors.centerIn: parent
+                            width: parent.width - Theme.scaled(4)
+                            height: width
+                            radius: width / 2
+                            color: Theme.amber
+                        }
+                    }
+                    Column {
+                        id: choiceText
+                        anchors.left: choiceDot.right
+                        anchors.leftMargin: Theme.scaled(8)
+                        anchors.right: parent.right
+                        anchors.rightMargin: Theme.scaled(8)
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Text {
+                            width: parent.width
+                            elide: Text.ElideRight
+                            textFormat: Text.PlainText
+                            text: choice.modelData.label + " · " + choice.modelData.remaining + " left"
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.typography.metadata
+                            font.weight: Theme.weightMedium
+                            color: Theme.textHi
+                        }
+                        Caption {
+                            width: parent.width
+                            color: Theme.textFaint
+                            text: Helpers.grantDetail(choice.modelData, root.now)
+                        }
+                    }
+                    MouseArea {
+                        id: choiceMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: choice.pick()
+                    }
+                }
+            }
+            Caption {
+                visible: panel.mode === "redeem" && panel.chosen !== null
+                    && !(panel.account.provider === "claude" && panel.choices.length > 1)
+                width: parent.width
+                wrapMode: Text.Wrap
+                elide: Text.ElideNone
+                color: Theme.textLow
+                text: panel.chosen ? panel.chosen.label + " · " + Helpers.grantDetail(panel.chosen, root.now) : ""
+            }
+
+            Caption {
+                visible: panel.mode === "inventory" && panel.block !== "" && !panel.mine && panel.resetInfo !== null
+                    && !panel.resetInfo.error
+                width: parent.width
+                wrapMode: Text.Wrap
+                elide: Text.ElideNone
+                color: Theme.textLow
+                text: panel.block
+            }
+            Caption {
+                visible: (panel.mode === "inventory" || panel.mode === "summary") && panel.settled !== ""
+                width: parent.width
+                wrapMode: Text.Wrap
+                elide: Text.ElideNone
+                color: Helpers.operationTone(panel.operation) === "ok" || (panel.resetInfo && panel.resetInfo.message)
+                    ? Theme.ok : Theme.textLow
+                text: panel.settled
+            }
+            Caption {
+                visible: panel.resetInfo !== null && !!panel.resetInfo.error
+                width: parent.width
+                wrapMode: Text.Wrap
+                elide: Text.ElideNone
+                color: panel.resetInfo && panel.resetInfo.uncertain ? Theme.amber : Theme.redText
+                text: panel.resetInfo ? panel.resetInfo.error || "" : ""
+            }
+
+            Row {
+                spacing: Theme.scaled(6)
+
+                PillButton {
+                    id: backButton
+                    visible: panel.asking
+                    enabled: !panel.mine
+                    label: "Back"
+                    accessibleName: "Back, without changing anything"
+                    onActivated: Fusebox.cancelReset(panel.account.id)
+                }
+                PillButton {
+                    visible: panel.mode === "summary"
+                    enabled: !panel.busy
+                    glyph: "restart_alt"
+                    label: panel.mine ? "Checking…" : "Details"
+                    accessibleName: "Show banked resets for " + Fusebox.accountName(panel.account)
+                    onActivated: Fusebox.loadReset(panel.account.id)
+                }
+                PillButton {
+                    visible: panel.mode === "inventory" || panel.mode === "review"
+                    enabled: !panel.busy
+                    glyph: "refresh"
+                    label: panel.mine && Fusebox.resetOperation !== "open" ? "Checking…" : "Recheck"
+                    accessibleName: "Check reset status and usage again for " + Fusebox.accountName(panel.account)
+                    onActivated: Fusebox.refreshReset(panel.account.id)
+                }
+                PillButton {
+                    visible: panel.mode === "inventory"
+                    enabled: !panel.busy && panel.block === ""
+                    label: panel.mine && Fusebox.resetOperation === "open" ? "Checking…" : "Use 1 reset"
+                    accessibleName: "Use one banked reset on " + Fusebox.accountName(panel.account) + ", after a confirmation"
+                    onActivated: Fusebox.beginRedeem(panel.account.id)
+                }
+                PillButton {
+                    visible: panel.mode === "review" && Helpers.retryAllowed(panel.view, panel.account, root.now)
+                    enabled: !panel.busy
+                    label: "Retry request"
+                    onActivated: Fusebox.beginRecovery(panel.account.id, "retry")
+                }
+                PillButton {
+                    visible: panel.mode === "review" && panel.operation !== null && !!panel.operation.requestId
+                    enabled: !panel.busy
+                    label: "Check outcome"
+                    onActivated: Fusebox.beginRecovery(panel.account.id, "resolve")
+                }
+                PillButton {
+                    visible: panel.mode === "review" && panel.view === null
+                    enabled: !panel.busy
+                    glyph: "warning"
+                    label: panel.mine ? "Checking…" : "Review"
+                    onActivated: Fusebox.loadReset(panel.account.id)
+                }
+                PillButton {
+                    visible: panel.mode === "redeem"
+                    // Hidden buttons still evaluate their bindings: guard the dialog.
+                    enabled: !panel.busy && panel.dialog !== null
+                        && (panel.account.provider === "codex" || panel.dialog.grant !== "")
+                    danger: true
+                    label: panel.mine ? "Applying…" : "Apply reset"
+                    accessibleName: "Apply one banked reset to " + Fusebox.accountName(panel.account) + ". This can't be undone."
+                    onActivated: Fusebox.confirmReset(panel.account.id)
+                }
+                PillButton {
+                    visible: panel.mode === "retry"
+                    enabled: !panel.busy
+                    danger: true
+                    label: panel.mine ? "Retrying…" : "Confirm retry"
+                    onActivated: Fusebox.confirmReset(panel.account.id)
+                }
+                PillButton {
+                    visible: panel.mode === "resolve"
+                    enabled: !panel.busy
+                    label: "Reset was used"
+                    onActivated: Fusebox.confirmReset(panel.account.id, "resolve-used")
+                }
+                PillButton {
+                    visible: panel.mode === "resolve"
+                    enabled: !panel.busy
+                    label: "No reset was used"
+                    onActivated: Fusebox.confirmReset(panel.account.id, "resolve-unused")
+                }
+            }
+        }
+    }
+
     component FaultRow: Rectangle {
         id: faultRow
 
@@ -725,8 +1120,8 @@ PopoutPanel {
                     anchors.left: providerMark.right
                     anchors.leftMargin: Theme.scaled(8)
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(implicitWidth, parent.width - x - planTag.width - statusRow.width
-                        - Theme.scaled(20))
+                    width: Math.min(implicitWidth, parent.width - x - planTag.width - reviewTag.width
+                        - statusRow.width - Theme.scaled(26))
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
                     text: Fusebox.accountName(circuit.account)
@@ -755,6 +1150,28 @@ PopoutPanel {
                         font.pixelSize: Theme.typography.section
                         font.weight: Theme.weightSemibold
                         color: Theme.textLow
+                    }
+                }
+                // An unresolved reset spend, as the dashboard's "Review reset".
+                Rectangle {
+                    id: reviewTag
+                    visible: !!circuit.account.bankedReview
+                    anchors.left: planTag.right
+                    anchors.leftMargin: visible ? Theme.scaled(6) : 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: visible ? reviewText.implicitWidth + Theme.scaled(10) : 0
+                    height: reviewText.implicitHeight + Theme.scaled(2)
+                    radius: Theme.scaled(4)
+                    color: Theme.amberBgSoft
+
+                    Text {
+                        id: reviewText
+                        anchors.centerIn: parent
+                        text: "Review reset"
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.typography.section
+                        font.weight: Theme.weightSemibold
+                        color: Theme.amber
                     }
                 }
                 Status {
@@ -868,18 +1285,11 @@ PopoutPanel {
                         onActivated: Fusebox.runAction(circuit.account.id, "reset")
                     }
                 }
-                Notice {
-                    visible: circuit.account.banked > 0
-                    glyph: "restart_alt"
-                    title: circuit.account.banked + (circuit.account.banked === 1 ? " banked reset" : " banked resets")
-                    body: "Clears a usage limit early."
-
-                    PillButton {
-                        label: "Use"
-                        glyph: "open_in_new"
-                        accessibleName: "Use a banked reset in the Fusebox dashboard"
-                        onActivated: Fusebox.openDashboard("#/accounts/" + encodeURIComponent(circuit.account.id))
-                    }
+                ResetPanel {
+                    account: circuit.account
+                    visible: Fusebox.resetsEnabled && Helpers.resetsSupported(circuit.account, true)
+                        && (circuit.account.banked > 0 || circuit.account.bankedReview
+                            || Fusebox.resetState(circuit.account.id) !== null)
                 }
                 Caption {
                     visible: circuit.result !== null && !circuit.result.ok

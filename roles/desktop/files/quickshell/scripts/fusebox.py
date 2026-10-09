@@ -5,7 +5,8 @@
 prints newline-delimited JSON for Common/Fusebox.qml: a snapshot of the
 server, its accounts and its faults on every connect, then each change.
 `action` and `activity` are one-shot requests for the dashboard's breaker
-buttons and account details. `store-key`, `forget-key` and `key-status` own
+buttons and account details; `banked`, `banked-refresh` and `banked-action`
+read and spend banked subscription resets. `store-key`, `forget-key` and `key-status` own
 the private management key file.
 
 The key is read from that file, sent only in an Authorization header and
@@ -296,7 +297,9 @@ def account(row):
     rows = quota.get("windows") if isinstance(quota.get("windows"), list) else []
     windows = [w for w in map(window, rows[:16]) if w]
     counters = mapping(row.get("counters"))
-    inventory = mapping(mapping(row.get("banked_resets")).get("inventory"))
+    banked = mapping(row.get("banked_resets"))
+    inventory = mapping(banked.get("inventory"))
+    operation = banked.get("operation")
     return {
         "id": row["id"],
         "provider": row["provider"],
@@ -315,6 +318,8 @@ def account(row):
         "quotaAt": epoch_ms(quota.get("updated_at")),
         "windows": windows,
         "banked": count(inventory.get("available")),
+        # A spend whose outcome is unresolved blocks further resets until reviewed.
+        "bankedReview": isinstance(operation, dict) and operation_status(operation.get("status")) in UNRESOLVED,
         "models": len(row["models"]) if isinstance(row.get("models"), list) else 0,
     }
 
@@ -664,6 +669,101 @@ def live(address: str, out: Output, connect, clock=time.monotonic, sleep=time.sl
             sleep(min(1, max(0, deadline - clock())))
 
 
+# ---------------------------------------------------------------- banked resets
+# Spending a banked reset can't be undone. Fusebox journals each spend before it
+# dispatches it, locks the subscription, binds the confirmation to the inventory
+# that was shown (the quote) and never retries. This client keeps those rules:
+# each POST is sent once, the quote is the one the user confirmed, and a request
+# that may have reached Fusebox without a clear answer is reported as uncertain.
+
+TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:~-]{0,255}")
+OPERATION_STATES = ("pending", "unknown", "applied", "already_used", "refused", "reconciled_used", "reconciled_unused")
+UNRESOLVED = ("pending", "unknown")
+BANKED_ACTIONS = ("redeem", "retry", "resolve-used", "resolve-unused")
+SPEND_TIMEOUT = 90   # Fusebox refreshes usage after a spend; give it time, then never resend
+UNCERTAIN = ("The reset request didn't finish, so a reset may have been used. "
+             "Refresh the status before doing anything else.")
+
+
+def token(value):
+    return value if isinstance(value, str) and TOKEN.fullmatch(value) else None
+
+
+def operation_status(value) -> str:
+    # A state this client doesn't know fails closed, as one needing review.
+    return value if value in OPERATION_STATES else "unknown"
+
+
+def optional_count(value):
+    return None if value is None else count(value)
+
+
+def banked_view(payload):
+    if not isinstance(payload, dict) or not isinstance(payload.get("checked_at"), str):
+        raise Failure("offline", "Fusebox sent reset status the widget can't read.")
+    inventory = None
+    if isinstance(payload.get("inventory"), dict):
+        raw = payload["inventory"]
+        grants = []
+        for g in raw["grants"][:32] if isinstance(raw.get("grants"), list) else []:
+            if not isinstance(g, dict) or not token(g.get("id")):
+                continue
+            clears = g.get("clears") if isinstance(g.get("clears"), list) else []
+            grants.append({"id": g["id"], "label": clean(g.get("label"), 120) or "Subscription reset",
+                           "remaining": count(g.get("remaining")), "expiresAt": epoch_ms(g.get("expires_at")),
+                           "startsAt": epoch_ms(g.get("starts_at")),
+                           "clears": [c for c in (clean(x, 40) for x in clears[:8]) if c],
+                           "usable": g.get("usable") is True, "reason": clean(g.get("reason"), 200)})
+        inventory = {"available": optional_count(raw.get("available")),
+                     "applicable": optional_count(raw.get("applicable")),
+                     "eligible": raw.get("eligible") is True, "reason": clean(raw.get("reason"), 200),
+                     "selectedGrant": token(raw.get("selected_grant")), "grants": grants}
+    operation = None
+    if isinstance(payload.get("operation"), dict):
+        raw = payload["operation"]
+        operation = {"requestId": token(raw.get("request_id")), "status": operation_status(raw.get("status")),
+                     "message": clean(raw.get("message"), 200), "createdAt": epoch_ms(raw.get("created_at")),
+                     "retryUntil": epoch_ms(raw.get("retry_until"))}
+    return {"checkedAt": epoch_ms(payload["checked_at"]), "inventory": inventory,
+            "error": clean(payload.get("error"), 300), "quote": token(payload.get("quote")),
+            "operation": operation, "retryable": payload.get("retryable") is True}
+
+
+def run_banked(address: str, identity: str):
+    """Reads fresh reset status. Fusebox asks the provider, but nothing is spent."""
+    client = Client(normalize_url(address), read_key())
+    return {"ok": True, "view": banked_view(client.request(account_path(identity) + "/banked-resets", timeout=45))}
+
+
+def run_banked_refresh(address: str, identity: str):
+    """Fusebox's quota refresh: usage and reset status, without spending."""
+    client = Client(normalize_url(address), read_key())
+    body = client.request(account_path(identity) + "/quota/refresh", method="POST", timeout=60)
+    if not isinstance(body, dict) or "checked_at" not in body:
+        raise Failure("missing", "Banked resets are turned off on this Fusebox.")
+    return {"ok": True, "view": banked_view(body)}
+
+
+def run_banked_action(address: str, identity: str, action: str, request_id: str, grant_id: str = ""):
+    if action not in BANKED_ACTIONS or not token(request_id) or (grant_id and not token(grant_id)):
+        raise Failure("invalid", "That reset request isn't valid. Refresh the status and try again.")
+    client = Client(normalize_url(address), read_key())
+    payload = {"action": action, "request_id": request_id, "grant_id": grant_id, "confirmed": True}
+    try:
+        # Sent once. Fusebox has journalled the spend before it answers, so a lost
+        # answer must never be repeated here.
+        body = client.request(account_path(identity) + "/banked-resets", method="POST", payload=payload,
+                              timeout=SPEND_TIMEOUT)
+    except Failure as failure:
+        if failure.status is None or failure.status >= 500:
+            raise Failure("uncertain", UNCERTAIN, failure.status) from None
+        raise
+    try:
+        return {"ok": True, "view": banked_view(body)}
+    except Failure:
+        raise Failure("uncertain", UNCERTAIN) from None
+
+
 # ---------------------------------------------------------------- one-shot
 
 
@@ -702,6 +802,16 @@ def main(argv=None) -> int:
     activity_parser = commands.add_parser("activity")
     activity_parser.add_argument("--url", required=True)
     activity_parser.add_argument("account")
+    for name in ("banked", "banked-refresh"):
+        banked_parser = commands.add_parser(name)
+        banked_parser.add_argument("--url", required=True)
+        banked_parser.add_argument("account")
+    spend_parser = commands.add_parser("banked-action")
+    spend_parser.add_argument("--url", required=True)
+    spend_parser.add_argument("--action", required=True, choices=BANKED_ACTIONS)
+    spend_parser.add_argument("--request", required=True)
+    spend_parser.add_argument("--grant", default="")
+    spend_parser.add_argument("account")
     commands.add_parser("store-key", help="read the key from stdin")
     commands.add_parser("forget-key")
     commands.add_parser("key-status")
@@ -724,6 +834,12 @@ def main(argv=None) -> int:
                 reply(run_action(args.url, args.name, args.account, args.disabled == "true"))
             elif args.command == "activity":
                 reply(run_activity(args.url, args.account))
+            elif args.command == "banked":
+                reply(run_banked(args.url, args.account))
+            elif args.command == "banked-refresh":
+                reply(run_banked_refresh(args.url, args.account))
+            elif args.command == "banked-action":
+                reply(run_banked_action(args.url, args.account, args.action, args.request, args.grant))
             elif args.command == "store-key":
                 store_key(sys.stdin.readline(MAX_KEY + 2))
                 reply({"saved": True})
