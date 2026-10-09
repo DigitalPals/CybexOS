@@ -86,14 +86,22 @@ Click the chip for the dashboard:
   subscription quota show 5-hour and weekly meters: 20 blocks of 5%, amber from
   75% used and red from 95%, matching Fusebox's dashboard. They read as the
   share used or left, switched with **Used | Left** in the section header.
-- **Account details**, on click: token validity, last use and request counts,
-  window resets, paused models, the last error, banked resets, and the coding
-  sessions pinned to it. The breaker offers **Refresh** (sign-in and quota, for
-  OAuth accounts), **Clear cooldowns** (while cooling or in error), and
-  **Turn off**/**Turn on**. Turning an account off asks for a second click
-  within four seconds. **Open** shows the account in Fusebox's dashboard.
-- **Latest requests**: the six most recent, with client, model, account,
-  status, time to first token and tokens.
+- **Account details**, on click, laid out like the dashboard's account drawer:
+  provider, sign-in kind and last use; a strip of requests, failures, pinned
+  coding sessions and how long the sign-in stays valid; when each window resets
+  ("12:10 · in 57m", or when a used-up window is back); and the account's own
+  load over the last hour. Paused models, the last error and banked resets get
+  boxes of their own with their action: **Clear** for cooldowns and errors,
+  **Sign in** for an expired sign-in and **Use** for a banked reset (both open
+  the dashboard). Icon buttons below offer **Refresh** (sign-in and quota, for
+  OAuth accounts), **Turn off**/**Turn on** and **Open** in the dashboard.
+  Turning an account off asks for a second click within four seconds.
+- **Latest requests**: the six most recent on one card. Each shows the
+  provider's mark, the model, the client as a tag (the program when Fusebox
+  recognises it, else the API format it spoke, such as Responses), `ws` or
+  retry tags when they apply, a coloured status and the time; then the account,
+  time to first token and tokens, with cached context counted as input. A failed
+  request's reason follows in red.
 
 Removing accounts, signing in again and spending banked resets stay in
 Fusebox's own dashboard: sign-in redirects to fixed localhost ports on the

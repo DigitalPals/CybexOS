@@ -320,6 +320,226 @@ PopoutPanel {
         }
     }
 
+    // A run of labelled figures on one recessed strip. Keyed by count, so values
+    // that move with the clock update in place instead of rebuilding.
+    component FactStrip: Rectangle {
+        id: strip
+
+        property var facts: []
+        property color fill: Theme.chip
+
+        width: parent ? parent.width : 0
+        height: Theme.scaled(46)
+        radius: Theme.chipRadius
+        color: strip.fill
+
+        Row {
+            anchors.fill: parent
+
+            Repeater {
+                model: strip.facts.length
+
+                Fact {
+                    required property int index
+                    readonly property var fact: strip.facts[index] || ({})
+
+                    width: strip.width / Math.max(1, strip.facts.length)
+                    divider: index > 0
+                    label: fact.label || ""
+                    value: fact.value || ""
+                    level: fact.level || "ok"
+                }
+            }
+        }
+    }
+
+    // Requests per minute for the last hour: sixty fixed slots that read their
+    // minute, so the bars persist while the clock moves them along. Failures
+    // stack in red, and the current minute is lit.
+    component LoadBars: Item {
+        id: chart
+
+        property var bars: []
+        property real peak: 4
+
+        Row {
+            id: barRow
+            readonly property real slot: width / 60
+            anchors.fill: parent
+
+            Repeater {
+                model: 60
+
+                Item {
+                    id: barSlot
+                    required property int index
+                    readonly property var bucket: chart.bars[index] || ({ requests: 0, failed: 0, current: false })
+
+                    width: barRow.slot
+                    height: barRow.height
+
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.max(1, barRow.slot - 2)
+                        height: barSlot.bucket.requests > 0
+                            ? Math.max(2, barSlot.bucket.requests / chart.peak * parent.height) : 1
+                        radius: 1
+                        color: barSlot.bucket.requests === 0 ? Theme.hairline
+                            : barSlot.bucket.current ? Theme.accentText : Qt.alpha(Theme.accentText, 0.45)
+                    }
+                    Rectangle {
+                        visible: barSlot.bucket.failed > 0
+                        anchors.bottom: parent.bottom
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.max(1, barRow.slot - 2)
+                        height: Math.max(2, barSlot.bucket.failed / chart.peak * parent.height)
+                        radius: 1
+                        color: Theme.red
+                    }
+                }
+            }
+        }
+    }
+
+    // A small button with an icon: the breaker's switches and the links out.
+    component PillButton: Rectangle {
+        id: pill
+
+        property string label: ""
+        property string glyph: ""
+        property bool danger: false
+        property string accessibleName: label
+        readonly property color ink: pill.danger ? Theme.redText : Theme.textMid
+        signal activated()
+
+        implicitWidth: pillRow.implicitWidth + Theme.scaled(18)
+        width: implicitWidth
+        height: Theme.scaled(26)
+        radius: Theme.chipRadius
+        opacity: pill.enabled ? 1 : 0.45
+        color: pill.danger ? Theme.redBgSoft : pillMouse.containsMouse && pill.enabled ? Theme.chipHover : Theme.hoverFill
+        border.width: 1
+        border.color: pill.activeFocus ? Theme.accentText : pill.danger ? Theme.redBorder : Theme.hairline
+        activeFocusOnTab: pill.enabled && pill.visible
+        Accessible.role: Accessible.Button
+        Accessible.name: pill.accessibleName
+        Accessible.onPressAction: if (pill.enabled) pill.activated()
+        Keys.onPressed: event => {
+            if (pill.enabled && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Space)) {
+                pill.activated();
+                event.accepted = true;
+            }
+        }
+
+        Behavior on color {
+            ColorAnimation { duration: Theme.chipFadeDuration }
+        }
+
+        Row {
+            id: pillRow
+            anchors.centerIn: parent
+            spacing: Theme.scaled(5)
+
+            Sym {
+                visible: pill.glyph !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                name: pill.glyph
+                size: Theme.iconSmall
+                color: pill.ink
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: pill.label
+                textFormat: Text.PlainText
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.metadata
+                font.weight: Theme.weightSemibold
+                color: pill.ink
+            }
+        }
+        MouseArea {
+            id: pillMouse
+            anchors.fill: parent
+            enabled: pill.enabled
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: pill.activated()
+        }
+    }
+
+    // Something about an account worth a box of its own, with its action on
+    // the right, as the dashboard's drawer shows cooldowns and errors.
+    component Notice: Rectangle {
+        id: notice
+
+        property string tone: "info"
+        property string glyph: "info"
+        property string title: ""
+        property string body: ""
+        property bool mono: false
+        default property alias actions: noticeActions.data
+        readonly property color ink: tone === "error" ? Theme.redText : tone === "warn" ? Theme.amber : Theme.textMid
+
+        width: parent ? parent.width : 0
+        height: Math.max(noticeText.implicitHeight, noticeActions.height) + Theme.scaled(18)
+        radius: Theme.chipRadius
+        color: tone === "error" ? Theme.redBgSoft : tone === "warn" ? Theme.amberBgSoft : root.surfaceColor
+        border.width: 1
+        border.color: tone === "error" ? Theme.redBorder : tone === "warn" ? Theme.amberBorder : Theme.hairlineSoft
+        Accessible.role: Accessible.StaticText
+        Accessible.name: notice.title
+        Accessible.description: notice.body
+
+        Sym {
+            x: Theme.scaled(10)
+            y: Theme.scaled(10)
+            name: notice.glyph
+            size: Theme.iconSmall
+            color: notice.ink
+        }
+        Column {
+            id: noticeText
+            x: Theme.scaled(32)
+            y: Theme.scaled(9)
+            width: parent.width - x - noticeActions.width - Theme.scaled(20)
+            spacing: Theme.scaled(2)
+
+            Text {
+                width: parent.width
+                elide: Text.ElideRight
+                textFormat: Text.PlainText
+                text: notice.title
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.metadata
+                font.weight: Theme.weightSemibold
+                color: notice.ink
+            }
+            Text {
+                visible: text !== ""
+                width: parent.width
+                wrapMode: Text.Wrap
+                maximumLineCount: 4
+                elide: Text.ElideRight
+                textFormat: Text.PlainText
+                text: notice.body
+                lineHeight: 1.15
+                font.family: notice.mono ? Theme.fontMono : Theme.fontMenu
+                font.pixelSize: Theme.typography.metadata
+                font.features: Theme.tabularNumberFeatures
+                color: Theme.textMid
+            }
+        }
+        Row {
+            id: noticeActions
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.scaled(9)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Theme.scaled(6)
+        }
+    }
+
     component FaultRow: Rectangle {
         id: faultRow
 
@@ -559,91 +779,106 @@ PopoutPanel {
 
             // ---- details ----
             Column {
+                id: details
                 visible: circuit.open
                 x: providerMark.width + Theme.scaled(8)
                 width: parent.width - x
-                spacing: Theme.scaled(4)
+                topPadding: Theme.scaled(4)
+                spacing: Theme.scaled(8)
+
+                readonly property var series: circuit.detail && circuit.detail.series ? circuit.detail.series : []
+                readonly property var accountBars: Helpers.bars(details.series, root.now)
+                readonly property int accountTotal: details.accountBars.reduce((sum, b) => sum + b.requests, 0)
+                readonly property string pauses: Helpers.pauseText(circuit.account, root.now)
+                readonly property var resets: Helpers.resetFacts(circuit.account, root.now)
 
                 Caption {
                     width: parent.width
-                    wrapMode: Text.Wrap
-                    elide: Text.ElideNone
                     font.features: Theme.tabularNumberFeatures
                     color: Theme.textLow
-                    text: {
-                        const a = circuit.account;
-                        const parts = [Helpers.providerName(a) + (a.kind === "api-key" ? " API key" : "")];
-                        if (a.kind === "oauth" && a.expiresAt)
-                            parts.push(a.expiresAt > root.now ? "token valid " + Helpers.span(a.expiresAt - root.now)
-                                : "token expired");
-                        parts.push(a.lastUsed ? "last used " + Helpers.ago(root.now - a.lastUsed) : "not used yet");
-                        parts.push(Helpers.number(a.requests) + " requests"
-                            + (a.failures ? ", " + Helpers.number(a.failures) + " failed" : ""));
-                        return parts.join(" · ");
-                    }
+                    text: Helpers.accountSubtitle(circuit.account, root.now)
                 }
-                // These models change only with the account, not every second, so
-                // rows are not rebuilt by the clock; an expired one just hides.
-                Repeater {
-                    model: circuit.account.windows.filter(w => !w.model && w.resetsAt)
+                FactStrip {
+                    fill: root.surfaceColor
+                    facts: Helpers.accountFacts(circuit.account, circuit.detail, root.now)
+                }
+                FactStrip {
+                    visible: details.resets.length > 0
+                    fill: root.surfaceColor
+                    facts: details.resets
+                }
 
-                    Caption {
-                        required property var modelData
-                        visible: modelData.resetsAt > root.now
-                        width: parent ? parent.width : 0
-                        font.features: Theme.tabularNumberFeatures
-                        color: Theme.textLow
-                        text: Helpers.windowTitle(modelData) + " window resets " + Helpers.when(modelData.resetsAt, root.now)
-                            + ", in " + Helpers.span(modelData.resetsAt - root.now)
-                    }
-                }
-                Repeater {
-                    model: circuit.account.cooldowns
-
-                    Caption {
-                        required property var modelData
-                        visible: modelData.until > root.now
-                        width: parent ? parent.width : 0
-                        font.features: Theme.tabularNumberFeatures
-                        color: Theme.amber
-                        text: (modelData.model === "*" ? "Every model" : modelData.model) + " paused ("
-                            + modelData.kind.replace("_", " ") + ") for " + Helpers.span(modelData.until - root.now)
-                    }
-                }
-                Caption {
-                    visible: circuit.account.lastError !== null && circuit.account.lastError !== undefined
+                // The account's own hour, from its activity.
+                Column {
+                    visible: details.series.length > 0
                     width: parent.width
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 3
-                    color: Theme.redText
-                    text: Fusebox.privateText(circuit.account.lastError)
+                    spacing: Theme.scaled(5)
+
+                    SectionTitle {
+                        label: "Load · last 60 min"
+                        detail: Helpers.number(details.accountTotal) + (details.accountTotal === 1 ? " request" : " requests")
+                    }
+                    LoadBars {
+                        width: parent.width
+                        height: Theme.scaled(26)
+                        bars: details.accountBars
+                        peak: Math.max(2, ...details.accountBars.map(b => b.requests))
+                        Accessible.role: Accessible.Graphic
+                        Accessible.name: "Requests per minute on this account, last 60 minutes"
+                        Accessible.description: Helpers.number(details.accountTotal) + " requests"
+                    }
                 }
-                Caption {
+
+                Notice {
+                    visible: details.pauses !== ""
+                    tone: "warn"
+                    glyph: "schedule"
+                    title: circuit.account.cooldowns.some(c => c.kind === "quota" && c.until > root.now)
+                        ? "Usage limit used up" : "Paused"
+                    body: details.pauses
+
+                    PillButton {
+                        enabled: !Fusebox.actionBusy
+                        label: circuit.acting && Fusebox.actionName === "reset" ? "Clearing…" : "Clear"
+                        accessibleName: "Clear cooldowns of " + Fusebox.accountName(circuit.account)
+                        onActivated: Fusebox.runAction(circuit.account.id, "reset")
+                    }
+                }
+                Notice {
+                    visible: !!circuit.account.lastError
+                    tone: "error"
+                    glyph: "error"
+                    mono: true
+                    title: circuit.circuitState.signin ? "Sign-in expired" : "Last error"
+                    body: Fusebox.privateText(circuit.account.lastError)
+
+                    // Signing in again needs the dashboard: its redirects go to the server.
+                    PillButton {
+                        visible: !!circuit.circuitState.signin
+                        label: "Sign in"
+                        glyph: "open_in_new"
+                        accessibleName: "Sign in to " + Fusebox.accountName(circuit.account) + " again in the Fusebox dashboard"
+                        onActivated: Fusebox.openDashboard("#/accounts/" + encodeURIComponent(circuit.account.id))
+                    }
+                    PillButton {
+                        visible: !circuit.circuitState.signin && details.pauses === ""
+                        enabled: !Fusebox.actionBusy
+                        label: circuit.acting && Fusebox.actionName === "reset" ? "Clearing…" : "Clear"
+                        accessibleName: "Clear the error of " + Fusebox.accountName(circuit.account)
+                        onActivated: Fusebox.runAction(circuit.account.id, "reset")
+                    }
+                }
+                Notice {
                     visible: circuit.account.banked > 0
-                    width: parent.width
-                    color: Theme.textLow
-                    text: "↻ " + circuit.account.banked + (circuit.account.banked === 1 ? " reset" : " resets")
-                        + " banked · spend in the dashboard"
-                }
-                Caption {
-                    width: parent.width
-                    wrapMode: Text.Wrap
-                    elide: Text.ElideNone
-                    color: Theme.textLow
-                    text: {
-                        const d = circuit.detail;
-                        if (!d)
-                            return "Loading pinned sessions…";
-                        if (d.error)
-                            return d.error;
-                        const pinned = d.sessions.length;
-                        if (!pinned)
-                            return "No coding sessions pinned";
-                        const busy = d.sessions.filter(s => s.active).length;
-                        const clients = [...new Set(d.sessions.map(s => s.client).filter(c => c))];
-                        return pinned + (pinned === 1 ? " session pinned" : " sessions pinned")
-                            + (busy ? ", " + busy + " active now" : "")
-                            + (clients.length ? " · " + clients.slice(0, 3).join(", ") : "");
+                    glyph: "restart_alt"
+                    title: circuit.account.banked + (circuit.account.banked === 1 ? " banked reset" : " banked resets")
+                    body: "Clears a usage limit early."
+
+                    PillButton {
+                        label: "Use"
+                        glyph: "open_in_new"
+                        accessibleName: "Use a banked reset in the Fusebox dashboard"
+                        onActivated: Fusebox.openDashboard("#/accounts/" + encodeURIComponent(circuit.account.id))
                     }
                 }
                 Caption {
@@ -655,120 +890,220 @@ PopoutPanel {
                     text: circuit.result ? circuit.result.error : ""
                 }
 
-                // The breaker: reversible actions only.
-                Row {
-                    topPadding: Theme.scaled(4)
-                    spacing: Theme.scaled(16)
+                // The breaker: reversible switches on the left, the dashboard on the right.
+                Item {
+                    width: parent.width
+                    height: Theme.scaled(26)
 
-                    LinkText {
-                        visible: circuit.account.kind === "oauth"
-                        enabled: !Fusebox.actionBusy
-                        text: circuit.acting && Fusebox.actionName === "refresh" ? "Refreshing…" : "Refresh"
-                        accessibleName: "Refresh the sign-in and quota of " + Fusebox.accountName(circuit.account)
-                        onClicked: Fusebox.runAction(circuit.account.id, "refresh")
-                    }
-                    LinkText {
-                        visible: circuit.circuitState.cls === "cooling" || circuit.circuitState.cls === "error"
-                        enabled: !Fusebox.actionBusy
-                        text: circuit.acting && Fusebox.actionName === "reset" ? "Clearing…" : "Clear cooldowns"
-                        accessibleName: "Clear cooldowns and errors of " + Fusebox.accountName(circuit.account)
-                        onClicked: Fusebox.runAction(circuit.account.id, "reset")
-                    }
-                    LinkText {
-                        enabled: !Fusebox.actionBusy
-                        text: circuit.acting && Fusebox.actionName === "toggle" ? "Switching…"
-                            : circuit.account.disabled ? "Turn on"
-                            : root.confirmOff === circuit.account.id ? "Confirm turn off" : "Turn off"
-                        accessibleName: (circuit.account.disabled ? "Turn on " : "Turn off ")
-                            + Fusebox.accountName(circuit.account)
-                        onClicked: {
-                            if (circuit.account.disabled) {
-                                Fusebox.runAction(circuit.account.id, "toggle", false);
-                            } else if (root.confirmOff === circuit.account.id) {
-                                root.confirmOff = "";
-                                Fusebox.runAction(circuit.account.id, "toggle", true);
-                            } else {
-                                root.confirmOff = circuit.account.id;
+                    Row {
+                        spacing: Theme.scaled(6)
+
+                        PillButton {
+                            visible: circuit.account.kind === "oauth"
+                            enabled: !Fusebox.actionBusy
+                            glyph: "refresh"
+                            label: circuit.acting && Fusebox.actionName === "refresh" ? "Refreshing…" : "Refresh"
+                            accessibleName: "Refresh the sign-in and quota of " + Fusebox.accountName(circuit.account)
+                            onActivated: Fusebox.runAction(circuit.account.id, "refresh")
+                        }
+                        PillButton {
+                            readonly property bool confirming: root.confirmOff === circuit.account.id
+                            enabled: !Fusebox.actionBusy
+                            glyph: "power_settings_new"
+                            danger: confirming
+                            label: circuit.acting && Fusebox.actionName === "toggle" ? "Switching…"
+                                : circuit.account.disabled ? "Turn on" : confirming ? "Confirm turn off" : "Turn off"
+                            accessibleName: (circuit.account.disabled ? "Turn on " : "Turn off ")
+                                + Fusebox.accountName(circuit.account)
+                            onActivated: {
+                                if (circuit.account.disabled) {
+                                    Fusebox.runAction(circuit.account.id, "toggle", false);
+                                } else if (confirming) {
+                                    root.confirmOff = "";
+                                    Fusebox.runAction(circuit.account.id, "toggle", true);
+                                } else {
+                                    root.confirmOff = circuit.account.id;
+                                }
                             }
                         }
                     }
-                    LinkText {
-                        text: "Open ↗"
+                    PillButton {
+                        anchors.right: parent.right
+                        glyph: "open_in_new"
+                        label: "Open"
                         accessibleName: "Open " + Fusebox.accountName(circuit.account) + " in the Fusebox dashboard"
-                        onClicked: Fusebox.openDashboard("#/accounts/" + encodeURIComponent(circuit.account.id))
+                        onActivated: Fusebox.openDashboard("#/accounts/" + encodeURIComponent(circuit.account.id))
                     }
                 }
             }
         }
     }
 
+    // One finished request, as the dashboard's latest requests show it: who served
+    // it, the model and client, its status and time; the account and its timing
+    // and tokens beneath; a failure's reason in red.
     component RequestRow: Item {
         id: requestRow
 
         required property var modelData
+        required property int index
         readonly property var request: modelData
         readonly property var account: Fusebox.accountById(request.accountId)
         readonly property string result: Helpers.outcome(request)
+        readonly property bool showError: result === "failed" && !!request.error
+        readonly property var tags: [Helpers.clientLabel(request)].concat(Helpers.requestTags(request))
+        readonly property string mark: Helpers.providerMark(request.provider)
 
         width: parent ? parent.width : 0
-        height: Theme.scaled(34)
+        height: requestBody.implicitHeight + Theme.scaled(18)
         Accessible.role: Accessible.StaticText
-        Accessible.name: (request.clientApp || request.client) + " to " + request.model
-        Accessible.description: "status " + request.status + ", first token " + Helpers.seconds(request.ttft)
+        Accessible.name: Helpers.clientLabel(request) + " to " + request.model
+        Accessible.description: ["status " + request.status, Helpers.requestMetrics(request),
+            requestRow.showError ? Fusebox.privateText(request.error) : ""].filter(part => part).join(", ")
 
-        Text {
-            id: requestTime
-            y: Theme.scaled(2)
-            text: Helpers.when(requestRow.request.at, root.now)
-            font.family: Theme.fontNumeric
-            font.pixelSize: Theme.typography.metadata
-            font.features: Theme.tabularNumberFeatures
-            color: Theme.textFaint
+        Rectangle {
+            visible: requestRow.index > 0
+            x: Theme.scaled(12)
+            width: parent.width - x * 2
+            height: 1
+            color: Theme.hairlineSoft
         }
-        Text {
-            anchors.left: requestTime.right
-            anchors.leftMargin: Theme.scaled(10)
-            anchors.right: requestStatus.left
-            anchors.rightMargin: Theme.scaled(8)
-            anchors.baseline: requestTime.baseline
-            elide: Text.ElideRight
-            textFormat: Text.PlainText
-            text: (requestRow.request.clientApp || requestRow.request.client) + " · " + requestRow.request.model
-            font.family: Theme.fontMenu
-            font.pixelSize: Theme.typography.secondary
-            color: Theme.textMid
+        Item {
+            id: requestMark
+            x: Theme.scaled(12)
+            y: Theme.scaled(10)
+            width: Theme.iconMedium
+            height: Theme.iconMedium
+
+            BrandIcon {
+                visible: requestRow.mark !== ""
+                anchors.fill: parent
+                name: requestRow.mark
+            }
+            Sym {
+                visible: requestRow.mark === ""
+                anchors.centerIn: parent
+                name: "api"
+                size: Theme.iconMedium
+                color: Theme.textLow
+            }
         }
-        Text {
-            id: requestStatus
-            anchors.right: parent.right
-            anchors.baseline: requestTime.baseline
-            text: requestRow.request.status
-            font.family: Theme.fontNumeric
-            font.pixelSize: Theme.typography.metadata
-            font.weight: Theme.weightSemibold
-            font.features: Theme.tabularNumberFeatures
-            color: requestRow.result === "failed" ? Theme.redText
-                : requestRow.result === "cancelled" ? Theme.textDim : Theme.ok
-        }
-        Caption {
-            anchors.left: parent.left
-            anchors.leftMargin: requestTime.width + Theme.scaled(10)
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: Theme.scaled(2)
-            font.features: Theme.tabularNumberFeatures
-            color: Theme.textFaint
-            text: {
-                const r = requestRow.request;
-                const parts = [requestRow.account ? Fusebox.accountName(requestRow.account)
-                    : Fusebox.privateText(r.account)];
-                if (r.ttft !== null)
-                    parts.push("first token " + Helpers.seconds(r.ttft));
-                if (r.usage !== "missing")
-                    parts.push(Helpers.number(r.input + r.cached) + " in / " + Helpers.number(r.output) + " out");
-                if (r.error && requestRow.result === "failed")
-                    parts.push(Fusebox.privateText(r.error));
-                return parts.filter(part => part).join(" · ");
+        Column {
+            id: requestBody
+            x: requestMark.x + requestMark.width + Theme.scaled(10)
+            y: Theme.scaled(9)
+            width: parent.width - x - Theme.scaled(12)
+            spacing: Theme.scaled(3)
+
+            Item {
+                width: parent.width
+                height: Math.max(modelText.implicitHeight, statusPill.height)
+
+                Text {
+                    id: modelText
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(implicitWidth, parent.width - tagRow.implicitWidth - lineEnd.width - Theme.scaled(16))
+                    elide: Text.ElideRight
+                    textFormat: Text.PlainText
+                    text: requestRow.request.model || "—"
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.typography.secondary
+                    font.weight: Theme.weightMedium
+                    color: Theme.textHi
+                }
+                Row {
+                    id: tagRow
+                    anchors.left: modelText.right
+                    anchors.leftMargin: Theme.scaled(7)
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.scaled(4)
+
+                    Repeater {
+                        model: requestRow.tags
+
+                        Rectangle {
+                            id: tag
+                            required property var modelData
+                            width: tagText.implicitWidth + Theme.scaled(10)
+                            height: tagText.implicitHeight + Theme.scaled(3)
+                            radius: Theme.scaled(4)
+                            color: Theme.hairlineSoft
+
+                            Text {
+                                id: tagText
+                                anchors.centerIn: parent
+                                text: tag.modelData
+                                textFormat: Text.PlainText
+                                font.family: Theme.fontMenu
+                                font.pixelSize: Theme.typography.section
+                                font.weight: Theme.weightSemibold
+                                color: Theme.textLow
+                            }
+                        }
+                    }
+                }
+                Row {
+                    id: lineEnd
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.scaled(8)
+
+                    Rectangle {
+                        id: statusPill
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: statusText.implicitWidth + Theme.scaled(12)
+                        height: statusText.implicitHeight + Theme.scaled(4)
+                        radius: height / 2
+                        color: requestRow.result === "failed" ? Theme.redBgSoft
+                            : requestRow.result === "cancelled" ? Theme.hairlineSoft : Theme.okBgSoft
+
+                        Text {
+                            id: statusText
+                            anchors.centerIn: parent
+                            text: requestRow.request.status
+                            font.family: Theme.fontNumeric
+                            font.pixelSize: Theme.typography.metadata
+                            font.weight: Theme.weightSemibold
+                            font.features: Theme.tabularNumberFeatures
+                            color: requestRow.result === "failed" ? Theme.redText
+                                : requestRow.result === "cancelled" ? Theme.textDim : Theme.ok
+                        }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Helpers.when(requestRow.request.at, root.now)
+                        font.family: Theme.fontNumeric
+                        font.pixelSize: Theme.typography.metadata
+                        font.features: Theme.tabularNumberFeatures
+                        color: Theme.textFaint
+                    }
+                }
+            }
+            Item {
+                width: parent.width
+                height: requestAccount.implicitHeight
+
+                Caption {
+                    id: requestAccount
+                    width: Math.min(implicitWidth, parent.width - requestMetrics.implicitWidth - Theme.scaled(12))
+                    color: Theme.textLow
+                    text: requestRow.account ? Fusebox.accountName(requestRow.account)
+                        : Fusebox.privateText(requestRow.request.account) || "No account"
+                }
+                Caption {
+                    id: requestMetrics
+                    anchors.right: parent.right
+                    font.features: Theme.tabularNumberFeatures
+                    color: Theme.textFaint
+                    text: Helpers.requestMetrics(requestRow.request)
+                }
+            }
+            Caption {
+                visible: requestRow.showError
+                width: parent.width
+                font.family: Theme.fontMono
+                color: Theme.redText
+                text: requestRow.showError ? Fusebox.privateText(requestRow.request.error) : ""
             }
         }
     }
@@ -1078,40 +1413,14 @@ PopoutPanel {
                 }
 
                 // ---- the main line ----
-                Rectangle {
-                    id: strip
+                FactStrip {
                     readonly property var f: Fusebox.figures
-                    width: parent.width
-                    height: Theme.scaled(46)
-                    radius: Theme.chipRadius
-                    color: Theme.chip
-
-                    Row {
-                        anchors.fill: parent
-
-                        Fact {
-                            width: strip.width / 4
-                            divider: false
-                            label: "In progress"
-                            value: String(strip.f.serving)
-                        }
-                        Fact {
-                            width: strip.width / 4
-                            label: "Last minute"
-                            value: strip.f.rpm + " req"
-                        }
-                        Fact {
-                            width: strip.width / 4
-                            label: "Failed · hour"
-                            value: String(strip.f.failed)
-                            level: strip.f.failed > 0 ? "critical" : "ok"
-                        }
-                        Fact {
-                            width: strip.width / 4
-                            label: "First token"
-                            value: Helpers.seconds(strip.f.ttft)
-                        }
-                    }
+                    facts: [
+                        { label: "In progress", value: String(f.serving) },
+                        { label: "Last minute", value: f.rpm + " req" },
+                        { label: "Failed · hour", value: String(f.failed), level: f.failed > 0 ? "critical" : "ok" },
+                        { label: "First token", value: Helpers.seconds(f.ttft) }
+                    ]
                 }
 
                 // ---- load ----
@@ -1123,56 +1432,15 @@ PopoutPanel {
                         label: "Load · last 60 min"
                         detail: Helpers.number(root.loadTotal) + (root.loadTotal === 1 ? " request" : " requests")
                     }
-                    Item {
+                    LoadBars {
                         width: parent.width
                         height: Theme.scaled(44)
+                        bars: root.loadBars
+                        peak: root.loadPeak
                         Accessible.role: Accessible.Graphic
                         Accessible.name: "Requests per minute, last 60 minutes"
                         Accessible.description: Helpers.number(root.loadTotal) + " requests, at most "
                             + root.loadPeak + " in a minute"
-
-                        Row {
-                            id: loadRow
-                            readonly property real slot: width / 60
-                            anchors.fill: parent
-                            spacing: 0
-
-                            Repeater {
-                                // Sixty fixed slots that read their minute, so the bars
-                                // persist while the clock moves them along.
-                                model: 60
-
-                                Item {
-                                    id: loadSlot
-                                    required property int index
-                                    readonly property var modelData: root.loadBars[index]
-                                    readonly property real share: modelData.requests / root.loadPeak
-                                    width: loadRow.slot
-                                    height: loadRow.height
-
-                                    Rectangle {
-                                        anchors.bottom: parent.bottom
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        width: Math.max(1, loadRow.slot - 2)
-                                        height: loadSlot.modelData.requests > 0
-                                            ? Math.max(2, loadSlot.share * parent.height) : 1
-                                        radius: 1
-                                        color: loadSlot.modelData.requests === 0 ? Theme.hairline
-                                            : loadSlot.modelData.current ? Theme.accentText
-                                            : Qt.alpha(Theme.accentText, 0.45)
-                                    }
-                                    Rectangle {
-                                        visible: loadSlot.modelData.failed > 0
-                                        anchors.bottom: parent.bottom
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        width: Math.max(1, loadRow.slot - 2)
-                                        height: Math.max(2, loadSlot.modelData.failed / root.loadPeak * parent.height)
-                                        radius: 1
-                                        color: Theme.red
-                                    }
-                                }
-                            }
-                        }
                     }
                     Item {
                         width: parent.width
@@ -1232,7 +1500,7 @@ PopoutPanel {
                 // ---- latest requests ----
                 Column {
                     width: parent.width
-                    spacing: Theme.scaled(2)
+                    spacing: Theme.scaled(6)
 
                     SectionTitle {
                         label: "Latest requests"
@@ -1244,9 +1512,22 @@ PopoutPanel {
                         color: Theme.textLow
                         text: "Requests appear here as they finish."
                     }
-                    Repeater {
-                        model: root.latest
-                        RequestRow {}
+                    Rectangle {
+                        visible: root.latest.length > 0
+                        width: parent.width
+                        height: latestRows.implicitHeight
+                        radius: Theme.chipRadius
+                        color: Theme.chip
+
+                        Column {
+                            id: latestRows
+                            width: parent.width
+
+                            Repeater {
+                                model: root.latest
+                                RequestRow {}
+                            }
+                        }
                     }
                 }
             }

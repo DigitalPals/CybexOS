@@ -193,6 +193,43 @@ test("faults count down to their time and only new, lasting ones notify", () => 
         ["<1m", "45m", "2h 14m", "3d 7h", "<1m"]);
 });
 
+test("request rows name the client, tag transports and retries, and summarise timing and tokens", () => {
+    const base = { status: 200, ttft: 3600, usage: "complete", input: 2, cached: 333000, output: 290,
+        transport: "http", attempts: 1 };
+    assert.equal(H.clientLabel({ ...base, clientApp: "Claude Code", client: "claude" }), "Claude Code");
+    assert.equal(H.clientLabel({ ...base, clientApp: null, client: "responses" }), "Responses",
+        "an unnamed client reads as its API format, as in the dashboard");
+    assert.equal(H.clientLabel({ ...base, clientApp: null, client: "claude" }), "Anthropic");
+    assert.deepEqual(H.requestTags(base), []);
+    assert.deepEqual(H.requestTags({ ...base, transport: "ws", attempts: 3 }), ["ws", "3 tries"]);
+    assert.equal(H.requestMetrics(base), "3.6 s · 333k in · 290 out", "cached context counts as input");
+    assert.equal(H.requestMetrics({ ...base, ttft: null, usage: "partial" }), "≥333k in · ≥290 out");
+    assert.equal(H.requestMetrics({ ...base, usage: "missing" }), "3.6 s");
+});
+
+test("account details read as figures, resets and pauses", () => {
+    const a = account("a", { requests: 546, failures: 2, expiresAt: NOW + 388 * MIN, lastUsed: NOW - 11000,
+        windows: [{ name: "5h", used: 100, resetsAt: NOW + 50 * MIN, model: null },
+            { name: "week", used: 59, resetsAt: NOW + 340 * MIN, model: null }],
+        cooldowns: [{ model: "*", until: NOW + 50 * MIN, kind: "quota" },
+            { model: "claude-opus", until: NOW + 4 * MIN, kind: "rate_limit" },
+            { model: "old", until: NOW - MIN, kind: "quota" }] });
+    assert.equal(H.accountSubtitle(a, NOW), "Claude · OAuth · last used 11 s ago");
+    assert.deepEqual(H.accountFacts(a, { sessions: new Array(22) }, NOW).map(f => [f.label, f.value, f.level || "ok"]),
+        [["Requests", "546", "ok"], ["Failed", "2", "critical"], ["Pinned", "22", "ok"], ["Token", "6h 28m", "ok"]]);
+    assert.equal(H.accountFacts(a, null, NOW)[2].value, "–", "sessions load with the details");
+    assert.deepEqual(H.accountFacts({ ...a, expiresAt: NOW - 1 }, null, NOW)[3], { label: "Token", value: "Expired",
+        level: "critical" });
+    assert.equal(H.accountFacts(account("k", { kind: "api-key", requests: 0, failures: 0 }), null, NOW).length, 3);
+    const resets = H.resetFacts(a, NOW);
+    assert.deepEqual(resets.map(f => [f.label, f.level]), [["5-hour back", "warn"], ["Weekly resets", "ok"]]);
+    assert.match(resets[1].value, /^\d\d:\d\d · in 5h 40m$/);
+    assert.deepEqual(H.resetFacts(account("k", { windows: [] }), NOW), []);
+    assert.equal(H.pauseText(a, NOW), "claude-opus · rate limited · back in 4m\nEvery model · usage limit used up · back in 50m");
+    assert.deepEqual([H.authName({ kind: "api-key" }), H.authName({ kind: "oauth", provider: "kimi" }),
+        H.authName({ kind: "service-account" })], ["API key", "Device code", "Service account"]);
+});
+
 test("no dashboard list is rebuilt by the clock", () => {
     // A Repeater whose model is recomputed every second recreates its rows each
     // tick, and rows torn down mid-binding lose their parent.
