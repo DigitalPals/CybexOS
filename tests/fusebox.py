@@ -106,7 +106,9 @@ class FakeFusebox:
                     if self.path.endswith("/activity"):
                         return self.reply(200, {"sessions": [{"session": "s1", "last_seen": "2026-10-09T10:00:00Z",
                                                               "active": True, "client_app": "Claude Code",
-                                                              "model": "claude-x", "requests": 4}]})
+                                                              "model": "claude-x", "requests": 4}],
+                                                "series": [{"minute": 29833000, "requests": 3, "failed": 1,
+                                                            "tokens": 99}, {"minute": True}, "junk"]})
                     return self.reply(200, {"ok": True})
                 return self.reply(404, {"error": "unknown account"})
 
@@ -316,6 +318,12 @@ class Normalizing(unittest.TestCase):
                                "ttft_ms": 300, "input_tokens": 10, "output_tokens": 5, "cache_tokens": 2,
                                "session_id": "secret-session", "routing_attempts": [{"x": 1}]})
         self.assertEqual((row["at"], row["ttft"], row["usage"]), (1791540000000, 300, "partial"))
+        self.assertEqual((row["transport"], row["attempts"]), ("http", 1))
+        tagged = fusebox.request({"id": 5, "ts": "2026-10-09T10:00:00Z", "status": 200, "transport": "ws", "attempts": 3})
+        self.assertEqual((tagged["transport"], tagged["attempts"]), ("ws", 3))
+        odd = fusebox.request({"id": 6, "ts": "2026-10-09T10:00:00Z", "status": 200, "transport": "carrier-pigeon",
+                               "attempts": 10 ** 9})
+        self.assertEqual((odd["transport"], odd["attempts"]), ("http", 99))
         self.assertNotIn("secret-session", json.dumps(row))
         self.assertIsNone(fusebox.request({"id": 1, "ts": "bad", "status": 200}))
         self.assertIsNone(fusebox.request({"id": True, "ts": "2026-10-09T10:00:00Z", "status": 200}))
@@ -468,7 +476,8 @@ class OneShot(unittest.TestCase):
     def test_activity_is_bounded_to_what_the_details_show(self):
         details = fusebox.run_activity(self.fake.base, "file:claude-a.json")
         self.assertEqual(details, {"sessions": [{"lastSeen": 1791540000000, "since": None, "active": True,
-                                                 "client": "Claude Code", "model": "claude-x", "requests": 4}]})
+                                                 "client": "Claude Code", "model": "claude-x", "requests": 4}],
+                                   "series": [{"minute": 29833000, "requests": 3, "failed": 1}]})
 
     def test_cli_reports_failures_as_json(self):
         result = subprocess.run([sys.executable, "-B", str(SCRIPT), "action", "--url", self.fake.base, "toggle",

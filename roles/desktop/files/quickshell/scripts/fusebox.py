@@ -474,6 +474,8 @@ def request(row):
         "latency": count(row.get("latency_ms")), "ttft": count(ttft) if ttft is not None else None,
         "input": tokens[0], "output": tokens[1], "cached": tokens[2], "usage": completeness,
         "stream": row.get("stream") is True, "error": clean(row.get("error"), 200),
+        "transport": row.get("transport") if row.get("transport") in ("http", "ws", "images", "video") else "http",
+        "attempts": max(1, min(count(row.get("attempts")), 99)),
     }
 
 
@@ -505,7 +507,12 @@ def activity(payload):
                              "active": row.get("active") is True, "client": clean(row.get("client_app"), 48)
                              or clean(row.get("client"), 32), "model": clean(row.get("model"), 160),
                              "requests": count(row.get("requests"))})
-    return {"sessions": sessions}
+    # The account's own minutes of the last hour, for its load chart.
+    buckets = payload.get("series") if isinstance(payload, dict) else None
+    series = [{"minute": b["minute"], "requests": count(b.get("requests")), "failed": count(b.get("failed"))}
+              for b in (buckets or [])[-120:] if isinstance(buckets, list)
+              if isinstance(b, dict) and isinstance(b.get("minute"), int) and not isinstance(b["minute"], bool)]
+    return {"sessions": sessions, "series": series}
 
 
 # ---------------------------------------------------------------- live stream

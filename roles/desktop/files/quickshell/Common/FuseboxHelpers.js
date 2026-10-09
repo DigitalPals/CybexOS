@@ -245,7 +245,98 @@ function groupAccounts(accounts) {
     });
 }
 
+// ---- account details ---------------------------------------------------------
+
+var DEVICE_CODE_PROVIDERS = ["kimi", "xai", "meta"];
+
+function authName(a) {
+    if (a.kind === "service-account")
+        return "Service account";
+    if (a.kind === "api-key")
+        return "API key";
+    return DEVICE_CODE_PROVIDERS.indexOf(a.provider) !== -1 ? "Device code" : "OAuth";
+}
+
+// "Claude · OAuth · last used 20 s ago", as the dashboard's account line.
+function accountSubtitle(a, now) {
+    return [providerName(a), authName(a), a.lastUsed ? "last used " + ago(now - a.lastUsed) : "not used yet"]
+        .join(" · ");
+}
+
+// The expanded account's figures: requests and failures since Fusebox started,
+// coding sessions pinned to it, and how long its sign-in stays valid.
+function accountFacts(a, detail, now) {
+    var facts = [
+        { label: "Requests", value: number(a.requests) },
+        { label: "Failed", value: number(a.failures), level: a.failures > 0 ? "critical" : "ok" },
+        { label: "Pinned", value: detail && !detail.error ? String(detail.sessions.length) : "–" }
+    ];
+    if (a.kind === "oauth" && a.expiresAt)
+        facts.push(a.expiresAt > now ? { label: "Token", value: span(a.expiresAt - now) }
+            : { label: "Token", value: "Expired", level: "critical" });
+    return facts;
+}
+
+// When the 5-hour and weekly windows reset: "12:10 · in 57m". A used-up window
+// says when it is back instead.
+function resetFacts(a, now) {
+    var facts = [];
+    [true, false].forEach(function(short) {
+        var w = windowOf(a, short, now);
+        if (!w || !w.resetsAt)
+            return;
+        var spent = w.used >= 100;
+        facts.push({ label: windowTitle(w) + (spent ? " back" : " resets"),
+            value: when(w.resetsAt, now) + " · in " + span(w.resetsAt - now), level: spent ? "warn" : "ok" });
+    });
+    return facts;
+}
+
+var PAUSE_WORDS = { quota: "usage limit used up", rate_limit: "rate limited", checking: "checking its limits" };
+
+// One line per paused model, newest pause last: "claude-opus · rate limited · back in 4m".
+function pauseText(a, now) {
+    return (a.cooldowns || []).filter(function(c) { return c.until > now; })
+        .sort(function(x, y) { return x.until - y.until; })
+        .map(function(c) {
+            return (c.model === "*" ? "Every model" : c.model) + " · "
+                + (PAUSE_WORDS[c.kind] || c.kind.replace(/_/g, " ")) + " · back in " + span(c.until - now);
+        }).join("\n");
+}
+
 // ---- requests and load -----------------------------------------------------
+
+// What a request came from: the program when its User-Agent named one, else the
+// API format it spoke, named as Fusebox's dashboard names them.
+var CLIENT_FORMATS = { openai: "OpenAI", responses: "Responses", claude: "Anthropic", gemini: "Gemini" };
+
+function clientLabel(r) {
+    return r.clientApp || CLIENT_FORMATS[r.client] || r.client || "Client";
+}
+
+// Transport and retries worth a tag, as the dashboard's route column marks them.
+function requestTags(r) {
+    var tags = [];
+    var kind = { ws: "ws", images: "image", video: "video" }[r.transport];
+    if (kind)
+        tags.push(kind);
+    if (r.attempts > 1)
+        tags.push(r.attempts + " tries");
+    return tags;
+}
+
+// "3.6 s · 333k in · 290 out": time to first token, then tokens with the
+// cached context counted in. Partial usage is a lower bound; missing is left out.
+function requestMetrics(r) {
+    var parts = [];
+    if (r.ttft !== null && r.ttft !== undefined)
+        parts.push(seconds(r.ttft));
+    if (r.usage !== "missing") {
+        var bound = r.usage === "partial" ? "≥" : "";
+        parts.push(bound + number((r.input || 0) + (r.cached || 0)) + " in · " + bound + number(r.output || 0) + " out");
+    }
+    return parts.join(" · ");
+}
 
 function outcome(r) {
     return r.status === 499 ? "cancelled" : r.status >= 400 ? "failed" : "ok";
@@ -364,5 +455,7 @@ function dashboardUrl(base, path) {
 if (typeof module !== "undefined" && module.exports)
     module.exports = { METRICS, QUOTA_DISPLAYS, quotaShare, quotaWord, providerName, providerMark,
         planName, span, when, ago, number, seconds, percent, maskEmails, accountName, quota, windowOf,
-        windowLabel, windowTitle, inFlight, sessions, accountState, statusText, groupAccounts, outcome, trimSeries,
-        applyRequest, bars, median, figures, faultLevel, faultTiming, newFaults, barValue, dashboardUrl };
+        windowLabel, windowTitle, inFlight, sessions, accountState, statusText, groupAccounts, authName,
+        accountSubtitle, accountFacts, resetFacts, pauseText, clientLabel, requestTags, requestMetrics,
+        outcome, trimSeries, applyRequest, bars, median, figures, faultLevel, faultTiming, newFaults,
+        barValue, dashboardUrl };

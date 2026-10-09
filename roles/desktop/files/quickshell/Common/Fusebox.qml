@@ -76,7 +76,7 @@ Singleton {
     property string actionAccount: ""
     property string actionName: ""
     property var actionResult: null
-    // Account details, fetched when an account is expanded: id -> { at, sessions, error }.
+    // Account details, fetched when an account is expanded: id -> { at, sessions, series, error }.
     property var activity: ({})
     property string activityAccount: ""
     property string queuedActivity: ""
@@ -342,8 +342,9 @@ Singleton {
         }
         const next = Object.assign({}, activity);
         next[activityAccount] = reply && Array.isArray(reply.sessions)
-            ? { at: Date.now(), sessions: reply.sessions, error: "" }
-            : { at: Date.now(), sessions: [], error: reply && reply.error ? reply.error : "Couldn't load sessions." };
+            ? { at: Date.now(), sessions: reply.sessions, series: Array.isArray(reply.series) ? reply.series : [], error: "" }
+            : { at: Date.now(), sessions: [], series: [],
+                error: reply && reply.error ? reply.error : "Couldn't load sessions." };
         activity = next;
     }
 
