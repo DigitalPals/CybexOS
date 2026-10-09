@@ -241,7 +241,9 @@ Item {
                     id: pip
                     required property int index
                     readonly property bool current: index === 0
-                    anchors.verticalCenter: parent.verticalCenter
+                    // The strip is torn down with its widget when the layout changes;
+                    // a pip losing its parent first must not fail the binding.
+                    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                     width: pips.dots ? (current ? root.iconSize : Math.round(root.iconSize / 2))
                         : Math.round(root.iconSize * 1.1)
                     height: pips.dots ? Math.round(root.iconSize / 2) : Math.round(root.iconSize * 1.1)
