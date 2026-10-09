@@ -15,6 +15,7 @@ and personal packages remain in user-owned locations.
 | User | `~/.config/cybexos/shell.json` | Shell preferences; preserved by package/release updates |
 | User | `~/.config/cybexos/hypr/` | Optional `user.lua`, `hypridle.conf`, and `hyprlock.conf` overrides |
 | User | `~/.config/cybexos/displays.json` | Settings → Displays choices per physical monitor |
+| User | `~/.config/cybexos/fusebox/` | The Fusebox widget's private management key (0600); written only from its settings |
 | User | `~/.local/share/cybexos/themes/` | User theme packages; not reconciled or pruned |
 | User | `~/.local/share/cybexos/plugins/` | API 1 widget packages; not reconciled or pruned |
 | User | `~/.config/cybexos/plugins.json` | Widget enablement and preferences; not written by Ansible |

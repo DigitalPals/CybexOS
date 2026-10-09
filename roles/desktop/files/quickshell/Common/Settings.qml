@@ -35,7 +35,7 @@ Singleton {
             for (const column of ["left", "center", "right"])
                 value.mods[column] = value.mods[column].map(entry => ({
                     id: entry.id,
-                    on: ["modelusage", "gh", "t3", "hermes"].indexOf(entry.id) !== -1
+                    on: SettingsHelpers.CONNECTED_WIDGET_IDS.indexOf(entry.id) !== -1
                         ? true : entry.on,
                     detail: entry.detail
                 }));
