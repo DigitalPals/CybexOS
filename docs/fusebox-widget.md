@@ -90,10 +90,10 @@ Click the chip for the dashboard:
   provider, sign-in kind and last use; a strip of requests, failures, pinned
   coding sessions and how long the sign-in stays valid; when each window resets
   ("12:10 · in 57m", or when a used-up window is back); and the account's own
-  load over the last hour. Paused models, the last error and banked resets get
-  boxes of their own with their action: **Clear** for cooldowns and errors,
-  **Sign in** for an expired sign-in and **Use** for a banked reset (both open
-  the dashboard). Icon buttons below offer **Refresh** (sign-in and quota, for
+  load over the last hour. Paused models and the last error get boxes of their
+  own with their action: **Clear** for cooldowns and errors, and **Sign in** for
+  an expired sign-in, which opens the dashboard. Banked resets have a panel of
+  their own (see below). Icon buttons offer **Refresh** (sign-in and quota, for
   OAuth accounts), **Turn off**/**Turn on** and **Open** in the dashboard.
   Turning an account off asks for a second click within four seconds.
 - **Latest requests**: the six most recent on one card. Each shows the
@@ -103,10 +103,44 @@ Click the chip for the dashboard:
   time to first token and tokens, with cached context counted as input. A failed
   request's reason follows in red.
 
-Removing accounts, signing in again and spending banked resets stay in
-Fusebox's own dashboard: sign-in redirects to fixed localhost ports on the
-server, and banked resets use unofficial provider endpoints with their own
-confirmation. **Dashboard** in the footer opens it.
+Removing accounts and signing in again stay in Fusebox's own dashboard:
+sign-in redirects to fixed localhost ports on the server. **Dashboard** in the
+footer opens it.
+
+## Banked resets
+
+When the server has `banked-resets` turned on, a Claude or ChatGPT (Codex)
+subscription with saved resets shows a panel in its expanded account. It
+follows Fusebox's own reset dialog (see Fusebox's
+[banked resets documentation](https://github.com/DigitalPals/Fusebox/blob/main/docs/banked-resets.md)):
+
+- **Details** reads the reset status: each grant with how many are left, its
+  expiry and which limits it clears, and why one can't be used. Fusebox asks the
+  provider for this, but nothing is spent. **Recheck** runs Fusebox's quota
+  refresh.
+- **Use 1 reset** is enabled only with status checked in the last five minutes,
+  an eligible inventory, a confirmation from Fusebox, the account turned on and
+  no unresolved earlier spend. It reads the status once more and asks: "Use 1
+  reset on …? This spends one saved reset and can't be undone." Claude
+  subscriptions with several usable grants choose one; Codex chooses its own.
+  The question counts down from Fusebox's two-minute confirmation (the widget
+  withdraws it at 1:50) and starts with the keyboard on **Back**. Only **Apply
+  reset** spends.
+- The result is Fusebox's own message, such as "One banked reset applied".
+- If a spend's answer is lost (a timeout, a dropped connection, a server error),
+  the widget never sends it again. It says a reset may have been used and reads
+  the status. An unresolved spend blocks further resets on that subscription
+  until it's resolved: the account shows **Review reset**, the menubar badge turns
+  amber and its tooltip says so. The panel then offers **Retry request** (Claude,
+  within Fusebox's ten-minute window, sending the saved request with the same
+  IDs, behind its own confirmation) and **Check outcome**, which records **Reset
+  was used** or **No reset was used** after you check the provider account.
+  Recording sends nothing to the provider.
+
+Fusebox enforces these rules itself: it journals each spend before sending it,
+locks the subscription, refuses a confirmation whose inventory has changed and
+never retries. Spending is only possible from the panel; IPC and the helper's
+read commands can't spend.
 
 ## Faults and Fusebox versions
 
@@ -172,7 +206,12 @@ fault rules, and the live stream against a local Fusebox fake. The stream
 tests check header-only authentication, snapshot order, event forwarding,
 coalesced account refetches, the older-release fallback, rejected keys,
 refused redirects and missing keys, and that seeded requests drop session
-fingerprints. `tests/quickshell/fusebox.test.cjs` covers
+fingerprints. Its banked-reset tests check that reading status never spends,
+that a spend sends the confirmed quote and grant exactly once, that a changed
+inventory is refused, that a timeout, server error or unreadable answer is
+reported as uncertain without a second request, and that unknown operation
+states fail closed. No test spends a real reset. `tests/quickshell/fusebox.test.cjs` covers
+the banked-reset rules and the guarantee that only the confirmation spends,
 the settings schema and migration, account state, quota meters and their
 Used/Remaining display, hidden names,
 request counting, figures, fault timing and notification rules, dashboard

@@ -230,6 +230,78 @@ test("account details read as figures, resets and pauses", () => {
         H.authName({ kind: "service-account" })], ["API key", "Device code", "Service account"]);
 });
 
+test("a reset can be used only with fresh, eligible status and a confirmation", () => {
+    const a = account("a");
+    const grant = { id: "g", label: "Weekly reset", remaining: 2, expiresAt: NOW + 11 * 24 * 60 * MIN, startsAt: null,
+        clears: ["5-hour", "weekly"], usable: true, reason: null };
+    const view = { checkedAt: NOW - MIN, error: null, quote: "q", retryable: false, operation: null,
+        inventory: { available: 2, applicable: 1, eligible: true, reason: null, selectedGrant: "g", grants: [grant] } };
+    assert.equal(H.resetBlock(view, a, NOW), "");
+    assert.equal(H.resetBlock(null, a, NOW), "Checking reset status…");
+    assert.match(H.resetBlock(view, { ...a, disabled: true }, NOW), /Turn this account on/);
+    assert.equal(H.resetBlock({ ...view, error: "Provider unavailable" }, a, NOW), "Provider unavailable");
+    assert.match(H.resetBlock({ ...view, checkedAt: NOW - 6 * MIN }, a, NOW), /Refresh/, "status older than 5 minutes");
+    assert.match(H.resetBlock({ ...view, quote: null }, a, NOW), /Refresh/);
+    assert.equal(H.resetBlock({ ...view, inventory: { ...view.inventory, eligible: false, reason: "Account is not eligible" } },
+        a, NOW), "Account is not eligible");
+    const expired = { ...view, inventory: { ...view.inventory, grants: [{ ...grant, expiresAt: NOW - 1 }] } };
+    assert.ok(H.grantTimingChanged(expired, NOW));
+    assert.match(H.resetBlock(expired, a, NOW), /Refresh/, "a usable grant that lapsed means stale status");
+    const pending = { ...view, operation: { requestId: "r", status: "pending", message: "", retryUntil: NOW + 5 * MIN } };
+    assert.ok(H.resetUnresolved(pending));
+    assert.match(H.resetBlock(pending, a, NOW), /blocked until it's resolved/);
+    assert.ok(!H.resetUnresolved({ ...view, operation: { status: "applied" } }));
+    assert.deepEqual(H.usableGrants(view).map(g => g.id), ["g"]);
+    assert.ok(H.resetsSupported(a, true) && H.resetsSupported({ ...a, provider: "codex" }, true));
+    assert.ok(!H.resetsSupported(a, false) && !H.resetsSupported({ ...a, kind: "api-key" }, true)
+        && !H.resetsSupported({ ...a, provider: "kimi" }, true));
+});
+
+test("recovery, countdowns and wording follow Fusebox's dialog", () => {
+    const op = { requestId: "r", status: "unknown", message: "", retryUntil: NOW + 6 * MIN };
+    const view = { checkedAt: NOW, error: null, quote: null, retryable: true, operation: op, inventory: null };
+    assert.ok(H.retryAllowed(view, account("a"), NOW));
+    assert.ok(!H.retryAllowed(view, account("c", { provider: "codex" }), NOW), "Codex can only record the outcome");
+    assert.ok(!H.retryAllowed({ ...view, retryable: false }, account("a"), NOW));
+    assert.ok(!H.retryAllowed(view, account("a"), NOW + 7 * MIN), "the ten-minute retry window closes");
+    assert.equal(H.countdown(H.quoteLeft(NOW - 8000, NOW)), "1:42");
+    assert.ok(H.quoteLeft(NOW - H.QUOTE_MS, NOW) <= 0);
+    assert.ok(H.QUOTE_MS < 120000, "the widget withdraws a confirmation before Fusebox refuses it");
+    assert.equal(H.countdown(-5), "0:00");
+    assert.equal(H.grantDetail({ expiresAt: null, clears: [] }, NOW), "No expiry reported · Clears provider limits");
+    assert.match(H.grantDetail({ expiresAt: NOW + 11 * 24 * 60 * MIN, clears: ["weekly"] }, NOW), /^Expires [A-Z][a-z]{2} \d+ · Clears weekly$/);
+    assert.deepEqual([H.resetCountText(1), H.resetCountText(2)], ["1 banked reset", "2 banked resets"]);
+    assert.deepEqual(["applied", "reconciled_used", "refused", "pending"].map(status => H.operationTone({ status })),
+        ["ok", "ok", "info", "warn"]);
+});
+
+test("a reset is spent only from its confirmation, never by IPC or a retry", () => {
+    const singleton = read("Common/Fusebox.qml");
+    const popover = read("Popovers/FuseboxPopover.qml");
+    // banked-action is built in one place: the confirmation's handler.
+    assert.equal(singleton.split('"banked-action"').length - 1, 1);
+    const confirm = singleton.slice(singleton.indexOf("function confirmReset"), singleton.indexOf("function expireReset"));
+    assert.match(confirm, /"banked-action"/);
+    assert.match(confirm, /if \(!d\)\s*return;/, "nothing is spent without an open confirmation");
+    assert.match(confirm, /quoteLeft\(d\.startedAt, Date\.now\(\)\) <= 0/, "a lapsed confirmation is withdrawn");
+    const ipc = singleton.slice(singleton.indexOf("IpcHandler"), singleton.indexOf("Timer {"));
+    assert.doesNotMatch(ipc, /Reset\(|banked/i, "IPC can't spend resets");
+    // After a failed spend the widget only reads status again.
+    const done = singleton.slice(singleton.indexOf("function resetDone"), singleton.indexOf("// ---- breaker actions"));
+    assert.match(done, /Qt\.callLater\(\(\) => loadReset\(id\)\)/);
+    assert.doesNotMatch(done, /confirmReset|banked-action/);
+    // Only the confirmation's buttons call confirmReset; Back comes first.
+    assert.equal(popover.split("Fusebox.confirmReset(").length - 1, 4);
+    const row = popover.slice(popover.indexOf("id: backButton"), popover.indexOf("component FaultRow"));
+    assert.ok(row.indexOf("Back") < row.indexOf("Apply reset"));
+    assert.match(popover, /onModeChanged: if \(panel\.asking\) Qt\.callLater\(\(\) => backButton\.forceActiveFocus\(\)\)/);
+    // Hidden buttons still evaluate bindings, so a missing dialog must never be read.
+    assert.match(popover, /readonly property var dialog: resetInfo && resetInfo\.dialog \? resetInfo\.dialog : null/);
+    for (const line of popover.split("\n").filter(l => l.includes("panel.dialog.grant")))
+        assert.match(line, /panel\.dialog &&|panel\.dialog !== null|^\s*&& \(/, line.trim());
+    assert.match(popover, /enabled: !panel\.busy && panel\.dialog !== null/);
+});
+
 test("no dashboard list is rebuilt by the clock", () => {
     // A Repeater whose model is recomputed every second recreates its rows each
     // tick, and rows torn down mid-binding lose their parent.
