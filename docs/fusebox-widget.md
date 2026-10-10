@@ -72,7 +72,12 @@ Click the chip for the dashboard:
   toggle.
 - **Faults**, errors first, each with its account and, when it clears by
   itself, "Back at 16:40, in 1h 12m". A fault opens the dashboard page Fusebox
-  links it to.
+  links it to. **×** (or Delete on a focused fault) dismisses it: it leaves the
+  list, the menubar badge and the Faults figure while it lasts, and "1 dismissed
+  fault · Show" brings it back. A fault whose expected end changes is a new
+  incident and shows again; one that clears (unseen for 15 minutes, so a Fusebox
+  restart doesn't count) is forgotten and shows the next time it trips.
+  Dismissals are kept in `~/.local/state/cybexos/shell/fusebox.json`.
 - **Figures**: requests in progress (sessions are on each account and in the
   menubar), the last full minute, failures in the last hour and the median time to first token of recent successful requests.
 - **Load · last 60 min**: one bar per minute, with failed requests in red and
@@ -97,9 +102,8 @@ Click the chip for the dashboard:
   OAuth accounts), **Turn off**/**Turn on** and **Open** in the dashboard.
   Turning an account off asks for a second click within four seconds.
 - **Latest requests**: the six most recent on one card. Each shows the
-  provider's mark, the model, the client as a tag (the program when Fusebox
-  recognises it, else the API format it spoke, such as Responses), `ws` or
-  retry tags when they apply, a coloured status and the time; then the account,
+  provider's mark, the model, `ws` or retry tags when they apply, a coloured
+  status and the time; then the account,
   time to first token and tokens, with cached context counted as input. A failed
   request's reason follows in red.
 

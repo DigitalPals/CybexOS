@@ -32,10 +32,10 @@ BarModule {
             if (Fusebox.hasData)
                 lines.push((f.sessions === 1 ? "1 session" : f.sessions + " sessions") + " · "
                     + f.serving + " in progress · " + f.rpm + " requests/min");
-            const first = Fusebox.faults.length ? Fusebox.faults[0] : null;
-            if (first)
-                lines.push(Fusebox.faults.length === 1 ? "1 fault: " + first.title
-                    : Fusebox.faults.length + " faults · " + first.title);
+            const shown = Fusebox.shownFaults;
+            if (shown.length)
+                lines.push(shown.length === 1 ? "1 fault: " + shown[0].title
+                    : shown.length + " faults · " + shown[0].title);
             if (Fusebox.resetReviews > 0)
                 lines.push(Fusebox.resetReviews === 1 ? "A banked reset needs review"
                     : Fusebox.resetReviews + " banked resets need review");

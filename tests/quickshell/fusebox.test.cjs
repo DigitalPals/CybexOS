@@ -314,6 +314,43 @@ test("no dashboard list is rebuilt by the clock", () => {
         "repeated rows guard their parent");
 });
 
+test("a dismissed fault stays hidden while it lasts and returns when it changes or recurs", () => {
+    const quota = { key: "quota:a", kind: "quota", level: "warn", until: NOW + 5 * 24 * 60 * MIN };
+    const signin = { key: "signin:b", kind: "signin", level: "err", until: null };
+    let dismissed = H.dismissFault({}, quota, NOW);
+    assert.deepEqual(H.visibleFaults([quota, signin], dismissed).map(f => f.key), ["signin:b"]);
+    assert.equal(H.faultLevel(H.visibleFaults([quota], dismissed)), "ok", "a dismissed fault leaves the badge");
+    // A new end time is a new incident.
+    assert.equal(H.visibleFaults([{ ...quota, until: quota.until + MIN }], dismissed).length, 1);
+    // Still there: kept, and its last sighting moves on.
+    dismissed = H.pruneDismissed(dismissed, [quota], NOW + 60 * MIN);
+    assert.equal(dismissed["quota:a"].seenAt, NOW + 60 * MIN);
+    // Briefly gone (a Fusebox restart): kept. Gone past the grace period: forgotten.
+    assert.ok(H.pruneDismissed(dismissed, [], NOW + 70 * MIN)["quota:a"]);
+    assert.deepEqual(H.pruneDismissed(dismissed, [], NOW + 60 * MIN + H.DISMISS_GRACE_MS + 1), {});
+    // Changed while present: forgotten, so the new incident shows.
+    assert.deepEqual(H.pruneDismissed(dismissed, [{ ...quota, until: 1 }], NOW + 61 * MIN), {});
+    // From disk: no time limit until the first update, and nothing malformed.
+    const loaded = H.loadDismissed({ "quota:a": { signature: H.faultSignature(quota), seenAt: NOW - 3 * 24 * 60 * MIN },
+        bad: { signature: 5 }, worse: null });
+    assert.deepEqual(Object.keys(loaded), ["quota:a"], "a dismissal survives the shell being off for days");
+    assert.ok(H.isDismissed(loaded, quota));
+    assert.deepEqual(H.loadDismissed("junk"), {});
+    // The widget lists, badges and counts only what is shown.
+    const singleton = read("Common/Fusebox.qml");
+    assert.match(singleton, /faultLevel\(shownFaults\)/);
+    assert.match(singleton, /barValue\(options\.metric, figures, shownFaults\)/);
+    assert.match(singleton, /loadDismissed\(stateData\.dismissed\)/);
+    assert.match(read("Popovers/FuseboxPopover.qml"), /model: Fusebox\.shownFaults/);
+});
+
+test("latest requests carry no client tag", () => {
+    const popover = read("Popovers/FuseboxPopover.qml");
+    const row = popover.slice(popover.indexOf("component RequestRow"), popover.indexOf("// ---- header"));
+    assert.match(row, /readonly property var tags: Helpers\.requestTags\(request\)/);
+    assert.doesNotMatch(row.split("Accessible.name")[0], /clientLabel/, "the client is not shown as a tag");
+});
+
 test("the dashboard opens only on its own hash routes", () => {
     assert.equal(H.dashboardUrl("https://fuse.example.ts.net/", "#/accounts/file%3Aa"),
         "https://fuse.example.ts.net/#/accounts/file%3Aa");

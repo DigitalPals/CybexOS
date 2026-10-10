@@ -962,6 +962,9 @@ PopoutPanel {
             if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
                 Fusebox.openDashboard(faultRow.fault.path);
                 event.accepted = true;
+            } else if (event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace) {
+                Fusebox.dismissFault(faultRow.fault);
+                event.accepted = true;
             }
         }
 
@@ -976,7 +979,7 @@ PopoutPanel {
             id: faultText
             x: Theme.scaled(36)
             y: Theme.scaled(9)
-            width: parent.width - x - Theme.scaled(30)
+            width: parent.width - x - dismissButton.width - Theme.scaled(36)
             spacing: Theme.scaled(2)
 
             Text {
@@ -1006,8 +1009,8 @@ PopoutPanel {
             }
         }
         Sym {
-            anchors.right: parent.right
-            anchors.rightMargin: Theme.scaled(10)
+            anchors.right: dismissButton.left
+            anchors.rightMargin: Theme.scaled(6)
             anchors.verticalCenter: parent.verticalCenter
             name: "open_in_new"
             size: Theme.iconSmall
@@ -1019,6 +1022,44 @@ PopoutPanel {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: Fusebox.openDashboard(faultRow.fault.path)
+        }
+        // Above the row's own click area, so dismissing never opens the dashboard.
+        Rectangle {
+            id: dismissButton
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.scaled(6)
+            anchors.verticalCenter: parent.verticalCenter
+            width: Theme.scaled(26)
+            height: width
+            radius: Theme.chipRadius
+            color: dismissMouse.containsMouse || dismissButton.activeFocus ? Theme.hoverFill : "transparent"
+            border.width: dismissButton.activeFocus ? 1 : 0
+            border.color: Theme.accentText
+            activeFocusOnTab: true
+            Accessible.role: Accessible.Button
+            Accessible.name: "Dismiss " + faultRow.fault.title
+            Accessible.description: "Hidden until it clears or changes"
+            Accessible.onPressAction: Fusebox.dismissFault(faultRow.fault)
+            Keys.onPressed: event => {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                    Fusebox.dismissFault(faultRow.fault);
+                    event.accepted = true;
+                }
+            }
+
+            Sym {
+                anchors.centerIn: parent
+                name: "close"
+                size: Theme.iconSmall
+                color: dismissMouse.containsMouse ? Theme.textHi : Theme.textDim
+            }
+            MouseArea {
+                id: dismissMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Fusebox.dismissFault(faultRow.fault)
+            }
         }
     }
 
@@ -1361,7 +1402,7 @@ PopoutPanel {
         readonly property var account: Fusebox.accountById(request.accountId)
         readonly property string result: Helpers.outcome(request)
         readonly property bool showError: result === "failed" && !!request.error
-        readonly property var tags: [Helpers.clientLabel(request)].concat(Helpers.requestTags(request))
+        readonly property var tags: Helpers.requestTags(request)
         readonly property string mark: Helpers.providerMark(request.provider)
 
         width: parent ? parent.width : 0
@@ -1809,11 +1850,28 @@ PopoutPanel {
                     spacing: Theme.scaled(6)
 
                     Repeater {
-                        model: Fusebox.faults
+                        model: Fusebox.shownFaults
                         FaultRow {}
                     }
+                    // Dismissed faults are one click from coming back.
+                    Row {
+                        visible: Fusebox.dismissedCount > 0
+                        spacing: Theme.scaled(8)
+
+                        Caption {
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: Theme.textFaint
+                            text: Fusebox.dismissedCount + (Fusebox.dismissedCount === 1 ? " dismissed fault" : " dismissed faults")
+                        }
+                        LinkText {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Show"
+                            accessibleName: "Show dismissed faults again"
+                            onClicked: Fusebox.restoreFaults()
+                        }
+                    }
                     Caption {
-                        visible: Fusebox.faultSource === "accounts"
+                        visible: Fusebox.faultSource === "accounts" && Fusebox.shownFaults.length > 0
                         width: parent.width
                         wrapMode: Text.Wrap
                         elide: Text.ElideNone
