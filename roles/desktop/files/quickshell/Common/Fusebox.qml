@@ -69,12 +69,20 @@ Singleton {
     readonly property var figures: Helpers.figures(series, requests, serving, now, load)
     // An unresolved reset spend blocks further resets: at least an amber badge.
     readonly property int resetReviews: accounts.filter(a => a.bankedReview).length
+    // Faults the user dismissed stay listed in Fusebox but leave the widget's
+    // list, badge and fault count until they clear or change.
+    property var dismissed: ({})
+    // What the state file holds. An empty map needs no file, so none is written
+    // until something is dismissed.
+    property string persistedDismissed: "{}"
+    readonly property var shownFaults: Helpers.visibleFaults(faults, dismissed)
+    readonly property int dismissedCount: faults.length - shownFaults.length
     readonly property string faultLevel: {
-        const level = Helpers.faultLevel(faults);
+        const level = Helpers.faultLevel(shownFaults);
         return level === "ok" && resetReviews > 0 ? "warn" : level;
     }
     readonly property bool resetsEnabled: overview !== null && overview.bankedResets === true
-    readonly property string barValue: Helpers.barValue(options.metric, figures, faults)
+    readonly property string barValue: Helpers.barValue(options.metric, figures, shownFaults)
     readonly property var startedAt: overview ? overview.startedAt : null
 
     // Breaker actions: one at a time, and only the latest result is kept.
@@ -210,8 +218,32 @@ Singleton {
         faultSource = source;
         seenFaultKeys = list.map(f => f.key);
         faultsSeeded = true;
+        dismissed = Helpers.pruneDismissed(dismissed, list, Date.now());
+        persistDismissed();
         if (options.notify)
             fresh.forEach(notify);
+    }
+
+    function dismissFault(fault) {
+        dismissed = Helpers.dismissFault(dismissed, fault, Date.now());
+        persistDismissed();
+    }
+
+    function restoreFaults() {
+        dismissed = ({});
+        persistDismissed();
+    }
+
+    function persistDismissed() {
+        const text = JSON.stringify(dismissed);
+        if (text === persistedDismissed)
+            return;
+        persistedDismissed = text;
+        // FileView.adapter ids are absent from the shipped static type data.
+        // qmllint disable unqualified
+        stateData.dismissed = dismissed;
+        // qmllint enable unqualified
+        stateFile.writeAdapter();
     }
 
     function notify(f) {
@@ -524,6 +556,26 @@ Singleton {
             checkKey();
     }
 
+    FileView {
+        id: stateFile
+        path: Quickshell.env("HOME") + "/.local/state/cybexos/shell/fusebox.json"
+        printErrors: false
+        blockLoading: true
+        // qmllint disable unqualified
+        onLoaded: {
+            root.dismissed = Helpers.loadDismissed(stateData.dismissed);
+            root.persistedDismissed = JSON.stringify(stateData.dismissed || {});
+        }
+        // A failed write is retried by the next change.
+        onSaveFailed: root.persistedDismissed = ""
+        // qmllint enable unqualified
+
+        JsonAdapter {
+            id: stateData
+            property var dismissed: ({})
+        }
+    }
+
     IpcHandler {
         target: "fusebox"
         function status(): string {
@@ -533,7 +585,7 @@ Singleton {
                 watchers: root.watchers, updatedAt: root.updatedAt, version: root.overview ? root.overview.version : null,
                 accounts: root.accounts.length, faults: root.faults.length, faultSource: root.faultSource,
                 sessions: root.figures.sessions, serving: root.serving, metric: root.options.metric,
-                resetReviews: root.resetReviews,
+                resetReviews: root.resetReviews, dismissedFaults: root.dismissedCount,
                 value: root.barValue });
         }
         function refresh(): void { root.refresh(); }

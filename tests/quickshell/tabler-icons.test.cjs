@@ -210,3 +210,13 @@ test("presentation marks do not fall back to unrelated text-font symbols", () =>
     assert.deepEqual(offenders, [],
         "presentation glyphs belong in Sym so one icon face controls them");
 });
+
+test("icons centre their drawn ink, not the font's left-aligned glyph box", () => {
+    // Tabler's font starts every glyph at the left edge of a full-width box, so
+    // a narrow icon such as × sat a fifth of its size left of its slot's centre.
+    const sym = fs.readFileSync(path.join(shellDir, "Common/Sym.qml"), "utf8");
+    assert.match(sym, /TextMetrics \{[\s\S]*?id: ink[\s\S]*?text: root\.glyph\.outline/);
+    assert.match(sym, /x: root\.centreInk \? \(root\.width - ink\.tightBoundingRect\.width\) \/ 2 - ink\.tightBoundingRect\.x : 0/);
+    assert.match(sym, /readonly property bool centreInk: root\.horizontalAlignment === Text\.AlignHCenter/,
+        "an explicit alignment from a plugin is honoured as before");
+});

@@ -508,6 +508,66 @@ function faultLevel(faults) {
     return faults && faults.length ? "warn" : "ok";
 }
 
+// ---- dismissed faults ------------------------------------------------------------
+// A dismissed fault stays hidden while it lasts. One whose expected end changes
+// is a new incident and shows again; one that clears is forgotten, so it shows
+// the next time it trips. Clearing means unseen for a grace period, so a Fusebox
+// restart, which briefly drops quota faults, doesn't bring dismissals back.
+
+var DISMISS_GRACE_MS = 15 * MINUTE;
+var MAX_DISMISSED = 200;
+
+function faultSignature(f) {
+    return f.key + "|" + (f.until || 0);
+}
+
+function isDismissed(dismissed, f) {
+    var entry = dismissed ? dismissed[f.key] : null;
+    return !!entry && entry.signature === faultSignature(f);
+}
+
+function visibleFaults(faults, dismissed) {
+    return (faults || []).filter(function(f) { return !isDismissed(dismissed, f); });
+}
+
+function dismissFault(dismissed, f, now) {
+    var next = Object.assign({}, dismissed || {});
+    next[f.key] = { signature: faultSignature(f), seenAt: now };
+    return next;
+}
+
+// Dismissals as read from disk: valid entries only, and no time limit yet. The
+// shell may have been off for days; the first fault update decides what stays.
+function loadDismissed(raw) {
+    var next = {};
+    Object.keys(raw && typeof raw === "object" ? raw : {}).slice(0, MAX_DISMISSED).forEach(function(key) {
+        var entry = raw[key];
+        if (entry && typeof entry.signature === "string" && typeof entry.seenAt === "number")
+            next[key] = { signature: entry.signature, seenAt: entry.seenAt };
+    });
+    return next;
+}
+
+// Keeps dismissals of faults that are still there (or only briefly gone), drops
+// those that cleared or changed, and ignores anything malformed from disk.
+function pruneDismissed(dismissed, faults, now) {
+    var present = {};
+    (faults || []).forEach(function(f) { present[f.key] = f; });
+    var next = {};
+    Object.keys(dismissed || {}).slice(0, MAX_DISMISSED).forEach(function(key) {
+        var entry = dismissed[key];
+        if (!entry || typeof entry.signature !== "string" || typeof entry.seenAt !== "number")
+            return;
+        if (present[key]) {
+            if (entry.signature === faultSignature(present[key]))
+                next[key] = { signature: entry.signature, seenAt: now };
+        } else if (entry.seenAt > now - DISMISS_GRACE_MS) {
+            next[key] = entry;
+        }
+    });
+    return next;
+}
+
 // "Back at 16:40, in 1h 12m" while a fault should clear by itself.
 function faultTiming(f, now) {
     if (!f || !f.until || f.until <= now)
@@ -550,5 +610,6 @@ if (typeof module !== "undefined" && module.exports)
         accountSubtitle, accountFacts, resetFacts, pauseText, resetsSupported, resetUnresolved,
         grantTimingChanged, resetBlock, usableGrants, retryAllowed, dateText, grantDetail, quoteLeft,
         countdown, resetCountText, operationTone, QUOTE_MS, clientLabel, requestTags, requestMetrics,
-        outcome, trimSeries, applyRequest, bars, median, figures, faultLevel, faultTiming, newFaults,
-        barValue, dashboardUrl };
+        outcome, trimSeries, applyRequest, bars, median, figures, faultLevel, faultSignature, isDismissed,
+        visibleFaults, dismissFault, loadDismissed, pruneDismissed, DISMISS_GRACE_MS, faultTiming, newFaults, barValue,
+        dashboardUrl };
