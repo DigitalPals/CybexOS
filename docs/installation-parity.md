@@ -14,7 +14,7 @@ Fresh installations use these ISO defaults:
 | Sudo and local Polkit | Password required |
 | Docker administrator access | Sudo required |
 | Desktop automatic login | Enabled only after complete root encryption is verified |
-| Additional local-network firewall ports | Disabled; LocalSend retains its shared ports |
+| Additional local-network firewall ports | Disabled; LocalSend and mDNS (printer and scanner discovery) remain open |
 | Files SMB workgroup | `WORKGROUP`; explicit per-user workgroups take precedence |
 | Machine identity | Preserve the identity already configured by Fedora/Anaconda |
 

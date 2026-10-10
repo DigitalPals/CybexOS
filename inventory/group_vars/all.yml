@@ -66,9 +66,10 @@ features:
   private_hooks: false
   apple_display: false
   source_builds: true
-  # Inbound LocalSend, mDNS, Steam, and source-server ports are a deliberate
-  # workstation trust decision. Disable this on machines used on untrusted
-  # networks; feature-specific ports are additionally gated below.
+  # Inbound Steam and source-server ports are a deliberate workstation trust
+  # decision. Disable this on machines used on untrusted networks;
+  # feature-specific ports are additionally gated below. LocalSend and mDNS
+  # are always open: without mDNS replies, printers and scanners stay hidden.
   local_network_services: false
   developer_tools: true
   connected_widgets: true
@@ -84,7 +85,7 @@ firewall_zone: cybexos
 firewall_ports:
   - { port: "53317", protocol: tcp, comment: LocalSend, always: true }
   - { port: "53317", protocol: udp, comment: LocalSend, always: true }
-  - { port: "5353", protocol: udp, comment: mDNS }
+  - { port: "5353", protocol: udp, comment: mDNS, always: true }
   - { port: "27036-27037", protocol: tcp, comment: Steam Remote Play, feature: steam }
   - { port: "10400-10401", protocol: udp, comment: Steam Remote Play, feature: steam }
   - { port: "27031-27036", protocol: udp, comment: Steam Remote Play, feature: steam }
