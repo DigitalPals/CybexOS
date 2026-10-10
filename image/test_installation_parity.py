@@ -219,6 +219,61 @@ class InstallationParity(Fixture):
         self.assertIn('Exec=chatgpt --ozone-platform=wayland %U',
                       (iso_home / launcher).read_text().splitlines())
 
+    def test_firewall_zone_matches_checkout_and_iso_for_each_network_choice(self):
+        from xml.etree import ElementTree
+        import jinja2
+        from desktop_payload import prepare_defaults
+
+        def outcome(path):
+            zone = ElementTree.parse(path).getroot()
+            return (zone.get('target'),
+                    sorted((port.get('port'), port.get('protocol')) for port in zone.iter('port')),
+                    sorted(interface.get('name') for interface in zone.iter('interface')))
+
+        inventory = yaml.safe_load((ROOT / 'inventory/group_vars/all.yml').read_text())
+        sources = {'checkout': ('roles/base/tasks/main.yml', 'Configure strict firewalld zone'),
+                   'iso': ('roles/base/tasks/image.yml', 'Apply the shared workstation firewall')}
+        plays, expected = [], {}
+        for enabled in (False, True):
+            features = {**inventory['features'], 'local_network_services': enabled}
+            tasks = []
+            for path, name in sources.values():
+                task = next(task for task in yaml.safe_load((ROOT / path).read_text())
+                            if task.get('name') == name)
+                for key in ('notify', 'register'):
+                    task.pop(key, None)
+                template = task['ansible.builtin.template']
+                template.pop('owner')
+                template.pop('group')
+                template['src'] = str(ROOT / 'roles/base/templates' / template['src'])
+                template['dest'] = str(self.root / f'{Path(path).stem}-{enabled}.xml')
+                tasks.append(task)
+            plays.append({'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False,
+                          'vars': {'features': features, 'firewall_zone': inventory['firewall_zone'],
+                                   'firewall_ports': inventory['firewall_ports']},
+                          'tasks': tasks})
+            # The ISO package renders the same template into its RPM payload.
+            environment = jinja2.Environment(undefined=jinja2.StrictUndefined, keep_trailing_newline=True)
+            environment.filters.update(bool=bool, ternary=lambda value, yes, no: yes if value else no)
+            payload = self.root / f'payload-{enabled}'
+            prepare_defaults(ROOT, payload, environment, {**inventory, 'features': features})
+            expected[enabled] = outcome(payload / 'usr/lib/firewalld/zones/cybexos.xml')
+        playbook = self.root / 'firewall-zone.yml'
+        playbook.write_text(yaml.safe_dump(plays))
+        result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                                env=os.environ, text=True, capture_output=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        for enabled, packaged in expected.items():
+            for path, _ in sources.values():
+                self.assertEqual(outcome(self.root / f'{Path(path).stem}-{enabled}.xml'), packaged, (path, enabled))
+            target, ports, _ = packaged
+            self.assertEqual(target, 'DROP')
+            # Printer and scanner discovery needs mDNS replies on every install.
+            self.assertIn(('5353', 'udp'), ports)
+            self.assertIn(('53317', 'tcp'), ports)
+            self.assertEqual(('27015', 'tcp') in ports, enabled)
+
 
 if __name__ == '__main__':
     unittest.main()

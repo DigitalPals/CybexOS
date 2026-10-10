@@ -369,7 +369,7 @@ class InstalledPolicy(unittest.TestCase):
                                     text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_localsend_ports_follow_the_application_without_enabling_other_network_services(self):
+    def test_localsend_and_mdns_ports_stay_open_without_enabling_other_network_services(self):
         inventory = yaml.safe_load((ROOT / 'inventory/group_vars/all.yml').read_text())
         env = jinja2.Environment(undefined=jinja2.StrictUndefined)
         env.filters['bool'] = bool
@@ -377,6 +377,7 @@ class InstalledPolicy(unittest.TestCase):
         rendered = env.from_string(source).render(**inventory)
         self.assertIn('port="53317" protocol="tcp"', rendered)
         self.assertIn('port="53317" protocol="udp"', rendered)
+        self.assertIn('port="5353" protocol="udp"', rendered)
         self.assertNotIn('port="27036"', rendered)
 
     def test_localsend_forwards_selected_files_and_keeps_text_literal(self):
