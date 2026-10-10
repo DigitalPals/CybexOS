@@ -31,15 +31,30 @@ Item {
         ColorAnimation { duration: Theme.chipFadeDuration }
     }
 
+    // Tabler's font starts every glyph at the left edge of a full-width box, so
+    // a narrow icon (×, dots, minus) would sit left of the slot's centre by up to
+    // a fifth of its size. Centre the drawn ink instead; vertically the glyphs
+    // are already centred. An explicit alignment is honoured as it was.
+    readonly property bool centreInk: root.horizontalAlignment === Text.AlignHCenter
+    TextMetrics {
+        id: ink
+        font.family: TablerIcons.outline.name
+        font.pixelSize: root.size
+        font.weight: Font.Normal
+        text: root.glyph.outline
+    }
+
     Text {
-        anchors.fill: parent
+        x: root.centreInk ? (root.width - ink.tightBoundingRect.width) / 2 - ink.tightBoundingRect.x : 0
+        width: root.centreInk ? Math.max(implicitWidth, root.width) : root.width
+        height: root.height
         visible: TablerIcons.ready && !root.isSpinner
         text: root.glyph.outline
         font.family: TablerIcons.outline.name
         font.pixelSize: root.size
         font.weight: Font.Normal
         color: root.color
-        horizontalAlignment: root.horizontalAlignment
+        horizontalAlignment: root.centreInk ? Text.AlignLeft : root.horizontalAlignment
         verticalAlignment: Text.AlignVCenter
         renderType: Text.QtRendering
         Accessible.ignored: true
