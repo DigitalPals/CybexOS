@@ -363,12 +363,12 @@ class Normalizing(unittest.TestCase):
         self.assertIsNone(fusebox.request({"id": 1, "ts": "bad", "status": 200}))
         self.assertIsNone(fusebox.request({"id": True, "ts": "2026-10-09T10:00:00Z", "status": 200}))
         self.assertEqual(fusebox.load({"a": {"in_flight": 2, "sessions": 3}, "b": {"in_flight": -1}, 5: {}}),
-                         {"a": {"inFlight": 2, "sessions": 3}, "b": {"inFlight": 0, "sessions": 0}},
-                         "older releases report only the five-minute count")
-        # A session waiting on its user is still going on: the half-hour count wins.
+                         {"a": {"inFlight": 2, "sessions": 3}, "b": {"inFlight": 0, "sessions": 0}})
+        # The five-minute count, as the dashboard shows: a session last seen 14 minutes
+        # ago is still in the half-hour count but no longer reads as a session.
         self.assertEqual(fusebox.load({"a": {"in_flight": 0, "sessions": 1, "ongoing_sessions": 2},
-                                       "b": {"in_flight": 0, "sessions": 0, "ongoing_sessions": 1}}),
-                         {"a": {"inFlight": 0, "sessions": 2}, "b": {"inFlight": 0, "sessions": 1}})
+                                       "b": {"in_flight": 0, "sessions": 0, "ongoing_sessions": 3}}),
+                         {"a": {"inFlight": 0, "sessions": 1}, "b": {"inFlight": 0, "sessions": 0}})
 
 
 @unittest.skipIf(ws_serve is None, "python3-websockets is required")

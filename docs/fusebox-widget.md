@@ -30,12 +30,14 @@ Open Settings → Menubar → Widgets → Fusebox:
   sees, with **Reconnect**.
 - **Menubar figure**: recent sessions (the default), requests in progress,
   requests in the last full minute, or the number of faults. Recent sessions
-  are the sessions Fusebox has seen in the last 30 minutes, summed over
-  accounts, so a session waiting on you or a long tool run still counts. Fusebox
-  releases without the `ongoing_sessions` count report only the last five
-  minutes. Requests in progress count only while Fusebox waits on a provider,
-  so they read 0 most of the time even while sessions are working: a coding
-  session spends much of its time running tools or waiting for its user.
+  are the sessions Fusebox has seen in the last five minutes, summed over
+  accounts: the count Fusebox's dashboard shows, so the widget and the
+  dashboard agree. Fusebox's 30-minute `ongoing_sessions` count is not used;
+  it can't tell a session waiting on you from one that has ended, so a closed
+  session would keep counting for half an hour. Requests in progress count
+  only while Fusebox waits on a provider, so they read 0 most of the time even
+  while sessions are working: a coding session spends much of its time running
+  tools or waiting for its user.
 - **Quota meters**: **Used** (the default) or **Remaining**, like the Used /
   Remaining switch in Fusebox's dashboard. Remaining fills each meter with, and
   prints, the share left. The colours still measure use, as in Fusebox, so a
@@ -84,7 +86,7 @@ Click the chip for the dashboard:
   the current minute highlighted.
 - **Accounts**: subscriptions first, then API keys. Each row has the provider's
   mark, its name, plan and status. A healthy account shows its sessions from the
-  last 30 minutes ("2 sessions"), or Ready when it has none; one serving requests without
+  last five minutes ("2 sessions"), or Ready when it has none; one serving requests without
   a session shows Serving 1. Otherwise the status is Cooling 1h 41m, Error,
   Sign-in expired or Off. Requests in progress across all accounts are in the
   figures above. Accounts with

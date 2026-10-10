@@ -491,15 +491,15 @@ def recent(payload, limit=40):
 
 
 def load(payload):
-    """Requests in flight and sessions per account. Sessions are the ones still going
-    on (seen in the last half hour); releases without that count report only those
-    seen in the last five minutes, which drops a session waiting on its user."""
+    """Requests in flight and sessions per account. Sessions are the ones seen in the
+    last five minutes, the count Fusebox's dashboard shows. Its half-hour
+    `ongoing_sessions` count is left alone: it can't tell a session waiting on its
+    user from one that has ended, so a closed session would linger for 30 minutes."""
     out = {}
     if isinstance(payload, dict):
         for identity, value in list(payload.items())[:4096]:
             if isinstance(identity, str) and 0 < len(identity) <= 512 and isinstance(value, dict):
-                ongoing = value.get("ongoing_sessions", value.get("sessions"))
-                out[identity] = {"inFlight": count(value.get("in_flight")), "sessions": count(ongoing)}
+                out[identity] = {"inFlight": count(value.get("in_flight")), "sessions": count(value.get("sessions"))}
     return out
 
 
