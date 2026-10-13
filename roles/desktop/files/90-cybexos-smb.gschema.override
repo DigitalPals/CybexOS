@@ -1,0 +1,4 @@
+# Files/GVfs uses this workgroup for new SMB connections.
+# Explicit per-user GSettings values take precedence.
+[org.gnome.system.smb]
+workgroup='WORKGROUP'

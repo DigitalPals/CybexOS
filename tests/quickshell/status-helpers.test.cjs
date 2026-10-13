@@ -46,16 +46,28 @@ test("signal percent rounds and keeps -1 for an unknown strength", () => {
 
 // ---- battery -------------------------------------------------------------
 
-test("charge state separates charging from full and treats the rest as battery", () => {
+test("charge state separates active charging, preservation and full", () => {
     const state = H.BATTERY_STATE;
     assert.equal(H.chargeState({ state: state.Charging }), "charging");
-    assert.equal(H.chargeState({ state: state.PendingCharge }), "charging");
+    assert.equal(H.chargeState({ state: state.PendingCharge }), "pending-charge");
     assert.equal(H.chargeState({ state: state.FullyCharged }), "full");
     assert.equal(H.chargeState({ state: state.Discharging }), "discharging");
     assert.equal(H.chargeState({ state: state.PendingDischarge }), "discharging");
     assert.equal(H.chargeState({ state: state.Empty }), "discharging");
     assert.equal(H.chargeState({ state: state.Unknown }), "discharging");
     assert.equal(H.chargeState(null), "discharging");
+});
+
+test("power source is independent of charge state and preservation is explained", () => {
+    const paused = { state: H.BATTERY_STATE.PendingCharge };
+    assert.equal(H.isPluggedIn(paused), true);
+    assert.equal(H.isPluggedIn(paused, true), false);
+    assert.equal(H.isPluggedIn({ state: H.BATTERY_STATE.Discharging }, false), true);
+    assert.equal(H.batteryStatus("pending-charge", true, true), "Plugged in · Charge limited");
+    assert.equal(H.batteryStatus("pending-charge", true, false), "Plugged in · Not charging");
+    assert.equal(H.batteryStatus("charging", true, true), "Charging");
+    assert.equal(H.batteryStatus("full", true, true), "Fully charged");
+    assert.equal(H.batteryStatus("pending-charge", false, true), "On battery");
 });
 
 test("bar and popover agree: a full battery is plugged in but not charging", () => {

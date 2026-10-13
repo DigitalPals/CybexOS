@@ -6,6 +6,12 @@ The Simple Icons vectors listed in `README.md` are distributed under
 [CC0 1.0 Universal](https://github.com/simple-icons/simple-icons/blob/4a79bb55697c85b8bc9f3caa22be747e0277ad4f/LICENSE.md).
 CC0 does not waive or license trademark rights in the depicted brands.
 
+## Fusebox
+
+The Fusebox mark (`fusebox.svg`, `fusebox-white.svg`) comes from
+[DigitalPals/Fusebox](https://github.com/DigitalPals/Fusebox/blob/11fb076e73a96684109cba3b8aa884712846a288/LICENSE),
+released into the public domain under the Unlicense.
+
 ## Tabler Icons
 
 MIT License

@@ -11,12 +11,16 @@ data_root=${XDG_DATA_HOME:-$HOME/.local/share}/cybexos
 config_file=${CYBEXOS_CONFIG_FILE:-/etc/cybexos/config.yml}
 release_updater=${CYBEXOS_RELEASE_UPDATE:-$data_root/current/update}
 backend=${CYBEXOS_UPDATE_BACKEND:-$HOME/.local/bin/cybexos-update-run}
+rpm_channel=${CYBEXOS_UPDATE_CHANNEL:-/usr/libexec/cybexos-update-channel}
 
 managed=false
 [[ -x $release_updater && -r $config_file ]] && managed=true
 
 case $command_name in
   check)
+    if [[ -x $rpm_channel ]]; then
+      exec "$rpm_channel" status --json
+    fi
     if [[ $managed == true ]]; then
       exec "$release_updater" --check --json "$@"
     fi

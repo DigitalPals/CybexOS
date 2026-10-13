@@ -8,16 +8,21 @@ const H = load("SettingsHelpers.js");
 const M = load("ShellMetrics.js");
 const read = file => fs.readFileSync(path.join(shellDir, file), "utf8");
 
-test("Omarchy reference scale and usage roles stay distinct", () => {
-    const s = T.resolve(12);
-    assert.equal(s.clock, 52);
+test("readable defaults and usage roles stay distinct", () => {
+    const s = T.resolve(M.calculate(H.defaults()).fontBase);
+    assert.equal(s.clock, 61);
     assert.deepEqual([s.caption, s.bodySmall, s.body, s.subtitle, s.title,
-        s.heading, s.display, s.displayLarge], [10, 11, 12, 13, 14, 16, 24, 28]);
+        s.heading, s.display, s.displayLarge], [12, 13, 14, 15, 16, 18, 28, 33]);
     for (const role of ["bar", "control", "navigation", "primary"])
-        assert.equal(s[role], 12, role);
-    for (const role of ["secondary", "tooltip"]) assert.equal(s[role], 11, role);
-    for (const role of ["section", "metadata"]) assert.equal(s[role], 10, role);
-    for (const role of ["notification", "osd"]) assert.equal(s[role], 14, role);
+        assert.equal(s[role], 14, role);
+    for (const role of ["secondary", "tooltip"]) assert.equal(s[role], 13, role);
+    for (const role of ["section", "metadata"]) assert.equal(s[role], 12, role);
+    for (const role of ["notification", "osd"]) assert.equal(s[role], 16, role);
+    for (const invalid of [undefined, 0, -1, NaN, Infinity])
+        assert.deepEqual(T.resolve(invalid), s);
+    // Defaults and section resets grow; an explicit saved size stays chosen.
+    assert.equal(H.merge({}).shellFontSize, 14);
+    assert.equal(H.merge({ shellFontSize: 12 }).shellFontSize, 12);
 });
 
 test("native and compatibility adapters use the same resolver, without a second type scale", () => {
@@ -41,6 +46,7 @@ test("type scaling follows accessibility and UI scale but not spacing density", 
                     assert.deepEqual(T.resolve(M.calculate({ ...p, interfaceDensity }).fontBase), expected);
                 assert.equal(expected.bar, base);
                 assert.equal(expected.title, Math.max(1, Math.round(base * 1.167)));
+                assert.equal(expected.heading, Math.max(1, Math.round(base * 18 / 14)));
                 assert.equal(expected.secondary, Math.max(1, Math.round(base * 0.917)));
             }
 });

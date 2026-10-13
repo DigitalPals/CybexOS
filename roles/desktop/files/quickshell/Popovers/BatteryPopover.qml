@@ -16,15 +16,14 @@ Surface {
     readonly property int level: Math.round(Battery.percent)
     readonly property real chargeFraction: Math.max(0,
         Math.min(1, Battery.percent / 100))
-    readonly property bool discharging: Battery.state === "discharging"
+    readonly property bool discharging: !Battery.pluggedIn
     readonly property bool critical: discharging
         && Battery.percent <= Settings.modOpts.batt.critAt
     readonly property bool warning: discharging && !critical
         && Battery.percent <= Settings.modOpts.batt.warnAt
     readonly property color batteryTone: critical ? Theme.red
         : warning ? Theme.amber : Theme.accent
-    readonly property string statusText: Battery.full ? "Fully charged"
-        : Battery.charging ? "Charging" : "On battery"
+    readonly property string statusText: Battery.statusText
     readonly property string batteryGlyph: critical ? "battery_alert"
         : level >= 95 ? "battery_full"
         : level >= 80 ? "battery_6_bar"
@@ -32,8 +31,8 @@ Surface {
         : level >= 50 ? "battery_4_bar"
         : level >= 35 ? "battery_3_bar"
         : level >= 20 ? "battery_2_bar" : "battery_1_bar"
-    readonly property string estimateLabel: Battery.charging || Battery.full
-        ? "Time to full" : "Time remaining"
+    readonly property string estimateLabel: Battery.charging ? "Time to full"
+        : discharging ? "Time remaining" : "Charge estimate"
     readonly property real estimateSeconds: !displayDevice ? 0
         : Battery.charging ? displayDevice.timeToFull
         : discharging ? displayDevice.timeToEmpty : 0

@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Install the exact ISO source on pinned Fedora, boot its desktop, compare outcomes."""
+import argparse
+import json
+import os
+from pathlib import Path
+import secrets
+import shlex
+import shutil
+import signal
+import subprocess
+import tarfile
+
+from build_support import atomic_json, create_seed, digest, checksum_entries
+from download_cache import cached_download
+from installed_outcomes import capture_guest, compare, read_json
+from parity_qualification import desktop_lifecycle, prepare_saved_choices, verify_saved_choices
+from qualification import SCENARIOS, boot_installed, poweroff_installed, root_script
+from source_snapshot import archive_identity
+from vm_testing import TestVM, run
+
+ROOT = Path(__file__).resolve().parents[1]
+IMAGE = 'Fedora-Cloud-Base-Generic-44-1.7.x86_64.qcow2'
+IMAGE_URL = 'https://download.fedoraproject.org/pub/fedora/linux/releases/44/Cloud/x86_64/images/' + IMAGE
+IMAGE_SHA256 = '28680fe5b371a5a82ebf43a31926e086a168e59949d03969c5093e7071f90b7f'
+SOURCE = '/home/qualification/cybexos-source'
+
+
+def verify_inputs(artifacts, iso_results, scenario):
+    checksum_entries(artifacts)
+    archive = artifacts / 'source.tar.gz'
+    identity = archive_identity(archive)
+    provenance = read_json(artifacts / 'build-provenance.json')
+    if any(provenance.get(key) != value for key, value in identity.items()):
+        raise ValueError('Source archive does not match the candidate ISO provenance')
+    with tarfile.open(archive, 'r:gz') as stream:
+        embedded = json.load(stream.extractfile('image/build-provenance.json'))
+    if embedded != provenance:
+        raise ValueError('Source archive embeds different build provenance')
+    qualification = read_json(iso_results / 'qualification.json')
+    isos = list(artifacts.glob('*.iso'))
+    if (len(isos) != 1 or qualification.get('status') != 'passed'
+            or qualification.get('scenario') != scenario or qualification.get('iso_sha256') != digest(isos[0])):
+        raise ValueError('Checkout parity requires the exact candidate ISO qualification')
+    for profile in ('fresh', 'saved'):
+        result = read_json(iso_results / ('outcomes-' + profile + '.json'))
+        if (result.get('source_content_sha256') != identity['source_content_sha256'] or
+                result.get('source_revision') != provenance.get('source_revision') or
+                result.get('scenario') != scenario or result.get('profile') != profile or result.get('installation') != 'iso'):
+            raise ValueError('ISO outcomes and checkout source are not from the same build')
+    return archive, provenance
+
+
+def cloud_seed(vm, password):
+    # Only a salted password hash is placed in cloud-init; the plaintext stays
+    # in memory/stdin and never appears in argv, reports, logs or screenshots.
+    encoded = run(['openssl', 'passwd', '-6', '-stdin'], input=password + '\n', text=True, capture_output=True).stdout.strip()
+    config = {'users': [{'name': 'qualification', 'groups': ['wheel'], 'shell': '/bin/bash',
+                         'sudo': 'ALL=(ALL) NOPASSWD:ALL', 'lock_passwd': False, 'passwd': encoded,
+                         'ssh_authorized_keys': [vm.key.with_suffix('.pub').read_text().strip()]}],
+              'ssh_pwauth': False, 'disable_root': True, 'preserve_hostname': True,
+              'runcmd': [['hostnamectl', 'set-hostname', 'cybexos-qualification'],
+                         ['loginctl', 'enable-linger', 'qualification'],
+                         ['systemctl', 'enable', '--now', 'sshd.service']]}
+    (vm.work / 'user-data').write_text('#cloud-config\n' + json.dumps(config))
+    (vm.work / 'meta-data').write_text('instance-id: cybexos-parity-' + secrets.token_hex(8) + '\n')
+    create_seed(vm.work, 'cloud-localds')
+    vm.seed = vm.work / 'seed.iso'
+
+
+def install_script(scenario, *, repeat=False):
+    encrypted, keyboard, locale, timezone = SCENARIOS[scenario]
+    if encrypted:
+        raise ValueError('Pinned cloud parity scenarios are plaintext; encrypted ISO qualification remains separate')
+    initial = '' if repeat else f'''
+dnf install -y ansible-core git python3-pyyaml firewalld glibc-langpack-en glibc-langpack-nl
+localectl set-locale LANG={shlex.quote(locale)}
+timedatectl set-timezone {shlex.quote(timezone)}
+localectl set-x11-keymap {shlex.quote(keyboard)}
+'''
+    return f'''set -euo pipefail
+export ANSIBLE_FORCE_COLOR=0 PYTHONDONTWRITEBYTECODE=1
+export SUDO_USER=qualification
+{initial}
+export LANG={shlex.quote(locale)}
+cd {SOURCE}
+# Keep the established transport alive through strict firewall convergence;
+# the new runtime SSH exception is test-only and disappears on reboot.
+cleanup() {{ firewall-cmd --zone=cybexos --add-service=ssh >/dev/null 2>&1 || true; }}
+trap cleanup EXIT
+./install --non-interactive
+rm -f /etc/sudoers.d/90-cloud-init-users
+systemctl set-default graphical.target
+systemctl enable sddm.service
+cleanup
+trap - EXIT
+'''
+
+
+def install(vm, scenario, password, *, repeat=False):
+    # Use the public installer's supported sudo invocation. SUDO_USER selects
+    # the account; install derives its actual home through getent, not root's.
+    try:
+        root_script(vm, install_script(scenario, repeat=repeat), password, timeout=7200)
+    except subprocess.CalledProcessError as error:
+        detail = ((error.stdout or '') + (error.stderr or '')).replace(password, '[redacted]')[-6000:]
+        raise RuntimeError('Full checkout installation failed: ' + detail) from error
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--artifacts', required=True, type=Path)
+    parser.add_argument('--iso-results', required=True, type=Path)
+    parser.add_argument('--scenario', choices=('plain-us', 'plain-nl'), required=True)
+    parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--cache', type=Path, default=Path(os.environ.get('XDG_CACHE_HOME', str(Path.home() / '.cache'))) / 'cybexos/image/base')
+    parser.add_argument('--execute-vm', action='store_true')
+    parser.add_argument('--keep-artifacts', action='store_true')
+    args = parser.parse_args()
+    if not args.execute_vm:
+        parser.error('--execute-vm explicitly authorizes new disposable VM disks and a complete guest installation')
+    for signal_number in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(signal_number, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
+    for executable in ('cloud-localds', 'openssl'):
+        if not shutil.which(executable):
+            raise RuntimeError('Missing checkout qualification prerequisite: ' + executable)
+    archive, provenance = verify_inputs(args.artifacts, args.iso_results, args.scenario)
+    base = cached_download(IMAGE_URL, IMAGE_SHA256, args.cache)
+    vm = TestVM(args.output, network_restricted=False)
+    password = secrets.token_hex(24)
+    report = {'status': 'failed', 'scenario': args.scenario, 'source_revision': provenance['source_revision'],
+              'source_content_sha256': provenance['source_content_sha256'], 'source_archive_sha256': digest(archive),
+              'fedora_cloud_sha256': IMAGE_SHA256, 'checks': [],
+              'scope': 'Full checkout installation and graphical session on disposable QEMU Fedora Cloud; no physical hardware qualification'}
+    try:
+        vm.prepare()
+        vm.disk.unlink()  # Only the disk just created by this owned TestVM.
+        run(['qemu-img', 'create', '-q', '-f', 'qcow2', '-F', 'qcow2', '-b', str(base), str(vm.disk), '100G'])
+        cloud_seed(vm, password)
+        vm.start(user='qualification')
+        vm.wait_ssh(timeout=600, setup=False, redactions=(password,))
+        run([*vm.ssh, 'cloud-init status --wait --format=json'], text=True, capture_output=True, timeout=600)
+        run([*vm.ssh, f'mkdir -p {SOURCE}'], timeout=20)
+        with archive.open('rb') as source:
+            run([*vm.ssh, f'tar xzf - -C {SOURCE}'], stdin=source, capture_output=True, timeout=120)
+        with (args.artifacts / 'applications.json').open('rb') as manifest:
+            run([*vm.ssh, 'cat > /home/qualification/cybexos-applications.json'], stdin=manifest, timeout=30)
+        install(vm, args.scenario, password)
+        report['checks'].append('full-checkout-installation')
+        # The first shutdown happens before a graphical session is necessarily
+        # ready; use the authenticated poweroff helper, not TestVM.stop's audit.
+        poweroff_installed(vm, password)
+        vm.seed = None
+        boot_installed(vm, password, False)
+        for profile in ('fresh', 'saved'):
+            if profile == 'saved':
+                prepare_saved_choices(vm, password, root_script)
+                install(vm, args.scenario, password, repeat=True)
+                poweroff_installed(vm, password)
+                boot_installed(vm, password, False)
+                verify_saved_choices(vm, password, root_script)
+            vm.audit(applications=False)
+            desktop_lifecycle(vm)
+            result = capture_guest(vm, root_script, password, installation='checkout', scenario=args.scenario,
+                                   profile=profile, manifest='/home/qualification/cybexos-applications.json',
+                                   provenance=SOURCE + '/image/build-provenance.json')
+            atomic_json(args.output / ('outcomes-' + profile + '.json'), result)
+            comparison = compare(read_json(args.iso_results / ('outcomes-' + profile + '.json')), result,
+                                 read_json(ROOT / 'image/parity-exceptions.json'))
+            atomic_json(args.output / ('parity-' + profile + '.json'), comparison)
+            if comparison['status'] != 'passed':
+                raise RuntimeError('Installed outcome mismatch; inspect parity-' + profile + '.json. No differences were auto-approved.')
+            report['checks'].append('installed-parity-' + profile)
+        report['checks'] += ['same-source-content', 'native-settings-lifecycle', 'saved-choice-reconfiguration', 'full-graphical-session']
+        poweroff_installed(vm, password)
+        report['status'] = 'passed'
+    except BaseException as error:
+        report['error'] = (str(error) or type(error).__name__).replace(password, '[redacted]')
+        raise
+    finally:
+        if vm.owned:
+            try:
+                vm.cleanup(args.keep_artifacts)
+            finally:
+                for name in ('user-data', 'meta-data', 'seed.iso'):
+                    (vm.work / name).unlink(missing_ok=True)
+                atomic_json(args.output / 'checkout-qualification.json', report)
+    print(json.dumps(report))
+
+
+if __name__ == '__main__':
+    main()

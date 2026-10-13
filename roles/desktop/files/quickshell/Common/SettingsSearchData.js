@@ -9,6 +9,13 @@
 // against SettingsHelpers' schema under Node.
 
 var ROWS = [
+    { page: "keyboard", pageLabel: "Keyboard", group: "Keyboard layouts", label: "Keyboard layouts", key: "", terms: "input language variant qwerty azerty dvorak colemak" },
+    { page: "keyboard", pageLabel: "Keyboard", group: "Switch layouts", label: "Layout switching", key: "", terms: "keyboard shortcut caps lock alt shift next layout" },
+    { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Tap to click", key: "", terms: "touchpad tapping click input" },
+    { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Natural scrolling", key: "", terms: "touchpad reverse scroll direction" },
+    { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Pointer sensitivity", key: "", terms: "touchpad mouse speed acceleration" },
+    { page: "region", pageLabel: "Region & formats", group: "System timezone", label: "Timezone", key: "", terms: "time zone city country daylight saving clock" },
+    { page: "region", pageLabel: "Region & formats", group: "System language", label: "System language", key: "", terms: "locale language region lang regional formats" },
     // Appearance
     { page: "network", pageLabel: "Network", group: "Connections", label: "Network connections", key: "", terms: "wifi ethernet saved profile adapter vpn advanced editor" },
     { page: "network", pageLabel: "Network", group: "Connection", label: "Autoconnect and metered", key: "", terms: "automatic join metered data limit background" },
@@ -74,6 +81,7 @@ var ROWS = [
     { page: "bar", pageLabel: "Bar", group: "Indicators", label: "Clock-side actions", key: "", terms: "indicator dictate recording ocr scan text clipboard reminder night light do not disturb dnd stay awake idle inhibit order startup duration" },
     { page: "bar", pageLabel: "Bar", group: "Notes", label: "AI note titles", key: "", terms: "codex claude model provider effort reasoning generate regenerate privacy" },
     { page: "bar", pageLabel: "Bar", group: "Weather", label: "Weather location", key: "", widget: "weather", terms: "clock city place search country region coordinates latitude longitude forecast" },
+    { page: "bar", pageLabel: "Bar", group: "Fusebox", label: "Fusebox server", key: "", widget: "fusebox", terms: "ai proxy cliproxy subscriptions accounts management key url faults load requests sessions quota used remaining left meters breaker notifications privacy email" },
     { page: "bar", pageLabel: "Bar", group: "Model Usage", label: "Model Usage", key: "", widget: "modelusage", terms: "ai claude codex kimi quota limits reset percentage providers cliproxy proxy accounts credentials cost tokens t3 refresh warning critical" },
 
     { page: "bar", pageLabel: "Bar", group: "Control Center", label: "Control Center widget", key: "", widget: "control", terms: "fedora button move drag reorder show hide drawer" },

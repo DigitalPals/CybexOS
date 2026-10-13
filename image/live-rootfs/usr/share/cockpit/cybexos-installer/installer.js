@@ -7,6 +7,7 @@ let polling;
 let installationComplete = false;
 let appliedKeyboard = null;
 let timezoneChosen = false;
+let availableDisks = [];
 
 function fail(error) {
     $("error").textContent = error.message || "The installer could not complete this operation.";
@@ -59,10 +60,37 @@ async function run(message, work) {
 function options(id, values, selected) {
     $(id).replaceChildren(...values.map(value => {
         const option = document.createElement("option");
-        option.value = value.id || value; option.textContent = value.label || value;
+        option.value = typeof value === "object" ? value.id : value;
+        option.textContent = typeof value === "object" ? value.label : value;
         return option;
     }));
     if (selected) $(id).value = selected;
+}
+function size(bytes) {
+    return Number.isFinite(Number(bytes)) ? `${(Number(bytes) / 1024**3).toFixed(1)} GiB` : "Unknown size";
+}
+function partitionSummary(disk) {
+    if (!disk.partitions?.length) return "No existing partitions reported";
+    return disk.partitions.map(partition =>
+        `${partition.path || "Partition"} (${size(partition.size)}${partition.filesystem ? `, ${partition.filesystem}` : ""})`).join("; ");
+}
+function diskIdentity(disk) {
+    return [`${disk.model} · ${disk.path} · ${size(disk.size)}`,
+        `Serial: ${disk.serial || "Not reported"}`,
+        `WWN: ${disk.wwn || "Not reported"}`,
+        `Existing partitions: ${partitionSummary(disk)}`].join("\n");
+}
+function showSelectedDisk() {
+    const disk = availableDisks.find(item => item.name === $("disk").value);
+    $("disk-details").textContent = disk ? diskIdentity(disk) : "Choose a disk to see its identity and existing partitions.";
+}
+function showDisks(disks) {
+    availableDisks = disks;
+    options("disk", [{id: "", label: "Select a disk…"}, ...disks.map(disk => ({
+        id: disk.name, label: `${disk.model} — ${size(disk.size)} — ${disk.path}${disk.removable ? " (removable)" : ""}`
+    }))]);
+    $("disk").value = "";
+    showSelectedDisk();
 }
 function timezoneOptions(zones, selected) {
     const groups = new Map();
@@ -104,7 +132,8 @@ function waitForBackend() {
     });
 }
 function account() {
-    return Object.fromEntries(["username", "password", "confirm", "keyboard", "locale", "timezone", "hostname"].map(id => [id, $(id).value]));
+    return {...Object.fromEntries(["username", "password", "confirm", "keyboard", "locale", "timezone", "hostname"].map(id => [id, $(id).value])),
+        passwordless_wheel: $("passwordless-wheel").checked};
 }
 function showProgress(data) {
     wizard.page = "progress";
@@ -121,6 +150,7 @@ function showProgress(data) {
         clearInterval(polling);
         $("progress-title").textContent = "Installation needs attention.";
     }
+    $("failure-help").hidden = data.phase !== "failed-install";
     render();
 }
 function monitor() {
@@ -145,9 +175,7 @@ async function initialize() {
         timezoneOptions(data.timezones, data.timezone);
         if (data.detected_timezone) showDetectedTimezone(data.detected_timezone);
         else detectTimezone(data.timezones);
-        options("disk", [{id: "", label: "Select a disk…"}, ...data.disks.map(disk => ({
-            id: disk.name, label: `${disk.model} — ${(disk.size / 1024**3).toFixed(1)} GiB — ${disk.path}${disk.removable ? " (removable)" : ""}`
-        }))]);
+        showDisks(data.disks);
         initializing = false;
         const keyboard = await call("keyboard", {keyboard: $("keyboard").value});
         appliedKeyboard = keyboard.keyboard;
@@ -168,6 +196,11 @@ $("timezone").addEventListener("change", () => {
     timezoneChosen = true;
     $("timezone-status").textContent = "";
 });
+$("disk").addEventListener("change", showSelectedDisk);
+$("rescan-disks").addEventListener("click", () => run("Rescanning disks with Anaconda…", async () => {
+    const data = await call("rescan");
+    showDisks(data.disks);
+}));
 $("account-form").addEventListener("submit", event => {
     event.preventDefault();
     try {
@@ -184,9 +217,10 @@ $("disk-form").addEventListener("submit", event => {
         const plan = await call("plan", data);
         wizard.plan = plan; wizard.page = "review";
         $("erase").checked = false;
-        const fields = {Disk: `${plan.disk.model} · ${plan.disk.path}`, Account: plan.account.username,
+        const fields = {Disk: diskIdentity(plan.disk), Account: plan.account.username,
             Storage: plan.account.encrypted ? "Encrypted Btrfs · LUKS2" : "Btrfs · unencrypted",
             "At startup": plan.account.encrypted ? "Unlock your disk → automatic login" : "Sign in to your account",
+            Sudo: plan.account.passwordless_wheel ? "Administrator commands do not ask for a password" : "Administrator commands ask for your account password",
             "Boot keyboard": plan.boot_keyboard, Language: plan.account.locale, Timezone: plan.account.timezone};
         $("summary").replaceChildren(...Object.entries(fields).flatMap(([key, value]) => {
             const term = document.createElement("dt"), detail = document.createElement("dd");
@@ -234,6 +268,14 @@ $("advanced").addEventListener("click", () => run("Opening the full installer…
     window.location.href = "../anaconda-webui/index.html";
 }));
 $("refresh-status").addEventListener("click", () => run("Checking installation status…", async () => showProgress(await call("status"))));
+$("save-diagnostics").addEventListener("click", () => run("Preparing redacted diagnostics…", async () => {
+    const report = await call("diagnostics");
+    const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2) + "\n"], {type: "application/json"}));
+    const link = document.createElement("a");
+    link.href = url; link.download = "cybexos-installer-diagnostics.json";
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}));
 $("retry").addEventListener("click", initialize);
 $("reboot").addEventListener("click", () => run("Restarting…", () => call("reboot")));
 window.addEventListener("beforeunload", event => {

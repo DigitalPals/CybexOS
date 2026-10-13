@@ -9,6 +9,8 @@ import json
 import os
 from pathlib import Path
 import queue
+import shutil
+import subprocess
 import stat
 import sys
 import tempfile
@@ -20,6 +22,7 @@ from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_PATH = ROOT / "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py"
+sys.path.insert(0, str(BRIDGE_PATH.parent))
 SPEC = importlib.util.spec_from_file_location("hermes_menubar_bridge", BRIDGE_PATH)
 assert SPEC and SPEC.loader
 BRIDGE = importlib.util.module_from_spec(SPEC)
@@ -583,7 +586,22 @@ def unit_restart_policy() -> None:
     assert "network-online.target" not in unit
 
 
+def packaged_entrypoint() -> None:
+    """The renamed installed executable resolves its sibling package alone."""
+    with tempfile.TemporaryDirectory(prefix="cybexos-hermes-package.") as scratch:
+        directory = Path(scratch)
+        entry = directory / "cybexos-hermes-menubar-bridge"
+        shutil.copy2(BRIDGE_PATH, entry)
+        shutil.copytree(BRIDGE_PATH.parent / "cybex_hermes", directory / "cybex_hermes")
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        env.pop("PYTHONPATH", None)
+        result = subprocess.run([sys.executable, "-B", str(entry), "--help"],
+                                cwd=directory, env=env, capture_output=True, text=True, check=True)
+        assert "--remote-only" in result.stdout
+
+
 if __name__ == "__main__":
+    packaged_entrypoint()
     unit_restart_policy()
     asyncio.run(scenario())
     asyncio.run(delivery_scenario())

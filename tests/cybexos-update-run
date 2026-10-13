@@ -159,13 +159,14 @@ apply_mock dnf \
 
 apply_mock ansible-playbook \
   'set -euo pipefail' \
+  'umask >>"$MOCK_ANSIBLE_UMASK_LOG"' \
   'cat "$MOCK_RELEASE_CONFIG" >"$MOCK_ANSIBLE_CONFIG_LOG"' \
   'printf "%s\n" "$*" >"$MOCK_ANSIBLE_ARGS_LOG"' \
   'exit "${MOCK_ANSIBLE_RC:-0}"'
 
 # The snapshot helper has its own Btrfs fixture. Keep the durable-update test
 # on the supported non-Btrfs path so it never inspects or mutates the host FS.
-apply_mock findmnt 'printf "ext4\n"'
+apply_mock findmnt 'printf "%s\n" "${MOCK_ROOT_FS:-ext4}"'
 
 # A pre-rename installation has only this root-owned helper. Its compatible
 # contract must bridge the first run of the renamed updater.
@@ -211,6 +212,7 @@ export MOCK_DNF_LOG="$fixture/dnf.log"
 export MOCK_DNF_UMASK_LOG="$fixture/dnf-umask.log"
 export MOCK_ANSIBLE_CONFIG_LOG="$fixture/ansible-config.log"
 export MOCK_ANSIBLE_ARGS_LOG="$fixture/ansible-args.log"
+export MOCK_ANSIBLE_UMASK_LOG="$fixture/ansible-umask.log"
 export MOCK_LEGACY_SNAPSHOT_LOG="$fixture/legacy-snapshot.log"
 export MOCK_FIRMWARE_LOG="$fixture/firmware-helper.log"
 export MOCK_FIRMWARE_UMASK_LOG="$fixture/firmware-umask.log"
@@ -593,7 +595,8 @@ recommended=$($backend status --json "$recommended_id")
 [[ $(stat -c %a "$XDG_STATE_HOME/cybexos/update/logs/$recommended_id/dnf.log") == 600 ]]
 # Release migration, snapshot, dnf, Flatpak, and firmware all run through
 # the umask wrapper.
-[[ $(grep -Fc '"${privileged_package[@]}"' "$backend") -eq 5 ]]
+# Assert effective umasks in the executed mocks; the number of protected
+# phases grows as download, health and recovery steps are introduced.
 # A run without --firmware records that and never starts the helper.
 [[ $(jq -r .firmware <<<"$recommended") == false ]]
 [[ $(jq -r .firmwareDone <<<"$recommended") == false ]]
@@ -912,6 +915,8 @@ $backend _worker "$release_id" --full --skip-tests --no-packages \
   -- -e "@$release_config"
 [[ $(<"$release_config") == 'schema: committed' ]]
 [[ $(<"$MOCK_ANSIBLE_CONFIG_LOG") == 'schema: committed' ]]
+[[ $(tail -n 1 "$MOCK_ANSIBLE_UMASK_LOG") =~ ^0?022$ ]]
+[[ $(stat -c %a "$XDG_STATE_HOME/cybexos/update/logs/$release_id/ansible.log") == 600 ]]
 [[ $(readlink "$release_data/current") == releases/2.0.0 ]]
 [[ ! -d $release_data/releases/1.0.0 ]]
 assert_agent_skill_links
@@ -1025,4 +1030,287 @@ assert_unrelated_skills
 # Only the four --firmware runs above ever started the helper.
 [[ $(wc -l <"$MOCK_FIRMWARE_LOG") -eq 4 ]]
 
-printf 'Durable updater serializes starts, defers cancellation past package and firmware transactions, inhibits shutdown, owns release and agent-skill activation rollback, preserves boot-scoped reboot advice including staged firmware, and reads exact log windows\n'
+# Protected Btrfs runs use the shared durable journal. These helpers model
+# its public protocol; tests/update-transaction.py exercises the actual
+# checkpoint, restore, retry, and personal-data boundaries on disk.
+export MOCK_TRANSACTION_LOG="$fixture/transaction.log"
+export MOCK_TRANSACTION_STATE="$fixture/transaction.state"
+export MOCK_TRANSACTION_ARGS_LOG="$fixture/transaction-args.log"
+export MOCK_BOOTSTRAP_LOG="$fixture/bootstrap-calls.log"
+export MOCK_BOOTSTRAP_BUNDLE="$fixture/bootstrap-bundle"
+cat >"$mock_libexec/cybexos-system-snapshot" <<'SNAPSHOT'
+#!/usr/bin/env bash
+printf '%s\n' "${MOCK_SNAPSHOT_OUTPUT-20260930T120000Z-123}"
+exit "${MOCK_SNAPSHOT_RC:-0}"
+SNAPSHOT
+cat >"$mock_libexec/cybexos-update-transaction" <<'TRANSACTION'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$1" >>"$MOCK_TRANSACTION_LOG"
+printf '%s %s\n' "$0" "$*" >>"$MOCK_TRANSACTION_ARGS_LOG"
+printf 'transaction %s\n' "$1" >>"$MOCK_ORDER_LOG"
+case $1 in
+  status) printf '{"state":"%s"}\n' "$(<"$MOCK_TRANSACTION_STATE")"; exit 0 ;;
+  begin) state=prepared ;;
+  applying) state=applying ;;
+  commit) state=validating ;;
+  abort) state=aborted ;;
+  rollback) state=rolled-back ;;
+  *) exit 64 ;;
+esac
+printf '%s\n' "$state" >"$MOCK_TRANSACTION_STATE"
+[[ $1 != "${MOCK_TRANSACTION_FAILURE:-}" ]] || exit 42
+[[ $1 != commit ]] || printf 'committed\n' >"$MOCK_TRANSACTION_STATE"
+TRANSACTION
+cat >"$mock_libexec/cybexos-update-bootstrap" <<'BOOTSTRAP'
+#!/usr/bin/python3
+# The helper's isolated suite owns filesystem installation. This mock models
+# its public first-upgrade protocol, including a distinct prepared bundle.
+import json
+import os
+import pathlib
+import sys
+action = sys.argv[1]
+with open(os.environ['MOCK_BOOTSTRAP_LOG'], 'a') as stream:
+    stream.write(json.dumps(sys.argv[1:]) + '\n')
+with open(os.environ['MOCK_ORDER_LOG'], 'a') as stream:
+    stream.write('bootstrap ' + action + '\n')
+if action == 'ready':
+    assert sys.argv[2] == '--libexec'
+    assert pathlib.Path(sys.argv[3]).is_dir()
+    sys.exit(1 if os.environ.get('MOCK_BOOTSTRAP_REQUIRED') else 0)
+elif action == 'prepare':
+    options = dict(zip(sys.argv[2::2], sys.argv[3::2]))
+    assert set(options) == {'--source', '--checkpoint', '--id'}
+    assert pathlib.Path(options['--source']).is_dir()
+    assert options['--checkpoint'] == '20260930T120000Z-123'
+    failure = int(os.environ.get('MOCK_BOOTSTRAP_PREPARE_RC', '0'))
+    if failure:
+        sys.exit(failure)
+    print(os.environ.get('MOCK_BOOTSTRAP_OUTPUT', json.dumps({
+        'snapshot': '20260930T120001Z-124',
+        'transactionHelper': os.environ['MOCK_BOOTSTRAP_BUNDLE'] + '/cybexos-update-transaction'})))
+elif action == 'finalize':
+    assert sys.argv[2:] == ['--bundle', os.environ['MOCK_BOOTSTRAP_BUNDLE']]
+    assert pathlib.Path(sys.argv[0]).parent == pathlib.Path(os.environ['MOCK_BOOTSTRAP_BUNDLE'])
+    sys.exit(int(os.environ.get('MOCK_BOOTSTRAP_FINALIZE_RC', '0')))
+else:
+    sys.exit(64)
+BOOTSTRAP
+chmod 0755 "$mock_libexec/cybexos-system-snapshot" \
+  "$mock_libexec/cybexos-update-transaction" "$mock_libexec/cybexos-update-bootstrap"
+mkdir "$MOCK_BOOTSTRAP_BUNDLE"
+cp "$mock_libexec/cybexos-update-transaction" "$mock_libexec/cybexos-update-bootstrap" \
+  "$MOCK_BOOTSTRAP_BUNDLE/"
+
+protected_run() {
+  : >"$MOCK_TRANSACTION_LOG"
+  : >"$MOCK_TRANSACTION_ARGS_LOG"
+  : >"$MOCK_BOOTSTRAP_LOG"
+  local started
+  started=$($backend start --json "$@")
+  protected_id=$(jq -er .id <<<"$started")
+  if [[ -n ${MOCK_UNWRITABLE_RESULT:-} ]]; then
+    mkdir "$XDG_STATE_HOME/cybexos/update/logs/$protected_id/$MOCK_UNWRITABLE_RESULT.rc"
+  fi
+  protected_rc=0
+  $backend _worker "$protected_id" "$@" || protected_rc=$?
+  protected_status=$($backend status --json "$protected_id")
+}
+
+protected_run --full --skip-tests --no-packages --repo "$defer_repo"
+[[ $protected_rc == 0 ]]
+[[ $(jq -r .transactionProtection <<<"$protected_status") == btrfs ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,commit ]]
+
+# A pre-feature installation obtains a second, protected checkpoint before
+# any package download/application. Every transaction call uses the returned
+# bundle, and that bundle is retired only after its commit succeeds.
+export MOCK_BOOTSTRAP_REQUIRED=1
+: >"$MOCK_ORDER_LOG"
+: >"$MOCK_DNF_LOG"
+protected_run --no-flatpak
+[[ $protected_rc == 0 ]]
+[[ $(jq -r .snapshotId <<<"$protected_status") == 20260930T120001Z-124 ]]
+[[ $(jq -sr 'map(.[0]) | join(",")' "$MOCK_BOOTSTRAP_LOG") == ready,prepare,finalize ]]
+[[ $(paste -sd, "$MOCK_ORDER_LOG") == 'bootstrap ready,bootstrap prepare,transaction begin,dnf upgrade,transaction applying,dnf upgrade,transaction commit,bootstrap finalize' ]]
+grep -Fxq "$MOCK_BOOTSTRAP_BUNDLE/cybexos-update-transaction begin $protected_id 20260930T120001Z-124 --uid ${CYBEXOS_UPDATE_OWNER_UID:-$UID}" \
+  "$MOCK_TRANSACTION_ARGS_LOG"
+[[ $(awk '{print $1}' "$MOCK_TRANSACTION_ARGS_LOG" | sort -u) \
+    == "$MOCK_BOOTSTRAP_BUNDLE/cybexos-update-transaction" ]]
+[[ $(jq -sr '.[1][2]' "$MOCK_BOOTSTRAP_LOG") == "$mock_libexec" ]]
+[[ $(jq -sr '.[1][4]' "$MOCK_BOOTSTRAP_LOG") == 20260930T120000Z-123 ]]
+[[ $(jq -sr '.[1][6]' "$MOCK_BOOTSTRAP_LOG") == "$protected_id" ]]
+
+# Bootstrap failure or an unusable response must stop before begin/DNF.
+export MOCK_BOOTSTRAP_PREPARE_RC=48
+: >"$MOCK_DNF_LOG"
+protected_run --no-flatpak
+unset MOCK_BOOTSTRAP_PREPARE_RC
+[[ $protected_rc == 48 ]]
+[[ $(jq -r .phase <<<"$protected_status") == snapshot ]]
+[[ ! -s $MOCK_DNF_LOG && ! -s $MOCK_TRANSACTION_LOG ]]
+[[ $(jq -sr 'map(.[0]) | join(",")' "$MOCK_BOOTSTRAP_LOG") == ready,prepare ]]
+same_checkpoint_response=$(jq -cn \
+  --arg helper "$MOCK_BOOTSTRAP_BUNDLE/cybexos-update-transaction" \
+  '{snapshot: "20260930T120000Z-123", transactionHelper: $helper}')
+for bootstrap_output in '' 'invalid json' \
+  "$same_checkpoint_response" \
+  '{"snapshot":"20260930T120001Z-124","transactionHelper":"/missing-fixture-helper"}'; do
+  export MOCK_BOOTSTRAP_OUTPUT="$bootstrap_output"
+  : >"$MOCK_DNF_LOG"
+  protected_run --no-flatpak
+  [[ $protected_rc == 125 ]]
+  [[ $(jq -r .phase <<<"$protected_status") == snapshot ]]
+  [[ ! -s $MOCK_DNF_LOG && ! -s $MOCK_TRANSACTION_LOG ]]
+  [[ $(jq -sr 'map(.[0]) | join(",")' "$MOCK_BOOTSTRAP_LOG") == ready,prepare ]]
+done
+unset MOCK_BOOTSTRAP_OUTPUT
+
+# Failed health keeps the bootstrap available to boot-time recovery; it is
+# never finalized after selecting the previous generation for restart.
+export MOCK_TRANSACTION_FAILURE=commit
+protected_run --full --skip-tests --no-packages --repo "$defer_repo"
+unset MOCK_TRANSACTION_FAILURE
+[[ $protected_rc == 1 ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,commit,status,rollback ]]
+[[ $(jq -sr 'map(.[0]) | join(",")' "$MOCK_BOOTSTRAP_LOG") == ready,prepare ]]
+unset MOCK_BOOTSTRAP_REQUIRED
+
+export MOCK_TRANSACTION_FAILURE=commit
+protected_run --full --skip-tests --no-packages --repo "$defer_repo"
+unset MOCK_TRANSACTION_FAILURE
+[[ $protected_rc == 1 ]]
+[[ $(jq -r .phase <<<"$protected_status") == health ]]
+[[ $(jq -r .rollbackState <<<"$protected_status") == restart-required ]]
+[[ $(jq -r .rebootRecommendation <<<"$protected_status") == recommended ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,commit,status,rollback ]]
+
+export MOCK_ANSIBLE_RC=42
+protected_run --full --skip-tests --no-packages --repo "$defer_repo"
+unset MOCK_ANSIBLE_RC
+[[ $protected_rc == 42 ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
+
+export MOCK_DNF_UPGRADE_RC=47
+: >"$MOCK_DNF_LOG"
+protected_run --no-flatpak
+unset MOCK_DNF_UPGRADE_RC
+[[ $protected_rc == 47 ]]
+[[ $(jq -r .phase <<<"$protected_status") == download ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,status,abort ]]
+grep -q -- '--downloadonly' "$MOCK_DNF_LOG"
+if grep -v -- '--downloadonly' "$MOCK_DNF_LOG" | grep -q ' upgrade '; then
+  exit 1
+fi
+
+# The durable state wins if the applying transition was written but its
+# final sync/response failed before the worker could set its local flag.
+export MOCK_TRANSACTION_FAILURE=applying
+protected_run --full --skip-tests --no-packages --repo "$defer_repo"
+unset MOCK_TRANSACTION_FAILURE
+[[ $protected_rc == 1 ]]
+[[ $(jq -r .rollbackState <<<"$protected_status") == restart-required ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
+
+# Empty/malformed snapshot output, unsupported skip responses, and failed
+# result writes never permit packages to run without a checkpoint.
+for snapshot_output in '' malformed 'skipped: unsafe fixture layout'; do
+  export MOCK_SNAPSHOT_OUTPUT="$snapshot_output" MOCK_ROOT_FS=btrfs
+  : >"$MOCK_DNF_LOG"
+  protected_run --no-flatpak
+  [[ $protected_rc == 125 ]]
+  [[ $(jq -r .phase <<<"$protected_status") == snapshot ]]
+  [[ ! -s $MOCK_DNF_LOG && ! -s $MOCK_TRANSACTION_LOG ]]
+done
+unset MOCK_SNAPSHOT_OUTPUT MOCK_ROOT_FS
+
+export MOCK_SNAPSHOT_RC=46
+protected_run --no-flatpak
+unset MOCK_SNAPSHOT_RC
+[[ $protected_rc == 46 ]]
+[[ $(jq -r .phase <<<"$protected_status") == snapshot ]]
+[[ ! -s $MOCK_TRANSACTION_LOG ]]
+
+export MOCK_UNWRITABLE_RESULT=snapshot
+: >"$MOCK_DNF_LOG"
+protected_run --no-flatpak
+unset MOCK_UNWRITABLE_RESULT
+[[ $protected_rc == 125 ]]
+[[ $(jq -r .phase <<<"$protected_status") == snapshot ]]
+[[ ! -s $MOCK_DNF_LOG && ! -s $MOCK_TRANSACTION_LOG ]]
+
+# A download can succeed while its result cannot be recorded. The worker
+# aborts its prepared transaction and never starts the installation phase.
+export MOCK_UNWRITABLE_RESULT=download
+: >"$MOCK_DNF_LOG"
+protected_run --no-flatpak
+unset MOCK_UNWRITABLE_RESULT
+[[ $protected_rc == 125 ]]
+[[ $(jq -r .phase <<<"$protected_status") == download ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,status,abort ]]
+if grep -v -- '--downloadonly' "$MOCK_DNF_LOG" | grep -q ' upgrade '; then
+  exit 1
+fi
+
+# The RPM reconciler may return zero after deferring work because another
+# process holds its lock. Only durable ready status may reach commit.
+export MOCK_RECONCILE_LOG="$fixture/reconcile-calls.log"
+export MOCK_RECONCILE_STATUS_FILE="$fixture/reconcile-status.json"
+cat >"$mock_libexec/cybexos-reconcile" <<'RECONCILE'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >>"$MOCK_RECONCILE_LOG"
+case $1 in
+  --retry) exit "${MOCK_RECONCILE_RC:-0}" ;;
+  --status) cat "$MOCK_RECONCILE_STATUS_FILE"; exit "${MOCK_RECONCILE_STATUS_RC:-0}" ;;
+  *) exit 64 ;;
+esac
+RECONCILE
+chmod 0755 "$mock_libexec/cybexos-reconcile"
+printf '{"state":"ready","pending":false,"version":"fixture","desiredVersion":"fixture","accounts":{"fixture":{"state":"ready","version":"fixture","uid":%s}}}\n' \
+  "$UID" \
+  >"$MOCK_RECONCILE_STATUS_FILE"
+protected_run --full --skip-tests --no-packages --repo "$defer_repo"
+[[ $protected_rc == 0 ]]
+[[ $(paste -sd, "$MOCK_RECONCILE_LOG") == --retry,--status ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,commit ]]
+
+export MOCK_RECONCILE_STATUS_RC=44
+protected_run --full --skip-tests --no-packages --repo "$defer_repo"
+unset MOCK_RECONCILE_STATUS_RC
+[[ $protected_rc == 125 ]]
+[[ $(jq -r .phase <<<"$protected_status") == reconcile ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
+
+if ((UID >= 1000)); then
+  printf '%s\n' '{"state":"ready","pending":false,"version":"same","desiredVersion":"same","accounts":{"unrelated":{"state":"ready","version":"same","uid":0}}}' \
+    >"$MOCK_RECONCILE_STATUS_FILE"
+  protected_run --full --skip-tests --no-packages --repo "$defer_repo"
+  [[ $protected_rc == 125 ]]
+  [[ $(jq -r .phase <<<"$protected_status") == reconcile ]]
+  [[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
+fi
+
+for reconcile_status in \
+  '{"state":"pending","pending":true}' \
+  '{"state":"ready","pending":true,"version":"old","desiredVersion":"new"}' \
+  '{"state":"ready","pending":false,"version":"old","desiredVersion":"new"}' \
+  '{"state":"ready","pending":false,"version":"same","desiredVersion":"same","accounts":{}}' \
+  '{"state":"ready","pending":false,"version":"same","desiredVersion":"same","accounts":{"fixture":{"state":"error"}}}' \
+  '{"state":"ready","pending":false,"version":"same","desiredVersion":"same","accounts":{"fixture":{"state":"ready","version":"old"}}}' \
+  '{} invalid'; do
+  printf '%s\n' "$reconcile_status" >"$MOCK_RECONCILE_STATUS_FILE"
+  protected_run --full --skip-tests --no-packages --repo "$defer_repo"
+  [[ $protected_rc == 125 ]]
+  [[ $(jq -r .phase <<<"$protected_status") == reconcile ]]
+  [[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
+done
+
+export MOCK_RECONCILE_RC=43
+protected_run --full --skip-tests --no-packages --repo "$defer_repo"
+unset MOCK_RECONCILE_RC
+[[ $protected_rc == 43 ]]
+[[ $(jq -r .phase <<<"$protected_status") == reconcile ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
+
+printf 'Durable updater serializes starts, defers cancellation past package and firmware transactions, inhibits shutdown, owns release and agent-skill activation rollback, preserves boot-scoped reboot advice, requires valid checkpoints/results and current reconciled policy, and reads exact log windows\n'

@@ -18,20 +18,25 @@
     - name: Apply the common installed-system policy
       ansible.builtin.include_role:
         name: base
-        tasks_from: image
-      when: not cybexos_hardware_only | bool
+        tasks_from: "{{ (cybexos_reconcile | default(false) | bool) | ternary('reconcile', 'image') }}"
+      when:
+        - not cybexos_hardware_only | bool
 
     - name: Apply the shared Fish configuration
       ansible.builtin.include_role:
         name: dotfiles
         tasks_from: shell-defaults
-      when: not cybexos_hardware_only | bool
+      when:
+        - not cybexos_hardware_only | bool
+        - not cybexos_reconcile | default(false) | bool
 
     - name: Prefer reliable hardware video decoding in mpv
       ansible.builtin.include_role:
         name: apps
         tasks_from: mpv
-      when: not cybexos_hardware_only | bool
+      when:
+        - not cybexos_hardware_only | bool
+        - not cybexos_reconcile | default(false) | bool
 
     # The workstation installer manages personal defaults for accounts that
     # have none of their own; every image account starts from the seed. A
@@ -39,13 +44,17 @@
     - name: Manage personal defaults on image installations by default
       ansible.builtin.set_fact:
         manage_personal_dotfiles: true
-      when: not cybexos_hardware_only | bool
+      when:
+        - not cybexos_hardware_only | bool
+        - not cybexos_reconcile | default(false) | bool
 
     - name: Apply the shared session environment
       ansible.builtin.include_role:
         name: dotfiles
         tasks_from: environment
-      when: not cybexos_hardware_only | bool
+      when:
+        - not cybexos_hardware_only | bool
+        - not cybexos_reconcile | default(false) | bool
 
     # Runs before the account is seeded: the Kitty include and fragment it
     # writes are what the seed would provide, so the seed leaves them alone.
@@ -53,7 +62,9 @@
       ansible.builtin.include_role:
         name: dotfiles
         tasks_from: personal
-      when: not cybexos_hardware_only | bool
+      when:
+        - not cybexos_hardware_only | bool
+        - not cybexos_reconcile | default(false) | bool
 
     - name: Link the packaged CybexOS agent skill for coding agents
       ansible.builtin.include_role:
@@ -67,7 +78,9 @@
       ansible.builtin.include_role:
         name: desktop
         tasks_from: portals
-      when: not cybexos_hardware_only | bool
+      when:
+        - not cybexos_hardware_only | bool
+        - not cybexos_reconcile | default(false) | bool
 
     # The compose installs the CPU-default selector; the image builder's own
     # selection never reaches the image. A GPU-less machine keeps the CPU.
@@ -79,6 +92,7 @@
         apps_voxtype_gpu_optional: true
       when:
         - not cybexos_hardware_only | bool
+        - not cybexos_reconcile | default(false) | bool
         - features.developer_tools | bool
 
     # The package's user units carry the inventory's feature defaults. The
@@ -102,6 +116,18 @@
               Environment=CYBEXOS_CONNECTED_WIDGETS={{ (features.connected_widgets | bool) | ternary('1', '0') }}
               Environment=CYBEXOS_DEVELOPER_TOOLS={{ (features.developer_tools | bool) | ternary('1', '0') }}
           register: image_shell_features
+          when: not cybexos_reconcile | default(false) | bool
+
+        - name: Reconcile the configured shell features while preserving local edits
+          cybexos_managed_file:
+            dest: /etc/systemd/user/quickshell.service.d/50-cybexos-features.conf
+            mode: "0644"
+            content: |
+              [Service]
+              Environment=CYBEXOS_CONNECTED_WIDGETS={{ (features.connected_widgets | bool) | ternary('1', '0') }}
+              Environment=CYBEXOS_DEVELOPER_TOOLS={{ (features.developer_tools | bool) | ternary('1', '0') }}
+          register: image_reconcile_shell_features
+          when: cybexos_reconcile | default(false) | bool
 
         - name: Inspect the Hermes bridge mask
           ansible.builtin.stat:
@@ -128,6 +154,7 @@
           register: image_hermes_unmasked
           when:
             - features.connected_widgets | bool
+            - not cybexos_reconcile | default(false) | bool
             - image_hermes_mask.stat.islnk | default(false)
             - image_hermes_mask.stat.lnk_source | default('') == '/dev/null'
 
@@ -139,13 +166,15 @@
           failed_when: false
           when:
             - not cybexos_offline | bool
-            - image_shell_features is changed or image_hermes_masked is changed or image_hermes_unmasked is changed
+            - image_shell_features is changed or image_reconcile_shell_features is changed or image_hermes_masked is changed or image_hermes_unmasked is changed
 
     - name: Detect hardware during offline installation as well as repair
       ansible.builtin.include_role:
         name: xps-2026
         tasks_from: detect
-      when: not cybexos_hardware_only | bool
+      when:
+        - not cybexos_hardware_only | bool
+        - not cybexos_reconcile | default(false) | bool
 
     - name: Create the machine policy directory
       ansible.builtin.file:
@@ -158,7 +187,9 @@
         dest: /etc/cybexos/hardware.json
         content: "{{ {'xps_2026': xps_2026_is_supported | bool} | to_json }}\n"
         mode: "0644"
-      when: not cybexos_hardware_only | bool
+      when:
+        - not cybexos_hardware_only | bool
+        - not cybexos_reconcile | default(false) | bool
 
     - name: Read the hardware account identity
       ansible.builtin.getent:
@@ -182,3 +213,13 @@
         - xps_2026_camera_enabled | bool
         - xps_2026_has_ovti08f4 | bool
         - xps_2026_has_ipu7 | bool
+
+    - name: Record the hardware role outcome for the boot-aware setup wrapper
+      ansible.builtin.copy:
+        dest: /var/lib/cybexos/hardware-result.json
+        mode: "0644"
+        content: >-
+          {{ {'reboot_required': xps_2026_camera_reboot_required | default(false) | bool,
+              'camera_ready': xps_2026_camera_ready | default(false) | bool,
+              'preserved_previous': xps_2026_camera_preserve_previous | default(false) | bool} | to_json }}
+      when: cybexos_hardware_only | bool

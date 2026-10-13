@@ -312,11 +312,10 @@ if command_exists firewall-cmd && unit_active firewalld.service; then
   ports=$(firewall-cmd --permanent --zone="$firewall_zone" --list-ports 2>/dev/null | tr ' ' '\n' | sort | tr '\n' ' ')
   expected=$(jq -r '
     . as $root
-    | if $root.features.local_network_services then
-        $root.firewall_ports[]
-        | select((.feature == null) or ($root.features[.feature] == true))
-        | "\(.port)/\(.protocol)"
-      else empty end
+    | $root.firewall_ports[]
+    | select(.always == true or $root.features.local_network_services)
+    | select((.feature == null) or ($root.features[.feature] == true))
+    | "\(.port)/\(.protocol)"
   ' <<<"$inventory_json" | sort | tr '\n' ' ')
   [[ $ports == "$expected" ]] && pass 'firewall exposes only declared ports' || fail "firewall ports differ: $ports"
   services=$(firewall-cmd --permanent --zone="$firewall_zone" --list-services 2>/dev/null || true)
@@ -351,10 +350,17 @@ else
 fi
 
 cmdline=$(</proc/cmdline)
-if grep -Eq 'iwlwifi[.]disable_11be|(^| )fred=on|xe[.](enable_guc|force_probe)|enable_panel_replay|enable_psr' <<<"$cmdline"; then
+# Xe's panel-specific PSR quirk is supported; the old i915 argument is not.
+if grep -Eq 'iwlwifi[.]disable_11be|(^| )fred=on|xe[.](enable_guc|force_probe)|enable_panel_replay|i915[.]enable_psr' <<<"$cmdline"; then
   fail "obsolete XPS kernel workaround is present: $cmdline"
 else
   pass 'no obsolete XPS kernel workarounds'
+fi
+if grep -Eq '(^| )xe[.]enable_psr=0( |$)' <<<"$cmdline"; then
+  check_root 'Xe panel self-refresh workaround is active in this boot' \
+    grep -qx '0' /sys/module/xe/parameters/enable_psr
+elif grep -Eq '(^| )xe[.]enable_psr=0( |$)' /etc/kernel/cmdline 2>/dev/null; then
+  warn 'Xe panel self-refresh workaround is configured and awaits reboot'
 fi
 if command_exists mokutil; then
   mokutil --sb-state >/dev/null 2>&1 && pass 'Secure Boot state is readable' || warn 'Secure Boot state could not be read'
@@ -419,10 +425,11 @@ if $xps_2026; then
 
   panther_packages=(
     alsa-sof-firmware linux-firmware cirrus-audio-firmware
-    intel-audio-firmware intel-gpu-firmware intel-vsc-firmware
+    intel-audio-firmware intel-gpu-firmware intel-npu-firmware intel-vsc-firmware
     iwlwifi-mld-firmware libva-intel-media-driver libvpl intel-vpl-gpu-rt
     wireless-regdb pipewire-module-filter-chain-lv2 lsp-plugins-lv2
   )
+  feature_enabled proprietary_apps && panther_packages+=(intel-media-driver)
   check 'explicit Panther Lake media/firmware RPMs' rpm -q "${panther_packages[@]}"
 
   check 'XPS speaker tuning user unit is enabled' systemctl --user is-enabled --quiet xps-speaker-tuning.service
@@ -484,8 +491,13 @@ if $xps_2026; then
       /usr/lib/systemd/system-sleep/xps-ipu7-camera
     check 'IPU7 PSYS DKMS built for the running kernel' bash -c \
       'dkms status -m ipu7-drivers -v "$1" -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"' _ "$camera_dkms_version"
-    check 'Intel CVS DKMS built for the running kernel' bash -c \
-      'dkms status -m vision-drivers -v "$1" -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"' _ "$camera_dkms_version"
+    if [[ $(modinfo -F intree intel_cvs 2>/dev/null) == Y ]]; then
+      check 'Fedora native Intel CVS retained' bash -c \
+        '[[ $(modinfo -n intel_cvs) == */kernel/* ]]'
+    else
+      check 'Intel CVS DKMS built for the running kernel' bash -c \
+        'dkms status -m vision-drivers -v "$1" -k "$(uname -r)" 2>/dev/null | grep -q ": installed$"' _ "$camera_dkms_version"
+    fi
     if [[ -r /var/lib/xps-hardware/ipu7/reboot-required ]] &&
        grep -q "^boot_id=$(cat /proc/sys/kernel/random/boot_id) " \
          /var/lib/xps-hardware/ipu7/reboot-required; then
@@ -616,11 +628,8 @@ check 'Walker command is absent' bash -c '! command -v walker'
 check 'Elephant command is absent' bash -c '! command -v elephant'
 check 'Walker user unit is absent' bash -c '! systemctl --user list-unit-files walker.service --no-legend 2>/dev/null | grep -q walker'
 check 'Elephant user unit is absent' bash -c '! systemctl --user list-unit-files elephant.service --no-legend 2>/dev/null | grep -q elephant'
-if command_exists hyprpolkitagent || [[ -x /usr/libexec/hyprpolkitagent ]]; then
-  pass 'Hyprland Polkit agent executable'
-else
-  fail 'missing Hyprland Polkit agent executable'
-fi
+check 'Quickshell Polkit dialog is installed' test -r \
+  "$HOME/.local/share/cybexos/runtime/quickshell/PolkitWindow.qml"
 
 if feature_enabled developer_tools && command_exists node; then
   major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || true)
@@ -665,8 +674,8 @@ if feature_enabled proprietary_apps; then
   check 'ChatGPT repository key matches the reviewed OpenAI key' \
   cmp -s "$repo_root/roles/apps/files/chatgpt-repository-key.asc" \
   /etc/pki/rpm-gpg/RPM-GPG-KEY-chatgpt
-  check 'ChatGPT launcher follows the desktop display scale' \
-  grep -qx 'Exec=chatgpt %U' \
+  check 'ChatGPT launcher uses native Wayland for desktop display scaling' \
+  grep -qx 'Exec=chatgpt --ozone-platform=wayland %U' \
   "$HOME/.local/share/applications/chatgpt.desktop"
   check 'Brave restore, locale spellcheck, and 1Password policy is valid JSON' \
   jq -e --arg language "${regional_locale%%_*}" \
@@ -733,7 +742,7 @@ if [[ ${XDG_CURRENT_DESKTOP:-} == *Hyprland* ]] && command_exists hyprctl && hyp
   errors=$(hyprctl configerrors 2>/dev/null || true)
   [[ -z $errors || $errors == 'no errors' ]] && pass 'Hyprland has no config errors' || fail "Hyprland config errors: $errors"
   check 'retired Noctalia process is absent' bash -c '! pgrep -x noctalia'
-  user_units=(quickshell hypridle hyprpolkitagent)
+  user_units=(quickshell hypridle)
   # The external-monitor watcher is installed only on the gated XPS hardware.
   $xps_2026 && user_units+=(external-monitor-toggle)
   feature_enabled developer_tools && user_units+=(voxtype)
@@ -755,6 +764,10 @@ if [[ ${XDG_CURRENT_DESKTOP:-} == *Hyprland* ]] && command_exists hyprctl && hyp
   if $quickshell_live_safe; then
     check 'Quickshell launcher IPC responds' qs_live_wait_ipc "$QS_LIVE_TIMEOUT" launcher close
     check 'Quickshell settings IPC responds' qs_live_wait_ipc "$QS_LIVE_TIMEOUT" settings close
+    polkit_status=$(qs_live_wait_ipc "$QS_LIVE_TIMEOUT" polkit status || true)
+    check 'Quickshell Polkit agent is registered' jq -e '.registered == true' <<<"$polkit_status"
+    check 'standalone Polkit agent is inactive' bash -c \
+      '! systemctl --user is-active --quiet hyprpolkitagent.service'
   else
     fail 'Quickshell IPC checks skipped because live process ownership is ambiguous'
   fi

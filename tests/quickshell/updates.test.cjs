@@ -439,8 +439,12 @@ test("the one-line summary says what is pending, else what could not be checked"
     const vm = require("node:vm");
     const source = read("Common/Updates.qml");
     const summary = source.match(/readonly property string summary: \{([\s\S]*?)\n    \}/)[1];
-    const state = { busy: false, total: 0, checkError: "" };
+    const state = { busy: false, total: 0, checkError: "", projectStatus: "" };
     const run = () => vm.runInNewContext("(() => {" + summary + "})()", state);
+    assert.equal(run(), "Up to date");
+    state.projectStatus = "desktop-channel-disabled";
+    assert.equal(run(), "System checked · Desktop updates unavailable");
+    state.projectStatus = "desktop-channel-ready";
     assert.equal(run(), "Up to date");
     state.checkError = "Couldn’t check CybexOS releases";
     assert.equal(run(), "Couldn’t check CybexOS releases");

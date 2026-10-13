@@ -1,0 +1,74 @@
+---
+- name: Read the internal-panel manufacturer and product for the PSR quirk
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/bash
+      - -c
+      - |
+        shopt -s nullglob
+        for edid in /sys/class/drm/card*-eDP-*/edid; do
+          [[ -r $edid ]] || continue
+          panel=$(/usr/bin/od -An -tx1 -j8 -N4 "$edid") || continue
+          printf '%s\n' "${panel//[[:space:]]/}"
+          exit 0
+        done
+        exit 1
+  register: xps_2026_psr_panel
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  tags: [xps-2026, hardware, display]
+
+- name: Disable unreliable self-refresh only on the measured XPS panel
+  when: >-
+    {'sku': xps_2026_product_sku,
+     'edid': xps_2026_psr_panel.stdout | default('') | trim}
+    in xps_2026_psr_disabled_panels
+  tags: [xps-2026, hardware, display]
+  block:
+    - name: Inspect every kernel entry for the panel self-refresh quirk
+      ansible.builtin.command:
+        argv: [grubby, --info=ALL]
+      register: xps_2026_psr_boot_entries
+      changed_when: false
+      check_mode: false
+
+    - name: Disable Xe panel self-refresh in current and future boot entries
+      ansible.builtin.command:
+        argv:
+          - grubby
+          - --update-kernel=ALL
+          - --args=xe.enable_psr=0
+      when: >-
+        (xps_2026_psr_boot_entries.stdout_lines
+           | select('match', '^args=') | list | length == 0)
+        or
+        (xps_2026_psr_boot_entries.stdout_lines
+           | select('match', '^args=')
+           | reject('search', '(^|[ "])xe[.]enable_psr=0([ "]|$)')
+           | list | length > 0)
+      changed_when: true
+
+    - name: Verify every kernel entry has the panel self-refresh quirk
+      ansible.builtin.command:
+        argv: [grubby, --info=ALL]
+      register: xps_2026_psr_updated_entries
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+
+    - name: Refuse an incomplete panel self-refresh boot-entry update
+      ansible.builtin.assert:
+        that:
+          - >-
+            xps_2026_psr_updated_entries.stdout_lines
+              | select('match', '^args=') | list | length > 0
+          - >-
+            xps_2026_psr_updated_entries.stdout_lines
+              | select('match', '^args=')
+              | reject('search', '(^|[ "])xe[.]enable_psr=0([ "]|$)')
+              | list | length == 0
+        fail_msg: >-
+          The affected XPS panel needs xe.enable_psr=0 in every kernel entry.
+        quiet: true
+      when: not ansible_check_mode

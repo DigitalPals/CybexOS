@@ -311,6 +311,8 @@ write_status() {
     --argjson flatpakRc "$flatpak_rc" --argjson testsRc "$tests_rc" \
     --argjson ansibleRc "$ansible_rc" --arg snapshotId "${snapshot_id:-}" \
     --argjson mixedState "${mixed_state:-false}" \
+    --arg transactionProtection "${transaction_protection:-unavailable}" \
+    --arg rollbackState "${rollback_state:-none}" \
     --argjson firmware "${with_firmware:-false}" \
     --argjson firmwareDone "${firmware_done:-false}" \
     --argjson firmwareRc "${firmware_rc:-0}" \
@@ -324,6 +326,7 @@ write_status() {
       firmwareRc: $firmwareRc, firmwareReboot: $firmwareReboot,
       snapshotId: $snapshotId, bootId: $bootId,
       releaseVersion: $releaseVersion, mixedState: $mixedState,
+      transactionProtection: $transactionProtection, rollbackState: $rollbackState,
       deferredCancel: true,
       rebootRecommendation: $rebootRecommendation}' > "$temporary"
   mv -f -- "$temporary" "$run_dir/status.json"
@@ -562,8 +565,23 @@ tagged_command() {
   set +e
   stdbuf -oL -eL "$@" 2>&1 | tee "$logfile" \
     | sed -u "s/^/[$tag] /" >> "$run_dir/run.log"
-  printf '%s\n' "${PIPESTATUS[0]}" > "$rcfile"
+  local -a result=("${PIPESTATUS[@]}")
+  local code=${result[0]}
+  if ((result[1] != 0 || result[2] != 0)); then code=125; fi
+  printf '%s\n' "$code" > "$rcfile" || return 125
   return 0
+}
+
+phase_result() {
+  local value=''
+  if [[ -r $1 ]] && IFS= read -r value <"$1" \
+      && [[ $value =~ ^[0-9]{1,3}$ ]] && ((10#$value <= 255)); then
+    printf '%s\n' "$((10#$value))"
+  else
+    # An empty/missing result must never mean success (Bash arithmetic treats
+    # the empty string as zero), especially when log storage filled up.
+    printf '125\n'
+  fi
 }
 
 worker_finalized=false
@@ -573,6 +591,11 @@ release_backup=""
 cancel_requested=false
 packages_ran=false
 mixed_state=false
+transaction_started=false
+transaction_applying=false
+transaction_helper=""
+transaction_protection=unavailable
+rollback_state=none
 firmware_done=false
 firmware_rc=0
 firmware_reboot=false
@@ -656,6 +679,36 @@ restore_release_configuration() {
   release_config_changed=false
 }
 
+# Files on /home are outside the root recovery point. The shared helper owns
+# a manifest of vendor-only integration paths and journals its checkpoint in
+# the top-level Btrfs store. Settings, plugins and personal data never rewind.
+finish_failed_transaction() {
+  [[ $transaction_started == true ]] || return 0
+  local action=abort
+  [[ $transaction_applying != true ]] || action=rollback
+  local journal journal_state
+  journal=$("${privileged_package[@]}" "$transaction_helper" status "$run_id" 2>/dev/null) || journal=''
+  journal_state=$(jq -r '.state // empty' <<<"$journal" 2>/dev/null) || journal_state=''
+  case $journal_state in
+    prepared) action=abort ;;
+    applying|validating|rolling-back|rollback-failed|awaiting-desktop) action=rollback ;;
+    committed|aborted) transaction_started=false; return 0 ;;
+  esac
+  if "${privileged_package[@]}" "$transaction_helper" "$action" "$run_id" \
+      >>"$run_dir/run.log" 2>&1; then
+    transaction_started=false
+    if [[ $action == rollback ]]; then
+      rollback_state=restart-required
+      reboot_recommendation=recommended
+      # The currently mounted root remains the failed generation until boot.
+      mixed_state=true
+    fi
+  else
+    rollback_state=failed
+    return 1
+  fi
+}
+
 worker_failed() {
   local phase=$1 message=$2 rc=$3
   # A capsule staged before a later step failed still waits for a restart.
@@ -664,6 +717,13 @@ worker_failed() {
     phase=rollback
     message="$message; restoring the previous installer configuration also failed"
     rc=125
+  fi
+  if ! finish_failed_transaction; then
+    phase=rollback
+    message="$message; automatic recovery failed; use the recovery boot menu"
+    rc=125
+  elif [[ $rollback_state == restart-required ]]; then
+    message="$message; the previous system and vendor desktop were restored; restart to use them"
   fi
   write_status failed "$phase" "$message" "$rc"
   worker_finalized=true
@@ -712,12 +772,11 @@ run_as_update_owner() {
 
 activate_release() {
   [[ $release_transaction == true ]] || return 0
-  local releases_root="$release_data_root/releases" expected old_release old_path
+  local releases_root="$release_data_root/releases" expected
   local current_link="$release_data_root/current" previous_target=""
   local next_link="$release_data_root/.current.$run_id.new"
   local restore_link="$release_data_root/.current.$run_id.restore"
   local previous_present=false
-  local -a installed_releases=()
   expected=$(readlink -f -- "$releases_root/$release_version") || return 1
   [[ $expected == "$repo" ]] || return 1
 
@@ -754,6 +813,13 @@ activate_release() {
   release_activated=true
   printf '[release] activated CybexOS %s\n' "$release_version" \
     >>"$run_dir/run.log"
+
+}
+
+prune_releases() {
+  [[ $release_transaction == true ]] || return 0
+  local releases_root="$release_data_root/releases" old_release old_path
+  local -a installed_releases=()
 
   mapfile -t installed_releases < <(
     find "$releases_root" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
@@ -801,6 +867,12 @@ worker_cancelled() {
     message="Update cancelled, but restoring the previous installer configuration failed"
     rc=125
   fi
+  if ! finish_failed_transaction; then
+    state=failed; phase=rollback; rc=125
+    message="$message; automatic recovery failed"
+  elif [[ $rollback_state == restart-required ]]; then
+    message="$message; previous system selected; restart required"
+  fi
   write_status "$state" "$phase" "$message" "$rc"
   worker_finalized=true
   exit "$rc"
@@ -817,6 +889,7 @@ worker_exit_fallback() {
   if ! restore_release_configuration; then
     message="$message; restoring the previous installer configuration also failed"
   fi
+  finish_failed_transaction || message="$message; automatic recovery failed"
   write_status failed internal "$message" \
     "$([[ $rc -eq 0 ]] && printf 125 || printf '%s' "$rc")" 2>/dev/null || true
 }
@@ -907,7 +980,7 @@ run_firmware_phase() {
   if [[ -x $helper ]]; then
     tagged_command firmware "$run_dir/firmware.log" "$run_dir/firmware.rc" \
       "${privileged_package[@]}" "$helper" install --events "$events"
-    firmware_rc=$(<"$run_dir/firmware.rc")
+    firmware_rc=$(phase_result "$run_dir/firmware.rc")
   else
     firmware_rc=127
     printf '%s\n' "$firmware_rc" >"$run_dir/firmware.rc"
@@ -1000,8 +1073,20 @@ worker() {
   if [[ ${CYBEXOS_UPDATE_TESTING:-0} == 1 \
         && -n ${CYBEXOS_UPDATE_TEST_LIBEXEC:-} ]]; then
     snapshot_helper_root=$CYBEXOS_UPDATE_TEST_LIBEXEC
+  elif [[ ! -x $snapshot_helper_root/cybexos-system-snapshot \
+          && ! -x $snapshot_helper_root/xps-system-snapshot ]]; then
+    # The RPM and checkout share a protocol, but own different libexec paths.
+    local alternate_helper_root
+    for alternate_helper_root in /usr/libexec /usr/local/libexec; do
+      if [[ -x $alternate_helper_root/cybexos-system-snapshot \
+            || -x $alternate_helper_root/xps-system-snapshot ]]; then
+        snapshot_helper_root=$alternate_helper_root
+        break
+      fi
+    done
   fi
   local snapshot_helper="$snapshot_helper_root/cybexos-system-snapshot"
+  transaction_helper="$snapshot_helper_root/cybexos-update-transaction"
   local legacy_snapshot_helper="$snapshot_helper_root/xps-system-snapshot"
   local snapshot_rc=0
   # Existing installations can receive the renamed updater before Ansible has
@@ -1013,20 +1098,97 @@ worker() {
   if [[ -x $snapshot_helper ]]; then
     tagged_command snapshot "$run_dir/snapshot.log" "$run_dir/snapshot.rc" \
       "${privileged_package[@]}" "$snapshot_helper" create "update $run_id"
-    snapshot_rc=$(<"$run_dir/snapshot.rc")
+    snapshot_rc=$(phase_result "$run_dir/snapshot.rc")
     if ((snapshot_rc != 0)); then
       worker_failed snapshot "Could not create the pre-update recovery point" "$snapshot_rc"
     fi
-    snapshot_id=$(tail -n 1 "$run_dir/snapshot.log")
-    [[ $snapshot_id == skipped:* ]] && snapshot_id=""
+    snapshot_id=$(tail -n 1 "$run_dir/snapshot.log") || snapshot_id=''
+    if [[ $snapshot_id == skipped:* ]]; then
+      local skipped_filesystem
+      skipped_filesystem=$(findmnt --noheadings --output FSTYPE --target / 2>/dev/null | xargs) || skipped_filesystem=''
+      if [[ -z $skipped_filesystem || $skipped_filesystem == btrfs ]]; then
+        worker_failed snapshot "The recovery helper skipped a Btrfs or unknown filesystem" 125
+      fi
+      snapshot_id=''
+    elif [[ ! $snapshot_id =~ ^[0-9]{8}T[0-9]{6}Z-[0-9]+$ ]]; then
+      worker_failed snapshot "The recovery helper did not return a valid recovery point" 125
+    fi
   else
-    if [[ $(findmnt --noheadings --output FSTYPE --target / 2>/dev/null | xargs) == btrfs ]]; then
+    local root_filesystem
+    root_filesystem=$(findmnt --noheadings --output FSTYPE --target / 2>/dev/null | xargs) || root_filesystem=''
+    if [[ -z $root_filesystem || $root_filesystem == btrfs ]]; then
       worker_failed snapshot "Btrfs recovery helper is not installed" 127
     fi
     printf '[snapshot] non-Btrfs root; no filesystem recovery point created\n' \
       >>"$run_dir/run.log"
   fi
+  local bootstrap_helper='' bootstrap_source='' bootstrap_bundle=''
+  if [[ -n $snapshot_id ]]; then
+    # An explicitly selected full checkout/release has already passed the
+    # worker's source validation. A package-only source invocation may use
+    # its own adjacent checkout, never an arbitrary CWD or home directory.
+    local adjacent_source
+    adjacent_source=$(dirname -- "$(dirname -- "$(dirname -- "$script_path")")")
+    if [[ $full == true && -x $repo/roles/base/files/cybexos-update-bootstrap ]]; then
+      bootstrap_source=$repo/roles/base/files
+    elif [[ -x $snapshot_helper_root/cybexos-update-bootstrap ]]; then
+      bootstrap_source=$snapshot_helper_root
+    elif [[ ${CYBEXOS_UPDATE_TESTING:-0} != 1 \
+            && $script_path == "$adjacent_source/assets/scripts/cybexos-update-run" \
+            && -f $adjacent_source/site.yml && -x $adjacent_source/tests/run \
+            && -x $adjacent_source/roles/base/files/cybexos-update-bootstrap ]]; then
+      bootstrap_source=$adjacent_source/roles/base/files
+    fi
+    bootstrap_helper=${bootstrap_source:+$bootstrap_source/cybexos-update-bootstrap}
+    if [[ -z $bootstrap_helper ]]; then
+      worker_failed snapshot "Recovery bootstrap is unavailable; update from a complete CybexOS release or checkout" 127
+    fi
+    if ! "${privileged_package[@]}" /usr/bin/python3 -I "$bootstrap_helper" ready \
+        --libexec "$snapshot_helper_root" >>"$run_dir/run.log" 2>&1; then
+      # The first point preserves the untouched old system. The second point
+      # includes boot recovery, which must survive exchanging the root before
+      # home restoration finishes. No packages or vendor home paths change
+      # until this hook is durable and the second checkpoint succeeds.
+      write_status running snapshot "Installing recovery for the first transactional update" 0
+      tagged_command bootstrap "$run_dir/bootstrap.log" "$run_dir/bootstrap.rc" \
+        "${privileged_package[@]}" /usr/bin/python3 -I "$bootstrap_helper" prepare \
+        --source "$bootstrap_source" --checkpoint "$snapshot_id" --id "$run_id"
+      local bootstrap_rc protected_snapshot
+      bootstrap_rc=$(phase_result "$run_dir/bootstrap.rc")
+      ((bootstrap_rc == 0)) || worker_failed snapshot "Could not prepare durable boot recovery; no packages were changed" "$bootstrap_rc"
+      protected_snapshot=$(tail -n 1 "$run_dir/bootstrap.log" | jq -er '.snapshot | strings') || protected_snapshot=''
+      transaction_helper=$(tail -n 1 "$run_dir/bootstrap.log" | jq -er '.transactionHelper | strings') || transaction_helper=''
+      if [[ ! $protected_snapshot =~ ^[0-9]{8}T[0-9]{6}Z-[0-9]+$ \
+            || $protected_snapshot == "$snapshot_id" || ! -x $transaction_helper ]]; then
+        worker_failed snapshot "Recovery bootstrap did not return a protected checkpoint" 125
+      fi
+      snapshot_id=$protected_snapshot
+      bootstrap_bundle=$(dirname -- "$transaction_helper")
+      bootstrap_helper=$bootstrap_bundle/cybexos-update-bootstrap
+    fi
+    if ! "${privileged_package[@]}" "$transaction_helper" begin "$run_id" "$snapshot_id" \
+        --uid "${CYBEXOS_UPDATE_OWNER_UID:-$UID}" >>"$run_dir/run.log" 2>&1; then
+      worker_failed snapshot "Could not checkpoint the vendor desktop; no packages were changed" 1
+    fi
+    transaction_started=true
+    transaction_protection=btrfs
+  fi
   honor_cancellation
+  if [[ $transaction_started == true && $with_packages == true ]]; then
+    write_status running download "Downloading packages before changing the installed system" 0
+    tagged_command download "$run_dir/download.log" "$run_dir/download.rc" \
+      "${privileged_package[@]}" dnf -y upgrade --refresh --downloadonly
+    local download_rc
+    download_rc=$(phase_result "$run_dir/download.rc")
+    ((download_rc == 0)) || worker_failed download "Package download failed; installed system is unchanged" "$download_rc"
+    honor_cancellation
+  fi
+  if [[ $transaction_started == true ]]; then
+    "${privileged_package[@]}" "$transaction_helper" applying "$run_id" \
+      >>"$run_dir/run.log" 2>&1 \
+      || worker_failed snapshot "Could not journal the update transaction" 1
+    transaction_applying=true
+  fi
   local dnf_pid="" flatpak_pid=""
   if [[ $with_packages == true ]]; then
     write_status running packages "Updating system packages and Flatpaks" 0
@@ -1041,12 +1203,12 @@ worker() {
       printf '0\n' > "$run_dir/flatpak.rc"; flatpak_done=true
     fi
     wait_for_job "$dnf_pid"
-    dnf_rc=$(<"$run_dir/dnf.rc"); dnf_done=true
+    dnf_rc=$(phase_result "$run_dir/dnf.rc"); dnf_done=true
     packages_ran=true
     write_status running packages "System package update finished" 0
     if [[ -n $flatpak_pid ]]; then
       wait_for_job "$flatpak_pid"
-      flatpak_rc=$(<"$run_dir/flatpak.rc"); flatpak_done=true
+      flatpak_rc=$(phase_result "$run_dir/flatpak.rc"); flatpak_done=true
       write_status running packages "Package phase finished" 0
     fi
   else
@@ -1058,12 +1220,10 @@ worker() {
   if (( dnf_rc != 0 )); then
     worker_failed packages "dnf exited with status $dnf_rc" "$dnf_rc"
   fi
-  honor_cancellation
-
-  if [[ $with_firmware == true ]]; then
-    run_firmware_phase
-    honor_cancellation
+  if [[ $transaction_started == true ]] && ((flatpak_rc != 0)); then
+    worker_failed packages "Flatpak exited with status $flatpak_rc" "$flatpak_rc"
   fi
+  honor_cancellation
 
   if [[ $full == true ]]; then
     cd -- "$repo" || {
@@ -1076,7 +1236,7 @@ worker() {
       # A wedged check must not hold the update lock indefinitely.
       tagged_command tests "$run_dir/tests.log" "$run_dir/tests.rc" \
         timeout --kill-after=1m 30m ./tests/run
-      tests_rc=$(<"$run_dir/tests.rc")
+      tests_rc=$(phase_result "$run_dir/tests.rc")
       if (( tests_rc == 124 )); then
         worker_failed tests "Repository checks did not finish within 30 minutes" "$tests_rc"
       elif (( tests_rc != 0 )); then
@@ -1098,9 +1258,13 @@ worker() {
     [[ $release_transaction != true ]] || mixed_state=true
     write_status running ansible "Applying the managed configuration" 0
     # Keep the complete stream even when the configured callback is compact.
+    # Ansible's DNF modules inherit the process mask just like a direct dnf
+    # invocation. Keep shared package state readable without relaxing the
+    # updater's private log/state mask.
     tagged_command ansible "$run_dir/ansible.log" "$run_dir/ansible.rc" \
+      sh -c 'umask 022; exec "$@"' cybexos-update-ansible \
       ansible-playbook site.yml --skip-tags boot "${ansible_args[@]}"
-    ansible_rc=$(<"$run_dir/ansible.rc")
+    ansible_rc=$(phase_result "$run_dir/ansible.rc")
     if (( ansible_rc != 0 )); then
       worker_failed ansible "Ansible exited with status $ansible_rc" "$ansible_rc"
     fi
@@ -1113,8 +1277,64 @@ worker() {
     fi
   fi
 
+  # RPM posttrans only queues reconciliation. Finish it within the protected
+  # update before declaring the new installed policy healthy.
+  local reconcile_helper=/usr/libexec/cybexos-reconcile
+  if [[ ${CYBEXOS_UPDATE_TESTING:-0} == 1 \
+        && -n ${CYBEXOS_UPDATE_TEST_LIBEXEC:-} ]]; then
+    reconcile_helper="$CYBEXOS_UPDATE_TEST_LIBEXEC/cybexos-reconcile"
+  fi
+  if [[ -x $reconcile_helper ]]; then
+    write_status running reconcile "Applying the updated installed-system policy" 0
+    tagged_command reconcile "$run_dir/reconcile.log" "$run_dir/reconcile.rc" \
+      "${privileged_package[@]}" "$reconcile_helper" --retry
+    local reconcile_rc reconcile_status
+    reconcile_rc=$(phase_result "$run_dir/reconcile.rc")
+    ((reconcile_rc == 0)) || worker_failed reconcile "Installed-system reconciliation failed" "$reconcile_rc"
+    # The helper deliberately exits successfully when another reconciler has
+    # its lock or RPM is busy. Success alone does not mean the new policy was
+    # applied; require its durable status for the current packaged version.
+    if ! reconcile_status=$("${privileged_package[@]}" "$reconcile_helper" --status \
+        2>>"$run_dir/reconcile.log") \
+        || ! jq -e --argjson ownerUid "${CYBEXOS_UPDATE_OWNER_UID:-$UID}" '
+          .desiredVersion as $desired | .accounts as $accounts |
+          .state == "ready" and .pending == false
+          and ($desired | type == "string" and length > 0)
+          and .version == $desired
+          and (.accounts | type == "object" and length > 0
+            and all(.[]; .state == "ready" and .version == $desired))
+          and ($ownerUid < 1000 or any($accounts[]; .uid == $ownerUid))' \
+          <<<"$reconcile_status" >/dev/null 2>&1; then
+      worker_failed reconcile "Installed-system reconciliation has not reached the current ready state" 125
+    fi
+  fi
+
   check_reboot_recommendation
   apply_firmware_reboot_recommendation
+
+  if [[ $transaction_started == true ]]; then
+    write_status running health "Validating the updated system and desktop" 0
+    if ! "${privileged_package[@]}" "$transaction_helper" commit "$run_id" \
+        >>"$run_dir/run.log" 2>&1; then
+      worker_failed health "The installed health check failed" 1
+    fi
+    transaction_started=false
+    if [[ -n $bootstrap_bundle ]]; then
+      # A source role or RPM now owns the canonical recovery service. Retire
+      # the temporary implementation only after the journal is committed.
+      "${privileged_package[@]}" /usr/bin/python3 -I "$bootstrap_helper" finalize \
+        --bundle "$bootstrap_bundle" >>"$run_dir/run.log" 2>&1 \
+        || printf '[snapshot] retained recovery bootstrap for a later update\n' >>"$run_dir/run.log"
+    fi
+  fi
+  prune_releases
+  # Device firmware is not part of a filesystem snapshot. Apply it only after
+  # reversible system/configuration work has passed its health gate.
+  if [[ $with_firmware == true ]]; then
+    run_firmware_phase
+    honor_cancellation
+    apply_firmware_reboot_recommendation
+  fi
 
   local message="Update completed"
   (( flatpak_rc == 0 )) || message="Update completed; Flatpak reported status $flatpak_rc"

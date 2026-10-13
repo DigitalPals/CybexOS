@@ -56,7 +56,8 @@ function settingsHarness() {
         loadError: false, loadErrorText: "", newerSchema: false, recheckPending: false,
         initialLoadHandled: false, lastPersistedText: "", savePending: false,
         announcement: "", corruptBackupPending: false, writeInFlight: false,
-        saveError: false, writeSnapshot: "",
+        saveError: false, writeSnapshot: "", sourceDocument: {}, explicitOverrides: [],
+        revision: 0,
         saveTimer: { stop() {}, restart() {} },
         reloadTimer: { restart() { calls.rechecks++; } },
         store: { setText() { calls.writes++; } },
@@ -73,7 +74,7 @@ function settingsHarness() {
     Object.assign(context, H.defaults());
     vm.createContext(context);
     for (const name of ["snapshot", "seedWeatherFromEnv", "protectNewerFile", "assignChanged",
-            "applyLoaded", "handleLoadFailure", "saveNow", "set"])
+            "applyLoaded", "handleLoadFailure", "saveNow", "set", "markExplicit", "scheduleSave"])
         vm.runInContext(functionSource(source, name), context);
     return { context, calls };
 }
@@ -92,6 +93,7 @@ test("our own save echoes back as a no-op, byte for byte", () => {
     // Writers normalize, so a drifted slider value never reaches memory.
     context.set("scrollFactor", 7 * 0.1);
     assert.equal(context.scrollFactor, 0.7);
+    context.savePending = false; // the previous UI edit completed before this editor reload
     const external = H.serialize(Object.assign(H.defaults(), { scrollFactor: 1.2 }));
     context.applyLoaded(external);
     assert.equal(calls.applied, 2);

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Match Keeper's last recorded requests to current CLIProxyAPI accounts.
+"""Read Rust account activity or match Keeper requests to Go proxy accounts.
 
 Only account hashes and timestamps leave this process. Never consume CPA's
 usage queue, fetch request contents, or run upstream quota calls here.
@@ -76,9 +76,14 @@ def normalize_activity(entries, document, now=None):
 
 
 def collect(proxy_url, proxy_key_file, keeper_url, password_file, timeout):
-    client = keeper.Client(keeper_url, timeout)
+    deadline = time.monotonic() + timeout
     proxy = usage.CliProxyClient(proxy_url, usage.read_cliproxy_key(proxy_key_file))
-    entries = proxy.auth_files(max(0.1, client.deadline - time.monotonic()))
+    entries = proxy.auth_files(timeout)
+    if proxy.implementation == "rust":
+        return normalize_rust_activity(entries)
+    if not keeper_url:
+        raise keeper.KeeperError("Configure CPA Usage Keeper to track last-used accounts on the Go proxy.")
+    client = keeper.Client(keeper_url, max(0.1, deadline - time.monotonic()))
     logged_in = False
     try:
         if password_file:
@@ -98,11 +103,30 @@ def collect(proxy_url, proxy_key_file, keeper_url, password_file, timeout):
                 pass
 
 
+def normalize_rust_activity(entries, now=None):
+    now = time.time() if now is None else now
+    latest = {}
+    for entry in entries:
+        provider = entry["provider"]
+        timestamp = usage.rust_timestamp(entry.get("last_used"), observed=True, now=now)
+        if timestamp is None:
+            continue
+        account_id = usage.cliproxy_account_record(provider, entry)["accountId"]
+        previous = latest.get(provider)
+        if previous is None or timestamp > previous[0]:
+            latest[provider] = (timestamp, {account_id})
+        elif timestamp == previous[0]:
+            previous[1].add(account_id)
+    return [{"id": provider, "status": "ok" if len(ids) == 1 else "ambiguous",
+             "accountId": next(iter(ids)) if len(ids) == 1 else "", "lastUsedAt": timestamp}
+            for provider, (timestamp, ids) in sorted(latest.items())]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cliproxy-url", required=True)
     parser.add_argument("--cliproxy-key-file", type=Path)
-    parser.add_argument("--keeper-url", required=True)
+    parser.add_argument("--keeper-url", default="")
     parser.add_argument("--keeper-password-file", type=Path)
     parser.add_argument("--timeout", type=float, default=10)
     args = parser.parse_args()

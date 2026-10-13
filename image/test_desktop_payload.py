@@ -13,7 +13,7 @@ import jinja2
 import yaml
 
 from boot_branding import brand_boot_menu
-from desktop_payload import prepare_defaults, split_seed
+from desktop_payload import prepare_defaults, split_seed, prepare_quickshell
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,6 +31,61 @@ ACCOUNTS = load("desktop_seed_accounts", "image/rootfs/usr/libexec/cybexos-seed-
 
 
 class DesktopPayload(unittest.TestCase):
+    def test_model_usage_runtime_matches_checkout_including_rust_live_activity(self):
+        source = ROOT / "roles/desktop/files/quickshell/ModelUsage"
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            prepare_quickshell(ROOT, payload)
+            installed = payload / "usr/share/cybexos/runtime/quickshell/ModelUsage"
+            files = {p.relative_to(source): p for p in source.rglob("*")
+                     if p.is_file() and not p.is_symlink() and "__pycache__" not in p.parts and p.suffix != ".pyc"}
+            self.assertEqual(set(files), {p.relative_to(installed) for p in installed.rglob("*") if p.is_file()})
+            for relative, path in files.items():
+                expected = path.read_bytes()
+                if path.suffix in (".qml", ".js"):
+                    expected = expected.replace(b"/usr/local/libexec/cybexos-", b"/usr/libexec/cybexos-")
+                self.assertEqual((installed / relative).read_bytes(), expected, str(relative))
+            self.assertIn(b"def fetch_rust_account", (installed / "scripts/usage-fetch.py").read_bytes())
+            self.assertIn(b"normalize_rust_activity", (installed / "scripts/proxy-activity.py").read_bytes())
+            self.assertIn(b"additional_headers", (installed / "scripts/proxy-live.py").read_bytes())
+            self.assertIn(b"UsageLogic.acquireLive", (installed / "UsageActivityBackend.qml").read_bytes())
+            self.assertTrue((installed / "UsageLiveConnection.qml").is_file())
+            helpers = payload / "usr/share/cybexos/runtime/quickshell/Common/SettingsHelpers.js"
+            self.assertIn(b"liveAccountActivity: true", helpers.read_bytes())
+            self.assertNotIn(b"showBarActivity", helpers.read_bytes())
+            self.assertNotIn(b"showRecentSessions", helpers.read_bytes())
+            # Both installation contracts provide the optional transport.
+            self.assertIn("python3-websockets", (ROOT / "image/cybexos-desktop.spec").read_text())
+            self.assertIn("python3-websockets", (ROOT / "roles/desktop/tasks/main.yml").read_text())
+
+    def test_fusebox_widget_ships_identically_with_the_same_layout_on_both_paths(self):
+        checkout = ROOT / "roles/desktop/files/quickshell"
+        files = ["scripts/fusebox.py", "Common/Fusebox.qml", "Common/FuseboxHelpers.js",
+                 "Bar/Modules/Fusebox.qml", "Popovers/FuseboxPopover.qml", "assets/fusebox.svg",
+                 "assets/fusebox-white.svg", "Common/SettingsHelpers.js", "Common/BrandIcons.qml"]
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            prepare_quickshell(ROOT, payload)
+            installed = payload / "usr/share/cybexos/runtime/quickshell"
+            for relative in files:
+                self.assertEqual((installed / relative).read_bytes(), (checkout / relative).read_bytes(), relative)
+            # The checkout and the ISO derive the layout from the same helpers and
+            # the same connected-widgets flag, so both start Fusebox the same way.
+            script = ("const H = require(process.argv[1]); "
+                      "console.log(JSON.stringify([false, true].map(connected => "
+                      "H.merge(null, { connectedWidgets: connected }).mods.right.map(m => m.id + ':' + m.on))));")
+            layouts = [subprocess.run(["node", "-e", script, str(base / "Common/SettingsHelpers.js")],
+                                      text=True, capture_output=True, check=True).stdout
+                       for base in (checkout, installed)]
+            self.assertEqual(layouts[0], layouts[1])
+            plain, connected = json.loads(layouts[1])
+            self.assertIn("fusebox:false", plain)
+            self.assertIn("fusebox:true", connected)
+            self.assertEqual(connected[connected.index("modelusage:true") + 1], "fusebox:true")
+        unit = (ROOT / "image/provision.yml").read_text()
+        self.assertIn("CYBEXOS_CONNECTED_WIDGETS", unit)
+        self.assertIn("CYBEXOS_CONNECTED_WIDGETS", (ROOT / "image/desktop_payload.py").read_text())
+
     def test_portable_defaults_and_boot_assets_share_workstation_sources(self):
         environment = jinja2.Environment(undefined=jinja2.StrictUndefined)
         environment.filters.update(bool=bool, ternary=lambda value, yes, no: yes if value else no)
@@ -45,6 +100,28 @@ class DesktopPayload(unittest.TestCase):
             split_seed(vendor, contract)
             defaults = json.loads((vendor / "essential-seed/.config/cybexos/shell.json").read_text())
             self.assertEqual(defaults, contract["shell"])
+            # Exercise first-login seeding followed by the real shell merger:
+            # an unversioned seed keeps current defaults and no personal host.
+            (vendor / "bin").mkdir()
+            (vendor / "runtime").mkdir()
+            home = payload / "installed-user"
+            with patch.dict(os.environ, {}, clear=True):
+                INIT.initialize(home, vendor, mode="essential")
+            preferences = home / ".config/cybexos/shell.json"
+            result = subprocess.run([
+                "node", "-e",
+                "const fs = require('fs'), H = require(process.argv[1]); "
+                "const s = H.merge(JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))); "
+                "console.log(JSON.stringify({font: H.FONT_CHOICES.find(f => f.id === s.font).family, "
+                "remote: s.mods.right.find(m => m.id === 'remote'), options: s.modOpts.remote}));",
+                str(ROOT / "roles/desktop/files/quickshell/Common/SettingsHelpers.js"),
+                str(preferences),
+            ], text=True, capture_output=True, check=True)
+            settings = json.loads(result.stdout)
+            self.assertEqual(settings["font"], "JetBrainsMono Nerd Font")
+            self.assertTrue(settings["remote"]["on"])
+            self.assertEqual(settings["options"]["host"], "")
+            self.assertEqual(settings["options"]["label"], "")
             wallpaper = vendor / "essential-seed/Pictures/Wallpapers" / defaults["wall"]
             self.assertEqual(wallpaper.read_bytes(), (ROOT / "assets/wallpapers" / defaults["wall"]).read_bytes())
             self.assertTrue(app.is_file())

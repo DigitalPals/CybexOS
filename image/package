@@ -14,7 +14,7 @@ import urllib.request
 import jinja2
 import yaml
 from application_payload import relativize_seed_links, include_applications
-from desktop_payload import prepare_defaults, prepare_session, split_seed
+from desktop_payload import prepare_defaults, prepare_session, split_seed, prepare_managed_defaults, prepare_app_launchers, prepare_quickshell
 from provision_payload import prepare_provision
 from release_metadata import install_update_channel, render_spec
 
@@ -64,16 +64,10 @@ def main():
         target.chmod(0o755 if executable else 0o644)
 
     runtime = "usr/share/cybexos/runtime"
-    quickshell = ROOT / "roles/desktop/files/quickshell"
-    for source in sorted(quickshell.rglob("*")):
-        if not source.is_file() or source.is_symlink() or "__pycache__" in source.parts or source.suffix == ".pyc":
-            continue
-        relative = f"{runtime}/quickshell/{source.relative_to(quickshell)}"
-        copy(source.relative_to(ROOT), relative, source.parent.name == "scripts" and source.suffix != ".py")
-        if source.suffix in (".qml", ".js"):
-            target = payload / relative
-            target.write_text(target.read_text().replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))
-    for name in ("hyprland.lua", "bindings.lua", "autostart.lua", "displays.lua"):
+    copy("LICENSE", "usr/share/licenses/cybexos-desktop/LICENSE")
+    copy("release-manifest.json", "usr/share/cybexos/release-manifest.json")
+    prepare_quickshell(ROOT, payload)
+    for name in ("hyprland.lua", "bindings.lua", "autostart.lua", "displays.lua", "input_preferences.lua"):
         content = (ROOT / "roles/desktop/files" / name).read_text()
         content = content.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-")
         write(f"{runtime}/hypr/{name}", content)
@@ -83,8 +77,6 @@ def main():
         if name == "input.lua":
             content = content.replace('kb_layout = "us"', 'kb_layout = os.getenv("CYBEXOS_KEYBOARD_LAYOUT") or "us"')
             content = content.replace('kb_variant = ""', 'kb_variant = os.getenv("CYBEXOS_KEYBOARD_VARIANT") or ""')
-        if name == "looknfeel.lua":
-            content += '\nhl.window_rule({ match = { class = [[^cybex$]] }, float = true, center = true, size = { 920, 620 } })\n'
         write(f"{runtime}/hypr/{name}", content)
     contract = json.loads((ROOT / "assets/desktop-contract.json").read_text())
     helpers = contract["userHelpers"] + ["cybexos-runtime", "cybexos-update-run"]
@@ -113,8 +105,7 @@ def main():
         content = (ROOT / "roles/dotfiles/templates" / (name + ".desktop.j2")).read_text()
         write(f"{seed}/.local/share/applications/{name}.desktop",
               content.replace("{{ primary_home }}/.local/bin/", ""))
-    for name in ("nvim-kitty", "brave-origin", "chatgpt", "com.onepassword.OnePassword"):
-        copy(f"roles/dotfiles/files/{name}.desktop", f"{seed}/.local/share/applications/{name}.desktop")
+    prepare_app_launchers(ROOT, payload)
     t3_desktop = (ROOT / "roles/dotfiles/templates/t3code-nightly.desktop.j2").read_text()
     write(f"{seed}/.local/share/applications/t3code-nightly.desktop",
           t3_desktop.replace("{{ primary_home }}/.local/bin/", ""))
@@ -125,14 +116,30 @@ def main():
         write(f"{seed}/.local/share/applications/dev-{box['name']}.desktop",
               desktop.replace("{{ primary_home }}/.local/bin/", ""))
     # Systemd's %h resolves at service start, after account creation.
-    hermes = environment.from_string((ROOT / "roles/desktop/templates/hermes-menubar-bridge.service.j2").read_text()).render(primary_home="%h")
+    hermes = environment.from_string((ROOT / "roles/desktop/templates/hermes-menubar-bridge.service.j2").read_text()).render(primary_home="%h", hermes_bridge_executable="/usr/libexec/cybexos-hermes-menubar-bridge")
     write("usr/lib/systemd/user/hermes-menubar-bridge.service", hermes)
-    copy("roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py", f"{seed}/.local/libexec/hermes-menubar-bridge", True)
+    copy("roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py", "usr/libexec/cybexos-hermes-menubar-bridge", True)
+    for source in sorted((ROOT / "roles/desktop/files/hermes-menubar-bridge/cybex_hermes").glob("*.py")):
+        copy(source.relative_to(ROOT), f"usr/libexec/cybex_hermes/{source.name}")
     # Voxtype's RPM owns its system user unit. The session target starts that
     # unit; do not collide with it by packaging our per-user Ansible template.
     write(f"{seed}/.npmrc", "prefix=${HOME}/.npm-global\n")
     write("usr/share/cybexos/applications.json", json.dumps(applications, indent=2) + "\n")
     copy("roles/base/files/cybexos-system-snapshot", "usr/libexec/cybexos-system-snapshot", True)
+    for name in ("cybexos-update-transaction", "cybexos-update-bootstrap", "cybexos-update-recover", "cybexos-vendor-paths.json", "cybexos-major-upgrade"):
+        copy(f"roles/base/files/{name}", f"usr/libexec/{name}", not name.endswith('.json'))
+    for name in ("cybexos-update-recover.service", "cybexos-update-recover-login.conf"):
+        copy(f"roles/base/files/{name}", f"usr/libexec/{name}")
+    recover = (ROOT / "roles/base/files/cybexos-update-recover.service").read_text()
+    write("usr/lib/systemd/system/cybexos-update-recover.service",
+          recover.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))
+    for unit in ("systemd-user-sessions.service", "sddm.service"):
+        copy("roles/base/files/cybexos-update-recover-login.conf",
+             f"usr/lib/systemd/system/{unit}.d/60-cybexos-update-recover.conf")
+    for name in ("cybexos-major-upgrade-validate.service", "cybexos-major-upgrade-validate.timer"):
+        content = (ROOT / "roles/base/files" / name).read_text()
+        write(f"usr/lib/systemd/system/{name}",
+              content.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))
     # `sudo cybexos-system-snapshot ...`, as documented; libexec is not on PATH.
     (payload / "usr/bin").mkdir(parents=True, exist_ok=True)
     (payload / "usr/bin/cybexos-system-snapshot").symlink_to("../libexec/cybexos-system-snapshot")
@@ -164,6 +171,9 @@ def main():
     prepare_defaults(ROOT, payload, environment, inventory)
     prepare_session(ROOT, payload, inventory)
     prepare_provision(ROOT, payload)
+    copy("image/library/cybexos_managed_file.py", "usr/share/cybexos/lib/managed_files.py")
+    copy("image/release_metadata.py", "usr/share/cybexos/lib/release_metadata.py")
+    copy("image/installation_policy.py", "usr/share/cybexos/lib/installation_policy.py")
     copy("roles/apps/files/cybexos-repository-policy", "usr/libexec/cybexos-repository-policy", True)
     # The workstation's font family mappings; roles/apps/tasks/fonts.yml
     # installs the same file on checkout deployments.
@@ -173,6 +183,9 @@ def main():
     copy("roles/desktop/files/cybexos-input-method.service", "usr/lib/systemd/user/cybexos-input-method.service")
     copy("roles/desktop/files/90-cybexos-ibus.gschema.override",
          "usr/share/glib-2.0/schemas/90-cybexos-ibus.gschema.override")
+    # Share the Files/GVfs default with checkout installations.
+    copy("roles/desktop/files/90-cybexos-smb.gschema.override",
+         "usr/share/glib-2.0/schemas/90-cybexos-smb.gschema.override")
     for name in ("brave-browser", "1password", "chatgpt", "tailscale"):
         copy(f"roles/apps/files/{name}.repo", f"usr/share/cybexos/repository-policy/{name}.repo")
     # The fonts are already checksum-pinned by the project. Preserve upstream
@@ -196,6 +209,7 @@ def main():
             destination.chmod(0o644)
     relativize_seed_links(payload / seed, seed_home)
     split_seed(payload / "usr/share/cybexos", contract)
+    prepare_managed_defaults(payload / "usr/share/cybexos")
     manifest = {}
     for file in sorted(payload.rglob("*")):
         if file.is_symlink():
@@ -206,6 +220,10 @@ def main():
                 manifest[str(file.relative_to(payload))] = hashlib.file_digest(stream, "sha256").hexdigest()
         elif file.is_dir():
             file.chmod(0o755)
+    # The complete payload identity changes on every effective package change.
+    identity = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+    write("usr/share/cybexos/reconcile-version", identity + "\n")
+    manifest["usr/share/cybexos/reconcile-version"] = hashlib.sha256((identity + "\n").encode()).hexdigest()
     (build / "package-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     sources = build / "rpmbuild/SOURCES"
     sources.mkdir(parents=True)

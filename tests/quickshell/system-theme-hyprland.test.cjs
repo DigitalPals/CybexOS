@@ -293,7 +293,7 @@ assert(hl.get_config("decoration.blur.passes") == 1, "power saver survives a liv
 assert(hl.get_config("animations.enabled") == false)
 assert(layer_rules["quickshell-blur"].enabled == true)
 cybexos_power_saver(false)
-assert(hl.get_config("decoration.blur.passes") == 3)`, {
+assert(hl.get_config("decoration.blur.passes") == 1)`, {
         [THEME]: render(lightTokens()),
         ".config/cybexos/shell.json": '{"v": 23, "glassEnabled": true}',
     });

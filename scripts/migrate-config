@@ -11,19 +11,8 @@ import yaml
 
 
 CURRENT_SCHEMA = 1
-FEATURE_DEFAULTS = {
-    "developer_tools": True,
-    "connected_widgets": True,
-    "proprietary_apps": True,
-    "tailscale": True,
-    "docker": True,
-    "podman": True,
-    "steam": True,
-    "private_hooks": False,
-    "apple_display": False,
-    "source_builds": True,
-    "local_network_services": False,
-}
+INVENTORY = Path(__file__).resolve().parents[1] / 'inventory/group_vars/all.yml'
+FEATURE_DEFAULTS = yaml.safe_load(INVENTORY.read_text())['features']
 BOOLEAN_KEYS = {
     "manage_system_identity",
     "manage_personal_dotfiles",
@@ -91,6 +80,11 @@ def migrate(document: object) -> dict:
     # group without asking. A saved configuration without an answer revokes
     # that access; `cybex configure` can accept it explicitly.
     result.setdefault("docker_sudoless", False)
+    # Older source installs omitted this answer and inherited the old false
+    # default. Keep their files untouched; ISO-leading defaults are for fresh
+    # installs, not an implicit opt-in during a release migration.
+    result.setdefault("manage_personal_dotfiles", False)
+    result.setdefault("passwordless_wheel", False)
     for key in STRING_KEYS:
         if key in result and (not isinstance(result[key], str) or not result[key]):
             raise ValueError(f"{key} must be a non-empty string")

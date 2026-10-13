@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Runs the production data loader with a recording compositor; no live reload.
+set -euo pipefail
+repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+scratch=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-input-lua.XXXXXX")
+trap 'rm -rf -- "$scratch"' EXIT
+mkdir -p "$scratch/config/cybexos"
+cat > "$scratch/test.lua" <<'LUA'
+local repo = assert(os.getenv("CYBEXOS_INPUT_TEST_REPO"))
+package.path = repo .. "/roles/desktop/files/?.lua;" .. package.path
+local calls = {}
+hl = {config = function(value) calls[#calls + 1] = value end}
+_G.__cybexos_vendor_keyboard_options = "compose:caps,lv3:ralt_switch,future:vendor"
+local input = require("input_preferences")
+local json = require("displays")
+assert(#calls == 0, "missing preferences must not reset defaults")
+input.apply(assert(json.decode([[{"v":1,"future":true,"keyboard":{"layouts":[{"layout":"us","variant":"intl"},{"layout":"nl"}],"shortcut":"grp:alt_shift_toggle"},"touchpad":{"tap":false,"naturalScroll":true,"sensitivity":0.25}}]])))
+local value = calls[#calls].input
+assert(value.kb_layout == "us,nl" and value.kb_variant == "intl,")
+assert(value.kb_options == "compose:caps,lv3:ralt_switch,future:vendor,grp:alt_shift_toggle", "shared defaults survive")
+assert(value.touchpad.tap_to_click == false and value.touchpad.natural_scroll == true and value.sensitivity == 0.25)
+input.apply(assert(json.decode('{"v":1,"keyboard":{"shortcut":"grp:caps_toggle"}}')))
+assert(not calls[#calls].input.kb_options:find("compose:caps", 1, true), "Caps shortcut cannot also be Compose")
+local count = #calls
+for _, text in ipairs({
+  '{"v":1,"keyboard":false}', '{"v":1,"touchpad":[]}', '{"v":2}',
+  '{"v":1,"keyboard":{"layouts":[]}}', '{"v":1,"touchpad":{"tap":1}}',
+  '{"v":1,"touchpad":{"sensitivity":2}}', '{"v":1,"keyboard":{"shortcut":"bad"}}',
+  '{"v":1,"keyboard":{"layouts":[{"layout":"us\\\";os.execute(1)"}]}}'
+}) do
+  local ok = pcall(input.apply, assert(json.decode(text)))
+  assert(not ok, "invalid document accepted: " .. text)
+  assert(#calls == count, "invalid preferences partially applied")
+end
+local path = assert(os.getenv("XDG_CONFIG_HOME")) .. "/cybexos/input.json"
+local file = assert(io.open(path, "w")); file:write('{"v":1,"touchpad":{"tap":false}}'); file:close()
+package.loaded.input_preferences = nil
+require("input_preferences")
+assert(calls[#calls].input.touchpad.tap_to_click == false, "saved preferences load at startup")
+assert(_G.__cybexos_input_error == nil)
+file = assert(io.open(path, "w")); file:write('{"v":1,"touchpad":'); file:close()
+count = #calls
+package.loaded.input_preferences = nil
+require("input_preferences")
+assert(#calls == count and type(_G.__cybexos_input_error) == "string", "corrupt preferences are contained")
+print("PASS input preferences: persistence, validation, shared defaults and corruption recovery")
+LUA
+CYBEXOS_INPUT_TEST_REPO="$repo" XDG_CONFIG_HOME="$scratch/config" luajit "$scratch/test.lua"

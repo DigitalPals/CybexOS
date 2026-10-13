@@ -40,7 +40,10 @@ PACKAGE_TASKS = (
     ("roles/base/tasks/main.yml", {"Install Docker packages when selected"}),
     # Firmware must be available at the first physical boot, before the
     # detected hardware role runs its machine-specific configuration.
-    ("roles/xps-2026/tasks/packages.yml", {"Install explicit Panther Lake firmware, media, and regulatory packages"}),
+    ("roles/xps-2026/tasks/packages.yml", {
+        "Install explicit Panther Lake firmware, media, and regulatory packages",
+        "Install full Panther Lake video-codec acceleration",
+    }),
     ("roles/desktop/tasks/main.yml", {"Install stable Hyprland and desktop integration packages",
                                       "Install Fedora fuzzel and matugen rather than COPR variants"}),
 )
@@ -60,7 +63,8 @@ def package_names():
     for path, names in PACKAGE_TASKS:
         for task in yaml.safe_load((ROOT / path).read_text()):
             if task.get("name") in names:
-                packages.extend(task["ansible.builtin.dnf"]["name"])
+                selected = task["ansible.builtin.dnf"]["name"]
+                packages.extend([selected] if isinstance(selected, str) else selected)
     packages += ["tailscale", "java-25-openjdk-devel", "rpmfusion-free-release", "rpmfusion-nonfree-release"]
     return sorted(set(packages)), defaults["apps_flatpaks"] + defaults["apps_steam_flatpaks"]
 

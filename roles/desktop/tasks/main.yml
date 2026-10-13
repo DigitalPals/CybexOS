@@ -73,7 +73,6 @@
       - hypridle
       - hyprlock
       - hyprpicker
-      - hyprpolkitagent
       - hyprsunset
       - quickshell
       - ImageMagick
@@ -119,6 +118,8 @@
       # link telemetry.
       - NetworkManager
       - NetworkManager-libnm
+      - xkeyboard-config
+      - tzdata
       - glib2
       - nm-connection-editor
       - pulseaudio-utils
@@ -198,6 +199,7 @@
     state: absent
   loop:
     - "{{ primary_home }}/.local/libexec/hermes-menubar-bridge"
+    - "{{ primary_home }}/.local/libexec/cybex_hermes"
     - "{{ primary_home }}/.config/systemd/user/hermes-menubar-bridge.service"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/hermes-menubar-bridge.service"
   notify: Reload user systemd
@@ -489,6 +491,7 @@
     - bindings.lua
     - autostart.lua
     - displays.lua
+    - input_preferences.lua
     # This entrypoint requires every module above. Keeping it last makes an
     # empty live configuration valid at each observable deployment boundary.
     - hyprland.lua
@@ -535,6 +538,20 @@
   ansible.builtin.command: glib-compile-schemas /usr/share/glib-2.0/schemas
   changed_when: true
   when: desktop_ibus_schema_override is changed
+
+- name: Default Files SMB connections to WORKGROUP
+  ansible.builtin.copy:
+    src: 90-cybexos-smb.gschema.override
+    dest: /usr/share/glib-2.0/schemas/90-cybexos-smb.gschema.override
+    owner: root
+    group: root
+    mode: "0644"
+  register: desktop_smb_schema_override
+
+- name: Compile GSettings schemas after changing the SMB default
+  ansible.builtin.command: glib-compile-schemas /usr/share/glib-2.0/schemas
+  changed_when: true
+  when: desktop_smb_schema_override is changed
 
 - name: Install the singleton session-lock user unit before its callers
   become: true
@@ -598,7 +615,7 @@
     label: "{{ item.path }}"
   when:
     - not hypr_runtime_path_normalization_pending | bool
-    - item.path | basename not in ['features.lua', 'monitors.lua', 'input.lua', 'looknfeel.lua', 'bindings.lua', 'autostart.lua', 'displays.lua', 'hyprland.lua', 'hypridle.conf', 'hyprlock.conf']
+    - item.path | basename not in ['features.lua', 'monitors.lua', 'input.lua', 'looknfeel.lua', 'bindings.lua', 'autostart.lua', 'displays.lua', 'input_preferences.lua', 'hyprland.lua', 'hypridle.conf', 'hyprlock.conf']
   tags: [browser]
 
 - name: Install the guarded desktop runtime resolver
@@ -1261,10 +1278,22 @@
     mode: "0644"
   loop:
     - hypridle
-    - hyprpolkitagent
   notify:
     - Reload user systemd
     - Restart hypridle
+
+- name: Retire standalone Polkit agent startup now provided by Quickshell
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ primary_home }}/.config/systemd/user/{{ item }}"
+    state: absent
+  loop:
+    - hyprland-session.target.wants/hyprpolkitagent.service
+    - graphical-session.target.wants/hyprpolkitagent.service
+    - hyprpolkitagent.service
+  notify: Reload user systemd
+  tags: [quickshell]
 
 # Dictation follows the developer tooling feature, which also selects its GPU
 # backend, downloads its model, and binds its keys. Without that model an
@@ -1351,7 +1380,7 @@
     state: link
     force: true
   loop: >-
-    {{ ['quickshell', 'hypridle', 'hyprpolkitagent', 'cybexos-input-method']
+    {{ ['quickshell', 'hypridle', 'cybexos-input-method']
        + (features.developer_tools | bool | ternary(['voxtype'], [])) }}
   notify: Reload user systemd
 

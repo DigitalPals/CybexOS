@@ -29,6 +29,7 @@ function fixture() {
             CYBEXOS_CONFIG_FILE: config,
             CYBEXOS_RELEASE_UPDATE: release,
             CYBEXOS_UPDATE_BACKEND: backend,
+            CYBEXOS_UPDATE_CHANNEL: path.join(root, "rpm-channel"),
         },
     };
 }
@@ -59,6 +60,17 @@ test("an uninitialized source deployment checks cleanly and updates packages", t
     const update = run(["run", "--no-flatpak"], f.env);
     assert.equal(update.status, 0, update.stderr);
     assert.equal(update.stdout, "backend:run --no-flatpak\n");
+});
+
+test("ISO installs report their desktop channel and still use DNF for updates", t => {
+    const f = fixture();
+    t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+    fs.writeFileSync(f.env.CYBEXOS_UPDATE_CHANNEL,
+        '#!/bin/sh\nprintf \'{"available":false,"status":"desktop-channel-disabled"}\\n\'\n', { mode: 0o755 });
+    const check = run(["check"], f.env);
+    assert.equal(check.status, 0, check.stderr);
+    assert.equal(JSON.parse(check.stdout).status, "desktop-channel-disabled");
+    assert.equal(run(["start"], f.env).stdout, "backend:start --json --system-unit\n");
 });
 
 test("an initialized installation retains verified project updates", t => {

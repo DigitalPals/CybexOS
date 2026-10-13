@@ -35,7 +35,7 @@ Column {
     Rectangle {
         visible: Media.hasTrack && Settings.drawerOverview.media === true
         width: parent.width
-        height: 64
+        height: Math.max(Theme.scaled(64), mediaText.implicitHeight + Theme.scaled(20))
         radius: 10
         color: Theme.chip
 
@@ -73,6 +73,7 @@ Column {
         }
 
         Column {
+            id: mediaText
             anchors.left: art.right
             anchors.leftMargin: 12
             anchors.right: transport.left

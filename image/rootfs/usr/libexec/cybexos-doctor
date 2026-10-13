@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Read-only installed-image health summary. Never probes capture hardware."""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+
+
+def run(*argv):
+    try:
+        result = subprocess.run(argv, text=True, capture_output=True, timeout=8, check=False,
+                                env={**os.environ, "LC_ALL": "C"})
+        return result.returncode, result.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ''
+
+
+def read_json(path):
+    try:
+        value = json.loads(path.read_text())
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def collect(root=Path('/'), home=Path.home(), command=run):
+    def at(path):
+        return root / path.lstrip('/')
+
+    checks = []
+    def add(name, state, detail, action=''):
+        checks.append({'name': name, 'state': state, 'detail': detail, 'action': action})
+
+    build = read_json(at('/usr/share/cybexos/build.json'))
+    rc, package = command('rpm', '-q', 'cybexos-desktop')
+    if rc or not re.fullmatch(r'[0-9a-f]{40,64}', str(build.get('source_revision', ''))):
+        add('build', 'fail', 'Desktop package or build provenance is missing.', 'Reinstall the CybexOS desktop RPM.')
+    else:
+        add('build', 'ok', f"{package}; source {str(build['source_revision'])[:12]}")
+
+    rc, channel_text = command('/usr/libexec/cybexos-update-channel', 'status', '--json')
+    try:
+        channel = json.loads(channel_text) if rc == 0 else {}
+    except ValueError:
+        channel = {}
+    if not isinstance(channel, dict):
+        channel = {}
+    if channel.get('status') == 'desktop-channel-ready':
+        add('desktop_channel', 'ok', 'Desktop update channel is enabled.')
+    elif channel.get('status') == 'desktop-channel-disabled':
+        add('desktop_channel', 'warning', 'Desktop update channel is not enrolled.',
+            'Run cybex update-channel status for enrollment details.')
+    else:
+        add('desktop_channel', 'fail', 'Desktop update channel cannot be verified.',
+            'Run cybex update-channel status.')
+
+    rc, active = command('systemctl', '--user', 'is-active', 'quickshell.service')
+    add('quickshell', 'ok' if rc == 0 and active == 'active' else 'fail',
+        'Quickshell is active.' if rc == 0 and active == 'active' else 'Quickshell is not active.',
+        '' if rc == 0 and active == 'active' else 'Run systemctl --user status quickshell.service.')
+    rc, errors = command('hyprctl', 'configerrors')
+    add('hyprland', 'ok' if rc == 0 and not errors else 'fail',
+        'Hyprland configuration has no reported errors.' if rc == 0 and not errors else 'Hyprland reported configuration errors.',
+        '' if rc == 0 and not errors else 'Run hyprctl configerrors.')
+
+    failed = []
+    failed_query_ok = True
+    for args in (('systemctl', '--failed', '--plain', '--no-legend'),
+                 ('systemctl', '--user', '--failed', '--plain', '--no-legend')):
+        rc, output = command(*args)
+        if rc == 0:
+            failed.extend(line.split()[0] for line in output.splitlines() if line.split())
+        else:
+            failed_query_ok = False
+    add('failed_units', 'fail' if failed else 'ok' if failed_query_ok else 'warning',
+        'Failed units: ' + ', '.join(failed[:8]) if failed else
+        'No failed system or user units.' if failed_query_ok else 'Could not query all failed units.',
+        'Run systemctl --failed and systemctl --user --failed.' if failed else '')
+    rc, qml_errors = command('journalctl', '--user', '-b', '-u', 'quickshell.service', '-p', 'warning', '--no-pager', '-o', 'cat')
+    # Report only a count. Journals may contain private window or widget data.
+    count = len([line for line in qml_errors.splitlines() if 'qml' in line.lower() or 'qrc:' in line.lower()]) if rc == 0 else 0
+    add('qml', 'warning' if count or rc else 'ok',
+        f'{count} Quickshell QML error lines in this boot.' if count else
+        'No Quickshell QML errors in this boot.' if rc == 0 else 'Could not read the Quickshell journal.')
+
+    state_dir = home / '.local/state/cybexos'
+    seed = read_json(state_dir / 'seed-progress.json')
+    seed_state = seed.get('state', 'pending')
+    if (state_dir / 'offline-apps-seeded').is_file():
+        seed_state = 'ready'
+    seed_level = {'ready': 'ok', 'copying': 'pending', 'pending': 'pending', 'error': 'fail'}.get(seed_state, 'warning')
+    add('seeded_apps', seed_level,
+        {'ready': 'Offline applications are ready.', 'copying': 'Offline applications are being prepared.',
+         'pending': 'Offline applications are pending.', 'error': 'Offline application preparation failed.'}.get(seed_state, 'Offline application status is unknown.'),
+        'Run cybex prepare-apps to retry.' if seed_level == 'fail' else '')
+
+    rc, reconciliation_text = command('/usr/libexec/cybexos-reconcile', '--status')
+    try:
+        reconciliation = json.loads(reconciliation_text) if rc == 0 else {}
+    except ValueError:
+        reconciliation = {}
+    if not isinstance(reconciliation, dict):
+        reconciliation = {}
+    reconcile_state = reconciliation.get('state', 'unknown')
+    add('reconciliation', {'ready': 'ok', 'pending': 'pending', 'running': 'pending',
+                           'error': 'fail', 'blocked': 'fail'}.get(reconcile_state, 'warning'),
+        f'Installed policy reconciliation: {reconcile_state}.',
+        'Run sudo /usr/libexec/cybexos-reconcile --retry.' if reconcile_state in ('error', 'blocked') else '')
+
+    hardware_policy = read_json(at('/etc/cybexos/hardware.json'))
+    hardware = read_json(at('/var/lib/cybexos/hardware-status.json'))
+    hardware_state = hardware.get('state', 'pending')
+    if not hardware_policy.get('xps_2026') and not hardware:
+        hardware_state = 'skipped'
+    if at('/var/lib/cybexos/hardware-unsupported').exists():
+        hardware_state = 'failed'
+    add('hardware', {'completed': 'ok', 'pending': 'pending', 'running': 'pending',
+                     'failed': 'fail', 'skipped': 'skipped'}.get(hardware_state, 'warning'),
+        f'Hardware setup: {hardware_state}.',
+        'Reboot to validate the camera transaction.' if hardware_state == 'pending' and 'reboot' in hardware.get('reason', '')
+        else 'Run cybex repair --hardware.' if hardware_state == 'failed' else '')
+
+    rc, network = command('nmcli', '-t', '-f', 'STATE', 'general')
+    connected = rc == 0 and network.splitlines()[:1] == ['connected']
+    add('network', 'ok' if connected else 'warning',
+        'Network is connected.' if connected else 'Network is disconnected or still connecting.',
+        '' if connected else 'Open network settings to connect.')
+
+    rc, recovery = command('systemctl', 'is-enabled', 'cybexos-recovery-refresh.service')
+    recovery_files = all(at(path).is_file() for path in ('/etc/grub.d/42_cybexos_recovery',
+                                                         '/usr/lib/systemd/system/cybexos-recovery-refresh.service'))
+    add('recovery', 'ok' if recovery_files and rc == 0 and recovery == 'enabled' else 'warning',
+        'Recovery refresh is installed and enabled.' if recovery_files and rc == 0 and recovery == 'enabled'
+        else 'Recovery refresh is not fully enabled.')
+
+    if hardware_policy.get('xps_2026'):
+        rc, thermal = command('systemctl', 'is-active', 'thermald.service')
+        add('xps_thermal', 'ok' if rc == 0 and thermal == 'active' else 'warning',
+            'XPS thermal service is active.' if rc == 0 and thermal == 'active' else 'XPS thermal service is not active.')
+        rc, speaker = command('systemctl', '--user', 'is-active', 'xps-speaker-tuning.service')
+        add('xps_audio', 'ok' if rc == 0 and speaker == 'active' else 'warning',
+            'XPS speaker tuning is active.' if rc == 0 and speaker == 'active' else 'XPS speaker tuning is not active.')
+
+    overall = 'fail' if any(item['state'] == 'fail' for item in checks) else \
+              'warning' if any(item['state'] in ('warning', 'pending') for item in checks) else 'ok'
+    return {'version': 1, 'overall': overall, 'checks': checks}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--json', action='store_true')
+    args = parser.parse_args()
+    result = collect()
+    if args.json:
+        print(json.dumps(result, sort_keys=True))
+    else:
+        for item in result['checks']:
+            print(f"{item['state'].upper():7} {item['name']}: {item['detail']}")
+            if item['action']:
+                print(f"        {item['action']}")
+    raise SystemExit(1 if result['overall'] == 'fail' else 0)
+
+
+if __name__ == '__main__':
+    main()

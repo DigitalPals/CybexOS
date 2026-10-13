@@ -59,6 +59,15 @@
     creates: "/var/lib/systemd/linger/{{ primary_user }}"
   when: not cybexos_offline | default(false) | bool
 
+- name: Create the offline user lingering directory
+  ansible.builtin.file:
+    path: /var/lib/systemd/linger
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: cybexos_offline | default(false) | bool
+
 - name: Enable user lingering in the offline installation target
   ansible.builtin.copy:
     dest: "/var/lib/systemd/linger/{{ primary_user }}"

@@ -664,8 +664,10 @@ PanelWindow {
     readonly property var moduleSources: ({
         ws: "Modules/Workspaces.qml", media: "Modules/Media.qml",
         clock: "Modules/Clock.qml", weather: "Modules/Weather.qml",
+        remote: "Modules/Remote.qml",
         notes: "Modules/Notes.qml",
         modelusage: "Modules/ModelUsage.qml",
+        fusebox: "Modules/Fusebox.qml",
         indicators: "Modules/Indicators.qml",
         t3: "Modules/T3.qml", hermes: "Modules/Hermes.qml",
         gh: "Modules/GitHub.qml", updates: "Modules/Updates.qml",

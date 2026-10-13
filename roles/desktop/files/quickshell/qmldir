@@ -11,3 +11,5 @@ NetworkOverlayWindow NetworkOverlayWindow.qml
 OsdWindow OsdWindow.qml
 ShortcutsOverlay ShortcutsOverlay.qml
 SettingsWindow SettingsWindow.qml
+PolkitPrompt PolkitPrompt.qml
+PolkitWindow PolkitWindow.qml

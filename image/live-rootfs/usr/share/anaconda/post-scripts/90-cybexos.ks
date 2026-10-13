@@ -5,6 +5,10 @@ if getent passwd liveuser >/dev/null; then
   userdel --remove liveuser
 fi
 rm -f /etc/sudoers.d/cybexos-live
+# The live filesystem can contain the image build's wheel policy. Every fresh
+# target starts with password-required sudo; the confirmed guided choice is
+# applied by the target helper after offline provisioning.
+rm -f /etc/sudoers.d/10-wheel-nopasswd
 rm -f /etc/polkit-1/rules.d/49-cybexos-live.rules
 rm -f /var/lib/AccountsService/users/liveuser
 rm -f /etc/systemd/system/multi-user.target.wants/cybexos-live.service

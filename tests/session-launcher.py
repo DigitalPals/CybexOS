@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -14,6 +15,25 @@ import jinja2
 
 
 ROOT = Path(__file__).resolve().parents[1]
+AUTOSTART_DRIVER = '''
+local start
+local calls = 0
+hl = {
+  on = function(event, callback)
+    assert(event == "hyprland.start" and start == nil)
+    start = callback
+  end,
+  exec_cmd = function(command)
+    calls = calls + 1
+    io.write(command)
+  end,
+}
+dofile(arg[1])
+assert(calls == 0, "services must wait for the compositor's startup event")
+assert(start, "the session startup callback was not registered")
+start()
+assert(calls == 1, "session publication must stay in one ordered process")
+'''
 COMPOSITOR = '''#!/usr/bin/python3
 import json, os, signal, sys
 from pathlib import Path
@@ -26,6 +46,89 @@ if os.environ['FIXTURE_EXIT'] == 'kill':
 else:
     sys.exit(int(os.environ['FIXTURE_EXIT']))
 '''
+
+
+class SessionAutostartTests(unittest.TestCase):
+    """Execute the startup event against each installation's helper layout.
+
+    Development mode on an ISO reads the unmodified checkout Lua, bypassing
+    the image packager's /usr/local/libexec -> /usr/libexec rewriting.
+    """
+
+    def exercise(self, layout, *, missing=False, nonexecutable_local=False):
+        with tempfile.TemporaryDirectory(prefix='cybex-session-start.') as directory:
+            root = Path(directory) / 'fixture root'
+            binaries = root / 'bin'
+            binaries.mkdir(parents=True)
+            log = root / 'calls.log'
+            local = root / 'usr/local/libexec/cybexos-hyprland-session-start'
+            packaged = root / 'usr/libexec/cybexos-hyprland-session-start'
+            starter = local if layout == 'checkout' else packaged
+            if not missing:
+                starter.parent.mkdir(parents=True)
+                shutil.copyfile(ROOT / 'roles/desktop/files/hyprland-session-start', starter)
+                starter.chmod(0o755)
+            if nonexecutable_local:
+                local.parent.mkdir(parents=True)
+                local.write_text('not executable\n')
+                local.chmod(0o644)
+            source = (ROOT / 'roles/desktop/files/autostart.lua').read_text()
+            if layout == 'image':
+                # Keep the packaging rule tied to the actual image builder;
+                # the development case deliberately omits this transform.
+                rule = 'content.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-")'
+                self.assertIn(rule, (ROOT / 'image/package').read_text())
+                source = source.replace('/usr/local/libexec/cybexos-', '/usr/libexec/cybexos-')
+            autostart = root / 'autostart.lua'
+            autostart.write_text(source)
+            selected = subprocess.run(['luajit', '-', str(autostart)], input=AUTOSTART_DRIVER,
+                                      text=True, capture_output=True, timeout=5)
+            self.assertEqual(selected.returncode, 0, selected.stderr)
+            command = selected.stdout
+            # Redirect only absolute helper paths into this disposable tree;
+            # execute the emitted shell logic and real ordered starter.
+            for prefix in ('/usr/local/libexec', '/usr/libexec'):
+                command = command.replace(prefix, shlex.quote(str(root / prefix.lstrip('/'))))
+            for name in ('systemctl', 'dbus-update-activation-environment', 'sleep'):
+                executable = binaries / name
+                executable.write_text('#!/bin/sh\n'
+                                      f'printf "%s %s\\n" {shlex.quote(name)} "$*" >>"$SESSION_TEST_LOG"\n')
+                executable.chmod(0o755)
+            environment = dict(os.environ, PATH=f'{binaries}:/usr/bin:/bin',
+                               XDG_RUNTIME_DIR=str(root / 'run'), SESSION_TEST_LOG=str(log),
+                               WAYLAND_DISPLAY='wayland-fixture', XDG_CURRENT_DESKTOP='Hyprland',
+                               HYPRLAND_INSTANCE_SIGNATURE='fixture')
+            result = subprocess.run(['sh', '-c', command], env=environment,
+                                    text=True, capture_output=True, timeout=5)
+            if missing:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('cybexos-hyprland-session-start', result.stderr)
+                self.assertFalse(log.exists())
+                return []
+            self.assertEqual(result.returncode, 0, result.stderr)
+            calls = log.read_text().splitlines()
+            self.assertEqual(calls, [
+                'systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE',
+                'dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE',
+                'systemctl --user start hyprland-session.target',
+                'sleep 1',
+                'systemctl --user restart xdg-desktop-portal-hyprland.service xdg-desktop-portal.service',
+            ])
+            return calls
+
+    def test_checkout_image_and_image_development_start_the_same_session(self):
+        expected = self.exercise('checkout')
+        for layout in ('image', 'image-development'):
+            with self.subTest(layout=layout):
+                self.assertEqual(self.exercise(layout), expected)
+
+    def test_image_development_ignores_nonexecutable_local_helper(self):
+        self.exercise('image-development', nonexecutable_local=True)
+
+    def test_missing_helper_fails_without_starting_session_services(self):
+        for layout in ('checkout', 'image', 'image-development'):
+            with self.subTest(layout=layout):
+                self.exercise(layout, missing=True)
 
 
 class SessionLauncherTests(unittest.TestCase):

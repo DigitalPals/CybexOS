@@ -96,34 +96,21 @@ test("Inbox reads use conditional HTTP polling and preserve partial caches", () 
     assert.match(active, /rateLimited\(\)/);
 });
 
-test("a stalled gh read is bounded by a watchdog that releases the queue", () => {
+test("gh requests use the bounded transport and keep interactive deadlines", () => {
     const source = read("Common/GitHub.qml");
-    const pump = source.match(/function pump\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
-    assert.match(pump,
-        /ghWatchdog\.interval = Helpers\.ghTimeoutMs\(job\);\s*ghWatchdog\.restart\(\);\s*ghProc\.running = true;/,
-        "the watchdog is armed before launch so a synchronous failed start disarms it");
-    const fired = source.match(/function ghWatchdogFired\(\)[\s\S]*?\n    \}/)?.[0] ?? "";
-    assert.match(fired, /ghProc\.timedOut = true[\s\S]*ghProc\.running = false/,
-        "first firing terminates through the normal falling edge");
-    assert.match(fired, /ghProc\.signal\(9\)[\s\S]*ghProc\.abandoned = true;\s*settle\(Helpers\.GH_TIMEOUT_EXIT/,
-        "a process that ignores SIGTERM is killed and its job settled directly");
-    const proc = source.match(/Process \{\s*id: ghProc[\s\S]*?\n    \}/)?.[0] ?? "";
-    assert.match(proc, /ghWatchdog\.stop\(\)/);
-    assert.match(proc, /if \(abandoned\) \{[\s\S]*root\.pump\(\);\s*return;/,
-        "an abandoned job must not settle twice");
-    assert.match(proc, /if \(timedOut\)\s*root\.settle\(Helpers\.GH_TIMEOUT_EXIT, "", timeoutText\)/);
-    assert.match(proc, /ProcHelpers\.NOT_STARTED/,
-        "a never-started gh still settles through the falling edge");
-    assert.match(source, /Timer \{\s*id: ghWatchdog[\s\S]*?onTriggered: root\.ghWatchdogFired\(\)/);
+    assert.match(source, /ghProc\.timeoutMs = Helpers\.ghTimeoutMs\(job\)/);
+    assert.match(source, /ghProc\.timeoutMessage = Helpers\.ghTimeoutMessage\(job\)/);
+    assert.match(source, /CommandRequest \{\s*id: ghProc/);
+    assert.match(source, /onCompleted: \(code, body, error\) => root\.settle\(code, body, error\)/);
+    assert.match(source, /onAvailable: root\.pump\(\)/);
     const helpers = load("GitHubHelpers.js");
     assert.equal(helpers.globalInboxFailure(helpers.GH_TIMEOUT_EXIT,
-        helpers.ghTimeoutMessage({ interactive: false })), true,
-        "a timed-out Inbox read pauses the sweep with backoff");
+        helpers.ghTimeoutMessage({ interactive: false })), true);
 });
 
 test("interactive reads outrank polling and stale Inbox scopes are rejected", () => {
     const source = read("Common/GitHub.qml");
-    assert.match(source, /firstBackground = queue\.findIndex\(queued => !queued\.interactive\)/);
+    assert.match(source, /Queue\.enqueue\(queue, active, job\)/);
     assert.match(source, /kind: "commits"[\s\S]{0,180}?interactive: true/);
     assert.match(source, /kind: "stats"[\s\S]{0,100}?interactive: true/);
     assert.match(source, /job\.generation !== scopeGeneration \|\| inboxSweep === null/);

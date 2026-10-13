@@ -1,0 +1,12 @@
+#!/usr/bin/bash
+# Boot-only recovery: never expose a partially updated system to a new login.
+set -uo pipefail
+helper=$(dirname -- "$(readlink -f -- "$0")")/cybexos-update-transaction
+"$helper" recover
+result=$?
+if ((result == 75)); then
+  systemctl --no-block reboot || exit 1
+  # Keep the boot ordering barrier until shutdown takes over.
+  exec sleep infinity
+fi
+exit "$result"

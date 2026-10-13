@@ -38,13 +38,11 @@ hl.config({
     -- Match Quickshell's Theme.hugCornerSize so tiled window corners continue
     -- the menubar's inverted edge curve at the reserved boundary.
     rounding = 16,
-    -- In glass mode every menubar and panel surface is a translucent tint over
-    -- whatever is behind it, and without a real blur they read as smeared
-    -- plastic. Three passes at this radius
-    -- is the point where the wallpaper stops being legible through the bar;
+    -- Blur separates translucent surfaces from the wallpaper. One pass keeps
+    -- compositing work down on high-resolution, high-refresh-rate displays;
     -- vibrancy stands in for the design's saturate(1.7).
     blur = {
-      enabled = true, size = 6, passes = 3, new_optimizations = true,
+      enabled = true, size = 6, passes = 1, new_optimizations = true,
       vibrancy = 0.25, noise = 0.012,
     },
     shadow = { enabled = true, range = 4, render_power = 3, color = "rgba(1a1917ee)" },
@@ -246,7 +244,7 @@ quickshell_blur_rule = hl.layer_rule({
   ignore_alpha = 0.1,
 })
 
--- Power saver trades compositor polish for battery: one blur pass and no
+-- Power saver keeps blur to one pass and disables
 -- animations. Quickshell calls cybexos_power_saver() through `hyprctl eval`
 -- when it starts and whenever the power profile changes. What the saver
 -- replaced is read live and kept in _G, which outlives a config reload: a
@@ -279,10 +277,10 @@ if power_saver.restore then hl.config(power_saver_config) end
 hl.window_rule({ match = { title = [[^CybexOS Settings$]] }, float = true, center = true })
 -- The first-login welcome floats in the middle of the screen it opens on, at
 -- half the monitor's width and 48% of its height (1280x692 on a 2560x1440
--- desktop), and never below the window's own minimum of 760x580. Sizes are
+-- desktop), and never below the window's own minimum of 760x660. Sizes are
 -- expressions: Hyprland 0.56 ignores "50%"-style strings, and the client's
 -- own guess is sized for Qt's primary screen, not necessarily this one.
-hl.window_rule({ match = { class = [[^cybex$]], title = [[^Welcome to CybexOS$]] }, float = true, center = true, size = "max(760,monitor_w*0.5) max(580,monitor_h*0.48)" })
+hl.window_rule({ match = { class = [[^cybex$]], title = [[^Welcome to CybexOS$]] }, float = true, center = true, size = "max(760,monitor_w*0.5) max(660,monitor_h*0.48)" })
 hl.window_rule({ match = { class = [[xdg-desktop-portal-gtk]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Properties]] }, float = true })
 hl.window_rule({ match = { class = [[org\.gnome\.Nautilus]], title = [[Open.*]] }, float = true })

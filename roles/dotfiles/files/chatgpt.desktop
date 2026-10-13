@@ -2,7 +2,7 @@
 Name=ChatGPT
 Comment=ChatGPT by OpenAI
 GenericName=AI assistant
-Exec=chatgpt %U
+Exec=chatgpt --ozone-platform=wayland %U
 Icon=chatgpt
 Type=Application
 Terminal=false

@@ -26,6 +26,7 @@ Item {
   function begin(account, label) {
     if (active || busy || usageBackend.usageSource !== "cliproxy" || !account
         || account.id !== "codex" || account.status !== "ok"
+        || account.supportsBankedReset === false
         || !(Number(account.credits && account.credits.resetCreditsAvailable) > 0)
         || !account.accountId) return false
     accountId = String(account.accountId)

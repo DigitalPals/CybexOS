@@ -35,9 +35,7 @@ BarModule {
         // same brighter hover foreground as every other menubar icon.
         hoverColor: root.critical ? Theme.barRedText
             : root.low ? Theme.barAmber : Theme.barTextHi
-        tooltip: "Battery " + root.level + "%"
-            + (Battery.charging ? " · charging"
-                : Battery.full ? " · fully charged" : "")
+        tooltip: "Battery " + root.level + "% · " + Battery.statusText
         tooltipAlign: 1
 
         Item {

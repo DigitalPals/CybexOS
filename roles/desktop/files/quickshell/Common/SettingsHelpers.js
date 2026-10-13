@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 26;
+var VERSION = 28;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -37,20 +37,25 @@ var IDLE_SUSPEND_MINS = [0, 15, 30, 60, 120];
 // Schema 25 retired `usage`, the first built-in model usage widget, and its
 // drawer tab. Schema 26 builds Model Usage in as `modelusage`, vendored from
 // the digitalpals.model-usage Omarchy plugin (see ModelUsage/README.md).
+// Schema 28 adds `fusebox`, the Fusebox server widget, beside Model Usage.
 var MODULE_IDS = [
-    "ws", "media", "indicators", "clock", "weather", "notes", "modelusage", "updates", "gh",
-    "t3", "hermes", "tray",
+    "ws", "media", "indicators", "clock", "weather", "notes", "modelusage", "fusebox", "updates", "gh",
+    "t3", "hermes", "remote", "tray",
     "notifications", "vol", "wifi", "bt", "batt", "control"
 ];
 
 var RETIRED_MODULE_IDS = ["bell", "idle", "usage"];
+
+// Widgets for services the user signs in to. They start on only when the
+// install's connected-service feature is selected (CYBEXOS_CONNECTED_WIDGETS).
+var CONNECTED_WIDGET_IDS = ["modelusage", "fusebox", "gh", "t3", "hermes"];
 
 // Model Usage's quota providers, and the ones it can estimate costs for from
 // local transcripts.
 var MODEL_USAGE_PROVIDERS = ["claude", "codex", "kimi"];
 var MODEL_USAGE_COST_PROVIDERS = ["claude", "codex"];
 
-var DETAIL_IDS = ["media", "weather", "clock", "t3", "hermes", "gh", "updates",
+var DETAIL_IDS = ["remote", "media", "weather", "clock", "t3", "hermes", "gh", "updates",
     "notifications", "vol", "batt"];
 var DETAIL_POLICIES = ["auto", "prefer", "compact"];
 
@@ -216,8 +221,9 @@ function defaultMods() {
         center: [mod("indicators", true), mod("clock", true), mod("weather", false),
             mod("notes", true)],
         right: [
-            mod("modelusage", false), mod("updates", true), mod("gh", false), mod("t3", false),
-            mod("hermes", false),
+            mod("modelusage", false), mod("fusebox", false), mod("updates", true), mod("gh", false),
+            mod("t3", false),
+            mod("hermes", false), mod("remote", true),
             mod("tray", false), mod("notifications", true), mod("vol", true),
             mod("wifi", true), mod("bt", true), mod("batt", true), mod("control", true)
         ]
@@ -254,6 +260,7 @@ function defaultModOpts() {
             seconds: false, showDate: true, dateFormat: "ddd dd",
             showEvents: true, daysAhead: 14, pollMins: 15
         },
+        remote: { host: "", label: "", metric: "cpu", mount: "/", interface: "", showLabel: true, pollSecs: 5 },
         weather: { place: "", lat: 0, lon: 0, pollMins: 20 },
         notes: {
             titleProvider: "off",
@@ -264,6 +271,9 @@ function defaultModOpts() {
         },
         t3: { showLabel: true },
         hermes: { showLabel: true, activityDetail: "verb" },
+        // The management key is not a setting: scripts/fusebox.py keeps it in
+        // a private file of its own.
+        fusebox: { url: "", metric: "sessions", quotaDisplay: "used", hideEmails: true, notify: false },
         // The upstream plugin's manifest defaults, key for key. Its panel
         // reads and saves this object as its settings.
         modelusage: {
@@ -273,6 +283,7 @@ function defaultModOpts() {
             cliproxyUrl: "http://127.0.0.1:8317",
             cliproxyKeyFile: "",
             hideAccountEmails: true,
+            liveAccountActivity: true,
             squareUsageCards: true,
             barDisplayMode: "Percentages",
             barProviders: MODEL_USAGE_PROVIDERS.slice(),
@@ -359,7 +370,7 @@ function defaults() {
         glassEnabled: false,
         highContrast: false,
         reducedMotion: false,
-        shellFontSize: 12,
+        shellFontSize: 14,
         shellScale: 100,
         surfaceBorderMode: "accent",
         surfaceBorderColor: "#9ecbeb",
@@ -844,6 +855,15 @@ var MOD_OPT_CHECKS = {
             return enumIn(v, ["ddd dd", "ddd d MMM", "dd MMM", "dd-MM"], d);
         }
     },
+    remote: {
+        host: function(v, d) { return textIn(v, 254, d).trim(); },
+        label: function(v, d) { return textIn(v, 40, d).trim(); },
+        metric: function(v, d) { return enumIn(v, ["cpu", "load", "memory", "memoryUsed", "memoryFree", "disk", "diskFree", "rx", "tx", "temperature"], d); },
+        mount: function(v, d) { return textIn(v, 256, d); },
+        interface: function(v, d) { return textIn(v, 64, d).trim(); },
+        showLabel: boolIn,
+        pollSecs: function(v, d) { return intIn(v, 2, 60, 1, d); }
+    },
     weather: {
         place: function(v, d) { return textIn(v, 40, d); },
         lat: function(v, d) { return realIn(v, -90, 90, 0.0001, d); },
@@ -860,6 +880,13 @@ var MOD_OPT_CHECKS = {
         claudeEffort: function(v, d) { return enumIn(v, NOTE_CLAUDE_EFFORTS, d); }
     },
     t3: { showLabel: boolIn },
+    fusebox: {
+        url: function(v, d) { return textIn(v, 512, d).trim(); },
+        metric: function(v, d) { return enumIn(v, ["sessions", "serving", "rpm", "faults"], d); },
+        quotaDisplay: function(v, d) { return enumIn(v, ["used", "remaining"], d); },
+        hideEmails: boolIn,
+        notify: boolIn
+    },
     hermes: {
         showLabel: boolIn,
         activityDetail: function(v, d) {
@@ -877,6 +904,7 @@ var MOD_OPT_CHECKS = {
         cliproxyUrl: function(v, d) { return textIn(v, 400, d); },
         cliproxyKeyFile: function(v) { return optionalTextIn(v, 4096); },
         hideAccountEmails: boolIn,
+        liveAccountActivity: boolIn,
         squareUsageCards: boolIn,
         barDisplayMode: function(v, d) { return enumIn(v, ["Icon", "Percentages"], d); },
         barProviders: function(v, d) {
@@ -970,18 +998,7 @@ function migrateModOpts(raw, sourceVersion, rawSettings) {
         next.indicators.order.splice(recordingIndex === -1
             ? next.indicators.order.length : recordingIndex + 1, 0, "ocr");
 
-        var priorIds = INDICATOR_ACTION_IDS.filter(function(id) {
-            return id !== "ocr";
-        });
-        var priorEnabled = Array.isArray(rawIndicators.enabled)
-            && priorIds.every(function(id) {
-                return rawIndicators.enabled.indexOf(id) !== -1;
-            });
-        if (priorEnabled) {
-            var enabledRecordingIndex = next.indicators.enabled.indexOf("recording");
-            next.indicators.enabled.splice(enabledRecordingIndex === -1
-                ? next.indicators.enabled.length : enabledRecordingIndex + 1, 0, "ocr");
-        }
+
     }
     return next;
 }
@@ -1121,146 +1138,47 @@ function migrateMods(raw, sourceVersion, context) {
             detail: "auto"
         });
     }
+
+    // Schema 28 adds the Fusebox server widget immediately after Model Usage,
+    // following it to whichever column and position the user chose. It is a
+    // connected-service widget too.
+    var fuseboxPresent = ["left", "center", "right"].some(function(col) {
+        return migrated[col].some(function(entry) {
+            return entry && entry.id === "fusebox";
+        });
+    });
+    if ((typeof sourceVersion !== "number" || sourceVersion < 28)
+            && !fuseboxPresent) {
+        var fusebox = { id: "fusebox", on: !!(context && context.connectedWidgets), detail: "auto" };
+        var placed = ["left", "center", "right"].some(function(col) {
+            var usageIndex = migrated[col].findIndex(function(entry) {
+                return entry && entry.id === "modelusage";
+            });
+            if (usageIndex === -1)
+                return false;
+            migrated[col].splice(usageIndex + 1, 0, fusebox);
+            return true;
+        });
+        if (!placed)
+            migrated.right.unshift(fusebox);
+    }
     return normalizeMods(migrated);
 }
 
-// Schema 4 is the glass menubar: a taller bar, full-radius corners, a wider
-// floating gap and the design's accent. A settings file written by schema 3
-// carries the old geometry for every one of those keys, so loading it as-is
-// would silently keep the previous design's proportions.
-//
-// Only values the user never moved are adopted — a key still holding its
-// schema-3 default takes the schema-4 one, anything else is theirs and stays.
-var V3_DEFAULTS = {
-    barHeight: 30, barRadius: 9, gap: 8, accent: "#9ecbeb", font: "oppo",
-    osd: "top"
-};
+// Stored legacy values are explicit choices, even when equal to an old
+// default. Visual redesigns must never infer ownership from value equality.
 
-var V3_MOD_OPT_DEFAULTS = {
-    ws: { style: "numbers" },
-    media: { maxWidth: 220 },
-    clock: { dateFormat: "ddd dd" }
-};
-
-function adoptRedesign(parsed) {
-    if (!parsed || typeof parsed !== "object"
-            || (typeof parsed.v === "number" && parsed.v >= 4))
-        return parsed;
-    var next = clone(parsed);
-    Object.keys(V3_DEFAULTS).forEach(function(key) {
-        if (next[key] === V3_DEFAULTS[key])
-            delete next[key];
-    });
-    if (next.modOpts && typeof next.modOpts === "object") {
-        Object.keys(V3_MOD_OPT_DEFAULTS).forEach(function(id) {
-            var entry = next.modOpts[id];
-            if (!entry || typeof entry !== "object")
-                return;
-            Object.keys(V3_MOD_OPT_DEFAULTS[id]).forEach(function(key) {
-                if (entry[key] === V3_MOD_OPT_DEFAULTS[id][key])
-                    delete entry[key];
-            });
-        });
-    }
-    return next;
-}
-
-// Schema 7 makes the softer variable face the shell default. As with the
-// schema-4 redesign, a stored value equal to the previous default is treated
-// as untouched; every other valid font remains an explicit user choice.
-function adoptSofterTypography(parsed) {
-    if (!parsed || typeof parsed !== "object"
-            || (typeof parsed.v === "number" && parsed.v >= 7))
-        return parsed;
-    var next = clone(parsed);
-    if (next.font === undefined || next.font === "urbanist")
-        next.font = "google";
-    return next;
-}
-
-// Schema 10 restores the compact August menubar shown in the repository's
-// desktop screenshot, without reviving its fixed layout. As with the earlier
-// redesign migration, only values still equal to schema 9's defaults move to
-// the new visual baseline; customized geometry, glass, colors and workspace
-// presentation remain the user's choices.
-var V9_CLASSIC_DEFAULTS = {
-    glassEnabled: true,
-    barHeight: 46,
-    barRadius: 23,
-    gap: 10,
-    accent: "#5e9bff"
-};
-
-var V9_CLASSIC_MOD_OPT_DEFAULTS = {
-    ws: { style: "dots" },
-    clock: { dateFormat: "ddd d MMM" }
-};
-
-function adoptClassicMenubar(parsed) {
-    if (!parsed || typeof parsed !== "object"
-            || (typeof parsed.v === "number" && parsed.v >= 10))
-        return parsed;
-    // Schema 3 and unversioned files first pass through adoptRedesign(),
-    // which already removes their untouched defaults. Do not then mistake a
-    // deliberate old-style value for schema 9's default on the second hop.
-    if (typeof parsed.v !== "number" || parsed.v < 4)
-        return parsed;
-    var next = clone(parsed);
-    var untouchedCustomColor = (next.barColorMode === undefined
-            || next.barColorMode === "default")
-        && next.barCustomHue === 247
-        && next.barCustomSaturation === 29
-        && next.barCustomLightness === 11;
-    if (untouchedCustomColor) {
-        delete next.barCustomHue;
-        delete next.barCustomSaturation;
-        delete next.barCustomLightness;
-    }
-    Object.keys(V9_CLASSIC_DEFAULTS).forEach(function(key) {
-        if (next[key] === V9_CLASSIC_DEFAULTS[key])
-            delete next[key];
-    });
-    if (next.modOpts && typeof next.modOpts === "object") {
-        Object.keys(V9_CLASSIC_MOD_OPT_DEFAULTS).forEach(function(id) {
-            var entry = next.modOpts[id];
-            if (!entry || typeof entry !== "object")
-                return;
-            Object.keys(V9_CLASSIC_MOD_OPT_DEFAULTS[id]).forEach(function(key) {
-                if (entry[key] === V9_CLASSIC_MOD_OPT_DEFAULTS[id][key])
-                    delete entry[key];
-            });
-        });
-    }
-    return next;
-}
-
-// Schema 6 replaces two booleans with explicit visual modes. A v5 floating
-// bar whose geometry was never changed becomes the new edge-hugging default;
-// customized floating geometry remains floating, and the old edge-to-edge
-// option remains attached. The fixed color values are intentionally never
-// discarded: paletteMode only chooses which palette is active.
-var V5_DEFAULTS = {
-    barHeight: 46,
-    barRadius: 23,
-    gap: 10,
-    accent: "#5e9bff",
-    barColorMode: "default",
-    barCustomHue: 247,
-    barCustomSaturation: 29,
-    barCustomLightness: 11
-};
-
+// Structural migration keeps the old mode and every explicit value. A
+// legacy file with geometry/color fields but no mode retains its old mode;
+// a sparse file with neither follows today's default.
 function migrateBarStyle(parsed, defaultsValue) {
     if (typeof parsed.v === "number" && parsed.v >= 6)
         return enumIn(parsed.barStyle, BAR_STYLES, defaultsValue);
     if (parsed.floating === false)
         return "attached";
-    var pristine = intIn(parsed.barHeight, 28, 60, 1, V5_DEFAULTS.barHeight)
-            === V5_DEFAULTS.barHeight
-        && intIn(parsed.barRadius, 0, 30, 1, V5_DEFAULTS.barRadius)
-            === V5_DEFAULTS.barRadius
-        && intIn(parsed.gap, 4, 24, 1, V5_DEFAULTS.gap) === V5_DEFAULTS.gap;
-    return pristine ? "hug" : "floating";
+    return parsed.floating === true || ["barHeight", "barRadius", "gap"].some(function(key) {
+        return Object.prototype.hasOwnProperty.call(parsed, key);
+    }) ? "floating" : defaultsValue;
 }
 
 function migratePaletteMode(parsed, defaultsValue) {
@@ -1268,30 +1186,27 @@ function migratePaletteMode(parsed, defaultsValue) {
         return enumIn(parsed.paletteMode, PALETTE_MODES, defaultsValue);
     if (parsed.accentWall === true)
         return "wallpaper";
-    var accent = hexIn(parsed.accent, V5_DEFAULTS.accent).toLowerCase();
-    var barMode = enumIn(parsed.barColorMode, BAR_COLOR_IDS,
-        V5_DEFAULTS.barColorMode);
-    var customHue = intIn(parsed.barCustomHue, 0, 359, 1,
-        V5_DEFAULTS.barCustomHue);
-    var customSaturation = intIn(parsed.barCustomSaturation, 0, 100, 1,
-        V5_DEFAULTS.barCustomSaturation);
-    var customLightness = intIn(parsed.barCustomLightness, 0, 100, 1,
-        V5_DEFAULTS.barCustomLightness);
-    return accent === V5_DEFAULTS.accent && barMode === V5_DEFAULTS.barColorMode
-        && customHue === V5_DEFAULTS.barCustomHue
-        && customSaturation === V5_DEFAULTS.barCustomSaturation
-        && customLightness === V5_DEFAULTS.barCustomLightness
-        ? "wallpaper" : "fixed";
+    return parsed.accentWall === false || ["accent", "barColorMode", "barCustomHue",
+        "barCustomSaturation", "barCustomLightness"].some(function(key) {
+        return Object.prototype.hasOwnProperty.call(parsed, key);
+    }) ? "fixed" : defaultsValue;
 }
 
 // `context.connectedWidgets` is the install's connected-service feature; it
 // decides whether a widget that schema migration adds starts on.
 function merge(raw, context) {
     var d = defaults();
+    if (context && context.connectedWidgets) {
+        ["left", "center", "right"].forEach(function(column) {
+            d.mods[column].forEach(function(entry) {
+                if (CONNECTED_WIDGET_IDS.indexOf(entry.id) !== -1)
+                    entry.on = true;
+            });
+        });
+    }
     if (!raw || typeof raw !== "object")
         return d;
-    var parsed = adoptClassicMenubar(
-        adoptSofterTypography(adoptRedesign(raw)));
+    var parsed = raw;
     var idleMode = enumIn(parsed.idleInhibitMode,
         ["off", "30m", "1h", "unplugged", "always"],
         parsed.idleInhibited === true ? "always" : d.idleInhibitMode);
@@ -1375,7 +1290,7 @@ function merge(raw, context) {
         drawerOverview: normalizeDrawerOverview(parsed.drawerOverview),
         drawerHover: enumIn(parsed.drawerHover, DRAWER_HOVER_MODES, d.drawerHover),
         drawerWidth: intIn(parsed.drawerWidth, 320, 480, 10, d.drawerWidth),
-        mods: migrateMods(parsed.mods, parsed.v, context),
+        mods: parsed.mods === undefined ? d.mods : migrateMods(parsed.mods, parsed.v, context),
         modOpts: migrateModOpts(parsed.modOpts, parsed.v, parsed)
     };
 }
@@ -1487,6 +1402,131 @@ function serialize(settings) {
     return JSON.stringify(ordered, null, 2) + "\n";
 }
 
+// Presence is ownership: a value explicitly set to today's default remains
+// an override. New files are sparse; every stored legacy key is conservatively
+// adopted as explicit. Unknown fields are carried through without validation.
+function overrideKeys(raw) {
+    var known = defaults();
+    return Object.keys(raw || {}).filter(function(key) {
+        return Object.prototype.hasOwnProperty.call(known, key)
+            && JSON.stringify(unknownFields(raw[key], known[key])) !== JSON.stringify(raw[key]);
+    });
+}
+
+function unknownFields(original, schema) {
+    if (!original || typeof original !== "object")
+        return undefined;
+    if (Array.isArray(original)) {
+        if (!Array.isArray(schema))
+            return undefined;
+        var entries = [];
+        original.forEach(function(item) {
+            if (!item || typeof item.id !== "string")
+                return;
+            var known = schema.find(function(value) { return value && value.id === item.id; });
+            if (!known) {
+                entries.push(clone(item));
+                return;
+            }
+            var extra = unknownFields(item, known);
+            if (extra) {
+                extra.id = item.id;
+                entries.push(extra);
+            }
+        });
+        return entries.length ? entries : undefined;
+    }
+    if (!schema || typeof schema !== "object")
+        return undefined;
+    var out = {};
+    Object.keys(original).forEach(function(key) {
+        if (key === "__proto__" || key === "constructor" || key === "prototype")
+            return;
+        var value = Object.prototype.hasOwnProperty.call(schema, key)
+            ? unknownFields(original[key], schema[key]) : clone(original[key]);
+        if (value !== undefined)
+            out[key] = value;
+    });
+    return Object.keys(out).length ? out : undefined;
+}
+
+function preserveUnknown(original, replacement) {
+    if (Array.isArray(replacement)) {
+        if (!Array.isArray(original))
+            return clone(replacement);
+        // Layout entries carry stable ids. Preserve future entries and fields
+        // while retaining the current user's ordering of understood entries.
+        if (replacement.every(function(item) { return item && typeof item.id === "string"; })) {
+            var result = replacement.map(function(item) {
+                return preserveUnknown(original.find(function(old) {
+                    return old && old.id === item.id;
+                }), item);
+            });
+            original.forEach(function(item) {
+                if (item && typeof item.id === "string"
+                        && !replacement.some(function(next) { return next.id === item.id; }))
+                    result.push(clone(item));
+            });
+            return result;
+        }
+        return clone(replacement);
+    }
+    if (!replacement || typeof replacement !== "object")
+        return clone(replacement);
+    var out = original && typeof original === "object" && !Array.isArray(original)
+        ? clone(original) : {};
+    Object.keys(replacement).forEach(function(key) {
+        if (key !== "__proto__" && key !== "constructor" && key !== "prototype")
+            out[key] = preserveUnknown(out[key], replacement[key]);
+    });
+    return out;
+}
+
+function rebaseDocuments(base, desired, current, path) {
+    if (JSON.stringify(desired) === JSON.stringify(base)
+            || JSON.stringify(desired) === JSON.stringify(current))
+        return current;
+    if (JSON.stringify(current) === JSON.stringify(base))
+        return desired;
+    if (base && desired && current && [base, desired, current].every(function(value) {
+        return typeof value === "object" && !Array.isArray(value);
+    })) {
+        var out = clone(current);
+        Object.keys(base).concat(Object.keys(desired)).forEach(function(key) {
+            if (key === "__proto__" || key === "constructor" || key === "prototype")
+                return;
+            if (!path && key === "v") {
+                out.v = desired.v;
+                return;
+            }
+            var result = rebaseDocuments(base[key], desired[key], current[key], (path || "") + "/" + key);
+            if (result === undefined)
+                delete out[key];
+            else
+                out[key] = result;
+        });
+        return out;
+    }
+    throw new Error("Another writer changed " + (path || "/") + "; reload before retrying");
+}
+
+function serializeDocument(settings, original, explicitKeys) {
+    var out = clone(original || {});
+    out.v = VERSION;
+    Object.keys(defaults()).forEach(function(key) {
+        if (explicitKeys.indexOf(key) !== -1)
+            out[key] = preserveUnknown(out[key], settings[key]);
+        else {
+            var extra = unknownFields(out[key], defaults()[key]);
+            if (extra === undefined)
+                delete out[key];
+            else
+                out[key] = extra;
+        }
+    });
+    return JSON.stringify(out, null, 2) + "\n";
+}
+
 // Distinguishing "no settings yet" from "settings we could not read" is what
 // keeps a corrupt file recoverable: both merge to defaults, but only the empty
 // case may be overwritten. Returns { status, value } where status is one of:
@@ -1514,6 +1554,7 @@ var exported = {
     PALETTE_MODES: PALETTE_MODES,
     MODULE_IDS: MODULE_IDS,
     RETIRED_MODULE_IDS: RETIRED_MODULE_IDS,
+    CONNECTED_WIDGET_IDS: CONNECTED_WIDGET_IDS,
     MODULE_GROUPS: MODULE_GROUPS,
     NOTIFICATION_GROUPS: NOTIFICATION_GROUPS,
     INDICATOR_ACTION_CHOICES: INDICATOR_ACTION_CHOICES,
@@ -1579,6 +1620,11 @@ var exported = {
     normalizeKey: normalizeKey,
     isNewerSchema: isNewerSchema,
     serialize: serialize,
+    overrideKeys: overrideKeys,
+    preserveUnknown: preserveUnknown,
+    unknownFields: unknownFields,
+    serializeDocument: serializeDocument,
+    rebaseDocuments: rebaseDocuments,
     parse: parse
 };
 

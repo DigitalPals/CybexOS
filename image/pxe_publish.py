@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
 
@@ -63,39 +64,63 @@ class IVentoy:
         if parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost", "::1"):
             raise ValueError("Run this tool on the PXE server and use its loopback iVentoy URL")
         self.url, self.contract, self.timeout = url, contract, timeout
-        self.request = request or self._request
+        self.request = request
         self.sleep, self.clock = sleep, clock
         required = {"pxe_status_pointer", "pxe_running_value", "refresh_busy_pointer", "refresh_idle_value", "refresh_busy_value"}
         if not required.issubset(contract) or contract["refresh_idle_value"] == contract["refresh_busy_value"]:
             raise ValueError("Incomplete iVentoy API contract")
 
-    def _request(self, method):
+    def _request(self, method, timeout):
         request = urllib.request.Request(self.url, json.dumps({"method": method}).encode(), {"Content-Type": "application/json"})
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.load(response)
 
-    def wait_idle(self):
-        deadline = self.clock() + self.timeout
+    def _query(self, method, deadline):
+        remaining = deadline - self.clock()
+        if remaining <= 0:
+            raise RuntimeError("iVentoy refresh verification deadline exceeded")
+        response = (self.request(method) if self.request is not None else
+                    self._request(method, min(30, remaining)))
+        if self.clock() >= deadline:
+            raise RuntimeError("iVentoy refresh verification deadline exceeded")
+        return response
+
+    def _pause(self, deadline):
+        self.sleep(max(0, min(2, deadline - self.clock())))
+
+    def wait_idle(self, deadline=None, retry_timeouts=False):
+        deadline = self.clock() + self.timeout if deadline is None else deadline
         while self.clock() < deadline:
-            if not validate_status(self.request("query_status"), self.contract):
+            try:
+                status = self._query("query_status", deadline)
+            except (TimeoutError, urllib.error.URLError) as error:
+                # The accepted scan can temporarily block iVentoy's HTTP
+                # thread. Retry only this read, never an ambiguous refresh
+                # mutation, malformed JSON, or another transport error.
+                timed_out = isinstance(error, TimeoutError) or isinstance(error.reason, TimeoutError)
+                if not retry_timeouts or not timed_out:
+                    raise
+                self._pause(deadline)
+                continue
+            if not validate_status(status, self.contract):
                 return
-            self.sleep(2)
-        raise RuntimeError("iVentoy remained busy; published files are retained for a later refresh")
+            self._pause(deadline)
+        raise RuntimeError("iVentoy did not confirm an idle, running PXE service before the deadline; published files are retained")
 
     def refresh(self, filename):
         deadline = self.clock() + self.timeout
         while self.clock() < deadline:
-            self.wait_idle()
-            result = self.request("refresh_img_list")
+            self.wait_idle(deadline)
+            result = self._query("refresh_img_list", deadline)
             if result.get("result") == "success":
                 break
             if result.get("result") != "busy":
                 raise RuntimeError(f"iVentoy rejected refresh: {result.get('result')!r}")
-            self.sleep(2)
+            self._pause(deadline)
         else:
             raise RuntimeError("iVentoy refresh request remained busy")
-        self.wait_idle()
-        tree = self.request("get_img_tree")
+        self.wait_idle(deadline, retry_timeouts=True)
+        tree = self._query("get_img_tree", deadline)
         if not isinstance(tree, list) or not tree_contains(tree, filename):
             raise RuntimeError("iVentoy did not list the published filename")
 

@@ -7,7 +7,7 @@ Type=simple
 Environment=HOME={{ primary_home }}
 Environment=PATH={{ primary_home }}/.local/bin:/usr/local/bin:/usr/bin
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 {{ primary_home }}/.local/libexec/hermes-menubar-bridge --listen 127.0.0.1 --port 9120 --remote-only --state {{ primary_home }}/.local/state/hermes-menubar/conversations.json --remote-auth-state {{ primary_home }}/.local/state/hermes-menubar/remote-webui-auth.json
+ExecStart=/usr/bin/python3 {{ hermes_bridge_executable | default(primary_home + "/.local/libexec/hermes-menubar-bridge") }} --listen 127.0.0.1 --port 9120 --remote-only --state {{ primary_home }}/.local/state/hermes-menubar/conversations.json --remote-auth-state {{ primary_home }}/.local/state/hermes-menubar/remote-webui-auth.json
 # The bridge exits cleanly only when asked to stop. A crash is retried quickly
 # at first, but the delay grows to 5 minutes so a startup failure (port taken,
 # missing python3-websockets, unwritable state) cannot restart it every two

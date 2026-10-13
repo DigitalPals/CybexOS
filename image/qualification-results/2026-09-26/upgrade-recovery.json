@@ -1,0 +1,28 @@
+{
+  "bootstrap": "recognized disk-unlock prompt; bounded graphical SSH setup",
+  "candidate_rpm_sha256": "e42fa8fdab34eab40d32e93fea9b8c9399abdff1c5be40d8f60207984c41ed8b",
+  "checks": [
+    "legacy-installer-only-session-desktop-bootstrap",
+    "live-boot-and-offline-applications",
+    "graphical-installer",
+    "encrypted-installation",
+    "unused-disk-unchanged",
+    "installed-boot-without-iso",
+    "encrypted-btrfs",
+    "autologin",
+    "desktop-parity",
+    "selected-locale-timezone-keyboard",
+    "live-cleanup",
+    "selinux-enforcing",
+    "installed-rpm-upgrade",
+    "recovery-boot-restore"
+  ],
+  "firmware": "uefi",
+  "iso_sha256": "9b6d480e558590dfc257b6b661f221e3c479c9703ebcefa5f5dad517018c235a",
+  "legacy_session_bootstrap": "activated full desktop target from baseline installer-only session",
+  "network": "outbound-blocked",
+  "scenario": "encrypted-us",
+  "scope": "QEMU fixture; does not qualify physical hardware or Secure Boot",
+  "source_revision": "bd049540852c2c6442e8d7ed694e2c27de4f3550",
+  "status": "passed"
+}

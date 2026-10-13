@@ -5,48 +5,52 @@ description: Operate and customize an installed CybexOS Hyprland/Quickshell work
 
 # CybexOS
 
-Use this skill for the installed [CybexOS](https://github.com/DigitalPals/CybexOS)
+Use this skill for an installed [CybexOS](https://github.com/DigitalPals/CybexOS)
 desktop (Cybex Opinionated System). Codex can invoke it as `$cybexos`; Claude
-Code exposes the same skill as `/cybexos`. It also supports implicit
-invocation through the description above.
+Code exposes the same skill as `/cybexos`. Its description also supports
+automatic selection.
 
-## Establish the installation
+## Identify the installation
 
-Read the active release through
-`~/.local/share/cybexos/current`. It is useful for diagnostics, command
-source, schemas, and tests, but it is release-managed and read-only.
+Check `rpm -q cybexos-desktop` first. On ISO installations, packaged vendor
+files are under `/usr/share/cybexos`; the user's
+`~/.local/share/cybexos/runtime` is a compatibility symlink to the packaged
+runtime. These systems do not use `~/.local/share/cybexos/current`.
 
-Before changing anything, choose the ownership layer:
+If the desktop RPM is absent, check whether this is a source-checkout
+installation. Its active release is selected by
+`~/.local/share/cybexos/current`; inspect it read-only for diagnostics and
+schemas. Do not assume a missing RPM means an incomplete installation.
 
-- User shell preferences belong in
-  `~/.config/cybexos/shell.json`. Read
+## Choose the ownership layer
+
+- User shell preferences belong in `~/.config/cybexos/shell.json`. Read
   [Quickshell settings](references/quickshell-settings.md) before editing it.
 - Personal bar widgets belong in user-owned plugin packages. Read
   [User widgets](references/user-widgets.md); use the versioned plugin API and
-  `cybex plugin` commands. Adding a personal widget does not require a
-  distro checkout, edits to built-in modules, or Ansible deployment.
-- Personal Hyprland changes belong in
-  `~/.config/cybexos/hypr/user.lua`, loaded after vendor defaults.
+  `cybex plugin` commands.
+- Personal Hyprland changes belong in `~/.config/cybexos/hypr/user.lua`.
 - Changes to distro defaults, built-in Quickshell code, services, packages,
-  and other release-managed behavior belong in a writable checkout. Read
+  and other vendor behavior belong in a writable source checkout. Read
   [Managed configuration](references/managed-configuration.md).
 
 For supported operator commands and desktop actions, read
 [Commands and desktop helpers](references/commands.md).
 
-## Non-negotiable boundaries
+## Boundaries
 
-- Never edit `~/.local/share/cybexos/current` or anything below it.
-- Never directly edit vendor files under
-  `~/.local/share/cybexos/runtime`. Diagnose them by reading; use
-  `~/.config/cybexos`, or make source changes in a writable checkout and
-  select it with `cybex dev enable`.
+- Never edit packaged files under `/usr/share/cybexos` or files below the
+  source installation's `~/.local/share/cybexos/current` or
+  `~/.local/share/cybexos/runtime` directly.
+- Do not treat `cybex repair` as a way to deploy checkout changes. On ISO
+  installations it reapplies the policy bundled with the installed RPM; make
+  vendor changes in source, rebuild/update the desktop RPM, and then use the
+  supported package update path.
 - Never add personal plugin IDs or settings to `shell.json`'s built-in `mods`
-  or `modOpts`; their normalizers only recognize built-in modules. Preserve
-  plugin packages, preferences, and state across updates and rollbacks.
+  or `modOpts`. Preserve plugin packages, preferences, and state across
+  updates and rollbacks.
 - Preserve unrelated checkout changes. Read every applicable `AGENTS.md`
   before modifying or testing a checkout.
-- Do not clone a checkout unless the user agrees to the documented location.
 - Require explicit user intent before reconfiguration, updates, uninstall,
   cancellation, reboot, shutdown, reset, package removal, or another
   destructive operation. A diagnostic request authorizes inspection, not a

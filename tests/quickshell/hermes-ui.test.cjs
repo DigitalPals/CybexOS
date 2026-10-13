@@ -533,7 +533,9 @@ test("Hermes exposes capability-gated attachments, branches, editing, and regene
     const inbox = read("Popovers/HermesInboxPage.qml");
     const helpers = read("Common/HermesHelpers.js");
     const bridge = readRepo(
-        "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py");
+        "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py")
+        + readRepo("roles/desktop/files/hermes-menubar-bridge/cybex_hermes/auth.py")
+        + readRepo("roles/desktop/files/hermes-menubar-bridge/cybex_hermes/protocol.py");
 
     assert.match(composer, /Hermes\.capabilities\.attachments === true/);
     assert.match(facade, /"zenity", "--file-selection", "--multiple"/);

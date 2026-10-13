@@ -66,11 +66,58 @@ EXPECTED = {
         16,
         (("base", 0), ("ipdata", 8)),
     ),
+    "ipu7_auxdrv_data": (
+        24, (("isr", 0), ("isr_threaded", 8), ("wake_isr_thread", 16)),
+    ),
+    "ipu7_syscom_context": (
+        48, (("num_input_queues", 0), ("num_output_queues", 2),
+             ("queue_configs", 8), ("queue_indices", 16),
+             ("queue_mem_dma_addr", 24), ("queue_mem", 32), ("queue_mem_size", 40)),
+    ),
+    "syscom_queue_config": (
+        16, (("token_array_mem", 0), ("queue_size", 8),
+             ("token_size_in_bytes", 12), ("max_capacity", 14)),
+    ),
+    "ia_gofo_boot_config": (
+        276, (("length", 0), ("config_version", 4), ("client_version_support", 8),
+              ("pkg_dir", 24), ("subsys_config", 28), ("uc_tile_frequency", 32),
+              ("checksum", 36), ("uc_tile_frequency_units", 38), ("padding", 39),
+              ("reserved", 40), ("syscom_context_config", 272)),
+    ),
+    "syscom_config_s": (
+        4, (("max_output_queues", 0), ("max_input_queues", 2)),
+    ),
+    "syscom_queue_params_config": (
+        8, (("token_array_mem", 0), ("token_size_in_bytes", 4), ("max_capacity", 6)),
+    ),
+}
+
+# Fedora 7.2 grows the public auxiliary_device by eight bytes. PSYS uses the
+# matching kernel headers, so its following fields move with that embedded
+# object. This second complete signature was reviewed against stock 7.2.7 BTF;
+# continue rejecting any other private layout rather than accepting arbitrary
+# shifts or relaxing individual offset checks.
+REVIEWED_ALTERNATES = {
+    "ipu7_bus_device": (
+        1000,
+        (
+            ("auxdev", 0), ("auxdrv", 864), ("auxdrv_data", 872),
+            ("list", 880), ("subsys", 896), ("pdata", 904), ("mmu", 912),
+            ("isp", 920), ("ctrl", 928), ("dma_mask", 936), ("fw_sgt", 944),
+            ("fw_entry", 960), ("syscom", 968), ("boot_config", 976),
+            ("boot_config_dma_addr", 984), ("boot_config_size", 992),
+        ),
+    ),
 }
 
 
 MEMBER_RE = re.compile(
-    r"^\s*.*?\b([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[[^]]+\])?;"
+    r"^\s*.*?\b([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[[^]]+\])?"
+    r"\s*(?:__attribute__\(\([^;]+\)\))?;"
+    r"\s*/\*\s*(\d+)\s+\d+\s*\*/\s*$"
+)
+CALLBACK_RE = re.compile(
+    r"^\s*.*?\(\*([A-Za-z_][A-Za-z0-9_]*)\)\([^;]*\);"
     r"\s*/\*\s*(\d+)\s+\d+\s*\*/\s*$"
 )
 SIZE_RE = re.compile(r"/\*\s*size:\s*(\d+),.*members:\s*(\d+)\s*\*/")
@@ -93,7 +140,7 @@ def parse_layout(output: str) -> tuple[int, tuple[tuple[str, int], ...]]:
     size = None
     declared_members = None
     for line in output.splitlines():
-        if match := MEMBER_RE.match(line):
+        if match := CALLBACK_RE.match(line) or MEMBER_RE.match(line):
             members.append((match.group(1), int(match.group(2))))
         if match := SIZE_RE.search(line):
             size = int(match.group(1))
@@ -139,18 +186,28 @@ def stock_module(kernel: str, name: str) -> Path:
     return path
 
 
-def check_kernel(kernel: str) -> None:
+def layout_reviewed(structure: str, actual: tuple) -> bool:
+    return actual == EXPECTED[structure] or actual == REVIEWED_ALTERNATES.get(structure)
+
+
+def check_kernel(kernel: str, *, external_cvs: bool = False) -> None:
     if not shutil.which("pahole"):
         raise AbiChanged("pahole is missing (install Fedora's dwarves package)")
 
     kernel_modules = Path(f"/usr/lib/modules/{kernel}/kernel")
-    for companion in ("intel-ipu7-psys.ko*", "intel_cvs.ko*"):
+    for companion in ("intel-ipu7-psys.ko*", "intel_ipu7_psys.ko*"):
         native = next(kernel_modules.rglob(companion), None)
         if native is not None:
             raise AbiChanged(
                 f"Fedora now provides the companion {native.name} in-tree; "
                 "refusing to shadow it with this DKMS bundle"
             )
+
+    native_cvs = next(kernel_modules.rglob("intel_cvs.ko*"), None)
+    if native_cvs is not None:
+        stock_module(kernel, "intel_cvs")
+        if external_cvs:
+            raise AbiChanged("native Intel CVS is present; refusing the external CVS build")
 
     base_module = stock_module(kernel, "intel_ipu7")
     stock_module(kernel, "intel_ipu7_isys")
@@ -196,7 +253,7 @@ def check_kernel(kernel: str) -> None:
             if result.returncode:
                 raise AbiChanged(f"stock module lacks BTF for struct {structure}")
             actual = parse_layout(result.stdout)
-            if actual != expected:
+            if not layout_reviewed(structure, actual):
                 raise AbiChanged(
                     f"struct {structure} layout differs: expected {expected}, got {actual}"
                 )
@@ -217,6 +274,19 @@ struct sample {
         pass
     else:
         raise AssertionError("incomplete layout was accepted")
+    assert layout_reviewed("ipu7_bus_device", EXPECTED["ipu7_bus_device"])
+    assert layout_reviewed("ipu7_bus_device", REVIEWED_ALTERNATES["ipu7_bus_device"])
+    size, fields = REVIEWED_ALTERNATES["ipu7_bus_device"]
+    assert not layout_reviewed("ipu7_bus_device", (size + 8, fields))
+    assert not layout_reviewed("ipu7_bus_device", (size, fields[:-1]))
+    callback_fixture = """
+struct callbacks {
+        void (*handler)(struct device *); /* 0 8 */
+        void * base __attribute__((__aligned__(8))); /* 8 8 */
+        /* size: 16, cachelines: 1, members: 2 */
+};
+"""
+    assert parse_layout(callback_fixture) == (16, (("handler", 0), ("base", 8)))
     print("IPU7 ABI parser self-test passed")
 
 
@@ -224,9 +294,16 @@ def main() -> int:
     if len(sys.argv) == 2 and sys.argv[1] == "--self-test":
         self_test()
         return 0
-    kernel = sys.argv[1] if len(sys.argv) == 2 else command_output(["uname", "-r"])
+    args = sys.argv[1:]
+    external_cvs = bool(args and args[0] == "--external-cvs")
+    if external_cvs:
+        args = args[1:]
+    if len(args) > 1 or (args and args[0].startswith("--")):
+        print("usage: xps-ipu7-abi-check [--external-cvs] [kernel]", file=sys.stderr)
+        return 2
+    kernel = args[0] if args else command_output(["uname", "-r"])
     try:
-        check_kernel(kernel)
+        check_kernel(kernel, external_cvs=external_cvs)
     except AbiChanged as error:
         print(
             "IPU7_STOCK_ABI_CHANGED: Fedora's stock IPU7 ABI no longer matches "

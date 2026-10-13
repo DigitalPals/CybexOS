@@ -153,3 +153,14 @@ test('the bar preview draws the live bar settings', () => {
         assert.match(preview, new RegExp(`Editor\\.sectionEntries\\(root\\.entries, "${section}"\\)`));
     assert.match(preview, /onClicked: root\.widgetActivated\(widget\.modelData\.key\)/);
 });
+
+test('bar preview workspace pips survive losing their strip during teardown', () => {
+    // Changing the layout destroys a preview widget with its pip strip; a pip
+    // whose binding runs after the strip is gone must not read a null parent.
+    const preview = read('Settings/BarPreview.qml');
+    const start = preview.indexOf('id: pip');
+    const pip = preview.slice(start, preview.indexOf('Text {', start));
+    assert.ok(start > 0 && pip.length > 0);
+    assert.match(pip, /anchors\.verticalCenter: parent \? parent\.verticalCenter : undefined/);
+    assert.doesNotMatch(pip, /:\s*parent\.\w+\s*$/m, 'a repeated delegate guards its parent');
+});

@@ -11,6 +11,7 @@ function settingsHarness() {
     const context = vm.createContext({
         ...H.defaults(), defaults: H.defaults(), SettingsHelpers: H,
         resetSnapshot: null, resetLabel: '', migrationPending: false,
+        explicitOverrides: [], resetOverrides: [], scheduleSave() {}, markExplicit() {},
         resetTimer: { restart() {}, stop() {} },
         sectionKeys: { drawer: ['drawerTabs', 'drawerOverview', 'drawerHover', 'drawerWidth'] }
     });

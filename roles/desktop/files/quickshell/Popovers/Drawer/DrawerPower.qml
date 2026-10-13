@@ -23,8 +23,7 @@ Column {
         : Battery.charging ? displayDevice.timeToFull
         : discharging ? displayDevice.timeToEmpty : 0
     readonly property string statusLine: {
-        const parts = [Battery.full ? "Fully charged"
-            : Battery.charging ? "Charging" : "On battery"];
+        const parts = [Battery.statusText];
         if (estimateSeconds > 0)
             parts.push(BatteryView.formatDuration(estimateSeconds));
         if (displayDevice && displayDevice.changeRate > 0)

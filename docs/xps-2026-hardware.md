@@ -37,6 +37,39 @@ brightnessctl set 40%
 The first two commands should report `xe.enable_dpcd_backlight=1` and `1`; the
 last should visibly change panel luminance.
 
+## Internal-panel black flashes
+
+On the XPS 14 DA14260 (SKU `0DB9`) with LGD product `0x07c6`, Fedora kernel
+`7.2.7-200.fc44` exhibited repeated full-screen black flashes at 120 Hz.
+The panel reported a PSR link CRC error, PSR2 selective fetch was enabled,
+and the boot journal recorded `Selective fetch area calculation failed in
+pipe A`. Disabling PSR live stopped the flashes without changing brightness,
+resolution or refresh rate. This is separate from an absent Quickshell
+wallpaper when the desktop session target has not started.
+
+The shared hardware role limits `xe.enable_psr=0` to this SKU and the full
+EDID manufacturer/product bytes `30e4c607`. Both checkout provisioning and
+ISO hardware setup use this task. `grubby --update-kernel=ALL` applies it to
+installed kernels and the defaults for future kernels. Disabling PSR costs
+some idle display power; it retains 120 Hz. The `display` tag applies only
+this quirk, after the role's read-only hardware detection:
+
+```bash
+ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags display --check --diff
+ansible-playbook site.yml -e @/etc/cybexos/config.yml --tags display
+```
+
+The boot argument takes effect on the next normal boot. On a running system,
+`/sys/kernel/debug/dri/0/i915_edp_psr_status` reports the active PSR mode
+(the debugfs name is retained by the Xe driver). During diagnosis, writing
+`1` to `i915_edp_psr_debug` disables PSR for the current boot; `0` restores
+the driver's default. Verify the DRM device before using either path.
+
+Keep `xps_2026_psr_disabled_panels: []` in the saved Ansible configuration to
+opt out of further enforcement when evaluating a driver fix, then remove
+`xe.enable_psr` with `grubby --update-kernel=ALL --remove-args=xe.enable_psr`.
+No other panel or machine receives the workaround.
+
 ## Internal speakers
 
 SKU `0DB9` (plus Quattro-listed XPS 16 SKU `0DBA`) gets Omarchy Quattro's current
@@ -109,11 +142,12 @@ OV08X40 sensor driver, and `intel/ipu/ipu7ptl_fw.bin`. Those remain owned by the
 normal Fedora kernel and `intel-vsc-firmware` packages. Verification rejects an
 out-of-tree replacement for either `intel_ipu7` or `intel_ipu7_isys`.
 
-Two missing hardware companions use DKMS:
+Missing hardware companions use DKMS:
 
 - Intel IPU7 PSYS, compiled in PSYS-only mode against Fedora's stock core ABI.
-- Intel CVS, which acquires Panther Lake's camera power/ownership path before
-  the OV08X40 sensor probes.
+- Intel CVS only on kernels which do not supply it. Fedora's native CVS is
+  retained when present; its runtime PM and media bridge manage camera
+  ownership. The legacy CVS DKMS build refuses to shadow a native module.
 
 RPM Fusion's `akmod-v4l2loopback` supplies the third out-of-tree module. Intel's
 HAL, redistributable IPU75XA libraries, and `icamerasrc` are built into the
@@ -142,8 +176,19 @@ BTF with `pahole` and compares the private `ipu7_device`, `ipu7_bus_device`, and
 tied to an exact kernel version. If Fedora changes that internal ABI, it emits
 `IPU7_STOCK_ABI_CHANGED` and refuses the optional camera build/start while
 leaving the stock modules and normal kernel update path untouched.
-It also refuses DKMS if a future Fedora kernel starts shipping PSYS or CVS
-itself, preventing the optional bundle from shadowing a new native companion.
+The guard also covers callback, shared queue, and firmware boot structures.
+The reviewed Fedora 7.2 layout accounts for the public `auxiliary_device`
+growing by eight bytes: the PSYS build uses the target kernel headers and the
+private structure offsets are checked as a complete signature. Unrecognized
+layouts still fail closed. It refuses PSYS DKMS if Fedora starts shipping
+PSYS itself. Native CVS does not require replacement or an extra reboot when
+installing PSYS for the first time.
+
+With native CVS the graph is `OV08X40 -> Intel CVS -> IPU7 CSI2`. A narrow HAL
+patch resolves the sensor's actual I2C address across this bridge and programs
+its sink/source formats and links. Older direct sensor-to-CSI configurations
+remain supported. Merely registering the sensor does not prove frame capture;
+validate processed frames after installation.
 
 The complete build-input hash is embedded in the RPM release, its installed
 manifest, and both DKMS package versions. Consequently, changing a source pin,
@@ -235,6 +280,12 @@ smoke test explicitly:
 ```bash
 XPS_CAMERA_FRAME_TEST=1 /usr/local/libexec/xps-ipu7-camera-check
 ```
+
+The frame check skips the relay's initial splash buffers and verifies three
+complete, changing images in memory; it saves no images. An identical/covered
+scene can make this proof inconclusive. The relay disables its producer's
+last-sample retention so GStreamer mmap consumers copy and immediately requeue
+loopback buffers across the splash-to-camera transition.
 
 The Fedora package's unused generic `icamerasrc` generator trigger is removed
 on this hardware; the role's `ipu7` relay is the only camera relay instance.

@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 
 import login_qualification
 import qualification
-from vm_testing import QUALIFICATION_DISK_SERIAL, TestVM, is_disk_prompt
+from vm_testing import QUALIFICATION_DISK_SERIAL, TestVM, is_disk_prompt, poweroff_guest
 
 
 class DiskPromptTests(unittest.TestCase):
@@ -92,6 +92,126 @@ class DiskPromptTests(unittest.TestCase):
                         vm.wait_ssh()
                 keys.assert_not_called()
                 typing.assert_not_called()
+
+
+class GuestPoweroffTests(unittest.TestCase):
+    def exercise_shutdown(self, *, disconnected=True, exit_code=0, preparation='',
+                          marker_present=True, command_status=255, sync_status=0):
+        vm = Mock(ssh_ready=True)
+        vm.process.wait.return_value = exit_code
+        if isinstance(exit_code, Exception):
+            vm.process.wait.side_effect = exit_code
+        calls = []
+        def execute(_vm, script, _password):
+            calls.append(script)
+            # Run the preparation and marker using the production bash -e
+            # contract; command stubs never touch host services or files.
+            stubs = f'sync() {{ return {sync_status}; }}\nsystemctl() {{ return 0; }}\n'
+            result = subprocess.run(['bash', '-e', '-s'], input=stubs + script,
+                                    text=True, capture_output=True, check=True)
+            if disconnected and 'systemctl poweroff' in script:
+                raise subprocess.CalledProcessError(command_status, ['ssh', 'fixture'],
+                                                    output=result.stdout if marker_present else '')
+            return result
+        try:
+            poweroff_guest(vm, 'fixture-password', execute, timeout=60, cleanup_script=preparation)
+        except Exception as error:
+            return vm, calls, error
+        return vm, calls, None
+
+    def test_acknowledged_disconnect_requires_clean_qemu_exit(self):
+        for disconnected in (False, True):
+            with self.subTest(disconnected=disconnected):
+                vm, calls, error = self.exercise_shutdown(disconnected=disconnected)
+                self.assertIsNone(error)
+                self.assertEqual(calls[0], 'sync\n')
+                vm.process.wait.assert_called_once_with(timeout=60)
+                self.assertFalse(vm.ssh_ready)
+                self.assertIsNone(vm.console)
+                vm.process.terminate.assert_not_called()
+
+    def test_disconnect_cannot_hide_guest_shutdown_timeout_or_crash(self):
+        for exit_code in (subprocess.TimeoutExpired('qemu-fixture', 60), 1, -15):
+            with self.subTest(exit_code=exit_code):
+                vm, _calls, error = self.exercise_shutdown(exit_code=exit_code)
+                self.assertIsInstance(error, RuntimeError)
+                self.assertIn('QEMU', str(error))
+                self.assertFalse(vm.ssh_ready)
+                vm.process.terminate.assert_not_called()
+                vm.process.kill.assert_not_called()
+
+    def test_sync_authentication_cleanup_and_missing_ack_fail_without_wait(self):
+        for options in ({'sync_status': 1}, {'command_status': 1},
+                        {'preparation': 'false\n'}, {'marker_present': False}):
+            with self.subTest(options=options):
+                vm, _calls, error = self.exercise_shutdown(**options)
+                self.assertIsInstance(error, subprocess.CalledProcessError)
+                vm.process.wait.assert_not_called()
+
+    def test_cleanup_finishes_in_same_request_before_shutdown_marker(self):
+        vm, calls, error = self.exercise_shutdown(preparation="printf 'cleanup-complete\\n'\n")
+        self.assertIsNone(error)
+        self.assertEqual(len(calls), 2)
+        self.assertIn('cleanup-complete', calls[1])
+        vm.process.wait.assert_called_once_with(timeout=60)
+
+
+class SshTimeoutDiagnosticsTests(unittest.TestCase):
+    def test_timeout_reports_redacted_ssh_and_ocr_and_removes_frame(self):
+        for ocr_fails in (False, True):
+            with self.subTest(ocr_fails=ocr_fails), tempfile.TemporaryDirectory() as directory:
+                vm = TestVM(directory)
+                vm.ssh = ['ssh', 'fixture']
+                vm.key.with_suffix('.pub').write_text('ssh-ed25519 fixture')
+                qmp = Mock()
+                def capture_frame(command, arguments):
+                    self.assertEqual(command, 'screendump')
+                    Path(arguments['filename']).write_bytes(b'transient private-fixture frame')
+                qmp.call.side_effect = capture_frame
+                ocr = (subprocess.TimeoutExpired('tesseract private-fixture', 5) if ocr_fails
+                       else SimpleNamespace(stdout='Emergency console private-fixture'))
+                with patch.object(vm, 'alive'), patch.object(vm, 'type') as typing, \
+                        patch.object(vm, 'keypress') as keys, \
+                        patch('vm_testing.time.monotonic', side_effect=[0, 1, 301]), \
+                        patch('vm_testing.time.sleep'), \
+                        patch('vm_testing.subprocess.run', return_value=SimpleNamespace(
+                            returncode=255, stderr='Connection refused private-fixture')), \
+                        patch('vm_testing.Qmp', return_value=qmp), \
+                        patch('vm_testing.shutil.which', return_value='/fixture/tesseract'), \
+                        patch('vm_testing.run', side_effect=ocr if ocr_fails else None,
+                              return_value=ocr) as recognize:
+                    with self.assertRaisesRegex(RuntimeError, 'readiness deadline') as caught:
+                        vm.wait_ssh(setup=False, redactions=('private-fixture',))
+                message = str(caught.exception)
+                self.assertIn('SSH exit 255: Connection refused [redacted]', message)
+                self.assertNotIn('private-fixture', message)
+                self.assertIn('Unavailable (TimeoutExpired:' if ocr_fails else 'Emergency console', message)
+                self.assertEqual(recognize.call_args.kwargs['timeout'], 5)
+                self.assertFalse((vm.work / 'prompt.png').exists())
+                qmp.stream.close.assert_called_once()
+                qmp.socket.close.assert_called_once()
+                typing.assert_not_called()
+                keys.assert_not_called()
+
+    def test_screen_capture_connection_failure_removes_frame(self):
+        with tempfile.TemporaryDirectory() as directory:
+            vm = TestVM(directory)
+            frame = vm.work / 'prompt.png'
+            frame.write_bytes(b'transient frame')
+            with patch('vm_testing.shutil.which', return_value='/fixture/tesseract'), \
+                    patch('vm_testing.Qmp', side_effect=OSError('QMP unavailable')):
+                with self.assertRaisesRegex(OSError, 'QMP unavailable'):
+                    vm.screen_text(timeout=5)
+            self.assertFalse(frame.exists())
+
+    def test_cold_reboot_passes_password_redaction_without_retrying_login(self):
+        vm = Mock()
+        vm.process.wait.return_value = 0
+        with patch.object(login_qualification, 'wait_login_state'):
+            login_qualification.reboot_installed(vm, 'private-fixture', Mock())
+        vm.unlock_disk.assert_called_once_with('private-fixture')
+        vm.wait_ssh.assert_called_once_with(setup=False, redactions=('private-fixture',))
+        vm.type.assert_not_called()
 
 
 class KeyringProbeTests(unittest.TestCase):

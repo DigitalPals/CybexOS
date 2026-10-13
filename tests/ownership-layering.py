@@ -266,8 +266,61 @@ def repository_contract() -> None:
     assert (ROOT / "docs/architecture/ownership.md").is_file()
 
 
+def polkit_runtime_contract() -> None:
+    """Exercise agent handoff without starting a real shell or host service."""
+    with tempfile.TemporaryDirectory(prefix="cybexos-polkit-runtime.") as temporary:
+        root = Path(temporary)
+        shell = root / "home/.local/share/cybexos/runtime/quickshell"
+        shell.mkdir(parents=True)
+        (shell / "shell.qml").write_text("// fixture\n")
+        native = shell / "PolkitWindow.qml"
+        native.write_text("// fixture\n")
+        binary = root / "bin"
+        binary.mkdir()
+        log = root / "calls"
+        # Only the executable is redirected; selection and service handoff
+        # run through the production resolver. All systemctl calls are mocked.
+        runtime = root / "runtime"
+        runtime.write_text(RUNTIME.read_text().replace("exec /usr/bin/qs -p", "exec qs -p"))
+        runtime.chmod(0o755)
+        for name, script in {
+            "systemctl": '''#!/bin/bash
+case "$*" in
+  *is-active*) exit "${FIXTURE_ACTIVE:-1}" ;;
+  *LoadState*) printf '%s\\n' "${FIXTURE_LOAD:-loaded}" ;;
+  *stop*) printf 'stop\\n' >>"$FIXTURE_LOG"; exit "${FIXTURE_STOP:-0}" ;;
+  *start*) printf 'start\\n' >>"$FIXTURE_LOG" ;;
+  *) exit 9 ;;
+esac
+''',
+            "qs": '#!/bin/bash\nprintf "shell\\n" >>"$FIXTURE_LOG"\n',
+        }.items():
+            path = binary / name
+            path.write_text(script)
+            path.chmod(0o755)
+        env = {**os.environ, "HOME": str(root / "home"),
+               "XDG_DATA_HOME": str(root / "home/.local/share"),
+               "XDG_CONFIG_HOME": str(root / "home/.config"),
+               "CYBEXOS_RUNTIME_TESTING": "0", "FIXTURE_LOG": str(log),
+               "PATH": f"{binary}:{os.environ['PATH']}"}
+
+        def start(**values):
+            log.write_text("")
+            result = run(runtime, "exec", "quickshell", env={**env, **values}, check=False)
+            return result.returncode, log.read_text().splitlines()
+
+        assert start(FIXTURE_ACTIVE="0") == (0, ["stop", "shell"])
+        assert start() == (0, ["stop", "shell"]), "cancel pending legacy startup too"
+        assert start(FIXTURE_LOAD="not-found") == (0, ["shell"])
+        assert start(FIXTURE_LOAD="not-found", FIXTURE_ACTIVE="0") == (0, ["stop", "shell"])
+        assert start(FIXTURE_STOP="1") == (1, ["stop"]), "do not register competing agents"
+        native.unlink()
+        assert start() == (0, ["start", "shell"]), "older runtimes retain their agent"
+
+
 if __name__ == "__main__":
     migration_contract()
     dev_source_contract()
     repository_contract()
+    polkit_runtime_contract()
     print("Vendor runtime updates preserve every user-owned layer byte-for-byte")

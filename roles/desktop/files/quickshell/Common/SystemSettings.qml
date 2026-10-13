@@ -27,6 +27,8 @@ Singleton {
     }
     readonly property SystemSettingsBackend sound: SystemSettingsBackend { domain: "sound" }
     readonly property SystemSettingsBackend network: SystemSettingsBackend { domain: "network" }
+    readonly property SystemSettingsBackend input: SystemSettingsBackend { domain: "input" }
+    readonly property SystemSettingsBackend region: SystemSettingsBackend { domain: "region" }
     readonly property SystemSettingsBackend accounts: SystemSettingsBackend {
         domain: "accounts"
         onCompleted: result => { if (result.success) Calendar.refreshDefault(); }

@@ -7,7 +7,24 @@ All three resolve through the same library. Existing `Theme.fontBody` and
 similar aliases, `Style.font.body`, and `api.theme.fontSize` remain compatible.
 New native views must use the named roles below, not the old aliases.
 
-## Comparison with Omarchy
+## Readable defaults
+
+Since 2026-09-26 the default base is **14 logical pixels**. Normal labels,
+controls, navigation and bar readings are 14px; secondary descriptions and
+tooltips are 13px; captions, section labels and metadata are 12px. Titles,
+notifications and OSD text are 16px, and headings (including launcher queries
+and results) are 18px. These are the sizes at 100% interface scale and default
+text size; explicit smaller settings and plugin overrides remain available.
+
+Native and plugin surfaces use the same resolver. The Omarchy multipliers
+below are retained except for `heading`, which uses 18/14 of the effective
+base. Geometry retains its 12px reference so panels and spacing grow with the
+larger text; wrapping rows grow to their content and panels clamp to the output.
+Fresh installations and appearance resets use 14px. Existing saved font sizes
+are preserved; select 14px under Appearance → Advanced text options to adopt
+the new size on an existing installation.
+
+## Historical comparison with Omarchy (12px base)
 
 Audited on 2026-09-21 against Omarchy commit
 [`961ec7f39fd0d70c7d2944c5b80585a86713693d`](https://github.com/omacom/omarchy/tree/961ec7f39fd0d70c7d2944c5b80585a86713693d).
@@ -45,8 +62,8 @@ Sources at the audited revision:
 [OSD](https://github.com/omacom/omarchy/blob/961ec7f39fd0d70c7d2944c5b80585a86713693d/shell/plugins/osd/Osd.qml),
 [clock hero](https://github.com/omacom/omarchy/blob/961ec7f39fd0d70c7d2944c5b80585a86713693d/shell/plugins/panels/clock/Panel.qml).
 
-The core scale is caption 10, body-small 11, body 12, subtitle 13, title 14,
-heading 16, display 24 and display-large 28. The `clock` role explicitly
+At the September 21 audit the core scale was caption 10, body-small 11, body 12,
+subtitle 13, title 14, heading 16, display 24 and display-large 28. The `clock` role explicitly
 centralizes Omarchy's exceptional 52px date treatment for our date/time hero;
 it is not a general heading. Icons keep their separate optical sizes.
 Omarchy uses Liberation Sans for notifications; we retain the user's shared
@@ -56,7 +73,7 @@ shared size/usage contract, not a claim of identical layout or rendering.
 ## Implementation contract
 
 `ShellMetrics.calculate()` combines base size, UI scale and accessibility
-scale once. `Typography.resolve()` applies Omarchy's multipliers and rounds
+scale once. `Typography.resolve()` applies the shared multipliers and rounds
 once per token. Density affects spacing, not font size; Qt applies monitor
 scaling. Native and plugin adapters no longer maintain independent type
 scales. At default plugin settings their role values are identical, including
@@ -84,14 +101,25 @@ because the available row is short. Reserve `section` for group labels and
 wrapping, scrolling or elision when space is constrained; do not invent a
 local smaller size. New exceptional sizes need a documented shared token.
 
-The launcher deliberately uses `heading` (16px at the default base) for its
-search query and primary result labels, matching Omarchy v4.0.4's menu.
+The launcher deliberately uses `heading` (18px at the default base) for its
+search query and primary result labels, following Omarchy v4.0.4's menu hierarchy.
 The query is regular weight and result labels are medium weight. Provider tabs
-use `title` (14px) at medium weight with 16px icons. This prominent search field
-is an exception to the ordinary `control` input role and still follows the
-shared accessibility scale.
+use `title` (16px) at medium weight with icons from the shared scale. This
+prominent search field is an exception to the ordinary `control` input role
+and still follows the shared accessibility scale.
 
 ## Verification
+
+The 2026-09-26 readability update passed 1,163 unit tests and the required
+repository check stages, with the updated typography expectations rerun.
+Managed-service checks confirmed identical native/plugin role maps for all
+nine text-size/density combinations, using effective bases of 14, 16 and 18px.
+Overview (including the growing media row), sound, Appearance and the launcher
+were inspected at the new default, and Overview at Larger text with Compact
+spacing. The service finished as the sole Quickshell process with no QML
+errors in its current invocation. Both outputs used 2× device scaling;
+fractional output scaling and the isolated full-shell lifecycle harness were
+not exercised on this live desktop.
 
 `tests/quickshell/typography-scale.test.cjs` checks reference values, usage
 roles, native/plugin adapter wiring, the accessibility/density matrix, plugin

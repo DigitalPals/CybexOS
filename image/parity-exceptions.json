@@ -1,0 +1,9 @@
+{
+  "iso": {
+    "cybexos-desktop.x86_64": "The ISO delivers the shared desktop payload as an RPM; checkout installs the same source through Ansible."
+  },
+  "checkout": {
+    "cloud-init.noarch": "The pinned Fedora Cloud base uses cloud-init only to provision this disposable qualification guest.",
+    "cloud-utils-growpart.noarch": "The pinned Fedora Cloud base expands only its disposable virtual disk during first boot."
+  }
+}

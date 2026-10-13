@@ -33,3 +33,4 @@ TextField TextField.qml
 Toggle Toggle.qml
 ToggleSwitch ToggleSwitch.qml
 WidgetButton WidgetButton.qml
+TelemetryChart TelemetryChart.qml

@@ -53,22 +53,34 @@ var BATTERY_STATE = {
     PendingDischarge: 6
 };
 
-// The single definition of charge semantics for bar and popover. "full" is
-// deliberately distinct from "charging" — the popover names the two states
-// apart while the bar draws both as plugged in — and everything else,
-// including having no battery at all, counts as running on battery.
+// PendingCharge includes firmware charge preservation: AC is connected but
+// no energy is entering the battery. Never promise time-to-full in that state.
 function chargeState(device) {
     var state = device ? device.state : undefined;
-    if (state === BATTERY_STATE.Charging || state === BATTERY_STATE.PendingCharge)
+    if (state === BATTERY_STATE.Charging)
         return "charging";
+    if (state === BATTERY_STATE.PendingCharge)
+        return "pending-charge";
     if (state === BATTERY_STATE.FullyCharged)
         return "full";
     return "discharging";
 }
 
 // Charging or already full: what the bar's glyph and accent color mean.
-function isPluggedIn(device) {
+function isPluggedIn(device, onBattery) {
+    if (typeof onBattery === "boolean")
+        return !onBattery;
     return chargeState(device) !== "discharging";
+}
+
+function batteryStatus(state, pluggedIn, limited) {
+    if (!pluggedIn)
+        return "On battery";
+    if (state === "charging")
+        return "Charging";
+    if (state === "full")
+        return "Fully charged";
+    return limited ? "Plugged in · Charge limited" : "Plugged in · Not charging";
 }
 
 // ---- media ---------------------------------------------------------------
@@ -200,6 +212,7 @@ var exported = {
     signalPercent: signalPercent,
     BATTERY_STATE: BATTERY_STATE,
     chargeState: chargeState,
+    batteryStatus: batteryStatus,
     isPluggedIn: isPluggedIn,
     PLAYBACK_STATE: PLAYBACK_STATE,
     PLAYER_GLYPH: PLAYER_GLYPH,

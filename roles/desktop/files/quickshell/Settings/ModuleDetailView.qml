@@ -2,6 +2,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../Common"
 import "../Common/SettingsHelpers.js" as SettingsHelpers
+import "../Common/RemoteServerHelpers.js" as RemoteHelpers
+import "../Common/FuseboxHelpers.js" as FuseboxHelpers
 
 // Built-in options shared by the bar editor and standalone detail view.
 // The detail policy control lives here (storage stays in Settings.mods);
@@ -244,6 +246,8 @@ SettingsPage {
                 case "indicators": return indicatorsOptions;
                 case "clock": return clockOptions;
                 case "weather": return weatherOptions;
+                case "remote": return remoteOptions;
+                case "fusebox": return fuseboxOptions;
                 case "notes": return notesOptions;
                 case "t3": return t3Options;
                 case "hermes": return hermesOptions;
@@ -892,6 +896,188 @@ SettingsPage {
 
             WeatherLocationPicker {
                 width: parent.width
+            }
+        }
+    }
+
+    Component {
+        id: remoteOptions
+        Column {
+            id: remoteSettings
+            spacing: Theme.settingsRowSpacing
+            Claim {
+                active: remoteSettings.visible
+                onClaimed: RemoteServer.acquire()
+                onReleased: RemoteServer.release()
+            }
+            SettingsTextRow {
+                width: parent.width
+                label: "SSH host"
+                placeholder: "user@hostname or SSH alias"
+                hint: "Uses your SSH config and keys. Connect once in a terminal to verify the host key. Requires Linux and Python 3.9+."
+                value: view.opts.host
+                dirty: view.optDirty("host")
+                onCommitted: text => view.setOpt("host", text)
+                onResetRequested: view.resetOpt("host")
+            }
+            SettingsTextRow {
+                width: parent.width
+                label: "Display name"
+                placeholder: "My server"
+                value: view.opts.label
+                dirty: view.optDirty("label")
+                onCommitted: text => view.setOpt("label", text)
+                onResetRequested: view.resetOpt("label")
+            }
+            SelectRow {
+                width: parent.width
+                label: "Menubar statistic"
+                model: RemoteHelpers.METRICS
+                current: view.opts.metric
+                dirty: view.optDirty("metric")
+                onPicked: value => view.setOpt("metric", value)
+                onResetRequested: view.resetOpt("metric")
+            }
+            SwitchRow {
+                width: parent.width
+                label: "Show server name"
+                checked: view.opts.showLabel
+                dirty: view.optDirty("showLabel")
+                onToggled: value => view.setOpt("showLabel", value)
+                onResetRequested: view.resetOpt("showLabel")
+            }
+            SettingsTextRow {
+                width: parent.width
+                label: "Filesystem"
+                hint: "Mount point used for the menubar storage statistic."
+                placeholder: "/"
+                value: view.opts.mount
+                dirty: view.optDirty("mount")
+                onCommitted: text => view.setOpt("mount", text)
+                onResetRequested: view.resetOpt("mount")
+            }
+            SettingsTextRow {
+                width: parent.width
+                label: "Network interface"
+                hint: "Leave empty to use the default route. Enter an interface name to pin it."
+                placeholder: "Automatic"
+                value: view.opts.interface
+                dirty: view.optDirty("interface")
+                onCommitted: text => view.setOpt("interface", text)
+                onResetRequested: view.resetOpt("interface")
+            }
+            SliderRow {
+                width: parent.width
+                label: "Update every"
+                hint: "The open dashboard updates every 2 seconds."
+                min: 2; max: 60; step: 1
+                value: view.optValue("pollSecs")
+                unit: "s"
+                dirty: view.optDirty("pollSecs")
+                onMoved: value => view.settleOpt("pollSecs", value)
+                onResetRequested: view.resetOpt("pollSecs")
+            }
+            SettingsAction {
+                text: "Refresh connection"
+                enabled: RemoteServer.host !== ""
+                onTriggered: RemoteServer.refresh()
+            }
+        }
+    }
+
+    Component {
+        id: fuseboxOptions
+        Column {
+            id: fuseboxSettings
+            spacing: Theme.settingsRowSpacing
+            Claim {
+                active: fuseboxSettings.visible
+                onClaimed: Fusebox.acquire()
+                onReleased: Fusebox.release()
+            }
+            SettingsTextRow {
+                width: parent.width
+                label: "Server URL"
+                placeholder: "https://fusebox.example.ts.net"
+                hint: "The address of Fusebox's dashboard."
+                value: view.opts.url
+                dirty: view.optDirty("url")
+                onCommitted: text => view.setOpt("url", text)
+                onResetRequested: view.resetOpt("url")
+            }
+            // The key is never a setting: it goes over stdin to a private
+            // file, and the field empties as soon as it is committed. Its
+            // undo chip forgets the saved key.
+            SettingsTextRow {
+                width: parent.width
+                label: "Management key"
+                secret: true
+                value: ""
+                dirty: Fusebox.keySaved
+                enabled: !Fusebox.keyBusy
+                placeholder: Fusebox.keySaved ? "Saved · paste a new key to replace it" : "Fusebox's management-key"
+                hint: Fusebox.keyNotice !== "" ? Fusebox.keyNotice
+                    : "Kept in a private file on this computer and sent only to this server."
+                hintTone: Fusebox.keyNotice !== "" && Fusebox.keyNotice !== "Key saved"
+                    && Fusebox.keyNotice !== "Key removed" ? "error" : "info"
+                onCommitted: text => Fusebox.storeKey(text)
+                onResetRequested: Fusebox.forgetKey()
+            }
+            ValueRow {
+                width: parent.width
+                label: "Connection"
+                value: Fusebox.connection === "live"
+                    ? "Live · " + Fusebox.accounts.length + (Fusebox.accounts.length === 1 ? " account" : " accounts")
+                    : Fusebox.connection === "setup" ? (Fusebox.url ? "Needs the management key" : "Not set up")
+                    : Fusebox.connection === "connecting" ? "Connecting…" : Fusebox.error || Fusebox.status
+                dotColor: Fusebox.connection === "live" ? Theme.ok
+                    : Fusebox.connection === "offline" || Fusebox.connection === "auth" ? Theme.redText
+                    : Theme.textFaint
+
+                SettingsAction {
+                    text: "Reconnect"
+                    compact: true
+                    glyph: "refresh"
+                    enabled: Fusebox.url !== "" && Fusebox.keySaved
+                    onTriggered: Fusebox.refresh()
+                }
+            }
+            SelectRow {
+                width: parent.width
+                label: "Menubar figure"
+                model: FuseboxHelpers.METRICS
+                current: view.opts.metric
+                dirty: view.optDirty("metric")
+                onPicked: value => view.setOpt("metric", value)
+                onResetRequested: view.resetOpt("metric")
+            }
+            PickerRow {
+                width: parent.width
+                label: "Quota meters"
+                hint: "Show each window's share used, or what is left. Amber and red still mean nearly used up."
+                model: FuseboxHelpers.QUOTA_DISPLAYS
+                current: view.opts.quotaDisplay
+                dirty: view.optDirty("quotaDisplay")
+                onPicked: value => view.setOpt("quotaDisplay", value)
+                onResetRequested: view.resetOpt("quotaDisplay")
+            }
+            SwitchRow {
+                width: parent.width
+                label: "Hide account emails"
+                hint: "Accounts read as their provider and number, for sharing your screen."
+                checked: view.opts.hideEmails
+                dirty: view.optDirty("hideEmails")
+                onToggled: value => view.setOpt("hideEmails", value)
+                onResetRequested: view.resetOpt("hideEmails")
+            }
+            SwitchRow {
+                width: parent.width
+                label: "Notify about faults"
+                hint: "A desktop notification when an account trips, except for rate limits."
+                checked: view.opts.notify
+                dirty: view.optDirty("notify")
+                onToggled: value => view.setOpt("notify", value)
+                onResetRequested: view.resetOpt("notify")
             }
         }
     }

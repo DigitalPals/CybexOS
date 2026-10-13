@@ -139,6 +139,78 @@
     mode: "0755"
   register: base_snapshot_helper
 
+- name: Install the durable update transaction helpers
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/libexec/{{ item }}"
+    owner: root
+    group: root
+    mode: "{{ '0644' if item.endswith(('.json', '.service', '.conf')) else '0755' }}"
+  loop:
+    - cybexos-update-transaction
+    - cybexos-update-bootstrap
+    - cybexos-update-recover
+    - cybexos-update-recover.service
+    - cybexos-update-recover-login.conf
+    - cybexos-vendor-paths.json
+    - cybexos-major-upgrade
+
+- name: Install the interrupted-update boot recovery unit
+  ansible.builtin.copy:
+    src: cybexos-update-recover.service
+    dest: /etc/systemd/system/cybexos-update-recover.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: base_update_recover_unit
+
+- name: Create the login recovery dependency directories
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - systemd-user-sessions.service
+    - sddm.service
+
+- name: Block login if interrupted-update recovery fails
+  ansible.builtin.copy:
+    src: cybexos-update-recover-login.conf
+    dest: "/etc/systemd/system/{{ item }}.d/60-cybexos-update-recover.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - systemd-user-sessions.service
+    - sddm.service
+  register: base_update_recover_dependencies
+
+- name: Enable interrupted-update recovery for subsequent boots
+  ansible.builtin.systemd_service:
+    name: cybexos-update-recover.service
+    enabled: true
+    daemon_reload: "{{ base_update_recover_unit.changed or base_update_recover_dependencies.changed }}"
+
+- name: Install Fedora upgrade validation units
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - cybexos-major-upgrade-validate.service
+    - cybexos-major-upgrade-validate.timer
+  register: base_major_upgrade_units
+
+- name: Enable Fedora upgrade validation after the first desktop login
+  ansible.builtin.systemd_service:
+    name: cybexos-major-upgrade-validate.timer
+    enabled: true
+    daemon_reload: "{{ base_major_upgrade_units.changed }}"
+
 # The documented `sudo cybexos-system-snapshot ...` form needs the helper on
 # sudo's secure_path; libexec is not on it.
 - name: Expose the recovery helper to administrators

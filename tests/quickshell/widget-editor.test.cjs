@@ -81,7 +81,7 @@ function membershipHarness() {
     const settings = fs.readFileSync(path.join(shellDir,'Common/Settings.qml'),'utf8');
     const timer = { restart() {}, stop() {} };
     const context = vm.createContext({
-        mods: structuredClone(mods), clearUndo() {}, migrationPending: false,
+        mods: structuredClone(mods), clearUndo() {}, markExplicit() {}, migrationPending: false,
         LayoutHelpers: L, membershipBusy: false, subPage: '', search: { text: '' }, detailPage: { contentY: 0 },
         pendingMembership: null, undoRemoved: null, notice: '', announcement: '',
         membershipTimeout: timer, noticeTimer: timer, membershipFocus: { ...timer },

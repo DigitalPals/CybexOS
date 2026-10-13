@@ -113,7 +113,8 @@ Surface {
             return "Restart required";
         if (checking)
             return "Checking for updates";
-        return Updates.checkError !== "" ? "Updates" : "Up to date";
+        return Updates.checkError !== "" || Updates.projectStatus === "desktop-channel-disabled"
+            || Updates.projectStatus === "desktop-channel-invalid" ? "Updates need attention" : "Up to date";
     }
 
     readonly property string status: {

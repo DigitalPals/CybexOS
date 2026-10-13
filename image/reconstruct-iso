@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Verify release parts and atomically reconstruct an ISO without replacing files."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import tempfile
+
+
+def digest(value):
+    return isinstance(value, str) and re.fullmatch(r'[0-9a-f]{64}', value)
+
+
+def reconstruct(manifest, output=None):
+    manifest = Path(manifest)
+    if manifest.stat().st_size > 1024 * 1024:
+        raise ValueError('ISO parts manifest exceeds the size limit')
+    record = json.loads(manifest.read_text())
+    name = record.get('file', '')
+    if (record.get('format') != 1 or not isinstance(name, str)
+            or not re.fullmatch(r'[A-Za-z0-9._-]+\.iso', name)
+            or not digest(record.get('sha256'))
+            or not isinstance(record.get('bytes'), int) or record['bytes'] <= 0
+            or not isinstance(record.get('parts'), list) or not record['parts']):
+        raise ValueError('Invalid ISO reconstruction manifest')
+    destination = Path(output) if output is not None else manifest.parent / name
+    if destination.exists() or destination.is_symlink():
+        raise ValueError('ISO output already exists; existing files are preserved')
+    descriptor, temporary = tempfile.mkstemp(prefix='.cybexos-iso-', dir=destination.parent)
+    try:
+        total, complete = 0, hashlib.sha256()
+        with os.fdopen(descriptor, 'wb') as result:
+            for index, part in enumerate(record['parts']):
+                if (part.get('file') != f'{name}.part-{index:03d}'
+                        or not digest(part.get('sha256'))
+                        or not isinstance(part.get('bytes'), int)
+                        or not 0 < part['bytes'] < 2 * 1024 ** 3):
+                    raise ValueError('Invalid or reordered ISO part')
+                source = manifest.parent / part['file']
+                if source.is_symlink() or not source.is_file():
+                    raise ValueError('ISO parts must be regular files')
+                size, current = 0, hashlib.sha256()
+                with source.open('rb') as stream:
+                    while block := stream.read(8 * 1024 * 1024):
+                        size += len(block)
+                        if size > part['bytes']:
+                            raise ValueError('ISO part exceeds its recorded size')
+                        current.update(block)
+                        complete.update(block)
+                        result.write(block)
+                if size != part['bytes'] or current.hexdigest() != part['sha256']:
+                    raise ValueError('ISO part checksum or size mismatch: ' + source.name)
+                total += size
+            if total != record['bytes'] or complete.hexdigest() != record['sha256']:
+                raise ValueError('Reconstructed ISO checksum or size mismatch')
+            result.flush()
+            os.fsync(result.fileno())
+            os.fchmod(result.fileno(), 0o644)
+        # Hard-link publication refuses even a concurrent output creation.
+        os.link(temporary, destination)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+    return destination
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('manifest', type=Path)
+    parser.add_argument('--output', type=Path)
+    args = parser.parse_args()
+    try:
+        print(reconstruct(args.manifest, args.output))
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        parser.exit(1, f'reconstruct-iso: {error}\n')
+
+
+if __name__ == '__main__':
+    main()

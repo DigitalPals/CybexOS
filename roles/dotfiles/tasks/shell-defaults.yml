@@ -10,8 +10,9 @@
 - name: Install Fish shell configuration
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.copy:
-    src: fish-config.fish
+  cybexos_managed_file:
+    content: "{{ lookup('file', role_path + '/files/fish-config.fish', rstrip=false) }}"
+    ledger: "{{ primary_home }}/.local/state/cybexos/defaults/ownership.json"
     dest: "{{ primary_home }}/.config/fish/conf.d/50-cybexos.fish"
     mode: "0644"
   tags: [shell-defaults]

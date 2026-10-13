@@ -1,6 +1,7 @@
 {
   "version": 1,
   "shell": {
+    "font": "mono",
     "wall": "snow-capped-mountains-with-full-moon-lo.jpg",
     "wallDir": "~/Pictures/Wallpapers"
   },

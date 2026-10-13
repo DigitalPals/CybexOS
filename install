@@ -51,6 +51,7 @@ done
 # transaction and configuration run, so take the same lock; fd 9 survives the
 # final exec, and the playbook keeps it until it exits.
 acquire_update_lock() {
+  [[ ${update_lock_acquired:-false} == true ]] && return
   local state_root=${XDG_STATE_HOME:-$HOME/.local/state}/cybexos/update
   local runtime_root=${XDG_RUNTIME_DIR:-$state_root/runtime}
   mkdir -p -- "$runtime_root"
@@ -59,6 +60,7 @@ acquire_update_lock() {
     echo 'install: a CybexOS update is running; retry after it finishes (cybexos-update-run status).' >&2
     exit 75
   }
+  update_lock_acquired=true
 }
 
 # Ansible's workers detach from the terminal (setsid), and sudo's default
@@ -153,6 +155,39 @@ valid_timezone() { [[ $1 != /* && $1 != *..* && -e /usr/share/zoneinfo/$1 ]]; }
 valid_keyboard_layout() { [[ $1 =~ ^[A-Za-z0-9_,-]+$ ]]; }
 valid_keyboard_variant() { [[ -z $1 || $1 =~ ^[A-Za-z0-9_,-]+$ ]]; }
 
+# The ISO and checkout consume the same policy. Query it as root for real
+# installs: Btrfs's complete-device encryption check requires that access.
+# --check never elevates or installs dependencies and fails closed if the
+# existing root's encryption cannot be verified with the available access.
+if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+  if [[ $check_only == true ]]; then
+    echo 'install: --check needs python3 and python3-pyyaml' >&2
+    exit 1
+  fi
+  acquire_update_lock
+  run_step 'Install installer prerequisites' /tmp/cybexos-bootstrap-ansible.log \
+    sudo dnf -y install python3-pyyaml ansible-core
+fi
+defaults_command=(python3 -B "$repo_dir/scripts/installer-defaults")
+[[ -r $config_path ]] && defaults_command+=(--config "$config_path")
+if [[ $check_only == false ]]; then
+  sudo -n true 2>/dev/null || sudo -v
+  defaults_command=(sudo "${defaults_command[@]}")
+fi
+installation_defaults=$("${defaults_command[@]}")
+declare root_encrypted manage_system_identity manage_personal_dotfiles cleanup_legacy_xps_artifacts
+declare passwordless_wheel passwordless_local_polkit docker_sudoless desktop_autologin
+declare start_optional_hardware_services allow_insecure_sccache_transport xps_2026_camera_enabled
+declare developer_tools connected_widgets proprietary_apps tailscale docker podman steam
+declare private_hooks apple_display source_builds local_network_services
+while IFS='=' read -r key value; do
+  [[ $key =~ ^[a-z_][a-z0-9_]*$ && $value =~ ^(true|false)$ ]] || {
+    echo 'install: invalid shared installation policy' >&2
+    exit 1
+  }
+  printf -v "$key" '%s' "$value"
+done <<<"$installation_defaults"
+
 ask_text() {
   local variable=$1 prompt=$2 default=$3 validator=$4 answer
   while true; do
@@ -193,19 +228,6 @@ if [[ $non_interactive == true ]]; then
   regional_locale=$detected_regional
   machine_keyboard_layout=$detected_keyboard_layout
   machine_keyboard_variant=$detected_keyboard_variant
-  developer_tools=true
-  steam=true
-  docker=true
-  podman=true
-  tailscale=true
-  connected_widgets=true
-  proprietary_apps=true
-  passwordless_wheel=true
-  passwordless_local_polkit=false
-  docker_sudoless=false
-  desktop_autologin=false
-  local_network_services=false
-  manage_personal_dotfiles=false
 else
   ui_header 'CybexOS setup'
   echo 'Detected values are offered in brackets. No inventory editing is required.'
@@ -219,33 +241,46 @@ else
   ask_text machine_keyboard_layout 'Keyboard layout' "$detected_keyboard_layout" valid_keyboard_layout
   ask_text machine_keyboard_variant 'Keyboard variant (blank for default)' "$detected_keyboard_variant" valid_keyboard_variant
   echo
-  ask_bool developer_tools 'Install developer and Android tooling?' true
-  ask_bool steam 'Install gaming tools and Steam?' true
-  ask_bool docker 'Install and enable Docker?' true
-  ask_bool podman 'Install Podman and Distrobox?' true
-  ask_bool tailscale 'Install and enable Tailscale?' true
-  ask_bool connected_widgets 'Enable connected-service widgets?' true
-  ask_bool proprietary_apps 'Install Brave, 1Password, and ChatGPT packages?' true
-  ask_bool local_network_services 'Open feature-selected local-network firewall ports?' false
+  ask_bool developer_tools 'Install developer and Android tooling?' "$developer_tools"
+  ask_bool steam 'Install gaming tools and Steam?' "$steam"
+  ask_bool docker 'Install and enable Docker?' "$docker"
+  ask_bool podman 'Install Podman and Distrobox?' "$podman"
+  ask_bool tailscale 'Install and enable Tailscale?' "$tailscale"
+  ask_bool connected_widgets 'Enable connected-service widgets?' "$connected_widgets"
+  ask_bool proprietary_apps 'Install Brave, 1Password, and ChatGPT packages?' "$proprietary_apps"
+  ask_bool local_network_services 'Open feature-selected local-network firewall ports?' "$local_network_services"
   echo
   echo 'The following choices relax local authentication. Review each explicitly.'
-  ask_bool passwordless_wheel 'Allow the wheel group to use sudo without a password?' true
-  ask_bool passwordless_local_polkit 'Authorize active local wheel users through Polkit without a password?'
-  docker_sudoless=false
+  ask_bool passwordless_wheel 'Allow the wheel group to use sudo without a password?' "$passwordless_wheel"
+  ask_bool passwordless_local_polkit 'Authorize active local wheel users through Polkit without a password?' "$passwordless_local_polkit"
   if [[ $docker == true ]]; then
-    ask_bool docker_sudoless "Let $primary_user use Docker without sudo? (The docker group is equivalent to root access.)" false
+    ask_bool docker_sudoless "Let $primary_user use Docker without sudo? (The docker group is equivalent to root access.)" "$docker_sudoless"
   fi
-  ask_bool desktop_autologin 'Automatically log this user into Hyprland when the root disk is encrypted?' false
+  if [[ $root_encrypted == true ]]; then
+    ask_bool desktop_autologin 'Automatically log this user into Hyprland after disk unlock?' "$desktop_autologin"
+  else
+    echo 'Automatic login stays off because root encryption could not be verified.'
+  fi
   echo
   if [[ -e $selected_home/.gitconfig || -e $selected_home/.ssh/config \
         || -e $selected_home/.config/fish/config.fish \
         || -e $selected_home/.config/kitty/kitty.conf ]]; then
     ask_bool manage_personal_dotfiles \
-      'Install the opinionated shell/application dotfiles alongside existing configuration?' false
+      'Install the opinionated shell/application dotfiles alongside existing configuration?' "$manage_personal_dotfiles"
   else
     ask_bool manage_personal_dotfiles \
-      'Install the opinionated shell and application dotfiles?' true
+      'Install the opinionated shell and application dotfiles?' "$manage_personal_dotfiles"
   fi
+fi
+
+[[ $docker == true ]] || docker_sudoless=false
+[[ $podman == true ]] || source_builds=false
+# Fedora keeps its existing identity unless the user explicitly changes it.
+if [[ $machine_hostname != "$detected_hostname" || $machine_timezone != "$detected_timezone" \
+      || $machine_locale != "$detected_locale" || $regional_locale != "$detected_regional" \
+      || $machine_keyboard_layout != "$detected_keyboard_layout" \
+      || $machine_keyboard_variant != "$detected_keyboard_variant" ]]; then
+  manage_system_identity=true
 fi
 
 primary_home=$(getent passwd "$primary_user" | cut -d: -f6)
@@ -270,16 +305,16 @@ machine_locale: $(yaml_string "$machine_locale")
 regional_locale: $(yaml_string "$regional_locale")
 machine_keyboard_layout: $(yaml_string "$machine_keyboard_layout")
 machine_keyboard_variant: $(yaml_string "$machine_keyboard_variant")
-manage_system_identity: true
+manage_system_identity: $manage_system_identity
 manage_personal_dotfiles: $manage_personal_dotfiles
-cleanup_legacy_xps_artifacts: false
+cleanup_legacy_xps_artifacts: $cleanup_legacy_xps_artifacts
 passwordless_wheel: $passwordless_wheel
 passwordless_local_polkit: $passwordless_local_polkit
 docker_sudoless: $docker_sudoless
 desktop_autologin: $desktop_autologin
-start_optional_hardware_services: true
-allow_insecure_sccache_transport: false
-xps_2026_camera_enabled: true
+start_optional_hardware_services: $start_optional_hardware_services
+allow_insecure_sccache_transport: $allow_insecure_sccache_transport
+xps_2026_camera_enabled: $xps_2026_camera_enabled
 features:
   developer_tools: $developer_tools
   connected_widgets: $connected_widgets
@@ -288,9 +323,9 @@ features:
   docker: $docker
   podman: $podman
   steam: $steam
-  private_hooks: false
-  apple_display: false
-  source_builds: $podman
+  private_hooks: $private_hooks
+  apple_display: $apple_display
+  source_builds: $source_builds
   local_network_services: $local_network_services
 EOF
 

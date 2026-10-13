@@ -820,7 +820,12 @@ def command_create(arguments: list[str]) -> int:
         # independent transactions. Snapshots and archives rotate together.
         snapshots = sorted(entry.name for entry in store.roots.iterdir() if entry.is_dir())
         while len(snapshots) > KEEP:
-            oldest = snapshots.pop(0)
+            removable = [point for point in snapshots
+                         if not (store.metadata / f"{point}.pin").exists()]
+            if not removable:
+                break
+            oldest = removable[0]
+            snapshots.remove(oldest)
             if not ID_PATTERN.match(oldest):
                 raise Failure(f"refusing to prune unexpected snapshot name: {oldest}")
             run(["btrfs", "subvolume", "delete", str(store.roots / oldest)])

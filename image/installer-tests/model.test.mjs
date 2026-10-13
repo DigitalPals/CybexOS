@@ -7,6 +7,12 @@ test("account validation handles mismatch, username and a long non-ASCII phrase"
     assert.throws(() => wizard.account({username: "Alice", password: "long fixture password", confirm: "long fixture password"}));
     assert.throws(() => wizard.account({username: "alice", password: "long fixture password", confirm: "other"}));
     assert.equal(wizard.account({username: "alice", password: "lang wachtwoord café", confirm: "lang wachtwoord café"}).username, "alice");
+    for (const username of ["root", "liveuser", "sddm", "chrony"]) {
+        assert.throws(() => wizard.account({username, password: "long fixture password", confirm: "long fixture password"}), /reserved/);
+    }
+    for (const password of ["long\nfixture password", "x".repeat(513)]) {
+        assert.throws(() => wizard.account({username: "alice", password, confirm: password}));
+    }
 });
 test("review and installation require a plan and explicit erase confirmation", () => {
     const wizard = new Wizard();

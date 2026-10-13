@@ -16,6 +16,9 @@ case $command_name in
   update)
     exec "$source_dir/update" "$@"
     ;;
+  upgrade-system)
+    exec sudo /usr/local/libexec/cybexos-major-upgrade "$@"
+    ;;
   agent)
     exec "$agent_command" "$@"
     ;;
@@ -24,6 +27,9 @@ case $command_name in
     ;;
   plugin)
     exec {{ (primary_home + '/.local/bin/cybexos-runtime') | quote }} plugin "$@"
+    ;;
+  shell)
+    exec {{ (primary_home + '/.local/bin/cybexos-runtime') | quote }} shell "$@"
     ;;
   verify|doctor)
     verify_scope=false
@@ -50,9 +56,11 @@ Commands:
   install      Install using saved choices, or start first-run setup
   configure    Ask the installation questions again and apply the answers
   update       Check for and apply CybexOS and system updates
+  upgrade-system Prepare, perform, or inspect a supported Fedora major upgrade
   agent        Launch or choose the default AI coding agent
   dev          Select, inspect, or disable a live development checkout
   plugin       Install, update, clone, remove, or configure desktop plugins
+  shell        Inspect shell health, enter safe mode, or retry the full desktop
   verify       Verify repository and installed-system health
   doctor       Alias for verify
   uninstall    Remove project-managed configuration

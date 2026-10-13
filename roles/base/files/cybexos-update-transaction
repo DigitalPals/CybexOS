@@ -1,0 +1,433 @@
+#!/usr/bin/python3
+"""Durable OS and vendor-desktop rollback, independent of the root being restored.
+
+The transaction journal and vendor checkpoint live in the Btrfs top-level
+recovery store, outside both root and home. Personal preferences are never
+checkpointed. A failed transaction selects the previous root for the next boot;
+it does not pretend to replace the running kernel or reboot a working session.
+"""
+from __future__ import annotations
+
+import argparse
+import contextlib
+import importlib.machinery
+import importlib.util
+import hashlib
+import json
+import os
+from pathlib import Path
+import pwd
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+
+def load_snapshot():
+    path = Path(__file__).resolve().with_name('cybexos-system-snapshot')
+    loader = importlib.machinery.SourceFileLoader('cybexos_snapshot', str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+snapshot = load_snapshot()
+IDENTIFIER = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$')
+ACTIVE = {'prepared', 'applying', 'validating', 'rolling-back', 'rollback-failed',
+          'awaiting-upgrade', 'awaiting-desktop'}
+TERMINAL = {'committed', 'aborted', 'rolled-back'}
+
+
+def boot_id():
+    return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+
+
+def execute(command, *, timeout=120):
+    result = subprocess.run(command, text=True, capture_output=True, timeout=timeout,
+                            env={**os.environ, 'LC_ALL': 'C'})
+    if result.returncode:
+        raise snapshot.Failure(f'{command[0]} failed: {result.stderr.strip()[-1000:]}')
+    return result.stdout.strip()
+
+
+def as_user(uid, command):
+    account = pwd.getpwuid(uid)
+    return ['runuser', '-u', account.pw_name, '--', 'env', f'HOME={account.pw_dir}',
+            f'XDG_RUNTIME_DIR=/run/user/{uid}',
+            f'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus', *command]
+
+
+def desktop_active(uid):
+    try:
+        return execute(as_user(uid, ['systemctl', '--user', 'is-active',
+                                     'quickshell.service'])) == 'active'
+    except snapshot.Failure:
+        return False
+
+
+def failed_units():
+    return [line.split()[0] for line in
+            execute(['systemctl', '--failed', '--plain', '--no-legend']).splitlines() if line.strip()]
+
+
+def health(record, *, desktop=True):
+    execute(['rpm', '--verifydb'])
+    new_failures = set(failed_units()) - set(record.get('failedUnits', []))
+    if new_failures:
+        raise snapshot.Failure('New failed system units: ' + '; '.join(sorted(new_failures)))
+    if desktop and record.get('desktopActive'):
+        uid = record['uid']
+        execute(as_user(uid, ['systemctl', '--user', 'daemon-reload']))
+        execute(as_user(uid, ['systemctl', '--user', 'restart', 'quickshell.service']))
+        account = pwd.getpwuid(uid)
+        runtime = Path(account.pw_dir) / '.local/bin/cybexos-runtime'
+        if not runtime.is_file():
+            runtime = Path('/usr/share/cybexos/bin/cybexos-runtime')
+        deadline = time.monotonic() + 45
+        stable_at = None
+        previous = None
+        while time.monotonic() < deadline:
+            try:
+                if not desktop_active(uid):
+                    raise snapshot.Failure('Desktop service is not active')
+                invocation = execute(as_user(uid, ['systemctl', '--user', 'show',
+                    'quickshell.service', '-p', 'InvocationID', '--value']))
+                pid = execute(as_user(uid, ['systemctl', '--user', 'show', 'quickshell.service',
+                                           '-p', 'MainPID', '--value']))
+                if not re.fullmatch(r'[0-9a-f]{32}', invocation) or not pid.isdigit() or int(pid) == 0:
+                    raise snapshot.Failure('Desktop process has not started')
+                if execute(['pgrep', '-u', str(uid), '-x', 'qs']).splitlines() != [pid]:
+                    raise snapshot.Failure('The managed service must own the sole Quickshell process')
+                recovery = json.loads(execute(as_user(uid, [str(runtime), 'shell', 'status'])))
+                if recovery.get('safe'):
+                    raise snapshot.Failure('The new desktop entered recovery mode')
+                # Type=simple readiness only means exec succeeded. Read-only
+                # IPC proves the full configuration finished constructing.
+                ready = json.loads(execute(as_user(uid, [str(runtime), 'ipc', 'settings', 'status']),
+                                           timeout=5))
+                if not isinstance(ready.get('services'), dict):
+                    raise snapshot.Failure('Desktop IPC did not report a ready configuration')
+                current = (pid, invocation)
+                if current != previous:
+                    stable_at = time.monotonic()
+                    previous = current
+                if stable_at is not None and time.monotonic() - stable_at >= 2:
+                    break
+            except (snapshot.Failure, ValueError, subprocess.TimeoutExpired):
+                previous = None
+                stable_at = None
+            time.sleep(0.25)
+        else:
+            raise snapshot.Failure('The full desktop did not become stable and IPC-ready within 45 seconds')
+        journal = execute(as_user(uid, ['journalctl', '--user', '--no-pager', '-o', 'cat',
+                                       f'_SYSTEMD_INVOCATION_ID={invocation}']))
+        if re.search(r'(ReferenceError:|TypeError:|SyntaxError:|Failed to load configuration)', journal):
+            raise snapshot.Failure('The updated desktop reported QML errors')
+
+
+def save(directory, record):
+    record['updatedAt'] = int(time.time())
+    snapshot.atomic_write(directory / 'transaction.json', json.dumps(record, indent=2) + '\n', 0o600)
+    execute(['sync', '-f', str(directory)])
+
+
+def read(directory):
+    value = json.loads((directory / 'transaction.json').read_text())
+    if value.get('v') != 1 or value.get('state') not in ACTIVE | TERMINAL:
+        raise snapshot.Failure('Unsupported or corrupt transaction journal; refusing to overwrite it')
+    return value
+
+
+def vendor_paths():
+    path = Path(__file__).resolve().with_name('cybexos-vendor-paths.json')
+    values = json.loads(path.read_text())
+    for relative in values:
+        parts = Path(relative).parts
+        if not parts or Path(relative).is_absolute() or '..' in parts:
+            raise snapshot.Failure('Unsafe vendor checkpoint manifest')
+        if relative.startswith(('.config/cybexos/', '.local/share/cybexos/plugins',
+                                '.local/share/cybexos/themes', '.local/share/cybexos/plugin-data')):
+            raise snapshot.Failure('Personal data must never be part of the vendor checkpoint')
+    return values
+
+
+def safe_destination(home, relative):
+    target = home / relative
+    # A user-controlled parent symlink must never redirect root writes elsewhere.
+    for parent in target.parents:
+        if parent == home:
+            break
+        if parent.is_symlink():
+            raise snapshot.Failure(f'Vendor path has a symlink parent: {parent}')
+    return target
+
+
+def home_command(uid, command):
+    # No privileged process traverses a writable home when copying/removing
+    # files. Checking symlink parents alone cannot prevent a rename race.
+    if uid == os.geteuid():
+        return command
+    account = pwd.getpwuid(uid)
+    # Boot recovery runs before systemd-user-sessions. A PAM session may
+    # activate user@UID.service, which waits on that same login barrier.
+    # Filesystem work needs only the account's identity, never session setup.
+    return ['/usr/bin/setpriv', '--reuid', str(uid), '--regid', str(account.pw_gid),
+            '--init-groups', '--', '/usr/bin/env', f'HOME={account.pw_dir}',
+            f'USER={account.pw_name}', f'LOGNAME={account.pw_name}', *command]
+
+
+def archive_path(directory, relative):
+    return directory / 'vendor' / (hashlib.sha256(relative.encode()).hexdigest() + '.tar')
+
+
+def checkpoint(directory, home, uid):
+    present = []
+    (directory / 'vendor').mkdir(mode=0o700)
+    for relative in vendor_paths():
+        source = safe_destination(home, relative)
+        if source.exists() or source.is_symlink():
+            with archive_path(directory, relative).open('xb') as stream:
+                subprocess.run(home_command(uid, ['/usr/bin/tar', '--acls', '--xattrs',
+                    '--selinux', '--create', '--file=-', '--directory', str(home), '--', relative]),
+                    stdout=stream, check=True, timeout=600)
+                stream.flush()
+                os.fsync(stream.fileno())
+            present.append(relative)
+    return present
+
+
+def restore_vendor(directory, record):
+    home = Path(pwd.getpwuid(record['uid']).pw_dir)
+    if str(home) != record['home']:
+        raise snapshot.Failure('Account home changed; refusing to restore into a different home')
+    for relative in record['paths']:
+        destination = safe_destination(home, relative)
+        backup = archive_path(directory, relative)
+        # Remove exactly the selected vendor object as its owner. A race can
+        # never turn this into a root write outside the account's privileges.
+        delete = ['/usr/bin/python3', '-I', '-c',
+                  'import pathlib,shutil,sys; p=pathlib.Path(sys.argv[1]); '
+                  'shutil.rmtree(p) if p.is_dir() and not p.is_symlink() else p.unlink(missing_ok=True)',
+                  str(destination)]
+        if relative in record['present']:
+            if not backup.is_file() or backup.is_symlink():
+                raise snapshot.Failure(f'Vendor checkpoint is incomplete: {relative}')
+            execute(home_command(record['uid'], delete), timeout=600)
+            # Retain the archive until the journal is terminal. An interrupted
+            # extraction is safely retried, without exchanging roots twice.
+            with backup.open('rb') as stream:
+                subprocess.run(home_command(record['uid'], ['/usr/bin/tar', '--acls', '--xattrs',
+                    '--selinux', '--extract', '--file=-', '--no-same-owner', '--same-permissions',
+                    '--directory', str(home)]), stdin=stream, check=True, timeout=600)
+        else:
+            execute(home_command(record['uid'], delete), timeout=600)
+
+
+def remove(path):
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def cleanup_terminal(store, directory, record):
+    # A durable terminal journal is authoritative. A full disk or cleanup
+    # permission failure must not turn a successful restore into a retry that
+    # needs an archive which has already been partly removed.
+    for path in (directory / 'vendor', store.metadata / f"{record['snapshot']}.pin"):
+        try:
+            remove(path)
+        except OSError as error:
+            print(f'cybexos-update-transaction: retained cleanup artifact {path}: {error}',
+                  file=sys.stderr)
+
+
+@contextlib.contextmanager
+def store_for_transaction(create=False):
+    layout = snapshot.detect_layout()
+    if not layout.usable:
+        raise snapshot.Failure(layout.message or 'Transactional updates require the managed Btrfs layout')
+    with snapshot.opened_store(layout, create=create) as store:
+        if store is None:
+            raise snapshot.Failure('Recovery store is missing')
+        yield layout, store
+
+
+def begin(identifier, point, uid):
+    account = pwd.getpwuid(uid)
+    with store_for_transaction() as (layout, store):
+        if layout.pending_reboot or layout.kind == 'recovery':
+            raise snapshot.Failure('Restart into the selected system before updating')
+        if not snapshot.ID_PATTERN.fullmatch(point) or not (store.roots / point).is_dir():
+            raise snapshot.Failure('The pre-update recovery point is missing')
+        root = store.path / 'transactions'
+        root.mkdir(mode=0o700, exist_ok=True)
+        for previous in root.glob('*/transaction.json'):
+            if read(previous.parent)['state'] in ACTIVE:
+                raise snapshot.Failure('Another transaction needs recovery before a new update')
+        directory = root / identifier
+        directory.mkdir(mode=0o700)
+        try:
+            record = {'v': 1, 'id': identifier, 'state': 'prepared', 'snapshot': point,
+                      'uid': uid, 'home': account.pw_dir, 'bootId': boot_id(),
+                      'paths': vendor_paths(), 'failedUnits': failed_units(),
+                      'desktopActive': desktop_active(uid),
+                      'rootUuid': snapshot.subvolume_uuid(store.top / 'root')}
+            record['present'] = checkpoint(directory, Path(account.pw_dir), uid)
+            save(directory, record)
+        except BaseException:
+            shutil.rmtree(directory)
+            raise
+        # Pin the point independently of normal five-point retention.
+        snapshot.atomic_write(store.metadata / f'{point}.pin', identifier + '\n', 0o600)
+        print(json.dumps(record))
+
+
+def transition(identifier, action, metadata=None):
+    with store_for_transaction() as (_layout, store):
+        directory = store.path / 'transactions' / identifier
+        record = read(directory)
+        if action == 'status':
+            print(json.dumps(record))
+            return
+        if action == 'applying':
+            if record['state'] not in {'prepared', 'awaiting-upgrade'}:
+                raise snapshot.Failure('Only a prepared update may start applying')
+            record['state'] = 'applying'
+        elif action == 'commit':
+            if record['state'] not in {'applying', 'validating', 'awaiting-desktop'}:
+                raise snapshot.Failure('Only an applied update may be validated')
+            record['state'] = 'validating'
+            save(directory, record)
+            health(record)
+            record['state'] = 'committed'
+        elif action == 'await-desktop':
+            if record['state'] not in {'applying', 'validating'}:
+                raise snapshot.Failure('Only a converged upgrade can await desktop validation')
+            health(record, desktop=False)
+            record.update(state='awaiting-desktop', desktopActive=True)
+        elif action == 'abort':
+            if record['state'] not in {'prepared', 'awaiting-upgrade'}:
+                raise snapshot.Failure('An applied update must be rolled back')
+            record['state'] = 'aborted'
+        elif action == 'arm-upgrade':
+            if record['state'] != 'prepared' or not isinstance(metadata, dict):
+                raise snapshot.Failure('A major upgrade requires a prepared checkpoint and target metadata')
+            target = metadata.get('targetFedora')
+            if not isinstance(target, str) or not re.fullmatch(r'[1-9][0-9]{1,2}', target):
+                raise snapshot.Failure('Major upgrade targetFedora must be a release number string')
+            record.update(state='awaiting-upgrade', operation='major-upgrade', upgrade=metadata)
+        save(directory, record)
+        if record['state'] in {'committed', 'aborted'}:
+            cleanup_terminal(store, directory, record)
+        print(json.dumps(record))
+
+
+def rollback(identifier):
+    # Do not hold the store's flock while the snapshot helper acquires it.
+    with store_for_transaction() as (_layout, store):
+        directory = store.path / 'transactions' / identifier
+        record = read(directory)
+        if record['state'] in {'committed', 'aborted'}:
+            raise snapshot.Failure('A completed transaction cannot be automatically rolled back')
+        if record['state'] == 'rolled-back':
+            print(json.dumps(record))
+            return
+        record['state'] = 'rolling-back'
+        save(directory, record)
+        # A crash after root exchange must not exchange it a second time.
+        snapshot.complete_interrupted(store)
+        already_restored = any(item.get('point') == record['snapshot']
+                               and item.get('state') == 'complete'
+                               for item in (snapshot.read_record(store, path.stem)
+                                            for path in store.replaced.glob('*.json')))
+    try:
+        if not already_restored:
+            with contextlib.redirect_stdout(sys.stderr):
+                snapshot.command_restore([record['snapshot']])
+        with store_for_transaction() as (_layout, store):
+            directory = store.path / 'transactions' / identifier
+            restore_vendor(directory, record)
+            record['state'] = 'rolled-back'
+            record['restartRequired'] = snapshot.detect_layout().pending_reboot
+            save(directory, record)
+            cleanup_terminal(store, directory, record)
+    except BaseException:
+        with store_for_transaction() as (_layout, store):
+            record['state'] = 'rollback-failed'
+            save(store.path / 'transactions' / identifier, record)
+        raise
+    print(json.dumps(record))
+
+
+def recover():
+    layout = snapshot.detect_layout()
+    if not layout.usable:
+        return
+    with snapshot.opened_store(layout, create=False) as store:
+        if store is None:
+            return
+        pending = [read(path.parent) for path in (store.path / 'transactions').glob('*/transaction.json')]
+    for record in pending:
+        # Installing the login dependency can start this oneshot during an
+        # existing session. Only another boot proves that the update worker
+        # was interrupted; never restore files beneath a same-boot worker.
+        if record['bootId'] == boot_id():
+            continue
+        if record['state'] == 'awaiting-upgrade':
+            helper = Path(__file__).resolve().with_name('cybexos-major-upgrade')
+            result = subprocess.run([str(helper), 'finalize', record['id']], check=False, timeout=4200)
+            if result.returncode == 75:
+                raise SystemExit(75)
+            if result.returncode:
+                rollback(record['id'])
+                raise SystemExit(75)
+        elif record['state'] == 'awaiting-desktop':
+            continue
+        elif record['state'] == 'prepared':
+            transition(record['id'], 'abort')
+        elif record['state'] in ACTIVE:
+            rollback(record['id'])
+            # Boot recovery runs before logins. Do not start a desktop against
+            # the still-mounted failed root; return a distinct restart signal.
+            raise SystemExit(75)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest='command', required=True)
+    begin_parser = commands.add_parser('begin')
+    begin_parser.add_argument('id')
+    begin_parser.add_argument('snapshot')
+    begin_parser.add_argument('--uid', required=True, type=int)
+    for action in ('applying', 'commit', 'abort', 'rollback', 'status', 'await-desktop'):
+        commands.add_parser(action).add_argument('id')
+    arm = commands.add_parser('arm-upgrade')
+    arm.add_argument('id')
+    arm.add_argument('--metadata', type=json.loads, required=True)
+    commands.add_parser('recover')
+    args = parser.parse_args(argv)
+    if hasattr(args, 'id') and not IDENTIFIER.fullmatch(args.id):
+        parser.error('Invalid transaction identifier')
+    if os.geteuid() != 0:
+        parser.error('Run the transaction helper as root')
+    os.umask(0o077)
+    try:
+        if args.command == 'begin':
+            begin(args.id, args.snapshot, args.uid)
+        elif args.command == 'recover':
+            recover()
+        elif args.command == 'rollback':
+            rollback(args.id)
+        else:
+            transition(args.id, args.command, getattr(args, 'metadata', None))
+    except (snapshot.Failure, OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        print(f'cybexos-update-transaction: {error}', file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

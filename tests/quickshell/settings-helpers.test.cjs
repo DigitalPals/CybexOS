@@ -6,7 +6,7 @@ const H = load("SettingsHelpers.js");
 
 test("defaults carry the design values", () => {
     const d = H.defaults();
-    assert.equal(H.VERSION, 26);
+    assert.equal(H.VERSION, 28);
     assert.deepEqual(d.drawerTabs.map(t => t.id),
         ["overview", "sound", "network", "bluetooth", "power", "notifications"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
@@ -61,7 +61,7 @@ test("defaults carry the design values", () => {
         ["indicators", "clock", "weather", "notes"]);
     assert.equal(d.mods.center.find(m => m.id === "notes").on, true);
     assert.deepEqual(d.mods.right.map(m => m.id),
-        ["modelusage", "updates", "gh", "t3", "hermes", "tray", "notifications",
+        ["modelusage", "fusebox", "updates", "gh", "t3", "hermes", "remote", "tray", "notifications",
          "vol", "wifi", "bt", "batt", "control"]);
     assert.equal(d.mods.left[1].on, true, "the media chip hides itself when nothing plays");
     assert.equal(d.mods.right.find(m => m.id === "bt").on, true,
@@ -69,7 +69,7 @@ test("defaults carry the design values", () => {
     assert.equal(d.mods.right.find(m => m.id === "tray").on, false);
     assert.equal(d.mods.right.find(m => m.id === "updates").on, true);
     assert.equal(d.mods.right.find(m => m.id === "notifications").on, true);
-    for (const id of ["modelusage", "gh", "t3", "hermes"])
+    for (const id of H.CONNECTED_WIDGET_IDS)
         assert.equal(d.mods.right.find(m => m.id === id).on, false,
             `${id} is available through Connected without crowding a fresh bar`);
     const moduleIds = [...d.mods.left, ...d.mods.center, ...d.mods.right]
@@ -81,8 +81,8 @@ test("defaults carry the design values", () => {
     assert.ok([...d.mods.left, ...d.mods.center, ...d.mods.right]
         .every(module => module.detail === "auto"));
     assert.deepEqual(Object.keys(d.modOpts),
-        ["ws", "media", "indicators", "clock", "weather", "notes", "t3", "hermes", "modelusage",
-         "gh", "updates", "tray", "notifications", "vol", "batt"]);
+        ["ws", "media", "indicators", "clock", "remote", "weather", "notes", "t3", "hermes", "fusebox",
+         "modelusage", "gh", "updates", "tray", "notifications", "vol", "batt"]);
     assert.equal(d.modOpts.ws.minSlots, 5);
     assert.equal(d.modOpts.ws.style, "numbers");
     assert.equal(d.modOpts.media.maxWidth, 180);
@@ -514,7 +514,7 @@ test("merge falls back on invalid enums, colors and names", () => {
 test("schema-5 bar modes migrate without losing customized geometry", () => {
     assert.equal(H.merge({
         v: 5, floating: true, barHeight: 46, barRadius: 23, gap: 10
-    }).barStyle, "hug", "pristine floating geometry adopts the new default");
+    }).barStyle, "floating", "an explicit old floating mode remains floating");
     assert.equal(H.merge({
         v: 5, floating: true, barHeight: 44, barRadius: 23, gap: 10
     }).barStyle, "floating", "a customized height remains floating");
@@ -530,7 +530,7 @@ test("schema-5 colors select wallpaper or fixed mode and remain stored", () => {
     const pristine = H.merge({
         v: 5, accent: "#5e9bff", barColorMode: "default"
     });
-    assert.equal(pristine.paletteMode, "wallpaper");
+    assert.equal(pristine.paletteMode, "fixed");
 
     const oldWallpaperAccent = H.merge({
         v: 5, accentWall: true, accent: "#a992e0", barColorMode: "black"
@@ -566,9 +566,21 @@ test("schema-6 migration preserves module order and adds clock-side indicators",
     assert.equal(migrated.mods.right[0].id, "batt");
 });
 
-test("schema-7 adopts Google Sans only from the previous default", () => {
-    assert.equal(H.merge({ v: 6, font: "urbanist" }).font, "google",
-        "the old untouched default follows the softer typography pass");
+test("missing font preferences use the current default across first-run and legacy settings", () => {
+    for (const raw of [null, {}, { wall: "mountain.jpg" }, { v: 3 }, { v: 6 }, { v: H.VERSION }]) {
+        const merged = H.merge(raw);
+        assert.equal(merged.font, "mono", JSON.stringify(raw));
+        assert.equal(H.FONT_CHOICES.find(choice => choice.id === merged.font).family,
+            "JetBrainsMono Nerd Font");
+    }
+    for (const font of H.FONT_IDS)
+        assert.equal(H.merge({ v: H.VERSION, font }).font, font,
+            "an explicitly saved font remains selectable");
+});
+
+test("legacy fonts remain explicit even when equal to an old default", () => {
+    assert.equal(H.merge({ v: 6, font: "urbanist" }).font, "urbanist",
+        "a saved former default is still the user choice");
     assert.equal(H.merge({ v: 6, font: "plex" }).font, "plex",
         "an explicit previous-schema choice survives");
     assert.equal(H.merge({ v: H.VERSION, font: "urbanist" }).font, "urbanist",
@@ -596,7 +608,7 @@ test("normalizeMods appends ids missing from the file at their default column", 
     assert.deepEqual(next.center.map(m => m.id),
         ["indicators", "clock", "weather", "notes"]);
     assert.deepEqual(next.right.map(m => m.id),
-        ["modelusage", "updates", "gh", "t3", "hermes", "tray", "notifications",
+        ["modelusage", "fusebox", "updates", "gh", "t3", "hermes", "remote", "tray", "notifications",
          "wifi", "bt", "batt", "control"]);
     assert.ok(next.right.some(m => m.id === "bt" && m.on === true),
         "appended module keeps its default enable flag");
@@ -607,7 +619,7 @@ test("normalizeMods falls back to the default flag for a non-boolean", () => {
     assert.equal(next.left[0].on, true);
 });
 
-test("a schema-3 file adopts the redesign only where it was left untouched", () => {
+test("a schema-3 file retains every saved choice across visual redesigns", () => {
     // The glass menubar changed the bar's proportions, and a settings file
     // written by the previous schema carries the old ones for every key. A
     // value the user never moved takes the new default; one they did is theirs.
@@ -616,14 +628,14 @@ test("a schema-3 file adopts the redesign only where it was left untouched", () 
         font: "oppo", osd: "top",
         modOpts: { ws: { style: "numbers" }, media: { maxWidth: 220 } }
     });
-    assert.equal(untouched.barHeight, 36);
-    assert.equal(untouched.barRadius, 11);
+    assert.equal(untouched.barHeight, 30);
+    assert.equal(untouched.barRadius, 9);
     assert.equal(untouched.gap, 8);
-    assert.equal(untouched.accent, "#d3d283");
-    assert.equal(untouched.font, "google");
-    assert.equal(untouched.osd, "bottom");
+    assert.equal(untouched.accent, "#9ecbeb");
+    assert.equal(untouched.font, "oppo");
+    assert.equal(untouched.osd, "top");
     assert.equal(untouched.modOpts.ws.style, "numbers");
-    assert.equal(untouched.modOpts.media.maxWidth, 180);
+    assert.equal(untouched.modOpts.media.maxWidth, 220);
 
     const chosen = H.merge({
         v: 3, barHeight: 36, accent: "#a992e0", font: "mono",
@@ -672,7 +684,7 @@ test("schema-4 appearance choices survive later schema upgrades", () => {
         previous.barCustomLightness), H.BAR_COLOR_PRESETS.default.light);
 });
 
-test("schema-9 adopts the classic bar only from untouched design values", () => {
+test("schema-9 retains explicit former defaults across the classic redesign", () => {
     const untouched = H.merge({
         v: 9,
         glassEnabled: true,
@@ -689,18 +701,18 @@ test("schema-9 adopts the classic bar only from untouched design values", () => 
             clock: { dateFormat: "ddd d MMM" }
         }
     });
-    assert.equal(untouched.glassEnabled, false);
-    assert.equal(untouched.barHeight, 36);
-    assert.equal(untouched.barRadius, 11);
-    assert.equal(untouched.gap, 8);
-    assert.equal(untouched.accent, "#d3d283");
+    assert.equal(untouched.glassEnabled, true);
+    assert.equal(untouched.barHeight, 46);
+    assert.equal(untouched.barRadius, 23);
+    assert.equal(untouched.gap, 10);
+    assert.equal(untouched.accent, "#5e9bff");
     assert.deepEqual([
         untouched.barCustomHue,
         untouched.barCustomSaturation,
         untouched.barCustomLightness
-    ], [230, 14, 9]);
-    assert.equal(untouched.modOpts.ws.style, "numbers");
-    assert.equal(untouched.modOpts.clock.dateFormat, "ddd dd");
+     ], [247, 29, 11]);
+    assert.equal(untouched.modOpts.ws.style, "dots");
+    assert.equal(untouched.modOpts.clock.dateFormat, "ddd d MMM");
 
     const chosen = H.merge({
         v: 9,
@@ -777,8 +789,8 @@ test("schema-11 inserts notifications before the first right-side status widget"
 
     const migrated = H.merge({ v: 10, mods: raw }).mods.right;
     assert.deepEqual(migrated.map(mod => mod.id),
-        ["modelusage", "updates", "tray", "gh", "notifications", "wifi", "t3",
-         "hermes", "vol", "bt", "batt", "control"]);
+        ["modelusage", "fusebox", "updates", "tray", "gh", "notifications", "wifi", "t3",
+         "hermes", "vol", "bt", "batt", "remote", "control"]);
 });
 
 test("schema-11 appends notifications on the right when its status widgets moved", () => {
@@ -872,8 +884,9 @@ test("version one layouts insert Hermes after t3 in its column", () => {
             right: [{ id: "vol", on: true }, { id: "t3", on: false }]
         }
     }).mods;
-    assert.deepEqual(disabled.right.slice(0, 5), [
+    assert.deepEqual(disabled.right.slice(0, 6), [
         { id: "modelusage", on: false, detail: "auto" },
+        { id: "fusebox", on: false, detail: "auto" },
         { id: "notifications", on: true, detail: "auto" },
         { id: "vol", on: true, detail: "auto" },
         { id: "t3", on: false, detail: "auto" },
@@ -907,8 +920,9 @@ test("schema-8 inserts indicators immediately before the existing clock", () => 
         ]
     };
     const migrated = H.merge({ v: 7, mods: raw }).mods;
-    assert.deepEqual(migrated.right.slice(0, 6), [
+    assert.deepEqual(migrated.right.slice(0, 7), [
         { id: "modelusage", on: false, detail: "auto" },
+        { id: "fusebox", on: false, detail: "auto" },
         { id: "notifications", on: true, detail: "auto" },
         { id: "vol", on: false, detail: "compact" },
         { id: "indicators", on: true, detail: "auto" },
@@ -949,9 +963,8 @@ test("pre-OCR action lists place OCR beside recording without overriding visibil
     assert.deepEqual(untouched.order, [
         "dictation", "recording", "ocr", "reminder", "night-light", "dnd", "stay-awake"
     ]);
-    assert.deepEqual(untouched.enabled, [
-        "dictation", "recording", "ocr", "reminder", "night-light", "dnd", "stay-awake"
-    ]);
+    assert.deepEqual(untouched.enabled, priorIds,
+        "a stored enabled list never implies permission to enable a new action");
 
     const customized = H.merge({
         v: H.VERSION,
@@ -1222,8 +1235,9 @@ test("schema 25 drops the retired usage widget, drawer tab, options and poll cei
     assert.ok(!ids.includes("usage"), "the usage module survived migration");
     assert.deepEqual([...ids].sort(), [...H.MODULE_IDS].sort());
     assert.deepEqual(merged.mods.left.slice(0, 1), [{ id: "ws", on: true, detail: "auto" }]);
-    assert.deepEqual(merged.mods.right.slice(0, 3), [
+    assert.deepEqual(merged.mods.right.slice(0, 4), [
         { id: "modelusage", on: false, detail: "auto" },
+        { id: "fusebox", on: false, detail: "auto" },
         { id: "t3", on: true, detail: "auto" },
         { id: "hermes", on: false, detail: "auto" }
     ]);
@@ -1292,7 +1306,7 @@ test("an existing Model Usage entry keeps its placement and flag on reload", () 
 
 test("Model Usage options keep valid values and reject or clamp the rest", () => {
     const defaults = H.defaultModOpts().modelusage;
-    assert.equal(Object.keys(defaults).length, 16);
+    assert.equal(Object.keys(defaults).length, 17);
     const valid = {
         refreshIntervalSec: 1800,
         enabledProviders: ["kimi", "claude"],
@@ -1300,6 +1314,7 @@ test("Model Usage options keep valid values and reject or clamp the rest", () =>
         cliproxyUrl: "http://127.0.0.1:9000",
         cliproxyKeyFile: "~/.config/omarchy/cliproxy.key",
         hideAccountEmails: false,
+        liveAccountActivity: false,
         squareUsageCards: false,
         barDisplayMode: "Icon",
         barProviders: ["codex"],
@@ -1319,6 +1334,9 @@ test("Model Usage options keep valid values and reject or clamp the rest", () =>
         usageSource: "proxy",
         cliproxyUrl: "   ",
         hideAccountEmails: "yes",
+        liveAccountActivity: "yes",
+        showBarActivity: 4,
+        showRecentSessions: "yes",
         barDisplayMode: "Bogus",
         barProviders: ["kimi", "gemini", "claude", "kimi"],
         warningThreshold: 0,
@@ -1334,6 +1352,9 @@ test("Model Usage options keep valid values and reject or clamp the rest", () =>
     assert.equal(junk.usageSource, "direct");
     assert.equal(junk.cliproxyUrl, defaults.cliproxyUrl);
     assert.equal(junk.hideAccountEmails, true);
+    assert.equal(junk.liveAccountActivity, true);
+    assert.equal(junk.showBarActivity, undefined, "obsolete menubar setting is dropped");
+    assert.equal(junk.showRecentSessions, undefined, "sessions are always in the card badge");
     assert.equal(junk.barDisplayMode, "Percentages");
     assert.deepEqual(junk.barProviders, ["kimi", "claude"],
         "unknown and repeated provider ids are dropped");

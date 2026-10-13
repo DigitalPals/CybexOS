@@ -1,0 +1,189 @@
+name: ISO lifecycle qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Reviewed release tag matching VERSION
+        required: true
+        type: string
+      baseline_iso:
+        description: Older supported ISO on the PXE host under /data/pxe/iso
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      baseline_iso:
+        required: true
+        type: string
+    secrets:
+      CYBEXOS_RPM_SIGNING_KEY:
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cybexos-iso-release
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    # Debian 13 PXE host: only reviewed main/tag code, with no signing secret
+    # or desktop-release environment attached to this machine.
+    if: github.repository == 'DigitalPals/CybexOS' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: cybexos-iso-${{ github.run_id }}
+    timeout-minutes: 360
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      BASELINE_ISO: ${{ inputs.baseline_iso }}
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Prepare isolated release workspace
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d "$RUNNER_TEMP/cybexos-release.XXXXXXXX")
+          printf 'RELEASE_WORK=%s\n' "$work" >> "$GITHUB_ENV"
+          test -r /data/pxe/README.md
+          test -n "$BASELINE_ISO"
+          systemctl is-active --quiet iventoy.service
+          image/build --preflight
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install isolated browser test driver
+        run: |
+          npm install --prefix "$RELEASE_WORK/browser" --no-audit --no-fund --ignore-scripts playwright-core@1.63.0
+          printf 'NODE_PATH=%s\n' "$RELEASE_WORK/browser/node_modules" >> "$GITHUB_ENV"
+      - name: Build and qualify graphical installs, upgrade and recovery
+        run: |
+          image/release-gate --execute --output "$RELEASE_WORK/qualification" \
+            --tag "$RELEASE_TAG" --baseline-iso "$BASELINE_ISO"
+      - name: Transfer qualified artifacts and reports to the hosted signing job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cybexos-qualified-desktop
+          # The common root is qualification/. Do not upload VM disks, console
+          # logs, browser state, the builder cache, or the source checkout.
+          path: |
+            ${{ env.RELEASE_WORK }}/qualification/build/artifacts/
+            ${{ env.RELEASE_WORK }}/qualification/*/qualification.json
+            ${{ env.RELEASE_WORK }}/qualification/release-gate.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
+      - name: Retain bounded qualification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cybexos-qualification-reports
+          path: |
+            ${{ env.RELEASE_WORK }}/qualification/release-gate.json
+            ${{ env.RELEASE_WORK }}/qualification/*/qualification.json
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Remove task staging
+        if: always()
+        run: |
+          if [[ -n ${RELEASE_WORK:-} && $RELEASE_WORK == "$RUNNER_TEMP"/cybexos-release.* ]]; then
+            rm -rf -- "$RELEASE_WORK"
+          fi
+
+  sign:
+    name: Sign qualified desktop artifacts on a hosted Fedora container
+    needs: qualify
+    runs-on: ubuntu-latest
+    environment: desktop-release
+    timeout-minutes: 120
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Reserve space for raw and prepared desktop artifacts
+        run: |
+          set -euo pipefail
+          # This job owns its disposable GitHub-hosted VM. Remove only unused
+          # preinstalled SDKs; runner tools, Docker and our checkout stay intact.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+          available=$(df --output=avail -B1 "$RUNNER_TEMP" | tail -n 1)
+          if (( available < 24 * 1024 * 1024 * 1024 )); then
+            echo 'Signing requires at least 24 GiB free for raw and prepared artifacts.' >&2
+            exit 1
+          fi
+          work=$(mktemp -d "$RUNNER_TEMP/cybexos-signing.XXXXXXXX")
+          printf 'RELEASE_WORK=%s\n' "$work" >> "$GITHUB_ENV"
+      - name: Prepare Fedora 44 RPM signing tools without private key access
+        run: |
+          docker build --tag cybexos-release-signing:local - <<'DOCKERFILE'
+          FROM fedora:44
+          RUN dnf -y --setopt=install_weak_deps=False install python3 rpm rpm-sign createrepo_c gnupg2 tar gzip && dnf clean all
+          DOCKERFILE
+      - name: Download the exact qualified build and reports
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: cybexos-qualified-desktop
+          path: ${{ env.RELEASE_WORK }}/qualified
+      - name: Sign RPM and prepare verified release assets
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.CYBEXOS_RPM_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_SIGNING_KEY"
+          # The key enters only this ephemeral hosted container. Its value is
+          # passed through the environment, never arguments or shell tracing.
+          docker run --rm --init --interactive \
+            --name "cybexos-signing-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --env RELEASE_SIGNING_KEY --env RELEASE_TAG --env GITHUB_REPOSITORY \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            --volume "$GITHUB_WORKSPACE:/source:ro" \
+            --volume "$RELEASE_WORK:/release-work" \
+            --workdir /source cybexos-release-signing:local bash -s <<'SIGN'
+          set -euo pipefail
+          keyhome=/release-work/signing
+          install -d -m 0700 "$keyhome"
+          trap 'gpgconf --homedir "$keyhome" --kill all; rm -rf -- "$keyhome"' EXIT
+          printf '%s' "$RELEASE_SIGNING_KEY" | gpg --homedir "$keyhome" --batch --import
+          unset RELEASE_SIGNING_KEY
+          fingerprint=$(python3 -c 'import json; print(json.load(open("image/channels/stable.json"))["fingerprint"])')
+          baseurl=$(python3 -c 'import json; print(json.load(open("image/channels/stable.json"))["baseurl"])')
+          image/release-repository /release-work/qualified/build/artifacts/cybexos-desktop-*.rpm \
+            --output /release-work/signed --public-key image/channels/CYBEXOS-desktop.asc \
+            --key "$fingerprint" --gnupghome "$keyhome" --baseurl "$baseurl" \
+            --packages-baseurl "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG"
+          reports=()
+          for scenario in encrypted-us plain-us encrypted-nl plain-nl upgrade; do
+            reports+=(--qualification "/release-work/qualified/$scenario/qualification.json")
+          done
+          image/prepare-github-release --signed-repository /release-work/signed \
+            --artifacts /release-work/qualified/build/artifacts \
+            --output /release-work/publication --repository "$GITHUB_REPOSITORY" \
+            --tag "$RELEASE_TAG" --fingerprint "$fingerprint" "${reports[@]}"
+          # The container is root; artifacts must be readable by the hosted
+          # runner's upload action. Secret material is outside this directory.
+          chmod -R a+rX /release-work/publication
+          SIGN
+      - name: Retain qualified assets for the publishing job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cybexos-desktop-release
+          path: ${{ env.RELEASE_WORK }}/publication/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
+      - name: Remove signing material and task artifacts
+        if: always()
+        run: |
+          docker rm --force "cybexos-signing-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >/dev/null 2>&1 || true
+          docker image rm cybexos-release-signing:local >/dev/null 2>&1 || true
+          if [[ -n ${RELEASE_WORK:-} && $RELEASE_WORK == "$RUNNER_TEMP"/cybexos-signing.* ]]; then
+            sudo rm -rf -- "$RELEASE_WORK"
+          fi

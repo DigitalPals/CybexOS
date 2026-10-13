@@ -4,6 +4,21 @@ from pathlib import Path
 import shutil
 
 
+def prepare_quickshell(root, payload):
+    """Package the same shell sources deployed by the checkout desktop role."""
+    quickshell = root / "roles/desktop/files/quickshell"
+    runtime = payload / "usr/share/cybexos/runtime/quickshell"
+    for source in sorted(quickshell.rglob("*")):
+        if not source.is_file() or source.is_symlink() or "__pycache__" in source.parts or source.suffix == ".pyc":
+            continue
+        target = runtime / source.relative_to(quickshell)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        target.chmod(0o755 if source.parent.name == "scripts" and source.suffix != ".py" else 0o644)
+        if source.suffix in (".qml", ".js"):
+            target.write_text(target.read_text().replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))
+
+
 def prepare_defaults(root, payload, environment, inventory):
     contract = json.loads((root / "assets/desktop-contract.json").read_text())
     vendor = payload / "usr/share/cybexos"
@@ -39,10 +54,19 @@ def prepare_defaults(root, payload, environment, inventory):
     return contract
 
 
-# blockinfile's rendering of the workstation's managed Kitty include
-# (roles/dotfiles/tasks/personal.yml), so provisioning a seeded account finds
-# its block already present instead of appending a second one.
+# The shared cybexos_user_include module's first-run Kitty block. User
+# preferences follow it, so explicit values have precedence over defaults.
 KITTY_INCLUDE = "# BEGIN CYBEXOS MANAGED INCLUDE\ninclude cybexos.conf\n# END CYBEXOS MANAGED INCLUDE\n"
+
+
+def prepare_app_launchers(root, payload):
+    """Package the same desktop launchers that checkout installs deploy."""
+    applications = payload / 'usr/share/cybexos/user-seed/.local/share/applications'
+    applications.mkdir(parents=True, exist_ok=True)
+    for name in ('nvim-kitty', 'brave-origin', 'chatgpt', 'com.onepassword.OnePassword'):
+        target = applications / (name + '.desktop')
+        shutil.copyfile(root / 'roles/dotfiles/files' / target.name, target)
+        target.chmod(0o644)
 
 
 def prepare_session(root, payload, inventory):
@@ -113,3 +137,23 @@ def split_seed(vendor, contract):
                 if file.is_file() and not file.is_symlink())
     (vendor / "seed-groups.json").write_text(json.dumps({"totalBytes": total}) + "\n")
     return total
+
+
+def prepare_managed_defaults(vendor):
+    """Version only vendor fragments; application stores and user settings stay seeded once."""
+    paths = (
+        '.config/fish/conf.d/50-cybexos.fish',
+        '.config/kitty/cybexos.conf',
+        '.local/share/nautilus-python/extensions/localsend.py',
+    )
+    selected = []
+    for relative in paths:
+        for tree in ('essential-seed', 'user-seed', 'final-seed'):
+            source = vendor / tree / relative
+            if source.is_file() and not source.is_symlink():
+                destination = vendor / 'managed-seed' / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(source, destination)
+                selected.append(relative)
+                break
+    (vendor / 'managed-defaults.json').write_text(json.dumps(selected) + '\n')

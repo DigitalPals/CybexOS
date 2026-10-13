@@ -37,7 +37,7 @@ grep -q '^performance=xps-performance$' /etc/tuned/ppd.conf &&
   fail 'the XPS performance mapping was installed on generic hardware'
 
 user_id=$(id -u fedora)
-for unit in quickshell.service hypridle.service hyprpolkitagent.service; do
+for unit in quickshell.service hypridle.service; do
   sudo -u fedora env XDG_RUNTIME_DIR="/run/user/$user_id" \
     systemctl --user is-enabled --quiet "$unit" ||
     fail "$unit is not enabled for fedora"

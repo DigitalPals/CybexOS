@@ -59,7 +59,7 @@ function contrast(a, b) {
 }
 
 test("semantic typography tokens retain the intended logical-pixel scale", () => {
-    // Reference sizes are multiplied by the common font scale.
+    // Compatibility aliases at an explicit 12px base; headings use 18/14.
     assert.deepEqual([
         intToken("fontMicro"),
         intToken("fontTiny"),
@@ -70,7 +70,7 @@ test("semantic typography tokens retain the intended logical-pixel scale", () =>
         intToken("fontProminent"),
         intToken("fontDisplay"),
         intToken("fontHero"),
-    ], [10, 11, 10, 11, 12, 16, 14, 24, 28]);
+    ], [10, 11, 10, 11, 12, 15, 14, 24, 28]);
 });
 
 test("menu typography keeps the bar's own compact metrics", () => {
@@ -425,7 +425,7 @@ test("no surface paints an accent field where a chip belongs", () => {
 
 test("default body size is shared by settings controls and plugin typography", () => {
     const d = load("SettingsHelpers.js").defaults();
-    assert.equal(d.shellFontSize, 12);
+    assert.equal(d.shellFontSize, 14);
     assert.equal(d.shellScale, 100);
     assert.equal(d.pluginScale, 100);
     // The plugin install and clone fields are FieldRows.
@@ -439,7 +439,7 @@ test("default body size is shared by settings controls and plugin typography", (
     assert.match(fs.readFileSync(path.join(shellDir, "Settings", "SettingsTextRow.qml"), "utf8"), /SettingsField \{/);
     const widgets = fs.readFileSync(path.join(shellDir, "Bar", "UserWidgets.qml"), "utf8");
     assert.match(widgets, /fontSize: Theme\.typography\.bar/);
-    assert.equal(load("ShellMetrics.js").calculate(d).fontBase, 12);
+    assert.equal(load("ShellMetrics.js").calculate(d).fontBase, 14);
     for (const name of ["SettingsRow", "SettingsField", "SettingsAction",
         "PickerRow", "PillRow", "SliderRow"]) {
         const source = fs.readFileSync(path.join(shellDir, "Settings", name + ".qml"), "utf8");

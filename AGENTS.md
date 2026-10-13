@@ -1,5 +1,29 @@
 # Repository agent instructions
 
+## Installation parity: ISO is authoritative
+
+- The current ISO installation defines the CybexOS product. Keep `./install`,
+  `./bootstrap`, and ISO installations equivalent for the same release,
+  hardware, and explicit user choices. Resolve differences by bringing the
+  checkout path into line with the ISO, not by changing the ISO to match an
+  older checkout default.
+- Treat applications, desktop and personal defaults, authentication, enabled
+  services, firewall policy, hardware support, and recovery as one shared
+  installation contract. Reuse the shared policy, task files, templates, and
+  package selections; do not add independent installer defaults.
+- Preserve explicit saved choices and user-owned data during installs,
+  reconfiguration, and updates. Matching a fresh installation never authorizes
+  repartitioning an existing Fedora system or resetting personal settings.
+  Automatic login must retain the ISO's verified-encryption requirement.
+- Every change to the installed product must cover both installation paths in
+  the same change, with regression coverage that compares their outcomes.
+  Run the source and image parity checks before handoff. A passing fixture
+  suite must not be reported as a completed end-to-end installation test.
+- Release comparisons must use artifacts from the same source revision.
+  When preparing a release, rebuild and qualify the ISO/RPM if its installed
+  payload changed; an older ISO or an older qualification report does not
+  validate the new release.
+
 ## ISO testing location
 
 - Always place completed ISOs for testing in `/data/pxe/iso`.
