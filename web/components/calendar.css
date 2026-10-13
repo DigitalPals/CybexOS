@@ -1,0 +1,72 @@
+.shell-panel.day-sheet {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 680px;
+  max-width: 100%;
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  padding: 20px;
+  border-width: 0;
+  border-radius: 0 0 16px 16px;
+  box-shadow: 0 12px 24px #0002;
+  font-size: 12px;
+}
+
+.day-sheet-overview { display: flex; align-items: center; gap: 24px; }
+.day-sheet-clock { flex: 0 0 208px; min-width: 0; }
+.day-sheet-time { display: flex; align-items: baseline; gap: 9px; font-size: 52px; font-weight: 600; letter-spacing: -2px; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.day-sheet-time > span { color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: 0; }
+.day-sheet-clock p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.day-sheet-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); flex: 1; gap: 4px; min-width: 0; }
+.day-sheet-week > time { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-width: 0; height: 96px; border-radius: 10px; background: color-mix(in srgb, var(--text) 6%, transparent); }
+.day-sheet-week > time.is-today { background: color-mix(in srgb, var(--text) 13%, transparent); }
+.day-sheet-week > time > span { color: var(--muted); font-size: 10px; font-weight: 500; text-transform: uppercase; }
+.day-sheet-week > time > strong { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.day-sheet-week > time.is-today > span, .day-sheet-week > time.is-today > strong { color: var(--accent); }
+.theme-light .day-sheet-week > time.is-today > span, .theme-light .day-sheet-week > time.is-today > strong { color: var(--text); }
+.day-sheet-week > time > i { width: 4px; height: 4px; border-radius: 50%; background: transparent; }
+.day-sheet-week > time.is-today > i { background: var(--accent); }
+.day-sheet-body { display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px; margin-top: 22px; padding-top: 17px; border-top: 1px solid var(--line); }
+.day-sheet-month { min-width: 0; }
+.day-sheet-month-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 30px; }
+.day-sheet h2 { margin: 0; font-size: 12px; font-weight: 600; line-height: 1.5; }
+.day-sheet-month-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.day-sheet-month-actions button, .day-sheet-close { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border-radius: 7px; color: var(--muted); }
+.day-sheet-month-actions button:hover, .day-sheet-close:hover { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
+.day-sheet-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px 4px; margin-top: 7px; text-align: center; }
+.day-sheet-month-grid > * { display: grid; place-items: center; min-width: 0; height: 29px; border-radius: 7px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.day-sheet-month-grid .day-sheet-weekday { color: var(--muted); font-size: 10px; }
+.day-sheet-month-grid .is-today { color: var(--accent-ink); background: var(--accent); font-weight: 600; }
+.day-sheet-agenda { border-left: 1px solid var(--line); padding: 6px 0 0 24px; }
+.day-sheet-agenda h2 { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+.day-sheet-empty { display: flex; align-items: flex-start; gap: 10px; margin-top: 23px; color: var(--muted); }
+.day-sheet-empty > svg { flex-shrink: 0; }
+.day-sheet-empty p { margin: 0; font-size: 11px; line-height: 1.7; max-width: 180px; }
+.day-sheet-footer { display: flex; align-items: center; gap: 14px; margin-top: 17px; padding-top: 10px; border-top: 1px solid var(--line); }
+.day-sheet-today { display: inline-flex; align-items: center; gap: 7px; padding: 4px 0; font-size: 11px; color: var(--muted); }
+.day-sheet-today:hover { color: var(--text); }
+.day-sheet-footer > span { margin-left: auto; color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.day-sheet-close { flex-shrink: 0; }
+
+@media (max-width: 600px) {
+  .shell-panel.day-sheet { padding: 18px 16px 12px; }
+  .day-sheet-overview { flex-direction: column; align-items: stretch; gap: 18px; }
+  .day-sheet-clock { flex-basis: auto; }
+  .day-sheet-time { font-size: 44px; }
+  .day-sheet-week { flex: auto; }
+  .day-sheet-week > time { height: 76px; }
+  .day-sheet-body { gap: 16px; }
+  .day-sheet-agenda { padding-left: 16px; }
+  .day-sheet-empty { flex-direction: column; }
+}
+
+@media (max-width: 420px) {
+  .day-sheet-body { grid-template-columns: 1fr; }
+  .day-sheet-agenda { padding: 15px 0 0; border-left: 0; border-top: 1px solid var(--line); }
+  .day-sheet-empty { flex-direction: row; align-items: center; margin-top: 10px; }
+  .day-sheet-empty p { max-width: none; }
+  .day-sheet-footer { gap: 10px; }
+  .day-sheet-today { flex-shrink: 0; }
+}

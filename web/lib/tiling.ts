@@ -43,8 +43,13 @@ export function layoutWorkspace(windows: DesktopWindow[], workspace: number, vie
     const height = Math.max(300, (area.height - GAP * (tiles.length - 1)) / Math.max(1, tiles.length));
     tiles.forEach((win, index) => { result[win.id] = { ...area, y: area.y + index * (height + GAP), height }; });
   } else if (tiles.length === 1) {
-    const width = viewport.width >= 1200 ? Math.round(area.width * 0.7) : area.width;
-    result[tiles[0].id] = { ...area, x: area.x + (area.width - width) / 2, width };
+    // The installed welcome opens centered at half-screen width. Retain the
+    // browser's shared tiling behavior once a second app opens.
+    const welcome = tiles[0].id === 'welcome';
+    const width = welcome ? Math.min(area.width, Math.max(760, Math.round(viewport.width * 0.5)))
+      : viewport.width >= 1200 ? Math.round(area.width * 0.7) : area.width;
+    const height = welcome ? Math.min(area.height, Math.max(660, Math.round(viewport.height * 0.48))) : area.height;
+    result[tiles[0].id] = { ...area, x: area.x + (area.width - width) / 2, y: area.y + (area.height - height) / 2, width, height };
   } else if (tiles.length > 1) {
     const safeRatio = Number.isFinite(ratio) ? Math.max(0.3, Math.min(0.7, ratio)) : 0.5;
     const [first, rest] = split(area, true, safeRatio);

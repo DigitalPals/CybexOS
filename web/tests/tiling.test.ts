@@ -31,10 +31,18 @@ describe('dwindle workspace geometry', () => {
   });
 
   it('centers a single tile on wide displays and fills narrower desktops', () => {
-    const wide = layoutWorkspace(windows(1), 1, viewport).welcome;
+    const terminal = [initialWindow('terminal', 1)];
+    const wide = layoutWorkspace(terminal, 1, viewport).terminal;
     expect(wide.width).toBe(994);
     expect(wide.x + wide.width / 2).toBe(viewport.width / 2);
-    expect(layoutWorkspace(windows(1), 1, { width: 1000, height: 900 }).welcome).toEqual({ x: 10, y: 46, width: 980, height: 806 });
+    expect(layoutWorkspace(terminal, 1, { width: 1000, height: 900 }).terminal).toEqual({ x: 10, y: 46, width: 980, height: 806 });
+  });
+
+  it('centers the welcome at the native width while keeping it inside short screens', () => {
+    const state = [initialWindow('welcome', 1)];
+    expect(layoutWorkspace(state, 1, viewport).welcome).toEqual({ x: 340, y: 119, width: 760, height: 660 });
+    expect(layoutWorkspace(state, 1, { width: 900, height: 500 }).welcome).toEqual({ x: 70, y: 46, width: 760, height: 406 });
+    expect(layoutWorkspace(state, 1, { width: 2560, height: 1600 }).welcome.width).toBe(1280);
   });
 
   it('places the first tile left and recursively splits the remaining region', () => {

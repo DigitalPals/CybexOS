@@ -1,30 +1,73 @@
 'use client';
 
-import { ArrowDownToLine, ArrowRight, Command, ExternalLink, Folder, Keyboard, Palette, Terminal } from 'lucide-react';
-import { REPOSITORY_URL, type AppProps } from '../lib/types';
+import { ArrowRight, Check, Command, Folder, Keyboard, SlidersHorizontal, StickyNote, Terminal } from 'lucide-react';
+import { type AppProps, type Preferences } from '../lib/types';
 
-export function WelcomeApp({ openApp }: AppProps) {
-  return <div className="welcome-app app-copy">
-    <aside className="welcome-art">
-      <img className="welcome-wordmark" src="/cybex-wordmark.svg" alt="Cybex" />
-      <div className="welcome-art-copy"><span className="eyebrow">YOUR DESKTOP. YOUR RULES.</span><h2>A little less friction.<br />A lot more flow.</h2><p>Fedora at its core.<br />Cybex in every detail.</p></div>
-      <span className="welcome-art-footer"><span className="status-dot" /> FEDORA 44 · HYPRLAND · QUICKSHELL</span>
-    </aside>
-    <div className="welcome-content">
-      <div className="welcome-kicker"><span className="red-dot" /> THE CYBEX OPINIONATED SYSTEM <span className="preview-pill">WEB PREVIEW</span></div>
-      <h1>Welcome home<span>.</span></h1>
-      <p className="welcome-lead">A desktop that gets out of your way.<br />Open a few apps. Your windows fall into place.</p>
-      <div className="welcome-feature-grid">
-        <button onClick={() => openApp('terminal')}><span className="feature-icon"><Terminal size={21} /></span><span><strong>Meet your terminal</strong><small>Fish, fastfetch, and a Fedora welcome.</small></span><ArrowRight size={16} /></button>
-        <button onClick={() => openApp('settings')}><span className="feature-icon"><Palette size={21} /></span><span><strong>Make it yours</strong><small>Your colors. Your atmosphere.</small></span><ArrowRight size={16} /></button>
-        <button onClick={() => openApp('files')}><span className="feature-icon"><Folder size={21} /></span><span><strong>Look around</strong><small>A place for everything you do.</small></span><ArrowRight size={16} /></button>
-        <button onClick={() => openApp('shortcuts')}><span className="feature-icon"><Keyboard size={21} /></span><span><strong>Find your flow</strong><small>Tile, focus, and move with a few keys.</small></span><ArrowRight size={16} /></button>
+interface WelcomeAppProps extends AppProps {
+  preferences: Preferences;
+  updatePreferences: (patch: Partial<Preferences>) => void;
+  onFinish: () => void;
+}
+
+const wallpapers = [
+  { id: 'mountains', name: 'Moonlit peaks', accent: '#d3d283' },
+  { id: 'aurora', name: 'Aurora', accent: '#a6c7a0' },
+  { id: 'dusk', name: 'After hours', accent: '#e4aaa1' },
+] as const;
+
+export function WelcomeApp({ openApp, notify, preferences, updatePreferences, onFinish }: WelcomeAppProps) {
+  return (
+    <div className="welcome-app">
+      <header className="welcome-header">
+        <img className="welcome-wordmark" src="/cybex-wordmark.svg" alt="Cybex" width="127" height="30" />
+        <span className="welcome-section-label">Your desktop</span>
+      </header>
+
+      <div className="welcome-intro">
+        <h1>Welcome to your new desktop.</h1>
+        <p>Pick a wallpaper to start: the desktop’s colors follow it. You can come back here any time from the app launcher.</p>
       </div>
-      <button className="welcome-tip welcome-usage-tip" onClick={() => openApp('usage')}><span aria-hidden="true" className="usage-provider-mark usage-mark-codex" /><span aria-hidden="true" className="usage-provider-mark usage-mark-claude" /><span>Six subscriptions. One place to keep track.</span><ArrowRight size={14} /></button>
-      <div className="welcome-bottom"><a href={`${REPOSITORY_URL}#install`} target="_blank" rel="noreferrer" className="red-button"><ArrowDownToLine size={16} />Get CybexOS<ExternalLink size={13} /></a><button className="text-button" onClick={() => openApp('notes')}>Start with a note<ArrowRight size={15} /></button></div>
-      <p className="welcome-disclaimer">An interactive browser demo. No installation needed.<br />Files and system information are examples; notes stay in this browser.</p>
+
+      <section className="welcome-personalize" aria-labelledby="welcome-wallpapers-heading">
+        <div className="welcome-section-heading">
+          <h2 className="welcome-section-label" id="welcome-wallpapers-heading">Make it yours</h2>
+          <span>On this desktop</span>
+        </div>
+        <div className="welcome-wallpapers" role="group" aria-label="Wallpapers">
+          {wallpapers.map(({ id, name, accent }) => (
+            <button key={id} type="button" className={`welcome-wallpaper wallpaper-${id}`}
+              aria-label={`Use wallpaper ${name}`} aria-pressed={preferences.wallpaper === id}
+              onClick={() => {
+                updatePreferences({ wallpaper: id, accent });
+                notify(`Wallpaper set to ${name}.`);
+              }}>
+              <span className="welcome-wallpaper-name">{name}</span>
+              {preferences.wallpaper === id && <span className="welcome-wallpaper-check"><Check size={16} strokeWidth={2.5} aria-hidden="true" /></span>}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <nav className="welcome-explore" aria-label="Explore this desktop">
+        <button type="button" onClick={() => openApp('terminal')} aria-label="Meet your terminal" title="Meet your terminal"><Terminal size={16} aria-hidden="true" /><span>Terminal</span></button>
+        <button type="button" onClick={() => openApp('files')} title="Look around your files"><Folder size={16} aria-hidden="true" /><span>Files</span></button>
+        <button type="button" onClick={() => openApp('shortcuts')} title="Keyboard shortcuts"><Keyboard size={16} aria-hidden="true" /><span>Shortcuts</span></button>
+        <button type="button" onClick={() => openApp('usage')} aria-label="Six subscriptions · Model usage" title="Six subscriptions. One place to keep track."><SlidersHorizontal size={16} aria-hidden="true" /><span>Model usage</span></button>
+        <button type="button" onClick={() => openApp('notes')} title="Start with a note"><StickyNote size={16} aria-hidden="true" /><span>Notes</span></button>
+      </nav>
+
+      <footer className="welcome-footer">
+        <div className="welcome-footer-copy">
+          <button type="button" onClick={() => openApp('shortcuts')}>Press <span>Alt + K</span> to see every keyboard shortcut.</button>
+          <p>Browser preview · No installation needed.</p>
+        </div>
+        <div className="welcome-actions">
+          <button type="button" className="welcome-action" onClick={onFinish}>Get started<ArrowRight size={16} aria-hidden="true" /></button>
+          <button type="button" className="welcome-action welcome-action-primary" onClick={() => openApp('settings')}>Settings</button>
+        </div>
+      </footer>
     </div>
-  </div>;
+  );
 }
 
 export function ShortcutsApp() {

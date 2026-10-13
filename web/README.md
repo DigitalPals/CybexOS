@@ -1,7 +1,7 @@
 # CybexOS in your browser
 
 An interactive recreation of the CybexOS desktop: the Quickshell-inspired
-menubar, workspaces, application launcher, Hyprland-style tiling, control drawer,
+menubar, workspaces, application launcher, Hyprland-style tiling, attached control drawer,
 terminal, sample files, Omawrite notes, and appearance settings. The default
 mountain wallpaper and Cybex wordmark come from the native desktop.
 
@@ -63,13 +63,31 @@ host's HTTPS reverse proxy or use the Sites build.
 
 ## Explore the desktop
 
-Click the launcher to open applications, the workspace numbers to switch
-desktops, the clock to open the day sheet, or the status icons to open the
-control drawer. Settings changes apply to this browser desktop.
+The welcome screen follows the installed Fedora desktop: a centered window,
+Cybex wordmark, wallpaper previews, and a Settings action. Choosing a wallpaper
+also applies its matching accent and saves both in this browser. **Get started**
+closes the welcome; reopen it from Applications whenever needed.
+
+Click Applications to open apps or the workspace numbers to switch desktops.
+The clock shows time first and opens an attached day sheet with a week strip,
+month navigation, and the browser's time zone. Its time follows the 12/24-hour
+preference. The Fedora mark opens the control drawer, attached to the right
+screen edge. Sound, Network, Bluetooth, Power, and Notifications glyphs open
+their corresponding tabs in that same drawer. Arrow keys, Home, and End
+navigate its tabs. Sliders and toggles share state across tabs.
+
+Windows use the native borderless, rounded treatment. Empty workspaces show
+the original wallpaper without an added dark vignette or promotional copy.
+The small browser footer retains layout/fullscreen helpers and shows app
+restore controls when multiple or minimized windows need them. On phones,
+extra status glyphs collapse; all controls remain available in the drawer and
+Model Usage remains available in Applications. Settings apply to this browser
+desktop.
 
 Windows tile by default in a dwindle-inspired layout with 10 px gaps. A single
 window is centered on wide screens; opening another divides the available
-space. Drag a tile's title onto another tile to swap them. Floating windows
+space. The welcome starts in a smaller centered rectangle, matching its native
+presentation, and joins the tiled layout when another app opens. Drag a tile's title onto another tile to swap them. Floating windows
 move freely. Use the floating control before dragging a corner to resize.
 Window controls close, minimize, maximize, or toggle floating. Double-clicking
 a title also maximizes or restores the window.
@@ -178,27 +196,25 @@ Key native references are
 [`Common/Theme.qml`](../roles/desktop/files/quickshell/Common/Theme.qml),
 [`Common/SettingsHelpers.js`](../roles/desktop/files/quickshell/Common/SettingsHelpers.js),
 [Hyprland layout settings](../roles/desktop/templates/looknfeel.lua.j2),
+[the native drawer](../roles/desktop/files/quickshell/Popovers/Drawer/DrawerPopover.qml),
+[the day sheet](../roles/desktop/files/quickshell/Popovers/DaySheetPopover.qml),
 and the [welcome window](../image/rootfs/usr/share/cybexos/welcome/Main.qml).
 Asset sources and license information are recorded in
 [ASSETS.md](ASSETS.md).
 
 ## Validation and current deployment
 
-Validated on 2026-09-30: lint, TypeScript, 106 interaction/state tests, two
-production Worker/asset tests, and the production build pass. The npm audit
-reports no known vulnerabilities for the locked dependencies. Production HTTP
-checks verified the page, its script/style/font assets, the provider marks,
-and the original wallpaper checksum. Browser visual testing was not performed.
+Validated on 2026-10-13: lint, TypeScript, 113 interaction/state tests, two
+production Worker/asset tests, and the production build pass. Coverage includes
+wallpaper persistence, welcome dismissal, drawer state and keyboard navigation,
+notification focus, and clock format. Responsive styling was reviewed against
+the native source; browser visual testing has not been performed.
 
-The task's Docker Compose service is running on `thebeast` at
-<http://10.10.0.7:5174> (network/VPN access required). Sites publishing was
-unavailable because this session had no callable Sites connector; no public
-Internet domain has been configured. The source and Worker build remain ready
-for either deployment path.
+The Docker Compose service runs on `thebeast` at
+<http://10.10.0.7:5174> (network/VPN access required). It was rebuilt and
+restarted after validation. No public Internet domain has been configured.
+The source retains its Sites-compatible Worker build configuration.
 
-The only retained runtime artifact is `cybexos-web-web:latest` (approximately
-765 MiB reported image size), used by the healthy `cybexos-web-web-1` service.
-Local compiled output, temporary logs, and dependencies were removed after
-validation, and the task development process was stopped. The superseded task
-image is no longer present. Run `npm ci` before local
-development to recreate the dependencies.
+The production Docker image is retained for the running service. Local
+compiled output, temporary build state, and dependencies were removed after
+validation. Run `npm ci` before local development to recreate dependencies.

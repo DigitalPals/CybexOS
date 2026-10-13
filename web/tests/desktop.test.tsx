@@ -51,7 +51,7 @@ describe('desktop applications and windows', () => {
 
     await user.click(screen.getByRole('button', { name: 'Workspace 2' }));
     expect(screen.queryByRole('region', { name: 'Kitty window' })).not.toBeInTheDocument();
-    expect(screen.getByText('Workspace 2 is yours to make.')).toBeVisible();
+    expect(screen.getByRole('button', { name: /Open an app/ })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Workspace 1' }));
     expect(screen.getByRole('textbox', { name: 'Terminal command' })).toHaveValue('echo keep this draft');
 
@@ -176,7 +176,7 @@ describe('desktop applications and windows', () => {
   it('browses sample folders, searches and previews files, and opens notes from Files', async () => {
     const user = userEvent.setup();
     render(<Desktop />);
-    await user.click(screen.getByRole('button', { name: /^Look around/ }));
+    await user.click(within(screen.getByRole('region', { name: 'Welcome to CybexOS window' })).getByRole('button', { name: 'Files' }));
     const files = screen.getByRole('region', { name: 'Files window' });
     expect(within(files).getByRole('button', { name: 'Parent folder' })).toBeDisabled();
     await user.click(within(files).getByRole('button', { name: 'Open Documents' }));

@@ -1,0 +1,70 @@
+.welcome-app {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+  padding: 40px;
+  background: #0e0e10;
+  color: #f4f4f5;
+  font-family: 'Figtree', sans-serif;
+  font-size: 16px;
+  color-scheme: dark;
+}
+
+.welcome-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.welcome-wordmark { display: block; width: 127px; height: 30px; object-fit: contain; }
+.welcome-section-label { margin: 0; color: #80808a; font-size: 12px; font-weight: 600; letter-spacing: 1.6px; text-transform: uppercase; }
+.welcome-header .welcome-section-label { text-align: right; }
+.welcome-intro { margin: 44px 0 34px; }
+.welcome-intro h1 { margin: 0; font-size: 38px; font-weight: 600; line-height: 1.16; letter-spacing: -.8px; text-wrap: balance; }
+.welcome-intro p { max-width: 790px; margin: 10px 0 0; color: #b4b4bb; font-size: 16px; line-height: 1.4; }
+.welcome-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.welcome-section-heading > span { color: #80808a; font-size: 13px; }
+.welcome-wallpapers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.welcome-wallpaper { position: relative; isolation: isolate; min-width: 0; aspect-ratio: 16 / 9; max-height: 234px; padding: 0; overflow: hidden; border-radius: 12px; background-color: #17171a; }
+.welcome-wallpaper::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, transparent 42%, #0009 100%); }
+.welcome-wallpaper::after { content: ''; position: absolute; inset: 0; border: 1px solid #ffffff13; border-radius: inherit; pointer-events: none; }
+.welcome-wallpaper:hover::after { border-color: #ffffff80; background: #ffffff08; }
+.welcome-wallpaper[aria-pressed='true']::after { border: 3px solid #dd0034; }
+.welcome-app button:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+.welcome-wallpaper-name { position: absolute; bottom: 13px; left: 16px; font-size: 13px; font-weight: 500; color: #fff; text-shadow: 0 1px 5px #0008; }
+.welcome-wallpaper-check { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: #dd0034; color: #fff; }
+.welcome-explore { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin: 20px 0 26px; }
+.welcome-explore button { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 6px 3px; border-radius: 5px; color: #80808a; font-size: 13px; }
+.welcome-explore button:hover { color: #f4f4f5; }
+.welcome-explore button > svg { opacity: .85; }
+.welcome-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; margin-top: auto; padding-top: 20px; border-top: 1px solid #2a2a30; }
+.welcome-footer-copy { flex: 1 1 260px; }
+.welcome-footer-copy > button { padding: 0; text-align: left; color: #b4b4bb; font-size: 14px; line-height: 1.45; }
+.welcome-footer-copy > button:hover { color: #f4f4f5; }
+.welcome-footer-copy > button span { white-space: nowrap; }
+.welcome-footer-copy p { margin: 5px 0 0; color: #80808a; font-size: 13px; line-height: 1.4; }
+.welcome-actions { display: flex; gap: 12px; flex-shrink: 0; }
+.welcome-action { display: flex; justify-content: center; align-items: center; gap: 10px; min-height: 48px; padding: 0 26px; background: #17171a; border-radius: 12px; color: #f4f4f5; font-size: 15px; font-weight: 600; }
+.welcome-action:hover { background: #202024; }
+.welcome-action-primary { background: #dd0034; color: #fff; }
+.welcome-action-primary:hover { background: #f0164a; }
+.welcome-action-primary:active { background: #b8002b; }
+
+@container desktop-window (max-width: 760px) {
+  .welcome-app { padding: 32px; }
+  .welcome-intro { margin-top: 36px; }
+  .welcome-wallpapers { grid-template-columns: repeat(3, minmax(256px, 1fr)); overflow-x: auto; margin: -4px; padding: 4px 4px 10px; scrollbar-width: thin; }
+  .welcome-explore { gap: 4px 14px; margin-top: 14px; }
+}
+
+@container desktop-window (max-width: 480px) {
+  .welcome-app { padding: 24px; }
+  .welcome-wordmark { width: 110px; height: 26px; }
+  .welcome-header .welcome-section-label { font-size: 10px; letter-spacing: 1.1px; }
+  .welcome-intro { margin: 30px 0 26px; }
+  .welcome-intro h1 { font-size: 32px; }
+  .welcome-intro p { font-size: 14px; }
+  .welcome-section-heading > span { font-size: 12px; }
+  .welcome-section-label { font-size: 11px; letter-spacing: 1.2px; }
+  .welcome-wallpapers { grid-template-columns: repeat(3, 256px); }
+  .welcome-footer { align-items: stretch; gap: 18px; }
+  .welcome-actions { width: 100%; }
+  .welcome-action { flex: 1; padding-inline: 18px; }
+}
