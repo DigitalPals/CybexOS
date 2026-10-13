@@ -1,0 +1,67 @@
+name: Browser desktop
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Browser desktop checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      # actions/checkout v4.4.0; matches the repository's existing source job.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # actions/setup-node v4.4.0.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:render
+      - name: Verify the production server and bundled wallpaper
+        shell: bash
+        run: |
+          log_path="$RUNNER_TEMP/cybexos-web.log"
+          setsid npm start -- --hostname 127.0.0.1 --port 5174 >"$log_path" 2>&1 &
+          service_pid=$!
+          cleanup() {
+            status=$?
+            kill -- -"$service_pid" 2>/dev/null || true
+            if [ "$status" -ne 0 ]; then cat "$log_path"; fi
+          }
+          trap cleanup EXIT
+          for attempt in {1..40}; do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:5174/ >"$RUNNER_TEMP/cybexos-web.html"; then
+              grep -q 'CybexOS' "$RUNNER_TEMP/cybexos-web.html"
+              curl --fail --silent --show-error --max-time 10 \
+                http://127.0.0.1:5174/wallpapers/moon-mountains.jpg >/dev/null
+              exit 0
+            fi
+            if ! kill -0 "$service_pid" 2>/dev/null; then exit 1; fi
+            sleep 1
+          done
+          exit 1
