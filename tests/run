@@ -487,6 +487,7 @@ python_fixtures=(
   settings-ownership
   plugin-packages
   model-usage
+  model-usage-popup
   installer-convergence
   user-adoption
   firefox-policy
@@ -531,7 +532,7 @@ stage_python_helpers() {
       reap_into pending status runtime || break
     done
     command=(python3 "tests/${python_fixtures[index]}.py")
-    if [[ ${python_fixtures[index]} == user-plugins ]]; then
+    if [[ ${python_fixtures[index]} == user-plugins || ${python_fixtures[index]} == model-usage || ${python_fixtures[index]} == model-usage-popup ]]; then
       command=(flock --close "$CYBEXOS_TESTS_RUN_QS_LOCK" "${command[@]}")
     fi
     spawn "$python_fixture_limit" "$dir/$index" "${command[@]}"

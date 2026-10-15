@@ -71,7 +71,10 @@ xorg-x11-server-Xwayland
 at-spi2-core
 adwaita-icon-theme
 adw-gtk3-theme
-glibc-all-langpacks
+# The shared base transaction selects these providers before desktop packages
+# can pull Fedora alternatives. Keep compose's provider choice explicit too.
+fdk-aac
+jack-audio-connection-kit
 openssh-server
 rsync
 btrfs-progs

@@ -13,7 +13,7 @@ import { NotesApp } from './NotesApp';
 import { SettingsApp } from './SettingsApp';
 import { Overlay } from './Overlay';
 import { ControlDrawer, type DrawerTab } from './ControlDrawer';
-import { CalendarPanel } from './CalendarPanel';
+import { CalendarWithClock, DesktopClock } from './Clock';
 import { ModelUsageBar, ModelUsagePanel } from './ModelUsagePanel';
 import { createUsageState, usageReducer, type ProviderId } from '../lib/model-usage';
 
@@ -34,7 +34,6 @@ export default function Desktop() {
   const [usageProvider, setUsageProvider] = useState<ProviderId>('codex');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
-  const [now, setNow] = useState<Date | null>(null);
   const [volume, setVolume] = useState(68);
   const [brightness, setBrightness] = useState(100);
   const [wifi, setWifi] = useState(true);
@@ -118,9 +117,7 @@ export default function Desktop() {
     try { setPreferences(readPreferences(localStorage.getItem(STORAGE_KEY))); }
     catch { notify('Browser storage is unavailable. Changes will last for this visit.'); }
     restored.current = true;
-    setNow(new Date());
-    const interval = setInterval(() => setNow(new Date()), 1000);
-    return () => { clearInterval(interval); if (toastTimer.current) clearTimeout(toastTimer.current); };
+    return () => { if (toastTimer.current) clearTimeout(toastTimer.current); };
     // Only restore once; changing notification preferences must not reset the session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -195,8 +192,6 @@ export default function Desktop() {
 
   const filtered = APP_IDS.filter(id => `${APP_NAMES[id]} ${id} ${APP_DESCRIPTIONS[id]}`.toLowerCase().includes(query.toLowerCase()));
   const props = { openApp, notify };
-  const time = now?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: !preferences.clock24 });
-  const date = now?.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit' });
 
   async function fullscreen() {
     try {
@@ -216,7 +211,7 @@ export default function Desktop() {
           <button className={`bar-button launcher-button ${panel === 'launcher' ? 'selected' : ''}`} title="Applications · Alt+Space" aria-label="Open app launcher" aria-expanded={panel === 'launcher'} onClick={() => togglePanel('launcher')}><Grid2X2 size={15} /><span className="launcher-label">Applications</span></button>
         </div>
         <div className="bar-center bar-group">
-          <button className={`bar-button clock-button ${panel === 'calendar' ? 'selected' : ''}`} aria-label="Open calendar" aria-expanded={panel === 'calendar'} onClick={() => togglePanel('calendar')}><span className="clock-time">{time || '—:—'}</span><span className="clock-date">{date || 'CybexOS'}</span></button>
+          <button className={`bar-button clock-button ${panel === 'calendar' ? 'selected' : ''}`} aria-label="Open calendar" aria-expanded={panel === 'calendar'} onClick={() => togglePanel('calendar')}><DesktopClock clock24={preferences.clock24} /></button>
           <button className="bar-button notes-button" title="Omawrite" aria-label="Open notes" onClick={() => openApp('notes')}><StickyNote size={15} /></button>
         </div>
         <div className="bar-right">
@@ -266,14 +261,14 @@ export default function Desktop() {
         <button className="text-button" onClick={() => openApp('shortcuts')}>All keyboard shortcuts<ArrowRight size={13} /></button>
       </Overlay>}
 
-      {panel === 'calendar' && now && <CalendarPanel now={now} clock24={preferences.clock24} close={() => setPanel(null)} />}
+      {panel === 'calendar' && <CalendarWithClock clock24={preferences.clock24} close={() => setPanel(null)} />}
 
-      {panel === 'usage' && <ModelUsagePanel state={usage} dispatch={usageDispatch} provider={usageProvider} setProvider={setUsageProvider} now={now?.getTime() ?? usage.updatedAt} close={() => setPanel(null)} />}
+      {panel === 'usage' && <ModelUsagePanel state={usage} dispatch={usageDispatch} provider={usageProvider} setProvider={setUsageProvider} close={() => setPanel(null)} />}
 
       {panel === 'controls' && <ControlDrawer tab={drawerTab} setTab={setDrawerTab} close={() => setPanel(null)} volume={volume} setVolume={setVolume} brightness={brightness} setBrightness={setBrightness} wifi={wifi} setWifi={setWifi} bluetooth={bluetooth} setBluetooth={setBluetooth} dnd={dnd} setDnd={value => { setDnd(value); setToast(''); }} preferences={preferences} updatePreferences={updatePreferences} notices={notices} setNotices={setNotices} openApp={openApp} lock={() => { setPanel(null); setLocked(true); }} />}
 
       {toast && <div className="toast" role="status"><span className="toast-icon"><Check size={16} /></span><div><strong>CybexOS</strong><p>{toast}</p></div><button aria-label="Dismiss message" onClick={() => setToast('')}><X size={14} /></button></div>}
     </div>
-    {locked && <div className="lock-screen"><img src="/cybex-wordmark.svg" alt="Cybex" /><div className="lock-time">{time}</div><p>{now?.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</p><div className="lock-user"><span>V</span>Visitor</div><button autoFocus onClick={() => setLocked(false)}><LockKeyhole size={17} />Unlock demo<ArrowRight size={17} /></button><small>Just a pause. Your apps are right where you left them.</small></div>}
+    {locked && <div className="lock-screen"><img src="/cybex-wordmark.svg" alt="Cybex" /><DesktopClock clock24={preferences.clock24} lock /><div className="lock-user"><span>V</span>Visitor</div><button autoFocus onClick={() => setLocked(false)}><LockKeyhole size={17} />Unlock demo<ArrowRight size={17} /></button><small>Just a pause. Your apps are right where you left them.</small></div>}
   </main>;
 }

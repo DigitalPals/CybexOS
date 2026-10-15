@@ -3,6 +3,11 @@
   hosts: workstation
   gather_facts: true
   become: true
+  # Match the ISO's explicit --exclude-weakdeps policy. Existing packages and
+  # user-installed recommendations are retained.
+  module_defaults:
+    ansible.builtin.dnf:
+      install_weak_deps: false
   pre_tasks:
     - name: Read the Dell product SKU for portable desktop defaults
       ansible.builtin.slurp:

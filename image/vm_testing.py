@@ -500,6 +500,8 @@ class TestVM:
         # then typed again rather than waiting for a password prompt that
         # cannot come (seen when a first-boot unit ran before user sessions).
         screen = ""
+        empty_prompt_retries = 0
+        next_name_retry = time.monotonic() + 3
         while time.monotonic() < deadline:
             screen = " ".join(self.screen_text().lower().split())
             if re.search(r'password\s*:|passwort\s*:|wachtwoord\s*:', screen):
@@ -509,11 +511,18 @@ class TestVM:
                 # A display manager that starts after the switch to the text
                 # console takes the screen back; that console still waits.
                 self.keypress(console)
-            elif username is not None and prompts > prompts_when_typed:
+            elif username is not None and (prompts > prompts_when_typed or (
+                    re.search(r'\blogin\s*:\s*$', screen) and empty_prompt_retries < 3
+                    and time.monotonic() >= next_name_retry)):
                 # The retyped name answers the newest prompt; a further
-                # refusal prints one more.
+                # refusal prints one more. A late VT switch can also lose the
+                # entire first input without adding a prompt. Retry only a
+                # visibly empty login line, bounded, before sending any secret.
+                if prompts <= prompts_when_typed:
+                    empty_prompt_retries += 1
                 self.type(username + "\n")
                 prompts_when_typed = prompts
+                next_name_retry = time.monotonic() + 3
             self.alive()
             time.sleep(1)
         raise RuntimeError("Installed password prompt was not recognized; no password was typed; "

@@ -31,6 +31,12 @@
 - name: Configure package repositories
   ansible.builtin.import_tasks: repos.yml
 
+- name: Install the ISO system and desktop package baseline
+  ansible.builtin.include_role:
+    name: base
+    tasks_from: system-packages
+  when: not (apps_prepare_offline_payload | default(false) | bool)
+
 - name: Install distribution packages
   ansible.builtin.import_tasks: packages.yml
 

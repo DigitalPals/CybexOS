@@ -52,6 +52,7 @@ harnesses=(
   tests/qml-lifecycle/shell.qml
   tests/user-widgets/shell.qml
   tests/omarchy-plugins/shell.qml
+  tests/model-usage-popup/shell.qml
 )
 $shell_only && harnesses=()
 

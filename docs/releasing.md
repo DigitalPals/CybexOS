@@ -1,13 +1,32 @@
 # Publishing CybexOS releases
 
 CybexOS has two release surfaces. Source-checkout releases publish a
-versioned source archive; ISO releases publish a signed desktop RPM, bootable
+versioned source archive; ISO releases publish signed desktop and offline-apps RPMs, a bootable
 ISO, and RPM update metadata. Both use a semantic-version Git tag and share
 the repository source contract and generic Fedora VM gate. The release also
 runs the image-source contract, then requires trusted PXE-host qualification
 before publication. See [ISO and desktop RPM releases](iso-releases.md) for
 runner setup, signing, the installer matrix, reconstruction, and channel
 enrollment.
+
+The large offline application seed has its own version in
+`image/offline-payload.json`. Run `python3 image/offline_payload.py --version X.Y.Z`
+with a newer version after changing its reviewed application inputs. Packaging
+refuses a stale input digest. Shell-only changes keep that version and RPM
+release unchanged; desktop RPMs retain their source/build identity. The desktop
+also requires the exact application input digest, preventing an unrelated
+newer offline package from satisfying its installation contract.
+
+Treat a published offline NEVRA as immutable. Reuse its artifact for unchanged
+inputs; if a moving upstream tool resolves differently, review it and advance
+the offline version before publishing different payload bytes. Sign and ship
+both RPMs together. The upgrade qualification installs both in one offline DNF
+transaction and binds their checksums in the release report and SPDX SBOM.
+The signing workflow authenticates the previous channel manifest and rejects
+changed file contents or ownership under an existing offline NEVRA. Manual
+repository signing must likewise pass `--previous-repository` with the previous
+signed directory or its HTTPS URL. A missing public manifest (HTTP 404) allows
+the first release; invalid signatures and other download failures stop signing.
 
 The source archive is published by `.github/workflows/release.yml` after all
 required jobs pass. Its prerequisite job checks the tag against `VERSION`,

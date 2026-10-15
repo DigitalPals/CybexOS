@@ -184,12 +184,14 @@ SBOM contains:
   and archives, Omawrite, source builds, the LazyVim starter, and vendor
   repository keys. Each has its URL and its SHA-256 or Git commit.
 
-The `cybexos-desktop` entry has the SHA-256 of the unsigned RPM that
-`release.json` records as `unsigned_input_sha256`. Generation is deterministic:
+The `cybexos-desktop` and `cybexos-offline-apps` entries each have the SHA-256
+of their unsigned RPM that `release.json` records as `unsigned_input_sha256`.
+Bundled applications, toolchains and fonts belong to the offline package in
+the SPDX containment relationships. Generation is deterministic:
 the timestamp and namespace come from build provenance, and packages and
 relationships are sorted. The release gate requires one SBOM in the build
 artifacts. Before it signs anything, `prepare-github-release` checks that the
-SBOM describes the exact qualified ISO and candidate RPM. It then copies the
+SBOM describes the exact qualified ISO and both candidate RPMs. It then copies the
 SBOM into `assets/` and `desktop-SHA256SUMS`. From a checkout, check a
 downloaded SBOM against the ISO checksum file:
 

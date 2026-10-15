@@ -2,6 +2,26 @@
 import json
 from pathlib import Path
 import shutil
+import hashlib
+
+
+def prepare_font_licenses(payload, inventory):
+    """Keep the checkout's canonical fonts, verifying the offline inputs.
+
+    The applications payload already includes these checksum-pinned files.
+    Installing a second font copy wastes space and makes the two paths differ.
+    """
+    for font in inventory["pinned_font_files"]:
+        base = payload / "usr/local/share/fonts" / font["name"] / font["version"]
+        for filename, checksum in ((font["filename"], font["checksum"]),
+                                   (font["license_filename"], font["license_checksum"])):
+            source = base / filename
+            if not source.is_file() or source.is_symlink() or hashlib.sha256(source.read_bytes()).hexdigest() != checksum.removeprefix("sha256:"):
+                raise ValueError(f"Missing or corrupt prepared font input: {font['name']} {filename}")
+        destination = payload / "usr/share/licenses/cybexos-fonts" / (font["name"] + "-" + font["license_filename"])
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(base / font["license_filename"], destination)
+        destination.chmod(0o644)
 
 
 def prepare_quickshell(root, payload):

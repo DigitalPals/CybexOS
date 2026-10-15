@@ -55,6 +55,35 @@ class InstallationParity(Fixture):
         self.command('lsblk', 'case "$*" in\n*first) printf "%s\\n" ' + shlex.quote(json.dumps(first))
                      + ';;\n*) printf "%s\\n" ' + shlex.quote(json.dumps(second)) + ';;\nesac')
 
+    def test_both_paths_select_graphical_boot_without_changing_the_running_session(self):
+        tasks = yaml.safe_load((ROOT / 'roles/base/tasks/services.yml').read_text())
+        selected = next(task for task in tasks if task.get('name') == 'Select graphical login for the next boot')
+        policy = selected['ansible.builtin.file']
+        self.assertEqual(policy['path'], '/etc/systemd/system/default.target')
+        self.assertEqual(policy['src'], '/usr/lib/systemd/system/graphical.target')
+        self.assertIn('systemctl set-default graphical.target', (ROOT / 'image/live.ks').read_text())
+        for path in ('roles/base/tasks/main.yml', 'roles/base/tasks/image.yml'):
+            self.assertIn('services.yml', (ROOT / path).read_text())
+        # Run the actual shared Ansible module against only disposable paths.
+        units = self.root / 'units'
+        units.mkdir()
+        graphical, console = units / 'graphical.target', units / 'multi-user.target'
+        graphical.write_text('graphical fixture\n')
+        console.write_text('console fixture\n')
+        default = units / 'default.target'
+        default.symlink_to(console)
+        active = units / 'active.target'
+        active.symlink_to(console)
+        policy.update(path=str(default), src=str(graphical))
+        playbook = self.root / 'graphical-boot.yml'
+        playbook.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local',
+                                           'gather_facts': False, 'become': False, 'tasks': [selected]}]))
+        result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                                text=True, capture_output=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(default.resolve(), graphical)
+        self.assertEqual(active.resolve(), console, 'the running session is not isolated or restarted')
+
     def checkout(self, *extra, interactive=False, answers=''):
         source = self.installer
         if interactive:
@@ -93,6 +122,48 @@ class InstallationParity(Fixture):
                 self.assertIs(expected['desktop_autologin'], encrypted)
                 self.assertFalse((self.root / 'etc/sudoers.d/10-wheel-nopasswd').exists())
                 self.assertFalse(self.path.exists())
+
+    def test_generic_checkout_selects_the_isos_shared_hardware_packages(self):
+        from test_installed_policy import repair
+        applications = repair.load_applications()
+        main = yaml.safe_load((ROOT / 'roles/xps-2026/tasks/main.yml').read_text())
+        imports = [dict(task) for task in main if task.get('ansible.builtin.import_tasks') == 'packages.yml']
+        self.assertEqual(len(imports), 1)
+        package_tasks = yaml.safe_load((ROOT / 'roles/xps-2026/tasks/packages.yml').read_text())
+        # Execute the actual import/feature conditions through Ansible. Replace
+        # only DNF's side effect with recording the requested package names.
+        for task in package_tasks:
+            selected = task.pop('ansible.builtin.dnf')['name']
+            task['ansible.builtin.set_fact'] = {
+                'selected_hardware_packages': '{{ selected_hardware_packages | default([]) + '
+                + json.dumps(selected if isinstance(selected, list) else [selected]) + ' }}'
+            }
+        fixture = self.root / 'hardware-packages.yml'
+        fixture.write_text(yaml.safe_dump(package_tasks))
+        imports[0]['ansible.builtin.import_tasks'] = str(fixture)
+        packages, _ = applications.package_names()
+        for proprietary in (True, False):
+            output = self.root / 'selected-hardware-packages.json'
+            play = self.root / 'generic-hardware.yml'
+            play.write_text(yaml.safe_dump([{
+                'hosts': 'localhost', 'gather_facts': False,
+                'vars': {'xps_2026_is_supported': False, 'features': {'proprietary_apps': proprietary}},
+                'tasks': imports + [{'ansible.builtin.copy': {
+                    'dest': str(output), 'content': '{{ selected_hardware_packages | default([]) | to_json }}',
+                    'mode': '0600'}}],
+            }]))
+            result = subprocess.run(['ansible-playbook', '-i', 'localhost,', '-c', 'local', str(play)],
+                                    capture_output=True, text=True, timeout=45)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            selected = set(json.loads(output.read_text()))
+            expected = {name for task in yaml.safe_load((ROOT / 'roles/xps-2026/tasks/packages.yml').read_text())
+                        if proprietary or 'features.proprietary_apps | bool' not in task.get('when', [])
+                        for name in ([task['ansible.builtin.dnf']['name']]
+                                     if isinstance(task['ansible.builtin.dnf']['name'], str)
+                                     else task['ansible.builtin.dnf']['name'])}
+            self.assertEqual(selected, expected)
+            self.assertLessEqual(selected, set(packages))
+            self.assertIn('alsa-sof-firmware', selected)
 
     def test_explicit_first_account_choices_match_on_both_paths(self):
         # An unattended seed's `config` (or a factory reset's kept choices)

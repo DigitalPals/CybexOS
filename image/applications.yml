@@ -3,6 +3,9 @@
   hosts: localhost
   connection: local
   gather_facts: true
+  module_defaults:
+    ansible.builtin.dnf:
+      install_weak_deps: false
   vars_files:
     - ../inventory/group_vars/all.yml
   vars:
@@ -10,6 +13,9 @@
     primary_group: cybex-seed
     primary_home: /home/cybex-seed
     config_repo: /home/builder/source
+    # Compose installs the ISO system baseline into the image root, not the
+    # disposable host that only prepares application stores and user tools.
+    apps_prepare_offline_payload: true
   pre_tasks:
     - name: Create the disposable application seed account
       ansible.builtin.user:

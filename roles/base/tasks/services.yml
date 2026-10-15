@@ -1,4 +1,13 @@
 ---
+# A Fedora Cloud/Server base can default to multi-user.target. Select the same
+# next boot as an ISO installation without isolating or restarting this session.
+- name: Select graphical login for the next boot
+  ansible.builtin.file:
+    path: /etc/systemd/system/default.target
+    src: /usr/lib/systemd/system/graphical.target
+    state: link
+    force: true
+
 - name: Enable core services
   ansible.builtin.systemd_service:
     name: "{{ item }}"

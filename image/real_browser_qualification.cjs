@@ -3,7 +3,6 @@
 // Fixture credentials arrive on stdin and are never printed or saved.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const {chromium} = require("playwright-core");
 let secret = "";
 
 async function waitForInitialSetup(page, timeoutMs = 120000,
@@ -35,7 +34,36 @@ async function waitForInitialSetup(page, timeoutMs = 120000,
     }
 }
 
+async function selectKeyboard(page, keyboard, timeoutMs = 120000,
+    retryDelays = [1000, 2000, 4000, 8000, 16000, 32000, 32000]) {
+    const deadline = Date.now() + timeoutMs;
+    let retries = 0;
+    while (true) {
+        let remaining = deadline - Date.now();
+        if (remaining <= 0) throw new Error("Installer keyboard selection exceeded its deadline");
+        await page.selectOption("#keyboard", keyboard, {timeout: remaining});
+        remaining = deadline - Date.now();
+        if (remaining <= 0) throw new Error("Installer keyboard selection exceeded its deadline");
+        await page.waitForFunction(expected => {
+            const error = document.querySelector("#error");
+            return (document.querySelector("#keyboard").value === expected &&
+                !document.querySelector("#password").disabled) ||
+                (error && !error.hidden && error.textContent.trim() !== "");
+        }, keyboard, {timeout: remaining});
+        if (await page.inputValue("#keyboard") === keyboard &&
+            !await page.locator("#password").isDisabled()) return;
+        const error = (await page.locator("#error").textContent())?.trim();
+        if (error !== "Another installer operation is still running.")
+            throw new Error(`Installer keyboard selection failed: ${error || "unknown error"}`);
+        if (retries >= retryDelays.length)
+            throw new Error("Installer keyboard selection remained busy after bounded retries");
+        await page.waitForTimeout(Math.min(retryDelays[retries], Math.max(0, deadline - Date.now())));
+        retries++;
+    }
+}
+
 async function main() {
+    const {chromium} = require("playwright-core");
     const input = JSON.parse(fs.readFileSync(0, "utf8"));
     secret = input.password;
     const url = new URL(input.url);
@@ -62,10 +90,7 @@ async function main() {
         });
         await page.goto(input.url, {waitUntil: "domcontentloaded", timeout: 30000});
         await waitForInitialSetup(page);
-        await page.waitForFunction(() => !document.querySelector("#password").disabled);
-        await page.selectOption("#keyboard", input.keyboard);
-        await page.waitForFunction(expected => document.querySelector("#keyboard").value === expected &&
-            !document.querySelector("#password").disabled, input.keyboard);
+        await selectKeyboard(page, input.keyboard);
         await page.fill("#username", "qualification");
         await page.fill("#password", input.password);
         await page.fill("#confirm", input.password);
@@ -145,4 +170,4 @@ if (require.main === module) main().catch(error => {
     process.exitCode = 1;
 });
 
-module.exports = {waitForInitialSetup};
+module.exports = {waitForInitialSetup, selectKeyboard};

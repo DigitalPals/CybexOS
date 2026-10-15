@@ -6,7 +6,9 @@
 Copies the plugin's runtime files at one commit into the shell tree
 (roles/desktop/files/quickshell/ModelUsage/) and its unit tests into
 tests/model-usage/, replacing what was there, then records the commit. The
-files are copied unchanged. Review the diff, check that the manifest's
+files receive the reviewed scripts/model-usage/integration.patch. A patch
+conflict aborts before replacing the installed copy. Review the diff and
+check that the manifest's
 settings still match Common/SettingsHelpers.js (tests/model-usage.py does),
 and run ./tests/run before committing.
 """
@@ -23,6 +25,7 @@ REPOSITORY = "https://github.com/DigitalPals/omarchy-modelusage.git"
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "roles/desktop/files/quickshell/ModelUsage"
 TESTS = ROOT / "tests/model-usage"
+INTEGRATION = ROOT / "scripts/model-usage/integration.patch"
 # Kept across syncs: CybexOS's own notes on the vendored copy.
 LOCAL = {"README.md"}
 
@@ -74,7 +77,12 @@ def main():
             def extract(name):
                 return tree.extractfile(name).read()
 
-            replace(RUNTIME, sorted(filter(runtime_file, names)), extract)
+            staged = Path(temporary) / "runtime"
+            replace(staged, sorted(filter(runtime_file, names)), extract)
+            subprocess.run(["git", "apply", "--check", str(INTEGRATION)], cwd=staged, check=True)
+            subprocess.run(["git", "apply", str(INTEGRATION)], cwd=staged, check=True)
+            files = sorted(path.relative_to(staged).as_posix() for path in staged.rglob("*") if path.is_file())
+            replace(RUNTIME, files, lambda name: (staged / name).read_bytes())
             replace(TESTS, sorted(filter(test_file, names)), extract, strip="tests/")
             manifest = json.loads(extract("manifest.json"))
     (TESTS / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

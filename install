@@ -100,7 +100,7 @@ if [[ -r $config_path && $reconfigure == false ]]; then
   sudo -n true 2>/dev/null || sudo -v
   if ! command -v ansible-playbook >/dev/null 2>&1; then
     run_step 'Install ansible-core' /tmp/cybexos-bootstrap-ansible.log \
-      sudo dnf -y install ansible-core
+      sudo dnf -y --setopt=install_weak_deps=False install ansible-core
   fi
   migrated_config=$(mktemp)
   trap 'rm -f -- "$migrated_config"' EXIT
@@ -166,7 +166,7 @@ if ! python3 -c 'import yaml' >/dev/null 2>&1; then
   fi
   acquire_update_lock
   run_step 'Install installer prerequisites' /tmp/cybexos-bootstrap-ansible.log \
-    sudo dnf -y install python3-pyyaml ansible-core
+    sudo dnf -y --setopt=install_weak_deps=False install python3-pyyaml ansible-core
 fi
 defaults_command=(python3 -B "$repo_dir/scripts/installer-defaults")
 [[ -r $config_path ]] && defaults_command+=(--config "$config_path")
@@ -354,7 +354,7 @@ sudo install -d -m 0755 /etc/cybexos
 sudo install -m 0644 "$temporary_config" "$config_path"
 if ! command -v ansible-playbook >/dev/null 2>&1; then
   run_step 'Install ansible-core' /tmp/cybexos-bootstrap-ansible.log \
-    sudo dnf -y install ansible-core
+    sudo dnf -y --setopt=install_weak_deps=False install ansible-core
 fi
 rm -f -- "$temporary_config"
 trap - EXIT

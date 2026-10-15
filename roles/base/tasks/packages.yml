@@ -1,6 +1,15 @@
 ---
+- name: Read installed release packages before preparing the shared codec repositories
+  ansible.builtin.package_facts:
+    manager: rpm
+
+- name: Prepare the shared codec repositories before resolving base and desktop dependencies
+  ansible.builtin.include_role:
+    name: apps
+    tasks_from: rpmfusion
+
 - name: Install Fedora baseline packages
   ansible.builtin.dnf:
-    name: "{{ base_required_packages + ['glibc-langpack-' + machine_locale.split('_')[0], 'glibc-langpack-' + regional_locale.split('_')[0]] }}"
+    name: "{{ base_required_packages }}"
     state: present
     allowerasing: true

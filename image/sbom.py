@@ -26,6 +26,7 @@ ROOT_LICENSE = "MIT"
 ROOT_ID = "SPDXRef-CybexOS"
 DOCUMENT_ID = "SPDXRef-DOCUMENT"
 DESKTOP_PACKAGE = "cybexos-desktop"
+OFFLINE_PACKAGE = "cybexos-offline-apps"
 # GitHub's SBOM attestation rejects predicates above 16 MiB; fail at build time.
 SIZE_LIMIT = 16 * 1024 * 1024
 
@@ -525,7 +526,7 @@ def created_time(provenance):
 
 
 def build_document(*, rpms, flatpaks, pins, provenance, version, fedora_release="44",
-                   iso=None, desktop_rpm=None, source_archive_sha256=None, owners=None):
+                   iso=None, desktop_rpm=None, offline_rpm=None, source_archive_sha256=None, owners=None):
     """Assemble the SPDX document. File arguments are (filename, sha256) pairs."""
     revision = str(provenance.get("source_revision", ""))
     build = str(provenance.get("build_id", ""))
@@ -566,24 +567,33 @@ def build_document(*, rpms, flatpaks, pins, provenance, version, fedora_release=
     components = []  # (package, inside the desktop RPM payload?)
     installed = {}
     desktop = None
+    offline = None
+    artifacts = {DESKTOP_PACKAGE: desktop_rpm, OFFLINE_PACKAGE: offline_rpm}
     for record in sorted(rpms, key=lambda item: tuple(item[key] for key in RPM_FIELDS)):
         package = rpm_package(record, fedora_release, owners or {}, extracted)
-        if record["name"] == DESKTOP_PACKAGE:
-            if desktop is not None:
-                raise ValueError("The image contains more than one desktop RPM")
-            desktop = package
-            if desktop_rpm:
+        if record["name"] in artifacts:
+            name = record["name"]
+            if name in installed:
+                raise ValueError(f"The image contains more than one {name} RPM")
+            if name == DESKTOP_PACKAGE:
+                desktop = package
+            else:
+                offline = package
+            artifact = artifacts[name]
+            if artifact:
                 expected = f"{record['name']}-{record['version']}-{record['release']}.{record['arch']}.rpm"
-                if desktop_rpm[0] != expected:
-                    raise ValueError(f"Desktop RPM artifact {desktop_rpm[0]} is not the installed {expected}")
-                package["packageFileName"] = desktop_rpm[0]
-                package["checksums"] = [{"algorithm": "SHA256", "checksumValue": checksum(desktop_rpm[1])}]
+                if artifact[0] != expected:
+                    raise ValueError(f"RPM artifact {artifact[0]} is not the installed {expected}")
+                package["packageFileName"] = artifact[0]
+                package["checksums"] = [{"algorithm": "SHA256", "checksumValue": checksum(artifact[1])}]
                 package["comment"] = ("SHA-256 of the unsigned build output; release signing adds a "
                                       "signature header (release.json unsigned_input_sha256).")
         installed.setdefault(record["name"], []).append(package)
         components.append((package, False))
     if desktop_rpm and desktop is None:
         raise ValueError("The image root does not contain the desktop RPM")
+    if offline_rpm and offline is None:
+        raise ValueError("The image root does not contain the offline applications RPM")
     for record in sorted(flatpaks, key=lambda item: tuple(item[key] for key in FLATPAK_FIELDS)):
         components.append((flatpak_package(record), False))
     for pin, placement in sorted(pins, key=lambda item: item[0]["SPDXID"]):
@@ -600,7 +610,8 @@ def build_document(*, rpms, flatpaks, pins, provenance, version, fedora_release=
 
     relationships = []
     for package, bundled in components:
-        parent = desktop["SPDXID"] if bundled and desktop is not None else ROOT_ID
+        container = offline or desktop
+        parent = container["SPDXID"] if bundled and container is not None else ROOT_ID
         relationships.append({"spdxElementId": parent, "relationshipType": "CONTAINS",
                               "relatedSpdxElement": package["SPDXID"]})
     relationships.sort(key=lambda item: (item["spdxElementId"], item["relatedSpdxElement"]))
@@ -706,7 +717,7 @@ def file_checksum(package):
 
 
 def verify_release_sbom(path, iso_name, iso_sha256, rpm_sha256s=()):
-    """Bind a release SBOM to the exact ISO and unsigned desktop RPM bytes."""
+    """Bind an SBOM to the exact ISO and every unsigned release RPM."""
     path = Path(path)
     if path.is_symlink() or not path.is_file() or path.stat().st_size > SIZE_LIMIT:
         raise ValueError("Release SBOM must be a regular file below 16 MiB")
@@ -715,9 +726,15 @@ def verify_release_sbom(path, iso_name, iso_sha256, rpm_sha256s=()):
     if root.get("packageFileName") != iso_name or file_checksum(root) != iso_sha256:
         raise ValueError("Release SBOM does not describe the exact ISO")
     if rpm_sha256s:
-        desktop = [package for package in document["packages"] if package["name"] == DESKTOP_PACKAGE]
-        if len(desktop) != 1 or file_checksum(desktop[0]) not in set(rpm_sha256s):
-            raise ValueError("Release SBOM does not identify the exact candidate desktop RPM")
+        expected = rpm_sha256s if isinstance(rpm_sha256s, dict) else {DESKTOP_PACKAGE: set(rpm_sha256s)}
+        if any(package['name'] == OFFLINE_PACKAGE for package in document['packages']) and OFFLINE_PACKAGE not in expected:
+            raise ValueError('Release SBOM requires the exact candidate cybexos-offline-apps RPM')
+        for name, digests in expected.items():
+            packages = [package for package in document["packages"] if package["name"] == name]
+            digests = {digests} if isinstance(digests, str) else set(digests)
+            if len(packages) != 1 or file_checksum(packages[0]) not in digests:
+                label = 'desktop' if name == DESKTOP_PACKAGE else name
+                raise ValueError(f"Release SBOM does not identify the exact candidate {label} RPM")
     return document
 
 
@@ -732,7 +749,7 @@ def load_yaml(path):
 
 
 def generate(*, rpm_list, flatpaks, provenance, output, inventory=None, apps_defaults=None,
-             version_file=None, iso=None, desktop_rpm=None, source_archive_sha256=None, downloads=None):
+             version_file=None, iso=None, desktop_rpm=None, offline_rpm=None, source_archive_sha256=None, downloads=None):
     """Write the SBOM atomically. `iso` and `desktop_rpm` are (filename, sha256)."""
     inventory = load_yaml(inventory or ROOT / "inventory/group_vars/all.yml")
     defaults = load_yaml(apps_defaults or ROOT / "roles/apps/defaults/main.yml")
@@ -745,7 +762,8 @@ def generate(*, rpm_list, flatpaks, provenance, output, inventory=None, apps_def
         provenance=json.loads(Path(provenance).read_text()),
         version=Path(version_file or ROOT / "VERSION").read_text().strip(),
         fedora_release=str(inventory.get("fedora_release", "44")),
-        iso=iso, desktop_rpm=desktop_rpm, source_archive_sha256=source_archive_sha256, owners=owners)
+        iso=iso, desktop_rpm=desktop_rpm, offline_rpm=offline_rpm,
+        source_archive_sha256=source_archive_sha256, owners=owners)
     output = Path(output)
     data = serialize(document)
     temporary = output.with_name(f".{output.name}.tmp")
@@ -773,6 +791,12 @@ def write_build_sbom(artifacts, iso_name, checksums=None, downloads=None, checko
     rpms = sorted(path.name for path in artifacts.glob(DESKTOP_PACKAGE + "-*.rpm"))
     if len(rpms) != 1:
         raise ValueError("Artifacts must contain exactly one desktop RPM")
+    offline = sorted(path.name for path in artifacts.glob(OFFLINE_PACKAGE + "-*.rpm"))
+    if len(offline) > 1:
+        raise ValueError("Artifacts contain more than one offline applications RPM")
+    installed = parse_rpm_inventory((artifacts / RPM_INVENTORY).read_text())
+    if any(record['name'] == OFFLINE_PACKAGE for record in installed) and not offline:
+        raise ValueError("Artifacts must contain the installed offline applications RPM")
     archive = artifacts / "source.tar.gz"
     return generate(
         rpm_list=artifacts / RPM_INVENTORY, flatpaks=artifacts / FLATPAK_INVENTORY,
@@ -780,6 +804,7 @@ def write_build_sbom(artifacts, iso_name, checksums=None, downloads=None, checko
         inventory=checkout / "inventory/group_vars/all.yml",
         apps_defaults=checkout / "roles/apps/defaults/main.yml", version_file=checkout / "VERSION",
         iso=(iso_name, digest(iso_name)), desktop_rpm=(rpms[0], digest(rpms[0])),
+        offline_rpm=(offline[0], digest(offline[0])) if offline else None,
         source_archive_sha256=digest(archive.name) if archive.is_file() else None, downloads=downloads)
 
 
@@ -797,6 +822,7 @@ def main(argv=None):
     make.add_argument("--iso", type=Path, help="Built ISO; recorded with its SHA-256")
     make.add_argument("--iso-name", help="Delivered ISO filename when it differs from --iso")
     make.add_argument("--desktop-rpm", type=Path, help="Unsigned cybexos-desktop RPM artifact")
+    make.add_argument("--offline-rpm", type=Path, help="Unsigned cybexos-offline-apps RPM artifact")
     make.add_argument("--source-archive", type=Path, help="Builder source archive (source.tar.gz)")
     make.add_argument("--downloads", type=Path, help="Download cache manifest naming fetched release assets")
     check = commands.add_parser("verify", help="Check an SBOM's structure and its ISO binding")
@@ -816,10 +842,11 @@ def main(argv=None):
             return 0
         iso = (args.iso_name or args.iso.name, sha256_file(args.iso)) if args.iso else None
         rpm = (args.desktop_rpm.name, sha256_file(args.desktop_rpm)) if args.desktop_rpm else None
+        offline = (args.offline_rpm.name, sha256_file(args.offline_rpm)) if args.offline_rpm else None
         archive = sha256_file(args.source_archive) if args.source_archive else None
         print(generate(rpm_list=args.rpm_list, flatpaks=args.flatpaks, provenance=args.provenance,
                        output=args.output, inventory=args.inventory, apps_defaults=args.apps_defaults,
-                       version_file=args.version_file, iso=iso, desktop_rpm=rpm,
+                       version_file=args.version_file, iso=iso, desktop_rpm=rpm, offline_rpm=offline,
                        source_archive_sha256=archive, downloads=args.downloads))
         return 0
     except (OSError, ValueError, KeyError, TypeError, RuntimeError, json.JSONDecodeError) as error:

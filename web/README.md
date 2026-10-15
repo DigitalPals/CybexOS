@@ -204,17 +204,23 @@ Asset sources and license information are recorded in
 
 ## Validation and current deployment
 
-Validated on 2026-10-13: lint, TypeScript, 113 interaction/state tests, two
+Validated on 2026-10-15: lint, TypeScript, 116 interaction/state tests, two
 production Worker/asset tests, and the production build pass. Coverage includes
 wallpaper persistence, welcome dismissal, drawer state and keyboard navigation,
-notification focus, and clock format. Responsive styling was reviewed against
-the native source; browser visual testing has not been performed.
+notification focus, minute-aligned clocks, hidden-tab wake-up, and second-level
+usage reset transitions. The deployed page, calendar and Model Usage panel
+were checked in a browser at 1280×800 and 375×812; no horizontal overflow or
+console errors were observed. The browser fetched the 250,438-byte WebP on
+the tested 2× display.
 
 The Docker Compose service runs on `thebeast` at
 <http://10.10.0.7:5174> (network/VPN access required). It was rebuilt and
 restarted after validation. No public Internet domain has been configured.
 The source retains its Sites-compatible Worker build configuration.
 
-The production Docker image is retained for the running service. Local
+The standalone production Docker image is 104,205,923 bytes (87.0% smaller
+than the previous 803,746,314-byte image). Only its traced runtime dependencies
+are shipped; the build stage retains the Worker output. The production Docker
+image is retained for the running service. Local
 compiled output, temporary build state, and dependencies were removed after
 validation. Run `npm ci` before local development to recreate dependencies.

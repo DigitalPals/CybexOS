@@ -3,7 +3,9 @@
   --wallpaper-dusk: radial-gradient(ellipse at 52% 42%, #de997957, transparent 51%), linear-gradient(165deg, #383042 0%, #865c65 44%, #453c53 68%, #202738 100%);
 }
 
-.wallpaper-mountains { background-image: url('/wallpapers/moon-mountains.jpg'); background-size: cover; background-position: center; }
+.wallpaper-mountains { background-image: image-set(url('/wallpapers/moon-mountains-1280.webp') 1x, url('/wallpapers/moon-mountains-2560.webp') 2x); background-size: cover; background-position: center; }
+@media (min-width: 1281px) { .desktop-wallpaper.wallpaper-mountains { background-image: image-set(url('/wallpapers/moon-mountains-2560.webp') 1x, url('/wallpapers/moon-mountains-5120.webp') 2x); } }
+@media (min-width: 2561px) { .desktop-wallpaper.wallpaper-mountains { background-image: url('/wallpapers/moon-mountains-5120.webp'); } }
 .wallpaper-aurora { background-image: var(--wallpaper-aurora); background-size: cover; background-position: center; }
 .wallpaper-dusk { background-image: var(--wallpaper-dusk); background-size: cover; background-position: center; }
 

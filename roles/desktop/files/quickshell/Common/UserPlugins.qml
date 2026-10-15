@@ -233,13 +233,19 @@ Singleton {
     Connections {
         target: Settings
         function onPanelOpenChanged() {
-            if (Settings.panelOpen)
+            if (Settings.panelOpen && (Settings.page === "bar" || Settings.page === "plugins"))
+                root.refresh();
+        }
+        function onPageChanged() {
+            if (Settings.panelOpen && (Settings.page === "bar" || Settings.page === "plugins"))
                 root.refresh();
         }
     }
 
     Timer {
-        interval: Settings.panelOpen ? 2000 : 300000
+        // Only the pages that show plugin discovery need developer-speed
+        // rescans. Registry changes still wake every page immediately.
+        interval: Settings.panelOpen && (Settings.page === "bar" || Settings.page === "plugins") ? 2000 : 300000
         repeat: true
         running: !Activity.idle && (Settings.panelOpen || root.enabled.length > 0)
         onTriggered: root.refresh()

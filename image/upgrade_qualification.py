@@ -7,6 +7,7 @@ from build_support import digest
 from vm_testing import run
 
 CANDIDATE = '/tmp/cybexos-qualification-candidate.rpm'
+OFFLINE_CANDIDATE = '/tmp/cybexos-qualification-offline-apps.rpm'
 SNAPSHOT = '/usr/libexec/cybexos-system-snapshot'
 MANAGED_MARKER = '# cybexos qualification: preserve this user edit'
 
@@ -72,7 +73,9 @@ PY
                           capture_output=True, timeout=30).stdout)
 
 
-def copy_candidate(vm, candidate):
+def copy_candidate(vm, candidate, destination=CANDIDATE):
+    if destination not in (CANDIDATE, OFFLINE_CANDIDATE):
+        raise ValueError('Unknown candidate destination')
     original = Path(candidate)
     if original.is_symlink():
         raise ValueError('Candidate RPM must be a regular .rpm file')
@@ -81,8 +84,8 @@ def copy_candidate(vm, candidate):
         raise ValueError('Candidate RPM must be a regular .rpm file')
     expected = digest(candidate)
     with candidate.open('rb') as stream:
-        run([*vm.ssh, f'cat > {CANDIDATE}'], stdin=stream, capture_output=True, timeout=300)
-    actual = run([*vm.ssh, f'sha256sum {CANDIDATE}'], text=True, capture_output=True,
+        run([*vm.ssh, f'cat > {destination}'], stdin=stream, capture_output=True, timeout=300)
+    actual = run([*vm.ssh, f'sha256sum {destination}'], text=True, capture_output=True,
                  timeout=30).stdout.split()[0]
     if actual != expected:
         raise RuntimeError('Candidate RPM changed in transfer to guest')
@@ -102,13 +105,16 @@ def create_recovery_point(vm, password, root_script):
     return point
 
 
-def upgrade(vm, candidate, password, root_script):
+def upgrade(vm, candidate, password, root_script, offline_candidate=None):
     sha = copy_candidate(vm, candidate)
+    if offline_candidate:
+        copy_candidate(vm, offline_candidate, OFFLINE_CANDIDATE)
     versions = inspect_version(vm)
     if versions['comparison'] <= 0:
         raise RuntimeError('Candidate RPM is not newer than the baseline installed RPM')
     config_before = root_script(vm, 'sha256sum /etc/cybexos/config.yml\n', password).stdout.split()[0]
-    root_script(vm, f"dnf -y --disablerepo='*' install {CANDIDATE}\n"
+    candidates = CANDIDATE + (' ' + OFFLINE_CANDIDATE if offline_candidate else '')
+    root_script(vm, f"dnf -y --disablerepo='*' install {candidates}\n"
                 "systemctl daemon-reload\n"
                 "systemctl start cybexos-reconcile.service\n", password, timeout=1200)
     status = json.loads(root_script(vm, '/usr/libexec/cybexos-reconcile --status\n', password).stdout)
@@ -121,6 +127,9 @@ def upgrade(vm, candidate, password, root_script):
     after = inspect_version(vm)
     if after['installed'] != versions['candidate']:
         raise RuntimeError('Installed desktop RPM did not match the candidate version')
+    if offline_candidate:
+        root_script(vm, "test \"$(rpm -q --qf '%{NEVRA}' cybexos-offline-apps)\" = "
+                    f"\"$(rpm -qp --qf '%{{NEVRA}}' {OFFLINE_CANDIDATE})\"\n", password)
     root_script(vm, f"test ! -e {CANDIDATE}.password\n", password)
     config_after = root_script(vm, 'sha256sum /etc/cybexos/config.yml\n', password).stdout.split()[0]
     if config_after != config_before:

@@ -13,9 +13,9 @@ function load(name) {
     return require(path.join(shellDir, "Common", name));
 }
 
-// Directories vendored from upstream projects, unchanged (see each one's
-// README.md). Repo style rules cannot be applied to code that must stay
-// byte-identical to its source, so the tree-wide scans skip them; the tests
+// Directories vendored from upstream projects (see each README for reviewed
+// integration patches). Repo style rules cannot be applied to these sources,
+// so the tree-wide scans skip them; the tests
 // for how the shell hosts them live elsewhere.
 const VENDORED_DIRS = ["ModelUsage"];
 

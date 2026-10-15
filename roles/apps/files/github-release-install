@@ -214,7 +214,7 @@ if [[ $rpm_mode == true ]]; then
   installed_nevra=$(rpm -q --qf '%{NEVRA}' "$name" 2>/dev/null || true)
   dnf_action=install
   [[ $installed_nevra != "$asset_nevra" ]] || dnf_action=reinstall
-  flock "$dnf_lock" dnf -y --nogpgcheck "$dnf_action" "$download"
+  flock "$dnf_lock" dnf -y --setopt=install_weak_deps=False --nogpgcheck "$dnf_action" "$download"
   [[ $(rpm -q --qf '%{NEVRA}' "$name" 2>/dev/null || true) == "$asset_nevra" ]] || {
     echo "Installed $name NEVRA does not match verified asset $asset_nevra" >&2
     exit 1

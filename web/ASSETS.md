@@ -2,7 +2,7 @@
 
 | Asset | Source | Rights information |
 | --- | --- | --- |
-| `public/wallpapers/moon-mountains.jpg` | Copied from `../assets/wallpapers/snow-capped-mountains-with-full-moon-lo.jpg`; selected by the native `assets/desktop-contract.json` | The repository does not identify an author or license for this image. This document records its provenance and does not grant or infer redistribution rights. |
+| `public/wallpapers/moon-mountains-{1280,2560,5120}.webp` | Responsive derivatives of `../assets/wallpapers/snow-capped-mountains-with-full-moon-lo.jpg`; resized with Sharp 0.35.4, WebP quality 90, effort 6. The native wallpaper keeps its original dimensions and filename. | The repository does not identify an author or license for this image. This document records its provenance and does not grant or infer redistribution rights. |
 | `public/cybex-wordmark.svg` | Copied from `../image/rootfs/usr/share/cybexos/welcome/cybex-wordmark.svg` | Existing Cybex brand asset; no additional license is asserted here. |
 | `public/fedora.svg` | Unchanged copy of `../roles/desktop/files/quickshell/assets/fedora.svg`, adapted from the Fedora Design Team mark at revision `e7ee4e88ac5b43a1acf2ab39157b63c80e8093f2` | CC BY-SA 4.0, except trademark rights. Attribution, modification history, and license link are in `public/licenses/fedora-mark.txt`. |
 | Figtree | `@fontsource/figtree`, installed through the npm lockfile | SIL Open Font License 1.1. Copyright 2022 The Figtree Project Authors, https://github.com/erikdkennedy/figtree. The full license is also shipped in `public/licenses/`. |

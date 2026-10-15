@@ -39,6 +39,7 @@ class ReleaseGate(unittest.TestCase):
                 artifacts.mkdir(parents=True)
                 (artifacts / 'candidate.iso').write_bytes(b'candidate')
                 (artifacts / 'cybexos-desktop-1.2.3.rpm').write_bytes(b'RPM')
+                (artifacts / 'cybexos-offline-apps-1.0.0.rpm').write_bytes(b'offline RPM')
                 (artifacts / 'candidate.spdx.json').write_text('{}')
             if command[0].endswith('/image/publish-pxe'):
                 (pxe / 'iso/candidate.iso').write_bytes(b'candidate')
@@ -94,6 +95,7 @@ class ReleaseGate(unittest.TestCase):
             upgrade = qualifications[-1]
             self.assertTrue(upgrade[1].endswith('/baseline.iso'))
             self.assertIn('--candidate-rpm', upgrade)
+            self.assertIn('--candidate-offline-rpm', upgrade)
             self.assertIn('--recovery-check', upgrade)
             self.assertIn('--legacy-installer', upgrade)
             checkout = [command for command in commands if command[0].endswith('/image/qualify-checkout')]

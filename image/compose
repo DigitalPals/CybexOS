@@ -81,7 +81,7 @@ class VerifiedDnf(DnfLiveCD):
             if not package.repo.gpgcheck:
                 if package.reponame != "cybexos-local":
                     raise RuntimeError(f"Unexpected unsigned package: {package}")
-                if package.name != "cybexos-desktop":
+                if package.name not in ("cybexos-desktop", "cybexos-offline-apps"):
                     pinned = json.loads((build / "pinned-rpms.json").read_text())
                     path = Path(package.localPkg())
                     with path.open("rb") as stream:

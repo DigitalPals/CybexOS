@@ -45,12 +45,16 @@
       - /usr/bin/rustup-init
       - -y
       - --no-modify-path
+      - --profile
+      - minimal
       - --default-toolchain
       - "{{ rust_toolchain }}"
       - --component
       - rustfmt
       - --component
       - rust-analyzer
+      - --component
+      - clippy
   args:
     creates: "{{ primary_home }}/.cargo/bin/rustup"
   register: apps_rustup_init
@@ -67,11 +71,13 @@
       - install
       - "{{ rust_toolchain }}"
       - --profile
-      - default
+      - minimal
       - --component
       - rustfmt
       - --component
       - rust-analyzer
+      - --component
+      - clippy
   register: apps_rustup_nightly
   changed_when: "'unchanged' not in (apps_rustup_nightly.stdout | lower)"
   failed_when: false

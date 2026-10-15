@@ -9,14 +9,14 @@ import shutil
 import shlex
 import subprocess
 import tarfile
-import urllib.request
 
 import jinja2
 import yaml
 from application_payload import relativize_seed_links, include_applications
-from desktop_payload import prepare_defaults, prepare_session, split_seed, prepare_managed_defaults, prepare_app_launchers, prepare_quickshell
+from desktop_payload import prepare_defaults, prepare_session, split_seed, prepare_managed_defaults, prepare_app_launchers, prepare_quickshell, prepare_font_licenses
 from provision_payload import prepare_provision
 from release_metadata import install_update_channel, render_spec
+from offline_payload import configuration as offline_configuration, file_lists, inventory as offline_inventory
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -202,28 +202,12 @@ def main():
          "usr/share/glib-2.0/schemas/90-cybexos-smb.gschema.override")
     for name in ("brave-browser", "1password", "chatgpt", "tailscale"):
         copy(f"roles/apps/files/{name}.repo", f"usr/share/cybexos/repository-policy/{name}.repo")
-    # The fonts are already checksum-pinned by the project. Preserve upstream
-    # license texts and fail the build on any mismatch.
-    for font in inventory["pinned_font_files"]:
-        for url_key, checksum_key, target in (
-            ("url", "checksum", "usr/share/fonts/cybexos/" + font["filename"]),
-            ("license_url", "license_checksum", "usr/share/licenses/cybexos-fonts/" + font["name"] + "-" + font["license_filename"]),
-        ):
-            destination = payload / target
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            filename = font["filename"] if url_key == "url" else font["license_filename"]
-            prepared = Path("/usr/local/share/fonts") / font["name"] / font["version"] / filename
-            expected = font[checksum_key].split(":", 1)[1]
-            if prepared.is_file() and hashlib.sha256(prepared.read_bytes()).hexdigest() == expected:
-                shutil.copy2(prepared, destination)
-            else:
-                urllib.request.urlretrieve(font[url_key], destination)
-            if hashlib.sha256(destination.read_bytes()).hexdigest() != font[checksum_key].split(":", 1)[1]:
-                raise RuntimeError(f"checksum mismatch for {font['name']} {url_key}")
-            destination.chmod(0o644)
+    prepare_font_licenses(payload, inventory)
     relativize_seed_links(payload / seed, seed_home)
     split_seed(payload / "usr/share/cybexos", contract)
     prepare_managed_defaults(payload / "usr/share/cybexos")
+    offline = offline_configuration(ROOT)
+    write("usr/share/cybexos/offline-inputs.json", json.dumps(offline, indent=2) + "\n")
     manifest = {}
     for file in sorted(payload.rglob("*")):
         if file.is_symlink():
@@ -241,7 +225,11 @@ def main():
     (build / "package-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     sources = build / "rpmbuild/SOURCES"
     sources.mkdir(parents=True)
+    (sources / "offline.files").write_text("\n".join(file_lists(payload)) + "\n")
+    (build / "offline-payload.json").write_text(json.dumps({**offline, **offline_inventory(payload)}, indent=2) + "\n")
     spec = render_spec((ROOT / "image/cybexos-desktop.spec").read_text(), ROOT / "VERSION", provenance)
+    spec = spec.replace("%global offline_version 1.0.0", "%global offline_version " + offline["version"])
+    spec = spec.replace("%global offline_inputs unconfigured", "%global offline_inputs " + offline["inputs_sha256"])
     (build / "desktop.spec").write_text(spec)
     (build / "live.ks").write_text(include_applications(
         (ROOT / "image/live.ks").read_text(), applications["packages"],

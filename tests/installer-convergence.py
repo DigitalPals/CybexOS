@@ -90,6 +90,7 @@ def render_installer(source: Path, destination: Path, root: Path, common: Path) 
     )
     replacements = {
         "/var/cache/cybexos-upstream": str(root / "cache"),
+        "/var/cache/cybexos-source-builds": str(root / "source-cache"),
         "/var/lib/cybexos-upstream": str(root / "state"),
         "/opt/cybexos-apps": str(root / "apps"),
         "/opt/cybexos-builds": str(root / "builds"),
@@ -219,6 +220,7 @@ def test_github_rpm_convergence_and_tag_endpoint() -> None:
         assert result.returncode == 0, (result.stdout, result.stderr)
         assert "CHANGED: installed demo v1" in result.stdout
         assert "reinstall" in Path(env["MOCK_DNF_LOG"]).read_text()
+        assert "--setopt=install_weak_deps=False" in Path(env["MOCK_DNF_LOG"]).read_text()
         assert (state / "version").read_text().strip() == (
             f"tag=v1 checksum=sha256:{digest}"
         )
@@ -394,6 +396,20 @@ fi
         executable(
             mock_bin / "podman",
             r'''
+printf '%s\n' "$*" >> "$MOCK_PODMAN_LOG"
+if [[ $1 == image && $2 == exists ]]; then
+  [[ -f $MOCK_BUILDER_READY ]]
+  exit
+elif [[ $1 == image && $2 == inspect ]]; then
+  echo sha256:fixture-builder
+  exit
+elif [[ $1 == pull ]]; then
+  exit
+elif [[ $1 == build ]]; then
+  touch "$MOCK_BUILDER_READY"
+  exit
+fi
+[[ $1 == run ]]
 for argument in "$@"; do
   if [[ $argument == *:/out:Z ]]; then output=${argument%:/out:Z}; fi
 done
@@ -410,6 +426,8 @@ chmod 0755 "$output/$MOCK_BINARY"
             "MOCK_REVISION": revision,
             "MOCK_TAG": "v1",
             "MOCK_BINARY": "demo",
+            "MOCK_PODMAN_LOG": str(root / "podman.log"),
+            "MOCK_BUILDER_READY": str(root / "builder-ready"),
         }
         old = root / "builds/demo/versions/old"
         (old / "bin").mkdir(parents=True)
@@ -434,6 +452,12 @@ chmod 0755 "$output/$MOCK_BINARY"
         assert "could not prune older versions" in result.stderr
         assert "retained after update failure" not in result.stderr
         assert (root / "builds/demo/current/bin/demo").read_text().endswith("built\n")
+        calls = Path(env["MOCK_PODMAN_LOG"]).read_text().splitlines()
+        assert sum(call.startswith("build ") for call in calls) == 1, calls
+        assert sum(call.startswith("pull ") for call in calls) == 1, calls
+        assert any("CARGO_TARGET_DIR=/build-cache" in call and ":/root/.cargo/registry:z" in call
+                   and ":/build-cache:Z" in call for call in calls), calls
+        assert (root / "builds/demo/current/.cybexos-builder").read_text() == "sha256:fixture-builder\n"
 
         # The authorized commit, image, and recipe describe the intact build;
         # the next converge must not contact the remote at all.
@@ -451,6 +475,17 @@ chmod 0755 "$output/$MOCK_BINARY"
         )
         assert result.returncode == 0, (result.stdout, result.stderr)
         assert result.stdout.strip() == f"UNCHANGED: demo v1 ({revision})"
+        assert Path(env["MOCK_PODMAN_LOG"]).read_text().splitlines() == calls
+        # A different authorized source revision reuses the provisioned builder
+        # and Cargo mounts; the deployed identity still changes atomically.
+        next_revision = "c" * 40
+        result = run([str(installer), "demo", "https://example.invalid/demo.git", "demo", "v2",
+                      next_revision, "fedora@sha256:" + ("b" * 64)],
+                     env=dict(env, MOCK_REVISION=next_revision, MOCK_TAG="v2"))
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        calls = Path(env["MOCK_PODMAN_LOG"]).read_text().splitlines()
+        assert sum(call.startswith("build ") for call in calls) == 1, calls
+        assert sum(call.startswith("run ") for call in calls) == 2, calls
 
 
 def test_android_command_tools_rollback() -> None:

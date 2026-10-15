@@ -156,8 +156,10 @@ jobs:
           fingerprint=$(python3 -c 'import json; print(json.load(open("image/channels/stable.json"))["fingerprint"])')
           baseurl=$(python3 -c 'import json; print(json.load(open("image/channels/stable.json"))["baseurl"])')
           image/release-repository /release-work/qualified/build/artifacts/cybexos-desktop-*.rpm \
+            /release-work/qualified/build/artifacts/cybexos-offline-apps-*.rpm \
             --output /release-work/signed --public-key image/channels/CYBEXOS-desktop.asc \
             --key "$fingerprint" --gnupghome "$keyhome" --baseurl "$baseurl" \
+            --previous-repository "$baseurl" \
             --packages-baseurl "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG"
           reports=()
           for scenario in encrypted-us plain-us encrypted-nl plain-nl upgrade; do

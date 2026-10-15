@@ -10,6 +10,9 @@ Summary:        CybexOS Hyprland and Quickshell desktop
 License:        MIT AND LicenseRef-CybexOS-Bundled-Components
 URL:            https://github.com/DigitalPals/CybexOS
 Source0:        desktop.tar
+Source1:        offline.files
+%global offline_version 1.0.0
+%global offline_inputs unconfigured
 BuildArch:      x86_64
 Provides:       cybexos-supported-fedora = %{fedora}
 AutoReqProv:    no
@@ -44,12 +47,26 @@ Requires:       xkeyboard-config tzdata
 Requires:       restic libsecret
 # The graphical first-start setup for a new owner (cybexos-new-owner).
 Requires:       cage
+Requires:       cybexos-offline-apps >= 1:%{offline_version}
+Requires:       cybexos-offline-inputs = %{offline_inputs}
 
 %description
 CybexOS (Cybex Opinionated System) is a Hyprland and Quickshell desktop for Fedora.
 Shared desktop defaults, session services, and first-login welcome application.
 Personal settings and overrides remain in each user's home directory.
 Private alpha image integration; not a public distribution release.
+
+%package -n cybexos-offline-apps
+Epoch:          1
+Version:        %{offline_version}
+Release:        1%{?dist}
+Summary:        CybexOS offline applications, fonts and developer toolchains
+AutoReqProv:    no
+Provides:       cybexos-offline-inputs = %{offline_inputs}
+
+%description -n cybexos-offline-apps
+Independently versioned offline application payload for complete installations.
+Desktop updates reuse this package until its reviewed application inputs change.
 
 %prep
 %setup -q -c -n desktop
@@ -68,13 +85,6 @@ cp -a usr opt etc %{buildroot}/
 %license /usr/share/licenses/cybexos-desktop/LICENSE
 %config(noreplace) /etc/yum.repos.d/cybexos-desktop.repo
 %config(noreplace) /etc/fonts/conf.d/49-cybexos-defaults.conf
-/opt/cybexos-apps/
-/opt/cybexos-builds/
-/usr/local/bin/*
-/usr/local/libexec/*
-/usr/local/share/fonts/*
-/usr/local/share/applications/omawrite.desktop
-/usr/share/icons/hicolor/scalable/apps/omawrite.svg
 /usr/bin/cybex
 /usr/bin/cybexos-*
 /usr/bin/hyprland-quickshell
@@ -89,10 +99,12 @@ cp -a usr opt etc %{buildroot}/
 /usr/share/cybexos/
 /usr/share/applications/cybex.desktop
 /usr/share/wayland-sessions/hyprland-quickshell.desktop
-/usr/share/fonts/cybexos/
 /usr/share/glib-2.0/schemas/90-cybexos-ibus.gschema.override
 /usr/share/glib-2.0/schemas/90-cybexos-smb.gschema.override
-/usr/share/licenses/cybexos-fonts/
+%exclude /usr/share/cybexos/user-seed/
+%exclude /usr/share/cybexos/final-seed/
+%exclude /usr/share/cybexos/seed-groups.json
+%exclude /usr/share/cybexos/offline-inputs.json
 /usr/share/plymouth/themes/cybex/
 /usr/lib/sysctl.d/60-cybexos-hardening.conf
 /etc/grub.d/42_cybexos_recovery
@@ -113,7 +125,10 @@ cp -a usr opt etc %{buildroot}/
 /usr/lib/systemd/system/cybexos-first-boot.service
 /usr/lib/systemd/system/cybexos-new-owner.service
 /usr/lib/systemd/system/cybexos-tailscale-enroll.service
+
 /usr/lib/firewalld/zones/cybexos.xml
+
+%files -n cybexos-offline-apps -f %{SOURCE1}
 
 %posttrans
 # Record work only inside the RPM transaction. A timer runs it after RPM releases

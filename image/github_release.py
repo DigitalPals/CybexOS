@@ -175,7 +175,10 @@ def verify_qualifications(paths, iso_digest, packages):
     """Require fresh installer and prior-release upgrade/recovery evidence."""
     scenarios = {'encrypted-us', 'plain-us', 'encrypted-nl', 'plain-nl'}
     fresh, upgrade, reports = set(), False, []
-    candidates = {package['unsigned_input_sha256'] for package in packages}
+    candidates = {package['unsigned_input_sha256'] for package in packages
+                  if package.get('name', 'cybexos-desktop') == 'cybexos-desktop'}
+    offline = next((package['unsigned_input_sha256'] for package in packages
+                    if package.get('name') == 'cybexos-offline-apps'), None)
     for path in paths:
         path = Path(path)
         if path.stat().st_size > 1024 * 1024:
@@ -203,6 +206,7 @@ def verify_qualifications(paths, iso_digest, packages):
                     raise ValueError('Release requires same-source real checkout/ISO parity for fresh and saved choices')
             fresh.add(report['scenario'])
         if (prior != iso_digest and report.get('candidate_rpm_sha256') in candidates
+                and (offline is None or report.get('candidate_offline_rpm_sha256') == offline)
                 and {'installed-rpm-upgrade', 'recovery-boot-restore'} <= set(checks)):
             upgrade = True
         reports.append(report)
@@ -234,9 +238,16 @@ def prepare(signed, artifacts, destination, repository, tag, expected, qualifica
     if not isinstance(packages, list) or not packages:
         raise ValueError('Release contains no RPMs')
     package_names = set()
+    identities = set()
     for package in packages:
-        if package.get('name') != 'cybexos-desktop' or package.get('arch') != 'x86_64' or package.get('version') != tag[1:].replace('-', '~', 1):
+        if (package.get('name') not in ('cybexos-desktop', 'cybexos-offline-apps')
+                or package.get('arch') != 'x86_64'
+                or (package['name'] == 'cybexos-desktop' and package.get('version') != tag[1:].replace('-', '~', 1))
+                or (package['name'] == 'cybexos-offline-apps' and not re.fullmatch(r'\d+\.\d+\.\d+', package.get('version', '')))):
             raise ValueError('RPM identity must match the release tag and desktop architecture')
+        if package['name'] in identities:
+            raise ValueError('Release contains duplicate package names')
+        identities.add(package['name'])
         path = signed / package['file']
         if not re.fullmatch(r'Packages/[A-Za-z0-9][A-Za-z0-9._+~^-]*\.rpm', package['file']) or path.name in package_names:
             raise ValueError('RPM filenames must be safe, distinct release assets')
@@ -250,6 +261,8 @@ def prepare(signed, artifacts, destination, repository, tag, expected, qualifica
             raise ValueError('Desktop RPM exceeds the GitHub 2 GiB asset limit; split the package before release')
         if sha256(path) != package['sha256']:
             raise ValueError('Signed manifest RPM digest mismatch')
+    if 'cybexos-desktop' not in identities:
+        raise ValueError('Release requires the desktop RPM')
     isos = [artifacts / name for name in artifact_files if name.endswith('.iso')]
     if len(isos) != 1:
         raise ValueError('Exactly one checksum-verified ISO is required')
@@ -259,7 +272,8 @@ def prepare(signed, artifacts, destination, repository, tag, expected, qualifica
     if sbom.name not in artifact_files or [name for name in artifact_files if name.endswith('.spdx.json')] != [sbom.name]:
         raise ValueError('Exactly one checksum-verified SPDX SBOM named after the ISO is required')
     sbom_digest = sha256(sbom)
-    verify_release_sbom(sbom, isos[0].name, iso_digest, [package['unsigned_input_sha256'] for package in packages])
+    verify_release_sbom(sbom, isos[0].name, iso_digest,
+                        {package['name']: package['unsigned_input_sha256'] for package in packages})
     reports = verify_qualifications(qualifications, iso_digest, packages)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.cybexos-github-', dir=destination.parent) as directory:

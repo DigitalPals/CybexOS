@@ -9,7 +9,7 @@ import sys
 import time
 
 from build_support import atomic_json, digest
-from browser_qualification import browser_dependencies, qualify_browser
+from browser_qualification import browser_dependencies, ensure_installer_started, qualify_browser
 from login_qualification import qualify_login
 from installed_outcomes import capture_guest
 from parity_qualification import desktop_lifecycle, prepare_saved_choices, verify_saved_choices
@@ -43,6 +43,17 @@ def root_script(vm, script, password, timeout=120):
     if subprocess.run([*vm.ssh, "sudo -k -n true"], capture_output=True, timeout=15).returncode == 0:
         return run([*vm.ssh, "sudo -n bash -e -s"], input=script, text=True, capture_output=True, timeout=timeout)
     return run([*vm.ssh, "sudo -k -S -p '' bash -e -s"], input=password + '\n' + script, text=True, capture_output=True, timeout=timeout)
+
+
+def reapply_saved_policy(vm, password):
+    # ISO qualification deliberately blocks outbound networking. Reapply the
+    # packaged policy with the same supported offline mode as installation.
+    try:
+        root_script(vm, '/usr/libexec/cybexos-configure-installed --offline --user qualification\n',
+                    password, timeout=1800)
+    except subprocess.CalledProcessError as error:
+        details = ((error.stdout or '') + (error.stderr or '')).replace(password, '[redacted]')[-3000:].strip()
+        raise RuntimeError(f'Reapplying the installed policy failed: {details}') from error
 
 
 # The default "Install CybexOS" boot entry: only the installer session runs,
@@ -256,6 +267,7 @@ def main():
     parser.add_argument('--firmware', choices=('uefi', 'bios'), default='uefi')
     parser.add_argument('--scenario', choices=tuple(SCENARIOS), default='encrypted-us')
     parser.add_argument('--candidate-rpm', type=Path, help='Newer desktop RPM for an offline N to N+1 upgrade')
+    parser.add_argument('--candidate-offline-rpm', type=Path, help='Companion offline applications RPM for the same upgrade')
     parser.add_argument('--recovery-check', action='store_true', help='Boot and restore the pre-upgrade recovery point')
     parser.add_argument('--legacy-installer', action='store_true', help='Permit baseline installer without new policy/rescan controls')
     parser.add_argument('--execute-vm', action='store_true')
@@ -270,6 +282,11 @@ def main():
         parser.error('qualification requires --execute-vm --erase-disposable-disk; no VM or installer starts without both')
     if args.recovery_check and not args.candidate_rpm:
         parser.error('--recovery-check requires --candidate-rpm')
+    if args.candidate_offline_rpm and not args.candidate_rpm:
+        parser.error('--candidate-offline-rpm requires --candidate-rpm')
+    if args.candidate_offline_rpm and (args.candidate_offline_rpm.is_symlink() or not args.candidate_offline_rpm.is_file()
+                                      or args.candidate_offline_rpm.suffix != '.rpm'):
+        parser.error('--candidate-offline-rpm must be a regular .rpm file')
     if args.capture_outcomes and (args.candidate_rpm or args.legacy_installer):
         parser.error('Outcome parity capture requires the fresh candidate ISO')
     iso = require_test_iso(args.iso)
@@ -286,6 +303,7 @@ def main():
     password = secrets.token_hex(24)
     report = {'iso_sha256': digest(iso),
               'candidate_rpm_sha256': digest(args.candidate_rpm) if args.candidate_rpm else None,
+              'candidate_offline_rpm_sha256': digest(args.candidate_offline_rpm) if args.candidate_offline_rpm else None,
               'boot_entry': args.boot_entry, 'scenario': args.scenario, 'firmware': args.firmware, 'status': 'failed', 'checks': [],
               'network': 'outbound-blocked', 'bootstrap': 'recognized disk-unlock prompt; bounded graphical SSH setup', 'scope': 'QEMU fixture; does not qualify physical hardware or Secure Boot'}
     try:
@@ -321,8 +339,8 @@ def main():
             vm.audit()
             report['checks'].append('live-boot-and-offline-applications')
         target_disk, unused_disk = qualification_disks(vm)
-        if args.boot_entry == 'live':
-            run([*vm.ssh, 'XDG_RUNTIME_DIR=/run/user/1000 systemd-run --user --collect --unit=cybexos-qualification-anaconda /usr/bin/liveinst --nosave=all_ks'])
+        if args.boot_entry == 'live' or args.legacy_installer:
+            ensure_installer_started(vm)
         browser_result = qualify_browser(vm, password=password, target_disk=target_disk, unused_disk=unused_disk,
                                          encrypted=encrypted, keyboard=keyboard, locale=locale, timezone=timezone,
                                          install_timeout=args.install_timeout, require_policy_controls=not args.legacy_installer)
@@ -359,7 +377,8 @@ def main():
         if args.candidate_rpm:
             preference = prepare_user_choices(vm, password, root_script)
             point = create_recovery_point(vm, password, root_script) if args.recovery_check else None
-            sha, versions = upgrade(vm, args.candidate_rpm, password, root_script)
+            sha, versions = upgrade(vm, args.candidate_rpm, password, root_script,
+                                    offline_candidate=args.candidate_offline_rpm)
             if sha != report['candidate_rpm_sha256']:
                 raise RuntimeError('Candidate RPM checksum changed during qualification')
             report['checks'].append('installed-rpm-upgrade')
@@ -383,13 +402,7 @@ def main():
                                   provenance='/usr/share/cybexos/build.json')
             atomic_json(args.output / 'outcomes-fresh.json', fresh)
             prepare_saved_choices(vm, password, root_script)
-            try:
-                root_script(vm, '/usr/libexec/cybexos-configure-installed --user qualification\n', password, timeout=1800)
-            except subprocess.CalledProcessError as error:
-                # Without its output a failed reapply cannot be diagnosed once
-                # the disposable guest is gone. Bounded and redacted, as above.
-                details = ((error.stdout or '') + (error.stderr or '')).replace(password, '[redacted]')[-3000:].strip()
-                raise RuntimeError(f'Reapplying the installed policy failed: {details}') from error
+            reapply_saved_policy(vm, password)
             poweroff_installed(vm, password)
             boot_installed(vm, password, encrypted)
             verify_saved_choices(vm, password, root_script)

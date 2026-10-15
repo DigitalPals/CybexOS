@@ -28,6 +28,30 @@ for proc in Path('/proc').iterdir():
             raise SystemExit(0)
 raise SystemExit(1)
 '''
+INSTALLER_ACTIVE = r'''
+from pathlib import Path
+for proc in Path('/proc').iterdir():
+    if not proc.name.isdigit():
+        continue
+    try:
+        args = proc.joinpath('cmdline').read_bytes().split(b'\0')
+    except (PermissionError, FileNotFoundError, ProcessLookupError):
+        continue
+    if any(arg.endswith((b'/liveinst', b'/cybexos-installer-browser')) for arg in args):
+        raise SystemExit(0)
+raise SystemExit(1)
+'''
+
+
+def ensure_installer_started(vm):
+    """Older ISO defaults open the desktop; newer defaults start the installer."""
+    result = subprocess.run([*vm.ssh, 'python3 -'], input=INSTALLER_ACTIVE,
+                            text=True, capture_output=True, timeout=10)
+    if result.returncode == 1:
+        run([*vm.ssh, 'XDG_RUNTIME_DIR=/run/user/1000 systemd-run --user --collect '
+             '--unit=cybexos-qualification-anaconda /usr/bin/liveinst --nosave=all_ks'], timeout=30)
+    elif result.returncode:
+        raise RuntimeError('Could not inspect guest installer startup')
 
 
 def validate_guest_url(value):

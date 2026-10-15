@@ -15,7 +15,9 @@
 
 - name: Install explicit Panther Lake media and firmware support
   ansible.builtin.import_tasks: packages.yml
-  when: xps_2026_is_supported | bool
+  # The ISO includes these packages on every machine so supported hardware
+  # works at its first boot. Keep checkout installations on that same package
+  # baseline; only the device configuration below requires matching hardware.
 
 - name: Configure XPS 2026 power management
   ansible.builtin.import_tasks: power.yml
