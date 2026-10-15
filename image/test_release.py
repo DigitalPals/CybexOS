@@ -42,6 +42,10 @@ class ReleaseMetadataTests(unittest.TestCase):
             rendered = metadata.render_spec("Version: 0\nRelease: 0\n", version, PROVENANCE)
             self.assertIn("Version:        0.0.0~dev", rendered)
             self.assertIn(first[1] + "%{?dist}", rendered)
+            split = metadata.render_spec("Version: 0\nRelease: 0\n%description\nDesktop\n"
+                                         "%package -n cybexos-offline-apps\nVersion: 1.2.0\nRelease: 1%{?dist}\n",
+                                         version, PROVENANCE)
+            self.assertIn('Version: 1.2.0\nRelease: 1%{?dist}', split)
             version.write_text("1\n%post\nevil")
             with self.assertRaises(ValueError):
                 metadata.rpm_identity(version, PROVENANCE)

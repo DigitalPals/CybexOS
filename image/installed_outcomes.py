@@ -34,7 +34,7 @@ CHOICES = ('config_schema_version', 'machine_timezone', 'machine_locale', 'regio
 CAPTURE_FIELDS = {'format', 'installation', 'scenario', 'profile', 'source_revision', 'source_content_sha256',
                   'hardware', 'required_packages', 'installed_packages', 'flatpaks', 'commands', 'choices',
                   'system_units', 'user_units', 'settings', 'input', 'authentication', 'firewall',
-                  'default_apps', 'personal', 'recovery', 'selinux', 'graphical_session', 'sole_managed_shell'}
+                  'default_apps', 'personal', 'recovery', 'selinux', 'boot_target', 'graphical_session', 'sole_managed_shell'}
 
 
 def command(args, *, environment=None, accepted=(0,)):
@@ -56,6 +56,21 @@ def normalize(value, home):
     if isinstance(value, list):
         return [normalize(item, home) for item in value]
     return value
+
+
+def effective_unit_state(name, enabled, active, session_dependencies):
+    """Global target links and per-user enablement start the same session unit."""
+    linked = name in session_dependencies and enabled in ('enabled', 'enabled-runtime', 'disabled', 'static', 'indirect')
+    return {'enabled': 'session-target' if linked else enabled, 'active': active}
+
+
+def policy_choices(config):
+    selected = {key: config.get(key) for key in CHOICES}
+    # Anaconda writes the canonical spelling; timedatectl also accepts UTC.
+    # Compare the same timezone without rewriting the person's saved choice.
+    if selected['machine_timezone'] == 'UTC':
+        selected['machine_timezone'] = 'Etc/UTC'
+    return selected
 
 
 def capture(user, installation, scenario, profile, manifest, provenance):
@@ -104,10 +119,13 @@ def capture(user, installation, scenario, profile, manifest, provenance):
     for name in SYSTEM_UNITS:
         units[name] = command(['systemctl', 'is-enabled', name], accepted=(0, 1, 3, 4))
     user_units = {}
+    session_dependencies = set(user_command(['systemctl', '--user', 'show', 'hyprland-session.target',
+                                            '-p', 'Wants', '-p', 'Requires', '--value']).split())
     for name in USER_UNITS:
         # Static units are pulled into the session target; compare activation too.
-        user_units[name] = {'enabled': user_command(['systemctl', '--user', 'is-enabled', name], accepted=(0, 1, 3, 4)),
-                            'active': user_command(['systemctl', '--user', 'is-active', name], accepted=(0, 1, 3, 4))}
+        user_units[name] = effective_unit_state(
+            name, user_command(['systemctl', '--user', 'is-enabled', name], accepted=(0, 1, 3, 4)),
+            user_command(['systemctl', '--user', 'is-active', name], accepted=(0, 1, 3, 4)), session_dependencies)
     main_pid = user_command(['systemctl', '--user', 'show', 'quickshell.service', '-p', 'MainPID', '--value'])
     processes = user_command(['pgrep', '-x', 'qs'], accepted=(0, 1)).splitlines()
     if processes != [main_pid] or main_pid in ('', '0'):
@@ -141,7 +159,7 @@ def capture(user, installation, scenario, profile, manifest, provenance):
     result = {'format': 1, 'installation': installation, 'scenario': scenario, 'profile': profile,
               'source_revision': build['source_revision'], 'source_content_sha256': build['source_content_sha256'],
               'hardware': hardware, 'required_packages': required, 'installed_packages': installed,
-              'flatpaks': flatpaks, 'commands': executable, 'choices': {key: config.get(key) for key in CHOICES},
+              'flatpaks': flatpaks, 'commands': executable, 'choices': policy_choices(config),
               'system_units': units, 'user_units': user_units, 'settings': settings, 'input': keyboard,
               'authentication': {'login': login, 'shell': account.pw_shell, 'groups': groups,
                                  'passwordless_sudo': sudo.returncode == 0,
@@ -153,7 +171,8 @@ def capture(user, installation, scenario, profile, manifest, provenance):
               'default_apps': default_apps, 'personal': personal,
               'recovery': {'supported': recovery_state.get('supported'),
                            'root_filesystem': command(['findmnt', '-n', '-o', 'FSTYPE', '/'])},
-              'selinux': command(['getenforce']), 'graphical_session': True, 'sole_managed_shell': True}
+              'selinux': command(['getenforce']), 'boot_target': command(['systemctl', 'get-default']),
+              'graphical_session': True, 'sole_managed_shell': True}
     return normalize(result, str(home))
 
 
@@ -183,7 +202,10 @@ def compare(iso, checkout, exceptions):
         approved = exceptions.get(side, {})
         if not isinstance(approved, dict) or any(not isinstance(reason, str) or len(reason.strip()) < 12 for reason in approved.values()):
             raise ValueError('Every package exception must include a review reason')
-        unreviewed = [package for package in delta if package.split('=', 1)[0] not in approved]
+        if 'gpg-pubkey.(none)' in approved:
+            raise ValueError('Signing-key exceptions must identify the exact fingerprint and RPM release')
+        unreviewed = [package for package in delta
+                      if package not in approved and package.split('=', 1)[0] not in approved]
         package_delta[side] = {'all': delta, 'unreviewed': unreviewed}
     reviewed = not any(item['unreviewed'] for item in package_delta.values())
     return {'format': 1, 'status': 'failed' if differences or not reviewed else 'passed',

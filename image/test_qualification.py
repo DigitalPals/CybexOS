@@ -18,6 +18,48 @@ from vm_testing import QUALIFICATION_DISK_SERIAL, QUALIFICATION_UNUSED_SERIAL, T
 
 
 class BrowserTransportTests(unittest.TestCase):
+    def test_saved_policy_uses_supported_offline_mode_in_network_blocked_guest(self):
+        vm = object()
+        with patch.object(qualification, 'root_script') as apply:
+            qualification.reapply_saved_policy(vm, 'fixture-password')
+        args = apply.call_args
+        self.assertIs(args.args[0], vm)
+        self.assertIn('--offline', args.args[1].split())
+        self.assertNotIn('fixture-password', args.args[1])
+        self.assertEqual(args.args[2], 'fixture-password')
+        self.assertEqual(args.kwargs['timeout'], 1800)
+
+    def test_failed_saved_policy_keeps_bounded_redacted_diagnostics(self):
+        failure = subprocess.CalledProcessError(2, ['fixture'], output='old log ' * 1000,
+                                              stderr='fixture-password: policy failed')
+        with patch.object(qualification, 'root_script', side_effect=failure):
+            with self.assertRaisesRegex(RuntimeError, 'policy failed') as raised:
+                qualification.reapply_saved_policy(None, 'fixture-password')
+        self.assertNotIn('fixture-password', str(raised.exception))
+        self.assertIn('[redacted]', str(raised.exception))
+        self.assertLess(len(str(raised.exception)), 3100)
+
+    def test_legacy_desktop_starts_installer_but_active_installer_is_retained(self):
+        vm = types.SimpleNamespace(ssh=['ssh', 'guest'])
+        for status in (0, 1):
+            with self.subTest(status=status), \
+                    patch.object(browser.subprocess, 'run', return_value=types.SimpleNamespace(returncode=status)), \
+                    patch.object(browser, 'run') as start:
+                browser.ensure_installer_started(vm)
+                if status:
+                    self.assertEqual(start.call_count, 1)
+                    self.assertIn('/usr/bin/liveinst --nosave=all_ks', start.call_args.args[0][-1])
+                else:
+                    start.assert_not_called()
+
+    def test_failed_guest_probe_does_not_start_a_second_installer(self):
+        vm = types.SimpleNamespace(ssh=['ssh', 'guest'])
+        with patch.object(browser.subprocess, 'run', return_value=types.SimpleNamespace(returncode=255)), \
+                patch.object(browser, 'run') as start:
+            with self.assertRaisesRegex(RuntimeError, 'inspect guest installer startup'):
+                browser.ensure_installer_started(vm)
+            start.assert_not_called()
+
     def test_missing_browser_dependencies_fail_before_vm_or_output_creation(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / 'qualification'

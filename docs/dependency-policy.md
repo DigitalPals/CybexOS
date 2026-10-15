@@ -177,3 +177,26 @@ These are not interchangeable with source-build or root-RPM pins. Adding a new
 moving installer requires documenting why currency is more important than
 byte-for-byte convergence and how a failed update preserves the working
 installation.
+
+## Source build caches
+
+Source applications reuse a compiler image keyed by the pinned base and build
+recipe. Cargo's registry and per-application target caches live under
+`/var/cache/cybexos-source-builds/`, outside installed application stores and
+the ISO payload. These caches trade local disk space for faster rebuilds; they
+are not automatically expired. When no source build is running, an operator
+can remove an obsolete recipe directory and its matching
+`localhost/cybexos-source-builder:<recipe-hash>` Podman image. The next required
+build recreates them. An unchanged, healthy installed binary still works
+offline without either cache.
+
+## Rust toolchain documentation
+
+New developer-tool installations use rustup's minimal profile plus explicit
+rustfmt, Clippy and rust-analyzer components. The shared applications role
+applies this to both checkout and ISO installs. Existing components are retained.
+Offline Rust documentation is optional: install it with
+`rustup component add rust-docs --toolchain nightly-2026-08-23` (use the current
+inventory-pinned toolchain after a version change). `rustup doc` then opens the
+local documentation. This keeps the compiler and daily development tools in the
+default seed without copying the large documentation tree into every home.

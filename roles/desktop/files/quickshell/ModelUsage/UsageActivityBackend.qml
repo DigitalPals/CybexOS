@@ -8,6 +8,8 @@ Item {
   visible: false
   required property var usageBackend
   property var settings: ({})
+  property bool automaticRefreshEnabled: true
+  property bool stopped: false
   property var legacyProviders: []
   readonly property var providers: useLive ? (liveConnection ? liveConnection.providers : []) : legacyProviders
   property string legacyError: ""
@@ -16,6 +18,7 @@ Item {
   readonly property double lastSuccessAt: useLive ? (liveConnection ? liveConnection.lastSuccessAt : 0) : legacySuccessAt
   property bool pendingRefresh: false
   property bool launchPending: false
+  property double lastAttemptAt: 0
   property string scriptPath: usageBackend.localPath(Qt.resolvedUrl("scripts/proxy-activity.py"))
   readonly property string keeperUrl: String(settings.costKeeperUrl || "")
   readonly property string passwordFile: String(settings.costKeeperPasswordFile || "")
@@ -29,7 +32,7 @@ Item {
   readonly property string liveState: useLive ? (liveConnection ? liveConnection.state : "unavailable") : "off"
   readonly property var liveAccounts: useLive && liveConnection ? liveConnection.accounts : []
   readonly property string liveNotice: useLive ? (liveConnection ? liveConnection.message : "Live activity unavailable.") : ""
-  readonly property string connectionId: JSON.stringify([usageBackend.connectionId, usageBackend.proxyImplementation, keeperUrl, passwordFile, useLive, liveScriptPath])
+  readonly property string connectionId: JSON.stringify([usageBackend.connectionId, rustProxy ? "rust" : "keeper", keeperUrl, passwordFile, useLive, liveScriptPath])
 
   function syncLive() {
     if (!ready) return
@@ -53,10 +56,12 @@ Item {
     ? "Configure CPA Usage Keeper in settings to track the last-used account."
     : fetchError !== "" ? fetchError : lastSuccessAt <= 0 ? "Loading account activity…" : ""
 
-  function refresh() {
-    if (!trackingEnabled || useLive) return
-    if (process.running || launchPending) { pendingRefresh = true; return }
+  function refresh(manual) {
+    if (stopped || (!manual && !automaticRefreshEnabled) || !trackingEnabled || useLive) return
+    if (process.running || launchPending) { pendingRefresh = pendingRefresh || !!manual; return }
+    if (!manual && Date.now() - lastAttemptAt < 1000) return
     launchPending = true
+    lastAttemptAt = Date.now()
     pendingRefresh = false
     var command = ["python3", scriptPath, "--cliproxy-url", usageBackend.cliproxyUrl,
       "--timeout", "10"]
@@ -67,9 +72,25 @@ Item {
     process.connectionId = connectionId
     process.running = true
   }
+  function stop() {
+    stopped = true
+    ready = false
+    pendingRefresh = false
+    process.running = false
+    liveConnection = null
+    if (liveKey !== "") UsageLogic.releaseLive(liveKey)
+    liveKey = ""
+  }
+  onAutomaticRefreshEnabledChanged: if (automaticRefreshEnabled && !stopped) refresh()
+  Connections {
+    target: root.usageBackend
+    ignoreUnknownSignals: true
+    function onRefreshed(manual) { root.refresh(manual) }
+  }
 
   function settle() {
     launchPending = false
+    if (stopped) return
     if (process.connectionId !== connectionId || !trackingEnabled || useLive) {
       pendingRefresh = trackingEnabled && !useLive
     } else {
@@ -88,7 +109,7 @@ Item {
       }
     }
     if (pendingRefresh) Qt.callLater(function() {
-      if (root.pendingRefresh) root.refresh()
+      if (root.pendingRefresh) root.refresh(true)
     })
   }
 
@@ -142,7 +163,7 @@ Item {
   }
   Timer {
     interval: 15000
-    running: root.trackingEnabled && !root.useLive
+    running: root.automaticRefreshEnabled && !root.stopped && root.trackingEnabled && !root.useLive
     repeat: true
     triggeredOnStart: true
     onTriggered: root.refresh()

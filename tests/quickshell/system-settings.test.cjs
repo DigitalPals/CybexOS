@@ -20,11 +20,12 @@ function backend() {
     const calls = [];
     const context = vm.createContext({
         watchers: 0, preview: null, busy: false, loading: false, revision: 0,
+        domain: "sound", debounce: { restart: () => calls.push(["refresh-event"]) },
         refreshQueued: false, error: "", message: "",
         snapshotProc: { running: false, signal: value => calls.push(["stop-snapshot", value]) },
         actionProc: { running: false },
     });
-    for (const name of ["acquire", "release", "refresh", "run", "decode"]) {
+    for (const name of ["acquire", "release", "refresh", "run", "decode", "monitorEvent"]) {
         const match = source.match(new RegExp(`^    function ${name}\\([^]*?^    }`, "m"));
         assert.ok(match, name);
         vm.runInContext(match[0], context);
@@ -44,6 +45,22 @@ test("settings service claims share reads and release a pending trial only after
     assert.equal(c.watchers, 0);
     assert.deepEqual(JSON.parse(JSON.stringify(c.request)), { action: "rollback", checkpoint: "/trial" });
     assert.deepEqual(calls, [["stop-snapshot", 15]]);
+});
+
+test("audio probes cannot trigger another snapshot through client subscription noise", () => {
+    const { context: c, calls } = backend();
+    for (const facility of ["client", "module"])
+        for (const event of ["new", "change", "remove"])
+            c.monitorEvent(`Event '${event}' on ${facility} #42`);
+    c.monitorEvent("unrecognized output");
+    assert.equal(calls.length, 0);
+    for (const facility of ["card", "sink", "source", "sink-input", "source-output", "server"])
+        c.monitorEvent(`Event 'change' on ${facility} #0`);
+    assert.equal(calls.length, 6);
+    c.domain = "network";
+    c.monitorEvent("NetworkManager is now in the 'connected' state");
+    assert.equal(calls.length, 7);
+    assert.match(read("Common/SystemSettingsBackend.qml"), /environment: \(\{ LC_ALL: "C" \}\)/);
 });
 
 test("a trial blocks a second network edit and overlapping reads are queued", () => {

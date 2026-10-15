@@ -79,6 +79,7 @@ class OfflineApplications(unittest.TestCase):
             ("roles/apps/tasks/rpmfusion.yml", "Enable RPM Fusion free repository"),
             ("roles/apps/tasks/rpmfusion.yml", "Enable RPM Fusion nonfree repository"),
             ("roles/base/tasks/packages.yml", "Install Fedora baseline packages"),
+            ("roles/base/tasks/system-packages.yml", "Install the shared ISO system and desktop package baseline"),
             # Pulled in by plymouth-plugin-script and the live kickstart.
             ("roles/boot/tasks/main.yml", "Install Fedora BGRT and selected Plymouth theme support"),
         }

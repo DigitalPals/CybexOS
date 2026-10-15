@@ -4,8 +4,8 @@ import "../../ModelUsage" as ModelUsage
 
 // Model Usage: provider quota chips in the bar, and the Limits/Costs panel.
 //
-// The panel is the digitalpals.model-usage Omarchy plugin, vendored unchanged
-// in ModelUsage/ (see its README). It is written against the Omarchy host API
+// The panel is the digitalpals.model-usage Omarchy plugin with reviewed host
+// patches in ModelUsage/ (see its README). It uses the Omarchy host API
 // (qs.Ui, qs.Commons and a `bar` facade), which the shell already implements
 // for installed plugins. This module supplies that facade as a built-in: the
 // panel's settings live in Settings.modOpts.modelusage, not plugins.json.
@@ -43,6 +43,11 @@ BarModule {
 
         bar: barApi
         settings: Settings.modOpts.modelusage
+        // Local proxy quotas remain available without an Internet route.
+        readonly property bool localProxy: /^https?:\/\/(localhost|127\.\d+\.\d+\.\d+|\[::1\])(?::\d+)?(?:\/|$)/i.test(
+            String(Settings.modOpts.modelusage.cliproxyUrl || "http://127.0.0.1:8317").trim())
+        automaticRefreshEnabled: !Activity.idle && (NetworkStatus.online
+            || (Settings.modOpts.modelusage.usageSource === "cliproxy" && localProxy))
         height: Theme.chipHeight
 
         Component.onCompleted: ModelUsageHub.register(panel, root)

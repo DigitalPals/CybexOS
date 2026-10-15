@@ -3,8 +3,12 @@ set -euo pipefail
 source /usr/local/libexec/cybexos-common.sh
 
 name=${1:?name required}
+[[ $name =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || { echo "Invalid application name" >&2; exit 1; }
 repo=${2:?repository URL required}
 IFS=, read -r -a binaries <<<"${3:?comma separated binaries required}"
+for binary in "${binaries[@]}"; do
+  [[ $binary =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || { echo "Invalid binary name" >&2; exit 1; }
+done
 tag=${4:?authorized source tag required}
 revision=${5:?authorized source commit required}
 build_image=${6:?immutable build container image required}
@@ -87,17 +91,42 @@ cloned=$(git -C "$work/src" rev-parse HEAD)
 
 mkdir -p "$work/out"
 log="$root/logs/$revision.log"
+# The cache stays outside the installed application's version store. Compiler
+# dependencies are installed once per pinned base/recipe, rather than once
+# per application; Cargo still validates the source and locked dependency graph.
+cat >"$work/Containerfile" <<EOF
+FROM $build_image
+RUN dnf -y install cargo rust gcc gcc-c++ make pkgconf-pkg-config \\
+      wayland-devel libxkbcommon-devel libjpeg-turbo-devel libpng-devel \\
+      wayland-protocols-devel lz4-devel libgcc libstdc++ && dnf clean all
+EOF
+builder_key=$(sha256sum "$work/Containerfile" | awk '{print $1}')
+builder_tag="localhost/cybexos-source-builder:$builder_key"
+cache_root="/var/cache/cybexos-source-builds/$builder_key"
+install -d -m 0700 "$cache_root" "$cache_root/registry" "$cache_root/$name-$recipe"
+exec {builder_lock_fd}>"$cache_root/builder.lock"
+flock "$builder_lock_fd"
+if ! podman image exists "$builder_tag"; then
+  if ! podman image exists "$build_image"; then
+    podman pull "$build_image" >>"$log" 2>&1
+  fi
+  podman build --pull=never --tag "$builder_tag" -f "$work/Containerfile" "$work" >>"$log" 2>&1
+fi
+flock -u "$builder_lock_fd"
+# A single target directory must not be relabelled/mutated by parallel builds.
+exec {target_lock_fd}>"$cache_root/$name-$recipe.lock"
+flock "$target_lock_fd"
 if ! podman run --rm --network=host \
   -v "$work/src:/src:Z,ro" -v "$work/out:/out:Z" \
-  "$build_image" bash -euxo pipefail -c '
-    dnf -y install cargo rust gcc gcc-c++ make pkgconf-pkg-config \
-      wayland-devel libxkbcommon-devel libjpeg-turbo-devel libpng-devel \
-      wayland-protocols-devel lz4-devel libgcc libstdc++
+  -v "$cache_root/registry:/root/.cargo/registry:z" \
+  -v "$cache_root/$name-$recipe:/build-cache:Z" \
+  -e CARGO_TARGET_DIR=/build-cache \
+  "$builder_tag" bash -euxo pipefail -c '
     cp -a /src /tmp/source
     cd /tmp/source
     cargo build --release --locked
-    cp -a target/release/. /out/
-  ' >"$log" 2>&1; then
+    for binary in "$@"; do cp -- "/build-cache/release/$binary" "/out/$binary"; done
+  ' -- "${binaries[@]}" >>"$log" 2>&1; then
   echo "Build failed; previous $name remains active. Log: $log" >&2
   exit 1
 fi
@@ -116,6 +145,7 @@ for binary in "${binaries[@]}"; do
   install -m 0755 "$candidate" "$stage/bin/$binary"
 done
 printf '%s\n' "$manifest" >"$stage/.cybexos-build"
+podman image inspect --format '{{.Id}}' "$builder_tag" >"$stage/.cybexos-builder"
 for binary in "${binaries[@]}"; do
   command_link="/usr/local/bin/$binary"
   if [[ ! -e $command_link && ! -L $command_link ]]; then

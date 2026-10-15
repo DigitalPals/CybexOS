@@ -5,8 +5,10 @@ Omarchy plugin, vendored as the shell's built-in Model Usage widget.
 
 Commit: `d4986628d0493aa303d02de0d9017237747704ec` (version 1.3.2)
 
-Everything here except this README is upstream's, unchanged: the QML and
-JavaScript, `assets/`, `scripts/`, `LICENSE` and `THIRD_PARTY_NOTICES.md`. The
+The upstream QML and JavaScript receive the reviewed
+[`integration.patch`](../../../../../scripts/model-usage/integration.patch):
+shared quota and legacy activity workers, idle/offline polling control, and
+first-use popup construction. Assets, helper scripts and licenses are unchanged. The
 manifest, documentation, keeper deployment and CI are not copied. The unit
 tests and fixtures live in `tests/model-usage/`, with the manifest as test data.
 
@@ -28,6 +30,9 @@ How the shell hosts it:
 To update, run `scripts/sync-model-usage <commit>` from the repository root,
 review the diff, and run `./tests/run`. If the manifest's settings changed,
 update `modelusage` in `Common/SettingsHelpers.js` to match.
+The sync applies the integration patch before replacing files and aborts on
+conflicts. Rebase the patch when upstream changes these integration points;
+do not silently drop it. Host lifecycle tests live outside the vendored tests.
 
 The native Rust integration is displayed as [Fusebox](https://github.com/DigitalPals/Fusebox).
 Limits settings include a link to that repository. The saved `cliproxy` source,

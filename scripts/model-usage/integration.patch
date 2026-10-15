@@ -1,0 +1,508 @@
+--- a/Panel.qml
++++ b/Panel.qml
+@@ -19,6 +19,7 @@
+   readonly property color dim: Qt.darker(foreground, 1.55)
+   readonly property color surface: Color.popups.background
+   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
++  property bool automaticRefreshEnabled: true
+ 
+   readonly property bool proxyMode: backend.usageSource === "cliproxy"
+   readonly property var providers: UsageLogic.availableProviders(proxyMode
+@@ -30,8 +31,17 @@
+   property string settingsReturnView: "limits"
+   readonly property bool configuring: viewMode === "settings" || viewMode === "cost-settings"
+   readonly property var activeSettingsForm: viewMode === "cost-settings" ? costConfigForm : configForm
+-  property alias costSettingsForm: costConfigForm
+-  property alias settingsForm: configForm
++  readonly property var costSettingsForm: costConfigForm
++  readonly property var settingsForm: configForm
++  readonly property UsagePopup popup: popupLoader.item as UsagePopup
++  readonly property var configForm: popup ? popup.configurationForm : null
++  readonly property var costConfigForm: popup ? popup.costConfigurationForm : null
++  readonly property var panelFlick: popup ? popup.flick : null
++  readonly property var keyCatcher: popup ? popup.keyTarget : null
++  readonly property var resetForm: popup ? popup.resetConfirmation : null
++  readonly property var navigation: popup ? popup.navigationController : null
++  readonly property var costsView: popup ? popup.costs : null
++  readonly property bool popupLoaded: popupLoader.status === Loader.Ready
+   property alias resetAction: resetBackend
+   property double nowMs: Date.now()
+ 
+@@ -66,7 +76,7 @@
+   readonly property var provider: providerSummary
+   readonly property var proxyAccounts: UsageLogic.listOrEmpty(providerSummary && providerSummary.accounts)
+   readonly property bool accountOverview: proxyMode && proxyAccounts.length > 0
+-  property alias accountCards: accountRepeater
++  readonly property var accountCards: popup ? popup.accountCards : null
+   readonly property var providerOptions: {
+     var result = []
+     for (var i = 0; i < providers.length; i++)
+@@ -135,6 +145,7 @@
+   }
+ 
+   function showSettings() {
++    ensurePopup()
+     if (!configuring) settingsReturnView = viewMode
+     configForm.begin(settings)
+     viewMode = "settings"
+@@ -143,6 +154,7 @@
+   }
+ 
+   function showCostSettings() {
++    ensurePopup()
+     settingsReturnView = "costs"
+     costConfigForm.begin(settings)
+     viewMode = "cost-settings"
+@@ -365,9 +377,12 @@
+   implicitWidth: percentageMode ? percentageGroup.implicitWidth : iconButton.implicitWidth
+   implicitHeight: percentageMode ? percentageGroup.implicitHeight : iconButton.implicitHeight
+ 
++  function ensurePopup() { popupLoader.active = true }
++
+   onProvidersChanged: ensureSelection()
+   onSelectedProviderIdChanged: expandedAccountLimits = false
+   onOpenedChanged: if (opened) {
++    ensurePopup()
+     nowMs = Date.now()
+     if (viewMode === "costs") costBackend.ensureLoaded()
+     if (panelFlick) panelFlick.contentY = 0
+@@ -377,27 +392,27 @@
+       else keyCatcher.forceActiveFocus()
+     })
+   } else {
+-    navigation.closeProviderMenu()
++    if (navigation) navigation.closeProviderMenu()
+     if (costsView) costsView.closeMenu()
+     if (configuring) viewMode = settingsReturnView
+   }
+ 
+   onViewModeChanged: {
+-    navigation.closeProviderMenu()
++    if (navigation) navigation.closeProviderMenu()
+     if (costsView) costsView.closeMenu()
+-    if (viewMode !== "settings") configForm.discardKey()
+-    if (viewMode !== "cost-settings") costConfigForm.discardKey()
++    if (viewMode !== "settings" && configForm) configForm.discardKey()
++    if (viewMode !== "cost-settings" && costConfigForm) costConfigForm.discardKey()
+     if (viewMode === "costs") costBackend.ensureLoaded()
+     if (panelFlick) panelFlick.contentY = 0
+   }
+ 
+-  UsageBackend {
++  UsageSharedBackend {
+     id: backend
+     settings: root.settings
+-    onRefreshed: activityBackend.refresh()
+-  }
+-
+-  UsageActivityBackend {
++    automaticRefreshEnabled: root.automaticRefreshEnabled
++  }
++
++  UsageSharedActivityBackend {
+     id: activityBackend
+     usageBackend: backend
+     settings: root.settings
+@@ -408,10 +423,10 @@
+     usageBackend: backend
+     onFinished: backend.refresh()
+     onStateChanged: {
+-      if (panelFlick) panelFlick.contentY = 0
++      if (root.panelFlick) root.panelFlick.contentY = 0
+       Qt.callLater(function() {
+-        if (resetBackend.active) resetForm.focusFirst()
+-        else keyCatcher.forceActiveFocus()
++        if (resetBackend.active && root.resetForm) root.resetForm.focusFirst()
++        else if (root.keyCatcher) root.keyCatcher.forceActiveFocus()
+       })
+     }
+   }
+@@ -560,8 +575,24 @@
+     }
+   }
+ 
+-  Ui.KeyboardPanel {
++  // Keep the lightweight bar and shared data ready; construct the popup's
++  // forms/delegates only on first use, then retain them for focus and drafts.
++  Loader {
++    id: popupLoader
++    active: false
++    sourceComponent: UsagePopup {}
++  }
++
++  component UsagePopup: Ui.KeyboardPanel {
+     id: panel
++    property alias accountCards: accountRepeater
++    property alias configurationForm: configForm
++    property alias costConfigurationForm: costConfigForm
++    property alias flick: panelFlick
++    property alias keyTarget: keyCatcher
++    property alias resetConfirmation: resetForm
++    property alias navigationController: navigation
++    property alias costs: costsView
+     anchorItem: root.percentageMode ? percentageGroup : iconButton
+     owner: root
+     bar: root.bar
+--- a/UsageLogic.js
++++ b/UsageLogic.js
+@@ -3,6 +3,43 @@
+ // One observer per connection across bars, monitors and open panels. The
+ // shared object has no panel parent; the final consumer explicitly stops it.
+ var liveConnections = ({})
++var sharedBackends = ({})
++
++function acquireBackend(type, key, properties, factory) {
++  var identity = type + ":" + key
++  var entry = sharedBackends[identity]
++  if (!entry) {
++    if (!factory) factory = Qt.createComponent(type + ".qml")
++    var object = factory.createObject(null, properties)
++    if (!object) return null
++    entry = { object: object, references: 0, activeReferences: 0 }
++    sharedBackends[identity] = entry
++  }
++  entry.references++
++  if (properties.automaticRefreshEnabled) entry.activeReferences++
++  entry.object.automaticRefreshEnabled = entry.activeReferences > 0
++  return entry.object
++}
++
++function updateBackendActivity(type, key, wasActive, active) {
++  var entry = sharedBackends[type + ":" + key]
++  if (!entry || wasActive === active) return
++  entry.activeReferences += active ? 1 : -1
++  entry.object.automaticRefreshEnabled = entry.activeReferences > 0
++}
++
++function releaseBackend(type, key, active) {
++  var identity = type + ":" + key
++  var entry = sharedBackends[identity]
++  if (!entry) return
++  entry.references--
++  if (active) entry.activeReferences--
++  if (entry.references <= 0) {
++    delete sharedBackends[identity]
++    entry.object.stop()
++    entry.object.destroy()
++  } else entry.object.automaticRefreshEnabled = entry.activeReferences > 0
++}
+ 
+ function acquireLive(key, factory, properties) {
+   var entry = liveConnections[key]
+--- a/UsageBackend.qml
++++ b/UsageBackend.qml
+@@ -9,6 +9,8 @@
+   visible: false
+ 
+   property var settings: ({})
++  property bool automaticRefreshEnabled: true
++  property bool stopped: false
+   property var payload: ({ schemaVersion: 1, generatedAt: "", providers: [] })
+   property bool loading: false
+   property string fetchError: ""
+@@ -16,6 +18,7 @@
+   property double lastAttemptAt: 0
+   property bool pendingRefresh: false
+   property bool launchPending: false
++  property bool requestManual: false
+ 
+   readonly property int refreshIntervalSec: Math.max(60, Math.min(3600,
+     Math.round(Number(setting("refreshIntervalSec", 900)) || 900)))
+@@ -27,11 +30,11 @@
+   readonly property var providers: payload ? UsageLogic.listOrEmpty(payload.providers) : []
+   readonly property string proxyImplementation: String(payload && payload.proxyImplementation || "")
+   readonly property string connectionId: JSON.stringify([usageSource, cliproxyUrl, cliproxyKeyFile])
+-  readonly property string scriptPath: localPath(Qt.resolvedUrl("scripts/usage-fetch.py"))
++  property string scriptPath: localPath(Qt.resolvedUrl("scripts/usage-fetch.py"))
+   readonly property double nextRefreshAt: lastAttemptAt > 0
+     ? lastAttemptAt + refreshIntervalSec * 1000 : 0
+ 
+-  signal refreshed()
++  signal refreshed(bool manual)
+ 
+   function setting(name, fallback) {
+     var value = settings ? settings[name] : undefined
+@@ -55,20 +58,29 @@
+   }
+ 
+   function requestRefresh(manual) {
+-    if (manual) refreshTimer.restart()
++    if (stopped || (!manual && !automaticRefreshEnabled)) return
++    if (manual && automaticRefreshEnabled) refreshTimer.restart()
+     if (fetchProcess.running || launchPending || pendingRefresh) {
+-      pendingRefresh = true
++      pendingRefresh = pendingRefresh || manual
+       return
+     }
+-    startFetch()
++    startFetch(manual)
+   }
+ 
+   function refresh() { requestRefresh(true) }
+   function refreshForSettings() { requestRefresh(false) }
+-
+-  function startFetch() {
+-    if (fetchProcess.running || launchPending) return
++  function stop() {
++    stopped = true
++    pendingRefresh = false
++    refreshTimer.stop()
++    fetchProcess.running = false
++  }
++  onAutomaticRefreshEnabledChanged: if (automaticRefreshEnabled && !stopped) requestRefresh(false)
++
++  function startFetch(manual) {
++    if (stopped || fetchProcess.running || launchPending) return
+     launchPending = true
++    requestManual = !!manual
+     loading = true
+     pendingRefresh = false
+     lastAttemptAt = Date.now()
+@@ -90,6 +102,7 @@
+   function settle() {
+     launchPending = false
+     loading = false
++    if (stopped) return
+     if (fetchProcess.connectionId !== connectionId) {
+       pendingRefresh = true
+     } else if (fetchProcess.outputTooLarge) {
+@@ -114,12 +127,12 @@
+           fetchError = ""
+           var generated = new Date(String(parsed.generatedAt || "")).getTime()
+           lastSuccessAt = isFinite(generated) ? generated : Date.now()
+-          refreshed()
++          refreshed(requestManual)
+         }
+       }
+     }
+     if (pendingRefresh) Qt.callLater(function() {
+-      if (root.pendingRefresh) root.startFetch()
++      if (root.pendingRefresh) root.startFetch(true)
+     })
+   }
+ 
+@@ -195,7 +208,7 @@
+   Timer {
+     id: refreshTimer
+     interval: root.refreshIntervalSec * 1000
+-    running: true
++    running: root.automaticRefreshEnabled && !root.stopped
+     repeat: true
+     triggeredOnStart: true
+     onTriggered: root.requestRefresh(false)
+--- a/UsageActivityBackend.qml
++++ b/UsageActivityBackend.qml
+@@ -8,6 +8,8 @@
+   visible: false
+   required property var usageBackend
+   property var settings: ({})
++  property bool automaticRefreshEnabled: true
++  property bool stopped: false
+   property var legacyProviders: []
+   readonly property var providers: useLive ? (liveConnection ? liveConnection.providers : []) : legacyProviders
+   property string legacyError: ""
+@@ -16,6 +18,7 @@
+   readonly property double lastSuccessAt: useLive ? (liveConnection ? liveConnection.lastSuccessAt : 0) : legacySuccessAt
+   property bool pendingRefresh: false
+   property bool launchPending: false
++  property double lastAttemptAt: 0
+   property string scriptPath: usageBackend.localPath(Qt.resolvedUrl("scripts/proxy-activity.py"))
+   readonly property string keeperUrl: String(settings.costKeeperUrl || "")
+   readonly property string passwordFile: String(settings.costKeeperPasswordFile || "")
+@@ -29,7 +32,7 @@
+   readonly property string liveState: useLive ? (liveConnection ? liveConnection.state : "unavailable") : "off"
+   readonly property var liveAccounts: useLive && liveConnection ? liveConnection.accounts : []
+   readonly property string liveNotice: useLive ? (liveConnection ? liveConnection.message : "Live activity unavailable.") : ""
+-  readonly property string connectionId: JSON.stringify([usageBackend.connectionId, usageBackend.proxyImplementation, keeperUrl, passwordFile, useLive, liveScriptPath])
++  readonly property string connectionId: JSON.stringify([usageBackend.connectionId, rustProxy ? "rust" : "keeper", keeperUrl, passwordFile, useLive, liveScriptPath])
+ 
+   function syncLive() {
+     if (!ready) return
+@@ -53,10 +56,12 @@
+     ? "Configure CPA Usage Keeper in settings to track the last-used account."
+     : fetchError !== "" ? fetchError : lastSuccessAt <= 0 ? "Loading account activity…" : ""
+ 
+-  function refresh() {
+-    if (!trackingEnabled || useLive) return
+-    if (process.running || launchPending) { pendingRefresh = true; return }
++  function refresh(manual) {
++    if (stopped || (!manual && !automaticRefreshEnabled) || !trackingEnabled || useLive) return
++    if (process.running || launchPending) { pendingRefresh = pendingRefresh || !!manual; return }
++    if (!manual && Date.now() - lastAttemptAt < 1000) return
+     launchPending = true
++    lastAttemptAt = Date.now()
+     pendingRefresh = false
+     var command = ["python3", scriptPath, "--cliproxy-url", usageBackend.cliproxyUrl,
+       "--timeout", "10"]
+@@ -67,9 +72,25 @@
+     process.connectionId = connectionId
+     process.running = true
+   }
++  function stop() {
++    stopped = true
++    ready = false
++    pendingRefresh = false
++    process.running = false
++    liveConnection = null
++    if (liveKey !== "") UsageLogic.releaseLive(liveKey)
++    liveKey = ""
++  }
++  onAutomaticRefreshEnabledChanged: if (automaticRefreshEnabled && !stopped) refresh()
++  Connections {
++    target: root.usageBackend
++    ignoreUnknownSignals: true
++    function onRefreshed(manual) { root.refresh(manual) }
++  }
+ 
+   function settle() {
+     launchPending = false
++    if (stopped) return
+     if (process.connectionId !== connectionId || !trackingEnabled || useLive) {
+       pendingRefresh = trackingEnabled && !useLive
+     } else {
+@@ -88,7 +109,7 @@
+       }
+     }
+     if (pendingRefresh) Qt.callLater(function() {
+-      if (root.pendingRefresh) root.refresh()
++      if (root.pendingRefresh) root.refresh(true)
+     })
+   }
+ 
+@@ -142,7 +163,7 @@
+   }
+   Timer {
+     interval: 15000
+-    running: root.trackingEnabled && !root.useLive
++    running: root.automaticRefreshEnabled && !root.stopped && root.trackingEnabled && !root.useLive
+     repeat: true
+     triggeredOnStart: true
+     onTriggered: root.refresh()
+--- /dev/null
++++ b/UsageSharedBackend.qml
+@@ -0,0 +1,65 @@
++import QtQuick
++import "UsageLogic.js" as UsageLogic
++
++// A panel owns a subscription, while the engine owns the request channel.
++// Destroying or moving the first bar cannot invalidate another bar's context.
++Item {
++  id: root
++  visible: false
++  property var settings: ({})
++  property bool automaticRefreshEnabled: true
++  property bool acquiredActive: false
++  property string scriptPath: localPath(Qt.resolvedUrl("scripts/usage-fetch.py"))
++  property var connection: null
++  property string acquiredKey: ""
++  property bool ready: false
++  readonly property string connectionId: JSON.stringify([usageSource, cliproxyUrl, cliproxyKeyFile])
++  readonly property string usageSource: settings.usageSource === "cliproxy" ? "cliproxy" : "direct"
++  readonly property string cliproxyUrl: String(settings.cliproxyUrl || "http://127.0.0.1:8317")
++  readonly property string cliproxyKeyFile: String(settings.cliproxyKeyFile || "")
++  readonly property var enabledProviderIds: ["claude", "codex", "kimi"].filter(function(id) {
++    return !UsageLogic.isListLike(root.settings.enabledProviders) || UsageLogic.contains(root.settings.enabledProviders, id)
++  })
++  readonly property int refreshIntervalSec: Math.max(60, Math.min(3600,
++    Math.round(Number(settings.refreshIntervalSec || 900)) || 900))
++  readonly property string key: JSON.stringify([connectionId, enabledProviderIds, refreshIntervalSec, scriptPath])
++  readonly property var payload: connection ? connection.payload : ({ schemaVersion: 1, providers: [] })
++  readonly property var providers: connection ? connection.providers : []
++  readonly property string proxyImplementation: connection ? connection.proxyImplementation : ""
++  readonly property bool loading: connection ? connection.loading : false
++  readonly property string fetchError: connection ? connection.fetchError : ""
++  readonly property double lastSuccessAt: connection ? connection.lastSuccessAt : 0
++  readonly property double nextRefreshAt: connection ? connection.nextRefreshAt : 0
++  signal refreshed(bool manual)
++
++  function localPath(url) {
++    var value = String(url || "").replace(/^file:\/\//, "")
++    try { return decodeURIComponent(value) } catch (e) { return value }
++  }
++  function refresh() { if (connection) connection.refresh() }
++  function sync() {
++    if (!ready || key === acquiredKey) return
++    connection = null
++    if (acquiredKey !== "") UsageLogic.releaseBackend("UsageBackend", acquiredKey, acquiredActive)
++    acquiredKey = key
++    acquiredActive = automaticRefreshEnabled
++    connection = UsageLogic.acquireBackend("UsageBackend", key, {
++      settings: settings, automaticRefreshEnabled: acquiredActive, scriptPath: scriptPath
++    })
++  }
++  onKeyChanged: if (ready) sync()
++  onAutomaticRefreshEnabledChanged: if (connection) {
++    UsageLogic.updateBackendActivity("UsageBackend", acquiredKey, acquiredActive, automaticRefreshEnabled)
++    acquiredActive = automaticRefreshEnabled
++  }
++  Component.onCompleted: { ready = true; sync() }
++  Component.onDestruction: {
++    ready = false
++    connection = null
++    if (acquiredKey !== "") UsageLogic.releaseBackend("UsageBackend", acquiredKey, acquiredActive)
++  }
++  Connections {
++    target: root.connection
++    function onRefreshed(manual) { root.refreshed(manual) }
++  }
++}
+--- /dev/null
++++ b/UsageSharedActivityBackend.qml
+@@ -0,0 +1,57 @@
++import QtQuick
++import "UsageLogic.js" as UsageLogic
++
++Item {
++  id: root
++  visible: false
++  required property var usageBackend
++  property var settings: ({})
++  property bool acquiredActive: false
++  property string scriptPath: usageBackend.localPath(Qt.resolvedUrl("scripts/proxy-activity.py"))
++  property string liveScriptPath: usageBackend.localPath(Qt.resolvedUrl("scripts/proxy-live.py"))
++  property var connection: null
++  property string acquiredKey: ""
++  property bool ready: false
++  readonly property string key: usageBackend.connection ? JSON.stringify([
++    usageBackend.key, String(settings.costKeeperUrl || ""),
++    String(settings.costKeeperPasswordFile || ""), settings.liveAccountActivity !== false, scriptPath, liveScriptPath
++  ]) : ""
++  readonly property var providers: connection ? connection.providers : []
++  readonly property string fetchError: connection ? connection.fetchError : ""
++  readonly property double lastSuccessAt: connection ? connection.lastSuccessAt : 0
++  readonly property bool rustProxy: connection ? connection.rustProxy : false
++  readonly property bool useLive: connection ? connection.useLive : false
++  readonly property string liveState: connection ? connection.liveState : "off"
++  readonly property string liveNotice: connection ? connection.liveNotice : ""
++  readonly property var liveAccounts: connection ? connection.liveAccounts : []
++  readonly property string notice: connection ? connection.notice : ""
++
++  function refresh() { if (connection) connection.refresh(true) }
++  function sync() {
++    if (!ready || key === acquiredKey) return
++    connection = null
++    if (acquiredKey !== "") UsageLogic.releaseBackend("UsageActivityBackend", acquiredKey, acquiredActive)
++    acquiredKey = key
++    acquiredActive = usageBackend.automaticRefreshEnabled
++    if (key !== "") connection = UsageLogic.acquireBackend("UsageActivityBackend", key, {
++      usageBackend: usageBackend.connection, settings: settings,
++      automaticRefreshEnabled: acquiredActive, scriptPath: scriptPath, liveScriptPath: liveScriptPath
++    })
++  }
++  onKeyChanged: if (ready) sync()
++  Component.onCompleted: { ready = true; sync() }
++  Component.onDestruction: {
++    ready = false
++    connection = null
++    if (acquiredKey !== "") UsageLogic.releaseBackend("UsageActivityBackend", acquiredKey, acquiredActive)
++  }
++  Connections {
++    target: root.usageBackend
++    function onAutomaticRefreshEnabledChanged() {
++      if (!root.connection) return
++      UsageLogic.updateBackendActivity("UsageActivityBackend", root.acquiredKey, root.acquiredActive,
++        root.usageBackend.automaticRefreshEnabled)
++      root.acquiredActive = root.usageBackend.automaticRefreshEnabled
++    }
++  }
++}

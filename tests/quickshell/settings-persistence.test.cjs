@@ -239,7 +239,7 @@ test("plugin discovery keeps the last good state and cannot wedge", () => {
     assert.ok(guard > 0, "a registry error must not be applied");
     assert.ok(guard < handler.indexOf("root.plugins = result.plugins"));
     assert.match(plugins, /id: scanWatchdog[^]*?scanner\.running = false;/);
-    assert.match(plugins, /interval: Settings\.panelOpen \? 2000 : 300000/);
+    assert.match(plugins, /interval: Settings\.panelOpen && \(Settings\.page === "bar" \|\| Settings\.page === "plugins"\) \? 2000 : 300000/);
     // Package trees are polled only for an enabled plugin, never while idle.
     assert.match(plugins,
         /running: !Activity\.idle && \(Settings\.panelOpen \|\| root\.enabled\.length > 0\)/);

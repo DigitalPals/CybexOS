@@ -15,6 +15,9 @@ base_required_packages:
 - firewalld
 - fish
 - flatpak
+# The ISO provides every supported locale from this shared package, rather
+# than layering per-language copies over the complete language database.
+- glibc-all-langpacks
 - fwupd
 # UEFI capsule updates for cybexos-firmware-update.
 - fwupd-efi
@@ -39,8 +42,8 @@ base_required_packages:
 - upower
 - zram-generator-defaults
 - zstd
-# Hardware support. Fedora ships this firmware as weak dependencies of
-# linux-firmware, which the image does not install.
+# Hardware support. Name firmware explicitly because the image does not
+# install weak dependencies of linux-firmware.
 - amd-ucode-firmware
 - atheros-firmware
 - b43-fwcutter
@@ -88,6 +91,14 @@ base_required_packages:
 - simple-scan
 - system-config-printer-udev
 # GStreamer codecs; openh264 comes from Fedora's Cisco repository.
+# Select the ISO's full codec providers in this first transaction, before
+# desktop packages can pull Fedora alternatives and leave orphaned libraries.
+- ffmpeg
+- fdk-aac
+- jack-audio-connection-kit
+# Match the ISO's OpenCL dispatch library before media dependencies choose an
+# interchangeable provider with a different package identity.
+- ocl-icd
 - gstreamer1-plugin-libav
 - gstreamer1-plugin-openh264
 - gstreamer1-plugins-bad-free

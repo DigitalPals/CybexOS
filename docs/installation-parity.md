@@ -14,6 +14,7 @@ Fresh installations use these ISO defaults:
 | Sudo and local Polkit | Password required |
 | Docker administrator access | Sudo required |
 | Desktop automatic login | Enabled only after complete root encryption is verified |
+| Next boot | Graphical login through SDDM; convergence leaves the current session running |
 | Additional local-network firewall ports | Disabled; LocalSend and mDNS (printer and scanner discovery) remain open |
 | Files SMB workgroup | `WORKGROUP`; explicit per-user workgroups take precedence |
 | Machine identity | Preserve the identity already configured by Fedora/Anaconda |
@@ -48,6 +49,17 @@ The checkout path installs onto existing Fedora and retains source-release
 updates and uninstall; the ISO uses Anaconda for disk/account creation and RPM
 delivery for desktop updates and repair. These mechanisms are distinct from the
 installed policy.
+
+`image/system_packages.py` reads the system selections and exclusions from
+`image/live.ks` and the runtime requirements from the desktop RPM spec. After
+the shared repositories are configured, checkout installs that contract,
+including its package groups and version constraints. The local delivery RPMs
+are supplied by checkout's application and desktop roles. Both paths disable
+weak dependencies and use the complete shared locale and firmware baseline;
+only device-specific configuration is gated on detecting the device. The
+application builder leaves system composition to the ISO compose step.
+Checkout resolves the ISO's full codec providers and `ocl-icd` in its first
+base transaction, before desktop dependencies can select alternative providers.
 
 Installer-only paths keep that policy. An unattended seed's `config` choices
 (and the choices a factory reset keeps for the next owner) pass through
@@ -101,6 +113,15 @@ and real SDDM password login after reboot. `tests/fedora-vm-convergence` remains
 a separate convergence/uninstall test; its feature opt-outs cannot satisfy
 this gate.
 
+Before invoking the public installer, qualification updates only its newly
+created Cloud guest to the current Fedora OS baseline, removes the explicitly
+listed preexisting Cloud packages, selects the generic Fedora release identity,
+reboots onto the current kernel, and uses
+DNF's supported old-installonly cleanup. The report records that preparation.
+The public installer does not prune users' old kernels or package inventories.
+The test asserts the installer's graphical boot target and SDDM enablement
+instead of setting them after installation.
+
 The builder includes the complete reviewed source set in `source.tar.gz`
 alongside its ISO/RPM artifacts. A canonical digest covers file names, content
 and executable bits, including intentional non-ignored working-tree changes.
@@ -123,11 +144,20 @@ Touchpad and Region, including watcher cleanup and the current QML journal.
 installer choices, login policy, actual sudo authorization, Polkit policy,
 account groups/shell, required RPM versions, Flatpaks, application commands and
 associations, service enablement/activation, firewall policy, SELinux, recovery
-support, filesystem and personal-file identities. It retains the complete RPM
+support, default boot target, filesystem and personal-file identities. Target
+dependencies and per-user unit links can provide equivalent session activation;
+masked/missing units and inactive services remain differences. The UTC timezone
+alias is canonicalized for comparison without changing the saved choice.
+It retains the complete RPM
 inventories. Every additional package difference needs a reasoned entry in
 `image/parity-exceptions.json`; required package/version differences always
-fail. Initial exceptions cover only the ISO delivery RPM and Cloud provisioning
-tools. Review new actual baseline differences before extending that file.
+fail. Exceptions cover the ISO delivery RPMs, Cloud provisioning tools and three
+exact Brave prerelease key records. The signed `brave-keyring` package imports
+them in its background postinstall script on running Fedora; the initial ISO
+chroot lacks `timeout` at that point. Both paths have the same keyring payload
+and pinned stable repository. The exception includes each full fingerprint and
+RPM release; unknown keys still fail, and family-wide signing-key exceptions
+are rejected. Review new actual baseline differences before extending that file.
 
 `parity-fresh.json` and `parity-saved.json` name mismatches. The release gate
 embeds passed same-source checkout evidence in both plain ISO reports.
@@ -150,14 +180,12 @@ and screenshots on success/failure, retaining compact reports.
 SSH private key. Testing OS ISOs still use `/data/pxe/iso` and the existing
 checksum/iVentoy workflow. Existing Fedora hosts are never repartitioned.
 
-Known limit (2026-10-14): the saved-choice step reapplies the installation
-path with `cybexos-configure-installed`, whose shared baseline package task
-needs repository metadata. Qualification guests block outbound networking and
-the image ships no DNF metadata cache (`live.ks` runs `dnf clean all`), so that
-step fails with "Could not resolve host" before any saved choice is compared.
-The fresh capture itself succeeds. Running the gate therefore needs either a
-guest with package-repository access for that step or an offline-capable
-reapply; until one exists, `--capture-outcomes` cannot complete.
+The saved-choice ISO step uses `cybexos-configure-installed --offline` with
+the prepared application payload, so outbound networking remains blocked
+through reconfiguration. Checkout qualification runs the public installer
+with its normal repository access. It prepares the shared codec repositories
+and selects the ISO's final providers before base and desktop transactions,
+avoiding dependencies left behind by replacing interim Fedora codecs.
 
 `image/test_installed_outcomes.py` tests content identities, archive validation,
 comparison guards and guest workflow construction without booting a VM. These

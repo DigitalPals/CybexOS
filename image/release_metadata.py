@@ -126,12 +126,15 @@ def changelog_entry(version, release, provenance):
 
 def render_spec(source_spec, version_file, provenance):
     version, release = rpm_identity(version_file, provenance)
-    result, count = re.subn(r"(?m)^Version:.*$", f"Version:        {version}", source_spec)
+    # Subpackages have independent identities. Only rewrite the main header.
+    header, separator, body = source_spec.partition("%description\n")
+    result, count = re.subn(r"(?m)^Version:.*$", f"Version:        {version}", header)
     if count != 1:
         raise ValueError("Desktop spec must contain exactly one Version field")
     result, count = re.subn(r"(?m)^Release:.*$", f"Release:        {release}%{{?dist}}", result)
     if count != 1:
         raise ValueError("Desktop spec must contain exactly one Release field")
+    result += separator + body
     entry = changelog_entry(version, release, provenance)
     return re.sub(r"(?m)^%changelog\n", lambda match: match.group(0) + entry, result, count=1)
 

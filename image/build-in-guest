@@ -49,6 +49,7 @@ python3 "$source_root/image/compose"
 phase manifests-and-cache
 cp "$build_root/repo/"*.rpm "$artifacts/"
 cp "$build_root/package-manifest.json" "$build_root/applications.json" "$artifacts/"
+cp "$build_root/offline-payload.json" "$artifacts/"
 cp "$source_root/image/build-provenance.json" "$artifacts/"
 rpm -qa --qf '%{NEVRA}\n' | sort > "$artifacts/builder-packages.txt"
 python3 "$source_root/image/download_cache.py" export /home/builder/cache-export

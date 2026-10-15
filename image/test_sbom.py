@@ -350,6 +350,25 @@ class Document(unittest.TestCase):
         self.assertEqual((runtime["versionInfo"], runtime["primaryPackagePurpose"]), ("24.08", "FRAMEWORK"))
         self.assertIn("runtime/org.freedesktop.Platform/x86_64/24.08", runtime["sourceInfo"])
 
+    def test_split_payload_binds_both_artifacts_and_owns_bundled_inputs(self):
+        offline = 'cybexos-offline-apps-1.0.0-1.fc44.x86_64.rpm'
+        records = RPMS + row('cybexos-offline-apps', '1', '1.0.0', '1.fc44', 'x86_64',
+                            'MIT', 'cybexos-desktop-1.2.3-1.src.rpm', '(none)', '(none)', '(none)')
+        result = document(rpms=records, offline_rpm=(offline, 'd' * 64))
+        container = named(result, 'cybexos-offline-apps')
+        self.assertEqual(sbom.file_checksum(container), 'd' * 64)
+        self.assertTrue(any(item['spdxElementId'] == container['SPDXID'] and item['relationshipType'] == 'CONTAINS'
+                            for item in result['relationships']))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'candidate.spdx.json'
+            path.write_bytes(sbom.serialize(result))
+            expected = {'cybexos-desktop': 'e' * 64, 'cybexos-offline-apps': 'd' * 64}
+            sbom.verify_release_sbom(path, ISO, 'f' * 64, expected)
+            with self.assertRaisesRegex(ValueError, 'offline-apps'):
+                sbom.verify_release_sbom(path, ISO, 'f' * 64, {'cybexos-desktop': 'e' * 64})
+            with self.assertRaisesRegex(ValueError, 'offline-apps'):
+                sbom.verify_release_sbom(path, ISO, 'f' * 64, {**expected, 'cybexos-offline-apps': '0' * 64})
+
     def test_sanitized_identifier_collisions_remain_unique(self):
         colliding = RPMS + row("gcc-c__", "(none)", "15.1.1", "2.fc44", "x86_64", "MIT", "(none)",
                                "Fedora Project", "(none)", "(none)")

@@ -3,6 +3,43 @@
 // One observer per connection across bars, monitors and open panels. The
 // shared object has no panel parent; the final consumer explicitly stops it.
 var liveConnections = ({})
+var sharedBackends = ({})
+
+function acquireBackend(type, key, properties, factory) {
+  var identity = type + ":" + key
+  var entry = sharedBackends[identity]
+  if (!entry) {
+    if (!factory) factory = Qt.createComponent(type + ".qml")
+    var object = factory.createObject(null, properties)
+    if (!object) return null
+    entry = { object: object, references: 0, activeReferences: 0 }
+    sharedBackends[identity] = entry
+  }
+  entry.references++
+  if (properties.automaticRefreshEnabled) entry.activeReferences++
+  entry.object.automaticRefreshEnabled = entry.activeReferences > 0
+  return entry.object
+}
+
+function updateBackendActivity(type, key, wasActive, active) {
+  var entry = sharedBackends[type + ":" + key]
+  if (!entry || wasActive === active) return
+  entry.activeReferences += active ? 1 : -1
+  entry.object.automaticRefreshEnabled = entry.activeReferences > 0
+}
+
+function releaseBackend(type, key, active) {
+  var identity = type + ":" + key
+  var entry = sharedBackends[identity]
+  if (!entry) return
+  entry.references--
+  if (active) entry.activeReferences--
+  if (entry.references <= 0) {
+    delete sharedBackends[identity]
+    entry.object.stop()
+    entry.object.destroy()
+  } else entry.object.automaticRefreshEnabled = entry.activeReferences > 0
+}
 
 function acquireLive(key, factory, properties) {
   var entry = liveConnections[key]

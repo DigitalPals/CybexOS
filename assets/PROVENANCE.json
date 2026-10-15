@@ -10,8 +10,8 @@
   "assets": [
     {
       "path": "assets/wallpapers/01-black-widow-warrior-with-katana-ks.jpg",
-      "sha256": "0c4164fbb0c3450c656fdc7cdb5582835282751f0dd5771c2ec3fd7ddeea10a5",
-      "bytes": 2136966,
+      "sha256": "42f63a048ca56e193f5243f915aeef67cee6471f2f3c69ad8fa9b03b4afc64fe",
+      "bytes": 2114005,
       "mediaType": "image/jpeg",
       "dimensions": [
         5120,
@@ -21,12 +21,18 @@
       "sourceUrl": null,
       "license": null,
       "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
-      "introducedAt": "2026-08-01T16:45:32+02:00"
+      "introducedAt": "2026-08-01T16:45:32+02:00",
+      "transformation": {
+        "tool": "libjpeg-turbo jpegtran 3.1.3",
+        "command": "jpegtran -copy all -optimize -progressive",
+        "sourceSha256": "0c4164fbb0c3450c656fdc7cdb5582835282751f0dd5771c2ec3fd7ddeea10a5",
+        "decodedPixels": "identical (Pillow RGB byte comparison)"
+      }
     },
     {
       "path": "assets/wallpapers/05-joker-chaos-in-a-purple-suit-nq.jpg",
-      "sha256": "e6e75459f3b2adc003c3f1747bc8c7fc62c0de6ab05437f0e7c351848183622d",
-      "bytes": 4651376,
+      "sha256": "101dbdd19259601c29cb65339cafc4061d707e10e31cb3a8c86f2c81eba8eaf0",
+      "bytes": 4631500,
       "mediaType": "image/jpeg",
       "dimensions": [
         5120,
@@ -36,12 +42,18 @@
       "sourceUrl": null,
       "license": null,
       "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
-      "introducedAt": "2026-08-01T16:45:32+02:00"
+      "introducedAt": "2026-08-01T16:45:32+02:00",
+      "transformation": {
+        "tool": "libjpeg-turbo jpegtran 3.1.3",
+        "command": "jpegtran -copy all -optimize -progressive",
+        "sourceSha256": "e6e75459f3b2adc003c3f1747bc8c7fc62c0de6ab05437f0e7c351848183622d",
+        "decodedPixels": "identical (Pillow RGB byte comparison)"
+      }
     },
     {
       "path": "assets/wallpapers/diana-prince-amazonian-legend-hn.jpg",
-      "sha256": "2e79f036cb559a82eabcf64410b554a93c28be1fc26356170020099a99b58440",
-      "bytes": 6352485,
+      "sha256": "3e86df25a8fb3215ec8402568a844f36dc8e867b68ed2ae6d9b17fbc9d46797b",
+      "bytes": 6307720,
       "mediaType": "image/jpeg",
       "dimensions": [
         5120,
@@ -51,12 +63,18 @@
       "sourceUrl": null,
       "license": null,
       "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
-      "introducedAt": "2026-08-01T16:45:32+02:00"
+      "introducedAt": "2026-08-01T16:45:32+02:00",
+      "transformation": {
+        "tool": "libjpeg-turbo jpegtran 3.1.3",
+        "command": "jpegtran -copy all -optimize -progressive",
+        "sourceSha256": "2e79f036cb559a82eabcf64410b554a93c28be1fc26356170020099a99b58440",
+        "decodedPixels": "identical (Pillow RGB byte comparison)"
+      }
     },
     {
       "path": "assets/wallpapers/joker-ghost-in-dark-rt.jpg",
-      "sha256": "97419028812bc42b5fcb857148d2c367813beb61c9364a9e9751db2ae5eba54c",
-      "bytes": 7256499,
+      "sha256": "4f886a8aa3c46a1a8dc2a855a32fa10867268df7e0a22086f2fd14d38fc4c432",
+      "bytes": 7118373,
       "mediaType": "image/jpeg",
       "dimensions": [
         5120,
@@ -66,12 +84,18 @@
       "sourceUrl": null,
       "license": null,
       "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
-      "introducedAt": "2026-08-01T16:45:32+02:00"
+      "introducedAt": "2026-08-01T16:45:32+02:00",
+      "transformation": {
+        "tool": "libjpeg-turbo jpegtran 3.1.3",
+        "command": "jpegtran -copy all -optimize -progressive",
+        "sourceSha256": "97419028812bc42b5fcb857148d2c367813beb61c9364a9e9751db2ae5eba54c",
+        "decodedPixels": "identical (Pillow RGB byte comparison)"
+      }
     },
     {
       "path": "assets/wallpapers/snow-capped-mountains-with-full-moon-lo.jpg",
-      "sha256": "153bc7ea99ccd14e70203397a759dac0d89afb29937ad215ce7d31b1778c0217",
-      "bytes": 1838747,
+      "sha256": "77a782d73220b7fac27c5cd933a9b4c828bc13257cb0e4d6ce0fa1d7af60a2f5",
+      "bytes": 1816984,
       "mediaType": "image/jpeg",
       "dimensions": [
         5120,
@@ -81,12 +105,18 @@
       "sourceUrl": null,
       "license": null,
       "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
-      "introducedAt": "2026-08-01T16:45:32+02:00"
+      "introducedAt": "2026-08-01T16:45:32+02:00",
+      "transformation": {
+        "tool": "libjpeg-turbo jpegtran 3.1.3",
+        "command": "jpegtran -copy all -optimize -progressive",
+        "sourceSha256": "153bc7ea99ccd14e70203397a759dac0d89afb29937ad215ce7d31b1778c0217",
+        "decodedPixels": "identical (Pillow RGB byte comparison)"
+      }
     },
     {
       "path": "assets/wallpapers/spider-man-guardian-of-the-skyline-yx.jpg",
-      "sha256": "552da492f93c7d2c7264467ac77fcc613a6210ab81c77f64a53992a3b8e8282a",
-      "bytes": 2082942,
+      "sha256": "0bc48a0edb1495bf189b750354967b128be7f4d11bfe39d377e26fc9274fac5d",
+      "bytes": 2026297,
       "mediaType": "image/jpeg",
       "dimensions": [
         3840,
@@ -96,12 +126,18 @@
       "sourceUrl": null,
       "license": null,
       "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
-      "introducedAt": "2026-08-01T16:45:32+02:00"
+      "introducedAt": "2026-08-01T16:45:32+02:00",
+      "transformation": {
+        "tool": "libjpeg-turbo jpegtran 3.1.3",
+        "command": "jpegtran -copy all -optimize -progressive",
+        "sourceSha256": "552da492f93c7d2c7264467ac77fcc613a6210ab81c77f64a53992a3b8e8282a",
+        "decodedPixels": "identical (Pillow RGB byte comparison)"
+      }
     },
     {
       "path": "assets/wallpapers/spider-man-the-hero-beyond-the-stars-cx.jpg",
-      "sha256": "be0feb0aa734196e445167369cfe3ec2ffb86bbf56ef8990557dd4227bcaedf6",
-      "bytes": 3963498,
+      "sha256": "eb741559491d07e157c262494ece78ad104c24c7574ca47f04debb64bf2c42cb",
+      "bytes": 3922044,
       "mediaType": "image/jpeg",
       "dimensions": [
         3840,
@@ -111,7 +147,13 @@
       "sourceUrl": null,
       "license": null,
       "introducedByCommit": "319d58619716776210ed99003107fffe06d58a3f",
-      "introducedAt": "2026-08-01T16:45:32+02:00"
+      "introducedAt": "2026-08-01T16:45:32+02:00",
+      "transformation": {
+        "tool": "libjpeg-turbo jpegtran 3.1.3",
+        "command": "jpegtran -copy all -optimize -progressive",
+        "sourceSha256": "be0feb0aa734196e445167369cfe3ec2ffb86bbf56ef8990557dd4227bcaedf6",
+        "decodedPixels": "identical (Pillow RGB byte comparison)"
+      }
     }
   ]
 }

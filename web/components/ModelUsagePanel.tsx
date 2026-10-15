@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type Dispatch } from 'react';
 import { Activity, ArrowRight, Check, ChevronDown, Clock3, Eye, EyeOff, Info, Pause, Play, RefreshCw, RotateCcw, Server, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
 import { eligibleAccounts, providerSummary, usageReducer, type ProviderId, type UsageAccount, type UsageAction, type UsageState } from '../lib/model-usage';
 import { Overlay } from './Overlay';
+import { useWallTime } from './Clock';
 
 export const PROVIDER_NAMES = { codex: 'Codex', claude: 'Claude' };
 const PROVIDERS: ProviderId[] = ['codex', 'claude'];
@@ -72,11 +73,13 @@ interface ModelUsagePanelProps {
   dispatch: Dispatch<UsageAction>;
   provider: ProviderId;
   setProvider: (provider: ProviderId) => void;
-  now: number;
+  now?: number;
   close: () => void;
 }
 
-export function ModelUsagePanel({ state, dispatch, provider, setProvider, now, close }: ModelUsagePanelProps) {
+export function ModelUsagePanel({ state, dispatch, provider, setProvider, now: suppliedNow, close }: ModelUsagePanelProps) {
+  const clock = useWallTime(1000, suppliedNow === undefined);
+  const now = suppliedNow ?? clock?.getTime() ?? state.updatedAt;
   const [view, setView] = useState<View>('limits');
   const [details, setDetails] = useState(true);
   const [hideEmails, setHideEmails] = useState(true);

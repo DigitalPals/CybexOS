@@ -40,6 +40,13 @@ Item {
         if (watchers && !busy)
             snapshotProc.running = true;
     }
+    function monitorEvent(line) {
+        // Read-only pactl probes create/remove clients too. Refreshing for
+        // those events makes every snapshot schedule its own successor.
+        if (domain === "sound" && !/ on (card|sink|source|sink-input|source-output|server) #\d+\s*$/.test(line))
+            return;
+        debounce.restart();
+    }
     // Input is polled: no extra compositor socket reader lives beyond the page.
     // Security is polled too; fprintd and the key list change only on request.
     readonly property bool hasMonitor: domain !== "input" && domain !== "region"
@@ -89,7 +96,8 @@ Item {
         command: root.domain === "sound" ? ["pactl", "subscribe"]
             : root.domain === "network" ? ["nmcli", "monitor"]
             : ["gdbus", "monitor", "--session", "--dest", "org.gnome.OnlineAccounts"]
-        stdout: SplitParser { onRead: debounce.restart() }
+        environment: ({ LC_ALL: "C" })
+        stdout: SplitParser { onRead: data => root.monitorEvent(data) }
         stderr: StdioCollector {}
     }
     Process {

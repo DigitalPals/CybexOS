@@ -3,6 +3,9 @@
   hosts: localhost
   connection: local
   gather_facts: true
+  module_defaults:
+    ansible.builtin.dnf:
+      install_weak_deps: false
   vars_files:
     - ../inventory/group_vars/all.yml
   tasks:

@@ -4,7 +4,9 @@ import shutil
 
 def prepare_provision(root, payload):
     destination = payload / 'usr/share/cybexos/provision'
-    for relative in ('image/provision.yml', 'image/provision.cfg', 'image/library', 'inventory/group_vars/all.yml',
+    for relative in ('image/provision.yml', 'image/provision.cfg', 'image/library',
+                     'image/system_packages.py', 'image/live.ks', 'image/cybexos-desktop.spec',
+                     'inventory/group_vars/all.yml',
                      'roles/base', 'roles/xps-2026', 'roles/nvidia', 'roles/apps/tasks/mpv.yml',
                      # The NVIDIA role enables RPM Fusion with the applications role's pinned keys.
                      'roles/apps/tasks/rpmfusion.yml', 'roles/apps/files/rpmfusion-free-fedora-2020.asc',

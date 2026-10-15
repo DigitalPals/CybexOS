@@ -8,11 +8,11 @@ from vm_testing import TestVM, console_output, sudo_password_prompt
 
 class ConsoleBootstrapTests(unittest.TestCase):
     def exercise(self, *, passworded=False, german=False, failure=None, late_greeter=False, refusals=0,
-                 splash_switches=0,
+                 splash_switches=0, dropped_names=0,
                  sudo_prompt='[sudo] password for qualification:'):
         password = 'private-fixture-secret'
         state = {'phase': 'login', 'time': 0, 'typed': [], 'greeter': splash_switches > 0, 'keys': [],
-                 'refusals': refusals, 'splash': splash_switches}
+                 'refusals': refusals, 'splash': splash_switches, 'dropped_names': dropped_names}
         def clock():
             state['time'] += 0.1
             return state['time']
@@ -20,6 +20,9 @@ class ConsoleBootstrapTests(unittest.TestCase):
             state['time'] += seconds
         def typing(text):
             state['typed'].append(text)
+            if text == 'qualification\n' and state['dropped_names']:
+                state['dropped_names'] -= 1
+                return  # The display manager took focus before getty received it.
             if text == 'qualification\n' and state['refusals']:
                 # pam_nologin while systemd-user-sessions has not started.
                 state['refusals'] -= 1
@@ -94,6 +97,16 @@ class ConsoleBootstrapTests(unittest.TestCase):
         typed = self.exercise(refusals=2)
         self.assertEqual(typed.count('qualification\n'), 3)
         self.assertEqual(typed.count('private-fixture-secret\n'), 1)
+
+    def test_lost_username_is_retried_at_an_empty_login_prompt(self):
+        typed = self.exercise(dropped_names=1)
+        self.assertEqual(typed.count('qualification\n'), 2)
+        self.assertEqual(typed.count('private-fixture-secret\n'), 1)
+
+    def test_empty_prompt_retries_are_bounded_and_never_send_a_secret(self):
+        typed = self.exercise(dropped_names=99, failure='username')
+        self.assertEqual(typed.count('qualification\n'), 4)
+        self.assertNotIn('private-fixture-secret\n', typed)
 
     def test_a_late_greeter_does_not_hide_the_console_password_prompt(self):
         # The display manager can start after the switch to tty3 and take the

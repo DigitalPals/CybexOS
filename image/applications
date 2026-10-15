@@ -10,6 +10,7 @@ import subprocess
 
 import yaml
 from application_payload import relativize_seed_links
+from system_packages import contract as system_package_contract
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = Path("/home/builder/build")
@@ -54,6 +55,7 @@ def package_names():
     defaults = yaml.safe_load((ROOT / "roles/apps/defaults/main.yml").read_text())
     baseline = yaml.safe_load((ROOT / "roles/base/defaults/main.yml").read_text())
     packages = list(baseline["base_required_packages"])
+    packages.extend(system_package_contract(ROOT)['packages'])
     # The workstation skips unavailable optional packages at converge time.
     # The compose has no --ignoremissing, so one Fedora drops fails the build
     # visibly instead of shipping an image that silently lacks it.

@@ -15,6 +15,8 @@ import re
 import shutil
 import subprocess
 import tempfile
+import urllib.error
+import urllib.request
 
 from release_metadata import channel_payload, fingerprint, public_key, repository_url
 
@@ -43,11 +45,61 @@ def package_identity(path):
     result = run(["rpm", "-qp", "--qf", "%{NAME}\t%{EPOCHNUM}\t%{VERSION}\t%{RELEASE}\t%{ARCH}",
                   str(path)], capture_output=True, text=True)
     fields = result.stdout.split("\t")
-    if len(fields) != 5 or fields[0] != "cybexos-desktop" or fields[4] != "x86_64":
-        raise ValueError(f"Expected an x86_64 cybexos-desktop RPM: {path.name}")
+    if len(fields) != 5 or fields[0] not in ("cybexos-desktop", "cybexos-offline-apps") or fields[4] != "x86_64":
+        raise ValueError(f"Expected an x86_64 CybexOS desktop or offline-apps RPM: {path.name}")
     if any(not re.fullmatch(r"[A-Za-z0-9.~^+_-]+", field) for field in fields):
         raise ValueError("RPM identity contains invalid characters")
     return dict(zip(("name", "epoch", "version", "release", "arch"), fields))
+
+
+def package_payload_identity(path):
+    """Ignore build timestamps/signatures, but bind file contents and ownership."""
+    result = run(['rpm', '-qp', '--qf',
+                  '%{FILEDIGESTALGO}\n[%{FILENAMES}\t%{FILEDIGESTS}\t%{FILELINKTOS}\t%{FILEMODES}\t%{FILEUSERNAME}\t%{FILEGROUPNAME}\t%{FILEFLAGS}\t%{FILECAPS}\n]',
+                  str(path)], capture_output=True, text=True)
+    return hashlib.sha256('\n'.join(sorted(result.stdout.splitlines())).encode()).hexdigest()
+
+
+def previous_packages(location, key, expected, baseurl, work):
+    """Authenticate the previous published manifest before checking immutability."""
+    if location is None:
+        return []
+    directory = Path(work) / 'previous-release'
+    directory.mkdir()
+    for name in ('release.json', 'release.json.asc'):
+        if str(location).startswith('https://'):
+            try:
+                with urllib.request.urlopen(repository_url(str(location)) + '/' + name, timeout=30) as response:
+                    data = response.read(2 * 1024 * 1024 + 1)
+            except urllib.error.HTTPError as error:
+                # No repository exists before the first public release.
+                if error.code == 404 and name == 'release.json':
+                    return []
+                raise
+        else:
+            data = (Path(location) / name).read_bytes()
+        if len(data) > 2 * 1024 * 1024:
+            raise ValueError('Previous release manifest exceeds the size limit')
+        (directory / name).write_bytes(data)
+    home = directory / 'keyring'
+    home.mkdir(mode=0o700)
+    command = ['gpg', '--no-options', '--homedir', str(home), '--batch', '--no-autostart']
+    run([*command, '--import', str(key)], capture_output=True)
+    run([*command, '--verify', str(directory / 'release.json.asc'), str(directory / 'release.json')],
+        capture_output=True)
+    manifest = json.loads((directory / 'release.json').read_text())
+    if manifest.get('fingerprint') != expected or manifest.get('baseurl') != baseurl or manifest.get('format') != 1:
+        raise ValueError('Previous release does not match the reviewed channel')
+    return manifest['packages']
+
+
+def verify_offline_identity(identity, payload_sha256, previous):
+    if identity['name'] != 'cybexos-offline-apps':
+        return
+    for item in previous:
+        if all(item.get(key) == value for key, value in identity.items()):
+            if item.get('payload_sha256') != payload_sha256:
+                raise ValueError('Offline application payload changed under an existing NEVRA; advance its independent version')
 
 
 def verify_signed_rpm(path, key, temporary):
@@ -79,7 +131,7 @@ def verify_embedded_channel(path, baseurl, key_id, armor):
 
 
 def create_repository(packages, output, key_file, key_id, baseurl, gnupghome=None,
-                      packages_baseurl=None):
+                      packages_baseurl=None, previous_repository=None):
     output = Path(output).absolute()
     if output.exists() or output.is_symlink():
         raise ValueError("Repository output must be a new directory; existing releases are preserved")
@@ -100,6 +152,9 @@ def create_repository(packages, output, key_file, key_id, baseurl, gnupghome=Non
         if not shutil.which(executable):
             raise ValueError(f"Missing {executable}; install rpm-sign, createrepo_c, and gnupg2 on Fedora")
     identities = [package_identity(path) for path in packages]
+    names = [item['name'] for item in identities]
+    if names.count('cybexos-desktop') != 1 or len(set(names)) != len(names):
+        raise ValueError('Supply exactly one desktop RPM and at most one offline applications RPM')
     if len({json.dumps(item, sort_keys=True) for item in identities}) != len(identities):
         raise ValueError("Duplicate RPM identities cannot be published in one release")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -111,6 +166,7 @@ def create_repository(packages, output, key_file, key_id, baseurl, gnupghome=Non
         target_packages.mkdir()
         key = stage / "CYBEXOS-desktop.asc"
         key.write_bytes(armor)
+        previous = previous_packages(previous_repository, key, expected, url, work)
         command = ["rpmsign", "--addsign", "--key-id", expected,
                    "--define", "_openpgp_sign gpg"]
         signing = ["gpg", "--batch", "--local-user", expected]
@@ -122,13 +178,17 @@ def create_repository(packages, output, key_file, key_id, baseurl, gnupghome=Non
             signing += ["--homedir", str(home)]
         records = []
         for original, identity in zip(packages, identities):
+            payload_sha256 = package_payload_identity(original)
+            verify_offline_identity(identity, payload_sha256, previous)
             destination = target_packages / original.name
             shutil.copyfile(original, destination)
-            verify_embedded_channel(destination, url, expected, armor)
+            if identity["name"] == "cybexos-desktop":
+                verify_embedded_channel(destination, url, expected, armor)
             run([*command, str(destination)], env=signing_environment)
             verify_signed_rpm(destination, key, work)
             record = {**identity, "file": str(destination.relative_to(stage)),
-                      "sha256": sha256(destination), "unsigned_input_sha256": sha256(original)}
+                      "sha256": sha256(destination), "unsigned_input_sha256": sha256(original),
+                      "payload_sha256": payload_sha256}
             if packages_baseurl:
                 record['url'] = packages_baseurl + '/' + destination.name
             records.append(record)
@@ -181,10 +241,11 @@ def main(argv=None):
     parser.add_argument("--baseurl", required=True, help="HTTPS URL where this repository will be hosted")
     parser.add_argument("--gnupghome", type=Path)
     parser.add_argument("--packages-baseurl", help="HTTPS release-asset directory; keep large RPMs off the metadata host")
+    parser.add_argument("--previous-repository", help="Previous signed repository directory or HTTPS URL; check offline RPM immutability")
     args = parser.parse_args(argv)
     try:
         destination = create_repository(args.packages, args.output, args.public_key, args.key,
-                                        args.baseurl, args.gnupghome, args.packages_baseurl)
+                                        args.baseurl, args.gnupghome, args.packages_baseurl, args.previous_repository)
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"release-repository: {error}\n")
     print(f"Signed repository ready for explicit hosting: {destination}")

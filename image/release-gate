@@ -78,10 +78,11 @@ def main():
         artifacts = build / 'artifacts'
         isos = list(artifacts.glob('*.iso'))
         rpms = list(artifacts.glob('cybexos-desktop-*.rpm'))
+        offline = list(artifacts.glob('cybexos-offline-apps-*.rpm'))
         sboms = list(artifacts.glob('*.spdx.json'))
         # Publication needs the SBOM; fail before hours of VM qualification.
-        if len(isos) != 1 or len(rpms) != 1 or len(sboms) != 1:
-            raise RuntimeError('Build must deliver exactly one ISO, desktop RPM and SPDX SBOM')
+        if len(isos) != 1 or len(rpms) != 1 or len(offline) != 1 or len(sboms) != 1:
+            raise RuntimeError('Build must deliver exactly one ISO, desktop RPM, offline applications RPM and SPDX SBOM')
         if digest(baseline) == digest(isos[0]):
             raise RuntimeError('Upgrade baseline must be a different prior ISO, not the candidate image')
         run_child([str(ROOT / 'image/publish-pxe'), str(artifacts), '--execute'])
@@ -119,7 +120,8 @@ def main():
                                                  'checkout_report_sha256': digest(directory / 'checkout-qualification.json')})
         run_child([str(ROOT / 'image/qualify'), str(baseline), '--output', str(output / 'upgrade'),
                         '--execute-vm', '--erase-disposable-disk', '--scenario', 'encrypted-us',
-                        '--candidate-rpm', str(rpms[0]), '--recovery-check', '--legacy-installer'])
+                        '--candidate-rpm', str(rpms[0]), '--candidate-offline-rpm', str(offline[0]),
+                        '--recovery-check', '--legacy-installer'])
         report['status'] = 'passed'
         report['artifacts'] = str(artifacts)
         print(json.dumps(report))

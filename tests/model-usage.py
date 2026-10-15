@@ -59,6 +59,15 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="cybex-model-usage-") as temporary:
         package = Path(temporary) / "model-usage"
         shutil.copytree(RUNTIME, package)
+        integration = ROOT / 'scripts/model-usage/integration.patch'
+        # The checked-in delta must round-trip exactly. Sync checks the forward
+        # patch on staged upstream files before touching the current runtime.
+        before = {path.relative_to(package): path.read_bytes() for path in package.rglob('*') if path.is_file()}
+        subprocess.run(['git', 'apply', '--reverse', str(integration)], cwd=package, check=True)
+        subprocess.run(['git', 'apply', '--check', str(integration)], cwd=package, check=True)
+        subprocess.run(['git', 'apply', str(integration)], cwd=package, check=True)
+        after = {path.relative_to(package): path.read_bytes() for path in package.rglob('*') if path.is_file()}
+        assert before == after, 'Model Usage integration patch differs from the runtime'
         shutil.copytree(TESTS, package / "tests")
         env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
         for script in sorted((package / "scripts").glob("*.py")):
@@ -93,6 +102,23 @@ def main() -> None:
             assert len(starts) == 2 and len(stops) == 2, rows
             assert {row["pid"] for row in starts} == {row["pid"] for row in stops}, rows
             print("Model Usage shared live QML lifetime passed")
+            shared = Path(temporary) / "shared"
+            shutil.copytree(ROOT / 'tests/fixtures/model-usage-shared', shared)
+            requests = shared / 'requests.jsonl'
+            result = subprocess.run(["timeout", "12", "qs", "-p", str(shared), "--no-color"],
+                env={**env, "QT_QPA_PLATFORM": "offscreen", "MODEL_USAGE_REPO_URL": package.as_uri(),
+                     "MODEL_USAGE_FAKE_REQUEST": str(shared / 'request.py'),
+                     "MODEL_USAGE_REQUEST_MARKER": str(requests)}, capture_output=True, text=True)
+            output = result.stdout + result.stderr
+            if result.returncode or any(error in output for error in
+                    ("Error:", "ReferenceError", "TypeError", "invalid context", "TEST FAILED")):
+                raise SystemExit(output)
+            rows = [json.loads(line) for line in requests.read_text().splitlines()]
+            counts = {(kind, key): sum(row['kind'] == kind and row['key'] == key for row in rows)
+                      for kind in ('quota', 'activity') for key in ('old', 'new')}
+            assert counts == {('quota', 'old'): 2, ('activity', 'old'): 2,
+                              ('quota', 'new'): 1, ('activity', 'new'): 1}, counts
+            print("Model Usage shared quota/activity hotplug, idle, manual refresh and credentials passed")
     print("Model Usage upstream tests and settings contract passed")
 
 

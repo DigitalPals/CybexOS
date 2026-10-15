@@ -19,6 +19,7 @@ Ui.Panel {
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property color surface: Color.popups.background
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  property bool automaticRefreshEnabled: true
 
   readonly property bool proxyMode: backend.usageSource === "cliproxy"
   readonly property var providers: UsageLogic.availableProviders(proxyMode
@@ -30,8 +31,17 @@ Ui.Panel {
   property string settingsReturnView: "limits"
   readonly property bool configuring: viewMode === "settings" || viewMode === "cost-settings"
   readonly property var activeSettingsForm: viewMode === "cost-settings" ? costConfigForm : configForm
-  property alias costSettingsForm: costConfigForm
-  property alias settingsForm: configForm
+  readonly property var costSettingsForm: costConfigForm
+  readonly property var settingsForm: configForm
+  readonly property UsagePopup popup: popupLoader.item as UsagePopup
+  readonly property var configForm: popup ? popup.configurationForm : null
+  readonly property var costConfigForm: popup ? popup.costConfigurationForm : null
+  readonly property var panelFlick: popup ? popup.flick : null
+  readonly property var keyCatcher: popup ? popup.keyTarget : null
+  readonly property var resetForm: popup ? popup.resetConfirmation : null
+  readonly property var navigation: popup ? popup.navigationController : null
+  readonly property var costsView: popup ? popup.costs : null
+  readonly property bool popupLoaded: popupLoader.status === Loader.Ready
   property alias resetAction: resetBackend
   property double nowMs: Date.now()
 
@@ -66,7 +76,7 @@ Ui.Panel {
   readonly property var provider: providerSummary
   readonly property var proxyAccounts: UsageLogic.listOrEmpty(providerSummary && providerSummary.accounts)
   readonly property bool accountOverview: proxyMode && proxyAccounts.length > 0
-  property alias accountCards: accountRepeater
+  readonly property var accountCards: popup ? popup.accountCards : null
   readonly property var providerOptions: {
     var result = []
     for (var i = 0; i < providers.length; i++)
@@ -135,6 +145,7 @@ Ui.Panel {
   }
 
   function showSettings() {
+    ensurePopup()
     if (!configuring) settingsReturnView = viewMode
     configForm.begin(settings)
     viewMode = "settings"
@@ -143,6 +154,7 @@ Ui.Panel {
   }
 
   function showCostSettings() {
+    ensurePopup()
     settingsReturnView = "costs"
     costConfigForm.begin(settings)
     viewMode = "cost-settings"
@@ -365,9 +377,12 @@ Ui.Panel {
   implicitWidth: percentageMode ? percentageGroup.implicitWidth : iconButton.implicitWidth
   implicitHeight: percentageMode ? percentageGroup.implicitHeight : iconButton.implicitHeight
 
+  function ensurePopup() { popupLoader.active = true }
+
   onProvidersChanged: ensureSelection()
   onSelectedProviderIdChanged: expandedAccountLimits = false
   onOpenedChanged: if (opened) {
+    ensurePopup()
     nowMs = Date.now()
     if (viewMode === "costs") costBackend.ensureLoaded()
     if (panelFlick) panelFlick.contentY = 0
@@ -377,27 +392,27 @@ Ui.Panel {
       else keyCatcher.forceActiveFocus()
     })
   } else {
-    navigation.closeProviderMenu()
+    if (navigation) navigation.closeProviderMenu()
     if (costsView) costsView.closeMenu()
     if (configuring) viewMode = settingsReturnView
   }
 
   onViewModeChanged: {
-    navigation.closeProviderMenu()
+    if (navigation) navigation.closeProviderMenu()
     if (costsView) costsView.closeMenu()
-    if (viewMode !== "settings") configForm.discardKey()
-    if (viewMode !== "cost-settings") costConfigForm.discardKey()
+    if (viewMode !== "settings" && configForm) configForm.discardKey()
+    if (viewMode !== "cost-settings" && costConfigForm) costConfigForm.discardKey()
     if (viewMode === "costs") costBackend.ensureLoaded()
     if (panelFlick) panelFlick.contentY = 0
   }
 
-  UsageBackend {
+  UsageSharedBackend {
     id: backend
     settings: root.settings
-    onRefreshed: activityBackend.refresh()
+    automaticRefreshEnabled: root.automaticRefreshEnabled
   }
 
-  UsageActivityBackend {
+  UsageSharedActivityBackend {
     id: activityBackend
     usageBackend: backend
     settings: root.settings
@@ -408,10 +423,10 @@ Ui.Panel {
     usageBackend: backend
     onFinished: backend.refresh()
     onStateChanged: {
-      if (panelFlick) panelFlick.contentY = 0
+      if (root.panelFlick) root.panelFlick.contentY = 0
       Qt.callLater(function() {
-        if (resetBackend.active) resetForm.focusFirst()
-        else keyCatcher.forceActiveFocus()
+        if (resetBackend.active && root.resetForm) root.resetForm.focusFirst()
+        else if (root.keyCatcher) root.keyCatcher.forceActiveFocus()
       })
     }
   }
@@ -560,8 +575,24 @@ Ui.Panel {
     }
   }
 
-  Ui.KeyboardPanel {
+  // Keep the lightweight bar and shared data ready; construct the popup's
+  // forms/delegates only on first use, then retain them for focus and drafts.
+  Loader {
+    id: popupLoader
+    active: false
+    sourceComponent: UsagePopup {}
+  }
+
+  component UsagePopup: Ui.KeyboardPanel {
     id: panel
+    property alias accountCards: accountRepeater
+    property alias configurationForm: configForm
+    property alias costConfigurationForm: costConfigForm
+    property alias flick: panelFlick
+    property alias keyTarget: keyCatcher
+    property alias resetConfirmation: resetForm
+    property alias navigationController: navigation
+    property alias costs: costsView
     anchorItem: root.percentageMode ? percentageGroup : iconButton
     owner: root
     bar: root.bar
