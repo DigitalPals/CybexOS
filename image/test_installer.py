@@ -633,8 +633,24 @@ class InstallModeTests(unittest.TestCase):
                                         {"/run/": str(root) + "/"})
                 self.assertEqual(result.stdout, expected, (live, marked))
         text = launcher.read_text()
-        self.assertIn('systemctl --user stop hyprland-session.target "$CYBEXOS_SESSION_TARGET"', text)
         self.assertLess(text.index("export CYBEXOS_SESSION_TARGET"), text.index("Hyprland --config"))
+
+    def test_launcher_stops_each_selected_session_target_once(self):
+        text = (ROOT / "rootfs/usr/bin/hyprland-quickshell").read_text()
+        cleanup = text[text.index('session_stop_targets='):text.index('# Launch once:')]
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'stopped'
+            for target in ('hyprland-session.target', 'cybexos-install-session.target'):
+                log.unlink(missing_ok=True)
+                result = subprocess.run(['bash', '-euc',
+                    'systemctl() { printf "%s\\n" "$*" >>"$SESSION_TEST_LOG"; }\n' + cleanup],
+                    env={'PATH': '/usr/bin:/bin', 'CYBEXOS_SESSION_TARGET': target,
+                         'SESSION_TEST_LOG': str(log)}, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                targets = ['hyprland-session.target']
+                if target != targets[0]:
+                    targets.append(target)
+                self.assertEqual(log.read_text().splitlines(), ['--user stop ' + ' '.join(targets)])
 
     def test_install_session_starts_only_the_installer(self):
         import configparser

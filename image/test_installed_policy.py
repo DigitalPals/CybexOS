@@ -298,7 +298,7 @@ class InstalledPolicy(unittest.TestCase):
         # A fresh target has no linger directory; the copy module will not
         # create it, which aborted the Anaconda post-install script.
         order = [task['name'] for task in flatten('image.yml')]
-        directory = 'Create the lingering directory in the offline installation target'
+        directory = 'Create the offline user lingering directory'
         self.assertLess(order.index(directory), order.index('Enable user lingering in the offline installation target'))
         self.assertEqual(image[directory]['ansible.builtin.file'],
                          {'path': '/var/lib/systemd/linger', 'state': 'directory',
