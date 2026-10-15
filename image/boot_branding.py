@@ -9,6 +9,46 @@ import re
 import shutil
 
 MARKER = "# CybexOS menu appearance"
+# Kernel argument for the installation-only session; see cybexos-live-setup.
+INSTALL_ARGUMENT = "cybexos.install"
+
+
+def grub_install_entries(text):
+    """Offer each generated live entry twice: straight to the installer, then live.
+
+    The first entry stays the default, so an unattended boot opens the installer.
+    """
+    if INSTALL_ARGUMENT in text:
+        return text
+
+    def pair(match):
+        block = match.group(0)
+        install = re.sub(r"(?m)^([ \t]*linux(?:efi)?[ \t].*?)[ \t]*$", rf"\1 {INSTALL_ARGUMENT}", block, count=1)
+        return (install.replace("menuentry 'Start CybexOS", "menuentry 'Install CybexOS", 1)
+                + block.replace("menuentry 'Start CybexOS", "menuentry 'Try CybexOS live", 1))
+    return re.sub(r"(?ms)^[ \t]*menuentry 'Start CybexOS[^\n]*\{\n.*?^[ \t]*\}\n", pair, text)
+
+
+def isolinux_install_entries(text):
+    """The BIOS menu equivalent; `menu default` moves to the installer entry."""
+    if INSTALL_ARGUMENT in text:
+        return text
+
+    def pair(match):
+        name, body = match.group(1), match.group(2)
+        label = re.search(r"(?m)^\s*menu label (.*)$", body).group(1)
+        if "Start CybexOS" not in label.replace("^", ""):
+            return match.group(0)
+        main = label.startswith("^Start CybexOS")
+        live_label = label.replace("Start CybexOS", "Try CybexOS live", 1)
+        install_label = ("^Install CybexOS" + label[len("^Start CybexOS"):] if main
+                         else label.replace("^", "").replace("Start CybexOS", "Install CybexOS", 1))
+        live = body.replace(f"menu label {label}", f"menu label {live_label}", 1)
+        live = re.sub(r"(?m)^[ \t]*menu default\n", "", live)
+        install = body.replace(f"menu label {label}", f"menu label {install_label}", 1)
+        install = re.sub(r"(?m)^([ \t]*append .*?)[ \t]*$", rf"\1 {INSTALL_ARGUMENT}", install, count=1)
+        return f"label install-{name}\n{install}label {name}\n{live}"
+    return re.sub(r"(?m)^label (\S+)\n((?:[ \t]+.*\n)*)", pair, text)
 
 
 def brand_boot_menu(isodir, install_root, source=None):
@@ -38,12 +78,11 @@ if loadfont /boot/grub2/themes/cybexos/unicode.pf2; then
 fi
 '''
         for path in grub_paths:
-            text = path.read_text()
-            if MARKER not in text:
-                path.write_text(text + appearance)
+            text = grub_install_entries(path.read_text())
+            path.write_text(text if MARKER in text else text + appearance)
     bios = isodir / "isolinux/isolinux.cfg"
     if bios.is_file():
-        text = bios.read_text()
+        text = isolinux_install_entries(bios.read_text())
         # A generic Fedora splash can be referenced by stock syslinux. Use a
         # dark canvas with the same warm accent, retaining all boot entries.
         text = re.sub(r"(?m)^menu background .*\n", "", text)

@@ -295,6 +295,15 @@ class InstalledPolicy(unittest.TestCase):
         offline = image['Enable user lingering in the offline installation target']['ansible.builtin.copy']
         self.assertEqual((offline['dest'], offline['owner'], offline['mode']),
                          ('/var/lib/systemd/linger/{{ primary_user }}', 'root', '0644'))
+        # A fresh target has no linger directory; the copy module will not
+        # create it, which aborted the Anaconda post-install script.
+        order = [task['name'] for task in flatten('image.yml')]
+        directory = 'Create the lingering directory in the offline installation target'
+        self.assertLess(order.index(directory), order.index('Enable user lingering in the offline installation target'))
+        self.assertEqual(image[directory]['ansible.builtin.file'],
+                         {'path': '/var/lib/systemd/linger', 'state': 'directory',
+                          'owner': 'root', 'group': 'root', 'mode': '0755'})
+        self.assertEqual(image[directory]['when'], 'cybexos_offline | default(false) | bool')
         self.assertEqual(image['Configure active local wheel Polkit authorization']['when'],
                          'passwordless_local_polkit | bool')
         inventory = yaml.safe_load((ROOT / 'inventory/group_vars/all.yml').read_text())

@@ -31,6 +31,7 @@
       <label>Try your keyboard<input id="keyboard-test" autocomplete="off" placeholder="Type a few characters here" spellcheck="false"></label>
       <p id="keyboard-status" class="hint" role="status"></p>
       <label id="username-field">Username<input id="username" name="username" required pattern="[a-z_][a-z0-9_-]{0,30}" maxlength="31" autocomplete="off" spellcheck="false" autocapitalize="none"></label>
+      <p class="hint">Lowercase letters, numbers, dashes and underscores. Capitals become lowercase.</p>
       <div class="pair">
         <label><span id="password-label">Password</span><input id="password" type="password" required minlength="12" maxlength="512" autocomplete="new-password"></label>
         <label><span id="confirm-label">Confirm password</span><input id="confirm" type="password" required minlength="12" maxlength="512" autocomplete="new-password"></label>
@@ -106,6 +107,22 @@
     <p id="restart-help" hidden>Restart your computer, then remove the USB drive or select the installed disk.</p>
     <button id="reboot" class="primary" hidden>Restart into CybexOS</button>
   </section>
+  <details id="log-panel">
+    <summary>Installation details</summary>
+    <p class="hint">Follow what the installer is doing. These logs contain no passwords.</p>
+    <label>Log<select id="log-source">
+      <option value="steps">Installation steps</option>
+      <option value="anaconda">Anaconda</option>
+      <option value="programs">Commands</option>
+      <option value="storage">Storage</option>
+      <option value="software">Software</option>
+      <option value="post">Post-installation scripts</option>
+    </select></label>
+    <pre id="log" tabindex="0" aria-label="Installer log"></pre>
+    <label>Save all logs to a USB drive<select id="log-destination"><option value="">Connect a USB drive, then search</option></select></label>
+    <footer><button id="find-destinations" type="button" class="secondary">Search for USB drives</button><button id="export-logs" type="button" class="secondary">Save logs</button></footer>
+    <p id="export-status" class="hint" role="status"></p>
+  </details>
   <div id="startup-retry" hidden><button id="retry" class="primary">Try again</button><a href="../anaconda-webui/index.html">Open the full installer</a></div>
 </main>
 </body>

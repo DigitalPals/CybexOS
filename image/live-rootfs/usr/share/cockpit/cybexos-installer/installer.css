@@ -153,6 +153,21 @@ fieldset .check { margin-top: 14px; }
 #space { accent-color: var(--accent); padding: 0; min-height: 32px; border: 0; background: transparent; }
 #seed-errors { color: var(--accent-text); padding-left: 18px; line-height: 1.5; }
 #countdown { font-size: 22px; color: var(--ink); font-variant-numeric: tabular-nums; }
+#log {
+  max-height: 45vh;
+  min-height: 8em;
+  overflow: auto;
+  margin: 12px 0 0;
+  padding: 14px 16px;
+  background: #09090b;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font: 12px/1.5 ui-monospace, "JetBrains Mono", monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#log-panel footer { margin-top: 16px; padding-top: 0; border-top: 0; justify-content: flex-start; }
 [hidden] { display: none !important; }
 button:disabled, input:disabled, select:disabled { cursor: wait; }
 

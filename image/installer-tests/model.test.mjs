@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {Wizard, GiB, systemsLabel, clampSpace, shrinkFor, countdownText, reviewFields, confirmationCopy}
+import {Wizard, accountName, GiB, systemsLabel, clampSpace, shrinkFor, countdownText, reviewFields, confirmationCopy}
     from "../live-rootfs/usr/share/cockpit/cybexos-installer/model.mjs";
 
 test("account validation handles mismatch, username and a long non-ASCII phrase", () => {
@@ -14,6 +14,10 @@ test("account validation handles mismatch, username and a long non-ASCII phrase"
     for (const password of ["long\nfixture password", "x".repeat(513)]) {
         assert.throws(() => wizard.account({username: "alice", password, confirm: password}));
     }
+});
+test("typed capitals become the lowercase account name", () => {
+    assert.equal(accountName("John"), "john");
+    assert.equal(new Wizard().account({username: accountName("JOHN_2"), password: "long fixture password", confirm: "long fixture password"}).username, "john_2");
 });
 test("review and installation require a plan and explicit erase confirmation", () => {
     const wizard = new Wizard();

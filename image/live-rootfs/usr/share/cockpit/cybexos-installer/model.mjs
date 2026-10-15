@@ -4,6 +4,8 @@ const reserved = new Set(["root", "liveuser", "bin", "daemon", "adm", "mail", "f
 export const GiB = 1024 ** 3;
 const MiB = 1024 ** 2;
 
+// Linux account names are lowercase; typing "John" creates the account "john".
+export const accountName = value => value.toLowerCase();
 export class Wizard {
     constructor() { this.page = "setup"; this.busy = false; this.plan = null; }
     move(page) {

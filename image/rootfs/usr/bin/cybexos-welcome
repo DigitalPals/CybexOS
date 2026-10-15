@@ -44,9 +44,11 @@ class Welcome(QObject):
         "network": ["settings", "open", "network"],
     }
 
-    def __init__(self):
+    def __init__(self, install_mode=False):
         super().__init__()
         self.live = Path("/run/cybexos-live").exists()
+        # The "Install CybexOS" boot entry: this window is the whole session.
+        self.install_mode = self.live and install_mode
         self.marker = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) / "cybexos/welcome-complete"
         # The runtime helper reaches the shell that is actually running,
         # including a development checkout selected with `cybex dev`.
@@ -161,6 +163,10 @@ class Welcome(QObject):
     @Property(bool, constant=True)
     def isLive(self):
         return self.live
+
+    @Property(bool, constant=True)
+    def isInstallMode(self):
+        return self.install_mode
 
     @Property(bool, notify=changed)
     def busy(self):
@@ -322,6 +328,29 @@ class Welcome(QObject):
     def failed(self, _error):
         self.message = "Could not open the installer: " + self.process.errorString()
         self.changed.emit()
+
+    @Slot()
+    def startDesktop(self):
+        """Leave installation-only mode for the full live desktop."""
+        if not self.install_mode or self.busy:
+            return
+        success, _ = QProcess.startDetached("systemctl", ["--user", "start", "--no-block", "hyprland-session.target"])
+        if not success:
+            self.message = "The live desktop could not be started."
+            self.changed.emit()
+            return
+        # The desktop session opens its own live welcome window.
+        QGuiApplication.quit()
+
+    @Slot(str)
+    def power(self, action):
+        # Installation-only mode has no shell, so this window offers the power menu.
+        if not self.install_mode or self.busy or action not in ("reboot", "poweroff"):
+            return
+        success, _ = QProcess.startDetached("systemctl", [action])
+        if not success:
+            self.message = "The computer could not be restarted or powered off from here."
+            self.changed.emit()
 
     @Slot(str)
     def openSettings(self, page):
@@ -552,7 +581,7 @@ def main():
     app = QGuiApplication(sys.argv)
     app.setApplicationName("cybex")
     app.setDesktopFileName("cybex")
-    backend = Welcome()
+    backend = Welcome(install_mode="--install-mode" in sys.argv)
     if "--autostart" in sys.argv and not backend.live and backend.marker.exists():
         return 0
     socket_name = str(Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "cybexos-welcome")

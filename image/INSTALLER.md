@@ -11,7 +11,28 @@ ISO creation and publication were deferred at the user's request. No real
 installation or host login-manager switch was performed. Do not label an image
 qualified until the opt-in installation tests pass.
 
+## Boot entries
+
+The ISO menu (UEFI GRUB and BIOS isolinux) offers each generated live entry
+twice. **Install CybexOS** is first and the default; it adds `cybexos.install`
+to the kernel command line. **Try CybexOS live** is the unchanged live desktop.
+The basic graphics troubleshooting entry has the same pair.
+
+With `cybexos.install`, `cybexos-live-setup` creates `/run/cybexos-install-mode`
+and the session launcher starts `cybexos-install-session.target` instead of
+`hyprland-session.target`. That target starts only the Polkit agent and the
+welcome window in `--install-mode`, which opens the installer immediately.
+There is no menubar, dictation, idle daemon, Hermes bridge, input method or
+background offline-application seeding. The window cannot be closed; it can
+reopen the installer, restart, power off, or start the full live desktop.
+Both entries boot the same image, so this saves startup time and memory, not
+download size or installation time: Anaconda installs by copying the live
+root filesystem, which must therefore contain every installed application.
+
 ## User flow
+
+Usernames are lowercase. Capital letters are lowercased while typing, so
+"John" creates the account `john`; the backend still rejects anything else.
 
 1. **Your setup:** select a keyboard, test it, and enter username/password twice.
    Language, timezone, hostname and **Prepare this computer for a new owner**
@@ -333,6 +354,33 @@ installation's `config.yml` choices into `install-choices.json`, writes
 `oem.json`, and the new-owner setup follows. The system is at the factory
 point's package versions; the new owner updates as usual. Hostname and machine
 ID are kept.
+## Installation details and logs
+
+An **Installation details** panel at the bottom of every page follows one
+allow-listed log, refreshed every two seconds while open:
+
+| Choice | Files |
+| --- | --- |
+| Installation steps | `/run/cybexos-installer/worker.log`: timestamped Anaconda steps and the error that stopped them |
+| Anaconda | `/tmp/anaconda.log` |
+| Commands | `/tmp/program.log` |
+| Storage | `/tmp/storage.log` |
+| Software | `/tmp/packaging.log` |
+| Post-installation scripts | `/mnt/sysroot/var/log/anaconda/cybexos-cleanup.log` (chroot `%post`) and `/var/log/anaconda/cybexos-target-policy.log` (`--nochroot`) |
+
+The page shows at most the last 96 KiB of each. A failed installation names the
+step it stopped in and opens the log most likely to explain it: the
+post-installation scripts for "Running post-installation scripts", otherwise
+the step log. Public status and saved state use only fixed step labels. The
+log panel records Anaconda's free-form task and error text, which can include
+paths and personal data; review exported logs before sharing them. Anaconda's
+`/tmp/sensitive-info.log` is never read.
+
+**Save logs** writes `cybexos-install-logs-DATE-TIME.tar.gz`, with all of these
+logs, the secret-free state file and this boot's journal, to a writable
+filesystem (FAT, exFAT, ext2/3/4, Btrfs or XFS) on a removable drive. The live
+medium, the selected target disk and fixed disks are never offered. An
+unmounted drive is mounted `nosuid,nodev,noexec` only for the copy.
 
 ## Keyboard behavior
 
@@ -413,6 +461,9 @@ guards or invoke a real installation.
 | `status` | No input required | Secret-free state and actual task progress |
 | `reset` / `advanced` | `{}` | Clears the uncommitted plan and account state |
 | `reboot` | `{}` | Reboots only when installation state is complete |
+| `log` | `{"source":"steps"}` | The end of one allow-listed log (see above) |
+| `log-destinations` | `{}` | Writable filesystems on removable drives |
+| `export-logs` | `{"device":"sdb1"}` | Saves the log archive to one listed destination |
 
 `plan` fields are `username`, `password`, `confirm`, `keyboard`, `locale`,
 `timezone`, `hostname`, `disk`, optional boolean `encrypted` (default true),
@@ -545,6 +596,14 @@ LUKS re-key on a real LUKS2 header, restart into autologin and keyring);
 taking the factory point
 at the first start; and a complete factory reset of an encrypted installation
 through to the new owner's first login.
+Every image build runs the chroot `%post` of `90-cybexos.ks` against the
+composed root filesystem before packaging (`image/post_install_check.py`). It
+uses a throwaway overlay with an Anaconda-like administrator account, the live
+`/run` layout Anaconda binds into the target, and no network, then applies the
+target helper and checks the resulting policy. A failure stops the build and
+prints the script's output. This is how the 2026-09-26 failure (a missing
+`/var/lib/systemd/linger` directory aborting every installation after the boot
+loader step) would have been caught.
 
 `image/test_installer.py` covers input/locale validation, disk identity changes,
 confirmation/replay, plan failures and retries, durable worker outcomes, monitor

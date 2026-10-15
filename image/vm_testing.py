@@ -156,6 +156,8 @@ class TestVM:
         self.unused_disk = self.work / "unused.qcow2"
         self.key = self.work / "id_ed25519"
         self.ssh_ready = False
+        # The installation-only live session deliberately runs no Quickshell.
+        self.expect_shell = True
         self.qmp_path = self.work / "qmp.sock"
         self.runtime = None
 
@@ -288,6 +290,23 @@ class TestVM:
             qmp.stream.close()
             qmp.socket.close()
 
+    def select_boot_entry(self, entry, timeout=120):
+        """Choose an ISO menu entry. "install" is the menu default; only arrow
+        and Enter keys are sent, never text that GRUB could treat as an edit."""
+        if entry == "install":
+            return
+        if entry != "live":
+            raise ValueError("Unknown boot entry")
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.alive()
+            if self.qmp_path.exists() and "try cybexos live" in screen_phrases(self.screen_text()):
+                self.keypress("down")
+                self.keypress("ret")
+                return
+            time.sleep(0.2)
+        raise RuntimeError("The ISO boot menu was not recognized; no entry was selected")
+
     def wait_ssh(self, timeout=300, setup=True, setup_password=None, *, redactions=()):
         """Poll SSH readiness and bootstrap only inside a recognized terminal.
 
@@ -330,10 +349,12 @@ class TestVM:
                 # editor and prevent boot. Require an actual desktop surface;
                 # the installer may cover Welcome on current live images.
                 if not desktop_observed:
-                    screen = " ".join(self.screen_text().lower().split())
+                    screen = screen_phrases(self.screen_text())
+                    # Live and installed Welcome, or the installer page an
+                    # installation-only boot opens by itself.
                     desktop_observed = any(phrase in screen for phrase in (
                         "make yourself at home", "welcome to your new desktop",
-                        "your next workspace", "make it yours"))
+                        "lets install cybexos", "your next workspace", "make it yours"))
                     if not desktop_observed:
                         next_attempt = time.monotonic() + 5
                         time.sleep(1)
@@ -531,7 +552,10 @@ class TestVM:
     def stop(self, graceful=False):
         try:
             if self.process and self.process.poll() is None and self.ssh_ready:
-                run([*self.ssh, "bash -s"], input=audit_script(), text=True, timeout=45)
+                if self.expect_shell:
+                    run([*self.ssh, "bash -s"], input=audit_script(), text=True, timeout=45)
+                else:
+                    run([*self.ssh, "! pgrep -x qs"], timeout=45)
                 run([*self.ssh, "sync"], timeout=45)
                 if graceful:
                     subprocess.run([*self.ssh, "sudo systemctl poweroff"], timeout=20, check=False)
@@ -561,6 +585,11 @@ class TestVM:
             if not keep_artifacts:
                 for name in ("installed.qcow2", "unused.qcow2", "OVMF_VARS.fd", "OVMF_VARS.qcow2", "serial.log", "qemu.log"):
                     (self.work / name).unlink(missing_ok=True)
+
+
+def screen_phrases(text):
+    """OCR text as lowercase words, without punctuation such as typographic apostrophes."""
+    return " ".join(re.sub(r"[^a-z0-9 ]", "", text.lower().replace("\n", " ")).split())
 
 
 def is_disk_prompt(text):
