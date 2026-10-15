@@ -519,6 +519,37 @@ test("gpu-screen-recorder records the selected region and stops like wf-recorder
     assert.ok(!fs.existsSync(path.join(f.log, "running")));
 });
 
+test("an exited recorder awaiting its parent's reap clears recording state", t => {
+    const f = fixture(t);
+    f.env.HOME = path.join(f.base, "home");
+    f.stub("notify-send", 'printf "%s\\n" "${@: -1}" >> "$TEST_LOG/notify"');
+    const state = path.join(f.env.XDG_RUNTIME_DIR, "screen-record");
+    const result = spawnSync("/usr/bin/python3", ["-c", `
+import ctypes, os, pathlib, subprocess, sys
+state = pathlib.Path(sys.argv[1])
+state.mkdir()
+pid = os.fork()
+if pid == 0:
+    ctypes.CDLL(None).prctl(15, b"wf-recorder", 0, 0, 0)
+    os._exit(0)
+try:
+    os.waitid(os.P_PID, pid, os.WEXITED | os.WNOWAIT)
+    stat = pathlib.Path(f"/proc/{pid}/stat").read_text().split()
+    assert stat[2] == "Z"
+    (state / "wf-recorder.pid").write_text(str(pid))
+    (state / "wf-recorder.start-ticks").write_text(stat[21])
+    (state / "output-file").write_text("fixture.mp4")
+    (state / "webcam").write_text("10,20 300x200")
+    sys.exit(subprocess.call(["bash", sys.argv[2]]))
+finally:
+    os.waitpid(pid, 0)
+`, state, path.join(scripts, "screen-record")], { env: f.env, encoding: "utf8", timeout: 10_000 });
+    assert.equal(result.status, 0, result.stderr);
+    for (const name of ["webcam", "wf-recorder.pid", "wf-recorder.start-ticks", "output-file"])
+        assert.ok(!fs.existsSync(path.join(state, name)), `${name} must be cleared`);
+    assert.match(fs.readFileSync(path.join(f.log, "notify"), "utf8"), /Saved to fixture\.mp4/);
+});
+
 test("screen-record rejects unknown arguments", t => {
     const f = fixture(t);
     for (const args of [["--bogus"], ["region", "window"], ["--encoder", "region"]]) {

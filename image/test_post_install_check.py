@@ -1,7 +1,6 @@
 """Source-only fixtures for the builder's post-install check; nothing is mounted."""
 from pathlib import Path
 import shutil
-import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest

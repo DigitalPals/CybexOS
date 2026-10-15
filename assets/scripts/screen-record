@@ -138,13 +138,22 @@ notify() {
 }
 
 process_name() {
-  ps -p "$1" -o comm= 2>/dev/null | tr -d '[:space:]'
+  # ps may append "<defunct>" for zombies; the kernel keeps the actual name.
+  cat "/proc/$1/comm" 2>/dev/null
 }
 
 process_start_ticks() {
   # /proc/PID/stat field 22 is stable for a process lifetime and protects the
   # state file from PID reuse. `comm` alone can match an unrelated recorder.
   awk '{ print $22 }' "/proc/$1/stat" 2>/dev/null
+}
+
+recorder_running() {
+  local state ticks
+  # An exited recorder can remain a zombie until its parent reaps it.
+  # kill -0 still succeeds then, although recording and file finalization ended.
+  read -r state ticks < <(awk '{ print $3, $22 }' "/proc/$1/stat" 2>/dev/null) || return 1
+  [[ $state != Z && $state != X && $ticks == "$2" ]]
 }
 
 clear_state() {
@@ -191,13 +200,13 @@ stop_recording() {
   kill -INT "$pid" 2>/dev/null || true
 
   for _ in {1..50}; do
-    if ! kill -0 "$pid" 2>/dev/null; then
+    if ! recorder_running "$pid" "$expected_ticks"; then
       break
     fi
     sleep 0.1
   done
 
-  if kill -0 "$pid" 2>/dev/null; then
+  if recorder_running "$pid" "$expected_ticks"; then
     notify "Screen Recording" "Recorder did not stop; recording state was retained"
     return 2
   fi

@@ -3,6 +3,7 @@
 import configparser
 from concurrent.futures import ThreadPoolExecutor
 from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
 import json
 import os
 from pathlib import Path
@@ -11,7 +12,9 @@ import unittest
 from unittest.mock import Mock, patch
 
 REPO = Path(__file__).resolve().parents[1]
-login = SourceFileLoader('login_policy', str(REPO / 'roles/desktop/files/login/cybexos-login-prepare')).load_module()
+loader = SourceFileLoader('login_policy', str(REPO / 'roles/desktop/files/login/cybexos-login-prepare'))
+login = module_from_spec(spec_from_loader(loader.name, loader))
+loader.exec_module(login)
 
 
 class LoginPolicy(unittest.TestCase):
