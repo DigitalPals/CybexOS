@@ -21,7 +21,7 @@ test("the recording PID is published last as a verified ready marker", () => {
     assert.doesNotMatch(script, /pkill slurp/,
         "a recorder action must never kill another program's selector");
     assert.match(script,
-        /if kill -0 "\$pid"[\s\S]*recording state was retained[\s\S]*return 2/,
+        /if recorder_running "\$pid" "\$expected_ticks"; then[\s\S]*recording state was retained[\s\S]*return 2/,
         "a timed-out stop must keep its truthful active marker");
     assert.match(script, /^capture_mode=region$/m,
         "existing keybindings retain region capture as their default");
