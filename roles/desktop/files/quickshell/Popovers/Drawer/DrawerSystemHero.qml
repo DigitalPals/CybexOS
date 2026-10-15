@@ -283,7 +283,7 @@ Rectangle {
             spacing: 0
 
             MetricRow {
-                label: "CPU"
+                label: I18n.tr("CPU")
                 known: SysInfo.cpuUsageKnown
                 percent: SysInfo.cpuUsage
                 detail: SysInfo.cpuModel !== ""
@@ -307,7 +307,7 @@ Rectangle {
             }
 
             MetricRow {
-                label: "MEMORY"
+                label: I18n.tr("MEMORY")
                 known: SysInfo.memKnown
                 percent: SysInfo.memUsage
                 detail: root.memoryDetail
@@ -331,7 +331,7 @@ Rectangle {
             }
 
             MetricRow {
-                label: "DISK /"
+                label: I18n.tr("DISK /")
                 known: SysInfo.rootFsKnown
                 percent: SysInfo.rootFsUsage
                 detail: root.diskDetail

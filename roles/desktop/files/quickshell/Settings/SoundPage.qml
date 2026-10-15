@@ -217,11 +217,11 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Output"
+            title: I18n.tr("Output")
 
             VolumeRow {
                 width: parent.width
-                label: "Volume"
+                label: I18n.tr("Volume")
                 channelName: "output"
                 value: Audio.level
                 muted: Audio.muted
@@ -232,7 +232,7 @@ SettingsPage {
             SettingsRow {
                 width: parent.width
                 visible: page.localOutputs.length > 0
-                label: "Output device"
+                label: I18n.tr("Output device")
                 narrowHeight: Theme.settingsControlHeight
             }
             Repeater {
@@ -275,7 +275,7 @@ SettingsPage {
             SystemChoice {
                 width: parent.width
                 visible: page.outputInfo !== null && page.outputInfo.ports.length > 1
-                label: "Port"
+                label: I18n.tr("Port")
                 choices: page.outputInfo ? page.outputInfo.ports : []
                 current: page.outputInfo ? page.outputInfo.port : ""
                 onPicked: value => page.service.run({action: "port", kind: "sinks",
@@ -284,7 +284,7 @@ SettingsPage {
             SliderRow {
                 width: parent.width
                 visible: page.outputInfo !== null
-                label: "Balance"
+                label: I18n.tr("Balance")
                 disabledReason: page.outputInfo && !page.outputInfo.stereo
                     ? "Only stereo outputs have a balance" : ""
                 value: !isNaN(page.heldBalance) ? page.heldBalance
@@ -307,7 +307,7 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Input"
+            title: I18n.tr("Input")
 
             SettingsHint {
                 width: parent.width
@@ -317,7 +317,7 @@ SettingsPage {
             SettingsRow {
                 width: parent.width
                 visible: page.inputs.length > 0
-                label: "Input device"
+                label: I18n.tr("Input device")
                 narrowHeight: Theme.settingsControlHeight
             }
             Repeater {
@@ -338,7 +338,7 @@ SettingsPage {
                 id: inputVolume
                 width: parent.width
                 visible: Audio.sourceReady
-                label: "Input volume"
+                label: I18n.tr("Input volume")
                 channelName: "microphone"
                 glyph: "mic"
                 mutedGlyph: "mic_off"
@@ -350,7 +350,7 @@ SettingsPage {
             LevelRow {
                 width: parent.width
                 visible: Audio.sourceReady
-                label: "Input level"
+                label: I18n.tr("Input level")
                 level: page.micPeak
                 trackX: inputVolume.trackX
                 trackSpan: inputVolume.trackSpan
@@ -359,7 +359,7 @@ SettingsPage {
             SystemChoice {
                 width: parent.width
                 visible: page.inputInfo !== null && page.inputInfo.ports.length > 1
-                label: "Port"
+                label: I18n.tr("Port")
                 choices: page.inputInfo ? page.inputInfo.ports : []
                 current: page.inputInfo ? page.inputInfo.port : ""
                 onPicked: value => page.service.run({action: "port", kind: "sources",
@@ -370,7 +370,7 @@ SettingsPage {
         SettingsGroup {
             width: parent.width
             visible: page.cards.length > 0
-            title: "Hardware profiles"
+            title: I18n.tr("Hardware profiles")
 
             Repeater {
                 model: ScriptModel {
@@ -392,7 +392,7 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Applications"
+            title: I18n.tr("Applications")
 
             Repeater {
                 model: ScriptModel {
@@ -437,11 +437,11 @@ SettingsPage {
             }
             ActionRow {
                 width: parent.width
-                label: "Advanced audio controls"
-                hint: "Every port, profile and stream option, in Volume Control"
+                label: I18n.tr("Advanced audio controls")
+                hint: I18n.tr("Every port, profile and stream option, in Volume Control")
 
                 SettingsAction {
-                    text: "Open"
+                    text: I18n.tr("Open")
                     glyph: "open_in_new"
                     enabled: !SystemSettings.externalBusy
                     onTriggered: SystemSettings.openExternal("sound")

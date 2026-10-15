@@ -27,9 +27,12 @@ The stable top-level setting families are:
 
 - Wallpaper: `wall`, `wallDir`, and `shuffle`.
 - Appearance: theme, glass, contrast, motion, text scale, density, bar color,
-  font, accent, and palette fields.
+  font, accent, and palette fields. `theme` and `themePalette` record the
+  named theme applied last; change them with `cybex theme apply ID`, which
+  sets every value a theme owns together.
 - Bar: `position`, `barStyle`, `gap`, `barHeight`, `barRadius`, `autoHide`, and
-  `exclusive`.
+  `exclusive`; the optional dock's `dock`, `dockAutoHide`, and `dockPinned`
+  (desktop entry ids, a complete ordered list).
 - System behavior: clock format, temperature unit, night-light warmth, OSD
   edge, polling cap, touchpad scroll factor, night light, and idle inhibition.
 - Notifications: DND, quiet hours, duration, position, density, icons,

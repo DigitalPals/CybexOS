@@ -96,7 +96,8 @@ class InputPersistence(unittest.TestCase):
         self.run.assert_not_called()
 
     def test_invalid_changes_do_not_write(self):
-        for section, values in [('touchpad', {'tap': 'yes'}), ('touchpad', {'sensitivity': float('nan')}),
+        for section, values in [('touchpad', {'tap': 'yes'}), ('touchpad', {'workspaceSwipe': 0}),
+                                ('touchpad', {'workspaceSwipe': None}), ('touchpad', {'sensitivity': float('nan')}),
                                 ('touchpad', {'sensitivity': 2}), ('touchpad', {'naturalScroll': 1}),
                                 ('keyboard', {'layouts': []}), ('keyboard', {'layouts': [{'layout': 'bad";code()'}]}),
                                 ('keyboard', {'layouts': [{'layout': 'us', 'variant': 'missing'}]}),
@@ -105,6 +106,27 @@ class InputPersistence(unittest.TestCase):
                 self.apply(section, values)
         self.assertFalse(self.service.path.exists())
         self.run.assert_not_called()
+
+    def test_workspace_swipe_is_saved_and_reported_from_the_preferences(self):
+        replies = {
+            'input:kb_layout': {'str': 'us', 'set': True},
+            'input:kb_variant': {'str': '', 'set': True},
+            'input:kb_options': {'str': '', 'set': True},
+            'input:touchpad:tap_to_click': {'bool': True, 'set': True},
+            'input:touchpad:natural_scroll': {'bool': True, 'set': True},
+            'input:sensitivity': {'float': 0.0, 'set': False},
+            'devices': {'keyboards': []},
+        }
+        self.apply(values={'workspaceSwipe': False})
+        self.assertIs(self.service.read()[0]['touchpad']['workspaceSwipe'], False)
+        # The loader's contained-error check runs after every reload.
+        self.assertIn(['hyprctl', 'eval', 'assert(__cybexos_input_error == nil, __cybexos_input_error)'],
+                      [call.args[0] for call in self.run.call_args_list])
+        self.run.side_effect = lambda command: json.dumps(replies[command[-1]])
+        self.assertIs(self.service.dispatch({'action': 'snapshot'})['touchpad']['workspaceSwipe'], False)
+        self.service.path.unlink()
+        self.assertIs(self.service.dispatch({'action': 'snapshot'})['touchpad']['workspaceSwipe'], True,
+                      'without a saved choice the vendor gesture is on')
 
     def test_switch_uses_fixed_argument_array_without_saving(self):
         self.service.dispatch({'action': 'switch', 'layout': '$(false)'})
@@ -127,7 +149,8 @@ class InputPersistence(unittest.TestCase):
                 }
                 self.run.side_effect = lambda command: json.dumps(replies[command[-1]])
                 result = self.service.dispatch({'action': 'snapshot'})
-                self.assertEqual(result['touchpad'], {'tap': False, 'naturalScroll': True, 'sensitivity': 0.0})
+                self.assertEqual(result['touchpad'], {'tap': False, 'naturalScroll': True,
+                                                      'workspaceSwipe': True, 'sensitivity': 0.0})
                 self.assertEqual(result['keyboard']['layouts'], [
                     {'layout': 'us', 'variant': 'intl'}, {'layout': 'nl', 'variant': ''}])
                 self.assertEqual(result['keyboard']['shortcut'], 'grp:alt_shift_toggle')

@@ -137,7 +137,8 @@ passes does a stable tag deploy signed metadata to Pages. A prerelease tag
 publishes downloadable assets but does not update the stable Pages repository.
 The ISO is split into files below GitHub's per-asset size limit. `assets/` also
 contains the part manifest, original ISO SHA-256 file, reconstruction script,
-qualification reports, signed RPMs, and `desktop-SHA256SUMS`.
+qualification reports, signed RPMs, the ISO's SPDX SBOM, and
+`desktop-SHA256SUMS`.
 
 Download `desktop-SHA256SUMS` and every file it names into one directory, then
 verify and reconstruct without replacing an existing output:
@@ -159,6 +160,69 @@ signed metadata snapshot. Metadata points each package URL at that release's
 RPM asset, so Pages never needs to host the large RPM. Publication is ordered:
 the Pages deployment waits until the immutable Release and RPM assets exist.
 Until both jobs complete successfully, the channel is not ready for enrollment.
+
+## Software bill of materials
+
+Each image build writes an SPDX 2.3 JSON SBOM beside the ISO and names it after
+the ISO: `CybexOS-Live-44-BUILD-ID.spdx.json`. `image/compose` records the
+finished image root in `rpm-inventory.tsv` (the `RPM_QUERYFORMAT` in
+[`image/sbom.py`](../image/sbom.py)) and `flatpak-inventory.tsv`. When the
+artifacts reach the host, `image/build` generates the SBOM from those files,
+`build-provenance.json` and the inventory, and lists it in `SHA256SUMS`. The
+SBOM contains:
+
+- a root `CybexOS` package with the version, Git revision, source content
+  digest, build ID, and the ISO filename and SHA-256;
+- every installed RPM, with epoch, version, release, architecture, declared
+  license, source RPM, vendor, and a `pkg:rpm` package URL. A License tag that
+  is not a valid SPDX expression becomes a `LicenseRef-` entry holding the
+  verbatim text;
+- every installed Flatpak application and runtime, with its ref, origin, and
+  full OSTree commit;
+- the downloads from `inventory/group_vars/all.yml` and the apps role defaults
+  that the image bundles: GitHub release applications, Nerd Fonts, font files
+  and archives, Omawrite, source builds, the LazyVim starter, and vendor
+  repository keys. Each has its URL and its SHA-256 or Git commit.
+
+The `cybexos-desktop` entry has the SHA-256 of the unsigned RPM that
+`release.json` records as `unsigned_input_sha256`. Generation is deterministic:
+the timestamp and namespace come from build provenance, and packages and
+relationships are sorted. The release gate requires one SBOM in the build
+artifacts. Before it signs anything, `prepare-github-release` checks that the
+SBOM describes the exact qualified ISO and candidate RPM. It then copies the
+SBOM into `assets/` and `desktop-SHA256SUMS`. From a checkout, check a
+downloaded SBOM against the ISO checksum file:
+
+```bash
+python3 image/sbom.py verify CybexOS-Live-44-BUILD-ID.spdx.json \
+  --iso-checksum CybexOS-Live-44-BUILD-ID.iso.sha256
+```
+
+The publishing job adds the SBOM file as a second subject of the release
+provenance attestation, so the source archive's bundle also verifies it. It
+also creates an SPDX attestation (predicate type
+`https://spdx.dev/Document/v2.3`) whose subject is the ISO digest and whose
+predicate is the SBOM. That bundle is published as
+`CybexOS-Live-44-BUILD-ID.iso.sbom.sigstore.jsonl`. Verify both offline, the
+second against the reconstructed ISO:
+
+```bash
+gh attestation verify CybexOS-Live-44-BUILD-ID.spdx.json \
+  --bundle cybexos-VERSION.tar.zst.sigstore.jsonl \
+  --repo DigitalPals/CybexOS \
+  --signer-workflow DigitalPals/CybexOS/.github/workflows/release.yml \
+  --source-ref refs/tags/vVERSION --deny-self-hosted-runners
+gh attestation verify CybexOS-Live-44-BUILD-ID.iso \
+  --bundle CybexOS-Live-44-BUILD-ID.iso.sbom.sigstore.jsonl \
+  --predicate-type https://spdx.dev/Document/v2.3 \
+  --repo DigitalPals/CybexOS \
+  --signer-workflow DigitalPals/CybexOS/.github/workflows/release.yml \
+  --source-ref refs/tags/vVERSION --deny-self-hosted-runners
+```
+
+The workflow verifies the archive and SBOM provenance offline before it
+publishes. It checks the SBOM attestation's subject digest and predicate type
+from the bundle, because the publishing job has only the ISO parts.
 
 ## Enroll the installed RPM channel
 

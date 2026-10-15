@@ -18,16 +18,43 @@ Earlier implementation and audit notes are historical: the
 
 | Screen | Required choices | Defaults |
 | --- | --- | --- |
-| Your setup | Username, password/confirmation, keyboard | Language, detected timezone (dropdown) and hostname under More options; live keyboard applied before password entry, with a test field |
-| Install location | Disk, identified by model and capacity | LUKS2-encrypted Btrfs, shared initial disk/account password, automatic login |
-| Review and install | Explicit confirmation to erase the selected disk | Anaconda's actual partition plan, progress, completion and reboot |
+| Your setup | Username, password/confirmation, keyboard | Language, detected timezone (dropdown), hostname and "Prepare this computer for a new owner" under More options; live keyboard applied before password entry, with a test field |
+| Install location | Disk, identified by model and capacity; on a disk with another system, Install alongside (default) or Erase disk | LUKS2-encrypted Btrfs, shared initial disk/account password, automatic login |
+| Review and install | Explicit confirmation to erase the disk, or to resize the named partition | Anaconda's actual partition plan, what is resized/created/kept, progress, completion and reboot |
 
 The custom Cockpit page uses Fedora 44 Anaconda's DBus storage/account/task
 interfaces. Anaconda performs validation, partitioning and installation.
 The full Anaconda Web UI remains available for advanced storage. The simple
-flow requires a disk of at least 64 GiB and erases the selected disk.
-Encryption can be disabled explicitly; that path uses a normal login screen.
-Root stays locked, and the new user has administrator privileges.
+flow needs at least 64 GiB for CybexOS. It erases the selected disk or, on a
+disk with Windows or another system, installs alongside it: in free space, or
+by shrinking only the largest partition Anaconda can shrink (a size slider;
+the other system keeps its minimum plus 5 GiB). The EFI system partition is
+shared and GRUB's os-prober lists the other system. Encryption can be disabled
+explicitly; that path uses a normal login screen. Root stays locked, and the
+new user has administrator privileges.
+
+Three further paths reuse the same backend and target hooks; see
+[INSTALLER.md](INSTALLER.md):
+
+- **Unattended:** a volume labelled `CYBEXOS-SEED` (or `CIDATA`) with
+  `cybexos-seed.yml` installs without questions after a visible countdown that
+  can be cancelled. The seed names the disk by serial/WWN/model/path, must say
+  `erase: true`, takes only a password hash for the account, and reads the
+  disk passphrase and an optional one-time Tailscale key from separate files.
+  Remove and wipe the seed volume after use.
+- **New owner (OEM):** installs without an account. The first start shows a
+  short graphical setup in cage before the login screen (language and
+  keyboard, account and password, time zone, finishing); it runs as an
+  unprivileged transient user and only returns answers to the root service,
+  which checks and applies them. Without usable graphics, or with
+  `cybexos.new-owner=console` on the kernel command line, the same questions
+  are asked on the console. On an encrypted disk the new password replaces
+  the temporary passphrase in every key slot.
+- **Factory reset:** the first start takes a pinned factory recovery point.
+  `cybex factory-reset` (or Settings → Recovery points → Factory reset…)
+  restores it after a typed confirmation and sudo, and the next start removes
+  every account, home folder and other recovery point before the new-owner
+  setup.
 
 Passwords are passed through the privileged local transport and Anaconda's
 in-memory interfaces. The account is stored as a password hash. CybexOS's
@@ -133,6 +160,11 @@ pulls in that way are explicit shared selections: the GnuPG pinentry,
 `fwupd-efi`, the libcamera PipeWire camera path, `nss-mdns` (with authselect's
 `with-mdns4`), `hunspell-en`, `docker-buildx`, `ibus-setup` and common tools.
 
+Fingerprint and security-key sign-in is the same on every installation: the
+kickstart selects authselect's `with-fingerprint`, and installation, repair and
+upgrade reconciliation run the shared `cybexos-auth-policy` helper, which adds
+the sudo, Polkit and lock-screen key steps ([details](../docs/security.md)).
+
 After boot, `cybexos-hardware-setup.timer` applies the detected hardware role
 when network access is available. Failed setup remains visible in the service
 journal. A known camera ABI mismatch is cached for that kernel and provisioning
@@ -141,6 +173,14 @@ payload, avoiding repeated builds; a new kernel or changed payload retries it.
 status lives in `/var/lib/cybexos/hardware-status.json` and is shown in the
 welcome window; a pending camera setup resumes after rebooting into the same
 kernel. Successful hardware setup is also keyed to the kernel.
+
+The same setup runs the shared NVIDIA role on machines with an NVIDIA GPU: it
+installs RPM Fusion's driver, builds it for the installed kernel, queues
+Secure Boot key enrollment with a one-time password shown in the welcome
+window and a notification, and records `/var/lib/cybexos/nvidia-status.json`.
+A pending restart or enrollment keeps the hardware state pending until the
+next boot confirms the driver; a failure keeps `nouveau` running and offers
+`cybex repair --hardware`. See [NVIDIA graphics](../docs/nvidia.md).
 
 ISO installations use RPM upgrades for desktop changes. The default image has
 no enabled desktop RPM update channel; inspect channel state with
@@ -216,7 +256,8 @@ CYBEXOS_BROWSER=/usr/bin/brave-origin node image/browser-smoke.cjs
 ```
 
 It checks the minimal flow, encryption default, erase confirmation, password
-clearing, progress/reload recovery and a narrow viewport. Screenshots are
+clearing, progress/reload recovery, a narrow viewport, installing alongside
+with a resize, new-owner mode, and the seed countdown, cancel and error screens. Screenshots are
 only written when `CYBEXOS_UI_SCREENSHOTS` specifies a directory.
 
 ## Builder
@@ -277,6 +318,10 @@ hashes, host tools and timings; installed `/usr/share/cybexos/build.json`
 identifies the source build. `applications.json`, `packages.txt` and
 `package-manifest.json` record the application contract, RPM versions and
 staged payload. The latter is not an extracted-RPM audit.
+`rpm-inventory.tsv` and `flatpak-inventory.tsv` are raw inventories of the
+image root; the host turns them into the ISO's SPDX 2.3 SBOM,
+`CybexOS-Live-44-BUILD-ID.spdx.json` (see
+[the ISO release guide](../docs/iso-releases.md#software-bill-of-materials)).
 
 Moving Fedora/vendor updates mean builds are not byte-for-byte reproducible.
 The compose adapter verifies upstream RPM signatures before installation;
@@ -371,6 +416,12 @@ When boot tests are separately authorized:
   --output /path/to/new-install-test --execute-vm --erase-disposable-disk
 ```
 
+Qualification boots the ISO's default **Install CybexOS** entry, checks that
+only the installation session runs, and drives the installer that session
+opened. `--boot-entry live` instead selects **Try CybexOS live** with arrow keys,
+audits the live desktop and offline applications, and starts the installer
+itself. The smoke test (`image/test-live`) always selects the live entry.
+
 The harness detects Fedora/Debian UEFI firmware (raw or qcow2), uses bounded
 readiness checks and blocks guest outbound networking. `--firmware bios`
 selects BIOS. An adjacent `ISO-FILENAME.iso.sha256` must verify before a VM
@@ -425,7 +476,8 @@ separate checks.
 The payload includes Fedora kernel drivers, Mesa OpenGL/EGL/Vulkan and explicit
 AMD, Intel and NVIDIA firmware, plus DRM in the generic live initramfs. It does
 not force a GPU vendor. Nouveau/NVK support depends on the GPU; proprietary
-NVIDIA drivers are not bundled. Investigate graphics with `lspci -nnk`,
+NVIDIA drivers are not bundled: installed systems with an NVIDIA GPU build
+RPM Fusion's driver after the first boot. Investigate graphics with `lspci -nnk`,
 `hyprctl monitors all` and `journalctl -b -k`; basic-graphics recovery intentionally
 disables normal modesetting.
 

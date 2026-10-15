@@ -19,7 +19,8 @@ import xml.etree.ElementTree as ET
 SYSTEM_UNITS = ('NetworkManager.service', 'firewalld.service', 'avahi-daemon.service', 'cups.service',
                 'fstrim.timer', 'fwupd-refresh.timer', 'tuned.service', 'tuned-ppd.service', 'bluetooth.service',
                 'tailscaled.service', 'docker.socket', 'docker.service', 'sddm.service',
-                'cybexos-recovery-refresh.service', 'cybexos-update-recover.service')
+                'cybexos-recovery-refresh.service', 'cybexos-update-recover.service',
+                'cybexos-update-download.timer')
 USER_UNITS = ('quickshell.service', 'hypridle.service', 'voxtype.service', 'hyprland-session.target',
               'cybexos-session-lock.service', 'cybexos-input-method.service')
 COMMANDS = ('cybex', 'fastfetch', 'claude', 'opencode', 'codex', 'cargo', 'rustup', 'node', 'npm',
@@ -85,7 +86,9 @@ def capture(user, installation, scenario, profile, manifest, provenance):
     for selector in applications['packages']:
         required[selector] = sorted(command(['rpm', '-q', '--qf', '%{NAME}.%{ARCH}=%{EVR}\n', selector]).splitlines())
     installed = sorted(command(['rpm', '-qa', '--qf', '%{NAME}.%{ARCH}=%{EVR}\n']).splitlines())
-    flatpaks = sorted(command(['flatpak', 'list', '--system', '--app', '--columns=application,branch,commit']).splitlines())
+    # `active` is the deployed commit. Flatpak 1.18 rejects the older `commit`
+    # column name with "Unknown column", which failed every capture.
+    flatpaks = sorted(command(['flatpak', 'list', '--system', '--app', '--columns=application,branch,active']).splitlines())
     flatpak_ids = {line.split()[0] for line in flatpaks}
     if not set(applications['flatpaks']) <= flatpak_ids:
         raise RuntimeError('Installed Flatpak application contract is incomplete')

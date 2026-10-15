@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -8,8 +9,8 @@ const { shellDir } = require("./shell.cjs");
 // prevent the round send action and access chip from regressing into tall form
 // controls when the shell-wide metrics change.
 
-const composer = fs.readFileSync(
-    path.join(shellDir, "Popovers/T3Composer.qml"), "utf8");
+const composer = untranslated(fs.readFileSync(
+    path.join(shellDir, "Popovers/T3Composer.qml"), "utf8"));
 
 test("T3 composer send button is a round inline action, not a form control", () => {
     const send = composer.match(
@@ -51,8 +52,8 @@ test("the composer bar names the run in place and each part is its own menu", ()
 // room in its scrolling form, while existing threads overlay their transcript.
 test("new-thread bar menus reserve scroll room while thread menus open upward", () => {
     const bar = composer.match(/Item\s*\{\s*id:\s*actionRow\b([\s\S]*?)\n\s{12}\}/);
-    const newPage = fs.readFileSync(
-        path.join(shellDir, "Popovers/T3NewThreadPage.qml"), "utf8");
+    const newPage = untranslated(fs.readFileSync(
+        path.join(shellDir, "Popovers/T3NewThreadPage.qml"), "utf8"));
 
     assert.ok(bar, "expected to find the composer action bar");
     for (const id of ["modelSelect", "effortSelect", "accessSelect"])
@@ -71,24 +72,24 @@ test("new-thread bar menus reserve scroll room while thread menus open upward", 
         /id:\s*viewport[\s\S]*?anchors\.bottom:\s*parent\.bottom/,
         "the form viewport must consume the drawer below its fixed header");
 
-    const popover = fs.readFileSync(
-        path.join(shellDir, "Popovers/T3CodePopover.qml"), "utf8");
+    const popover = untranslated(fs.readFileSync(
+        path.join(shellDir, "Popovers/T3CodePopover.qml"), "utf8"));
     assert.doesNotMatch(newPage, /detachedOverflowHeight|detachedOverflowItem/);
     assert.doesNotMatch(popover, /detachedOverflowHeight|detachedOverflowItem/,
         "T3 no longer asks the host for a transparent tail");
 
     for (const host of ["Popovers/T3InlineSelect.qml", "Popovers/T3ModelPicker.qml"])
         for (const property of ["popupHeight", "popupItem"])
-            assert.match(fs.readFileSync(path.join(shellDir, host), "utf8"),
+            assert.match(untranslated(fs.readFileSync(path.join(shellDir, host), "utf8")),
                 new RegExp(`readonly property (?:int|Item) ${property}:`),
                 `${host} must publish the popup geometry its parent reserves`);
 });
 
 test("the New Thread project menu reserves room inside its scroll viewport", () => {
-    const newPage = fs.readFileSync(
-        path.join(shellDir, "Popovers/T3NewThreadPage.qml"), "utf8");
-    const picker = fs.readFileSync(
-        path.join(shellDir, "Popovers/T3Picker.qml"), "utf8");
+    const newPage = untranslated(fs.readFileSync(
+        path.join(shellDir, "Popovers/T3NewThreadPage.qml"), "utf8"));
+    const picker = untranslated(fs.readFileSync(
+        path.join(shellDir, "Popovers/T3Picker.qml"), "utf8"));
 
     for (const property of ["popupHeight", "popupItem"])
         assert.match(picker, new RegExp(`readonly property (?:int|Item) ${property}:`),
@@ -136,7 +137,7 @@ test("the composer bar yields the model name before it yields the send action", 
     assert.match(bar[1], /id:\s*accessSelect[\s\S]*?maxWidth:\s*actionRow\.accessRoom/);
     assert.ok(bar[1].indexOf("id: settingsButton") < bar[1].indexOf("id: sendButton"));
 
-    const control = fs.readFileSync(path.join(shellDir, "Popovers/T3BarControl.qml"), "utf8");
+    const control = untranslated(fs.readFileSync(path.join(shellDir, "Popovers/T3BarControl.qml"), "utf8"));
     assert.match(control, /readonly property real naturalWidth:\s*trigger\.implicitWidth/);
     assert.match(control, /implicitWidth:\s*Math\.min\(maxWidth,/);
     assert.match(control, /property real minimumWidth:\s*48/);
@@ -147,7 +148,7 @@ test("the composer bar yields the model name before it yields the send action", 
     // Three buttons that must read as one sentence cannot afford three
     // implementations that drift apart.
     for (const host of ["Popovers/T3InlineSelect.qml", "Popovers/T3ModelPicker.qml"]) {
-        const source = fs.readFileSync(path.join(shellDir, host), "utf8");
+        const source = untranslated(fs.readFileSync(path.join(shellDir, host), "utf8"));
         assert.match(source, /T3BarControl\s*\{\s*\n\s*id:\s*trigger\b/,
             `${host} must reuse the shared bar button`);
     }
@@ -169,7 +170,7 @@ test("narrow composers move reasoning into Run settings", () => {
 
 test("model and option popups are hosted by and clamp to their drawer body", () => {
     for (const file of ["T3Picker.qml", "T3InlineSelect.qml", "T3ModelPicker.qml"]) {
-        const source = fs.readFileSync(path.join(shellDir, "Popovers", file), "utf8");
+        const source = untranslated(fs.readFileSync(path.join(shellDir, "Popovers", file), "utf8"));
         assert.match(source, /property Item popupBoundsItem:\s*null/);
         assert.match(source,
             /readonly property Item popupHostItem:\s*popupBoundsItem \? popupBoundsItem : root/,
@@ -222,8 +223,8 @@ test("no rule separates the composer prompt from its controls", () => {
 // updates routes through the provider's *default* model, which a per-thread
 // guard can reject even when the model the user asked for is allowed.
 test("the composer changes provider and model as a single selection", () => {
-    const drafts = fs.readFileSync(path.join(shellDir, "Common/T3Drafts.qml"), "utf8");
-    const code = fs.readFileSync(path.join(shellDir, "Common/T3Code.qml"), "utf8");
+    const drafts = untranslated(fs.readFileSync(path.join(shellDir, "Common/T3Drafts.qml"), "utf8"));
+    const code = untranslated(fs.readFileSync(path.join(shellDir, "Common/T3Code.qml"), "utf8"));
 
     assert.match(composer,
         /function chooseSelection\(instanceId, model\)[\s\S]*?T3Code\.setNewSelection\(instanceId, model\)/);
@@ -263,7 +264,7 @@ test("draft feedback waits for the selected-draft binding before resyncing input
 
 test("the header glyph button lives in IconButton.qml, not inline copies", () => {
     for (const page of ["Popovers/T3ThreadPage.qml", "Popovers/T3NewThreadPage.qml"]) {
-        const source = fs.readFileSync(path.join(shellDir, page), "utf8");
+        const source = untranslated(fs.readFileSync(path.join(shellDir, page), "utf8"));
         assert.doesNotMatch(source, /component\s+(IconButton|HeaderAction)\s*:/,
             `${page} must use the shared IconButton type instead of a local copy`);
     }
@@ -296,7 +297,7 @@ test("the composer's round action becomes a stop while the turn is working", () 
 // as well as in glyph — with a red mixed for a fill rather than for copy.
 test("the working composer shows a red stop beside a live progress ring", () => {
     const bar = composer.match(/Item\s*\{\s*id:\s*actionRow\b([\s\S]*?)\n\s{12}\}/);
-    const theme = fs.readFileSync(path.join(shellDir, "Common/T3Theme.qml"), "utf8");
+    const theme = untranslated(fs.readFileSync(path.join(shellDir, "Common/T3Theme.qml"), "utf8"));
 
     assert.ok(bar);
     assert.match(bar[1],
@@ -315,7 +316,7 @@ test("the working composer shows a red stop beside a live progress ring", () => 
 // The strip is the composer's footnote: same object, docked to its top edge,
 // narrower than the shell so the shell reads as the thing in front.
 test("task progress docks to the composer instead of floating above the transcript", () => {
-    const page = fs.readFileSync(path.join(shellDir, "Popovers/T3ThreadPage.qml"), "utf8");
+    const page = untranslated(fs.readFileSync(path.join(shellDir, "Popovers/T3ThreadPage.qml"), "utf8"));
     const dock = page.match(/Item\s*\{\s*id:\s*composerDock\b([\s\S]*?)\n\s{4}\}/);
 
     assert.ok(dock, "expected the strip and the composer to share one wrapper");
@@ -336,7 +337,7 @@ test("task progress docks to the composer instead of floating above the transcri
 });
 
 test("the thread page interrupts the turn rather than stopping the session", () => {
-    const page = fs.readFileSync(path.join(shellDir, "Popovers/T3ThreadPage.qml"), "utf8");
+    const page = untranslated(fs.readFileSync(path.join(shellDir, "Popovers/T3ThreadPage.qml"), "utf8"));
     const composerUse = page.match(/T3Composer\s*\{([\s\S]*?)\n\s{4}\}/);
 
     assert.ok(composerUse, "expected the thread page to host a T3Composer");
@@ -344,7 +345,7 @@ test("the thread page interrupts the turn rather than stopping the session", () 
         "background work keeps its own Stop in the banner above the composer");
     assert.match(composerUse[1], /onStopRequested:\s*T3Code\.interrupt\(root\.threadId\)/,
         "stopping the session would tear down a thread the user still wants");
-    const singleton = fs.readFileSync(path.join(shellDir, "Common/T3Code.qml"), "utf8");
+    const singleton = untranslated(fs.readFileSync(path.join(shellDir, "Common/T3Code.qml"), "utf8"));
     assert.match(singleton, /function interrupt\(threadId\)\s*\{\s*T3Rpc\.interrupt\(threadId\);/);
 });
 
@@ -352,7 +353,7 @@ test("the thread page interrupts the turn rather than stopping the session", () 
 // list on the right, retired models folded away, and search that hides the
 // rail because it is deliberately global.
 test("the model picker pairs a provider rail with one model list", () => {
-    const picker = fs.readFileSync(path.join(shellDir, "Popovers/T3ModelPicker.qml"), "utf8");
+    const picker = untranslated(fs.readFileSync(path.join(shellDir, "Popovers/T3ModelPicker.qml"), "utf8"));
 
     assert.match(picker, /id:\s*providerRail[\s\S]*?visible:\s*!root\.searching/,
         "a search that a rail still scopes is not a search");
@@ -374,8 +375,8 @@ test("the model picker pairs a provider rail with one model list", () => {
 // Favourites are localStorage in the reference client — per client, never
 // synced — so this shell owns its own list rather than pretending otherwise.
 test("starred models persist in shell state, not in the thread draft", () => {
-    const favorites = fs.readFileSync(path.join(shellDir, "Common/T3Favorites.qml"), "utf8");
-    const drafts = fs.readFileSync(path.join(shellDir, "Common/T3Drafts.qml"), "utf8");
+    const favorites = untranslated(fs.readFileSync(path.join(shellDir, "Common/T3Favorites.qml"), "utf8"));
+    const drafts = untranslated(fs.readFileSync(path.join(shellDir, "Common/T3Drafts.qml"), "utf8"));
 
     assert.match(favorites, /state\/cybexos\/shell\/t3-model-favorites\.json/);
     assert.doesNotMatch(favorites, /property string statePath:\s*\n?\s*Quickshell\.statePath\(/,
@@ -385,12 +386,12 @@ test("starred models persist in shell state, not in the thread draft", () => {
     assert.doesNotMatch(drafts, /favorites:\s*\[\]/,
         "a starred model outlives the draft it was starred from");
 
-    const qmldir = fs.readFileSync(path.join(shellDir, "Common/qmldir"), "utf8");
+    const qmldir = untranslated(fs.readFileSync(path.join(shellDir, "Common/qmldir"), "utf8"));
     assert.match(qmldir, /singleton T3Favorites T3Favorites\.qml/);
 });
 
 test("the star is reachable, quiet until wanted, and never strands its own rail", () => {
-    const picker = fs.readFileSync(path.join(shellDir, "Popovers/T3ModelPicker.qml"), "utf8");
+    const picker = untranslated(fs.readFileSync(path.join(shellDir, "Popovers/T3ModelPicker.qml"), "utf8"));
     const row = picker.match(/id:\s*pickerRow\b([\s\S]*?)\n\s{24}\}/);
 
     assert.ok(row, "expected the picker's row delegate");

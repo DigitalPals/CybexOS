@@ -1,0 +1,225 @@
+#!/usr/bin/python3 -I
+"""Turn CybexOS game mode on or off.
+
+  game-mode toggle|on|off|status [--json]
+
+Game mode turns the compositor's animations, blur, shadows, window rounding
+and gaps off and holds idle locking and idle suspend off until it is turned
+off again. Super+Shift+G toggles it; the menubar shows an indicator while it
+is on, and clicking that turns it off.
+
+The compositor side is cybexos_game_mode() in looknfeel.lua, which keeps what
+it replaced and restores exactly that. This helper records the request in
+$XDG_RUNTIME_DIR/cybexos/game-mode.json ({"active": bool, "instance": ...,
+"since": ...}), which the compositor reads again after a configuration reload
+and the menubar watches for its indicator. The file names the Hyprland
+instance it belongs to: a new login starts a new instance, so game mode always
+starts off, even though account lingering keeps the runtime directory.
+
+The idle inhibitor is a transient user unit that is part of the graphical
+session, so it also ends when the session does.
+
+Exit status: 0 on success, 1 when game mode could not be changed, 2 for
+invalid usage.
+"""
+
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+
+STATE_NAME = "game-mode.json"
+MAX_BYTES = 4096
+INHIBITOR_UNIT = "cybexos-game-mode-inhibit.service"
+SESSION_TARGET = "hyprland-session.target"
+COMMAND_TIMEOUT = 10
+
+
+class Failure(Exception):
+    pass
+
+
+def runtime_dir():
+    value = os.environ.get("XDG_RUNTIME_DIR", "")
+    if not value or not os.path.isabs(value):
+        raise Failure("XDG_RUNTIME_DIR is not set; run game mode from the desktop session")
+    return Path(value) / "cybexos"
+
+
+def instance():
+    return os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
+
+
+def read_state(directory):
+    """The saved state, or an empty dict for a missing or damaged file."""
+    path = directory / STATE_NAME
+    try:
+        if path.is_symlink():
+            return {}
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_BYTES + 1)
+    except OSError:
+        return {}
+    if len(raw) > MAX_BYTES:
+        return {}
+    try:
+        state = json.loads(raw)
+    except (ValueError, UnicodeError):
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
+def is_active(state, current):
+    return state.get("active") is True and bool(current) and state.get("instance") == current
+
+
+def write_state(directory, state):
+    payload = (json.dumps(state, sort_keys=True) + "\n").encode()
+    fd, temporary = tempfile.mkstemp(prefix=".game-mode-", dir=directory)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fchmod(stream.fileno(), 0o600)
+        os.replace(temporary, directory / STATE_NAME)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def run(argv):
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=COMMAND_TIMEOUT, check=False)
+    except (OSError, subprocess.SubprocessError) as error:
+        return subprocess.CompletedProcess(argv, 127, "", str(error))
+
+
+def compositor(enabled):
+    """Ask looknfeel.lua to apply or restore; hyprctl answers "ok" on success."""
+    call = "cybexos_game_mode(" + ("true" if enabled else "false") + ")"
+    result = run(["hyprctl", "eval", call])
+    reply = (result.stdout or "").strip()
+    if result.returncode != 0 or reply.lower() != "ok":
+        detail = reply or (result.stderr or "").strip() or f"hyprctl exited with status {result.returncode}"
+        raise Failure(("Hyprland could not turn game mode on: " if enabled else
+                       "Hyprland could not restore the effects (run hyprctl reload): ")
+                      + detail.splitlines()[0])
+
+
+def inhibitor_active():
+    return run(["systemctl", "--user", "is-active", "--quiet", INHIBITOR_UNIT]).returncode == 0
+
+
+def start_inhibitor():
+    if inhibitor_active():
+        return True
+    # A failed earlier instance would block the name; --collect normally
+    # removes it, so this only clears what an interrupted run left behind.
+    run(["systemctl", "--user", "reset-failed", INHIBITOR_UNIT])
+    result = run([
+        "systemd-run", "--user", "--quiet", "--collect", "--unit=" + INHIBITOR_UNIT,
+        "--description=CybexOS game mode idle inhibitor",
+        "--property=PartOf=" + SESSION_TARGET,
+        "--", "systemd-inhibit", "--what=idle", "--who=Game mode",
+        "--why=Game mode is on", "--mode=block", "sleep", "infinity",
+    ])
+    return result.returncode == 0
+
+
+def stop_inhibitor():
+    if inhibitor_active():
+        run(["systemctl", "--user", "stop", INHIBITOR_UNIT])
+
+
+def notify(summary, body):
+    run(["notify-send", "--app-name=Game mode", "--icon=input-gaming",
+         "--hint=boolean:transient:true", summary, body])
+
+
+def report(state, current, as_json):
+    active = is_active(state, current)
+    if as_json:
+        print(json.dumps({
+            "active": active,
+            "since": state.get("since") if active and isinstance(state.get("since"), int) else None,
+            "inhibitor": inhibitor_active() if active else False,
+        }, sort_keys=True))
+    else:
+        print("on" if active else "off")
+
+
+def turn_on(directory, current):
+    if not current:
+        raise Failure("Game mode needs a running Hyprland session")
+    state = read_state(directory)
+    changed = not is_active(state, current)
+    if changed:
+        state = {"active": True, "instance": current, "since": int(time.time())}
+        # Recorded first, so a configuration reload in between still applies it.
+        write_state(directory, state)
+    try:
+        compositor(True)
+    except Failure:
+        if changed:
+            write_state(directory, {"active": False})
+        raise
+    held = start_inhibitor()
+    if not held:
+        print("game-mode: could not hold idle locking off; the screen may still lock", file=sys.stderr)
+    if changed:
+        notify("Game mode on", "Effects, gaps and the idle lock are off."
+               if held else "Effects and gaps are off. The idle lock is still on.")
+    return state
+
+
+def turn_off(directory, current):
+    state = read_state(directory)
+    changed = is_active(state, current)
+    if state.get("active") is not False:
+        # Recorded first, so a configuration reload in between does not
+        # bring game mode back. A file from an earlier login is cleared too.
+        write_state(directory, {"active": False})
+    stop_inhibitor()
+    if changed:
+        compositor(False)
+        notify("Game mode off", "Effects, gaps and the idle lock are back.")
+    return {"active": False}
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="game-mode", description="Turn CybexOS game mode on or off.")
+    parser.add_argument("action", choices=("toggle", "on", "off", "status"))
+    parser.add_argument("--json", action="store_true", help="print the resulting state as JSON")
+    args = parser.parse_args(argv)
+    try:
+        directory = runtime_dir()
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        current = instance()
+        # One change at a time: a held key must not interleave two toggles.
+        with (directory / "game-mode.lock").open("a") as lock:
+            os.fchmod(lock.fileno(), 0o600)
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            state = read_state(directory)
+            action = args.action
+            if action == "toggle":
+                action = "off" if is_active(state, current) else "on"
+            if action == "on":
+                state = turn_on(directory, current)
+            elif action == "off":
+                state = turn_off(directory, current)
+            report(state, current, args.json)
+    except Failure as error:
+        print("game-mode: " + str(error), file=sys.stderr)
+        return 1
+    except OSError as error:
+        print("game-mode: " + str(error), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

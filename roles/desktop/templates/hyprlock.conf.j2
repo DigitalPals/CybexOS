@@ -52,12 +52,23 @@ input-field {
   font_color = rgba(f2f0eaff)
   fade_on_empty = false
   placeholder_text = <span foreground="##b3afa4">Password</span>
-  fail_text = <span foreground="##ff8f8f">$PAMFAIL</span>
+  fail_text = <span foreground="##ff8f8f">$FAIL</span>
   check_color = rgba(d3d283ff)
   fail_color = rgba(ff8f8fff)
   rounding = 12
   font_family = $font
   position = 0, -18
+  halign = center
+  valign = center
+}
+
+label {
+  monitor =
+  text = $FPRINTPROMPT
+  color = rgba(b3afa4ff)
+  font_size = 14
+  font_family = $font
+  position = 0, -84
   halign = center
   valign = center
 }

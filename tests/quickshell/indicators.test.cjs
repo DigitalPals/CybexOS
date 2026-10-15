@@ -1,11 +1,12 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir, load } = require("./shell.cjs");
 
 function read(relative) {
-    return fs.readFileSync(path.join(shellDir, relative), "utf8");
+    return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
 const indicators = read("Bar/Modules/Indicators.qml");
@@ -72,7 +73,7 @@ test("OCR is an orderable stateless action that launches the installed helper", 
     );
     assert.match(indicators, /case "ocr": return false;/,
         "OCR must stay in the inactive disclosure instead of claiming persistent state");
-    assert.match(indicators, /OCR a region · copies text · Super Shift O/);
+    assert.match(indicators, /Copy text or QR code from a region · Super Shift O/);
     assert.match(indicators,
         /case "ocr":\s*Quickshell\.execDetached\(\[root\.ocrScript\]\);/);
     assert.match(indicators,
@@ -346,7 +347,7 @@ test("dictation is offered only with the developer tooling that installs it", ()
         ["ocr", "recording"]);
 
     // The unit passes the installer's feature; unset (a source-tree run) is on.
-    const unit = fs.readFileSync(path.resolve(shellDir, "../../templates/quickshell.service.j2"), "utf8");
+    const unit = untranslated(fs.readFileSync(path.resolve(shellDir, "../../templates/quickshell.service.j2"), "utf8"));
     assert.match(unit,
         /^Environment=CYBEXOS_DEVELOPER_TOOLS=\{\{ \(features\.developer_tools \| bool\) \| ternary\('1', '0'\) \}\}$/m);
     const settings = read("Common/Settings.qml");
@@ -372,6 +373,6 @@ test("dictation is offered only with the developer tooling that installs it", ()
 });
 
 test("the shell's Python helpers leave no bytecode in the managed tree", () => {
-    const unit = fs.readFileSync(path.resolve(shellDir, "../../templates/quickshell.service.j2"), "utf8");
+    const unit = untranslated(fs.readFileSync(path.resolve(shellDir, "../../templates/quickshell.service.j2"), "utf8"));
     assert.match(unit, /^Environment=PYTHONDONTWRITEBYTECODE=1$/m);
 });

@@ -27,4 +27,11 @@ function isVendored(rel) {
     return VENDORED_DIRS.includes(top);
 }
 
-module.exports = { shellDir, load, VENDORED_DIRS, isVendored };
+// QML source as its English text reads: I18n.tr("Text") becomes "Text".
+// Structure tests assert the copy a view shows in English; whether that copy
+// is translated is i18n.test.cjs's concern (docs/shell-translations.md).
+function untranslated(source) {
+    return String(source).replace(/I18n\.tr\(("(?:[^"\\]|\\.)*")\)/g, "$1");
+}
+
+module.exports = { shellDir, load, VENDORED_DIRS, isVendored, untranslated };

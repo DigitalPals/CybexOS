@@ -28,6 +28,7 @@ TouchpadPage TouchpadPage.qml
 KeyboardPage KeyboardPage.qml
 NightLightGroup NightLightGroup.qml
 RecoveryGroup RecoveryGroup.qml
+FactoryResetRow FactoryResetRow.qml
 UndoChip UndoChip.qml
 WallpaperPage WallpaperPage.qml
 WallpaperOnlineView WallpaperOnlineView.qml
@@ -39,6 +40,7 @@ WidgetPill WidgetPill.qml
 PluginWidgetSettings PluginWidgetSettings.qml
 PluginAppearance PluginAppearance.qml
 AboutPage AboutPage.qml
+BackupPage BackupPage.qml
 SettingsHint SettingsHint.qml
 TimeRow TimeRow.qml
 CornerPickerRow CornerPickerRow.qml
@@ -50,7 +52,10 @@ DisplaysPage DisplaysPage.qml
 DisplayArrangement DisplayArrangement.qml
 NetworkPage NetworkPage.qml
 AccountsPage AccountsPage.qml
+SecurityPage SecurityPage.qml
 IpSettings IpSettings.qml
+VpnGroup VpnGroup.qml
+HotspotGroup HotspotGroup.qml
 SystemChoice SystemChoice.qml
 SystemServiceStatus SystemServiceStatus.qml
 SelectRow SelectRow.qml

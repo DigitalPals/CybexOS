@@ -24,7 +24,7 @@ SettingsRow {
 
     dirty: false
     resetKeys: []
-    hint: recording ? "Recording" : "Playback"
+    hint: recording ? I18n.tr("Recording") : I18n.tr("Playback")
     narrowHeight: Theme.settingsStackOffset + Theme.settingsControlHeight
     narrowLabelInset: root.undoWidth
     controlLeft: mute.x

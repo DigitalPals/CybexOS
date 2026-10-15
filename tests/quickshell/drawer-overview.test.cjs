@@ -1,23 +1,24 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir } = require("./shell.cjs");
 
-const overview = fs.readFileSync(
-    path.join(shellDir, "Popovers", "Drawer", "DrawerOverview.qml"), "utf8");
-const hero = fs.readFileSync(
-    path.join(shellDir, "Popovers", "Drawer", "DrawerSystemHero.qml"), "utf8");
-const drawer = fs.readFileSync(
-    path.join(shellDir, "Popovers", "Drawer", "DrawerPopover.qml"), "utf8");
-const power = fs.readFileSync(
-    path.join(shellDir, "Popovers", "Drawer", "DrawerPower.qml"), "utf8");
-const drawerSettings = fs.readFileSync(
-    path.join(shellDir, "Settings", "DrawerPage.qml"), "utf8");
-const sliderRow = fs.readFileSync(
-    path.join(shellDir, "Popovers", "Drawer", "DrawerSliderRow.qml"), "utf8");
-const drawerTile = fs.readFileSync(
-    path.join(shellDir, "Popovers", "Drawer", "DrawerTile.qml"), "utf8");
+const overview = untranslated(fs.readFileSync(
+    path.join(shellDir, "Popovers", "Drawer", "DrawerOverview.qml"), "utf8"));
+const hero = untranslated(fs.readFileSync(
+    path.join(shellDir, "Popovers", "Drawer", "DrawerSystemHero.qml"), "utf8"));
+const drawer = untranslated(fs.readFileSync(
+    path.join(shellDir, "Popovers", "Drawer", "DrawerPopover.qml"), "utf8"));
+const power = untranslated(fs.readFileSync(
+    path.join(shellDir, "Popovers", "Drawer", "DrawerPower.qml"), "utf8"));
+const drawerSettings = untranslated(fs.readFileSync(
+    path.join(shellDir, "Settings", "DrawerPage.qml"), "utf8"));
+const sliderRow = untranslated(fs.readFileSync(
+    path.join(shellDir, "Popovers", "Drawer", "DrawerSliderRow.qml"), "utf8"));
+const drawerTile = untranslated(fs.readFileSync(
+    path.join(shellDir, "Popovers", "Drawer", "DrawerTile.qml"), "utf8"));
 
 test("Overview starts with one fixed system hero and owns its watcher", () => {
     const systemHero = overview.indexOf("DrawerSystemHero {");

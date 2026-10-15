@@ -46,6 +46,11 @@ function M.apply(document)
       input.touchpad[native] = touchpad[saved]
     end
   end
+  -- A gesture, not an input option: input.lua registers the vendor gesture
+  -- and only switching it off needs work here.
+  if touchpad.workspaceSwipe ~= nil then
+    assert(type(touchpad.workspaceSwipe) == "boolean", "invalid touchpad switch")
+  end
   if touchpad.sensitivity ~= nil then
     assert(type(touchpad.sensitivity) == "number" and touchpad.sensitivity >= -1 and touchpad.sensitivity <= 1,
       "invalid touchpad sensitivity")
@@ -54,6 +59,10 @@ function M.apply(document)
     input.sensitivity = touchpad.sensitivity
   end
   hl.config({ input = input })
+  local gestures = rawget(_G, "__cybexos_gestures")
+  if touchpad.workspaceSwipe == false and type(gestures) == "table" and type(gestures.remove) == "function" then
+    gestures.remove("workspace")
+  end
 end
 local file = io.open(M.path, "rb")
 if file then

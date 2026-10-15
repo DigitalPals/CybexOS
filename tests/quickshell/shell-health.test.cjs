@@ -1,13 +1,14 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
 const shellRoot = path.resolve(__dirname,
     "../../roles/desktop/files/quickshell");
-const health = fs.readFileSync(path.join(shellRoot, "Common/ShellHealth.qml"), "utf8");
-const page = fs.readFileSync(path.join(shellRoot, "Settings/AboutPage.qml"), "utf8");
-const helper = fs.readFileSync(path.join(shellRoot, "scripts/shell-health.py"), "utf8");
+const health = untranslated(fs.readFileSync(path.join(shellRoot, "Common/ShellHealth.qml"), "utf8"));
+const page = untranslated(fs.readFileSync(path.join(shellRoot, "Settings/AboutPage.qml"), "utf8"));
+const helper = untranslated(fs.readFileSync(path.join(shellRoot, "scripts/shell-health.py"), "utf8"));
 
 test("Shell Health is read-only, bounded, and refreshable", () => {
     assert.match(health, /readonly property var integrationIssues/);

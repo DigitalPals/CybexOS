@@ -19,30 +19,277 @@ var PROVIDERS = [
 // strip compact without taking power-user routes away.
 var TAB_IDS = ["apps", "emoji", "clipboard", "actions"];
 
+// The Actions provider is a curated command palette. Every entry belongs to
+// one verb group; the groups keep the full list scannable and give the
+// blended Apps results a short, honest label. Order here is display order.
+var VERBS = [
+    { id: "install", label: "Install" },
+    { id: "remove", label: "Remove" },
+    { id: "setup", label: "Set up" },
+    { id: "toggle", label: "Toggle" },
+    { id: "update", label: "Update" },
+    { id: "capture", label: "Capture" },
+    { id: "system", label: "System" }
+];
+
+// Commands start from the user's ~/.local/bin, where both installation paths
+// put the CybexOS helpers (the ISO links them from /usr/share/cybexos/bin);
+// the shell service's PATH need not include it. "{argument}" is replaced by
+// the whole typed argument as one argv element, never spliced into a word.
+//
+// An entry is one of:
+//   command:      argv run detached once the launcher has closed
+//   settingsPage: a CybexOS Settings page id (settingsKey scrolls to a row)
+//   neither:      a built-in handled by id in LauncherProviders.qml
+// `argument` asks for one text value first; `choices` picks one item from a
+// list the shell loads (installed web apps); `requires` hides an entry while
+// that installation feature is off; `settle` waits for the launcher to leave
+// the screen so a capture never includes it.
+//
+// Factory reset is deliberately absent: it stays behind Settings' own
+// confirmation and is never one mistyped Enter away.
 var BUILTIN_ACTIONS = [
     {
+        id: "webapp-install",
+        verb: "install",
+        name: "Install web app…",
+        subtitle: "Add a website as an app with its own launcher entry",
+        keywords: ["webapp", "pwa", "site", "url", "add", "web"],
+        glyph: "world",
+        argument: {
+            kind: "url",
+            label: "WEB APP",
+            placeholder: "Web address, for example app.slack.com",
+            hint: "Type a web address, then press Enter",
+            submit: "Install web app from"
+        },
+        command: ["~/.local/bin/cybexos-webapp", "install", "--notify",
+            "--url", "{argument}"]
+    },
+    {
+        id: "theme-install",
+        verb: "install",
+        name: "Install theme from Git…",
+        subtitle: "Add a desktop theme from a Git repository",
+        keywords: ["theme", "appearance", "colors", "omarchy", "repository", "git"],
+        glyph: "palette",
+        argument: {
+            kind: "git",
+            label: "THEME",
+            placeholder: "Repository, for example https://github.com/owner/theme",
+            hint: "Type an https or SSH Git address, then press Enter",
+            submit: "Install theme from"
+        },
+        command: ["~/.local/bin/cybex", "theme", "install", "{argument}"]
+    },
+    {
+        id: "webapp-remove",
+        verb: "remove",
+        name: "Remove web app…",
+        subtitle: "Remove a web app and its launcher entry",
+        keywords: ["webapp", "uninstall", "delete", "pwa", "web"],
+        glyph: "trash",
+        choices: "webapps",
+        command: ["~/.local/bin/cybexos-webapp", "remove", "--notify", "{argument}"]
+    },
+    {
+        id: "security-fingerprint",
+        verb: "setup",
+        name: "Set up fingerprint",
+        subtitle: "Enroll a fingerprint for unlocking and sign-in",
+        keywords: ["fingerprint", "biometric", "login", "security", "unlock"],
+        glyph: "shield-lock",
+        settingsPage: "security"
+    },
+    {
+        id: "security-key",
+        verb: "setup",
+        name: "Set up security key",
+        subtitle: "Register a FIDO2 security key",
+        keywords: ["yubikey", "fido", "u2f", "passkey", "security", "key"],
+        glyph: "key",
+        settingsPage: "security"
+    },
+    {
+        id: "backup-setup",
+        verb: "setup",
+        name: "Set up backups",
+        subtitle: "Choose what to back up and where",
+        keywords: ["backup", "restore", "copy"],
+        glyph: "archive",
+        settingsPage: "backup"
+    },
+    {
+        id: "ai-agent-choose",
+        verb: "setup",
+        name: "Choose default AI agent",
+        subtitle: "Select and launch OpenCode, Claude Code, or Codex",
+        keywords: ["ai", "default", "provider", "model", "agent", "code"],
+        glyph: "robot",
+        requires: "developerTools",
+        command: ["~/.local/bin/cybex", "agent", "--window", "--pick"]
+    },
+    {
+        id: "game-mode",
+        verb: "toggle",
+        name: "Toggle game mode",
+        subtitle: "Turn off effects and notifications while playing",
+        keywords: ["gaming", "games", "steam", "performance", "fullscreen"],
+        glyph: "device-gamepad-2",
+        command: ["~/.local/bin/game-mode", "toggle"]
+    },
+    {
+        id: "dnd-toggle",
+        verb: "toggle",
+        name: "Toggle Do Not Disturb",
+        subtitle: "Enable or disable notification toasts",
+        keywords: ["notifications", "quiet", "dnd"],
+        glyph: "notifications_off"
+    },
+    {
+        id: "updates-check",
+        verb: "update",
+        name: "Check for updates",
+        subtitle: "Look for CybexOS, package and firmware updates",
+        keywords: ["upgrade", "dnf", "flatpak", "firmware", "update"],
+        glyph: "refresh",
+        command: ["~/.local/bin/cybexos-runtime", "ipc", "updates", "check"]
+    },
+    {
+        id: "updates-open",
+        verb: "update",
+        name: "Open updates",
+        subtitle: "Show pending updates and their progress",
+        keywords: ["upgrade", "install", "update", "pending"],
+        glyph: "circle-arrow-up",
+        command: ["~/.local/bin/cybexos-runtime", "ipc", "updates", "open"]
+    },
+    {
+        id: "screenshot-region",
+        verb: "capture",
+        name: "Screenshot a region or window",
+        subtitle: "Drag a region or click a window",
+        keywords: ["screenshot", "capture", "screen", "print"],
+        glyph: "camera",
+        settle: true,
+        command: ["~/.local/bin/screenshot", "region"]
+    },
+    {
+        id: "screenshot-fullscreen",
+        verb: "capture",
+        name: "Screenshot the whole screen",
+        subtitle: "Capture the focused monitor",
+        keywords: ["screenshot", "capture", "screen", "print", "monitor"],
+        glyph: "device-desktop",
+        settle: true,
+        command: ["~/.local/bin/screenshot", "fullscreen"]
+    },
+    {
+        id: "screenshot-scroll",
+        verb: "capture",
+        name: "Take a scrolling screenshot",
+        subtitle: "Capture a long page while it scrolls",
+        keywords: ["screenshot", "capture", "scroll", "long", "page"],
+        glyph: "arrow-down",
+        settle: true,
+        command: ["~/.local/bin/screenshot", "scroll"]
+    },
+    {
+        id: "screen-record",
+        verb: "capture",
+        name: "Start or stop screen recording",
+        subtitle: "Record a region of the screen",
+        keywords: ["record", "recording", "video", "screencast", "capture"],
+        glyph: "video",
+        settle: true,
+        command: ["~/.local/bin/screen-record"]
+    },
+    {
+        id: "screen-record-webcam",
+        verb: "capture",
+        name: "Record with webcam",
+        subtitle: "Record the screen with a webcam overlay",
+        keywords: ["record", "recording", "video", "camera", "webcam", "capture"],
+        glyph: "video",
+        settle: true,
+        command: ["~/.local/bin/screen-record", "--webcam"]
+    },
+    {
+        id: "color-picker",
+        verb: "capture",
+        name: "Pick a colour",
+        subtitle: "Copy the hex value of any pixel",
+        keywords: ["color", "colour", "picker", "eyedropper", "hex"],
+        glyph: "droplet-half-2",
+        settle: true,
+        command: ["~/.local/bin/color-picker"]
+    },
+    {
+        id: "screen-ocr",
+        verb: "capture",
+        name: "Copy text or QR code from a region",
+        subtitle: "Recognize text or decode a QR code on screen",
+        keywords: ["ocr", "text", "qr", "scan", "capture"],
+        glyph: "qrcode",
+        settle: true,
+        command: ["~/.local/bin/screen-ocr"]
+    },
+    {
         id: "settings",
+        verb: "system",
         name: "Open CybexOS Settings",
         subtitle: "Appearance, bar, widgets and system",
         keywords: ["preferences", "configuration", "shell"],
         glyph: "settings"
     },
     {
+        id: "security-open",
+        verb: "system",
+        name: "Open Security settings",
+        subtitle: "Fingerprint, security keys and sign-in",
+        keywords: ["security", "fingerprint", "yubikey", "passkey", "login"],
+        glyph: "shield-lock",
+        settingsPage: "security"
+    },
+    {
+        id: "backup-now",
+        verb: "system",
+        name: "Back up now",
+        subtitle: "Start a backup with the saved settings",
+        keywords: ["backup", "copy", "save"],
+        glyph: "archive",
+        command: ["~/.local/bin/cybex", "backup", "now"]
+    },
+    {
+        id: "overview",
+        verb: "system",
+        name: "Show overview",
+        subtitle: "See every window and workspace",
+        keywords: ["windows", "workspaces", "expose", "mission"],
+        glyph: "layout-grid",
+        command: ["~/.local/bin/cybexos-runtime", "ipc", "overview", "open"]
+    },
+    {
+        id: "ai-agent-launch",
+        verb: "system",
+        name: "Launch default AI agent",
+        subtitle: "Open the selected coding agent in ~/Code",
+        keywords: ["ai", "code", "assistant", "terminal", "agent"],
+        glyph: "robot",
+        requires: "developerTools",
+        command: ["~/.local/bin/cybex", "agent", "--window"]
+    },
+    {
         id: "wallpaper-shuffle",
+        verb: "system",
         name: "Shuffle wallpaper",
         subtitle: "Choose another wallpaper from the configured folder",
         keywords: ["background", "random"],
         glyph: "wallpaper"
     },
     {
-        id: "dnd-toggle",
-        name: "Toggle Do Not Disturb",
-        subtitle: "Enable or disable notification toasts",
-        keywords: ["notifications", "quiet"],
-        glyph: "notifications_off"
-    },
-    {
         id: "lock",
+        verb: "system",
         name: "Lock screen",
         subtitle: "Start Hyprlock",
         keywords: ["session", "security"],
@@ -50,16 +297,40 @@ var BUILTIN_ACTIONS = [
     },
     {
         id: "power",
+        verb: "system",
         name: "Open Control Panel",
         subtitle: "Lock, suspend, log out, restart or shut down",
         keywords: ["session", "shutdown", "restart", "suspend"],
         glyph: "power_settings_new"
+    },
+    {
+        id: "report",
+        verb: "system",
+        name: "Report a problem",
+        subtitle: "Collect diagnostics to share with CybexOS",
+        keywords: ["bug", "issue", "feedback", "diagnostics", "support"],
+        glyph: "message-circle-exclamation",
+        command: ["~/.local/bin/cybex", "report"]
+    },
+    {
+        id: "recovery",
+        verb: "system",
+        name: "Open recovery points",
+        subtitle: "Restore the system from a recovery point",
+        keywords: ["restore", "snapshot", "rollback", "recovery"],
+        glyph: "history",
+        settingsPage: "about",
+        settingsKey: "recoveryPoints"
     }
 ];
 
+// Features an entry can require, keyed by the flags Settings.qml derives
+// from the installer's choices (quickshell.service sets them).
+var FEATURE_FLAGS = ["developerTools", "connectedWidgets"];
+
 var GLYPHS = PROVIDERS.map(function(provider) { return provider.glyph; })
     .concat(BUILTIN_ACTIONS.map(function(action) { return action.glyph; }))
-    .concat(["image"])
+    .concat(["image", "photo", "pin"])
     .filter(function(glyph, index, values) { return values.indexOf(glyph) === index; });
 
 function prefixedProviderFor(query) {
@@ -161,13 +432,122 @@ function oneLine(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
 }
 
-function clipboardRows(lines, query, limit) {
+// The cliphist line is "<id>\t<preview>"; the preview of an image entry reads
+// "[[ binary data 1.2 MiB png 1920x1080 ]]".
+function clipboardDisplay(raw) {
+    var value = String(raw || "");
+    var tab = value.indexOf("\t");
+    return oneLine(tab === -1 ? value : value.slice(tab + 1));
+}
+
+function isClipboardImage(display) {
+    return /binary data/i.test(String(display || ""));
+}
+
+// A file URL Qt's Image accepts for an absolute path. The characters a URL
+// would read as a query or fragment are escaped as well.
+function fileUrl(path) {
+    var value = String(path || "");
+    if (value.charAt(0) !== "/")
+        return "";
+    return "file://" + encodeURI(value).replace(/\?/g, "%3F").replace(/#/g, "%23");
+}
+
+// Pins are kept by clipboard-tool.py in a user-owned index; anything this
+// cannot vouch for is dropped instead of being drawn from a crafted file.
+var PIN_LIMIT = 50;
+
+function parsePins(text) {
+    var value;
+    try {
+        value = JSON.parse(String(text || ""));
+    } catch (error) {
+        return [];
+    }
+    var list = value && Array.isArray(value.pins) ? value.pins : [];
+    var seen = {};
+    return list.slice(0, PIN_LIMIT).map(function(pin) {
+        if (!pin || typeof pin !== "object")
+            return null;
+        var id = cleanString(pin.id, 32);
+        if (!/^[0-9a-f]{16}$/.test(id) || seen[id])
+            return null;
+        if (pin.kind !== "text" && pin.kind !== "image")
+            return null;
+        var file = cleanString(pin.file, 64);
+        var thumb = cleanString(pin.thumb, 64);
+        var safeName = /^[0-9a-f]{16}(?:-thumb)?\.(?:txt|png|jpg|gif|webp|bmp)$/;
+        if (!safeName.test(file) || (thumb !== "" && !safeName.test(thumb)))
+            return null;
+        seen[id] = true;
+        return {
+            id: id,
+            kind: pin.kind,
+            file: file,
+            thumb: thumb,
+            preview: oneLine(cleanString(pin.preview, 400)).slice(0, 200),
+            source: typeof pin.source === "string" ? pin.source.slice(0, 400) : ""
+        };
+    }).filter(Boolean);
+}
+
+// The image entries worth a preview: the newest first, bounded, because each
+// costs a decode and a thumbnail on the helper's side.
+function clipboardPreviewTargets(lines, limit) {
     var max = Math.max(0, Number(limit) || 0);
-    return (Array.isArray(lines) ? lines : []).map(function(raw, index) {
-        var tab = String(raw).indexOf("\t");
-        var identifier = tab === -1 ? "" : String(raw).slice(0, tab).trim();
-        var display = oneLine(tab === -1 ? raw : String(raw).slice(tab + 1));
-        var image = /binary data/i.test(display);
+    return (Array.isArray(lines) ? lines : []).filter(function(raw) {
+        return isClipboardImage(clipboardDisplay(raw));
+    }).slice(0, max).map(String);
+}
+
+// Pinned entries come first and survive cliphist pruning; history follows,
+// minus the entries a pin already shows. `options.previews` maps a cliphist
+// line to its decoded thumbnail; `options.pinDir` is the pins' directory.
+function clipboardRows(lines, query, limit, options) {
+    var max = Math.max(0, Number(limit) || 0);
+    var opts = options || {};
+    var pins = Array.isArray(opts.pins) ? opts.pins : [];
+    var previews = opts.previews && typeof opts.previews === "object" ? opts.previews : {};
+    var pinDir = String(opts.pinDir || "");
+    var pinnedText = {};
+    var pinnedImage = {};
+    var pinned = pins.map(function(pin, index) {
+        var image = pin.kind === "image";
+        if (image)
+            pinnedImage[pin.source] = true;
+        else
+            pinnedText[clipboardDisplay(pin.source)] = true;
+        var title = image ? "Pinned image" : pin.preview;
+        var score = textScore(image ? title : pin.preview, query);
+        if (score < 0)
+            return null;
+        var picture = image && pinDir !== ""
+            ? fileUrl(pinDir + "/" + (pin.thumb || pin.file)) : "";
+        return {
+            providerId: "clipboard",
+            kind: "clipboard",
+            title: title,
+            subtitle: "Pinned",
+            glyph: image ? "photo" : providerById("clipboard").glyph,
+            raw: "",
+            pinId: pin.id,
+            pinned: true,
+            image: image,
+            thumbnail: picture,
+            score: score,
+            sourceIndex: index
+        };
+    }).filter(Boolean).sort(function(a, b) {
+        return b.score - a.score || a.sourceIndex - b.sourceIndex;
+    });
+    var history = (Array.isArray(lines) ? lines : []).map(function(raw, index) {
+        var value = String(raw);
+        var tab = value.indexOf("\t");
+        var identifier = tab === -1 ? "" : value.slice(0, tab).trim();
+        var display = clipboardDisplay(value);
+        var image = isClipboardImage(display);
+        if (image ? pinnedImage[value] : pinnedText[display])
+            return null;
         var score = textScore(display, query);
         if (score < 0)
             return null;
@@ -177,14 +557,17 @@ function clipboardRows(lines, query, limit) {
             title: image ? "Clipboard image" : display,
             subtitle: image ? display : "Clipboard" + (identifier ? " · #" + identifier : ""),
             glyph: image ? "image" : providerById("clipboard").glyph,
-            raw: String(raw),
+            raw: value,
+            pinned: false,
             image: image,
+            thumbnail: image && typeof previews[value] === "string" ? previews[value] : "",
             score: score,
             sourceIndex: index
         };
     }).filter(Boolean).sort(function(a, b) {
         return b.score - a.score || a.sourceIndex - b.sourceIndex;
     }).slice(0, max);
+    return pinned.concat(history);
 }
 
 function parseEmojiData(text) {
@@ -270,28 +653,323 @@ function parseActions(text) {
     }
 }
 
+function verbLabel(verb) {
+    for (var i = 0; i < VERBS.length; i++) {
+        if (VERBS[i].id === verb)
+            return VERBS[i].label;
+    }
+    return "";
+}
+
+function verbRank(verb) {
+    for (var i = 0; i < VERBS.length; i++) {
+        if (VERBS[i].id === verb)
+            return i;
+    }
+    return VERBS.length;
+}
+
+// Every word of a multi-word query starts a word of the text, in any order:
+// "web install" finds "Install web app…".
+function tokenScore(value, query) {
+    var score = textScore(value, query);
+    if (score >= 6000)
+        return score;
+    var tokens = words(query);
+    if (tokens.length < 2)
+        return score;
+    var targets = words(value);
+    var all = tokens.every(function(token) {
+        return targets.some(function(word) { return word.indexOf(token) === 0; });
+    });
+    return all ? 6000 : score;
+}
+
+// Name matches outrank keyword, verb and subtitle matches, so "lock" puts
+// "Lock screen" above an entry that merely mentions locking.
+function actionScore(action, query) {
+    if (String(query || "").trim() === "")
+        return 1;
+    var keywords = Array.isArray(action.keywords) ? action.keywords.join(" ") : "";
+    var scores = [
+        tokenScore(action.name, query),
+        tokenScore(keywords + " " + verbLabel(action.verb), query) - 1000,
+        tokenScore(action.subtitle, query) - 2000
+    ];
+    var best = Math.max.apply(null, scores);
+    return best < 0 ? -1 : best;
+}
+
+// Entries whose installation feature is off stay out of every list.
+function availableActions(actions, flags) {
+    var features = flags || {};
+    return (Array.isArray(actions) ? actions : []).filter(function(action) {
+        return !action.requires || features[action.requires] === true;
+    });
+}
+
+function actionRow(action, score, index, blended) {
+    var tag = blended ? "Action" : (action.user ? "Custom" : verbLabel(action.verb));
+    return {
+        providerId: "actions",
+        kind: "action",
+        title: String(action.name || ""),
+        subtitle: String(action.subtitle || ""),
+        glyph: String(action.glyph || "bolt"),
+        tag: tag,
+        blended: !!blended,
+        action: action,
+        score: score,
+        sourceIndex: index
+    };
+}
+
+// The Actions list: an empty query shows every entry grouped by verb in
+// catalogue order; a query ranks by match quality, then by group.
 function actionRows(actions, query, limit) {
     var max = Math.max(0, Number(limit) || 0);
     return (Array.isArray(actions) ? actions : []).map(function(action, index) {
-        var searchable = String(action.name || "") + " "
-            + String(action.subtitle || "") + " "
-            + (Array.isArray(action.keywords) ? action.keywords.join(" ") : "");
-        var score = textScore(searchable, query);
-        if (score < 0)
+        var score = actionScore(action, query);
+        return score < 0 ? null : actionRow(action, score, index, false);
+    }).filter(Boolean).sort(function(a, b) {
+        return b.score - a.score
+            || verbRank(a.action.verb) - verbRank(b.action.verb)
+            || a.sourceIndex - b.sourceIndex;
+    }).slice(0, max);
+}
+
+// Super+Space is the one palette: a typed Apps query also offers the few
+// actions that clearly match, after every app. A match must start a word of
+// the name or keywords; substrings and subtitles alone are too loose to put
+// beside the apps. An empty query stays the plain application directory.
+var BLEND_LIMIT = 3;
+var BLEND_MIN_SCORE = 5000;
+
+function blendedActionRows(actions, query, limit) {
+    var term = String(query || "").trim();
+    if (term.length < 2)
+        return [];
+    var max = Math.min(BLEND_LIMIT, Math.max(0, Number(limit === undefined ? BLEND_LIMIT : limit) || 0));
+    return (Array.isArray(actions) ? actions : []).map(function(action, index) {
+        var score = actionScore(action, term);
+        return score < BLEND_MIN_SCORE ? null : actionRow(action, score, index, true);
+    }).filter(Boolean).sort(function(a, b) {
+        return b.score - a.score || a.sourceIndex - b.sourceIndex;
+    }).slice(0, max);
+}
+
+function blendRows(appRows, actions, query) {
+    var apps = Array.isArray(appRows) ? appRows : [];
+    return apps.concat(blendedActionRows(actions, query, BLEND_LIMIT));
+}
+
+// ---- Argument mode -----------------------------------------------------
+// A web address for a web app: http or https, a host, no credentials and no
+// whitespace or control characters. A bare host gets https://. The helper
+// validates again; this keeps Enter from offering what it would refuse.
+function webUrlArgument(value) {
+    var text = String(value || "").trim();
+    if (text === "")
+        return { ok: false, value: "", error: "" };
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text))
+        text = "https://" + text;
+    var invalid = { ok: false, value: "", error: "Enter an http or https address" };
+    if (text.length > 2048 || /[\s\u0000-\u001f\u007f]/.test(text))
+        return invalid;
+    var match = text.match(/^(https?):\/\/([^\/?#]*)([\/?#].*)?$/i);
+    if (!match)
+        return invalid;
+    var authority = match[2];
+    if (authority.indexOf("@") !== -1)
+        return { ok: false, value: "", error: "Addresses with a user name or password are not allowed" };
+    var host = authority;
+    var port = "";
+    var ipv6 = authority.match(/^\[([0-9a-f:.]+)\](?::(\d+))?$/i);
+    if (ipv6) {
+        host = ipv6[1];
+        port = ipv6[2] || "";
+    } else {
+        var colon = authority.lastIndexOf(":");
+        if (colon !== -1) {
+            host = authority.slice(0, colon);
+            port = authority.slice(colon + 1);
+            if (!/^\d+$/.test(port))
+                return invalid;
+        }
+        if (!/^[^\s\/?#@:\[\]\\]+$/.test(host) || /^\.|\.\.|^-/.test(host))
+            return invalid;
+    }
+    if (port !== "" && (Number(port) < 1 || Number(port) > 65535))
+        return invalid;
+    return {
+        ok: true,
+        value: match[1].toLowerCase() + "://" + authority + (match[3] || "/"),
+        error: ""
+    };
+}
+
+// A theme repository: https without credentials, or SSH (ssh://, or the
+// scp-like git@host:owner/repo). Nothing that could read as an option, a
+// local path or a transport helper (ext::, file://).
+function gitUrlArgument(value) {
+    var text = String(value || "").trim();
+    if (text === "")
+        return { ok: false, value: "", error: "" };
+    var invalid = { ok: false, value: "", error: "Enter an https or SSH Git address" };
+    if (text.length > 2048 || /[\s\u0000-\u001f\u007f]/.test(text) || text.charAt(0) === "-")
+        return invalid;
+    if (/^https:\/\//i.test(text)) {
+        var web = webUrlArgument(text);
+        if (!web.ok)
+            return /password/.test(web.error) ? web : invalid;
+        // A repository needs a path: https://host/owner/theme.
+        return /^https:\/\/[^\/?#]+\/[^\/?#]+/i.test(web.value)
+            ? { ok: true, value: text, error: "" } : invalid;
+    }
+    if (/^ssh:\/\/([a-z0-9._-]+@)?[a-z0-9.-]+(:\d+)?\/[^\s]+$/i.test(text))
+        return { ok: true, value: text, error: "" };
+    if (/^[a-z0-9._-]+@[a-z0-9.-]+:[^\s\/-][^\s]*$/i.test(text))
+        return { ok: true, value: text, error: "" };
+    return invalid;
+}
+
+function validateArgument(kind, value) {
+    if (kind === "url")
+        return webUrlArgument(value);
+    if (kind === "git")
+        return gitUrlArgument(value);
+    var text = String(value || "").trim();
+    return text === "" ? { ok: false, value: "", error: "" }
+        : { ok: true, value: text, error: "" };
+}
+
+function displayAddress(value) {
+    return String(value || "").replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/\/$/, "");
+}
+
+// The single row argument mode offers once the typed value is valid.
+function argumentRows(action, value) {
+    var spec = action && action.argument;
+    if (!spec)
+        return [];
+    var checked = validateArgument(spec.kind, value);
+    if (!checked.ok)
+        return [];
+    return [{
+        providerId: "actions",
+        kind: "argument",
+        title: String(spec.submit || action.name) + " " + displayAddress(checked.value),
+        glyph: String(action.glyph || "bolt"),
+        highlight: false,
+        action: action,
+        value: checked.value
+    }];
+}
+
+function argumentEmptyText(action, value) {
+    var spec = action && action.argument;
+    if (!spec)
+        return "";
+    var checked = validateArgument(spec.kind, value);
+    return checked.error !== "" ? checked.error : String(spec.hint || "");
+}
+
+// `cybexos-webapp list --json`, read defensively: it is the shell's view of
+// files the user (or anything running as the user) can edit.
+function parseWebApps(text) {
+    var value;
+    try {
+        value = JSON.parse(String(text || ""));
+    } catch (error) {
+        return [];
+    }
+    if (!Array.isArray(value))
+        return [];
+    var seen = {};
+    return value.map(function(app) {
+        if (!app || typeof app !== "object")
             return null;
+        var id = cleanString(app.id, 40);
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(id) || seen[id])
+            return null;
+        seen[id] = true;
+        var icon = cleanString(app.icon, 1000);
+        return {
+            id: id,
+            name: oneLine(cleanString(app.name, 100)) || id,
+            url: cleanString(app.url, 2048),
+            icon: icon.charAt(0) === "/" ? icon : ""
+        };
+    }).filter(Boolean);
+}
+
+// Removing takes a second press, as restoring a recovery point does in
+// Settings: the chosen row turns into its own confirmation.
+function webAppChoiceRows(apps, query, limit, confirmId) {
+    var max = Math.max(0, Number(limit) || 0);
+    return (Array.isArray(apps) ? apps : []).map(function(app, index) {
+        var score = Math.max(textScore(app.name, query), textScore(app.url, query) - 2000);
+        if (String(query || "").trim() !== "" && score < 0)
+            return null;
+        var confirming = confirmId !== undefined && confirmId !== "" && confirmId === app.id;
         return {
             providerId: "actions",
-            kind: "action",
-            title: String(action.name || ""),
-            subtitle: String(action.subtitle || ""),
-            glyph: String(action.glyph || "bolt"),
-            action: action,
+            kind: "choice",
+            title: confirming ? "Press Enter again to remove " + app.name : "Remove " + app.name,
+            highlight: !confirming,
+            confirm: confirming,
+            glyph: "trash",
+            icon: app.icon,
+            value: app.id,
             score: score,
             sourceIndex: index
         };
     }).filter(Boolean).sort(function(a, b) {
-        return b.score - a.score || a.sourceIndex - b.sourceIndex;
+        return b.score - a.score || a.title.localeCompare(b.title);
     }).slice(0, max);
+}
+
+// argv for an action: "~/" at the start of the program becomes the home
+// directory, and an element that is exactly "{argument}" becomes the
+// argument, whole. The argument is never expanded or split itself.
+function expandCommand(command, home, argument) {
+    if (!Array.isArray(command) || command.length === 0)
+        return [];
+    var base = String(home || "");
+    var hasArgument = command.indexOf("{argument}") !== -1;
+    if (hasArgument && (argument === undefined || String(argument) === ""))
+        return [];
+    return command.map(function(part, index) {
+        var value = String(part);
+        if (value === "{argument}")
+            return String(argument);
+        if (index === 0 && value.indexOf("~/") === 0)
+            return base.replace(/\/$/, "") + value.slice(1);
+        return value;
+    });
+}
+
+// What `cybexos-runtime ipc launcher open <id>` shows: a tab opens as that
+// tab; a prefix provider opens Apps with its prefix typed, the way a user
+// would reach it. Anything else opens the plain launcher.
+function openTarget(providerId) {
+    var id = String(providerId || "");
+    if (TAB_IDS.indexOf(id) !== -1)
+        return { tab: id, query: "" };
+    for (var i = 0; i < PROVIDERS.length; i++) {
+        if (PROVIDERS[i].id === id && PROVIDERS[i].prefix !== "")
+            return { tab: "apps", query: PROVIDERS[i].prefix };
+    }
+    return { tab: "apps", query: "" };
+}
+
+// An icon a desktop entry names by absolute path (web apps do) loads as a
+// file; a theme icon name returns "" so the caller asks the icon theme.
+function directIconUrl(icon) {
+    var value = String(icon || "");
+    if (/^(?:file|image):/i.test(value))
+        return value;
+    return fileUrl(value);
 }
 
 // Delay before restarting a clipboard watcher that has exited, doubling from
@@ -305,8 +983,12 @@ function watcherRestartDelayMs(failures) {
 var exported = {
     PROVIDERS: PROVIDERS,
     TAB_IDS: TAB_IDS,
+    VERBS: VERBS,
     BUILTIN_ACTIONS: BUILTIN_ACTIONS,
+    FEATURE_FLAGS: FEATURE_FLAGS,
     GLYPHS: GLYPHS,
+    PIN_LIMIT: PIN_LIMIT,
+    BLEND_LIMIT: BLEND_LIMIT,
     providerFor: providerFor,
     prefixedProviderFor: prefixedProviderFor,
     providerById: providerById,
@@ -315,12 +997,32 @@ var exported = {
     textScore: textScore,
     appScore: appScore,
     windowScore: windowScore,
+    clipboardDisplay: clipboardDisplay,
+    isClipboardImage: isClipboardImage,
+    fileUrl: fileUrl,
+    parsePins: parsePins,
+    clipboardPreviewTargets: clipboardPreviewTargets,
     clipboardRows: clipboardRows,
     parseEmojiData: parseEmojiData,
     emojiRows: emojiRows,
     sanitizeActions: sanitizeActions,
     parseActions: parseActions,
+    verbLabel: verbLabel,
+    actionScore: actionScore,
+    availableActions: availableActions,
     actionRows: actionRows,
+    blendedActionRows: blendedActionRows,
+    blendRows: blendRows,
+    webUrlArgument: webUrlArgument,
+    gitUrlArgument: gitUrlArgument,
+    validateArgument: validateArgument,
+    argumentRows: argumentRows,
+    argumentEmptyText: argumentEmptyText,
+    parseWebApps: parseWebApps,
+    webAppChoiceRows: webAppChoiceRows,
+    expandCommand: expandCommand,
+    openTarget: openTarget,
+    directIconUrl: directIconUrl,
     watcherRestartDelayMs: watcherRestartDelayMs
 };
 

@@ -41,7 +41,7 @@ Surface {
         Text {
             x: 2
             anchors.verticalCenter: parent.verticalCenter
-            text: "Tailscale"
+            text: I18n.tr("Tailscale")
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.primary
             font.weight: Theme.weightSemibold
@@ -157,7 +157,7 @@ Surface {
         width: parent.width
         topPadding: 10
         bottomPadding: 10
-        text: "Loading peers…"
+        text: I18n.tr("Loading peers…")
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.secondary
@@ -235,7 +235,7 @@ Surface {
                     Text {
                         id: exitText
                         anchors.centerIn: parent
-                        text: peerRow.modelData.exit ? "EXIT" : "exit node"
+                        text: peerRow.modelData.exit ? I18n.tr("EXIT") : I18n.tr("exit node")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightSemibold
@@ -302,7 +302,7 @@ Surface {
             anchors.right: parent.right
             anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            text: "Admin console"
+            text: I18n.tr("Admin console")
             onClicked: {
                 Quickshell.execDetached(["xdg-open", "https://login.tailscale.com/admin/machines"]);
                 Popouts.close();

@@ -56,7 +56,7 @@ Column {
     // the mark in the label lane, the login beside it, the connection state
     // on the control edge.
     SectionHeader {
-        label: "ACCOUNT"
+        label: I18n.tr("ACCOUNT")
     }
 
     Item {
@@ -169,7 +169,7 @@ Column {
 
     // ---- watched repositories ---------------------------------------------
     SectionHeader {
-        label: "WATCHED REPOS"
+        label: I18n.tr("WATCHED REPOS")
     }
 
     Item {
@@ -183,7 +183,7 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             placeholderText: "owner/repo"
             invalid: root.addError !== ""
-            Accessible.name: "Repository to watch"
+            Accessible.name: I18n.tr("Repository to watch")
             onTextChanged: root.addError = ""
             onAccepted: {
                 if (root.addWatch(text))
@@ -203,7 +203,7 @@ Column {
             anchors.right: parent.right
             anchors.rightMargin: Theme.chipHeight
             anchors.verticalCenter: parent.verticalCenter
-            text: "Add"
+            text: I18n.tr("Add")
             glyph: "add"
             onTriggered: {
                 if (root.addWatch(addInput.text))
@@ -270,7 +270,7 @@ Column {
                     anchors.rightMargin: Theme.chipHeight
                     y: (Theme.settingsControlHeight - height) / 2
                     text: "Stop watching " + watchRow.modelData
-                    tooltip: "Stop watching"
+                    tooltip: I18n.tr("Stop watching")
                     glyph: "close"
                     compact: true
                     onTriggered: root.removeWatch(watchRow.modelData)
@@ -291,9 +291,6 @@ Column {
     SettingsHint {
         width: parent.width
         maximumLines: 5
-        text: "The configured count applies to recent account and org repositories. "
-            + "Every watched repository is additive to that list and, when enabled, "
-            + "the workflow-report scope. Repository refresh uses the interval above; "
-            + "the Inbox checks repository events and GitHub notifications every minute."
+        text: I18n.tr("The configured count applies to recent account and org repositories. Every watched repository is additive to that list and, when enabled, the workflow-report scope. Repository refresh uses the interval above; the Inbox checks repository events and GitHub notifications every minute.")
     }
 }

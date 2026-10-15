@@ -96,6 +96,15 @@ firewall_ports:
 # date is the explicit review point for a new nightly compiler.
 rust_toolchain: nightly-2026-08-23
 
+# The compositor and shell series this release is qualified on
+# (docs/dependency-policy.md). dnf's versionlock admits minimum <= version <
+# below on both installation paths, so patch updates still arrive through
+# `cybex update` while the next minor or major release waits for review. A
+# trailing "~" bound sorts before every pre-release of that version too.
+qualified_package_series:
+  - { name: hyprland, minimum: "0.56.2", below: "0.57~" }
+  - { name: quickshell, minimum: "0.2.1", below: "0.3~" }
+
 # User-managed developer tools retain a working version on update failure.
 # Claude Code's pin is a minimum (a newer install is not downgraded); OpenCode
 # is pinned exactly; Codex follows the latest stable npm release.

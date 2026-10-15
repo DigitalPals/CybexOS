@@ -155,7 +155,7 @@ PanelWindow {
                     visible: root.muted
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "MUTE"
+                    text: I18n.tr("MUTE")
                     font.family: Theme.fontMono
                     font.pixelSize: Theme.typography.osd
                     font.weight: Theme.weightSemibold

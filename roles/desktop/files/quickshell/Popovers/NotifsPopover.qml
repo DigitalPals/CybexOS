@@ -375,7 +375,7 @@ Surface {
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "NOTIFICATIONS"
+                text: I18n.tr("NOTIFICATIONS")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.metadata
                 font.weight: Theme.weightSemibold
@@ -409,7 +409,7 @@ Surface {
             anchors.right: parent.right
             anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            text: "Clear all"
+            text: I18n.tr("Clear all")
             enabled: Notifs.count > 0
             opacity: enabled ? 1 : 0.45
             onClicked: Notifs.clearAll()
@@ -430,7 +430,7 @@ Surface {
         shown: Notifs.count === 0
         width: parent.width
         glyph: "notifications"
-        title: "No notifications"
+        title: I18n.tr("No notifications")
     }
 
     // ---- grouped history ------------------------------------------------
@@ -457,7 +457,7 @@ Surface {
                 id: earlierLabel
                 x: 10
                 anchors.verticalCenter: parent.verticalCenter
-                text: "EARLIER"
+                text: I18n.tr("EARLIER")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.section
                 font.weight: Theme.weightSemibold
@@ -498,7 +498,7 @@ Surface {
         Text {
             x: 10
             anchors.verticalCenter: parent.verticalCenter
-            text: "Do Not Disturb"
+            text: I18n.tr("Do Not Disturb")
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.control
             color: Theme.textDim

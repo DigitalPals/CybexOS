@@ -108,6 +108,28 @@ test("Hyprland session publication is serialized before target activation", () =
         assert.doesNotMatch(fs.readFileSync(log, "utf8"),
             /start hyprland-session\.target/,
             "a partial environment publication must never start target units");
+
+        // The image's installation-only live boot starts a smaller target;
+        // any other requested target is refused before anything starts.
+        for (const [target, status] of [["cybexos-install-session.target", 0], ["default.target", 64]]) {
+            fs.writeFileSync(log, "");
+            const selected = spawnSync("bash", [starter], {
+                encoding: "utf8",
+                env: {
+                    ...process.env,
+                    PATH: `${bin}:/usr/bin:/bin`,
+                    SESSION_TEST_LOG: log,
+                    CYBEXOS_SESSION_TARGET: target,
+                    XDG_RUNTIME_DIR: runtime,
+                    WAYLAND_DISPLAY: "wayland-1",
+                    XDG_CURRENT_DESKTOP: "Hyprland",
+                    HYPRLAND_INSTANCE_SIGNATURE: "instance",
+                },
+            });
+            assert.equal(selected.status, status, selected.stderr);
+            const started = fs.readFileSync(log, "utf8").split("\n").filter(line => / start /.test(line));
+            assert.deepEqual(started, status ? [] : [`systemctl --user start ${target}`]);
+        }
     } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
     }

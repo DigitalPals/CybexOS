@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -6,7 +7,7 @@ const { spawnSync } = require("node:child_process");
 const { shellDir, load } = require("./shell.cjs");
 
 function read(relative) {
-    return fs.readFileSync(path.join(shellDir, relative), "utf8");
+    return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
 test("the wide Network panel has a physical-transport hero and live diagnostic grid", () => {
@@ -238,7 +239,7 @@ test("QR generation is immediate and sustained speed tests support device switch
 });
 
 test("new runtime commands are explicit desktop dependencies", () => {
-    const tasks = fs.readFileSync(path.resolve(shellDir, "../../tasks/main.yml"), "utf8");
+    const tasks = untranslated(fs.readFileSync(path.resolve(shellDir, "../../tasks/main.yml"), "utf8"));
     for (const dependency of ["NetworkManager", "python3", "curl", "iw", "qrencode", "iproute", "iputils", "dnf5-plugins"])
         assert.match(tasks, new RegExp(`- ${dependency}(?:\\s|$)`));
 });

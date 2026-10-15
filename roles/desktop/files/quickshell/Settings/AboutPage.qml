@@ -51,11 +51,11 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Shell health"
+            title: I18n.tr("Shell health")
 
             ValueRow {
                 width: parent.width
-                label: "Status"
+                label: I18n.tr("Status")
                 dotColor: page.statusColor
                 value: ShellHealth.busy ? "Checking…" : ShellHealth.statusLabel
                 valueColor: Theme.textHi
@@ -65,7 +65,7 @@ SettingsPage {
             }
             ValueRow {
                 width: parent.width
-                label: "Service"
+                label: I18n.tr("Service")
                 valueMono: true
                 value: ShellHealth.serviceActive
                     ? "PID " + ShellHealth.servicePid + " · up " + ShellHealth.uptimeLabel()
@@ -74,7 +74,7 @@ SettingsPage {
             }
             ValueRow {
                 width: parent.width
-                label: "Deployment"
+                label: I18n.tr("Deployment")
                 valueMono: ShellHealth.deploymentId !== ""
                 value: ShellHealth.deploymentId !== ""
                     ? ShellHealth.deploymentId.slice(0, 10) + " · " + ShellHealth.deploymentStatus
@@ -89,27 +89,22 @@ SettingsPage {
             // service and warnings, so it does not start a new deploy check.
             ValueRow {
                 width: parent.width
-                label: "Last deploy check"
+                label: I18n.tr("Last deploy check")
                 value: LocalTime.fromText(ShellHealth.deploymentCheckedAt, clock.date.getTime(),
                     Settings.clock24, ShellHealth.deploymentCheckedAt || "Not recorded")
 
                 SettingsAction {
-                    text: ShellHealth.busy ? "Checking" : "Refresh"
+                    text: ShellHealth.busy ? I18n.tr("Checking") : I18n.tr("Refresh")
                     glyph: "refresh"
-                    Accessible.name: "Refresh shell health"
+                    Accessible.name: I18n.tr("Refresh shell health")
                     onTriggered: ShellHealth.refresh()
                 }
             }
         }
 
-        RecoveryGroup {
-            width: parent.width
-            nowMs: clock.date.getTime()
-        }
-
         SettingsGroup {
             width: parent.width
-            title: "Settings file"
+            title: I18n.tr("Settings file")
 
             ValueRow {
                 width: parent.width
@@ -117,9 +112,9 @@ SettingsPage {
                 labelMono: true
 
                 SettingsAction {
-                    text: "Open"
+                    text: I18n.tr("Open")
                     glyph: "open_in_new"
-                    Accessible.name: "Open the settings file"
+                    Accessible.name: I18n.tr("Open the settings file")
                     onTriggered: page.openConfig()
                 }
             }
@@ -127,15 +122,15 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Reset"
+            title: I18n.tr("Reset")
 
             ValueRow {
                 width: parent.width
-                label: "Reset all settings"
-                hint: "Every page back to its defaults. You can undo for 8 seconds."
+                label: I18n.tr("Reset all settings")
+                hint: I18n.tr("Every page back to its defaults. You can undo for 8 seconds.")
 
                 SettingsAction {
-                    text: "Reset all"
+                    text: I18n.tr("Reset all")
                     glyph: "restart_alt"
                     danger: true
                     onTriggered: Settings.resetAll()

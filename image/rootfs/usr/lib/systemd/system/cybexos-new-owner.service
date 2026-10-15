@@ -1,0 +1,32 @@
+[Unit]
+Description=CybexOS setup for a new owner
+ConditionPathExists=/etc/cybexos/oem.json
+ConditionKernelCommandLine=!rd.live.image
+ConditionKernelCommandLine=!cybexos.recovery
+After=cybexos-first-boot.service systemd-vconsole-setup.service
+# The login screen and any console login wait until an account exists.
+Wants=getty-pre.target
+Before=getty-pre.target getty@tty1.service display-manager.service
+
+[Service]
+Type=oneshot
+# Free the first console from the boot splash and hide systemd's status lines.
+ExecStartPre=-/usr/bin/plymouth quit
+ExecStartPre=-/usr/bin/kill -s SIGRTMIN+21 1
+# Shows the graphical setup in cage, as an unprivileged transient user, on
+# this console; asks on the console itself when that cannot start.
+ExecStart=/usr/libexec/cybexos-new-owner
+ExecStopPost=-/usr/bin/kill -s SIGRTMIN+20 1
+StandardInput=tty
+StandardOutput=tty
+# Diagnostics, cage's included, go to the journal, never onto the console
+# the setup is shown on. They never contain an answer.
+StandardError=journal
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=graphical.target

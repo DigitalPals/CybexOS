@@ -1,16 +1,9 @@
 ---
-- name: Install Fedora fingerprint support for the detected reader
-  ansible.builtin.dnf:
-    name:
-      - libfprint
-      - fprintd
-      - fprintd-pam
-    state: present
-  register: xps_2026_fingerprint_packages
-  failed_when: false
-  when: not ansible_check_mode
-  tags: [xps-2026, hardware, fingerprint]
-
+# Fingerprint support itself is shared by every installation: the base
+# package baseline installs fprintd and fprintd-pam, and the base role's
+# authentication tasks enable authselect's with-fingerprint once
+# (docs/security.md). This XPS-only part keeps the hardware diagnostic and
+# reports when the detected reader is not one Fedora's libfprint supports.
 - name: Install the supported-reader diagnostic
   ansible.builtin.copy:
     src: xps-fingerprint-check
@@ -18,9 +11,7 @@
     owner: root
     group: root
     mode: "0755"
-  when: >-
-    ansible_check_mode
-    or (xps_2026_fingerprint_packages.rc | default(1) | int) == 0
+  register: xps_2026_fingerprint_diagnostic
   tags: [xps-2026, hardware, fingerprint]
 
 - name: Restore the fingerprint diagnostic SELinux label
@@ -29,7 +20,7 @@
   changed_when: false
   when:
     - not ansible_check_mode
-    - (xps_2026_fingerprint_packages.rc | default(1) | int) == 0
+    - xps_2026_fingerprint_diagnostic is changed
   tags: [xps-2026, hardware, fingerprint]
 
 - name: Ask fprintd whether libfprint supports the detected reader
@@ -46,76 +37,24 @@
   changed_when: false
   failed_when: false
   check_mode: false
-  when: (xps_2026_fingerprint_packages.rc | default(1) | int) == 0
   tags: [xps-2026, hardware, fingerprint]
 
 - name: Record whether the physical reader is supported by libfprint
   ansible.builtin.set_fact:
     xps_2026_fingerprint_supported: >-
-      {{ (xps_2026_fingerprint_packages.rc | default(1) | int) == 0
-         and (xps_2026_fingerprint_devices.rc | default(1) | int) == 0
+      {{ (xps_2026_fingerprint_devices.rc | default(1) | int) == 0
          and xps_2026_fingerprint_devices.stdout | default('')
              is regex('^ao\\s+[1-9][0-9]*\\s') }}
   tags: [xps-2026, hardware, fingerprint]
 
-- name: Report unavailable Fedora fingerprint packages
-  ansible.builtin.debug:
-    msg: >-
-      A possible fingerprint reader was detected, but Fedora fingerprint
-      packages could not be installed. PAM was not changed. DNF reported:
-      {{ xps_2026_fingerprint_packages.msg | default('unknown package error') }}
-  when:
-    - not ansible_check_mode
-    - (xps_2026_fingerprint_packages.rc | default(1) | int) != 0
-  tags: [xps-2026, hardware, fingerprint]
-
-- name: Read Fedora's managed authentication profile
-  ansible.builtin.command:
-    argv: [authselect, current, --raw]
-  register: xps_2026_authselect_current
-  changed_when: false
-  failed_when: false
-  check_mode: false
-  when: xps_2026_fingerprint_supported | bool
-  tags: [xps-2026, hardware, fingerprint]
-
-- name: Enable Fedora's password-fallback fingerprint PAM feature
-  ansible.builtin.command:
-    argv: [authselect, enable-feature, with-fingerprint]
-  register: xps_2026_fingerprint_authselect
-  when:
-    - not ansible_check_mode
-    - xps_2026_fingerprint_supported | bool
-    - (xps_2026_authselect_current.rc | default(1) | int) == 0
-    - "'with-fingerprint' not in (xps_2026_authselect_current.stdout | default('')).split()"
-  changed_when: xps_2026_fingerprint_authselect.rc == 0
-  failed_when: false
-  tags: [xps-2026, hardware, fingerprint]
-
-- name: Report a reader which Fedora cannot use safely
+- name: Report a reader which Fedora cannot use
   ansible.builtin.debug:
     msg: >-
       A possible fingerprint reader was detected ({{ xps_2026_fingerprint_probe.stdout | trim }}),
       but Fedora's current libfprint/fprintd stack did not expose a supported
-      device. PAM was not changed. Password authentication remains unchanged.
+      device. Password authentication is unchanged, and Settings > Security
+      reports that no reader was found.
   when:
     - not ansible_check_mode
-    - (xps_2026_fingerprint_packages.rc | default(1) | int) == 0
     - not xps_2026_fingerprint_supported | bool
-  tags: [xps-2026, hardware, fingerprint]
-
-- name: Report an authselect integration failure without changing password auth
-  ansible.builtin.debug:
-    msg: >-
-      libfprint supports the fingerprint reader, but authselect could not
-      enable Fedora's with-fingerprint feature. Password authentication is
-      unchanged. Diagnose with 'authselect check' before retrying.
-  when:
-    - not ansible_check_mode
-    - xps_2026_fingerprint_supported | bool
-    - >-
-      (xps_2026_authselect_current.rc | default(1) | int) != 0
-      or (xps_2026_fingerprint_authselect is defined
-          and not (xps_2026_fingerprint_authselect.skipped | default(false) | bool)
-          and (xps_2026_fingerprint_authselect.rc | default(1) | int) != 0)
   tags: [xps-2026, hardware, fingerprint]

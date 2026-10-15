@@ -10,23 +10,25 @@ SettingsPage {
     id: page
 
     readonly property var tabMeta: ({
-        overview: { glyph: "dashboard", label: "Overview", from: "the Fedora button" },
-        sound: { glyph: "volume_down", label: "Sound", from: "the volume glyph" },
-        network: { glyph: "wifi", label: "Network", from: "the network glyphs" },
-        bluetooth: { glyph: "bluetooth", label: "Bluetooth", from: "the Bluetooth glyph" },
-        power: { glyph: "battery_5_bar", label: "Power", from: "the battery glyph" },
-        notifications: { glyph: "notifications", label: "Notifications", from: "the bell" }
+        overview: { glyph: "dashboard", label: I18n.tr("Overview"), from: "the Fedora button" },
+        sound: { glyph: "volume_down", label: I18n.tr("Sound"), from: "the volume glyph" },
+        network: { glyph: "wifi", label: I18n.tr("Network"), from: "the network glyphs" },
+        bluetooth: { glyph: "bluetooth", label: I18n.tr("Bluetooth"), from: "the Bluetooth glyph" },
+        power: { glyph: "battery_5_bar", label: I18n.tr("Power"), from: "the battery glyph" },
+        notifications: { glyph: "notifications", label: I18n.tr("Notifications"), from: "the bell" }
     })
 
     readonly property var overviewRows: [
-        { key: "media", label: "Now playing",
+        { key: "media", label: I18n.tr("Now playing"),
             description: "Current track and controls at the top of Overview" },
-        { key: "sliders", label: "Sliders",
+        { key: "sliders", label: I18n.tr("Sliders"),
             description: "Brightness and volume, always in reach" },
-        { key: "tiles", label: "Quick toggles",
+        { key: "tiles", label: I18n.tr("Quick toggles"),
             description: "The Dark, Focus, Night and Awake tiles" },
-        { key: "updates", label: "Updates",
-            description: "Pending system updates with the install action" }
+        { key: "updates", label: I18n.tr("Updates"),
+            description: "Pending system updates with the install action" },
+        { key: "processes", label: I18n.tr("Top processes"),
+            description: "The busiest processes, read only while Overview is open" }
     ]
 
     // ---- tab reorder state ------------------------------------------------
@@ -81,11 +83,11 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Tabs"
+            title: I18n.tr("Tabs")
 
             SettingsHint {
                 width: parent.width
-                text: "Drag to reorder Control Center tabs; switch one off to hide it"
+                text: I18n.tr("Drag to reorder Control Center tabs; switch one off to hide it")
             }
 
             Item {
@@ -278,7 +280,7 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Overview"
+            title: I18n.tr("Overview")
 
             Repeater {
                 model: page.overviewRows
@@ -301,11 +303,11 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Behavior"
+            title: I18n.tr("Behavior")
 
             PickerRow {
                 width: parent.width
-                label: "Open on hover"
+                label: I18n.tr("Open on hover")
                 settingKey: "drawerHover"
                 hint: Settings.drawerHover === "always"
                     ? "Pointing at a bar icon opens its tab"
@@ -313,15 +315,15 @@ SettingsPage {
                     ? "While the drawer is open, pointing at another bar icon switches to its tab"
                     : "Click a bar icon to open its tab"
                 model: [
-                    { value: "off", label: "Off" },
-                    { value: "open", label: "While open" },
-                    { value: "always", label: "Always" }
+                    { value: "off", label: I18n.tr("Off") },
+                    { value: "open", label: I18n.tr("While open") },
+                    { value: "always", label: I18n.tr("Always") }
                 ]
             }
 
             SliderRow {
                 width: parent.width
-                label: "Width"
+                label: I18n.tr("Width")
                 settingKey: "drawerWidth"
                 min: 320; max: 480; step: 10; unit: "px"
                 valueWidth: 52

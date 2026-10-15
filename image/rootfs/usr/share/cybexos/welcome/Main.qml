@@ -44,7 +44,8 @@ ApplicationWindow {
     palette.highlight: accent
 
     onClosing: close => {
-        if (welcome.busy) {
+        // Installation-only mode has no desktop behind this window.
+        if (welcome.busy || welcome.isInstallMode) {
             close.accepted = false;
             return;
         }
@@ -59,7 +60,9 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        if (!welcome.isLive)
+        if (welcome.isInstallMode)
+            welcome.install();
+        else if (!welcome.isLive)
             welcome.loadWallpapers();
     }
 
@@ -271,7 +274,7 @@ ApplicationWindow {
 
         Text {
             Layout.fillWidth: true
-            text: welcome.isLive ? "Make yourself at home." : "Welcome to your new desktop."
+            text: welcome.isInstallMode ? "Let’s install CybexOS." : welcome.isLive ? "Make yourself at home." : "Welcome to your new desktop."
             color: window.ink
             font.pixelSize: 38
             font.weight: Font.DemiBold
@@ -282,7 +285,9 @@ ApplicationWindow {
 
         Text {
             Layout.fillWidth: true
-            text: welcome.isLive
+            text: welcome.isInstallMode
+                ? "The installer opens by itself. If you close it, open it again here, or start the live desktop instead."
+                : welcome.isLive
                 ? "Explore the desktop from your USB drive, or install it when you’re ready."
                 : "Pick a wallpaper to start: the desktop’s colors follow it. You can come back here any time from the app launcher."
             color: window.inkMid
@@ -329,6 +334,9 @@ ApplicationWindow {
                             : welcome.hardwareState === "skipped" ? "Hardware setup: no special device support needed"
                             : welcome.hardwareState === "pending" && welcome.hardwareNote.indexOf("reboot") >= 0
                                 ? "Camera update installed — reboot to finish validation"
+                            : welcome.hardwareState === "pending"
+                              && (welcome.nvidiaState === "reboot" || welcome.nvidiaState === "enroll")
+                                ? "Hardware setup continues after a restart"
                             : welcome.hardwareState === "running" ? "Hardware setup in progress"
                             : welcome.hardwareState === "failed" ? "Hardware setup needs another attempt"
                             : "Hardware setup pending"
@@ -343,6 +351,26 @@ ApplicationWindow {
                         flat: true
                         onClicked: welcome.retryHardware()
                     }
+                }
+                // Only on NVIDIA systems. A failure also marks the hardware
+                // row above as failed, which carries the retry button.
+                Text {
+                    Layout.fillWidth: true
+                    visible: welcome.nvidiaState !== ""
+                    text: welcome.nvidiaState === "ready" ? "NVIDIA driver ready"
+                        : welcome.nvidiaState === "checking" ? "Checking the NVIDIA driver…"
+                        : welcome.nvidiaState === "reboot" ? "NVIDIA driver installed — restart to start using it"
+                        : welcome.nvidiaState === "enroll"
+                            ? "Secure Boot: restart, choose Enroll MOK at the blue screen, then Continue and Yes, and enter "
+                              + (welcome.nvidiaPassword !== "" ? "the one-time password " + welcome.nvidiaPassword
+                                                               : "the one-time password from the notification")
+                        : welcome.nvidiaState === "skipped" ? "Secure Boot key not enrolled — the open-source driver is in use"
+                        : welcome.nvidiaState === "failed" ? "NVIDIA driver setup failed — the open-source driver is in use"
+                        : "NVIDIA driver installs when the network is connected"
+                    color: welcome.nvidiaState === "ready" || welcome.nvidiaState === "checking"
+                        ? window.inkMid : window.accentText
+                    font.pixelSize: 13
+                    wrapMode: Text.WordWrap
                 }
                 RowLayout {
                     Layout.fillWidth: true
@@ -644,11 +672,35 @@ ApplicationWindow {
             }
 
             Button {
-                visible: welcome.isLive
+                visible: welcome.isLive && !welcome.isInstallMode
                 text: "Try the desktop first →"
                 enabled: !welcome.busy
                 flat: true
                 onClicked: welcome.finish()
+            }
+
+            Button {
+                visible: welcome.isInstallMode
+                text: "Start the live desktop"
+                enabled: !welcome.busy
+                flat: true
+                onClicked: welcome.startDesktop()
+            }
+
+            Button {
+                visible: welcome.isInstallMode
+                text: "Restart"
+                enabled: !welcome.busy
+                flat: true
+                onClicked: welcome.power("reboot")
+            }
+
+            Button {
+                visible: welcome.isInstallMode
+                text: "Power off"
+                enabled: !welcome.busy
+                flat: true
+                onClicked: welcome.power("poweroff")
             }
 
             Item {

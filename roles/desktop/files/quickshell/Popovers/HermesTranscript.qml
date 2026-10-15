@@ -458,7 +458,7 @@ Item {
                                     color: HermesTheme.textPrimary
                                     selectionColor: HermesTheme.accentSoft
                                     selectedTextColor: HermesTheme.textPrimary
-                                    Accessible.name: "Edited Hermes message"
+                                    Accessible.name: I18n.tr("Edited Hermes message")
                                     onTextChanged: {
                                         if (timelineRow.editing)
                                             root.editDraft = text;
@@ -488,7 +488,7 @@ Item {
                                 spacing: 5
 
                                 ActionButton {
-                                    label: "Cancel"
+                                    label: I18n.tr("Cancel")
                                     hPadding: 12
                                     enabled: !timelineRow.editPending
                                     fontFamily: HermesTheme.fontUi
@@ -576,7 +576,7 @@ Item {
                         ActionButton {
                             visible: timelineRow.longMessage
                                 && !timelineRow.message.streaming
-                            label: timelineRow.expanded ? "Show less" : "Show more"
+                            label: timelineRow.expanded ? I18n.tr("Show less") : I18n.tr("Show more")
                             hPadding: 14
                             fontFamily: HermesTheme.fontUi
                             focusColor: HermesTheme.focus
@@ -719,7 +719,7 @@ Item {
             anchors.right: dismissError.left
             anchors.rightMargin: 3
             anchors.verticalCenter: parent.verticalCenter
-            label: "Retry"
+            label: I18n.tr("Retry")
             revealed: visible
             enabled: Hermes.connected && !Hermes.selectedLoading
                 && root.history.loadingEarlier !== true

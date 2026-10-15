@@ -71,8 +71,8 @@ Item {
 
     implicitHeight: Theme.scaled(190) + asideHeight
     Accessible.role: Accessible.Grouping
-    Accessible.name: "Display arrangement"
-    Accessible.description: "Select a display to change it below. Arrow keys place the focused display beside the others."
+    Accessible.name: I18n.tr("Display arrangement")
+    Accessible.description: I18n.tr("Select a display to change it below. Arrow keys place the focused display beside the others.")
 
     Rectangle {
         anchors.fill: parent
@@ -84,7 +84,7 @@ Item {
         visible: root.layout.length === 0
         anchors.horizontalCenter: parent.horizontalCenter
         y: (root.stageHeight - height) / 2
-        text: "No display is showing its own picture"
+        text: I18n.tr("No display is showing its own picture")
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.secondary
         color: Theme.textFaint

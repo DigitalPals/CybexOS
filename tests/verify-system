@@ -249,6 +249,23 @@ if [[ $docker_sudoless != true ]]; then
 fi
 check 'user lingering is enabled' test -e "/var/lib/systemd/linger/$primary_user"
 
+# Fingerprints and security keys beside the password (docs/security.md).
+check 'fingerprint and security-key packages are installed' rpm -q fprintd fprintd-pam pam-u2f pamu2fcfg
+check 'sign-in policy helper is installed' test -x /usr/local/libexec/cybexos-auth-policy
+check 'lock screen PAM service is fingerprint-free and keeps the password' \
+  grep -Eq '^auth[[:space:]]+include[[:space:]]+password-auth$' /etc/pam.d/cybexos-lock
+check 'password stays the fallback in system-auth' grep -q 'pam_unix[.]so' /etc/pam.d/system-auth
+if grep -qx 'with-pam-u2f\(-2fa\)\?' /etc/authselect/authselect.conf 2>/dev/null; then
+  skip 'security keys are managed by an authselect u2f feature; CybexOS key checks'
+else
+  check 'SDDM sign-in has no fingerprint or security-key step' \
+    bash -c '! grep -Eq "pam_(fprintd|u2f)[.]so" /etc/pam.d/password-auth'
+  for pam_service in sudo polkit-1 cybexos-lock; do
+    check "security keys are offered to $pam_service" \
+      grep -q 'pam_u2f[.]so.*origin=pam://cybexos' "/etc/pam.d/$pam_service"
+  done
+fi
+
 for unit in NetworkManager firewalld bluetooth avahi-daemon cups; do
   check "$unit is enabled" unit_enabled "$unit.service"
 done
@@ -328,9 +345,18 @@ if command_exists firewall-cmd && unit_active firewalld.service; then
   else
     pass 'tailscale0 is absent while Tailscale is disabled'
   fi
+  # A shared connection (the Settings hotspot) belongs in NetworkManager's
+  # nm-shared zone, which serves its clients DHCP and DNS.
+  shared_profile() { [[ $(nmcli -g ipv4.method connection show "$1" 2>/dev/null) == shared ]]; }
   while IFS=: read -r device type state; do
     case "$type:$state" in
       ethernet:connected|wifi:connected)
+        if shared_profile "$(nmcli -g GENERAL.CON-UUID device show "$device" 2>/dev/null)"; then
+          assigned=$(firewall-cmd --get-zone-of-interface="$device" 2>/dev/null || true)
+          [[ $assigned == nm-shared ]] && pass "$device shares its connection from the nm-shared zone" \
+            || fail "$device shares its connection from ${assigned:-no zone}, expected nm-shared"
+          continue
+        fi
         assigned=$(firewall-cmd --get-zone-of-interface="$device" 2>/dev/null || true)
         [[ $assigned == "$firewall_zone" ]] && pass "$device is bound to $firewall_zone zone" || fail "$device is bound to ${assigned:-no zone}"
         ;;
@@ -339,6 +365,7 @@ if command_exists firewall-cmd && unit_active firewalld.service; then
   while IFS=: read -r uuid type; do
     case "$type" in
       802-3-ethernet|802-11-wireless)
+        shared_profile "$uuid" && continue
         assigned=$(nmcli -g connection.zone connection show "$uuid" 2>/dev/null || true)
         [[ $assigned == "$firewall_zone" ]] && pass "$uuid profile is bound to $firewall_zone zone" \
           || fail "$uuid profile is bound to ${assigned:-no zone}"
@@ -550,6 +577,28 @@ else
   skip 'precise Dell XPS 2026 SKU gate not matched; new hardware-role checks'
 fi
 
+# The NVIDIA role's outcome, corrected for a restart since it was recorded.
+# Never print the Secure Boot enrollment password.
+nvidia_helper=/usr/local/libexec/cybexos-nvidia
+if [[ -x $nvidia_helper ]] && nvidia_status=$("$nvidia_helper" status 2>/dev/null); then
+  nvidia_state=$(jq -r '.state // "absent"' <<<"$nvidia_status" 2>/dev/null || printf unknown)
+  nvidia_reason=$(jq -r '.reason // ""' <<<"$nvidia_status" 2>/dev/null || true)
+  case $nvidia_state in
+    ready) pass "NVIDIA driver $(jq -r '.driver_version // ""' <<<"$nvidia_status") is active" ;;
+    reboot|enroll)
+      if [[ $(jq -r '.key // ""' <<<"$nvidia_status") == skipped ]]; then
+        fail "NVIDIA driver: $nvidia_reason"
+      else
+        warn "NVIDIA driver awaits a restart: $nvidia_reason"
+      fi
+      ;;
+    absent) skip 'no NVIDIA GPU; NVIDIA driver checks' ;;
+    *) fail "NVIDIA driver setup: ${nvidia_reason:-state $nvidia_state}" ;;
+  esac
+else
+  skip 'NVIDIA hardware role has not configured this machine'
+fi
+
 check "Configured Plymouth theme ($plymouth_theme) is selected" \
   test "$(plymouth-set-default-theme 2>/dev/null)" = "$plymouth_theme"
 check_root "Configured Plymouth theme ($plymouth_theme) is embedded in the running-kernel initramfs" bash -c \
@@ -613,7 +662,7 @@ fi
 
 required_commands=(cybex Hyprland hypridle hyprlock hyprpicker satty qs qalc cliphist \
   voxtype localsend cybexos-agent git gh python3 oh-my-posh kitty nvim fish zoxide fzf eza jq rg fd \
-  dust bat btop fastfetch ffmpeg mpv yt-dlp imv)
+  dust bat btop fastfetch ffmpeg mpv yt-dlp imv zbarimg color-picker screenshot-stitch)
 feature_enabled developer_tools && required_commands+=(lazygit lazydocker mdview bun balena \
   gcc g++ cmake rustup mold sccache node npm claude opencode codex)
 feature_enabled connected_widgets && required_commands+=(t3code-update)
@@ -797,7 +846,7 @@ command_exists v4l2-ctl && v4l2-ctl --list-devices >/dev/null 2>&1 \
 
 printf '\nManual acceptance still required (these checks are intentionally non-destructive):\n'
 printf '%s\n' \
-  '  - Quickshell launcher modes/navigation, notification toasts/actions/DND, Polkit, Secret Service, screenshots, recording, OCR, and dictation' \
+  '  - Quickshell launcher modes/navigation, notification toasts/actions/DND, Polkit, Secret Service, screenshots (region, window, scrolling), recording (webcam bubble, hardware encoder), OCR and QR codes, colour picker, and dictation' \
   '  - multi-monitor bars, per-output launcher/panel placement, responsive widths, audio wheel/mute, and popout hover switching' \
   '  - T3 Code dropdown row expand/collapse and selection across needs-you, running, plan-ready, completed, idle, and failed sections; one inspector/subscription, bounded scrolling, explicit open links, Stop, per-thread/bulk Mark reviewed, and unchanged chip/count/tooltip/notifications' \
   '  - T3 Code approval and follow-up sending/failure feedback plus structured-input single-select, multi-select, custom, Back/Next/Submit, multi-question completeness, retry draft retention, and resolution cleanup' \

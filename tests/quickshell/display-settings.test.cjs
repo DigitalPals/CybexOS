@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -6,7 +7,7 @@ const { spawnSync } = require("node:child_process");
 const { shellDir } = require("./shell.cjs");
 
 const repo = path.resolve(__dirname, "../..");
-const read = file => fs.readFileSync(path.join(shellDir, file), "utf8");
+const read = file => untranslated(fs.readFileSync(path.join(shellDir, file), "utf8"));
 
 test("display helper: trials, restore timers, atomic saves and shared validation", () => {
     const result = spawnSync("python3", [path.join(__dirname, "../display-settings.py")], {
@@ -24,17 +25,17 @@ test("displays.lua: strict JSON, vendor merging, hotplug and reload hygiene", ()
 });
 
 test("Hyprland loads saved displays after vendor monitors and before user.lua, contained", () => {
-    const entry = fs.readFileSync(path.join(repo, "roles/desktop/files/hyprland.lua"), "utf8");
+    const entry = untranslated(fs.readFileSync(path.join(repo, "roles/desktop/files/hyprland.lua"), "utf8"));
     const monitors = entry.indexOf('require("monitors")');
     const displays = entry.indexOf('pcall(require, "displays")');
     const user = entry.indexOf('dofile(user_dir .. "/user.lua")');
     assert.ok(monitors > 0 && monitors < displays && displays < user);
     assert.match(entry, /"autostart", "displays" \}\) do\s+package\.loaded\[module\] = nil/,
         "a reload evicts the module so saved changes and subscriptions are rebuilt");
-    const template = fs.readFileSync(path.join(repo, "roles/desktop/templates/monitors.lua.j2"), "utf8");
+    const template = untranslated(fs.readFileSync(path.join(repo, "roles/desktop/templates/monitors.lua.j2"), "utf8"));
     assert.doesNotMatch(template, /\bhl\.monitor\(\{/, "vendor rules go through the recording helper");
     assert.match(template, /_G\.__cybexos_vendor_monitor_rules = vendor_monitor_rules/);
-    const tasks = fs.readFileSync(path.join(repo, "roles/desktop/tasks/main.yml"), "utf8");
+    const tasks = untranslated(fs.readFileSync(path.join(repo, "roles/desktop/tasks/main.yml"), "utf8"));
     const install = tasks.slice(tasks.indexOf("Install Hyprland Lua configuration"),
         tasks.indexOf("Install ordered Hyprland session starter"));
     assert.ok(install.indexOf("- autostart.lua") < install.indexOf("- displays.lua")
@@ -42,7 +43,7 @@ test("Hyprland loads saved displays after vendor monitors and before user.lua, c
         "the module lands before the entrypoint that requires it");
     const prune = tasks.split('\n').find(line => line.includes('item.path | basename not in'));
     assert.ok(prune && prune.includes("'displays.lua'"), "stale-entry pruning keeps the module");
-    assert.match(fs.readFileSync(path.join(repo, "image/package"), "utf8"), /"autostart\.lua", "displays\.lua"/);
+    assert.match(untranslated(fs.readFileSync(path.join(repo, "image/package"), "utf8")), /"autostart\.lua", "displays\.lua"/);
 });
 
 test("the Displays page is a System page with a guarded trial", () => {

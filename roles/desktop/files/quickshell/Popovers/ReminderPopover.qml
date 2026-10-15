@@ -79,7 +79,7 @@ Surface {
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: "Reminders"
+            text: I18n.tr("Reminders")
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.heading
             font.weight: Theme.weightBold
@@ -154,7 +154,7 @@ Surface {
                 selectionColor: Theme.accentBg
                 activeFocusOnTab: true
                 Accessible.role: Accessible.EditableText
-                Accessible.name: "Minutes"
+                Accessible.name: I18n.tr("Minutes")
                 Keys.onReturnPressed: root.addReminder()
                 Keys.onEnterPressed: root.addReminder()
             }
@@ -181,7 +181,7 @@ Surface {
                 activeFocusOnTab: true
                 clip: true
                 Accessible.role: Accessible.EditableText
-                Accessible.name: "Optional reminder message"
+                Accessible.name: I18n.tr("Optional reminder message")
                 Keys.onReturnPressed: root.addReminder()
                 Keys.onEnterPressed: root.addReminder()
 
@@ -189,7 +189,7 @@ Surface {
                     visible: messageInput.text === ""
                     anchors.fill: parent
                     verticalAlignment: Text.AlignVCenter
-                    text: "Optional message"
+                    text: I18n.tr("Optional message")
                     font: messageInput.font
                     color: Theme.textFaint
                 }
@@ -207,7 +207,7 @@ Surface {
             opacity: enabled ? 1 : 0.5
             activeFocusOnTab: enabled
             Accessible.role: Accessible.Button
-            Accessible.name: "Add reminder"
+            Accessible.name: I18n.tr("Add reminder")
             Accessible.onPressAction: root.addReminder()
 
             Row {
@@ -223,7 +223,7 @@ Surface {
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Add"
+                    text: I18n.tr("Add")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.control
                     font.weight: Theme.weightBold
@@ -259,7 +259,7 @@ Surface {
         ActionButton {
             id: clearAction
             visible: Reminders.count > 0
-            label: root.clearArmed ? "Confirm clear all" : "Clear all"
+            label: root.clearArmed ? I18n.tr("Confirm clear all") : I18n.tr("Clear all")
             tint: Theme.redText
             fill: Theme.redBgSoft
             hPadding: 14

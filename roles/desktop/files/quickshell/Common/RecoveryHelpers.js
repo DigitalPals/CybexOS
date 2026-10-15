@@ -52,7 +52,8 @@ function parseIndex(raw) {
                 created: text(point.created),
                 kernel: text(point.kernel),
                 bootable: point.bootable === true,
-                reason: text(point.reason)
+                reason: text(point.reason),
+                factory: point.factory === true
             };
         });
     var replaced = (Array.isArray(data.replaced) ? data.replaced : [])
@@ -82,6 +83,8 @@ function pointTime(id) {
 
 // Updater points are described as "update <run id>"; say what they are.
 function pointLabel(point) {
+    if (point && point.factory === true)
+        return "Factory state";
     var description = text(point && point.description);
     if (/^update [0-9-]+$/.test(description))
         return "Before an update";
@@ -109,6 +112,17 @@ function restoreCommand(helper, id, serial) {
         "--unit=cybexos-recovery-restore-" + String(serial).replace(/[^0-9]/g, ""),
         "--description=Restore CybexOS recovery point " + id,
         "--", helper, "restore", id];
+}
+
+// The installation's factory point exists only on ISO installations.
+function hasFactoryPoint(points) {
+    return Array.isArray(points) && points.some(function(point) { return point && point.factory === true; });
+}
+
+// The reset asks for its confirmation, sudo and passphrases on a terminal;
+// --hold keeps its last message visible.
+function factoryResetCommand() {
+    return ["kitty", "--hold", "--title", "Factory reset", "cybex", "factory-reset"];
 }
 
 function restoreError(exitCode, stderr) {
@@ -140,7 +154,9 @@ var exported = {
     pointStatus: pointStatus,
     helperPath: helperPath,
     restoreCommand: restoreCommand,
-    restoreError: restoreError
+    restoreError: restoreError,
+    hasFactoryPoint: hasFactoryPoint,
+    factoryResetCommand: factoryResetCommand
 };
 
 if (typeof module !== "undefined" && module.exports)

@@ -1,0 +1,428 @@
+#!/usr/bin/env python3
+"""Capture a region while its content scrolls and stitch it into one PNG.
+
+`screenshot scroll` runs this after the user has selected a region. Frames
+come from grim as binary PPM. Each frame is matched against the previous one
+by the vertical offset at which their rows agree, and only the rows that
+scrolled into view are kept, so the result is one tall image of everything
+the user scrolled past.
+
+Rows are compared through a hash of their bytes with the low bits dropped,
+which makes the matching cheap enough for pure Python, tolerant of rounding
+noise, and independent of any imaging library. The PNG is written from a
+streaming compressor, so memory holds two frames and the compressed result,
+never the stitched image itself.
+
+Rows that keep their place while the rest scrolls are a sticky header or
+footer: they are kept once, at the top and the bottom, instead of being
+repeated with every frame.
+"""
+
+from __future__ import annotations
+
+import argparse
+from collections import Counter
+from dataclasses import dataclass, field
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import struct
+import subprocess
+import sys
+import time
+import zlib
+
+# One frame every INTERVAL seconds; normal wheel or touchpad scrolling moves
+# far less than a region's height in that time, so neighbouring frames
+# always overlap.
+INTERVAL = 0.15
+# Bounds on one capture. MAX_HEIGHT is in captured (physical) pixels and also
+# bounds the memory the compressed result can take.
+MAX_SECONDS = 90
+MAX_HEIGHT = 24000
+GEOMETRY = re.compile(r"^-?\d+,-?\d+ \d+x\d+$")
+# Rows are summarised without their four low bits.
+QUANTISE = bytes(value & 0xF0 for value in range(256))
+# A sticky header or footer covers at most this share of the region.
+STATIC_LIMIT = 0.45
+# A candidate offset must explain this share of the rows it can compare.
+MATCH_RATIO = 0.7
+MIN_MATCH_ROWS = 4
+# A row found more often than this in the previous frame (blank lines,
+# borders, repeated list rows) cannot place a frame on its own.
+REPEAT_LIMIT = 4
+# Without a matching offset, a frame whose rows mostly kept their place
+# changed in place (a cursor, a hover effect) rather than scrolled.
+STILL_RATIO = 0.5
+GRIM_FAILURES = 3
+
+
+class CaptureError(Exception):
+    """A capture that produced nothing worth saving."""
+
+
+@dataclass
+class Frame:
+    width: int
+    rows: list[bytes]
+    signatures: list[int] = field(default_factory=list)
+    informative: list[bool] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.signatures:
+            for row in self.rows:
+                quantised = row.translate(QUANTISE)
+                self.signatures.append(hash(quantised))
+                # A uniform row (blank space, a solid rule) matches anywhere
+                # and says nothing about where the content went.
+                self.informative.append(quantised.count(quantised[:3]) != self.width)
+
+    @property
+    def height(self) -> int:
+        return len(self.rows)
+
+
+@dataclass(frozen=True)
+class Match:
+    """How a frame relates to the one before it.
+
+    kind is "identical", "still" (changed in place), "scrolled" (the content
+    moved up by shift rows), "backward" (it moved down: the user scrolled
+    back up) or "unmatched" (no overlap could be found).
+    header and footer count the rows that kept their place at either edge.
+    """
+
+    kind: str
+    shift: int = 0
+    header: int = 0
+    footer: int = 0
+
+
+def static_edges(previous: list[int], current: list[int]) -> tuple[int, int]:
+    height = len(previous)
+    limit = int(height * STATIC_LIMIT)
+    header = 0
+    while header < limit and previous[header] == current[header]:
+        header += 1
+    footer = 0
+    while footer < limit and previous[height - 1 - footer] == current[height - 1 - footer]:
+        footer += 1
+    return header, footer
+
+
+def overlap_score(previous: Frame, current: Frame, top: int, bottom: int,
+                  shift: int) -> float | None:
+    """The share of comparable rows that agree when row y of current is
+    compared with row y + shift of previous. Rows identical in place are left
+    out: a sticky element that is not at an edge explains itself and must not
+    count against the offset."""
+    old, new = previous.signatures, current.signatures
+    compared = matched = 0
+    for y in range(top + max(0, -shift), bottom - max(0, shift)):
+        if not current.informative[y]:
+            continue
+        if new[y] == old[y + shift]:
+            matched += 1
+            compared += 1
+        elif new[y] != old[y]:
+            compared += 1
+    if matched < MIN_MATCH_ROWS:
+        return None
+    return matched / compared
+
+
+def compare(previous: Frame, current: Frame) -> Match:
+    old, new = previous.signatures, current.signatures
+    if old == new:
+        return Match("identical")
+    header, footer = static_edges(old, new)
+    top, bottom = header, current.height - footer
+
+    positions: dict[int, list[int]] = {}
+    for y in range(top, bottom):
+        if previous.informative[y]:
+            positions.setdefault(old[y], []).append(y)
+    votes: Counter[int] = Counter()
+    for y in range(top, bottom):
+        if not current.informative[y]:
+            continue
+        found = positions.get(new[y])
+        if not found or len(found) > REPEAT_LIMIT:
+            continue
+        for position in found:
+            if position != y:
+                votes[position - y] += 1
+
+    best = None
+    for shift, _ in votes.most_common(4):
+        score = overlap_score(previous, current, top, bottom, shift)
+        if score is not None and (best is None or score > best[1]):
+            best = (shift, score)
+    if best is not None and best[1] >= MATCH_RATIO:
+        return Match("scrolled" if best[0] > 0 else "backward", best[0], header, footer)
+
+    rows = [y for y in range(top, bottom) if current.informative[y]]
+    kept = sum(1 for y in rows if old[y] == new[y])
+    if not rows or kept / len(rows) >= STILL_RATIO:
+        return Match("still", 0, header, footer)
+    return Match("unmatched", 0, header, footer)
+
+
+class PngRows:
+    """An RGB PNG written row by row. Rows go straight into the compressor;
+    the height is only needed for the header, written last."""
+
+    def __init__(self, width: int) -> None:
+        self.width = width
+        self.height = 0
+        self._compressor = zlib.compressobj(6)
+        self._data: list[bytes] = []
+
+    def write(self, rows: list[bytes]) -> None:
+        for row in rows:
+            data = self._compressor.compress(b"\x00" + row)
+            if data:
+                self._data.append(data)
+        self.height += len(rows)
+
+    def save(self, path: Path) -> None:
+        if self.height == 0:
+            raise CaptureError("nothing was captured")
+        self._data.append(self._compressor.flush())
+        compressed = b"".join(self._data)
+        self._data = []
+
+        def chunk(kind: bytes, payload: bytes) -> bytes:
+            return (struct.pack(">I", len(payload)) + kind + payload
+                    + struct.pack(">I", zlib.crc32(kind + payload)))
+
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        try:
+            with temporary.open("wb") as stream:
+                stream.write(b"\x89PNG\r\n\x1a\n")
+                stream.write(chunk(b"IHDR", struct.pack(">IIBBBBB", self.width, self.height,
+                                                        8, 2, 0, 0, 0)))
+                step = 1 << 20
+                for start in range(0, len(compressed), step):
+                    stream.write(chunk(b"IDAT", compressed[start:start + step]))
+                stream.write(chunk(b"IEND", b""))
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+class Stitcher:
+    """Joins frames of one region into rows of a PngRows."""
+
+    def __init__(self, writer: PngRows, max_height: int = MAX_HEIGHT) -> None:
+        self.writer = writer
+        self.max_height = max_height
+        self.previous: Frame | None = None
+        self.started = False
+        self.header = 0
+        self.footer = 0
+        # A frame that matched nothing waits here until the next one shows
+        # whether the content settled there (a fast scroll) or keeps
+        # changing (a video), which is never worth stitching.
+        self.pending: Frame | None = None
+        self.frames = 0
+        self.gaps = 0
+        self.full = False
+
+    def add(self, frame: Frame) -> None:
+        if self.full:
+            return
+        if self.previous is None:
+            self.previous = frame
+            self.frames = 1
+            return
+        if (frame.width, frame.height) != (self.previous.width, self.previous.height):
+            raise ValueError("frame size changed during the capture")
+        reference = self.pending or self.previous
+        match = compare(reference, frame)
+        if self.pending is not None:
+            if match.kind == "unmatched":
+                self.pending = frame
+                return
+            self._settle_jump()
+        # Content the user scrolled back up to is already in the image; the
+        # next frame is matched against the furthest one kept so far.
+        if match.kind in ("identical", "backward"):
+            return
+        self.frames += 1
+        if match.kind == "still":
+            self.previous = frame
+        elif match.kind == "unmatched":
+            self.pending = frame
+        else:
+            if not self.started:
+                self._start(match.header, match.footer)
+            end = frame.height - self.footer
+            self._emit(frame.rows[max(self.header, end - match.shift):end])
+            self.previous = frame
+
+    def finish(self) -> None:
+        if self.previous is None:
+            raise CaptureError("nothing was captured")
+        if self.pending is not None and not self.full:
+            self._settle_jump()
+        if not self.started:
+            # Nothing ever scrolled: the region as it looks now.
+            self.started = True
+            self.writer.write(self.previous.rows[:self.max_height])
+            return
+        self.writer.write(self.previous.rows[self.previous.height - self.footer:])
+
+    def _start(self, header: int, footer: int) -> None:
+        assert self.previous is not None
+        self.started = True
+        self.header, self.footer = header, footer
+        self._emit(self.previous.rows[:self.previous.height - footer])
+
+    def _settle_jump(self) -> None:
+        assert self.pending is not None
+        if not self.started:
+            self._start(0, 0)
+        frame = self.pending
+        self.pending = None
+        self.gaps += 1
+        self._emit(frame.rows[self.header:frame.height - self.footer])
+        self.previous = frame
+
+    def _emit(self, rows: list[bytes]) -> None:
+        room = self.max_height - self.footer - self.writer.height
+        if len(rows) >= room:
+            rows = rows[:max(0, room)]
+            self.full = True
+        self.writer.write(rows)
+
+
+def parse_ppm(data: bytes) -> tuple[int, int, bytes]:
+    """Width, height and RGB bytes of a binary (P6) PPM with 8-bit samples."""
+    if data[:2] != b"P6":
+        raise ValueError("not a binary PPM")
+    values: list[int] = []
+    index = 2
+    while len(values) < 3:
+        while index < len(data) and data[index] in b" \t\r\n":
+            index += 1
+        if index < len(data) and data[index] == ord("#"):
+            end = data.find(b"\n", index)
+            index = len(data) if end < 0 else end + 1
+            continue
+        start = index
+        while index < len(data) and data[index] not in b" \t\r\n#":
+            index += 1
+        if start == index:
+            raise ValueError("truncated PPM header")
+        values.append(int(data[start:index]))
+    width, height, maximum = values
+    index += 1
+    if width <= 0 or height <= 0 or maximum != 255:
+        raise ValueError("unsupported PPM")
+    raster = data[index:index + width * height * 3]
+    if len(raster) != width * height * 3:
+        raise ValueError("truncated PPM raster")
+    return width, height, raster
+
+
+def frame_from_ppm(data: bytes) -> Frame:
+    width, height, raster = parse_ppm(data)
+    stride = width * 3
+    return Frame(width, [raster[y * stride:(y + 1) * stride] for y in range(height)])
+
+
+def grab(geometry: str) -> Frame:
+    result = subprocess.run(["grim", "-t", "ppm", "-g", geometry, "-"],
+                            capture_output=True, timeout=10, check=True)
+    return frame_from_ppm(result.stdout)
+
+
+def capture(geometry: str, output: Path, stop_file: Path, *, interval: float = INTERVAL,
+            max_seconds: float = MAX_SECONDS, max_height: int = MAX_HEIGHT) -> dict:
+    stop: list[str] = []
+
+    def request_stop(_signal: int, _frame: object) -> None:
+        stop.append("user")
+
+    for number in (signal.SIGTERM, signal.SIGINT, signal.SIGUSR1):
+        signal.signal(number, request_stop)
+
+    started = time.monotonic()
+    stitcher: Stitcher | None = None
+    failures = 0
+    reason = ""
+    final = False
+    while True:
+        tick = time.monotonic()
+        if not final and (stop or stop_file.exists()):
+            # One more frame: the content the user stopped on.
+            reason, final = "user", True
+        elif not final and tick - started >= max_seconds:
+            reason = "time"
+            break
+        try:
+            frame = grab(geometry)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            failures += 1
+            if final or failures >= GRIM_FAILURES:
+                reason = reason or "error"
+                break
+            time.sleep(interval)
+            continue
+        failures = 0
+        if stitcher is None:
+            stitcher = Stitcher(PngRows(frame.width), max_height)
+        try:
+            stitcher.add(frame)
+        except ValueError:
+            reason = "resized"
+            break
+        if final:
+            break
+        if stitcher.full:
+            reason = "height"
+            break
+        # Sleep in short steps so a stop request is answered promptly.
+        deadline = tick + interval
+        while not stop and not stop_file.exists() and time.monotonic() < deadline:
+            time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+
+    if stitcher is None:
+        raise CaptureError("no frame could be captured")
+    stitcher.finish()
+    stitcher.writer.save(output)
+    return {"frames": stitcher.frames, "width": stitcher.writer.width,
+            "height": stitcher.writer.height, "gaps": stitcher.gaps, "stopped": reason}
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Capture a scrolling screen region and stitch it into one PNG.")
+    parser.add_argument("--geometry", required=True, help='region as "X,Y WxH" (slurp format)')
+    parser.add_argument("--output", required=True, type=Path, help="PNG file to write")
+    parser.add_argument("--stop-file", required=True, type=Path,
+                        help="finish once this file exists")
+    parser.add_argument("--interval", type=float, default=INTERVAL, help=argparse.SUPPRESS)
+    parser.add_argument("--max-seconds", type=float, default=MAX_SECONDS, help=argparse.SUPPRESS)
+    parser.add_argument("--max-height", type=int, default=MAX_HEIGHT, help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
+    if not GEOMETRY.fullmatch(args.geometry):
+        parser.error("--geometry must look like 10,20 300x200")
+    if not 0 < args.interval <= 5 or not 0 < args.max_seconds <= MAX_SECONDS \
+            or not 1 <= args.max_height <= MAX_HEIGHT:
+        parser.error("limits out of range")
+    try:
+        summary = capture(args.geometry, args.output, args.stop_file, interval=args.interval,
+                          max_seconds=args.max_seconds, max_height=args.max_height)
+    except CaptureError as error:
+        print(f"screenshot-stitch: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(summary))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

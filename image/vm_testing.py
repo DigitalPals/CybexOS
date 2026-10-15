@@ -156,6 +156,8 @@ class TestVM:
         self.unused_disk = self.work / "unused.qcow2"
         self.key = self.work / "id_ed25519"
         self.ssh_ready = False
+        # The installation-only live session deliberately runs no Quickshell.
+        self.expect_shell = True
         self.qmp_path = self.work / "qmp.sock"
         self.runtime = None
 
@@ -288,6 +290,23 @@ class TestVM:
             qmp.stream.close()
             qmp.socket.close()
 
+    def select_boot_entry(self, entry, timeout=120):
+        """Choose an ISO menu entry. "install" is the menu default; only arrow
+        and Enter keys are sent, never text that GRUB could treat as an edit."""
+        if entry == "install":
+            return
+        if entry != "live":
+            raise ValueError("Unknown boot entry")
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.alive()
+            if self.qmp_path.exists() and "try cybexos live" in screen_phrases(self.screen_text()):
+                self.keypress("down")
+                self.keypress("ret")
+                return
+            time.sleep(0.2)
+        raise RuntimeError("The ISO boot menu was not recognized; no entry was selected")
+
     def wait_ssh(self, timeout=300, setup=True, setup_password=None, *, redactions=()):
         """Poll SSH readiness and bootstrap only inside a recognized terminal.
 
@@ -330,10 +349,12 @@ class TestVM:
                 # editor and prevent boot. Require an actual desktop surface;
                 # the installer may cover Welcome on current live images.
                 if not desktop_observed:
-                    screen = " ".join(self.screen_text().lower().split())
+                    screen = screen_phrases(self.screen_text())
+                    # Live and installed Welcome, or the installer page an
+                    # installation-only boot opens by itself.
                     desktop_observed = any(phrase in screen for phrase in (
                         "make yourself at home", "welcome to your new desktop",
-                        "your next workspace", "make it yours"))
+                        "lets install cybexos", "your next workspace", "make it yours"))
                     if not desktop_observed:
                         next_attempt = time.monotonic() + 5
                         time.sleep(1)
@@ -382,17 +403,25 @@ class TestVM:
         non-US install without guessing how punctuation maps in Hyprland.
         Passwords are typed only at a recognized login/sudo prompt.
         """
-        self.keypress("ctrl+alt+f3")
         deadline = time.monotonic() + timeout
+        console = ""
         while time.monotonic() < deadline:
-            if re.search(r'login\s*:', self.screen_text(), re.IGNORECASE):
+            # Pressed on every pass: a switch made while the boot splash still
+            # owns the display, or before the display manager starts and takes
+            # its own VT, does not leave the text console in front.
+            self.keypress("ctrl+alt+f3")
+            time.sleep(1)
+            console = self.screen_text()
+            if re.search(r'login\s*:', console, re.IGNORECASE):
                 break
             self.alive()
             time.sleep(2)
         else:
-            raise RuntimeError("Installed text-console login prompt was not recognized")
+            raise RuntimeError("Installed text-console login prompt was not recognized; "
+                               f"screen OCR: {' '.join(console.split())[-1500:]}")
+        prompts = len(re.findall(r'login\s*:', console, re.IGNORECASE))
         self.type("qualification\n")
-        self._wait_password_prompt(deadline)
+        self._wait_password_prompt(deadline, username="qualification", prompts_when_typed=prompts)
         self.type(password + "\n")
         # A fresh standalone output line proves execution; the echoed command
         # cannot satisfy it. These letters also work before US/NL/DE keymap
@@ -464,14 +493,31 @@ class TestVM:
         self.wait_ssh(timeout=max(15, int(deadline - time.monotonic())), setup=False,
                       redactions=(password,))
 
-    def _wait_password_prompt(self, deadline):
+    def _wait_password_prompt(self, deadline, console="ctrl+alt+f3", username=None, prompts_when_typed=1):
+        # Login prompts on screen when the user name was last typed. While
+        # systemd-user-sessions has not started, pam_nologin refuses the login
+        # ("System is booting up") and getty prints a new prompt; the name is
+        # then typed again rather than waiting for a password prompt that
+        # cannot come (seen when a first-boot unit ran before user sessions).
+        screen = ""
         while time.monotonic() < deadline:
             screen = " ".join(self.screen_text().lower().split())
             if re.search(r'password\s*:|passwort\s*:|wachtwoord\s*:', screen):
                 return
+            prompts = len(re.findall(r'login\s*:', screen))
+            if prompts == 0:
+                # A display manager that starts after the switch to the text
+                # console takes the screen back; that console still waits.
+                self.keypress(console)
+            elif username is not None and prompts > prompts_when_typed:
+                # The retyped name answers the newest prompt; a further
+                # refusal prints one more.
+                self.type(username + "\n")
+                prompts_when_typed = prompts
             self.alive()
             time.sleep(1)
-        raise RuntimeError("Installed password prompt was not recognized; no password was typed")
+        raise RuntimeError("Installed password prompt was not recognized; no password was typed; "
+                           f"screen OCR: {screen[-1500:]}")
 
     def wait_desktop(self, timeout=120):
         deadline = time.monotonic() + timeout
@@ -506,7 +552,10 @@ class TestVM:
     def stop(self, graceful=False):
         try:
             if self.process and self.process.poll() is None and self.ssh_ready:
-                run([*self.ssh, "bash -s"], input=audit_script(), text=True, timeout=45)
+                if self.expect_shell:
+                    run([*self.ssh, "bash -s"], input=audit_script(), text=True, timeout=45)
+                else:
+                    run([*self.ssh, "! pgrep -x qs"], timeout=45)
                 run([*self.ssh, "sync"], timeout=45)
                 if graceful:
                     subprocess.run([*self.ssh, "sudo systemctl poweroff"], timeout=20, check=False)
@@ -536,6 +585,11 @@ class TestVM:
             if not keep_artifacts:
                 for name in ("installed.qcow2", "unused.qcow2", "OVMF_VARS.fd", "OVMF_VARS.qcow2", "serial.log", "qemu.log"):
                     (self.work / name).unlink(missing_ok=True)
+
+
+def screen_phrases(text):
+    """OCR text as lowercase words, without punctuation such as typographic apostrophes."""
+    return " ".join(re.sub(r"[^a-z0-9 ]", "", text.lower().replace("\n", " ")).split())
 
 
 def is_disk_prompt(text):

@@ -29,6 +29,14 @@ def builder_cloud_config(public_key):
         # Cloud-init records that early attempt as a degraded boot even when
         # its later retry succeeds. Set it once during the final stage.
         "preserve_hostname": True,
+        # QEMU user networking forwards IPv6 poorly: a mirror reached over it
+        # can stop sending mid-download without closing the connection, and
+        # dnf then waits indefinitely (seen twice in one build, 2026-10-14).
+        # The builder needs no IPv6, so it never starts using it. bootcmd runs
+        # before cloud-init's later stages and before any package transfer;
+        # source-build containers share the builder's network namespace.
+        "bootcmd": [["sysctl", "-q", "-w", "net.ipv6.conf.all.disable_ipv6=1",
+                     "net.ipv6.conf.default.disable_ipv6=1"]],
         "runcmd": [["hostnamectl", "set-hostname", "image-builder"]],
     }
 

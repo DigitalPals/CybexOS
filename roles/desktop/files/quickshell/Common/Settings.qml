@@ -78,6 +78,8 @@ Singleton {
     property string font: defaults.font
     property string accent: defaults.accent
     property string paletteMode: defaults.paletteMode
+    property string theme: defaults.theme
+    property var themePalette: defaults.themePalette
     property string position: defaults.position
     property string barStyle: defaults.barStyle
     property int gap: defaults.gap
@@ -112,6 +114,9 @@ Singleton {
     property int drawerWidth: defaults.drawerWidth
     property var mods: defaults.mods
     property var modOpts: defaults.modOpts
+    property bool dock: defaults.dock
+    property bool dockAutoHide: defaults.dockAutoHide
+    property var dockPinned: defaults.dockPinned
 
     // ---- Runtime state (not persisted) -----------------------------------
     property bool panelOpen: false
@@ -174,34 +179,38 @@ Singleton {
     // draws the rail from this list, SettingsPage takes its reset label from
     // it, and IPC and search accept exactly these ids.
     readonly property var pages: [
-        { id: "appearance", group: "Personalize", label: "Appearance", glyph: "palette",
+        { id: "appearance", group: "Personalize", label: I18n.tr("Appearance"), glyph: "palette",
             description: "Theme, text and size, colors and panels" },
-        { id: "wallpaper", group: "Personalize", label: "Wallpaper", glyph: "image",
+        { id: "wallpaper", group: "Personalize", label: I18n.tr("Wallpaper"), glyph: "image",
             description: "Desktop image and automatic rotation" },
-        { id: "bar", group: "Personalize", label: "Bar", glyph: "space_dashboard",
+        { id: "bar", group: "Personalize", label: I18n.tr("Bar"), glyph: "space_dashboard",
             description: "Widgets, placement, shape and behavior" },
-        { id: "notifications", group: "Personalize", label: "Notifications", glyph: "notifications",
+        { id: "notifications", group: "Personalize", label: I18n.tr("Notifications"), glyph: "notifications",
             description: "Pop-ups, quiet hours and the on-screen display" },
-        { id: "displays", group: "Devices", label: "Displays", glyph: "monitor",
+        { id: "displays", group: "Devices", label: I18n.tr("Displays"), glyph: "monitor",
             description: "Arrangement, resolution, scale and night light", system: true },
-        { id: "sound", group: "Devices", label: "Sound", glyph: "volume_up",
+        { id: "sound", group: "Devices", label: I18n.tr("Sound"), glyph: "volume_up",
             description: "Devices, profiles and application audio", system: true },
-        { id: "network", group: "Devices", label: "Network", glyph: "wifi",
+        { id: "network", group: "Devices", label: I18n.tr("Network"), glyph: "wifi",
             description: "Connections, IP addresses and DNS", system: true },
-        { id: "touchpad", group: "Devices", label: "Touchpad", glyph: "mouse",
+        { id: "touchpad", group: "Devices", label: I18n.tr("Touchpad"), glyph: "mouse",
             description: "Tap, natural scrolling and sensitivity", system: true },
-        { id: "keyboard", group: "Devices", label: "Keyboard", glyph: "keyboard",
+        { id: "keyboard", group: "Devices", label: I18n.tr("Keyboard"), glyph: "keyboard",
             description: "Layouts and layout switching", system: true },
-        { id: "power", group: "System", label: "Power", glyph: "power",
+        { id: "power", group: "System", label: I18n.tr("Power"), glyph: "power",
             description: "Screen off, lock, suspend and stay awake" },
-        { id: "region", group: "System", label: "Region & formats", glyph: "language",
+        { id: "region", group: "System", label: I18n.tr("Region & formats"), glyph: "language",
             description: "Timezone, language, clock and temperature formats" },
-        { id: "accounts", group: "System", label: "Online accounts", glyph: "account_circle",
+        { id: "accounts", group: "System", label: I18n.tr("Online accounts"), glyph: "account_circle",
             description: "Connected accounts and calendar access", system: true },
-        { id: "plugins", group: "System", label: "Omarchy plugins", glyph: "extension",
+        { id: "security", group: "System", label: I18n.tr("Security"), glyph: "security",
+            description: "Fingerprints and security keys", system: true },
+        { id: "plugins", group: "System", label: I18n.tr("Omarchy plugins"), glyph: "extension",
             description: "Community widgets, panels and services from Omarchy" },
-        { id: "about", group: "System", label: "About", glyph: "info",
-            description: "Shell health, recovery points and the settings file" }
+        { id: "backup", group: "System", label: I18n.tr("Backup & recovery"), glyph: "archive",
+            description: "Personal-file backups and system recovery points" },
+        { id: "about", group: "System", label: I18n.tr("About"), glyph: "info",
+            description: "Shell health and the settings file" }
     ]
     readonly property var pageGroups: ["Personalize", "Devices", "System"]
     readonly property var validPages: pages.map(entry => entry.id)
@@ -216,7 +225,7 @@ Singleton {
         scrollFactor: "touchpad",
         nightLight: "displays", warmth: "displays",
         osd: "notifications",
-        recoveryPoints: "about",
+        recoveryPoints: "backup",
         idleLockMins: "power", idleScreenOffMins: "power", idleSuspendMins: "power",
         idleSuspendBatteryOnly: "power", idleInhibitMode: "power"
     })
@@ -245,13 +254,13 @@ Singleton {
         wallpaper: ["wall", "wallDir", "shuffle"],
         appearance: ["themeMode", "glassEnabled", "highContrast", "reducedMotion",
             "textScale", "interfaceDensity", "shellFontSize", "shellScale", "surfaceBorderMode", "surfaceBorderColor", "surfaceBorderWidth", "surfaceBorderOpacity", "surfaceCornerRadius",
-            "font", "accent", "paletteMode",
+            "font", "accent", "paletteMode", "theme", "themePalette",
             "pluginScale", "pluginBorderMode", "pluginBorderColor", "pluginBorderWidth", "pluginBorderOpacity", "pluginRadius", "pluginThemeOverrides"],
         // The widget layout and every widget's options belong to the Bar
         // page, which also owns the bar's background color.
         bar: ["position", "barStyle", "gap", "barHeight", "barRadius", "autoHide",
             "exclusive", "barColorMode", "barCustomHue", "barCustomSaturation",
-            "barCustomLightness", "mods", "modOpts"],
+            "barCustomLightness", "mods", "modOpts", "dock", "dockAutoHide", "dockPinned"],
         plugins: [],
         drawer: ["drawerTabs", "drawerOverview", "drawerHover", "drawerWidth"],
         notifications: ["notifDnd", "notifDndUntilMs", "notifQuiet", "notifQuietStart", "notifQuietEnd",
@@ -263,6 +272,7 @@ Singleton {
         power: ["idleLockMins", "idleScreenOffMins", "idleSuspendMins",
             "idleSuspendBatteryOnly", "idleInhibitMode", "idleInhibitUntilMs"],
         region: ["clock24", "unit"],
+        backup: [],
         about: []
     })
 
@@ -444,6 +454,29 @@ Singleton {
         resetTimer.restart();
     }
 
+    // Several values changed as one step that Undo reverses, the way a
+    // widget profile is: a named theme sets the mode, colours, bar and font
+    // together (Common/Themes.qml). Every value passes the schema's
+    // normalization, so nothing the file could not hold reaches memory.
+    function applyValues(values, label, message) {
+        clearUndo();
+        migrationPending = false;
+        resetOverrides = explicitOverrides.slice();
+        const keys = Object.keys(values || ({})).filter(key =>
+            Object.prototype.hasOwnProperty.call(defaults, key));
+        const previous = {};
+        for (const key of keys)
+            previous[key] = SettingsHelpers.clone(root[key]);
+        for (const key of keys) {
+            markExplicit(key);
+            root[key] = SettingsHelpers.normalizeKey(key, values[key]);
+        }
+        resetSnapshot = previous;
+        resetLabel = label;
+        announcement = message;
+        resetTimer.restart();
+    }
+
     function resetKeys(keys, label) {
         migrationPending = false;
         resetOverrides = explicitOverrides.slice();
@@ -603,7 +636,7 @@ Singleton {
             appName: "CybexOS Settings",
             appIcon: "preferences-system",
             urgency: NotificationUrgency.Critical,
-            summary: "Settings file problem",
+            summary: I18n.tr("Settings file problem"),
             body: message
         });
     }
@@ -899,6 +932,8 @@ Singleton {
     onFontChanged: scheduleSave()
     onAccentChanged: scheduleSave()
     onPaletteModeChanged: scheduleSave()
+    onThemeChanged: scheduleSave()
+    onThemePaletteChanged: scheduleSave()
     onPositionChanged: scheduleSave()
     onBarStyleChanged: scheduleSave()
     onGapChanged: scheduleSave()
@@ -936,6 +971,9 @@ Singleton {
     onDrawerWidthChanged: scheduleSave()
     onModsChanged: scheduleSave()
     onModOptsChanged: scheduleSave()
+    onDockChanged: scheduleSave()
+    onDockAutoHideChanged: scheduleSave()
+    onDockPinnedChanged: scheduleSave()
 
     Timer {
         id: saveTimer
@@ -1062,6 +1100,22 @@ Singleton {
         }
     }
 
+    // Hyprland 0.56 starts a fresh Lua state on every configuration reload:
+    // the saver state looknfeel.lua kept in _G is gone and the reload has
+    // just put the full effects back. shell.qml calls this on the
+    // compositor's configreloaded event so an active saver is sent again.
+    property bool powerSaverResendPending: false
+
+    function compositorReloaded() {
+        if (!Activity.powerSaver)
+            return;
+        if (powerSaverProc.running) {
+            powerSaverResendPending = true;
+            return;
+        }
+        applyPowerSaver();
+    }
+
     Timer {
         id: powerSaverReplayTimer
         interval: 0
@@ -1086,8 +1140,10 @@ Singleton {
             const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
             if (code !== 0)
                 console.warn("could not apply power saver compositor effects:", code);
-            if (root.dispatchedPowerSaver !== Activity.powerSaver)
+            if (root.dispatchedPowerSaver !== Activity.powerSaver || root.powerSaverResendPending) {
+                root.powerSaverResendPending = false;
                 powerSaverReplayTimer.restart();
+            }
         }
     }
 

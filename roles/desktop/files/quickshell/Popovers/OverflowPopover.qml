@@ -12,7 +12,7 @@ Surface {
     focus: visible
 
     SectionLabel {
-        text: "MORE WIDGETS"
+        text: I18n.tr("MORE WIDGETS")
         detail: String(BarOverflow.items.length)
     }
 

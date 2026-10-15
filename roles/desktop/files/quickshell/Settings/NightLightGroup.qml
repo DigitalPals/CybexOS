@@ -5,11 +5,11 @@ import "../Common"
 // beside display rows that wait for Apply.
 SettingsGroup {
     width: parent.width
-    title: "Night light"
+    title: I18n.tr("Night light")
 
     SwitchRow {
         width: parent.width
-        label: "Night light"
+        label: I18n.tr("Night light")
         settingKey: "nightLight"
         description: SysInfo.nightLightError !== "" ? SysInfo.nightLightError
             : SysInfo.nightLightPending
@@ -19,13 +19,13 @@ SettingsGroup {
     }
     SliderRow {
         width: parent.width
-        label: "Warmth"
+        label: I18n.tr("Warmth")
         settingKey: "warmth"
         min: 1900
         max: 4500
         step: 50
         unit: "K"
         gradientTrack: true
-        hint: "Lower is warmer"
+        hint: I18n.tr("Lower is warmer")
     }
 }

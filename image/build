@@ -165,10 +165,19 @@ def main():
                         with tempfile.TemporaryDirectory(prefix=".delivery-", dir=output) as staging:
                             run(["scp", *ssh_options, "-P", str(port), "-r", "builder@127.0.0.1:/home/builder/artifacts/.", staging])
                             from build_support import checksum_entries
-                            checksum_entries(staging)
+                            verified = checksum_entries(staging)
                             shutil.copyfile(work / "source.tar.gz", Path(staging) / "source.tar.gz")
-                            original = Path(staging) / "CybexOS-Live-44.iso"
-                            original.rename(Path(staging) / f"CybexOS-Live-44-{identifier}.iso")
+                            from fedora_target import fedora_release
+                            # image/compose names the ISO after inventory fedora_release.
+                            name = f"CybexOS-Live-{fedora_release()}"
+                            original = Path(staging) / f"{name}.iso"
+                            original.rename(Path(staging) / f"{name}-{identifier}.iso")
+                            # The SPDX SBOM names the final ISO and reuses the
+                            # guest-verified digests instead of rehashing the image.
+                            from sbom import write_build_sbom
+                            write_build_sbom(staging, f"{name}-{identifier}.iso",
+                                             {**verified, f"{name}-{identifier}.iso": verified[original.name]},
+                                             work / "cache-export/manifest.json")
                             files = sorted(path for path in Path(staging).iterdir() if path.name != "SHA256SUMS")
                             (Path(staging) / "SHA256SUMS").write_text("".join(f"{digest(path)}  {path.name}\n" for path in files))
                             provenance["artifacts"] = deliver_artifacts(staging, output / "artifacts")

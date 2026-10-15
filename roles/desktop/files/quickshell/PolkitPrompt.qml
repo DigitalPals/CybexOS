@@ -23,11 +23,36 @@ FocusScope {
         ? flow.inputPrompt.trim() : secret ? "Password" : "Response"
     readonly property string account: PolkitHelpers.identityLabel(flow ? flow.selectedIdentity : null)
     readonly property bool hasError: attemptFailed || feedbackError
+    // A fingerprint or security-key step that PAM announced (docs/security.md).
+    // Its message stays the flow's feedback after the step hands over to the
+    // password, so it only speaks while no response is requested.
+    readonly property string feedbackCue: PolkitHelpers.authenticationCue(feedback)
+    readonly property bool cueActive: feedbackCue !== "" && !feedbackError
+        && !responseRequired && !finished
+    property bool cueRetry: false
+
+    function statusText() {
+        if (attemptFailed && !feedbackError)
+            return "Authentication failed. Please try again.";
+        if (feedbackCue !== "" && !feedbackError)
+            return cueActive ? PolkitHelpers.cueText(feedbackCue, cueRetry) : "";
+        if (feedback)
+            return feedback;
+        if (attemptFailed)
+            return "Authentication failed. Please try again.";
+        return !responseRequired && !finished ? "Waiting for authentication…" : "";
+    }
+
+    function noteFeedback() {
+        // pam_fprintd reports a mismatch as an error, then asks again.
+        if (feedbackError && feedbackCue === "fingerprint")
+            cueRetry = true;
+    }
 
     implicitHeight: content.implicitHeight
     focus: true
     Accessible.role: Accessible.Dialog
-    Accessible.name: "Authentication required"
+    Accessible.name: I18n.tr("Authentication required")
 
     function clearResponse() {
         response.clear();
@@ -63,12 +88,15 @@ FocusScope {
         clearResponse();
         detailsOpen = false;
         attemptFailed = false;
+        cueRetry = false;
         feedback = flow ? flow.supplementaryMessage : "";
         feedbackError = !!(flow && flow.supplementaryIsError);
         Qt.callLater(focusResponse);
     }
     onResponseRequiredChanged: {
         clearResponse();
+        if (responseRequired)
+            cueRetry = false;
         Qt.callLater(focusResponse);
     }
     onFinishedChanged: if (finished) clearResponse()
@@ -86,6 +114,7 @@ FocusScope {
         function onSelectedIdentityChanged() {
             root.clearResponse();
             root.attemptFailed = false;
+            root.cueRetry = false;
             root.feedback = "";
             root.feedbackError = false;
             Qt.callLater(root.focusResponse);
@@ -97,9 +126,11 @@ FocusScope {
             root.feedbackError = root.flow.supplementaryIsError;
             if (!root.feedbackError)
                 root.attemptFailed = false;
+            root.noteFeedback();
         }
         function onSupplementaryIsErrorChanged() {
             root.feedbackError = root.flow.supplementaryIsError;
+            root.noteFeedback();
         }
     }
 
@@ -119,7 +150,7 @@ FocusScope {
                 color: Theme.chip
                 Sym {
                     anchors.centerIn: parent
-                    name: "lock"
+                    name: root.cueActive && root.feedbackCue === "securityKey" ? "passkey" : "lock"
                     size: Theme.iconLarge
                     color: Theme.accentText
                 }
@@ -131,7 +162,7 @@ FocusScope {
                 spacing: 3
                 Text {
                     width: parent.width
-                    text: "Authentication required"
+                    text: I18n.tr("Authentication required")
                     textFormat: Text.PlainText
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.heading
@@ -223,7 +254,7 @@ FocusScope {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: root.secret
                     compact: true
-                    text: root.revealed ? "Hide password" : "Show password"
+                    text: root.revealed ? I18n.tr("Hide password") : I18n.tr("Show password")
                     glyph: root.revealed ? "visibility_off" : "visibility"
                     KeyNavigation.priority: KeyNavigation.BeforeItem
                     KeyNavigation.tab: authenticateButton
@@ -240,10 +271,7 @@ FocusScope {
             objectName: "polkitStatus"
             width: parent.width
             visible: text !== ""
-            text: root.attemptFailed && !root.feedbackError ? "Authentication failed. Please try again."
-                : root.feedback ? root.feedback
-                : root.attemptFailed ? "Authentication failed. Please try again."
-                : !root.responseRequired && !root.finished ? "Waiting for authentication…" : ""
+            text: root.statusText()
             textFormat: Text.PlainText
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.secondary
@@ -259,7 +287,7 @@ FocusScope {
             SettingsUi.SettingsAction {
                 id: authenticateButton
                 objectName: "polkitSubmit"
-                text: root.responseRequired ? "Authenticate" : "Authenticating…"
+                text: root.responseRequired ? I18n.tr("Authenticate") : I18n.tr("Authenticating…")
                 height: Theme.scaled(36)
                 primary: true
                 enabled: root.responseRequired
@@ -272,7 +300,7 @@ FocusScope {
             SettingsUi.SettingsAction {
                 id: cancelButton
                 objectName: "polkitCancel"
-                text: "Cancel"
+                text: I18n.tr("Cancel")
                 height: Theme.scaled(36)
                 enabled: !root.finished
                 KeyNavigation.priority: KeyNavigation.BeforeItem
@@ -290,7 +318,7 @@ FocusScope {
             SettingsUi.SettingsAction {
                 id: detailsButton
                 objectName: "polkitDetails"
-                text: root.detailsOpen ? "Hide details" : "Show details"
+                text: root.detailsOpen ? I18n.tr("Hide details") : I18n.tr("Show details")
                 glyph: root.detailsOpen ? "expand_less" : "expand_more"
                 KeyNavigation.priority: KeyNavigation.BeforeItem
                 KeyNavigation.tab: accountSelect.visible ? accountSelect

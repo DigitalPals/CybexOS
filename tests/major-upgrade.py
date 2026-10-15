@@ -358,7 +358,8 @@ class UpgradeTest(unittest.TestCase):
                 fields=Path(f'/proc/{child}/stat').read_text().split()
                 if fields[2]=='Z':
                     break
-            except FileNotFoundError:
+            except (FileNotFoundError, ProcessLookupError):
+                # Reaped between opening and reading its stat: also gone.
                 break
             time.sleep(0.01)
         else:

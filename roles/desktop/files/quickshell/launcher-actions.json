@@ -1,16 +1,1 @@
-[
-  {
-    "id": "ai-agent-launch",
-    "name": "Launch default AI agent",
-    "subtitle": "Open the selected coding agent in ~/Code",
-    "keywords": ["ai", "code", "assistant", "terminal"],
-    "command": ["cybex", "agent", "--window"]
-  },
-  {
-    "id": "ai-agent-choose",
-    "name": "Choose default AI agent",
-    "subtitle": "Select and launch OpenCode, Claude Code, or Codex",
-    "keywords": ["ai", "default", "provider", "model"],
-    "command": ["cybex", "agent", "--window", "--pick"]
-  }
-]
+[]

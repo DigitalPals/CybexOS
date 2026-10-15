@@ -267,7 +267,12 @@ class InstalledPolicy(unittest.TestCase):
         for entry in ('main.yml', 'image.yml'):
             imported = {task['ansible.builtin.import_tasks'] for task in yaml.safe_load((tasks_dir / entry).read_text())
                         if 'ansible.builtin.import_tasks' in task}
-            self.assertTrue({'accounts.yml', 'mdns.yml', 'docker-activation.yml'}.issubset(imported), entry)
+            self.assertTrue({'accounts.yml', 'mdns.yml', 'docker-activation.yml',
+                             'authentication.yml'}.issubset(imported), entry)
+        # Upgrades of older ISO installations reconcile the sign-in policy too.
+        reconcile = {task.get('ansible.builtin.import_tasks') for task in
+                     yaml.safe_load((tasks_dir / 'reconcile.yml').read_text())}
+        self.assertIn('authentication.yml', reconcile)
         image = {task['name']: task for task in flatten('image.yml')}
         workstation = {task['name']: task for task in flatten('main.yml')}
         for name in ('Enable user lingering', 'Enable user lingering in the offline installation target',
@@ -275,7 +280,9 @@ class InstalledPolicy(unittest.TestCase):
                      'Configure active local wheel Polkit authorization',
                      'Revoke passwordless local Polkit authorization when disabled',
                      'Enable Docker socket activation when requested', 'Start Docker on demand rather than at boot',
-                     'Enable multicast DNS host resolution'):
+                     'Enable multicast DNS host resolution',
+                     'Offer fingerprints and security keys beside the password',
+                     'Report a sign-in policy CybexOS could not apply'):
             self.assertIn(name, image)
             self.assertEqual(image[name], workstation[name])
         # Anaconda's target has no logind: write the marker loginctl would.
@@ -288,6 +295,15 @@ class InstalledPolicy(unittest.TestCase):
         offline = image['Enable user lingering in the offline installation target']['ansible.builtin.copy']
         self.assertEqual((offline['dest'], offline['owner'], offline['mode']),
                          ('/var/lib/systemd/linger/{{ primary_user }}', 'root', '0644'))
+        # A fresh target has no linger directory; the copy module will not
+        # create it, which aborted the Anaconda post-install script.
+        order = [task['name'] for task in flatten('image.yml')]
+        directory = 'Create the offline user lingering directory'
+        self.assertLess(order.index(directory), order.index('Enable user lingering in the offline installation target'))
+        self.assertEqual(image[directory]['ansible.builtin.file'],
+                         {'path': '/var/lib/systemd/linger', 'state': 'directory',
+                          'owner': 'root', 'group': 'root', 'mode': '0755'})
+        self.assertEqual(image[directory]['when'], 'cybexos_offline | default(false) | bool')
         self.assertEqual(image['Configure active local wheel Polkit authorization']['when'],
                          'passwordless_local_polkit | bool')
         inventory = yaml.safe_load((ROOT / 'inventory/group_vars/all.yml').read_text())
@@ -310,6 +326,41 @@ class InstalledPolicy(unittest.TestCase):
         self.assertIn("'with-mdns4' not in base_authselect_current.stdout.split()", mdns['when'])
         self.assertFalse(any('select' in task.get('ansible.builtin.command', {}).get('argv', [])
                              for task in image.values() if isinstance(task.get('ansible.builtin.command'), dict)))
+
+    def test_fingerprint_and_security_key_policy_reaches_both_paths(self):
+        # docs/security.md: one helper, applied from the role in every path, and
+        # installed for the Settings switch at the path each one uses.
+        tasks = yaml.safe_load((ROOT / 'roles/base/tasks/authentication.yml').read_text())
+        apply = tasks[0]
+        self.assertEqual(apply['ansible.builtin.script']['cmd'], 'cybexos-auth-policy apply')
+        self.assertEqual(apply['when'], 'not ansible_check_mode')
+        # A failure is reported, never left to break an installation half-way.
+        self.assertIs(apply['failed_when'], False)
+        main = {task['name']: task for task in yaml.safe_load((ROOT / 'roles/base/tasks/main.yml').read_text())}
+        helper = main['Install the sign-in policy helper']['ansible.builtin.copy']
+        self.assertEqual((helper['src'], helper['dest'], helper['mode']),
+                         ('cybexos-auth-policy', '/usr/local/libexec/cybexos-auth-policy', '0755'))
+        package = (ROOT / 'image/package').read_text()
+        self.assertIn('copy("roles/base/files/cybexos-auth-policy", "usr/libexec/cybexos-auth-policy", True)', package)
+        settings = (ROOT / 'roles/desktop/files/quickshell/scripts/system_settings_security.py').read_text()
+        for path in ('/usr/local/libexec/cybexos-auth-policy', '/usr/libexec/cybexos-auth-policy'):
+            self.assertIn(path, settings)
+        # The same packages on both paths, and on upgrades of older images.
+        packages = {'fprintd', 'fprintd-pam', 'libfprint', 'pam-u2f', 'pamu2fcfg', 'libfido2'}
+        baseline = yaml.safe_load((ROOT / 'roles/base/defaults/main.yml').read_text())['base_required_packages']
+        self.assertTrue(packages.issubset(baseline))
+        self.assertTrue(packages.issubset(repair.load_applications().package_names()[0]))
+        requires = ' '.join(line.split(':', 1)[1] for line in (ROOT / 'image/cybexos-desktop.spec').read_text().splitlines()
+                            if line.startswith('Requires:')).split()
+        self.assertTrue({'fprintd', 'fprintd-pam', 'pam-u2f', 'pamu2fcfg'}.issubset(requires))
+        # The XPS role keeps only its hardware gate and diagnostic; it no
+        # longer installs packages or changes authselect itself.
+        xps = (ROOT / 'roles/xps-2026/tasks/fingerprint.yml').read_text()
+        self.assertNotIn('ansible.builtin.dnf', xps)
+        self.assertNotIn('enable-feature', xps)
+        uninstall = (ROOT / 'roles/uninstall/tasks/main.yml').read_text()
+        self.assertLess(uninstall.index('/usr/local/libexec/cybexos-auth-policy remove'),
+                        uninstall.index('- name: Remove project-owned system files'))
 
     def test_offline_linger_marker_is_created_when_parent_directory_is_absent(self):
         tasks = yaml.safe_load((ROOT / 'roles/base/tasks/accounts.yml').read_text())
@@ -346,6 +397,7 @@ class InstalledPolicy(unittest.TestCase):
             repair.prepare(payload)
             provision = payload / 'usr/share/cybexos/provision'
             for relative in ('roles/base/tasks/accounts.yml', 'roles/base/tasks/mdns.yml',
+                             'roles/base/tasks/authentication.yml', 'roles/base/files/cybexos-auth-policy',
                              'roles/base/tasks/docker-activation.yml', 'roles/xps-2026/tasks/camera.yml',
                              'roles/dotfiles/files/fish-config.fish', 'roles/base/tasks/btrfs-scrub.yml',
                              'roles/apps/tasks/mpv.yml'):

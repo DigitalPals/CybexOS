@@ -1,7 +1,7 @@
 # Native system settings
 
-CybexOS Settings includes Network, Sound, Displays, Keyboard, Touchpad, Region
-and Online Accounts. The
+CybexOS Settings includes Network, Sound, Displays, Keyboard, Touchpad, Region,
+Online Accounts and Security. The
 Wi-Fi popover, network details, sound drawer and calendar account action open
 these pages. Settings search includes them too. The compact controls remain
 available.
@@ -10,13 +10,14 @@ available.
 
 | Page | Native controls | External support |
 | --- | --- | --- |
-| Network | A list of saved Ethernet/Wi-Fi profiles with their status, and the physical adapters; for the selected profile, autoconnect, metering, automatic/manual/disabled IPv4 and IPv6, address, gateway and DNS; edits wait in the page's Apply bar | `nm-connection-editor` for VPNs, enterprise certificates, bridges and advanced routing |
+| Network | A list of saved Ethernet/Wi-Fi profiles with their status, and the physical adapters; VPN and WireGuard profiles with a connect switch each, import of OpenVPN/WireGuard files and confirmed removal; a Wi-Fi hotspot with its name, password and join QR code; for the selected profile, autoconnect, metering, automatic/manual/disabled IPv4 and IPv6, address, gateway and DNS; edits wait in the page's Apply bar | `nm-connection-editor` for other VPN types and detailed VPN settings, enterprise certificates, bridges and advanced routing |
 | Sound | Output and input device lists (network outputs folded), volume and mute, microphone level meter; ports of the default devices, output balance, hardware profiles, and per-application level, mute and playback/recording routing | `pavucontrol` for advanced controls |
 | Online Accounts | Provider, identity and attention status; calendar enable/disable; confirmed local removal; administrator locks | `gnome-online-accounts-gtk` for provider setup, browser authentication and reconnection |
 | Displays | Arrangement preview that also selects the display to edit, with drag and keyboard placement; per display: on/off, resolution, refresh rate, scale, rotation, flip, mirroring and adaptive sync; a 15-second trial before anything is saved | `~/.config/cybexos/hypr/user.lua` for monitor rules the page does not cover (bit depth, HDR, reserved areas) |
 | Keyboard | Search installed XKB layouts and variants; add, remove and reorder up to four layouts; configure switching shortcuts and switch immediately | Personal `user.lua` rules retain final precedence |
-| Touchpad | Tap to click, natural scroll direction and pointer sensitivity, drafted behind Apply; existing scroll speed control applies immediately | Pointer sensitivity is Hyprland's shared mouse/touchpad setting; per-device rules remain available in `user.lua` |
+| Touchpad | Tap to click, natural scroll direction, three-finger swipe between workspaces and pointer sensitivity, drafted behind Apply; existing scroll speed control applies immediately | Pointer sensitivity is Hyprland's shared mouse/touchpad setting; per-device rules remain available in `user.lua`. The swipe is a gesture, saved as `touchpad.workspaceSwipe` in `input.json`; a `user.lua` gesture on the same fingers replaces it |
 | Region & formats | Search installed timezones and locales, then explicitly apply system timezone or language; existing clock and temperature format controls | Normal system Polkit authorization; additional locales require Fedora language packs |
+| Security | Fingerprint reader and enrolled fingers, guided enrolment with live progress, confirmed removal, the system fingerprint switch; registered security keys, adding by touch, confirmed removal | fprintd's own Polkit authorization for enrolment; pkexec for the authselect switch; a terminal for keys that need a PIN to register ([details](security.md)) |
 
 GOA continues to own account authentication and credentials. The shell reads
 metadata and never requests access tokens or passwords. Calendar data still
@@ -67,6 +68,99 @@ the session user's normal NetworkManager authorization path.
 The shared desktop Ansible package task and `image/cybexos-desktop.spec` declare
 the standalone editors, libnm, GLib tools and PulseAudio client utilities. The
 image application payload consumes the shared task's package list too.
+
+## VPN and hotspot
+
+The Network page has a **VPN** group and a **Hotspot** group between the
+connection list and the selected connection's settings. The drawer's Network
+tab adds one compact VPN switch under Tailscale, but only when at least one
+VPN profile exists: the connected or connecting profile, else the one used
+most recently. Tailscale keeps its own row and is not a VPN profile here.
+
+Both surfaces use `scripts/network-tool.py` (`vpn` and `hotspot` requests,
+JSON on stdin). The Settings page reaches it through the network settings
+service (`system_settings_network.py`), so VPN and hotspot requests share the
+page's one request channel and busy state. Their failures appear on the row
+they concern rather than as the page's status line, and they never touch a
+pending connection edit.
+
+### VPN
+
+- **List.** NetworkManager profiles of type `vpn` (OpenVPN, OpenConnect,
+  vpnc, SSH and other installed plugins) and `wireguard`, with their type and
+  state, from the same `nmcli connection show` the network snapshot already
+  runs. Naming each plugin costs one extra `nmcli` read on the Settings page.
+- **Connect.** CybexOS runs no network applet, so nothing would answer
+  NetworkManager when a VPN needs a password. For one user-requested
+  activation, `scripts/network_vpn_agent.py` registers a secret agent on the
+  system bus, activates the profile from the same process (NetworkManager
+  asks that process's agent first), and answers only that profile's `vpn`
+  secret request by running the plugin's own sign-in dialog, the
+  `auth-dialog` from its `NetworkManager-*-gnome` package that nm-applet also
+  uses. Every other request gets `NoSecrets`, so another agent can still
+  answer it. Secrets go from the dialog straight into the D-Bus reply; they
+  are never logged, written to disk or passed to the shell, and `SaveSecrets`
+  is declined, so a profile keeps its own secret storage. The agent
+  unregisters when the activation succeeds, fails, is canceled or times out
+  (50 seconds). Failures are reported from NetworkManager's reason: a
+  canceled sign-in, a rejected login, a missing plugin, no network to run
+  over, and so on.
+- **Import.** *Import VPN…* opens a file picker (the Settings folder dialog in
+  file mode, starting in Downloads) for an OpenVPN `.ovpn` or a WireGuard or
+  OpenVPN `.conf` file of at most 1 MiB. The helper only sniffs the format,
+  then runs `nmcli connection import type openvpn|wireguard file …`.
+  NetworkManager names a WireGuard profile and interface after the file, so a
+  file name that is not a valid interface name is imported through a
+  symlink with a valid name in a private temporary directory (the key is
+  never copied) and the profile is renamed after the file. Imported profiles
+  get `connection.autoconnect no`; NetworkManager starts an imported
+  WireGuard profile at once, so the import also takes it down. `nmcli`'s
+  diagnostics are classified, never shown, because a parser error can quote
+  a line of the file.
+- **Remove.** *Remove…* asks on a second row; only the confirming press
+  sends `confirmed: true`, and the helper refuses a removal without it, or
+  for a profile that is not a VPN.
+- **Advanced editing** stays in `nm-connection-editor`.
+
+### Hotspot
+
+The group appears only on a computer with a Wi-Fi adapter. It is one switch,
+the network name and, while the hotspot is on, *Show password and QR code*.
+
+- The hotspot is one NetworkManager profile, `CybexOS hotspot` with a fixed
+  UUID, created on first use: access-point mode on 2.4 GHz, WPA2-PSK (CCMP,
+  PMF off for the widest client and driver support), `ipv4.method shared`,
+  `connection.zone nm-shared` and `connection.autoconnect no`. It never
+  starts at boot; the switch starts it again.
+- The password is generated (16 characters from an alphabet without
+  look-alike characters, about 79 bits) and reaches `nmcli` only through
+  `passwd-file` on stdin, like a Wi-Fi password. NetworkManager stores it in
+  the profile on the first start and reuses it afterwards. The Settings page
+  never holds it: the join card, the network overlay's QR page, asks the
+  helper for the code and the password together and drops both when it
+  closes. Change the password in the advanced editor.
+- The adapter is chosen to avoid dropping Wi-Fi: an idle second adapter that
+  can host an access point is preferred. NetworkManager runs one connection
+  per adapter, so on a single adapter the Wi-Fi connection drops while the
+  hotspot runs; the group says so before it is switched on. An adapter
+  without access-point support, or Wi-Fi switched off, disables the switch
+  with the reason.
+- Renaming a running hotspot restarts it under the new name.
+
+### Firewall
+
+Shared mode runs NetworkManager's DHCP and DNS server (dnsmasq, which no
+Fedora package pulls in, so the desktop package task and the RPM's
+`Requires` both install it) for the clients and NAT for their traffic. NetworkManager puts a shared connection in firewalld's
+`nm-shared` zone, which accepts DHCP, DNS and ICMP to this computer and
+forwards client traffic; the strict `cybexos` zone (target `DROP`) would
+refuse the clients' DHCP and DNS. The hotspot profile therefore names
+`nm-shared` explicitly. The checkout installer's adoption of physical
+profiles into the `cybexos` zone skips profiles whose `ipv4.method` is
+`shared`, and the ISO never rebinds profiles, so both installation paths
+leave the hotspot (and any other shared connection) in `nm-shared`.
+`tests/verify-system` and the VM convergence check expect exactly that. The
+`cybexos` zone template itself is unchanged.
 
 ## Displays
 
@@ -243,6 +337,29 @@ persistence, explicit and automatic rollback, expired confirmation rejection,
 inactive-profile edits and saved Wi-Fi password preservation. Backend unit
 tests also cover address validation, concurrent changes, typed D-Bus values,
 capability changes, stale audio streams and account action guards.
+
+VPN and hotspot behaviour is covered without a real NetworkManager:
+
+- `tests/network-connections.py` runs `network-tool.py` and the settings
+  service with `nmcli` stubbed on `PATH`: parsing of terse `nmcli` output,
+  import argument construction (including the WireGuard symlink), file
+  validation, confirmed removal, hotspot profile creation with the password
+  only on stdin, adapter choice, and error mapping that never echoes
+  diagnostics. The secret agent runs against a fake NetworkManager on a
+  private D-Bus daemon with a fake plugin dialog: only the activating
+  profile's secrets are answered, a canceled dialog is reported as such, the
+  agent always unregisters and no secret reaches the helper's output.
+- `tests/quickshell/network-vpn-hotspot.test.cjs` covers the helpers and the
+  structure of the drawer switch, the VPN and Hotspot groups, the join card
+  and the folder dialog's file mode; the real-engine lifecycle harness
+  constructs both groups against a hand-set snapshot.
+- `image/test_installation_parity.py` runs the checkout's zone-adoption
+  script against a stubbed `nmcli` and checks that the ISO path never
+  rebinds profile zones.
+
+A real VPN sign-in, a hotspot client joining, and the hotspot staying off
+after a reboot need hardware and are on the manual checklist
+(`docs/shell-settings-manual-verification.md`).
 
 The managed live check opens and reopens all three pages, verifies their data
 and monitor readiness, closes them and checks that readers/monitors stop. It

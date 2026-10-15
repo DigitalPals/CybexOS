@@ -305,7 +305,7 @@ Item {
                     radius: T3Theme.controlRadius
                     color: favoritesMouse.containsMouse ? T3Theme.hoverStrong : "transparent"
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Favourites"
+                    Accessible.name: I18n.tr("Favourites")
 
                     Sym {
                         anchors.centerIn: parent
@@ -445,7 +445,7 @@ Item {
                     selectionColor: T3Theme.accentSoft
                     selectedTextColor: T3Theme.textPrimary
                     Accessible.role: Accessible.EditableText
-                    Accessible.name: "Search models"
+                    Accessible.name: I18n.tr("Search models")
 
                     Keys.onPressed: event => {
                         if (event.key === Qt.Key_Escape) {
@@ -472,7 +472,7 @@ Item {
 
                     Text {
                         visible: searchInput.text === ""
-                        text: "Search models…"
+                        text: I18n.tr("Search models…")
                         font.family: T3Theme.fontUi
                         font.pixelSize: Theme.typography.control
                         color: T3Theme.textFaint
@@ -499,7 +499,7 @@ Item {
             Text {
                 visible: root.rows.length === 0
                 anchors.centerIn: parent
-                text: root.searching ? "No models found" : "No models available"
+                text: root.searching ? I18n.tr("No models found") : I18n.tr("No models available")
                 font.family: T3Theme.fontUi
                 font.pixelSize: Theme.typography.secondary
                 color: T3Theme.textFaint
@@ -564,7 +564,7 @@ Item {
                                 anchors.leftMargin: 9
                                 anchors.top: parent.top
                                 anchors.topMargin: 6
-                                text: "Legacy models"
+                                text: I18n.tr("Legacy models")
                                 font.family: T3Theme.fontUi
                                 font.pixelSize: Theme.typography.secondary
                                 font.weight: Theme.weightMedium

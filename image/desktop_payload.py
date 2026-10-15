@@ -103,12 +103,26 @@ def prepare_system_session(root, payload, inventory):
         f"Environment=CYBEXOS_CONNECTED_WIDGETS={int(bool(features['connected_widgets']))}\n"
         f"Environment=CYBEXOS_DEVELOPER_TOOLS={int(bool(features['developer_tools']))}\n"
         "Restart=on-failure\nRestartSec=2\n\n[Install]\nWantedBy=hyprland-session.target\n")
+    prepare_backup_units(root, payload)
     # XPS hardware only: the unit starts when the session exports
     # CYBEXOS_XPS_2026=1 from /etc/cybexos/hardware.json.
     watcher = payload / "usr/libexec/cybexos-external-monitor-toggle"
     watcher.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(root / "roles/dotfiles/templates/external-monitor-toggle.j2", watcher)
     watcher.chmod(0o755)
+
+
+def prepare_backup_units(root, payload):
+    """The personal-file backup timer and service the desktop role installs
+    per account. The helper is packaged, so the unit runs it from there
+    rather than through each account's ~/.local/bin link."""
+    units = payload / "usr/lib/systemd/user"
+    units.mkdir(parents=True, exist_ok=True)
+    for name in ("cybexos-backup.service", "cybexos-backup.timer"):
+        content = (root / "roles/desktop/files" / name).read_text()
+        content = content.replace("%h/.local/bin/cybexos-backup", "/usr/share/cybexos/bin/cybexos-backup")
+        (units / name).write_text(content)
+        (units / name).chmod(0o644)
 
 
 def split_seed(vendor, contract):

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '../../roles/desktop/files/quickshell');
-const read = name => fs.readFileSync(path.join(root, name), 'utf8');
+const read = name => untranslated(fs.readFileSync(path.join(root, name), 'utf8'));
 
 test('settings subsections own separation inside revealers and preserve the row grid', () => {
     const subsection = read('Settings/SettingsSubsection.qml');
@@ -164,3 +164,4 @@ test('bar preview workspace pips survive losing their strip during teardown', ()
     assert.match(pip, /anchors\.verticalCenter: parent \? parent\.verticalCenter : undefined/);
     assert.doesNotMatch(pip, /:\s*parent\.\w+\s*$/m, 'a repeated delegate guards its parent');
 });
+const { untranslated } = require("./shell.cjs");

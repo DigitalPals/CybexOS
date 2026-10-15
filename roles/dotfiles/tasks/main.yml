@@ -93,6 +93,21 @@
     dest: "{{ primary_home }}/.local/bin/cybex"
     mode: "0755"
 
+# The ISO's cybexos-user-init calls the same helper's seed. It records every
+# default it seeds, so a web app the user removed is never added back here.
+- name: Seed the default web apps once
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.command:
+    argv:
+      - "{{ primary_home }}/.local/bin/cybexos-webapp"
+      - seed
+  environment:
+    HOME: "{{ primary_home }}"
+  register: dotfiles_webapp_seed
+  changed_when: "'CHANGED:' in dotfiles_webapp_seed.stdout"
+  when: not ansible_check_mode
+
 - name: Create the CybexOS release store
   become: true
   become_user: "{{ primary_user }}"
@@ -172,7 +187,6 @@
     - { name: t3code-update, enabled: "{{ features.connected_widgets }}" }
     - { name: t3code-desktop, enabled: "{{ features.connected_widgets }}" }
     - { name: spotify, enabled: true }
-    - { name: app-backup, enabled: true }
     - { name: fastfetch-link-speed, enabled: true }
   loop_control:
     label: "{{ item.name }}"
@@ -249,13 +263,20 @@
     - not features.connected_widgets | bool
     - apps_feature_owned.connected_widgets | default(false) | bool
 
-- name: Keep browser-backup compatibility command
+# The browser-profile export folded into cybexos-backup, which runs it when
+# invoked by these names (AGE_RECIPIENT as before). The ISO packages the same
+# links beside the helper.
+- name: Keep the app-backup and browser-backup compatibility commands
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
-    src: app-backup
-    dest: "{{ primary_home }}/.local/bin/browser-backup"
+    src: cybexos-backup
+    dest: "{{ primary_home }}/.local/bin/{{ item }}"
     state: link
+    force: true
+  loop:
+    - app-backup
+    - browser-backup
 
 - name: Configure Distrobox to provision lazily created development boxes
   become: true

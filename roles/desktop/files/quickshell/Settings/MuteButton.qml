@@ -64,7 +64,7 @@ Rectangle {
 
     SettingsTooltip {
         visible: mouse.containsMouse
-        text: root.muted ? "Unmute" : "Mute"
+        text: root.muted ? I18n.tr("Unmute") : I18n.tr("Mute")
     }
 
     MouseArea {

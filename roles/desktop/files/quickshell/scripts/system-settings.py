@@ -8,11 +8,13 @@ from system_settings_network import NetworkSettings
 from system_settings_accounts import AccountSettings
 from system_settings_input import InputSettings
 from system_settings_region import RegionSettings
+from system_settings_security import SecuritySettings
 
 
 def main():
     try:
-        if len(sys.argv) != 2 or sys.argv[1] not in ('sound', 'network', 'accounts', 'input', 'region'):
+        if len(sys.argv) != 2 or sys.argv[1] not in ('sound', 'network', 'accounts', 'input', 'region',
+                                                     'security'):
             raise ValueError('Unknown settings service')
         raw = sys.stdin.buffer.readline(65537)
         if len(raw) > 65536:
@@ -22,7 +24,7 @@ def main():
             raise ValueError('Invalid settings request')
         service = {'sound': AudioSettings, 'network': NetworkSettings,
                    'accounts': AccountSettings, 'input': InputSettings,
-                   'region': RegionSettings}[sys.argv[1]]()
+                   'region': RegionSettings, 'security': SecuritySettings}[sys.argv[1]]()
         result = service.dispatch(request)
         print(json.dumps({'success': True, **result}), flush=True)
     except ValueError as error:

@@ -37,7 +37,7 @@ BarModule {
         isle: root.isle
         anchorItem: root.groupAnchor ?? chip
         spacing: 0
-        tooltip: "Calendar"
+        tooltip: I18n.tr("Calendar")
 
         AnimatedText {
             anchors.verticalCenter: parent.verticalCenter

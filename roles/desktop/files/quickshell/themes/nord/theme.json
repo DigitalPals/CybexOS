@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "nord",
+  "name": "Nord",
+  "mode": "dark",
+  "accent": "#88c0d0",
+  "bar": "#2e3440",
+  "palette": {
+    "background": "#2e3440",
+    "surface": "#3b4252",
+    "surfaceRaised": "#434c5e",
+    "text": "#eceff4",
+    "textMuted": "#d8dee9",
+    "red": "#bf616a",
+    "amber": "#ebcb8b",
+    "green": "#a3be8c"
+  },
+  "author": "Arctic Ice Studio and Sven Greb",
+  "license": "MIT",
+  "source": "https://github.com/nordtheme/nord"
+}

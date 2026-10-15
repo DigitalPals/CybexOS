@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -13,11 +14,11 @@ function shellPath(relative) {
 }
 
 function read(relative) {
-    return fs.readFileSync(shellPath(relative), "utf8");
+    return untranslated(fs.readFileSync(shellPath(relative), "utf8"));
 }
 
 function readRepo(relative) {
-    return fs.readFileSync(path.join(repo, relative), "utf8");
+    return untranslated(fs.readFileSync(path.join(repo, relative), "utf8"));
 }
 
 test("Hermes is one configurable chip and one registry-owned popover", () => {

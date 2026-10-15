@@ -83,7 +83,7 @@ RowCluster {
                 compact: true
                 glyph: "more_horiz"
                 text: "More actions for " + root.plugin.name
-                tooltip: "More actions"
+                tooltip: I18n.tr("More actions")
                 onTriggered: menu.popup(more.width - menu.width, more.height + Theme.scaled(4))
 
                 Controls.Menu {
@@ -101,23 +101,23 @@ RowCluster {
                     palette.highlightedText: Theme.textHi
 
                     Controls.MenuItem {
-                        text: "Update"
+                        text: I18n.tr("Update")
                         enabled: !UserPlugins.busy
                         onTriggered: root.run(["update", root.plugin.id])
                     }
                     Controls.MenuItem {
-                        text: "Preview update"
+                        text: I18n.tr("Preview update")
                         enabled: !UserPlugins.busy
                         onTriggered: root.run(["update", root.plugin.id, "--preview"])
                     }
                     Controls.MenuItem {
-                        text: "Clone as a custom copy…"
+                        text: I18n.tr("Clone as a custom copy…")
                         enabled: !UserPlugins.busy
                         onTriggered: root.startClone()
                     }
                     Controls.MenuSeparator {}
                     Controls.MenuItem {
-                        text: "Remove…"
+                        text: I18n.tr("Remove…")
                         enabled: !UserPlugins.busy
                         palette.text: Theme.redText
                         palette.windowText: Theme.redText
@@ -146,15 +146,15 @@ RowCluster {
         width: parent.width
         divider: false
         visible: root.cloning
-        label: "New ID"
+        label: I18n.tr("New ID")
         placeholder: root.plugin.id + "-custom"
         fieldWidth: Theme.scaled(240, Theme.typeScale)
-        hint: "Copies the plugin under this ID for you to change. The copy is turned on and this one off."
+        hint: I18n.tr("Copies the plugin under this ID for you to change. The copy is turned on and this one off.")
         onAccepted: clone.trigger()
 
         SettingsAction {
             id: clone
-            text: "Clone"
+            text: I18n.tr("Clone")
             glyph: "content_copy"
             enabled: !UserPlugins.busy && cloneRow.text.trim() !== ""
             Accessible.name: "Clone " + root.plugin.name
@@ -168,7 +168,7 @@ RowCluster {
             onTriggered: trigger()
         }
         SettingsAction {
-            text: "Cancel"
+            text: I18n.tr("Cancel")
             onTriggered: {
                 cloneRow.text = "";
                 root.cloning = false;
@@ -180,12 +180,12 @@ RowCluster {
         width: parent.width
         divider: false
         visible: root.confirmRemoval
-        label: "Remove this plugin?"
-        hint: "Deletes its files. Its settings and data stay, so installing it again restores them."
+        label: I18n.tr("Remove this plugin?")
+        hint: I18n.tr("Deletes its files. Its settings and data stay, so installing it again restores them.")
         hintTone: "warning"
 
         SettingsAction {
-            text: "Remove"
+            text: I18n.tr("Remove")
             glyph: "delete"
             danger: true
             enabled: !UserPlugins.busy
@@ -196,7 +196,7 @@ RowCluster {
             }
         }
         SettingsAction {
-            text: "Cancel"
+            text: I18n.tr("Cancel")
             onTriggered: root.confirmRemoval = false
         }
     }

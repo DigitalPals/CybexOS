@@ -10,10 +10,10 @@ Column {
     // Named heights. Default is the shipped value, so a fresh bar reads as a
     // choice rather than as an unnamed number.
     readonly property var heightPresets: [
-        { value: 30, label: "Compact" },
-        { value: 34, label: "Classic" },
-        { value: Settings.defaults.barHeight, label: "Default" },
-        { value: 42, label: "Roomy" }
+        { value: 30, label: I18n.tr("Compact") },
+        { value: 34, label: I18n.tr("Classic") },
+        { value: Settings.defaults.barHeight, label: I18n.tr("Default") },
+        { value: 42, label: I18n.tr("Roomy") }
     ]
     // The bar never draws shorter than its controls (Theme.barHeight), so a
     // preset below that floor would change nothing at this text size and
@@ -59,15 +59,15 @@ Column {
 
     SettingsGroup {
         width: parent.width
-        title: "Layout"
+        title: I18n.tr("Layout")
 
         PickerRow {
             width: parent.width
-            label: "Position"
+            label: I18n.tr("Position")
             settingKey: "position"
             model: [
-                { value: "top", label: "Top" },
-                { value: "bottom", label: "Bottom" }
+                { value: "top", label: I18n.tr("Top") },
+                { value: "bottom", label: I18n.tr("Bottom") }
             ]
         }
 
@@ -77,14 +77,14 @@ Column {
         // with it.
         PickerRow {
             width: parent.width
-            label: "Style"
+            label: I18n.tr("Style")
             settingKey: "barStyle"
             resetKeys: ["barStyle", "gap", "barRadius"]
             hint: page.floatingRowSought ? "Edge gap and Corner radius appear for the Floating style" : ""
             model: [
-                { value: "hug", label: "Hug" },
-                { value: "floating", label: "Floating" },
-                { value: "attached", label: "Attached" }
+                { value: "hug", label: I18n.tr("Hug") },
+                { value: "floating", label: I18n.tr("Floating") },
+                { value: "attached", label: I18n.tr("Attached") }
             ]
 
             SearchWash {
@@ -101,13 +101,13 @@ Column {
                 spacing: Theme.settingsRowSpacing
                 SliderRow {
                     width: parent.width
-                    label: "Edge gap"
+                    label: I18n.tr("Edge gap")
                     settingKey: "gap"
                     min: 4; max: 20; step: 1; unit: "px"
                 }
                 SliderRow {
                     width: parent.width
-                    label: "Corner radius"
+                    label: I18n.tr("Corner radius")
                     settingKey: "barRadius"
                     min: 0; max: 30; step: 1; unit: "px"
                 }
@@ -120,8 +120,8 @@ Column {
         PickerRow {
             id: heightRow
             width: parent.width
-            label: "Height"
-            model: page.drawablePresets.concat([{ value: "custom", label: "Custom" }])
+            label: I18n.tr("Height")
+            model: page.drawablePresets.concat([{ value: "custom", label: I18n.tr("Custom") }])
             current: page.showCustomHeight ? "custom" : Settings.barHeight
             caption: page.showCustomHeight ? "" : Settings.barHeight + " px"
             // The bar never draws shorter than its controls; say so rather
@@ -152,7 +152,7 @@ Column {
             reveal: page.showCustomHeight
             SliderRow {
                 width: customHeightReveal.width
-                label: "Custom height"
+                label: I18n.tr("Custom height")
                 resetLabel: "Height"
                 settingKey: "barHeight"
                 min: 28; max: 60; step: 1; unit: "px"
@@ -166,19 +166,47 @@ Column {
 
     SettingsGroup {
         width: parent.width
-        title: "Behavior"
+        title: I18n.tr("Behavior")
 
         SwitchRow {
             width: parent.width
-            label: "Auto-hide"
+            label: I18n.tr("Auto-hide")
             settingKey: "autoHide"
-            description: "Hides when idle; point at the screen edge to bring it back"
+            description: I18n.tr("Hides when idle; point at the screen edge to bring it back")
         }
         SwitchRow {
             width: parent.width
-            label: "Reserve space"
+            label: I18n.tr("Reserve space")
             settingKey: "exclusive"
-            description: "Tiled windows stay clear of the bar instead of going under it"
+            description: I18n.tr("Tiled windows stay clear of the bar instead of going under it")
+        }
+    }
+
+    // The optional dock lives with the bar: both are edge furniture, and the
+    // dock steps above a bottom bar rather than covering it. Pins are edited
+    // from the dock itself (right-click an app).
+    SettingsGroup {
+        width: parent.width
+        title: I18n.tr("Dock")
+
+        SwitchRow {
+            width: parent.width
+            label: I18n.tr("Show dock")
+            settingKey: "dock"
+            description: I18n.tr("Pinned and running apps at the bottom of each screen; right-click an app to pin it")
+        }
+
+        Revealer {
+            id: dockReveal
+            width: parent.width
+            reveal: Settings.dock
+            SwitchRow {
+                width: dockReveal.width
+                label: I18n.tr("Auto-hide")
+                resetLabel: "Dock auto-hide"
+                settingKey: "dockAutoHide"
+                description: I18n.tr("Hides until you point at the bottom edge")
+            }
         }
     }
 }

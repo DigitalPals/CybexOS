@@ -363,5 +363,127 @@ class SessionPayload(unittest.TestCase):
             self.assertIn(entry, path.split('=', 1)[1].strip('"').split(':'))
 
 
+class PersonalBackupParity(unittest.TestCase):
+    """Personal-file backups: one helper, one command, one schedule on both paths."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+
+    def test_backup_units_match_the_workstation_and_start_with_the_session(self):
+        payload = self.root / 'payload'
+        (payload / 'usr/share/cybexos/bin').mkdir(parents=True)
+        # repair-installed stages the system session too, so it carries the units.
+        from desktop_payload import prepare_system_session
+        prepare_system_session(ROOT, payload, INVENTORY)
+        for name in ('cybexos-backup.service', 'cybexos-backup.timer'):
+            source = unit((ROOT / 'roles/desktop/files' / name).read_text())
+            packaged = unit((payload / 'usr/lib/systemd/user' / name).read_text())
+            self.assertEqual(source.sections(), packaged.sections(), name)
+            for section in source.sections():
+                for key, value in source[section].items():
+                    if key == 'ExecStart':
+                        self.assertEqual(value, '%h/.local/bin/cybexos-backup scheduled')
+                        self.assertEqual(packaged[section][key], '/usr/share/cybexos/bin/cybexos-backup scheduled')
+                    else:
+                        self.assertEqual(packaged[section][key], value, f'{name} {key}')
+        timer = unit((ROOT / 'roles/desktop/files/cybexos-backup.timer').read_text())
+        self.assertEqual(timer['Install']['WantedBy'], 'hyprland-session.target')
+        self.assertEqual(timer['Unit']['PartOf'], 'hyprland-session.target')
+        # ISO: the vendor session target wants the timer. Checkout: the role
+        # installs both units and links the timer into the same target.
+        target = unit((ROOT / 'image/rootfs/usr/lib/systemd/user/hyprland-session.target').read_text())
+        self.assertIn('cybexos-backup.timer', target['Unit']['Wants'].split())
+        installed = task('roles/desktop/tasks/main.yml', 'Install the personal-file backup user units')
+        self.assertEqual(installed['loop'], ['cybexos-backup.service', 'cybexos-backup.timer'])
+        self.assertEqual(installed['ansible.builtin.copy']['dest'],
+                         '{{ primary_home }}/.config/systemd/user/{{ item }}')
+        enabled = task('roles/desktop/tasks/main.yml',
+                       'Check for due personal-file backups during the Hyprland session')['ansible.builtin.file']
+        self.assertEqual(enabled['src'], '../cybexos-backup.timer')
+        self.assertEqual(enabled['dest'], '{{ primary_home }}/.config/systemd/user/'
+                         'hyprland-session.target.wants/cybexos-backup.timer')
+        self.assertNotIn('when', task('roles/desktop/tasks/main.yml',
+                                      'Check for due personal-file backups during the Hyprland session'))
+        spec = (ROOT / 'image/cybexos-desktop.spec').read_text().splitlines()
+        self.assertIn('/usr/lib/systemd/user/cybexos-backup.timer', spec)
+        self.assertIn('/usr/lib/systemd/user/*.service', spec)
+        # Both packaged units load: a timer that cannot be parsed never runs.
+        units = self.root / 'units'
+        units.mkdir()
+        for name in ('graphical-session.target', 'graphical-session-pre.target'):
+            (units / name).write_text('[Unit]\nDescription=Fixture\n')
+        (units / 'hyprland-session.target').write_text(
+            (ROOT / 'image/rootfs/usr/lib/systemd/user/hyprland-session.target').read_text())
+        for name in ('cybexos-backup.service', 'cybexos-backup.timer'):
+            (units / name).write_text((payload / 'usr/lib/systemd/user' / name).read_text()
+                                      .replace('/usr/share/cybexos/bin/cybexos-backup', '/usr/bin/true'))
+        runtime = units / 'runtime'
+        runtime.mkdir(mode=0o700)
+        result = subprocess.run(['systemd-analyze', '--user', 'verify', str(units / 'cybexos-backup.timer')],
+                                env={**os.environ, 'SYSTEMD_UNIT_PATH': str(units) + ':/usr/lib/systemd/user',
+                                     'XDG_RUNTIME_DIR': str(runtime)}, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # verify only warns about a key it ignores, such as a bad calendar.
+        self.assertNotIn('cybexos-backup', result.stderr)
+
+    def test_cybex_backup_reaches_the_same_helper_on_both_installations(self):
+        contract = json.loads((ROOT / 'assets/desktop-contract.json').read_text())
+        self.assertIn('cybexos-backup', contract['userHelpers'])
+        home = self.root / 'home'
+        (home / '.local/bin').mkdir(parents=True)
+        stub = home / '.local/bin/cybexos-backup'
+        stub.write_text('#!/bin/sh\nprintf "%s|" "$@"\n')
+        stub.chmod(0o755)
+        environment = jinja2.Environment(undefined=jinja2.StrictUndefined)
+        environment.filters['quote'] = __import__('shlex').quote
+        checkout = self.root / 'cybex-checkout'
+        checkout.write_text(environment.from_string(
+            (ROOT / 'roles/dotfiles/templates/cybex.j2').read_text()).render(primary_home=str(home)))
+        iso = self.root / 'cybex-iso'
+        iso.write_text((ROOT / 'image/rootfs/usr/bin/cybex').read_text()
+                       .replace('/usr/share/cybexos/bin/cybexos-backup', str(stub)))
+        outcomes = []
+        for command in (checkout, iso):
+            command.chmod(0o755)
+            outcomes.append([subprocess.run([str(command), 'backup', *arguments], text=True,
+                                            capture_output=True, check=True).stdout
+                             for arguments in (('setup', 'local', '/run/media/u/T7'), ('now',),
+                                               ('status', '--json'), ('restore', 'latest', '--path', 'a b'))])
+            help_text = subprocess.run([str(command), 'help'], text=True, capture_output=True).stdout
+            self.assertRegex(help_text, r'\n  backup +Back up, check, or restore personal files')
+        self.assertEqual(outcomes[0], outcomes[1])
+        self.assertEqual(outcomes[0][3], 'restore|latest|--path|a b|')
+
+    def test_the_browser_profile_export_keeps_its_names_on_both_installations(self):
+        links = task('roles/dotfiles/tasks/main.yml',
+                     'Keep the app-backup and browser-backup compatibility commands')
+        self.assertEqual(links['loop'], ['app-backup', 'browser-backup'])
+        self.assertEqual(links['ansible.builtin.file']['src'], 'cybexos-backup')
+        self.assertFalse((ROOT / 'roles/dotfiles/templates/app-backup.j2').exists(),
+                         'one implementation, in the shared helper')
+        package = (ROOT / 'image/package').read_text()
+        self.assertIn('for name in ("app-backup", "browser-backup"):', package)
+        self.assertIn('symlink_to("cybexos-backup")', package)
+        # ISO accounts link every vendor helper, links included, into ~/.local/bin.
+        vendor = self.root / 'vendor'
+        (vendor / 'bin').mkdir(parents=True)
+        (vendor / 'bin/cybexos-backup').write_text('#!/bin/sh\n')
+        (vendor / 'bin/app-backup').symlink_to('cybexos-backup')
+        linked = [helper.name for helper in (vendor / 'bin').iterdir() if helper.is_file()]
+        self.assertIn('app-backup', linked)
+
+    def test_backup_packages_are_installed_on_both_paths(self):
+        packages = task('roles/desktop/tasks/main.yml',
+                        'Install stable Hyprland and desktop integration packages')['ansible.builtin.dnf']['name']
+        requires = ' '.join(line.split(':', 1)[1] for line in
+                            (ROOT / 'image/cybexos-desktop.spec').read_text().splitlines()
+                            if line.startswith('Requires:')).split()
+        for name in ('restic', 'libsecret'):
+            self.assertIn(name, packages)
+            self.assertIn(name, requires)
+
+
 if __name__ == '__main__':
     unittest.main()

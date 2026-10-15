@@ -215,6 +215,75 @@ themed_hyprlock_config() {
   printf '%s\n' "$file"
 }
 
+# Whether this account registered a security key in the pam_u2f mapping the
+# lock screen's PAM service reads (docs/security.md).
+registered_security_key() {
+  local mapping=$HOME/.config/Yubico/u2f_keys user line
+  [[ -f $mapping && ! -L $mapping ]] || return 1
+  user=$(id -un) || return 1
+  while IFS= read -r line || [[ -n $line ]]; do
+    [[ $line == "$user:"?* ]] && return 0
+  done <"$mapping"
+  return 1
+}
+
+# Adds the sign-in factors to a CybexOS lock screen (docs/security.md): the
+# cybexos-lock PAM service, which has no pam_fprintd step and tries a
+# registered security key before the password, and hyprlock's own fprintd
+# check beside it while authselect offers fingerprints. Prints the rendered
+# file, or the input file when that PAM service is absent: a lock naming a
+# missing service would refuse every password, and hyprlock's default service
+# already asks fprintd itself.
+render_hyprlock_config() {
+  local selected=$1 lock_pam=/etc/pam.d/cybexos-lock
+  local authselect_conf=/etc/authselect/authselect.conf
+  local output_dir output temporary fingerprint=false keys=false
+  output_dir=${XDG_RUNTIME_DIR:-}/cybexos
+  output=$output_dir/hyprlock.conf
+  if [[ -z ${XDG_RUNTIME_DIR:-} || ! -f $lock_pam ]] ||
+      ! mkdir -p -- "$output_dir" ||
+      ! temporary=$(mktemp "$output_dir/.hyprlock.conf.XXXXXX"); then
+    printf '%s\n' "$selected"
+    return 0
+  fi
+  grep -qx 'with-fingerprint' "$authselect_conf" 2>/dev/null && fingerprint=true
+  registered_security_key && keys=true
+  if {
+      if [[ $keys == true ]]; then
+        # PAM tries the key when the field is submitted, so an empty Enter
+        # must reach it, and the wait for a touch needs words. Both edits
+        # match only CybexOS's own lock layouts.
+        sed -e 's|>Password</span>|>Password or security key</span>|' \
+          -e '/^ *placeholder_text = /a\  check_text = Touch your security key if it flashes' \
+          -- "$selected" &&
+          printf '\ngeneral:ignore_empty_input = false\n'
+      else
+        cat -- "$selected"
+      fi
+    } >"$temporary" && cat >>"$temporary" <<EOF
+
+# Added by cybexos-runtime at lock time (docs/security.md).
+auth {
+  pam {
+    module = cybexos-lock
+  }
+  fingerprint {
+    enabled = $fingerprint
+    ready_message = Touch the fingerprint reader or enter your password
+    present_message = Checking fingerprint…
+  }
+}
+EOF
+  then
+    mv -f -- "$temporary" "$output"
+    printf '%s\n' "$output"
+  else
+    rm -f -- "$temporary"
+    printf 'cybexos-runtime: could not add the lock screen sign-in factors\n' >&2
+    printf '%s\n' "$selected"
+  fi
+}
+
 exec_runtime() {
   local kind=$1 selected user_config themed
   case $kind in
@@ -264,6 +333,10 @@ exec_runtime() {
       }
       if [[ $kind == hypridle && $selected != "$user_config" ]]; then
         selected=$(render_hypridle_config "$selected")
+      fi
+      # A person's own lock file keeps exactly the authentication it sets.
+      if [[ $kind == hyprlock && $selected != "$user_config" ]]; then
+        selected=$(render_hyprlock_config "$selected")
       fi
       if [[ $kind == hypridle ]]; then
         exec /usr/bin/hypridle --config "$selected"

@@ -3,6 +3,8 @@ import QtQuick
 import "../Common"
 import "../Common/Format.js" as Format
 import "../Common/UpdatesHelpers.js" as UpdatesHelpers
+import "../Common/RecoveryHelpers.js" as RecoveryHelpers
+import "../Settings/LocalTime.js" as LocalTime
 
 // The dedicated Updates drawer. PanelRegistryData attaches this surface to the
 // right edge; using the shared drawer width keeps it on the current
@@ -37,9 +39,11 @@ Surface {
     // The run's phase before any package work: the rows are still waiting.
     readonly property bool preparing: running && (Updates.backendPhase === ""
         || Updates.backendPhase === "queued" || Updates.backendPhase === "snapshot")
-    readonly property int updateCategories: (Updates.dnfCount > 0 ? 1 : 0)
+    // The CybexOS desktop RPM of an ISO installation counts as CybexOS, not
+    // as one more system package (Updates.systemCount).
+    readonly property int updateCategories: (Updates.systemCount > 0 ? 1 : 0)
         + (Updates.flatpakCount > 0 ? 1 : 0) + (Updates.firmwareInRun ? 1 : 0)
-        + (Updates.projectAvailable ? 1 : 0)
+        + (Updates.cybexosPending ? 1 : 0)
     readonly property bool canUpdate: updateCategories > 0
 
     // Which rows show. Decided here rather than read back from the rows:
@@ -48,15 +52,22 @@ Surface {
     //
     // Every run upgrades the system (`dnf upgrade --refresh` can find more
     // than the cached check did), so outside idle that row always shows.
-    readonly property bool showSystem: idle ? Updates.dnfCount > 0 : true
+    readonly property bool showSystem: idle ? Updates.systemCount > 0 : true
     readonly property bool showApps: idle ? Updates.flatpakCount > 0
         : Updates.runIncludedFlatpak && (plan === null || plan.flatpak > 0
             || Updates.appCount > 0 || Updates.fpWarning !== "")
     readonly property bool showFirmware: idle ? Updates.firmwareCount > 0
         : Updates.runIncludedFirmware
-    readonly property bool showProject: idle && Updates.projectAvailable
+    readonly property bool showProject: idle && Updates.cybexosPending
     readonly property bool hasDetails: !idle || Updates.total > 0
         || Updates.error !== ""
+    // Before a run, the disclosure is the preview of what an update changes.
+    readonly property bool previewing: idle && Updates.total > 0
+    readonly property int advisoryLimit: 6
+    readonly property var cybexosNotes: Updates.projectAvailable
+        ? UpdatesHelpers.releaseNotesLines(Updates.projectNotes, 12)
+        : Updates.desktopChangelog.reduce((lines, entry) => lines.concat(entry.lines), [])
+            .slice(0, 12)
 
     // idle: "update" | "restart" | ""; done: "restart" | ""; failed: "retry".
     readonly property string primaryAction: failed ? "retry"
@@ -131,6 +142,9 @@ Surface {
             return Updates.checkError;
         if (rebootNeeded && Updates.total === 0)
             return "Restart to finish updating";
+        // A background download (Settings, off by default) already fetched them.
+        if (Updates.downloadReady)
+            return "Updates downloaded — ready to install";
         // Neutral, like the checked time: nothing to install from CybexOS yet.
         return Updates.checkedLabel()
             + (Updates.projectNote !== "" ? " · " + Updates.projectNote : "");
@@ -239,7 +253,7 @@ Surface {
                 enabled: !Updates.cancelPending
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                label: "Cancel"
+                label: I18n.tr("Cancel")
                 hPadding: 22
                 revealed: visible
                 onTriggered: Updates.cancelRun()
@@ -482,8 +496,8 @@ Surface {
 
             visible: root.showSystem
             glyph: "computer"
-            label: "System"
-            count: String(Updates.dnfCount)
+            label: I18n.tr("System")
+            count: String(Updates.systemCount)
             rowState: root.idle ? "pending"
                 : root.preparing ? "waiting"
                 : !Updates.runDnfDone ? "active"
@@ -519,7 +533,7 @@ Surface {
 
             visible: root.showApps
             glyph: "apps"
-            label: "Apps"
+            label: I18n.tr("Apps")
             count: String(Updates.flatpakCount)
             rowState: root.idle ? "pending"
                 : root.preparing ? "waiting"
@@ -552,7 +566,7 @@ Surface {
 
             visible: root.showFirmware
             glyph: "memory"
-            label: "Firmware"
+            label: I18n.tr("Firmware")
             count: String(Updates.firmwareCount)
             rowState: {
                 if (root.idle)
@@ -653,8 +667,8 @@ Surface {
 
             visible: root.showProject
             glyph: "deployed_code_update"
-            label: "CybexOS"
-            count: Updates.projectVersion
+            label: I18n.tr("CybexOS")
+            count: Updates.cybexosVersion
             detail: Updates.projectApplyNote !== ""
                 ? "To apply CybexOS " + Updates.projectVersion + ": "
                     + Updates.projectApplyNote : ""
@@ -705,7 +719,7 @@ Surface {
             id: restartLater
             visible: Updates.rebootRecommended
             anchors.verticalCenter: parent.verticalCenter
-            label: "Restart"
+            label: I18n.tr("Restart")
             tint: Theme.amber
             fill: Theme.amberBg
             hPadding: 14
@@ -811,9 +825,62 @@ Surface {
         }
     }
 
+    // ---- the last recovery point --------------------------------------------
+    // The recovery point the last (or the running) update took before it
+    // changed anything, and the way to the Settings section that restores
+    // it. One quiet line: it only matters when something went wrong.
+    Item {
+        id: recoveryLine
+
+        readonly property string pointId: Updates.recoveryPointId
+
+        visible: pointId !== ""
+        width: parent.width
+        height: 22
+
+        Sym {
+            id: recoveryMark
+            anchors.left: parent.left
+            anchors.leftMargin: 2
+            anchors.verticalCenter: parent.verticalCenter
+            name: "history"
+            size: Theme.iconSmall
+            color: Theme.textLow
+        }
+
+        Text {
+            anchors.left: recoveryMark.right
+            anchors.leftMargin: 7
+            anchors.right: manageLink.left
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Recovery point · " + LocalTime.fromText(recoveryLine.pointId.slice(0, 16),
+                Date.now(), Settings.clock24, RecoveryHelpers.pointTime(recoveryLine.pointId))
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.typography.secondary
+            font.weight: Theme.weightMedium
+            font.features: Theme.tabularNumberFeatures
+            color: Theme.textLow
+        }
+
+        LinkText {
+            id: manageLink
+            anchors.right: parent.right
+            anchors.rightMargin: 2
+            anchors.verticalCenter: parent.verticalCenter
+            text: I18n.tr("Manage")
+            accessibleName: "Manage recovery points"
+            font.pixelSize: Theme.typography.secondary
+            onClicked: Updates.openRecoveryPoints()
+        }
+    }
+
     // ---- details --------------------------------------------------------------
-    // Everything a person does not need to decide what to do next: the names
-    // behind the counts, the live transaction, dnf's own error, the log.
+    // Everything a person does not need to decide what to do next: what an
+    // update will change (versions, advisories, CybexOS's own notes), the live
+    // transaction, dnf's own error, the log.
     Item {
         id: detailsToggle
 
@@ -830,7 +897,7 @@ Surface {
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Details"
+                text: root.previewing ? I18n.tr("What will change") : I18n.tr("Details")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightSemibold
@@ -859,7 +926,8 @@ Surface {
             anchors.fill: toggleRow
             activeFocusOnTab: root.hasDetails
             Accessible.role: Accessible.Button
-            Accessible.name: Updates.detailsOpen ? "Hide details" : "Show details"
+            Accessible.name: (Updates.detailsOpen ? "Hide " : "Show ")
+                + (root.previewing ? "what will change" : "details")
             Accessible.onPressAction: Updates.detailsOpen = !Updates.detailsOpen
 
             Keys.onPressed: event => {
@@ -888,9 +956,95 @@ Surface {
             anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
             visible: Updates.detailsOpen && !root.idle && Updates.runStamp !== ""
-            text: "Open full log"
+            text: I18n.tr("Open full log")
             font.pixelSize: Theme.typography.secondary
             onClicked: Updates.openLog()
+        }
+    }
+
+    component DetailHeading: Text {
+        width: parent ? parent.width : 0
+        elide: Text.ElideRight
+        font.family: Theme.fontMenu
+        font.pixelSize: Theme.typography.metadata
+        font.weight: Theme.weightSemibold
+        font.letterSpacing: 0.4
+        color: Theme.textFaint
+    }
+
+    // "name   installed → incoming" per package or app; a long list scrolls
+    // in place. Until the installed versions are read only the incoming one
+    // shows.
+    component ChangeList: Rectangle {
+        id: changeList
+
+        property var changes: []
+
+        visible: changeList.changes.length > 0
+        width: parent ? parent.width : 0
+        height: Math.min(212, changeList.changes.length * 21 + 16)
+        radius: Theme.tileRadius
+        color: Theme.well
+        border.width: 1
+        border.color: Theme.hairlineSoft
+
+        ListView {
+            id: changeView
+
+            x: 12
+            y: 8
+            width: parent.width - 24
+            height: parent.height - 16
+            clip: true
+            model: changeList.changes
+            boundsBehavior: Flickable.StopAtBounds
+
+            delegate: Item {
+                id: changeRow
+
+                required property var modelData
+
+                width: changeView.width
+                height: 21
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.round(parent.width * 0.45)
+                    text: changeRow.modelData.name
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.typography.secondary
+                    font.weight: Theme.weightMedium
+                    color: Theme.textMid
+                }
+
+                Text {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.round(parent.width * 0.55) - 8
+                    horizontalAlignment: Text.AlignRight
+                    text: changeRow.modelData.from !== "" && changeRow.modelData.to !== ""
+                        ? changeRow.modelData.from + " → " + changeRow.modelData.to
+                        : changeRow.modelData.to
+                    textFormat: Text.PlainText
+                    elide: Text.ElideMiddle
+                    font.family: Theme.fontMono
+                    font.pixelSize: Theme.typography.secondary
+                    font.weight: Theme.weightMedium
+                    color: Theme.textFaint
+                }
+            }
+        }
+
+        ScrollChrome {
+            anchors.fill: parent
+            anchors.topMargin: 2
+            anchors.bottomMargin: 2
+            target: changeView
+            edgeColor: Qt.rgba(Theme.background.r, Theme.background.g,
+                Theme.background.b, 0.9)
         }
     }
 
@@ -922,6 +1076,7 @@ Surface {
         Text {
             width: parent.width
             text: detailBlock.body
+            textFormat: Text.PlainText
             wrapMode: Text.Wrap
             maximumLineCount: detailBlock.lines
             elide: Text.ElideRight
@@ -939,18 +1094,94 @@ Surface {
         width: parent.width
         spacing: 12
 
-        // Before a run: the names behind each count.
-        DetailBlock {
-            visible: root.idle && body !== ""
-            heading: "SYSTEM · " + Updates.dnfCount
-            body: root.idle ? Updates.uniqueNames(Updates.dnfNames).join(", ") : ""
-            lines: 8
+        // Before a run: what will change, source by source. Fedora's own
+        // advisories lead the system list, security fixes first; each package
+        // and app then reads "installed → incoming". Every string here comes
+        // from a repository or a release, so all of it is plain text.
+        Column {
+            visible: root.idle && Updates.systemCount > 0
+            width: parent.width
+            spacing: 6
+
+            DetailHeading {
+                text: "SYSTEM · " + Updates.systemCount
+            }
+
+            Text {
+                width: parent.width
+                visible: text !== ""
+                text: UpdatesHelpers.advisoryLabel(Updates.dnfAdvisories)
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                font.weight: Theme.weightSemibold
+                color: Updates.dnfSecuritySevere ? Theme.amber : Theme.textMid
+            }
+
+            Repeater {
+                model: root.idle ? Updates.dnfAdvisories.advisories.slice(0, root.advisoryLimit) : []
+
+                delegate: Row {
+                    id: advisoryRow
+
+                    required property var modelData
+
+                    width: parent.width
+                    spacing: 7
+
+                    Text {
+                        id: advisoryKind
+                        text: UpdatesHelpers.advisoryKind(advisoryRow.modelData)
+                        textFormat: Text.PlainText
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.typography.secondary
+                        font.weight: Theme.weightSemibold
+                        color: advisoryRow.modelData.type === "security" ? Theme.amber : Theme.textLow
+                    }
+
+                    Text {
+                        width: Math.max(0, parent.width - advisoryKind.implicitWidth - parent.spacing)
+                        text: advisoryRow.modelData.title !== "" ? advisoryRow.modelData.title
+                            : advisoryRow.modelData.id
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.typography.secondary
+                        font.weight: Theme.weightMedium
+                        color: Theme.textMid
+                    }
+                }
+            }
+
+            Text {
+                width: parent.width
+                visible: Updates.dnfAdvisories.advisories.length > root.advisoryLimit
+                text: "and " + (Updates.dnfAdvisories.advisories.length - root.advisoryLimit)
+                    + " more advisories"
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                font.weight: Theme.weightMedium
+                color: Theme.textFaint
+            }
+
+            ChangeList {
+                changes: root.idle ? Updates.packageChanges : []
+            }
         }
 
-        DetailBlock {
-            visible: root.idle && body !== ""
-            heading: "APPS · " + Updates.flatpakCount
-            body: root.idle ? Updates.uniqueNames(Updates.flatpakNames).join(", ") : ""
+        Column {
+            visible: root.idle && Updates.flatpakCount > 0
+            width: parent.width
+            spacing: 6
+
+            DetailHeading {
+                text: "APPS · " + Updates.flatpakCount
+            }
+
+            ChangeList {
+                changes: root.idle ? Updates.appChanges : []
+            }
         }
 
         DetailBlock {
@@ -961,9 +1192,18 @@ Surface {
                     ? "  " + device.from + " → " + device.to : "")).join("\n") : ""
         }
 
+        // CybexOS itself: a release's notes (checkout installations) or the
+        // desktop RPM's changelog entries since the installed one (ISO).
+        DetailBlock {
+            visible: root.idle && Updates.cybexosPending && body !== ""
+            heading: "CYBEXOS · " + Updates.cybexosVersion
+            body: root.idle ? root.cybexosNotes.join("\n") : ""
+            lines: 12
+        }
+
         DetailBlock {
             visible: root.idle && body !== ""
-            heading: "COULDN’T CHECK"
+            heading: I18n.tr("COULDN’T CHECK")
             body: root.idle ? Updates.error : ""
             bodyColor: Theme.amber
         }
@@ -1105,7 +1345,7 @@ Surface {
         Text {
             visible: root.running && Updates.feed.count === 0
             width: parent.width
-            text: "Waiting for the transaction…"
+            text: I18n.tr("Waiting for the transaction…")
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.secondary
             font.weight: Theme.weightMedium
@@ -1121,7 +1361,7 @@ Surface {
 
             Text {
                 width: parent.width
-                text: "WHAT DNF SAID"
+                text: I18n.tr("WHAT DNF SAID")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.metadata
                 font.weight: Theme.weightSemibold
@@ -1153,7 +1393,7 @@ Surface {
         // itself): the worker's own message is all there is.
         DetailBlock {
             visible: root.failed && Updates.failTail.length === 0 && body !== ""
-            heading: "WHAT HAPPENED"
+            heading: I18n.tr("WHAT HAPPENED")
             body: root.failed ? Updates.failHeadline : ""
             bodyColor: Theme.textLow
         }
@@ -1164,15 +1404,6 @@ Surface {
             body: UpdatesHelpers.projectSkippedLabel(Updates.runProjectSkipped,
                 root.mode !== "running")
             bodyColor: Theme.amber
-        }
-
-        DetailBlock {
-            visible: !root.idle && body !== ""
-            heading: "RECOVERY POINT"
-            body: Updates.recoveryPointId
-            bodyColor: Theme.textLow
-            mono: true
-            lines: 1
         }
     }
 }

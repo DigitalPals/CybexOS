@@ -46,6 +46,27 @@ class ReleaseMetadataTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 metadata.rpm_identity(version, PROVENANCE)
 
+    def test_each_build_adds_its_changelog_entry_for_the_updates_view(self):
+        with tempfile.TemporaryDirectory() as directory:
+            version = Path(directory) / "VERSION"
+            version.write_text("1.2.0-beta.1\n")
+            spec = (Path(__file__).parent / "cybexos-desktop.spec").read_text()
+            rendered = metadata.render_spec(spec, version, PROVENANCE)
+            changelog = rendered.split("%changelog\n", 1)[1]
+            self.assertTrue(changelog.startswith(
+                "* Wed Sep 23 2026 CybexOS <noreply@localhost> - "
+                "1.2.0~beta.1-1.20260923123456.g3c585cd00000\n"
+                "- CybexOS desktop 1.2.0-beta.1 (3c585cd00000)\n"
+                "- Release notes: https://github.com/DigitalPals/CybexOS/releases/tag/v1.2.0-beta.1\n\n"
+                "* Sat Sep 05 2026"), changelog)
+            self.assertEqual(rendered.count("%changelog"), 1)
+            version.write_text("0.0.0-dev\n")
+            dev = metadata.render_spec(spec, version, PROVENANCE).split("%changelog\n", 1)[1]
+            self.assertNotIn("Release notes", dev.split("\n\n", 1)[0],
+                             "a development build has no published notes to point at")
+            self.assertEqual(metadata.render_spec("Version: 0\nRelease: 0\n", version, PROVENANCE)
+                             .count("CybexOS desktop"), 0, "a spec without %changelog stays as it is")
+
     def test_no_channel_is_packaged_disabled_without_a_fake_endpoint(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "source"

@@ -13,7 +13,7 @@ import "../Common/SettingsHelpers.js" as SettingsHelpers
 SettingsGroup {
     id: barColorControls
     width: parent.width
-    title: "Background"
+    title: I18n.tr("Background")
 
     readonly property int barColorIndex: {
         for (let i = 0; i < Settings.barColorChoices.length; ++i) {
@@ -29,7 +29,7 @@ SettingsGroup {
     SettingsRow {
         id: barColorRow
         width: parent.width
-        label: "Bar background"
+        label: I18n.tr("Bar background")
         settingKey: "barColorMode"
         resetKeys: ["barColorMode", "barCustomHue", "barCustomSaturation", "barCustomLightness"]
         hint: barColorControls.barColorLabel + " · "
@@ -47,7 +47,7 @@ SettingsGroup {
             opacity: barColorRow.controlOpacity
             spacing: Theme.scaled(2)
             Accessible.role: Accessible.Grouping
-            Accessible.name: "Bar background"
+            Accessible.name: I18n.tr("Bar background")
 
             Repeater {
                 id: barColorRepeater
@@ -129,14 +129,14 @@ SettingsGroup {
             spacing: Theme.settingsRowSpacing
             SliderRow {
                 width: parent.width
-                label: "Hue"
+                label: I18n.tr("Hue")
                 settingKey: "barCustomHue"
                 min: 0; max: 359; step: 1; unit: "°"
                 hueTrack: true
             }
             SliderRow {
                 width: parent.width
-                label: "Saturation"
+                label: I18n.tr("Saturation")
                 settingKey: "barCustomSaturation"
                 min: 0; max: 100; step: 1; unit: "%"
                 colorTrack: true
@@ -149,7 +149,7 @@ SettingsGroup {
             }
             SliderRow {
                 width: parent.width
-                label: "Lightness"
+                label: I18n.tr("Lightness")
                 settingKey: "barCustomLightness"
                 min: 0; max: 100; step: 1; unit: "%"
                 colorTrack: true

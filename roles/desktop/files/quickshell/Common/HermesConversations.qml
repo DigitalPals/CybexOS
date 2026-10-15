@@ -43,7 +43,7 @@ Singleton {
     readonly property var newConversation: ({
         id: "",
         sessionId: "",
-        title: "New chat",
+        title: I18n.tr("New chat"),
         profile: "",
         model: "",
         modelProvider: "",
@@ -52,7 +52,7 @@ Singleton {
         readOnly: false,
         messageCount: 0,
         status: "idle",
-        statusText: "Start a new conversation",
+        statusText: I18n.tr("Start a new conversation"),
         unread: 0,
         requestCount: 0,
         updatedAt: "",

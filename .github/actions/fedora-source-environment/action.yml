@@ -1,0 +1,118 @@
+name: Fedora source-test environment
+description: >-
+  Install the source-test dependencies, configure the fingerprint-verified
+  Hyprland COPR and assert the container's Fedora release. The required source
+  contract (tests.yml) and the non-blocking next-release preview
+  (fedora-preview.yml) share this definition, so their environments cannot
+  drift apart. Run it after actions/checkout.
+
+inputs:
+  fedora-release:
+    description: >-
+      Fedora release the container must report. Empty means the release the
+      installation contract targets: inventory/group_vars/all.yml
+      fedora_release, which must also be in release-manifest.json.
+    required: false
+    default: ""
+  best-effort:
+    description: >-
+      "true" only for a preview of an unqualified release: packages and COPR
+      builds that release does not provide yet are reported and skipped, so
+      every check that can still run does. The required job never sets it.
+    required: false
+    default: "false"
+
+outputs:
+  unavailable:
+    description: >-
+      What a best-effort run could not install, space-separated; empty when
+      the release provides everything.
+    value: ${{ steps.packages.outputs.unavailable }}${{ steps.copr.outputs.unavailable }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install source-test dependencies
+      id: packages
+      shell: bash
+      env:
+        BEST_EFFORT: ${{ inputs.best-effort }}
+      run: |
+        skip=() unavailable=''
+        if [ "$BEST_EFFORT" = true ]; then skip=(--skip-unavailable --skip-broken); fi
+        install_packages() {
+          dnf install -y "${skip[@]}" "$@"
+          if [ "$BEST_EFFORT" = true ]; then
+            unavailable+=$(rpm -q --whatprovides "$@" \
+              | sed -n 's/^no package provides //p' | tr '\n' ' ') || true
+          fi
+        }
+        install_packages \
+          ansible-core \
+          python3-ansible-lint \
+          python3-ruff \
+          ShellCheck \
+          yamllint \
+          curl \
+          dbus-daemon \
+          desktop-file-utils \
+          dnf5-plugins \
+          findutils \
+          git \
+          glib2 \
+          gnupg2 \
+          jq \
+          luajit \
+          nodejs24 \
+          procps-ng \
+          python3 \
+          python3-gobject-base \
+          python3-websockets \
+          qt6-qtdeclarative-devel \
+          qt6-qtwebsockets-devel \
+          qt6-qtmultimedia \
+          shared-mime-info \
+          util-linux \
+          xdg-utils \
+          ripgrep
+        install_packages sway
+        echo "unavailable=$unavailable" >>"$GITHUB_OUTPUT"
+
+    - name: Configure the fingerprint-verified Hyprland COPR
+      id: copr
+      shell: bash
+      env:
+        BEST_EFFORT: ${{ inputs.best-effort }}
+      run: |
+        curl --fail --location --retry 3 \
+          --output /tmp/hyprland-copr.gpg \
+          https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
+        echo '581bd602d10705eb89003680335ffc3684b922c587073b6e52c371f949843fd7  /tmp/hyprland-copr.gpg' \
+          | sha256sum --check
+        test "$(gpg --show-keys --with-colons /tmp/hyprland-copr.gpg \
+          | awk -F: '$1 == "fpr" { print $10; exit }')" \
+          = 64BBBF013D1CA5E4BE5B0552C043104207862204
+        install -m 0644 /tmp/hyprland-copr.gpg \
+          /etc/pki/rpm-gpg/CYBEXOS-sdegler-hyprland-copr.gpg
+        install -m 0644 roles/desktop/templates/hyprland-copr.repo.j2 \
+          '/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:sdegler:hyprland.repo'
+        # The key is verified either way. Only a preview tolerates a COPR
+        # without a build for its release, and it says so on the run.
+        if ! dnf install -y quickshell; then
+          test "$BEST_EFFORT" = true
+          . /etc/os-release
+          echo "::warning title=Hyprland COPR::sdegler/hyprland has no installable quickshell for fedora-$VERSION_ID-x86_64; checks that need qs will fail."
+          rm -f '/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:sdegler:hyprland.repo'
+          echo "unavailable=quickshell " >>"$GITHUB_OUTPUT"
+        fi
+
+    - name: Assert the requested Fedora release
+      shell: bash
+      env:
+        REQUESTED_FEDORA: ${{ inputs.fedora-release }}
+      run: |
+        targeted=$(python3 image/fedora_target.py)
+        . /etc/os-release
+        test "$ID" = fedora
+        test "$VERSION_ID" = "${REQUESTED_FEDORA:-$targeted}"
+        echo "Fedora $VERSION_ID container; the installation contract targets Fedora $targeted."

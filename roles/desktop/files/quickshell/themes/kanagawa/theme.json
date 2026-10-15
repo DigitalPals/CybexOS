@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "kanagawa",
+  "name": "Kanagawa",
+  "mode": "dark",
+  "accent": "#7e9cd8",
+  "bar": "#1f1f28",
+  "palette": {
+    "background": "#1f1f28",
+    "surface": "#2a2a37",
+    "surfaceRaised": "#363646",
+    "text": "#dcd7ba",
+    "textMuted": "#c8c093",
+    "textDim": "#727169",
+    "red": "#e46876",
+    "amber": "#e6c384",
+    "green": "#98bb6c"
+  },
+  "author": "Tommaso Laurenzi",
+  "license": "MIT",
+  "source": "https://github.com/rebelot/kanagawa.nvim"
+}

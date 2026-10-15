@@ -45,6 +45,22 @@ def root_script(vm, script, password, timeout=120):
     return run([*vm.ssh, "sudo -k -S -p '' bash -e -s"], input=password + '\n' + script, text=True, capture_output=True, timeout=timeout)
 
 
+# The default "Install CybexOS" boot entry: only the installer session runs,
+# and its window has already started Anaconda.
+INSTALL_MODE_AUDIT = r'''
+set -eu
+test -e /run/cybexos-install-mode
+tr ' ' '\n' </proc/cmdline | grep -qx cybexos.install
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+systemctl --user is-active --quiet cybexos-install-session.target
+systemctl --user is-active --quiet cybexos-install-welcome.service
+for unit in hyprland-session.target quickshell.service cybexos-app-seed.service voxtype.service; do
+  ! systemctl --user is-active --quiet "$unit"
+done
+pgrep -f /usr/bin/liveinst >/dev/null
+'''
+
+
 INSTALLED_AUDIT = r'''
 trap 'printf "Installed audit shell check failed at line %s\n" "$LINENO" >&2' ERR
 if getent passwd liveuser; then
@@ -247,6 +263,8 @@ def main():
     parser.add_argument('--keep-artifacts', action='store_true', help='Retain task-owned disk/logs for unresolved diagnostics')
     parser.add_argument('--install-timeout', type=int, default=1800)
     parser.add_argument('--capture-outcomes', action='store_true', help='Capture fresh and saved-choice outcomes for same-source checkout comparison')
+    parser.add_argument('--boot-entry', choices=('install', 'live'), default='install',
+                        help='ISO menu entry: the default installation-only session, or the live desktop')
     args = parser.parse_args()
     if not args.execute_vm or not args.erase_disposable_disk:
         parser.error('qualification requires --execute-vm --erase-disposable-disk; no VM or installer starts without both')
@@ -268,13 +286,18 @@ def main():
     password = secrets.token_hex(24)
     report = {'iso_sha256': digest(iso),
               'candidate_rpm_sha256': digest(args.candidate_rpm) if args.candidate_rpm else None,
-              'scenario': args.scenario, 'firmware': args.firmware, 'status': 'failed', 'checks': [],
+              'boot_entry': args.boot_entry, 'scenario': args.scenario, 'firmware': args.firmware, 'status': 'failed', 'checks': [],
               'network': 'outbound-blocked', 'bootstrap': 'recognized disk-unlock prompt; bounded graphical SSH setup', 'scope': 'QEMU fixture; does not qualify physical hardware or Secure Boot'}
     try:
         vm.prepare()
         untouched_sha = digest(vm.unused_disk)
         vm.start(iso)
+        vm.expect_shell = args.boot_entry == 'live'
+        vm.select_boot_entry(args.boot_entry)
         vm.wait_ssh()
+        if args.boot_entry == 'install' and not args.legacy_installer:
+            run([*vm.ssh, 'bash -s'], input=INSTALL_MODE_AUDIT, text=True, timeout=45)
+            report['checks'].append('installation-only-session')
         if args.legacy_installer:
             # The retained N image deliberately starts an installer-only
             # session target in live mode. Activate its full desktop target
@@ -293,10 +316,13 @@ def main():
                 run([*vm.ssh, 'systemctl --user start hyprland-session.target'], timeout=30)
                 report['legacy_session_bootstrap'] = 'activated full desktop target from baseline installer-only session'
                 report['checks'].append('legacy-installer-only-session-desktop-bootstrap')
-        vm.audit()
-        report['checks'].append('live-boot-and-offline-applications')
+        if args.boot_entry == 'live' or args.legacy_installer:
+            vm.expect_shell = True
+            vm.audit()
+            report['checks'].append('live-boot-and-offline-applications')
         target_disk, unused_disk = qualification_disks(vm)
-        run([*vm.ssh, 'XDG_RUNTIME_DIR=/run/user/1000 systemd-run --user --collect --unit=cybexos-qualification-anaconda /usr/bin/liveinst --nosave=all_ks'])
+        if args.boot_entry == 'live':
+            run([*vm.ssh, 'XDG_RUNTIME_DIR=/run/user/1000 systemd-run --user --collect --unit=cybexos-qualification-anaconda /usr/bin/liveinst --nosave=all_ks'])
         browser_result = qualify_browser(vm, password=password, target_disk=target_disk, unused_disk=unused_disk,
                                          encrypted=encrypted, keyboard=keyboard, locale=locale, timezone=timezone,
                                          install_timeout=args.install_timeout, require_policy_controls=not args.legacy_installer)
@@ -304,12 +330,16 @@ def main():
         report['checks'].append('encrypted-installation' if encrypted else 'plain-installation')
         # Audit live state before a graceful shutdown; target mounts are left
         # to Anaconda/systemd. Do not assume /mnt/sysroot survives completion.
-        vm.audit(applications=False)
+        if args.boot_entry == 'install' and not args.legacy_installer:
+            run([*vm.ssh, 'bash -s'], input=INSTALL_MODE_AUDIT, text=True, timeout=45)
+        else:
+            vm.audit(applications=False)
         vm.stop(graceful=True)
         if digest(vm.unused_disk) != untouched_sha:
             raise RuntimeError('The unused disposable guard disk changed during installation')
         report['checks'].append('unused-disk-unchanged')
         (vm.work / 'known_hosts').unlink(missing_ok=True)
+        vm.expect_shell = True
         boot_installed(vm, password, encrypted)  # No ISO/CD-ROM attached.
         vm.audit()
         verify_installed_audit(vm, encrypted, not args.legacy_installer,
@@ -353,7 +383,13 @@ def main():
                                   provenance='/usr/share/cybexos/build.json')
             atomic_json(args.output / 'outcomes-fresh.json', fresh)
             prepare_saved_choices(vm, password, root_script)
-            root_script(vm, '/usr/libexec/cybexos-configure-installed --user qualification\n', password, timeout=1800)
+            try:
+                root_script(vm, '/usr/libexec/cybexos-configure-installed --user qualification\n', password, timeout=1800)
+            except subprocess.CalledProcessError as error:
+                # Without its output a failed reapply cannot be diagnosed once
+                # the disposable guest is gone. Bounded and redacted, as above.
+                details = ((error.stdout or '') + (error.stderr or '')).replace(password, '[redacted]')[-3000:].strip()
+                raise RuntimeError(f'Reapplying the installed policy failed: {details}') from error
             poweroff_installed(vm, password)
             boot_installed(vm, password, encrypted)
             verify_saved_choices(vm, password, root_script)

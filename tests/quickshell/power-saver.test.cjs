@@ -180,7 +180,7 @@ test("the shell sends the power profile to the compositor on startup and on chan
     const proc = settings.slice(settings.indexOf("id: powerSaverProc"));
     assert.match(proc, /exitSeen \? lastExit : ProcHelpers\.NOT_STARTED/);
     assert.match(proc,
-        /if \(root\.dispatchedPowerSaver !== Activity\.powerSaver\)\s*powerSaverReplayTimer\.restart\(\)/);
+        /if \(root\.dispatchedPowerSaver !== Activity\.powerSaver \|\| root\.powerSaverResendPending\) \{\s*root\.powerSaverResendPending = false;\s*powerSaverReplayTimer\.restart\(\)/);
     const look = fs.readFileSync(
         path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8");
     assert.match(look, /^function cybexos_power_saver\(enabled\)$/m,
@@ -200,4 +200,21 @@ assert(layer_rules["quickshell-blur"].enabled == ${value},
     runLookAndFeel(glass(false), { ".config/cybexos/shell.json": '{"v": 23, "glassEnabled": false}' });
     runLookAndFeel(glass(true),
         { ".local/state/quickshell/shell-settings.json": '{\n  "glassEnabled": true\n}' });
+});
+
+// Hyprland 0.56 rebuilds its Lua state on a configuration reload, so the
+// saver state looknfeel.lua keeps in _G does not survive one. The shell must
+// send an active saver again when the compositor reports the reload.
+test("an active power saver is sent again after a compositor reload", () => {
+    const shell = fs.readFileSync(path.join(shellDir, "shell.qml"), "utf8");
+    const settings = fs.readFileSync(path.join(shellDir, "Common/Settings.qml"), "utf8");
+    assert.match(shell, /event\.name === "configreloaded"\)\s*\n\s*Settings\.compositorReloaded\(\);/);
+    const hook = settings.slice(settings.indexOf("function compositorReloaded()"));
+    assert.match(hook, /if \(!Activity\.powerSaver\)\s*\n\s*return;/,
+        "nothing is sent while the saver is off");
+    assert.match(hook, /if \(powerSaverProc\.running\) \{\s*\n\s*powerSaverResendPending = true;/,
+        "a reload during a dispatch queues one more");
+    assert.match(settings, /root\.dispatchedPowerSaver !== Activity\.powerSaver \|\| root\.powerSaverResendPending/);
+    const look = fs.readFileSync(path.join(shellDir, "../../templates/looknfeel.lua.j2"), "utf8");
+    assert.match(look, /_G does not\s*\n-- survive it/);
 });

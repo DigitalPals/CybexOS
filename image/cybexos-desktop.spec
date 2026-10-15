@@ -21,22 +21,29 @@ Obsoletes:      fedora-config-desktop < %{epoch}:%{version}-%{release}
 %global _binary_filedigest_algorithm 8
 Requires:       bash coreutils util-linux systemd python3 ansible-core gnupg2 openssh-clients
 Requires:       sddm sddm-wayland-generic systemd-pam gnome-keyring-pam
+# Settings > Security and the lock screen's fingerprint and security-key steps.
+Requires:       fprintd fprintd-pam pam-u2f pamu2fcfg
 Requires:       hyprland hyprland-guiutils quickshell hypridle hyprlock hyprsunset
 Requires:       xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-utils
 Requires:       qt6-qtwebsockets-devel qt6-qt5compat qt6-qtsvg
 Requires:       qt6-qtbase qt6-qtdeclarative qt6-qtwayland
 Requires:       python3-pyside6 python3-websockets python3-gobject
-Requires:       kitty firefox nautilus jq curl NetworkManager iw qrencode iproute iputils
+Requires:       kitty firefox nautilus jq curl NetworkManager iw qrencode iproute iputils dnsmasq
 Requires:       pipewire pipewire-pulseaudio wireplumber bluez brightnessctl playerctl
 Requires:       gnome-keyring polkit dbus-daemon dnf5-plugins flatpak sudo
 Requires:       gnome-online-accounts gnome-online-accounts-gtk evolution-data-server gnome-control-center zenity
 Requires:       glib2 NetworkManager-libnm nm-connection-editor pulseaudio-utils pavucontrol
 Requires:       grim slurp satty wl-clipboard cliphist wf-recorder libnotify
 Requires:       ImageMagick tesseract tesseract-langpack-eng btop matugen
+Requires:       hyprpicker zbar qt6-qtmultimedia
 Requires:       btrfs-progs tar zstd fastfetch dracut grub2-tools coreutils >= 9.5
 Requires:       rsms-inter-fonts google-noto-sans-fonts google-noto-color-emoji-fonts
 Requires:       jetbrains-mono-fonts
 Requires:       xkeyboard-config tzdata
+# Personal-file backups: the encrypted repository and its keyring password.
+Requires:       restic libsecret
+# The graphical first-start setup for a new owner (cybexos-new-owner).
+Requires:       cage
 
 %description
 CybexOS (Cybex Opinionated System) is a Hyprland and Quickshell desktop for Fedora.
@@ -74,6 +81,7 @@ cp -a usr opt etc %{buildroot}/
 /usr/libexec/cybexos-*
 /usr/libexec/cybex_hermes/
 /usr/lib/systemd/user/*.service
+/usr/lib/systemd/user/cybexos-backup.timer
 /usr/lib/systemd/user/hypridle.service.d/
 /usr/lib/systemd/user/voxtype.service.d/
 /usr/lib/systemd/user/hyprland-session.target
@@ -96,10 +104,15 @@ cp -a usr opt etc %{buildroot}/
 /usr/lib/systemd/system/systemd-user-sessions.service.d/60-cybexos-update-recover.conf
 /usr/lib/systemd/system/cybexos-major-upgrade-validate.service
 /usr/lib/systemd/system/cybexos-major-upgrade-validate.timer
+/usr/lib/systemd/system/cybexos-update-download.service
+/usr/lib/systemd/system/cybexos-update-download.timer
 /usr/lib/systemd/system/cybexos-reconcile.service
 /usr/lib/systemd/system/cybexos-reconcile.timer
 /usr/lib/systemd/system/cybexos-hardware-setup.service
 /usr/lib/systemd/system/cybexos-hardware-setup.timer
+/usr/lib/systemd/system/cybexos-first-boot.service
+/usr/lib/systemd/system/cybexos-new-owner.service
+/usr/lib/systemd/system/cybexos-tailscale-enroll.service
 /usr/lib/firewalld/zones/cybexos.xml
 
 %posttrans
@@ -118,6 +131,8 @@ systemctl enable cybexos-recovery-refresh.service >/dev/null 2>&1 || :
 systemctl enable cybexos-update-recover.service >/dev/null 2>&1 || :
 systemctl enable cybexos-major-upgrade-validate.timer >/dev/null 2>&1 || :
 systemctl enable cybexos-hardware-setup.timer >/dev/null 2>&1 || :
+# Inert unless the installer or a factory reset left first-start work.
+systemctl enable cybexos-first-boot.service cybexos-new-owner.service >/dev/null 2>&1 || :
 
 %changelog
 * Sat Sep 05 2026 CybexOS <noreply@localhost> - 0.1.0-0.1.alpha

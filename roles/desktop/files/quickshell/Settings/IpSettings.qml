@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import "../Common"
 
 // One IP version of the selected connection, as its own group: how the
 // address is obtained, the address and gateway when they are set by hand,
@@ -75,16 +76,16 @@ SettingsGroup {
 
     PickerRow {
         width: parent.width
-        label: "Method"
+        label: I18n.tr("Method")
         current: root.config.method
-        model: [{value: "auto", label: "Automatic"}, {value: "manual", label: "Manual"},
-            {value: "disabled", label: "Disabled"}]
+        model: [{value: "auto", label: I18n.tr("Automatic")}, {value: "manual", label: I18n.tr("Manual")},
+            {value: "disabled", label: I18n.tr("Disabled")}]
         onPicked: value => root.change("method", value)
     }
     DraftFieldRow {
         width: parent.width
         visible: root.manual
-        label: "Address"
+        label: I18n.tr("Address")
         value: root.config.addresses
         placeholder: root.v6 ? "2001:db8::20/64" : "192.168.1.20/24"
         invalid: root.addressProblem !== ""
@@ -95,7 +96,7 @@ SettingsGroup {
     DraftFieldRow {
         width: parent.width
         visible: root.manual
-        label: "Gateway"
+        label: I18n.tr("Gateway")
         value: root.config.gateway
         placeholder: root.v6 ? "2001:db8::1" : "192.168.1.1"
         invalid: root.gatewayProblem !== ""
@@ -105,15 +106,15 @@ SettingsGroup {
     SwitchRow {
         width: parent.width
         visible: root.inUse
-        label: "Automatic DNS"
+        label: I18n.tr("Automatic DNS")
         checked: root.config.autoDns
-        description: "Use the DNS servers the network provides"
+        description: I18n.tr("Use the DNS servers the network provides")
         onToggled: value => root.change("autoDns", value)
     }
     DraftFieldRow {
         width: parent.width
         visible: root.inUse
-        label: root.config.autoDns ? "Additional DNS" : "DNS servers"
+        label: root.config.autoDns ? I18n.tr("Additional DNS") : I18n.tr("DNS servers")
         value: root.config.dns
         placeholder: root.v6 ? "2606:4700:4700::1111" : "1.1.1.1, 9.9.9.9"
         invalid: root.dnsProblem !== ""

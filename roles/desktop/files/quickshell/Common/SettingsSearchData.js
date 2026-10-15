@@ -13,13 +13,16 @@ var ROWS = [
     { page: "keyboard", pageLabel: "Keyboard", group: "Switch layouts", label: "Layout switching", key: "", terms: "keyboard shortcut caps lock alt shift next layout" },
     { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Tap to click", key: "", terms: "touchpad tapping click input" },
     { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Natural scrolling", key: "", terms: "touchpad reverse scroll direction" },
+    { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Swipe between workspaces", key: "", terms: "touchpad gesture three fingers swipe workspace overview" },
     { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Pointer sensitivity", key: "", terms: "touchpad mouse speed acceleration" },
     { page: "region", pageLabel: "Region & formats", group: "System timezone", label: "Timezone", key: "", terms: "time zone city country daylight saving clock" },
     { page: "region", pageLabel: "Region & formats", group: "System language", label: "System language", key: "", terms: "locale language region lang regional formats" },
     // Appearance
-    { page: "network", pageLabel: "Network", group: "Connections", label: "Network connections", key: "", terms: "wifi ethernet saved profile adapter vpn advanced editor" },
+    { page: "network", pageLabel: "Network", group: "Connections", label: "Network connections", key: "", terms: "wifi ethernet saved profile adapter advanced editor" },
     { page: "network", pageLabel: "Network", group: "Connection", label: "Autoconnect and metered", key: "", terms: "automatic join metered data limit background" },
     { page: "network", pageLabel: "Network", group: "IPv4 and IPv6", label: "IP addresses and DNS", key: "", terms: "ipv4 ipv6 dns gateway address manual automatic static dhcp" },
+    { page: "network", pageLabel: "Network", group: "VPN", label: "VPN connections", key: "", terms: "vpn openvpn wireguard ovpn conf import tunnel openconnect anyconnect vpnc remove" },
+    { page: "network", pageLabel: "Network", group: "Hotspot", label: "Wi-Fi hotspot", key: "", terms: "hotspot tethering share internet access point qr code password network name" },
     { page: "sound", pageLabel: "Sound", group: "Output", label: "Output device and volume", key: "", terms: "audio speaker headphones volume mute balance port network airplay" },
     { page: "sound", pageLabel: "Sound", group: "Input", label: "Input device and volume", key: "", terms: "audio microphone mic level mute" },
     { page: "sound", pageLabel: "Sound", group: "Hardware profiles", label: "Hardware profiles", key: "", terms: "audio card profile pro audio hifi" },
@@ -33,6 +36,11 @@ var ROWS = [
     { page: "displays", pageLabel: "Displays", group: "Selected display", label: "Adaptive sync", key: "", terms: "monitor vrr freesync gsync variable refresh" },
     { page: "accounts", pageLabel: "Online accounts", group: "Online accounts", label: "Add account", key: "", terms: "google calendar login sign in reconnect remove credentials" },
     { page: "accounts", pageLabel: "Online accounts", group: "Online accounts", label: "Use calendars", key: "", terms: "calendar events account sync" },
+    { page: "appearance", pageLabel: "Appearance", group: "Theme", label: "Theme", key: "theme", terms: "color scheme palette preset save share nord gruvbox catppuccin tokyo night rose pine everforest kanagawa" },
+    // Security (Settings -> Security): system authentication outside shell.json.
+    { page: "security", pageLabel: "Security", group: "Fingerprint", label: "Add fingerprint", key: "", terms: "fingerprint reader fprintd enrol enroll finger biometric remove" },
+    { page: "security", pageLabel: "Security", group: "Fingerprint", label: "Use fingerprint to unlock and authorise", key: "", terms: "fingerprint lock screen sudo polkit password authentication authorize login" },
+    { page: "security", pageLabel: "Security", group: "Security keys", label: "Add security key", key: "", terms: "yubikey fido2 u2f hardware token key lock screen sudo polkit two factor remove" },
     { page: "appearance", pageLabel: "Appearance", group: "Theme", label: "Mode", key: "themeMode", terms: "dark light theme" },
     { page: "appearance", pageLabel: "Appearance", group: "Theme", label: "Glass effect", key: "glassEnabled", terms: "blur translucent transparent" },
     { page: "appearance", pageLabel: "Appearance", group: "Text & size", label: "Interface font", key: "font", terms: "typeface figtree mono typography" },
@@ -71,6 +79,8 @@ var ROWS = [
     { page: "bar", pageLabel: "Bar", group: "Background", label: "Bar background", key: "barColorMode", terms: "menubar color custom black white graphite slate macos hue" },
     { page: "bar", pageLabel: "Bar", group: "Behavior", label: "Auto-hide", key: "autoHide", terms: "hide idle reveal" },
     { page: "bar", pageLabel: "Bar", group: "Behavior", label: "Reserve space", key: "exclusive", terms: "exclusive zone tiled windows" },
+    { page: "bar", pageLabel: "Bar", group: "Dock", label: "Show dock", key: "dock", terms: "dock taskbar pinned running apps launcher bottom" },
+    { page: "bar", pageLabel: "Bar", group: "Dock", label: "Dock auto-hide", key: "dockAutoHide", terms: "dock hide reveal bottom edge" },
 
     // Bar widgets and their options
     { page: "plugins", pageLabel: "Omarchy plugins", group: "Add a plugin", label: "Browse plugins", key: "", terms: "plugins.omarchy.org directory marketplace community find discover website" },
@@ -83,12 +93,13 @@ var ROWS = [
     { page: "bar", pageLabel: "Bar", group: "Weather", label: "Weather location", key: "", widget: "weather", terms: "clock city place search country region coordinates latitude longitude forecast" },
     { page: "bar", pageLabel: "Bar", group: "Fusebox", label: "Fusebox server", key: "", widget: "fusebox", terms: "ai proxy cliproxy subscriptions accounts management key url faults load requests sessions quota used remaining left meters breaker notifications privacy email" },
     { page: "bar", pageLabel: "Bar", group: "Model Usage", label: "Model Usage", key: "", widget: "modelusage", terms: "ai claude codex kimi quota limits reset percentage providers cliproxy proxy accounts credentials cost tokens t3 refresh warning critical" },
+    { page: "bar", pageLabel: "Bar", group: "Updates", label: "Download updates automatically", key: "", widget: "updates", terms: "background download updates automatic schedule timer dnf flatpak packages metered power check every interval notify" },
 
     { page: "bar", pageLabel: "Bar", group: "Control Center", label: "Control Center widget", key: "", widget: "control", terms: "fedora button move drag reorder show hide drawer" },
 
     // Control Center (also searchable by its former Drawer name)
     { page: "bar", pageLabel: "Bar", widget: "control", group: "Tabs", label: "Tab order", key: "", terms: "drawer reorder overview sound network bluetooth power notifications usage" },
-    { page: "bar", pageLabel: "Bar", widget: "control", group: "Overview", label: "Overview contents", key: "", terms: "drawer now playing sliders tiles updates cpu ram temperature system stats" },
+    { page: "bar", pageLabel: "Bar", widget: "control", group: "Overview", label: "Overview contents", key: "", terms: "drawer now playing sliders tiles updates cpu ram temperature system stats top processes end task manager" },
     { page: "bar", pageLabel: "Bar", widget: "control", group: "Behavior", label: "Open on hover", key: "drawerHover", terms: "drawer hover switch glyph menu" },
     { page: "bar", pageLabel: "Bar", widget: "control", group: "Behavior", label: "Width", key: "drawerWidth", terms: "drawer size wide" },
 
@@ -115,7 +126,15 @@ var ROWS = [
     { page: "power", pageLabel: "Power", group: "Stay awake", label: "Duration", key: "", terms: "idle inhibit caffeine sleep" },
     { page: "power", pageLabel: "Power", group: "Stay awake", label: "Bar indicator", key: "", terms: "stay awake indicator sign-in widget options" },
     { page: "notifications", pageLabel: "Notifications", group: "On-screen display", label: "Placement", key: "osd", terms: "osd volume brightness popup overlay" },
-    { page: "about", pageLabel: "About", group: "Recovery points", label: "Recovery points", key: "", terms: "snapshot restore rollback undo update btrfs boot menu grub recovery" },
+
+    // Backup & recovery: backups belong to the cybexos-backup helper, so the
+    // rows navigate rather than naming shell.json keys.
+    { page: "backup", pageLabel: "Backup & recovery", group: "Backups", label: "Back up personal files", key: "", terms: "backup restic encrypted external drive usb disk ssh sftp server nas home folder copy set up" },
+    { page: "backup", pageLabel: "Backup & recovery", group: "Backups", label: "Automatic backups", key: "", terms: "daily schedule timer reminder battery metered" },
+    { page: "backup", pageLabel: "Backup & recovery", group: "Backups", label: "Restore files", key: "", terms: "restore recover deleted lost file folder snapshot restored" },
+    { page: "backup", pageLabel: "Backup & recovery", group: "Backups", label: "Recovery key", key: "", terms: "backup password keyring encryption key" },
+    { page: "backup", pageLabel: "Backup & recovery", group: "Recovery points", label: "Recovery points", key: "", terms: "snapshot restore rollback undo update btrfs boot menu grub recovery" },
+    { page: "backup", pageLabel: "Backup & recovery", group: "Recovery points", label: "Factory reset", key: "", terms: "factory reset erase wipe new owner sell give away oem" },
 
     // About
     { page: "about", pageLabel: "About", group: "Shell health", label: "Status", key: "", terms: "service deployment journal pid" },

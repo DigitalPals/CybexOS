@@ -174,7 +174,9 @@ local function dispatcher(value) return value or true end
 hl = { dsp = { exec_cmd = dispatcher, global = dispatcher, send_key_state = dispatcher,
   layout = dispatcher, focus = dispatcher, exit = dispatcher,
   window = { close = dispatcher, float = dispatcher, move = dispatcher, set_prop = dispatcher,
-    drag = dispatcher, resize = dispatcher } } }
+    drag = dispatcher, resize = dispatcher },
+  workspace = { toggle_special = dispatcher },
+  group = { toggle = dispatcher, next = dispatcher, prev = dispatcher } } }
 local active, order = {}, {}
 function hl.unbind(keys) active[keys] = nil end
 function hl.bind(keys, _, options)
@@ -225,10 +227,24 @@ test("every shipped vendor group is ordered and the sheet reads well", { skip: !
     assert.deepEqual(labels["Apps: AI agent"], [["Super", "Ctrl", "Shift", "A"]]);
     assert.deepEqual(labels["Workspaces: Switch to workspace 1–10"], [["Super", "1…0"]]);
     assert.deepEqual(labels["Windows: Move focus"], [["Super", "← → ↑ ↓"]]);
+    assert.deepEqual(labels["Windows: Overview"], [["Super", "Tab"]]);
     assert.deepEqual(labels["Dictation: Dictate in English"],
         [["Super", "Ctrl", "X"], ["F9"], ["Mic mute"]]);
-    assert.deepEqual(labels["Capture: Screenshot a region"], [["Super", "`"], ["Print"]]);
+    assert.deepEqual(labels["Capture: Screenshot a region or window"], [["Super", "`"], ["Print"]]);
+    assert.deepEqual(labels["Capture: Scrolling screenshot"], [["Alt", "Print"], ["Super", "Alt", "`"]]);
+    assert.deepEqual(labels["Capture: Record with webcam"], [["Super", "Ctrl", "Shift", "`"]]);
+    assert.deepEqual(labels["Capture: Pick a colour"], [["Super", "Print"], ["Super", "Shift", "C"]]);
+    assert.deepEqual(labels["Capture: Copy text or QR code from a region"], [["Super", "Shift", "O"]]);
     assert.deepEqual(labels["Development: Docker (lazydocker)"], [["Super", "D"]]);
+    // Scratchpad, window groups, zoom and game mode.
+    assert.deepEqual(labels["Windows: Show or hide the scratchpad"], [["Super", "-"]]);
+    assert.deepEqual(labels["Windows: Move window to the scratchpad"], [["Super", "Shift", "-"]]);
+    assert.deepEqual(labels["Windows: Toggle window group"], [["Super", "G"]]);
+    assert.deepEqual(labels["Windows: Move window out of group"], [["Super", "Ctrl", "G"]]);
+    assert.deepEqual(labels["Windows: Previous or next window in group"], [["Super", "Alt", "← →"]]);
+    assert.deepEqual(labels["Windows: Zoom in or out"], [["Super", "Z"]]);
+    assert.deepEqual(labels["Windows: Adjust zoom"], [["Super", "Ctrl", "="], ["Super", "Ctrl", "-"]]);
+    assert.deepEqual(labels["Shell: Game mode"], [["Super", "Shift", "G"]]);
 });
 
 // ---- the overlay -------------------------------------------------------------

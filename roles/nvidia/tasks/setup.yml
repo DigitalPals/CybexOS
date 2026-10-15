@@ -1,0 +1,146 @@
+---
+- name: Read the desktop account for NVIDIA notifications
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ primary_user }}"
+
+- name: Install the NVIDIA setup helper
+  ansible.builtin.copy:
+    src: cybexos-nvidia
+    dest: /usr/local/libexec/cybexos-nvidia
+    owner: root
+    group: root
+    mode: "0755"
+
+# A failed download, build or key request is recorded and reported, never a
+# failed play: the open-source driver keeps the desktop running meanwhile
+# (RPM Fusion's nvidia-fallback.service loads nouveau when nvidia is absent).
+- name: Install and verify the RPM Fusion NVIDIA driver
+  block:
+    - name: Install the Fedora akmods and Secure Boot key tools
+      ansible.builtin.dnf:
+        name: "{{ nvidia_support_packages }}"
+        state: present
+      register: nvidia_support_install
+      until: nvidia_support_install is succeeded
+      retries: 3
+      delay: 10
+
+    # The module is signed while it builds, so the key must exist first.
+    - name: Create the akmods signing key before the driver builds
+      ansible.builtin.command:
+        argv: [/usr/local/libexec/cybexos-nvidia, prepare]
+      register: nvidia_prepare
+      changed_when: "'created' in nvidia_prepare.stdout"
+
+    - name: Read the installed package inventory for RPM Fusion
+      ansible.builtin.package_facts:
+        manager: rpm
+
+    - name: Enable RPM Fusion with the applications role's pinned keys
+      ansible.builtin.import_role:
+        name: apps
+        tasks_from: rpmfusion
+
+    # akmods builds against the running kernel's headers; dnf otherwise
+    # pulls only the newest kernel-devel. Updates may have retired these
+    # headers, which the next step reports with the remedy.
+    - name: Install kernel headers for the running kernel when still available
+      ansible.builtin.dnf:
+        name: "kernel-devel-{{ ansible_facts.kernel }}"
+        state: present
+      failed_when: false
+
+    - name: Install the NVIDIA driver, CUDA libraries and VA-API driver
+      ansible.builtin.dnf:
+        name: "{{ nvidia_driver_packages }}"
+        state: present
+      register: nvidia_driver_install
+      until: nvidia_driver_install is succeeded
+      retries: 3
+      delay: 10
+
+    - name: Build and verify the NVIDIA driver for the running kernel
+      ansible.builtin.command:
+        argv: >-
+          {{ ['/usr/local/libexec/cybexos-nvidia', 'apply',
+              '--kernel', ansible_facts.kernel, '--retry', nvidia_retry_command]
+             + ((nvidia_setup_automatic | bool) | ternary(['--automatic'], ['--force'])) }}
+      register: nvidia_apply
+      changed_when: (nvidia_apply.stdout | from_json).changed | default(false) | bool
+  rescue:
+    - name: Record the NVIDIA setup failure
+      ansible.builtin.command:
+        argv:
+          - /usr/local/libexec/cybexos-nvidia
+          - record-failure
+          - --kernel
+          - "{{ ansible_facts.kernel }}"
+          - --retry
+          - "{{ nvidia_retry_command }}"
+          - --reason
+          - "{{ ansible_failed_task.name | default('NVIDIA setup') }} failed"
+      register: nvidia_apply
+      changed_when: true
+
+- name: Record the NVIDIA setup outcome
+  ansible.builtin.set_fact:
+    nvidia_status: "{{ nvidia_apply.stdout | from_json }}"
+
+- name: Create the machine policy directory
+  ansible.builtin.file:
+    path: /etc/cybexos
+    state: directory
+    mode: "0755"
+
+# The session wrappers read this only while nvidia_drm is loaded, so a boot
+# that fell back to nouveau never inherits NVIDIA-only variables.
+- name: Record the NVIDIA session environment
+  ansible.builtin.copy:
+    dest: /etc/cybexos/nvidia-session.env
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Written by the CybexOS NVIDIA hardware role; read by the session
+      # wrapper only while the NVIDIA DRM driver is loaded.
+      {{ ((nvidia_is_hybrid | bool) | ternary(nvidia_hybrid_session_environment, nvidia_session_environment)) | dictsort | map('join', '=') | join('\n') }}
+
+# Hybrid laptops render on the integrated GPU; switcheroo-control offers
+# "launch on discrete GPU" to applications and launchers.
+- name: Enable GPU switching on hybrid laptops
+  ansible.builtin.systemd_service:
+    name: switcheroo-control.service
+    enabled: true
+    state: "{{ start_optional_hardware_services | default(true) | bool | ternary('started', omit) }}"
+  failed_when: false
+  when: nvidia_is_hybrid | bool
+
+- name: Inspect the desktop account's session bus
+  ansible.builtin.stat:
+    path: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}/bus"
+  register: nvidia_session_bus
+
+# Also shown at every login until resolved, and in the welcome window.
+- name: Tell a logged-in desktop user what the NVIDIA driver needs
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - -u
+      - "{{ primary_user }}"
+      - --
+      - env
+      - "XDG_RUNTIME_DIR=/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+      - "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}/bus"
+      - /usr/local/libexec/cybexos-nvidia
+      - notify
+  changed_when: false
+  failed_when: false
+  when:
+    - nvidia_session_bus.stat.exists
+    - nvidia_status.state in ['enroll', 'reboot', 'failed']
+
+- name: Report what the NVIDIA driver needs
+  ansible.builtin.debug:
+    msg: "NVIDIA driver: {{ nvidia_status.state }}. {{ nvidia_status.reason }}"
+  when: nvidia_status.state != 'ready'

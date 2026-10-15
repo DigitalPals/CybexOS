@@ -30,6 +30,8 @@ hl = {
       drag = dispatcher,
       resize = dispatcher,
     },
+    workspace = { toggle_special = dispatcher },
+    group = { toggle = dispatcher, next = dispatcher, prev = dispatcher },
   },
 }
 
@@ -130,6 +132,59 @@ for keys, binding in pairs(active) do
       or not binding.dispatcher:match("^qs ipc"),
     keys .. " calls qs ipc without the runtime path")
 end
+-- Web app keys launch installed web apps by id; the helper picks the browser
+-- and explains how to reinstall one that was removed.
+local web_apps = {
+  ["SUPER + M"] = "slack",
+  ["SUPER + W"] = "whatsapp",
+  ["SUPER + Y"] = "youtube",
+  ["SUPER + SHIFT + P"] = "google-photos",
+  ["SUPER + SHIFT + X"] = "x",
+}
+local function assert_web_apps()
+  for keys, id in pairs(web_apps) do
+    assert(active[keys].dispatcher == os.getenv("HOME") .. "/.local/bin/cybexos-webapp launch " .. id,
+      keys .. " did not launch the " .. id .. " web app")
+  end
+end
+assert_web_apps()
+assert(active["SUPER + CTRL + V"].dispatcher == runtime .. "launcher open clipboard",
+  "Super+Ctrl+V did not open the launcher's clipboard history")
+
+-- Scratchpad, window groups, cursor zoom and game mode.
+assert(active["SUPER + minus"].dispatcher == "scratchpad", "Super+minus toggles the scratchpad")
+local stashed = active["SUPER + SHIFT + minus"].dispatcher
+assert(stashed.workspace == "special:scratchpad" and stashed.follow == false,
+  "Super+Shift+minus moves the window to the scratchpad without showing it")
+assert(active["SUPER + G"] and active["SUPER + CTRL + G"].dispatcher.out_of_group == true)
+assert(active["SUPER + ALT + left"] and active["SUPER + ALT + right"])
+assert(active["SUPER + SHIFT + G"].dispatcher == os.getenv("HOME") .. "/.local/bin/game-mode toggle")
+local zoom = 1.0
+function hl.get_config(key)
+  assert(key == "cursor.zoom_factor", key)
+  return zoom
+end
+function hl.config(value) zoom = value.cursor.zoom_factor end
+local function press(keys) active[keys].dispatcher() end
+press("SUPER + Z")
+assert(zoom == 2, "Super+Z zooms to 2x")
+press("SUPER + Z")
+assert(zoom == 1, "Super+Z returns to 1x")
+for _ = 1, 10 do press("SUPER + CTRL + equal") end
+assert(zoom == 4, "zoom stops at 4x")
+press("SUPER + CTRL + minus")
+assert(zoom == 3.5)
+press("SUPER + Z")
+assert(zoom == 1, "Super+Z resets from any zoom")
+press("SUPER + CTRL + minus")
+assert(zoom == 1, "zoom never goes below 1x")
+zoom = 1.3
+press("SUPER + CTRL + equal")
+assert(zoom == 1.5, "a step lands on the next grid point")
+zoom = 1.3
+press("SUPER + CTRL + minus")
+assert(zoom == 1)
+assert(active["SUPER + CTRL + equal"].options.repeating == true)
 
 package.loaded.features = nil
 package.preload.features = function()
@@ -155,6 +210,7 @@ assert(active["SUPER + CTRL + SHIFT + A"],
   "feature gating removed the default AI agent binding")
 assert(active["SUPER + B"].dispatcher == "firefox",
   "generic browser selection did not use installed Firefox")
+assert_web_apps()
 assert(not active["XF86AudioRaiseVolume"].dispatcher:match("xps%-speaker%-tuning"),
   "generic audio route retained the XPS helper")
 assert(active["XF86AudioMicMute"].dispatcher:match("^wpctl"),
@@ -216,8 +272,12 @@ hl = {
       drag = dispatcher,
       resize = dispatcher,
     },
+    workspace = { toggle_special = dispatcher },
+    group = { toggle = dispatcher, next = dispatcher, prev = dispatcher },
   },
   monitor = function() return removable() end,
+  gesture = function() end,
+  get_config = function() return nil end,
   get_monitors = function() return {} end,
   workspace_rule = function() return removable() end,
   layer_rule = function() return removable() end,

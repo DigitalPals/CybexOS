@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "everforest",
+  "name": "Everforest",
+  "mode": "dark",
+  "accent": "#a7c080",
+  "bar": "#2d353b",
+  "palette": {
+    "background": "#2d353b",
+    "surface": "#343f44",
+    "surfaceRaised": "#3d484d",
+    "text": "#d3c6aa",
+    "textMuted": "#9da9a0",
+    "textDim": "#859289",
+    "red": "#e67e80",
+    "amber": "#dbbc7f",
+    "green": "#83c092"
+  },
+  "author": "Sainnhe Park",
+  "license": "MIT",
+  "source": "https://github.com/sainnhe/everforest"
+}

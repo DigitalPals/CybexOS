@@ -155,3 +155,41 @@ Tests used QEMU/KVM, eight virtual CPUs, 16 GiB RAM, virtio graphics and OVMF
 without Secure Boot. Keyring unlock, logout/crash recovery, physical hardware
 and BIOS installation were not tested. The VM, its disk and screenshots were
 removed.
+
+## Installer diagnostics and installation-only boot — 2026-09-26
+
+Build `20260926T055804Z-dbdd33d6` from commit `c2afe14`, published as
+`CybexOS-Live-44-20260926T055804Z-dbdd33d6.iso`.
+
+SHA-256:
+
+```text
+9b6d480e558590dfc257b6b661f221e3c479c9703ebcefa5f5dad517018c235a
+```
+
+The previous image (`20260925T194305Z-189bcf79`) failed every installation at
+"Running post-installation scripts": offline provisioning copied the lingering
+marker into `/var/lib/systemd/linger`, which does not exist in a fresh target.
+Running that image's `%post` in a chroot of its root filesystem reproduced the
+failure; with the fix, the complete script, the target helper and `dracut`
+succeeded. The builder now performs that check on every composed image, and
+it rejected the old image's root filesystem with the same error.
+
+`image/qualify` passed all 21 checks on UEFI QEMU, booting the default
+**Install CybexOS** entry: the installation-only session (no Quickshell, app
+seeding or dictation; installer opened by itself), encrypted installation,
+installed boot without the ISO, encrypted Btrfs, autologin, desktop parity,
+live cleanup, SELinux, and every keyring/logout/crash/manager-restart case.
+The UEFI GRUB, the embedded EFI image and BIOS isolinux menus each list the
+Install and Try-live pairs. The user then installed the published ISO on
+physical hardware successfully.
+
+A first build showed Hyprland's random background splash, one of which reads
+"Segmentation fault (core dumped)", behind the installation-only session; it
+was not a crash (no core dumps). The published build disables the splash.
+QEMU screendumps of the fullscreen installer can appear blank because of
+direct scanout; a compositor capture showed the page rendered normally.
+
+Not exercised on a real installation: the log panel's `log` and `export-logs`
+requests (covered by fixtures and the headless browser test), the live-desktop
+entry after the menu change, BIOS, and Secure Boot.

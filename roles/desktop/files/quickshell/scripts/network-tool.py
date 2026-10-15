@@ -17,8 +17,13 @@ import json
 import os
 from pathlib import Path
 import re
+from secrets import choice as secure_choice
+import shutil
+import socket
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any, Iterable
 
@@ -43,6 +48,54 @@ DNS_PROVIDERS = {
         "2001:4860:4860::8888", "2001:4860:4860::8844",
     ),
 }
+# The connection list every view reads: the snapshot's physical profiles, the
+# VPN list and the hotspot all come from this one `nmcli connection show`.
+CONNECTION_FIELDS = "NAME,UUID,TYPE,DEVICE,STATE,TIMESTAMP"
+VPN_TYPES = ("vpn", "wireguard")
+VPN_LABELS = {
+    "openvpn": "OpenVPN",
+    "openconnect": "OpenConnect",
+    "vpnc": "Cisco IPsec",
+    "ssh": "SSH",
+    "l2tp": "L2TP",
+    "pptp": "PPTP",
+    "strongswan": "IPsec",
+    "libreswan": "IPsec",
+    "fortisslvpn": "Fortinet SSL",
+    "sstp": "SSTP",
+    "wireguard": "WireGuard",
+}
+# The hotspot is one managed NetworkManager profile with a fixed identity, so
+# every surface finds the same profile and never touches a user's own AP
+# profiles. The name is the fallback match if NetworkManager ever assigns a
+# different UUID.
+HOTSPOT_UUID = "6f1c2d9a-3b7e-4c5a-9e21-c7b0f4a8d153"
+HOTSPOT_NAME = "CybexOS hotspot"
+# Shared mode runs NetworkManager's DHCP and DNS for the clients; the
+# nm-shared firewalld zone admits exactly those and forwards their traffic.
+# The CybexOS zone drops them, so the hotspot never joins it. WPA2-only
+# (CCMP) with PMF off works with the widest range of clients and access-point
+# drivers; 2.4 GHz avoids the no-IR limits many adapters have on 5 GHz.
+HOTSPOT_SETTINGS = (
+    "connection.uuid", HOTSPOT_UUID,
+    "connection.autoconnect", "no",
+    "connection.zone", "nm-shared",
+    "802-11-wireless.mode", "ap",
+    "802-11-wireless.band", "bg",
+    "ipv4.method", "shared",
+    "ipv6.method", "ignore",
+    "802-11-wireless-security.key-mgmt", "wpa-psk",
+    "802-11-wireless-security.proto", "rsn",
+    "802-11-wireless-security.pairwise", "ccmp",
+    "802-11-wireless-security.group", "ccmp",
+    "802-11-wireless-security.pmf", "disable",
+)
+# Readable aloud and typed on a phone: no 0/o, 1/l/i. Sixteen characters from
+# 31 is about 79 bits, well beyond an offline WPA2 dictionary attack.
+PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
+MAX_IMPORT_BYTES = 1024 * 1024
+OPENVPN_DIRECTIVES = {"client", "remote", "dev", "proto", "auth-user-pass", "tls-client", "<ca>", "ca"}
+KERNEL_IFNAME_RE = re.compile(r"^[A-Za-z0-9_=+.-]{1,15}$")
 UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 IFACE_RE = re.compile(r"^[A-Za-z0-9_.:@+-]{1,64}$")
 
@@ -244,6 +297,46 @@ def parse_profile_summary(output: str) -> list[dict[str, Any]]:
     return profiles
 
 
+def connection_state(record: dict[str, list[str]]) -> str:
+    state = first(record, "STATE").strip().lower()
+    if state in ("", "--", "deactivated"):
+        # Without a STATE column a bound device still means it is up.
+        return "activated" if not state and first(record, "DEVICE") not in ("", "--") else ""
+    return state
+
+
+def parse_vpn_profiles(output: str) -> list[dict[str, Any]]:
+    """NetworkManager VPN-plugin and WireGuard profiles, sorted by name.
+
+    `kind` and `label` say what the profile is as far as the list knows;
+    add_vpn_kinds() names the plugin of a `vpn` profile when asked to.
+    """
+    vpns: list[dict[str, Any]] = []
+    for record in multiline_records(output, "NAME"):
+        connection_type = first(record, "TYPE")
+        if connection_type not in VPN_TYPES or not UUID_RE.fullmatch(first(record, "UUID")):
+            continue
+        try:
+            stamp = max(0, int(first(record, "TIMESTAMP", "0") or 0))
+        except ValueError:
+            stamp = 0
+        state = connection_state(record)
+        wireguard = connection_type == "wireguard"
+        vpns.append({
+            "name": first(record, "NAME"),
+            "uuid": first(record, "UUID"),
+            "type": connection_type,
+            "kind": "wireguard" if wireguard else "",
+            "label": "WireGuard" if wireguard else "VPN",
+            "state": state,
+            "active": state == "activated",
+            "device": "" if first(record, "DEVICE") == "--" else first(record, "DEVICE"),
+            "timestamp": stamp,
+        })
+    vpns.sort(key=lambda vpn: (vpn["name"].casefold(), vpn["uuid"]))
+    return vpns
+
+
 def parse_frequency(value: str) -> int | None:
     match = re.search(r"\d+(?:\.\d+)?", value)
     return round(float(match.group(0))) if match else None
@@ -393,10 +486,8 @@ def snapshot_with(executor: concurrent.futures.Executor) -> dict[str, Any]:
     route_future = executor.submit(run, ["ip", "-j", "route", "show", "default"],
                                    seconds=timeout("NETWORK_TOOL_IP_TIMEOUT", 4),
                                    label="default route lookup")
-    profiles_future = executor.submit(run, [
-        "nmcli", "-t", "--escape", "yes", "-m", "multiline", "-f",
-        "NAME,UUID,TYPE,DEVICE", "connection", "show",
-    ], label="NetworkManager profile status")
+    profiles_future = executor.submit(run, connection_list_command(),
+                                      label="NetworkManager profile status")
     devices_result = devices_future.result()
     route_result = route_future.result()
     profiles_result = profiles_future.result()
@@ -448,6 +539,8 @@ def snapshot_with(executor: concurrent.futures.Executor) -> dict[str, Any]:
         "devices": devices,
         "routes": routes,
         "profiles": profiles,
+        # The drawer's VPN switch reads these; they come from the same list.
+        "vpns": parse_vpn_profiles(profiles_result.stdout),
         "wifi": {
             "interface": wifi_device["interface"] if wifi_device else "",
             "networks": networks,
@@ -526,11 +619,13 @@ def get_profile_detail(summary: dict[str, Any]) -> dict[str, Any]:
     return profile
 
 
+def connection_list_command() -> list[str]:
+    return ["nmcli", "-t", "--escape", "yes", "-m", "multiline", "-f",
+            CONNECTION_FIELDS, "connection", "show"]
+
+
 def profile_summaries() -> list[dict[str, Any]]:
-    result = run([
-        "nmcli", "-t", "--escape", "yes", "-m", "multiline", "-f",
-        "NAME,UUID,TYPE,DEVICE", "connection", "show",
-    ], label="NetworkManager profile status")
+    result = run(connection_list_command(), label="NetworkManager profile status")
     return parse_profile_summary(result.stdout)
 
 
@@ -547,7 +642,10 @@ def bool_value(value: Any) -> bool:
 
 
 def target_profile(profile: dict[str, Any]) -> bool:
-    return profile.get("connectionType") in PHYSICAL_TYPES and bool(profile.get("standalone", True))
+    # A shared (hotspot) profile serves DNS to its clients itself; the
+    # upstream provider choice is not its setting.
+    return (profile.get("connectionType") in PHYSICAL_TYPES and bool(profile.get("standalone", True))
+            and profile.get("ipv4Method") != "shared")
 
 
 def normalized_servers(values: Iterable[str]) -> list[str]:
@@ -1038,17 +1136,418 @@ def qr_action(request: dict[str, Any]) -> dict[str, Any]:
         bool(hidden),
     )
     # The payload is stdin, never argv.  stdout is transformed into a matrix;
-    # neither the payload nor password is included in the JSON response.
+    # neither the payload nor password is included in the JSON response
+    # unless the caller asks to `reveal` it: the hotspot's join card shows
+    # the password beside the code for devices that cannot scan.
     result = run(["qrencode", "-t", "ASCII", "-m", "2", "-o", "-"],
                  input_text=payload, seconds=timeout("NETWORK_TOOL_QR_TIMEOUT", 5),
                  code="qr_failed", label="QR generation", secret=True)
     matrix = parse_qr_matrix(result.stdout)
-    return {"success": True, "matrix": matrix, "width": len(matrix[0]), "height": len(matrix)}
+    response = {"success": True, "matrix": matrix, "width": len(matrix[0]), "height": len(matrix)}
+    if request.get("reveal") is True:
+        response["password"] = password
+    return response
+
+
+# ---- VPN ----------------------------------------------------------------
+# VPN-plugin (OpenVPN, OpenConnect, vpnc, SSH, ...) and WireGuard profiles.
+# Connecting runs network_vpn_agent: NetworkManager asks it for secrets and it
+# shows the VPN plugin's own sign-in dialog, so no secret reaches this helper's
+# output, its arguments or the shell. Import hands the user's file to
+# `nmcli connection import`; its contents are only sniffed for the format and
+# nmcli's diagnostics are classified, never echoed, since a parser error can
+# quote a line of the file.
+
+def vpn_service_kind(service_type: str) -> str:
+    return service_type.rsplit(".", 1)[-1].strip().lower() if service_type else ""
+
+
+def add_vpn_kinds(vpns: list[dict[str, Any]]) -> None:
+    """Name the plugin of every `vpn` profile with one extra nmcli read."""
+    plugins = [vpn for vpn in vpns if vpn["type"] == "vpn" and UUID_RE.fullmatch(vpn["uuid"])]
+    if not plugins:
+        return
+    argv = ["nmcli", "-t", "--escape", "yes", "-m", "multiline", "-f",
+            "connection.uuid,vpn.service-type", "connection", "show"]
+    for vpn in plugins:
+        argv += ["uuid", vpn["uuid"]]
+    result = run(argv, label="VPN plugin lookup", check=False)
+    if result.returncode != 0:
+        return
+    services = {first(record, "connection.uuid"): first(record, "vpn.service-type")
+                for record in multiline_records(result.stdout, "connection.uuid")}
+    for vpn in plugins:
+        kind = vpn_service_kind(services.get(vpn["uuid"], ""))
+        if kind:
+            vpn["kind"] = kind
+            vpn["label"] = VPN_LABELS.get(kind, "VPN")
+
+
+def vpn_profiles(*, kinds: bool = True) -> list[dict[str, Any]]:
+    result = run(connection_list_command(), label="NetworkManager profile status")
+    vpns = parse_vpn_profiles(result.stdout)
+    if kinds:
+        add_vpn_kinds(vpns)
+    return vpns
+
+
+def require_vpn(value: Any) -> dict[str, Any]:
+    # Every action re-reads the profile: a request may only touch a profile
+    # that is a VPN now, whatever UUID it names.
+    profile_uuid = require_uuid(value)
+    profile = next((vpn for vpn in vpn_profiles(kinds=False) if vpn["uuid"] == profile_uuid), None)
+    if profile is None:
+        raise ToolError("vpn_missing", "That VPN connection no longer exists")
+    return profile
+
+
+def import_source(value: Any) -> tuple[Path, str]:
+    candidate = str(value or "")
+    if not candidate or any(character in candidate for character in "\x00\n\r") or len(candidate) > 4096:
+        raise ToolError("invalid_file", "Choose an OpenVPN (.ovpn) or WireGuard (.conf) file")
+    path = Path(os.path.expanduser(candidate))
+    suffix = path.suffix.lower()
+    if not path.is_absolute() or suffix not in (".ovpn", ".conf"):
+        raise ToolError("invalid_file", "Choose an OpenVPN (.ovpn) or WireGuard (.conf) file")
+    try:
+        mode = path.stat().st_mode
+    except OSError as error:
+        raise ToolError("unreadable_file", "This file could not be read") from error
+    if not stat.S_ISREG(mode):
+        raise ToolError("invalid_file", "Choose an OpenVPN (.ovpn) or WireGuard (.conf) file")
+    try:
+        with path.open("rb") as stream:
+            data = stream.read(MAX_IMPORT_BYTES + 1)
+    except OSError as error:
+        raise ToolError("unreadable_file", "This file could not be read") from error
+    if len(data) > MAX_IMPORT_BYTES:
+        raise ToolError("invalid_file", "This file is too large to be a VPN configuration")
+    return path, config_kind(suffix, data.decode("utf-8", errors="replace"))
+
+
+def config_kind(suffix: str, text: str) -> str:
+    if suffix == ".ovpn":
+        return "openvpn"
+    lines = [line.strip().lower() for line in text.splitlines()]
+    if "[interface]" in lines and any(line.replace(" ", "").startswith("privatekey=") for line in lines):
+        return "wireguard"
+    if any(line.split(None, 1)[0] in OPENVPN_DIRECTIVES for line in lines if line):
+        return "openvpn"
+    raise ToolError("unsupported_file", "This file is neither a WireGuard nor an OpenVPN configuration")
+
+
+def display_name(stem: str) -> str:
+    name = "".join(character for character in stem if character.isprintable()).strip()
+    return name[:64] or "VPN"
+
+
+def wireguard_interface(stem: str) -> str:
+    # nmcli names a WireGuard profile and its interface after the file, so
+    # the file name must be a valid kernel interface name.
+    name = re.sub(r"[^A-Za-z0-9_-]", "", stem)[:15]
+    return name or "wg0"
+
+
+def import_failure(stderr: str, kind: str) -> tuple[str, str]:
+    text = stderr.lower()
+    label = "WireGuard" if kind == "wireguard" else "OpenVPN"
+    if "not authorized" in text or "insufficient privileges" in text:
+        return "not_authorized", "You are not allowed to add network connections"
+    if "permission denied" in text or "no such file" in text:
+        return "unreadable_file", "This file could not be read"
+    if "plugin" in text:
+        return "vpn_plugin_missing", f"The {label} support for NetworkManager is not installed"
+    return "import_failed", f"NetworkManager could not import this file as a {label} configuration"
+
+
+def vpn_import(request: dict[str, Any]) -> dict[str, Any]:
+    path, kind = import_source(request.get("path"))
+    name = display_name(path.stem)
+    target = path
+    scratch: Path | None = None
+    try:
+        if kind == "wireguard" and (not KERNEL_IFNAME_RE.fullmatch(path.stem) or path.stem in (".", "..")
+                                    or path.suffix != ".conf"):
+            # A symlink under a valid name, not a copy: the private key is
+            # never duplicated into a temporary file.
+            scratch = Path(tempfile.mkdtemp(prefix="cybexos-vpn-import-"))
+            target = scratch / f"{wireguard_interface(path.stem)}.conf"
+            target.symlink_to(path)
+        result = run(["nmcli", "connection", "import", "type", kind, "file", str(target)],
+                     seconds=timeout("NETWORK_TOOL_ACTION_TIMEOUT", 20), label="VPN import", check=False)
+    finally:
+        if scratch is not None:
+            shutil.rmtree(scratch, ignore_errors=True)
+    if result.returncode != 0:
+        raise ToolError(*import_failure(result.stderr, kind))
+    profile_uuid = parse_added_uuid(result.stdout)
+    if not UUID_RE.fullmatch(profile_uuid):
+        raise ToolError("import_failed", "NetworkManager did not identify the imported connection")
+    # A VPN starts from its switch. NetworkManager brings an imported
+    # WireGuard profile up at once and would reconnect it at every boot.
+    modifications = ["connection.autoconnect", "no"]
+    if kind == "wireguard" and scratch is not None:
+        modifications += ["connection.id", name]
+    run(["nmcli", "connection", "modify", "uuid", profile_uuid, *modifications],
+        label="VPN import settings", check=False)
+    if kind == "wireguard":
+        run(["nmcli", "connection", "down", "uuid", profile_uuid], label="VPN import", check=False)
+    else:
+        name = next((vpn["name"] for vpn in vpn_profiles(kinds=False) if vpn["uuid"] == profile_uuid), name)
+    return {"success": True, "action": "import", "uuid": profile_uuid, "name": name, "kind": kind,
+            "message": f"Imported {name}"}
+
+
+def vpn_connect(profile: dict[str, Any]) -> dict[str, Any]:
+    try:
+        import network_vpn_agent
+    except ImportError as error:
+        raise ToolError("missing_dependency", "Python GObject bindings are required to connect a VPN") from error
+    try:
+        network_vpn_agent.activate(profile["uuid"], timeout("NETWORK_TOOL_VPN_TIMEOUT", 50))
+    except network_vpn_agent.AgentError as error:
+        raise ToolError(error.code, error.message) from error
+    return {"success": True, "action": "connect", "uuid": profile["uuid"],
+            "message": f"Connected to {profile['name']}"}
+
+
+def vpn_action(request: dict[str, Any]) -> dict[str, Any]:
+    action = str(request.get("action", "list"))
+    if action in ("", "list", "status"):
+        return {"success": True, "vpns": vpn_profiles()}
+    if action == "import":
+        return vpn_import(request)
+    if action not in ("connect", "disconnect", "remove"):
+        raise ToolError("invalid_request", "Unknown VPN action")
+    profile = require_vpn(request.get("uuid"))
+    if action == "connect":
+        if profile["state"] == "activated":
+            return {"success": True, "action": action, "uuid": profile["uuid"]}
+        return vpn_connect(profile)
+    if action == "disconnect":
+        if profile["state"] in ("", "deactivating"):
+            return {"success": True, "action": action, "uuid": profile["uuid"]}
+        result = run(["nmcli", "--wait", "15", "connection", "down", "uuid", profile["uuid"]],
+                     seconds=timeout("NETWORK_TOOL_ACTION_TIMEOUT", 20), label="VPN disconnect", check=False)
+        if result.returncode != 0 and require_vpn(profile["uuid"])["state"] == "activated":
+            raise ToolError("vpn_disconnect_failed", "The VPN could not be disconnected")
+        return {"success": True, "action": action, "uuid": profile["uuid"],
+                "message": f"Disconnected from {profile['name']}"}
+    # Removal is permanent: the shell's second press is part of the request.
+    if request.get("confirmed") is not True:
+        raise ToolError("confirmation_required", "Confirm removing the VPN connection")
+    result = run(["nmcli", "connection", "delete", "uuid", profile["uuid"]],
+                 label="Remove VPN connection", check=False)
+    if result.returncode != 0:
+        raise ToolError("vpn_remove_failed", "The VPN connection could not be removed")
+    return {"success": True, "action": action, "uuid": profile["uuid"],
+            "message": f"Removed {profile['name']}"}
+
+
+# ---- Hotspot ------------------------------------------------------------
+# One managed access-point profile in shared mode. It is created with
+# autoconnect off, so it never starts at boot; the switch starts it. The
+# password is generated here and reaches nmcli only through passwd-file on
+# stdin, exactly like a Wi-Fi password: NetworkManager stores it in the
+# profile on the first activation, and later starts use the stored one.
+
+def generate_password() -> str:
+    return "-".join("".join(secure_choice(PASSWORD_ALPHABET) for _ in range(4)) for _ in range(4))
+
+
+def default_hotspot_ssid() -> str:
+    host = socket.gethostname().split(".", 1)[0].strip()
+    if not host or host.lower() in ("localhost", "localhost-live"):
+        return "CybexOS hotspot"
+    name = f"{host} hotspot"
+    while len(name.encode("utf-8")) > 32:
+        host = host[:-1]
+        name = f"{host} hotspot"
+    return name
+
+
+def parse_wifi_devices(output: str) -> list[dict[str, Any]]:
+    devices: list[dict[str, Any]] = []
+    for line in output.replace("\r\n", "\n").splitlines():
+        if not line:
+            continue
+        values = split_escaped(line)
+        if len(values) != 5:
+            raise ToolError("invalid_nmcli", "NetworkManager returned a malformed device list")
+        interface, kind, state, connection, profile_uuid = values
+        if kind != "wifi" or not IFACE_RE.fullmatch(interface):
+            continue
+        devices.append({
+            "interface": interface,
+            "state": state.strip().lower(),
+            "connected": state.strip().lower() == "connected",
+            "connection": "" if connection == "--" else connection,
+            "uuid": "" if profile_uuid == "--" else profile_uuid,
+            "ap": None,
+        })
+    return devices
+
+
+def wifi_devices() -> list[dict[str, Any]]:
+    result = run(["nmcli", "-t", "--escape", "yes", "-f", "DEVICE,TYPE,STATE,CONNECTION,CON-UUID",
+                  "device", "status"], label="Wi-Fi adapter lookup")
+    devices = parse_wifi_devices(result.stdout)
+    for device in devices:
+        properties = run(["nmcli", "-t", "--escape", "yes", "-f", "WIFI-PROPERTIES.AP",
+                          "device", "show", device["interface"]], label="Wi-Fi adapter lookup", check=False)
+        if properties.returncode == 0:
+            value = detail_record(properties.stdout).get("WIFI-PROPERTIES.AP", "").strip().lower()
+            # Unknown stays None: the adapter may still manage, so let it try.
+            device["ap"] = True if value == "yes" else False if value == "no" else None
+    return devices
+
+
+def choose_hotspot_device(devices: list[dict[str, Any]], active_interface: str = "") -> dict[str, Any] | None:
+    if active_interface:
+        current = next((device for device in devices if device["interface"] == active_interface), None)
+        if current:
+            return current
+    capable = [device for device in devices if device["ap"] is not False]
+    if not capable:
+        return None
+    # A second adapter that is not carrying a Wi-Fi connection can host the
+    # hotspot without dropping the first; one that is off comes last.
+    return sorted(capable, key=lambda device: (device["state"] == "unavailable", device["connected"]))[0]
+
+
+def hotspot_record(records: list[dict[str, list[str]]]) -> dict[str, list[str]] | None:
+    by_uuid = next((record for record in records if first(record, "UUID") == HOTSPOT_UUID), None)
+    return by_uuid or next((record for record in records if first(record, "NAME") == HOTSPOT_NAME
+                            and first(record, "TYPE") == "802-11-wireless"
+                            and UUID_RE.fullmatch(first(record, "UUID"))), None)
+
+
+def hotspot_status(records: list[dict[str, list[str]]] | None = None) -> dict[str, Any]:
+    if records is None:
+        records = multiline_records(run(connection_list_command(),
+                                        label="NetworkManager profile status").stdout, "NAME")
+    devices = wifi_devices()
+    record = hotspot_record(records)
+    state = connection_state(record) if record else ""
+    active_interface = first(record, "DEVICE") if record and state else ""
+    device = choose_hotspot_device(devices, "" if active_interface == "--" else active_interface)
+    ssid = default_hotspot_ssid()
+    profile_interface = ""
+    if record:
+        detail = run(["nmcli", "-t", "--escape", "yes", "-f", "802-11-wireless.ssid,connection.interface-name",
+                      "connection", "show", "uuid", first(record, "UUID")],
+                     label="Hotspot profile", check=False)
+        if detail.returncode == 0:
+            fields = detail_record(detail.stdout)
+            ssid = fields.get("802-11-wireless.ssid") or ssid
+            profile_interface = fields.get("connection.interface-name", "")
+    hosting = bool(device and state in ("activated", "activating"))
+    drops = bool(device and not hosting and device["connected"] and device["uuid"] != first(record or {}, "UUID"))
+    return {
+        "available": bool(devices),
+        "supported": device is not None,
+        "interface": device["interface"] if device else "",
+        "profileInterface": profile_interface,
+        "radioOff": bool(device and device["state"] == "unavailable" and not hosting),
+        "configured": record is not None,
+        "uuid": first(record, "UUID") if record else "",
+        "ssid": ssid,
+        "state": state,
+        "active": state == "activated",
+        "dropsWifi": drops,
+        "wifiConnection": device["connection"] if drops and device else "",
+    }
+
+
+def create_hotspot(ssid: str, interface: str) -> str:
+    result = run(["nmcli", "connection", "add", "type", "wifi", "ifname", require_interface(interface),
+                  "con-name", HOTSPOT_NAME, "ssid", require_ssid(ssid), *HOTSPOT_SETTINGS],
+                 code="hotspot_create_failed", label="Create hotspot profile")
+    created = parse_added_uuid(result.stdout)
+    return created if UUID_RE.fullmatch(created) else HOTSPOT_UUID
+
+
+def hotspot_failure(stderr: str) -> tuple[str, str]:
+    text = stderr.lower()
+    if "not authorized" in text or "insufficient privileges" in text:
+        return "not_authorized", "You are not allowed to start a hotspot"
+    if "timeout" in text or "timed out" in text:
+        return "hotspot_timeout", "The hotspot did not start in time"
+    if "secrets were required" in text or "no secrets" in text:
+        return "hotspot_secrets", "NetworkManager did not accept the hotspot password"
+    if any(token in text for token in ("not available", "unavailable", "no suitable device", "not compatible")):
+        return "hotspot_unavailable", "The Wi-Fi adapter is busy or cannot host a hotspot right now"
+    return "hotspot_failed", "The hotspot could not start. The Wi-Fi adapter may not support it."
+
+
+def start_hotspot(profile_uuid: str, interface: str) -> None:
+    # A fresh password goes along every time; NetworkManager only asks for
+    # it while the profile has none stored, so a saved one is kept.
+    secret = f"802-11-wireless-security.psk:{generate_password()}\n"
+    result = run(["nmcli", "--wait", "25", "connection", "up", "uuid", require_uuid(profile_uuid),
+                  "ifname", require_interface(interface), "passwd-file", "/dev/stdin"],
+                 input_text=secret, seconds=timeout("NETWORK_TOOL_ACTIVATE_TIMEOUT", 30),
+                 label="Hotspot start", secret=True, check=False)
+    if result.returncode != 0:
+        raise ToolError(*hotspot_failure(result.stderr))
+
+
+def hotspot_action(request: dict[str, Any]) -> dict[str, Any]:
+    action = str(request.get("action", "status"))
+    if action in ("", "status"):
+        return {"success": True, **hotspot_status()}
+    if action not in ("start", "stop", "rename"):
+        raise ToolError("invalid_request", "Unknown hotspot action")
+    status = hotspot_status()
+    if action == "stop":
+        if status["state"] in ("activated", "activating"):
+            result = run(["nmcli", "--wait", "15", "connection", "down", "uuid", status["uuid"]],
+                         seconds=timeout("NETWORK_TOOL_ACTION_TIMEOUT", 20), label="Hotspot stop", check=False)
+            if result.returncode != 0 and hotspot_status()["state"] == "activated":
+                raise ToolError("hotspot_stop_failed", "The hotspot could not be stopped")
+        return {"success": True, "action": action, "message": "Hotspot stopped"}
+    if not status["available"]:
+        raise ToolError("no_wifi", "This computer has no Wi-Fi adapter")
+    if not status["supported"]:
+        raise ToolError("hotspot_unsupported", "This Wi-Fi adapter cannot host a hotspot")
+    ssid = require_ssid(str(request.get("ssid") or status["ssid"]).strip())
+    hosting = status["state"] in ("activated", "activating")
+    if action == "start" and status["radioOff"]:
+        raise ToolError("wifi_off", "Turn on Wi-Fi to start the hotspot")
+    if not status["configured"]:
+        profile_uuid = create_hotspot(ssid, status["interface"])
+    else:
+        profile_uuid = status["uuid"]
+        changes: list[str] = []
+        if ssid != status["ssid"]:
+            changes += ["802-11-wireless.ssid", ssid]
+        if action == "start" and status["profileInterface"] not in ("", status["interface"]):
+            changes += ["connection.interface-name", status["interface"]]
+        if changes:
+            run(["nmcli", "connection", "modify", "uuid", profile_uuid, *changes],
+                code="hotspot_modify_failed", label="Hotspot settings")
+        elif hosting:
+            return {"success": True, "action": action, "ssid": ssid, "uuid": profile_uuid}
+    if action == "rename" and not hosting:
+        return {"success": True, "action": action, "ssid": ssid, "message": f"Hotspot name set to {ssid}"}
+    # A rename of a running hotspot restarts it under the new name.
+    start_hotspot(profile_uuid, status["interface"])
+    return {"success": True, "action": action, "ssid": ssid, "uuid": profile_uuid,
+            "message": f"Hotspot {ssid} is on"}
+
+
+def connection_extras() -> dict[str, Any]:
+    """VPN profiles and hotspot state for Settings, from one profile list."""
+    output = run(connection_list_command(), label="NetworkManager profile status").stdout
+    vpns = parse_vpn_profiles(output)
+    add_vpn_kinds(vpns)
+    return {"vpns": vpns, "hotspot": hotspot_status(multiline_records(output, "NAME"))}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Quickshell network helper")
-    parser.add_argument("command", choices=("snapshot", "wifi", "dns", "band", "password", "qr"))
+    parser.add_argument("command", choices=("snapshot", "wifi", "dns", "band", "password", "qr",
+                                            "vpn", "hotspot"))
     arguments = parser.parse_args()
     if arguments.command == "snapshot":
         emit(snapshot())
@@ -1059,6 +1558,8 @@ def main() -> None:
         "band": band_action,
         "password": password_action,
         "qr": qr_action,
+        "vpn": vpn_action,
+        "hotspot": hotspot_action,
     }
     emit(handlers[arguments.command](request))
 

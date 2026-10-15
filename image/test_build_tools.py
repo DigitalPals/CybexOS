@@ -53,6 +53,9 @@ class BuilderInitializationTests(unittest.TestCase):
         config = builder_cloud_config('ssh-ed25519 synthetic-public-fixture')
         self.assertTrue(config['preserve_hostname'])
         self.assertEqual(config['runcmd'], [['hostnamectl', 'set-hostname', 'image-builder']])
+        # Package transfers use IPv4 only (stalled IPv6 downloads through QEMU user networking).
+        self.assertEqual(config['bootcmd'], [['sysctl', '-q', '-w', 'net.ipv6.conf.all.disable_ipv6=1',
+                                              'net.ipv6.conf.default.disable_ipv6=1']])
         self.assertFalse(config['ssh_pwauth'])
         self.assertTrue(config['disable_root'])
         self.assertEqual(config['users'][0]['ssh_authorized_keys'], ['ssh-ed25519 synthetic-public-fixture'])

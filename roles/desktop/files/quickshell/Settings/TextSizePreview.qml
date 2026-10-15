@@ -157,7 +157,7 @@ Item {
 
                     PreviewLine {
                         glyph: "volume_up"
-                        label: "Volume"
+                        label: I18n.tr("Volume")
                         value: "40%"
                     }
                     Rectangle {
@@ -175,7 +175,7 @@ Item {
                     }
                     PreviewLine {
                         glyph: "wifi"
-                        label: "Wi-Fi"
+                        label: I18n.tr("Wi-Fi")
                         value: "Connected"
                     }
                 }

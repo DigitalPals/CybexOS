@@ -117,6 +117,9 @@
     # v4l2-relayd packages. The role is safe on generic hardware and activates
     # each workaround only after its precise DMI and device gates match.
     - { role: xps-2026, tags: [xps-2026, hardware] }
+    # Also after apps, whose RPM Fusion keys it reuses. Detection is always
+    # safe; the driver is installed only when an NVIDIA GPU is present.
+    - { role: nvidia, tags: [nvidia, hardware] }
     - { role: dotfiles, tags: [dotfiles] }
     # The role also removes its managed privileges/artifacts when disabled.
     - { role: private-hooks, tags: [private-hooks] }

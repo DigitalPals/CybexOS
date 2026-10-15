@@ -106,6 +106,24 @@ def rpm_identity(version_file, provenance):
     return version, release
 
 
+WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def changelog_entry(version, release, provenance):
+    """This build's %changelog entry. An ISO installation's Updates view shows
+    the entries newer than the installed desktop (`dnf changelog --upgrades`),
+    so each build names its release and where that release's notes are."""
+    built = datetime.fromisoformat(provenance["utc"].replace("Z", "+00:00")).astimezone(timezone.utc)
+    stamp = f"{WEEKDAYS[built.weekday()]} {MONTHS[built.month - 1]} {built.day:02d} {built.year}"
+    release_name = version.replace("~", "-", 1)
+    lines = [f"* {stamp} CybexOS <noreply@localhost> - {version}-{release}",
+             f"- CybexOS desktop {release_name} ({provenance['source_revision'][:12]})"]
+    if not release_name.endswith("-dev"):
+        lines.append(f"- Release notes: https://github.com/DigitalPals/CybexOS/releases/tag/v{release_name}")
+    return "\n".join(lines) + "\n\n"
+
+
 def render_spec(source_spec, version_file, provenance):
     version, release = rpm_identity(version_file, provenance)
     result, count = re.subn(r"(?m)^Version:.*$", f"Version:        {version}", source_spec)
@@ -114,7 +132,8 @@ def render_spec(source_spec, version_file, provenance):
     result, count = re.subn(r"(?m)^Release:.*$", f"Release:        {release}%{{?dist}}", result)
     if count != 1:
         raise ValueError("Desktop spec must contain exactly one Release field")
-    return result
+    entry = changelog_entry(version, release, provenance)
+    return re.sub(r"(?m)^%changelog\n", lambda match: match.group(0) + entry, result, count=1)
 
 
 def channel_payload(baseurl, expected, armor):

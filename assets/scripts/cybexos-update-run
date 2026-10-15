@@ -24,12 +24,14 @@ Usage:
   cybexos-update-run cancel [RUN_ID]
   cybexos-update-run dismiss [RUN_ID]
   cybexos-update-run log-dir [RUN_ID]
+  cybexos-update-run history [--json] [--limit N]
 
 Update Fedora packages and system Flatpaks. The worker runs as a transient
 service, so closing a terminal or reloading Quickshell does not abandon the
 transaction. Only one CLI or panel update can run at a time. `cancel` never
 interrupts a running package transaction, firmware update, or Ansible play:
-the worker stops at the next safe step boundary.
+the worker stops at the next safe step boundary. `history` lists finished
+runs, newest first, with the recovery point each one created.
 
 Options for run/start:
   -f, --full        Also run site.yml with --skip-tags boot
@@ -1004,6 +1006,32 @@ run_firmware_phase() {
   write_status running firmware "Device firmware update finished" 0
 }
 
+# Publish the recovery point as soon as it exists, so the run's record (and
+# the history and Updates view built from it) names it even when the worker
+# dies before its next step.
+record_recovery_point() {
+  printf '[snapshot] recovery point %s\n' "$snapshot_id" >>"$run_dir/run.log"
+  write_status running snapshot "Created recovery point $snapshot_id" 0
+}
+
+# The background download (cybexos-update-download.service, off by default)
+# shares dnf's package cache. Stop it before this run snapshots or changes
+# anything; what it already fetched stays cached and is reused. Never fatal.
+stop_background_download() {
+  local state
+  state=$(systemctl show cybexos-update-download.service --property=ActiveState \
+    --value 2>/dev/null) || return 0
+  case $state in
+    active|activating|reloading) ;;
+    *) return 0 ;;
+  esac
+  printf '[download] stopping the background update download\n' >>"$run_dir/run.log"
+  "${privileged_package[@]}" systemctl stop cybexos-update-download.service \
+    >>"$run_dir/run.log" 2>&1 \
+    || printf '[download] could not stop the background download; continuing\n' \
+      >>"$run_dir/run.log"
+}
+
 worker() {
   run_id=${1:-}; shift || true
   valid_id "$run_id" || exit 2
@@ -1069,6 +1097,7 @@ worker() {
     privileged_package=(sudo -n sh -c \
       'umask 022; exec "$@"' cybexos-update-package)
   fi
+  stop_background_download
   local snapshot_helper_root=/usr/local/libexec
   if [[ ${CYBEXOS_UPDATE_TESTING:-0} == 1 \
         && -n ${CYBEXOS_UPDATE_TEST_LIBEXEC:-} ]]; then
@@ -1112,6 +1141,8 @@ worker() {
       snapshot_id=''
     elif [[ ! $snapshot_id =~ ^[0-9]{8}T[0-9]{6}Z-[0-9]+$ ]]; then
       worker_failed snapshot "The recovery helper did not return a valid recovery point" 125
+    else
+      record_recovery_point
     fi
   else
     local root_filesystem
@@ -1163,6 +1194,7 @@ worker() {
         worker_failed snapshot "Recovery bootstrap did not return a protected checkpoint" 125
       fi
       snapshot_id=$protected_snapshot
+      record_recovery_point
       bootstrap_bundle=$(dirname -- "$transaction_helper")
       bootstrap_helper=$bootstrap_bundle/cybexos-update-bootstrap
     fi
@@ -1177,7 +1209,7 @@ worker() {
   if [[ $transaction_started == true && $with_packages == true ]]; then
     write_status running download "Downloading packages before changing the installed system" 0
     tagged_command download "$run_dir/download.log" "$run_dir/download.rc" \
-      "${privileged_package[@]}" dnf -y upgrade --refresh --downloadonly
+      "${privileged_package[@]}" dnf -y upgrade --refresh --no-best --downloadonly
     local download_rc
     download_rc=$(phase_result "$run_dir/download.rc")
     ((download_rc == 0)) || worker_failed download "Package download failed; installed system is unchanged" "$download_rc"
@@ -1192,8 +1224,12 @@ worker() {
   local dnf_pid="" flatpak_pid=""
   if [[ $with_packages == true ]]; then
     write_status running packages "Updating system packages and Flatpaks" 0
+    # --no-best (dnf's default, stated so a local best=True cannot override
+    # it): versionlock holds Hyprland and Quickshell to their qualified series
+    # (docs/dependency-policy.md), so a library upgrade that only a newer,
+    # held-back compositor could use is skipped instead of failing the run.
     tagged_command dnf "$run_dir/dnf.log" "$run_dir/dnf.rc" \
-      "${privileged_package[@]}" dnf -y upgrade --refresh &
+      "${privileged_package[@]}" dnf -y upgrade --refresh --no-best &
     dnf_pid=$!
     if [[ $with_flatpak == true ]]; then
       tagged_command flatpak "$run_dir/flatpak.log" "$run_dir/flatpak.rc" \
@@ -1515,8 +1551,69 @@ dismiss_run() {
   id=$(resolve_id "${1:-}") || return; file=$(status_path "$id")
   state=$(status_state "$id" || true)
   is_active "$state" && { printf 'cybexos-update-run: an active run cannot be dismissed\n' >&2; return 1; }
-  temporary="$file.$$.tmp"; jq '.state = "dismissed"' "$file" > "$temporary"
+  # Dismissing hides the result from the panel; the history keeps it.
+  temporary="$file.$$.tmp"
+  jq 'if .state == "dismissed" then . else .outcome = .state | .state = "dismissed" end' \
+    "$file" > "$temporary"
   mv -f -- "$temporary" "$file"
+}
+
+# Finished runs, newest first: what happened and the recovery point each one
+# created before it changed anything. Built from the retained run records, so
+# it reaches as far back as their twenty-run retention.
+history_runs() {
+  local json=false limit=20 id file current record
+  local -a records=()
+  while (($#)); do
+    case $1 in
+      --json) json=true ;;
+      --limit)
+        shift
+        [[ ${1:-} =~ ^[0-9]{1,3}$ ]] || {
+          printf 'cybexos-update-run: --limit needs a number\n' >&2
+          return 2
+        }
+        limit=$((10#$1))
+        ;;
+      *) printf 'cybexos-update-run: unknown history option %s\n' "$1" >&2; return 2 ;;
+    esac
+    shift
+  done
+  # A worker that vanished is recorded as failed before it is listed.
+  current=$(current_id || true)
+  [[ -z $current ]] || repair_stale_status "$current"
+  while IFS= read -r id; do
+    valid_id "$id" || continue
+    file=$(status_path "$id")
+    [[ -r $file ]] || continue
+    # A dismissed record keeps its outcome; one dismissed by an older
+    # updater only has its exit code to say what it was.
+    record=$(jq -c '
+      select(type == "object" and (.id | type) == "string")
+      | (.outcome // (if .state == "dismissed" then
+          (if .exitCode == 0 then "done" elif .exitCode == 130 then "cancelled"
+           else "failed" end) else .state end)) as $outcome
+      | select($outcome == "done" or $outcome == "failed" or $outcome == "cancelled")
+      | {id, outcome: $outcome, startedAt: (.startedAt // 0),
+         finishedAt: (.finishedAt // 0), phase: (.phase // ""),
+         snapshotId: (.snapshotId // ""), releaseVersion: (.releaseVersion // ""),
+         transactionProtection: (.transactionProtection // "unavailable"),
+         rollbackState: (.rollbackState // "none"), message: (.message // "")}' \
+      "$file" 2>/dev/null) || continue
+    [[ -n $record ]] && records+=("$record")
+  done < <(find "$log_shelf" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null)
+  local listing
+  listing=$(printf '%s\n' "${records[@]}" | jq -cs --argjson limit "$limit" \
+    'map(select(. != null)) | sort_by(.startedAt, .id) | reverse | .[:$limit]')
+  if [[ $json == true ]]; then
+    printf '%s\n' "$listing"
+  elif [[ $listing == '[]' ]]; then
+    printf 'No update has finished yet.\n'
+  else
+    jq -r '.[] | "\((if .finishedAt > 0 then .finishedAt else .startedAt end)
+        | strflocaltime("%Y-%m-%d %H:%M"))  \(.outcome)\(if .snapshotId != ""
+        then "  recovery point " + .snapshotId else "" end)  \(.id)"' <<<"$listing"
+  fi
 }
 
 read_log() {
@@ -1581,6 +1678,7 @@ case $command in
   cancel) cancel_run "${1:-}" ;;
   dismiss) dismiss_run "${1:-}" ;;
   log-dir) id=$(resolve_id "${1:-}") || exit; printf '%s/%s\n' "$log_shelf" "$id" ;;
+  history) history_runs "$@" ;;
   read-log) read_log "${1:-}" "${2:-}" "${3:-0}" "${4:-}" ;;
   _worker) worker "$@" ;;
   -h|--help|help) usage ;;

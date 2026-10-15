@@ -79,3 +79,28 @@ test("the pager snaps structural changes and animates only focus transitions", (
     assert.match(workspaces, /Theme\.barRed/);
     assert.match(workspaces, /visible:\s*slot\.showNumber/);
 });
+
+test("the scratchpad and other special workspaces never become numbered pips", () => {
+    // Hyprland lists special workspaces with negative ids next to the
+    // numbered ones; Super+minus creates special:scratchpad (-98).
+    const listed = [
+        { id: 3, name: "3" }, { id: -98, name: "special:scratchpad" },
+        { id: 1, name: "1" }, { id: -99, name: "special:special" },
+        { id: 7, name: "special:odd" }, null, { id: 2.5 }
+    ];
+    assert.deepEqual(Motion.regularIds(listed), [1, 3]);
+    // Quickshell hands QML an array-like list, not an Array.
+    assert.deepEqual(Motion.regularIds({ length: 2, 0: { id: 4 }, 1: { id: -98 } }), [4]);
+    assert.deepEqual(Motion.regularIds(undefined), []);
+    assert.deepEqual(Motion.visibleIds(5, Motion.regularIds(listed), -98, true), [1, 3],
+        "a focused special workspace adds no slot");
+    assert.equal(Motion.indicatorBounds(Motion.visibleIds(5, [1, 3], -98, false), -98), null);
+
+    const workspaces = read("Bar/Workspaces.qml");
+    assert.match(workspaces,
+        /readonly property var existingIds: WorkspaceMotion\.regularIds\(Hyprland\.workspaces\.values\)/);
+    assert.match(workspaces,
+        /readonly property int slots: Math\.max\(Settings\.modOpts\.ws\.minSlots, \.\.\.existingIds\)/,
+        "slots count numbered workspaces only");
+    assert.doesNotMatch(workspaces, /Hyprland\.workspaces\.values\.map\(workspace => workspace\.id\)/);
+});

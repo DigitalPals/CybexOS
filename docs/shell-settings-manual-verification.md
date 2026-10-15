@@ -17,14 +17,14 @@ is manual.
       opens at 900×664 with the labeled sidebar: Personalize (Appearance,
       Wallpaper, Bar, Notifications), Devices (Displays, Sound, Network,
       Touchpad) and System (Power, Region & formats, Online accounts,
-      Plugins, About), all visible without scrolling and with no dots on
+      Plugins, Backup & recovery, About), all visible without scrolling and with no dots on
       changed pages. Below 860px available width, the same navigation becomes
       an icon rail with hairlines between the groups, themed tooltips and
       42px targets.
 - [ ] `cybexos-runtime ipc settings open bar` lands on the Bar page. The
       retired ids still work: `open modules` lands on Bar, with its widgets
-      at the top, and `open system` on Power. The recovery-boot notification's action lands on About's
-      recovery points, and the power drawer's Idle settings on Power.
+      at the top, and `open system` on Power. The recovery-boot notification's action lands on Backup &
+      recovery's recovery points, and the power drawer's Idle settings on Power.
 - [ ] The header reads "<Page> · <description>" with the description in its
       own capitalization (Network shows "IP addresses and DNS"). It carries
       only Close, whose tip appears on hover (panel-colored, not a yellow
@@ -286,7 +286,26 @@ is manual.
       per-action switches, and drag/keyboard ordering. A hidden Dictation or
       Screen recording action returns while running so it can always be stopped.
 - [ ] The OCR clock-side action starts region selection, copies recognized text
-      to the clipboard, and remains hidden in Active only mode.
+      to the clipboard, and remains hidden in Active only mode. A region with
+      a QR code copies the code's content instead; a link is not opened and a
+      Wi-Fi code's notification names the network without its password.
+- [ ] `Print` with a click on a window (tiled, floating, on a second output,
+      with fractional scaling) captures exactly that window; a drag still
+      captures a region; a window hidden behind a fullscreen one is not offered.
+- [ ] `Alt+Print`: the hint shows while selecting and is gone before capture;
+      the menubar's red recording indicator stays lit while scrolling (its
+      tooltip offers to finish), Enter, Escape, the shortcut again, or a
+      click on the indicator each finish, and Enter/Escape reach applications
+      normally afterwards. A page with a sticky header joins without repeats.
+- [ ] `` Super+Ctrl+Shift+` ``: the round camera bubble appears in the recorded
+      area's corner, is in the saved video, can be dragged to another corner,
+      and the camera light goes off when the recording stops. Without a camera
+      one notification says so and the recording still runs.
+- [ ] `screen-record --encoder` names VA-API on Intel/AMD with H.264 encode
+      support, and recordings play; on NVIDIA it names NVENC or an installed
+      gpu-screen-recorder, and the menubar indicator still tracks and stops it.
+- [ ] `Super+Print` / `Super+Shift+C`: clicking a pixel copies its hex value and
+      the notification shows a swatch of that colour; Escape is silent.
 - [ ] In Clock hover mode, reveal the indicators and click the clock without
       moving the pointer. They stay expanded; moving into Calendar or switching
       to another bar view causes no collapse or flicker. Close the view and
@@ -383,7 +402,20 @@ is manual.
       Connected status; the physical adapters are a quiet line under it.
       Selecting one opens its settings below, under its name.
 - [ ] Connect to Wi-Fi… and Advanced connection editor share one row with the
-      VPN, certificates, bridges and routing hint.
+      certificates, bridges and routing hint.
+- [ ] VPN lists each NetworkManager VPN and WireGuard profile with its type and
+      state and a switch. Connecting a password VPN opens the VPN plugin's own
+      sign-in dialog; Cancel there reads "The VPN sign-in was canceled" on the
+      row. Remove… asks on a second row before anything is deleted. With no
+      VPN the group says so; Import VPN… opens a file picker in Downloads that
+      lists only .ovpn and .conf files, and the import does not connect.
+- [ ] Hotspot appears only with a Wi-Fi adapter. While Wi-Fi is connected on
+      the only adapter, a warning says that network disconnects. Turning it on
+      shows Show password and QR code, which opens the join card with the
+      password spelled out; a phone joins by scanning it and gets an address
+      and internet. After a reboot the hotspot is off.
+- [ ] The drawer's Network tab shows a VPN switch under Tailscale only when a
+      VPN profile exists: the connected one, else the one used last.
 - [ ] Autoconnect and Metered connection read as ordinary rows; the metered
       label no longer runs into its choices.
 - [ ] IPv4 or IPv6 Manual reveals labelled Address and Gateway fields. A
@@ -478,13 +510,37 @@ is manual.
       rolled-back deployment, red when the service is down.
 - [ ] Last deploy check reads "Today at 19:16", "Yesterday at …", a weekday or
       a date in local time, in the Region clock format; Refresh re-reads it.
+- [ ] The settings file path elides in the middle; Open saves then opens it.
+      Reset all settings is red, resets every page and offers the rail's
+      eight-second Undo.
+- [ ] About has no recovery points; they are on Backup & recovery.
+
+## Backup & recovery page
+
+- [ ] Without backups, the Backups group is one row, "Personal files · Not
+      backed up", with Set up….
+- [ ] Set up… shows Step 1 of 3 in the page: Drive or folder / SSH server,
+      Choose… opening at the mounted drives, Cancel and Continue. A folder in
+      the home folder is refused with a reason; an SSH host that is not yet
+      trusted fails with "does not trust … yet".
+- [ ] Step 2 of 3 shows the recovery key once in large mono text with Copy;
+      the copied key pastes, and does not appear in clipboard history.
+      "I saved it, back up now" starts the first backup (Step 3 of 3) with a
+      percentage that keeps updating after closing and reopening Settings.
+- [ ] Choosing a drive that already holds CybexOS backups asks for their
+      recovery key and connects them; a wrong key says so.
+- [ ] Last backup reads "Today at …" with a green dot and "Next backup …";
+      unplugging the drive turns Destination's hint into "… is not
+      connected." and Back up now fails with that reason in a notification.
+- [ ] Automatic backups switches off and on; the hint then reads "Automatic
+      backups are off."
+- [ ] Restore… lists the backups by local time; restoring "Documents" opens
+      Files at ~/Restored/<date>/Documents and leaves ~/Documents unchanged.
 - [ ] Recovery points list as rows named by local time, with the UTC stamp the
       boot menu shows for bootable points. Restore… turns the row into a
       warning with Confirm restore and Cancel. With none, the row says
       "None yet".
-- [ ] The settings file path elides in the middle; Open saves then opens it.
-      Reset all settings is red, resets every page and offers the rail's
-      eight-second Undo.
+- [ ] Search for "backup", "restore" or "rollback" lands on this page.
 
 ## Regression sweep
 

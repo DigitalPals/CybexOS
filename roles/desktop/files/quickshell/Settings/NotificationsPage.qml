@@ -35,12 +35,12 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Behavior"
+            title: I18n.tr("Behavior")
 
             SwitchRow {
                 width: parent.width
-                label: "Do Not Disturb"
-                description: "Mutes pop-ups; notifications still collect in the center"
+                label: I18n.tr("Do Not Disturb")
+                description: I18n.tr("Mutes pop-ups; notifications still collect in the center")
                 checked: Notifs.dnd
                 dirty: Settings.notifDnd !== Settings.defaults.notifDnd
                     || Settings.notifDndUntilMs !== Settings.defaults.notifDndUntilMs
@@ -49,13 +49,13 @@ SettingsPage {
             }
             PickerRow {
                 width: parent.width
-                label: "Quiet hours"
+                label: I18n.tr("Quiet hours")
                 settingKey: "notifQuiet"
                 resetKeys: ["notifQuiet", "notifQuietStart", "notifQuietEnd"]
                 model: [
-                    { value: "off", label: "Off" },
-                    { value: "nights", label: "Nights" },
-                    { value: "custom", label: "Custom" }
+                    { value: "off", label: I18n.tr("Off") },
+                    { value: "nights", label: I18n.tr("Nights") },
+                    { value: "custom", label: I18n.tr("Custom") }
                 ]
                 caption: page.quietRange
                     ? SettingsHelpers.formatMinutes(page.quietRange.start) + " – "
@@ -73,13 +73,13 @@ SettingsPage {
                     spacing: Theme.settingsRowSpacing
                     TimeRow {
                         width: parent.width
-                        label: "Quiet from"
+                        label: I18n.tr("Quiet from")
                         settingKey: "notifQuietStart"
                         resetLabel: "Quiet hours start"
                     }
                     TimeRow {
                         width: parent.width
-                        label: "Quiet until"
+                        label: I18n.tr("Quiet until")
                         settingKey: "notifQuietEnd"
                         resetLabel: "Quiet hours end"
                         note: Settings.notifQuietEnd < Settings.notifQuietStart
@@ -90,15 +90,15 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Duration"
+                label: I18n.tr("Duration")
                 settingKey: "notifDuration"
                 resetLabel: "Toast duration"
                 min: 4; max: 20; step: 1; unit: "s"
-                hint: "Critical alerts ignore the timer and stay until dismissed"
+                hint: I18n.tr("Critical alerts ignore the timer and stay until dismissed")
             }
             CornerPickerRow {
                 width: parent.width
-                label: "Position"
+                label: I18n.tr("Position")
                 settingKey: "notifPosition"
                 resetLabel: "Toast position"
             }
@@ -106,7 +106,7 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Style"
+            title: I18n.tr("Style")
 
             // The one preview that stays (turn-3 design): a toast is not
             // otherwise on screen, so the style rows keep a live sample card.
@@ -143,7 +143,7 @@ SettingsPage {
                         border.color: Theme.surfaceBorderWidth > 0
                             ? Theme.surfaceBorderColor : Theme.hairlineSoft
                         Accessible.role: Accessible.StaticText
-                        Accessible.name: "Preview: a toast from WhatsApp, Sarah Jansen"
+                        Accessible.name: I18n.tr("Preview: a toast from WhatsApp, Sarah Jansen")
 
                         Row {
                             id: sampleContent
@@ -179,7 +179,7 @@ SettingsPage {
                                         id: sampleApp
                                         anchors.left: parent.left
                                         width: Math.max(0, parent.width - sampleTime.width - Theme.iconTextSpacing)
-                                        text: "WhatsApp"
+                                        text: I18n.tr("WhatsApp")
                                         font.family: Theme.fontMenu
                                         font.pixelSize: Theme.typography.metadata
                                         font.weight: Theme.weightMedium
@@ -197,7 +197,7 @@ SettingsPage {
                                 }
                                 Text {
                                     width: parent.width
-                                    text: "Sarah Jansen"
+                                    text: I18n.tr("Sarah Jansen")
                                     font.family: Theme.fontMenu
                                     font.pixelSize: Theme.typography.notification
                                     font.weight: Theme.weightSemibold
@@ -207,8 +207,7 @@ SettingsPage {
                                 Text {
                                     visible: Settings.notifBodyLines > 0
                                     width: parent.width
-                                    text: "Sure, see you at 12:30 tomorrow then! I'll bring the plans, "
-                                        + "the paint samples and the measurements for the kitchen."
+                                    text: I18n.tr("Sure, see you at 12:30 tomorrow then! I'll bring the plans, the paint samples and the measurements for the kitchen.")
                                     font.family: Theme.fontMenu
                                     font.pixelSize: Theme.typography.notification
                                     color: Theme.textMid
@@ -262,7 +261,7 @@ SettingsPage {
                             id: sendTest
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "Send test"
+                            text: I18n.tr("Send test")
                             glyph: "notifications"
                             Accessible.name: Notifs.toastsSuppressed
                                 ? "Send test notification; toasts are silenced, it lands in the center"
@@ -286,56 +285,56 @@ SettingsPage {
 
             PickerRow {
                 width: parent.width
-                label: "Density"
+                label: I18n.tr("Density")
                 settingKey: "notifDensity"
                 resetLabel: "Toast density"
                 model: [
-                    { value: "compact", label: "Compact" },
-                    { value: "default", label: "Default" },
-                    { value: "roomy", label: "Roomy" }
+                    { value: "compact", label: I18n.tr("Compact") },
+                    { value: "default", label: I18n.tr("Default") },
+                    { value: "roomy", label: I18n.tr("Roomy") }
                 ]
             }
             SwitchRow {
                 width: parent.width
-                label: "App icons"
+                label: I18n.tr("App icons")
                 settingKey: "notifIcons"
-                description: "Show the sender's icon on each card"
+                description: I18n.tr("Show the sender's icon on each card")
             }
             SwitchRow {
                 width: parent.width
-                label: "Timeout progress"
+                label: I18n.tr("Timeout progress")
                 settingKey: "notifProgress"
-                description: "A thin bar counts down the time a toast has left"
+                description: I18n.tr("A thin bar counts down the time a toast has left")
             }
             // Four stops (the store keeps 0–3 lines) read better as choices
             // than as a slider with four detents.
             PickerRow {
                 width: parent.width
-                label: "Body preview"
+                label: I18n.tr("Body preview")
                 settingKey: "notifBodyLines"
                 model: [
-                    { value: 0, label: "Off" },
-                    { value: 1, label: "1 line" },
-                    { value: 2, label: "2 lines" },
-                    { value: 3, label: "3 lines" }
+                    { value: 0, label: I18n.tr("Off") },
+                    { value: 1, label: I18n.tr("1 line") },
+                    { value: 2, label: I18n.tr("2 lines") },
+                    { value: 3, label: I18n.tr("3 lines") }
                 ]
             }
         }
 
         SettingsGroup {
             width: parent.width
-            title: "On-screen display"
+            title: I18n.tr("On-screen display")
 
             PickerRow {
                 width: parent.width
-                label: "Placement"
+                label: I18n.tr("Placement")
                 settingKey: "osd"
                 resetLabel: "OSD placement"
                 model: [
-                    { value: "top", label: "Top center" },
-                    { value: "bottom", label: "Bottom center" }
+                    { value: "top", label: I18n.tr("Top center") },
+                    { value: "bottom", label: I18n.tr("Bottom center") }
                 ]
-                hint: "Where the volume and brightness pop-up appears"
+                hint: I18n.tr("Where the volume and brightness pop-up appears")
             }
         }
     }

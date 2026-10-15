@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "Format.js" as Format
+import "LauncherProviders.js" as ProviderHelpers
 
 // Launcher lifecycle and persistent application-use ranking. The selected
 // screen is captured when opening so the overlay does not jump mid-search.
@@ -12,14 +13,36 @@ Singleton {
     property bool open: false
     property var screen: null
     property var usage: ({})
+    // Where the next open lands: a tab and the text typed into it. Super+Space
+    // always opens plain Apps; `open(providerId)` asks for another tab.
+    property var openRequest: ({ tab: "apps", query: "" })
 
     readonly property string usageFile: Quickshell.statePath("launcher-usage.json")
+
+    // An open launcher switches to the requested tab in place.
+    signal targetRequested()
 
     function toggle(targetScreen) {
         if (open) {
             close();
             return;
         }
+        openRequest = { tab: "apps", query: "" };
+        show(targetScreen);
+    }
+
+    // `cybexos-runtime ipc launcher open clipboard` (Super+Ctrl+V). Opening
+    // never toggles closed: the key always shows the requested tab.
+    function openProvider(providerId, targetScreen) {
+        openRequest = ProviderHelpers.openTarget(providerId);
+        if (open) {
+            targetRequested();
+            return;
+        }
+        show(targetScreen);
+    }
+
+    function show(targetScreen) {
         Popouts.close();
         screen = targetScreen ?? Screens.focused;
         open = true;

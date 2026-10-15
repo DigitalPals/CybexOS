@@ -1,8 +1,9 @@
 # System theme
 
 The shell's appearance settings — dark or light, the fixed or wallpaper
-palette, the accent, the bar colour and the font — reach the rest of the
-desktop, not just the Quickshell surfaces. Changing any of them in Settings →
+palette (or a [named theme's](shell-appearance.md#themes)), the accent, the
+bar colour, the font and the text size — reach the rest of the desktop, not
+just the Quickshell surfaces. Changing any of them in Settings →
 Appearance, or a wallpaper change in wallpaper mode, recolours the terminal,
 the compositor, GTK applications and the lock screen within about a second.
 
@@ -31,6 +32,7 @@ the compositor, GTK applications and the lock screen within about a second.
 | `colors.stroke` | `stroke` flattened over `background` |
 | `colors.red`, `amber`, `green` | `redText`, `amber`, `ok` |
 | `font.ui`, `font.mono` | `fontMenu`, `fontMono` |
+| `font.size` | `fontBaseSize`: base size × interface scale × text size, in logical pixels (14 on a fresh install) |
 | `radius` | `surfaceRadius` (the compositor's window rounding) |
 | `glass` | `glassActive` |
 | `wallpaper` | absolute path of the current wallpaper, or empty |
@@ -39,6 +41,28 @@ The sixteen terminal colours are derived by `theme_tokens.ansi_palette()`:
 fixed hues per mode, pushed toward the ink colour only where a hue would fall
 below 4.5:1 on the base, with black and white taken from the shell's text
 ladder.
+
+## Text size
+
+`font.size` is the size the shell itself draws body text at
+(`Common/ShellMetrics.js`), so Settings → Appearance → Text size, Interface
+scale and the base font size reach the terminal, GTK applications and the
+lock screen too. The targets do not share a unit — kitty and hyprlock size
+fonts in points, GTK takes a scaling factor — nor a default: kitty's is
+12 pt, GTK's 11 pt, the lock screen's clock 84. Converting the shell's 14 px
+to 10.5 pt would shrink all of them, so each keeps its own default at the
+shell's default size and scales it by the same ratio,
+`theme_tokens.text_scale()` = `font.size` / 14, bounded to GNOME's 0.5–3.0:
+
+| Shell text | `font.size` | Scale | kitty `font_size` | GTK `text-scaling-factor` | Lock clock |
+| --- | --- | --- | --- | --- | --- |
+| Default | 14 | 1.00 | 12.0 | 1.00 | 84 |
+| Large | 16 | 1.14 | 13.7 | 1.14 | 96 |
+| Larger | 18 | 1.29 | 15.4 | 1.29 | 108 |
+| 150% interface scale | 21 | 1.50 | 18.0 | 1.50 | 126 |
+
+Tokens saved by an older shell have no `font.size` and render as before.
+User overrides keep winning exactly as for colours; see each target.
 
 ## Diagnostics
 
@@ -62,17 +86,18 @@ colours.
 
 ### Kitty
 
-`scripts/theme_kitty.py` renders `kitty.conf`: foreground and background
+`scripts/theme_kitty.py` renders `kitty.conf`: `font_size` (12 pt scaled by
+the shell's text size), foreground and background
 (`text`, `background`), the selection (`accentContainer` with the ink the shell
 draws on it), cursor and URLs (`accentText`, kept at 4.5:1 on the base), tabs
 (the active one filled `accent`/`onAccent`, inactive ones `surface` with
 `textMuted`), window borders, the three marker colours and `color0`–`color15`
-from `ansi_palette()`. Fonts and opacity stay in the vendor fragment.
+from `ansi_palette()`. The font family and opacity stay in the vendor fragment.
 
 The vendor fragment, `roles/dotfiles/files/kitty.conf` (installed as
 `~/.config/kitty/cybexos.conf` and included from the user's `kitty.conf`),
-carries the same settings for the default dark theme as a fallback, and a test
-keeps it equal to that render. Its last line,
+carries the same settings for the default dark theme, and `font_size 12.0`,
+as a fallback, and a test keeps it equal to that render. Its last line,
 `include ~/.local/state/cybexos/theme/kitty.conf`, loads the generated file
 over it. kitty expands `~` in `include` and only logs a missing file, so a
 terminal started before the shell's first export still opens with the
@@ -89,8 +114,9 @@ SIGUSR1 terminates. No running kitty (pkill status 1) is not an error. kitty's
 `auto_reload_config` watcher does not help: it watches only the top-level
 `kitty.conf`.
 
-User colours win when they come later: put them in `~/.config/kitty/kitty.conf`
-after the `CYBEXOS MANAGED INCLUDE` block.
+User colours and a user `font_size` win when they come later: put them in
+`~/.config/kitty/kitty.conf` after the `CYBEXOS MANAGED INCLUDE` block. kitty
+applies a changed `font_size` to open windows on the same `SIGUSR1` reload.
 
 ### Hyprland
 
@@ -145,7 +171,7 @@ and follows the theme.
 
 ### GTK
 
-`scripts/theme_gtk.py` sets three `org.gnome.desktop.interface` keys with
+`scripts/theme_gtk.py` sets four `org.gnome.desktop.interface` keys with
 `gsettings`, and records them in `gtk.json`:
 
 | Key | Value |
@@ -153,6 +179,7 @@ and follows the theme.
 | `color-scheme` | `prefer-dark` or `prefer-light`, from `mode` |
 | `gtk-theme` | `adw-gtk3-dark` or `adw-gtk3` (package `adw-gtk3-theme`), so GTK 3 applications match libadwaita ones |
 | `accent-color` | the libadwaita accent (GNOME 47) nearest to `colors.accent` by hue; an accent with too little colour for a hue becomes `slate`. Skipped when the installed schema has no such key |
+| `text-scaling-factor` | `theme_tokens.text_scale()` to two decimals: `1.00` at the shell's default text size (see [Text size](#text-size)) |
 
 Running GTK 3 and libadwaita applications follow the change, and so do
 Firefox, Chromium and Electron applications, which read the same keys through
@@ -161,7 +188,14 @@ what was last applied: the keys are set again only when it changes, so after
 changing one by hand run `cybexos-runtime ipc theme apply` to restore the
 shell's values.
 
-The shell owns these keys. The converge only gives a key still at its schema
+`text-scaling-factor` is the one key people also set elsewhere (GNOME Tweaks,
+an accessibility guide), so the shell only replaces a value it set itself
+(recorded in `gtk-text-scale`) or GNOME's default 1.0. A value of the user's
+own wins, including over `theme apply` and on the first export after an
+upgrade, until `gsettings reset org.gnome.desktop.interface
+text-scaling-factor` hands the key back.
+
+The shell owns the other keys. The converge only gives a key still at its schema
 default (`color-scheme` `default`, `gtk-theme` `Adwaita`) the dark default a
 fresh install's first session shows until the shell has applied its tokens,
 so re-running Ansible never undoes a choice made in Settings.
@@ -182,10 +216,12 @@ not started through systemd keep the pin until the next reboot.
 ### Lock screen (hyprlock)
 
 `scripts/theme_hyprlock.py` renders `hyprlock.conf`: the vendor layout (clock,
-date and password field) in `font.ui`, with the clock in `text`, the date and
-the field's placeholder in `textMuted`, the field filled with `surface` at 85%
-and ringed with `stroke`, turning `accent` while checking and `red` on a
-failure.
+date, password field and the fingerprint prompt under it) in `font.ui`, sized
+by the shell's text size (the clock's 84, the date's 24, the 300×54 field and
+the gaps between them all scale together, so larger text never overlaps), with
+the clock in `text`, the date, the field's placeholder and the fingerprint
+prompt in `textMuted`, the field filled with `surface` at 85% and ringed with
+`stroke`, turning `accent` while checking and `red` on a failure.
 
 With a wallpaper, the background is that image, blurred (3 passes of size 8,
 enough to reduce it to soft fields of colour) under a full-screen scrim of
@@ -214,6 +250,9 @@ picks the configuration in this order:
    `~/.local/state/…`), when it is a non-empty regular file, not a link, whose
    first line is the renderer's header;
 3. the vendor `~/.local/share/cybexos/runtime/hypr/hyprlock.conf`.
+
+For the second and third, it then adds the sign-in factors (fingerprint and
+security keys) at lock time; see [Fingerprints and security keys](security.md).
 
 The vendor file is the renderer's output for the fixed dark palette without a
 wallpaper, so the lock screen looks the same before the shell's first export;

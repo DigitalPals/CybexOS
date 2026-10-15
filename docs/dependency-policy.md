@@ -56,6 +56,12 @@ Distrobox image, malformed toolchain pins, drift in the CLI installer
 template, or a changed YOLO alias. It runs inside the Python stage of
 `tests/run`.
 
+Each ISO build lists the pinned downloads it bundles, with their URLs and
+SHA-256 digests or commits, in its SPDX SBOM; see
+[ISO releases](iso-releases.md#software-bill-of-materials). `image/test_sbom.py`
+fails when a pin lacks a checksum or commit, or when its `enabled` condition is
+not a plain boolean or `{{ features.NAME }}` reference.
+
 ## Updating a pin
 
 1. Read the upstream release notes and identify the concrete compatibility or
@@ -77,12 +83,81 @@ cached artifacts on 2026-08-27; subsequent pin changes follow the review
 procedure above. This keeps clean installations reproducible without silently
 authorizing speculative upgrades.
 
+## Qualified compositor and shell series
+
+Hyprland (from the `sdegler/hyprland` COPR) and Quickshell (from Fedora) shape
+every part of the desktop: the Lua configuration API, IPC, and the QML the
+shell is written against. A release is qualified on one series of each,
+recorded in `qualified_package_series` in `inventory/group_vars/all.yml`:
+
+```yaml
+qualified_package_series:
+  - { name: hyprland, minimum: "0.56.2", below: "0.57~" }
+  - { name: quickshell, minimum: "0.2.1", below: "0.3~" }
+```
+
+Both installation paths turn each entry into a dnf versionlock entry in
+`/etc/dnf/versionlock.toml` that admits `minimum <= version < below`.
+`roles/base/tasks/versionlock.yml` does this for a checkout install (before
+any role installs either package), an image installation and upgrade
+reconciliation, all with `image/library/cybexos_versionlock.py`. Patch
+releases inside the series still install and update through `cybex update`;
+the next minor or major release is held back. The bounds compare like RPM
+versions with an empty release, so `>= 0.56.2` admits `0.56.2-2.fc44`, and a
+trailing `~` (`< 0.57~`) also excludes every `0.57` pre-release.
+
+CybexOS writes only entries whose comment starts with `CybexOS qualified
+series`, and replaces edits to them on the next converge. Every other entry is
+kept as written. dnf combines the entries for one name with OR, so an
+administrator who has qualified another build can admit it with an entry of
+their own, for example `sudo dnf versionlock add hyprland-0.57.0-1.fc44`,
+without touching ours. Uninstall removes only the CybexOS entries. A file that
+cannot be read safely (invalid TOML, an unknown version, values the converge
+could not write back) is left untouched and the converge warns that the series
+is not enforced. A converge also warns when an installed package is already
+outside its series; dnf keeps it but holds it there.
+
+The image build verifies the series as well: `image/compose` fails when the
+resolved `hyprland` or `quickshell` is missing or outside its series, so an
+ISO is never published on an unqualified compositor or shell.
+
+Because the COPR publishes only its newest build, a fresh install fails with
+"matches only packages excluded by versionlock" once upstream has moved to an
+unqualified series and the old build has been withdrawn; the same is true of
+an image build. That failure is deliberate: it is the point at which the next
+series must be reviewed. Installed systems are unaffected. The durable
+updater runs `dnf upgrade --no-best` (dnf's default, stated so a local
+`best=True` cannot override it), so a library upgrade that only the held-back
+compositor could use is skipped instead of failing the whole update. A Fedora
+major upgrade honors the lock too, so the target release's COPR must still
+carry a build in the series.
+
+### Qualifying a new series
+
+1. Read the upstream release notes, and for Hyprland the Lua configuration
+   changes (`/usr/share/hypr/stubs/hl.meta.lua` and the shipped
+   `/usr/share/hypr/hyprland.lua`), for anything the CybexOS Lua or the shell
+   relies on: `hl.*` calls, dispatchers, config keys, events and IPC output.
+2. Raise `minimum` and `below` in `qualified_package_series` together, run
+   `./tests/run` and `image/check-source`, then converge a test machine with
+   `./install` and confirm `rpm -q hyprland quickshell` reports the new
+   series and `hyprctl configerrors` is empty.
+3. Rebuild and qualify the ISO from the same revision (`image/build`,
+   `image/qualify`). The compose check fails if the resolved packages are
+   outside the new series.
+4. Release. Installed systems adopt the new lock when the release reconciles
+   (`cybex update`), and the packages move on the following update.
+
+To pull in only a reviewed patch release, nothing changes: it is inside the
+series already.
+
 ## Intentionally moving channels
 
 Some inputs should move, but their boundary is explicit:
 
 - Fedora/RPM Fusion/vendor repository packages and system Flatpaks track their
   configured release channels so security fixes arrive through `./update`.
+  Hyprland and Quickshell move only within their qualified series (above).
 - T3 Code is deliberately the Nightly application. Its updater verifies the
   selected release asset but tracking a prerelease is part of that feature's
   contract.

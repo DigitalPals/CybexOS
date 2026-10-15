@@ -22,6 +22,9 @@ case $command_name in
   agent)
     exec "$agent_command" "$@"
     ;;
+  webapp)
+    exec {{ (primary_home + '/.local/bin/cybexos-webapp') | quote }} "$@"
+    ;;
   dev)
     exec {{ (primary_home + '/.local/bin/cybexos-runtime') | quote }} dev "$@"
     ;;
@@ -30,6 +33,12 @@ case $command_name in
     ;;
   shell)
     exec {{ (primary_home + '/.local/bin/cybexos-runtime') | quote }} shell "$@"
+    ;;
+  backup)
+    exec {{ (primary_home + '/.local/bin/cybexos-backup') | quote }} "$@"
+    ;;
+  theme)
+    exec {{ (primary_home + '/.local/bin/cybexos-theme') | quote }} "$@"
     ;;
   verify|doctor)
     verify_scope=false
@@ -43,6 +52,16 @@ case $command_name in
     ;;
   uninstall)
     exec "$source_dir/uninstall" "$@"
+    ;;
+  report)
+    exec {{ (primary_home + '/.local/bin/cybexos-report') | quote }} "$@"
+    ;;
+  factory-reset)
+    # Only an ISO installation has a factory state to return to.
+    echo 'cybex factory-reset is available only on a system installed from the CybexOS ISO.' >&2
+    echo 'A checkout installation runs on your existing Fedora system: use ./uninstall to' >&2
+    echo 'remove CybexOS, or reinstall from the ISO to get factory reset.' >&2
+    exit 2
     ;;
   version|--version|-V)
     tr -d '\n' <"$source_dir/VERSION"
@@ -58,13 +77,18 @@ Commands:
   update       Check for and apply CybexOS and system updates
   upgrade-system Prepare, perform, or inspect a supported Fedora major upgrade
   agent        Launch or choose the default AI coding agent
+  webapp       Install, remove, list, or launch web apps
   dev          Select, inspect, or disable a live development checkout
   plugin       Install, update, clone, remove, or configure desktop plugins
   shell        Inspect shell health, enter safe mode, or retry the full desktop
+  backup       Back up, check, or restore personal files (setup, now, status, restore)
+  theme        List, apply, install, export, or remove appearance themes
   verify       Verify repository and installed-system health
   doctor       Alias for verify
   uninstall    Remove project-managed configuration
   version      Print the installed source version
+  report       Collect a redacted diagnostic bundle for a bug report
+  factory-reset Not available here (ISO installations only)
 EOF
     ;;
   *)

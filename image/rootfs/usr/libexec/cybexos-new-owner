@@ -1,0 +1,992 @@
+#!/usr/bin/python3
+"""Set up a computer prepared for a new owner (OEM mode), before any login.
+
+An installation made with "Prepare for a new owner", an unattended seed
+with `oem: true`, or `cybex factory-reset` leaves /etc/cybexos/oem.json and
+no desktop account. cybexos-new-owner.service runs this on the first console
+before the login screen starts. The owner chooses a language, keyboard,
+account, password and time zone. On an encrypted disk the password also
+replaces the temporary disk passphrase: the new passphrase is added, every
+other key slot and token is removed, and the old passphrase is checked to no
+longer open the disk. The account receives the same provisioning as an
+interactive installation, the OEM state is removed, and the computer
+restarts into the normal first login and welcome window.
+
+The questions are asked by a graphical window (cybexos-new-owner-gui) shown
+in cage. The window runs as an unprivileged transient user and only returns
+answers, as JSON lines on a pipe; this root process checks every answer again
+and does all the work. When cage or the window cannot start, stops answering
+or breaks the protocol, the same questions are asked as text on this console.
+
+No password is written to a file, logged, passed in the environment or on a
+command line.
+"""
+import contextlib
+import fcntl
+import getpass
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import pwd
+import re
+import select
+import struct
+import subprocess
+import sys
+import termios
+import time
+import unicodedata
+
+OEM = Path('/etc/cybexos/oem.json')
+LIBEXEC = Path(__file__).resolve().parent
+CONFIGURE = '/usr/libexec/cybexos-configure-installed'
+SEED_USERS = '/usr/libexec/cybexos-seed-installed-users'
+RESERVED = {'root', 'liveuser', 'bin', 'daemon', 'adm', 'mail', 'ftp', 'nobody',
+            'dbus', 'systemd', 'gdm', 'sddm', 'sshd', 'polkitd', 'chrony'}
+USERNAME = re.compile(r'[a-z_][a-z0-9_-]{0,30}')
+# `layout` or `layout (variant)`, as the installer and this console write it.
+KEYBOARD = re.compile(r'([A-Za-z0-9_-]+)(?: \(([A-Za-z0-9_-]+)\))?')
+XKB_RULES = Path('/usr/share/X11/xkb/rules/evdev.lst')
+# Written before the account exists and removed with the OEM state, so an
+# attempt cut short by a crash or power loss is undone at the next start.
+PENDING = 'etc/cybexos/new-owner-pending.json'
+
+# The graphical window and the program that shows it.
+GUI = LIBEXEC / 'cybexos-new-owner-gui'
+QML = LIBEXEC.parent / 'share/cybexos/new-owner/Main.qml'
+CAGE = Path('/usr/bin/cage')
+SYSTEMD_RUN = Path('/usr/bin/systemd-run')
+GUI_UNIT = 'cybexos-new-owner-gui.service'
+GUI_RUNTIME = '/run/cybexos-new-owner-gui'
+CONSOLE_ONLY = 'cybexos.new-owner=console'
+# A window that has not drawn by then has failed to start; one that never
+# sees a key press is not usable (the console keyboard still is).
+READY_TIMEOUT = 60
+INPUT_TIMEOUT = 300
+START_ATTEMPTS = 2
+# The longest line the window may send: generous for 512-character
+# passwords escaped as JSON, far below anything that could exhaust memory.
+MAX_MESSAGE = 32768
+# What the window may say, with the longest text each field may hold.
+MESSAGES = {
+    'ready': {},
+    'active': {},
+    'restart': {},
+    'keyboard': {'keyboard': 80, 'locale': 80},
+    'submit': {'locale': 80, 'timezone': 80, 'full_name': 200, 'username': 64,
+               'password': 600, 'confirm': 600, 'startup': 600},
+}
+# English text for the problem codes the window translates itself.
+PROBLEMS = {
+    'full-name': 'Use at most 128 characters, without colons.',
+    'username-format': 'Use 1–31 lowercase letters, numbers, underscores or dashes, starting with a letter.',
+    'username-reserved': 'That name is reserved for the system.',
+    'username-taken': 'That name is already in use.',
+    'password-length': 'Use a password of 12–512 characters.',
+    'password-control': 'The password cannot contain control characters.',
+    'password-mismatch': 'The passwords do not match.',
+    'startup-wrong': 'That passphrase does not unlock this disk.',
+    'boot-keymap': 'This layout cannot be used at the disk unlock screen. Choose another layout.',
+    'choice': 'Choose an item from the list.',
+}
+
+
+class SetupError(Exception):
+    """A step failed; the message is safe to show and holds no secret."""
+
+
+class Unavailable(Exception):
+    """The graphical setup cannot be used; the console asks instead."""
+
+
+class NotStarted(Unavailable):
+    """The window never appeared; a second start may still work."""
+
+
+class ProtocolError(Unavailable):
+    """The window sent something it never would; it is not trusted further."""
+
+
+class FieldError(Exception):
+    """An answer the window should ask for again; carries no answer text."""
+
+    def __init__(self, field, code):
+        super().__init__(f'{field}: {code}')
+        self.field, self.code = field, code
+
+
+def log(message):
+    # The unit sends standard error to the journal, never to the console.
+    print(f'cybexos-new-owner: {message}', file=sys.stderr, flush=True)
+
+
+def load(name, filename):
+    loader = importlib.machinery.SourceFileLoader(name, str(LIBEXEC / filename))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def assignments(path):
+    """KEY=value pairs of a systemd file such as vconsole.conf."""
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return {}
+    values = {}
+    for line in lines:
+        key, separator, value = line.strip().partition('=')
+        if separator and not key.startswith('#'):
+            values[key.strip()] = value.strip().strip('"\'')
+    return values
+
+
+def output(run, command):
+    return run(command, check=True, capture_output=True, text=True, timeout=60).stdout
+
+
+# ---- disk encryption -----------------------------------------------------------
+
+def luks_devices(run=subprocess.run):
+    """LUKS devices backing the root filesystem, every Btrfs member included."""
+    login = load('cybexos_login_prepare', 'cybexos-login-prepare')
+    mounts = json.loads(output(run, ['findmnt', '--json', '--mountpoint', '/', '--output',
+                                     'SOURCE,TARGET,FSTYPE']))['filesystems']
+    source = mounts[0]['source'].split('[', 1)[0]
+    members = (login.btrfs_members(output(run, ['btrfs', 'filesystem', 'show', '--raw', '/']))
+               if mounts[0]['fstype'] == 'btrfs' else [source])
+    found = []
+
+    def visit(nodes, below_crypt):
+        for node in nodes:
+            if below_crypt and node.get('fstype') == 'crypto_LUKS' and node.get('path') not in found:
+                found.append(node['path'])
+            visit(node.get('children', []), node.get('type') == 'crypt')
+
+    for member in members:
+        tree = json.loads(output(run, ['lsblk', '--inverse', '--json', '--output', 'PATH,TYPE,FSTYPE', member]))
+        visit(tree['blockdevices'], False)
+    return found
+
+
+def opens(device, passphrase, run=subprocess.run, slot=None):
+    command = ['cryptsetup', 'open', '--test-passphrase', '--key-file=-']
+    command += [f'--key-slot={slot}'] if slot is not None else []
+    result = run(command + [device], input=passphrase.encode(), capture_output=True, timeout=120, check=False)
+    return result.returncode == 0
+
+
+def metadata(device, run=subprocess.run):
+    """Active LUKS2 key slots and tokens, from the header's JSON metadata."""
+    document = json.loads(output(run, ['cryptsetup', 'luksDump', '--dump-json-metadata', device]))
+    return sorted(document.get('keyslots', {}), key=int), sorted(document.get('tokens', {}), key=int)
+
+
+def rekey(device, current, new, run=subprocess.run):
+    """Leave exactly one key slot, opened by `new`, and no tokens.
+
+    Re-running after an interruption is safe: an existing `new` slot is kept
+    and the remaining slots are removed. The volume key itself is unchanged.
+    """
+    if current != new and not opens(device, new, run):
+        reader, writer = os.pipe()
+        try:
+            os.write(writer, new.encode())
+            os.close(writer)
+            writer = None
+            result = run(['cryptsetup', 'luksAddKey', '--batch-mode', '--key-file=-', device, f'/dev/fd/{reader}'],
+                         input=current.encode(), pass_fds=(reader,), capture_output=True, timeout=300, check=False)
+        finally:
+            os.close(reader)
+            if writer is not None:
+                os.close(writer)
+        if result.returncode != 0:
+            raise SetupError(f'The new passphrase could not be added to {device}. Nothing was removed.')
+    slots, tokens = metadata(device, run)
+    keep = next((slot for slot in slots if opens(device, new, run, slot)), None)
+    if keep is None:
+        raise SetupError(f'The new passphrase does not open {device}. Nothing was removed.')
+    for slot in slots:
+        if slot != keep:
+            result = run(['cryptsetup', 'luksKillSlot', '--batch-mode', '--key-file=-', device, slot],
+                         input=new.encode(), capture_output=True, timeout=120, check=False)
+            if result.returncode != 0:
+                raise SetupError(f'Key slot {slot} of {device} could not be removed.')
+    for token in tokens:
+        run(['cryptsetup', 'token', 'remove', '--token-id', token, device],
+            capture_output=True, timeout=60, check=True)
+    if current != new and opens(device, current, run):
+        raise SetupError(f'The previous passphrase still opens {device}.')
+
+
+def initramfs_keymap(root=Path('/'), run=subprocess.run):
+    """The console keymap in the running kernel's initramfs, or None."""
+    image = root / 'boot' / f'initramfs-{os.uname().release}.img'
+    try:
+        result = run(['lsinitrd', '--file', 'etc/vconsole.conf', str(image)],
+                     capture_output=True, text=True, timeout=120, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    values = dict(line.strip().partition('=')[::2] for line in result.stdout.splitlines() if '=' in line)
+    return values.get('KEYMAP', '').strip().strip('"\'')
+
+
+def refresh_boot_keymap(root=Path('/'), run=subprocess.run):
+    """Rebuild the initramfs when its keymap differs from the chosen one.
+
+    The disk unlock prompt uses the keymap inside the initramfs. Once the
+    owner's password is the only passphrase, it must be typed with the
+    layout it was chosen with, so this runs before the re-key.
+    """
+    wanted = assignments(root / 'etc/vconsole.conf').get('KEYMAP', '')
+    if initramfs_keymap(root, run) == wanted:
+        return False
+    run(['dracut', '--regenerate-all', '--force'], check=True, timeout=1800)
+    return True
+
+
+# ---- the rules every answer follows --------------------------------------------
+
+def password_problem(password, confirm):
+    if not 12 <= len(password) <= 512:
+        return 'password-length'
+    if any(ord(char) < 32 or ord(char) == 127 for char in password):
+        return 'password-control'
+    if password != confirm:
+        return 'password-mismatch'
+    return ''
+
+
+def validate_password(password, confirm):
+    problem = password_problem(password, confirm)
+    return PROBLEMS[problem] if problem else ''
+
+
+def full_name_problem(full_name):
+    if len(full_name) <= 128 and ':' not in full_name and not any(ord(char) < 32 for char in full_name):
+        return ''
+    return 'full-name'
+
+
+def username_problem(username, taken=()):
+    if not USERNAME.fullmatch(username):
+        return 'username-format'
+    if username in RESERVED:
+        return 'username-reserved'
+    if username in taken:
+        return 'username-taken'
+    return ''
+
+
+def derive_username(full_name):
+    """A suggestion from the first word of a full name: "Jörg Smit" → "jorg"."""
+    plain = unicodedata.normalize('NFKD', full_name).encode('ascii', 'ignore').decode().lower()
+    first = next(iter(plain.split()), '')
+    return re.sub(r'^[^a-z_]+', '', re.sub(r'[^a-z0-9_-]', '', first))[:31]
+
+
+def existing_names(passwd=Path('/etc/passwd')):
+    return {line.split(':', 1)[0] for line in passwd.read_text().splitlines() if line}
+
+
+def split_keyboard(value):
+    match = KEYBOARD.fullmatch(value) if isinstance(value, str) else None
+    return (match[1], match[2] or '') if match else None
+
+
+def keyboard_choices(rules=None, run=subprocess.run):
+    """Layouts and their variants as `layout`/`layout (variant)` with labels."""
+    try:
+        text = (rules or XKB_RULES).read_text()
+    except OSError:
+        text = ''
+    section, layouts, variants = '', {}, []
+    for line in text.splitlines():
+        if line.startswith('! '):
+            section = line[2:].strip()
+            continue
+        name, _, description = line.strip().partition(' ')
+        description = description.strip()
+        if section == 'layout' and name and description:
+            layouts[name] = description
+        elif section == 'variant' and ':' in description:
+            layout, _, label = description.partition(':')
+            if layout in layouts and split_keyboard(f'{layout} ({name})'):
+                variants.append({'id': f'{layout} ({name})', 'label': label.strip()})
+    entries = [{'id': name, 'label': label} for name, label in layouts.items() if split_keyboard(name)] + variants
+    if not entries:
+        # Without xkeyboard-config's list, localed's own names stand in.
+        entries = [{'id': name, 'label': name}
+                   for name in output(run, ['localectl', 'list-x11-keymap-layouts']).split() if split_keyboard(name)]
+    return sorted(entries, key=lambda entry: (entry['label'].casefold(), entry['id']))
+
+
+def locale_choices(run=subprocess.run):
+    """The installed UTF-8 locales, the languages the installer offers."""
+    return [name for name in output(run, ['localectl', 'list-locales']).split()
+            if '.utf8' in name.lower().replace('-', '') and not name.startswith('C.')]
+
+
+def timezone_choices(run=subprocess.run):
+    zones = output(run, ['timedatectl', 'list-timezones']).split()
+    return sorted(set(zones) | {'UTC'})
+
+
+def current_settings(root=Path('/'), config=None):
+    """The installation's keyboard, language and time zone, as defaults."""
+    config = config or load('cybexos_config', 'cybexos-config')
+    layout, variant = config.keyboard(root)
+    keyboard = f'{layout} ({variant})' if layout and variant else layout
+    locale = assignments(root / 'etc/locale.conf').get('LANG', '')
+    try:
+        timezone = os.readlink(root / 'etc/localtime').partition('zoneinfo/')[2]
+    except OSError:
+        timezone = ''
+    return dict(keyboard=keyboard, locale=locale, timezone=timezone)
+
+
+# ---- the console questions -------------------------------------------------------
+
+class Console:
+    """Terminal input and output; tests replace it with scripted answers."""
+
+    def say(self, text=''):
+        print(text, flush=True)
+
+    def ask(self, prompt):
+        return input(prompt)
+
+    def secret(self, prompt):
+        return getpass.getpass(prompt)
+
+
+def pick(console, title, values, default, optional=False):
+    """Choose from a long list by typing a value or the start of one."""
+    while True:
+        answer = console.ask(f'{title} [{default or "none"}]: ').strip() or default
+        if answer in values or (optional and answer == ''):
+            return answer
+        matches = [value for value in values if value.lower().startswith(answer.lower())][:40]
+        if len(matches) == 1:
+            return matches[0]
+        console.say('  ' + ('  '.join(matches) if matches else 'No match. Type the start of a name.'))
+
+
+def collect(console, run=subprocess.run, devices=(), passwd=Path('/etc/passwd')):
+    """Ask the questions; keyboard first, so every later answer is typed with it."""
+    console.say('\nWelcome to CybexOS. Set up this computer for its new owner.\n')
+    layouts = output(run, ['localectl', 'list-x11-keymap-layouts']).split()
+    layout = pick(console, '1/4 Keyboard layout, for example us, de or nl', layouts, 'us')
+    listed = run(['localectl', 'list-x11-keymap-variants', layout], capture_output=True, text=True,
+                 timeout=60, check=False)
+    variants = listed.stdout.split() if listed.returncode == 0 else []
+    variant = pick(console, '  Variant, for example dvorak', variants, '', optional=True) if variants else ''
+    # localed also converts the layout to the console keymap and applies it now.
+    run(['localectl', 'set-x11-keymap', layout, '', variant], check=True, timeout=60)
+    keyboard = f'{layout} ({variant})' if variant else layout
+    locales = output(run, ['localectl', 'list-locales']).split()
+    locale = pick(console, '2/4 Language, for example en_US.UTF-8 or nl_NL.UTF-8', locales, 'en_US.UTF-8')
+    console.say('\n3/4 Your account. You will use it to sign in and to run administrator commands.')
+    full_name = ''
+    while True:
+        full_name = console.ask('Full name (optional): ').strip()
+        if not full_name_problem(full_name):
+            break
+        console.say('  ' + PROBLEMS['full-name'])
+    taken = existing_names(passwd)
+    while True:
+        username = console.ask('Username: ').strip()
+        if not username_problem(username, taken):
+            break
+        console.say('  Use 1–31 lowercase letters, numbers, underscores or dashes, starting with a letter. '
+                    'System names are reserved.')
+    while True:
+        password = console.secret('Password: ')
+        problem = validate_password(password, console.secret('Confirm password: '))
+        if not problem:
+            break
+        console.say('  ' + problem)
+    startup = ''
+    if devices:
+        console.say('Your password also unlocks the disk at startup. To replace the temporary disk')
+        console.say('passphrase, type the passphrase you used to start this computer.')
+        for _attempt in range(3):
+            startup = console.secret('Passphrase used at startup: ')
+            if all(opens(device, startup, run) or opens(device, password, run) for device in devices):
+                break
+            console.say('  That passphrase does not unlock this disk.')
+        else:
+            raise SetupError('The startup passphrase was not accepted. Starting again.')
+    zones = output(run, ['timedatectl', 'list-timezones']).split()
+    timezone = pick(console, '4/4 Timezone, for example Europe/Amsterdam', zones + ['UTC'], 'UTC')
+    return dict(keyboard=keyboard, locale=locale, timezone=timezone, full_name=full_name,
+                username=username, password=password, startup=startup)
+
+
+def summary(console, answers, encrypted):
+    console.say('\nReady to set up:')
+    console.say(f"  Keyboard  {answers['keyboard']}")
+    console.say(f"  Language  {answers['locale']}")
+    console.say(f"  Timezone  {answers['timezone']}")
+    console.say(f"  Account   {answers['username']}" + (f" ({answers['full_name']})" if answers['full_name'] else ''))
+    if encrypted:
+        console.say('  Disk      your password replaces the temporary passphrase')
+    return console.ask('Create this account? [y/N]: ').strip().lower() in ('y', 'yes')
+
+
+# ---- applying them -----------------------------------------------------------------
+
+def read_state(path=OEM):
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict) or value.get('version') != 1 or type(value.get('passwordless_wheel', False)) is not bool:
+        raise SetupError('The new-owner state is not valid.')
+    return value
+
+
+def write_text(path, text, mode=0o644):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name('.' + path.name + '.new-owner')
+    temporary.write_text(text)
+    temporary.chmod(mode)
+    temporary.replace(path)
+
+
+def discard_account(username, saved_choices, root=Path('/'), run=subprocess.run):
+    """Undo a half-created account so the next attempt starts clean."""
+    pending = root / 'etc/cybexos/install-choices.json'
+    run(['userdel', '--force', '--remove', username], check=False, timeout=120)
+    (root / 'var/lib/AccountsService/users' / username).unlink(missing_ok=True)
+    (root / 'etc/cybexos/config.yml').unlink(missing_ok=True)
+    if saved_choices is not None and not pending.exists():
+        write_text(pending, saved_choices)
+
+
+def recover_interrupted(root=Path('/'), run=subprocess.run, passwd=None):
+    """Remove an account a crash or power loss left half-provisioned.
+
+    apply() records the account before creating it; only a finished setup
+    removes the OEM state, so this runs while the setup is still pending.
+    """
+    marker = root / PENDING
+    if not marker.is_file() or not (root / 'etc/cybexos/oem.json').is_file():
+        return ''
+    try:
+        record = json.loads(marker.read_text())
+    except (OSError, ValueError):
+        record = {}
+    username = record.get('username') if isinstance(record, dict) else None
+    saved = record.get('choices') if isinstance(record, dict) else None
+    if isinstance(username, str) and USERNAME.fullmatch(username) and username not in RESERVED:
+        try:
+            entry = passwd(username) if passwd else pwd.getpwnam(username)
+        except KeyError:
+            entry = None
+        # Only an ordinary account in /home; never a system account.
+        if entry is None or (entry.pw_uid >= 1000 and entry.pw_dir == f'/home/{username}'):
+            discard_account(username, saved if isinstance(saved, str) else None, root, run)
+            log('removed an account an interrupted setup left behind')
+        else:
+            username = ''
+    marker.unlink(missing_ok=True)
+    return username or ''
+
+
+def apply(answers, state, devices, run=subprocess.run, root=Path('/'), encrypted_root=None, config=None,
+          progress=None):
+    """Create and provision the account, then move the disk to its password.
+
+    Any failure removes the new account again, so the next attempt starts
+    clean. Re-keying is the last disk step and is safe to repeat. `progress`
+    hears each stage: account, desktop, disk (encrypted only) and finish.
+    """
+    progress = progress or (lambda _stage: None)
+    username = answers['username']
+    pending = root / 'etc/cybexos/install-choices.json'
+    # Provisioning consumes the saved choices; a failed attempt restores them.
+    saved_choices = pending.read_text() if pending.is_file() else None
+    progress('account')
+    run(['localectl', 'set-locale', f"LANG={answers['locale']}"], check=True, timeout=60)
+    run(['timedatectl', 'set-timezone', answers['timezone']], check=True, timeout=60)
+    marker = root / PENDING
+    write_text(marker, json.dumps({'version': 1, 'username': username, 'choices': saved_choices}) + '\n', 0o600)
+    try:
+        run(['useradd', '--create-home', '--groups', 'wheel', '--comment', answers['full_name'], username],
+            check=True, timeout=120)
+    except BaseException:
+        marker.unlink(missing_ok=True)
+        raise
+    try:
+        # chpasswd hashes with the system's configured method (yescrypt).
+        run(['chpasswd'], input=f"{username}:{answers['password']}\n", text=True, check=True, timeout=60)
+        # The installer's post-install hook writes the same session record.
+        write_text(root / 'var/lib/AccountsService/users' / username,
+                   '[User]\nSession=hyprland-quickshell\nXSession=hyprland-quickshell\nSystemAccount=false\n', 0o600)
+        # Fresh-account provisioning, exactly as Anaconda's in-target hook runs it:
+        # config.yml is recorded from the installation's saved choices first.
+        progress('desktop')
+        run([CONFIGURE, '--offline', '--user', username], check=True)
+        run([SEED_USERS], check=True)
+        sudo = root / 'etc/sudoers.d/10-wheel-nopasswd'
+        if state.get('passwordless_wheel'):
+            write_text(sudo, '%wheel ALL=(ALL:ALL) NOPASSWD: ALL\n', 0o440)
+        else:
+            sudo.unlink(missing_ok=True)
+        config = config or load('cybexos_config', 'cybexos-config')
+        if devices:
+            progress('disk')
+            # The unlock prompt must read the password with the chosen layout
+            # before it becomes the only passphrase.
+            refresh_boot_keymap(root, run)
+        for device in devices:
+            rekey(device, answers['startup'], answers['password'], run)
+        progress('finish')
+        if encrypted_root is None:
+            encrypted_root = load('cybexos_login_prepare', 'cybexos-login-prepare').encrypted_root
+        # As at installation: automatic login only on a verified encrypted root.
+        autologin = bool(devices) and encrypted_root() is True
+        values = config.current(root)
+        values.update(desktop_autologin=autologin, passwordless_wheel=state.get('passwordless_wheel', False))
+        config.write(config.render(values), root / 'etc/cybexos/config.yml')
+        write_text(root / 'etc/cybexos/login.json',
+                   json.dumps({'version': 1, 'user': username, 'autologin': autologin, 'live': False}) + '\n')
+    except BaseException:
+        # A half-created account must not survive into the next attempt.
+        discard_account(username, saved_choices, root, run)
+        marker.unlink(missing_ok=True)
+        raise
+    record = root / 'etc/cybexos/installation.json'
+    try:
+        details = json.loads(record.read_text())
+    except (OSError, ValueError):
+        details = {}
+    details.update(username=username, autologin=autologin, oem=False,
+                   passwordless_wheel=state.get('passwordless_wheel', False),
+                   passwordsInitiallyShared=bool(devices),
+                   newOwnerSetup=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()))
+    write_text(record, json.dumps(details) + '\n')
+    # The OEM state goes last: until here, the next start asks again.
+    (root / 'etc/cybexos/oem.json').unlink(missing_ok=True)
+    marker.unlink(missing_ok=True)
+    run(['restorecon', '-RF', '/etc/cybexos', '/etc/sudoers.d', '/var/lib/AccountsService/users',
+         f'/home/{username}'], check=False, timeout=300)
+    answers.pop('password', None)
+    answers.pop('startup', None)
+    return autologin
+
+
+# ---- the graphical window -------------------------------------------------------
+
+# linux/kd.h: the console's display and keyboard modes.
+KDSETMODE, KD_TEXT, KD_GRAPHICS = 0x4B3A, 0x00, 0x01
+KDGKBMODE, KDSKBMODE, K_OFF, K_UNICODE = 0x4B44, 0x4B45, 0x04, 0x03
+
+
+@contextlib.contextmanager
+def graphics_mode(fd=0, ioctl=fcntl.ioctl, flush=termios.tcflush):
+    """Hand the first console's screen and keyboard to the compositor.
+
+    seatd or logind would do this for a login session; the window runs
+    without one. While the console is in graphics mode with its keyboard
+    off, nothing typed in the window (a password included) reaches the
+    console's input buffer. Both are restored afterwards, even after a crash.
+    """
+    try:
+        saved = struct.unpack('i', ioctl(fd, KDGKBMODE, struct.pack('i', 0)))[0]
+        ioctl(fd, KDSETMODE, KD_GRAPHICS)
+    except OSError as error:
+        raise Unavailable('the first console is not a virtual terminal') from error
+    try:
+        ioctl(fd, KDSKBMODE, K_OFF)
+        yield
+    finally:
+        for request, value in ((KDSKBMODE, saved if saved != K_OFF else K_UNICODE), (KDSETMODE, KD_TEXT)):
+            with contextlib.suppress(OSError):
+                ioctl(fd, request, value)
+        with contextlib.suppress(OSError, termios.error):
+            flush(fd, termios.TCIFLUSH)
+
+
+def parse_message(line):
+    """One line from the window as a dict, or ProtocolError. Never echoes it."""
+    if len(line) > MAX_MESSAGE:
+        raise ProtocolError('the window sent an oversized message')
+    try:
+        message = json.loads(line.decode('utf-8'))
+    except (UnicodeDecodeError, ValueError):
+        raise ProtocolError('the window sent a malformed message') from None
+    if not isinstance(message, dict) or message.get('type') not in MESSAGES:
+        raise ProtocolError('the window sent an unknown message')
+    fields = MESSAGES[message['type']]
+    if set(message) != {'type', *fields}:
+        raise ProtocolError(f'the window sent an incomplete {message["type"]} message')
+    for name, limit in fields.items():
+        if not isinstance(message[name], str) or len(message[name]) > limit:
+            raise ProtocolError(f'the window sent an invalid {message["type"]} message')
+    return message
+
+
+class LineReader:
+    """Messages from a file descriptor, one JSON object per line."""
+
+    def __init__(self, fd, limit=MAX_MESSAGE, wait=select.select, read=os.read, clock=time.monotonic):
+        self.fd, self.limit, self.wait, self.read, self.clock = fd, limit, wait, read, clock
+        self.buffer = b''
+
+    def receive(self, timeout=None):
+        """The next message, None after `timeout` seconds, EOFError at the end."""
+        deadline = None if timeout is None else self.clock() + timeout
+        while b'\n' not in self.buffer:
+            if len(self.buffer) > self.limit:
+                raise ProtocolError('the window sent an oversized message')
+            remaining = None if deadline is None else deadline - self.clock()
+            if remaining is not None and remaining <= 0:
+                return None
+            if not self.wait([self.fd], [], [], remaining)[0]:
+                return None
+            chunk = self.read(self.fd, 4096)
+            if not chunk:
+                raise EOFError
+            self.buffer += chunk
+        line, _, self.buffer = self.buffer.partition(b'\n')
+        return parse_message(line)
+
+
+def gui_command(keyboard):
+    """systemd-run for cage and the window as an unprivileged transient user.
+
+    DynamicUser gives a fresh user that owns nothing on the disk, with a
+    read-only system, private /tmp and no new privileges. The video, input
+    and render groups open the screen and keyboard (libseat's noop backend:
+    there is no login session yet). cage reads the keyboard layout from the
+    XKB variables when it starts, so a new layout means a new session. The
+    answers travel on the inherited standard input and output, never in
+    this command or its environment.
+    """
+    layout, variant = split_keyboard(keyboard) or ('us', '')
+    environment = {
+        'XDG_RUNTIME_DIR': GUI_RUNTIME, 'HOME': GUI_RUNTIME,
+        'XDG_CACHE_HOME': f'{GUI_RUNTIME}/cache', 'XDG_CONFIG_HOME': f'{GUI_RUNTIME}/config',
+        'LIBSEAT_BACKEND': 'noop', 'XKB_DEFAULT_LAYOUT': layout,
+        # Software rendering works on every graphics device, before any driver
+        # setup; the window is simple enough not to need more.
+        'QT_QPA_PLATFORM': 'wayland', 'QT_QUICK_BACKEND': 'software',
+        'QT_WAYLAND_DISABLE_WINDOWDECORATION': '1', 'LANG': 'C.UTF-8',
+    }
+    if variant:
+        environment['XKB_DEFAULT_VARIANT'] = variant
+    properties = ['DynamicUser=yes', 'SupplementaryGroups=video input render',
+                  f'RuntimeDirectory={Path(GUI_RUNTIME).name}', 'RuntimeDirectoryMode=0700', 'UMask=0077',
+                  'RestrictAddressFamilies=AF_UNIX AF_NETLINK', 'NoNewPrivileges=yes']
+    return [str(SYSTEMD_RUN), '--quiet', '--wait', '--pipe', '--collect', f'--unit={GUI_UNIT}',
+            '--description=CybexOS setup window for a new owner',
+            *(f'--property={item}' for item in properties),
+            *(f'--setenv={name}={value}' for name, value in environment.items()),
+            '--', str(CAGE), '-d', '--', '/usr/bin/python3', '-I', str(GUI)]
+
+
+class Session:
+    """One run of cage and the setup window, talking over two pipes."""
+
+    def __init__(self, keyboard, run=subprocess.run, popen=subprocess.Popen, terminal=graphics_mode):
+        self.keyboard, self.run, self.popen, self.terminal = keyboard, run, popen, terminal
+        self.process = self.reader = self.mode = None
+
+    def start(self):
+        for verb in ('stop', 'reset-failed'):
+            self.run(['systemctl', verb, GUI_UNIT], check=False, capture_output=True, timeout=60)
+        mode = self.terminal()
+        mode.__enter__()
+        self.mode = mode
+        try:
+            self.process = self.popen(gui_command(self.keyboard), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        except OSError as error:
+            self.stop()
+            raise NotStarted('systemd-run could not be started') from error
+        except BaseException:
+            self.stop()
+            raise
+        with contextlib.suppress(OSError, AttributeError):
+            # The first message carries every list; never block on it.
+            fcntl.fcntl(self.process.stdin.fileno(), fcntl.F_SETPIPE_SZ, 1 << 20)
+        self.reader = LineReader(self.process.stdout.fileno())
+
+    def send(self, message):
+        """Tell the window something; it may already be gone."""
+        if self.process is None:
+            return
+        try:
+            self.process.stdin.write((json.dumps(message, separators=(',', ':')) + '\n').encode())
+            self.process.stdin.flush()
+        except (OSError, ValueError):
+            pass
+
+    def receive(self, timeout=None):
+        return self.reader.receive(timeout)
+
+    def stop(self):
+        if self.process is not None:
+            with contextlib.suppress(OSError, ValueError):
+                self.process.stdin.close()
+            try:
+                # Closing standard input asks the window to quit.
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.run(['systemctl', 'stop', GUI_UNIT], check=False, capture_output=True, timeout=60)
+                try:
+                    self.process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                    self.process.wait()
+            with contextlib.suppress(OSError, ValueError):
+                self.process.stdout.close()
+            self.process = None
+        if self.mode is not None:
+            self.mode.__exit__(None, None, None)
+            self.mode = None
+
+
+def graphical_unavailable(cmdline=Path('/proc/cmdline'), dev=Path('/dev'), find_spec=importlib.util.find_spec):
+    """Why the window cannot be shown, or '' when it can."""
+    try:
+        arguments = cmdline.read_text().split()
+    except OSError:
+        arguments = []
+    if CONSOLE_ONLY in arguments:
+        return f'{CONSOLE_ONLY} is on the kernel command line'
+    for program in (CAGE, SYSTEMD_RUN, GUI, QML):
+        if not program.is_file():
+            return f'{program} is missing'
+    if find_spec('PySide6') is None:
+        return 'PySide6 is missing'
+    if not any((dev / 'dri').glob('card[0-9]*')):
+        return 'there is no graphics device'
+    if not any((dev / 'input').glob('event[0-9]*')):
+        return 'there is no input device'
+    return ''
+
+
+class GraphicalSetup:
+    """Ask through the window; check and apply its answers as root."""
+
+    def __init__(self, state, run=subprocess.run, session=Session, devices=None, passwd=Path('/etc/passwd'),
+                 apply=apply, settings=None, root=Path('/'), config=None):
+        self.state, self.run, self.session_factory, self.passwd = state, run, session, passwd
+        self.apply, self.root, self.config = apply, root, config
+        self.devices = luks_devices(run) if devices is None else list(devices)
+        self.keyboards = keyboard_choices(run=run)
+        self.locales = locale_choices(run)
+        self.timezones = timezone_choices(run)
+        current = settings if settings is not None else current_settings(root, config)
+        ids = {entry['id'] for entry in self.keyboards}
+        self.keyboard = current.get('keyboard') if current.get('keyboard') in ids else 'us'
+        self.locale = next((value for value in (current.get('locale'), 'en_US.UTF-8') if value in self.locales),
+                           next(iter(self.locales), 'en_US.UTF-8'))
+        self.timezone = current.get('timezone') if current.get('timezone') in self.timezones else 'UTC'
+        self.active = False
+        self.done = False
+
+    def init_message(self, focus=''):
+        return {'type': 'init', 'version': 1, 'encrypted': bool(self.devices),
+                'keyboard': self.keyboard, 'locale': self.locale, 'timezone': self.timezone,
+                'focus': focus, 'keyboards': self.keyboards, 'locales': self.locales,
+                'timezones': self.timezones, 'taken': sorted(existing_names(self.passwd))}
+
+    def run_window(self):
+        """True once the account exists; Unavailable when the console must ask."""
+        focus, failures = '', 0
+        while True:
+            session = self.session_factory(self.keyboard, self.run)
+            outcome = 'retry'
+            try:
+                session.start()
+                session.send(self.init_message(focus))
+                outcome = self.converse(session)
+            except NotStarted as error:
+                failures += 1
+                # A window that never appeared gets one more try: a graphics
+                # driver can still be replacing the boot framebuffer.
+                if failures >= START_ATTEMPTS:
+                    raise
+                log(f'the setup window did not start ({error}); trying once more')
+            except Unavailable:
+                if not self.done:
+                    raise
+                outcome = 'done'
+            finally:
+                session.stop()
+            if outcome == 'done':
+                return True
+            if outcome == 'retry':
+                time.sleep(2)
+            else:
+                # After a new keyboard layout, the window opens where it was.
+                focus = 'keyboard-test'
+
+    def converse(self, session):
+        try:
+            message = session.receive(READY_TIMEOUT)
+        except EOFError:
+            message = None
+        if message is None or message['type'] != 'ready':
+            raise NotStarted('the setup window did not appear')
+        while True:
+            # After setup the window restarts the computer, or this does.
+            timeout = 60 if self.done else None if self.active else INPUT_TIMEOUT
+            try:
+                message = session.receive(timeout)
+            except EOFError:
+                if self.done:
+                    return 'done'
+                raise Unavailable('the setup window closed') from None
+            if message is None:
+                if self.done:
+                    return 'done'
+                raise Unavailable('no key press reached the setup window')
+            kind = message['type']
+            if kind == 'active':
+                self.active = True
+            elif kind == 'keyboard' and not self.done:
+                if self.choose_keyboard(session, message):
+                    return 'restart'
+            elif kind == 'submit' and not self.done:
+                self.active = True
+                if self.submit(session, message):
+                    self.done = True
+            elif kind == 'restart' and self.done:
+                return 'done'
+
+    def choose_keyboard(self, session, message):
+        """Apply a layout to the system now; True when cage must restart."""
+        self.locale = message['locale'] if message['locale'] in self.locales else self.locale
+        keyboard = message['keyboard']
+        parts = split_keyboard(keyboard)
+        if keyboard not in {entry['id'] for entry in self.keyboards} or parts is None:
+            session.send({'type': 'error', 'field': 'keyboard', 'code': 'choice'})
+            return False
+        if keyboard == self.keyboard:
+            session.send({'type': 'keyboard', 'keyboard': keyboard})
+            return False
+        try:
+            # localed also converts the layout to the console keymap.
+            self.run(['localectl', 'set-x11-keymap', parts[0], '', parts[1]], check=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            log('the keyboard layout could not be applied')
+            session.send({'type': 'error', 'field': 'keyboard', 'code': 'failed'})
+            return False
+        if self.devices and parts[0] != 'us' and not assignments(self.root / 'etc/vconsole.conf').get('KEYMAP'):
+            # The unlock prompt could not type this password; keep the previous layout.
+            previous = split_keyboard(self.keyboard) or ('us', '')
+            self.run(['localectl', 'set-x11-keymap', previous[0], '', previous[1]], check=False, timeout=60)
+            session.send({'type': 'error', 'field': 'keyboard', 'code': 'boot-keymap'})
+            return False
+        self.keyboard = keyboard
+        session.send({'type': 'restart'})
+        return True
+
+    def validate(self, message):
+        """The answers apply() takes, or FieldError naming what to ask again."""
+        full_name, username = message['full_name'].strip(), message['username'].strip()
+        password = message['password']
+        if full_name_problem(full_name):
+            raise FieldError('full_name', 'full-name')
+        problem = username_problem(username, existing_names(self.passwd))
+        if problem:
+            raise FieldError('username', problem)
+        problem = password_problem(password, message['confirm'])
+        if problem:
+            raise FieldError('confirm' if problem == 'password-mismatch' else 'password', problem)
+        if message['locale'] not in self.locales:
+            raise FieldError('locale', 'choice')
+        if message['timezone'] not in self.timezones:
+            raise FieldError('timezone', 'choice')
+        startup = message['startup'] if self.devices else ''
+        if self.devices and not all(opens(device, startup, self.run) or opens(device, password, self.run)
+                                    for device in self.devices):
+            raise FieldError('startup', 'startup-wrong')
+        return dict(keyboard=self.keyboard, locale=message['locale'], timezone=message['timezone'],
+                    full_name=full_name, username=username, password=password, startup=startup)
+
+    def submit(self, session, message):
+        try:
+            answers = self.validate(message)
+        except FieldError as error:
+            session.send({'type': 'error', 'field': error.field, 'code': error.code})
+            return False
+        self.locale = answers['locale']
+        try:
+            self.apply(answers, self.state, self.devices, self.run,
+                       progress=lambda stage: session.send({'type': 'progress', 'stage': stage}))
+        except (SetupError, subprocess.SubprocessError, OSError, ValueError) as error:
+            # SetupError text is written for people and holds no secret; the
+            # others are summarized by type, never by their arguments.
+            detail = str(error) if isinstance(error, SetupError) else ''
+            log(f'setup did not finish: {detail or type(error).__name__}; nothing was kept')
+            session.send({'type': 'error', 'field': '', 'code': 'failed', 'detail': detail})
+            return False
+        session.send({'type': 'done'})
+        return True
+
+
+def restart(run):
+    run(['systemctl', '--no-block', 'reboot'], check=False)
+    return 0
+
+
+def main(console=None, run=subprocess.run, graphical=GraphicalSetup, unavailable=graphical_unavailable,
+         root=Path('/')):
+    oem = root / 'etc/cybexos/oem.json'
+    if os.geteuid() != 0:
+        raise SystemExit('cybexos-new-owner must run as root.')
+    if not oem.exists():
+        return 0
+    state = read_state(oem)
+    recover_interrupted(root, run)
+    reason = unavailable()
+    if not reason:
+        try:
+            if graphical(state, run).run_window():
+                return restart(run)
+        except Unavailable as error:
+            reason = str(error)
+        except Exception as error:
+            # A fault in the window's path must never leave nobody able to sign in.
+            reason = f'unexpected {type(error).__name__}'
+        if not oem.exists():
+            return restart(run)
+    log(f'asking on the console: {reason}')
+    console = console or Console()
+    failures = 0
+    while True:
+        try:
+            devices = luks_devices(run)
+            answers = collect(console, run, devices)
+            if not summary(console, answers, bool(devices)):
+                console.say('Nothing was changed. Starting again.')
+                continue
+            console.say('\nSetting up your account. This takes a few minutes…')
+            apply(answers, state, devices, run)
+            break
+        except (KeyboardInterrupt, EOFError):
+            # Never leave the console: without an account nobody could sign in.
+            failures += 1
+            console.say('\nStarting again.')
+            time.sleep(min(failures, 5))
+        except (SetupError, subprocess.SubprocessError, OSError, ValueError) as error:
+            failures += 1
+            console.say(f'\nSetup did not finish: {error}\nNothing was kept. Starting again.')
+            time.sleep(min(failures, 5))
+        except Exception as error:
+            failures += 1
+            console.say(f'\nSetup did not finish ({type(error).__name__}). Nothing was kept. Starting again.')
+            time.sleep(min(failures, 5))
+    console.say('\nDone. Restarting into your new desktop…')
+    return restart(run)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

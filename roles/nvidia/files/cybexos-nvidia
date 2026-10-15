@@ -1,0 +1,438 @@
+#!/usr/bin/env python3
+"""Detect NVIDIA GPUs and verify the RPM Fusion driver, Secure Boot included.
+
+The NVIDIA hardware role runs this on both installation paths:
+
+  detect              print the display controllers and the hybrid layout
+  prepare             create the akmods signing key before the driver builds
+  apply               build/verify the driver for a kernel, queue Secure Boot
+                      key enrollment when needed, and record the outcome
+  status              print the recorded outcome, corrected for a restart
+  notify              (desktop user) show one notification per boot while the
+                      driver needs a restart, a key enrollment or a retry
+
+The outcome is /var/lib/cybexos/nvidia-status.json (world-readable, never a
+secret). The one-time MOK password is the only secret and lives in a separate
+root:wheel 0640 file, so the administrator's welcome window can show it.
+
+Nothing here disables Secure Boot or removes nouveau: RPM Fusion's
+nvidia-fallback.service loads nouveau whenever the NVIDIA module is missing.
+"""
+import argparse
+import grp
+import hashlib
+import json
+import os
+from pathlib import Path
+import secrets
+import subprocess
+import sys
+import tempfile
+
+# Tests point every absolute path below at a fixture tree.
+ROOT = Path(os.environ.get('CYBEXOS_NVIDIA_ROOT', '/'))
+
+STATUS = 'var/lib/cybexos/nvidia-status.json'
+ENROLLMENT = 'var/lib/cybexos/nvidia-mok.json'
+AKMODS_KEY = 'etc/pki/akmods/certs/public_key.der'
+VENDORS = {'10de': 'nvidia', '8086': 'intel', '1002': 'amd'}
+STATES = ('absent', 'ready', 'reboot', 'enroll', 'failed')
+# The MOK manager reads the firmware's US keymap. Digits sit on the same
+# physical keys on every common layout, so they are typed reliably.
+PASSWORD_DIGITS = 8
+# Leaves room for package downloads inside the hardware service's 45-minute limit.
+BUILD_TIMEOUT = 30 * 60
+
+
+def at(relative):
+    return ROOT / relative
+
+
+def run(argv, timeout=120, stdin=None):
+    try:
+        result = subprocess.run(argv, text=True, capture_output=True, timeout=timeout, check=False,
+                                input=stdin, env={**os.environ, 'LC_ALL': 'C'})
+        return result.returncode, result.stdout.strip(), result.stderr.strip()
+    except FileNotFoundError:
+        return 127, '', f'{argv[0]} is not installed'
+    except subprocess.TimeoutExpired:
+        return 124, '', f'{argv[0]} did not finish within {timeout} seconds'
+
+
+def read(path, default=''):
+    try:
+        return path.read_text().strip()
+    except OSError:
+        return default
+
+
+def read_json(path):
+    try:
+        value = json.loads(path.read_text())
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_json(path, value, mode=0o644, group=None):
+    """Replace atomically so readers never see a partial document."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix='.' + path.name, dir=path.parent)
+    try:
+        with os.fdopen(descriptor, 'w') as stream:
+            json.dump(value, stream, sort_keys=True)
+            stream.write('\n')
+        os.chmod(temporary, mode)
+        if group is not None and os.geteuid() == 0:
+            os.chown(temporary, -1, group)
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
+def detect():
+    """Display controllers (PCI class 03xx) from sysfs; no lspci dependency."""
+    gpus = []
+    for device in sorted(at('sys/bus/pci/devices').glob('*')):
+        pci_class = read(device / 'class').lower().removeprefix('0x')
+        if not pci_class.startswith('03'):
+            continue
+        vendor_id = read(device / 'vendor').lower().removeprefix('0x')
+        driver = device / 'driver'
+        gpus.append({
+            'slot': device.name,
+            'vendor': VENDORS.get(vendor_id, 'other'),
+            'vendor_id': vendor_id,
+            'device_id': read(device / 'device').lower().removeprefix('0x'),
+            'class': pci_class[:4],
+            'boot_vga': read(device / 'boot_vga') == '1',
+            'driver': os.path.basename(os.readlink(driver)) if driver.is_symlink() else '',
+        })
+    nvidia = [gpu for gpu in gpus if gpu['vendor'] == 'nvidia']
+    integrated = [gpu for gpu in gpus if gpu['vendor'] in ('intel', 'amd')]
+    hybrid = bool(nvidia and integrated)
+    # Hybrid laptops render on the integrated GPU (the firmware's boot VGA
+    # device) and offload to NVIDIA through switcheroo-control.
+    primary = next((gpu['vendor'] for gpu in gpus if gpu['boot_vga']), gpus[0]['vendor'] if gpus else '')
+    return {'present': bool(nvidia), 'hybrid': hybrid, 'primary': primary, 'gpus': gpus}
+
+
+def secure_boot():
+    rc, output, _ = run(['mokutil', '--sb-state'], timeout=30)
+    text = output.lower()
+    if 'secureboot enabled' in text:
+        return 'enabled'
+    if 'secureboot disabled' in text:
+        return 'disabled'
+    # Legacy BIOS or no EFI variables: nothing to enroll. A missing or
+    # failing mokutil is unknown, and apply() treats it as not enforcing.
+    return 'unsupported' if rc != 127 and ('not supported' in text or "doesn't support" in text) else 'unknown'
+
+
+def key_state(key):
+    """enrolled | pending | blocked | missing, from mokutil's wording; its
+    exit code means "request accepted", not a key state."""
+    if not key.is_file():
+        return 'no-key'
+    _, output, error = run(['mokutil', '--test-key', str(key)], timeout=30)
+    text = (output + '\n' + error).lower()
+    if 'already in the enrollment request' in text:
+        return 'pending'
+    if 'is already enrolled' in text or 'is already in db' in text:
+        return 'enrolled'
+    if 'is blocked' in text:
+        return 'blocked'
+    return 'missing'
+
+
+def key_digest(key):
+    try:
+        return hashlib.sha256(key.read_bytes()).hexdigest()
+    except OSError:
+        return ''
+
+
+def queue_enrollment(key):
+    """Queue the akmods key with a one-time password; returns it or raises."""
+    password = ''.join(secrets.choice('0123456789') for _ in range(PASSWORD_DIGITS))
+    # mokutil takes the password from a terminal or as a precomputed hash.
+    # The one-time password is briefly on --generate-hash's argument list;
+    # it only confirms this request at the console, where it is shown anyway.
+    rc, digest, error = run(['mokutil', f'--generate-hash={password}'], timeout=30)
+    if rc or not digest.startswith('$'):
+        raise RuntimeError(f'mokutil could not prepare the enrollment password: {error or rc}')
+    with tempfile.NamedTemporaryFile('w', prefix='cybexos-mok.', delete=True) as hash_file:
+        os.chmod(hash_file.name, 0o600)
+        hash_file.write(digest + '\n')
+        hash_file.flush()
+        rc, _, error = run(['mokutil', '--import', str(key), '--hash-file', hash_file.name], timeout=60)
+    if rc:
+        raise RuntimeError(f'mokutil could not queue the Secure Boot key: {error or rc}')
+    return password
+
+
+def admin_group():
+    try:
+        return grp.getgrnam('wheel').gr_gid
+    except KeyError:
+        return None
+
+
+def driver_version(kernel):
+    rc, version, _ = run(['modinfo', '-k', kernel, '-F', 'version', 'nvidia'], timeout=30)
+    return version.splitlines()[0] if rc == 0 and version else ''
+
+
+def module_signer(kernel):
+    rc, signer, _ = run(['modinfo', '-k', kernel, '-F', 'signer', 'nvidia'], timeout=30)
+    return signer.strip() if rc == 0 else ''
+
+
+def failed_log(kernel):
+    logs = sorted(at('var/cache/akmods/nvidia').glob(f'*-for-{kernel}.failed.log'))
+    return '/' + str(logs[-1].relative_to(ROOT)) if logs else ''
+
+
+def kernel_parameter(module, name):
+    return read(at(f'sys/module/{module}/parameters/{name}'))
+
+
+def boot_id():
+    return read(at('proc/sys/kernel/random/boot_id'))
+
+
+def apply(kernel, automatic=False, force=False, retry='cybex repair --hardware'):
+    hardware = detect()
+    previous = read_json(at(STATUS))
+    status = {'version': 1, 'kernel': kernel, 'boot_id': boot_id(), 'hybrid': hardware['hybrid'],
+              'primary': hardware['primary'], 'gpus': hardware['gpus'], 'retry': retry,
+              'secure_boot': 'unknown', 'key': 'not-needed', 'driver_version': '', 'reason': ''}
+
+    def finish(state, reason=''):
+        status.update(state=state, reason=reason)
+        write_json(at(STATUS), status)
+        return status
+
+    if not hardware['present']:
+        at(ENROLLMENT).unlink(missing_ok=True)
+        return finish('absent')
+
+    rc, _, _ = run(['rpm', '-q', '--whatprovides', f'kernel-devel-uname-r = {kernel}'], timeout=60)
+    if rc and not driver_version(kernel):
+        return finish('failed', f'The kernel headers for {kernel} are no longer available. Install system '
+                                f'updates and restart; the driver then builds for the new kernel ({retry}).')
+
+    # akmods holds its own lock while the package's posttrans build runs in
+    # the background, so this call waits for that build instead of racing it.
+    # An explicit --kernels also retries a build that failed before.
+    command = ['akmods', '--kernels', kernel, '--akmod', 'nvidia']
+    rc, _, error = run(command, timeout=BUILD_TIMEOUT)
+    version = driver_version(kernel)
+    status['driver_version'] = version
+    if not version:
+        log = failed_log(kernel)
+        detail = f'; see {log}' if log else f' ({error})' if error else ''
+        return finish('failed', f'The NVIDIA driver did not build for kernel {kernel}{detail}. '
+                                f'The open-source driver stays in use; run {retry} to try again.')
+
+    state = secure_boot()
+    status['secure_boot'] = state
+    key = at(AKMODS_KEY)
+    if state == 'enabled':
+        if not module_signer(kernel) and force:
+            # Built before the akmods key existed: an explicit retry rebuilds
+            # it now that prepare has created the key.
+            run(command + ['--rebuild'], timeout=BUILD_TIMEOUT)
+        if not module_signer(kernel):
+            return finish('failed', 'The NVIDIA driver is not signed, so Secure Boot would reject it. '
+                                    f'Run {retry} to rebuild it with the akmods key.')
+        status['key'] = key_state(key)
+        if status['key'] == 'no-key':
+            return finish('failed', 'The akmods signing key is missing. '
+                                    f'Run {retry} to create it and rebuild the driver.')
+        if status['key'] == 'blocked':
+            return finish('failed', 'The firmware blocks the akmods signing key, so the open-source '
+                                    'driver stays in use. Replace the key under /etc/pki/akmods.')
+        enrollment = read_json(at(ENROLLMENT))
+        digest = key_digest(key)
+        status['key_sha256'] = digest
+        if status['key'] == 'pending':
+            # Ours or one the administrator queued by hand; either way the
+            # next boot's MOK manager completes it.
+            return finish('enroll', 'Restart and enroll the Secure Boot key to start the NVIDIA driver.')
+        if status['key'] == 'missing':
+            # An unattended run requests enrollment once per key. A request
+            # the user skipped at boot is renewed only by an explicit retry,
+            # so the MOK screen never reappears on every restart.
+            if automatic and enrollment.get('key_sha256') == digest:
+                status['key'] = 'skipped'
+                return finish('enroll', 'The Secure Boot key was not enrolled at the last restart, so the '
+                                        f'open-source driver is in use. Run {retry} to request it again.')
+            try:
+                password = queue_enrollment(key)
+            except RuntimeError as error:
+                return finish('failed', f'{error}. Run {retry} to try again.')
+            write_json(at(ENROLLMENT), {'version': 1, 'key_sha256': digest, 'password': password,
+                                        'kernel': kernel}, mode=0o640, group=admin_group())
+            status['key'] = 'pending'
+            return finish('enroll', 'Restart and enroll the Secure Boot key to start the NVIDIA driver.')
+    # The key is enrolled (or Secure Boot is off): the password has served.
+    at(ENROLLMENT).unlink(missing_ok=True)
+
+    if not at('sys/module/nvidia').is_dir():
+        # A restart switches from nouveau. If that restart already happened
+        # and the module still did not load, the fallback is in use.
+        if previous.get('state') == 'reboot' and previous.get('kernel') == kernel \
+                and previous.get('boot_id') not in ('', status['boot_id']):
+            return finish('failed', 'The NVIDIA driver did not load after a restart, so the open-source '
+                                    f'driver is in use. Check journalctl -b -k, then run {retry}.')
+        return finish('reboot', 'Restart to start using the NVIDIA driver.')
+
+    # Driver 560+ enables modeset and fbdev by default. Older drivers, or a
+    # kernel argument left behind, need them explicitly; an explicit
+    # nvidia-drm.modeset=0 on the command line is the user's choice.
+    cmdline = read(at('proc/cmdline')).split()
+    wanted = [f'nvidia-drm.{name}=1' for name in ('modeset', 'fbdev')
+              if at('sys/module/nvidia_drm').is_dir() and kernel_parameter('nvidia_drm', name) == 'N'
+              and not any(argument.startswith(f'nvidia-drm.{name}=') for argument in cmdline)]
+    if wanted:
+        rc, _, error = run(['grubby', '--update-kernel=ALL', '--args=' + ' '.join(wanted)], timeout=120)
+        if rc:
+            return finish('failed', f'Could not enable NVIDIA kernel mode setting: {error or rc}.')
+        return finish('reboot', 'Restart to enable NVIDIA kernel mode setting.')
+    return finish('ready')
+
+
+def prepare():
+    """The akmods key must exist before akmod-nvidia builds, or Secure Boot
+    rejects the module. akmods-keygen would create it only at the next boot."""
+    if at(AKMODS_KEY).is_file():
+        return 0
+    rc, _, error = run(['kmodgenca', '-a'], timeout=300)
+    if rc:
+        print(f'kmodgenca failed: {error or rc}', file=sys.stderr)
+    else:
+        print('created the akmods signing key')
+    return rc
+
+
+def record_failure(kernel, reason, retry):
+    """A package or repository step failed before apply could run."""
+    hardware = detect()
+    status = {'version': 1, 'state': 'failed', 'kernel': kernel, 'boot_id': boot_id(),
+              'hybrid': hardware['hybrid'], 'primary': hardware['primary'], 'gpus': hardware['gpus'],
+              'retry': retry, 'secure_boot': 'unknown', 'key': 'not-needed', 'driver_version': '',
+              'reason': f'{reason}. The open-source driver stays in use; run {retry} to try again.'}
+    write_json(at(STATUS), status)
+    return status
+
+
+# Fields whose change makes a run "changed" for Ansible.
+OUTCOME = ('state', 'key', 'driver_version', 'kernel', 'reason')
+
+
+def effective(status):
+    """The recorded outcome, corrected for a restart since it was written.
+
+    ISO installations rerun apply after every boot; a checkout installation
+    only on its next install or update, so readers interpret a stale record
+    against the running system instead of repeating an obsolete request.
+    """
+    state = status.get('state')
+    if state not in ('reboot', 'enroll') or status.get('boot_id') in ('', None, boot_id()):
+        return status
+    retry = status.get('retry', 'cybex repair --hardware')
+    if at('sys/module/nvidia').is_dir():
+        return {**status, 'state': 'ready', 'reason': '', 'key': 'enrolled' if state == 'enroll' else status.get('key')}
+    if state == 'enroll':
+        return {**status, 'key': 'skipped',
+                'reason': 'The Secure Boot key was not enrolled at the last restart, so the '
+                          f'open-source driver is in use. Run {retry} to request it again.'}
+    return {**status, 'state': 'failed',
+            'reason': 'The NVIDIA driver did not load after a restart, so the open-source '
+                      f'driver is in use. Check journalctl -b -k, then run {retry}.'}
+
+
+def notice(status, enrollment, unreadable=False):
+    """(title, body) for the current state, or None when nothing is needed."""
+    state = status.get('state')
+    if state == 'enroll' and status.get('key') == 'pending':
+        password = str(enrollment.get('password', ''))
+        ours = enrollment.get('key_sha256') and enrollment.get('key_sha256') == status.get('key_sha256')
+        secret = (f'enter the one-time password {password}' if ours and password.isdigit()
+                  else 'enter the one-time password from sudo cat /var/lib/cybexos/nvidia-mok.json'
+                  if unreadable else 'enter the password chosen when the key was requested')
+        return ('Restart to enroll the Secure Boot key',
+                'At the blue MOK manager screen choose Enroll MOK, Continue, Yes, then '
+                f'{secret} and reboot. The NVIDIA driver starts after that.')
+    if state in ('enroll', 'failed'):
+        return ('NVIDIA driver setup needs attention', str(status.get('reason', '')))
+    if state == 'reboot':
+        return ('Restart to finish NVIDIA setup', str(status.get('reason', '')))
+    return None
+
+
+def notify():
+    status = effective(read_json(at(STATUS)))
+    enrollment = at(ENROLLMENT)
+    message = notice(status, read_json(enrollment),
+                     enrollment.exists() and not os.access(enrollment, os.R_OK))
+    if not message:
+        return 0
+    runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')) / 'cybexos'
+    marker = runtime / 'nvidia-notice'
+    key = f"{boot_id()}:{status.get('state')}:{status.get('key')}:{status.get('reason')}"
+    if read(marker) == key:
+        return 0
+    rc, _, _ = run(['notify-send', '--app-name=CybexOS', '--icon=video-display',
+                    '--urgency=critical' if status.get('state') == 'enroll' else '--urgency=normal',
+                    message[0], message[1]], timeout=30)
+    if rc == 0:
+        runtime.mkdir(parents=True, exist_ok=True)
+        marker.write_text(key)
+    return rc
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    commands = parser.add_subparsers(dest='command', required=True)
+    commands.add_parser('detect')
+    commands.add_parser('prepare')
+    apply_parser = commands.add_parser('apply')
+    apply_parser.add_argument('--kernel', default=os.uname().release)
+    apply_parser.add_argument('--automatic', action='store_true')
+    apply_parser.add_argument('--force', action='store_true')
+    apply_parser.add_argument('--retry', default='cybex repair --hardware')
+    failure_parser = commands.add_parser('record-failure')
+    failure_parser.add_argument('--kernel', default=os.uname().release)
+    failure_parser.add_argument('--reason', required=True)
+    failure_parser.add_argument('--retry', default='cybex repair --hardware')
+    commands.add_parser('notify')
+    commands.add_parser('status')
+    args = parser.parse_args(argv)
+    if args.command == 'detect':
+        print(json.dumps(detect(), sort_keys=True))
+        return 0
+    if args.command == 'status':
+        print(json.dumps(effective(read_json(at(STATUS))), sort_keys=True))
+        return 0
+    if args.command == 'notify':
+        return notify()
+    if os.geteuid() != 0 and ROOT == Path('/'):
+        parser.error(f'{args.command} must run as root')
+    if args.command == 'prepare':
+        return prepare()
+    previous = read_json(at(STATUS))
+    if args.command == 'record-failure':
+        status = record_failure(args.kernel, args.reason, args.retry)
+    else:
+        # The outcome is data for the caller; a failed driver is not a failed play.
+        status = apply(args.kernel, args.automatic, args.force, args.retry)
+    changed = any(previous.get(field) != status.get(field) for field in OUTCOME)
+    print(json.dumps({**status, 'changed': changed}, sort_keys=True))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

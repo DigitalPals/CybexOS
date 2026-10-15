@@ -124,7 +124,7 @@ Surface {
                 LinkText {
                     visible: !Weather.locationSet
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Set a location in Settings"
+                    text: I18n.tr("Set a location in Settings")
                     font.pixelSize: Theme.typography.secondary
                     onClicked: {
                         Settings.openWidgetSettings("weather");

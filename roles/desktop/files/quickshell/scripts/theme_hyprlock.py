@@ -1,7 +1,10 @@
 """System theme target: the hyprlock lock screen.
 
 Renders hyprlock.conf: the vendor lock screen's layout (clock, date and
-password field) in the shell's font and colours, over the current wallpaper.
+password field) in the shell's font, text size and colours, over the current
+wallpaper. The clock, the date and the field grow with the shell's text
+(theme_tokens.text_scale), and so do the gaps between them, so a larger text
+size never makes them overlap.
 `cybexos-runtime exec hyprlock` prefers this file to the vendor one unless the
 user has their own ~/.config/cybexos/hypr/hyprlock.conf, and only while its
 first line is HEADER, so a file this module did not write is never used.
@@ -17,7 +20,7 @@ the worse of the two. Without a wallpaper the background is the base colour.
 reload() does nothing: hyprlock reads its configuration each time the lock
 starts, and a lock that is already up keeps the look it started with.
 """
-from theme_tokens import contrast, ensure_contrast, mix, rgba
+from theme_tokens import contrast, ensure_contrast, mix, rgba, scaled
 
 NAME = 'hyprlock'
 # The resolver compares the first line verbatim (assets/scripts/cybexos-runtime).
@@ -97,6 +100,9 @@ def render(tokens):
         ]
     field = [mix(backdrop, colors['surface'], FIELD_ALPHA) for backdrop in backdrops]
 
+    def size(value):
+        return scaled(value, tokens)
+
     lines = [
         HEADER,
         '# Edits are overwritten; ~/.config/cybexos/hypr/hyprlock.conf replaces it.',
@@ -121,9 +127,9 @@ def render(tokens):
         '  monitor =',
         '  text = $TIME',
         f'  color = {_color(_readable(colors["text"], backdrops))}',
-        '  font_size = 84',
+        f'  font_size = {size(84)}',
         '  font_family = $font',
-        '  position = 0, 150',
+        f'  position = 0, {size(150)}',
         '  halign = center',
         '  valign = center',
         '}',
@@ -132,16 +138,16 @@ def render(tokens):
         '  monitor =',
         '  text = cmd[update:60000] date +"%A, %d %B"',
         f'  color = {_color(_readable(colors["textMuted"], backdrops))}',
-        '  font_size = 24',
+        f'  font_size = {size(24)}',
         '  font_family = $font',
-        '  position = 0, 85',
+        f'  position = 0, {size(85)}',
         '  halign = center',
         '  valign = center',
         '}',
         '',
         'input-field {',
         '  monitor =',
-        '  size = 300, 54',
+        f'  size = {size(300)}, {size(54)}',
         '  outline_thickness = 2',
         '  dots_size = 0.28',
         '  dots_spacing = 0.22',
@@ -153,13 +159,28 @@ def render(tokens):
         # Pango markup; '##' is hyprlang's escape for a literal '#'.
         '  placeholder_text = <span foreground="#'
         + _readable(colors['textMuted'], field) + '">Password</span>',
+        # $FAIL is the latest failure from either PAM or the fingerprint check.
         '  fail_text = <span foreground="#'
-        + _readable(colors['red'], field) + '">$PAMFAIL</span>',
+        + _readable(colors['red'], field) + '">$FAIL</span>',
         f'  check_color = {_color(colors["accent"])}',
         f'  fail_color = {_color(colors["red"])}',
         '  rounding = 12',
         '  font_family = $font',
-        '  position = 0, -18',
+        f'  position = 0, {-size(18)}',
+        '  halign = center',
+        '  valign = center',
+        '}',
+        '',
+        # The fingerprint prompt: empty, and so invisible, unless
+        # cybexos-runtime turned on hyprlock's fprintd check and a reader
+        # with an enrolled finger is ready (docs/security.md).
+        'label {',
+        '  monitor =',
+        '  text = $FPRINTPROMPT',
+        f'  color = {_color(_readable(colors["textMuted"], backdrops))}',
+        '  font_size = 14',
+        '  font_family = $font',
+        '  position = 0, -84',
         '  halign = center',
         '  valign = center',
         '}',

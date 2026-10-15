@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -11,7 +12,7 @@ const { shellDir } = require("./shell.cjs");
 // in a menu, green for healthy, and times people read.
 
 function read(relative) {
-    return fs.readFileSync(path.join(shellDir, relative), "utf8");
+    return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
 const LocalTime = require(path.join(shellDir, "Settings/LocalTime.js"));

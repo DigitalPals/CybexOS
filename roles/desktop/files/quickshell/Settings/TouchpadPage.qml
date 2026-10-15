@@ -8,10 +8,10 @@ SettingsPage {
     id: page
     pageReset: true
     readonly property SystemSettingsBackend service: SystemSettings.input
-    property var draft: ({tap: true, naturalScroll: true, sensitivity: 0})
-    property var original: ({tap: true, naturalScroll: true, sensitivity: 0})
+    property var draft: ({tap: true, naturalScroll: true, workspaceSwipe: true, sensitivity: 0})
+    property var original: ({tap: true, naturalScroll: true, workspaceSwipe: true, sensitivity: 0})
     property string version: ""
-    readonly property var changes: Draft.patch(draft, original, ["tap", "naturalScroll", "sensitivity"])
+    readonly property var changes: Draft.patch(draft, original, ["tap", "naturalScroll", "workspaceSwipe", "sensitivity"])
     readonly property bool dirty: Object.keys(changes).length > 0
     readonly property string disabledReason: service.busy ? "Applying…" : !service.loaded ? "Loading…" : ""
     bottomInset: applyBar.reservedHeight
@@ -40,7 +40,7 @@ SettingsPage {
     overlay: ApplyBar {
         id: applyBar
         pending: page.dirty
-        title: "Touchpad changes not applied yet"
+        title: I18n.tr("Touchpad changes not applied yet")
         busy: page.service.busy
         onDiscard: page.load()
         onApply: page.service.run({action: "apply", section: "touchpad", version: page.version, values: page.changes})
@@ -55,27 +55,35 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Touchpad"
+            title: I18n.tr("Touchpad")
 
             SwitchRow {
                 width: parent.width
-                label: "Tap to click"
+                label: I18n.tr("Tap to click")
                 checked: page.draft.tap
                 disabledReason: page.disabledReason
                 onToggled: value => page.edit("tap", value)
             }
             SwitchRow {
                 width: parent.width
-                label: "Natural scrolling"
-                description: "Move content in the direction your fingers move."
+                label: I18n.tr("Natural scrolling")
+                description: I18n.tr("Move content in the direction your fingers move.")
                 checked: page.draft.naturalScroll
                 disabledReason: page.disabledReason
                 onToggled: value => page.edit("naturalScroll", value)
             }
+            SwitchRow {
+                width: parent.width
+                label: I18n.tr("Swipe between workspaces")
+                description: I18n.tr("Swipe three fingers left or right.")
+                checked: page.draft.workspaceSwipe
+                disabledReason: page.disabledReason
+                onToggled: value => page.edit("workspaceSwipe", value)
+            }
             SliderRow {
                 width: parent.width
-                label: "Pointer sensitivity"
-                hint: "Affects touchpads and mice. Per-device Hyprland rules take precedence."
+                label: I18n.tr("Pointer sensitivity")
+                hint: I18n.tr("Affects touchpads and mice. Per-device Hyprland rules take precedence.")
                 min: -1
                 max: 1
                 step: 0.05
@@ -88,7 +96,7 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Scroll speed"
+                label: I18n.tr("Scroll speed")
                 settingKey: "scrollFactor"
                 resetLabel: "Touchpad scroll speed"
                 min: 0.2
@@ -97,7 +105,7 @@ SettingsPage {
                 decimals: 1
                 valueLabel: Settings.scrollFactor.toFixed(1) + "×"
                 marks: [1.0]
-                hint: "1.0× is Hyprland's default"
+                hint: I18n.tr("1.0× is Hyprland's default")
                 dirty: Math.abs(Settings.scrollFactor - Settings.defaults.scrollFactor) > 0.001
             }
         }

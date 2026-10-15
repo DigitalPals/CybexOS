@@ -44,6 +44,15 @@ Singleton {
     readonly property bool dark: Settings.themeMode !== "light"
     readonly property bool paletteActive:
         Settings.paletteMode === "wallpaper" && Common.Palette.ready
+    // A named theme's explicit palette (Settings.themePalette) replaces the
+    // fixed references below — surfaces, text and status hues — while it was
+    // made for the current mode and the accent source is fixed. Every floor
+    // still applies to it. Without one, nothing here changes.
+    readonly property bool themePaletteActive: !paletteActive
+        && Settings.paletteMode === "fixed"
+        && Settings.themePalette.mode === (dark ? "dark" : "light")
+    readonly property var themeColors: themePaletteActive
+        ? SettingsHelpers.themeSurfaces(Settings.themePalette) : null
 
     // ---- reference surfaces (opaque; used for contrast math) --------------
     // The dark references are the edge-drawer redesign's warm charcoal: the
@@ -61,20 +70,26 @@ Singleton {
     readonly property color lightPopBg: "#f1f0f5"
     readonly property color background: paletteActive
         ? (dark ? Common.Palette.background : Common.Palette.surfaceContainerHigh)
+        : themePaletteActive ? themeColors.background
         : dark ? darkBackground : lightBackground
     readonly property color popBg: paletteActive ? Common.Palette.surfaceContainerLow
+        : themePaletteActive ? themeColors.surface
         : dark ? darkPopBg : lightPopBg
     readonly property color darkMenuBg: "#26241f"
     readonly property color lightMenuBg: "#f8f7fa"
     readonly property color menuBg: paletteActive
         ? (dark ? Common.Palette.surfaceContainer : Common.Palette.surface)
+        : themePaletteActive ? themeColors.surfaceRaised
         : dark ? darkMenuBg : lightMenuBg
     // The least favorable opaque backdrop for copy. In dark mode that is the
     // highest (lightest) container. In light mode it is the base with a
     // hovered chip on it: the darkest thing copy is drawn over. Calibrating
     // the shared copy colors here keeps one semantic ladder safe on every
-    // panel, menu, and group surface.
-    readonly property color copyReferenceBg: dark
+    // panel, menu, and group surface. A theme's surfaces can be spaced far
+    // wider than these, so a themed shell takes its worst one instead.
+    readonly property color copyReferenceBg: themePaletteActive
+        ? SettingsHelpers.themeReference(Settings.themePalette, chipHoverAlpha)
+        : dark
         ? (paletteActive ? Common.Palette.surfaceContainerHigh : popBg)
         : SettingsHelpers.mixHex(background.toString(),
             lightInk.toString(),
@@ -119,14 +134,14 @@ Singleton {
     readonly property color stroke: Settings.highContrast
         ? (dark ? Qt.rgba(1, 1, 1, 0.42) : Qt.rgba(0, 0, 0, 0.44))
         : paletteActive ? Common.Palette.outlineVariant
-        : dark ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.13)
+        : dark ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(lightInk.r, lightInk.g, lightInk.b, 0.13)
     readonly property color popBorder: stroke
     readonly property color hairline: stroke
     readonly property color hairlineSoft: paletteActive
         ? Qt.rgba(Common.Palette.outlineVariant.r, Common.Palette.outlineVariant.g,
             Common.Palette.outlineVariant.b, 0.32)
         : dark ? Qt.rgba(1, 1, 1, 0.05)
-        : Qt.rgba(24 / 255, 22 / 255, 44 / 255, 0.06)
+        : Qt.rgba(lightInk.r, lightInk.g, lightInk.b, 0.06)
 
     // ---- menubar palette -------------------------------------------------
     // A chosen bar colour may deliberately disagree with the shell's global
@@ -171,18 +186,18 @@ Singleton {
     readonly property color barAccentGlow: Qt.rgba(
         barAccent.r, barAccent.g, barAccent.b, 0.50)
     readonly property color barRed: SettingsHelpers.ensureContrast(
-        barLightForeground ? "#ff8f8f" : "#c22f2f",
+        themePaletteActive ? themeColors.red : barLightForeground ? "#ff8f8f" : "#c22f2f",
         barBg.toString(), 4.5)
     readonly property var barRedPalette: SettingsHelpers.barPalette(barRed)
     readonly property color barRedFg: barRedPalette.foreground
     readonly property color barRedText: barRed
     readonly property color barAmber: SettingsHelpers.ensureContrast(
-        barLightForeground ? "#ffc26e" : "#b5761e",
+        themePaletteActive ? themeColors.amber : barLightForeground ? "#ffc26e" : "#b5761e",
         barBg.toString(), 4.5)
     readonly property var barAmberPalette: SettingsHelpers.barPalette(barAmber)
     readonly property color barAmberFg: barAmberPalette.foreground
     readonly property color barGreen: SettingsHelpers.ensureContrast(
-        barLightForeground ? "#63d68c" : "#1f9d57",
+        themePaletteActive ? themeColors.green : barLightForeground ? "#63d68c" : "#1f9d57",
         barBg.toString(), 4.5)
     readonly property color barRedBg: Qt.rgba(
         barRedText.r, barRedText.g, barRedText.b, 0.18)
@@ -215,7 +230,7 @@ Singleton {
     // Material's state-layer approach — in both palette modes. Tonal
     // container fills could not recess: on the light base the highest
     // container is the base itself, so hover and tiles disappeared.
-    readonly property color lightInk: paletteActive ? Common.Palette.surfaceInk : "#18162c"
+    readonly property color lightInk: paletteActive ? Common.Palette.surfaceInk : themePaletteActive ? themeColors.ink : "#18162c"
     readonly property real chipAlpha: 0.07
     readonly property real chipHoverAlpha: 0.13
     readonly property real tileAlpha: 0.06
@@ -279,21 +294,25 @@ Singleton {
     readonly property color lightTextFaint: "#57556c"
     readonly property color lightIcon: "#37354c"
 
+    // A theme's own ladder keeps its colours wherever they read and lifts
+    // the rest to the same floors (SettingsHelpers.themeTextPalette).
     readonly property var textPalette: paletteActive
         ? SettingsHelpers.semanticPalette(copyReferenceBg.toString(),
             Common.Palette.surfaceInk.toString(), Common.Palette.surfaceVariantInk.toString())
+        : themePaletteActive
+        ? SettingsHelpers.themeTextPalette(copyReferenceBg.toString(), Settings.themePalette)
         : null
-    readonly property color textHi: paletteActive ? textPalette.textHi
+    readonly property color textHi: textPalette ? textPalette.textHi
         : dark ? darkTextHi : lightTextHi
-    readonly property color textMid: paletteActive ? textPalette.textMid
+    readonly property color textMid: textPalette ? textPalette.textMid
         : dark ? darkTextMid : lightTextMid
-    readonly property color textLow: paletteActive ? textPalette.textLow
+    readonly property color textLow: textPalette ? textPalette.textLow
         : dark ? darkTextLow : lightTextLow
-    readonly property color textDim: paletteActive ? textPalette.textDim
+    readonly property color textDim: textPalette ? textPalette.textDim
         : dark ? darkTextDim : lightTextDim
-    readonly property color textFaint: paletteActive ? textPalette.textFaint
+    readonly property color textFaint: textPalette ? textPalette.textFaint
         : dark ? darkTextFaint : lightTextFaint
-    readonly property color icon: paletteActive ? textPalette.icon
+    readonly property color icon: textPalette ? textPalette.icon
         : dark ? darkIcon : lightIcon
     // Decorative only — empty workspace pips and inactive rails.
     readonly property color dotDim: dark
@@ -335,45 +354,50 @@ Singleton {
         : Qt.rgba(accent.r, accent.g, accent.b, 0.12)
     readonly property color accentHover: Qt.lighter(accent, 1.25)
 
-    readonly property color red: paletteActive ? Common.Palette.errorRole : "#ff6b6b"
+    // A theme supplies its own status hues; its fills tint with them.
+    readonly property color red: paletteActive ? Common.Palette.errorRole
+        : themePaletteActive ? themeColors.red : "#ff6b6b"
     readonly property color redText: paletteActive
         ? SettingsHelpers.ensureContrast(Common.Palette.errorRole.toString(),
-            copyReferenceBg.toString(), 4.5) : dark ? "#ff8f8f" : "#c22f2f"
+            copyReferenceBg.toString(), 4.5)
+        : themePaletteActive
+        ? SettingsHelpers.ensureContrast(themeColors.red, copyReferenceBg.toString(), 4.5)
+        : dark ? "#ff8f8f" : "#c22f2f"
     readonly property color redBg: paletteActive
         ? Qt.rgba(Common.Palette.errorContainer.r, Common.Palette.errorContainer.g,
             Common.Palette.errorContainer.b, 0.68)
+        : themePaletteActive ? Qt.rgba(red.r, red.g, red.b, 0.18)
         : Qt.rgba(1, 107 / 255, 107 / 255, 0.18)
     readonly property color redBgSoft: paletteActive
         ? Qt.rgba(Common.Palette.errorContainer.r, Common.Palette.errorContainer.g,
             Common.Palette.errorContainer.b, 0.42)
+        : themePaletteActive ? Qt.rgba(red.r, red.g, red.b, 0.10)
         : Qt.rgba(1, 107 / 255, 107 / 255, 0.10)
     readonly property color redBorder: paletteActive ? Common.Palette.outlineVariant
+        : themePaletteActive ? Qt.rgba(red.r, red.g, red.b, 0.38)
         : Qt.rgba(1, 107 / 255, 107 / 255, 0.38)
 
+    // The hues the amber and green fills tint with; also what their copy
+    // starts from before the contrast floor.
+    readonly property color amberSeed: themePaletteActive ? themeColors.amber
+        : dark ? "#ffc26e" : "#b5761e"
     readonly property color amber: SettingsHelpers.ensureContrast(
-        dark ? "#ffc26e" : "#b5761e", copyReferenceBg.toString(), 4.5)
-    readonly property color amberBg: dark
-        ? Qt.rgba(1, 194 / 255, 110 / 255, 0.17)
-        : Qt.rgba(181 / 255, 118 / 255, 30 / 255, 0.14)
-    readonly property color amberBgSoft: dark
-        ? Qt.rgba(1, 194 / 255, 110 / 255, 0.09)
-        : Qt.rgba(181 / 255, 118 / 255, 30 / 255, 0.08)
-    readonly property color amberBorder: dark
-        ? Qt.rgba(1, 194 / 255, 110 / 255, 0.38)
-        : Qt.rgba(181 / 255, 118 / 255, 30 / 255, 0.35)
+        amberSeed.toString(), copyReferenceBg.toString(), 4.5)
+    readonly property color amberBg: Qt.rgba(amberSeed.r, amberSeed.g, amberSeed.b,
+        dark ? 0.17 : 0.14)
+    readonly property color amberBgSoft: Qt.rgba(amberSeed.r, amberSeed.g, amberSeed.b,
+        dark ? 0.09 : 0.08)
+    readonly property color amberBorder: Qt.rgba(amberSeed.r, amberSeed.g, amberSeed.b,
+        dark ? 0.38 : 0.35)
 
+    readonly property color okSeed: themePaletteActive ? themeColors.green
+        : dark ? "#63d68c" : "#1f9d57"
     readonly property color ok: SettingsHelpers.ensureContrast(
-        dark ? "#63d68c" : "#1f9d57", copyReferenceBg.toString(), 4.5)
+        okSeed.toString(), copyReferenceBg.toString(), 4.5)
     readonly property color connected: ok
-    readonly property color okBg: dark
-        ? Qt.rgba(99 / 255, 214 / 255, 140 / 255, 0.16)
-        : Qt.rgba(31 / 255, 157 / 255, 87 / 255, 0.14)
-    readonly property color okBgSoft: dark
-        ? Qt.rgba(99 / 255, 214 / 255, 140 / 255, 0.10)
-        : Qt.rgba(31 / 255, 157 / 255, 87 / 255, 0.08)
-    readonly property color okBorder: dark
-        ? Qt.rgba(99 / 255, 214 / 255, 140 / 255, 0.30)
-        : Qt.rgba(31 / 255, 157 / 255, 87 / 255, 0.30)
+    readonly property color okBg: Qt.rgba(okSeed.r, okSeed.g, okSeed.b, dark ? 0.16 : 0.14)
+    readonly property color okBgSoft: Qt.rgba(okSeed.r, okSeed.g, okSeed.b, dark ? 0.10 : 0.08)
+    readonly property color okBorder: Qt.rgba(okSeed.r, okSeed.g, okSeed.b, 0.30)
 
     // The update run's transaction feed. The tags keep the terminal update
     // script's cyan/pink source identity, recalibrated for the panel; `well`

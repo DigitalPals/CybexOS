@@ -4,23 +4,66 @@
 Request JSON arrives on stdin; stdout is secret-free NDJSON. Anaconda owns
 device discovery, in-memory partition planning, validation, installation and
 progress. Only `install` starts its installation task, after plan confirmation.
+An unattended seed volume is only ever mounted read-only, read and unmounted.
 See image/INSTALLER.md for the versioned upstream interface and test limits.
 """
 import fcntl
 import hashlib
+import importlib.machinery
+import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import pwd
 import re
 import secrets
+import shutil
 import sys
 import subprocess
+import tarfile
 import time
 
 RUNTIME = Path('/run/cybexos-installer')
 RESERVED = {'root', 'liveuser', 'bin', 'daemon', 'adm', 'mail', 'ftp', 'nobody',
             'dbus', 'systemd', 'gdm', 'sddm', 'sshd', 'polkitd', 'chrony'}
+GiB = 1024**3
+# CybexOS's own minimum, before Anaconda's payload size is considered.
+MINIMUM_BYTES = 64 * GiB
+# Installing alongside never shrinks another system below its own minimum
+# plus this much working space.
+OTHER_SYSTEM_MARGIN = 5 * GiB
+STORAGE_SERVICE = 'org.fedoraproject.Anaconda.Modules.Storage'
+# lsblk file system types that indicate another operating system.
+SYSTEM_FILESYSTEMS = {'ntfs': 'Windows', 'BitLocker': 'Windows', 'ext4': 'Linux', 'ext3': 'Linux',
+                      'xfs': 'Linux', 'btrfs': 'Linux', 'crypto_LUKS': 'Linux', 'LVM2_member': 'Linux',
+                      'apfs': 'macOS', 'hfsplus': 'macOS'}
+
+
+def load_sibling(name, filename):
+    loader = importlib.machinery.SourceFileLoader(name, str(Path(__file__).resolve().with_name(filename)))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+seed_format = load_sibling('cybexos_installer_seed', 'cybexos-installer-seed')
+# Logs the installer page may show and export. Anaconda writes the /tmp logs;
+# a chroot %post --log lands in the target, a --nochroot one in the live system.
+# Never add /tmp/sensitive-info.log or a path chosen by the request.
+LOG_SOURCES = {
+    'steps': [RUNTIME / 'worker.log'],
+    'anaconda': [Path('/tmp/anaconda.log')],
+    'programs': [Path('/tmp/program.log')],
+    'storage': [Path('/tmp/storage.log')],
+    'software': [Path('/tmp/packaging.log')],
+    'post': [Path('/mnt/sysroot/var/log/anaconda/cybexos-cleanup.log'),
+             Path('/var/log/anaconda/cybexos-target-policy.log')],
+}
+LOG_LIMIT = 96 * 1024
+EXPORT_FILESYSTEMS = {'vfat', 'exfat', 'ext2', 'ext3', 'ext4', 'btrfs', 'xfs'}
+LIVE_LABEL = 'CYBEXOS-LIVE-44'
 
 
 class Invalid(ValueError):
@@ -37,17 +80,17 @@ def plain(value):
     return value
 
 
-def validate_account(data, choices):
-    username = data.get('username', '')
-    if not isinstance(username, str) or not re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}', username) or username in RESERVED:
-        raise Invalid('Choose a username of 1–31 lowercase letters, numbers, underscores or dashes, starting with a letter.')
-    password = data.get('password', '')
-    if not isinstance(password, str) or len(password) < 12 or len(password) > 512:
-        raise Invalid('Use a password of 12–512 characters.')
-    if any(ord(char) < 32 or ord(char) == 127 for char in password):
-        raise Invalid('The password cannot contain control characters.')
-    if password != data.get('confirm'):
-        raise Invalid('The passwords do not match.')
+def validate_password(value, confirm, what='password'):
+    if not isinstance(value, str) or len(value) < 12 or len(value) > 512:
+        raise Invalid(f'Use a {what} of 12–512 characters.')
+    if any(ord(char) < 32 or ord(char) == 127 for char in value):
+        raise Invalid(f'The {what} cannot contain control characters.')
+    if value != confirm:
+        raise Invalid(f'The {what}s do not match.')
+
+
+def validate_system(data, choices):
+    """Keyboard, language, timezone and computer name from Anaconda's lists."""
     keyboard = data.get('keyboard', '')
     if keyboard not in {item['id'] for item in choices['keyboards']}:
         raise Invalid('Choose an available keyboard layout.')
@@ -60,14 +103,158 @@ def validate_account(data, choices):
     hostname = data.get('hostname') or 'cybexos'
     if not isinstance(hostname, str) or not re.fullmatch(r'[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?', hostname):
         raise Invalid('The computer name must contain 1–63 letters, numbers or dashes.')
-    encrypted = data.get('encrypted', True)
-    if not isinstance(encrypted, bool):
-        raise Invalid('The encryption choice is invalid.')
-    passwordless_wheel = data.get('passwordless_wheel', False)
-    if not isinstance(passwordless_wheel, bool):
-        raise Invalid('The sudo password choice is invalid.')
-    return dict(username=username, keyboard=keyboard, locale=locale, timezone=timezone,
-                hostname=hostname, encrypted=encrypted, passwordless_wheel=passwordless_wheel)
+    return dict(keyboard=keyboard, locale=locale, timezone=timezone, hostname=hostname)
+
+
+def flag(data, key, default, message):
+    value = data.get(key, default)
+    if not isinstance(value, bool):
+        raise Invalid(message)
+    return value
+
+
+def validate_layout(data):
+    """`erase` the whole disk, or install `alongside` its existing systems."""
+    layout = data.get('layout', 'erase')
+    if layout not in ('erase', 'alongside'):
+        raise Invalid('Choose whether to erase the disk or install alongside.')
+    shrink = data.get('shrink')
+    if layout == 'erase' or shrink is None:
+        return layout, None
+    if (not isinstance(shrink, dict) or set(shrink) != {'device', 'size'}
+            or not isinstance(shrink['device'], str) or not re.fullmatch(r'[A-Za-z0-9_.:/+-]{1,200}', shrink['device'])
+            or type(shrink['size']) is not int or shrink['size'] <= 0):
+        raise Invalid('The partition size choice is invalid. Review the disk again.')
+    return layout, dict(shrink)
+
+
+def validate_account(data, choices):
+    """Interactive choices; the password itself is checked but not returned."""
+    oem = flag(data, 'oem', False, 'The new-owner choice is invalid.')
+    encrypted = flag(data, 'encrypted', True, 'The encryption choice is invalid.')
+    passwordless_wheel = flag(data, 'passwordless_wheel', False, 'The sudo password choice is invalid.')
+    username = ''
+    if oem:
+        # The temporary disk passphrase the new owner replaces at first start.
+        if encrypted:
+            validate_password(data.get('password', ''), data.get('confirm'), 'passphrase')
+    else:
+        username = data.get('username', '')
+        if not isinstance(username, str) or not re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}', username) or username in RESERVED:
+            raise Invalid('Choose a username of 1–31 lowercase letters, numbers, underscores or dashes, starting with a letter.')
+        validate_password(data.get('password', ''), data.get('confirm'))
+    layout, shrink = validate_layout(data)
+    return dict(username=username, full_name='', **validate_system(data, choices),
+                encrypted=encrypted, passwordless_wheel=passwordless_wheel, oem=oem,
+                layout=layout, shrink=shrink, unattended=False, ssh_authorized_keys=[],
+                ssh_server=False, tailscale=False, config={})
+
+
+def validate_seed(seed, choices):
+    """A validated seed as the same account record an interactive plan makes."""
+    settings = seed.settings
+    if settings['username'] in RESERVED:
+        raise Invalid(f'The seed username "{settings["username"]}" is reserved by the system.')
+    try:
+        system = validate_system(settings, choices)
+    except Invalid as error:
+        raise Invalid('The seed system settings are not available: ' + str(error)) from None
+    secrets_ = {}
+    if settings['encrypted']:
+        secrets_['passphrase'] = seed.secrets['passphrase']
+    if not settings['oem']:
+        secrets_['password_hash'] = seed.secrets['password_hash']
+    account = dict(username=settings['username'], full_name=settings['full_name'], **system,
+                   encrypted=settings['encrypted'], passwordless_wheel=settings['passwordless_wheel'],
+                   oem=settings['oem'], layout='erase', shrink=None, unattended=True,
+                   ssh_authorized_keys=settings['ssh_authorized_keys'], ssh_server=settings['ssh_server'],
+                   tailscale=settings['tailscale'], config=settings['config'])
+    return account, secrets_
+
+
+def disk_systems(disk):
+    """Operating systems suggested by a disk's partitions, for the location step."""
+    found = []
+    for partition in disk.get('partitions', []):
+        system = SYSTEM_FILESYSTEMS.get(partition.get('filesystem', ''))
+        if system and system not in found:
+            found.append(system)
+    return found
+
+
+def required_space(choices):
+    return max(MINIMUM_BYTES, int(choices.get('required_bytes', 0)))
+
+
+def shrink_candidate(analysis):
+    """The largest partition Anaconda can shrink, the only one ever offered."""
+    candidates = [item for item in analysis.get('partitions', []) if item.get('shrinkable')]
+    return max(candidates, key=lambda item: item['size'], default=None)
+
+
+def alongside_options(analysis, required):
+    """What the location step can offer for installing alongside.
+
+    Free space is used when it suffices. Otherwise the largest shrinkable
+    partition may be shrunk, never below its minimum plus a working margin.
+    """
+    free = int(analysis.get('free', 0))
+    if free >= required:
+        return {'mode': 'free', 'free': free, 'required': required, 'space': free}
+    largest = shrink_candidate(analysis)
+    if largest is None:
+        raise Invalid('This disk has too little free space and no partition CybexOS can shrink. '
+                      'Choose Erase disk or another disk.')
+    floor = largest['min_size'] + OTHER_SYSTEM_MARGIN
+    maximum = free + largest['size'] - floor
+    if maximum < required:
+        raise Invalid(f'Shrinking {largest["path"]} cannot free the {required // GiB} GiB CybexOS needs. '
+                      'Choose Erase disk or another disk.')
+    # Start halfway between the minimum and the most that can be taken.
+    default = min(maximum, max(required, (required + maximum) // 2))
+    partition = {key: largest[key] for key in ('id', 'path', 'size', 'min_size', 'filesystem')}
+    return {'mode': 'shrink', 'free': free, 'required': required, 'partition': partition,
+            'floor': floor, 'min_space': required, 'max_space': maximum, 'default_space': default}
+
+
+def alongside_plan(analysis, required, requested):
+    """Validate the reviewed choice against a fresh analysis of the disk."""
+    options = alongside_options(analysis, required)
+    if options['mode'] == 'free':
+        if requested is not None:
+            raise Invalid('This disk has enough free space; nothing needs to be shrunk. Review the disk again.')
+        return {'shrink': None, 'space': options['free']}
+    partition = options['partition']
+    if requested is None or requested['device'] != partition['id']:
+        raise Invalid('Only the largest resizable partition can be shrunk. Review the disk again.')
+    if not options['floor'] <= requested['size'] < partition['size']:
+        raise Invalid(f'{partition["path"]} cannot be shrunk to that size. Review the disk again.')
+    space = options['free'] + partition['size'] - requested['size']
+    if space < required:
+        raise Invalid(f'CybexOS needs at least {required // GiB} GiB. Shrink {partition["path"]} further.')
+    return {'shrink': {'device': partition['id'], 'size': requested['size']}, 'space': space,
+            'partition': partition}
+
+
+def verify_alongside_actions(actions, existing, shrink):
+    """Refuse a plan that touches any existing device except the one shrunk.
+
+    Free-space automatic partitioning must only create new devices. Any
+    destroy, a format on an existing device, or a resize of anything other
+    than the confirmed partition means the plan is not what was reviewed.
+    """
+    target = shrink['device'] if shrink else None
+    for action in actions:
+        kind = str(action.get('action-type', '')).lower()
+        device = action.get('device-id', '')
+        if kind == 'destroy':
+            raise Invalid('Anaconda planned to remove an existing partition. Nothing was changed; choose Erase disk or the full installer.')
+        if kind == 'resize':
+            if device != target:
+                raise Invalid('Anaconda planned to resize another partition. Nothing was changed.')
+            continue
+        if device in existing:
+            raise Invalid('Anaconda planned to change an existing partition. Nothing was changed; use the full installer.')
 
 
 def action_set(actions):
@@ -131,6 +318,129 @@ class State:
         temporary.replace(self.directory / 'state.json')
 
 
+class StepLog:
+    """Timestamped installer steps and the error that stopped them, for the page."""
+    def __init__(self, path=RUNTIME / 'worker.log'):
+        self.path = path
+
+    def reset(self):
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.path.write_text('')
+
+    def write(self, text):
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        with self.path.open('a', encoding='utf-8') as stream:
+            stream.write(time.strftime('%H:%M:%S ') + text + '\n')
+
+
+def read_log(source, sources=LOG_SOURCES, limit=LOG_LIMIT):
+    """The end of one allow-listed log; several files are shown one after another."""
+    if source not in sources:
+        raise Invalid('Choose one of the installer logs.')
+    parts = []
+    for path in sources[source]:
+        try:
+            with path.open('rb') as stream:
+                size = stream.seek(0, os.SEEK_END)
+                stream.seek(max(0, size - limit))
+                text = stream.read().decode('utf-8', 'replace')
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        if size > limit:
+            text = text.partition('\n')[2]  # Drop the partial first line.
+        parts.append(f'==> {path} <==\n{text}' if len(sources[source]) > 1 else text)
+    return {'source': source, 'available': bool(parts), 'text': '\n'.join(parts)}
+
+
+def safe_step(message):
+    # Only fixed upstream step labels belong in status/exported state.
+    return message if message in ('Running post-installation scripts', 'Installing the software') else 'Installing CybexOS…'
+
+
+def failure_state(state, error=None):
+    """Name the step Anaconda was running and the log that explains it."""
+    step = safe_step(state.get('message'))
+    source = 'post' if 'post-install' in step.lower() else 'steps'
+    state.update(phase='failed-install', failed_step=step, log_source=source,
+                 message=f'Installation stopped during “{step}”. The installation details below show what went wrong. '
+                         'Keep this session open.')
+    return state
+
+
+def log_destinations(state, run=subprocess.run):
+    """Writable filesystems on removable drives, never the live medium or target disk."""
+    output = run(['lsblk', '--json', '--bytes', '--output',
+                  'NAME,PATH,TYPE,FSTYPE,LABEL,SIZE,HOTPLUG,RM,RO,MOUNTPOINTS'],
+                 check=True, capture_output=True, text=True, timeout=15).stdout
+    target = state.get('disk', {}).get('name')
+
+    def flatten(device):
+        yield device
+        for child in device.get('children', []):
+            yield from flatten(child)
+
+    destinations = []
+    for disk in json.loads(output)['blockdevices']:
+        devices = list(flatten(disk))
+        if (not (disk.get('hotplug') or disk.get('rm')) or disk.get('name') == target or disk.get('ro')
+                or any(item.get('label') == LIVE_LABEL or item.get('fstype') == 'iso9660'
+                       or '/run/initramfs/live' in (item.get('mountpoints') or []) for item in devices)):
+            continue
+        for device in devices:
+            if device.get('fstype') in EXPORT_FILESYSTEMS and not device.get('ro'):
+                mounted = [point for point in device.get('mountpoints') or [] if point]
+                destinations.append(dict(name=device['name'], path=device['path'], label=device.get('label') or '',
+                                         fstype=device['fstype'], size=int(device.get('size') or 0),
+                                         mountpoint=mounted[0] if mounted else ''))
+    return destinations
+
+
+def log_archive(path, state_file, run=subprocess.run):
+    journal = run(['journalctl', '--boot', '--no-pager', '--output=short-iso'],
+                  capture_output=True, text=True, timeout=120).stdout
+    with tarfile.open(path, 'w:gz') as archive:
+        def add_text(name, text):
+            data = text.encode()
+            info = tarfile.TarInfo(name)
+            info.size, info.mtime, info.mode = len(data), int(time.time()), 0o644
+            archive.addfile(info, io.BytesIO(data))
+        for source, paths in LOG_SOURCES.items():
+            for item in paths:
+                if item.is_file():
+                    add_text(f'cybexos-install-logs/{source}/{item.name}', item.read_text(errors='replace'))
+        if state_file.is_file():
+            # The state file is secret-free: no password, hash or raw request.
+            add_text('cybexos-install-logs/state.json', state_file.read_text())
+        add_text('cybexos-install-logs/journal.txt', journal)
+
+
+def export_logs(name, state, run=subprocess.run, runtime=RUNTIME):
+    destination = next((item for item in log_destinations(state, run) if item['name'] == name), None)
+    if destination is None:
+        raise Invalid('Choose a connected USB drive to save the logs to.')
+    filename = time.strftime('cybexos-install-logs-%Y%m%d-%H%M%S.tar.gz')
+    archive = runtime / ('.export-' + secrets.token_hex(8) + '.tar.gz')
+    mountpoint, mounted = destination['mountpoint'], False
+    try:
+        log_archive(archive, runtime / 'state.json', run)
+        if not mountpoint:
+            mountpoint = str(runtime / 'export-mount')
+            Path(mountpoint).mkdir(mode=0o700, exist_ok=True)
+            run(['mount', '-o', 'nosuid,nodev,noexec', destination['path'], mountpoint], check=True, timeout=60)
+            mounted = True
+        target = Path(mountpoint) / filename
+        shutil.copyfile(archive, target)
+        target.chmod(0o644)
+        run(['sync', '--file-system', str(target)], check=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        raise Invalid('The logs could not be saved to that drive. Check that it is writable and try again.') from None
+    finally:
+        archive.unlink(missing_ok=True)
+        if mounted:
+            run(['umount', mountpoint], check=False, timeout=60)
+    return {'file': filename, 'device': destination['path'], 'label': destination['label']}
+
+
 def installation_status(store, run=subprocess.run):
     state = store.read()
     if state.get('phase') == 'installing':
@@ -140,7 +450,7 @@ def installation_status(store, run=subprocess.run):
                 and service.stdout.strip() not in ('active', 'activating', 'reloading', 'deactivating')):
             # A killed worker does not prove that Anaconda's storage task stopped.
             # Fail closed: never report success or permit a replacement install.
-            state.update(phase='failed-install', message='The installation monitor stopped unexpectedly. Anaconda may still be writing the disk. Keep this session open and inspect the installer diagnostics before restarting.')
+            state.update(phase='failed-install', log_source='anaconda', message='The installation monitor stopped unexpectedly. Anaconda may still be writing the disk. Keep this session open and inspect the installation details before restarting.')
             # This status reader never writes: the worker alone owns progress
             # and completion. Its concurrent final update must win this race.
     return public_status(state)
@@ -156,6 +466,12 @@ def public_status(state):
         'failed-install': 'Installation did not finish. Save diagnostics and check the installer logs before restarting.',
     }
     result = {'phase': phase, 'message': messages.get(phase, '')}
+    if phase == 'failed-install':
+        step = safe_step(state.get('failed_step'))
+        if step != 'Installing CybexOS…':
+            result.update(failed_step=step, message=f'Installation stopped during “{step}”. Check the installation details.')
+        if state.get('log_source') in LOG_SOURCES:
+            result['log_source'] = state['log_source']
     for key in ('step', 'total'):
         if type(state.get(key)) is int and 0 <= state[key] <= 100000:
             result[key] = state[key]
@@ -177,9 +493,36 @@ def diagnostics(store, run=subprocess.run):
             'backend_ready': Path('/run/anaconda/backend_ready').exists()}
 
 
+class SeedVolume:
+    """Finds the attached seed volume; replaced by a fixture in tests."""
+
+    def __init__(self, directory=RUNTIME):
+        self.mountpoint = directory / 'seed'
+
+    def discover(self):
+        return seed_format.discover(self.mountpoint)
+
+
 class Installer:
-    def __init__(self, backend, state, emit=lambda event: None):
+    def __init__(self, backend, state, emit=lambda event: None, seeds=None, steps=None):
         self.backend, self.state, self.emit = backend, state, emit
+        self.steps = steps or StepLog(state.directory / 'worker.log')
+        self.seeds = seeds or SeedVolume(state.directory)
+
+    @property
+    def staged(self):
+        # Root-only, memory-backed files the target hook copies and deletes.
+        return self.state.directory / 'staged'
+
+    def stage(self, name, value):
+        self.staged.mkdir(mode=0o700, parents=True, exist_ok=True)
+        descriptor = os.open(self.staged / name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, 'w') as stream:
+            stream.write(value)
+
+    def clear_staged(self):
+        for path in self.staged.glob('*') if self.staged.is_dir() else []:
+            path.unlink(missing_ok=True)
 
     def require_idle(self):
         if self.state.read().get('phase') in ('installing', 'complete', 'failed-install'):
@@ -191,6 +534,7 @@ class Installer:
     def rescan(self):
         self.require_idle()
         # Invalidate every review before the device tree is refreshed.
+        self.clear_staged()
         self.state.write({'phase': 'setup'})
         self.backend.rescan()
         return self.inventory()
@@ -202,32 +546,135 @@ class Installer:
             raise Invalid('Choose an available keyboard layout.')
         result = self.backend.keyboard(layout)
         # Changing the active keyboard invalidates any old disk confirmation.
+        self.clear_staged()
         self.state.write({'phase': 'setup', 'keyboard': layout})
+        return result
+
+    def seed(self):
+        """Report an attached unattended seed: its summary, or every problem."""
+        self.require_idle()
+        try:
+            seed, seed_disk = self.seeds.discover()
+        except seed_format.SeedError as error:
+            return {'found': True, 'valid': False, 'errors': error.errors}
+        if seed is None:
+            return {'found': False}
+        summary = seed.summary()
+        if self.cancelled(seed):
+            # Reloading the page must not restart a countdown the user stopped.
+            return {'found': True, 'valid': False, 'cancelled': True, 'errors': [], 'seed': summary}
+        try:
+            choices = self.inventory()
+            validate_seed(seed, choices)
+            disk = seed_format.select_disk(seed.settings['match'], choices['disks'], excluded={seed_disk})
+            if disk['size'] < required_space(choices):
+                raise Invalid(f'The matched disk {disk["path"]} is smaller than the '
+                              f'{required_space(choices) // GiB} GiB CybexOS needs.')
+            summary['disk'] = disk
+        except seed_format.SeedError as error:
+            return {'found': True, 'valid': False, 'errors': error.errors, 'seed': summary}
+        except Invalid as error:
+            return {'found': True, 'valid': False, 'errors': [str(error)], 'seed': summary}
+        return {'found': True, 'valid': True, 'errors': [], 'seed': summary}
+
+    def cancelled(self, seed):
+        try:
+            return (self.state.directory / 'seed-cancelled').read_text() == seed.digest
+        except OSError:
+            return False
+
+    def cancel_seed(self, data):
+        """Stop an unattended installation; the same seed is not offered again."""
+        digest = data.get('seed')
+        if not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest):
+            raise Invalid('The seed to cancel is not valid.')
+        self.require_idle()
+        self.state.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        (self.state.directory / 'seed-cancelled').write_text(digest)
+        return self.reset()
+
+    def alongside(self, data):
+        """Free space and the one shrinkable partition for installing alongside."""
+        self.require_idle()
+        self.clear_staged()
+        self.state.write({'phase': 'setup'})  # Any earlier review is invalid now.
+        choices = self.inventory()
+        disk = next((item for item in choices['disks'] if item['name'] == data.get('disk')), None)
+        if disk is None:
+            raise Invalid('Select an available installation disk.')
+        result = alongside_options(self.backend.alongside(disk), required_space(choices))
+        result['systems'] = disk_systems(disk)
         return result
 
     def plan(self, data):
         self.require_idle()
         self.state.write({'phase': 'planning'})  # Any old confirmation token is invalid now.
+        self.clear_staged()
         try:
             choices = self.inventory()
-            account = validate_account(data, choices)
-            disk = next((item for item in choices['disks'] if item['name'] == data.get('disk')), None)
-            if disk is None:
-                raise Invalid('Select an available installation disk. The live medium cannot be selected.')
-            required = max(64 * 1024**3, choices.get('required_bytes', 0))
-            if disk['size'] < required:
-                raise Invalid(f'CybexOS needs a disk with at least {(required + 1024**3 - 1) // 1024**3} GiB for its included applications.')
-            result = self.backend.plan(account, data['password'], disk)
+            seed = None
+            if 'seed' in data:
+                try:
+                    seed, seed_disk = self.seeds.discover()
+                except seed_format.SeedError as error:
+                    raise Invalid('The seed is no longer valid: ' + ' '.join(error.errors)) from None
+                if seed is None or not secrets.compare_digest(seed.digest, str(data.get('seed'))):
+                    raise Invalid('The seed volume changed. Check it again before installing.')
+                if self.cancelled(seed):
+                    raise Invalid('This unattended installation was cancelled.')
+                account, credentials = validate_seed(seed, choices)
+                try:
+                    disk = seed_format.select_disk(seed.settings['match'], choices['disks'], excluded={seed_disk})
+                except seed_format.SeedError as error:
+                    raise Invalid(' '.join(error.errors)) from None
+            else:
+                account = validate_account(data, choices)
+                credentials = {}
+                if not account['oem']:
+                    credentials['password'] = data['password']
+                if account['encrypted']:
+                    credentials['passphrase'] = data['password']
+                disk = next((item for item in choices['disks'] if item['name'] == data.get('disk')), None)
+                if disk is None:
+                    raise Invalid('Select an available installation disk. The live medium cannot be selected.')
+            required = required_space(choices)
+            layout = {'mode': account['layout']}
+            existing = set()
+            if account['layout'] == 'alongside':
+                analysis = self.backend.alongside(disk)
+                decision = alongside_plan(analysis, required, account['shrink'])
+                account['shrink'] = decision['shrink']
+                existing = {disk['name'], *(item['id'] for item in analysis.get('partitions', []))}
+                layout.update(space=decision['space'], systems=disk_systems(disk),
+                              kept=[item['path'] for item in analysis.get('partitions', [])
+                                    if not decision['shrink'] or item['id'] != decision['shrink']['device']])
+                if decision['shrink']:
+                    partition = decision['partition']
+                    layout['resize'] = {'path': partition['path'], 'filesystem': partition['filesystem'],
+                                        'from': partition['size'], 'to': decision['shrink']['size']}
+            elif disk['size'] < required:
+                raise Invalid(f'CybexOS needs a disk with at least {(required + GiB - 1) // GiB} GiB for its included applications.')
+            result = self.backend.plan(account, credentials, disk)
+            credentials.clear()
             if result.get('errors'):
                 raise Invalid('Anaconda rejected the storage layout. Open Advanced storage to review the disk.')
+            if account['layout'] == 'alongside':
+                verify_alongside_actions(result['actions'], existing, account['shrink'])
             state = dict(phase='review', token=secrets.token_hex(24), created=time.time(),
-                         disk=disk, fingerprint=fingerprint(disk), account=account,
+                         disk=disk, fingerprint=fingerprint(disk), account=account, layout=layout,
                          partitioning=result['partitioning'], actions=result['actions'],
                          warnings=result.get('warnings', []), boot_keyboard=result['boot_keyboard'])
+            if seed is not None:
+                # The countdown is enforced here as well as shown by the page.
+                state.update(seed_digest=seed.digest, countdown=seed.settings['countdown'],
+                             countdown_ends=time.time() + seed.settings['countdown'])
+                if seed.secrets.get('tailscale_auth_key'):
+                    self.stage('tailscale-authkey', seed.secrets['tailscale_auth_key'])
             self.state.write(state)
             return state
         except Exception:
             self.state.write({'phase': 'failed-plan'})
+            self.clear_staged()
             raise
         finally:
             data.pop('password', None)
@@ -239,10 +686,15 @@ class Installer:
             raise Invalid('Review a new installation plan before installing.')
         if not secrets.compare_digest(str(data.get('token', '')), state['token']):
             raise Invalid('This review has expired. Review the disk again.')
-        if data.get('confirmed_disk') != state['disk']['name'] or data.get('erase_confirmed') is not True:
+        if state.get('layout', {}).get('mode') == 'alongside':
+            if data.get('confirmed_disk') != state['disk']['name'] or data.get('alongside_confirmed') is not True:
+                raise Invalid('Confirm the disk changes before installing alongside.')
+        elif data.get('confirmed_disk') != state['disk']['name'] or data.get('erase_confirmed') is not True:
             raise Invalid('Confirm erasing the selected disk before installing.')
         if time.time() - state['created'] > 1800:
             raise Invalid('This review has expired. Review the disk again.')
+        if state['account'].get('unattended') and time.time() < state.get('countdown_ends', 0) - 1:
+            raise Invalid('The unattended installation waits for its countdown. Cancel it to stop.')
         current = next((item for item in self.inventory()['disks'] if item['name'] == state['disk']['name']), None)
         if current is None or fingerprint(current) != state['fingerprint']:
             self.state.write({'phase': 'failed-plan'})
@@ -253,11 +705,15 @@ class Installer:
         state['worker_queued_at'] = time.time()
         state.pop('token')
         self.state.write(state)
+        self.steps.reset()
+        self.steps.write(f"Installing to {state['disk']['path']} ({state['disk']['model']}), "
+                         f"{'encrypted' if state['account']['encrypted'] else 'unencrypted'}.")
 
         try:
             self.backend.start_install(state)
         except Exception:
-            state.update(phase='failed-install', message='The installation worker could not start. Review its status before restarting the installer.')
+            state.update(phase='failed-install', log_source='steps', message='The installation worker could not start. Review its status before restarting the installer.')
+            self.steps.write('The installation worker could not start.')
             self.state.write(state)
             raise
         return public_status(state)
@@ -268,8 +724,10 @@ class Installer:
             raise Invalid('No new confirmed installation is queued.')
 
         def progress(step, total, message):
-            # Anaconda's free-form task text can contain paths or user data.
-            state.update(step=step, total=total)
+            # Keep free-form task text in the explicitly opened log only.
+            safe_message = safe_step(message)
+            self.steps.write(f'[{step}/{total}] {message}')
+            state.update(step=step, total=total, message=safe_message)
             self.state.write(state)
             self.emit({'event': 'progress', 'phase': 'installing', 'step': step,
                        'total': total, 'message': 'Installing CybexOS…'})
@@ -277,10 +735,15 @@ class Installer:
         try:
             self.backend.run_install(state, progress, self.state)
             state.update(phase='complete', message='CybexOS is installed. Restart and remove the installation medium.')
-        except Exception:
-            state.update(phase='failed-install', message='Installation did not finish. Keep this session open and review Anaconda diagnostics before retrying.')
+        except Exception as error:
+            failure_state(state)
+            self.steps.write(f"Installation stopped during: {state['failed_step']}")
+            # Anaconda's own error text; its installation task takes no
+            # parameters, so no request or secret can be part of it.
+            self.steps.write(f'{type(error).__name__}: {error}')
             self.state.write(state)
             raise
+        self.steps.write('Installation finished.')
         self.state.write(state)
         return state
 
@@ -290,6 +753,7 @@ class Installer:
     def reset(self):
         self.require_idle()
         self.backend.reset()
+        self.clear_staged()
         self.state.write({'phase': 'setup'})
         return {'phase': 'setup'}
 
@@ -354,11 +818,14 @@ class Anaconda:
             except (OSError, ValueError, TypeError, subprocess.SubprocessError):
                 # Anaconda remains the authority for whether this disk is safe to select.
                 pass
-            disks.append(dict(name=name, path=device['path'], size=device['size'],
-                              model=attrs.get('model') or device.get('description') or name,
-                              serial=attrs.get('serial', ''), wwn=attrs.get('wwn', ''),
-                              device_id=device.get('device-id', ''), removable=device.get('removable', False),
-                              partitions=partitions))
+            disk = dict(name=name, path=device['path'], size=device['size'],
+                        model=attrs.get('model') or device.get('description') or name,
+                        serial=attrs.get('serial', ''), wwn=attrs.get('wwn', ''),
+                        device_id=device.get('device-id', ''), removable=device.get('removable', False),
+                        partitions=partitions)
+            # A hint for offering "Install alongside"; not part of the identity.
+            disk['systems'] = disk_systems(disk)
+            disks.append(disk)
         localization = self.proxy('Localization')
         keyboards = plain(localization.GetKeyboardLayouts())
         keyboard_choices = [{'id': item['layout-id'], 'label': item['description']} for item in keyboards]
@@ -414,18 +881,52 @@ class Anaconda:
         apply_live_keyboard(layout)
         return {'keyboard': layout, 'boot_keyboard': localization.VirtualConsoleKeymap}
 
-    def plan(self, account, password, disk):
+    def partitioning(self, path):
+        return self.bus.get_proxy(STORAGE_SERVICE, path)
+
+    def alongside(self, disk):
+        """Read-only: free space and resize limits from a scratch partitioning.
+
+        anaconda-webui 68's reclaim dialog reads the same limits from an
+        AUTOMATIC partitioning's resizable device tree. Nothing is scheduled
+        here, and the playground is dropped again afterwards.
+        """
+        self.reset()
+        self.proxy('Storage', '/DiskSelection').SelectedDisks = [disk['name']]
+        partitioning = self.partitioning(self.proxy('Storage').CreatePartitioning('AUTOMATIC'))
+        tree = self.partitioning(partitioning.GetDeviceTree())
+        try:
+            partitions = []
+            for device_id in tree.GetDevicePartitions(disk['name']):
+                data = plain(tree.GetDeviceData(device_id))
+                shrinkable = bool(tree.IsDeviceShrinkable(device_id))
+                minimum = int(tree.GetDeviceSizeLimits(device_id)[0]) if shrinkable else int(data['size'])
+                partitions.append(dict(id=device_id, path=data.get('path', ''), size=int(data['size']),
+                                       min_size=minimum, shrinkable=shrinkable,
+                                       filesystem=plain(tree.GetFormatData(device_id)).get('type', '')))
+            return dict(free=int(tree.GetDiskFreeSpace([disk['name']])), partitions=partitions)
+        finally:
+            self.reset()
+
+    def plan(self, account, credentials, disk):
         from pyanaconda.core.users import crypt_password
         from pyanaconda.modules.common.structures.user import UserData
         from pyanaconda.modules.common.structures.partitioning import PartitioningRequest
         self.reset()
         users = self.proxy('Users')
-        user = UserData()
-        user.name = account['username']
-        user.password = crypt_password(password)
-        user.is_crypted = True
-        user.groups = ['wheel']
-        users.Users = [UserData.to_structure(user)]
+        if account['oem']:
+            # The new owner creates the only account at first start.
+            users.Users = []
+        else:
+            user = UserData()
+            user.name = account['username']
+            if account['full_name']:
+                user.gecos = account['full_name']
+            # A seed provides only a hash; an interactive password is hashed here.
+            user.password = credentials.get('password_hash') or crypt_password(credentials['password'])
+            user.is_crypted = True
+            user.groups = ['wheel']
+            users.Users = [UserData.to_structure(user)]
         users.ClearRootPassword()
         users.IsRootAccountLocked = True
         localization = self.proxy('Localization')
@@ -441,19 +942,31 @@ class Anaconda:
         storage = self.proxy('Storage')
         self.proxy('Storage', '/DiskSelection').SelectedDisks = [disk['name']]
         initialization = self.proxy('Storage', '/DiskInitialization')
-        initialization.InitializationMode = 1  # CLEAR_PARTITIONS_ALL; selected disk only.
-        initialization.DrivesToClear = [disk['name']]
+        alongside = account['layout'] == 'alongside'
+        if alongside:
+            # CLEAR_PARTITIONS_NONE: automatic partitioning uses free space only,
+            # and no disk label is ever recreated.
+            initialization.InitializationMode = 0
+            initialization.DrivesToClear = []
+            initialization.InitializeLabelsEnabled = False
+        else:
+            initialization.InitializationMode = 1  # CLEAR_PARTITIONS_ALL; selected disk only.
+            initialization.DrivesToClear = [disk['name']]
+            initialization.InitializeLabelsEnabled = True
         initialization.DevicesToClear = []
-        initialization.InitializeLabelsEnabled = True
         path = storage.CreatePartitioning('AUTOMATIC')
-        partitioning = self.bus.get_proxy('org.fedoraproject.Anaconda.Modules.Storage', path)
+        partitioning = self.partitioning(path)
+        if alongside and account['shrink']:
+            # The same call the reclaim dialog makes on this partitioning's tree.
+            tree = self.partitioning(partitioning.GetDeviceTree())
+            tree.ShrinkDevice(account['shrink']['device'], account['shrink']['size'])
         request = PartitioningRequest.from_structure(partitioning.Request)
         request.partitioning_scheme = 1  # BTRFS
         request.encrypted = account['encrypted']
         request.luks_version = 'luks2'
         partitioning.Request = PartitioningRequest.to_structure(request)
         if account['encrypted']:
-            partitioning.SetPassphrase(password)
+            partitioning.SetPassphrase(credentials['passphrase'])
         self.proxy('Storage', '/Bootloader').Drive = ''
         self.task('Storage', partitioning.ConfigureWithTask())
         storage.ApplyPartitioning(path)
@@ -471,7 +984,7 @@ class Anaconda:
         actions = plain(self.proxy('Storage', '/DeviceTree').GetActions())
         if action_set(actions) != action_set(state['actions']):
             raise Invalid('The planned disk changes changed. Review the installation again.')
-        partitioning = self.bus.get_proxy('org.fedoraproject.Anaconda.Modules.Storage', state['partitioning'])
+        partitioning = self.partitioning(state['partitioning'])
         report = self.task('Storage', partitioning.ValidateWithTask(), result=True)
         if report.get('error-messages'):
             raise Invalid('Anaconda no longer considers this storage plan valid.')
@@ -508,14 +1021,16 @@ def main():
     os.umask(0o077)
     command = sys.argv[1] if len(sys.argv) == 2 else ''
     if command not in ('inventory', 'rescan', 'diagnostics', 'keyboard', 'plan', 'install', 'status', 'geolocate', 'reset', 'advanced',
-                       'worker', 'reboot'):
+                       'worker', 'reboot', 'seed', 'alongside', 'cancel-seed', 'log', 'log-destinations', 'export-logs'):
         raise Invalid('Unknown installer request.')
-    check_live_environment(require_backend=command not in ('status', 'diagnostics', 'reboot'))
+    check_live_environment(require_backend=command not in ('status', 'diagnostics', 'reboot', 'log', 'log-destinations', 'export-logs'))
     RUNTIME.mkdir(mode=0o700, parents=True, exist_ok=True)
-    # Serialize planning and commit. Status remains readable during installation,
-    # and a slow geolocation lookup, which changes no selection, never blocks setup.
+    # Serialize planning and commit. Status and logs remain readable during
+    # installation, and a slow geolocation lookup, which changes no selection,
+    # never blocks setup.
     lock = (RUNTIME / 'lock').open('a')
-    if command not in ('status', 'geolocate'):
+    reading_logs = command in ('log', 'log-destinations', 'export-logs')
+    if command not in ('status', 'geolocate', 'diagnostics') and not reading_logs:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | (0 if command == 'worker' else fcntl.LOCK_NB))
         except BlockingIOError:
@@ -540,6 +1055,12 @@ def main():
         raise Invalid('Installer request is invalid.') from None
     if not isinstance(data, dict):
         raise Invalid('Installer request is invalid.')
+    if command == 'log':
+        return read_log(data.get('source', 'steps'))
+    if command == 'log-destinations':
+        return {'destinations': log_destinations(State().read())}
+    if command == 'export-logs':
+        return export_logs(data.get('device', ''), State().read())
     installer = Installer(Anaconda(), State(), emit)
     if command == 'inventory':
         return installer.inventory()
@@ -547,6 +1068,10 @@ def main():
         return installer.rescan()
     if command == 'geolocate':
         return installer.geolocate()
+    if command == 'seed':
+        return installer.seed()
+    if command == 'cancel-seed':
+        return installer.cancel_seed(data)
     if command in ('reset', 'advanced'):
         return installer.reset()
     return getattr(installer, command)(data)

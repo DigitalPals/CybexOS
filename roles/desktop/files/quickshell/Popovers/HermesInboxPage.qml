@@ -581,9 +581,9 @@ Item {
                     ? HermesTheme.hover : "transparent"
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
-                Accessible.name: "Hermes conversation: "
-                    + (root.conversation?.title ?? "New chat")
-                Accessible.description: "Open conversation history"
+                Accessible.name: I18n.format("Hermes conversation: %1",
+                    [root.conversation?.title ?? I18n.tr("New chat")])
+                Accessible.description: I18n.tr("Open conversation history")
                 Accessible.onPressAction: root.togglePicker()
 
                 Keys.onPressed: event => {
@@ -759,13 +759,13 @@ Item {
                         font.family: HermesTheme.fontUi
                         font.pixelSize: Theme.typography.control
                         color: HermesTheme.textPrimary
-                        Accessible.name: "Search Hermes conversation history"
+                        Accessible.name: I18n.tr("Search Hermes conversation history")
                         Accessible.role: Accessible.EditableText
 
                         Text {
                             visible: pickerSearchInput.text === ""
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "Search conversations"
+                            text: I18n.tr("Search conversations")
                             font.family: HermesTheme.fontUi
                             font.pixelSize: Theme.typography.control
                             color: HermesTheme.textFaint
@@ -1146,7 +1146,7 @@ Item {
                         border.width: 1
                         border.color: HermesTheme.border
                         Accessible.role: Accessible.StaticText
-                        Accessible.name: "Hermes connection"
+                        Accessible.name: I18n.tr("Hermes connection")
                         Accessible.description: root.connectionSummary()
 
                         Rectangle {
@@ -1172,7 +1172,7 @@ Item {
 
                             Text {
                                 width: parent.width
-                                text: "CONNECTION"
+                                text: I18n.tr("CONNECTION")
                                 font.family: HermesTheme.fontUi
                                 font.pixelSize: Theme.typography.metadata
                                 font.weight: Theme.weightSemibold
@@ -1201,7 +1201,7 @@ Item {
 
                     Entry {
                         id: setupAction
-                        label: "Connection setup"
+                        label: I18n.tr("Connection setup")
                         symbol: "key"
                         onTriggered: {
                             root.closeActions(false);
@@ -1264,7 +1264,7 @@ Item {
                         id: compressAction
                         visible: !Hermes.isNewChat
                         height: visible ? 34 : 0
-                        label: "Compress context"
+                        label: I18n.tr("Compress context")
                         symbol: "compress"
                         actionEnabled: root.conversation?.readOnly !== true
                         onTriggered: {
@@ -1311,7 +1311,7 @@ Item {
                     anchors.left: parent.left
                     anchors.leftMargin: 2
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "ACTIVE CONVERSATIONS"
+                    text: I18n.tr("ACTIVE CONVERSATIONS")
                     font.family: HermesTheme.fontUi
                     font.pixelSize: Theme.typography.metadata
                     font.weight: Theme.weightSemibold
@@ -1349,7 +1349,7 @@ Item {
                     anchors.right: parent.right
                     anchors.rightMargin: 2
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "TOP 3"
+                    text: I18n.tr("TOP 3")
                     font.family: HermesTheme.fontUi
                     font.pixelSize: Theme.typography.metadata
                     font.weight: Theme.weightMedium

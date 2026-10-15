@@ -16,7 +16,7 @@ BarModule {
         panelName: "bluetooth"
         isle: root.isle
         anchorItem: root.groupAnchor ?? chip
-        tooltip: "Bluetooth connected"
+        tooltip: I18n.tr("Bluetooth connected")
         tooltipAlign: 1
 
         Sym {

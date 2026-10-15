@@ -32,6 +32,8 @@ assert_content /etc/cybexos/login.json '{"original":true}'
   fail 'the previous display manager selection was not restored'
 assert_content /etc/sudoers.d/10-wheel-nopasswd '# original sudo policy'
 assert_content /etc/polkit-1/rules.d/49-wheel-local.rules '// original Polkit policy'
+! grep -q 'CybexOS qualified series' /etc/dnf/versionlock.toml 2>/dev/null ||
+  fail 'uninstall left the qualified-series versionlock entries'
 assert_content /home/fedora/.local/bin/sccache 'original sccache helper'
 assert_content /home/fedora/.config/distrobox/distrobox.conf 'original Distrobox configuration'
 assert_content /home/fedora/.config/noctalia/config.json 'original Noctalia configuration'

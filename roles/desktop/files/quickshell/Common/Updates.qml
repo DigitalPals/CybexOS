@@ -27,11 +27,24 @@ Singleton {
     id: root
 
     property int dnfCount: 0
+    // The check's rows behind dnfCount ({ name, arch, version, repo }): the
+    // incoming versions for the details, and the CybexOS desktop RPM that an
+    // ISO installation receives from its enrolled channel.
+    property var dnfPackages: []
+    readonly property var desktopRows: UpdatesHelpers.desktopPackages(dnfPackages)
+    readonly property int desktopCount: desktopRows.length
+    readonly property string desktopVersion: desktopCount > 0
+        ? UpdatesHelpers.desktopVersion(desktopRows[0].version) : ""
+    // The panel counts the desktop RPM as CybexOS rather than as one more
+    // system package; dnfCount itself stays what `dnf upgrade` will list.
+    readonly property int systemCount: Math.max(0, dnfCount - desktopCount)
     // The two facts about pending system packages worth a line of their own:
     // a new kernel (it means a restart) and security fixes.
     property string dnfKernel: ""
     property int dnfSecurityCount: 0
     property bool dnfSecuritySevere: false
+    // Every pending advisory (UpdatesHelpers.advisorySummary), for the details.
+    property var dnfAdvisories: UpdatesHelpers.emptyAdvisories()
     readonly property string systemDetail: UpdatesHelpers.systemDetail(
         dnfKernel, dnfSecurityCount, dnfSecuritySevere)
     // [{ id, name, from, to, needsReboot, requireAc }] per device.
@@ -58,8 +71,15 @@ Singleton {
     // "no-release" while the channel has no published release, else "".
     property string projectStatus: ""
     readonly property string projectNote: UpdatesHelpers.projectStatusLabel(projectStatus)
+    // The available release's notes (checkout installations), shown as text.
+    property string projectNotes: ""
+    // CybexOS itself is pending: a verified release, or the desktop RPM.
+    readonly property bool cybexosPending: projectAvailable || desktopCount > 0
+    readonly property string cybexosVersion: projectAvailable ? projectVersion : desktopVersion
     property var dnfNames: []
     property var flatpakNames: []
+    // { name, id, version } per pending app; version is the incoming one.
+    property var flatpakApps: []
     property bool ran: false
     // Which sources have answered at least once this session. A source's
     // first answer is its baseline and stays silent, even if an earlier
@@ -77,13 +97,16 @@ Singleton {
     // as it closes makes total briefly describe a half-completed check and can
     // fire a notification for a state that never existed.
     property var nextDnfNames: []
+    property var nextDnfPackages: []
     property string nextDnfKernel: ""
-    property var nextDnfSecurity: ({ count: 0, severe: false })
+    property var nextDnfSecurity: UpdatesHelpers.emptyAdvisories()
     property var nextFlatpakNames: []
+    property var nextFlatpakApps: []
     property bool nextProjectAvailable: false
     property string nextProjectVersion: ""
     property string nextProjectApplyNote: ""
     property string nextProjectStatus: ""
+    property string nextProjectNotes: ""
     property string dnfError: ""
     property string flatpakError: ""
     property string projectError: ""
@@ -101,9 +124,13 @@ Singleton {
     // recount after a run force a real read.
     property string dnfCacheSignature: ""
     property var dnfCacheNames: []
+    property var dnfCachePackages: []
     property string dnfCacheKernel: ""
-    property var dnfCacheSecurity: ({ count: 0, severe: false })
+    property var dnfCacheSecurity: UpdatesHelpers.emptyAdvisories()
     property double dnfCacheAt: 0
+    // When the installed set last changed (seconds, from the signature), so a
+    // background download that predates an install is not "ready" any more.
+    property real rpmdbChangedAt: 0
     property bool dnfForced: false
     property bool initialized: false
     property int checkFailureCount: 0
@@ -150,6 +177,8 @@ Singleton {
     readonly property string summary: {
         if (busy)
             return "Checking for updates…";
+        if (total > 0 && downloadReady)
+            return "Updates downloaded — ready to install";
         if (total > 0)
             return total + (total === 1 ? " update" : " updates") + " available";
         if (checkError !== "")
@@ -222,14 +251,16 @@ Singleton {
         if (parts.dnf) {
             dnfError = "";
             nextDnfNames = [];
+            nextDnfPackages = [];
             nextDnfKernel = "";
-            nextDnfSecurity = ({ count: 0, severe: false });
+            nextDnfSecurity = UpdatesHelpers.emptyAdvisories();
             dnfDone = false;
             dnfForced = forced === true;
         }
         if (parts.flatpak) {
             flatpakError = "";
             nextFlatpakNames = [];
+            nextFlatpakApps = [];
             checkingFlatpak = flatpakEnabled;
             flatpakDone = !checkingFlatpak;
         }
@@ -239,6 +270,7 @@ Singleton {
             nextProjectVersion = "";
             nextProjectApplyNote = "";
             nextProjectStatus = "";
+            nextProjectNotes = "";
             projectDone = !projectUpdatesEnabled;
         }
         if (parts.firmware) {
@@ -283,6 +315,7 @@ Singleton {
         if (!dnfForced && UpdatesHelpers.dnfAnswerReusable(signature,
                 dnfCacheSignature, dnfCacheAt, Date.now())) {
             nextDnfNames = dnfCacheNames;
+            nextDnfPackages = dnfCachePackages;
             nextDnfKernel = dnfCacheKernel;
             nextDnfSecurity = dnfCacheSecurity;
             dnfDone = true;
@@ -302,15 +335,17 @@ Singleton {
 
     function finishDnf(exitCode, body, errText, signature) {
         if (exitCode === 0 || exitCode === 100) {
-            nextDnfNames = UpdatesHelpers.dnfNames(body);
+            nextDnfPackages = UpdatesHelpers.dnfPackages(body);
+            nextDnfNames = nextDnfPackages.map(row => row.name);
             nextDnfKernel = UpdatesHelpers.dnfKernelVersion(body);
             dnfCacheSignature = signature || "";
             dnfCacheNames = nextDnfNames;
+            dnfCachePackages = nextDnfPackages;
             dnfCacheKernel = nextDnfKernel;
-            dnfCacheSecurity = ({ count: 0, severe: false });
+            dnfCacheSecurity = UpdatesHelpers.emptyAdvisories();
             dnfCacheAt = Date.now();
-            // Security advisories only matter for packages that are pending,
-            // and cost a second dnf read; skip it when nothing is.
+            // Advisories only matter for packages that are pending, and cost
+            // a second dnf read; skip it when nothing is.
             if (nextDnfNames.length > 0) {
                 dnfSecurityProc.running = true;
                 return;
@@ -325,14 +360,14 @@ Singleton {
         finishCheck();
     }
 
-    // The advisory list is a detail of the dnf answer, not a source of its
-    // own: when it cannot be read the row just says less.
+    // The advisories are a detail of the dnf answer, not a source of their
+    // own: when they cannot be read the row and the details just say less.
     function finishDnfSecurity(exitCode, body) {
         if (exitCode === 0) {
             try {
-                nextDnfSecurity = UpdatesHelpers.securityAdvisories(body);
+                nextDnfSecurity = UpdatesHelpers.advisorySummary(body);
             } catch (exception) {
-                nextDnfSecurity = ({ count: 0, severe: false });
+                nextDnfSecurity = UpdatesHelpers.emptyAdvisories();
             }
         } else {
             console.warn("update check: dnf advisory list exited with status", exitCode);
@@ -344,7 +379,8 @@ Singleton {
 
     function finishFlatpak(exitCode, body, errText) {
         if (exitCode === 0) {
-            nextFlatpakNames = UpdatesHelpers.flatpakNames(body);
+            nextFlatpakApps = UpdatesHelpers.flatpakApps(body);
+            nextFlatpakNames = nextFlatpakApps.map(app => app.name);
         } else {
             flatpakError = ProcHelpers.commandError("flatpak update check", exitCode, errText,
                 ({ 124: "Flatpak update check timed out" }));
@@ -382,6 +418,7 @@ Singleton {
                     ? data.availableVersion : "";
                 nextProjectApplyNote = UpdatesHelpers.projectErrorOf(data);
                 nextProjectStatus = UpdatesHelpers.projectStatusOf(data);
+                nextProjectNotes = UpdatesHelpers.projectNotesOf(data);
             } catch (exception) {
                 projectError = "CybexOS update check returned invalid data";
             }
@@ -411,15 +448,18 @@ Singleton {
 
         if (parts.dnf && dnfError === "") {
             dnfNames = nextDnfNames;
+            dnfPackages = nextDnfPackages;
             dnfCount = nextDnfNames.length;
             dnfKernel = nextDnfKernel;
             dnfSecurityCount = nextDnfSecurity.count;
             dnfSecuritySevere = nextDnfSecurity.severe;
+            dnfAdvisories = nextDnfSecurity;
             answered.push({ baseline: !!known.dnf, count: dnfCount });
             known.dnf = true;
         }
         if (parts.flatpak && (!checkingFlatpak || flatpakError === "")) {
             flatpakNames = checkingFlatpak ? nextFlatpakNames : [];
+            flatpakApps = checkingFlatpak ? nextFlatpakApps : [];
             flatpakCount = flatpakNames.length;
             if (checkingFlatpak) {
                 answered.push({ baseline: !!known.flatpak, count: flatpakCount });
@@ -431,6 +471,7 @@ Singleton {
             projectVersion = nextProjectVersion;
             projectApplyNote = nextProjectAvailable ? nextProjectApplyNote : "";
             projectStatus = nextProjectStatus;
+            projectNotes = nextProjectAvailable ? nextProjectNotes : "";
             if (projectUpdatesEnabled) {
                 answered.push({ baseline: !!known.project, count: projectAvailable ? 1 : 0 });
                 known.project = true;
@@ -474,6 +515,174 @@ Singleton {
 
         if (checkAgain)
             Qt.callLater(root.startCheck, UpdatesHelpers.allParts(), checkAgainForced);
+    }
+
+    // ---- what will change -------------------------------------------------
+    // The details list each pending package and app with its installed and
+    // incoming version, the advisories behind them, and what CybexOS itself
+    // changes. The incoming side and the advisories come with the check; the
+    // installed side (rpm, flatpak) and the desktop RPM's changelog are read
+    // only while someone has the details open, once per check. None of it
+    // needs root, and each read is a bounded request.
+    property real previewFor: -1
+    property var installedRpms: ({})
+    property var installedApps: ({})
+    property var desktopChangelog: []
+    readonly property bool previewBusy: rpmQuery.running || appQuery.running
+        || changelogQuery.running
+    readonly property var packageChanges: UpdatesHelpers.packageChanges(
+        dnfPackages.filter(row => !UpdatesHelpers.isDesktopPackage(row)), installedRpms)
+    readonly property var appChanges: UpdatesHelpers.appChanges(flatpakApps, installedApps)
+    readonly property bool previewWanted: detailsOpen && runState === "idle" && total > 0
+        && Popouts.open && Popouts.currentName === "updates"
+
+    onPreviewWantedChanged: loadPreview()
+    // Each completed check is a new answer: its preview is read afresh, and
+    // a background download that finished meanwhile is picked up.
+    onLastCheckedChanged: {
+        downloadView.reload();
+        loadPreview();
+    }
+
+    function loadPreview() {
+        if (!previewWanted || busy || previewFor === lastChecked)
+            return;
+        previewFor = lastChecked;
+        if (systemCount > 0)
+            rpmQuery.running = true;
+        else
+            installedRpms = ({});
+        if (flatpakCount > 0)
+            appQuery.running = true;
+        else
+            installedApps = ({});
+        if (desktopCount > 0)
+            changelogQuery.running = true;
+        else
+            desktopChangelog = [];
+    }
+
+    CommandRequest {
+        id: rpmQuery
+        command: ["rpm", "-qa", "--qf", "%{NAME}.%{ARCH}\\t%{EVR}\\n"]
+        timeoutMs: 20000
+        onCompleted: (code, body, error) => {
+            root.installedRpms = code === 0 ? UpdatesHelpers.rpmVersions(body) : ({});
+        }
+    }
+
+    CommandRequest {
+        id: appQuery
+        command: ["flatpak", "list", "--app", "--columns=application,version"]
+        timeoutMs: 20000
+        onCompleted: (code, body, error) => {
+            root.installedApps = code === 0 ? UpdatesHelpers.flatpakVersions(body) : ({});
+        }
+    }
+
+    // Only the enrolled desktop channel's changelog metadata is loaded, not
+    // every Fedora repository's. Untranslated, so the entry dates parse.
+    Process {
+        id: changelogQuery
+        property string body: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        command: ["timeout", "45s", "dnf", "--quiet", "--assumeyes",
+            "--repo=" + UpdatesHelpers.DESKTOP_REPO, "changelog", "--upgrades",
+            "cybexos-desktop"]
+        // qmllint disable incompatible-type
+        environment: ({ LC_ALL: "C" })
+        // qmllint enable incompatible-type
+
+        stdout: StdioCollector {
+            onStreamFinished: changelogQuery.body = text
+        }
+
+        onExited: (exitCode, exitStatus) => {
+            changelogQuery.exitSeen = true;
+            changelogQuery.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                exitSeen = false;
+                lastExit = 0;
+            } else {
+                root.desktopChangelog = exitSeen && lastExit === 0
+                    ? UpdatesHelpers.parseChangelog(body, 5, 8) : [];
+            }
+        }
+    }
+
+    // ---- background downloads ---------------------------------------------
+    // cybexos-update-download.timer (off unless chosen in Settings) downloads
+    // Fedora packages and system Flatpaks without installing them. Its
+    // service publishes one world-readable record when it finishes.
+    property var downloadStatus: UpdatesHelpers.parseDownloadStatus("")
+    readonly property bool downloadReady: runState === "idle"
+        && UpdatesHelpers.downloadReady(downloadStatus, rpmdbChangedAt,
+            dnfCount + flatpakCount)
+
+    FileView {
+        id: downloadView
+        path: UpdatesHelpers.DOWNLOAD_STATUS_PATH
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: root.downloadStatus = UpdatesHelpers.parseDownloadStatus(text())
+        onLoadFailed: root.downloadStatus = UpdatesHelpers.parseDownloadStatus("")
+    }
+
+    // "Download updates automatically" is the system timer's own enablement:
+    // the choice is system-wide and systemd keeps it, so no shell.json key
+    // can disagree with it. Changing it asks the session's Polkit agent once,
+    // through a transient system unit, as updates and restores do.
+    // enabled | disabled | unavailable (no timer installed) | unknown
+    property string autoDownloadState: "unknown"
+    property string autoDownloadError: ""
+    readonly property bool autoDownloadBusy: autoDownloadSet.running
+
+    function refreshAutoDownload() {
+        if (!autoDownloadQuery.running && !autoDownloadSet.running)
+            autoDownloadQuery.running = true;
+    }
+
+    function setAutoDownload(enable) {
+        if (autoDownloadSet.running || autoDownloadState === "unavailable")
+            return;
+        autoDownloadError = "";
+        autoDownloadSet.command = UpdatesHelpers.autoDownloadCommand(enable === true,
+            Date.now());
+        autoDownloadSet.running = true;
+    }
+
+    CommandRequest {
+        id: autoDownloadQuery
+        command: ["systemctl", "is-enabled", UpdatesHelpers.DOWNLOAD_TIMER]
+        timeoutMs: 10000
+        onCompleted: (code, body, error) => {
+            root.autoDownloadState = UpdatesHelpers.autoDownloadState(code, body);
+        }
+    }
+
+    CommandRequest {
+        id: autoDownloadSet
+        // The person may take a while to answer the Polkit prompt.
+        timeoutMs: 300000
+        onCompleted: (code, body, error) => {
+            if (code !== 0)
+                root.autoDownloadError = UpdatesHelpers.autoDownloadError(code, error);
+            root.refreshAutoDownload();
+        }
+    }
+
+    // The Settings section that manages recovery points: the Backup page
+    // where this build has one, otherwise wherever Settings files the
+    // recoveryPoints row (Settings.keyPages).
+    function openRecoveryPoints() {
+        Settings.showSetting(Settings.validPages.indexOf("backup") !== -1 ? "backup" : "",
+            "recoveryPoints", "");
     }
 
     // ---- the native run ---------------------------------------------------
@@ -980,6 +1189,11 @@ Singleton {
         bootId = typeof data.bootId === "string" ? data.bootId : "";
         rebootRecommendation = UpdatesHelpers.normalizedRebootRecommendation(
             data.rebootRecommendation);
+        // A dismissed run is still the last transaction, and its recovery
+        // point is still the one to go back to. resetRun clears it only when
+        // the next run starts (and records a point of its own).
+        if (data.state === "dismissed" && runState === "idle")
+            recoveryPointId = UpdatesHelpers.recoveryPointOf(data);
         if (typeof data.id !== "string" || data.id === ""
                 || data.state === "idle" || data.state === "dismissed")
             return;
@@ -1428,8 +1642,11 @@ Singleton {
                 lastExit = 0;
             } else {
                 // No signature just means a real read.
-                root.readDnf(exitSeen && lastExit === 0
-                    ? UpdatesHelpers.dnfSignature(body) : "");
+                const signature = exitSeen && lastExit === 0
+                    ? UpdatesHelpers.dnfSignature(body) : "";
+                if (signature !== "")
+                    root.rpmdbChangedAt = UpdatesHelpers.rpmdbChangedAt(signature);
+                root.readDnf(signature);
             }
         }
     }
@@ -1480,8 +1697,9 @@ Singleton {
         }
     }
 
-    // The security advisories among the pending packages, from the same
-    // cache check-update just read.
+    // The advisories for the pending packages (security, bug fix,
+    // enhancement, with their titles), from the same cache check-update just
+    // read. One read serves the System row's security note and the details.
     Process {
         id: dnfSecurityProc
         property string body: ""
@@ -1489,7 +1707,7 @@ Singleton {
         property int lastExit: 0
 
         command: ["timeout", "45s", "dnf", "--quiet", "--assumeyes", "--setopt=*.skip_if_unavailable=false",
-            "advisory", "list", "--security", "--updates", "--json"]
+            "advisory", "info", "--updates", "--json"]
         // qmllint disable incompatible-type
         environment: ({ LC_ALL: "C" })
         // qmllint enable incompatible-type
@@ -1521,8 +1739,9 @@ Singleton {
         property bool exitSeen: false
         property int lastExit: 0
 
+        // Tab-separated columns; the version is the incoming one.
         command: ["timeout", "45s", "flatpak", "remote-ls",
-            "--updates", "--app", "--columns=name"]
+            "--updates", "--app", "--columns=name,application,version"]
         // qmllint disable incompatible-type
         environment: ({ LC_ALL: "C" })
         // qmllint enable incompatible-type

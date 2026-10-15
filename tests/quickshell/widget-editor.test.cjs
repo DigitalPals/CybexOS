@@ -77,8 +77,8 @@ function membershipHarness() {
     const path = require('node:path');
     const vm = require('node:vm');
     const { shellDir } = require('./shell.cjs');
-    const editor = fs.readFileSync(path.join(shellDir,'Settings/ModulesPage.qml'),'utf8');
-    const settings = fs.readFileSync(path.join(shellDir,'Common/Settings.qml'),'utf8');
+    const editor = untranslated(fs.readFileSync(path.join(shellDir,'Settings/ModulesPage.qml'), 'utf8'));
+    const settings = untranslated(fs.readFileSync(path.join(shellDir,'Common/Settings.qml'), 'utf8'));
     const timer = { restart() {}, stop() {} };
     const context = vm.createContext({
         mods: structuredClone(mods), clearUndo() {}, markExplicit() {}, migrationPending: false,
@@ -255,8 +255,8 @@ test('tray chips drag through the same drop plan and ghost as the lanes', () => 
     const fs = require('node:fs');
     const path = require('node:path');
     const { shellDir } = require('./shell.cjs');
-    const editor = fs.readFileSync(path.join(shellDir,'Settings/ModulesPage.qml'),'utf8');
-    const pill = fs.readFileSync(path.join(shellDir,'Settings/WidgetPill.qml'),'utf8');
+    const editor = untranslated(fs.readFileSync(path.join(shellDir,'Settings/ModulesPage.qml'), 'utf8'));
+    const pill = untranslated(fs.readFileSync(path.join(shellDir,'Settings/WidgetPill.qml'), 'utf8'));
     const tray = editor.slice(editor.indexOf('title: "Add widgets"'));
     assert.match(tray, /draggable: !page\.membershipBusy/);
     assert.match(tray, /onDragStarted: page\.dragMod = modelData\s+onDragMoved: \(x, y\) => page\.updateDrop\(trayChip, x, y\)\s+onDragFinished: page\.commitDrag\(\)\s+onDragCanceled: page\.cancelDrag\(\)/);
@@ -265,3 +265,4 @@ test('tray chips drag through the same drop plan and ghost as the lanes', () => 
     assert.match(pill, /if \(!\(pressedButtons & Qt\.LeftButton\) \|\| canceled \|\| !root\.draggable\) return;/);
     assert.match(pill, /root\.draggable && root\.placed \? Qt\.OpenHandCursor : Qt\.PointingHandCursor/);
 });
+const { untranslated } = require("./shell.cjs");

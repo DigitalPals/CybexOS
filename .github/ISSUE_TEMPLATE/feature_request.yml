@@ -1,0 +1,70 @@
+name: Feature request
+description: Suggest a change to the CybexOS desktop, installer, or tools.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        CybexOS is deliberately opinionated. A strong automatic default is
+        preferred over a new setting, and an existing surface (a keybinding,
+        the launcher, or a row in an existing Settings page) over a new panel.
+        Please search existing issues first.
+
+        Report security vulnerabilities privately; see SECURITY.md.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the behavior you would like and where it would live.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you use today, or other approaches you considered.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Desktop shell (menubar, launcher, settings, notifications)
+        - Hyprland, keybindings, and windows
+        - Applications and developer tools
+        - Installer (ISO or source checkout)
+        - Updates, recovery, and repair
+        - Hardware support
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation path
+      description: Changes to the installed product must cover both paths.
+      options:
+        - Both, or not specific to one
+        - ISO installation
+        - Source checkout (./install)
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and found no matching request.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

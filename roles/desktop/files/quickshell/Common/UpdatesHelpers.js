@@ -1,23 +1,42 @@
 // Pure parsing and transition rules for Common/Updates.qml. Keeping these free
 // of Qt APIs makes the parts fed by command output executable under Node.
 
-function dnfNames(body) {
-    var names = [];
+// `dnf check-update` rows as { name, arch, version, repo }. Section headings
+// carry no columns and continuation lines are indented. A package row begins
+// with name.arch, followed by its version (with any epoch) and repository.
+function dnfPackages(body) {
+    var packages = [];
     String(body || "").split("\n").forEach(function (line) {
-        // Section headings carry no columns and continuation lines are
-        // indented. A package row begins with name.arch, followed by its
-        // version and repository.
-        var match = line.match(/^([A-Za-z0-9][^\s]*)\.[a-z0-9_]+\s+\S+\s+\S/);
+        var match = line.match(/^([A-Za-z0-9][^\s]*)\.([a-z0-9_]+)\s+(\S+)\s+(\S+)/);
         if (match)
-            names.push(match[1]);
+            packages.push({ name: match[1], arch: match[2], version: match[3], repo: match[4] });
     });
-    return names;
+    return packages;
+}
+
+function dnfNames(body) {
+    return dnfPackages(body).map(function (row) { return row.name; });
+}
+
+// `flatpak remote-ls --updates --app --columns=name,application,version`:
+// tab-separated when not printed to a terminal. An app without a display name
+// still counts, under the name its id reads as.
+function flatpakApps(body) {
+    var apps = [];
+    String(body || "").split("\n").forEach(function (line) {
+        var columns = line.split("\t").map(function (column) { return column.trim(); });
+        var name = columns[0] || "";
+        var id = columns[1] || "";
+        if (name === "" && id === "")
+            return;
+        apps.push({ name: name !== "" ? name : flatpakRefName(id), id: id,
+            version: columns[2] || "" });
+    });
+    return apps;
 }
 
 function flatpakNames(body) {
-    return String(body || "").split("\n")
-        .map(function (line) { return line.trim(); })
-        .filter(function (line) { return line !== ""; });
+    return flatpakApps(body).map(function (app) { return app.name; });
 }
 
 // The kernel a pending transaction would bring, as "7.2.7" — the one package
@@ -52,6 +71,338 @@ function securityAdvisories(body) {
             severe = true;
     });
     return { count: names.length, severe: severe };
+}
+
+// What the pending advisories are, for the panel's details. Reads
+// `dnf advisory info --updates --json` (one object per advisory: Name, Type,
+// Severity, Title) and also the lower-case rows of `advisory list --json`,
+// which repeat an advisory once per package. Security advisories lead, most
+// severe first; `count` and `severe` keep securityAdvisories' meaning.
+var ADVISORY_TYPES = ["security", "bugfix", "enhancement", "newpackage"];
+var ADVISORY_SEVERITIES = ["critical", "important", "moderate", "low"];
+
+function advisoryField(row, key) {
+    var value = row[key];
+    if (value === undefined)
+        value = row[key.charAt(0).toUpperCase() + key.slice(1)];
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function rankOf(list, value) {
+    var index = list.indexOf(String(value).toLowerCase());
+    return index === -1 ? list.length : index;
+}
+
+function advisorySummary(body) {
+    var rows = JSON.parse(body);
+    if (!Array.isArray(rows))
+        throw new Error("expected an advisory list");
+    var seen = {};
+    var advisories = [];
+    rows.forEach(function (row) {
+        if (!row || typeof row !== "object")
+            return;
+        var id = advisoryField(row, "name");
+        if (id === "" || seen.hasOwnProperty(id))
+            return;
+        seen[id] = true;
+        var type = advisoryField(row, "type").toLowerCase();
+        advisories.push({
+            id: id,
+            type: ADVISORY_TYPES.indexOf(type) !== -1 ? type : "other",
+            severity: advisoryField(row, "severity"),
+            title: advisoryField(row, "title").slice(0, 160)
+        });
+    });
+    advisories.sort(function (a, b) {
+        return rankOf(ADVISORY_TYPES, a.type) - rankOf(ADVISORY_TYPES, b.type)
+            || (a.type === "security" ? rankOf(ADVISORY_SEVERITIES, a.severity)
+                - rankOf(ADVISORY_SEVERITIES, b.severity) : 0)
+            || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    });
+    var summary = { security: 0, bugfix: 0, enhancement: 0, other: 0,
+        count: 0, severe: false, advisories: advisories };
+    advisories.forEach(function (advisory) {
+        if (advisory.type === "security") {
+            summary.security++;
+            if (rankOf(ADVISORY_SEVERITIES, advisory.severity) < 2)
+                summary.severe = true;
+        } else if (advisory.type === "bugfix") {
+            summary.bugfix++;
+        } else if (advisory.type === "enhancement") {
+            summary.enhancement++;
+        } else {
+            summary.other++;
+        }
+    });
+    summary.count = summary.security;
+    return summary;
+}
+
+function emptyAdvisories() {
+    return { security: 0, bugfix: 0, enhancement: 0, other: 0, count: 0, severe: false,
+        advisories: [] };
+}
+
+function plural(count, one, many) {
+    return count + " " + (count === 1 ? one : many);
+}
+
+// "2 security fixes · 5 bug fixes · 3 enhancements"
+function advisoryLabel(summary) {
+    var s = summary || {};
+    var parts = [];
+    if (s.security > 0)
+        parts.push(plural(s.security, "security fix", "security fixes"));
+    if (s.bugfix > 0)
+        parts.push(plural(s.bugfix, "bug fix", "bug fixes"));
+    if (s.enhancement > 0)
+        parts.push(plural(s.enhancement, "enhancement", "enhancements"));
+    if (s.other > 0)
+        parts.push(plural(s.other, "other update", "other updates"));
+    return parts.join(" · ");
+}
+
+// One advisory's leading word in the details: the kind, and for a security
+// fix how serious Fedora rates it.
+function advisoryKind(advisory) {
+    var a = advisory || {};
+    if (a.type === "security") {
+        var severity = String(a.severity || "");
+        return rankOf(ADVISORY_SEVERITIES, severity) < ADVISORY_SEVERITIES.length
+            ? severity.charAt(0).toUpperCase() + severity.slice(1).toLowerCase() + " security"
+            : "Security";
+    }
+    if (a.type === "bugfix")
+        return "Bug fix";
+    if (a.type === "enhancement")
+        return "Enhancement";
+    if (a.type === "newpackage")
+        return "New package";
+    return "Update";
+}
+
+// ---- what will change --------------------------------------------------------
+// The details' version list joins the check's rows (the incoming version) with
+// what is installed now. Neither read needs root.
+
+// `rpm -qa --qf '%{NAME}.%{ARCH}\t%{EVR}\n'` as { "name.arch": evr }.
+function rpmVersions(body) {
+    var versions = {};
+    String(body || "").split("\n").forEach(function (line) {
+        var match = line.match(/^(\S+)\t(\S+)$/);
+        if (match)
+            versions[match[1]] = match[2];
+    });
+    return versions;
+}
+
+// `flatpak list --app --columns=application,version` as { id: version }.
+function flatpakVersions(body) {
+    var versions = {};
+    String(body || "").split("\n").forEach(function (line) {
+        var columns = line.split("\t").map(function (column) { return column.trim(); });
+        if (columns[0])
+            versions[columns[0]] = columns[1] || "";
+    });
+    return versions;
+}
+
+// A version as people read it: no epoch ("1:3.5.9-1.fc44" -> "3.5.9-1.fc44").
+function displayVersion(evr) {
+    return String(evr || "").replace(/^[0-9]+:/, "");
+}
+
+// [{ name, from, to }] per pending package. A multiarch pair that changes the
+// same way reads as one line, as the names list always has.
+function packageChanges(packages, installed) {
+    var known = installed || {};
+    var seen = {};
+    var changes = [];
+    (Array.isArray(packages) ? packages : []).forEach(function (row) {
+        if (!row || typeof row.name !== "string")
+            return;
+        var key = row.name + "." + row.arch;
+        var change = { name: row.name,
+            from: displayVersion(known.hasOwnProperty(key) ? known[key] : ""),
+            to: displayVersion(row.version) };
+        var identity = change.name + "\n" + change.from + "\n" + change.to;
+        if (seen.hasOwnProperty(identity))
+            return;
+        seen[identity] = true;
+        changes.push(change);
+    });
+    return changes;
+}
+
+function appChanges(apps, installed) {
+    var known = installed || {};
+    return (Array.isArray(apps) ? apps : []).map(function (app) {
+        return { name: app.name, from: known.hasOwnProperty(app.id) ? known[app.id] : "",
+            to: app.version || "" };
+    });
+}
+
+// On an ISO installation the CybexOS desktop itself is an RPM from the
+// enrolled channel; it is the CybexOS update, not one more system package.
+var DESKTOP_REPO = "cybexos-desktop";
+var DESKTOP_PACKAGE = "cybexos-desktop";
+
+function isDesktopPackage(row) {
+    return !!row && (row.repo === DESKTOP_REPO || row.name === DESKTOP_PACKAGE);
+}
+
+function desktopPackages(packages) {
+    return (Array.isArray(packages) ? packages : []).filter(isDesktopPackage);
+}
+
+// The release a desktop RPM carries, as its VERSION file spells it:
+// "1:1.2.0~beta.1-1.20261013120000.gabc.fc44" -> "1.2.0-beta.1".
+function desktopVersion(evr) {
+    return displayVersion(evr).split("-")[0].replace("~", "-");
+}
+
+// `dnf changelog --upgrades PACKAGE`: the entries newer than what is
+// installed, newest first, as [{ version, date, lines }]. Bounded, because
+// it is shown as it is and a package can carry years of history.
+function parseChangelog(body, maxEntries, maxLines) {
+    var entries = [];
+    var current = null;
+    var entryLimit = maxEntries > 0 ? maxEntries : 5;
+    var lineLimit = maxLines > 0 ? maxLines : 8;
+    String(body || "").split("\n").some(function (raw) {
+        var line = raw.replace(/\s+$/, "");
+        if (/^\* /.test(line)) {
+            if (entries.length >= entryLimit)
+                return true;
+            var date = line.match(/^\* [A-Za-z]{3} ([A-Za-z]{3}) +([0-9]{1,2})(?: [0-9:]{8})? ([0-9]{4})/);
+            var version = line.match(/(?:^|\s)(?:-\s*)?([0-9][^\s<>@]*)$/);
+            current = { version: version ? version[1] : "",
+                date: date ? Number(date[2]) + " " + date[1] + " " + date[3] : "",
+                lines: [] };
+            entries.push(current);
+            return false;
+        }
+        if (current === null || line.trim() === "")
+            return false;
+        var text = line.trim().replace(/^-\s*/, "");
+        if (current.lines.length < lineLimit && text !== "")
+            current.lines.push(text.length > 200 ? text.slice(0, 199) + "…" : text);
+        return false;
+    });
+    return entries;
+}
+
+// A GitHub release body (Markdown, usually generated from pull requests) as a
+// few plain lines. It is shown as plain text, so markup is reduced to its
+// words; links keep their text and lose their address.
+function releaseNotesLines(text, maxLines) {
+    var limit = maxLines > 0 ? maxLines : 12;
+    var lines = [];
+    String(text || "").split(/\r?\n/).some(function (raw) {
+        var line = raw.trim();
+        if (line === "" || /^\*\*Full Changelog\*\*/i.test(line) || /^<!--/.test(line))
+            return false;
+        line = line.replace(/^#+\s*/, "")
+            .replace(/^[*-]\s+/, "• ")
+            .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+            .replace(/\*\*|__|`/g, "")
+            .replace(/ by @[A-Za-z0-9-]+(?:\[bot\])? in https?:\/\/\S+$/, "")
+            .replace(/ in https?:\/\/\S+$/, "");
+        if (line === "")
+            return false;
+        lines.push(line.length > 200 ? line.slice(0, 199) + "…" : line);
+        return lines.length >= limit;
+    });
+    return lines;
+}
+
+// The release notes `--check --json` carries beside an available release.
+function projectNotesOf(record) {
+    if (!record || typeof record.releaseNotes !== "string")
+        return "";
+    return record.releaseNotes.slice(0, 8000);
+}
+
+// The recovery point a run record names (`snapshotId`), or "" for a run that
+// needed none or predates one. Validated like every recovery point id.
+function recoveryPointOf(record) {
+    var id = record && typeof record.snapshotId === "string" ? record.snapshotId : "";
+    return /^[0-9]{8}T[0-9]{6}Z-[0-9]+$/.test(id) ? id : "";
+}
+
+// ---- background downloads -----------------------------------------------------
+// cybexos-update-download.service writes one record when a background download
+// finishes: { version: 1, state: "done" | "failed", finishedAt, ... }.
+var DOWNLOAD_STATUS_PATH = "/var/lib/cybexos/update-download/status.json";
+
+function parseDownloadStatus(text) {
+    var empty = { state: "", finishedAt: 0 };
+    var data;
+    try {
+        data = JSON.parse(text);
+    } catch (error) {
+        return empty;
+    }
+    if (!data || typeof data !== "object" || data.version !== 1
+            || (data.state !== "done" && data.state !== "failed"))
+        return empty;
+    var finished = Number(data.finishedAt);
+    return { state: data.state, finishedAt: isFinite(finished) && finished > 0 ? finished : 0 };
+}
+
+// When the installed set last changed, in seconds, from the dnf signature
+// listing ("path size mtime" lines): the newer of the rpm database and its
+// write-ahead log. 0 when the listing does not include them.
+function rpmdbChangedAt(signature) {
+    var latest = 0;
+    String(signature || "").split("\n").forEach(function (line) {
+        var match = line.trim().match(/\/rpmdb\.sqlite(?:-wal)? [0-9]+ ([0-9.]+)$/);
+        if (match)
+            latest = Math.max(latest, Number(match[1]) || 0);
+    });
+    return latest;
+}
+
+// "Updates downloaded — ready to install": the last background download
+// succeeded, nothing has been installed since, and updates are pending.
+function downloadReady(status, installedChangedAt, pending) {
+    return !!status && status.state === "done" && status.finishedAt > 0
+        && status.finishedAt >= (Number(installedChangedAt) || 0) && pending > 0;
+}
+
+// `systemctl is-enabled cybexos-update-download.timer`: the timer's own
+// enablement is the setting. A missing unit (a Quickshell-only deployment)
+// hides the row.
+var DOWNLOAD_TIMER = "cybexos-update-download.timer";
+
+function autoDownloadState(exitCode, body) {
+    var word = String(body || "").trim().split("\n")[0];
+    if (word === "enabled" || word === "enabled-runtime")
+        return "enabled";
+    if (word === "disabled")
+        return "disabled";
+    return exitCode === 0 ? "enabled" : "unavailable";
+}
+
+// Enabling or disabling the system timer runs as one transient system unit,
+// so systemd asks the session's Polkit agent once, as updates and restores do.
+function autoDownloadCommand(enable, serial) {
+    return ["systemd-run", "--system", "--quiet", "--collect", "--wait", "--pipe",
+        "--unit=cybexos-update-download-setup-" + String(serial).replace(/[^0-9]/g, ""),
+        "--description=" + (enable ? "Turn on" : "Turn off") + " background update downloads",
+        "--", "/usr/bin/systemctl", enable ? "enable" : "disable", "--now", DOWNLOAD_TIMER];
+}
+
+function autoDownloadError(exitCode, stderr) {
+    var text = String(stderr || "");
+    if (/not authori[sz]ed|Interactive authentication required|Authentication (failed|required)|Access denied|polkit/i.test(text)
+            || exitCode === 126 || exitCode === 127)
+        return "Authorization was cancelled, so nothing changed.";
+    var lines = text.split("\n").map(function (line) { return line.trim(); })
+        .filter(function (line) { return line !== ""; });
+    return lines.length > 0 ? lines[lines.length - 1]
+        : "Couldn’t change background downloads (exit " + exitCode + ").";
 }
 
 // The System row's one line: only what changes what a person does next.
@@ -784,6 +1135,33 @@ function mixedStateAdvice(mixedState) {
 }
 
 var exported = {
+    dnfPackages: dnfPackages,
+    flatpakApps: flatpakApps,
+    advisorySummary: advisorySummary,
+    emptyAdvisories: emptyAdvisories,
+    advisoryLabel: advisoryLabel,
+    advisoryKind: advisoryKind,
+    rpmVersions: rpmVersions,
+    flatpakVersions: flatpakVersions,
+    displayVersion: displayVersion,
+    packageChanges: packageChanges,
+    appChanges: appChanges,
+    DESKTOP_REPO: DESKTOP_REPO,
+    isDesktopPackage: isDesktopPackage,
+    desktopPackages: desktopPackages,
+    desktopVersion: desktopVersion,
+    parseChangelog: parseChangelog,
+    releaseNotesLines: releaseNotesLines,
+    projectNotesOf: projectNotesOf,
+    recoveryPointOf: recoveryPointOf,
+    DOWNLOAD_STATUS_PATH: DOWNLOAD_STATUS_PATH,
+    parseDownloadStatus: parseDownloadStatus,
+    rpmdbChangedAt: rpmdbChangedAt,
+    downloadReady: downloadReady,
+    DOWNLOAD_TIMER: DOWNLOAD_TIMER,
+    autoDownloadState: autoDownloadState,
+    autoDownloadCommand: autoDownloadCommand,
+    autoDownloadError: autoDownloadError,
     dnfKernelVersion: dnfKernelVersion,
     securityAdvisories: securityAdvisories,
     systemDetail: systemDetail,

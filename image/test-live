@@ -29,6 +29,8 @@ def main():
     try:
         vm.prepare()
         vm.start(iso)
+        # The menu default is the installation-only session; this checks the live desktop.
+        vm.select_boot_entry('live')
         vm.wait_ssh(args.boot_wait)
         vm.audit()
         run([*vm.ssh, 'test -f /run/cybexos-live && test -x /usr/bin/liveinst && XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user is-active cybexos-welcome.service'])

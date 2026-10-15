@@ -147,7 +147,7 @@ PanelWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         width: Math.max(0, parent.width - Theme.iconLarge - (hint.visible ? hint.width + parent.spacing : 0) - parent.spacing)
                         elide: Text.ElideRight
-                        text: "Keyboard shortcuts"
+                        text: I18n.tr("Keyboard shortcuts")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
@@ -160,7 +160,7 @@ PanelWindow {
                         width: Math.min(implicitWidth, body.width * 0.45)
                         elide: Text.ElideRight
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Live from Hyprland · press Esc to close"
+                        text: I18n.tr("Live from Hyprland · press Esc to close")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.section
                         font.weight: Theme.weightBold
@@ -236,7 +236,7 @@ PanelWindow {
                                     }
 
                                     Text {
-                                        text: group.modelData.title
+                                        text: I18n.tr(group.modelData.title)
                                         font.capitalization: Font.AllUppercase
                                         font.family: Theme.fontMenu
                                         font.pixelSize: Theme.typography.section
@@ -278,7 +278,7 @@ PanelWindow {
                                                     y: shortcut.stacked ? 0 : (parent.height - implicitHeight) / 2
                                                     width: shortcut.stacked ? parent.width
                                                         : Math.max(0, parent.width - keys.width - Theme.controlSpacing)
-                                                    text: shortcut.modelData.label
+                                                    text: I18n.tr(shortcut.modelData.label)
                                                     font.family: Theme.fontMenu
                                                     font.pixelSize: Theme.typography.primary
                                                     font.weight: Theme.weightSemibold
@@ -377,7 +377,7 @@ PanelWindow {
                     width: parent.width
                     visible: Session.shortcutGroups.length > 0
                     wrapMode: Text.Wrap
-                    text: "Bindings you add in ~/.config/cybexos/hypr/user.lua appear here when they have a description."
+                    text: I18n.tr("Bindings you add in ~/.config/cybexos/hypr/user.lua appear here when they have a description.")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
                     color: Theme.textFaint

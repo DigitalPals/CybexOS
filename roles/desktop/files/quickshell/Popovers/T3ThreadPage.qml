@@ -377,7 +377,7 @@ Item {
                 Action {
                     visible: messageCard.longMessage
                     anchors.left: parent.left
-                    label: messageCard.expanded ? "Show less" : "Show more"
+                    label: messageCard.expanded ? I18n.tr("Show less") : I18n.tr("Show more")
                     onTriggered: root.toggleExpanded(messageCard.messageId)
                 }
 
@@ -658,7 +658,7 @@ Item {
 
                 MenuEntry {
                     visible: root.prUrl !== ""
-                    label: "View pull request"
+                    label: I18n.tr("View pull request")
                     tint: T3Theme.accent
                     onTriggered: {
                         root.menuOpen = false;
@@ -715,7 +715,7 @@ Item {
 
                 MenuEntry {
                     visible: header.canSnoozeHere
-                    label: "Snooze…"
+                    label: I18n.tr("Snooze…")
                     enabled: T3Code.canDispatch && root.thread !== null && root.thread.canLifecycle
                     onTriggered: {
                         root.menuOpen = false;
@@ -769,7 +769,7 @@ Item {
 
                 MenuEntry {
                     visible: root.copyPath !== ""
-                    label: "Copy path"
+                    label: I18n.tr("Copy path")
                     onTriggered: {
                         root.menuOpen = false;
                         Quickshell.clipboardText = root.copyPath;
@@ -778,7 +778,7 @@ Item {
 
                 MenuEntry {
                     visible: root.copyBranch !== ""
-                    label: "Copy branch"
+                    label: I18n.tr("Copy branch")
                     onTriggered: {
                         root.menuOpen = false;
                         Quickshell.clipboardText = root.copyBranch;
@@ -840,7 +840,7 @@ Item {
             visible: T3Code.detailVcs.error !== "" && !root.gitPending
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            label: "Retry"
+            label: I18n.tr("Retry")
             tint: T3Theme.accent
             onTriggered: T3Code.refreshVcsStatus(root.threadId, true)
         }
@@ -879,12 +879,12 @@ Item {
                     shown: T3Code.detailLoading
                     width: parent.width
                     kind: "loading"
-                    title: "Loading conversation…"
+                    title: I18n.tr("Loading conversation…")
                 }
 
                 InfoCard {
                     visible: T3Code.detailError !== ""
-                    heading: "Thread unavailable"
+                    heading: I18n.tr("Thread unavailable")
                     body: T3Code.detailError
                     headingColor: T3Theme.red
                     fill: T3Theme.redSoft
@@ -951,7 +951,7 @@ Item {
                         && T3Code.detailMessages.length === 0
                     width: parent.width
                     glyph: "chat"
-                    title: "No messages yet"
+                    title: I18n.tr("No messages yet")
                 }
 
                 Item {
@@ -1108,20 +1108,20 @@ Item {
 
                         Action {
                             visible: T3Code.detailDiff.text !== ""
-                            label: T3Code.detailDiff.truncated ? "Copy preview" : "Copy patch"
+                            label: T3Code.detailDiff.truncated ? I18n.tr("Copy preview") : I18n.tr("Copy patch")
                             onTriggered: Quickshell.clipboardText = T3Code.detailDiff.text
                         }
 
                         Action {
                             visible: T3Code.detailDiff.error !== ""
-                            label: "Retry diff"
+                            label: I18n.tr("Retry diff")
                             tint: T3Theme.accent
                             onTriggered: T3Code.loadFullThreadDiff(root.threadId, root.checkpoint)
                         }
 
                         Text {
                             visible: T3Code.detailDiff.truncated
-                            text: "Preview truncated at 100,000 characters / 2,000 lines"
+                            text: I18n.tr("Preview truncated at 100,000 characters / 2,000 lines")
                             font.family: T3Theme.fontUi
                             font.pixelSize: Theme.typography.secondary
                             color: T3Theme.amber
@@ -1130,14 +1130,14 @@ Item {
                         Action {
                             visible: T3Code.detailDiff.truncated
                             enabled: !root.fullDiffCopyPending
-                            label: root.fullDiffCopyPending ? "Copying full patch…" : "Copy full patch"
+                            label: root.fullDiffCopyPending ? I18n.tr("Copying full patch…") : I18n.tr("Copy full patch")
                             tint: T3Theme.accent
                             onTriggered: T3Code.copyFullThreadDiff(root.threadId, root.checkpoint)
                         }
 
                         Action {
                             visible: T3Code.detailDiff.truncated
-                            label: "Open T3 Code"
+                            label: I18n.tr("Open T3 Code")
                             tint: T3Theme.accent
                             onTriggered: {
                                 if (T3Code.openExternalUrl(T3Code.threadUrl(root.threadId)))
@@ -1299,8 +1299,8 @@ Item {
                 InfoCard {
             visible: root.thread !== null && root.thread.pendingInput
                 && !T3Code.detailLoading && T3Code.detailPendingInputs.length === 0
-            heading: "Question"
-            body: "This question needs the full T3 Code client."
+            heading: I18n.tr("Question")
+            body: I18n.tr("This question needs the full T3 Code client.")
             headingColor: T3Theme.amber
             fill: T3Theme.amberSoft
             outline: T3Theme.amberBorder
@@ -1309,8 +1309,8 @@ Item {
                 InfoCard {
             visible: root.thread !== null && root.thread.pendingApprovals
                 && !T3Code.detailLoading && T3Code.detailApprovals.length === 0
-            heading: "Approval"
-            body: "This approval needs the full T3 Code client."
+            heading: I18n.tr("Approval")
+            body: I18n.tr("This approval needs the full T3 Code client.")
             headingColor: T3Theme.amber
             fill: T3Theme.amberSoft
             outline: T3Theme.amberBorder
@@ -1353,7 +1353,7 @@ Item {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Ready plan"
+                        text: I18n.tr("Ready plan")
                         font.family: T3Theme.fontUi
                         font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightSemibold
@@ -1389,7 +1389,7 @@ Item {
                     }
 
                     Action {
-                        label: "Refine"
+                        label: I18n.tr("Refine")
                         enabled: T3Code.canDispatch && root.composerIdle
                         tint: T3Theme.accent
                         fill: T3Theme.accentSoft
@@ -1400,7 +1400,7 @@ Item {
                     }
 
                     Action {
-                        label: "New thread"
+                        label: I18n.tr("New thread")
                         enabled: T3Code.canDispatch && T3Code.hasReadyProvider
                             && T3Code.hasProjects && !root.planTooLong
                         onTriggered: root.newPlanRequested(root.plan)
@@ -1408,7 +1408,7 @@ Item {
 
                     Action {
                         visible: root.planTooLong
-                        label: "Open T3 Code"
+                        label: I18n.tr("Open T3 Code")
                         tint: T3Theme.accent
                         onTriggered: {
                             if (T3Code.openExternalUrl(T3Code.threadUrl(root.threadId)))
@@ -1480,7 +1480,7 @@ Item {
                     anchors.left: taskProgressGlyph.right
                     anchors.leftMargin: 6
                     anchors.verticalCenter: taskProgressGlyph.verticalCenter
-                    text: "Tasks"
+                    text: I18n.tr("Tasks")
                     font.family: T3Theme.fontUi
                     font.pixelSize: Theme.typography.secondary
                     font.weight: Theme.weightSemibold

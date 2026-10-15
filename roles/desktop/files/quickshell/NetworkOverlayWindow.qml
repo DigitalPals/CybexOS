@@ -103,7 +103,8 @@ PanelWindow {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - closeButton.width - 38
-                    text: NetworkOverlayState.page === "qr" ? "Share Wi-Fi"
+                    text: NetworkOverlayState.page === "qr"
+                        ? (NetworkOverlayState.qrInfo.hotspot ? "Join the hotspot" : "Share Wi-Fi")
                         : NetworkOverlayState.page === "tailscale" ? "Connect to Tailscale" : "Internet speed"
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.heading
@@ -120,7 +121,7 @@ PanelWindow {
                     color: closeMouse.containsMouse ? Theme.hoverFill : "transparent"
                     activeFocusOnTab: true
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Close network dialog"
+                    Accessible.name: I18n.tr("Close network dialog")
                     Accessible.onPressAction: NetworkOverlayState.close()
                     border.width: activeFocus ? 1 : 0
                     border.color: Theme.accentText
@@ -239,7 +240,7 @@ PanelWindow {
 
                 ModalButton {
                     visible: Tailscale.authUrl !== ""
-                    label: tailscaleSetup.copied ? "Copied" : "Copy sign-in link"
+                    label: tailscaleSetup.copied ? I18n.tr("Copied") : I18n.tr("Copy sign-in link")
                     onTriggered: {
                         Tailscale.copySignInLink();
                         tailscaleSetup.copied = true;
@@ -248,7 +249,7 @@ PanelWindow {
 
                 ModalButton {
                     visible: Tailscale.authPending && !Tailscale.busy
-                    label: "Stop connecting"
+                    label: I18n.tr("Stop connecting")
                     onTriggered: Tailscale.startAction(false)
                 }
 
@@ -315,7 +316,11 @@ PanelWindow {
 
             property var info: NetworkOverlayState.qrInfo
             readonly property var securityInfo: NetworkHelpers.classifySecurity(info.security)
+            // The hotspot card spells the password out too; it lives only as
+            // long as this page, like the matrix.
+            readonly property bool reveal: info.hotspot === true
             property var matrix: []
+            property string password: ""
             property string error: ""
             property var pendingQrRequest: ({})
             readonly property bool working: qrProc.running
@@ -329,7 +334,8 @@ PanelWindow {
                     uuid: info.uuid,
                     ssid: info.ssid,
                     security: info.security,
-                    hidden: Boolean(info.hidden)
+                    hidden: Boolean(info.hidden),
+                    reveal: reveal
                 };
                 qrProc.running = true;
             }
@@ -352,6 +358,7 @@ PanelWindow {
                 if (qrProc.running)
                     qrProc.signal(15);
                 matrix = [];
+                password = "";
                 pendingQrRequest = {};
                 error = "";
             }
@@ -391,6 +398,21 @@ PanelWindow {
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.typography.secondary
                             color: Theme.textLow
+                        }
+
+                        TextEdit {
+                            visible: qr.reveal && qr.password !== ""
+                            width: parent.width
+                            text: qr.password
+                            readOnly: true
+                            selectByMouse: true
+                            horizontalAlignment: Text.AlignHCenter
+                            font.family: Theme.fontMono
+                            font.pixelSize: Theme.typography.title
+                            color: Theme.textHi
+                            selectionColor: Theme.accent
+                            selectedTextColor: Theme.accentFg
+                            Accessible.name: "Hotspot password " + qr.password
                         }
                     }
 
@@ -457,7 +479,7 @@ PanelWindow {
                     Text {
                         visible: qr.working
                         width: parent.width
-                        text: "Building QR code…"
+                        text: I18n.tr("Building QR code…")
                         horizontalAlignment: Text.AlignHCenter
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.secondary
@@ -470,12 +492,12 @@ PanelWindow {
 
                         ModalButton {
                             visible: !qr.securityInfo.shareable
-                            label: "Open Network Settings"
+                            label: I18n.tr("Open Network Settings")
                             onTriggered: qr.openSettings()
                         }
 
                         ModalButton {
-                            label: "Close"
+                            label: I18n.tr("Close")
                             onTriggered: NetworkOverlayState.close()
                         }
                     }
@@ -515,6 +537,7 @@ PanelWindow {
                         return;
                     }
                     qr.matrix = Array.isArray(result.matrix) ? result.matrix : [];
+                    qr.password = qr.reveal && typeof result.password === "string" ? result.password : "";
                     qr.error = qr.matrix.length > 0 ? "" : "The QR code was empty.";
                 }
             }
@@ -580,7 +603,7 @@ PanelWindow {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "Mbps"
+                text: I18n.tr("Mbps")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.secondary
                 color: Theme.textDim
@@ -724,7 +747,7 @@ PanelWindow {
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: "TEST DEVICE"
+                        text: I18n.tr("TEST DEVICE")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.metadata
                         font.weight: Theme.weightSemibold
@@ -769,14 +792,14 @@ PanelWindow {
 
                     SpeedDial {
                         width: (parent.width - parent.spacing) / 2
-                        label: "Download"
+                        label: I18n.tr("Download")
                         value: speed.downloadMbps
                         active: speedProc.running && speed.phase === "download"
                     }
 
                     SpeedDial {
                         width: (parent.width - parent.spacing) / 2
-                        label: "Upload"
+                        label: I18n.tr("Upload")
                         value: speed.uploadMbps
                         active: speedProc.running && speed.phase === "upload"
                     }
@@ -808,7 +831,7 @@ PanelWindow {
                     spacing: 10
 
                     ModalButton {
-                        label: speedProc.running ? "Cancel" : "Run Again"
+                        label: speedProc.running ? I18n.tr("Cancel") : I18n.tr("Run Again")
                         primary: !speedProc.running
                         enabled: speedProc.running
                             || speed.selectedInterface !== ""
@@ -821,7 +844,7 @@ PanelWindow {
                     }
 
                     ModalButton {
-                        label: "Close"
+                        label: I18n.tr("Close")
                         onTriggered: NetworkOverlayState.close()
                     }
                 }

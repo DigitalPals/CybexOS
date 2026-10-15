@@ -1,11 +1,12 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir, load } = require("./shell.cjs");
 
 const helpers = load("RecoveryHelpers.js");
-const read = name => fs.readFileSync(path.join(shellDir, name), "utf8");
+const read = name => untranslated(fs.readFileSync(path.join(shellDir, name), "utf8"));
 
 test("a recovery boot is recognised only by a well-formed identifier", () => {
     assert.equal(helpers.recoveryBootId("root=UUID=x ro cybexos.recovery=20260901T120000Z-17 quiet"),
@@ -68,22 +69,56 @@ test("restore failures are explained in words", () => {
     assert.equal(helpers.restoreError(3, ""), "Restore failed (exit 3).");
 });
 
-test("the recovery UI is wired into the shell and the About page", () => {
+test("the recovery UI is wired into the shell and the Backup & recovery page", () => {
     const qmldir = read("Common/qmldir");
     const shell = read("shell.qml");
     const service = read("Common/Recovery.qml");
     const page = read("Settings/RecoveryGroup.qml");
-    assert.match(read("Settings/AboutPage.qml"), /RecoveryGroup \{/);
+    // Recovery points moved beside personal-file backups (2026-10).
+    assert.match(read("Settings/BackupPage.qml"), /RecoveryGroup \{/);
+    assert.doesNotMatch(read("Settings/AboutPage.qml"), /RecoveryGroup/);
+    assert.match(read("Common/Settings.qml"), /recoveryPoints: "backup"/,
+        "the legacy System id still lands on the recovery points");
     const search = load("SettingsSearchData.js").ROWS;
 
     assert.match(qmldir, /^singleton Recovery Recovery\.qml$/m);
     assert.match(shell, /void Recovery\.recoveryBoot;/, "a recovery boot announces itself at login");
     assert.match(service, /path: RecoveryHelpers\.INDEX_PATH[\s\S]{0,80}watchChanges: true/);
     assert.match(service, /"--urgency=critical"/, "the notice persists until dismissed");
-    assert.match(service, /Settings\.showSetting\("about", "recoveryPoints", ""\)/);
+    assert.match(service, /Settings\.showSetting\("backup", "recoveryPoints", ""\)/);
     assert.match(page, /readonly property string settingKey: "recoveryPoints"/);
     assert.match(page, /"Confirm restore"/, "restore always takes a second, explicit press");
     assert.match(page, /hold Shift \(or press Esc\)/);
-    assert.ok(search.some(row => row.page === "about" && row.group === "Recovery points"
+    assert.ok(search.some(row => row.page === "backup" && row.group === "Recovery points"
         && /rollback/.test(row.terms)));
+});
+
+test("the factory point is kept, named, and offers a reset only on ISO installations", () => {
+    const index = helpers.parseIndex(JSON.stringify({
+        version: 1, supported: true, points: [
+            { id: "20260901T120000Z-1", description: "factory state", factory: true },
+            { id: "20260902T120000Z-2", description: "update 20260902-1", factory: "yes" }
+        ]
+    }));
+    assert.deepEqual(index.points.map(point => point.factory), [true, false]);
+    assert.equal(helpers.pointLabel(index.points[0]), "Factory state");
+    assert.equal(helpers.pointLabel(index.points[1]), "Before an update");
+    assert.equal(helpers.hasFactoryPoint(index.points), true);
+    assert.equal(helpers.hasFactoryPoint(index.points.slice(1)), false);
+    assert.equal(helpers.hasFactoryPoint(undefined), false);
+    // The terminal runs the CLI that asks for the typed confirmation and sudo;
+    // the shell itself never erases anything or elevates.
+    assert.deepEqual(helpers.factoryResetCommand(),
+        ["kitty", "--hold", "--title", "Factory reset", "cybex", "factory-reset"]);
+
+    const row = read("Settings/FactoryResetRow.qml");
+    assert.match(read("Settings/RecoveryGroup.qml"), /FactoryResetRow \{\s*width: parent\.width\s*\}\s*\}\s*$/,
+        "the reset is the group's last row");
+    assert.match(read("Settings/qmldir"), /^FactoryResetRow FactoryResetRow\.qml$/m);
+    assert.match(row, /RecoveryHelpers\.hasFactoryPoint\(Recovery\.points\)/);
+    assert.match(row, /row\.confirming \? "Continue in terminal" : "Factory reset…"/,
+        "the reset takes a second, explicit press");
+    assert.match(row, /cybex backup now/);
+    assert.doesNotMatch(row, /sudo|pkexec|systemd-run/);
+    assert.ok(load("SettingsSearchData.js").ROWS.some(row => row.label === "Factory reset" && /new owner/.test(row.terms)));
 });

@@ -442,7 +442,7 @@ Item {
                 verticalAlignment: Text.AlignVCenter
                 visible: group.widgets.length === 0
                 color: Theme.textFaint
-                text: "Empty. Drag a widget here, or add one from the widgets below."
+                text: I18n.tr("Empty. Drag a widget here, or add one from the widgets below.")
             }
             Rectangle {
                 // Beside the Grid, not in it, so the marker never takes a cell.
@@ -520,7 +520,7 @@ Item {
                 id: moreAction
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Widget layout actions"
+                text: I18n.tr("Widget layout actions")
                 glyph: "more_horiz"
                 compact: true
                 enabled: !page.dragActive && !page.membershipBusy
@@ -539,19 +539,19 @@ Item {
                     palette.highlight: Theme.chipHover
                     palette.highlightedText: Theme.textHi
                     Controls.MenuItem {
-                        text: "Presets…"
+                        text: I18n.tr("Presets…")
                         onTriggered: page.presetsOpen = true
                     }
                     Controls.MenuItem {
-                        text: "Manage Omarchy plugins…"
+                        text: I18n.tr("Manage Omarchy plugins…")
                         onTriggered: Settings.page = "plugins"
                     }
                     Controls.MenuItem {
-                        text: "Restore default built-in layout"
+                        text: I18n.tr("Restore default built-in layout")
                         onTriggered: Settings.resetKeys(["mods"], "Widgets")
                     }
                     Controls.MenuItem {
-                        text: "Undo layout change"
+                        text: I18n.tr("Undo layout change")
                         enabled: Settings.undoAvailable && (Settings.resetLabel === "Widget profile" || Settings.resetLabel === "Widgets")
                         onTriggered: Settings.undoReset()
                     }
@@ -575,9 +575,9 @@ Item {
         return hit ? hit.label : value;
     }
     readonly property var presetChoices: [
-        { value: "focused", label: "Focused" },
-        { value: "connected", label: "Connected" },
-        { value: "everything", label: "Everything" }
+        { value: "focused", label: I18n.tr("Focused") },
+        { value: "connected", label: I18n.tr("Connected") },
+        { value: "everything", label: I18n.tr("Everything") }
     ]
 
     SettingsPage {
@@ -597,7 +597,7 @@ Item {
             spacing: Theme.settingsGroupSpacing
             SettingsGroup {
                 width: parent.width
-                title: "Widgets"
+                title: I18n.tr("Widgets")
                 Repeater {
                     id: sections
                     model: ["left", "center", "right"]
@@ -609,7 +609,7 @@ Item {
             // in one tray: one click adds it where it last lived.
             SettingsGroup {
                 width: parent.width
-                title: "Add widgets"
+                title: I18n.tr("Add widgets")
                 Flow {
                     id: availableFlow
                     x: Theme.settingsMarkInset
@@ -738,7 +738,7 @@ Item {
                     visible: page.selected !== null && !page.selected.plugin
                         && Settings.revision >= 0 && Settings.moduleDirty(page.selected.id)
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Reset widget"
+                    text: I18n.tr("Reset widget")
                     glyph: "undo"
                     Accessible.name: "Reset " + (page.selected ? page.selected.name : "widget") + " options"
                     // The action hides once the widget is clean; hand focus
@@ -750,7 +750,7 @@ Item {
                 }
                 SettingsAction {
                     id: closeAction
-                    text: "Close widget settings"
+                    text: I18n.tr("Close widget settings")
                     glyph: "close"
                     compact: true
                     onTriggered: widgetDialog.close()
@@ -777,7 +777,7 @@ Item {
                         // drawing it right now, on one row.
                         SwitchRow {
                             width: parent.width
-                            label: "Show on bar"
+                            label: I18n.tr("Show on bar")
                             description: page.selected ? page.status(page.selected) : ""
                             checked: page.selected !== null && page.selected.enabled
                             enabled: page.selected !== null && !page.membershipBusy
@@ -837,7 +837,7 @@ Item {
             id: undoAction
             anchors.right: dismissAction.left
             anchors.verticalCenter: parent.verticalCenter
-            text: "Undo"
+            text: I18n.tr("Undo")
             glyph: "undo"
             visible: page.undoRemoved !== null
             width: visible ? implicitWidth : 0
@@ -850,7 +850,7 @@ Item {
             id: dismissAction
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: "Dismiss"
+            text: I18n.tr("Dismiss")
             glyph: "close"
             compact: true
             onTriggered: { page.notice = ""; page.undoRemoved = null; noticeTimer.stop(); }
@@ -870,17 +870,17 @@ Item {
             spacing: Theme.settingsGroupSpacing
             SettingsAction {
                 x: Theme.settingsMarkInset - Theme.scaled(4)
-                text: "Back to widgets"
+                text: I18n.tr("Back to widgets")
                 glyph: "arrow_back"
                 onTriggered: page.closeSubPage()
             }
             SettingsGroup {
                 width: parent.width
-                title: "Presets"
+                title: I18n.tr("Presets")
                 PickerRow {
                     width: parent.width
-                    label: "Preset"
-                    hint: "Presets change which built-in widgets are on the bar. Placement, widget options and plugins are kept."
+                    label: I18n.tr("Preset")
+                    hint: I18n.tr("Presets change which built-in widgets are on the bar. Placement, widget options and plugins are kept.")
                     model: page.presetChoices
                     current: page.preset
                     onPicked: value => page.preset = value
@@ -896,7 +896,7 @@ Item {
                         id: applyPreset
                         anchors.right: parent.right
                         anchors.rightMargin: Theme.chipHeight
-                        text: "Apply preset"
+                        text: I18n.tr("Apply preset")
                         glyph: "check"
                         primary: true
                         onTriggered: { Settings.applyModulePreset(page.preset); page.presetsOpen = false; }

@@ -39,6 +39,7 @@ class ReleaseGate(unittest.TestCase):
                 artifacts.mkdir(parents=True)
                 (artifacts / 'candidate.iso').write_bytes(b'candidate')
                 (artifacts / 'cybexos-desktop-1.2.3.rpm').write_bytes(b'RPM')
+                (artifacts / 'candidate.spdx.json').write_text('{}')
             if command[0].endswith('/image/publish-pxe'):
                 (pxe / 'iso/candidate.iso').write_bytes(b'candidate')
             if command[0].endswith('/image/qualify') and '--capture-outcomes' in command:

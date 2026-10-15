@@ -140,8 +140,9 @@ Rectangle {
                     enabled: root.editable
                     wrapMode: TextEdit.Wrap
                     selectByMouse: true
-                    Accessible.name: "Message Hermes in "
-                        + (root.conversation?.title ?? "new chat")
+                    Accessible.name: root.conversation?.title
+                        ? I18n.format("Message Hermes in %1", [root.conversation.title])
+                        : I18n.tr("Message Hermes in a new chat")
                     Accessible.description: root.working
                         ? "Enter steers the active turn. Shift Enter inserts a newline."
                         : "Enter sends. Shift Enter inserts a newline."
@@ -330,7 +331,7 @@ Rectangle {
                 HermesInlineSelect {
                     id: effortSelect
                     visible: root.reasoningOptions.length > 1
-                    text: "Reasoning"
+                    text: I18n.tr("Reasoning")
                     symbol: "psychology"
                     value: String(root.reasoningState.effort ?? "")
                     options: root.reasoningOptions
@@ -369,7 +370,7 @@ Rectangle {
                 anchors.right: primaryButton.left
                 anchors.rightMargin: 5
                 anchors.verticalCenter: parent.verticalCenter
-                label: root.steering ? "Steering…" : "Steer"
+                label: root.steering ? I18n.tr("Steering…") : I18n.tr("Steer")
                 enabled: !root.steering
                 fontFamily: HermesTheme.fontUi
                 focusColor: HermesTheme.focus
@@ -396,7 +397,7 @@ Rectangle {
                 border.width: activeFocus ? 1 : 0
                 border.color: HermesTheme.focus
                 Accessible.role: Accessible.Button
-                Accessible.name: root.working ? "Stop Hermes" : "Send to Hermes"
+                Accessible.name: root.working ? I18n.tr("Stop Hermes") : I18n.tr("Send to Hermes")
                 Accessible.onPressAction: {
                     if (root.working)
                         Hermes.interrupt(root.conversationId);

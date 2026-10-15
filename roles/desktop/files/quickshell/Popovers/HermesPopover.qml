@@ -129,7 +129,7 @@ Surface {
 
             Text {
                 width: parent.width
-                text: "Hermes Agent"
+                text: I18n.tr("Hermes Agent")
                 elide: Text.ElideRight
                 font.family: HermesTheme.fontUi
                 font.pixelSize: Theme.typography.primary

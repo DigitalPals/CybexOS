@@ -11,7 +11,7 @@ test("defaults carry the design values", () => {
         ["overview", "sound", "network", "bluetooth", "power", "notifications"]);
     assert.ok(d.drawerTabs.every(t => t.on === true));
     assert.deepEqual(d.drawerOverview,
-        { media: true, sliders: true, tiles: true, updates: true });
+        { media: true, sliders: true, tiles: true, updates: true, processes: true });
     assert.equal(d.drawerHover, "open");
     assert.equal(d.drawerWidth, 400);
     assert.equal(d.themeMode, "dark");
@@ -56,6 +56,9 @@ test("defaults carry the design values", () => {
     assert.equal(d.notifIcons, true);
     assert.equal(d.notifProgress, true);
     assert.equal(d.notifBodyLines, 2);
+    assert.equal(d.dock, false, "the dock is optional and starts off");
+    assert.equal(d.dockAutoHide, false);
+    assert.deepEqual(d.dockPinned, []);
     assert.deepEqual(d.mods.left.map(m => m.id), ["ws", "media"]);
     assert.deepEqual(d.mods.center.map(m => m.id),
         ["indicators", "clock", "weather", "notes"]);

@@ -144,8 +144,17 @@
       - qrencode
       - iproute
       - iputils
+      # NetworkManager's shared mode (the Settings hotspot) runs dnsmasq for
+      # its clients' DHCP and DNS, and no Fedora package depends on it.
+      - dnsmasq
       # Fedora's authoritative post-update reboot recommendation command.
       - dnf5-plugins
+      # Personal-file backups (cybexos-backup): restic writes the encrypted
+      # repository; secret-tool keeps its password in the GNOME Keyring.
+      - restic
+      - libsecret
+      # zbarimg: screen-ocr decodes a QR code or barcode before trying OCR.
+      - zbar
     state: present
   when: not ansible_check_mode
   tags: [quickshell]
@@ -1394,6 +1403,30 @@
     force: true
   notify: Reload user systemd
   when: cybexos_xps_2026 | default(false) | bool
+
+# The ISO packages the same two files under /usr/lib/systemd/user, and its
+# session target wants the timer (image/desktop_payload.py).
+- name: Install the personal-file backup user units
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ primary_home }}/.config/systemd/user/{{ item }}"
+    mode: "0644"
+  loop:
+    - cybexos-backup.service
+    - cybexos-backup.timer
+  notify: Reload user systemd
+
+- name: Check for due personal-file backups during the Hyprland session
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    src: ../cybexos-backup.timer
+    dest: "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants/cybexos-backup.timer"
+    state: link
+    force: true
+  notify: Reload user systemd
 
 - name: Preserve SELinux labels on local session executable
   ansible.builtin.command: restorecon -F /usr/local/bin/hyprland-quickshell

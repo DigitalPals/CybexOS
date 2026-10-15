@@ -65,8 +65,8 @@ SettingsRow {
             inputMethodHints: Qt.ImhTime
             invalid: !root.inputValid
             Accessible.name: root.label
-            Accessible.description: "Type a time, or use the arrow keys to step by "
-                + root.step + " minutes"
+            Accessible.description: I18n.format("Type a time, or use the arrow keys to step by %1 minutes",
+                [root.step])
             Component.onCompleted: text = SettingsHelpers.formatMinutes(root.minutes)
             onEditingFinished: {
                 const parsed = SettingsHelpers.parseClockMinutes(text, root.step);

@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
@@ -15,7 +16,7 @@ test("system settings preserve profiles, roll back trials and validate changing 
 });
 
 function backend() {
-    const source = fs.readFileSync(path.join(shellDir, "Common/SystemSettingsBackend.qml"), "utf8");
+    const source = untranslated(fs.readFileSync(path.join(shellDir, "Common/SystemSettingsBackend.qml"), "utf8"));
     const calls = [];
     const context = vm.createContext({
         watchers: 0, preview: null, busy: false, loading: false, revision: 0,
@@ -65,7 +66,7 @@ test("broken service output becomes a bounded error rather than a parser excepti
     assert.equal(c.decode('{"success":true}', 0).success, true);
 });
 
-const read = file => fs.readFileSync(path.join(shellDir, file), "utf8");
+const read = file => untranslated(fs.readFileSync(path.join(shellDir, file), "utf8"));
 
 test("system pages speak about their service only when there is something to say", () => {
     const status = read("Settings/SystemServiceStatus.qml");

@@ -53,10 +53,10 @@ Item {
         PickerRow {
             id: viewTabs
             width: parent.width
-            label: "Browse"
+            label: I18n.tr("Browse")
             model: [
-                { value: "library", label: "Library" },
-                { value: "online", label: "Online" }
+                { value: "library", label: I18n.tr("Library") },
+                { value: "online", label: I18n.tr("Online") }
             ]
             current: OnlineWallpapers.view
             dirty: false
@@ -85,7 +85,7 @@ Item {
             anchors.right: parent.right
             anchors.bottom: rotationGroup.top
             anchors.bottomMargin: Theme.settingsGroupSpacing
-            title: "Library"
+            title: I18n.tr("Library")
 
             GridView {
                 id: wallGrid
@@ -168,7 +168,7 @@ Item {
                                 anchors.centerIn: parent
                                 width: parent.width - 20
                                 horizontalAlignment: Text.AlignHCenter
-                                text: wallImage.status === Image.Error ? "Could not load" : "Loading…"
+                                text: wallImage.status === Image.Error ? I18n.tr("Could not load") : I18n.tr("Loading…")
                                 font.family: Theme.fontMenu
                                 font.pixelSize: Theme.typography.secondary
                                 color: Theme.textFaint
@@ -245,7 +245,7 @@ Item {
                     shown: Wallpaper.loading || Wallpaper.files.length === 0
                     kind: Wallpaper.loading ? "loading" : "empty"
                     glyph: Wallpaper.loading ? "progress_activity" : "image"
-                    title: Wallpaper.loading ? "Loading wallpapers…" : "No images found"
+                    title: Wallpaper.loading ? I18n.tr("Loading wallpapers…") : I18n.tr("No images found")
                     detail: Wallpaper.loading ? "" : page.dirLabel
                 }
             }
@@ -257,7 +257,7 @@ Item {
             SettingsRow {
                 id: currentRow
                 width: parent.width
-                label: "Current"
+                label: I18n.tr("Current")
                 settingKey: "wall"
                 dirty: false
                 resetKeys: []
@@ -284,10 +284,10 @@ Item {
                     y: currentRow.narrow
                         ? Theme.settingsStackOffset + (Theme.settingsControlHeight - height) / 2
                         : (currentRow.lineHeight - height) / 2
-                    text: "Shuffle now"
+                    text: I18n.tr("Shuffle now")
                     glyph: "shuffle"
                     enabled: Wallpaper.files.length > 1
-                    Accessible.name: "Shuffle wallpaper now"
+                    Accessible.name: I18n.tr("Shuffle wallpaper now")
                     onTriggered: Wallpaper.shuffle()
                 }
             }
@@ -300,17 +300,17 @@ Item {
             anchors.right: parent.right
             anchors.bottom: folderGroup.top
             anchors.bottomMargin: Theme.settingsGroupSpacing
-            title: "Rotation"
+            title: I18n.tr("Rotation")
 
             PickerRow {
                 width: parent.width
-                label: "Rotate"
+                label: I18n.tr("Rotate")
                 settingKey: "shuffle"
                 model: [
-                    { value: "Off", label: "Off" },
-                    { value: "15m", label: "15 min" },
-                    { value: "1h", label: "1 hour" },
-                    { value: "1d", label: "Daily" }
+                    { value: "Off", label: I18n.tr("Off") },
+                    { value: "15m", label: I18n.tr("15 min") },
+                    { value: "1h", label: I18n.tr("1 hour") },
+                    { value: "1d", label: I18n.tr("Daily") }
                 ]
             }
         }
@@ -321,7 +321,7 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            title: "Folder"
+            title: I18n.tr("Folder")
 
             // The folder names itself: its path is the row's label, in the
             // mono face and eliding in the middle so both ends of a long
@@ -366,15 +366,15 @@ Item {
                     spacing: Theme.iconTextSpacing
 
                     SettingsAction {
-                        text: "Choose…"
+                        text: I18n.tr("Choose…")
                         glyph: "folder"
-                        Accessible.name: "Choose wallpaper folder"
+                        Accessible.name: I18n.tr("Choose wallpaper folder")
                         onTriggered: folderDialog.openAt(Settings.wallDir)
                     }
                     SettingsAction {
-                        text: "Open"
+                        text: I18n.tr("Open")
                         glyph: "folder_open"
-                        Accessible.name: "Open wallpaper folder"
+                        Accessible.name: I18n.tr("Open wallpaper folder")
                         onTriggered: Quickshell.execDetached(["xdg-open", Wallpaper.dir])
                     }
                 }

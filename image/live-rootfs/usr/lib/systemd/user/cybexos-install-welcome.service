@@ -1,0 +1,7 @@
+[Unit]
+Description=CybexOS installer window
+PartOf=cybexos-install-session.target
+
+[Service]
+ExecStart=/usr/bin/cybexos-welcome --install-mode
+Restart=no

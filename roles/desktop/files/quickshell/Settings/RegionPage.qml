@@ -63,35 +63,35 @@ SettingsPage {
         SystemServiceStatus { width: parent.width; service: page.service; notice: page.service.message }
         SettingsGroup {
             width: parent.width
-            title: "System timezone"
+            title: I18n.tr("System timezone")
             DraftFieldRow {
                 width: parent.width
-                label: "Find a timezone"
+                label: I18n.tr("Find a timezone")
                 value: page.timezoneQuery
-                placeholder: "City or region"
+                placeholder: I18n.tr("City or region")
                 mono: false
                 onEdited: text => page.timezoneQuery = text
             }
             SelectRow {
                 width: parent.width
-                label: "Timezone"
+                label: I18n.tr("Timezone")
                 current: page.timezone
                 model: Draft.filtered((page.service.snapshot.timezones || []).map(value => ({value: value, label: value.replace(/_/g, " ")})), page.timezoneQuery, page.timezone)
                 disabledReason: page.disabledReason
-                hint: "Changes the timezone for everyone on this computer. Authorization may be required."
+                hint: I18n.tr("Changes the timezone for everyone on this computer. Authorization may be required.")
                 onPicked: value => page.timezone = value
             }
             ValueRow {
                 width: parent.width
                 visible: page.timezoneDirty
-                label: "Timezone change"
+                label: I18n.tr("Timezone change")
                 SettingsAction {
-                    text: "Discard"
+                    text: I18n.tr("Discard")
                     enabled: !page.service.busy
                     onTriggered: { page.timezone = page.originalTimezone; page.load(); }
                 }
                 SettingsAction {
-                    text: "Apply timezone"
+                    text: I18n.tr("Apply timezone")
                     primary: true
                     enabled: page.service.loaded && !page.service.busy
                     onTriggered: page.service.run({action: "timezone", value: page.timezone, previous: page.originalTimezone})
@@ -100,35 +100,35 @@ SettingsPage {
         }
         SettingsGroup {
             width: parent.width
-            title: "System language"
+            title: I18n.tr("System language")
             DraftFieldRow {
                 width: parent.width
-                label: "Find a locale"
+                label: I18n.tr("Find a locale")
                 value: page.localeQuery
-                placeholder: "For example en_US or nl_NL"
+                placeholder: I18n.tr("For example en_US or nl_NL")
                 onEdited: text => page.localeQuery = text
             }
             SelectRow {
                 width: parent.width
-                label: "Language and region"
+                label: I18n.tr("Language and region")
                 current: page.locale
                 model: Draft.filtered((page.service.snapshot.locales || []).map(value => ({value: value, label: value})), page.localeQuery, page.locale)
                 disabledReason: page.disabledReason
-                hint: "Installed locales only. Applies system wide after signing out; explicit regional format overrides are preserved."
+                hint: I18n.tr("Installed locales only. Applies system wide after signing out; explicit regional format overrides are preserved.")
                 onPicked: value => page.locale = value
             }
             ValueRow {
                 width: parent.width
                 visible: page.localeDirty
-                label: "Language change"
-                hint: "Authorization may be required."
+                label: I18n.tr("Language change")
+                hint: I18n.tr("Authorization may be required.")
                 SettingsAction {
-                    text: "Discard"
+                    text: I18n.tr("Discard")
                     enabled: !page.service.busy
                     onTriggered: { page.locale = page.originalLocale; page.load(); }
                 }
                 SettingsAction {
-                    text: "Apply language"
+                    text: I18n.tr("Apply language")
                     primary: true
                     enabled: page.service.loaded && !page.service.busy
                     onTriggered: page.service.run({action: "locale", value: page.locale, previous: page.originalLocaleValues})
@@ -138,11 +138,11 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Formats"
+            title: I18n.tr("Formats")
 
             PickerRow {
                 width: parent.width
-                label: "Clock"
+                label: I18n.tr("Clock")
                 settingKey: "clock24"
                 model: [
                     { value: true, label: "24 h" },
@@ -153,7 +153,7 @@ SettingsPage {
             }
             PickerRow {
                 width: parent.width
-                label: "Temperature"
+                label: I18n.tr("Temperature")
                 settingKey: "unit"
                 model: [
                     { value: "c", label: "°C" },

@@ -561,7 +561,7 @@ Item {
             Text {
                 visible: searchInput.text === ""
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Search threads"
+                text: I18n.tr("Search threads")
                 font.family: T3Theme.fontUi
                 font.pixelSize: Theme.typography.control
                 color: T3Theme.textFaint
@@ -616,7 +616,7 @@ Item {
                     rightPadding: 7
                     topPadding: 5
                     bottomPadding: 5
-                    text: "Read-only access · actions are disabled"
+                    text: I18n.tr("Read-only access · actions are disabled")
                     font.family: T3Theme.fontUi
                     font.pixelSize: Theme.typography.secondary
                     color: T3Theme.amber
@@ -689,7 +689,7 @@ Item {
                     visible: T3Code.state === "cloud-empty"
                     width: Math.min(parent.width - 24, 390)
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Link an environment in T3 Code Nightly, then refresh."
+                    text: I18n.tr("Link an environment in T3 Code Nightly, then refresh.")
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     lineHeight: Theme.proseLineHeight
@@ -717,7 +717,7 @@ Item {
                         && T3Code.settledThreads.length === 0
                     width: parent.width
                     glyph: "forum"
-                    title: "No sessions"
+                    title: I18n.tr("No sessions")
                 }
 
                 Text {
@@ -741,7 +741,7 @@ Item {
                 // reads amber — it is just anchored here instead of sorted.
                 GroupHeader {
                     visible: root.pinnedThreads.length > 0
-                    label: "Pinned"
+                    label: I18n.tr("Pinned")
                     count: root.pinnedThreads.length
                 }
                 Repeater {
@@ -751,7 +751,7 @@ Item {
 
                 GroupHeader {
                     visible: root.needsYou.length > 0
-                    label: "Needs you"
+                    label: I18n.tr("Needs you")
                     count: root.needsYou.length
                     tint: T3Theme.amber
                     rule: T3Theme.amberBorder
@@ -763,7 +763,7 @@ Item {
 
                 GroupHeader {
                     visible: root.readyPlans.length > 0
-                    label: "Ready to review"
+                    label: I18n.tr("Ready to review")
                     count: root.readyPlans.length
                     tint: T3Theme.accent
                     rule: T3Theme.accentSoft
@@ -775,7 +775,7 @@ Item {
 
                 GroupHeader {
                     visible: root.runningThreads.length > 0
-                    label: "Working"
+                    label: I18n.tr("Working")
                     count: root.runningThreads.length
                 }
                 Repeater {
@@ -801,7 +801,7 @@ Item {
                         visible: root.snoozedThreads.length > 0
                         width: drawerRow.both ? (drawerRow.width - drawerRow.spacing) / 2
                             : drawerRow.width
-                        label: "Snoozed"
+                        label: I18n.tr("Snoozed")
                         count: root.snoozedThreads.length
                         expanded: root.snoozedExpanded
                         onToggled: root.snoozedExpanded = !root.snoozedExpanded
@@ -811,7 +811,7 @@ Item {
                         visible: root.settledThreads.length > 0
                         width: drawerRow.both ? (drawerRow.width - drawerRow.spacing) / 2
                             : drawerRow.width
-                        label: "Settled"
+                        label: I18n.tr("Settled")
                         count: root.settledThreads.length
                         expanded: root.settledExpanded
                         subdued: true

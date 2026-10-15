@@ -3,12 +3,14 @@
 import argparse
 import fcntl
 import json
+import importlib.machinery
 import importlib.util
 import os
 from pathlib import Path
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -123,6 +125,29 @@ def reconcile_defaults(home, vendor, state):
     write_status(status_path, status)
 
 
+def seed_web_apps(vendor, data):
+    """Install the default web apps once, as `cybexos-webapp seed` does.
+
+    The checkout's dotfiles role runs the same packaged helper. It records
+    every default it seeds, so a web app the user removed is never added back
+    by a later login. A failure must never keep the desktop from starting.
+    """
+    helper = vendor / "bin/cybexos-webapp"
+    # The helper's record of what it seeded: once it exists, a login need not
+    # load the helper at all (a binding seeds a missing default on first use).
+    # A release that adds a default must revisit this marker.
+    if not helper.is_file() or (data / "webapps/defaults.json").exists():
+        return
+    try:
+        loader = importlib.machinery.SourceFileLoader("cybexos_webapp", str(helper))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        module.seed()
+    except Exception as error:
+        print(f"cybexos-user-init: default web apps were not seeded: {error}", file=sys.stderr)
+
+
 def notify(message, urgency="normal"):
     if shutil.which("notify-send"):
         try:
@@ -158,6 +183,7 @@ def initialize(home, vendor=Path("/usr/share/cybexos"), mode="all", notification
                 destination.symlink_to(source)
             except FileExistsError:
                 pass
+        seed_web_apps(vendor, data)
         seed = vendor / "user-seed"
         marker = state / "offline-apps-seeded"
         status_path = state / "seed-progress.json"

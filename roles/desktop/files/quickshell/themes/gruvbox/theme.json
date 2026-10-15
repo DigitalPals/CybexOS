@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "gruvbox",
+  "name": "Gruvbox",
+  "mode": "dark",
+  "accent": "#fe8019",
+  "bar": "#282828",
+  "palette": {
+    "background": "#282828",
+    "surface": "#32302f",
+    "surfaceRaised": "#3c3836",
+    "text": "#ebdbb2",
+    "textMuted": "#d5c4a1",
+    "textDim": "#a89984",
+    "red": "#fb4934",
+    "amber": "#fabd2f",
+    "green": "#b8bb26"
+  },
+  "author": "Pavel Pertsev",
+  "license": "MIT",
+  "source": "https://github.com/morhetz/gruvbox"
+}

@@ -19,10 +19,16 @@ BarModule {
     property bool disclosureLatched: false
     property var actionButtons: []
 
+    // Game mode is not one of the configurable actions: it has no inactive
+    // form to offer, so it shows only while it is on, after the user's own
+    // active actions, and a click turns it off.
+    readonly property var gameModeAction:
+        ({ id: "game-mode", label: I18n.tr("Game mode"), glyph: "sports_esports" })
     readonly property var actionCatalog: {
         const catalog = {};
         for (const action of SettingsHelpers.INDICATOR_ACTION_CHOICES)
             catalog[action.id] = action;
+        catalog[gameModeAction.id] = gameModeAction;
         return catalog;
     }
     // No Settings.revision here: it is bumped by every save (a wallpaper
@@ -32,8 +38,8 @@ BarModule {
             Settings.modOpts.indicators.order, Dictation.available)
         .map(id => actionCatalog[id]).filter(action => action !== undefined)
     readonly property string actionStateKey: [
-        Dictation.state, Recorder.active, Reminders.count,
-        SysInfo.nightLight, Notifs.dnd, SysInfo.idleInhibited
+        Dictation.state, Recorder.active, Recorder.scrolling, Reminders.count,
+        SysInfo.nightLight, Notifs.dnd, SysInfo.idleInhibited, GameMode.active
     ].join(":")
     readonly property bool reminderOpen: host !== null
         && host.popoutOpen("reminders")
@@ -56,7 +62,8 @@ BarModule {
         void actionStateKey;
         return JSON.stringify(actions.filter(action => isActive(action.id)
             && (actionEnabled(action.id) || mandatoryWhileActive(action.id)))
-            .map(action => action.id));
+            .map(action => action.id)
+            .concat(GameMode.active ? [gameModeAction.id] : []));
     }
     readonly property var inactiveActions: JSON.parse(inactiveActionsKey)
     readonly property var activeActions: JSON.parse(activeActionsKey)
@@ -72,12 +79,13 @@ BarModule {
     function isActive(id) {
         switch (id) {
         case "dictation": return Dictation.busy;
-        case "recording": return Recorder.active;
+        case "recording": return Recorder.active || Recorder.scrolling;
         case "ocr": return false;
         case "reminder": return Reminders.count > 0;
         case "night-light": return SysInfo.nightLight;
         case "dnd": return Notifs.dnd;
         case "stay-awake": return SysInfo.idleInhibited;
+        case "game-mode": return GameMode.active;
         default: return false;
         }
     }
@@ -127,11 +135,13 @@ BarModule {
                         ? "" : " · middle click "
                             + Settings.modOpts.indicators.dictationSecondaryLanguage);
         case "recording":
+            if (Recorder.scrolling && !Recorder.active)
+                return "Finish scrolling screenshot · Enter";
             return Recorder.active ? "Stop recording" + (Recorder.outputFile !== ""
                 ? " · " + Recorder.outputFile.split("/").pop() : "")
                 : "Record a " + Settings.modOpts.indicators.recordingMode;
         case "ocr":
-            return "OCR a region · copies text · Super Shift O";
+            return "Copy text or QR code from a region · Super Shift O";
         case "reminder":
             return Reminders.tooltip + (Settings.modOpts.indicators.reminderClick === "quick-add"
                 ? " · click adds " + Settings.modOpts.indicators.reminderMinutes + " min"
@@ -147,6 +157,8 @@ BarModule {
                 + SysInfo.idleInhibitStatus : "Stay awake · "
                     + Settings.modOpts.indicators.idleDefaultMode)
                 + " · middle click durations";
+        case "game-mode":
+            return "Turn off game mode";
         default: return "";
         }
     }
@@ -159,7 +171,10 @@ BarModule {
                 : Settings.modOpts.indicators.dictationPrimaryLanguage);
             break;
         case "recording":
-            Recorder.toggle(Settings.modOpts.indicators.recordingMode);
+            if (Recorder.scrolling && !Recorder.active)
+                Recorder.finishScroll();
+            else
+                Recorder.toggle(Settings.modOpts.indicators.recordingMode);
             break;
         case "ocr":
             Quickshell.execDetached([root.ocrScript]);
@@ -190,6 +205,9 @@ BarModule {
                 Settings.showPanel("power", host.outputName);
             else
                 SysInfo.toggleIdleInhibited();
+            break;
+        case "game-mode":
+            GameMode.turnOff();
             break;
         }
     }
@@ -263,7 +281,8 @@ BarModule {
         readonly property string actionId: modelData
         readonly property var action: root.actionCatalog[actionId] ?? ({})
         readonly property bool activeState: root.isActive(actionId)
-        readonly property bool recording: actionId === "recording" && Recorder.active
+        readonly property bool recording: actionId === "recording"
+            && (Recorder.active || Recorder.scrolling)
         readonly property bool transcribing: actionId === "dictation" && Dictation.transcribing
         readonly property string actionLabel: root.labelFor(actionId)
         readonly property color ink: recording ? Theme.barRedFg

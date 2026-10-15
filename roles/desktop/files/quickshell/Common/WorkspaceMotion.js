@@ -4,6 +4,23 @@ var CELL_WIDTH = 22;
 var LEADING_MS = 120;
 var TRAILING_MS = 300;
 
+// The numbered workspaces among Hyprland's list, ascending. Special
+// workspaces such as the scratchpad (special:scratchpad) carry negative ids,
+// as do named ones; neither is a numbered slot in the strip.
+// Hyprland.workspaces.values is a QML list, array-like but not an Array.
+function regularIds(workspaces) {
+    var ids = [];
+    var count = workspaces && typeof workspaces.length === "number" ? workspaces.length : 0;
+    for (var i = 0; i < count; i++) {
+        var workspace = workspaces[i];
+        var id = workspace ? workspace.id : undefined;
+        var name = workspace && typeof workspace.name === "string" ? workspace.name : "";
+        if (Number.isInteger(id) && id > 0 && name.indexOf("special:") !== 0)
+            ids.push(id);
+    }
+    return ids.sort(function(a, b) { return a - b; });
+}
+
 function visibleIds(slotCount, existingIds, focusedId, hideEmpty) {
     var existing = {};
     (Array.isArray(existingIds) ? existingIds : []).forEach(function(id) {
@@ -41,6 +58,7 @@ var exported = {
     CELL_WIDTH: CELL_WIDTH,
     LEADING_MS: LEADING_MS,
     TRAILING_MS: TRAILING_MS,
+    regularIds: regularIds,
     visibleIds: visibleIds,
     indicatorBounds: indicatorBounds,
     edgeDurations: edgeDurations

@@ -33,7 +33,7 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Online accounts"
+            title: I18n.tr("Online accounts")
 
             // The group's note, clear of the rule that opens the first row.
             Item {
@@ -44,7 +44,7 @@ SettingsPage {
                     id: note
                     width: parent.width
                     maximumLines: 5
-                    text: "Connect an account to show its calendars in CybexOS. Signing in opens a separate account window and your browser."
+                    text: I18n.tr("Connect an account to show its calendars in CybexOS. Signing in opens a separate account window and your browser.")
                 }
             }
             SettingsHint {
@@ -56,12 +56,12 @@ SettingsPage {
             ValueRow {
                 width: parent.width
                 visible: page.service.error !== ""
-                label: "Status"
+                label: I18n.tr("Status")
                 hint: page.service.error
                 hintTone: "error"
 
                 SettingsAction {
-                    text: "Refresh"
+                    text: I18n.tr("Refresh")
                     glyph: "refresh"
                     enabled: !page.service.busy && !page.service.loading
                     onTriggered: {
@@ -74,10 +74,10 @@ SettingsPage {
             ValueRow {
                 width: parent.width
                 visible: page.service.loaded && page.accounts.length === 0
-                label: "No accounts connected"
+                label: I18n.tr("No accounts connected")
 
                 SettingsAction {
-                    text: "Add account"
+                    text: I18n.tr("Add account")
                     glyph: "add"
                     primary: true
                     enabled: !SystemSettings.externalBusy
@@ -107,7 +107,7 @@ SettingsPage {
 
                         SettingsAction {
                             visible: account.info.attention && !account.info.locked
-                            text: "Reconnect"
+                            text: I18n.tr("Reconnect")
                             glyph: "refresh"
                             enabled: !SystemSettings.externalBusy
                             Accessible.name: "Reconnect " + account.info.identity
@@ -115,7 +115,7 @@ SettingsPage {
                         }
                         SettingsAction {
                             visible: !account.info.locked && !account.confirming
-                            text: "Remove…"
+                            text: I18n.tr("Remove…")
                             glyph: "delete"
                             danger: true
                             enabled: !page.service.busy
@@ -127,7 +127,7 @@ SettingsPage {
                         width: parent.width
                         divider: false
                         visible: account.info.calendar
-                        label: "Use calendars"
+                        label: I18n.tr("Use calendars")
                         accessibleName: "Use calendars from " + (account.info.identity || account.info.provider)
                         checked: !account.info.calendarDisabled
                         disabledReason: account.info.locked ? "Managed account" : page.service.busy ? "Updating…" : ""
@@ -137,14 +137,14 @@ SettingsPage {
                         width: parent.width
                         divider: false
                         visible: account.confirming
-                        label: "Remove from this computer?"
-                        hint: "Other applications on this computer also lose access to "
-                            + (account.info.identity || "this account")
-                            + ". The online account and its data stay."
+                        label: I18n.tr("Remove from this computer?")
+                        hint: account.info.identity
+                            ? I18n.format("Other applications on this computer also lose access to %1. The online account and its data stay.", [account.info.identity])
+                            : I18n.tr("Other applications on this computer also lose access to this account. The online account and its data stay.")
                         hintTone: "warning"
 
                         SettingsAction {
-                            text: "Remove account"
+                            text: I18n.tr("Remove account")
                             danger: true
                             enabled: !page.service.busy
                             onTriggered: {
@@ -153,7 +153,7 @@ SettingsPage {
                             }
                         }
                         SettingsAction {
-                            text: "Cancel"
+                            text: I18n.tr("Cancel")
                             onTriggered: page.removing = ""
                         }
                     }
@@ -165,10 +165,10 @@ SettingsPage {
             ValueRow {
                 width: parent.width
                 visible: page.accounts.length > 0
-                label: "Connect another account"
+                label: I18n.tr("Connect another account")
 
                 SettingsAction {
-                    text: "Add account"
+                    text: I18n.tr("Add account")
                     glyph: "add"
                     enabled: !SystemSettings.externalBusy
                     onTriggered: page.openAccountWindow()

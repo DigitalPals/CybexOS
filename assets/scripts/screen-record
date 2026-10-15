@@ -1,22 +1,123 @@
 #!/usr/bin/env bash
 # Toggle a region, window, or output screen recording.
+# Usage: screen-record [--webcam] [region|window|screen]
+#        screen-record --encoder    print the encoder a new recording would use
 
 set -euo pipefail
 
 OUTPUT_DIR="$HOME/Videos/Screen Recordings"
 STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/screen-record"
+# The state files keep their wf-recorder names whichever recorder runs: the
+# menubar (Common/Recorder.qml) watches them by these paths.
 PID_FILE="$STATE_DIR/wf-recorder.pid"
 START_TICKS_STATE="$STATE_DIR/wf-recorder.start-ticks"
 OUTPUT_FILE_STATE="$STATE_DIR/output-file"
 # Epoch seconds the current recording began. The menubar's recording chip
 # reads it so its elapsed clock survives a shell reload mid-recording.
 STARTED_AT_STATE="$STATE_DIR/started-at"
+# The recorded selection, present only for a --webcam recording. The shell
+# shows its camera bubble inside this area while the recording runs.
+WEBCAM_STATE="$STATE_DIR/webcam"
 LOG_FILE="$STATE_DIR/wf-recorder.log"
+DRM_ROOT=${SCREEN_RECORD_DRM_ROOT:-/sys/class/drm}
+V4L_ROOT=${SCREEN_RECORD_V4L_ROOT:-/sys/class/video4linux}
 
-capture_mode=${1:-region}
-if (($# > 1)) || [[ ! $capture_mode =~ ^(region|window|screen)$ ]]; then
-  printf 'usage: screen-record [region|window|screen]\n' >&2
+usage() {
+  printf 'usage: screen-record [--webcam] [region|window|screen]\n       screen-record --encoder\n' >&2
   exit 2
+}
+
+capture_mode=region
+mode_given=0
+webcam=0
+print_encoder=0
+for argument in "$@"; do
+  case $argument in
+    --webcam) webcam=1 ;;
+    --encoder) print_encoder=1 ;;
+    region|window|screen)
+      ((mode_given == 0)) || usage
+      capture_mode=$argument
+      mode_given=1
+      ;;
+    *) usage ;;
+  esac
+done
+
+# ---- Encoder selection ------------------------------------------------------
+# Probed once per recording, never cached: drivers, a newly installed
+# gpu-screen-recorder or a docked GPU change between recordings.
+
+# Render nodes as "renderDN vendor driver", other GPUs before NVIDIA ones:
+# an integrated GPU is usually the one scanning out the frames recorded.
+render_nodes() {
+  local node vendor driver nvidia_nodes=()
+  for node in "$DRM_ROOT"/renderD*; do
+    [ -r "$node/device/vendor" ] || continue
+    vendor=$(<"$node/device/vendor")
+    driver=$(readlink -- "$node/device/driver" 2>/dev/null || true)
+    driver=${driver##*/}
+    if [ "$vendor" = 0x10de ]; then
+      nvidia_nodes+=("${node##*/} $vendor ${driver:-unknown}")
+    else
+      printf '%s %s %s\n' "${node##*/}" "$vendor" "${driver:-unknown}"
+    fi
+  done
+  ((${#nvidia_nodes[@]} == 0)) || printf '%s\n' "${nvidia_nodes[@]}"
+}
+
+# Whether VA-API offers H.264 encoding on a render node. Mesa as Fedora
+# builds it leaves H.264 out (RPM Fusion's freeworld drivers add it back), and
+# nvidia-vaapi-driver only decodes, so the vendor alone proves nothing: the
+# driver's own list of entrypoints is the answer.
+vaapi_encodes_h264() {
+  local profiles
+  command -v vainfo >/dev/null 2>&1 || return 1
+  # Read everything first: grep -q exiting early would SIGPIPE vainfo, and
+  # pipefail would then report the match as a failure.
+  profiles=$(timeout 5 vainfo --display drm --device "/dev/dri/$1" 2>/dev/null || true)
+  grep -Eq 'VAProfileH264[A-Za-z]*[[:space:]]*:[[:space:]]*VAEntrypointEncSlice' <<<"$profiles"
+}
+
+ffmpeg_has_nvenc() {
+  local encoders
+  command -v ffmpeg >/dev/null 2>&1 || return 1
+  encoders=$(timeout 5 ffmpeg -hide_banner -encoders 2>/dev/null || true)
+  grep -Eq '[[:space:]]h264_nvenc[[:space:]]' <<<"$encoders"
+}
+
+# One line: the recorder, then how it encodes. gpu-screen-recorder is not
+# packaged for Fedora; when a user installs it, it is the better recorder on
+# NVIDIA, where it encodes with NVENC directly.
+select_encoder() {
+  local entry node vendor driver nvidia=0 nodes=()
+  mapfile -t nodes < <(render_nodes)
+  for entry in "${nodes[@]}"; do
+    read -r node vendor driver <<<"$entry"
+    [ "$vendor" = 0x10de ] && [ "$driver" = nvidia ] && nvidia=1
+  done
+  if ((nvidia)) && command -v gpu-screen-recorder >/dev/null 2>&1; then
+    printf 'gpu-screen-recorder nvenc\n'
+    return
+  fi
+  for entry in "${nodes[@]}"; do
+    read -r node vendor driver <<<"$entry"
+    if vaapi_encodes_h264 "$node"; then
+      printf 'wf-recorder vaapi /dev/dri/%s\n' "$node"
+      return
+    fi
+  done
+  if ((nvidia)) && ffmpeg_has_nvenc; then
+    printf 'wf-recorder nvenc\n'
+    return
+  fi
+  printf 'wf-recorder software\n'
+}
+
+if ((print_encoder)); then
+  ((mode_given == 0 && webcam == 0)) || usage
+  select_encoder
+  exit 0
 fi
 
 mkdir -p "$OUTPUT_DIR" "$STATE_DIR"
@@ -37,7 +138,8 @@ notify() {
 }
 
 process_name() {
-  ps -p "$1" -o comm= 2>/dev/null | tr -d '[:space:]'
+  # ps may append "<defunct>" for zombies; the kernel keeps the actual name.
+  cat "/proc/$1/comm" 2>/dev/null
 }
 
 process_start_ticks() {
@@ -46,9 +148,17 @@ process_start_ticks() {
   awk '{ print $22 }' "/proc/$1/stat" 2>/dev/null
 }
 
+recorder_running() {
+  local state ticks
+  # An exited recorder can remain a zombie until its parent reaps it.
+  # kill -0 still succeeds then, although recording and file finalization ended.
+  read -r state ticks < <(awk '{ print $3, $22 }' "/proc/$1/stat" 2>/dev/null) || return 1
+  [[ $state != Z && $state != X && $ticks == "$2" ]]
+}
+
 clear_state() {
   rm -f -- "$PID_FILE" "$START_TICKS_STATE" "$OUTPUT_FILE_STATE" \
-    "$STARTED_AT_STATE"
+    "$STARTED_AT_STATE" "$WEBCAM_STATE"
 }
 
 publish_state() {
@@ -75,8 +185,10 @@ stop_recording() {
   expected_ticks="$(cat "$START_TICKS_STATE" 2>/dev/null || true)"
   actual_ticks="$(process_start_ticks "$pid" 2>/dev/null || true)"
 
+  # /proc comm is cut to 15 characters: gpu-screen-recorder is
+  # "gpu-screen-reco" there, and in Common/Recorder.qml.
   if ! [[ "$expected_ticks" =~ ^[0-9]+$ ]] \
-      || [ "$(process_name "$pid")" != "wf-recorder" ] \
+      || [[ ! "$(process_name "$pid")" =~ ^(wf-recorder|gpu-screen-reco)$ ]] \
       || [ "$actual_ticks" != "$expected_ticks" ]; then
     clear_state
     return 1
@@ -88,13 +200,13 @@ stop_recording() {
   kill -INT "$pid" 2>/dev/null || true
 
   for _ in {1..50}; do
-    if ! kill -0 "$pid" 2>/dev/null; then
+    if ! recorder_running "$pid" "$expected_ticks"; then
       break
     fi
     sleep 0.1
   done
 
-  if kill -0 "$pid" 2>/dev/null; then
+  if recorder_running "$pid" "$expected_ticks"; then
     notify "Screen Recording" "Recorder did not stop; recording state was retained"
     return 2
   fi
@@ -202,10 +314,59 @@ unset FREEZE_PID
 TS="$(date +'%Y-%m-%d_%H-%M-%S-%N')"
 OUTPUT_FILE="$OUTPUT_DIR/screen-recording-${TS}.mp4"
 
-wf-recorder -g "$SELECTION" -f "$OUTPUT_FILE" >"$LOG_FILE" 2>&1 9>&- &
-RECORD_PID=$!
+# A --webcam recording publishes its area before the recorder starts, so the
+# shell can open the camera while the encoder initialises. Without any video
+# device there is nothing to show; say so once and record anyway.
+if ((webcam)); then
+  if compgen -G "$V4L_ROOT/video*" >/dev/null; then
+    publish_state "$WEBCAM_STATE" "$SELECTION"
+  else
+    webcam=0
+    notify "Screen Recording" "No camera found. Recording without the webcam."
+  fi
+fi
 
-sleep 0.2
+# "X,Y WxH" as gpu-screen-recorder's WxH+X+Y.
+gsr_region() {
+  [[ $1 =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]+([0-9]+)x([0-9]+)$ ]] || return 1
+  printf '%sx%s+%s+%s\n' "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}" \
+    "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+}
+
+# Starts the recorder an encoder line names and waits until it has survived
+# its start-up. Audio stays as it always was: none.
+start_recorder() {
+  local recorder kind device region checks=2 command=()
+  read -r recorder kind device <<<"$1"
+  case "$recorder $kind" in
+    "gpu-screen-recorder "*)
+      region=$(gsr_region "$SELECTION") || return 1
+      command=(gpu-screen-recorder -w region -region "$region" -f 60 -c mp4 -o "$OUTPUT_FILE")
+      ;;
+    "wf-recorder vaapi") command=(wf-recorder -g "$SELECTION" -c h264_vaapi -d "$device" -f "$OUTPUT_FILE") ;;
+    "wf-recorder nvenc") command=(wf-recorder -g "$SELECTION" -c h264_nvenc -f "$OUTPUT_FILE") ;;
+    *) command=(wf-recorder -g "$SELECTION" -f "$OUTPUT_FILE") ;;
+  esac
+  # A hardware encoder that cannot open (a driver without the profile, a
+  # recorder too old for region capture) exits during initialisation, which
+  # takes longer than starting the software encoder does.
+  [ "$kind" = software ] || checks=15
+  "${command[@]}" >"$LOG_FILE" 2>&1 9>&- &
+  RECORD_PID=$!
+  for ((check = 0; check < checks; check++)); do
+    sleep 0.1
+    kill -0 "$RECORD_PID" 2>/dev/null || return 1
+  done
+}
+
+encoder=$(select_encoder)
+if ! start_recorder "$encoder" && [ "$encoder" != "wf-recorder software" ]; then
+  # Keep the failed attempt's log next to the one that replaces it.
+  mv -f -- "$LOG_FILE" "$LOG_FILE.hardware" 2>/dev/null || true
+  rm -f -- "$OUTPUT_FILE"
+  encoder="wf-recorder software"
+  start_recorder "$encoder" || true
+fi
 
 if ! kill -0 "$RECORD_PID" 2>/dev/null; then
   clear_state
@@ -216,6 +377,7 @@ fi
 record_start_ticks="$(process_start_ticks "$RECORD_PID")"
 [[ "$record_start_ticks" =~ ^[0-9]+$ ]] || {
   kill -INT "$RECORD_PID" 2>/dev/null || true
+  clear_state
   notify "Screen Recording" "Could not verify the recorder process"
   exit 1
 }
@@ -227,4 +389,8 @@ publish_state "$START_TICKS_STATE" "$record_start_ticks"
 # newly active recording can never be observed without its output and clock.
 publish_state "$PID_FILE" "$RECORD_PID"
 
-notify "Screen Recording" "Recording $capture_label. Press Super+Shift+~ to stop."
+if ((webcam)); then
+  notify "Screen Recording" "Recording $capture_label with the webcam. Press Super+Shift+~ to stop."
+else
+  notify "Screen Recording" "Recording $capture_label. Press Super+Shift+~ to stop."
+fi

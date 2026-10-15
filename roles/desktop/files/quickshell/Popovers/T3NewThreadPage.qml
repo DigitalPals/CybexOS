@@ -62,7 +62,7 @@ Item {
             anchors.leftMargin: 9
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: "New thread"
+            text: I18n.tr("New thread")
             elide: Text.ElideRight
             font.family: T3Theme.fontUi
             font.pixelSize: Theme.typography.primary
@@ -135,7 +135,7 @@ Item {
                         id: projectPicker
                         anchors.fill: parent
                         anchors.margins: 5
-                        label: "Project"
+                        label: I18n.tr("Project")
                         value: root.draft.projectId ?? ""
                         options: root.projects
                         openUpward: false
@@ -156,7 +156,7 @@ Item {
                 Text {
                     visible: root.draft.projectFixed === true
                     width: parent.width
-                    text: "This plan stays in the source project and Default mode. Provider, model, traits, and access remain adjustable."
+                    text: I18n.tr("This plan stays in the source project and Default mode. Provider, model, traits, and access remain adjustable.")
                     wrapMode: Text.WordWrap
                     lineHeight: Theme.proseLineHeight
                     font.family: T3Theme.fontUi

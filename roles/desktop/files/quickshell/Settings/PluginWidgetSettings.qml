@@ -62,7 +62,7 @@ Column {
         readonly property int saved: root.descriptor.width || 120
         width: parent.width
         minimumLabelWidth: root.labelColumn
-        label: "Width"
+        label: I18n.tr("Width")
         min: 24; max: 320; step: 1; unit: "px"
         value: pending !== undefined ? pending : saved
         onSavedChanged: {
@@ -132,7 +132,7 @@ Column {
     SettingsGroup {
         width: parent.width
         visible: root.schemaFields.length > 0
-        title: "Plugin settings"
+        title: I18n.tr("Plugin settings")
 
         Repeater {
             model: JSON.parse(root.schemaJson)[1]
@@ -285,7 +285,7 @@ Column {
     SettingsGroup {
         width: parent.width
         visible: root.schemaFields.length === 0 || root.schema.other.length > 0
-        title: root.schemaFields.length > 0 ? "Other saved settings" : "Plugin settings"
+        title: root.schemaFields.length > 0 ? I18n.tr("Other saved settings") : I18n.tr("Plugin settings")
 
         SettingsHint {
             width: parent.width
@@ -359,11 +359,11 @@ Column {
     }
     ResponsiveActionRow {
         width: parent.width
-        description: "Set a value the plugin documents but does not list here"
+        description: I18n.tr("Set a value the plugin documents but does not list here")
         SettingsAction {
             id: advancedAction
             property bool expanded: false
-            text: expanded ? "Hide advanced settings" : "Add a plugin setting"
+            text: expanded ? I18n.tr("Hide advanced settings") : I18n.tr("Add a plugin setting")
             glyph: "tune"
             onTriggered: expanded = !expanded
         }
@@ -376,17 +376,17 @@ Column {
         SettingsField {
             id: keyField
             width: parent.width
-            placeholderText: "Setting name from the plugin documentation"
-            Accessible.name: "Plugin setting name"
+            placeholderText: I18n.tr("Setting name from the plugin documentation")
+            Accessible.name: I18n.tr("Plugin setting name")
         }
         SettingsField {
             id: valueFieldInput
             width: parent.width
-            placeholderText: "JSON value, for example true, 42, or \"text\""
-            Accessible.name: "Plugin setting JSON value"
+            placeholderText: I18n.tr("JSON value, for example true, 42, or \"text\"")
+            Accessible.name: I18n.tr("Plugin setting JSON value")
         }
         SettingsAction {
-            text: "Save setting"
+            text: I18n.tr("Save setting")
             glyph: "check"
             enabled: !UserPlugins.busy && keyField.text.trim() !== ""
             onTriggered: {
@@ -405,9 +405,9 @@ Column {
     }
     ResponsiveActionRow {
         width: parent.width
-        description: "Update, disable, or remove it on the Omarchy plugins page"
+        description: I18n.tr("Update, disable, or remove it on the Omarchy plugins page")
         SettingsAction {
-            text: "Manage this plugin"
+            text: I18n.tr("Manage this plugin")
             glyph: "extension"
             onTriggered: Settings.page = "plugins"
         }

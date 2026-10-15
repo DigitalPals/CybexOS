@@ -2,6 +2,7 @@
 // monitors and the session-start burst. Pure rules run here; the QML wiring
 // that has no Node surface is pinned by source contracts.
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -12,7 +13,7 @@ const U = load("UpdatesHelpers.js");
 const S = load("SysInfoHelpers.js");
 
 function read(relative) {
-    return fs.readFileSync(path.join(shellDir, relative), "utf8");
+    return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
 test("dnf progress tokens find their pending row without scanning the feed", () => {

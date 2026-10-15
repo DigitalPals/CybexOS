@@ -29,6 +29,8 @@ Linux or execute commands on the host.
   desktop services
 - a portable Fedora package, Flatpak, shell, font, firewall, and recovery
   baseline
+- encrypted personal-file backups with restic to an external drive or SSH
+  server, set up in Settings → Backup & recovery or with `cybex backup`
 - Omawrite for text, NFO, and Markdown files, with default file associations
   when personal dotfiles integration is enabled
 - developer/Android tools, Steam, Docker, Podman/Distrobox, Tailscale,
@@ -42,6 +44,8 @@ Linux or execute commands on the host.
   agents for safe installed-system diagnosis and customization
 - a user-selectable default AI coding agent with terminal, launcher, and
   keyboard entry points
+- a `Super+Space` command palette for applications, actions, clipboard
+  history and emoji, and installable web apps
 
 Source-checkout installs have no desktop-preset selection: every installation
 gets the same core Hyprland/Quickshell desktop. That installer asks about the
@@ -147,6 +151,34 @@ workspaces with multiple tiled windows use the normal small edge gaps.
 described bindings added in `~/.config/cybexos/hypr/user.lua`. See
 [keyboard shortcuts](docs/keyboard-shortcuts.md).
 
+Around the windows themselves:
+
+- **Windows:** `Super+Tab` opens an overview with live thumbnails of every
+  workspace; type to filter, or drag a window to another workspace. A
+  scratchpad (`Super+-`), window groups (`Super+G`) and screen zoom
+  (`Super+Z`) are built in, and a three-finger swipe changes workspace.
+- **Capture:** region or window screenshots, scrolling screenshots, screen
+  recording with an optional webcam bubble, text and QR code copying, and a
+  colour picker.
+- **Appearance:** Settings → Appearance starts with **Theme** (CybexOS, Nord,
+  Gruvbox, Tokyo Night, Catppuccin, Rosé Pine, Everforest, Kanagawa) and can
+  save the current look as a theme; `cybex theme` installs, exports and
+  applies themes as plain data. The terminal, GTK applications and the lock
+  screen follow the shell's colours and text size. See
+  [themes](docs/shell-appearance.md#themes).
+- **Optional extras:** a dock (Settings → Bar → Dock, off by default), the
+  busiest processes in the Control Center's Overview, and a game mode
+  (`Super+Shift+G`) that turns effects, gaps and the idle lock off. See
+  [window overview, dock and top processes](docs/overview-and-dock.md).
+- **Language:** the shell follows the system language set in Settings →
+  Region & formats and ships English and Dutch. See
+  [shell translations](docs/shell-translations.md).
+
+Hyprland and Quickshell stay on the series each release was qualified on:
+patch updates arrive normally, and the next minor or major release waits for a
+CybexOS release that has reviewed it. See the
+[dependency policy](docs/dependency-policy.md).
+
 Desktop runtime and user customization have a strict boundary. Verified
 releases reconcile `~/.local/share/cybexos/runtime`, while shell
 settings, Hyprland overrides, themes, and plugins live in user-owned roots
@@ -198,6 +230,32 @@ never stores credentials. Authentication, model selection, permissions, and
 provider-specific settings remain owned by each agent. The preference survives
 updates and uninstall because it is user data rather than Ansible policy.
 
+## Launcher and web apps
+
+`Super+Space` opens the launcher. Typing searches applications and also lists
+up to three matching actions, such as **Take a scrolling screenshot** or
+**Toggle game mode**. The Actions tab lists every action, grouped as Install,
+Remove, Set up, Toggle, Update, Capture and System. `Super+Ctrl+V` opens the
+clipboard history: `Enter` pastes the selected entry, `Shift+Enter` copies it,
+and `Ctrl+P` pins it so it survives when the history is pruned or cleared.
+
+Web apps are websites in their own window with a launcher entry. Brave Origin
+opens them in app mode when it is installed; otherwise Firefox opens them.
+Every account starts with Slack, WhatsApp, YouTube, Google Photos and X on
+their usual shortcuts; a removed one is not added back by later updates.
+
+```bash
+cybex webapp install --url https://app.example.com/   # fetches the site icon
+cybex webapp list
+cybex webapp remove example
+cybex webapp launch slack
+```
+
+The launcher's **Install web app…** and **Remove web app…** actions do the
+same. Only http and https addresses without a user name or password are
+accepted. See [keyboard shortcuts](docs/keyboard-shortcuts.md) and the
+[launcher notes](docs/quickshell-notes.md#launcher-providers-and-actions).
+
 ## Update
 
 On ISO installations, `cybex update` updates Fedora packages, Flatpaks, and
@@ -237,9 +295,24 @@ work. Terminal invocations retain their sudo-compatible path. On Btrfs,
 package work first creates a recovery point: a read-only root snapshot and a
 `/boot` archive. The boot menu's **CybexOS recovery points** submenu starts one
 with a temporary overlay (hold Shift or press Esc during boot to show the
-menu), and Settings → About → Recovery points or `sudo cybexos-system-snapshot
+menu), and Settings → Backup & recovery → Recovery points or `sudo cybexos-system-snapshot
 restore ID` makes it the system again; the replaced root is kept until you
 discard it.
+
+Before you update, the Updates view's **What will change** lists each package
+and app with its installed and incoming version, Fedora's advisories (security
+fixes first), and CybexOS's own changes: the release notes on a source
+checkout, the desktop RPM's changelog on an ISO installation. After an update
+it names the recovery point that update took, with a link to the Settings
+section that restores it. **Download updates automatically** (Settings → Bar →
+Updates, off by default) downloads Fedora packages and system Flatpaks in the
+background on AC power and unmetered networks; installing still waits for you.
+
+Recovery points never include your home folder. Back it up to an external
+drive or an SSH server with **Settings → Backup & recovery → Set up…** (or
+`cybex backup setup`). Backups are encrypted with a password kept in the GNOME
+Keyring and a recovery key you save once; they run daily while the destination
+is available, and a restore always goes into a new folder under `~/Restored`.
 
 Useful commands:
 
@@ -250,10 +323,13 @@ Useful commands:
 | `cybex agent` | Launch or choose the per-user default AI coding agent |
 | `cybex dev status` | Show whether the verified or a development runtime is active |
 | `cybex plugin list` | Inspect personal widgets and API compatibility |
+| `cybex backup status` | Show the last and next personal-file backup (`now`, `restore`, `setup` act) |
 | `cybex verify` | Check the installed system (`--source` opts into developer checks) |
 | `cybex doctor` | Alias for `verify` |
+| `cybex report` | Write a redacted diagnostic bundle and optionally open a prefilled bug report |
 | `cybex configure` (source checkout) | Re-run the installer questions |
 | `cybex uninstall` (source checkout) | Remove project-managed configuration; retain applications |
+| `cybex factory-reset` (ISO) | Erase all accounts and home folders and prepare the computer for a new owner |
 
 Detailed updater status, logs, cancellation, Btrfs recovery, and advanced
 Ansible tags are documented in [the operations guide](docs/operations.md).
@@ -265,6 +341,17 @@ for Dell vendor/product identifiers, supported SKUs `0DB9` or `0DBA`, and the
 expected Panther Lake CPU family; individual devices are gated again before
 their configuration is installed. See
 [Dell XPS 2026 hardware support](docs/xps-2026-hardware.md).
+
+Machines with an NVIDIA GPU get RPM Fusion's driver automatically on both
+installation paths, with Secure Boot key enrollment and the open-source driver
+as a fallback; hybrid laptops keep rendering on the integrated GPU. See
+[NVIDIA graphics](docs/nvidia.md).
+
+Any fingerprint reader that Fedora's fprintd supports, and any FIDO2/U2F
+security key, can unlock the screen and approve sudo and system prompts
+alongside the password; manage them in Settings > Security. Signing in after a
+restart always asks for the password, which unlocks the login keyring. See
+[Fingerprints and security keys](docs/security.md).
 
 ## Development and releases
 
@@ -293,6 +380,7 @@ Key documentation:
 - [Fedora major upgrades](docs/fedora-major-upgrade.md)
 - [Licensing and asset provenance](docs/licensing.md)
 - [Quickshell development notes](docs/quickshell-notes.md)
+- [Contributing](CONTRIBUTING.md) and [reporting security issues](SECURITY.md)
 
 > [!IMPORTANT]
 > The repository's original code and configuration are MIT-licensed. This

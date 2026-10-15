@@ -36,7 +36,7 @@ Column {
     SettingsAction {
         x: Theme.settingsMarkInset - Theme.scaled(8)
         visible: !!root.service && root.service.error !== ""
-        text: "Refresh"
+        text: I18n.tr("Refresh")
         glyph: "refresh"
         enabled: !!root.service && !root.service.busy && !root.service.loading
         onTriggered: {

@@ -30,36 +30,46 @@
       <label>Keyboard layout<select id="keyboard" required></select></label>
       <label>Try your keyboard<input id="keyboard-test" autocomplete="off" placeholder="Type a few characters here" spellcheck="false"></label>
       <p id="keyboard-status" class="hint" role="status"></p>
-      <label>Username<input id="username" name="username" required pattern="[a-z_][a-z0-9_-]{0,30}" maxlength="31" autocomplete="off" spellcheck="false" autocapitalize="none"></label>
+      <label id="username-field">Username<input id="username" name="username" required pattern="[a-z_][a-z0-9_-]{0,30}" maxlength="31" autocomplete="off" spellcheck="false" autocapitalize="none"></label>
+      <p class="hint">Lowercase letters, numbers, dashes and underscores. Capitals become lowercase.</p>
       <div class="pair">
-        <label>Password<input id="password" type="password" required minlength="12" maxlength="512" autocomplete="new-password"></label>
-        <label>Confirm password<input id="confirm" type="password" required minlength="12" maxlength="512" autocomplete="new-password"></label>
+        <label><span id="password-label">Password</span><input id="password" type="password" required minlength="12" maxlength="512" autocomplete="new-password"></label>
+        <label><span id="confirm-label">Confirm password</span><input id="confirm" type="password" required minlength="12" maxlength="512" autocomplete="new-password"></label>
       </div>
-      <p class="hint">Use at least 12 characters. Your chosen layout will also be used at the boot unlock screen.</p>
+      <p id="password-hint" class="hint">Use at least 12 characters. Your chosen layout will also be used at the boot unlock screen.</p>
       <label class="check"><input id="passwordless-wheel" type="checkbox"> Allow administrators to use sudo without a password</label>
       <p class="hint">For your security, sudo asks for your account password by default. Enable this only if you want passwordless administrator commands.</p>
-      <details><summary>Language and computer details</summary>
+      <details><summary>More options</summary>
         <label>System language<select id="locale"></select></label>
         <label>Timezone<select id="timezone" required></select></label>
         <p id="timezone-status" class="hint" role="status"></p>
         <label>Computer name<input id="hostname" value="cybexos" required maxlength="63"></label>
+        <label class="check"><input id="oem" type="checkbox"> Prepare this computer for a new owner</label>
+        <p class="hint">Installs without an account. At first start, the new owner chooses a language, keyboard, account, password and timezone.</p>
       </details>
       <footer><button type="submit" class="primary">Choose install location →</button></footer>
     </form>
   </section>
   <section id="location" hidden>
     <p class="eyebrow">02 / INSTALL LOCATION</p><h2>A place to begin.</h2>
-    <p>Choose a disk for CybexOS. The entire selected disk will be erased.</p>
+    <p id="location-intro">Choose a disk for CybexOS. The entire selected disk will be erased.</p>
     <form id="disk-form">
       <label>Installation disk<select id="disk" required></select></label>
       <button id="rescan-disks" type="button" class="secondary">Rescan disks</button>
       <div id="disk-details" class="card" role="status">Choose a disk to see its identity and existing partitions.</div>
+      <fieldset id="layout-choice" class="card" hidden>
+        <legend id="layout-legend">This disk already has another system</legend>
+        <label class="check"><input type="radio" name="layout" id="layout-alongside" value="alongside" checked> <span id="alongside-label">Install alongside it</span></label>
+        <label class="check"><input type="radio" name="layout" id="layout-erase" value="erase"> Erase disk and install CybexOS</label>
+        <div id="alongside-details" role="status"></div>
+        <label id="space-field" hidden><span id="space-label">Space for CybexOS</span><input id="space" type="range" step="1073741824"></label>
+      </fieldset>
       <div class="card"><strong>Encrypted Btrfs</strong><p>Your files stay protected while the computer is powered off. CybexOS creates the system partitions automatically.</p></div>
       <details><summary>Advanced options</summary>
         <label class="check"><input id="encrypted" type="checkbox" checked> Encrypt this installation</label>
         <p class="hint">Disabling encryption also disables automatic login.</p>
         <button id="advanced" type="button" class="secondary">Open full storage installer</button>
-        <p class="hint">For dual boot, existing partitions, or a custom layout. The full installer manages its own account and encryption choices.</p>
+        <p class="hint">For several disks, reusing existing partitions, or a custom layout. The full installer manages its own account and encryption choices.</p>
       </details>
       <footer><button type="button" class="secondary back" data-page="setup">Back</button><button type="submit" class="primary">Review installation →</button></footer>
     </form>
@@ -70,8 +80,18 @@
     <details><summary>Planned disk changes</summary><ul id="actions"></ul></details>
     <div id="warnings" role="status"></div>
     <p class="hint">Your disk and account passwords start out the same. Changing your account password later does not change the disk password. Your app keyring stays encrypted and unlocks with the disk password when they match. If automatic unlock is unavailable, an app will ask for the keyring password.</p>
-    <label class="check erase"><input id="erase" type="checkbox"> I understand that all data on the selected disk will be erased.</label>
+    <label class="check erase"><input id="erase" type="checkbox"> <span id="erase-label">I understand that all data on the selected disk will be erased.</span></label>
     <footer><button type="button" class="secondary back" data-page="location">Back</button><button id="install" class="primary" disabled>Erase disk and install</button></footer>
+  </section>
+  <section id="unattended" hidden>
+    <p class="eyebrow">UNATTENDED INSTALLATION</p><h2 id="unattended-title">Installing from a seed.</h2>
+    <p id="unattended-intro">A CybexOS seed volume is attached. Check what it will do; cancel to keep this computer unchanged.</p>
+    <dl id="seed-summary"></dl>
+    <ul id="seed-errors" role="alert"></ul>
+    <p id="countdown" role="timer" aria-live="polite"></p>
+    <progress id="countdown-meter" aria-label="Time before installation starts" hidden></progress>
+    <p class="hint">Remove the seed volume after installation. It holds the disk passphrase and any one-time keys.</p>
+    <footer><button id="seed-guided" type="button" class="secondary" hidden>Use the guided installer</button><button id="seed-cancel" type="button" class="primary">Cancel installation</button></footer>
   </section>
   <section id="progress" hidden>
     <p class="eyebrow">YOUR WORKSPACE IS TAKING SHAPE</p><h2 id="progress-title">Installing CybexOS.</h2>
@@ -87,6 +107,22 @@
     <p id="restart-help" hidden>Restart your computer, then remove the USB drive or select the installed disk.</p>
     <button id="reboot" class="primary" hidden>Restart into CybexOS</button>
   </section>
+  <details id="log-panel">
+    <summary>Installation details</summary>
+    <p class="hint">Follow what the installer is doing. These logs contain no passwords.</p>
+    <label>Log<select id="log-source">
+      <option value="steps">Installation steps</option>
+      <option value="anaconda">Anaconda</option>
+      <option value="programs">Commands</option>
+      <option value="storage">Storage</option>
+      <option value="software">Software</option>
+      <option value="post">Post-installation scripts</option>
+    </select></label>
+    <pre id="log" tabindex="0" aria-label="Installer log"></pre>
+    <label>Save all logs to a USB drive<select id="log-destination"><option value="">Connect a USB drive, then search</option></select></label>
+    <footer><button id="find-destinations" type="button" class="secondary">Search for USB drives</button><button id="export-logs" type="button" class="secondary">Save logs</button></footer>
+    <p id="export-status" class="hint" role="status"></p>
+  </details>
   <div id="startup-retry" hidden><button id="retry" class="primary">Try again</button><a href="../anaconda-webui/index.html">Open the full installer</a></div>
 </main>
 </body>

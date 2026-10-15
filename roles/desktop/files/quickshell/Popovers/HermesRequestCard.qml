@@ -50,8 +50,8 @@ Rectangle {
             return [];
         const source = Array.isArray(request.options) && request.options.length > 0
             ? request.options : [
-                { value: "deny", label: "Deny", description: "" },
-                { value: "allow_once", label: "Allow once", description: "" }
+                { value: "deny", label: I18n.tr("Deny"), description: "" },
+                { value: "allow_once", label: I18n.tr("Allow once"), description: "" }
             ];
         return source.map(choice => {
             const raw = String(choice.value ?? choice.id ?? choice.label ?? "")
@@ -367,7 +367,7 @@ Rectangle {
 
         Action {
             visible: root.longPrompt
-            label: root.detailExpanded ? "Show less" : "Show full request"
+            label: root.detailExpanded ? I18n.tr("Show less") : I18n.tr("Show full request")
             enabled: !root.pending
             onTriggered: {
                 root.detailExpanded = !root.detailExpanded;
@@ -592,14 +592,14 @@ Rectangle {
 
             Action {
                 visible: root.request.kind === "clarify" && root.questionIndex > 0
-                label: "Back"
+                label: I18n.tr("Back")
                 enabled: !root.pending
                 onTriggered: root.backQuestion()
             }
 
             Action {
                 visible: root.request.kind !== "approval"
-                label: "Cancel"
+                label: I18n.tr("Cancel")
                 enabled: !root.pending
                 tint: HermesTheme.red
                 onTriggered: root.cancelRequest()
@@ -621,7 +621,7 @@ Rectangle {
         Text {
             visible: root.confirmDecision === "allow_always"
             width: parent.width
-            text: "Always allow persists beyond this one request. Select Confirm always to continue."
+            text: I18n.tr("Always allow persists beyond this one request. Select Confirm always to continue.")
             wrapMode: Text.WordWrap
             lineHeight: Theme.proseLineHeight
             font.family: HermesTheme.fontUi

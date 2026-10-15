@@ -452,7 +452,7 @@ Surface {
         border.color: Theme.accentText
 
         Accessible.role: Accessible.Button
-        Accessible.name: "Tailscale"
+        Accessible.name: I18n.tr("Tailscale")
         Accessible.description: root.tailscaleDetail
         Accessible.onPressAction: summary.openDetails()
 
@@ -510,7 +510,7 @@ Surface {
 
             Text {
                 width: parent.width
-                text: "Tailscale"
+                text: I18n.tr("Tailscale")
                 elide: Text.ElideRight
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.primary
@@ -862,12 +862,12 @@ Surface {
                     color: Theme.textHi
                     selectionColor: Theme.accent
                     selectedTextColor: Theme.accentFg
-                    Accessible.name: "Enterprise identity"
+                    Accessible.name: I18n.tr("Enterprise identity")
 
                     Text {
                         visible: identityInput.text === "" && !identityInput.activeFocus
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Identity"
+                        text: I18n.tr("Identity")
                         font: identityInput.font
                         color: Theme.textDim
                     }
@@ -897,14 +897,14 @@ Surface {
                     color: Theme.textHi
                     selectionColor: Theme.accent
                     selectedTextColor: Theme.accentFg
-                    Accessible.name: "Network password"
+                    Accessible.name: I18n.tr("Network password")
                     Keys.onReturnPressed: root.submitCredentials()
                     Keys.onEnterPressed: root.submitCredentials()
 
                     Text {
                         visible: passwordInput.text === "" && !passwordInput.activeFocus
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Password"
+                        text: I18n.tr("Password")
                         font: passwordInput.font
                         color: Theme.textDim
                     }
@@ -925,20 +925,20 @@ Surface {
                 spacing: 8
 
                 Pill {
-                    label: "Connect"
+                    label: I18n.tr("Connect")
                     selected: true
                     onTriggered: root.submitCredentials()
                 }
 
                 Pill {
-                    label: "Cancel"
+                    label: I18n.tr("Cancel")
                     onTriggered: root.clearCredentials()
                 }
 
                 LinkText {
                     visible: row.securityInfo.identity
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Certificates? Network Settings"
+                    text: I18n.tr("Certificates? Network Settings")
                     onClicked: root.openSettings()
                 }
             }
@@ -985,7 +985,7 @@ Surface {
                     Text {
                         x: 2
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Network"
+                        text: I18n.tr("Network")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.heading
                         font.weight: Theme.weightSemibold
@@ -1104,50 +1104,50 @@ Surface {
 
                     MetricTile {
                         width: (parent.width - parent.columnSpacing * 3) / 4
-                        label: "Ping"
+                        label: I18n.tr("Ping")
                         symbol: "network_ping"
                         value: NetworkHelpers.formatLatency(NetworkDetails.internetPing.latency)
                     }
                     MetricTile {
                         width: (parent.width - parent.columnSpacing * 3) / 4
-                        label: "Packet loss"
+                        label: I18n.tr("Packet loss")
                         symbol: "signal_disconnected"
                         value: NetworkDetails.internetPing.samples > 0
                             ? NetworkDetails.internetPing.loss + "%" : "--"
                     }
                     MetricTile {
                         width: (parent.width - parent.columnSpacing * 3) / 4
-                        label: "Receive"
+                        label: I18n.tr("Receive")
                         symbol: "download"
                         value: NetworkHelpers.formatRate(NetworkDetails.downloadRate)
                     }
                     MetricTile {
                         width: (parent.width - parent.columnSpacing * 3) / 4
-                        label: "Send"
+                        label: I18n.tr("Send")
                         symbol: "upload"
                         value: NetworkHelpers.formatRate(NetworkDetails.uploadRate)
                     }
                     MetricTile {
                         width: (parent.width - parent.columnSpacing * 3) / 4
-                        label: "Downloaded"
+                        label: I18n.tr("Downloaded")
                         symbol: "data_usage"
                         value: root.primary ? NetworkHelpers.formatBytes(root.primary.rxBytes) : "--"
                     }
                     MetricTile {
                         width: (parent.width - parent.columnSpacing * 3) / 4
-                        label: "Uploaded"
+                        label: I18n.tr("Uploaded")
                         symbol: "data_usage"
                         value: root.primary ? NetworkHelpers.formatBytes(root.primary.txBytes) : "--"
                     }
                     MetricTile {
                         width: (parent.width - parent.columnSpacing * 3) / 4
-                        label: "IPv4 address"
+                        label: I18n.tr("IPv4 address")
                         symbol: "language"
                         value: root.primary && root.primary.ipv4 ? root.primary.ipv4 : "--"
                     }
                     MetricTile {
                         width: (parent.width - parent.columnSpacing * 3) / 4
-                        label: "Gateway"
+                        label: I18n.tr("Gateway")
                         symbol: "router"
                         value: root.primary && root.primary.gateway ? root.primary.gateway : "--"
                     }
@@ -1159,7 +1159,7 @@ Surface {
 
                     SectionLabel {
                         width: parent.width
-                        text: "TAILSCALE"
+                        text: I18n.tr("TAILSCALE")
                     }
 
                     TailscaleSummary {}
@@ -1174,7 +1174,7 @@ Surface {
 
                         SectionLabel {
                             width: parent.width - dnsState.implicitWidth
-                            text: "DNS"
+                            text: I18n.tr("DNS")
                         }
 
                         Text {
@@ -1231,8 +1231,8 @@ Surface {
                                 color: Theme.textHi
                                 selectionColor: Theme.accent
                                 selectedTextColor: Theme.accentFg
-                                Accessible.name: "Custom DNS servers"
-                                Accessible.description: "Up to four IPv4 or IPv6 addresses"
+                                Accessible.name: I18n.tr("Custom DNS servers")
+                                Accessible.description: I18n.tr("Up to four IPv4 or IPv6 addresses")
                                 Keys.onReturnPressed: root.applyCustomDns()
                                 Keys.onEnterPressed: root.applyCustomDns()
                             }
@@ -1240,7 +1240,7 @@ Surface {
 
                         Pill {
                             id: applyDns
-                            label: "Apply"
+                            label: I18n.tr("Apply")
                             selected: true
                             onTriggered: root.applyCustomDns()
                         }
@@ -1271,13 +1271,13 @@ Surface {
 
                 SectionLabel {
                     width: parent.width
-                    text: "ETHERNET"
+                    text: I18n.tr("ETHERNET")
                 }
 
                 Text {
                     visible: !EthernetState.known
                     width: parent.width
-                    text: "Checking Ethernet…"
+                    text: I18n.tr("Checking Ethernet…")
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
@@ -1299,7 +1299,7 @@ Surface {
                     visible: EthernetState.known && EthernetState.error === ""
                         && EthernetState.devices.length === 0
                     width: parent.width
-                    text: "No Ethernet ports"
+                    text: I18n.tr("No Ethernet ports")
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
@@ -1364,7 +1364,7 @@ Surface {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Wi-Fi networks"
+                        text: I18n.tr("Wi-Fi networks")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
@@ -1396,7 +1396,7 @@ Surface {
                     width: parent.width
                     topPadding: 8
                     bottomPadding: 8
-                    text: !WifiState.enabled ? "Wi-Fi is off" : "No Wi-Fi adapter"
+                    text: !WifiState.enabled ? I18n.tr("Wi-Fi is off") : I18n.tr("No Wi-Fi adapter")
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
@@ -1443,7 +1443,7 @@ Surface {
                     SectionLabel {
                         visible: NetworkDetails.knownNetworks.length > 0
                         width: parent.width
-                        text: "KNOWN NETWORKS"
+                        text: I18n.tr("KNOWN NETWORKS")
                     }
 
                     Repeater {
@@ -1455,7 +1455,7 @@ Surface {
                     SectionLabel {
                         visible: NetworkDetails.otherNetworks.length > 0
                         width: parent.width
-                        text: "OTHER NETWORKS"
+                        text: I18n.tr("OTHER NETWORKS")
                     }
 
                     Repeater {
@@ -1499,7 +1499,7 @@ Surface {
                     LinkText {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Network settings"
+                        text: I18n.tr("Network settings")
                         onClicked: root.openSettings()
                     }
                 }

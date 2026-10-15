@@ -15,10 +15,10 @@ Rectangle {
     readonly property bool numbered: Settings.modOpts.ws.style === "numbers"
     readonly property int focusedId: Hyprland.focusedWorkspace
         ? Hyprland.focusedWorkspace.id : -1
-    readonly property int slots: Math.max(Settings.modOpts.ws.minSlots,
-        ...Hyprland.workspaces.values.map(workspace => workspace.id))
-    readonly property var existingIds:
-        Hyprland.workspaces.values.map(workspace => workspace.id).sort((a, b) => a - b)
+    // Only numbered workspaces get a slot: the scratchpad and other special
+    // workspaces show over the current one and never shift the strip.
+    readonly property var existingIds: WorkspaceMotion.regularIds(Hyprland.workspaces.values)
+    readonly property int slots: Math.max(Settings.modOpts.ws.minSlots, ...existingIds)
     // Hyprland republishes its workspace list on every focus change and window
     // event, so the id list is recomputed often and almost always comes out
     // the same. Round-tripping through a string gives the Repeater a new

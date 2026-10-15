@@ -80,6 +80,12 @@ PanelWindow {
             Launcher.toggle();
         }
 
+        // Opens on a tab (apps, emoji, clipboard, actions) or a prefix
+        // provider (files, command, calculator, web, windows).
+        function open(providerId: string): void {
+            Launcher.openProvider(providerId);
+        }
+
         function close(): void {
             Launcher.close();
         }

@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 
 import github_release as release
+import sbom
 
 loader = importlib.machinery.SourceFileLoader('reconstruct_iso', str(Path(__file__).with_name('reconstruct-iso')))
 spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -48,6 +49,8 @@ class GitHubRelease(unittest.TestCase):
                         'url': release.github_url(REPOSITORY, TAG) + '/' + self.rpm.name}
         self.manifest = {'format': 1, 'fingerprint': FINGERPRINT, 'baseurl': BASE,
                          'packages': [self.package]}
+        self.sbom = self.write_sbom()
+        checksums(self.artifacts)
         (self.signed / 'release.json.asc').write_text('fixture detached signature')
         (self.signed / 'CYBEXOS-desktop.asc').write_text('fixture public key')
         (self.signed / 'update-channel.json').write_text(json.dumps({
@@ -57,6 +60,18 @@ class GitHubRelease(unittest.TestCase):
         for scenario in ('encrypted-us', 'plain-us', 'encrypted-nl', 'plain-nl'):
             self.report(scenario, release.sha256(self.iso), ['graphical-installer'])
         self.report('upgrade', 'c' * 64, ['installed-rpm-upgrade', 'recovery-boot-restore'], 'b' * 64)
+
+    def write_sbom(self, iso_digest=None, rpm_digest='b' * 64, name=None):
+        record = '\t'.join(('cybexos-desktop', '1', '1.2.3', '1.fc44', 'x86_64', 'MIT',
+                            '(none)', '(none)', '(none)', '(none)')) + '\n'
+        document = sbom.build_document(
+            rpms=sbom.parse_rpm_inventory(record), flatpaks=[], pins=[], version='1.2.3',
+            provenance={'utc': '2026-09-26T00:00:00Z', 'build_id': 'fixture', 'source_revision': 'a' * 40},
+            iso=(self.iso.name, iso_digest or release.sha256(self.iso)),
+            desktop_rpm=('cybexos-desktop-1.2.3-1.fc44.x86_64.rpm', rpm_digest))
+        path = self.artifacts / (name or sbom.sbom_name(self.iso.name))
+        path.write_bytes(sbom.serialize(document))
+        return path
 
     def metadata(self, package_url=None):
         package = self.package
@@ -121,8 +136,30 @@ class GitHubRelease(unittest.TestCase):
         self.assertFalse(list((self.output / 'pages').rglob('*.rpm')))
         self.assertTrue((self.output / 'assets/reconstruct-iso.py').is_file())
         self.assertEqual(len(json.loads((self.output / 'assets/qualification-reports.json').read_text())), 5)
-        release.verify_checksums(self.output / 'assets', 'desktop-SHA256SUMS')
-        release.verify_checksums(self.output / 'pages/44/x86_64')
+        self.assertEqual((self.output / 'assets/CybexOS-fixture.spdx.json').read_bytes(), self.sbom.read_bytes())
+        self.assertIn('CybexOS-fixture.spdx.json',
+                      release.verify_checksums(self.output / 'assets', 'desktop-SHA256SUMS'))
+        self.assertNotIn('CybexOS-fixture.spdx.json', release.verify_checksums(self.output / 'pages/44/x86_64'))
+
+    def test_sbom_must_describe_the_exact_iso_and_candidate_rpm(self):
+        for label, change, message in (
+            ('missing', lambda: self.sbom.unlink(), 'SPDX SBOM'),
+            ('second', lambda: self.write_sbom(name='CybexOS-other.spdx.json'), 'SPDX SBOM'),
+            ('other ISO', lambda: self.write_sbom(iso_digest='0' * 64), 'exact ISO'),
+            ('other RPM', lambda: self.write_sbom(rpm_digest='0' * 64), 'candidate desktop RPM'),
+            ('not SPDX', lambda: self.sbom.write_text('{"spdxVersion": "SPDX-2.2"}'), 'SPDX 2.3'),
+        ):
+            with self.subTest(label=label):
+                change()
+                checksums(self.artifacts)
+                with self.assertRaisesRegex(ValueError, message):
+                    self.prepare()
+                self.assertFalse(self.output.exists())
+                for extra in self.artifacts.glob('*.spdx.json'):
+                    extra.unlink()
+                self.sbom = self.write_sbom()
+        checksums(self.artifacts)
+        self.assertEqual(self.prepare(), self.output)
 
     def test_checksum_inventory_cannot_hide_unlisted_files_or_symlinks(self):
         extra = self.signed / 'repodata/unlisted'

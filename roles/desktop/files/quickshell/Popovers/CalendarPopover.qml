@@ -345,7 +345,7 @@ Surface {
                 anchors.right: refreshButton.left
                 anchors.rightMargin: 4
                 anchors.verticalCenter: parent.verticalCenter
-                label: agenda.needsGoogle ? "Connect Google" : "Accounts"
+                label: agenda.needsGoogle ? I18n.tr("Connect Google") : I18n.tr("Accounts")
                 hPadding: 14
                 tint: Theme.textLow
                 fill: "transparent"

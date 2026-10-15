@@ -7,7 +7,7 @@ import "Settings" as SettingsUi
 FloatingWindow {
     id: window
 
-    title: "CybexOS Settings"
+    title: I18n.tr("CybexOS Settings")
     visible: false
     color: Theme.panelSurface
     implicitWidth: Math.min(Theme.scaled(900, Theme.contentScale),

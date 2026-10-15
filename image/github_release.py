@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 
 from release_metadata import fingerprint, public_key
 from release_repository import rename_new_directory, sha256, verify_signed_rpm
+from sbom import sbom_name, verify_release_sbom
 
 ASSET_LIMIT = 2 * 1024 ** 3
 ISO_PART_SIZE = 1900 * 1024 ** 2
@@ -253,6 +254,12 @@ def prepare(signed, artifacts, destination, repository, tag, expected, qualifica
     if len(isos) != 1:
         raise ValueError('Exactly one checksum-verified ISO is required')
     iso_digest = sha256(isos[0])
+    # The SPDX SBOM must describe this exact ISO and the candidate RPM bytes.
+    sbom = artifacts / sbom_name(isos[0].name)
+    if sbom.name not in artifact_files or [name for name in artifact_files if name.endswith('.spdx.json')] != [sbom.name]:
+        raise ValueError('Exactly one checksum-verified SPDX SBOM named after the ISO is required')
+    sbom_digest = sha256(sbom)
+    verify_release_sbom(sbom, isos[0].name, iso_digest, [package['unsigned_input_sha256'] for package in packages])
     reports = verify_qualifications(qualifications, iso_digest, packages)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.cybexos-github-', dir=destination.parent) as directory:
@@ -284,6 +291,9 @@ def prepare(signed, artifacts, destination, repository, tag, expected, qualifica
         if iso['sha256'] != iso_digest:
             raise ValueError('ISO changed during release preparation')
         shutil.copyfile(Path(__file__).with_name('reconstruct-iso'), assets / 'reconstruct-iso.py')
+        shutil.copyfile(sbom, assets / sbom.name)
+        if sha256(assets / sbom.name) != sbom_digest:
+            raise ValueError('SBOM changed during release preparation')
         (assets / 'qualification-reports.json').write_text(json.dumps(reports, indent=2) + '\n')
         copied_verify = work / 'copied-verification'
         copied_verify.mkdir()

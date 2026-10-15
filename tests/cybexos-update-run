@@ -717,6 +717,7 @@ set -e
 [[ $(<"$MOCK_FIRMWARE_LOG") == "install --events $firmware_dir/firmware-events.log" ]]
 [[ $(tail -n 1 "$MOCK_FIRMWARE_UMASK_LOG") =~ ^0?022$ ]]
 [[ $(<"$MOCK_ORDER_LOG") == $'dnf upgrade\nfirmware install' ]]
+grep -qx -- '-y upgrade --refresh --no-best' "$MOCK_DNF_LOG"
 if ((EUID != 0)); then
   dnf_line=$(grep -n -- 'cybexos-update-package dnf -y upgrade' "$MOCK_PACKAGE_LOG" \
     | cut -d: -f1)
@@ -1087,6 +1088,11 @@ elif action == 'prepare':
     failure = int(os.environ.get('MOCK_BOOTSTRAP_PREPARE_RC', '0'))
     if failure:
         sys.exit(failure)
+    probe = os.environ.get('MOCK_BOOTSTRAP_STATUS_PROBE')
+    if probe:
+        status = pathlib.Path(os.environ['XDG_STATE_HOME'], 'cybexos/update/logs',
+                              options['--id'], 'status.json')
+        pathlib.Path(probe).write_text(json.loads(status.read_text()).get('snapshotId', ''))
     print(os.environ.get('MOCK_BOOTSTRAP_OUTPUT', json.dumps({
         'snapshot': '20260930T120001Z-124',
         'transactionHelper': os.environ['MOCK_BOOTSTRAP_BUNDLE'] + '/cybexos-update-transaction'})))
@@ -1203,6 +1209,10 @@ grep -q -- '--downloadonly' "$MOCK_DNF_LOG"
 if grep -v -- '--downloadonly' "$MOCK_DNF_LOG" | grep -q ' upgrade '; then
   exit 1
 fi
+# The versionlock holds Hyprland and Quickshell to their qualified series:
+# both package passes must skip what only a held-back release could use
+# rather than fail (docs/dependency-policy.md).
+grep -q -- '-y upgrade --refresh --no-best --downloadonly' "$MOCK_DNF_LOG"
 
 # The durable state wins if the applying transition was written but its
 # final sync/response failed before the worker could set its local flag.
@@ -1313,4 +1323,97 @@ unset MOCK_RECONCILE_RC
 [[ $(jq -r .phase <<<"$protected_status") == reconcile ]]
 [[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
 
-printf 'Durable updater serializes starts, defers cancellation past package and firmware transactions, inhibits shutdown, owns release and agent-skill activation rollback, preserves boot-scoped reboot advice, requires valid checkpoints/results and current reconciled policy, and reads exact log windows\n'
+# The remaining runs reach a reconciled, ready installed policy.
+printf '{"state":"ready","pending":false,"version":"fixture","desiredVersion":"fixture","accounts":{"fixture":{"state":"ready","version":"fixture","uid":%s}}}\n' \
+  "$UID" >"$MOCK_RECONCILE_STATUS_FILE"
+
+# The recovery point is published as soon as it exists. The first-upgrade
+# bootstrap runs between the first point and the protected one, and already
+# finds the first point in the run's record; the final record names the second.
+export MOCK_BOOTSTRAP_REQUIRED=1 MOCK_BOOTSTRAP_STATUS_PROBE="$fixture/bootstrap-status-probe"
+protected_run --no-flatpak
+unset MOCK_BOOTSTRAP_REQUIRED MOCK_BOOTSTRAP_STATUS_PROBE
+[[ $protected_rc == 0 ]]
+[[ $(<"$fixture/bootstrap-status-probe") == 20260930T120000Z-123 ]]
+[[ $(jq -r .snapshotId <<<"$protected_status") == 20260930T120001Z-124 ]]
+protected_log="$XDG_STATE_HOME/cybexos/update/logs/$protected_id/run.log"
+grep -Fq '[snapshot] recovery point 20260930T120000Z-123' "$protected_log"
+grep -Fq '[snapshot] recovery point 20260930T120001Z-124' "$protected_log"
+
+# A background download shares dnf's package cache. The worker stops it
+# before it snapshots or changes anything, and a stop that fails is noted,
+# never fatal. An inactive download is left alone.
+: >"$MOCK_STOP_LOG"
+protected_run --no-flatpak
+[[ $protected_rc == 0 ]]
+! grep -Fq 'cybexos-update-download.service' "$MOCK_STOP_LOG"
+: >"$active_dir/cybexos-update-download.service"
+protected_run --no-flatpak
+[[ $protected_rc == 0 ]]
+grep -Fxq 'stop cybexos-update-download.service' "$MOCK_STOP_LOG"
+[[ ! -e $active_dir/cybexos-update-download.service ]]
+grep -Fq '[download] stopping the background update download' \
+  "$XDG_STATE_HOME/cybexos/update/logs/$protected_id/run.log"
+: >"$active_dir/cybexos-update-download.service"
+export MOCK_STOP_FAIL=1
+protected_run --no-flatpak
+unset MOCK_STOP_FAIL
+rm -f -- "$active_dir/cybexos-update-download.service"
+[[ $protected_rc == 0 ]]
+grep -Fq '[download] could not stop the background download; continuing' \
+  "$XDG_STATE_HOME/cybexos/update/logs/$protected_id/run.log"
+
+# History: finished runs only, newest first, each with the recovery point it
+# created. Dismissing hides a result from the panel, never from the history,
+# and a record dismissed by an older updater keeps its outcome too.
+export MOCK_TRANSACTION_FAILURE=commit
+protected_run --no-flatpak
+unset MOCK_TRANSACTION_FAILURE
+[[ $protected_rc == 1 ]]
+failed_history_id=$protected_id
+protected_run --no-flatpak
+[[ $protected_rc == 0 ]]
+newest_status="$XDG_STATE_HOME/cybexos/update/logs/$protected_id/status.json"
+jq '.startedAt = 4102444800' "$newest_status" >"$newest_status.new"
+mv -f -- "$newest_status.new" "$newest_status"
+$backend dismiss "$protected_id"
+[[ $(jq -r .state "$newest_status") == dismissed ]]
+[[ $(jq -r .outcome "$newest_status") == done ]]
+$backend dismiss "$protected_id"
+[[ $(jq -r .outcome "$newest_status") == done ]]
+history=$($backend history --json)
+jq -e 'type == "array" and length > 1 and length <= 20' <<<"$history" >/dev/null
+jq -e 'all(.[]; .outcome == "done" or .outcome == "failed" or .outcome == "cancelled")' \
+  <<<"$history" >/dev/null
+jq -e --arg id "$protected_id" '.[0] | .id == $id and .outcome == "done"
+  and .snapshotId == "20260930T120000Z-123" and .transactionProtection == "btrfs"' \
+  <<<"$history" >/dev/null
+jq -e --arg id "$failed_history_id" '[.[] | select(.id == $id)] | length == 1
+  and (.[0] | .outcome == "failed" and .phase == "health"
+    and .rollbackState == "restart-required" and .snapshotId == "20260930T120000Z-123")' \
+  <<<"$history" >/dev/null
+[[ $($backend history --json --limit 1 | jq length) -eq 1 ]]
+legacy_id=$(jq -r '.[1].id' <<<"$history")
+legacy_status="$XDG_STATE_HOME/cybexos/update/logs/$legacy_id/status.json"
+jq '.state = "dismissed" | del(.outcome) | .exitCode = 130' "$legacy_status" \
+  >"$legacy_status.new"
+mv -f -- "$legacy_status.new" "$legacy_status"
+[[ $($backend history --json | jq -r --arg id "$legacy_id" \
+  '.[] | select(.id == $id) | .outcome') == cancelled ]]
+active_history=$($backend start --json --no-flatpak)
+active_history_id=$(jq -er .id <<<"$active_history")
+$backend history --json | jq -e --arg id "$active_history_id" \
+  'all(.[]; .id != $id)' >/dev/null
+$backend cancel "$active_history_id" >/dev/null
+$backend history | head -n 1 | grep -Eq "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}  done  recovery point 20260930T120000Z-123  $protected_id\$"
+set +e
+$backend history --limit lots >/dev/null 2>&1
+history_limit_rc=$?
+set -e
+[[ $history_limit_rc -eq 2 ]]
+empty_state=$(mktemp -d)
+[[ $(XDG_STATE_HOME="$empty_state" $backend history) == 'No update has finished yet.' ]]
+[[ $(XDG_STATE_HOME="$empty_state" $backend history --json) == '[]' ]]
+rm -rf -- "$empty_state"
+
+printf 'Durable updater serializes starts, defers cancellation past package and firmware transactions, inhibits shutdown, owns release and agent-skill activation rollback, preserves boot-scoped reboot advice, requires valid checkpoints/results and current reconciled policy, records the recovery point of every run in its history, stops background downloads, and reads exact log windows\n'

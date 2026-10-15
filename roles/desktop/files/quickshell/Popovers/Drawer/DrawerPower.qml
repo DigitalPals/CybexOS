@@ -150,13 +150,13 @@ Column {
             Repeater {
                 model: PowerProfiles.hasPerformanceProfile
                     ? [
-                        { profile: PowerProfile.PowerSaver, glyph: "eco", label: "Saver" },
-                        { profile: PowerProfile.Balanced, glyph: "balance", label: "Balanced" },
-                        { profile: PowerProfile.Performance, glyph: "speed", label: "Perf" }
+                        { profile: PowerProfile.PowerSaver, glyph: "eco", label: I18n.tr("Saver") },
+                        { profile: PowerProfile.Balanced, glyph: "balance", label: I18n.tr("Balanced") },
+                        { profile: PowerProfile.Performance, glyph: "speed", label: I18n.tr("Perf") }
                     ]
                     : [
-                        { profile: PowerProfile.PowerSaver, glyph: "eco", label: "Saver" },
-                        { profile: PowerProfile.Balanced, glyph: "balance", label: "Balanced" }
+                        { profile: PowerProfile.PowerSaver, glyph: "eco", label: I18n.tr("Saver") },
+                        { profile: PowerProfile.Balanced, glyph: "balance", label: I18n.tr("Balanced") }
                     ]
 
                 delegate: Rectangle {
@@ -241,7 +241,7 @@ Column {
 
                 Text {
                     width: parent.width
-                    text: "Preserve battery health"
+                    text: I18n.tr("Preserve battery health")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.control
                     font.weight: Theme.weightMedium
@@ -307,7 +307,7 @@ Column {
 
                 Text {
                     width: parent.width
-                    text: "Stay awake"
+                    text: I18n.tr("Stay awake")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.control
                     font.weight: Theme.weightMedium
@@ -349,7 +349,7 @@ Column {
                 parts.push(root.cycleCountText + " cycles");
             return parts.join(" · ");
         }
-        actionText: "Idle settings"
+        actionText: I18n.tr("Idle settings")
         onActionClicked: Settings.showSetting("power", "idleLockMins",
             Popouts.hostScreenName)
     }

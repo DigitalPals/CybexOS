@@ -18,8 +18,22 @@ Singleton {
     readonly property var providers: ProviderHelpers.PROVIDERS
     readonly property var tabProviders: ProviderHelpers.TAB_IDS.map(id =>
         ProviderHelpers.providerById(id))
-    readonly property var prefixedProvider:
-        ProviderHelpers.prefixedProviderFor(query)
+
+    // Argument mode: an action that needs one value (a web address, a Git
+    // repository, which web app to remove) turns the search field into its
+    // prompt. The query typed before it is restored when the user backs out.
+    property var pendingAction: null
+    property string pendingReturnQuery: ""
+    // The web app a first Enter chose to remove; the second Enter removes it.
+    property string confirmChoice: ""
+    readonly property bool argumentMode: pendingAction !== null
+    // The view owns the text field; this asks it to replace the text.
+    signal inputReplaced(string text)
+
+    // While a prompt is open its text is the value, never a provider prefix:
+    // a URL or path may well start with "/" or ":".
+    readonly property var prefixedProvider: argumentMode ? null
+        : ProviderHelpers.prefixedProviderFor(query)
     readonly property bool prefixActive: prefixedProvider !== null
     readonly property var activeProvider: prefixActive ? prefixedProvider
         : ProviderHelpers.providerById(selectedProviderId)
@@ -48,6 +62,19 @@ Singleton {
     property bool pastePending: false
     property var userActions: []
     property string actionsError: ""
+
+    readonly property string home: Quickshell.env("HOME")
+    readonly property string dataHome: Quickshell.env("XDG_DATA_HOME") || (home + "/.local/share")
+    readonly property string clipboardTool: Quickshell.shellDir + "/scripts/clipboard-tool.py"
+    readonly property string pinDir: dataHome + "/cybexos/clipboard/pins"
+    property var clipboardPins: []
+    property var clipboardPreviews: ({})
+    property string clipboardPreviewKey: ""
+    property var webApps: []
+    property bool webAppsLoading: false
+    property string webAppsError: ""
+    // argv of the catalogue command waiting for the launcher to fade out.
+    property var pendingCommand: []
 
     readonly property var appRows: {
         if (root.activeProviderId !== "apps")
@@ -93,10 +120,33 @@ Singleton {
             .slice(0, root.maxResults);
     }
 
-    readonly property var actions:
-        ProviderHelpers.BUILTIN_ACTIONS.concat(userActions)
+    // Entries for a feature the installation left out (developer tools,
+    // connected widgets) never appear, typed or blended.
+    // Built-in entries are shown in the session's language; their English
+    // name stays a keyword, so either language finds them.
+    readonly property var actions: ProviderHelpers.availableActions(
+        ProviderHelpers.BUILTIN_ACTIONS, {
+            developerTools: Settings.developerToolsConfigured,
+            connectedWidgets: Settings.connectedWidgetsConfigured
+        }).map(action => Object.assign({}, action, {
+            name: I18n.tr(action.name),
+            subtitle: I18n.tr(action.subtitle),
+            keywords: (action.keywords || []).concat([action.name])
+        })).concat(userActions)
+
+    readonly property var pendingRows: {
+        const action = root.pendingAction;
+        if (!action)
+            return [];
+        if (action.choices === "webapps")
+            return ProviderHelpers.webAppChoiceRows(root.webApps, root.term,
+                root.webApps.length, root.confirmChoice);
+        return ProviderHelpers.argumentRows(action, root.term);
+    }
 
     readonly property var rows: {
+        if (root.argumentMode)
+            return root.pendingRows;
         switch (root.activeProviderId) {
         case "files":
             return root.fileResults.slice(0, root.maxResults).map(path => ({
@@ -112,7 +162,7 @@ Singleton {
                 providerId: "command",
                 kind: "command",
                 title: "Run " + root.term,
-                subtitle: "Explicit shell command",
+                subtitle: I18n.tr("Explicit shell command"),
                 glyph: root.activeProvider.glyph,
                 command: root.term
             }];
@@ -121,7 +171,7 @@ Singleton {
                 providerId: "calculator",
                 kind: "calc",
                 title: root.calcResult,
-                subtitle: "Press Enter to copy result",
+                subtitle: I18n.tr("Press Enter to copy result"),
                 glyph: root.activeProvider.glyph,
                 value: root.calcResult,
                 highlight: false
@@ -139,30 +189,50 @@ Singleton {
             return root.windowRows;
         case "clipboard":
             return ProviderHelpers.clipboardRows(root.clipboardEntries,
-                root.term, root.maxResults);
+                root.term, root.maxResults, {
+                    pins: root.clipboardPins,
+                    previews: root.clipboardPreviews,
+                    pinDir: root.pinDir
+                });
         case "emoji":
             return ProviderHelpers.emojiRows(root.emojiEntries,
                 root.term, root.maxResults);
         case "actions":
             return ProviderHelpers.actionRows(root.actions,
-                root.term, root.maxResults);
+                root.term, root.actions.length);
         default:
-            return root.appRows;
+            // A typed query also offers up to three matching actions after
+            // the apps, so Super+Space is the one palette.
+            return ProviderHelpers.blendRows(root.appRows, root.actions, root.term);
         }
     }
 
-    readonly property bool busy: activeProviderId === "files" ? fileLoading
+    readonly property bool busy: argumentMode
+        ? pendingAction.choices === "webapps" && webAppsLoading
+        : activeProviderId === "files" ? fileLoading
         : activeProviderId === "calculator" ? calcLoading
         : activeProviderId === "clipboard" ? clipboardLoading
         : activeProviderId === "emoji" ? emojiLoading : false
 
-    readonly property string error: activeProviderId === "files" ? fileError
+    readonly property string error: argumentMode
+        ? (pendingAction.choices === "webapps" ? webAppsError : "")
+        : activeProviderId === "files" ? fileError
         : activeProviderId === "calculator" ? calcError
         : activeProviderId === "clipboard" ? clipboardError
         : activeProviderId === "emoji" ? emojiError
         : activeProviderId === "actions" ? actionsError : ""
 
     readonly property string emptyText: {
+        if (root.argumentMode) {
+            if (root.busy)
+                return "Loading…";
+            if (root.error !== "")
+                return root.error;
+            if (root.pendingAction.choices === "webapps")
+                return root.webApps.length === 0 ? "No web apps are installed"
+                    : "No matching web apps";
+            return ProviderHelpers.argumentEmptyText(root.pendingAction, root.term);
+        }
         if (root.activeProviderId === "files" && root.term.length < 2)
             return "Type at least two characters to search files";
         if (root.busy)
@@ -183,6 +253,7 @@ Singleton {
     }
 
     onQueryChanged: {
+        root.confirmChoice = "";
         root.fileError = "";
         root.calcError = "";
         if (root.activeProviderId === "files" && root.term.length >= 2) {
@@ -216,9 +287,19 @@ Singleton {
         }
     }
 
-    function activate(row): void {
+    // `copyOnly` is Shift+Enter: a clipboard entry or emoji is copied
+    // without being pasted into the previous window.
+    function activate(row, copyOnly): void {
         if (!row)
             return;
+        if (row.kind === "choice" && !row.confirm) {
+            root.confirmChoice = row.value;
+            return;
+        }
+        if (row.kind === "argument" || row.kind === "choice") {
+            root.runAction(root.pendingAction, row.value);
+            return;
+        }
         switch (row.providerId) {
         case "apps":
             Launcher.recordLaunch(row.app);
@@ -250,11 +331,15 @@ Singleton {
             Launcher.close();
             break;
         case "clipboard":
-            root.copyClipboardEntry(row.raw);
-            Launcher.close();
+            root.useClipboardEntry(row, !copyOnly);
             break;
         case "emoji":
-            root.pasteText(row.value);
+            if (copyOnly) {
+                Quickshell.clipboardText = row.value;
+                Launcher.close();
+            } else {
+                root.pasteText(row.value);
+            }
             break;
         case "actions":
             root.runAction(row.action);
@@ -266,21 +351,60 @@ Singleton {
         return !!row && row.providerId === "clipboard";
     }
 
+    // Shift+Delete on a pin unpins it; on history it deletes the entry.
     function remove(row): void {
-        if (!root.canRemove(row) || clipboardDeleteProc.running)
+        if (!root.canRemove(row))
+            return;
+        if (row.pinned) {
+            root.togglePin(row);
+            return;
+        }
+        if (clipboardDeleteProc.running)
             return;
         clipboardDeleteProc.command = ["sh", "-c",
             "printf '%s' " + root.shellQuote(row.raw) + " | cliphist delete"];
         clipboardDeleteProc.running = true;
     }
 
-    function runAction(action): void {
+    // An action that needs a value opens its prompt instead of running; the
+    // value then arrives here as `argument`.
+    function runAction(action, argument): void {
         if (!action)
             return;
+        if ((action.argument || action.choices) && argument === undefined) {
+            root.beginArgument(action);
+            return;
+        }
+        root.resetPending();
         Launcher.close();
         if (action.user && Array.isArray(action.command)
                 && action.command.length > 0) {
             Quickshell.execDetached(action.command);
+            return;
+        }
+        if (action.settingsPage) {
+            const page = action.settingsPage;
+            const key = action.settingsKey || "";
+            Qt.callLater(() => key !== "" ? Settings.showSetting(page, key)
+                : Settings.showPanel(page));
+            return;
+        }
+        if (Array.isArray(action.command)) {
+            const argv = ProviderHelpers.expandCommand(action.command, root.home, argument);
+            if (argv.length === 0)
+                return;
+            // A value the user typed reaches the helper as its own argv
+            // element with no shell in between; those helpers report their
+            // own outcome. A fixed command runs under a fixed wrapper whose
+            // only job is to say so when it fails.
+            root.pendingCommand = argument !== undefined ? argv
+                : ["sh", "-c", '"$@" || notify-send --app-name=CybexOS -- "$0 failed"'
+                    + ' "The command exited with an error"', action.name].concat(argv);
+            // Started once the launcher has left the screen, so a capture
+            // never contains it and a new window takes focus from no one.
+            commandTimer.interval = Theme.launcherFadeOutDuration
+                + (action.settle ? 160 : 40);
+            commandTimer.restart();
             return;
         }
         switch (action.id) {
@@ -303,13 +427,78 @@ Singleton {
         }
     }
 
+    function beginArgument(action): void {
+        root.pendingReturnQuery = root.query;
+        root.pendingAction = action;
+        if (action.choices === "webapps")
+            root.refreshWebApps();
+        root.inputReplaced("");
+    }
+
+    // Escape in a prompt: back to the list it was opened from.
+    function cancelPending(): bool {
+        if (!root.argumentMode)
+            return false;
+        const text = root.pendingReturnQuery;
+        root.resetPending();
+        root.inputReplaced(text);
+        return true;
+    }
+
+    function resetPending(): void {
+        root.pendingAction = null;
+        root.pendingReturnQuery = "";
+        root.confirmChoice = "";
+    }
+
+    // The launcher's own rows name icons either by theme name or, for web
+    // apps and other user entries, by absolute path.
+    function iconSource(icon): string {
+        const value = String(icon || "");
+        if (value === "")
+            return "";
+        return ProviderHelpers.directIconUrl(value) || Quickshell.iconPath(value, true);
+    }
+
+    function refreshWebApps(): void {
+        root.webAppsError = "";
+        root.webAppsLoading = true;
+        if (!webAppListProc.running)
+            webAppListProc.running = true;
+    }
+
+    function canPin(row): bool {
+        return !!row && row.providerId === "clipboard" && !clipboardPinProc.running;
+    }
+
+    // Ctrl+P keeps an entry above the history; pins live in a user-owned
+    // store, so pruning or wiping cliphist does not take them along.
+    function togglePin(row): void {
+        if (!root.canPin(row))
+            return;
+        clipboardPinProc.command = row.pinned
+            ? ["python3", root.clipboardTool, "unpin", "--notify", row.pinId]
+            : ["python3", root.clipboardTool, "pin", "--notify", row.raw];
+        clipboardPinProc.running = true;
+    }
+
     function shellQuote(value): string {
         return "'" + String(value || "").replace(/'/g, "'\"'\"'") + "'";
     }
 
-    function copyClipboardEntry(raw): void {
-        Quickshell.execDetached(["sh", "-c", "printf '%s' "
-            + root.shellQuote(raw) + " | cliphist decode | wl-copy"]);
+    // Enter copies the entry and, once the launcher has released keyboard
+    // focus, pastes it into the window that was active before; Shift+Enter
+    // only copies. The entry reaches the copy as a positional argument.
+    function useClipboardEntry(row, paste): void {
+        if (clipboardCopyProc.running)
+            return;
+        clipboardCopyProc.command = row.pinned
+            ? ["python3", root.clipboardTool, "copy", row.pinId]
+            : ["sh", "-c", 'printf "%s" "$1" | cliphist decode | wl-copy >/dev/null 2>&1',
+                "sh", row.raw];
+        root.pastePending = paste;
+        Launcher.close();
+        clipboardCopyProc.running = true;
     }
 
     function pasteText(value): void {
@@ -323,6 +512,7 @@ Singleton {
     }
 
     function refreshClipboard(): void {
+        pinsView.reload();
         clipboardRefreshGeneration++;
         root.clipboardError = "";
         root.clipboardLoading = true;
@@ -491,6 +681,7 @@ Singleton {
             if (code === 0) {
                 root.clipboardEntries = clipboardListProc.buffer.slice();
                 root.clipboardError = "";
+                root.requestPreviews();
             } else if (code === 127) {
                 root.clipboardEntries = [];
                 root.clipboardError = "cliphist is not installed";
@@ -500,6 +691,123 @@ Singleton {
                     : ProcHelpers.commandError("Clipboard history", code, "");
             }
         }
+    }
+
+    // Thumbnails for image entries, decoded by the helper into a bounded
+    // cache that it also prunes. Asked again only when the set changes.
+    function requestPreviews(): void {
+        const targets = ProviderHelpers.clipboardPreviewTargets(root.clipboardEntries, 24);
+        const key = JSON.stringify(targets);
+        if (key === root.clipboardPreviewKey || clipboardPreviewProc.running)
+            return;
+        root.clipboardPreviewKey = key;
+        clipboardPreviewProc.command = ["python3", root.clipboardTool, "previews"]
+            .concat(targets);
+        clipboardPreviewProc.running = true;
+    }
+
+    Process {
+        id: clipboardPreviewProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const parsed = JSON.parse(text);
+                    root.clipboardPreviews = parsed && typeof parsed === "object"
+                        && !Array.isArray(parsed) ? parsed : {};
+                } catch (e) {
+                    root.clipboardPreviews = {};
+                }
+            }
+        }
+        onRunningChanged: {
+            // A preview set that changed while this ran is asked for next.
+            if (!running && root.activeProviderId === "clipboard")
+                Qt.callLater(() => root.requestPreviews());
+        }
+    }
+
+    Process {
+        id: clipboardCopyProc
+        property bool exitSeen: false
+        property int lastExit: 0
+        onExited: (exitCode, exitStatus) => {
+            clipboardCopyProc.exitSeen = true;
+            clipboardCopyProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+            if (code === 0 && root.pastePending) {
+                pasteTimer.restart();
+                return;
+            }
+            root.pastePending = false;
+            if (code !== 0)
+                Quickshell.execDetached(["notify-send", "--app-name=CybexOS",
+                    "Clipboard", "The entry could not be copied"]);
+        }
+    }
+
+    Process {
+        id: clipboardPinProc
+        // The helper prints the new pin; a closed pipe would fail it after
+        // the pin was written. Failures reach the user as a notification.
+        stdout: StdioCollector {}
+        onRunningChanged: {
+            if (!running)
+                root.refreshClipboard();
+        }
+    }
+
+    Process {
+        id: webAppListProc
+        property bool exitSeen: false
+        property int lastExit: 0
+        command: [root.home + "/.local/bin/cybexos-webapp", "list", "--json"]
+        stdout: StdioCollector {
+            onStreamFinished: root.webApps = ProviderHelpers.parseWebApps(text)
+        }
+        onExited: (exitCode, exitStatus) => {
+            webAppListProc.exitSeen = true;
+            webAppListProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            root.webAppsLoading = false;
+            const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
+            if (code !== 0) {
+                root.webApps = [];
+                root.webAppsError = ProcHelpers.commandError("Web apps", code, "");
+            }
+        }
+    }
+
+    // Catalogue commands start after the launcher has faded out.
+    Timer {
+        id: commandTimer
+        onTriggered: {
+            if (root.pendingCommand.length > 0)
+                Quickshell.execDetached(root.pendingCommand);
+            root.pendingCommand = [];
+        }
+    }
+
+    FileView {
+        id: pinsView
+        path: root.dataHome + "/cybexos/clipboard/pins.json"
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: root.clipboardPins = ProviderHelpers.parsePins(text())
+        onLoadFailed: root.clipboardPins = []
     }
 
     Timer {

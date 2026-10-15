@@ -1,11 +1,12 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir } = require("./shell.cjs");
 
 function read(relative) {
-    return fs.readFileSync(path.join(shellDir, relative), "utf8");
+    return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
 function qmlFiles(directory) {
@@ -112,6 +113,8 @@ test("glass switches every shell surface through semantic fills", () => {
         "NotificationToasts.qml": "panelSurface",
         "OsdWindow.qml": "panelSurface",
         "ShortcutsOverlay.qml": "panelSurface",
+        "DockWindow.qml": "panelSurface",
+        "OverviewView.qml": "panelSurface",
         "Popovers/PopoutPanel.qml": "barSurface",
         "Settings/FolderDialog.qml": "surfaceMenu"
     };
@@ -128,7 +131,7 @@ test("glass switches every shell surface through semantic fills", () => {
     for (const file of qmlFiles(".")) {
         if (file === path.join(shellDir, "Common", "Theme.qml"))
             continue;
-        assert.doesNotMatch(fs.readFileSync(file, "utf8"), /Theme\.glass(?:Strong|Menu)?\b/,
+        assert.doesNotMatch(untranslated(fs.readFileSync(file, "utf8")), /Theme\.glass(?:Strong|Menu)?\b/,
             `${path.relative(shellDir, file)} bypasses the semantic glass tokens`);
     }
 });
@@ -140,7 +143,7 @@ test("menubar content uses its colour-derived palette", () => {
     for (const file of qmlFiles("Bar")) {
         if (exempt.has(path.basename(file)))
             continue;
-        assert.doesNotMatch(fs.readFileSync(file, "utf8"), globalPalette,
+        assert.doesNotMatch(untranslated(fs.readFileSync(file, "utf8")), globalPalette,
             `${path.relative(shellDir, file)} bypasses the automatic menubar palette`);
     }
 
@@ -158,8 +161,8 @@ test("menubar content uses its colour-derived palette", () => {
 });
 
 test("the named Hyprland blur rule persists and applies without remapping surfaces", () => {
-    const look = fs.readFileSync(
-        path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8");
+    const look = untranslated(fs.readFileSync(
+        path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8"));
     const settings = read("Common/Settings.qml");
 
     assert.match(look, /local function persisted_glass_enabled\(\)/);
@@ -167,7 +170,7 @@ test("the named Hyprland blur rule persists and applies without remapping surfac
     assert.match(look,
         /quickshell_blur_rule = hl\.layer_rule\(\{[\s\S]*?enabled = persisted_glass_enabled\(\)/);
     assert.match(look,
-        /namespace = \[\[\^qs-\(bar\|bar-popout\|launcher\|notifications\|osd\|shortcuts\)\$\]\]/);
+        /namespace = \[\[\^qs-\(bar\|bar-popout\|launcher\|notifications\|osd\|shortcuts\|dock\)\$\]\]/);
     assert.match(settings,
         /"hyprctl", "eval",[\s\S]{0,120}?"quickshell_blur_rule:set_enabled\("/);
     assert.match(settings, /exitSeen \? lastExit : ProcHelpers\.NOT_STARTED/,
@@ -177,7 +180,8 @@ test("the named Hyprland blur rule persists and applies without remapping surfac
         "a second toggle while hyprctl is busy must be replayed");
 
     for (const file of ["Bar/Bar.qml", "Bar/BarPopoutWindow.qml", "LauncherWindow.qml",
-        "NotificationToasts.qml", "OsdWindow.qml", "ShortcutsOverlay.qml"])
+        "NotificationToasts.qml", "OsdWindow.qml", "ShortcutsOverlay.qml",
+        "DockWindow.qml", "OverviewWindow.qml"])
         assert.doesNotMatch(read(file), /WlrLayershell\.namespace:\s*Settings\./,
             `${file} must keep a stable namespace when glass changes`);
 });
@@ -189,8 +193,8 @@ const luajit = ["/usr/bin/luajit", "/usr/local/bin/luajit"].find(file => fs.exis
 function persistedBlur(t, settings) {
     const root = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "cybexos-tests.glass."));
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-    const template = fs.readFileSync(
-        path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8");
+    const template = untranslated(fs.readFileSync(
+        path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8"));
     fs.writeFileSync(path.join(root, "looknfeel.lua"), template.replace(/\{\{.*?\}\}/g, "false"));
     if (settings !== undefined) {
         fs.mkdirSync(path.join(root, ".config/cybexos"), { recursive: true });

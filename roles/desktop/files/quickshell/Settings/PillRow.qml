@@ -128,7 +128,7 @@ Item {
                     width: Math.max(0, parent.width - root.padH * 2)
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
-                    text: pill.modelData.label
+                    text: I18n.tr(pill.modelData.label)
                     font.family: root.mono ? Theme.fontMono : Theme.fontMenu
                     font.pixelSize: Theme.typography.control
                     font.weight: pill.selected && root.segmented ? Theme.weightSemibold : Theme.weightMedium

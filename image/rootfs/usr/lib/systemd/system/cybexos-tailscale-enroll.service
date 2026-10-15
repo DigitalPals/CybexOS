@@ -1,0 +1,12 @@
+[Unit]
+Description=Join Tailscale once with the installation's auth key
+# Started by cybexos-first-boot only when an unattended seed provided a key,
+# so ordinary boots never wait for the network on its account.
+ConditionPathExists=/run/cybexos/first-boot/tailscale-authkey
+Wants=network-online.target
+After=network-online.target tailscaled.service cybexos-first-boot.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/cybexos-first-boot tailscale
+TimeoutStartSec=6min

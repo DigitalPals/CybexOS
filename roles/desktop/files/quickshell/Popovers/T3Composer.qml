@@ -68,14 +68,14 @@ Column {
         property string activePickerGroup: ""
         readonly property bool narrow: root.width < 360
         readonly property var accessOptions: [
-            { id: "approval-required", label: "Ask first" },
-            { id: "auto-accept-edits", label: "Auto edits" },
-            { id: "auto", label: "Auto" },
-            { id: "full-access", label: "Full access" }
+            { id: "approval-required", label: I18n.tr("Ask first") },
+            { id: "auto-accept-edits", label: I18n.tr("Auto edits") },
+            { id: "auto", label: I18n.tr("Auto") },
+            { id: "full-access", label: I18n.tr("Full access") }
         ]
         readonly property var interactionOptions: [
-            { id: "default", label: "Default" },
-            { id: "plan", label: "Plan" }
+            { id: "default", label: I18n.tr("Default") },
+            { id: "plan", label: I18n.tr("Plan") }
         ]
 
         // Reasoning earns a place on the bar; every other trait the model
@@ -93,7 +93,7 @@ Column {
             if (!reasoningDescriptor)
                 return [];
             if (reasoningDescriptor.type === "boolean")
-                return [{ id: "true", label: "On" }, { id: "false", label: "Off" }];
+                return [{ id: "true", label: I18n.tr("On") }, { id: "false", label: I18n.tr("Off") }];
             return (Array.isArray(reasoningDescriptor.options)
                 ? reasoningDescriptor.options : [])
                 .map(option => ({ id: settingId(option), label: settingLabel(option) }));
@@ -356,7 +356,7 @@ Column {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Run settings"
+                        text: I18n.tr("Run settings")
                         font.family: T3Theme.fontUi
                         font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightSemibold
@@ -384,7 +384,7 @@ Column {
                     id: interactionPicker
                     visible: root.showInteraction
                     width: parent.width
-                    label: "Mode"
+                    label: I18n.tr("Mode")
                     value: root.draft.interactionMode ?? "default"
                     options: settingsPresentation.interactionOptions
                     openUpward: !root.newThread
@@ -400,7 +400,7 @@ Column {
                     visible: settingsPresentation.reasoningInDrawer
                         && settingsPresentation.reasoningOptions.length > 0
                     width: parent.width
-                    label: "Reasoning"
+                    label: I18n.tr("Reasoning")
                     value: settingsPresentation.reasoningValue
                     options: settingsPresentation.reasoningOptions
                     openUpward: !root.newThread
@@ -585,7 +585,7 @@ Column {
                         enabled: root.editable && !root.sending
                         wrapMode: TextEdit.Wrap
                         selectByMouse: true
-                        Accessible.description: "Enter to send. Control Enter inserts a newline."
+                        Accessible.description: I18n.tr("Enter to send. Control Enter inserts a newline.")
                         font.family: T3Theme.fontUi
                         font.pixelSize: Theme.typography.control
                         color: T3Theme.textPrimary
@@ -617,7 +617,7 @@ Column {
 
                         Text {
                             visible: promptEdit.text === ""
-                            text: "Ask anything…"
+                            text: I18n.tr("Ask anything…")
                             font.family: T3Theme.fontUi
                             font.pixelSize: Theme.typography.primary
                             color: T3Theme.textFaint
@@ -841,7 +841,7 @@ Column {
             Text {
                 visible: root.overLimit
                 width: parent.width
-                text: "Prompt too long — open T3 Code"
+                text: I18n.tr("Prompt too long — open T3 Code")
                 font.family: T3Theme.fontUi
                 font.pixelSize: Theme.typography.secondary
                 color: T3Theme.red

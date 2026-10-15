@@ -239,7 +239,22 @@ blends with whatever is behind it, so `-shave 12x0` before comparing.
   nil and does nothing. `hyprctl keyword` is refused under a Lua config and
   still exits 0; set options with `hyprctl eval 'hl.config({ … })'`, which
   fails loudly. `HyprlandToplevel.address` is bare hex, while the `address:`
-  selector needs the `0x` prefix.
+  selector needs the `0x` prefix. A window selector that does not resolve
+  falls back to the *active* window, so closing or moving a window that has
+  just gone away acts on whatever has focus: check the address is still in
+  `Hyprland.toplevels` right before dispatching, and build the string with
+  `Common/WindowCommands.js`, which refuses anything it cannot quote.
+- **`HyprlandToplevel.lastIpcObject` comes only from a toplevel refresh.**
+  Quickshell follows titles, workspaces and focus from Hyprland's events, but
+  the `hyprctl clients` record (geometry, class) arrives with
+  `Hyprland.refreshToplevels()`; a window opened since the last refresh can
+  have `{}` there. The window overview refreshes when it opens and after
+  window events while it is up. For a live application id, read
+  `toplevel.wayland.appId` instead.
+- **`ClippingRectangle` draws its content through a `ShaderEffectSource`.**
+  Around live content (a `ScreencopyView`) that is an extra offscreen pass on
+  every frame, and nesting multiplies it. Clip static layers only; the
+  overview clips each workspace's wallpaper, not its window captures.
 - **A bare `qs ipc call` reaches nothing.** The shell runs by path
   (`qs -p <runtime>`), so there is no default configuration to find. Scripts,
   bindings and docs use `cybexos-runtime ipc TARGET FUNCTION …`, which
@@ -444,14 +459,59 @@ Typed prefixes temporarily override the selected tab: `/` files, `>` command,
 Removing the prefix returns to the selected tab, so the compact tab strip does
 not displace the existing keyboard-first routes.
 
-Clipboard history is collected by `cliphist`; `Shift+Delete` or right-click
-removes the selected clipboard entry. Emoji names come from Fedora's
-`unicode-emoji` data. Activating an emoji copies it and, once the launcher has
-released keyboard focus, pastes it into the previously active window. Both
+Clipboard history is collected by `cliphist`. The store helper skips offers a
+password manager marks as secret (`x-kde-passwordManagerHint`, reported by
+`wl-paste --watch` as `CLIPBOARD_STATE=sensitive`). In the History tab,
+`Enter` copies the selected entry and, once the launcher has released keyboard
+focus, pastes it into the previously active window; `Shift+Enter` only copies.
+`Ctrl+P` pins or unpins the selected entry, and the search field names that
+key. Pinned entries are listed first with a pin glyph. They are copies kept by
+`scripts/clipboard-tool.py` under `~/.local/share/cybexos/clipboard/` (at most
+50 entries and 64 MiB; text up to 256 KiB, images up to 10 MiB), so cliphist's
+500-entry pruning and `cliphist wipe` do not remove them; a full store refuses
+a new pin rather than dropping an old one. `Shift+Delete` or right-click
+removes a history entry, or unpins a pinned one. Image entries show a
+thumbnail, and the selected image grows its row to show a larger preview.
+Previews are decoded into `$XDG_RUNTIME_DIR/cybexos/clipboard-previews/`,
+which holds only the images the current history lists and is bounded to 64
+files and 48 MiB. `Super+Ctrl+V` opens the launcher on the History tab.
+
+Emoji names come from Fedora's `unicode-emoji` data. Activating an emoji
+copies it and pastes it the same way; `Shift+Enter` only copies. Both
 providers degrade to a readable empty-state error when their package is
 unavailable.
 
-`launcher-actions.json` at the shell root is watched for changes. Each user
+`cybexos-runtime ipc launcher open <provider>` opens the launcher on a tab
+(`apps`, `emoji`, `clipboard`, `actions`), or on Apps with a provider's prefix
+typed (`files`, `command`, `calculator`, `web`, `windows`). An open launcher
+switches to it rather than closing.
+
+#### Actions: the command palette
+
+The Actions tab is a curated catalogue in `Common/LauncherProviders.js`,
+grouped by verb in this order: Install, Remove, Set up, Toggle, Update,
+Capture and System. Each row shows its group on the right. Entries run a
+command from `~/.local/bin` (where both installation paths put the CybexOS
+helpers), open a Settings page, or call the shell directly. Captures start only
+after the launcher has left the screen. Entries for a feature the installation
+left out are hidden: the AI agent entries need developer tools. Factory reset
+is deliberately not in the launcher; it stays in Settings.
+
+A typed Apps query also lists up to three actions after the app matches, each
+marked "Action", when the query starts a word of the action's name or
+keywords. The empty Apps query stays the plain application directory.
+
+Some actions need one value first. **Install web app…** asks for a web address
+(a bare host gets `https://`), **Install theme from Git…** for an https or SSH
+repository, and **Remove web app…** lists the installed web apps; the chosen
+row asks for a second `Enter` before it removes anything. The search
+field becomes that prompt, its chip names the action, and `Escape` returns to
+the list it came from. `Enter` runs the command with the value as its own argv
+element; no shell parses it. Commands without a value run under a fixed
+wrapper that raises a notification when they fail.
+
+`launcher-actions.json` at the shell root adds the user's own actions; they
+are listed with the tag Custom. The file is watched for changes. Each user
 action must provide a display name and an argv-style command; a string shell
 command is rejected deliberately. For example:
 

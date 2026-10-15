@@ -146,6 +146,28 @@ dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
 progress { width: 100%; height: 10px; margin-top: 34px; accent-color: var(--accent); }
 a { color: var(--accent-text); display: inline-block; margin: 18px; }
 #startup-retry { margin-top: 20px; }
+fieldset { min-width: 0; }
+legend { padding: 0 6px; font-weight: 600; }
+fieldset .check { margin-top: 14px; }
+#alongside-details { margin-top: 14px; font-size: 14px; color: var(--muted); white-space: pre-line; }
+#space { accent-color: var(--accent); padding: 0; min-height: 32px; border: 0; background: transparent; }
+#seed-errors { color: var(--accent-text); padding-left: 18px; line-height: 1.5; }
+#countdown { font-size: 22px; color: var(--ink); font-variant-numeric: tabular-nums; }
+#log {
+  max-height: 45vh;
+  min-height: 8em;
+  overflow: auto;
+  margin: 12px 0 0;
+  padding: 14px 16px;
+  background: #09090b;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font: 12px/1.5 ui-monospace, "JetBrains Mono", monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#log-panel footer { margin-top: 16px; padding-top: 0; border-top: 0; justify-content: flex-start; }
 [hidden] { display: none !important; }
 button:disabled, input:disabled, select:disabled { cursor: wait; }
 

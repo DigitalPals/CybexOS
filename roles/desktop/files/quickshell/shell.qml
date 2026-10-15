@@ -21,8 +21,17 @@ ShellRoot {
     GlobalShortcut {
         appid: "quickshell"
         name: "launcherToggle"
-        description: "Toggle the application launcher"
+        description: I18n.tr("Toggle the application launcher")
         onPressed: Launcher.toggle()
+    }
+
+    // Super+Tab, in-process like the launcher. The `overview` IPC target in
+    // OverviewWindow serves the touchpad gesture and scripts.
+    GlobalShortcut {
+        appid: "quickshell"
+        name: "overviewToggle"
+        description: I18n.tr("Toggle the window overview")
+        onPressed: Overview.toggle()
     }
 
     // Popout IPC lives here rather than in Bar: the bar is instantiated
@@ -143,6 +152,18 @@ ShellRoot {
         function status(): string {
             return SystemTheme.status();
         }
+
+        // `cybex theme apply`: a named theme its helper has validated and
+        // resolved (scripts/theme-packs.py), checked again here before it
+        // changes anything. Returns "ok" or "error: <reason>".
+        function use(theme: string): string {
+            return Themes.use(theme);
+        }
+
+        // Re-reads the theme folders after `cybex theme install` or `remove`.
+        function refresh(): void {
+            Themes.refresh();
+        }
     }
 
     // Pinged by brightness-control after brightnessctl runs; volume needs
@@ -189,6 +210,34 @@ ShellRoot {
             Session.closeAll();
             if (Popouts.open && Popouts.currentName === "control")
                 Popouts.close();
+        }
+    }
+
+    // The launcher's "Check for updates" and scripts. `check` refreshes every
+    // source, as the panel's refresh button does (a run in progress is left
+    // alone); `open` shows the Updates panel on the focused output, which
+    // also brings a stale count up to date.
+    IpcHandler {
+        target: "updates"
+
+        function check(): void {
+            Updates.check();
+        }
+
+        function open(): void {
+            Popouts.openPanel("updates", undefined, undefined,
+                Screens.focused ? Screens.focused.name : "");
+        }
+    }
+
+    // A configuration reload rebuilds Hyprland's Lua state; runtime choices
+    // the compositor cannot read back from a file are sent again.
+    Connections {
+        target: Hyprland
+
+        function onRawEvent(event) {
+            if (event.name === "configreloaded")
+                Settings.compositorReloaded();
         }
     }
 
@@ -268,12 +317,31 @@ ShellRoot {
         }
     }
 
+    // The optional dock (Settings → Bar → Dock), one per output like the
+    // bar. Off, the model is empty and nothing — not even the Dock singleton
+    // — is constructed.
+    Variants {
+        model: Settings.dock ? Screens.layerSurfaceModel : []
+
+        DockWindow {}
+    }
+
     LauncherWindow {}
+    OverviewWindow {}
     NetworkOverlayWindow {}
     NotificationToasts {}
     OsdWindow {}
     ShortcutsOverlay {}
     PolkitWindow {}
+
+    // The webcam bubble exists only for a --webcam recording: the window,
+    // the camera and its device list are created when one starts and
+    // destroyed, releasing the camera, when it stops.
+    LazyLoader {
+        active: Recorder.webcamWanted
+
+        WebcamOverlay {}
+    }
 
     // Reading a singleton's property is what constructs it. Notifications
     // must start collecting, GitHub must start polling — GitHub

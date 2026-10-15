@@ -151,6 +151,15 @@ Singleton {
     property var pendingWifiRequest: ({})
     readonly property bool wifiBusy: actionKind !== ""
 
+    // NetworkManager VPN and WireGuard profiles from the same snapshot, for
+    // the drawer's VPN switch. One request at a time; its failure is kept
+    // per profile UUID like a Wi-Fi network's.
+    readonly property var vpnProfiles: Array.isArray(snapshot.vpns) ? snapshot.vpns : []
+    property var pendingVpnRequest: ({})
+    property var vpnErrors: ({})
+    readonly property string vpnBusyUuid: vpnProc.running ? String(pendingVpnRequest.uuid || "") : ""
+    readonly property string vpnBusyAction: vpnProc.running ? String(pendingVpnRequest.action || "") : ""
+
     signal wifiActionFinished(string key, bool success, string reason)
     signal dnsActionFinished(bool success, string reason)
     signal bandActionFinished(bool success, string reason)
@@ -362,6 +371,24 @@ Singleton {
         actionKind = request.action || "connect";
         pendingWifiRequest = request;
         wifiProc.running = true;
+        return true;
+    }
+
+    function vpnError(uuid) {
+        return vpnErrors[uuid] || "";
+    }
+
+    // Connecting may open the VPN plugin's own sign-in dialog; the helper
+    // answers NetworkManager with what it returns and reports only success
+    // or a reason.
+    function runVpnAction(request) {
+        if (vpnProc.running)
+            return false;
+        const next = Object.assign({}, vpnErrors);
+        delete next[request.uuid];
+        vpnErrors = next;
+        pendingVpnRequest = request;
+        vpnProc.running = true;
         return true;
     }
 
@@ -584,6 +611,42 @@ Singleton {
                 root.refresh();
                 root.refreshDns();
             }
+        }
+    }
+
+    Process {
+        id: vpnProc
+        property string body: ""
+        property bool exitSeen: false
+        property int lastExit: 0
+
+        command: ["python3", root.helper, "vpn"]
+        stdinEnabled: true
+        stdout: StdioCollector { onStreamFinished: vpnProc.body = text }
+        stderr: StdioCollector {}
+        onStarted: write(JSON.stringify(root.pendingVpnRequest) + "\n")
+        onExited: (exitCode, exitStatus) => {
+            vpnProc.exitSeen = true;
+            vpnProc.lastExit = exitCode;
+        }
+        onRunningChanged: {
+            if (running) {
+                body = "";
+                exitSeen = false;
+                lastExit = 0;
+                return;
+            }
+            const uuid = String(root.pendingVpnRequest.uuid || "");
+            const result = root.parseResult(body, "network-tool vpn");
+            const success = exitSeen && lastExit === 0 && result.success;
+            if (!success && uuid !== "") {
+                const next = Object.assign({}, root.vpnErrors);
+                next[uuid] = result.error || "The VPN action failed";
+                root.vpnErrors = next;
+            }
+            root.pendingVpnRequest = {};
+            if (root.acquired)
+                root.refresh();
         }
     }
 

@@ -445,7 +445,7 @@ PopoutPanel {
                 : connection === "offline" ? Theme.redBgSoft
                 : connection === "stale" ? Theme.amberBgSoft : Theme.chip
             Accessible.role: Accessible.StaticText
-            Accessible.name: "Connection"
+            Accessible.name: I18n.tr("Connection")
             Accessible.description: RemoteServer.status
 
             Row {
@@ -514,7 +514,7 @@ PopoutPanel {
                     wrapMode: Text.Wrap
                     horizontalAlignment: Text.AlignHCenter
                     textFormat: Text.PlainText
-                    text: "Choose a server you can already reach with an SSH key. Nothing is installed or written on it; it needs Linux and Python 3.9 or newer."
+                    text: I18n.tr("Choose a server you can already reach with an SSH key. Nothing is installed or written on it; it needs Linux and Python 3.9 or newer.")
                     lineHeight: Theme.proseLineHeight
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
@@ -522,7 +522,7 @@ PopoutPanel {
                 }
                 ActionButton {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    label: "Choose SSH host"
+                    label: I18n.tr("Choose SSH host")
                     tint: Theme.accentText
                     onTriggered: RemoteServer.configure()
                 }
@@ -579,7 +579,7 @@ PopoutPanel {
                     anchors.right: parent.right
                     anchors.rightMargin: Theme.scaled(10)
                     anchors.verticalCenter: parent.verticalCenter
-                    label: "Retry"
+                    label: I18n.tr("Retry")
                     tint: Theme.redText
                     onTriggered: RemoteServer.refresh()
                 }
@@ -595,7 +595,7 @@ PopoutPanel {
                 Caption {
                     anchors.centerIn: parent
                     width: Math.min(implicitWidth, parent.width - Theme.scaled(24))
-                    text: "Connecting securely and collecting the first readings…"
+                    text: I18n.tr("Connecting securely and collecting the first readings…")
                     color: Theme.textLow
                 }
             }
@@ -631,7 +631,7 @@ PopoutPanel {
                     spacing: Theme.scaled(10)
 
                     History {
-                        title: "CPU usage"
+                        title: I18n.tr("CPU usage")
                         summary: root.spread(root.cpuPoints, "%")
                         series: [{ points: root.cpuPoints, tint: Theme.accentText }]
                     }
@@ -654,7 +654,7 @@ PopoutPanel {
                         width: parent.width
                         height: count > 0 ? rows * rowHeight + (rows - 1) * 3 : 0
                         Accessible.role: Accessible.Chart
-                        Accessible.name: "Per-CPU activity"
+                        Accessible.name: I18n.tr("Per-CPU activity")
                         Accessible.description: count + " logical CPUs"
 
                         Repeater {
@@ -720,11 +720,11 @@ PopoutPanel {
                         readonly property var perThread: root.stats && root.stats.meta.cores > 0
                             ? 100 * root.stats.load[0] / root.stats.meta.cores : null
                         facts: root.stats ? [
-                            { label: "Load 1 min", value: root.stats.load[0].toFixed(2),
+                            { label: I18n.tr("Load 1 min"), value: root.stats.load[0].toFixed(2),
                                 level: Helpers.level(perThread) },
-                            { label: "5 min", value: root.stats.load[1].toFixed(2) },
-                            { label: "15 min", value: root.stats.load[2].toFixed(2) },
-                            { label: "Per thread", value: Helpers.known(perThread)
+                            { label: I18n.tr("5 min"), value: root.stats.load[1].toFixed(2) },
+                            { label: I18n.tr("15 min"), value: root.stats.load[2].toFixed(2) },
+                            { label: I18n.tr("Per thread"), value: Helpers.known(perThread)
                                 ? (perThread / 100).toFixed(2) : "—" }
                         ] : []
                     }
@@ -737,7 +737,7 @@ PopoutPanel {
                     spacing: Theme.scaled(10)
 
                     History {
-                        title: "Memory in use"
+                        title: I18n.tr("Memory in use")
                         summary: root.spread(root.memoryPoints, "%")
                         series: [{ points: root.memoryPoints, tint: Theme.accentText }]
                     }
@@ -746,10 +746,10 @@ PopoutPanel {
                         readonly property var swapPercent: memory && memory.swapTotal > 0
                             ? 100 * memory.swapUsed / memory.swapTotal : null
                         facts: memory ? [
-                            { label: "Used", value: Helpers.bytes(memory.used) },
-                            { label: "Available", value: Helpers.bytes(memory.available) },
-                            { label: "Total", value: Helpers.bytes(memory.total) },
-                            { label: "Swap used",
+                            { label: I18n.tr("Used"), value: Helpers.bytes(memory.used) },
+                            { label: I18n.tr("Available"), value: Helpers.bytes(memory.available) },
+                            { label: I18n.tr("Total"), value: Helpers.bytes(memory.total) },
+                            { label: I18n.tr("Swap used"),
                                 value: memory.swapTotal > 0 ? Helpers.percent(swapPercent) : "Off",
                                 level: Helpers.level(swapPercent),
                                 detail: Helpers.bytes(memory.swapUsed) + " of " + Helpers.bytes(memory.swapTotal) }
@@ -773,7 +773,7 @@ PopoutPanel {
 
                         Text {
                             id: storageTitle
-                            text: "Filesystems"
+                            text: I18n.tr("Filesystems")
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.typography.secondary
                             font.weight: Theme.weightSemibold
@@ -782,7 +782,7 @@ PopoutPanel {
                         Caption {
                             anchors.right: parent.right
                             anchors.baseline: storageTitle.baseline
-                            text: "Select one for the Storage tile"
+                            text: I18n.tr("Select one for the Storage tile")
                             color: Theme.textFaint
                         }
                     }
@@ -880,14 +880,14 @@ PopoutPanel {
                     spacing: Theme.scaled(10)
 
                     History {
-                        title: "Hottest sensor"
+                        title: I18n.tr("Hottest sensor")
                         summary: root.spread(root.temperaturePoints, "°C")
                         series: [{ points: root.temperaturePoints, tint: Theme.accentText }]
                     }
                     Caption {
                         visible: root.stats !== null && thermal.sensors.length === 0
                         width: parent.width
-                        text: "This server reports no temperature sensors."
+                        text: I18n.tr("This server reports no temperature sensors.")
                     }
                     Grid {
                         width: parent.width
@@ -969,7 +969,7 @@ PopoutPanel {
                         SectionLabel {
                             id: networkLabel
                             width: parent.width - (pickLink.visible ? pickLink.width + Theme.scaled(10) : 0)
-                            text: "NETWORK"
+                            text: I18n.tr("NETWORK")
                             detail: root.net ? root.net.name
                                 + (RemoteServer.options.interface === "" ? " · automatic" : "") : ""
                         }
@@ -979,7 +979,7 @@ PopoutPanel {
                             anchors.right: parent.right
                             anchors.verticalCenter: networkLabel.verticalCenter
                             font.pixelSize: Theme.typography.secondary
-                            text: root.pickingInterface ? "Done" : "Change"
+                            text: root.pickingInterface ? I18n.tr("Done") : I18n.tr("Change")
                             accessibleName: root.pickingInterface ? "Close interface list" : "Choose network interface"
                             onClicked: root.pickingInterface = !root.pickingInterface
                         }
@@ -1222,12 +1222,12 @@ PopoutPanel {
 
             LinkText {
                 visible: root.configured
-                text: "Refresh"
+                text: I18n.tr("Refresh")
                 accessibleName: "Refresh server readings"
                 onClicked: RemoteServer.refresh()
             }
             LinkText {
-                text: "Settings"
+                text: I18n.tr("Settings")
                 accessibleName: "Remote Server settings"
                 onClicked: RemoteServer.configure()
             }

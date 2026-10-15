@@ -31,6 +31,8 @@
     - cybexos-session-lock.service
     - cybexos-input-method.service
     - xps-speaker-tuning.service
+    - cybexos-backup.timer
+    - cybexos-backup.service
   changed_when: false
   failed_when: false
 
@@ -45,6 +47,8 @@
     - cybexos-update-recover.service
     - cybexos-major-upgrade-validate.timer
     - cybexos-major-upgrade-validate.service
+    - cybexos-update-download.timer
+    - cybexos-update-download.service
     - xps-haptic-touchpad.service
     - xps-ipu7-camera-init.service
     - xps-ipu7-camera.service
@@ -108,11 +112,15 @@
     - "{{ primary_home }}/.config/systemd/user/cybexos-session-lock.service"
     - "{{ primary_home }}/.config/systemd/user/cybexos-input-method.service"
     - "{{ primary_home }}/.config/systemd/user/xps-speaker-tuning.service"
+    - "{{ primary_home }}/.config/systemd/user/cybexos-backup.service"
+    - "{{ primary_home }}/.config/systemd/user/cybexos-backup.timer"
     - "{{ primary_home }}/.config/systemd/user/hyprland-session.target.wants"
     - "{{ primary_home }}/.local/bin/cybex"
     - "{{ primary_home }}/.local/bin/cybexos-agent"
     - "{{ primary_home }}/.local/bin/cybexos-update-run"
     - "{{ primary_home }}/.local/bin/cybexos-firmware-update"
+    - "{{ primary_home }}/.local/bin/cybexos-report"
+    - "{{ primary_home }}/.local/bin/cybexos-backup"
     - "{{ primary_home }}/.local/bin/cybexos-runtime"
     - "{{ primary_home }}/.local/bin/brightness-control"
     - "{{ primary_home }}/.local/bin/portal-launcher"
@@ -129,11 +137,16 @@
     - "{{ primary_home }}/.local/bin/screen-record"
     - "{{ primary_home }}/.local/bin/quickshell-reminder"
     - "{{ primary_home }}/.local/bin/screen-ocr"
+    - "{{ primary_home }}/.local/bin/color-picker"
+    - "{{ primary_home }}/.local/bin/screenshot-stitch"
     - "{{ primary_home }}/.local/bin/clipboard-copy-image"
     - "{{ primary_home }}/.local/bin/clipboard-image-to-file"
     - "{{ primary_home }}/.local/bin/clipboard-history-store"
+    - "{{ primary_home }}/.local/bin/cybexos-webapp"
     - "{{ primary_home }}/.local/bin/localsend"
     - "{{ primary_home }}/.local/bin/localsend-share"
+    - "{{ primary_home }}/.local/bin/game-mode"
+    - "{{ primary_home }}/.local/bin/cybexos-theme"
     - "{{ primary_home }}/.local/bin/dev-fedora-shell"
     - "{{ primary_home }}/.local/bin/dev-arch-shell"
     - "{{ primary_home }}/.local/bin/dev-debian-shell"
@@ -156,12 +169,39 @@
     - "{{ primary_home }}/.local/share/applications/dev-arch.desktop"
     - "{{ primary_home }}/.local/share/applications/dev-debian.desktop"
 
+# Web app launchers run the helper removed above, so none would still work.
+- name: Find CybexOS web app launchers
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.find:
+    paths: "{{ primary_home }}/.local/share/applications"
+    patterns: "cybexos-webapp-*.desktop"
+  register: uninstall_webapp_launchers
+
+- name: Remove CybexOS web app launchers
+  become: true
+  become_user: "{{ primary_user }}"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ uninstall_webapp_launchers.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
 - name: Remove the vendor desktop runtime without touching user customization
   become: true
   become_user: "{{ primary_user }}"
   ansible.builtin.file:
     path: "{{ cybexos_runtime_root }}"
     state: absent
+
+# Before the helper itself goes: it removes only the lines and files it wrote.
+# authselect's with-fingerprint is Fedora's own feature and stays as chosen.
+- name: Remove the CybexOS security-key steps and lock-screen PAM service
+  ansible.builtin.command: /usr/bin/python3 /usr/local/libexec/cybexos-auth-policy remove
+  register: uninstall_auth_policy
+  changed_when: uninstall_auth_policy.rc == 0 and (uninstall_auth_policy.stdout | from_json).changed
+  failed_when: false
 
 - name: Remove project-owned system files
   ansible.builtin.file:
@@ -173,6 +213,7 @@
     - /usr/local/libexec/cybexos-hyprland-session-start
     - /usr/local/libexec/cybexos-session-action
     - /usr/local/libexec/cybexos-system-snapshot
+    - /usr/local/libexec/cybexos-auth-policy
     - /usr/local/libexec/cybexos-update-transaction
     - /usr/local/libexec/cybexos-update-bootstrap
     - /usr/local/libexec/cybexos-update-recover
@@ -180,6 +221,7 @@
     - /usr/local/libexec/cybexos-update-recover-login.conf
     - /usr/local/libexec/cybexos-vendor-paths.json
     - /usr/local/libexec/cybexos-major-upgrade
+    - /usr/local/libexec/cybexos-update-download
     - /usr/local/sbin/cybexos-system-snapshot
     - /usr/local/libexec/cybexos-common.sh
     - /etc/sysctl.d/60-cybexos-hardening.conf
@@ -205,6 +247,11 @@
     - /usr/local/libexec/xps-ipu7-camera-init
     - /usr/local/libexec/xps-ipu7-camera-check
     - /usr/local/libexec/xps-ipu7-refresh-wireplumber
+    # The RPM Fusion NVIDIA driver and the akmods key stay installed: the
+    # machine's graphics depend on them. Only CybexOS's helper and session
+    # variables go; the NVIDIA status lives under /var/lib/cybexos.
+    - /usr/local/libexec/cybexos-nvidia
+    - /etc/cybexos/nvidia-session.env
     - /usr/lib/systemd/system-sleep/xps-ipu7-camera
     - /etc/xps-haptic-touchpad.conf
     - /etc/udev/rules.d/80-xps-haptic-touchpad.rules
@@ -252,6 +299,8 @@
     - /etc/systemd/system/sddm.service.d/60-cybexos-update-recover.conf
     - /etc/systemd/system/cybexos-major-upgrade-validate.service
     - /etc/systemd/system/cybexos-major-upgrade-validate.timer
+    - /etc/systemd/system/cybexos-update-download.service
+    - /etc/systemd/system/cybexos-update-download.timer
     - /usr/lib/dracut/modules.d/90cybexos-recovery
     - /etc/dracut.conf.d/90-cybexos-recovery.conf
     - /boot/grub2/cybexos-recovery.cfg
@@ -540,6 +589,12 @@
     - /var/cache/cybexos-upstream/omarchy-cybex
     - /var/lib/cybexos-upstream/omarchy-cybex
 
+# Entries an administrator added to versionlock.toml stay.
+- name: Remove only the CybexOS qualified-series versionlock entries
+  cybexos_versionlock:
+    series: []
+    report_installed: false
+
 - name: Remove only the CybexOS Firefox policy entry
   ansible.builtin.command: /usr/local/libexec/cybexos-firefox-policy disable
   changed_when: false
@@ -571,20 +626,27 @@
       .config/systemd/user/cybexos-session-lock.service
       .config/systemd/user/cybexos-input-method.service
       .config/systemd/user/xps-speaker-tuning.service
+      .config/systemd/user/cybexos-backup.service
+      .config/systemd/user/cybexos-backup.timer
       .config/distrobox/distrobox.conf
       .local/bin/screenshot
       .local/bin/screen-record
       .local/bin/quickshell-reminder
       .local/bin/screen-ocr
+      .local/bin/color-picker
+      .local/bin/screenshot-stitch
       .local/bin/clipboard-copy-image
       .local/bin/clipboard-image-to-file
       .local/bin/clipboard-history-store
       .local/bin/localsend
       .local/bin/localsend-share
+      .local/bin/game-mode
+      .local/bin/cybexos-theme
       .local/bin/cybex
       .local/bin/cybexos-agent
       .local/bin/cybexos-update-run
       .local/bin/cybexos-firmware-update
+      .local/bin/cybexos-backup
       .local/bin/brightness-control
       .local/bin/portal-launcher
       .local/bin/t3code-update
@@ -663,6 +725,8 @@
     - "{{ cybexos_data_root }}/current"
     - "{{ cybexos_data_root }}/releases"
     - "{{ cybexos_data_root }}/channel"
+    - "{{ cybexos_data_root }}/webapps"
+    - "{{ cybexos_data_root }}/clipboard"
   when: not cybexos_keep_user_data | bool
 
 - name: Reload systemd after unit removal

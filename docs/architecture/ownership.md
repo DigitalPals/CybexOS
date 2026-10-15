@@ -16,7 +16,7 @@ and personal packages remain in user-owned locations.
 | User | `~/.config/cybexos/hypr/` | Optional `user.lua`, `hypridle.conf`, and `hyprlock.conf` overrides |
 | User | `~/.config/cybexos/displays.json` | Settings → Displays choices per physical monitor |
 | User | `~/.config/cybexos/fusebox/` | The Fusebox widget's private management key (0600); written only from its settings |
-| User | `~/.local/share/cybexos/themes/` | User theme packages; not reconciled or pruned |
+| User | `~/.local/share/cybexos/themes/` | User theme packages (`cybex theme install`, Settings → Appearance → Save current as theme); not reconciled or pruned |
 | User | `~/.local/share/cybexos/plugins/` | API 1 widget packages; not reconciled or pruned |
 | User | `~/.config/cybexos/plugins.json` | Widget enablement and preferences; not written by Ansible |
 | User | `~/.local/share/cybexos/plugin-data/` | Persistent widget data; retained on update and uninstall |
@@ -31,7 +31,11 @@ existing edits by backing up files before updating them; inspect status with
 uses versioned defaults, separately from unversioned tool-seed data. Hardware
 setup status is recorded at `/var/lib/cybexos/hardware-status.json` as
 `pending`, `completed`, or `failed`; a pending camera setup resumes after a
-same-kernel reboot. The welcome window displays this status.
+same-kernel reboot. The welcome window displays this status. On both paths the
+NVIDIA role records `/var/lib/cybexos/nvidia-status.json` (world-readable) and,
+while Secure Boot key enrollment is pending, the one-time password in
+`/var/lib/cybexos/nvidia-mok.json` (root and `wheel` only); it owns
+`/etc/cybexos/nvidia-session.env` and `/usr/local/libexec/cybexos-nvidia`.
 
 On the source-checkout path, the session starts Hyprland with the vendor entry
 point. Vendor modules load first, then saved Settings → Displays choices, and
