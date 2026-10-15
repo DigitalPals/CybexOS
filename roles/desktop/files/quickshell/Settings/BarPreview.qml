@@ -57,7 +57,7 @@ Item {
 
     implicitHeight: Theme.scaled(96)
     Accessible.role: Accessible.Graphic
-    Accessible.name: "Bar preview"
+    Accessible.name: I18n.tr("Bar preview")
     Accessible.description: (atTop ? "Top" : "Bottom") + " of the screen, "
         + Settings.barStyle + " style, " + Theme.barHeight + " pixels high"
 

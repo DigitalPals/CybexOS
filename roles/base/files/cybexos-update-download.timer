@@ -1,0 +1,14 @@
+[Unit]
+Description=Download pending updates in the background
+
+# Off unless the person turns on "Download updates automatically" in
+# Settings; installing or updating CybexOS never changes that choice.
+[Timer]
+# Every four hours, spread out so machines do not all ask at once, and once
+# after a boot or resume that missed a slot.
+OnCalendar=*-*-* 00/4:00:00
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

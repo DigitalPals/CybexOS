@@ -112,7 +112,7 @@ def collect(root=Path('/'), home=Path.home(), command=run):
     hardware_policy = read_json(at('/etc/cybexos/hardware.json'))
     hardware = read_json(at('/var/lib/cybexos/hardware-status.json'))
     hardware_state = hardware.get('state', 'pending')
-    if not hardware_policy.get('xps_2026') and not hardware:
+    if not hardware_policy.get('xps_2026') and not hardware_policy.get('nvidia') and not hardware:
         hardware_state = 'skipped'
     if at('/var/lib/cybexos/hardware-unsupported').exists():
         hardware_state = 'failed'
@@ -120,7 +120,31 @@ def collect(root=Path('/'), home=Path.home(), command=run):
                      'failed': 'fail', 'skipped': 'skipped'}.get(hardware_state, 'warning'),
         f'Hardware setup: {hardware_state}.',
         'Reboot to validate the camera transaction.' if hardware_state == 'pending' and 'reboot' in hardware.get('reason', '')
+        else 'Restart to finish NVIDIA driver setup.' if hardware_state == 'pending'
+        and hardware.get('nvidia_state') in ('reboot', 'enroll')
         else 'Run cybex repair --hardware.' if hardware_state == 'failed' else '')
+
+    # The helper corrects a request recorded before the last restart. Never
+    # report the Secure Boot enrollment password here.
+    rc, nvidia_text = command('/usr/local/libexec/cybexos-nvidia', 'status')
+    try:
+        nvidia = json.loads(nvidia_text) if rc == 0 else {}
+    except ValueError:
+        nvidia = {}
+    if not isinstance(nvidia, dict):
+        nvidia = {}
+    nvidia_state = nvidia.get('state', 'absent')
+    if hardware_policy.get('nvidia') or nvidia_state != 'absent':
+        skipped = nvidia_state == 'enroll' and nvidia.get('key') != 'pending'
+        add('nvidia', 'fail' if skipped else {'ready': 'ok', 'reboot': 'pending', 'enroll': 'pending',
+                                              'failed': 'fail'}.get(nvidia_state, 'pending'),
+            {'ready': f"NVIDIA driver {nvidia.get('driver_version', '')} is active.".replace('  ', ' '),
+             'reboot': 'NVIDIA driver is installed; a restart switches to it.',
+             'enroll': 'Secure Boot key enrollment is pending.' if not skipped
+             else 'The Secure Boot key was not enrolled; the open-source driver is in use.',
+             'failed': 'NVIDIA driver setup failed; the open-source driver is in use.'}.get(
+                 nvidia_state, 'NVIDIA driver setup has not run yet; it needs a network connection.'),
+            str(nvidia.get('reason', '')) if nvidia_state != 'ready' else '')
 
     rc, network = command('nmcli', '-t', '-f', 'STATE', 'general')
     connected = rc == 0 and network.splitlines()[:1] == ['connected']

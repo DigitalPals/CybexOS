@@ -382,7 +382,7 @@ Surface {
         Accessible.name: displayTitle
             + (row.detail !== "" && row.detail !== displayTitle ? ", " + row.detail : "")
             + ", " + root.inboxStatus(row)
-        Accessible.description: "Open on GitHub"
+        Accessible.description: I18n.tr("Open on GitHub")
         Accessible.onPressAction: root.openInbox(row)
 
         Keys.onPressed: event => {
@@ -527,7 +527,7 @@ Surface {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "GitHub"
+                        text: I18n.tr("GitHub")
                         font.family: T3Theme.fontUi
                         font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
@@ -585,12 +585,12 @@ Surface {
                 spacing: 2
 
                 TabButton {
-                    label: "Inbox"
+                    label: I18n.tr("Inbox")
                     pageName: "inbox"
                 }
 
                 TabButton {
-                    label: "Repositories"
+                    label: I18n.tr("Repositories")
                     pageName: "repos"
                 }
             }
@@ -842,7 +842,7 @@ Surface {
                     && GitHub.inboxError === "" && GitHub.notificationError === ""
                 width: parent.width
                 glyph: "inbox"
-                title: "Inbox is clear"
+                title: I18n.tr("Inbox is clear")
                 detail: GitHub.ciReportsEnabled ? ""
                     : "Workflow reports are disabled in settings"
             }
@@ -882,7 +882,7 @@ Surface {
                     anchors.right: parent.right
                     anchors.rightMargin: 2
                     anchors.verticalCenter: parent.verticalCenter
-                    label: "Settle all"
+                    label: I18n.tr("Settle all")
                     hPadding: 16
                     tint: T3Theme.accent
                     fill: T3Theme.accentSubtle
@@ -1073,7 +1073,7 @@ Surface {
                     Text {
                         visible: repoSearchInput.text === ""
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Search repositories"
+                        text: I18n.tr("Search repositories")
                         font.family: T3Theme.fontUi
                         font.pixelSize: Theme.typography.control
                         color: T3Theme.textFaint
@@ -1118,14 +1118,14 @@ Surface {
                 shown: GitHub.error === "" && !GitHub.ready
                 width: parent.width
                 kind: "loading"
-                title: "Loading repositories…"
+                title: I18n.tr("Loading repositories…")
             }
 
             GitHubStatus {
                 shown: GitHub.error === "" && GitHub.ready && GitHub.repos.length === 0
                 width: parent.width
                 glyph: "folder_open"
-                title: "No repositories this account can see"
+                title: I18n.tr("No repositories this account can see")
             }
 
             Text {
@@ -1143,7 +1143,7 @@ Surface {
 
             GroupHeader {
                 visible: root.filteredRepos.length > 0
-                label: "Repositories"
+                label: I18n.tr("Repositories")
                 count: root.filteredRepos.length
             }
 
@@ -1173,7 +1173,7 @@ Surface {
                         + (repoRow.unread ? ", updated" : "")
                         + (GitHub.watchError(repoRow.repo.slug) !== ""
                             ? ", Inbox data unavailable" : "")
-                    Accessible.description: "Show commits"
+                    Accessible.description: I18n.tr("Show commits")
                     Accessible.onPressAction: root.showCommits(repoRow.repo.slug)
 
                     Keys.onPressed: event => {
@@ -1372,7 +1372,7 @@ Surface {
             // repository row's dot used.
             GroupHeader {
                 visible: root.commitRows.length > 0
-                label: root.newCommitCount > 0 ? "New since last visit" : "Latest commits"
+                label: root.newCommitCount > 0 ? I18n.tr("New since last visit") : I18n.tr("Latest commits")
                 count: root.newCommitCount > 0 ? root.newCommitCount : root.commitRows.length
                 tint: root.newCommitCount > 0 ? T3Theme.accent : T3Theme.textMuted
                 rule: root.newCommitCount > 0 ? T3Theme.accentSoft : T3Theme.border
@@ -1380,7 +1380,7 @@ Surface {
 
             Empty {
                 visible: root.commitEntry !== null && root.commitEntry.error !== ""
-                text: "Commits unavailable\n"
+                text: I18n.tr("Commits unavailable") + "\n"
                     + (root.commitEntry ? root.commitEntry.error : "")
                 color: T3Theme.red
             }
@@ -1390,7 +1390,7 @@ Surface {
                     || (root.commitEntry.loading && root.commitRows.length === 0)
                 width: parent.width
                 kind: "loading"
-                title: "Loading commits…"
+                title: I18n.tr("Loading commits…")
             }
 
             GitHubStatus {
@@ -1398,7 +1398,7 @@ Surface {
                     && root.commitEntry.error === "" && root.commitRows.length === 0
                 width: parent.width
                 glyph: "commit"
-                title: "No commits on this branch yet"
+                title: I18n.tr("No commits on this branch yet")
             }
 
             Repeater {
@@ -1444,7 +1444,7 @@ Surface {
                         activeFocusOnTab: visible
                         Accessible.role: Accessible.Button
                         Accessible.name: commitRow.modelData.subject
-                        Accessible.description: "Expand commit"
+                        Accessible.description: I18n.tr("Expand commit")
                         Accessible.onPressAction: root.toggleCommit(commitRow.modelData.sha)
 
                         Keys.onPressed: event => {
@@ -1704,7 +1704,7 @@ Surface {
 
                                     Text {
                                         visible: commitRow.stats === null
-                                        text: "counting…"
+                                        text: I18n.tr("counting…")
                                         font.family: T3Theme.fontUi
                                         font.pixelSize: Theme.typography.secondary
                                         color: T3Theme.textFaint
@@ -1737,7 +1737,7 @@ Surface {
                                 spacing: 6
 
                                 Action {
-                                    label: "Open on GitHub"
+                                    label: I18n.tr("Open on GitHub")
                                     hPadding: 24
                                     revealed: commitRow.expanded
                                     onTriggered: {
@@ -1753,7 +1753,7 @@ Surface {
                                     readonly property bool confirmed: root.copied !== ""
                                         && root.copied === commitRow.modelData.sha
 
-                                    label: confirmed ? "Copied" : "Copy SHA"
+                                    label: confirmed ? I18n.tr("Copied") : I18n.tr("Copy SHA")
                                     tint: confirmed ? T3Theme.accent : T3Theme.textMuted
                                     hPadding: 24
                                     revealed: commitRow.expanded

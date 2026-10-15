@@ -8,7 +8,13 @@
   "userHelpers": [
     "screenshot", "screen-record", "quickshell-reminder", "screen-ocr",
     "clipboard-copy-image", "clipboard-image-to-file", "clipboard-history-store",
-    "localsend", "localsend-share", "cybexos-agent", "cybexos-firmware-update"
+    "localsend", "localsend-share", "cybexos-agent", "cybexos-firmware-update",
+    "cybexos-webapp",
+    "game-mode",
+    "cybexos-report",
+    "cybexos-backup",
+    "cybexos-theme",
+    "color-picker", "screenshot-stitch"
   ],
   "essentialPaths": [
     ".config/cybexos/shell.json", ".config/fastfetch", ".config/fish",

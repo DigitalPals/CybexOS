@@ -23,9 +23,9 @@ test("only an already-open settings window is raised by title", () => {
     let presented = 0;
     const context = {
         page: "appearance", panelOpen: false, panelScreenName: "", highlightKey: "",
-        validPages: ["appearance", "power", "about", "bar"],
+        validPages: ["appearance", "power", "backup", "about", "bar"],
         legacyPages: { modules: "bar", system: "power" },
-        keyPages: { recoveryPoints: "about" },
+        keyPages: { recoveryPoints: "backup" },
         openWidgetSettings() {},
         Popouts: { close() {} },
         Screens: { focused: { name: "DP-1" } },
@@ -50,7 +50,7 @@ test("only an already-open settings window is raised by title", () => {
 
     // A legacy id that names a moved row lands on the row's new page.
     context.showSetting("system", "recoveryPoints", "");
-    assert.equal(context.page, "about");
+    assert.equal(context.page, "backup");
     context.showPanel("modules", "");
     assert.equal(context.page, "bar");
     context.showPanel("nonsense", "");

@@ -1,10 +1,24 @@
 #!/usr/bin/python3
-"""Finalize only a mounted Anaconda target; no credentials are transferred."""
+"""Finalize only a mounted Anaconda target; no passwords are transferred.
+
+`--stage` runs before the in-target hook provisions the account: it records
+explicit first-account choices from an unattended seed. The default final
+step verifies the target and writes its login, sudo, OEM and recovery state.
+The only credential it moves is a seed's Tailscale auth key, from root-only
+memory-backed /run into a root-only first-boot file that is deleted after use.
+"""
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
+import sys
+
+STATE = Path('/run/cybexos-installer/state.json')
+STAGED = Path('/run/cybexos-installer/staged')
+FIRST_BOOT = 'var/lib/cybexos/first-boot'
+OS_PROBER_BLOCK = re.compile(r'^### BEGIN /etc/grub\.d/30_os-prober ###$(.*?)^### END /etc/grub\.d/30_os-prober ###$',
+                             re.MULTILINE | re.DOTALL)
 
 
 def btrfs_members(output):
@@ -88,59 +102,174 @@ def apply_sudo_policy(root, passwordless_wheel):
     temporary.replace(path)
 
 
-def finalize(root, policy, encrypted):
+def write_file(path, text, mode, directory_mode=0o755):
+    path.parent.mkdir(mode=directory_mode, parents=True, exist_ok=True)
+    temporary = path.with_name('.' + path.name + '.cybexos-installer')
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, mode)
+    with os.fdopen(descriptor, 'w') as stream:
+        stream.write(text)
+    os.chmod(temporary, mode)
+    temporary.replace(path)
+
+
+def stage(root, policy):
+    """Record a seed's explicit choices for the first account's config.yml.
+
+    cybexos-config merges them through the shared installation policy when
+    the in-target hook (or the new-owner setup) records the configuration.
+    """
+    config = policy.get('account', {}).get('config') or {}
+    if not isinstance(config, dict):
+        raise RuntimeError('Installation policy has invalid configuration choices.')
+    if config:
+        write_file(root / 'etc/cybexos/install-choices.json',
+                   json.dumps({'version': 1, 'choices': config}, sort_keys=True) + '\n', 0o644)
+
+
+def desktop_accounts(root):
+    rows = [line.split(':') for line in (root / 'etc/passwd').read_text().splitlines() if line.count(':') >= 6]
+    return [row for row in rows if 1000 <= int(row[2]) < 65534 and row[5].startswith('/home/')]
+
+
+def install_authorized_keys(root, username, keys):
+    """Seed-provided public keys for the new account, owned by that account."""
+    row = next(row for row in desktop_accounts(root) if row[0] == username)
+    uid, gid = int(row[2]), int(row[3])
+    home = root / row[5].lstrip('/')
+    ssh = home / '.ssh'
+    if home.is_symlink() or ssh.is_symlink():
+        raise RuntimeError('The new account has an unexpected SSH directory.')
+    ssh.mkdir(mode=0o700, exist_ok=True)
+    os.chown(ssh, uid, gid)
+    path = ssh / 'authorized_keys'
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, 'a') as stream:
+        stream.write(''.join(key + '\n' for key in keys))
+    os.chown(path, uid, gid)
+    os.chmod(path, 0o600)
+    return ssh
+
+
+def stage_first_boot_secrets(root, staged):
+    """Move a staged Tailscale key into the target for its single first-boot use."""
+    source = staged / 'tailscale-authkey'
+    if not source.is_file():
+        return False
+    write_file(root / FIRST_BOOT / 'tailscale-authkey', source.read_text(), 0o600, 0o700)
+    os.chmod(root / FIRST_BOOT, 0o700)
+    source.unlink()
+    return True
+
+
+def other_systems_in_menu(root):
+    """Whether grub2-mkconfig's os-prober step added another system's entry."""
+    try:
+        text = (root / 'boot/grub2/grub.cfg').read_text(errors='replace')
+    except OSError:
+        return False
+    block = OS_PROBER_BLOCK.search(text)
+    return bool(block and re.search(r'^\s*menuentry ', block.group(1), re.MULTILINE))
+
+
+def show_boot_menu(root, run=subprocess.run):
+    # A hidden menu would leave the other system reachable only through the
+    # firmware. Fedora's grubenv flag is per installation, so clear it here.
+    run(['chroot', str(root), 'grub2-editenv', '-', 'unset', 'menu_auto_hide'], check=False,
+        capture_output=True, timeout=60)
+
+
+def finalize(root, policy, encrypted, staged=STAGED, run=subprocess.run):
     account = policy.get('account', {})
+    oem = account.get('oem', False)
+    if type(oem) is not bool:
+        raise RuntimeError('Installation policy does not name a valid new-owner choice.')
     username = account.get('username', '')
-    if not re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}', username):
+    if oem:
+        if username or desktop_accounts(root):
+            raise RuntimeError('A new-owner installation must not contain an account yet.')
+    elif not re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}', username):
         raise RuntimeError('Installation policy does not name a valid account.')
     if not isinstance(account.get('encrypted'), bool) or not isinstance(encrypted, bool):
         raise RuntimeError('Installation policy does not name a valid encryption choice.')
     if type(account.get('passwordless_wheel', False)) is not bool:
         raise RuntimeError('Installation policy does not name a valid sudo choice.')
     passwordless_wheel = account.get('passwordless_wheel', False)
-    users = [line.split(':') for line in (root / 'etc/passwd').read_text().splitlines()]
-    if not any(row[0] == username and 1000 <= int(row[2]) < 65534 for row in users):
+    if not oem and not any(row[0] == username for row in desktop_accounts(root)):
         raise RuntimeError('The installed administrator account is missing.')
     root_entry = next((line.split(':')[1] for line in (root / 'etc/shadow').read_text().splitlines() if line.startswith('root:')), '')
     if not root_entry.startswith(('!', '*')):
         raise RuntimeError('The root account was not locked by Anaconda.')
     if account.get('encrypted') and not encrypted:
         raise RuntimeError('The requested encrypted root could not be verified; automatic login was not enabled.')
-    autologin = account['encrypted'] and encrypted
+    autologin = account['encrypted'] and encrypted and not oem
     path = root / 'etc/cybexos/login.json'
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({'version': 1, 'user': username,
                                'autologin': autologin, 'live': False}) + '\n')
     path.chmod(0o644)
-    record_install_choices(root, username, autologin, passwordless_wheel)
-    apply_sudo_policy(root, passwordless_wheel)
+    if oem:
+        # The new-owner setup reads this before the first login; it creates the
+        # account, records config.yml and applies the sudo choice, then removes it.
+        write_file(root / 'etc/cybexos/oem.json',
+                   json.dumps({'version': 1, 'passwordless_wheel': passwordless_wheel}) + '\n', 0o644)
+        apply_sudo_policy(root, False)
+    else:
+        record_install_choices(root, username, autologin, passwordless_wheel)
+        apply_sudo_policy(root, passwordless_wheel)
+        keys = account.get('ssh_authorized_keys') or []
+        if keys:
+            install_authorized_keys(root, username, keys)
+        if account.get('ssh_server') is True:
+            run(['systemctl', f'--root={root}', 'enable', 'sshd.service'], check=True,
+                capture_output=True, timeout=60)
     # The prepared live /etc/sddm.conf can be copied with the live filesystem.
     # The installed boot must regenerate it from its own verified policy.
     (root / 'etc/sddm.conf').unlink(missing_ok=True)
     (root / 'run/cybexos-live-session').unlink(missing_ok=True)
     (root / 'var/lib/sddm/state.conf').unlink(missing_ok=True)
+    tailscale = stage_first_boot_secrets(root, staged)
+    alongside = policy.get('layout', {}).get('mode') == 'alongside'
+    if alongside:
+        show_boot_menu(root, run)
+    # The first boot takes the factory recovery point that `cybex factory-reset`
+    # restores, before any login and after moving the key above out of the disk.
+    write_file(root / 'var/lib/cybexos/factory-point.pending', '{"version": 1}\n', 0o644)
     record = root / 'etc/cybexos/installation.json'
     record.parent.mkdir(parents=True, exist_ok=True)
-    record.write_text(json.dumps({'username': username, 'encrypted': encrypted,
-                                 'autologin': autologin,
-                                 'passwordless_wheel': passwordless_wheel,
-                                 'passwordsInitiallyShared': True,
-                                 'keyring': 'encrypted-boot-passphrase-or-prompt'}) + '\n')
+    details = {'username': username, 'encrypted': encrypted,
+               'autologin': autologin,
+               'passwordless_wheel': passwordless_wheel,
+               'passwordsInitiallyShared': not oem and not account.get('unattended', False),
+               'keyring': 'encrypted-boot-passphrase-or-prompt',
+               'oem': oem, 'unattended': account.get('unattended', False) is True,
+               'layout': 'alongside' if alongside else 'erase', 'tailscaleEnrollment': tailscale}
+    if alongside:
+        details['otherSystemsInBootMenu'] = other_systems_in_menu(root)
+    record.write_text(json.dumps(details) + '\n')
     record.chmod(0o644)
 
 
-def main():
+def main(argv=None):
+    arguments = sys.argv[1:] if argv is None else argv
+    if arguments not in ([], ['--stage']):
+        raise SystemExit('Usage: cybexos-installer-target [--stage]')
     if os.geteuid() != 0:
         raise SystemExit('Target finalization requires root.')
     root = Path('/mnt/sysroot')
-    policy_file = Path('/run/cybexos-installer/state.json')
-    if not policy_file.exists():
+    if not STATE.exists():
         return  # Stock Advanced installation retains the stock login policy.
-    policy = json.loads(policy_file.read_text())
+    policy = json.loads(STATE.read_text())
     if policy.get('phase') != 'installing':
         return
+    if arguments == ['--stage']:
+        stage(root, policy)
+        return
     finalize(root, policy, root_is_encrypted(root))
-    subprocess.run(['chroot', str(root), 'restorecon', '-RF', '/etc/cybexos'], check=True)
+    username = policy.get('account', {}).get('username', '')
+    labelled = ['/etc/cybexos', '/var/lib/cybexos']
+    if username and (root / 'home' / username / '.ssh').is_dir():
+        labelled.append(f'/home/{username}/.ssh')
+    subprocess.run(['chroot', str(root), 'restorecon', '-RF', *labelled], check=True)
 
 
 if __name__ == '__main__':

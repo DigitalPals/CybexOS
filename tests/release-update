@@ -49,6 +49,7 @@ printf '{}\n' >"$fixture/empty.json"
 release_json() {
   jq -n --arg digest "sha256:$digest" --argjson immutable "$1" \
     '{tag_name:"v1.2.3",draft:false,prerelease:false,immutable:$immutable,
+      body:"## What'"'"'s Changed\n* Show what an update changes by @john in https://github.com/example/cybexos/pull/7",
       assets:[{name:"cybexos-1.2.3.tar.zst",
       browser_download_url:"https://example.invalid/release.tar.zst",digest:$digest},
       {name:"cybexos-1.2.3.tar.zst.sigstore.jsonl",
@@ -213,6 +214,18 @@ check=$($updater --check --json)
 [[ $(jq -r .availableVersion <<<"$check") == 1.2.3 ]]
 [[ $(jq -r .status <<<"$check") == available ]]
 [[ $(jq -r .projectError <<<"$check") == '' ]]
+# The available release's notes travel with the check for the Updates view.
+jq -e '.releaseNotes | startswith("## What'"'"'s Changed\n* Show what an update changes")' \
+  <<<"$check" >/dev/null
+# They are bounded, and anything but text is no notes.
+jq --arg notes "$(head -c 9000 /dev/zero | tr '\0' x)" '.body = $notes' \
+  "$fixture/release.json" >"$fixture/release-notes.json"
+mv -- "$fixture/release-notes.json" "$fixture/release.json"
+[[ $($updater --check --json | jq '.releaseNotes | length') -eq 8000 ]]
+jq '.body = {"text": "not a string"}' "$fixture/release.json" >"$fixture/release-notes.json"
+mv -- "$fixture/release-notes.json" "$fixture/release.json"
+[[ $($updater --check --json | jq -r .releaseNotes) == '' ]]
+release_json true
 
 jq '.tag_name = "v01.2.3"' "$fixture/release.json" >"$fixture/release-invalid.json"
 mv -- "$fixture/release-invalid.json" "$fixture/release.json"
@@ -483,7 +496,8 @@ no_stage
 
 # The beta channel has no release while nothing is published as a prerelease.
 printf '[]\n' >"$MOCK_RELEASE_LIST"
-jq -e '.status == "no-release" and .channel == "beta" and .projectError == ""' \
+jq -e '.status == "no-release" and .channel == "beta" and .projectError == ""
+  and .releaseNotes == ""' \
   <<<"$($updater --check --json --channel beta)" >/dev/null
 jq '[., (. + {tag_name:"v1.2.4"})]' "$fixture/release.json" >"$MOCK_RELEASE_LIST"
 jq -e '.status == "no-release"' <<<"$($updater --check --json --channel beta)" >/dev/null

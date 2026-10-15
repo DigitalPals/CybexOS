@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -14,7 +15,7 @@ const template = path.join(repoRoot, "roles/desktop/templates/hypridle.conf.j2")
 const action = "/usr/local/libexec/cybexos-session-action";
 
 function read(relative) {
-    return fs.readFileSync(path.join(shellDir, relative), "utf8");
+    return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
 function scratch(t) {
@@ -52,7 +53,7 @@ test("idle timeouts default to the vendor hypridle values and validate choices",
 });
 
 test("the generator accepts exactly the shell's idle choices", () => {
-    const source = fs.readFileSync(generator, "utf8");
+    const source = untranslated(fs.readFileSync(generator, "utf8"));
     const tuple = values => "(" + values.join(", ") + ")";
     assert.ok(source.includes(`"idleLockMins": ${tuple(H.IDLE_LOCK_MINS)}`));
     assert.ok(source.includes(`"idleScreenOffMins": ${tuple(H.IDLE_SCREEN_OFF_MINS)}`));
@@ -74,7 +75,7 @@ function listeners(output) {
 }
 
 test("default settings render the vendor hypridle.conf byte for byte", t => {
-    const vendor = fs.readFileSync(template, "utf8");
+    const vendor = untranslated(fs.readFileSync(template, "utf8"));
     assert.equal(render(t, undefined), vendor);
     assert.equal(render(t, {}), vendor);
     assert.equal(render(t, "[1, 2]"), vendor);
@@ -144,7 +145,7 @@ function resolverFixture(t) {
     const hypridle = path.join(root, "hypridle");
     fs.writeFileSync(hypridle, "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\"\n", { mode: 0o755 });
     const script = path.join(root, "cybexos-runtime");
-    fs.writeFileSync(script, fs.readFileSync(resolver, "utf8")
+    fs.writeFileSync(script, untranslated(fs.readFileSync(resolver, "utf8"))
         .replace("exec /usr/bin/hypridle", `exec ${hypridle}`));
     return {
         config: path.join(config, "cybexos"),
@@ -167,7 +168,7 @@ test("the runtime resolver starts hypridle with the rendered shell timeouts", t 
     fs.writeFileSync(path.join(f.config, "shell.json"), JSON.stringify({ idleLockMins: 15 }));
     const started = f.exec();
     assert.equal(started.config, path.join(f.run, "cybexos/hypridle.conf"));
-    assert.match(fs.readFileSync(started.config, "utf8"), /timeout = 900\n/);
+    assert.match(untranslated(fs.readFileSync(started.config, "utf8")), /timeout = 900\n/);
 });
 
 test("a user hypridle.conf wins and a failed render falls back to the vendor file", t => {

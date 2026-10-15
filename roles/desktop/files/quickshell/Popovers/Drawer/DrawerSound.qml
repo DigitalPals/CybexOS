@@ -213,8 +213,8 @@ Column {
                 }
 
                 Accessible.role: Accessible.Button
-                Accessible.name: "Switch output to "
-                    + AudioHelpers.sinkLabel(sinkRow.modelData)
+                Accessible.name: I18n.format("Switch output to %1",
+                    [AudioHelpers.sinkLabel(sinkRow.modelData)])
             }
         }
 
@@ -284,7 +284,7 @@ Column {
 
         SectionLabel {
             width: parent.width
-            text: "MICROPHONE"
+            text: I18n.tr("MICROPHONE")
             detail: Audio.sourceMuted ? "muted" : Audio.sourceVolume + ""
         }
 
@@ -363,7 +363,7 @@ Column {
 
         SectionLabel {
             width: parent.width
-            text: "APPS"
+            text: I18n.tr("APPS")
             detail: String(root.readyStreams.length)
         }
 
@@ -434,7 +434,7 @@ Column {
     DrawerFooter {
         visible: root.showSettingsAction
         info: "PipeWire"
-        actionText: "Sound settings"
+        actionText: I18n.tr("Sound settings")
         onActionClicked: {
             Settings.showPanel("sound");
         }

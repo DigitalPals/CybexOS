@@ -49,7 +49,7 @@ Column {
 
     SettingsSubsection {
         width: parent.width
-        title: "Weather location"
+        title: I18n.tr("Weather location")
         spacing: Theme.settingsContentSpacing
         insetContent: true
 
@@ -61,9 +61,9 @@ Column {
                 id: city
                 objectName: "weatherCitySearch"
                 width: Math.max(0, parent.width - searchButton.width - parent.spacing)
-                placeholderText: "City name, e.g. Amsterdam"
-                Accessible.name: "Search weather location by city"
-                Accessible.description: "Use Up and Down to choose a result, then Enter to apply it."
+                placeholderText: I18n.tr("City name, e.g. Amsterdam")
+                Accessible.name: I18n.tr("Search weather location by city")
+                Accessible.description: I18n.tr("Use Up and Down to choose a result, then Enter to apply it.")
                 maximumLength: 160
                 invalid: lookup.error !== ""
                 onTextEdited: {
@@ -183,11 +183,11 @@ Column {
             width: parent.width
             spacing: Theme.controlSpacing
             SettingsAction {
-                text: root.manual ? "Hide coordinates" : "Edit coordinates"
+                text: root.manual ? I18n.tr("Hide coordinates") : I18n.tr("Edit coordinates")
                 onTriggered: root.manual = !root.manual
             }
             SettingsAction {
-                text: "Open-Meteo / GeoNames"
+                text: I18n.tr("Open-Meteo / GeoNames")
                 onTriggered: Qt.openUrlExternally("https://open-meteo.com/en/docs/geocoding-api")
             }
         }
@@ -200,7 +200,7 @@ Column {
 
         SettingsTextRow {
             width: parent.width
-            label: "Place label"
+            label: I18n.tr("Place label")
             value: root.saved.place
             dirty: root.saved.place !== Settings.defaults.modOpts.weather.place
             onCommitted: text => Settings.setModuleOption("weather", "place", text)
@@ -208,7 +208,7 @@ Column {
         }
         SettingsTextRow {
             width: parent.width
-            label: "Latitude"
+            label: I18n.tr("Latitude")
             numeric: true
             value: String(root.saved.lat)
             dirty: root.saved.lat !== Settings.defaults.modOpts.weather.lat
@@ -220,7 +220,7 @@ Column {
         }
         SettingsTextRow {
             width: parent.width
-            label: "Longitude"
+            label: I18n.tr("Longitude")
             numeric: true
             value: String(root.saved.lon)
             dirty: root.saved.lon !== Settings.defaults.modOpts.weather.lon

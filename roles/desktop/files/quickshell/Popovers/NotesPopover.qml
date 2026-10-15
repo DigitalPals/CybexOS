@@ -353,12 +353,12 @@ Surface {
             ActionButton {
                 visible: Notes.error !== ""
                 activeFocusOnTab: true
-                label: "Retry"
+                label: I18n.tr("Retry")
                 hPadding: 14
                 tint: Theme.redText
                 fill: Theme.redBgSoft
                 Accessible.role: Accessible.Button
-                Accessible.name: "Retry saving notes"
+                Accessible.name: I18n.tr("Retry saving notes")
                 onTriggered: {
                     root.parkFocus();
                     Notes.retrySave();
@@ -369,12 +369,12 @@ Surface {
             ActionButton {
                 visible: Notes.undoAvailable
                 activeFocusOnTab: true
-                label: "Undo"
+                label: I18n.tr("Undo")
                 hPadding: 14
                 tint: Theme.accent
                 fill: Theme.accentBgSoft
                 Accessible.role: Accessible.Button
-                Accessible.name: "Undo note deletion"
+                Accessible.name: I18n.tr("Undo note deletion")
                 onTriggered: {
                     root.parkFocus();
                     Notes.undoDelete();
@@ -415,7 +415,7 @@ Surface {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Notes"
+                        text: I18n.tr("Notes")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.heading
                         font.weight: Theme.weightBold
@@ -427,14 +427,14 @@ Surface {
                     id: addButton
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    label: "Add"
+                    label: I18n.tr("Add")
                     hPadding: 18
                     tint: Theme.accent
                     fill: Theme.accentBgSoft
                     enabled: Notes.ready
                     activeFocusOnTab: enabled
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Add note"
+                    Accessible.name: I18n.tr("Add note")
                     onTriggered: root.beginNew()
                 }
             }
@@ -453,8 +453,8 @@ Surface {
                         - (overviewStatus.visible
                             ? overviewStatus.height + overviewColumn.spacing : 0))) : 0
                 Accessible.role: Accessible.StaticText
-                Accessible.name: "No notes yet"
-                Accessible.description: "Use Add to start a note"
+                Accessible.name: I18n.tr("No notes yet")
+                Accessible.description: I18n.tr("Use Add to start a note")
 
                 Column {
                     anchors.centerIn: parent
@@ -464,7 +464,7 @@ Surface {
                     Text {
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
-                        text: "No notes yet"
+                        text: I18n.tr("No notes yet")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.primary
                         font.weight: Theme.weightSemibold
@@ -474,7 +474,7 @@ Surface {
                     Text {
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
-                        text: "Use Add to start a note."
+                        text: I18n.tr("Use Add to start a note.")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.secondary
                         color: Theme.textFaint
@@ -683,13 +683,13 @@ Surface {
                     id: backButton
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    label: "Back"
+                    label: I18n.tr("Back")
                     hPadding: 16
                     fill: "transparent"
                     tint: Theme.textMid
                     activeFocusOnTab: true
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Back to notes"
+                    Accessible.name: I18n.tr("Back to notes")
                     KeyNavigation.tab: doneButton
                     KeyNavigation.backtab: deleteButton
                     Keys.onPressed: event => {
@@ -721,13 +721,13 @@ Surface {
                     id: doneButton
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    label: "Done"
+                    label: I18n.tr("Done")
                     hPadding: 16
                     tint: Theme.accent
                     fill: Theme.accentBgSoft
                     activeFocusOnTab: true
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Done editing note"
+                    Accessible.name: I18n.tr("Done editing note")
                     KeyNavigation.tab: titleEdit
                     KeyNavigation.backtab: backButton
                     Keys.onPressed: event => {
@@ -800,8 +800,8 @@ Surface {
                             selectedTextColor: Theme.textHi
                             clip: true
                             Accessible.role: Accessible.EditableText
-                            Accessible.name: "Note title"
-                            Accessible.description: "Editable plain-text title"
+                            Accessible.name: I18n.tr("Note title")
+                            Accessible.description: I18n.tr("Editable plain-text title")
                             KeyNavigation.tab: titleAction.visible
                                 ? titleAction : noteEdit
                             KeyNavigation.backtab: doneButton
@@ -818,7 +818,7 @@ Surface {
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: titleEdit.text === ""
-                                text: "Title"
+                                text: I18n.tr("Title")
                                 font: titleEdit.font
                                 color: Theme.textFaint
                             }
@@ -924,7 +924,7 @@ Surface {
                         Accessible.role: Accessible.EditableText
                         Accessible.name: root.editingId === ""
                             ? "New note body" : "Edit note body"
-                        Accessible.description: "Markdown note"
+                        Accessible.description: I18n.tr("Markdown note")
                         KeyNavigation.tab: boldButton
                         KeyNavigation.backtab: titleAction.visible
                             ? titleAction : titleEdit
@@ -965,7 +965,7 @@ Surface {
                             anchors.left: parent.left
                             anchors.top: parent.top
                             visible: noteEdit.text === ""
-                            text: "Write a Markdown note…"
+                            text: I18n.tr("Write a Markdown note…")
                             font: noteEdit.font
                             color: Theme.textFaint
                         }

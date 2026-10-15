@@ -353,7 +353,13 @@ def main():
                                   provenance='/usr/share/cybexos/build.json')
             atomic_json(args.output / 'outcomes-fresh.json', fresh)
             prepare_saved_choices(vm, password, root_script)
-            root_script(vm, '/usr/libexec/cybexos-configure-installed --user qualification\n', password, timeout=1800)
+            try:
+                root_script(vm, '/usr/libexec/cybexos-configure-installed --user qualification\n', password, timeout=1800)
+            except subprocess.CalledProcessError as error:
+                # Without its output a failed reapply cannot be diagnosed once
+                # the disposable guest is gone. Bounded and redacted, as above.
+                details = ((error.stdout or '') + (error.stderr or '')).replace(password, '[redacted]')[-3000:].strip()
+                raise RuntimeError(f'Reapplying the installed policy failed: {details}') from error
             poweroff_installed(vm, password)
             boot_installed(vm, password, encrypted)
             verify_saved_choices(vm, password, root_script)

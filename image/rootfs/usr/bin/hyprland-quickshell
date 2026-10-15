@@ -25,13 +25,28 @@ CYBEXOS_KEYBOARD_LAYOUT=$(keyboard_property X11Layout) || true
 CYBEXOS_KEYBOARD_VARIANT=$(keyboard_property X11Variant) || true
 export CYBEXOS_KEYBOARD_LAYOUT=${CYBEXOS_KEYBOARD_LAYOUT:-us}
 export CYBEXOS_KEYBOARD_VARIANT
+# NVIDIA session variables, written by the NVIDIA hardware role, apply only
+# while the proprietary DRM driver is loaded: a boot that fell back to
+# nouveau must not inherit them. Read as data, never sourced.
+nvidia_environment=()
+if [[ -d /sys/module/nvidia_drm && -r /etc/cybexos/nvidia-session.env ]]; then
+  while IFS='=' read -r name value; do
+    case $name in
+      LIBVA_DRIVER_NAME|__GLX_VENDOR_LIBRARY_NAME|NVD_BACKEND)
+        [[ $value =~ ^[A-Za-z0-9_.-]+$ ]] || continue
+        export "$name=$value"
+        nvidia_environment+=("$name")
+        ;;
+    esac
+  done </etc/cybexos/nvidia-session.env
+fi
 mkdir -p "${XDG_STATE_HOME:-$HOME/.local/state}/hyprland"
 systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP \
   DESKTOP_SESSION DESKTOP_SHELL PATH XDG_DATA_DIRS QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND XMODIFIERS \
-  CYBEXOS_XPS_2026
+  CYBEXOS_XPS_2026 "${nvidia_environment[@]}"
 dbus-update-activation-environment --systemd XDG_SESSION_TYPE XDG_CURRENT_DESKTOP \
   XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL PATH XDG_DATA_DIRS QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND XMODIFIERS \
-  CYBEXOS_XPS_2026
+  CYBEXOS_XPS_2026 "${nvidia_environment[@]}"
 trap 'systemctl --user stop hyprland-session.target >/dev/null 2>&1 || true' EXIT
 # Launch once: compositor failure ends this login and returns to SDDM's
 # password prompt. The watchdog's automatic safe-mode restart bypasses it.

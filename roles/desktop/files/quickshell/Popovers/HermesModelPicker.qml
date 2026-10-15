@@ -230,7 +230,7 @@ Item {
                 selectionColor: HermesTheme.accentSoft
                 selectedTextColor: HermesTheme.textPrimary
                 Accessible.role: Accessible.EditableText
-                Accessible.name: "Search Hermes models"
+                Accessible.name: I18n.tr("Search Hermes models")
 
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Escape) {
@@ -251,7 +251,7 @@ Item {
 
                 Text {
                     visible: searchInput.text === ""
-                    text: "Search models…"
+                    text: I18n.tr("Search models…")
                     font: searchInput.font
                     color: HermesTheme.textFaint
                 }
@@ -284,7 +284,7 @@ Item {
                     height: 44
                     verticalAlignment: Text.AlignVCenter
                     horizontalAlignment: Text.AlignHCenter
-                    text: "No models found"
+                    text: I18n.tr("No models found")
                     font.family: HermesTheme.fontUi
                     font.pixelSize: Theme.typography.secondary
                     color: HermesTheme.textFaint

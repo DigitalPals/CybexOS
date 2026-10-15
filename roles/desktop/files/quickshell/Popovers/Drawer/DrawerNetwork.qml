@@ -5,8 +5,8 @@ import "../../Common/NetworkHelpers.js" as NetworkHelpers
 import ".."
 
 // The drawer's Network tab: the active Wi-Fi connection and its vitals, the
-// in-range networks, the Tailscale row, the DNS selector, and
-// the live throughput metrics. Share and Speed test hand off to the network
+// in-range networks, the Tailscale row, a VPN switch when a VPN profile
+// exists, the DNS selector, and the live throughput metrics. Share and Speed test hand off to the network
 // overlay, which already owns those two flows.
 Column {
     id: root
@@ -334,7 +334,7 @@ Column {
                         Text {
                             visible: passwordInput.text === ""
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "Password"
+                            text: I18n.tr("Password")
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.typography.control
                             color: Theme.textFaint
@@ -346,7 +346,7 @@ Column {
                         anchors.right: parent.right
                         anchors.rightMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Connect"
+                        text: I18n.tr("Connect")
                         onClicked: root.submitPassword(passwordInput.text)
                     }
                 }
@@ -367,7 +367,7 @@ Column {
         }
     }
 
-    // ---- tailscale · dns ------------------------------------
+    // ---- tailscale · vpn · dns ------------------------------
     Column {
         width: parent.width
         spacing: 2
@@ -391,7 +391,7 @@ Column {
                 anchors.left: tsMark.right
                 anchors.leftMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Tailscale"
+                text: I18n.tr("Tailscale")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
@@ -434,6 +434,86 @@ Column {
             onClicked: Tailscale.showSetup()
         }
 
+        // A VPN switch only for people who have a VPN profile: the one in
+        // use, else the one used last. Every profile, and import, is in
+        // Settings -> Network.
+        Item {
+            id: vpnRow
+
+            readonly property var vpn: NetworkHelpers.preferredVpn(NetworkDetails.vpnProfiles)
+            readonly property string uuid: vpn ? vpn.uuid : ""
+            readonly property string pending: uuid !== "" && NetworkDetails.vpnBusyUuid === uuid
+                ? NetworkDetails.vpnBusyAction : ""
+            readonly property string failure: uuid !== "" ? NetworkDetails.vpnError(uuid) : ""
+
+            visible: vpn !== null
+            width: parent.width
+            height: 40
+
+            Sym {
+                id: vpnMark
+                anchors.left: parent.left
+                anchors.leftMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                name: "security"
+                size: 16
+                color: NetworkHelpers.isVpnActive(vpnRow.vpn) ? Theme.accentText : Theme.textMid
+            }
+
+            Text {
+                id: vpnName
+                anchors.left: vpnMark.right
+                anchors.leftMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, parent.width * 0.5)
+                text: vpnRow.vpn ? vpnRow.vpn.name : ""
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.control
+                font.weight: Theme.weightMedium
+                color: Theme.textHi
+                elide: Text.ElideRight
+            }
+
+            Text {
+                anchors.left: vpnName.right
+                anchors.leftMargin: 10
+                anchors.right: vpnToggle.left
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                horizontalAlignment: Text.AlignRight
+                text: NetworkHelpers.vpnStateText(vpnRow.vpn, vpnRow.pending)
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                color: Theme.textFaint
+                elide: Text.ElideRight
+            }
+
+            Toggle {
+                id: vpnToggle
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                metrics: Theme.switchCompact
+                checked: vpnRow.pending !== "" ? vpnRow.pending === "connect"
+                    : NetworkHelpers.isVpnActive(vpnRow.vpn)
+                enabled: NetworkDetails.vpnBusyUuid === ""
+                accessibleName: "VPN " + vpnName.text
+                onToggled: value => NetworkDetails.runVpnAction({
+                    action: value ? "connect" : "disconnect", uuid: vpnRow.uuid
+                })
+            }
+        }
+
+        Text {
+            visible: vpnRow.visible && vpnRow.failure !== ""
+            width: parent.width - 16
+            x: 8
+            text: vpnRow.failure
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.typography.metadata
+            color: Theme.redText
+            wrapMode: Text.WordWrap
+        }
+
         Item {
             width: parent.width
             height: 40
@@ -452,7 +532,7 @@ Column {
                 anchors.left: dnsMark.right
                 anchors.leftMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: "DNS"
+                text: I18n.tr("DNS")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
@@ -548,7 +628,7 @@ Column {
                     anchors.left: parent.left
                     anchors.leftMargin: 12
                     anchors.verticalCenter: parent.verticalCenter
-                    text: metricCell.modelData
+                    text: I18n.tr(metricCell.modelData)
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.metadata
                     color: Theme.textFaint
@@ -577,8 +657,8 @@ Column {
             const wired = EthernetState.connected ? "Ethernet" : "no Ethernet";
             return address !== "" ? address + " · " + wired : wired;
         }
-        secondaryText: "Share"
-        actionText: "Speed test"
+        secondaryText: I18n.tr("Share")
+        actionText: I18n.tr("Speed test")
         onSecondaryClicked: {
             const iface = NetworkDetails.activeWifiInterface;
             Popouts.close();

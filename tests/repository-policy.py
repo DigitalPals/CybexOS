@@ -179,25 +179,35 @@ def verify_dependency_policy(values: dict) -> None:
     assert 'sha256sum "cybexos-$version.tar.zst" >SHA256SUMS' in release_workflow
     assert 'sha256sum "dist/cybexos-$version.tar.zst"' not in release_workflow
 
+    # The required job installs its environment through the local action it
+    # shares with the non-blocking Fedora preview workflow.
     workflow = (ROOT / ".github/workflows/tests.yml").read_text()
+    environment_action = ".github/actions/fedora-source-environment"
+    assert f"uses: ./{environment_action}\n" in workflow
+    environment = (ROOT / environment_action / "action.yml").read_text()
     for package, purpose in (
         ("jq", "durable updater fixture"),
         ("dbus-daemon", "isolated QML runtime fixture"),
         ("luajit", "Hyprland Lua policy fixtures"),
         ("python3-websockets", "Hermes bridge protocol fixtures"),
     ):
-        assert re.search(rf"^\s+{re.escape(package)} \\$", workflow, re.MULTILINE), (
+        assert re.search(rf"^\s+{re.escape(package)} \\$", environment, re.MULTILINE), (
             f"the clean Fedora CI container must explicitly install {package} "
             f"for the {purpose}"
         )
     workflow_sources = [
-        path.read_text() for path in sorted((ROOT / ".github/workflows").glob("*.yml"))
+        path.read_text()
+        for path in sorted((ROOT / ".github").glob("workflows/*.yml"))
+        + sorted((ROOT / ".github").glob("actions/*/action.yml"))
     ]
     action_refs = re.findall(
-        r"^\s*- uses:\s*([^\s#]+)", "\n".join(workflow_sources), re.MULTILINE
+        r"^\s*(?:- )?uses:\s*([^\s#]+)", "\n".join(workflow_sources), re.MULTILINE
     )
     assert action_refs, "CI workflow has no externally reviewed actions"
     for action_ref in action_refs:
+        # Local actions and reusable workflows are reviewed with this tree.
+        if action_ref.startswith("./"):
+            continue
         assert re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", action_ref), (
             f"CI action is not pinned to a full commit: {action_ref}"
         )

@@ -9,6 +9,7 @@ DrawerNotifications DrawerNotifications.qml
 DrawerOverview DrawerOverview.qml
 DrawerPopover DrawerPopover.qml
 DrawerPower DrawerPower.qml
+DrawerProcesses DrawerProcesses.qml
 DrawerSliderRow DrawerSliderRow.qml
 DrawerSound DrawerSound.qml
 DrawerSystemHero DrawerSystemHero.qml

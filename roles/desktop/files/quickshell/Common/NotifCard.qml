@@ -257,8 +257,9 @@ Rectangle {
                         border.width: activeFocus ? 1 : 0
                         border.color: Theme.accentText
                         Accessible.role: Accessible.Button
-                        Accessible.name: "Dismiss notification from "
-                            + (card.entry.displayAppName || "this app")
+                        Accessible.name: card.entry.displayAppName
+                            ? I18n.format("Dismiss notification from %1", [card.entry.displayAppName])
+                            : I18n.tr("Dismiss notification from this app")
                         Accessible.onPressAction: card.closeRequested()
 
                         Keys.onPressed: event => {

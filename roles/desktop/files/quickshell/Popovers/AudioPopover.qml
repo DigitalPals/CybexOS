@@ -422,7 +422,7 @@ Surface {
         activeFocusOnTab: root.inputDevicesOpen && visible
         Accessible.role: Accessible.RadioButton
         Accessible.name: "Use " + AudioHelpers.sourceLabel(sourceNode)
-        Accessible.description: isDefault ? "Current input" : "Input device"
+        Accessible.description: isDefault ? I18n.tr("Current input") : I18n.tr("Input device")
         Accessible.checked: isDefault
         Accessible.onPressAction: root.selectInput(sourceNode)
         border.width: activeFocus ? 1 : 0
@@ -650,7 +650,7 @@ Surface {
 
                         Text {
                             width: parent.width
-                            text: "Audio"
+                            text: I18n.tr("Audio")
                             elide: Text.ElideRight
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.typography.heading
@@ -692,7 +692,7 @@ Surface {
 
                     SectionLabel {
                         width: parent.width
-                        text: "OUTPUT"
+                        text: I18n.tr("OUTPUT")
                         detail: Audio.ready ? Audio.volume + "%" : "--"
                     }
 
@@ -774,7 +774,7 @@ Surface {
 
                     SectionLabel {
                         width: parent.width
-                        text: "INPUT"
+                        text: I18n.tr("INPUT")
                         detail: Audio.sourceReady ? Audio.sourceVolume + "%" : "--"
                     }
 
@@ -826,7 +826,7 @@ Surface {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 58
-                            text: "LIVE MIC"
+                            text: I18n.tr("LIVE MIC")
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightSemibold
@@ -893,7 +893,7 @@ Surface {
 
                     SectionLabel {
                         width: parent.width
-                        text: "APPLICATIONS"
+                        text: I18n.tr("APPLICATIONS")
                         detail: root.displayStreams.length
                     }
 

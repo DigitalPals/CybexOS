@@ -23,7 +23,7 @@ test("the recording PID is published last as a verified ready marker", () => {
     assert.match(script,
         /if kill -0 "\$pid"[\s\S]*recording state was retained[\s\S]*return 2/,
         "a timed-out stop must keep its truthful active marker");
-    assert.match(script, /capture_mode=\$\{1:-region\}/,
+    assert.match(script, /^capture_mode=region$/m,
         "existing keybindings retain region capture as their default");
     assert.match(script, /slurp -o >"\$selection_file"/,
         "screen capture restricts selection to an output");
@@ -41,6 +41,10 @@ test("the recording indicator validates a marker against the live process", () =
         "PID identity must include process start time to reject reuse");
     assert.match(recorder, /path: root\.stateDir \+ "\/wf-recorder\.start-ticks"/);
     assert.match(recorder, /\["region", "window", "screen"\]/);
+    // gpu-screen-recorder, preferred on NVIDIA when installed, has its /proc
+    // comm cut to 15 characters; the script's stop path agrees.
+    assert.match(recorder,
+        /recorderName === "wf-recorder" \|\| recorderName === "gpu-screen-reco"/);
     assert.match(recorder, /Quickshell\.execDetached\(\[root\.script, selected\]\)/,
         "the configured capture type is passed as one safe argv item");
     assert.match(recorder, /root\.recorderName = "";[\s\S]*root\.recomputeActive\(\)/,

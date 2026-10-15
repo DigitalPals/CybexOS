@@ -289,7 +289,7 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Arrangement"
+            title: I18n.tr("Arrangement")
 
             DisplayArrangement {
                 width: parent.width
@@ -320,9 +320,9 @@ SettingsPage {
             }
             SwitchRow {
                 width: parent.width
-                label: "Use this display"
+                label: I18n.tr("Use this display")
                 checked: page.selected ? page.selected.enabled : false
-                description: "A display turned off here turns back on by itself when the displays it was turned off beside are disconnected."
+                description: I18n.tr("A display turned off here turns back on by itself when the displays it was turned off beside are disconnected.")
                 disabledReason: page.selected && page.selected.enabled
                     && !Displays.canDisable(page.drafts, page.selected.key)
                     ? "At least one display must stay on." : ""
@@ -331,7 +331,7 @@ SettingsPage {
             SystemChoice {
                 width: parent.width
                 visible: page.showRows
-                label: "Resolution"
+                label: I18n.tr("Resolution")
                 choices: page.selected ? [{ value: "preferred",
                     label: "Preferred (" + Displays.sizeLabel(page.selected.liveWidth, page.selected.liveHeight) + ")" }]
                     .concat(page.groups.map(group => ({ value: group.id, label: group.label }))) : []
@@ -342,7 +342,7 @@ SettingsPage {
             SystemChoice {
                 width: parent.width
                 visible: page.showRows && page.selectedGroup !== null
-                label: "Refresh rate"
+                label: I18n.tr("Refresh rate")
                 choices: page.selectedGroup ? page.selectedGroup.refreshes.map(rate =>
                     ({ value: rate, label: Displays.refreshLabel(rate) })) : []
                 current: page.selectedGroup ? page.selected.mode.refresh : 0
@@ -352,7 +352,7 @@ SettingsPage {
             SystemChoice {
                 width: parent.width
                 visible: page.showRows
-                label: "Scale"
+                label: I18n.tr("Scale")
                 choices: {
                     if (!page.selected)
                         return [];
@@ -370,7 +370,7 @@ SettingsPage {
             PickerRow {
                 width: parent.width
                 visible: page.showRows
-                label: "Rotation"
+                label: I18n.tr("Rotation")
                 model: Displays.TRANSFORMS
                 current: page.selected ? page.selected.transform % 4 : 0
                 onPicked: value => page.edit(page.selected.key,
@@ -379,17 +379,17 @@ SettingsPage {
             SwitchRow {
                 width: parent.width
                 visible: page.showRows
-                label: "Flipped"
+                label: I18n.tr("Flipped")
                 checked: page.selected ? page.selected.transform >= 4 : false
-                description: "Mirrors the picture left to right"
+                description: I18n.tr("Mirrors the picture left to right")
                 onToggled: value => page.edit(page.selected.key,
                     { transform: page.selected.transform % 4 + (value ? 4 : 0) })
             }
             SystemChoice {
                 width: parent.width
                 visible: page.showRows
-                label: "Mirror"
-                choices: page.selected ? [{ value: "", label: "Off" }].concat(
+                label: I18n.tr("Mirror")
+                choices: page.selected ? [{ value: "", label: I18n.tr("Off") }].concat(
                     page.drafts.filter(draft => draft.key !== page.selected.key && draft.enabled
                         && draft.mirror === "").map(draft => ({ value: draft.key,
                             label: draft.label === draft.name ? draft.name : draft.name + " · " + draft.label }))) : []
@@ -401,15 +401,15 @@ SettingsPage {
             SystemChoice {
                 width: parent.width
                 visible: page.showRows
-                label: "Adaptive sync"
+                label: I18n.tr("Adaptive sync")
                 choices: Displays.VRR_CHOICES
                 current: page.selected ? page.selected.vrr : -1
-                hint: "Default keeps CybexOS's policy for this display. Fullscreen enables variable refresh only for fullscreen windows."
+                hint: I18n.tr("Default keeps CybexOS's policy for this display. Fullscreen enables variable refresh only for fullscreen windows.")
                 onPicked: value => page.edit(page.selected.key, { vrr: value })
             }
             SettingsHint {
                 width: parent.width
-                text: "Saved per display in ~/.config/cybexos/displays.json. Monitor rules in ~/.config/cybexos/hypr/user.lua take precedence."
+                text: I18n.tr("Saved per display in ~/.config/cybexos/displays.json. Monitor rules in ~/.config/cybexos/hypr/user.lua take precedence.")
             }
         }
 

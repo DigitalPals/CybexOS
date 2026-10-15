@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Pick a colour anywhere on screen, copy its hex value and show it.
+# Usage: color-picker
+
+set -euo pipefail
+
+if (($# > 0)); then
+  printf 'usage: color-picker\n' >&2
+  exit 2
+fi
+
+ACTION_DIR="${XDG_RUNTIME_DIR:-/tmp}/color-picker-${UID}"
+mkdir -p "$ACTION_DIR"
+chmod 0700 "$ACTION_DIR"
+exec 9>"$ACTION_DIR/action.lock"
+# A repeated key press while the picker is open is coalesced: hyprpicker owns
+# the screen until it exits, and a second one would stack over the first.
+flock -n 9 || exit 0
+
+# Escape, a right click or a failed start all leave nothing on stdout. That is
+# a cancellation, not an error worth a notification.
+output=$(hyprpicker --format=hex --no-fancy 9>&- 2>/dev/null || true)
+# hyprpicker can log around the value; take only a well-formed colour.
+color=$(printf '%s\n' "$output" | grep -E '^#[0-9A-Fa-f]{6}$' | tail -n 1 || true)
+[ -n "$color" ] || exit 0
+color=${color^^}
+
+printf '%s' "$color" | wl-copy 9>&- || exit 1
+
+command -v notify-send >/dev/null 2>&1 || exit 0
+
+# The swatch must outlive this process: the notification card loads its icon
+# later, and again whenever the notification list is reopened. Keep one file
+# per colour in the private runtime directory and prune the oldest.
+swatch="$ACTION_DIR/swatch-${color#\#}.png"
+if [ -s "$swatch" ]; then
+  touch -- "$swatch"
+else
+  temporary="$swatch.tmp.$$.png"
+  if magick -size 96x96 xc:none -fill "$color" -stroke 'rgba(255,255,255,0.35)' \
+      -strokewidth 2 -draw 'roundrectangle 4,4 91,91 20,20' "PNG32:$temporary" \
+      9>&- 2>/dev/null; then
+    mv -f -- "$temporary" "$swatch"
+  else
+    rm -f -- "$temporary"
+    swatch=""
+  fi
+fi
+mapfile -t swatches < <(find "$ACTION_DIR" -maxdepth 1 -type f -name 'swatch-*.png' \
+  -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+for stale in "${swatches[@]:24}"; do
+  rm -f -- "$stale"
+done
+
+icon=()
+[ -n "$swatch" ] && icon=(--icon="$swatch")
+notify-send --app-name="Colour picker" "${icon[@]}" \
+  "Copied $color" "Colour copied to the clipboard" 9>&- 2>/dev/null || true

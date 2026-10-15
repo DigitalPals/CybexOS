@@ -1,6 +1,7 @@
 // Instants as people read them, in local time: "Today at 19:16",
 // "Yesterday at 08:02", "Monday at 21:40", "12 Sep at 08:02", "12 Sep 2025".
-// The About page uses it for the last deploy check and for recovery points.
+// About uses it for the last deploy check; Backup & recovery for backups
+// and recovery points.
 // Pure — no Qt APIs — so the same code runs under Node in tests.
 
 var DAY_MS = 86400000;

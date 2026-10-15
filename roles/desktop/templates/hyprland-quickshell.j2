@@ -30,10 +30,26 @@ if [[ ! -f $hypr_config ]]; then
   exit 1
 fi
 
+# NVIDIA session variables, written by the NVIDIA hardware role, apply only
+# while the proprietary DRM driver is loaded: a boot that fell back to
+# nouveau must not inherit them. Read as data, never sourced.
+nvidia_environment=()
+if [[ -d /sys/module/nvidia_drm && -r /etc/cybexos/nvidia-session.env ]]; then
+  while IFS='=' read -r name value; do
+    case $name in
+      LIBVA_DRIVER_NAME|__GLX_VENDOR_LIBRARY_NAME|NVD_BACKEND)
+        [[ $value =~ ^[A-Za-z0-9_.-]+$ ]] || continue
+        export "$name=$value"
+        nvidia_environment+=("$name")
+        ;;
+    esac
+  done </etc/cybexos/nvidia-session.env
+fi
+
 systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP \
-  XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL XMODIFIERS || true
+  XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL XMODIFIERS "${nvidia_environment[@]}" || true
 dbus-update-activation-environment --systemd XDG_SESSION_TYPE \
-  XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL XMODIFIERS || true
+  XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP DESKTOP_SESSION DESKTOP_SHELL XMODIFIERS "${nvidia_environment[@]}" || true
 
 # A crashed compositor must end this login. start-hyprland's watchdog respawns
 # it inside the authenticated session, bypassing the next-login password gate.

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/DigitalPals/CybexOS/security/advisories/new
+    about: Report vulnerabilities privately. Never open a public issue or attach unredacted logs.
+  - name: Documentation
+    url: https://github.com/DigitalPals/CybexOS#readme
+    about: Installation, updates, recovery, and links to the guides in docs/.
+  - name: Operations and recovery guide
+    url: https://github.com/DigitalPals/CybexOS/blob/main/docs/operations.md
+    about: Commands, update logs, recovery points, and troubleshooting.

@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import "Common" as Common
+import "Common/SettingsHelpers.js" as SettingsHelpers
 import "Settings" as SettingsUi
 import "Popovers/Drawer" as DrawerUi
 
@@ -27,7 +28,68 @@ ShellRoot {
         console.error("LIFECYCLE_FAIL " + message);
     }
 
+    function descendants(item, predicate) {
+        const found = [];
+        for (const child of item.children) {
+            if (predicate(child))
+                found.push(child);
+            found.push(...descendants(child, predicate));
+        }
+        return found;
+    }
+
+    // The Network page's VPN and Hotspot groups against a service whose
+    // snapshot is set by hand: no helper runs, nothing reaches NetworkManager.
+    function runNetworkGroups() {
+        const service = networkServiceComponent.createObject(harness);
+        service.snapshot = {
+            vpns: [
+                { uuid: "u-office", name: "Office", type: "vpn", label: "OpenVPN", state: "activated", timestamp: 2 },
+                { uuid: "u-home", name: "home", type: "wireguard", label: "WireGuard", state: "", timestamp: 1 }
+            ],
+            hotspot: { available: true, supported: true, state: "", ssid: "Studio", uuid: "",
+                dropsWifi: true, wifiConnection: "Home" }
+        };
+        service.loaded = true;
+        const vpn = vpnGroupComponent.createObject(harness, { service: service });
+        const hotspot = hotspotGroupComponent.createObject(harness, { service: service });
+        root.check(vpn !== null, "VPN group did not construct");
+        root.check(hotspot !== null, "hotspot group did not construct");
+        if (vpn) {
+            root.check(descendants(vpn, child => child.confirming !== undefined).length === 2,
+                "VPN group did not list one row per profile");
+            root.check(descendants(vpn, child => child.accessibleName === "Connect Office"
+                && child.checked === true).length === 1, "a connected VPN's switch is not on");
+        }
+        if (hotspot) {
+            root.check(hotspot.visible, "hotspot group hid on a computer with Wi-Fi");
+            root.check(hotspot.name === "Studio", "hotspot name did not follow the saved name");
+            service.snapshot = { vpns: [], hotspot: { available: true, supported: true, ssid: "Lab" } };
+            root.check(hotspot.name === "Lab", "an untouched hotspot name did not follow a rename");
+            service.snapshot = { vpns: [], hotspot: { available: false } };
+            root.check(!hotspot.visible, "hotspot group shows without Wi-Fi");
+            hotspot.destroy();
+        }
+        if (vpn)
+            vpn.destroy();
+        service.destroy();
+    }
+
+    Component {
+        id: networkServiceComponent
+        Common.SystemSettingsBackend { domain: "network" }
+    }
+    Component {
+        id: vpnGroupComponent
+        SettingsUi.VpnGroup { width: 560 }
+    }
+    Component {
+        id: hotspotGroupComponent
+        SettingsUi.HotspotGroup { width: 560 }
+    }
+
     function runLifecycle() {
+        runNetworkGroups();
         runPolkitLifecycle();
         root.revealer = revealerComponent.createObject(harness, { reveal: false });
         root.toggle = toggleComponent.createObject(harness);
@@ -57,7 +119,45 @@ ShellRoot {
             root.action.destroy();
             root.status.destroy();
         }
+        runThemeLifecycle();
         runCommandLifecycle();
+    }
+
+    // A named theme through the real Theme, Settings and Themes singletons:
+    // `theme use` applies its palette with Undo, every floor holds, and the
+    // Appearance page builds around the Theme row.
+    function runThemeLifecycle() {
+        const theme = Common.Theme;
+        check(!theme.themePaletteActive && Qt.colorEqual(theme.background, "#1a1917"),
+            "the default look changed without a theme");
+        const palette = { mode: "dark", background: "#2e3440", surface: "#3b4252",
+            surfaceRaised: "#434c5e", text: "#eceff4", textMuted: "#d8dee9", textDim: "#4c566a",
+            red: "#bf616a", amber: "#ebcb8b", green: "#a3be8c" };
+        const answer = Common.Themes.use(JSON.stringify({ id: "nord", name: "Nord", patch: {
+            theme: "nord", themeMode: "dark", paletteMode: "fixed", accent: "#88c0d0",
+            barColorMode: "custom", barCustomHue: 220, barCustomSaturation: 16,
+            barCustomLightness: 22, themePalette: palette } }));
+        check(answer === "ok", "theme use refused a valid theme: " + answer);
+        check(theme.themePaletteActive && Qt.colorEqual(theme.background, "#2e3440")
+            && Qt.colorEqual(theme.menuBg, "#434c5e"), "the theme palette is not drawn");
+        const reference = theme.copyReferenceBg.toString();
+        check(SettingsHelpers.contrastRatio(theme.textHi.toString(), reference) >= 7,
+            "themed primary text is below 7:1");
+        for (const name of ["textMid", "textLow", "textDim", "textFaint", "redText", "amber", "ok",
+                "accentText"])
+            check(SettingsHelpers.contrastRatio(theme[name].toString(), reference) >= 4.5,
+                "themed " + name + " is below 4.5:1");
+        check(Common.Settings.undoAvailable && Common.Settings.resetLabel === "Theme",
+            "applying a theme offered no Undo");
+        check(Common.Themes.use("{\"id\": \"x\"}").indexOf("error:") === 0,
+            "theme use accepted an invalid payload");
+        const page = appearanceComponent.createObject(harness);
+        check(page !== null, "Appearance did not construct");
+        if (page)
+            page.destroy();
+        Common.Settings.undoReset();
+        check(!theme.themePaletteActive && Qt.colorEqual(theme.background, "#1a1917"),
+            "Undo did not restore the previous look");
     }
 
     property int commandStage: 0
@@ -96,7 +196,7 @@ ShellRoot {
             commandsFinished = true;
             check(commandCompletions === 5, "a command completed more than once");
             request.destroy();
-            finishLifecycle();
+            runDesktopLifecycle();
             return;
         }
         request.timeoutMs = commandStage === 2 ? 80 : 1000;
@@ -112,6 +212,78 @@ ShellRoot {
     }
 
     Component { id: requestComponent; Common.CommandRequest {} }
+
+    // The window overview's view under the real engine with no compositor:
+    // its bindings must settle on an empty desktop (only the new-workspace
+    // slot) without a TypeError, and it must tear down cleanly. Then the
+    // Top processes sampler runs the shipped helper against this machine's
+    // /proc for two samples, which is what yields CPU shares.
+    property int processPolls: 0
+
+    function runDesktopLifecycle() {
+        const screen = Quickshell.screens.length > 0 ? Quickshell.screens[0] : null;
+        if (screen !== null) {
+            const view = overviewComponent.createObject(harness,
+                { output: screen, width: 1280, height: 720 });
+            check(view !== null, "OverviewView did not construct");
+            if (view) {
+                check(view.tiles.length === 1 && view.tiles[0].isNew === true,
+                    "an empty desktop is not just the new-workspace slot");
+                check(view.layout.cells.length === 1, "the overview grid did not lay out");
+                check(view.selected === "", "an empty overview selected something");
+                view.query = "anything";
+                check(!view.anyMatch, "a filter matched windows that do not exist");
+                view.destroy();
+            }
+        }
+        const list = Common.ProcessList;
+        list.acquire();
+        check(list.watchers === 1, "ProcessList did not take the claim");
+        processPoll.start();
+    }
+
+    function finishProcessLifecycle() {
+        const list = Common.ProcessList;
+        check(list.loaded && list.error === "", "the process list did not load: " + list.error);
+        check(list.rows.length > 0 && list.rows.length <= list.limit, "the process list has no rows");
+        check(list.rows.some(row => row.cpu !== null), "a second sample gave no CPU shares");
+        list.setMode("memory");
+        const memory = list.rows.map(row => row.memory);
+        check(memory.every((value, index) => index === 0 || value <= memory[index - 1]),
+            "memory ranking is not descending");
+        list.setMode("cpu");
+        const own = list.all.find(row => list.canEnd(row));
+        if (own) {
+            list.requestEnd(own);
+            check(list.confirming !== null && list.confirming.pid === own.pid,
+                "End process did not ask first");
+            list.cancel();
+            check(list.confirming === null, "Cancel left the question armed");
+        }
+        list.release();
+        check(list.watchers === 0 && list.confirming === null && list.ending === null,
+            "releasing the last claim left state behind");
+        finishLifecycle();
+    }
+
+    Timer {
+        id: processPoll
+        interval: 100
+        repeat: true
+        onTriggered: {
+            root.processPolls++;
+            const list = Common.ProcessList;
+            if (root.processPolls < 50 && !(list.loaded && list.rows.some(row => row.cpu !== null)))
+                return;
+            stop();
+            root.finishProcessLifecycle();
+        }
+    }
+
+    Component {
+        id: overviewComponent
+        OverviewView {}
+    }
 
     function finishLifecycle() {
         // Warnings are mirrored to stderr by qs even without detailed-log
@@ -194,6 +366,32 @@ ShellRoot {
             view.flow = null;
             root.check(view.finished, "removed flow is still actionable");
         }
+        // pam_fprintd and pam_u2f announce their step without an input
+        // request; the dialog names it and hides it once the password is due.
+        const status = descendant(view, "polkitStatus");
+        root.check(status !== null, "Polkit status line is missing");
+        if (status) {
+            const cue = polkitFlow.createObject(harness);
+            view.flow = cue;
+            cue.isResponseRequired = false;
+            cue.supplementaryMessage = "Place your finger on the fingerprint reader";
+            root.check(status.text === "Touch the fingerprint reader, or wait to enter your password.",
+                "the fingerprint step is not described: " + status.text);
+            cue.supplementaryIsError = true;
+            cue.supplementaryMessage = "Failed to match fingerprint";
+            root.check(status.text === "Failed to match fingerprint", "a fingerprint mismatch is hidden");
+            cue.supplementaryIsError = false;
+            cue.supplementaryMessage = "Place your finger on the fingerprint reader";
+            root.check(status.text.startsWith("Not recognised. "), "a retried scan reads as the first");
+            cue.isResponseRequired = true;
+            root.check(status.text === "", "a finished fingerprint step speaks over the password field");
+            cue.isResponseRequired = false;
+            cue.supplementaryMessage = "Touch your security key";
+            root.check(status.text === "Touch your security key, or wait to enter your password.",
+                "the security-key step is not described: " + status.text);
+            view.flow = null;
+            cue.destroy();
+        }
         view.destroy();
         conversation.destroy();
         next.destroy();
@@ -232,6 +430,10 @@ ShellRoot {
         }
     }
 
+    Component {
+        id: appearanceComponent
+        SettingsUi.AppearancePage { width: 640; height: 1200 }
+    }
     Component {
         id: revealerComponent
         Common.Revealer {

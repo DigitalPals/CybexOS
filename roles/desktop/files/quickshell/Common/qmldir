@@ -10,10 +10,12 @@
 # resolve a registered type. qmldir.test.cjs carries both exemptions.
 
 singleton Theme Theme.qml
+singleton I18n I18n.qml
 singleton Activity Activity.qml
 singleton T3Theme T3Theme.qml
 singleton Palette Palette.qml
 singleton SystemTheme SystemTheme.qml
+singleton Themes Themes.qml
 singleton Popouts Popouts.qml
 singleton Screens Screens.qml
 singleton Launcher Launcher.qml
@@ -61,12 +63,17 @@ singleton ModelUsageHub ModelUsageHub.qml
 singleton Tailscale Tailscale.qml
 singleton Updates Updates.qml
 singleton Recorder Recorder.qml
+singleton GameMode GameMode.qml
 singleton Dictation Dictation.qml
 singleton Reminders Reminders.qml
 singleton Recovery Recovery.qml
+singleton Backup Backup.qml
 singleton Notes Notes.qml
 singleton Session Session.qml
 singleton Startup Startup.qml
+singleton Overview Overview.qml
+singleton Dock Dock.qml
+singleton ProcessList ProcessList.qml
 
 # Plain types (not singletons). The two controls live here rather than in
 # Popovers/ or Settings/ because both directories draw them and both already

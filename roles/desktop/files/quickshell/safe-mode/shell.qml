@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
+import "../Common"
 
 // Quickshell private PostReloadHook is absent from installed type metadata.
 // qmllint disable import
@@ -21,7 +22,7 @@ ShellRoot {
     GlobalShortcut {
         appid: "quickshell"
         name: "launcherToggle"
-        description: "Open a recovery terminal"
+        description: I18n.tr("Open a recovery terminal")
         onPressed: root.terminal()
     }
     IpcHandler {
@@ -76,7 +77,7 @@ ShellRoot {
                 Action { label: "Retry desktop"; onTriggered: root.recover() }
                 Text {
                     visible: panel.width > 900
-                    text: "Widgets paused · Your settings are preserved · cybex shell status"
+                    text: I18n.tr("Widgets paused · Your settings are preserved · cybex shell status")
                     color: "#c9c7bd"; font.pixelSize: root.typography.caption; height: 30; verticalAlignment: Text.AlignVCenter
                 }
             }

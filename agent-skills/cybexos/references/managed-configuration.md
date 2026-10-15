@@ -14,6 +14,14 @@ source checkout, included in a rebuilt desktop RPM, and delivered through the
 RPM update channel. `cybex repair` reapplies policy bundled in the installed
 RPM; it does not deploy files from a checkout.
 
+Hyprland and Quickshell are held to the series the release qualified by
+entries marked `CybexOS qualified series` in `/etc/dnf/versionlock.toml`
+(`dnf versionlock list`); a converge replaces edits to them. Moving to another
+series is a release change to `qualified_package_series` in
+`inventory/group_vars/all.yml`. With explicit user intent, a separately
+reviewed build can be admitted by an entry of the administrator's own, such as
+`sudo dnf versionlock add hyprland-VERSION-RELEASE`, which CybexOS keeps.
+
 ## Find a writable checkout
 
 1. Inspect the current working tree and `~/Code/CybexOS` first. A usable

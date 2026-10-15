@@ -58,7 +58,7 @@ Item {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        title: "Find wallpapers"
+        title: I18n.tr("Find wallpapers")
 
         // [Search][field][search button][undo]: the field ends at the
         // button, the button on the controls' edge; the label already says
@@ -67,7 +67,7 @@ Item {
         SettingsRow {
             id: searchRow
             width: parent.width
-            label: "Search"
+            label: I18n.tr("Search")
             narrowLabelInset: searchRow.undoWidth
             controlLeft: queryField.x
 
@@ -83,9 +83,9 @@ Item {
                 x: searchButton.x - Theme.controlSpacing - width
                 y: searchRow.narrow ? Theme.settingsStackOffset
                     : (searchRow.lineHeight - height) / 2
-                placeholderText: "Mountains, city at night…"
-                Accessible.name: "Search Wallhaven wallpapers"
-                Accessible.description: "Press Enter to search, then Down to reach the results."
+                placeholderText: I18n.tr("Mountains, city at night…")
+                Accessible.name: I18n.tr("Search Wallhaven wallpapers")
+                Accessible.description: I18n.tr("Press Enter to search, then Down to reach the results.")
                 maximumLength: 100
                 Component.onCompleted: text = OnlineWallpapers.query
                 onAccepted: root.runSearch()
@@ -102,7 +102,7 @@ Item {
                 x: searchRow.contentRight - width
                 y: queryField.y + (queryField.height - height) / 2
                 compact: true
-                text: "Search"
+                text: I18n.tr("Search")
                 glyph: "search"
                 enabled: !OnlineWallpapers.busy || OnlineWallpapers.appending
                 onTriggered: root.runSearch()
@@ -111,7 +111,7 @@ Item {
 
         PickerRow {
             width: parent.width
-            label: "Sort"
+            label: I18n.tr("Sort")
             model: WallhavenHelpers.SORTS
             current: OnlineWallpapers.sort
             dirty: OnlineWallpapers.sort !== OnlineWallpapers.defaults.sort
@@ -121,7 +121,7 @@ Item {
 
         PickerRow {
             width: parent.width
-            label: "Category"
+            label: I18n.tr("Category")
             model: WallhavenHelpers.CATEGORIES
             current: OnlineWallpapers.category
             dirty: OnlineWallpapers.category !== OnlineWallpapers.defaults.category
@@ -131,7 +131,7 @@ Item {
 
         PickerRow {
             width: parent.width
-            label: "Size"
+            label: I18n.tr("Size")
             model: WallhavenHelpers.SIZES
             current: OnlineWallpapers.size
             caption: OnlineWallpapers.size === "fit" && OnlineWallpapers.minimum !== ""
@@ -239,7 +239,7 @@ Item {
                             anchors.centerIn: parent
                             width: parent.width - 20
                             horizontalAlignment: Text.AlignHCenter
-                            text: thumbImage.status === Image.Error ? "Could not load" : "Loading…"
+                            text: thumbImage.status === Image.Error ? I18n.tr("Could not load") : I18n.tr("Loading…")
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.typography.secondary
                             color: Theme.textFaint
@@ -352,7 +352,7 @@ Item {
                 Text {
                     id: moreText
                     anchors.centerIn: parent
-                    text: "Loading more…"
+                    text: I18n.tr("Loading more…")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
                     color: Theme.textFaint
@@ -404,15 +404,15 @@ Item {
 
         SettingsAction {
             visible: root.currentPage !== ""
-            text: "Current on Wallhaven"
+            text: I18n.tr("Current on Wallhaven")
             glyph: "open_in_new"
-            Accessible.name: "Open the current wallpaper's Wallhaven page"
+            Accessible.name: I18n.tr("Open the current wallpaper's Wallhaven page")
             onTriggered: Qt.openUrlExternally(root.currentPage)
         }
         SettingsAction {
             text: "wallhaven.cc"
             glyph: "open_in_new"
-            Accessible.name: "Open wallhaven.cc"
+            Accessible.name: I18n.tr("Open wallhaven.cc")
             onTriggered: Qt.openUrlExternally("https://wallhaven.cc")
         }
     }

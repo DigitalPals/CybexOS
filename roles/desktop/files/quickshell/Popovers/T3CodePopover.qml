@@ -205,7 +205,7 @@ Surface {
 
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Code"
+                    text: I18n.tr("Code")
                     font.family: T3Theme.fontUi
                     font.pixelSize: Theme.typography.primary
                     font.weight: Theme.weightSemibold
@@ -224,7 +224,7 @@ Surface {
                 Text {
                     id: nightlyText
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Nightly"
+                    text: I18n.tr("Nightly")
                     font.family: T3Theme.fontUi
                     font.pixelSize: Theme.typography.metadata
                     color: T3Theme.textFaint
@@ -369,7 +369,7 @@ Surface {
                     color: reconnectMouse.containsMouse ? T3Theme.hoverStrong : "transparent"
                     activeFocusOnTab: visible
                     Accessible.role: Accessible.Button
-                    Accessible.name: signIn ? "Sign in" : "Reconnect"
+                    Accessible.name: signIn ? I18n.tr("Sign in") : I18n.tr("Reconnect")
                     Accessible.onPressAction: trigger()
 
                     Sym {
@@ -385,7 +385,7 @@ Surface {
                         anchors.left: parent.left
                         anchors.leftMargin: 30
                         anchors.verticalCenter: parent.verticalCenter
-                        text: reconnectItem.signIn ? "Sign in" : "Reconnect"
+                        text: reconnectItem.signIn ? I18n.tr("Sign in") : I18n.tr("Reconnect")
                         font.family: T3Theme.fontUi
                         font.pixelSize: Theme.typography.secondary
                         color: T3Theme.textSecondary
@@ -418,7 +418,7 @@ Surface {
             x: 6
             y: 6
             width: parent.width - 12
-            text: "This credential does not grant orchestration read access."
+            text: I18n.tr("This credential does not grant orchestration read access.")
             wrapMode: Text.WordWrap
             lineHeight: Theme.proseLineHeight
             font.family: T3Theme.fontUi

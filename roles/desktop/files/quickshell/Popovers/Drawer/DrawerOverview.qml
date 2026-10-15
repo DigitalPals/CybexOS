@@ -6,8 +6,9 @@ import "../../Common"
 import "../../Common/UpdatesHelpers.js" as UpdatesHelpers
 import ".."
 
-// The drawer's Overview tab: system identity and health, now playing, the two
-// sliders, quick-toggle tiles, updates, and the session footer.
+// The drawer's Overview tab: system identity and health, the top processes,
+// now playing, the two sliders, quick-toggle tiles, updates, and the session
+// footer.
 // Everything here is a summary — each row's own tab or panel carries the
 // detail.
 Column {
@@ -28,6 +29,13 @@ Column {
     }
 
     DrawerSystemHero {
+        width: parent.width
+    }
+
+    // ---- top processes -------------------------------------------------
+    // Hidden, it reads nothing: its sampler is claimed by visibility.
+    DrawerProcesses {
+        visible: Settings.drawerOverview.processes === true
         width: parent.width
     }
 
@@ -151,7 +159,7 @@ Column {
                 }
 
                 Accessible.role: Accessible.Button
-                Accessible.name: "Play or pause"
+                Accessible.name: I18n.tr("Play or pause")
             }
 
             DrawerIconButton {
@@ -205,7 +213,7 @@ Column {
         DrawerTile {
             width: parent.tileWidth
             glyph: "dark_mode"
-            label: "Dark"
+            label: I18n.tr("Dark")
             on: Settings.themeMode === "dark"
             onToggled: Settings.set("themeMode",
                 Settings.themeMode === "dark" ? "light" : "dark")
@@ -214,7 +222,7 @@ Column {
         DrawerTile {
             width: parent.tileWidth
             glyph: "do_not_disturb_on"
-            label: "Focus"
+            label: I18n.tr("Focus")
             on: Notifs.dnd
             onToggled: Notifs.setDnd(!Notifs.dnd)
         }
@@ -222,7 +230,7 @@ Column {
         DrawerTile {
             width: parent.tileWidth
             glyph: "nightlight"
-            label: "Night"
+            label: I18n.tr("Night")
             on: SysInfo.nightLight
             onToggled: SysInfo.toggleNightLight()
         }
@@ -230,7 +238,7 @@ Column {
         DrawerTile {
             width: parent.tileWidth
             glyph: "coffee"
-            label: "Awake"
+            label: I18n.tr("Awake")
             on: SysInfo.idleInhibited
             onToggled: SysInfo.toggleIdleInhibited()
         }
@@ -244,7 +252,7 @@ Column {
 
         SectionLabel {
             width: parent.width
-            text: "UPDATES"
+            text: I18n.tr("UPDATES")
             detail: Updates.checkedLabel()
         }
 
@@ -322,7 +330,7 @@ Column {
                 anchors.rightMargin: 4
                 anchors.verticalCenter: parent.verticalCenter
                 visible: Updates.total > 0 && !Updates.runActive
-                label: "Update"
+                label: I18n.tr("Update")
                 // The one primary action this panel carries.
                 fill: Theme.accent
                 tint: Theme.accentFg

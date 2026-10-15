@@ -1,11 +1,12 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir } = require("./shell.cjs");
 
-const battery = fs.readFileSync(
-    path.join(shellDir, "Popovers/BatteryPopover.qml"), "utf8");
+const battery = untranslated(fs.readFileSync(
+    path.join(shellDir, "Popovers/BatteryPopover.qml"), "utf8"));
 
 test("battery popover keeps the hero, meter, telemetry, profile hierarchy", () => {
     const hero = battery.indexOf("id: hero");

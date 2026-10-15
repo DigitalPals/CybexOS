@@ -113,17 +113,44 @@ jobs:
           test -x dist/verify/scripts/manage-agent-skills
           test -r dist/verify/agent-skills/cybexos/SKILL.md
           ansible-playbook dist/verify/site.yml --syntax-check
-      - name: Attest the exact release archive
+      - name: Locate the SBOM of the qualified ISO
+        id: sbom
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          sboms=(dist/desktop-release/assets/*.spdx.json)
+          test "${#sboms[@]}" -eq 1
+          iso_checksum="${sboms[0]%.spdx.json}.iso.sha256"
+          # The SBOM must describe the exact ISO whose parts are published.
+          python3 image/sbom.py verify "${sboms[0]}" --iso-checksum "$iso_checksum"
+          {
+            printf 'path=%s\n' "${sboms[0]}"
+            printf 'iso-checksum=%s\n' "$iso_checksum"
+          } >>"$GITHUB_OUTPUT"
+      - name: Attest the exact release archive and ISO SBOM
         id: attest
         # actions/attest v4.2.2
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: dist/cybexos-*.tar.zst
+          subject-path: |
+            dist/cybexos-*.tar.zst
+            ${{ steps.sbom.outputs.path }}
+      - name: Attest the SPDX SBOM of the exact ISO
+        id: attest-sbom
+        # actions/attest v4.2.2: sbom-path makes an SPDX predicate attestation
+        # whose subject is the ISO digest from its published checksum file.
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-checksums: ${{ steps.sbom.outputs.iso-checksum }}
+          sbom-path: ${{ steps.sbom.outputs.path }}
       # Installed systems verify updates offline from this bundle, so checking
       # for and applying a release needs no GitHub login or API token.
-      - name: Package the provenance bundle for offline verification
+      - name: Package the provenance bundles for offline verification
         env:
           BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+          SBOM_BUNDLE_PATH: ${{ steps.attest-sbom.outputs.bundle-path }}
+          SBOM_PATH: ${{ steps.sbom.outputs.path }}
+          ISO_CHECKSUM: ${{ steps.sbom.outputs.iso-checksum }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
@@ -132,14 +159,26 @@ jobs:
           jq -c . "$BUNDLE_PATH" >"$bundle"
           test -s "$bundle"
           # The same pinned, offline check the updater runs, without a token.
-          env -u GH_TOKEN -u GITHUB_TOKEN gh attestation verify \
-            "dist/cybexos-$version.tar.zst" --bundle "$bundle" \
-            --repo "$GITHUB_REPOSITORY" \
-            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
-            --source-ref "refs/tags/$RELEASE_TAG" --deny-self-hosted-runners
+          # The archive's provenance also covers the published SBOM file.
+          for subject in "dist/cybexos-$version.tar.zst" "$SBOM_PATH"; do
+            env -u GH_TOKEN -u GITHUB_TOKEN gh attestation verify \
+              "$subject" --bundle "$bundle" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --source-ref "refs/tags/$RELEASE_TAG" --deny-self-hosted-runners
+          done
+          # The SBOM attestation's subject is the ISO, published only as parts,
+          # so check its predicate type and subject digest structurally here.
+          iso_name=$(basename "$ISO_CHECKSUM" .sha256)
+          sbom_bundle="$iso_name.sbom.sigstore.jsonl"
+          jq -c . "$SBOM_BUNDLE_PATH" >"dist/$sbom_bundle"
+          read -r iso_digest _ <"$ISO_CHECKSUM"
+          jq -e --arg digest "$iso_digest" '.dsseEnvelope.payload | @base64d | fromjson
+            | .predicateType == "https://spdx.dev/Document/v2.3"
+              and any(.subject[]; .digest.sha256 == $digest)' "dist/$sbom_bundle" >/dev/null
           (
             cd dist
-            sha256sum "cybexos-$version.tar.zst.sigstore.jsonl" >>SHA256SUMS
+            sha256sum "cybexos-$version.tar.zst.sigstore.jsonl" "$sbom_bundle" >>SHA256SUMS
           )
       - name: Publish the completed release
         env:
@@ -155,7 +194,7 @@ jobs:
           gh release upload "$RELEASE_TAG" \
             "dist/cybexos-$version.tar.zst" \
             "dist/cybexos-$version.tar.zst.sigstore.jsonl" dist/SHA256SUMS \
-            dist/desktop-release/assets/*
+            dist/*.iso.sbom.sigstore.jsonl dist/desktop-release/assets/*
           gh release edit "$RELEASE_TAG" --draft=false
           for _attempt in $(seq 1 12); do
             if test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .immutable)" = true; then

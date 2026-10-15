@@ -1,0 +1,86 @@
+#!/usr/bin/env node
+// Maintain the shell's translation catalogs (docs/shell-translations.md).
+//
+//   scripts/i18n-catalog missing [LANG]          English strings without a translation (JSON)
+//   scripts/i18n-catalog merge LANG FILE...      add translations from JSON objects, drop unused entries
+//   scripts/i18n-catalog check [LANG]            exit 1 when a string is missing or unused
+//
+// Catalogs are Common/i18n/<lang>.js, keyed by the English text exactly as
+// displayed. The key set comes from tests/quickshell/i18n-keys.cjs, which the
+// unit tests use too, so a catalog this tool accepts is one the tests accept.
+"use strict";
+const fs = require("node:fs");
+const path = require("node:path");
+
+const root = path.resolve(__dirname, "..");
+const { allKeys } = require(path.join(root, "tests/quickshell/i18n-keys.cjs"));
+const catalogDir = path.join(root, "roles/desktop/files/quickshell/Common/i18n");
+
+function catalogPath(language) {
+    if (!/^[a-z]{2}$/.test(language))
+        throw new Error(`not a language code: ${language}`);
+    return path.join(catalogDir, `${language}.js`);
+}
+
+function readCatalog(language) {
+    const file = catalogPath(language);
+    if (!fs.existsSync(file))
+        return {};
+    delete require.cache[require.resolve(file)];
+    return require(file).MESSAGES;
+}
+
+function writeCatalog(language, messages) {
+    const keys = Object.keys(messages).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const body = keys.map(key => `    ${JSON.stringify(key)}: ${JSON.stringify(messages[key])}`).join(",\n");
+    fs.writeFileSync(catalogPath(language),
+        `// ${language} translations of the shell's English text, keyed by that text.\n`
+        + "// Maintained with scripts/i18n-catalog; see docs/shell-translations.md.\n"
+        + "var MESSAGES = {\n" + body + "\n};\n\n"
+        + 'if (typeof module !== "undefined" && module.exports)\n'
+        + "    module.exports = { MESSAGES: MESSAGES };\n");
+}
+
+function placeholders(text) {
+    return (String(text).match(/%[1-9]/g) || []).sort().join(",");
+}
+
+const [command = "check", language = "nl", ...files] = process.argv.slice(2);
+const keys = allKeys();
+const catalog = readCatalog(language);
+
+if (command === "missing") {
+    process.stdout.write(JSON.stringify([...keys].filter(key => !(key in catalog)).sort(), null, 1) + "\n");
+} else if (command === "merge") {
+    const merged = {};
+    for (const key of keys) {
+        if (key in catalog)
+            merged[key] = catalog[key];
+    }
+    for (const file of files) {
+        const additions = JSON.parse(fs.readFileSync(file, "utf8"));
+        for (const [key, value] of Object.entries(additions)) {
+            if (!keys.has(key))
+                continue;
+            if (typeof value !== "string" || value.trim() === "")
+                throw new Error(`empty translation for ${JSON.stringify(key)}`);
+            if (placeholders(key) !== placeholders(value))
+                throw new Error(`placeholders differ for ${JSON.stringify(key)}`);
+            merged[key] = value;
+        }
+    }
+    writeCatalog(language, merged);
+    const missing = [...keys].filter(key => !(key in merged)).length;
+    process.stdout.write(`${Object.keys(merged).length} translations, ${missing} missing\n`);
+} else if (command === "check") {
+    const missing = [...keys].filter(key => !(key in catalog));
+    const unused = Object.keys(catalog).filter(key => !keys.has(key));
+    for (const key of missing)
+        process.stdout.write(`missing: ${JSON.stringify(key)}\n`);
+    for (const key of unused)
+        process.stdout.write(`unused: ${JSON.stringify(key)}\n`);
+    process.exitCode = missing.length || unused.length ? 1 : 0;
+} else {
+    process.stderr.write("usage: i18n-catalog missing|merge|check [LANG] [FILE...]\n");
+    process.exitCode = 2;
+}

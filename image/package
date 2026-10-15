@@ -82,6 +82,10 @@ def main():
     helpers = contract["userHelpers"] + ["cybexos-runtime", "cybexos-update-run"]
     for name in helpers:
         copy(f"assets/scripts/{name}", f"usr/share/cybexos/bin/{name}", True)
+    # The earlier browser-profile export, now a mode of cybexos-backup; the
+    # dotfiles role links the same names on checkout installations.
+    for name in ("app-backup", "browser-backup"):
+        (payload / "usr/share/cybexos/bin" / name).symlink_to("cybexos-backup")
     copy("roles/dotfiles/files/dev-distrobox-init", "usr/share/cybexos/bin/dev-distrobox-init", True)
     updater = payload / "usr/share/cybexos/bin/cybexos-update-run"
     updater.write_text(updater.read_text().replace("snapshot_helper_root=/usr/local/libexec", "snapshot_helper_root=/usr/libexec"))
@@ -126,6 +130,8 @@ def main():
     write(f"{seed}/.npmrc", "prefix=${HOME}/.npm-global\n")
     write("usr/share/cybexos/applications.json", json.dumps(applications, indent=2) + "\n")
     copy("roles/base/files/cybexos-system-snapshot", "usr/libexec/cybexos-system-snapshot", True)
+    # Settings runs this through pkexec; provisioning applies it from the role.
+    copy("roles/base/files/cybexos-auth-policy", "usr/libexec/cybexos-auth-policy", True)
     for name in ("cybexos-update-transaction", "cybexos-update-bootstrap", "cybexos-update-recover", "cybexos-vendor-paths.json", "cybexos-major-upgrade"):
         copy(f"roles/base/files/{name}", f"usr/libexec/{name}", not name.endswith('.json'))
     for name in ("cybexos-update-recover.service", "cybexos-update-recover-login.conf"):
@@ -137,6 +143,14 @@ def main():
         copy("roles/base/files/cybexos-update-recover-login.conf",
              f"usr/lib/systemd/system/{unit}.d/60-cybexos-update-recover.conf")
     for name in ("cybexos-major-upgrade-validate.service", "cybexos-major-upgrade-validate.timer"):
+        content = (ROOT / "roles/base/files" / name).read_text()
+        write(f"usr/lib/systemd/system/{name}",
+              content.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))
+    # Background update downloads, as the base role installs them. Shipped
+    # off: %posttrans never enables the timer, so systemd keeps the person's
+    # choice across package updates.
+    copy("roles/base/files/cybexos-update-download", "usr/libexec/cybexos-update-download", True)
+    for name in ("cybexos-update-download.service", "cybexos-update-download.timer"):
         content = (ROOT / "roles/base/files" / name).read_text()
         write(f"usr/lib/systemd/system/{name}",
               content.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-"))

@@ -14,13 +14,24 @@ import traceback
 import imgcreate
 import imgcreate.creator
 from imgcreate.dnfinst import DnfLiveCD
+import importlib.util
 import rpm
+import yaml
+from fedora_target import fedora_release
 from boot_branding import brand_boot_menu
+from sbom import capture_inventories
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 source = Path(__file__).resolve().parent
+# Inventory fedora_release; build.repo and live.ks name no release of their own.
+release = fedora_release()
 build = Path("/home/builder/build")
 dnf_instances = []
+# The same series and comparison the installed systems' versionlock enforces.
+_series_spec = importlib.util.spec_from_file_location("cybexos_versionlock", source / "library/cybexos_versionlock.py")
+versionlock = importlib.util.module_from_spec(_series_spec)
+_series_spec.loader.exec_module(versionlock)
+qualified_series = yaml.safe_load((source.parent / "inventory/group_vars/all.yml").read_text())["qualified_package_series"]
 
 
 class VerifiedDnf(DnfLiveCD):
@@ -43,14 +54,14 @@ class VerifiedDnf(DnfLiveCD):
             entry = policy[repository_id]
             repository = super().addRepository(repository_id, entry.get("baseurl"), entry.get("mirrorlist"))
             if entry.get("metalink"):
-                repository.metalink = entry["metalink"].replace("$releasever", "44").replace("$basearch", "x86_64")
+                repository.metalink = entry["metalink"].replace("$releasever", release).replace("$basearch", "x86_64")
             repository.gpgcheck = entry.getboolean("gpgcheck")
             repository.repo_gpgcheck = entry.getboolean("repo_gpgcheck", fallback=False)
             repository.skip_if_unavailable = False
             if repository_id == "cybexos-local":
                 repository.metadata_expire = 0
             if repository.gpgcheck:
-                repository.gpgkey = [key.replace("$releasever", "44").replace("$basearch", "x86_64")
+                repository.gpgkey = [key.replace("$releasever", release).replace("$basearch", "x86_64")
                                      for key in entry["gpgkey"].split()]
             elif repository_id != "cybexos-local":
                 raise RuntimeError("Only the locally built RPM may be unsigned")
@@ -121,7 +132,7 @@ class CybexImageCreator(imgcreate.LiveImageCreator):
 
 
 creator = CybexImageCreator(
-    kickstart, "CybexOS-Live-44", fslabel="CYBEXOS-LIVE-44", releasever="44",
+    kickstart, f"CybexOS-Live-{release}", fslabel=f"CYBEXOS-LIVE-{release}", releasever=release,
     tmpdir=str(build / "tmp"), title="CybexOS", product="CybexOS",
 )
 compression = os.environ.get("CYBEXOS_IMAGE_COMPRESSION", os.environ.get("CYBEXOS_SQUASHFS_COMPRESSION", "xz"))
@@ -158,6 +169,13 @@ try:
     creator.configure()
     applications = json.loads((build / "applications.json").read_text())
     subprocess.run(["rpm", "--root", creator._instroot, "-q", *applications["packages"]], check=True)
+    # Publish only the compositor and shell series this release qualified
+    # (docs/dependency-policy.md); installed systems then stay within them.
+    series_problems = versionlock.outside_series(
+        qualified_series, lambda name: versionlock.installed_evr(name, creator._instroot), require=True)
+    if series_problems:
+        raise RuntimeError("Resolved packages are outside their qualified series: " + "; ".join(series_problems))
+    logging.info("Qualified series: %s", versionlock.describe(qualified_series))
     installed_flatpaks = subprocess.check_output([
         "chroot", creator._instroot, "flatpak", "list", "--system", "--app", "--columns=application",
     ], text=True).splitlines()
@@ -183,6 +201,9 @@ try:
     with Path("/home/builder/artifacts/packages.txt").open("w") as manifest:
         subprocess.run(["rpm", "--root", creator._instroot, "-qa", "--qf", "%{NEVRA}\n"],
                        check=True, stdout=manifest)
+    # Raw RPM and Flatpak inventories of the finished root. The host turns
+    # them into the release SBOM once the ISO has its final name.
+    capture_inventories(creator._instroot, Path("/home/builder/artifacts"))
     creator.unmount()
     creator.package()
 except BaseException as error:

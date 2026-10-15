@@ -94,6 +94,51 @@ class InstallationParity(Fixture):
                 self.assertFalse((self.root / 'etc/sudoers.d/10-wheel-nopasswd').exists())
                 self.assertFalse(self.path.exists())
 
+    def test_explicit_first_account_choices_match_on_both_paths(self):
+        # An unattended seed's `config` (or a factory reset's kept choices)
+        # reaches the ISO through install-choices.json; the checkout installer
+        # receives the same explicit choices as a saved configuration. Both go
+        # through image/installation_policy.py and must produce one outcome.
+        choices = {'manage_personal_dotfiles': False, 'passwordless_local_polkit': True,
+                   'features': {'steam': False, 'connected_widgets': False, 'local_network_services': True}}
+        pending = self.root / 'etc/cybexos/install-choices.json'
+        for encrypted in (False, True):
+            with self.subTest(encrypted=encrypted):
+                self.encryption(encrypted)
+                pending.write_text(json.dumps({'version': 1, 'choices': choices}))
+                iso = self.installed_iso(encrypted)
+                self.assertFalse(pending.exists(), 'recording config.yml consumes the choices')
+                # Reconfiguring applies saved choices over the shared defaults.
+                self.path.write_text(yaml.safe_dump(choices))
+                checkout = self.checkout('--reconfigure')
+                self.path.unlink()
+                self.assertEqual(checkout, iso)
+                self.assertIs(iso['manage_personal_dotfiles'], False)
+                self.assertIs(iso['passwordless_local_polkit'], True)
+                self.assertIs(iso['features']['steam'], False)
+                self.assertIs(iso['features']['local_network_services'], True)
+                self.assertIs(iso['desktop_autologin'], encrypted)
+
+    def test_first_account_choices_are_validated_by_the_shared_policy(self):
+        from installation_policy import apply_choices, choices
+        self.encryption(False)
+        pending = self.root / 'etc/cybexos/install-choices.json'
+        for invalid in ({'desktop_autologin': True}, {'passwordless_wheel': True},
+                        {'features': {'unknown': True}}, {'docker_sudoless': 'yes'}):
+            with self.subTest(invalid=invalid):
+                pending.write_text(json.dumps({'version': 1, 'choices': invalid}))
+                self.path.unlink(missing_ok=True)
+                with self.assertRaises(ValueError):
+                    self.generate()
+                with self.assertRaises(ValueError):
+                    choices(invalid)
+        pending.unlink()
+        defaults = config.installation_defaults(Path(ROOT / 'inventory/group_vars/all.yml'))
+        # Sudoless Docker is root-equivalent and exists only with Docker selected.
+        applied = apply_choices(defaults, {'docker_sudoless': True, 'features': {'docker': False}})
+        self.assertIs(applied['docker_sudoless'], False)
+        self.assertIs(defaults['features']['docker'], True, 'the defaults are not modified')
+
     def test_existing_personal_files_do_not_select_another_product_default(self):
         self.encryption(True)
         (self.home / '.gitconfig').write_text('[user]\nname = Personal\n')
@@ -219,6 +264,101 @@ class InstallationParity(Fixture):
         self.assertIn('Exec=chatgpt --ozone-platform=wayland %U',
                       (iso_home / launcher).read_text().splitlines())
 
+    def test_default_web_apps_are_seeded_alike_and_a_removed_one_stays_removed(self):
+        import shutil
+        from unittest.mock import patch
+        from test_desktop_payload import INIT
+        from test_installed_policy import repair
+
+        # Both packaging paths ship every contract helper as the ISO's
+        # /usr/share/cybexos/bin; the checkout installs it as ~/.local/bin.
+        contract = json.loads((ROOT / 'assets/desktop-contract.json').read_text())
+        self.assertIn('cybexos-webapp', contract['userHelpers'])
+        self.assertIn('helpers = contract["userHelpers"]', (ROOT / 'image/package').read_text())
+
+        # Checkout: the dotfiles role's own task, run as the account.
+        task = next(task for task in yaml.safe_load((ROOT / 'roles/dotfiles/tasks/main.yml').read_text())
+                    if task.get('name') == 'Seed the default web apps once')
+        task['become'] = False
+        task.pop('become_user')
+        helper = self.home / '.local/bin/cybexos-webapp'
+        helper.parent.mkdir(parents=True)
+        shutil.copy2(ROOT / 'assets/scripts/cybexos-webapp', helper)
+        playbook = self.root / 'webapps.yml'
+        playbook.write_text(yaml.safe_dump([{
+            'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
+            'vars': {'primary_home': str(self.home), 'primary_user': 'fixture'}, 'tasks': [task],
+        }]))
+        environment = {key: value for key, value in os.environ.items() if not key.startswith('XDG_')}
+
+        def checkout():
+            result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                                    env=environment, text=True, capture_output=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        # ISO: the packaged helper, seeded by cybexos-user-init at login.
+        payload = self.root / 'payload'
+        repair.prepare(payload)
+        vendor = payload / 'usr/share/cybexos'
+        iso_home = self.root / 'home/iso'
+        iso_home.mkdir(parents=True)
+
+        def iso():
+            with patch.dict(os.environ, {'HOME': str(iso_home), 'PATH': os.environ['PATH']}, clear=True):
+                INIT.initialize(iso_home, vendor, mode='essential')
+
+        def outcome(home):
+            files = {}
+            roots = [home / '.local/share/cybexos/webapps', home / '.local/share/applications']
+            for path in sorted(path for root in roots for path in root.rglob('*')):
+                if path.is_file() and path.name != '.lock' and (
+                        path.parent.name != 'applications' or path.name.startswith('cybexos-webapp-')):
+                    files[str(path.relative_to(home))] = path.read_bytes().replace(
+                        str(home).encode(), b'HOME')
+            return files
+
+        def remove(home):
+            subprocess.run([str(home / '.local/bin/cybexos-webapp'), 'remove', 'youtube'],
+                           env={**environment, 'HOME': str(home)}, check=True,
+                           capture_output=True, timeout=30)
+
+        checkout()
+        iso()
+        seeded = outcome(self.home)
+        self.assertEqual(seeded, outcome(iso_home))
+        for identifier in ('slack', 'whatsapp', 'youtube', 'google-photos', 'x'):
+            self.assertIn(f'.local/share/applications/cybexos-webapp-{identifier}.desktop', seeded)
+        self.assertIn(b'Exec=HOME/.local/bin/cybexos-webapp launch slack',
+                      seeded['.local/share/applications/cybexos-webapp-slack.desktop'])
+
+        # Removing a default is a choice both paths keep across updates.
+        for home in (self.home, iso_home):
+            remove(home)
+        checkout()
+        iso()
+        kept = outcome(self.home)
+        self.assertEqual(kept, outcome(iso_home))
+        self.assertNotIn('.local/share/applications/cybexos-webapp-youtube.desktop', kept)
+        self.assertIn('.local/share/applications/cybexos-webapp-slack.desktop', kept)
+
+    def test_a_failing_web_app_seed_never_blocks_account_initialization(self):
+        import contextlib
+        import io
+        from unittest.mock import patch
+        from test_desktop_payload import INIT
+
+        vendor = self.root / 'vendor'
+        (vendor / 'bin').mkdir(parents=True)
+        (vendor / 'bin/cybexos-webapp').write_text('raise RuntimeError("broken helper")\n')
+        home = self.root / 'home/broken'
+        home.mkdir(parents=True)
+        errors = io.StringIO()
+        with patch.dict(os.environ, {'HOME': str(home), 'PATH': os.environ['PATH']}, clear=True), \
+                contextlib.redirect_stderr(errors):
+            INIT.initialize(home, vendor, mode='essential')
+        self.assertIn('default web apps were not seeded: broken helper', errors.getvalue())
+        self.assertTrue((home / '.local/bin/cybexos-webapp').is_symlink())
+
     def test_firewall_zone_matches_checkout_and_iso_for_each_network_choice(self):
         from xml.etree import ElementTree
         import jinja2
@@ -273,6 +413,109 @@ class InstallationParity(Fixture):
             self.assertIn(('5353', 'udp'), ports)
             self.assertIn(('53317', 'tcp'), ports)
             self.assertEqual(('27015', 'tcp') in ports, enabled)
+
+    def test_hotspot_profiles_keep_networkmanager_shared_zone_on_both_paths(self):
+        """The Settings hotspot serves DHCP and DNS from NetworkManager's
+        nm-shared zone. Both paths ship the same helper that creates it there;
+        the checkout's zone adoption must skip it, and the ISO never rebinds
+        profiles, so its clients get addresses on either installation."""
+        import importlib.util
+        import jinja2
+
+        spec = importlib.util.spec_from_file_location(
+            'parity_network_tool', ROOT / 'roles/desktop/files/quickshell/scripts/network-tool.py')
+        network_tool = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(network_tool)
+        settings = dict(zip(network_tool.HOTSPOT_SETTINGS[::2], network_tool.HOTSPOT_SETTINGS[1::2]))
+        self.assertEqual((settings['ipv4.method'], settings['connection.zone'], settings['connection.autoconnect']),
+                         ('shared', 'nm-shared', 'no'))
+
+        uuids = {'wired': '0b1c2d3e-0000-4000-8000-000000000001', 'wifi': '0b1c2d3e-0000-4000-8000-000000000002',
+                 'hotspot': network_tool.HOTSPOT_UUID, 'vpn': '0b1c2d3e-0000-4000-8000-000000000004'}
+        self.command('nmcli', '\n'.join([
+            'case "$*" in',
+            f"  '-t -f UUID,TYPE connection show') printf '%s\\n' {uuids['wired']}:802-3-ethernet "
+            f"{uuids['wifi']}:802-11-wireless {uuids['hotspot']}:802-11-wireless {uuids['vpn']}:vpn ;;",
+            f"  '-g ipv4.method connection show {uuids['hotspot']}') echo shared ;;",
+            "  '-g ipv4.method connection show '*) echo auto ;;",
+            f"  '-g connection.zone connection show {uuids['wired']}') echo public ;;",
+            f"  '-g connection.zone connection show {uuids['wifi']}') echo cybexos ;;",
+            f"  '-g connection.zone connection show {uuids['hotspot']}') echo nm-shared ;;",
+            'esac']))
+        tasks = yaml.safe_load((ROOT / 'roles/base/tasks/main.yml').read_text())
+        task = next(task for task in tasks if task.get('name') == 'Find Ethernet and Wi-Fi profiles outside the strict zone')
+        environment = jinja2.Environment()
+        environment.filters['quote'] = shlex.quote
+        inventory = yaml.safe_load((ROOT / 'inventory/group_vars/all.yml').read_text())
+        script = environment.from_string(task['ansible.builtin.shell']).render(firewall_zone=inventory['firewall_zone'])
+        result = subprocess.run(['bash', '-c', script], env=self.environment, text=True, capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.split(), [uuids['wired']],
+                         'only the physical profile outside the strict zone is adopted; the hotspot keeps nm-shared')
+
+        iso_sources = [path for path in (ROOT / 'image').rglob('*')
+                       if path.is_file() and '__pycache__' not in path.parts
+                       and not path.name.startswith('test_') and path.suffix != '.md']
+        iso_sources += [ROOT / 'roles/base/tasks/image.yml', ROOT / 'roles/base/tasks/reconcile.yml']
+        rebinding = [str(path.relative_to(ROOT)) for path in iso_sources
+                     if 'connection.zone' in path.read_text(errors='replace')]
+        self.assertEqual(rebinding, [], 'the ISO path leaves NetworkManager profile zones to NetworkManager')
+
+    def test_sign_in_policy_matches_checkout_and_iso_from_their_starting_points(self):
+        """Same authselect features and PAM files after either installation path."""
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader(
+            'cybexos_auth_policy', str(ROOT / 'roles/base/files/cybexos-auth-policy'))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        policy = importlib.util.module_from_spec(spec)
+        loader.exec_module(policy)
+
+        class Authselect:
+            def __init__(self, features):
+                self.features = list(features)
+
+            def __call__(self, argv):
+                if argv[0] == 'restorecon':
+                    return 0, '', ''
+                if argv[1] == 'current':
+                    return 0, 'sssd ' + ' '.join(self.features), ''
+                if argv[1] == 'list-features':
+                    return 0, 'with-fingerprint\nwith-mdns4\nwith-pam-u2f\n', ''
+                if argv[1] == 'enable-feature':
+                    self.features += [] if argv[2] in self.features else [argv[2]]
+                    return 0, '', ''
+                raise AssertionError(argv)
+
+        sudo = ('#%PAM-1.0\nauth       include      system-auth\naccount    include      system-auth\n'
+                'password   include      system-auth\nsession    include      system-auth\n')
+        kickstart = next(line for line in (ROOT / 'image/live.ks').read_text().splitlines()
+                         if line.startswith('authselect select '))
+        starts = {
+            # A Fedora workstation before CybexOS, after the base role's mDNS step.
+            'checkout': ['with-silent-lastlog', 'with-mdns4'],
+            # The ISO's kickstart selection, which installations inherit.
+            'iso': [word for word in kickstart.split()[3:] if word.startswith('with')],
+        }
+        outcomes = {}
+        for name, features in starts.items():
+            root = self.root / ('sign-in-' + name)
+            (root / 'etc/pam.d').mkdir(parents=True)
+            (root / 'etc/pam.d/sudo').write_text(sudo)
+            (root / 'usr/lib/pam.d').mkdir(parents=True)
+            (root / 'usr/lib/pam.d/polkit-1').write_text(policy.POLKIT_VENDOR_DEFAULT)
+            (root / policy.FPRINTD_MODULE).parent.mkdir(parents=True)
+            (root / policy.FPRINTD_MODULE).write_text('fixture')
+            authselect = Authselect(features)
+            policy.Policy(root, authselect).apply()
+            outcomes[name] = (sorted(authselect.features),
+                              {path.name: path.read_text() for path in sorted((root / 'etc/pam.d').iterdir())})
+        self.assertEqual(outcomes['checkout'], outcomes['iso'])
+        features, files = outcomes['iso']
+        self.assertIn('with-fingerprint', features)
+        self.assertFalse(any(feature.startswith('with-pam-u2f') for feature in features),
+                         'a profile-wide u2f feature would let a key replace the SDDM password')
+        self.assertEqual(sorted(files), ['cybexos-lock', 'polkit-1', 'sudo'])
 
 
 if __name__ == '__main__':

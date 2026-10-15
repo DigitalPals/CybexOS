@@ -17,8 +17,9 @@ var DRAWER_TAB_IDS = ["overview", "sound", "network", "bluetooth", "power",
 var DRAWER_HOVER_MODES = ["off", "open", "always"];
 
 // The Overview tab's optional sections; machine stats and the session footer
-// are fixed.
-var DRAWER_OVERVIEW_KEYS = ["media", "sliders", "tiles", "updates"];
+// are fixed. A section added later (`processes`, Top processes) needs no
+// schema change: normalization fills a missing section in, on.
+var DRAWER_OVERVIEW_KEYS = ["media", "sliders", "tiles", "updates", "processes"];
 // Idle timeout choices in minutes, 0 meaning never. scripts/hypridle-config.py
 // accepts exactly these values when it renders the idle configuration.
 var IDLE_LOCK_MINS = [0, 1, 2, 5, 10, 15, 30];
@@ -395,6 +396,10 @@ function defaults() {
         font: "mono",
         accent: "#d3d283",
         paletteMode: "wallpaper",
+        // The named theme applied last ("" for none) and its explicit
+        // palette, copied in when it was applied (ThemeHelpers.js).
+        theme: "",
+        themePalette: defaultThemePalette(),
         position: "top",
         barStyle: "hug",
         gap: 8,
@@ -434,7 +439,13 @@ function defaults() {
         drawerHover: "open",
         drawerWidth: 400,
         mods: defaultMods(),
-        modOpts: defaultModOpts()
+        modOpts: defaultModOpts(),
+        // The optional dock (DockWindow.qml): off by default. Pins are desktop
+        // entry ids; an empty default lets the dock suggest the browser, Files
+        // and the terminal until the person pins or unpins something.
+        dock: false,
+        dockAutoHide: false,
+        dockPinned: []
     };
 }
 
@@ -505,6 +516,23 @@ function orderedIdsIn(value, known, fallback, appendMissing) {
                 next.push(id);
         });
     }
+    return next;
+}
+
+// Desktop entry ids in order, first occurrence kept, at most 32: the dock's
+// pinned apps. Keep the pattern in step with DockHelpers.DESKTOP_ID.
+function desktopIdsIn(value, fallback) {
+    if (!Array.isArray(value))
+        return fallback.slice();
+    var seen = {};
+    var next = [];
+    value.forEach(function(id) {
+        if (typeof id === "string" && /^[A-Za-z0-9][A-Za-z0-9._+-]{0,254}$/.test(id)
+                && !seen[id] && next.length < 32) {
+            seen[id] = true;
+            next.push(id);
+        }
+    });
     return next;
 }
 
@@ -694,6 +722,109 @@ function semanticPalette(background, onSurface, onSurfaceVariant) {
         textDim: paletteTone(bg, variant, 4.8),
         textFaint: paletteTone(bg, variant, 4.5),
         icon: paletteTone(bg, variant, 6.0)
+    };
+}
+
+// ---- named theme palettes ---------------------------------------------------
+// A named theme (scripts/theme_packs.py) may set its own surfaces, text and
+// status colours. Applying it copies them into `themePalette`, so the look
+// survives the theme's removal and loads with the settings, without reading
+// any theme file. Theme.qml uses them only while `mode` is the shell's mode
+// and the accent source is fixed; the keys left empty are derived.
+var THEME_PALETTE_KEYS = ["background", "surface", "surfaceRaised", "text", "textMuted",
+    "textDim", "red", "amber", "green"];
+
+// Theme.qml's fixed references, for whatever a theme palette leaves out.
+var THEME_FALLBACKS = {
+    dark: { background: "#1a1917", text: "#f2f0ea", red: "#ff8f8f", amber: "#ffc26e",
+        green: "#63d68c" },
+    light: { background: "#eae9ef", text: "#1f1d2b", red: "#c22f2f", amber: "#b5761e",
+        green: "#1f9d57" }
+};
+
+function defaultThemePalette() {
+    var out = { mode: "" };
+    THEME_PALETTE_KEYS.forEach(function(key) { out[key] = ""; });
+    return out;
+}
+
+function themePaletteIn(value) {
+    var out = defaultThemePalette();
+    if (!value || typeof value !== "object" || Array.isArray(value))
+        return out;
+    out.mode = enumIn(value.mode, ["", "dark", "light"], "");
+    THEME_PALETTE_KEYS.forEach(function(key) {
+        out[key] = hexIn(value[key], "").toLowerCase();
+    });
+    return out;
+}
+
+function themeIdIn(value) {
+    return typeof value === "string" && /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/.test(value)
+        ? value : "";
+}
+
+// A theme palette's surfaces and inks, deriving what it leaves out the way
+// Theme.qml layers its own: in both modes a raised surface steps toward
+// white, and quieter text steps toward the base. Surfaces are held to their
+// mode — at least 7.5:1 against white in dark mode, 9:1 against black in
+// light mode — so a theme cannot put light panels in a dark shell, and the
+// text floors below are always reachable. Real themes sit far inside both.
+function themeSurfaces(palette) {
+    var p = themePaletteIn(palette);
+    var dark = p.mode !== "light";
+    var fallback = THEME_FALLBACKS[dark ? "dark" : "light"];
+    function polar(value) {
+        return dark ? ensureContrast(value, "#ffffff", 7.5) : ensureContrast(value, "#000000", 9);
+    }
+    var background = polar(p.background || fallback.background);
+    var surface = polar(p.surface || mixHex(background, "#ffffff", dark ? 0.03 : 0.35));
+    var text = p.text || fallback.text;
+    var muted = p.textMuted || mixHex(text, background, 0.25);
+    return {
+        mode: dark ? "dark" : "light",
+        background: background,
+        surface: surface,
+        surfaceRaised: polar(p.surfaceRaised || mixHex(surface, "#ffffff", dark ? 0.04 : 0.5)),
+        text: text,
+        // What light mode draws its chips, hover layers and hairlines in.
+        ink: ensureContrast(text, background, 7.0),
+        textMuted: muted,
+        textDim: p.textDim || mixHex(text, background, 0.42),
+        red: p.red || fallback.red,
+        amber: p.amber || fallback.amber,
+        green: p.green || fallback.green
+    };
+}
+
+// The least favourable backdrop for copy in a themed shell
+// (Theme.copyReferenceBg): in dark mode the lightest surface, in light mode
+// the darkest one under a hovered chip of the theme's ink.
+function themeReference(palette, chipAlpha) {
+    var s = themeSurfaces(palette);
+    var surfaces = [s.background, s.surface, s.surfaceRaised].sort(function(a, b) {
+        return relativeLuminance(a) - relativeLuminance(b);
+    });
+    return s.mode === "dark" ? surfaces[2] : mixHex(surfaces[0], s.ink, chipAlpha);
+}
+
+// The text ladder of a theme palette over `reference`, its least favourable
+// backdrop (themeReference). A theme's own colours stay wherever they
+// already read; the floors only ever raise them — 7:1 for primary text,
+// 4.5:1 for every quieter step — so no theme can make copy unreadable.
+function themeTextPalette(reference, palette) {
+    var s = themeSurfaces(palette);
+    var bg = hexIn(reference, s.background).toLowerCase();
+    var hi = ensureContrast(s.text, bg, 7.0);
+    return {
+        background: bg,
+        foreground: hi,
+        textHi: hi,
+        textMid: ensureContrast(s.textMuted, bg, 4.5),
+        textLow: ensureContrast(mixHex(s.textMuted, s.textDim, 0.5), bg, 4.5),
+        textDim: ensureContrast(s.textDim, bg, 4.5),
+        textFaint: ensureContrast(mixHex(s.textDim, s.background, 0.12), bg, 4.5),
+        icon: ensureContrast(mixHex(s.text, s.textMuted, 0.5), bg, 4.5)
     };
 }
 
@@ -1253,6 +1384,8 @@ function merge(raw, context) {
         font: enumIn(parsed.font, FONT_IDS, d.font),
         accent: hexIn(parsed.accent, d.accent),
         paletteMode: migratePaletteMode(parsed, d.paletteMode),
+        theme: themeIdIn(parsed.theme),
+        themePalette: themePaletteIn(parsed.themePalette),
         position: enumIn(parsed.position, ["top", "bottom"], d.position),
         barStyle: migrateBarStyle(parsed, d.barStyle),
         gap: intIn(parsed.gap, 4, 24, 1, d.gap),
@@ -1291,7 +1424,10 @@ function merge(raw, context) {
         drawerHover: enumIn(parsed.drawerHover, DRAWER_HOVER_MODES, d.drawerHover),
         drawerWidth: intIn(parsed.drawerWidth, 320, 480, 10, d.drawerWidth),
         mods: parsed.mods === undefined ? d.mods : migrateMods(parsed.mods, parsed.v, context),
-        modOpts: migrateModOpts(parsed.modOpts, parsed.v, parsed)
+        modOpts: migrateModOpts(parsed.modOpts, parsed.v, parsed),
+        dock: boolIn(parsed.dock, d.dock),
+        dockAutoHide: boolIn(parsed.dockAutoHide, d.dockAutoHide),
+        dockPinned: desktopIdsIn(parsed.dockPinned, d.dockPinned)
     };
 }
 
@@ -1614,6 +1750,13 @@ var exported = {
     mixHex: mixHex,
     barPalette: barPalette,
     semanticPalette: semanticPalette,
+    THEME_PALETTE_KEYS: THEME_PALETTE_KEYS,
+    defaultThemePalette: defaultThemePalette,
+    themePaletteIn: themePaletteIn,
+    themeIdIn: themeIdIn,
+    themeSurfaces: themeSurfaces,
+    themeReference: themeReference,
+    themeTextPalette: themeTextPalette,
     clone: clone,
     restoreSnapshot: restoreSnapshot,
     merge: merge,

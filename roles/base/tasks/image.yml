@@ -1,6 +1,9 @@
 ---
 # The image installer and repair command reuse the actual workstation tasks.
 # In Anaconda's offline target the compose has already installed every package.
+- name: Hold desktop packages to their qualified series
+  ansible.builtin.import_tasks: versionlock.yml
+
 - name: Install the shared baseline on existing image installations
   ansible.builtin.import_tasks: packages.yml
   when: not cybexos_offline | bool
@@ -15,6 +18,9 @@
 
 - name: Resolve .local names through multicast DNS
   ansible.builtin.import_tasks: mdns.yml
+
+- name: Apply the shared fingerprint and security-key sign-in policy
+  ansible.builtin.import_tasks: authentication.yml
 
 - name: Apply the shared workstation firewall
   ansible.builtin.template:

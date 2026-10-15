@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "catppuccin-mocha",
+  "name": "Catppuccin Mocha",
+  "mode": "dark",
+  "accent": "#cba6f7",
+  "bar": "#181825",
+  "palette": {
+    "background": "#181825",
+    "surface": "#1e1e2e",
+    "surfaceRaised": "#313244",
+    "text": "#cdd6f4",
+    "textMuted": "#bac2de",
+    "textDim": "#a6adc8",
+    "red": "#f38ba8",
+    "amber": "#f9e2af",
+    "green": "#a6e3a1"
+  },
+  "author": "Catppuccin",
+  "license": "MIT",
+  "source": "https://github.com/catppuccin/palette"
+}

@@ -43,6 +43,7 @@ test("render records the dark and light settings deterministically", () => {
     assert.deepEqual(Object.keys(dark), ["gtk.json"]);
     assert.deepEqual(JSON.parse(dark["gtk.json"]), {
         "accent-color": "yellow", "color-scheme": "prefer-dark", "gtk-theme": "adw-gtk3-dark",
+        "text-scaling-factor": "1.00",
     });
     assert.ok(dark["gtk.json"].endsWith("}\n"));
     assert.deepEqual(renderTarget("gtk", darkTokens()), dark);
@@ -50,6 +51,7 @@ test("render records the dark and light settings deterministically", () => {
     const light = JSON.parse(renderTarget("gtk", lightTokens())["gtk.json"]);
     assert.deepEqual(light, {
         "accent-color": "yellow", "color-scheme": "prefer-light", "gtk-theme": "adw-gtk3",
+        "text-scaling-factor": "1.00",
     });
 });
 
@@ -121,6 +123,7 @@ test("apply sets exactly the interface keys, once per change", t => {
     ]);
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(state, "gtk.json"), "utf8")), {
         "accent-color": "purple", "color-scheme": "prefer-light", "gtk-theme": "adw-gtk3",
+        "text-scaling-factor": "1.00",
     });
 });
 
@@ -259,7 +262,8 @@ test("GTK initialization does not wait for a private-bus descendant holding outp
             for (let attempt = 0; attempt < 100; attempt++) {
                 const alive = owned.filter(pid => {
                     try { return !/\) Z /.test(fs.readFileSync(`/proc/${pid}/stat`, "utf8")); }
-                    catch (error) { if (error.code === "ENOENT") return false; throw error; }
+                    // A process exiting between open and read reports ESRCH.
+                    catch (error) { if (["ENOENT", "ESRCH"].includes(error.code)) return false; throw error; }
                 });
                 if (!alive.length) break;
                 assert.ok(attempt < 99, "fixture sleeper did not exit");
@@ -345,4 +349,88 @@ test("the converge drops only CybexOS's GTK_THEME from the user manager", t => {
         String(environment));
         assert.equal(result.stdout.includes("CHANGED:"), unsets);
     }
+});
+
+// A gsettings that remembers what is set, for the text scale's ownership:
+// `get` answers the last value set (or `initial`), as dconf would.
+function statefulGsettings(t, initial = "1.0") {
+    const stub = stubBin(t, {
+        // Shell builtins only: the scrubbed PATH holds nothing but stubs.
+        gsettings: "store=\"${0%/*}/$3.value\"\n"
+            + "case \"$1\" in\n"
+            + "  list-keys) printf '%s\\n' color-scheme gtk-theme accent-color text-scaling-factor ;;\n"
+            + "  get) if [ -f \"$store\" ]; then read -r value <\"$store\"; printf '%s\\n' \"$value\";"
+            + " else printf '%s\\n' '" + initial + "'; fi ;;\n"
+            + "  set) printf '%s\\n' \"$4\" >\"$store\" ;;\n"
+            + "esac",
+    });
+    return {
+        ...stub,
+        value: key => {
+            const file = path.join(stub.bin, key + ".value");
+            return fs.existsSync(file) ? fs.readFileSync(file, "utf8").trim() : initial;
+        },
+        userSets: (key, value) => fs.writeFileSync(path.join(stub.bin, key + ".value"), value + "\n"),
+    };
+}
+
+function sized(tokens, size) {
+    return { ...tokens, font: { ...tokens.font, size } };
+}
+
+test("the GTK text scale follows the shell's effective text size", () => {
+    const factor = size => JSON.parse(renderTarget("gtk", sized(darkTokens(), size))["gtk.json"])[
+        "text-scaling-factor"];
+    // 14 px is a fresh install's size and GNOME's 1.0; Large text (x1.15 of
+    // 14 rounds to 16 px) and a 150% interface scale (21 px) scale with it.
+    assert.equal(factor(14), "1.00");
+    assert.equal(factor(16), "1.14");
+    assert.equal(factor(18), "1.29");
+    assert.equal(factor(21), "1.50");
+    assert.equal(factor(28), "2.00");
+    // GNOME's own range bounds the extremes.
+    assert.equal(factor(6), "0.50");
+    assert.equal(factor(96), "3.00");
+});
+
+test("the text scale is set only while the shell still owns it", t => {
+    const state = scratch(t);
+    const stub = statefulGsettings(t);
+    const KEY = "text-scaling-factor";
+    const scaleCalls = () => gsettingsCalls(stub).filter(line => line.includes(KEY));
+
+    // GNOME's default belongs to nobody: the shell takes it.
+    assert.equal(apply(state, sized(darkTokens(), 16), stub.bin).report.targets.gtk.error, null);
+    assert.equal(stub.value(KEY), "1.14");
+    assert.deepEqual(scaleCalls(), [`gsettings get ${SCHEMA} ${KEY}`,
+        `gsettings set ${SCHEMA} ${KEY} 1.14`]);
+    assert.equal(fs.readFileSync(path.join(state, "gtk-text-scale"), "utf8"), "1.14\n");
+
+    // Still the value it set: the next size replaces it.
+    apply(state, sized(darkTokens(), 18), stub.bin);
+    assert.equal(stub.value(KEY), "1.29");
+
+    // A value of the user's own (GNOME Tweaks) wins, even over --force,
+    // while the colour keys keep following the shell.
+    stub.userSets(KEY, "1.25");
+    const lightRun = apply(state, sized(lightTokens(), 21), stub.bin);
+    assert.equal(lightRun.report.targets.gtk.error, null);
+    assert.equal(stub.value(KEY), "1.25");
+    assert.equal(stub.value("color-scheme"), "prefer-light");
+    apply(state, sized(lightTokens(), 21), stub.bin, ["--force"]);
+    assert.equal(stub.value(KEY), "1.25");
+
+    // `gsettings reset` hands it back: the next change applies again.
+    stub.userSets(KEY, "1.0");
+    apply(state, sized(lightTokens(), 14), stub.bin);
+    assert.equal(stub.value(KEY), "1.00");
+});
+
+test("a user's own text scale survives the first export after an upgrade", t => {
+    const stub = statefulGsettings(t, "1.25");
+    const result = apply(scratch(t), darkTokens(), stub.bin);
+    assert.equal(result.report.targets.gtk.error, null);
+    assert.equal(stub.value("text-scaling-factor"), "1.25");
+    assert.ok(!gsettingsCalls(stub).some(line =>
+        line.startsWith(`gsettings set ${SCHEMA} text-scaling-factor`)));
 });

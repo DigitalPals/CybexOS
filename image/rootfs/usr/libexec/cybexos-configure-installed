@@ -77,7 +77,7 @@ def accounts(entries, selected=None):
             and (selected is None or entry.pw_name == selected)]
 
 
-def configure(account, offline=False, hardware=False, reconcile=False):
+def configure(account, offline=False, hardware=False, reconcile=False, automatic=False):
     # Do not inherit a user's callback plugins, Ansible configuration or Python
     # path into a root provisioning process. The payload contains reviewed roles.
     environment = {
@@ -93,6 +93,9 @@ def configure(account, offline=False, hardware=False, reconcile=False):
         'primary_group': grp.getgrgid(account.pw_gid).gr_name,
         'config_repo': str(PROVISION), 'cybexos_offline': offline,
         'cybexos_hardware_only': hardware,
+        # Boot-time setup renews a skipped Secure Boot key request only on
+        # an explicit cybex repair --hardware.
+        'cybexos_hardware_automatic': automatic,
         'cybexos_reconcile': reconcile,
         'start_optional_hardware_services': not offline,
     }
@@ -137,6 +140,26 @@ def write_hardware_status(path, value):
     temporary = path.with_suffix('.tmp')
     temporary.write_text(json.dumps(value, sort_keys=True) + '\n')
     temporary.replace(path)
+
+
+def merge_nvidia(state, reason, nvidia):
+    """Fold the NVIDIA role's outcome into the hardware state.
+
+    A restart (driver switch or Secure Boot key enrollment) is pending, so
+    the next boot runs setup again and confirms the driver. A failed driver,
+    or a key request the user skipped at boot, waits for cybex repair
+    --hardware; the open-source driver keeps the desktop running meanwhile.
+    """
+    nvidia = nvidia if isinstance(nvidia, dict) else {}
+    nvidia_state = nvidia.get('state', 'absent')
+    detail = str(nvidia.get('reason', ''))
+    needs_retry = nvidia_state == 'failed' or (nvidia_state == 'enroll' and nvidia.get('key') == 'skipped')
+    if needs_retry and state != 'failed':
+        return 'failed', detail or 'NVIDIA driver setup failed; run cybex repair --hardware', nvidia
+    if nvidia_state in ('reboot', 'enroll') and state == 'completed':
+        # Not "reboot": that word marks the camera transaction's restart.
+        return 'pending', detail or 'restart required for the NVIDIA driver', nvidia
+    return state, reason, nvidia
 
 
 def main():
@@ -207,7 +230,7 @@ def main():
             marker.with_name('hardware-result.json').unlink(missing_ok=True)
         for account in users:
             try:
-                configure(account, args.offline, args.hardware, args.reconcile)
+                configure(account, args.offline, args.hardware, args.reconcile, args.automatic)
             except subprocess.CalledProcessError:
                 diagnostic = Path('/var/lib/xps-hardware/ipu7/abi-failed.log')
                 # The hardware role deliberately reuses a cached ABI diagnostic
@@ -241,11 +264,14 @@ def main():
             state = 'pending' if pending_reboot else 'failed' if preserved else 'completed'
             reason = ('reboot required for camera validation' if pending_reboot else
                       'previous camera stack retained after a failed refresh; run cybex repair --hardware' if preserved else '')
+            state, reason, nvidia = merge_nvidia(state, reason, result.get('nvidia'))
             write_hardware_status(status_path, {'version': 1, 'state': state,
                                                 'identity': identity, 'boot_id': this_boot,
                                                 'reason': reason,
                                                 'camera_ready': result.get('camera_ready', False),
-                                                'preserved_previous': result.get('preserved_previous', False)})
+                                                'preserved_previous': result.get('preserved_previous', False),
+                                                'nvidia_state': nvidia.get('state', 'absent'),
+                                                'nvidia_key': nvidia.get('key', '')})
             if state == 'completed':
                 pending = marker.with_suffix('.pending')
                 pending.write_text(identity)

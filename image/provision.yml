@@ -176,16 +176,26 @@
         - not cybexos_hardware_only | bool
         - not cybexos_reconcile | default(false) | bool
 
+    - name: Detect an NVIDIA GPU during offline installation as well as repair
+      ansible.builtin.include_role:
+        name: nvidia
+        tasks_from: detect
+      when:
+        - not cybexos_hardware_only | bool
+        - not cybexos_reconcile | default(false) | bool
+
     - name: Create the machine policy directory
       ansible.builtin.file:
         path: /etc/cybexos
         state: directory
         mode: "0755"
 
+    # The welcome window and doctor read this before the first hardware
+    # setup has run; the setup itself detects again after boot.
     - name: Record the detected desktop hardware policy
       ansible.builtin.copy:
         dest: /etc/cybexos/hardware.json
-        content: "{{ {'xps_2026': xps_2026_is_supported | bool} | to_json }}\n"
+        content: "{{ {'xps_2026': xps_2026_is_supported | bool, 'nvidia': nvidia_is_present | bool} | to_json }}\n"
         mode: "0644"
       when:
         - not cybexos_hardware_only | bool
@@ -200,6 +210,16 @@
     - name: Apply the detected workstation hardware role
       ansible.builtin.include_role:
         name: xps-2026
+      when: cybexos_hardware_only | bool
+
+    # The same role as the checkout installation. Its outcome joins the
+    # hardware result below; a failed driver never fails this play.
+    - name: Apply the NVIDIA driver role on detected NVIDIA hardware
+      ansible.builtin.include_role:
+        name: nvidia
+      vars:
+        nvidia_retry_command: cybex repair --hardware
+        nvidia_setup_automatic: "{{ cybexos_hardware_automatic | default(false) | bool }}"
       when: cybexos_hardware_only | bool
 
     - name: Require a working or reboot-pending camera on matching hardware
@@ -221,5 +241,8 @@
         content: >-
           {{ {'reboot_required': xps_2026_camera_reboot_required | default(false) | bool,
               'camera_ready': xps_2026_camera_ready | default(false) | bool,
-              'preserved_previous': xps_2026_camera_preserve_previous | default(false) | bool} | to_json }}
+              'preserved_previous': xps_2026_camera_preserve_previous | default(false) | bool,
+              'nvidia': {'state': (nvidia_status | default({'state': 'absent'})).state,
+                         'key': (nvidia_status | default({})).key | default(''),
+                         'reason': (nvidia_status | default({})).reason | default('')}} | to_json }}
       when: cybexos_hardware_only | bool

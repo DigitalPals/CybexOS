@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "tokyo-night",
+  "name": "Tokyo Night",
+  "mode": "dark",
+  "accent": "#7aa2f7",
+  "bar": "#1a1b26",
+  "palette": {
+    "background": "#1a1b26",
+    "surface": "#24283b",
+    "text": "#c0caf5",
+    "textMuted": "#a9b1d6",
+    "textDim": "#9aa5ce",
+    "red": "#f7768e",
+    "amber": "#e0af68",
+    "green": "#9ece6a"
+  },
+  "author": "Enkia",
+  "license": "MIT",
+  "source": "https://github.com/enkia/tokyo-night-vscode-theme"
+}

@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "rose-pine",
+  "name": "Rosé Pine",
+  "mode": "dark",
+  "accent": "#ebbcba",
+  "bar": "#191724",
+  "palette": {
+    "background": "#191724",
+    "surface": "#1f1d2e",
+    "surfaceRaised": "#26233a",
+    "text": "#e0def4",
+    "textMuted": "#908caa",
+    "textDim": "#6e6a86",
+    "red": "#eb6f92",
+    "amber": "#f6c177",
+    "green": "#9ccfd8"
+  },
+  "author": "Rosé Pine",
+  "license": "MIT",
+  "source": "https://github.com/rose-pine/palette"
+}

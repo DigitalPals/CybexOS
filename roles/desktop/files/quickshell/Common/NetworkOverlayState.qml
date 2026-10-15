@@ -48,6 +48,19 @@ Singleton {
         root.open = true;
     }
 
+    // The hotspot's join card: the QR page for the hotspot's own profile,
+    // which also shows the password for devices that cannot scan.
+    function openHotspot(screen, ssid, uuid) {
+        Popouts.close();
+        Launcher.close();
+        root.screen = screen ?? Screens.focused;
+        root.interfaceName = "";
+        root.speedDevices = [];
+        root.qrInfo = { ssid: ssid || "", uuid: uuid || "", security: "WPA2", hidden: false, hotspot: true };
+        root.page = "qr";
+        root.open = true;
+    }
+
     function openSpeedTest(screen, interfaceName) {
         Popouts.close();
         Launcher.close();

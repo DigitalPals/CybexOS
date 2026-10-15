@@ -36,7 +36,7 @@ SettingsRow {
     TextMetrics {
         id: mutedMetrics
         font: valueText.font
-        text: "Muted"
+        text: I18n.tr("Muted")
     }
     TextMetrics {
         id: fullMetrics

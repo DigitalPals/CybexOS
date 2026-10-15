@@ -203,7 +203,7 @@ PopoutPanel {
         radius: Theme.chipRadius
         color: Theme.chip
         Accessible.role: Accessible.Grouping
-        Accessible.name: "Quota meters"
+        Accessible.name: I18n.tr("Quota meters")
 
         Row {
             id: quotaRow
@@ -856,7 +856,7 @@ PopoutPanel {
                     id: backButton
                     visible: panel.asking
                     enabled: !panel.mine
-                    label: "Back"
+                    label: I18n.tr("Back")
                     accessibleName: "Back, without changing anything"
                     onActivated: Fusebox.cancelReset(panel.account.id)
                 }
@@ -864,7 +864,7 @@ PopoutPanel {
                     visible: panel.mode === "summary"
                     enabled: !panel.busy
                     glyph: "restart_alt"
-                    label: panel.mine ? "Checking…" : "Details"
+                    label: panel.mine ? I18n.tr("Checking…") : I18n.tr("Details")
                     accessibleName: "Show banked resets for " + Fusebox.accountName(panel.account)
                     onActivated: Fusebox.loadReset(panel.account.id)
                 }
@@ -886,20 +886,20 @@ PopoutPanel {
                 PillButton {
                     visible: panel.mode === "review" && Helpers.retryAllowed(panel.view, panel.account, root.now)
                     enabled: !panel.busy
-                    label: "Retry request"
+                    label: I18n.tr("Retry request")
                     onActivated: Fusebox.beginRecovery(panel.account.id, "retry")
                 }
                 PillButton {
                     visible: panel.mode === "review" && panel.operation !== null && !!panel.operation.requestId
                     enabled: !panel.busy
-                    label: "Check outcome"
+                    label: I18n.tr("Check outcome")
                     onActivated: Fusebox.beginRecovery(panel.account.id, "resolve")
                 }
                 PillButton {
                     visible: panel.mode === "review" && panel.view === null
                     enabled: !panel.busy
                     glyph: "warning"
-                    label: panel.mine ? "Checking…" : "Review"
+                    label: panel.mine ? I18n.tr("Checking…") : I18n.tr("Review")
                     onActivated: Fusebox.loadReset(panel.account.id)
                 }
                 PillButton {
@@ -908,7 +908,7 @@ PopoutPanel {
                     enabled: !panel.busy && panel.dialog !== null
                         && (panel.account.provider === "codex" || panel.dialog.grant !== "")
                     danger: true
-                    label: panel.mine ? "Applying…" : "Apply reset"
+                    label: panel.mine ? I18n.tr("Applying…") : I18n.tr("Apply reset")
                     accessibleName: "Apply one banked reset to " + Fusebox.accountName(panel.account) + ". This can't be undone."
                     onActivated: Fusebox.confirmReset(panel.account.id)
                 }
@@ -916,19 +916,19 @@ PopoutPanel {
                     visible: panel.mode === "retry"
                     enabled: !panel.busy
                     danger: true
-                    label: panel.mine ? "Retrying…" : "Confirm retry"
+                    label: panel.mine ? I18n.tr("Retrying…") : I18n.tr("Confirm retry")
                     onActivated: Fusebox.confirmReset(panel.account.id)
                 }
                 PillButton {
                     visible: panel.mode === "resolve"
                     enabled: !panel.busy
-                    label: "Reset was used"
+                    label: I18n.tr("Reset was used")
                     onActivated: Fusebox.confirmReset(panel.account.id, "resolve-used")
                 }
                 PillButton {
                     visible: panel.mode === "resolve"
                     enabled: !panel.busy
-                    label: "No reset was used"
+                    label: I18n.tr("No reset was used")
                     onActivated: Fusebox.confirmReset(panel.account.id, "resolve-unused")
                 }
             }
@@ -1038,7 +1038,7 @@ PopoutPanel {
             activeFocusOnTab: true
             Accessible.role: Accessible.Button
             Accessible.name: "Dismiss " + faultRow.fault.title
-            Accessible.description: "Hidden until it clears or changes"
+            Accessible.description: I18n.tr("Hidden until it clears or changes")
             Accessible.onPressAction: Fusebox.dismissFault(faultRow.fault)
             Keys.onPressed: event => {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
@@ -1208,7 +1208,7 @@ PopoutPanel {
                     Text {
                         id: reviewText
                         anchors.centerIn: parent
-                        text: "Review reset"
+                        text: I18n.tr("Review reset")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.section
                         font.weight: Theme.weightSemibold
@@ -1273,7 +1273,7 @@ PopoutPanel {
                     spacing: Theme.scaled(5)
 
                     SectionTitle {
-                        label: "Load · last 60 min"
+                        label: I18n.tr("Load · last 60 min")
                         detail: Helpers.number(details.accountTotal) + (details.accountTotal === 1 ? " request" : " requests")
                     }
                     LoadBars {
@@ -1282,7 +1282,7 @@ PopoutPanel {
                         bars: details.accountBars
                         peak: Math.max(2, ...details.accountBars.map(b => b.requests))
                         Accessible.role: Accessible.Graphic
-                        Accessible.name: "Requests per minute on this account, last 60 minutes"
+                        Accessible.name: I18n.tr("Requests per minute on this account, last 60 minutes")
                         Accessible.description: Helpers.number(details.accountTotal) + " requests"
                     }
                 }
@@ -1307,13 +1307,13 @@ PopoutPanel {
                     tone: "error"
                     glyph: "error"
                     mono: true
-                    title: circuit.circuitState.signin ? "Sign-in expired" : "Last error"
+                    title: circuit.circuitState.signin ? I18n.tr("Sign-in expired") : I18n.tr("Last error")
                     body: Fusebox.privateText(circuit.account.lastError)
 
                     // Signing in again needs the dashboard: its redirects go to the server.
                     PillButton {
                         visible: !!circuit.circuitState.signin
-                        label: "Sign in"
+                        label: I18n.tr("Sign in")
                         glyph: "open_in_new"
                         accessibleName: "Sign in to " + Fusebox.accountName(circuit.account) + " again in the Fusebox dashboard"
                         onActivated: Fusebox.openDashboard("#/accounts/" + encodeURIComponent(circuit.account.id))
@@ -1381,7 +1381,7 @@ PopoutPanel {
                     PillButton {
                         anchors.right: parent.right
                         glyph: "open_in_new"
-                        label: "Open"
+                        label: I18n.tr("Open")
                         accessibleName: "Open " + Fusebox.accountName(circuit.account) + " in the Fusebox dashboard"
                         onActivated: Fusebox.openDashboard("#/accounts/" + encodeURIComponent(circuit.account.id))
                     }
@@ -1597,7 +1597,7 @@ PopoutPanel {
                 width: parent.width
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
-                text: "Fusebox"
+                text: I18n.tr("Fusebox")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.title
                 font.weight: Theme.weightSemibold
@@ -1637,7 +1637,7 @@ PopoutPanel {
             color: connection === "live" ? Theme.okBgSoft
                 : connection === "offline" || connection === "auth" ? Theme.redBgSoft : Theme.chip
             Accessible.role: Accessible.StaticText
-            Accessible.name: "Connection"
+            Accessible.name: I18n.tr("Connection")
             Accessible.description: Fusebox.status
 
             Row {
@@ -1686,7 +1686,7 @@ PopoutPanel {
             border.color: Theme.accentText
             activeFocusOnTab: visible
             Accessible.role: Accessible.CheckBox
-            Accessible.name: "Hide account emails"
+            Accessible.name: I18n.tr("Hide account emails")
             Accessible.checkable: true
             Accessible.checked: Fusebox.hideEmails
             Accessible.onPressAction: Settings.setModuleOption("fusebox", "hideEmails", !Fusebox.hideEmails)
@@ -1754,7 +1754,7 @@ PopoutPanel {
                 }
                 ActionButton {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    label: "Set up Fusebox"
+                    label: I18n.tr("Set up Fusebox")
                     tint: Theme.accentText
                     onTriggered: Fusebox.configure()
                 }
@@ -1865,7 +1865,7 @@ PopoutPanel {
                         }
                         LinkText {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "Show"
+                            text: I18n.tr("Show")
                             accessibleName: "Show dismissed faults again"
                             onClicked: Fusebox.restoreFaults()
                         }
@@ -1876,7 +1876,7 @@ PopoutPanel {
                         wrapMode: Text.Wrap
                         elide: Text.ElideNone
                         color: Theme.textFaint
-                        text: "From account state. Update Fusebox to also see failed-request and provider faults."
+                        text: I18n.tr("From account state. Update Fusebox to also see failed-request and provider faults.")
                     }
                 }
 
@@ -1884,10 +1884,10 @@ PopoutPanel {
                 FactStrip {
                     readonly property var f: Fusebox.figures
                     facts: [
-                        { label: "In progress", value: String(f.serving) },
-                        { label: "Last minute", value: f.rpm + " req" },
-                        { label: "Failed · hour", value: String(f.failed), level: f.failed > 0 ? "critical" : "ok" },
-                        { label: "First token", value: Helpers.seconds(f.ttft) }
+                        { label: I18n.tr("In progress"), value: String(f.serving) },
+                        { label: I18n.tr("Last minute"), value: f.rpm + " req" },
+                        { label: I18n.tr("Failed · hour"), value: String(f.failed), level: f.failed > 0 ? "critical" : "ok" },
+                        { label: I18n.tr("First token"), value: Helpers.seconds(f.ttft) }
                     ]
                 }
 
@@ -1897,7 +1897,7 @@ PopoutPanel {
                     spacing: Theme.scaled(6)
 
                     SectionTitle {
-                        label: "Load · last 60 min"
+                        label: I18n.tr("Load · last 60 min")
                         detail: Helpers.number(root.loadTotal) + (root.loadTotal === 1 ? " request" : " requests")
                     }
                     LoadBars {
@@ -1906,7 +1906,7 @@ PopoutPanel {
                         bars: root.loadBars
                         peak: root.loadPeak
                         Accessible.role: Accessible.Graphic
-                        Accessible.name: "Requests per minute, last 60 minutes"
+                        Accessible.name: I18n.tr("Requests per minute, last 60 minutes")
                         Accessible.description: Helpers.number(root.loadTotal) + " requests, at most "
                             + root.loadPeak + " in a minute"
                     }
@@ -1916,7 +1916,7 @@ PopoutPanel {
 
                         Caption {
                             id: axisStart
-                            text: "60 min ago"
+                            text: I18n.tr("60 min ago")
                             color: Theme.textFaint
                         }
                         Caption {
@@ -1940,7 +1940,7 @@ PopoutPanel {
                             id: accountsTitle
                             anchors.verticalCenter: parent.verticalCenter
                             width: parent.width - (quotaSwitch.visible ? quotaSwitch.width + Theme.scaled(12) : 0)
-                            label: "Accounts"
+                            label: I18n.tr("Accounts")
                             detail: {
                                 const on = Fusebox.accounts.filter(a => !a.disabled).length;
                                 return on + " of " + Fusebox.accounts.length + " on";
@@ -1957,7 +1957,7 @@ PopoutPanel {
                         visible: Fusebox.accounts.length === 0
                         width: parent.width
                         color: Theme.textLow
-                        text: "No accounts yet. Connect one in the Fusebox dashboard."
+                        text: I18n.tr("No accounts yet. Connect one in the Fusebox dashboard.")
                     }
                     Repeater {
                         model: root.circuits
@@ -1971,14 +1971,14 @@ PopoutPanel {
                     spacing: Theme.scaled(6)
 
                     SectionTitle {
-                        label: "Latest requests"
+                        label: I18n.tr("Latest requests")
                         detail: Fusebox.totals ? Helpers.number(Fusebox.totals.requests) + " since start" : ""
                     }
                     Caption {
                         visible: root.latest.length === 0
                         width: parent.width
                         color: Theme.textLow
-                        text: "Requests appear here as they finish."
+                        text: I18n.tr("Requests appear here as they finish.")
                     }
                     Rectangle {
                         visible: root.latest.length > 0
@@ -2052,12 +2052,12 @@ PopoutPanel {
 
             LinkText {
                 visible: Fusebox.url !== ""
-                text: "Dashboard ↗"
+                text: I18n.tr("Dashboard ↗")
                 accessibleName: "Open the Fusebox dashboard"
                 onClicked: Fusebox.openDashboard("")
             }
             LinkText {
-                text: "Settings"
+                text: I18n.tr("Settings")
                 accessibleName: "Fusebox settings"
                 onClicked: Fusebox.configure()
             }

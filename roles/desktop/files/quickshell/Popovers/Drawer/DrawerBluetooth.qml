@@ -155,7 +155,7 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
             Text {
-                text: "Bluetooth"
+                text: I18n.tr("Bluetooth")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.title
                 font.weight: Theme.weightSemibold
@@ -324,7 +324,7 @@ Column {
     Text {
         visible: root.powered && root.connectedDevices.length === 0 && root.pairedDevices.length === 0 && !root.showNearby
         width: parent.width
-        text: "Preparing Bluetooth controls…"
+        text: I18n.tr("Preparing Bluetooth controls…")
         wrapMode: Text.WordWrap
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.secondary
@@ -382,7 +382,7 @@ Column {
                     selectByMouse: true
                     activeFocusOnTab: true
                     Accessible.role: Accessible.EditableText
-                    Accessible.name: "Bluetooth PIN or passkey"
+                    Accessible.name: I18n.tr("Bluetooth PIN or passkey")
                     onAccepted: root.reply(true)
                 }
             }
@@ -391,12 +391,12 @@ Column {
                 LinkText {
                     id: acceptLink
                     visible: root.prompt !== null && !root.displayPrompt
-                    text: root.inputPrompt ? "Submit" : "Confirm"
+                    text: root.inputPrompt ? I18n.tr("Submit") : I18n.tr("Confirm")
                     onClicked: root.reply(true)
                 }
                 LinkText {
                     id: cancelLink
-                    text: "Cancel"
+                    text: I18n.tr("Cancel")
                     onClicked: root.send({ action: "cancel" })
                 }
             }

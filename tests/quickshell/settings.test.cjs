@@ -1,11 +1,12 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir, load } = require("./shell.cjs");
 
 function read(relative) {
-    return fs.readFileSync(path.join(shellDir, relative), "utf8");
+    return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
 test("the settings IPC target is declared exactly once shell-wide", () => {
@@ -20,7 +21,7 @@ test("the settings IPC target is declared exactly once shell-wide", () => {
     };
     walk(shellDir);
     const declaring = qmlFiles.filter(file =>
-        /target:\s*"settings"/.test(fs.readFileSync(file, "utf8")));
+        /target:\s*"settings"/.test(untranslated(fs.readFileSync(file, "utf8"))));
     assert.deepEqual(declaring.map(file => path.relative(shellDir, file)),
         ["shell.qml"]);
 });
@@ -331,7 +332,7 @@ test("regression fixes keep asynchronous state identity-safe", () => {
     const sysInfo = read("Common/SysInfo.qml");
     const bar = read("Bar/Bar.qml");
     const tooltip = read("Bar/BarTooltip.qml");
-    const packages = fs.readFileSync(path.resolve(shellDir, "../../tasks/main.yml"), "utf8");
+    const packages = untranslated(fs.readFileSync(path.resolve(shellDir, "../../tasks/main.yml"), "utf8"));
 
     assert.match(palette, /property string activeIdentity/);
     assert.match(palette, /PaletteHelpers\.resultIsCurrent\(completedIdentity,/);
@@ -439,7 +440,7 @@ test("settings improvements expose fitting, embedded folders, undo, and shortcut
     const wallpaper = read("Settings/WallpaperPage.qml");
     const folder = read("Settings/FolderDialog.qml");
     const settings = read("Common/Settings.qml");
-    const bindings = fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8");
+    const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8"));
 
     assert.match(bar, /LayoutHelpers\.fitBar/);
     assert.doesNotMatch(bar, /width\s*>=\s*Theme\.breakpoint/);
@@ -507,8 +508,8 @@ test("touchpad scroll speed defaults to Hyprland's factor and applies live", () 
     const settings = read("Common/Settings.qml");
     const helpers = read("Common/SettingsHelpers.js");
     const system = read("Settings/TouchpadPage.qml");
-    const input = fs.readFileSync(
-        path.resolve(shellDir, "../../templates/input.lua.j2"), "utf8");
+    const input = untranslated(fs.readFileSync(
+        path.resolve(shellDir, "../../templates/input.lua.j2"), "utf8"));
 
     assert.match(helpers, /scrollFactor:\s*1\.0/);
     assert.match(helpers, /realIn\(parsed\.scrollFactor, 0\.2, 2\.0, 0\.1/);
@@ -520,6 +521,28 @@ test("touchpad scroll speed defaults to Hyprland's factor and applies live", () 
     assert.match(input, /persisted_scroll_factor\(\)/);
     assert.match(input, /"scrollFactor"%s\*:%s\*\(\[%d%\.\]\+\)/);
     assert.doesNotMatch(input, /scroll_factor\s*=\s*0\.4/);
+});
+
+test("swipe between workspaces is one touchpad switch in the saved input preferences", () => {
+    const page = read("Settings/TouchpadPage.qml");
+    const backend = read("scripts/system_settings_input.py");
+    const loader = untranslated(fs.readFileSync(path.resolve(shellDir, "../input_preferences.lua"), "utf8"));
+    const rows = load("SettingsSearchData.js").ROWS;
+
+    // Drafted behind Apply with the other switches; on unless saved off.
+    assert.match(page, /property var draft: \(\{[^}]*workspaceSwipe: true/);
+    assert.match(page, /property var original: \(\{[^}]*workspaceSwipe: true/);
+    assert.match(page, /Draft\.patch\(draft, original, \[[^\]]*"workspaceSwipe"/);
+    assert.match(page,
+        /SwitchRow \{[\s\S]{0,120}?label: "Swipe between workspaces"[\s\S]{0,200}?checked: page\.draft\.workspaceSwipe[\s\S]{0,120}?onToggled: value => page\.edit\("workspaceSwipe", value\)/);
+    assert.equal((page.match(/SwitchRow \{/g) || []).length, 3, "one new switch, no more");
+    assert.match(backend, /for key in \('tap', 'naturalScroll', 'workspaceSwipe'\):/);
+    assert.match(backend, /'touchpad': \{'tap', 'naturalScroll', 'workspaceSwipe', 'sensitivity'\}/);
+    assert.match(loader, /gestures\.remove\("workspace"\)/);
+    const row = rows.find(entry => entry.label === "Swipe between workspaces");
+    assert.ok(row, "the switch is searchable");
+    assert.equal(row.page, "touchpad");
+    assert.match(row.terms, /gesture/);
 });
 
 test("the grouped rail keeps labeled sections, the save state, and the nav search", () => {
@@ -541,7 +564,7 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
         "the config path chip lives on the About page, not a bottom footer");
     assert.match(view, /case "notifications": return notificationsPage;/);
     assert.doesNotMatch(view, /id: "drawer"|case "drawer"|id: drawerPage/);
-    for (const id of ["touchpad", "power", "region", "about"])
+    for (const id of ["touchpad", "power", "region", "backup", "about"])
         assert.match(view, new RegExp(`case "${id}": return ${id}Page;`));
     // Old ids keep working from IPC and scripts.
     assert.match(settings, /legacyPages: \(\{\s*modules: "bar", widgets: "bar", system: "power", drawer: "bar"/);
@@ -560,7 +583,8 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
     const schemaKeys = Object.keys(load("SettingsHelpers.js").defaults());
     const validPages = [...settings.matchAll(/\{ id: "([a-z]+)", group: "/g)].map(m => m[1]);
     assert.deepEqual(validPages, ["appearance", "wallpaper", "bar", "notifications", "displays",
-        "sound", "network", "touchpad", "keyboard", "power", "region", "accounts", "plugins", "about"]);
+        "sound", "network", "touchpad", "keyboard", "power", "region", "accounts", "security", "plugins", "backup",
+        "about"]);
     const rows = load("SettingsSearchData.js").ROWS;
     assert.ok(rows.length >= 30, "the search index must cover the workspace");
     for (const row of rows) {

@@ -371,8 +371,13 @@ if [[ $command_name == check ]]; then
   fi
   # A release that this machine cannot verify is still reported, with the
   # reason, so the panel can say what is needed before it can be applied.
+  # Its notes travel with it for the Updates view, which shows them as
+  # plain text; they are bounded and never interpreted here.
+  release_notes=
   if [[ $available == true ]]; then
     attestation_ready || true
+    release_notes=$(jq -r '.body | strings | .[0:8000]' "$release_json" 2>/dev/null) \
+      || release_notes=
   fi
   status=current
   [[ $available != true ]] || status=available
@@ -381,8 +386,10 @@ if [[ $command_name == check ]]; then
     jq -cn --arg current "$current_version" --arg availableVersion "$release_version" \
       --arg channel "$channel" --argjson available "$available" \
       --arg projectError "$project_error" --arg status "$status" \
+      --arg releaseNotes "$release_notes" \
       '{currentVersion:$current,availableVersion:$availableVersion,channel:$channel,
-        available:$available,status:$status,projectError:$projectError}'
+        available:$available,status:$status,projectError:$projectError,
+        releaseNotes:$releaseNotes}'
   elif [[ $status == no-release ]]; then
     printf '%s (installed: %s).\n' "$no_release" "$current_version"
   elif [[ $available == true ]]; then

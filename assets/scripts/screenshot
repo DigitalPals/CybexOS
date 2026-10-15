@@ -1,26 +1,107 @@
 #!/bin/bash
 # Screenshot capture with optional Satty editing
-# Usage: screenshot [region|fullscreen]
+# Usage: screenshot [region|fullscreen|scroll]
+#   region      drag out a region, or click a window to capture just that window
+#   fullscreen  the focused monitor
+#   scroll      select a region, then scroll its content; Enter, Escape or the
+#               shortcut again finishes, and the frames become one tall image
 
 set -euo pipefail
 
+MODE="${1:-region}"
 OUTPUT_DIR="$HOME/Pictures/Screenshots"
-mkdir -p "$OUTPUT_DIR"
 ACTION_DIR="${XDG_RUNTIME_DIR:-/tmp}/screenshot-${UID}"
+# A running scrolling capture is published beside the recorder's state: the
+# menubar (Common/Recorder.qml) watches that directory and shows the same
+# recording indicator while frames are being captured.
+RECORD_STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/screen-record"
+SCROLL_STATE="$RECORD_STATE_DIR/scroll-capture"
+SCROLL_STOP="$ACTION_DIR/scroll-stop"
+SCRIPT_PATH=$(readlink -f -- "${BASH_SOURCE[0]}")
+SCRIPT_DIR=$(dirname -- "$SCRIPT_PATH")
 mkdir -p "$ACTION_DIR"
 chmod 0700 "$ACTION_DIR"
+
+# A Lua string literal for hyprctl eval.
+lua_string() {
+  local value=$1
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  printf '"%s"' "$value"
+}
+
+# Enter and Escape finish a scrolling capture. They are bound only while one
+# runs, so the scrolled application loses those two keys for that time only.
+bind_stop_keys() {
+  local command key
+  printf -v command '%q scroll-stop' "$SCRIPT_PATH"
+  STOP_KEYS_BOUND=1
+  for key in Return Escape; do
+    hyprctl eval "hl.bind($(lua_string "$key"), hl.dsp.exec_cmd($(lua_string "$command")))" &>/dev/null ||
+      hyprctl keyword bind ",$key,exec,$command" &>/dev/null || true
+  done
+}
+
+unbind_stop_keys() {
+  local key
+  [ "$STOP_KEYS_BOUND" -eq 1 ] || return 0
+  for key in Return Escape; do
+    hyprctl eval "hl.unbind($(lua_string "$key"))" &>/dev/null ||
+      hyprctl keyword unbind ",$key" &>/dev/null || true
+  done
+  STOP_KEYS_BOUND=0
+}
+
+process_start_ticks() {
+  awk '{ print $22 }' "/proc/$1/stat" 2>/dev/null
+}
+
+# Whether the published capture's process is still the one that published
+# it; the start time guards against a reused PID.
+scroll_capture_running() {
+  local pid="" ticks=""
+  read -r pid ticks <"$SCROLL_STATE" 2>/dev/null || true
+  [[ $pid =~ ^[0-9]+$ && $ticks =~ ^[0-9]+$ ]] || return 1
+  [ "$(process_start_ticks "$pid" || true)" = "$ticks" ]
+}
+
+# Asks a running scrolling capture to finish. Only a capture that is running
+# is asked: the keys bound during a capture must never start a new one. With
+# none running, the stop keys can only still be bound because a capture was
+# killed outright; the first press after that releases them.
+request_scroll_stop() {
+  if scroll_capture_running; then
+    : >"$SCROLL_STOP"
+  elif [ "$MODE" = scroll-stop ]; then
+    STOP_KEYS_BOUND=1
+    unbind_stop_keys
+  fi
+}
+
+STOP_KEYS_BOUND=0
+if [ "$MODE" = scroll-stop ]; then
+  request_scroll_stop
+  exit 0
+fi
+
+mkdir -p "$OUTPUT_DIR"
 exec 9>"$ACTION_DIR/action.lock"
 # Coalesce repeated key presses instead of killing an unrelated slurp owned by
-# another application (or racing two cursor-setting restoration traps).
-flock -n 9 || exit 0
+# another application (or racing two cursor-setting restoration traps). The
+# scrolling shortcut pressed again while its capture runs finishes it.
+if ! flock -n 9; then
+  [ "$MODE" = scroll ] && request_scroll_stop
+  exit 0
+fi
 
-MODE="${1:-region}"
 TS="$(date +'%Y-%m-%d_%H-%M-%S-%N')"
 OUTPUT_FILE="$OUTPUT_DIR/screenshot-${TS}.png"
 FREEZE_PID=""
 CAPTURED=0
 NO_HW_CURSORS=""
 CURSOR_SETTING_CHANGED=0
+BOXES_FILE=""
+SCROLL_PUBLISHED=0
 
 set_no_hw_cursors() {
   hyprctl eval "hl.config({ cursor = { no_hardware_cursors = $1 } })" &>/dev/null ||
@@ -35,8 +116,20 @@ cleanup_freeze() {
   fi
 }
 
+clear_scroll_state() {
+  [ "$SCROLL_PUBLISHED" -eq 1 ] || return 0
+  rm -f -- "$SCROLL_STATE" "$SCROLL_STOP"
+  SCROLL_PUBLISHED=0
+}
+
 cleanup() {
   cleanup_freeze
+  unbind_stop_keys
+  clear_scroll_state
+  if [ -n "$BOXES_FILE" ]; then
+    rm -f -- "$BOXES_FILE"
+    BOXES_FILE=""
+  fi
 
   if [ "$CURSOR_SETTING_CHANGED" -eq 1 ]; then
     set_no_hw_cursors "$NO_HW_CURSORS" || true
@@ -48,7 +141,8 @@ trap cleanup EXIT
 
 # grim omits hardware cursors, while software-composited cursors can already be
 # baked into captured frames. Force hardware composition for the capture and
-# restore the user's setting on every exit path, as Omarchy does.
+# restore the user's setting on every exit path, as Omarchy does. A scrolling
+# capture keeps it for its whole run: the pointer sits over the content.
 NO_HW_CURSORS=$(hyprctl getoption cursor:no_hardware_cursors -j | jq -r '.int') || exit 1
 [[ $NO_HW_CURSORS =~ ^[0-9]+$ ]] || exit 1
 CURSOR_SETTING_CHANGED=1
@@ -63,7 +157,10 @@ edit_screenshot() {
     --copy-command "$HOME/.local/bin/clipboard-copy-image"
 }
 
+# offer_edit FILE [SUMMARY] [BODY]
 offer_edit() {
+  local summary=${2:-Screenshot saved to clipboard and file}
+  local body=${3:-Click to edit in Satty}
   command -v notify-send >/dev/null 2>&1 || return 0
 
   # notify-send waits for the default action in this background subshell. The
@@ -73,22 +170,135 @@ offer_edit() {
       --app-name="Screenshot" \
       --icon="$1" \
       --action="default=Edit screenshot" \
-      "Screenshot saved to clipboard and file" \
-      "Click to edit in Satty" 2>/dev/null) || exit 0
+      "$summary" \
+      "$body" 2>/dev/null) || exit 0
     [ "$action" = "default" ] && edit_screenshot "$1"
   ) 9>&- &
 }
 
+notify() {
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send --app-name="Screenshot" "$@" 9>&- 2>/dev/null || true
+  fi
+}
+
+# The windows a click can capture whole, as slurp boxes in the compositor's
+# logical layout: what each output shows, i.e. its active workspace and an
+# open special workspace. Hyprland reports positions and sizes in that same
+# layout space slurp and grim use, so outputs with fractional or differing
+# scales need no conversion. Where a window is fullscreen it covers the rest
+# of its workspace, and a maximised one covers the tiled windows; slurp picks
+# the smallest box under the pointer, so covered windows must not be offered.
+window_boxes() {
+  local monitors clients
+  monitors=$(hyprctl monitors -j 2>/dev/null) || return 0
+  clients=$(hyprctl clients -j 2>/dev/null) || return 0
+  jq -nr --argjson monitors "$monitors" --argjson clients "$clients" '
+    def cover: if .fullscreen == true then 2
+      elif (.fullscreen | type) == "number" then .fullscreen else 0 end;
+    [$monitors[] | .activeWorkspace.id?, .specialWorkspace.id?
+      | select(type == "number" and . != 0)] as $shown
+    | [$clients[]
+        | select(.mapped != false and .hidden != true)
+        | select(.workspace.id as $id | any($shown[]; . == $id))
+        | select((.at | type) == "array" and (.at | length) >= 2)
+        | select((.size | type) == "array" and (.size | length) >= 2)
+        | select(.size[0] > 0 and .size[1] > 0)] as $visible
+    | $visible[] as $window
+    | ([$visible[] | select(.workspace.id == $window.workspace.id) | cover] | max) as $covered
+    | $window
+    | select($covered == 0 or cover > 0 or ($covered == 1 and .floating == true))
+    | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"
+  ' 2>/dev/null || true
+}
+
+# slurp reads the window boxes on stdin: a drag selects a region, a click
+# the window under the pointer. Without boxes it is a plain region selector.
+prepare_window_boxes() {
+  BOXES_FILE=$(mktemp "$ACTION_DIR/windows.XXXXXX")
+  window_boxes >"$BOXES_FILE"
+}
+
+discard_window_boxes() {
+  rm -f -- "$BOXES_FILE"
+  BOXES_FILE=""
+}
+
+# Selects a region, then captures it while the user scrolls. The stitching
+# helper owns the frames, their limits and the stitched result.
+capture_scroll() {
+  local hint_id="" summary="" status=0 ticks stopped gaps body temporary
+  if command -v notify-send >/dev/null 2>&1; then
+    hint_id=$(notify-send --app-name="Screenshot" --print-id \
+      "Scrolling screenshot" \
+      "Select the area, then scroll down. Press Enter to finish." 9>&- 2>/dev/null || true)
+  fi
+  prepare_window_boxes
+  SELECTION=$(slurp <"$BOXES_FILE" 9>&- 2>/dev/null || true)
+  discard_window_boxes
+  # The hint must not be captured as part of the content.
+  if [[ $hint_id =~ ^[0-9]+$ ]] && command -v gdbus >/dev/null 2>&1; then
+    gdbus call --session --dest org.freedesktop.Notifications \
+      --object-path /org/freedesktop/Notifications \
+      --method org.freedesktop.Notifications.CloseNotification "$hint_id" \
+      >/dev/null 2>&1 9>&- || true
+    sleep 0.3
+  fi
+  [ -n "$SELECTION" ] || exit 0
+
+  mkdir -p "$RECORD_STATE_DIR"
+  chmod 0700 "$RECORD_STATE_DIR"
+  rm -f -- "$SCROLL_STOP"
+  ticks=$(process_start_ticks "$$")
+  temporary="$SCROLL_STATE.tmp.$$"
+  printf '%s %s\n' "$$" "$ticks" >"$temporary"
+  mv -f -- "$temporary" "$SCROLL_STATE"
+  SCROLL_PUBLISHED=1
+  bind_stop_keys
+
+  summary=$(python3 "$SCRIPT_DIR/screenshot-stitch" --geometry "$SELECTION" \
+    --output "$OUTPUT_FILE" --stop-file "$SCROLL_STOP" 9>&-) || status=$?
+
+  unbind_stop_keys
+  clear_scroll_state
+  if [ "$status" -ne 0 ] || [ ! -s "$OUTPUT_FILE" ]; then
+    notify "Scrolling screenshot failed" "The selected area could not be captured"
+    exit 1
+  fi
+
+  stopped=$(jq -r '.stopped // ""' <<<"$summary" 2>/dev/null || true)
+  gaps=$(jq -r '.gaps // 0' <<<"$summary" 2>/dev/null || true)
+  body="Click to edit in Satty"
+  case $stopped in
+    time) body="Stopped at the time limit. $body" ;;
+    height) body="Stopped at the length limit. $body" ;;
+  esac
+  if [[ $gaps =~ ^[1-9][0-9]*$ ]]; then
+    body="Some parts did not line up; scroll more slowly next time. $body"
+  fi
+  SCROLL_SUMMARY="Scrolling screenshot saved to clipboard and file"
+  SCROLL_BODY=$body
+  CAPTURED=1
+}
+
+SCROLL_SUMMARY=""
+SCROLL_BODY=""
 case "$MODE" in
   fullscreen)
     SELECTION=$(hyprctl monitors -j | jq -r '.[] | select(.focused == true) | "\(.x),\(.y) \((.width / .scale) | floor)x\((.height / .scale) | floor)"')
     ;;
+  scroll)
+    capture_scroll
+    ;;
   region|*)
     # wayfreeze otherwise requests that the compositor copy the cursor into
     # its frozen layer, where grim can no longer distinguish it from pixels.
+    # The window list is read first: freezing does not move any window.
+    prepare_window_boxes
     wayfreeze --hide-cursor 9>&- & FREEZE_PID=$!
     sleep 0.1
-    SELECTION=$(slurp 9>&- 2>/dev/null || true)
+    SELECTION=$(slurp <"$BOXES_FILE" 9>&- 2>/dev/null || true)
+    discard_window_boxes
     if [ -n "$SELECTION" ]; then
       if grim -g "$SELECTION" "$OUTPUT_FILE"; then
         CAPTURED=1
@@ -115,4 +325,8 @@ cleanup
 trap - EXIT
 flock -u 9
 exec 9>&-
-offer_edit "$OUTPUT_FILE"
+if [ -n "$SCROLL_SUMMARY" ]; then
+  offer_edit "$OUTPUT_FILE" "$SCROLL_SUMMARY" "$SCROLL_BODY"
+else
+  offer_edit "$OUTPUT_FILE"
+fi

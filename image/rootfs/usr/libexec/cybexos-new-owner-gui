@@ -1,0 +1,413 @@
+#!/usr/bin/python3
+"""The new owner's setup window, shown in cage before the login screen.
+
+cybexos-new-owner (root) starts this as an unprivileged transient user and
+sends one `init` message, with every list to choose from, on standard input.
+The window only asks; it changes nothing itself. Answers go back as JSON
+lines on the standard output it inherited, and the root service checks each
+one again before doing any work. Nothing typed here is written to a file,
+a log, the environment or a command line.
+"""
+import functools
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import select
+import sys
+
+from PySide6.QtCore import QEvent, QLocale, QObject, Property, QSocketNotifier, QUrl, Signal, Slot
+from PySide6.QtGui import QFont, QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuickControls2 import QQuickStyle
+
+HERE = Path(__file__).resolve().parent
+# Beside this program in both layouts: /usr/libexec → /usr/share when
+# installed, image/rootfs/usr/libexec → image/rootfs/usr/share in a checkout.
+QML = HERE.parent / 'share/cybexos/new-owner/Main.qml'
+MAX_INIT = 4 << 20
+INIT_TIMEOUT = 30
+STAGES = ('account', 'desktop', 'disk', 'finish')
+
+
+def load_rules():
+    """The root service's own answer rules, so both check the same way."""
+    loader = importlib.machinery.SourceFileLoader('cybexos_new_owner_rules', str(HERE / 'cybexos-new-owner'))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+rules = load_rules()
+
+
+def capitalized(text):
+    return text[:1].upper() + text[1:]
+
+
+# glibc's script modifiers, as Qt's script codes.
+SCRIPTS = {'latin': 'Latn', 'cyrillic': 'Cyrl'}
+
+
+@functools.cache
+def language_name(language, script):
+    """The language in its own words, without a region: "English", not
+    "American English"; "Nederlands", not "Vlaams". CLDR names some regional
+    variants, so the name most of the language's locales use wins."""
+    names = [locale.nativeLanguageName() for locale in
+             QLocale.matchingLocales(language, script, QLocale.Country.AnyCountry)]
+    names = [name for name in names if name]
+    if not names:
+        return QLocale.languageToString(language)
+    return capitalized(max(sorted(set(names)), key=lambda name: (names.count(name), -len(name))))
+
+
+def locale_entries(names):
+    """Each locale by its own name, e.g. "Nederlands (Nederland)", English beside it."""
+    entries = []
+    for name in names:
+        base, _, modifier = name.partition('@')
+        code = base.split('.', 1)[0]
+        if modifier in SCRIPTS and '_' in code:
+            language, territory = code.split('_', 1)
+            code, modifier = f'{language}_{SCRIPTS[modifier]}_{territory}', ''
+        locale = QLocale(code)
+        if locale.language() in (QLocale.Language.C, QLocale.Language.AnyLanguage):
+            label, english = name, ''
+        else:
+            label = language_name(locale.language(), locale.script())
+            english = QLocale.languageToString(locale.language())
+            if '_' in code:
+                label += f' ({locale.nativeTerritoryName() or QLocale.territoryToString(locale.territory())})'
+                english += f' ({QLocale.territoryToString(locale.territory())})'
+        if modifier:
+            label += f' · {modifier}'
+            english += f' · {modifier}' if english else ''
+        entries.append({'id': name, 'label': label, 'detail': english if english != label else '',
+                        'search': f'{label} {english} {name}'.casefold()})
+    return sorted(entries, key=lambda entry: (entry['label'].casefold(), entry['id']))
+
+
+def timezone_entries(zones):
+    """"Amsterdam" with "Europe" beside it; searchable by either."""
+    entries = []
+    for zone in zones:
+        region, _, place = zone.rpartition('/')
+        label, detail = place.replace('_', ' '), region.replace('_', ' ').replace('/', ' / ')
+        entries.append({'id': zone, 'label': label, 'detail': detail,
+                        'search': f'{zone} {label} {detail}'.casefold()})
+    return entries
+
+
+def keyboard_entries(keyboards):
+    return [{'id': item['id'], 'label': item['label'], 'detail': item['id'],
+             'search': f"{item['label']} {item['id']}".casefold()} for item in keyboards]
+
+
+def valid_init(message):
+    def strings(value):
+        return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+    return (isinstance(message, dict) and message.get('type') == 'init' and message.get('version') == 1
+            and isinstance(message.get('encrypted'), bool)
+            and all(isinstance(message.get(key), str) for key in ('keyboard', 'locale', 'timezone', 'focus'))
+            and strings(message.get('locales')) and strings(message.get('timezones'))
+            and strings(message.get('taken')) and isinstance(message.get('keyboards'), list)
+            and all(isinstance(item, dict) and isinstance(item.get('id'), str) and isinstance(item.get('label'), str)
+                    for item in message['keyboards']))
+
+
+def read_init(fd, limit=MAX_INIT, timeout=INIT_TIMEOUT, wait=select.select, read=os.read):
+    """The first message, and whatever followed it; None when it is unusable."""
+    buffer = b''
+    while b'\n' not in buffer:
+        if len(buffer) > limit or not wait([fd], [], [], timeout)[0]:
+            return None
+        chunk = read(fd, 65536)
+        if not chunk:
+            return None
+        buffer += chunk
+    line, _, rest = buffer.partition(b'\n')
+    try:
+        message = json.loads(line)
+    except ValueError:
+        return None
+    return (message, rest) if valid_init(message) else None
+
+
+class Channel(QObject):
+    """JSON lines from the root service on one descriptor, to it on another."""
+
+    def __init__(self, read_fd, write_fd, buffer=b''):
+        super().__init__()
+        self.read_fd, self.write_fd, self.buffer = read_fd, write_fd, buffer
+        self.on_message = lambda message: None
+        self.on_closed = lambda: None
+        self.notifier = QSocketNotifier(read_fd, QSocketNotifier.Type.Read, self)
+        self.notifier.activated.connect(self.readable)
+
+    def readable(self, *_):
+        try:
+            chunk = os.read(self.read_fd, 65536)
+        except BlockingIOError:
+            return
+        except OSError:
+            chunk = b''
+        if not chunk:
+            self.notifier.setEnabled(False)
+            self.on_closed()
+            return
+        self.buffer += chunk
+        self.dispatch()
+
+    def dispatch(self):
+        while b'\n' in self.buffer:
+            line, _, self.buffer = self.buffer.partition(b'\n')
+            try:
+                message = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(message, dict):
+                self.on_message(message)
+
+    def send(self, message):
+        data = (json.dumps(message, separators=(',', ':')) + '\n').encode()
+        try:
+            while data:
+                data = data[os.write(self.write_fd, data):]
+        except OSError:
+            self.on_closed()
+
+
+class Setup(QObject):
+    """What the window shows and may ask; QML reads it as `setup`."""
+
+    changed = Signal()
+    languageChanged = Signal()
+    finished = Signal()
+
+    def __init__(self, init, send):
+        super().__init__()
+        self.send = send
+        self._encrypted = init['encrypted']
+        self._keyboards = keyboard_entries(init['keyboards'])
+        self._locales = locale_entries(init['locales'])
+        self._timezones = timezone_entries(init['timezones'])
+        self.taken = set(init['taken'])
+        self._keyboard = init['keyboard']
+        self._locale = init['locale']
+        self._timezone = init['timezone']
+        self._focus = init['focus']
+        # idle | switching (a new keyboard layout) | working | failed | done
+        self._state = 'idle'
+        self._stage = ''
+        self._error = ('', '', '')
+        self.ready_sent = self.active_sent = False
+
+    def update(self, **values):
+        for name, value in values.items():
+            setattr(self, '_' + name, value)
+        self.changed.emit()
+
+    @Property(bool, constant=True)
+    def encrypted(self):
+        return self._encrypted
+
+    @Property('QVariantList', constant=True)
+    def keyboards(self):
+        return self._keyboards
+
+    @Property('QVariantList', constant=True)
+    def locales(self):
+        return self._locales
+
+    @Property('QVariantList', constant=True)
+    def timezones(self):
+        return self._timezones
+
+    @Property(str, constant=True)
+    def timezone(self):
+        return self._timezone
+
+    @Property(str, constant=True)
+    def focus(self):
+        return self._focus
+
+    @Property('QVariantList', constant=True)
+    def stages(self):
+        return [stage for stage in STAGES if stage != 'disk' or self._encrypted]
+
+    @Property(str, notify=changed)
+    def keyboard(self):
+        return self._keyboard
+
+    def get_locale(self):
+        return self._locale
+
+    def set_locale(self, value):
+        if value != self._locale and any(entry['id'] == value for entry in self._locales):
+            self._locale = value
+            self.languageChanged.emit()
+
+    locale = Property(str, get_locale, set_locale, notify=languageChanged)
+
+    # The window's own text: Dutch for a Dutch locale, English otherwise.
+    @Property(str, notify=languageChanged)
+    def language(self):
+        return 'nl' if self._locale.startswith('nl_') else 'en'
+
+    @Property(str, notify=changed)
+    def state(self):
+        return self._state
+
+    @Property(str, notify=changed)
+    def stage(self):
+        return self._stage
+
+    @Property(str, notify=changed)
+    def errorField(self):
+        return self._error[0]
+
+    @Property(str, notify=changed)
+    def errorCode(self):
+        return self._error[1]
+
+    @Property(str, notify=changed)
+    def errorDetail(self):
+        return self._error[2]
+
+    # ---- the rules, shared with the root service --------------------------
+
+    @Slot(str, result=str)
+    def deriveUsername(self, full_name):
+        return rules.derive_username(full_name)
+
+    @Slot(str, result=str)
+    def fullNameProblem(self, full_name):
+        return rules.full_name_problem(full_name.strip())
+
+    @Slot(str, result=str)
+    def usernameProblem(self, username):
+        return rules.username_problem(username.strip(), self.taken)
+
+    @Slot(str, str, result=str)
+    def passwordProblem(self, password, confirm):
+        return rules.password_problem(password, confirm)
+
+    # ---- requests -----------------------------------------------------------
+
+    @Slot(str)
+    def chooseKeyboard(self, keyboard):
+        if self._state != 'idle' or keyboard == self._keyboard:
+            return
+        if not any(entry['id'] == keyboard for entry in self._keyboards):
+            return
+        self.update(state='switching', error=('', '', ''))
+        self.send({'type': 'keyboard', 'keyboard': keyboard, 'locale': self._locale})
+
+    @Slot(str, str, str, str, str, str)
+    def submit(self, full_name, username, password, confirm, startup, timezone):
+        if self._state not in ('idle', 'failed'):
+            return
+        self.update(state='working', stage='', error=('', '', ''))
+        self.send({'type': 'submit', 'locale': self._locale, 'timezone': timezone, 'full_name': full_name,
+                   'username': username, 'password': password, 'confirm': confirm,
+                   'startup': startup if self._encrypted else ''})
+
+    @Slot()
+    def restartNow(self):
+        if self._state == 'done':
+            self.send({'type': 'restart'})
+
+    @Slot(str)
+    def clearError(self, field):
+        if self._error[0] == field or (field == '' and self._state == 'failed'):
+            self.update(state='idle' if self._state == 'failed' else self._state, error=('', '', ''))
+
+    @Slot()
+    def noteReady(self):
+        if not self.ready_sent:
+            self.ready_sent = True
+            self.send({'type': 'ready'})
+
+    def noteActive(self):
+        if not self.active_sent:
+            self.active_sent = True
+            self.send({'type': 'active'})
+
+    # ---- answers from the root service -------------------------------------
+
+    def receive(self, message):
+        kind = message.get('type')
+        if kind == 'restart':
+            # A new keyboard layout: cage starts again with it.
+            self.finished.emit()
+        elif kind == 'keyboard':
+            self.update(state='idle')
+        elif kind == 'progress' and isinstance(message.get('stage'), str):
+            self.update(state='working', stage=message['stage'])
+        elif kind == 'done':
+            self.update(state='done', stage='')
+        elif kind == 'error':
+            field, code = str(message.get('field', '')), str(message.get('code', ''))
+            self.update(state='failed' if not field else 'idle',
+                        error=(field, code, str(message.get('detail', ''))))
+
+
+class Activity(QObject):
+    """Reports the first key press once: proof that the keyboard reaches the window."""
+
+    def __init__(self, notice):
+        super().__init__()
+        self.notice = notice
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.KeyPress:
+            self.notice()
+        return False
+
+
+def main():
+    os.umask(0o077)
+    # Standard output carries answers only. Anything else printed, by Qt or a
+    # library, goes to standard error, which is the journal.
+    answers = os.dup(1)
+    os.dup2(2, 1)
+    received = read_init(0)
+    if received is None:
+        print('cybexos-new-owner-gui: no usable setup data', file=sys.stderr)
+        return 1
+    init, rest = received
+    app = QGuiApplication(sys.argv[:1])
+    app.setApplicationName('cybexos-new-owner')
+    # Plain QML text takes the application font: the welcome window's face.
+    app.setFont(QFont('Figtree'))
+    QQuickStyle.setStyle('Basic')
+    channel = Channel(0, answers, rest)
+    setup = Setup(init, channel.send)
+    channel.on_message = setup.receive
+    channel.on_closed = app.quit
+    setup.finished.connect(app.quit)
+
+    def active():
+        setup.noteActive()
+        app.removeEventFilter(activity)
+
+    activity = Activity(active)
+    app.installEventFilter(activity)
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty('setup', setup)
+    engine.load(QUrl.fromLocalFile(str(QML)))
+    if not engine.rootObjects():
+        return 1
+    # Ready only once a frame is on the screen; until then the service
+    # still falls back to the console.
+    engine.rootObjects()[0].frameSwapped.connect(setup.noteReady)
+    channel.dispatch()
+    return app.exec()
+
+
+if __name__ == '__main__':
+    sys.exit(main())

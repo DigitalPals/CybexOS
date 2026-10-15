@@ -120,7 +120,7 @@ Singleton {
                 Notifs.send({
                     appName: "Session",
                     appIcon: "system-lock-screen",
-                    summary: "Session action failed",
+                    summary: I18n.tr("Session action failed"),
                     body: detail
                 });
             }

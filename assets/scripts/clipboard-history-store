@@ -4,15 +4,29 @@
 
 set -euo pipefail
 
-# Read the whole type list first. Piping it straight into `grep -q` lets grep
-# exit on the first match; wl-paste then dies of SIGPIPE, pipefail reports the
-# pipeline as failed, and the concealed secret would be stored after all.
-types=$(wl-paste --list-types 2>/dev/null || true)
-if grep -Eiq 'passwordmanagerhint|x-kde-secret|keepassxc|concealed' <<<"$types"; then
-  # Consume the watcher payload so wl-paste can complete cleanly without ever
-  # passing the secret bytes to cliphist.
+# Consume the watcher payload so wl-paste can complete cleanly without ever
+# passing the secret bytes to cliphist.
+discard() {
   cat >/dev/null
   exit 0
+}
+
+# wl-paste --watch (wl-clipboard 2.2+) classifies each offer itself: one that
+# carries x-kde-passwordManagerHint=secret arrives as "sensitive". That needs
+# no second look at the selection, which may already have changed by the time
+# this runs. "clear" still reaches cliphist, which drops the entry a password
+# manager has just cleared.
+if [[ ${CLIPBOARD_STATE:-} == sensitive ]]; then
+  discard
+fi
+
+# Older wl-clipboard, or a manual run: read the whole type list first. Piping
+# it straight into `grep -q` lets grep exit on the first match; wl-paste then
+# dies of SIGPIPE, pipefail reports the pipeline as failed, and the concealed
+# secret would be stored after all.
+types=$(wl-paste --list-types 2>/dev/null || true)
+if grep -Eiq 'passwordmanagerhint|x-kde-secret|keepassxc|concealed' <<<"$types"; then
+  discard
 fi
 
 exec cliphist -max-items 500 store

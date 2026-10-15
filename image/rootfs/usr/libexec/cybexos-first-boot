@@ -1,0 +1,131 @@
+#!/usr/bin/python3
+"""Finish an installation, or a factory reset, at the start before any login.
+
+cybexos-first-boot.service runs this only when the installer or a factory
+reset left work for this boot:
+
+1. A pending factory reset is completed (cybexos-factory-reset finish).
+2. A seed's Tailscale auth key moves from the disk to memory-backed /run,
+   so it is never part of a recovery point and is gone after this boot.
+3. The installation's factory recovery point is taken once, outside the
+   normal five-point rotation.
+
+`tailscale` (cybexos-tailscale-enroll.service, started from step 2) joins
+the tailnet once with that key and deletes it, whether or not it worked.
+"""
+import importlib.machinery
+import importlib.util
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+LIBEXEC = Path(__file__).resolve().parent
+STATE = Path('/var/lib/cybexos')
+RUNTIME = Path('/run/cybexos/first-boot')
+PENDING = 'factory-point.pending'
+SECRETS = 'first-boot'
+DESCRIPTION = 'factory state'
+
+
+def log(message):
+    print(f'cybexos-first-boot: {message}', file=sys.stderr, flush=True)
+
+
+def load(name, filename):
+    loader = importlib.machinery.SourceFileLoader(name, str(LIBEXEC / filename))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def move_secrets(state=STATE, runtime=RUNTIME):
+    """Move staged one-time credentials off the disk; return what moved."""
+    source = state / SECRETS
+    if not source.is_dir():
+        return []
+    runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(runtime, 0o700)
+    moved = []
+    for path in sorted(source.iterdir()):
+        if path.is_file() and not path.is_symlink():
+            target = runtime / path.name
+            descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(descriptor, 'wb') as stream:
+                stream.write(path.read_bytes())
+            moved.append(path.name)
+        path.unlink()
+    shutil.rmtree(source, ignore_errors=True)
+    return moved
+
+
+def factory_point(snapshot, state=STATE, run=subprocess.run):
+    """Take the factory recovery point once; return what happened."""
+    marker = state / PENDING
+    if not marker.is_file():
+        return 'none'
+    layout = snapshot.detect_layout()
+    if not layout.usable or layout.pending_reboot:
+        # Without the managed Btrfs layout there are no recovery points at all.
+        log(f'no factory recovery point: {layout.message or "the root is not ready"}')
+        marker.unlink()
+        return 'unsupported'
+    with snapshot.opened_store(layout, create=False) as store:
+        existing = store.factory_point() if store is not None else ''
+    if existing:
+        # A factory reset restored the point; it still carries this marker.
+        marker.unlink()
+        return 'exists'
+    result = run([str(LIBEXEC / 'cybexos-system-snapshot'), 'create', '--factory', DESCRIPTION], check=False)
+    if result.returncode != 0:
+        # Kept for the next start; the unit's failure is visible meanwhile.
+        raise RuntimeError('the factory recovery point could not be created; it is retried at the next start')
+    marker.unlink()
+    return 'created'
+
+
+def enroll_tailscale(runtime=RUNTIME, run=subprocess.run):
+    key = runtime / 'tailscale-authkey'
+    if not key.is_file():
+        return False
+    try:
+        # file: keeps the key off every command line.
+        result = run(['tailscale', 'up', f'--auth-key=file:{key}', '--timeout=120s'], check=False, timeout=300)
+    finally:
+        key.unlink(missing_ok=True)
+    if result.returncode != 0:
+        log('Tailscale enrollment failed; the one-time key was deleted. Run `sudo tailscale up` to join manually.')
+    return result.returncode == 0
+
+
+def main(argv=None, run=subprocess.run):
+    arguments = sys.argv[1:] if argv is None else argv
+    if arguments == ['tailscale']:
+        return 0 if enroll_tailscale(run=run) else 1
+    if arguments:
+        print('Usage: cybexos-first-boot [tailscale]', file=sys.stderr)
+        return 2
+    if os.geteuid() != 0:
+        raise SystemExit('cybexos-first-boot must run as root.')
+    os.umask(0o077)
+    try:
+        if (STATE / 'factory-reset.json').is_file():
+            if load('cybexos_factory_reset', 'cybexos-factory-reset').finish():
+                log('factory reset completed; the new-owner setup starts next')
+        moved = move_secrets()
+        status = factory_point(load('cybexos_snapshot', 'cybexos-system-snapshot'), run=run)
+    except Exception as error:
+        # Markers stay in place, so the next start retries; the unit shows failed.
+        log(f'{type(error).__name__}: {error}')
+        return 1
+    if status == 'created':
+        log('took the factory recovery point')
+    if 'tailscale-authkey' in moved:
+        run(['systemctl', 'start', '--no-block', 'cybexos-tailscale-enroll.service'], check=False)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

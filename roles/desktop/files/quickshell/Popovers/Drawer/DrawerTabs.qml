@@ -16,12 +16,12 @@ Rectangle {
     property string current: "overview"
 
     readonly property var tabMeta: ({
-        overview: { glyph: "dashboard", label: "Overview" },
-        sound: { glyph: "volume_down", label: "Sound" },
-        network: { glyph: "wifi", label: "Network" },
-        bluetooth: { glyph: "bluetooth", label: "Bluetooth" },
-        power: { glyph: "battery_5_bar", label: "Power" },
-        notifications: { glyph: "notifications", label: "Notifications" }
+        overview: { glyph: "dashboard", label: I18n.tr("Overview") },
+        sound: { glyph: "volume_down", label: I18n.tr("Sound") },
+        network: { glyph: "wifi", label: I18n.tr("Network") },
+        bluetooth: { glyph: "bluetooth", label: I18n.tr("Bluetooth") },
+        power: { glyph: "battery_5_bar", label: I18n.tr("Power") },
+        notifications: { glyph: "notifications", label: I18n.tr("Notifications") }
     })
 
     // Order and visibility come from the Drawer settings page. A tab the user
@@ -74,7 +74,7 @@ Rectangle {
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.navigation
         font.weight: Theme.weightSemibold
-        text: root.tabMeta[root.current] ? root.tabMeta[root.current].label : ""
+        text: root.tabMeta[root.current] ? I18n.tr(root.tabMeta[root.current].label) : ""
     }
 
     height: Math.max(Theme.scaled(42), Theme.typography.navigation + Theme.controlSpacing * 2)
@@ -110,7 +110,7 @@ Rectangle {
                 Accessible.selected: on
                 Accessible.onPressAction: root.activateTab(index, true)
                 Controls.ToolTip.visible: segmentMouse.containsMouse || activeFocus
-                Controls.ToolTip.text: modelData.label
+                Controls.ToolTip.text: I18n.tr(modelData.label)
                 Keys.onPressed: event => {
                     let next = index;
                     if (event.key === Qt.Key_Left) next = Math.max(0, index - 1);
@@ -158,7 +158,7 @@ Rectangle {
                         width: Math.max(0, segment.width - root.tabPadding * 2 - root.tabIconSize - Theme.iconTextSpacing)
                         elide: Text.ElideRight
                         anchors.verticalCenter: parent.verticalCenter
-                        text: segment.modelData.label
+                        text: I18n.tr(segment.modelData.label)
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.navigation
                         font.weight: Theme.weightSemibold

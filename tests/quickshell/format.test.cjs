@@ -79,7 +79,8 @@ test("the idioms Format replaced do not come back", () => {
         // introducing a second module mechanism for one constant.
         "Common/T3CodeHelpers.js": "pure helper module, no QML import available",
         "Common/GitHubHelpers.js": "pure helper module, no QML import available",
-        "Settings/LocalTime.js": "pure helper module, no QML import available"
+        "Settings/LocalTime.js": "pure helper module, no QML import available",
+        "Common/BackupHelpers.js": "pure helper module, no QML import available"
     };
     for (const rel of qmlAndJs()) {
         if (rel in exempt) continue;

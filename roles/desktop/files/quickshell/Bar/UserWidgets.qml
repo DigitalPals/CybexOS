@@ -84,7 +84,7 @@ Row {
 
     Text {
         visible: (root.section === "right" && (UserPlugins.error !== "" || Object.keys(OmarchyPlugins.errors).length > 0))
-        text: "Plugins !"
+        text: I18n.tr("Plugins !")
         color: Theme.barTextHi
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.bar

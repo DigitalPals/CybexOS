@@ -45,7 +45,7 @@ Item {
     height: Theme.chipHeight
     activeFocusOnTab: visible
     Accessible.role: Accessible.Button
-    Accessible.name: "Reset to default"
+    Accessible.name: I18n.tr("Reset to default")
     Accessible.onPressAction: root.trigger()
     Controls.ToolTip.visible: mouse.containsMouse
     Controls.ToolTip.text: "Reset to default"

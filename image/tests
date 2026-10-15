@@ -75,8 +75,8 @@ class OfflineApplications(unittest.TestCase):
             ("roles/apps/tasks/packages.yml", "Install the required Fedora and RPM Fusion application packages"),
             ("roles/apps/tasks/packages.yml", "Install the Tailscale package when selected"),
             ("roles/apps/tasks/omawrite.yml", "Install Omawrite build and runtime dependencies"),
-            ("roles/apps/tasks/repos.yml", "Enable RPM Fusion free repository"),
-            ("roles/apps/tasks/repos.yml", "Enable RPM Fusion nonfree repository"),
+            ("roles/apps/tasks/rpmfusion.yml", "Enable RPM Fusion free repository"),
+            ("roles/apps/tasks/rpmfusion.yml", "Enable RPM Fusion nonfree repository"),
             ("roles/base/tasks/packages.yml", "Install Fedora baseline packages"),
             # Pulled in by plymouth-plugin-script and the live kickstart.
             ("roles/boot/tasks/main.yml", "Install Fedora BGRT and selected Plymouth theme support"),
@@ -86,8 +86,12 @@ class OfflineApplications(unittest.TestCase):
             ("roles/xps-2026/tasks/camera.yml", "Install Fedora-native camera runtime and build dependencies"),
             ("roles/xps-2026/tasks/camera.yml", "Install the locally built, RPM-managed IPU7 userspace and DKMS sources"),
             ("roles/xps-2026/tasks/camera.yml", "Reinstall the verified prior camera RPM after a failed refresh"),
-            ("roles/xps-2026/tasks/fingerprint.yml", "Install Fedora fingerprint support for the detected reader"),
             ("roles/xps-2026/tasks/power.yml", "Install XPS 2026 thermal and low-power-mode services"),
+            # The NVIDIA driver is built for the installed kernel after boot,
+            # only on detected NVIDIA hardware; it is never bundled.
+            ("roles/nvidia/tasks/setup.yml", "Install the Fedora akmods and Secure Boot key tools"),
+            ("roles/nvidia/tasks/setup.yml", "Install kernel headers for the running kernel when still available"),
+            ("roles/nvidia/tasks/setup.yml", "Install the NVIDIA driver, CUDA libraries and VA-API driver"),
         }
         included = {(path, name) for path, names in applications.PACKAGE_TASKS for name in names}
 
@@ -142,6 +146,11 @@ class OfflineApplications(unittest.TestCase):
         self.assertIn("NetworkManager", enabled)
         authselect = next(line for line in source.splitlines() if line.startswith("authselect "))
         self.assertIn("with-mdns4", authselect.split())
+        # The live image and its installations offer fingerprints like the
+        # workstation's authentication tasks; never a profile-wide u2f feature,
+        # which would also reach SDDM's password-auth (docs/security.md).
+        self.assertIn("with-fingerprint", authselect.split())
+        self.assertFalse(any(word.startswith("with-pam-u2f") for word in authselect.split()))
 
     def test_offline_seed_is_portable_and_preserves_user_files(self):
         with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {}, clear=True):
@@ -261,6 +270,31 @@ class WelcomeTests(unittest.TestCase):
         with patch.object(backend.process, "start") as start:
             backend.install()
             start.assert_not_called()
+
+    def test_live_seed_volume_opens_the_installer_once(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            labels = Path(temporary)
+            backend = self.module.Welcome()
+            backend.live = True
+            with patch.object(backend, "install") as install:
+                backend.seed_checks = 0
+                backend.seed_timer = self.module.QTimer()
+                backend.checkSeed(labels)
+                install.assert_not_called()
+                (labels / "CYBEXOS-SEED").write_text("")
+                backend.checkSeed(labels)
+                install.assert_called_once_with()
+                self.assertFalse(backend.seed_timer.isActive())
+            self.assertTrue(self.module.seed_volume_present(labels))
+            (labels / "CYBEXOS-SEED").unlink()
+            (labels / "cidata").write_text("")
+            self.assertTrue(self.module.seed_volume_present(labels))
+            backend = self.module.Welcome()
+            backend.live = False
+            with patch.object(backend, "refreshSetup"), patch.object(backend, "install") as install:
+                backend.startSetup()
+                backend.stopSetup()
+                install.assert_not_called()
 
     def test_missing_installer_is_visible_and_does_not_run_a_shell(self):
         backend = self.module.Welcome()

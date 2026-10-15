@@ -1,11 +1,12 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir, load } = require("./shell.cjs");
 
 function read(relative) {
-    return fs.readFileSync(path.join(shellDir, relative), "utf8");
+    return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
 test("the Fedora widget owns Control Center through the normal module pipeline", () => {
@@ -119,8 +120,8 @@ test("the full-screen power overlay is retired from source and deployment", () =
     assert.doesNotMatch(read("qmldir"), /\bPowerMenu\b/);
     assert.doesNotMatch(read("shell.qml"), /\bPowerMenu\s*\{/);
 
-    const tasks = fs.readFileSync(path.resolve(shellDir,
-        "../../../desktop/tasks/main.yml"), "utf8");
+    const tasks = untranslated(fs.readFileSync(path.resolve(shellDir,
+        "../../../desktop/tasks/main.yml"), "utf8"));
     assert.match(tasks, /Remove files and links that are stale or unsafe copy destinations/,
         "deploys must remove every stale destination-only file");
     assert.match(tasks, /--exclude-standard/,

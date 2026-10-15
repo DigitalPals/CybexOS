@@ -1,0 +1,20 @@
+[Unit]
+Description=Finish the CybexOS installation or factory reset before the first login
+# Only when the installer or a factory reset left work for this boot.
+ConditionPathExists=|/var/lib/cybexos/factory-point.pending
+ConditionPathExists=|/var/lib/cybexos/factory-reset.json
+ConditionPathExists=|/var/lib/cybexos/first-boot
+ConditionKernelCommandLine=!rd.live.image
+ConditionKernelCommandLine=!cybexos.recovery
+After=local-fs.target cybexos-recovery-refresh.service cybexos-update-recover.service
+Before=systemd-user-sessions.service display-manager.service cybexos-new-owner.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/cybexos-first-boot
+# Removing a previous owner's home folders can take a while.
+TimeoutStartSec=45min
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

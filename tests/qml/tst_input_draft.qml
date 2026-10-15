@@ -40,4 +40,13 @@ TestCase {
         compare(result.sensitivity, 0);
         verify(!("naturalScroll" in result));
     }
+    function test_turning_the_workspace_swipe_off_is_sent() {
+        const original = {tap: true, naturalScroll: true, workspaceSwipe: true, sensitivity: 0};
+        const current = Draft.clone(original);
+        current.workspaceSwipe = false;
+        const result = Draft.patch(current, original, ["tap", "naturalScroll", "workspaceSwipe", "sensitivity"]);
+        compare(Object.keys(result).length, 1);
+        compare(result.workspaceSwipe, false);
+        verify(original.workspaceSwipe);
+    }
 }

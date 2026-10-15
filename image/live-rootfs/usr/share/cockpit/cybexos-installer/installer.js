@@ -1,13 +1,17 @@
-import {Wizard} from "./model.mjs";
+import {Wizard, size, systemsLabel, clampSpace, shrinkFor, countdownText, reviewFields, confirmationCopy} from "./model.mjs";
 const wizard = new Wizard();
 const $ = id => document.getElementById(id);
-const ids = ["setup", "location", "review", "progress"];
+const ids = ["setup", "location", "review", "progress", "unattended"];
 let initializing = true;
 let polling;
 let installationComplete = false;
 let appliedKeyboard = null;
 let timezoneChosen = false;
 let availableDisks = [];
+// The alongside analysis for the selected disk: {disk, options} or {disk, error}.
+let alongside = null;
+let countdown = null;
+let seedDigest = null;
 
 function fail(error) {
     $("error").textContent = error.message || "The installer could not complete this operation.";
@@ -22,6 +26,8 @@ function render() {
     document.querySelectorAll("button, input, select").forEach(item => { item.disabled = wizard.busy; });
     $("install").disabled = wizard.busy || !$("erase").checked;
     ["password", "confirm", "keyboard-test"].forEach(id => { $(id).disabled = wizard.busy || appliedKeyboard !== $("keyboard").value; });
+    // Cancelling a countdown must always be possible.
+    $("seed-cancel").disabled = !countdown && wizard.busy;
     $("busy").hidden = !initializing && !wizard.busy;
 }
 function call(command, data = {}, onProgress = () => {}) {
@@ -66,8 +72,11 @@ function options(id, values, selected) {
     }));
     if (selected) $(id).value = selected;
 }
-function size(bytes) {
-    return Number.isFinite(Number(bytes)) ? `${(Number(bytes) / 1024**3).toFixed(1)} GiB` : "Unknown size";
+function definitions(id, fields) {
+    $(id).replaceChildren(...fields.flatMap(([key, value]) => {
+        const term = document.createElement("dt"), detail = document.createElement("dd");
+        term.textContent = key; detail.textContent = value; return [term, detail];
+    }));
 }
 function partitionSummary(disk) {
     if (!disk.partitions?.length) return "No existing partitions reported";
@@ -80,9 +89,59 @@ function diskIdentity(disk) {
         `WWN: ${disk.wwn || "Not reported"}`,
         `Existing partitions: ${partitionSummary(disk)}`].join("\n");
 }
+function selectedLayout() {
+    return !$("layout-choice").hidden && $("layout-alongside").checked && alongside?.options
+        && alongside.disk === $("disk").value ? "alongside" : "erase";
+}
+function showLayout() {
+    const layout = selectedLayout();
+    $("location-intro").textContent = layout === "alongside"
+        ? "CybexOS is installed next to the existing system. Everything else on the disk is kept."
+        : "Choose a disk for CybexOS. The entire selected disk will be erased.";
+    const choice = alongside?.options;
+    $("space-field").hidden = layout !== "alongside" || choice?.mode !== "shrink";
+    if (alongside?.error) $("alongside-details").textContent = alongside.error;
+    else if (!choice) $("alongside-details").textContent = "Checking the free space on this disk…";
+    else if (choice.mode === "free")
+        $("alongside-details").textContent = `CybexOS uses ${size(choice.space)} of free space. No partition is resized.`;
+    else {
+        const space = clampSpace(choice, $("space").value);
+        const shrink = shrinkFor(choice, space);
+        $("space-label").textContent = `Space for CybexOS: ${size(space)}`;
+        $("alongside-details").textContent =
+            `There is not enough free space, so ${choice.partition.path} is shrunk from ` +
+            `${size(choice.partition.size)} to ${size(shrink.size)}. Back up that system first.`;
+    }
+}
 function showSelectedDisk() {
     const disk = availableDisks.find(item => item.name === $("disk").value);
     $("disk-details").textContent = disk ? diskIdentity(disk) : "Choose a disk to see its identity and existing partitions.";
+    alongside = null;
+    const systems = disk?.systems || [];
+    $("layout-choice").hidden = !systems.length;
+    if (systems.length) {
+        const label = systemsLabel(systems);
+        $("layout-legend").textContent = `This disk already has ${label}`;
+        $("alongside-label").textContent = `Install alongside ${label}`;
+        $("layout-alongside").checked = true;
+        const name = disk.name;
+        run("Checking the free space on this disk…", async () => {
+            try {
+                const options = await call("alongside", {disk: name});
+                alongside = {disk: name, options};
+                if (options.mode === "shrink") {
+                    $("space").min = options.min_space; $("space").max = options.max_space;
+                    $("space").value = options.default_space;
+                }
+            } catch (error) {
+                // Installing alongside is unavailable on this disk; erasing still is.
+                alongside = {disk: name, error: error.message};
+                $("layout-erase").checked = true;
+            }
+            showLayout();
+        });
+    }
+    showLayout();
 }
 function showDisks(disks) {
     availableDisks = disks;
@@ -131,9 +190,33 @@ function waitForBackend() {
         });
     });
 }
+function showOwnerMode() {
+    const oem = $("oem").checked;
+    $("username-field").hidden = oem;
+    $("username").required = !oem;
+    $("password-label").textContent = oem ? "Temporary disk passphrase" : "Password";
+    $("confirm-label").textContent = oem ? "Confirm passphrase" : "Confirm password";
+    $("password-hint").textContent = oem
+        ? "Give this passphrase to the new owner. They type it once at first start, then choose their own password. Without encryption it is not used."
+        : "Use at least 12 characters. Your chosen layout will also be used at the boot unlock screen.";
+}
 function account() {
     return {...Object.fromEntries(["username", "password", "confirm", "keyboard", "locale", "timezone", "hostname"].map(id => [id, $(id).value])),
-        passwordless_wheel: $("passwordless-wheel").checked};
+        passwordless_wheel: $("passwordless-wheel").checked, oem: $("oem").checked};
+}
+function showReview(plan) {
+    wizard.plan = plan; wizard.page = "review";
+    $("erase").checked = false;
+    const copy = confirmationCopy(plan);
+    $("erase-label").textContent = copy.check;
+    $("install").textContent = copy.button;
+    definitions("summary", reviewFields(plan, diskIdentity));
+    $("actions").replaceChildren(...plan.actions.map(action => {
+        const item = document.createElement("li");
+        item.textContent = [action["action-description"], action["object-description"], action["device-name"]].filter(Boolean).join(" · ");
+        return item;
+    }));
+    $("warnings").textContent = plan.warnings.join("\n");
 }
 function showProgress(data) {
     wizard.page = "progress";
@@ -159,6 +242,91 @@ function monitor() {
         if (!wizard.busy) call("status").then(showProgress, fail);
     }, 2000);
 }
+function seedFields(seed) {
+    const fields = [];
+    if (seed.disk) fields.push(["Disk", diskIdentity(seed.disk)], ["Disk changes", "Erase the entire disk"]);
+    fields.push(["Account", seed.oem ? "Created by the new owner at first start"
+        : `${seed.username}${seed.full_name ? ` (${seed.full_name})` : ""}`]);
+    fields.push(["Storage", seed.encrypted ? "Encrypted Btrfs · LUKS2" : "Btrfs · unencrypted"]);
+    fields.push(["Computer", `${seed.hostname} · ${seed.keyboard} · ${seed.locale} · ${seed.timezone}`]);
+    const extras = [seed.ssh_keys ? `${seed.ssh_keys} SSH key${seed.ssh_keys === 1 ? "" : "s"}` : "",
+        seed.ssh_server ? "SSH server on" : "", seed.tailscale ? "joins Tailscale at first start" : ""].filter(Boolean);
+    if (extras.length) fields.push(["Access", extras.join(" · ")]);
+    return fields;
+}
+function stopCountdown() {
+    clearInterval(countdown);
+    countdown = null;
+    $("countdown-meter").hidden = true;
+}
+function showSeedProblem(title, errors, summary) {
+    stopCountdown();
+    wizard.page = "unattended";
+    $("unattended-title").textContent = title;
+    $("unattended-intro").textContent = "Nothing was changed. Fix the seed volume and restart, or use the guided installer.";
+    definitions("seed-summary", summary ? seedFields(summary) : []);
+    $("seed-errors").replaceChildren(...errors.map(message => {
+        const item = document.createElement("li"); item.textContent = message; return item;
+    }));
+    $("countdown").textContent = "";
+    $("seed-cancel").hidden = true;
+    $("seed-guided").hidden = false;
+    render();
+}
+function startCountdown(plan) {
+    // The backend also refuses to install before this time has passed.
+    const ends = Date.now() + plan.countdown * 1000;
+    $("countdown-meter").max = plan.countdown;
+    $("countdown-meter").hidden = false;
+    const tick = () => {
+        const remaining = (ends - Date.now()) / 1000;
+        $("countdown").textContent = countdownText(remaining);
+        $("countdown-meter").value = Math.max(0, plan.countdown - remaining);
+        if (remaining > 0) return;
+        stopCountdown();
+        run("Starting the installation…", async () => {
+            showProgress({phase: "installing"});
+            try {
+                showProgress(await call("install", {token: plan.token, confirmed_disk: plan.disk.name, erase_confirmed: true}, showProgress));
+                monitor();
+            } catch (error) {
+                const state = await call("status").catch(() => null);
+                if (state && ["installing", "complete", "failed-install"].includes(state.phase)) {
+                    showProgress(state);
+                    if (state.phase === "installing") monitor();
+                } else showSeedProblem("The installation did not start.", [error.message]);
+                throw error;
+            }
+        });
+    };
+    countdown = setInterval(tick, 250);
+    tick();
+}
+async function unattended(found) {
+    wizard.page = "unattended";
+    initializing = false;
+    seedDigest = found.seed?.digest || null;
+    if (found.cancelled) {
+        showSeedProblem("Unattended installation cancelled.", [], found.seed);
+        $("unattended-intro").textContent = "Nothing was changed. Remove the seed volume and restart, or use the guided installer.";
+        return;
+    }
+    if (!found.valid) {
+        showSeedProblem("The seed needs attention.", found.errors, found.seed);
+        return;
+    }
+    definitions("seed-summary", seedFields(found.seed));
+    $("seed-errors").replaceChildren();
+    render();
+    $("busy").textContent = "Planning the installation with Anaconda…";
+    const plan = await call("plan", {seed: found.seed.digest});
+    wizard.plan = plan;
+    const changes = plan.actions.length;
+    definitions("seed-summary", [...seedFields(found.seed),
+        ["Anaconda plan", `${changes} planned disk change${changes === 1 ? "" : "s"}, validated`]]);
+    $("unattended-intro").textContent = "The matched disk will be erased when the countdown ends. Cancel to keep it unchanged.";
+    startCountdown(plan);
+}
 async function initialize() {
     initializing = true; $("startup-retry").hidden = true;
     await run("Starting Anaconda and finding your disks…", async () => {
@@ -176,6 +344,12 @@ async function initialize() {
         if (data.detected_timezone) showDetectedTimezone(data.detected_timezone);
         else detectTimezone(data.timezones);
         showDisks(data.disks);
+        // An attached seed volume replaces the questions with its countdown.
+        const found = await call("seed");
+        if (found.found) {
+            await unattended(found);
+            return;
+        }
         initializing = false;
         const keyboard = await call("keyboard", {keyboard: $("keyboard").value});
         appliedKeyboard = keyboard.keyboard;
@@ -196,7 +370,11 @@ $("timezone").addEventListener("change", () => {
     timezoneChosen = true;
     $("timezone-status").textContent = "";
 });
+$("oem").addEventListener("change", showOwnerMode);
 $("disk").addEventListener("change", showSelectedDisk);
+$("layout-alongside").addEventListener("change", showLayout);
+$("layout-erase").addEventListener("change", showLayout);
+$("space").addEventListener("input", showLayout);
 $("rescan-disks").addEventListener("click", () => run("Rescanning disks with Anaconda…", async () => {
     const data = await call("rescan");
     showDisks(data.disks);
@@ -212,26 +390,14 @@ $("account-form").addEventListener("submit", event => {
 $("disk-form").addEventListener("submit", event => {
     event.preventDefault();
     run("Planning your disk layout and checking it with Anaconda…", async () => {
-        const data = {...wizard.account(account()), disk: $("disk").value, encrypted: $("encrypted").checked};
+        const layout = selectedLayout();
+        const data = {...wizard.account(account()), disk: $("disk").value, encrypted: $("encrypted").checked, layout};
+        if (layout === "alongside") {
+            const shrink = shrinkFor(alongside.options, $("space").value);
+            if (shrink) data.shrink = shrink;
+        }
         wizard.plan = null;
-        const plan = await call("plan", data);
-        wizard.plan = plan; wizard.page = "review";
-        $("erase").checked = false;
-        const fields = {Disk: diskIdentity(plan.disk), Account: plan.account.username,
-            Storage: plan.account.encrypted ? "Encrypted Btrfs · LUKS2" : "Btrfs · unencrypted",
-            "At startup": plan.account.encrypted ? "Unlock your disk → automatic login" : "Sign in to your account",
-            Sudo: plan.account.passwordless_wheel ? "Administrator commands do not ask for a password" : "Administrator commands ask for your account password",
-            "Boot keyboard": plan.boot_keyboard, Language: plan.account.locale, Timezone: plan.account.timezone};
-        $("summary").replaceChildren(...Object.entries(fields).flatMap(([key, value]) => {
-            const term = document.createElement("dt"), detail = document.createElement("dd");
-            term.textContent = key; detail.textContent = value; return [term, detail];
-        }));
-        $("actions").replaceChildren(...plan.actions.map(action => {
-            const item = document.createElement("li");
-            item.textContent = [action["action-description"], action["object-description"], action["device-name"]].filter(Boolean).join(" · ");
-            return item;
-        }));
-        $("warnings").textContent = plan.warnings.join("\n");
+        showReview(await call("plan", data));
     });
 });
 document.querySelectorAll(".back").forEach(button => button.addEventListener("click", () => {
@@ -262,6 +428,23 @@ $("install").addEventListener("click", () => {
         }
     });
 });
+$("seed-cancel").addEventListener("click", () => {
+    stopCountdown();
+    run("Cancelling the unattended installation…", async () => {
+        await call("cancel-seed", {seed: seedDigest});
+        showSeedProblem("Unattended installation cancelled.", []);
+        $("unattended-intro").textContent = "Nothing was changed. Remove the seed volume and restart, or use the guided installer.";
+    });
+});
+$("seed-guided").addEventListener("click", () => run("Opening the guided installer…", async () => {
+    stopCountdown();
+    await call("reset");
+    wizard.plan = null;
+    wizard.page = "setup";
+    const keyboard = await call("keyboard", {keyboard: $("keyboard").value});
+    appliedKeyboard = keyboard.keyboard;
+    $("keyboard-status").textContent = `Keyboard applied. Boot unlock layout: ${keyboard.boot_keyboard}.`;
+}));
 $("advanced").addEventListener("click", () => run("Opening the full installer…", async () => {
     await call("advanced");
     $("password").value = ""; $("confirm").value = "";
@@ -279,6 +462,6 @@ $("save-diagnostics").addEventListener("click", () => run("Preparing redacted di
 $("retry").addEventListener("click", initialize);
 $("reboot").addEventListener("click", () => run("Restarting…", () => call("reboot")));
 window.addEventListener("beforeunload", event => {
-    if ((wizard.page === "progress" && !installationComplete) || wizard.busy) { event.preventDefault(); event.returnValue = ""; }
+    if ((wizard.page === "progress" && !installationComplete) || wizard.busy || countdown) { event.preventDefault(); event.returnValue = ""; }
 });
 initialize();

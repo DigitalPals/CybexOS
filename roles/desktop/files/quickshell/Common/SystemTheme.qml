@@ -58,7 +58,11 @@ Singleton {
             amber: hex(Common.Theme.amber),
             green: hex(Common.Theme.ok)
         },
-        font: {ui: Common.Theme.fontMenu, mono: Common.Theme.fontMono},
+        // `size` is the shell's effective text size in logical pixels —
+        // base size × interface scale × text size (ShellMetrics.js) — which
+        // the terminal, GTK and the lock screen scale their own text by.
+        font: {ui: Common.Theme.fontMenu, mono: Common.Theme.fontMono,
+            size: Common.Theme.fontBaseSize},
         radius: Common.Theme.surfaceRadius,
         glass: Common.Theme.glassActive,
         wallpaper: Settings.wall !== "" ? Common.Wallpaper.currentIdentity : ""

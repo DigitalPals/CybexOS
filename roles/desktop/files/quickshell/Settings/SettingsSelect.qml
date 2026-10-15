@@ -9,13 +9,20 @@ import "../Common"
 //
 // `model` is a list of { value, label }. `fontFor(value)`, when set, returns
 // the family an option's label is drawn in — the font picker shows every
-// face in itself. The button sizes to its longest option, capped at
+// face in itself. `swatchesFor(value)`, when set, returns up to three colours
+// drawn as dots before the label — the theme picker previews every theme in
+// its own. The button sizes to its longest option, capped at
 // `maximumWidth`, so choosing does not make it jump.
 Controls.ComboBox {
     id: combo
 
     property var current
     property var fontFor: null
+    property var swatchesFor: null
+    readonly property int swatchSize: Theme.scaled(11, Theme.typeScale)
+    // Three dots overlapping by a third, then a gap before the label.
+    readonly property int swatchInset: swatchesFor
+        ? Math.round(swatchSize * 7 / 3) + Theme.controlSpacing : 0
     property int maximumWidth: Theme.scaled(280, Theme.typeScale)
     property int minimumWidth: Theme.scaled(96, Theme.typeScale)
     property string accessibleName: ""
@@ -26,7 +33,7 @@ Controls.ComboBox {
         for (const item of model || [])
             widest = Math.max(widest, Math.ceil(metrics.advanceWidth(String(item.label))));
         return Math.min(maximumWidth, Math.max(minimumWidth,
-            widest + leftPadding + rightPadding + 2));
+            widest + swatchInset + leftPadding + rightPadding + 2));
     }
 
     model: []
@@ -40,6 +47,27 @@ Controls.ComboBox {
     Accessible.name: accessibleName
     onActivated: index => combo.picked(combo.model[index].value)
 
+    component SwatchDots: Row {
+        id: dots
+        property var colors: []
+        property int size: 11
+        spacing: -Math.round(size / 3)
+        Accessible.ignored: true
+
+        Repeater {
+            model: dots.colors
+            delegate: Rectangle {
+                required property var modelData
+                width: dots.size
+                height: width
+                radius: width / 2
+                color: modelData
+                border.width: 1
+                border.color: Theme.stroke
+            }
+        }
+    }
+
     FontMetrics {
         id: metrics
         font.family: Theme.fontMenu
@@ -47,14 +75,23 @@ Controls.ComboBox {
     }
 
     contentItem: Text {
-        text: combo.displayText
+        text: I18n.tr(combo.displayText)
         textFormat: Text.PlainText
+        leftPadding: combo.swatchInset
         color: Theme.textHi
         font.family: combo.fontFor && combo.currentIndex >= 0
             ? combo.fontFor(combo.model[combo.currentIndex].value) : Theme.fontMenu
         font.pixelSize: Theme.typography.control
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
+
+        SwatchDots {
+            visible: combo.swatchesFor !== null
+            anchors.verticalCenter: parent.verticalCenter
+            size: combo.swatchSize
+            colors: combo.swatchesFor && combo.currentIndex >= 0
+                ? combo.swatchesFor(combo.model[combo.currentIndex].value) : []
+        }
     }
     indicator: Sym {
         x: combo.width - width - Theme.controlSpacing
@@ -86,13 +123,21 @@ Controls.ComboBox {
                 anchors.right: check.left
                 anchors.rightMargin: Theme.controlSpacing
                 anchors.verticalCenter: parent.verticalCenter
-                text: option.modelData.label
+                text: I18n.tr(option.modelData.label)
                 textFormat: Text.PlainText
+                leftPadding: combo.swatchInset
                 color: Theme.textHi
                 font.family: combo.fontFor ? combo.fontFor(option.modelData.value) : Theme.fontMenu
                 font.pixelSize: Theme.typography.control
                 font.weight: option.chosen ? Theme.weightSemibold : Theme.weightRegular
                 elide: Text.ElideRight
+
+                SwatchDots {
+                    visible: combo.swatchesFor !== null
+                    anchors.verticalCenter: parent.verticalCenter
+                    size: combo.swatchSize
+                    colors: combo.swatchesFor ? combo.swatchesFor(option.modelData.value) : []
+                }
             }
             Sym {
                 id: check

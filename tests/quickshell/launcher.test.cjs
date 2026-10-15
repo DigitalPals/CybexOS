@@ -1,11 +1,12 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir, load } = require("./shell.cjs");
 
 function read(rel) {
-    return fs.readFileSync(path.join(shellDir, rel), "utf8");
+    return untranslated(fs.readFileSync(path.join(shellDir, rel), "utf8"));
 }
 
 test("the launcher is warm before the first shortcut press", () => {
@@ -29,7 +30,8 @@ test("opening claims focus immediately and preserves the first typed key", () =>
     assert.match(window, /launcherView\.handleEarlyKey\(event\)/);
 
     assert.match(view, /function prepareOpen\(\): void/);
-    assert.match(view, /search\.text = "";\s*selected = 0;\s*focusInput\(\);/s);
+    assert.match(view,
+        /search\.text = Launcher\.openRequest\.query;\s*selected = 0;\s*focusInput\(\);/s);
     assert.match(view, /Qt\.callLater\(\(\) => \{\s*if \(Launcher\.open\)\s*root\.focusInput\(\);/s);
     assert.match(view, /function handleEarlyKey\(event\): bool/);
     assert.match(view, /search\.insert\(search\.cursorPosition, event\.text\)/);
@@ -41,7 +43,7 @@ test("Enter activates the selected first result without waiting for animation", 
 
     assert.match(view, /property int selected:\s*0/);
     assert.match(view,
-        /event\.key === Qt\.Key_Return \|\| event\.key === Qt\.Key_Enter\) \{\s*activate\(rows\[selected\]\);/s);
+        /event\.key === Qt\.Key_Return \|\| event\.key === Qt\.Key_Enter\) \{[^}]*?activate\(rows\[selected\], \(event\.modifiers & Qt\.ShiftModifier\) !== 0\);/s);
     assert.doesNotMatch(view, /\bentered\b|enterTimer|enterDelay|PauseAnimation/,
         "result-row staging must not make the selected app look unavailable");
 });
@@ -71,8 +73,10 @@ test("the app directory keeps every match in a fixed scrolling viewport", () => 
 
     assert.doesNotMatch(appRows, /slice\(0, root\.maxResults\)/,
         "the provider must not discard apps below the first viewport");
+    // At most eight rows tall; a selected clipboard image adds its preview
+    // inside that viewport rather than growing the card.
     assert.match(results,
-        /height:\s*Math\.min\(Math\.min\(root\.maxResults, root\.rows\.length\) \* root\.rowHeight,/);
+        /height:\s*Math\.min\(Math\.min\(root\.maxResults \* root\.rowHeight, root\.rows\.length \* root\.rowHeight\s*\+ \(root\.selectedPreview \? root\.previewRowHeight - root\.rowHeight : 0\)\),/);
     assert.match(results, /interactive:\s*contentHeight > height/);
     assert.match(results, /boundsBehavior:\s*Flickable\.StopAtBounds/);
     assert.match(results, /ScrollChrome\s*\{[\s\S]*target:\s*resultList/);
@@ -87,7 +91,7 @@ test("the view is provider-driven and owns no search subprocesses", () => {
 
     assert.match(view, /readonly property var provider:\s*LauncherProviders\.activeProvider/);
     assert.match(view, /LauncherProviders\.query = query/);
-    assert.match(view, /LauncherProviders\.activate\(row\)/);
+    assert.match(view, /LauncherProviders\.activate\(row, copyOnly === true\)/);
     assert.match(view, /LauncherProviders\.emptyText/);
     assert.doesNotMatch(view, /LauncherProviders\.footerLeft/);
     assert.doesNotMatch(providers, /\bfooterLeft\b|\bappTotal\b/,
@@ -101,8 +105,8 @@ test("the view is provider-driven and owns no search subprocesses", () => {
 
 test("clipboard refreshes are generation-safe and password-aware", () => {
     const providers = read("Common/LauncherProviders.qml");
-    const store = fs.readFileSync(path.resolve(__dirname,
-        "../../assets/scripts/clipboard-history-store"), "utf8");
+    const store = untranslated(fs.readFileSync(path.resolve(__dirname,
+        "../../assets/scripts/clipboard-history-store"), "utf8"));
 
     assert.doesNotMatch(providers,
         /function refreshClipboard\(\)[\s\S]{0,180}clipboardListProc\.running = false/,
@@ -160,8 +164,13 @@ test("the launcher defaults to Apps and exposes the discoverable provider tabs",
     assert.match(view, /readonly property var tabs:\s*LauncherProviders\.tabProviders/);
     assert.match(view,
         /apps:\s*"Apps",\s*emoji:\s*"Emoji",\s*clipboard:\s*"History",\s*actions:\s*"Actions"/s);
+    // Super+Space always opens plain Apps; only `launcher open <id>` asks
+    // for another tab.
     assert.match(view,
-        /function prepareOpen\(\): void \{\s*LauncherProviders\.selectedProviderId = "apps";/s);
+        /function prepareOpen\(\): void \{\s*LauncherProviders\.selectedProviderId = Launcher\.openRequest\.tab;/s);
+    const launcher = read("Common/Launcher.qml");
+    assert.match(launcher,
+        /function toggle\(targetScreen\) \{[\s\S]*?openRequest = \{ tab: "apps", query: "" \};/);
     assert.match(view,
         /function selectTab\(providerId\): void \{\s*LauncherProviders\.selectedProviderId = providerId;\s*search\.text = "";/s);
     assert.match(view, /Qt\.ControlModifier[\s\S]*Qt\.Key_Tab[\s\S]*cycleTab/);
@@ -238,8 +247,8 @@ test("result navigation wraps, pages by six, and Escape clears before closing", 
 
 test("clipboard, emoji, and action providers have installed data sources", () => {
     const providers = read("Common/LauncherProviders.qml");
-    const packages = fs.readFileSync(path.resolve(shellDir,
-        "../../../apps/defaults/main.yml"), "utf8");
+    const packages = untranslated(fs.readFileSync(path.resolve(shellDir,
+        "../../../apps/defaults/main.yml"), "utf8"));
     const actions = JSON.parse(read("launcher-actions.json"));
 
     assert.match(providers,
@@ -250,19 +259,20 @@ test("clipboard, emoji, and action providers have installed data sources", () =>
     assert.match(providers, /watchChanges:\s*true/);
     assert.match(packages, /^\s+- cliphist$/m);
     assert.match(packages, /^\s+- unicode-emoji$/m);
-    assert.ok(Array.isArray(actions));
-    assert.deepEqual(actions.map(action => action.id), [
-        "ai-agent-launch", "ai-agent-choose"
-    ]);
-    assert.deepEqual(actions[0].command,
-        ["cybex", "agent", "--window"]);
-    assert.deepEqual(actions[1].command,
-        ["cybex", "agent", "--window", "--pick"]);
+    // The AI agent entries moved into the built-in catalogue, gated on the
+    // developer tools that install the agents; the file is the user's own.
+    assert.deepEqual(actions, []);
+    const catalogue = Object.fromEntries(load("LauncherProviders.js").BUILTIN_ACTIONS
+        .map(action => [action.id, action]));
+    assert.deepEqual(catalogue["ai-agent-launch"].command,
+        ["~/.local/bin/cybex", "agent", "--window"]);
+    assert.deepEqual(catalogue["ai-agent-choose"].command,
+        ["~/.local/bin/cybex", "agent", "--window", "--pick"]);
 });
 
 test("emoji activation pastes into the previously active window", () => {
     const providers = read("Common/LauncherProviders.qml");
-    const activate = providers.slice(providers.indexOf("function activate(row)"));
+    const activate = providers.slice(providers.indexOf("function activate(row"));
     const emojiActivation = activate.slice(activate.indexOf('case "emoji":'),
         activate.indexOf('case "actions":'));
 
@@ -276,7 +286,7 @@ test("emoji activation pastes into the previously active window", () => {
 
 test("Super+Space uses Hyprland's in-process global shortcut", () => {
     const shell = read("shell.qml");
-    const bindings = fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8");
+    const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8"));
 
     assert.match(shell, /GlobalShortcut\s*\{/);
     assert.match(shell, /appid:\s*"quickshell"/);
@@ -288,7 +298,7 @@ test("Super+Space uses Hyprland's in-process global shortcut", () => {
 });
 
 test("the default AI agent is discoverable from the launcher and shortcut sheet", () => {
-    const bindings = fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8");
+    const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8"));
 
     // The sheet is drawn from the binding's own description.
     assert.match(bindings,
@@ -320,4 +330,93 @@ test("launcher labels follow the scaled icon instead of a fixed text offset", ()
     const view = read("LauncherView.qml");
     assert.match(view, /x: resultIcon\.x \+ resultIcon\.width \+ Theme\.scaled\(10\)/);
     assert.doesNotMatch(view, /font\.pixelSize: \d+/);
+});
+
+test("launcher IPC opens a requested tab, and Super+Ctrl+V opens History", () => {
+    const window = read("LauncherWindow.qml");
+    const launcher = read("Common/Launcher.qml");
+    const view = read("LauncherView.qml");
+    const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8"));
+
+    assert.match(window,
+        /target: "launcher"[\s\S]*function open\(providerId: string\): void \{\s*Launcher\.openProvider\(providerId\);/);
+    assert.match(launcher,
+        /function openProvider\(providerId, targetScreen\) \{\s*openRequest = ProviderHelpers\.openTarget\(providerId\);\s*if \(open\) \{\s*targetRequested\(\);\s*return;\s*\}\s*show\(targetScreen\);/,
+        "opening an open launcher switches tabs instead of closing it");
+    assert.match(view, /function onTargetRequested\(\) \{\s*root\.selectTab\(Launcher\.openRequest\.tab\);/);
+    assert.match(bindings,
+        /mainMod \.\. " \+ CTRL \+ V", hl\.dsp\.exec_cmd\(home \.\. "\/\.local\/bin\/cybexos-runtime ipc launcher open clipboard"\),\s*\{ description = "Clipboard: Clipboard history" \}/);
+});
+
+test("argument mode turns the field into a prompt that Escape backs out of", () => {
+    const view = read("LauncherView.qml");
+    const providers = read("Common/LauncherProviders.qml");
+
+    // A typed URL or path must not be read as a provider prefix.
+    assert.match(providers,
+        /prefixedProvider: argumentMode \? null\s*: ProviderHelpers\.prefixedProviderFor\(query\)/);
+    assert.match(providers, /if \(root\.argumentMode\)\s*return root\.pendingRows;/);
+    assert.match(providers,
+        /if \(\(action\.argument \|\| action\.choices\) && argument === undefined\) \{\s*root\.beginArgument\(action\);/);
+    assert.match(providers,
+        /function beginArgument\(action\): void \{\s*root\.pendingReturnQuery = root\.query;/);
+    assert.match(providers,
+        /function cancelPending\(\): bool \{[\s\S]*?root\.inputReplaced\(text\);/);
+    assert.match(view, /pendingAction\.argument \? pendingAction\.argument\.placeholder/);
+    assert.match(view,
+        /event\.key === Qt\.Key_Escape && argumentMode\) \{[^}]*LauncherProviders\.cancelPending\(\);/);
+    assert.match(view, /function onInputReplaced\(text\) \{\s*search\.text = text;/);
+    // Removing a web app takes a second Enter on the same row.
+    assert.match(providers,
+        /if \(row\.kind === "choice" && !row\.confirm\) \{\s*root\.confirmChoice = row\.value;\s*return;/);
+    assert.match(providers, /onQueryChanged: \{\s*root\.confirmChoice = "";/);
+    // Every way out of the launcher leaves the prompt behind.
+    for (const fn of ["prepareOpen", "resetForClose", "selectTab"])
+        assert.match(view, new RegExp(`function ${fn}\\([^)]*\\): void \\{[^}]*LauncherProviders\\.resetPending\\(\\);`), fn);
+});
+
+test("typed arguments run as argv without a shell; fixed commands report failure", () => {
+    const providers = read("Common/LauncherProviders.qml");
+    const run = providers.slice(providers.indexOf("function runAction(action, argument)"),
+        providers.indexOf("function beginArgument(action)"));
+
+    assert.match(run, /ProviderHelpers\.expandCommand\(action\.command, root\.home, argument\)/);
+    assert.match(run, /root\.pendingCommand = argument !== undefined \? argv\s*:/,
+        "a value the user typed is never handed to sh");
+    assert.match(run, /\["sh", "-c", '"\$@" \|\| notify-send/);
+    assert.match(run, /commandTimer\.interval = Theme\.launcherFadeOutDuration\s*\+ \(action\.settle \?/,
+        "captures start once the launcher has left the screen");
+    assert.match(run, /Settings\.showSetting\(page, key\)/);
+    assert.match(providers, /ProviderHelpers\.availableActions\(\s*ProviderHelpers\.BUILTIN_ACTIONS, \{\s*developerTools: Settings\.developerToolsConfigured,\s*connectedWidgets: Settings\.connectedWidgetsConfigured/);
+    assert.match(providers, /return ProviderHelpers\.blendRows\(root\.appRows, root\.actions, root\.term\);/);
+});
+
+test("clipboard entries paste on Enter, copy on Shift+Enter, and pin on Ctrl+P", () => {
+    const view = read("LauncherView.qml");
+    const providers = read("Common/LauncherProviders.qml");
+
+    assert.match(providers,
+        /case "clipboard":\s*root\.useClipboardEntry\(row, !copyOnly\);/);
+    // Decoded straight into wl-copy, with the cliphist line as a positional
+    // argument; the paste waits for the copy and then for the fade-out.
+    assert.match(providers,
+        /\["sh", "-c", 'printf "%s" "\$1" \| cliphist decode \| wl-copy >\/dev\/null 2>&1',\s*"sh", row\.raw\]/);
+    const copy = providers.slice(providers.indexOf("id: clipboardCopyProc"));
+    assert.match(copy, /if \(code === 0 && root\.pastePending\) \{\s*pasteTimer\.restart\(\);/);
+    assert.match(view,
+        /Qt\.ControlModifier && event\.key === Qt\.Key_P\s*&& LauncherProviders\.canPin\(rows\[selected\]\)\) \{\s*LauncherProviders\.togglePin\(rows\[selected\]\);/);
+    // The one hint the History tab adds names the key.
+    assert.match(view, /id: clipboardHint[\s\S]*?"Ctrl\+P unpin" : "Ctrl\+P pin"/);
+    assert.match(providers, /\["python3", root\.clipboardTool, "pin", "--notify", row\.raw\]/);
+    assert.match(providers, /path: root\.dataHome \+ "\/cybexos\/clipboard\/pins\.json"/);
+    // A selected image shows its picture inside the row; others only a thumb.
+    assert.match(view, /readonly property bool previewing: isSelected && !!modelData\.thumbnail/);
+    assert.match(view, /name: "pin"/);
+});
+
+test("the password-manager hint keeps a secret out of the history", () => {
+    const store = untranslated(fs.readFileSync(path.resolve(__dirname,
+        "../../assets/scripts/clipboard-history-store"), "utf8"));
+    assert.match(store, /if \[\[ \$\{CLIPBOARD_STATE:-\} == sensitive \]\]; then\s*discard/);
+    assert.ok(store.indexOf("CLIPBOARD_STATE") < store.indexOf("exec cliphist"));
 });

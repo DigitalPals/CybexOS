@@ -98,8 +98,8 @@ Column {
 
                 Repeater {
                     model: [
-                        { label: "On", glyph: "", dnd: false },
-                        { label: "Focus", glyph: "do_not_disturb_on", dnd: true }
+                        { label: I18n.tr("On"), glyph: "", dnd: false },
+                        { label: I18n.tr("Focus"), glyph: "do_not_disturb_on", dnd: true }
                     ]
 
                     delegate: Rectangle {
@@ -199,7 +199,7 @@ Column {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Nothing new"
+                    text: I18n.tr("Nothing new")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.primary
                     color: Theme.textFaint
@@ -217,7 +217,7 @@ Column {
                 anchors.leftMargin: 4
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 4
-                text: "EARLIER"
+                text: I18n.tr("EARLIER")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.section
                 font.weight: Theme.weightSemibold

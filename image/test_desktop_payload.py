@@ -86,6 +86,103 @@ class DesktopPayload(unittest.TestCase):
         self.assertIn("CYBEXOS_CONNECTED_WIDGETS", unit)
         self.assertIn("CYBEXOS_CONNECTED_WIDGETS", (ROOT / "image/desktop_payload.py").read_text())
 
+    def test_capture_tools_reach_both_installation_paths(self):
+        # The capture helpers are user helpers: the checkout copies every one
+        # into ~/.local/bin, the RPM into /usr/share/cybexos/bin, which
+        # cybexos-user-init links into ~/.local/bin. `screenshot` finds
+        # screenshot-stitch beside its resolved self, so both must be helpers.
+        contract = json.loads((ROOT / "assets/desktop-contract.json").read_text())
+        helpers = ("screenshot", "screenshot-stitch", "screen-record", "screen-ocr", "color-picker")
+        for name in helpers:
+            self.assertIn(name, contract["userHelpers"])
+            self.assertTrue((ROOT / "assets/scripts" / name).read_text().startswith("#!"), name)
+        screenshot = (ROOT / "assets/scripts/screenshot").read_text()
+        self.assertIn('SCRIPT_DIR=$(dirname -- "$SCRIPT_PATH")', screenshot)
+        self.assertIn('python3 "$SCRIPT_DIR/screenshot-stitch"', screenshot)
+        dotfiles = (ROOT / "roles/dotfiles/tasks/main.yml").read_text()
+        self.assertIn('loop: "{{ cybexos_desktop_contract.userHelpers }}"', dotfiles)
+        self.assertIn('contract["userHelpers"]', (ROOT / "image/package").read_text())
+        self.assertIn("contract['userHelpers']", (ROOT / "image/repair-installed").read_text())
+
+        # Packages: the desktop task installs them on a checkout and is part
+        # of the ISO's compose; the RPM also requires them.
+        applications = load("desktop_payload_applications", "image/applications")
+        packages, _ = applications.package_names()
+        spec = (ROOT / "image/cybexos-desktop.spec").read_text()
+        requires = {name for line in spec.splitlines() if line.startswith("Requires:")
+                    for name in line.split()[1:]}
+        for package in ("grim", "slurp", "satty", "wf-recorder", "hyprpicker", "ImageMagick",
+                        "tesseract", "zbar", "qt6-qtmultimedia", "python3", "wl-clipboard"):
+            self.assertIn(package, packages)
+            self.assertIn(package, requires)
+
+        # The shell side ships byte-identical, overlay registration included.
+        checkout = ROOT / "roles/desktop/files/quickshell"
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            prepare_quickshell(ROOT, payload)
+            installed = payload / "usr/share/cybexos/runtime/quickshell"
+            for relative in ("WebcamOverlay.qml", "qmldir", "shell.qml", "Common/Recorder.qml",
+                             "Common/CaptureHelpers.js", "Bar/Modules/Indicators.qml"):
+                self.assertEqual((installed / relative).read_bytes(),
+                                 (checkout / relative).read_bytes(), relative)
+
+        # Both paths render the same bindings file.
+        bindings = (ROOT / "roles/desktop/files/bindings.lua").read_text()
+        for command in ("screenshot scroll", "screen-record --webcam", "color-picker"):
+            self.assertIn(f'home .. "/.local/bin/{command}"', bindings)
+        self.assertIn('"bindings.lua"', (ROOT / "image/package").read_text())
+
+    def test_shell_translations_ship_identically_on_both_paths(self):
+        """The I18n singleton and its catalogs are shell source: the checkout
+        deploys the tree and the RPM copies it, so both read the same Dutch."""
+        checkout = ROOT / "roles/desktop/files/quickshell"
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            prepare_quickshell(ROOT, payload)
+            installed = payload / "usr/share/cybexos/runtime/quickshell"
+            for relative in ("Common/I18n.qml", "Common/I18nHelpers.js", "Common/i18n/nl.js", "Common/qmldir"):
+                self.assertEqual((installed / relative).read_bytes(), (checkout / relative).read_bytes(), relative)
+            self.assertIn("singleton I18n I18n.qml", (installed / "Common/qmldir").read_text())
+
+    def test_overview_dock_and_process_list_ship_identically_on_both_paths(self):
+        checkout = ROOT / "roles/desktop/files/quickshell"
+        files = ["shell.qml", "qmldir", "Common/qmldir", "Popovers/Drawer/qmldir",
+                 "OverviewWindow.qml", "OverviewView.qml", "DockWindow.qml",
+                 "Common/Overview.qml", "Common/Dock.qml", "Common/ProcessList.qml",
+                 "Common/OverviewHelpers.js", "Common/DockHelpers.js",
+                 "Common/ProcessListHelpers.js", "Common/WindowCommands.js",
+                 "Popovers/Drawer/DrawerProcesses.qml", "Popovers/Drawer/DrawerOverview.qml",
+                 "Settings/BarLayoutGroups.qml", "scripts/processes"]
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            prepare_quickshell(ROOT, payload)
+            installed = payload / "usr/share/cybexos/runtime/quickshell"
+            for relative in files:
+                self.assertEqual((installed / relative).read_bytes(), (checkout / relative).read_bytes(), relative)
+            # Both paths run the helper through bash; the ISO also marks it executable.
+            self.assertEqual((installed / "scripts/processes").stat().st_mode & 0o777, 0o755)
+            # One schema decides the defaults on both: the dock starts off and
+            # unpinned, Top processes starts shown.
+            script = ("const H = require(process.argv[1]); const d = H.merge(null); "
+                      "console.log(JSON.stringify([d.dock, d.dockAutoHide, d.dockPinned, d.drawerOverview.processes]));")
+            defaults = [subprocess.run(["node", "-e", script, str(base / "Common/SettingsHelpers.js")],
+                                       text=True, capture_output=True, check=True).stdout
+                        for base in (checkout, installed)]
+            self.assertEqual(defaults[0], defaults[1])
+            self.assertEqual(json.loads(defaults[1]), [False, False, [], True])
+        # Super+Tab and the overview/dock layer rules come from the one
+        # bindings.lua and looknfeel template that both installs use.
+        bindings = (ROOT / "roles/desktop/files/bindings.lua").read_text()
+        self.assertIn('bind(mainMod .. " + TAB", hl.dsp.global("quickshell:overviewToggle")', bindings)
+        package = (ROOT / "image/package").read_text()
+        self.assertIn('"bindings.lua"', package)
+        self.assertIn('"looknfeel.lua"', package)
+        self.assertIn("- bindings.lua", (ROOT / "roles/desktop/tasks/main.yml").read_text())
+        look = (ROOT / "roles/desktop/templates/looknfeel.lua.j2").read_text()
+        self.assertIn("|wallpaper|overview|dock)$", look)
+        self.assertIn("|shortcuts|dock)$", look)
+
     def test_portable_defaults_and_boot_assets_share_workstation_sources(self):
         environment = jinja2.Environment(undefined=jinja2.StrictUndefined)
         environment.filters.update(bool=bool, ternary=lambda value, yes, no: yes if value else no)
@@ -137,6 +234,131 @@ class DesktopPayload(unittest.TestCase):
                              (ROOT / "roles/base/files/60-cybexos-hardening.conf").read_bytes())
             self.assertIn('target="DROP"', (payload / "usr/lib/firewalld/zones/cybexos.xml").read_text())
 
+    def test_gestures_and_game_mode_render_identically_for_checkout_and_iso(self):
+        """Touchpad gestures and game mode live in input.lua and looknfeel.lua.
+
+        The checkout renders them with the machine's facts; image/package
+        renders them with dynamic hardware and keyboard lookups. Only those
+        lines may differ, so both paths share the same gestures, game mode,
+        bindings and helper.
+        """
+        import json as json_module
+        import shlex
+        inventory = yaml.safe_load((ROOT / "inventory/group_vars/all.yml").read_text())
+        environment = jinja2.Environment(undefined=jinja2.StrictUndefined, keep_trailing_newline=True)
+        environment.filters.update(bool=bool, ternary=lambda value, yes, no: yes if value else no,
+                                   to_json=json_module.dumps, quote=shlex.quote)
+        base = {"features": inventory["features"], "cybexos_xps_2026": False,
+                "machine_keyboard_layout": "us", "machine_keyboard_variant": ""}
+        for name, allowed in (("input.lua", ("kb_layout", "kb_variant")), ("looknfeel.lua", ("force_zero_scaling",))):
+            template = environment.from_string((ROOT / "roles/desktop/templates" / (name + ".j2")).read_text())
+            checkout = template.render(**base).splitlines()
+            iso = template.render(**base, cybexos_dynamic_hardware=True)
+            if name == "input.lua":
+                # As image/package does for the installed keyboard choice.
+                iso = iso.replace('kb_layout = "us"', 'kb_layout = os.getenv("CYBEXOS_KEYBOARD_LAYOUT") or "us"')
+                iso = iso.replace('kb_variant = ""', 'kb_variant = os.getenv("CYBEXOS_KEYBOARD_VARIANT") or ""')
+            iso = iso.splitlines()
+            self.assertEqual(len(checkout), len(iso), name)
+            different = [(a, b) for a, b in zip(checkout, iso) if a != b]
+            self.assertTrue(all(any(key in a for key in allowed) for a, _ in different), (name, different))
+        package = (ROOT / "image/package").read_text()
+        self.assertIn('"input.lua", "looknfeel.lua"', package)
+        self.assertIn('"bindings.lua", "autostart.lua", "displays.lua", "input_preferences.lua"', package)
+        self.assertIn('helpers = contract["userHelpers"]', package)
+        self.assertIn("game-mode", json.loads((ROOT / "assets/desktop-contract.json").read_text())["userHelpers"])
+
+    def test_named_themes_ship_and_list_identically_on_both_paths(self):
+        """Built-in themes, the theme helper and `cybex theme` on both layouts."""
+        checkout = ROOT / "roles/desktop/files/quickshell"
+        contract = json.loads((ROOT / "assets/desktop-contract.json").read_text())
+        self.assertIn("cybexos-theme", contract["userHelpers"])
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            payload = base / "payload"
+            prepare_quickshell(ROOT, payload)
+            vendor = payload / "usr/share/cybexos"
+            installed = vendor / "runtime/quickshell"
+            themes = sorted(p.relative_to(checkout) for p in (checkout / "themes").rglob("*") if p.is_file())
+            self.assertGreaterEqual(len(themes), 8)
+            for relative in themes + [Path(name) for name in (
+                    "scripts/theme-packs.py", "scripts/theme_packs.py", "scripts/settings-store",
+                    "Common/Themes.qml", "Common/ThemeHelpers.js", "Common/SettingsHelpers.js")]:
+                self.assertEqual((installed / relative).read_bytes(), (checkout / relative).read_bytes(),
+                                 str(relative))
+            self.assertEqual(sorted(p.relative_to(installed) for p in (installed / "themes").rglob("*")
+                                    if p.is_file()), themes)
+            # The RPM's helpers, as image/package installs them, and the
+            # account link cybexos-user-init makes to the vendor runtime.
+            (vendor / "bin").mkdir()
+            for name in ("cybexos-theme", "cybexos-runtime"):
+                target = vendor / "bin" / name
+                target.write_bytes((ROOT / "assets/scripts" / name).read_bytes())
+                target.chmod(0o755)
+            iso_data = base / "iso-home/.local/share"
+            (iso_data / "cybexos").mkdir(parents=True)
+            (iso_data / "cybexos/runtime").symlink_to(vendor / "runtime")
+            # The checkout: helpers in ~/.local/bin and the deployed runtime.
+            checkout_home = base / "checkout-home"
+            (checkout_home / ".local/bin").mkdir(parents=True)
+            for name in ("cybexos-theme", "cybexos-runtime"):
+                target = checkout_home / ".local/bin" / name
+                target.write_bytes((ROOT / "assets/scripts" / name).read_bytes())
+                target.chmod(0o755)
+            (checkout_home / ".local/share/cybexos/runtime").mkdir(parents=True)
+            (checkout_home / ".local/share/cybexos/runtime/quickshell").symlink_to(checkout)
+
+            def listing(helper, home, data):
+                environment = {key: value for key, value in os.environ.items()
+                               if not key.startswith(("XDG_", "CYBEXOS_"))}
+                environment.update(HOME=str(home), XDG_DATA_HOME=str(data), PYTHONDONTWRITEBYTECODE="1",
+                                   XDG_CONFIG_HOME=str(home / ".config"))
+                result = subprocess.run([str(helper), "list", "--json"], env=environment,
+                                        capture_output=True, text=True, check=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                return json.loads(result.stdout)
+            iso = listing(vendor / "bin/cybexos-theme", base / "iso-home", iso_data)
+            source = listing(checkout_home / ".local/bin/cybexos-theme", checkout_home,
+                             checkout_home / ".local/share")
+            self.assertEqual(iso, source)
+            self.assertEqual(iso["invalid"], [])
+            self.assertEqual(iso["themes"][0]["id"], "cybexos")
+            self.assertEqual(len(iso["themes"]), len(themes))
+            self.assertTrue(all(theme["builtin"] for theme in iso["themes"]))
+
+    def test_theme_command_dispatches_identically_on_both_paths(self):
+        environment = jinja2.Environment(undefined=jinja2.StrictUndefined)
+        environment.filters["quote"] = lambda value: "'" + str(value).replace("'", "'\\''") + "'"
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            stub = '#!/bin/sh\nprintf "%s|" "$@"\n'
+            home = base / "home"
+            (home / ".local/bin").mkdir(parents=True)
+            (home / ".local/bin/cybexos-theme").write_text(stub)
+            (home / ".local/bin/cybexos-theme").chmod(0o755)
+            checkout = base / "cybex-checkout"
+            checkout.write_text(environment.from_string(
+                (ROOT / "roles/dotfiles/templates/cybex.j2").read_text()).render(primary_home=str(home)))
+            vendor = base / "usr/share/cybexos/bin"
+            vendor.mkdir(parents=True)
+            (vendor / "cybexos-theme").write_text(stub)
+            (vendor / "cybexos-theme").chmod(0o755)
+            iso = base / "cybex-iso"
+            iso.write_text((ROOT / "image/rootfs/usr/bin/cybex").read_text().replace(" /usr/", f" {base}/usr/"))
+            for arguments in (["theme", "list", "--json"], ["theme", "apply", "nord"],
+                              ["theme", "install", "https://github.com/a/b"],
+                              ["theme", "export", "CURRENT", "/tmp/out dir", "--name", "Night shift"],
+                              ["theme", "remove", "harbour"], ["theme"]):
+                results = [subprocess.run(["bash", str(script), *arguments], capture_output=True,
+                                          text=True, check=False) for script in (checkout, iso)]
+                self.assertEqual([r.returncode for r in results], [0, 0], arguments)
+                self.assertEqual(results[0].stdout, results[1].stdout, arguments)
+                # printf repeats its format per argument, and runs it once for none.
+                self.assertEqual(results[0].stdout, "".join(f"{a}|" for a in arguments[1:]) or "|")
+            for script in (checkout, iso):
+                usage = subprocess.run(["bash", str(script), "help"], capture_output=True, text=True).stdout
+                self.assertRegex(usage, r"\n  theme +List, apply, install, export, or remove appearance themes\n")
+
     def test_contract_rejects_seed_escape(self):
         with tempfile.TemporaryDirectory() as temporary:
             with self.assertRaises(ValueError):
@@ -150,6 +372,32 @@ class DesktopPayload(unittest.TestCase):
         self.assertIn("private_portal = false", template.from_string(text).render(features=features, cybexos_xps_2026=False))
         self.assertIn("private_portal = true", template.from_string(text).render(
             features=features, private_services={"portal_binary": "/opt/private/portal"}, cybexos_xps_2026=False))
+
+    def test_vpn_and_hotspot_ship_identically_with_their_runtime_on_both_paths(self):
+        checkout = ROOT / "roles/desktop/files/quickshell"
+        files = ["scripts/network-tool.py", "scripts/network_vpn_agent.py", "scripts/system_settings_network.py",
+                 "Settings/VpnGroup.qml", "Settings/HotspotGroup.qml", "Settings/FolderDialog.qml",
+                 "Settings/NetworkPage.qml", "Popovers/Drawer/DrawerNetwork.qml", "Common/NetworkDetails.qml",
+                 "Common/NetworkHelpers.js", "NetworkOverlayWindow.qml"]
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            prepare_quickshell(ROOT, payload)
+            installed = payload / "usr/share/cybexos/runtime/quickshell"
+            for relative in files:
+                self.assertEqual((installed / relative).read_bytes(), (checkout / relative).read_bytes(), relative)
+        # The helpers run nmcli, qrencode and PyGObject (the VPN sign-in
+        # agent); NetworkManager's shared mode needs dnsmasq for the hotspot's
+        # clients. Both installation contracts name each one.
+        requires = {name for line in (ROOT / "image/cybexos-desktop.spec").read_text().splitlines()
+                    if line.startswith("Requires:") for name in line.split(":", 1)[1].split()}
+        tasks = yaml.safe_load((ROOT / "roles/desktop/tasks/main.yml").read_text())
+        packages = set()
+        for task in tasks:
+            names = (task.get("ansible.builtin.dnf") or {}).get("name", [])
+            packages.update(names if isinstance(names, list) else [])
+        for package in ("NetworkManager", "qrencode", "python3-gobject", "dnsmasq", "nm-connection-editor"):
+            self.assertIn(package, requires, package)
+            self.assertIn(package, packages, package)
 
 
 class SeedLifecycle(unittest.TestCase):

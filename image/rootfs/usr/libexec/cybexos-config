@@ -24,10 +24,14 @@ import yaml
 source_image = Path(__file__).resolve().parent.parent.parent.parent
 sys.path.insert(0, str(source_image) if (source_image / 'installation_policy.py').is_file()
                 else '/usr/share/cybexos/lib')
-from installation_policy import BOOLEANS, FEATURES, defaults as installation_defaults  # noqa: E402
+from installation_policy import (  # noqa: E402
+    BOOLEANS, FEATURES, apply_choices, choices as validate_choices, defaults as installation_defaults)
 
 
 CONFIG = Path('/etc/cybexos/config.yml')
+# Explicit choices for the first account, recorded by the installer from an
+# unattended seed or kept by a factory reset. Only a fresh account uses them.
+PENDING = 'etc/cybexos/install-choices.json'
 INVENTORY = Path('/usr/share/cybexos/provision/inventory/group_vars/all.yml')
 APPLY = '/usr/libexec/cybexos-configure-installed'
 # Key order and quoting follow ./install's generated file.
@@ -118,6 +122,23 @@ def valid_identity(key, value, root=Path('/')):
     return key != 'machine_timezone' or (root / 'usr/share/zoneinfo' / value).is_file()
 
 
+def pending_choices(root=Path('/')):
+    """The validated first-account choices, or {} when none were recorded."""
+    path = root / PENDING
+    try:
+        document = json.loads(path.read_text())
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as error:
+        raise ValueError(f'{path} could not be read: {error}') from None
+    if not isinstance(document, dict) or document.get('version') != 1:
+        raise ValueError(f'{path} is not a version 1 choice record.')
+    try:
+        return validate_choices(document.get('choices'))
+    except ValueError as error:
+        raise ValueError(f'{path}: {error}') from None
+
+
 def detect(root=Path('/'), entries=None, group=group_name, inventory=INVENTORY, fresh_account=False):
     """Describe an installed system in ./install's schema, or None if ambiguous."""
     candidates = desktop_accounts(pwd.getpwall() if entries is None else entries)
@@ -130,6 +151,10 @@ def detect(root=Path('/'), entries=None, group=group_name, inventory=INVENTORY, 
     values = {'config_schema_version': 1, 'primary_user': account.pw_name,
               'primary_group': group(account.pw_gid), 'primary_home': account.pw_dir, **identity(root)}
     values.update(installation_defaults(inventory, fresh_account=fresh_account))
+    if fresh_account:
+        # The same policy function the checkout installer uses for saved
+        # choices; an older account is never opted into them by repair.
+        values = apply_choices(values, pending_choices(root))
     # Only the target helper's verified decision (or a saved login policy)
     # can enable automatic login; the build host is never an input.
     values['desktop_autologin'] = login.get('user') == account.pw_name and login.get('autologin') is True
@@ -207,6 +232,9 @@ def ensure(root=Path('/'), **options):
         write(render(values), path, replace=False)
     except FileExistsError:
         return False
+    if options.get('fresh_account'):
+        # config.yml now holds these choices; the record has been consumed.
+        (root / PENDING).unlink(missing_ok=True)
     return True
 
 

@@ -19,6 +19,14 @@ QML = Path(__file__).resolve().parents[1] / "share/cybexos/welcome/Main.qml"
 SHELL_ATTEMPTS = 20
 SHELL_RETRY_MS = 1000
 POLL_MS = 400
+# An attached unattended-installation seed volume opens the installer by
+# itself in a live session. USB media can appear a little after login.
+SEED_LABELS = ("CYBEXOS-SEED", "CIDATA", "cidata")
+SEED_ATTEMPTS = 30
+
+
+def seed_volume_present(by_label=Path("/dev/disk/by-label")):
+    return any((by_label / label).exists() for label in SEED_LABELS)
 
 
 class Welcome(QObject):
@@ -74,6 +82,9 @@ class Welcome(QObject):
         self.retry_timer.timeout.connect(self.request_popular)
         self._hardware_state = 'pending'
         self._hardware_note = ''
+        self._nvidia_state = ''
+        self._nvidia_note = ''
+        self._nvidia_password = ''
         self._seed_state = 'pending'
         self._network_state = 'checking'
         self._reconcile_state = 'pending'
@@ -99,10 +110,29 @@ class Welcome(QObject):
         if not self.live:
             self.setup_timer.start()
             self.refreshSetup()
+            return
+        # The installer page validates the seed and shows its countdown; this
+        # window only opens it, as the Install button would.
+        self.seed_checks = 0
+        self.seed_timer = QTimer(self)
+        self.seed_timer.setInterval(1000)
+        self.seed_timer.timeout.connect(self.checkSeed)
+        self.seed_timer.start()
+        self.checkSeed()
+
+    def checkSeed(self, by_label=Path("/dev/disk/by-label")):
+        self.seed_checks += 1
+        if seed_volume_present(by_label):
+            self.seed_timer.stop()
+            self.install()
+        elif self.seed_checks >= SEED_ATTEMPTS:
+            self.seed_timer.stop()
 
     def stopSetup(self):
         self.setup_timer.stop()
         self.setup_timeout.stop()
+        if getattr(self, "seed_timer", None) is not None:
+            self.seed_timer.stop()
         for process in (self.network_process, self.reconcile_process):
             # Destruction can emit errors; disconnect before stopping children.
             process.finished.disconnect()
@@ -148,6 +178,22 @@ class Welcome(QObject):
     def hardwareNote(self):
         return self._hardware_note
 
+    # '' (no NVIDIA GPU) | pending | checking | ready | reboot | enroll |
+    # skipped | failed; see nvidia_state().
+    @Property(str, notify=setupChanged)
+    def nvidiaState(self):
+        return self._nvidia_state
+
+    @Property(str, notify=setupChanged)
+    def nvidiaNote(self):
+        return self._nvidia_note
+
+    # The one-time Secure Boot enrollment password. Its file is root:wheel
+    # 0640, so only an administrator's window can show it.
+    @Property(str, notify=setupChanged)
+    def nvidiaPassword(self):
+        return self._nvidia_password
+
     @Property(str, notify=setupChanged)
     def seedState(self):
         return self._seed_state
@@ -168,6 +214,26 @@ class Welcome(QObject):
         except (OSError, ValueError):
             return {}
 
+    @staticmethod
+    def nvidia_state(policy, status, boot):
+        """The NVIDIA row's state from the hardware role's status file."""
+        state = status.get('state')
+        if not state or state == 'absent':
+            return 'pending' if policy.get('nvidia') else ''
+        # After a restart the boot-time hardware setup confirms the driver
+        # within minutes; until then the recorded request is out of date.
+        if state in ('reboot', 'enroll') and status.get('boot_id') not in (None, '', boot):
+            return 'checking'
+        if state == 'enroll':
+            return 'enroll' if status.get('key') == 'pending' else 'skipped'
+        return state if state in ('ready', 'reboot', 'failed') else 'pending'
+
+    @staticmethod
+    def enrollment_password(status, enrollment):
+        password = str(enrollment.get('password', ''))
+        matches = bool(enrollment.get('key_sha256')) and enrollment.get('key_sha256') == status.get('key_sha256')
+        return password if matches and password.isdigit() else ''
+
     @Slot()
     def refreshSetup(self):
         if self.live:
@@ -176,9 +242,20 @@ class Welcome(QObject):
         policy = self.local_json(Path('/etc/cybexos/hardware.json'))
         state_dir = Path(os.environ.get('XDG_STATE_HOME', str(Path.home() / '.local/state'))) / 'cybexos'
         seed = self.local_json(state_dir / 'seed-progress.json')
+        nvidia = self.local_json(Path('/var/lib/cybexos/nvidia-status.json'))
+        try:
+            boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        except OSError:
+            boot = ''
+        nvidia_state = self.nvidia_state(policy, nvidia, boot)
         values = {
-            '_hardware_state': 'skipped' if not policy.get('xps_2026') and not hardware else hardware.get('state', 'pending'),
+            '_hardware_state': 'skipped' if not policy.get('xps_2026') and not policy.get('nvidia') and not hardware
+            else hardware.get('state', 'pending'),
             '_hardware_note': str(hardware.get('reason', '')),
+            '_nvidia_state': nvidia_state,
+            '_nvidia_note': str(nvidia.get('reason', '')),
+            '_nvidia_password': self.enrollment_password(
+                nvidia, self.local_json(Path('/var/lib/cybexos/nvidia-mok.json'))) if nvidia_state == 'enroll' else '',
             '_seed_state': 'ready' if (state_dir / 'offline-apps-seeded').is_file() else seed.get('state', 'pending'),
         }
         if Path('/var/lib/cybexos/hardware-unsupported').is_file():

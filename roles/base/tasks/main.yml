@@ -28,19 +28,25 @@
       .config/systemd/user/cybexos-session-lock.service
       .config/systemd/user/cybexos-input-method.service
       .config/systemd/user/xps-speaker-tuning.service
+      .config/systemd/user/cybexos-backup.service
+      .config/systemd/user/cybexos-backup.timer
       .config/distrobox/distrobox.conf
       .local/bin/screenshot
       .local/bin/screen-record
       .local/bin/quickshell-reminder
       .local/bin/screen-ocr
+      .local/bin/color-picker
+      .local/bin/screenshot-stitch
       .local/bin/clipboard-copy-image
       .local/bin/clipboard-image-to-file
       .local/bin/clipboard-history-store
       .local/bin/localsend
       .local/bin/localsend-share
+      .local/bin/game-mode
       .local/bin/cybex
       .local/bin/cybexos-update-run
       .local/bin/cybexos-firmware-update
+      .local/bin/cybexos-backup
       .local/bin/brightness-control
       .local/bin/portal-launcher
       .local/bin/t3code-update
@@ -124,11 +130,29 @@
     - not ansible_check_mode
   changed_when: true
 
+- name: Hold desktop packages to their qualified series
+  ansible.builtin.import_tasks: versionlock.yml
+  # A shell-only deployment also installs Hyprland and Quickshell.
+  tags: [quickshell]
+
 - name: Install the shared workstation package baseline
   ansible.builtin.import_tasks: packages.yml
 
 - name: Resolve .local names through multicast DNS
   ansible.builtin.import_tasks: mdns.yml
+
+# The Settings switch for fingerprint sign-in runs this through pkexec; the ISO
+# package installs the same file as /usr/libexec/cybexos-auth-policy.
+- name: Install the sign-in policy helper
+  ansible.builtin.copy:
+    src: cybexos-auth-policy
+    dest: /usr/local/libexec/cybexos-auth-policy
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Apply the shared fingerprint and security-key sign-in policy
+  ansible.builtin.import_tasks: authentication.yml
 
 - name: Install transactional Btrfs recovery helper
   ansible.builtin.copy:
@@ -210,6 +234,29 @@
     name: cybexos-major-upgrade-validate.timer
     enabled: true
     daemon_reload: "{{ base_major_upgrade_units.changed }}"
+
+# Background update downloads stay off unless chosen in Settings. Installing
+# or updating these files never enables, disables, starts or stops the timer:
+# its enablement is the person's saved choice, which the desktop changes
+# through Polkit. The ISO's RPM ships the same files (image/package).
+- name: Install the background update download helper and units
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - src: cybexos-update-download
+      dest: /usr/local/libexec/cybexos-update-download
+      mode: "0755"
+    - src: cybexos-update-download.service
+      dest: /etc/systemd/system/cybexos-update-download.service
+      mode: "0644"
+    - src: cybexos-update-download.timer
+      dest: /etc/systemd/system/cybexos-update-download.timer
+      mode: "0644"
+  notify: Reload systemd
 
 # The documented `sudo cybexos-system-snapshot ...` form needs the helper on
 # sudo's secure_path; libexec is not on it.
@@ -393,6 +440,9 @@
   changed_when: true
   when: base_current_firewall_zone.stdout | trim != firewall_zone and not ansible_check_mode
 
+# A shared profile (the Settings hotspot, or Ethernet sharing) stays in
+# NetworkManager's nm-shared zone: it serves its clients DHCP and DNS, which
+# the strict zone drops. The ISO never rebinds profiles, so both paths keep it.
 - name: Find Ethernet and Wi-Fi profiles outside the strict zone
   ansible.builtin.shell: |
     set -o pipefail
@@ -400,6 +450,7 @@
       while IFS=: read -r uuid type; do
         case "$type" in
           802-3-ethernet|802-11-wireless)
+            [[ $(nmcli -g ipv4.method connection show "$uuid") == shared ]] && continue
             zone=$(nmcli -g connection.zone connection show "$uuid")
             [[ $zone == {{ firewall_zone | quote }} ]] || printf '%s\n' "$uuid"
             ;;

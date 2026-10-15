@@ -9,7 +9,9 @@ import "../Common"
 // the page's foot names what changed, and applying an active connection runs
 // a NetworkManager checkpoint that restores itself unless kept (2026-09
 // redesign; the Saved connection dropdown and in-page Apply/Keep groups are
-// gone).
+// gone). VPN profiles and the Wi-Fi hotspot have their own groups between
+// the list and the editor (VpnGroup, HotspotGroup); their requests use the
+// same service channel but never touch the draft.
 SettingsPage {
     id: page
     bottomInset: applyBar.reservedHeight
@@ -140,6 +142,9 @@ SettingsPage {
         }
         function onCompleted(result) {
             const request = page.service.request;
+            // VPN and hotspot requests report in their own groups.
+            if (request.action === "vpn" || request.action === "hotspot")
+                return;
             if (!result.success) {
                 // A failed confirm or revert leaves NetworkManager on the
                 // previous settings; a failed apply keeps the edits to fix.
@@ -227,7 +232,7 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Connections"
+            title: I18n.tr("Connections")
 
             Repeater {
                 model: ScriptModel {
@@ -242,7 +247,7 @@ SettingsPage {
                     width: parent ? parent.width : 0
                     glyph: wireless ? "wifi" : "lan"
                     label: profile.name
-                    detail: wireless ? "Wi-Fi" : "Ethernet"
+                    detail: wireless ? I18n.tr("Wi-Fi") : I18n.tr("Ethernet")
                     meta: profile.active ? "Connected" : ""
                     opens: true
                     checked: page.draft !== null && page.draft.uuid === connection.modelData
@@ -271,10 +276,10 @@ SettingsPage {
             }
             ActionRow {
                 width: parent.width
-                hint: "VPN, enterprise certificates, bridges and routing are in the advanced editor."
+                hint: I18n.tr("Enterprise certificates, bridges and routing are in the advanced editor.")
 
                 SettingsAction {
-                    text: "Connect to Wi-Fi…"
+                    text: I18n.tr("Connect to Wi-Fi…")
                     glyph: "wifi"
                     onTriggered: {
                         Settings.closePanel();
@@ -282,12 +287,22 @@ SettingsPage {
                     }
                 }
                 SettingsAction {
-                    text: "Advanced connection editor"
+                    text: I18n.tr("Advanced connection editor")
                     glyph: "open_in_new"
                     enabled: !SystemSettings.externalBusy
                     onTriggered: SystemSettings.openExternal("network")
                 }
             }
+        }
+
+        VpnGroup {
+            width: parent.width
+            service: page.service
+        }
+
+        HotspotGroup {
+            width: parent.width
+            service: page.service
         }
 
         SettingsGroup {
@@ -303,17 +318,17 @@ SettingsPage {
             }
             SwitchRow {
                 width: parent.width
-                label: "Autoconnect"
+                label: I18n.tr("Autoconnect")
                 checked: page.draft ? page.draft.autoconnect : false
-                description: "Connect automatically when this network is available"
+                description: I18n.tr("Connect automatically when this network is available")
                 onToggled: value => page.change("autoconnect", value)
             }
             PickerRow {
                 width: parent.width
-                label: "Metered connection"
-                model: [{value: 0, label: "Automatic"}, {value: 1, label: "Yes"}, {value: 2, label: "No"}]
+                label: I18n.tr("Metered connection")
+                model: [{value: 0, label: I18n.tr("Automatic")}, {value: 1, label: I18n.tr("Yes")}, {value: 2, label: I18n.tr("No")}]
                 current: page.draft ? page.draft.metered : 0
-                hint: "Tells apps to limit background data"
+                hint: I18n.tr("Tells apps to limit background data")
                 onPicked: value => page.change("metered", value)
             }
         }
@@ -322,7 +337,7 @@ SettingsPage {
             width: parent.width
             visible: page.draft !== null
             enabled: page.editable
-            title: "IPv4"
+            title: "IPv4" // i18n: untranslated; IpSettings compares it
             config: page.draft ? page.draft.ipv4 : page.emptyIp
             onEdited: value => page.change("ipv4", value)
         }
@@ -331,7 +346,7 @@ SettingsPage {
             width: parent.width
             visible: page.draft !== null
             enabled: page.editable
-            title: "IPv6"
+            title: "IPv6" // i18n: untranslated; IpSettings compares it
             config: page.draft ? page.draft.ipv6 : page.emptyIp
             onEdited: value => page.change("ipv6", value)
         }

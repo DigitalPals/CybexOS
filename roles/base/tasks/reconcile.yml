@@ -51,6 +51,9 @@
 - name: Preserve the selected authselect profile while enabling multicast DNS
   ansible.builtin.import_tasks: mdns.yml
 
+- name: Apply the shared fingerprint and security-key sign-in policy
+  ansible.builtin.import_tasks: authentication.yml
+
 - name: Enable the account user manager
   ansible.builtin.command:
     argv: [loginctl, enable-linger, "{{ primary_user }}"]
@@ -58,6 +61,9 @@
 
 - name: Reconcile owned filesystem maintenance defaults
   ansible.builtin.import_tasks: reconcile-scrub.yml
+
+- name: Hold desktop packages to the series this release qualified
+  ansible.builtin.import_tasks: versionlock.yml
 
 - name: Reconcile owned login policy
   cybexos_managed_file:

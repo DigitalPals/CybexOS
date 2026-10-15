@@ -7,11 +7,19 @@ import "../Common"
 
 // An in-surface folder picker. Popup.Item keeps it inside the layer-shell
 // window, avoiding a native dialog that cannot reliably take focus there.
+//
+// With `chooseFile` it picks one file instead (VPN import): files matching
+// `nameFilters` are listed after the folders, Open needs a file selected,
+// and double-clicking a file chooses it.
 Controls.Dialog {
     id: root
 
     signal folderChosen(string path)
+    signal fileChosen(string path)
     property string selectedPath: ""
+    property bool selectedIsFile: false
+    property bool chooseFile: false
+    property var nameFilters: []
 
     parent: Controls.Overlay.overlay
     anchors.centerIn: parent
@@ -20,7 +28,7 @@ Controls.Dialog {
     modal: true
     focus: true
     popupType: Controls.Popup.Item
-    title: "Choose wallpaper folder"
+    title: I18n.tr("Choose wallpaper folder")
     font.family: Theme.fontMenu
     font.pixelSize: Theme.typography.control
     palette.buttonText: Theme.textHi
@@ -39,6 +47,7 @@ Controls.Dialog {
 
     function openAt(path) {
         selectedPath = "";
+        selectedIsFile = false;
         const expanded = path === "~" ? Quickshell.env("HOME")
             : path.indexOf("~/") === 0 ? Quickshell.env("HOME") + path.slice(1) : path;
         folderModel.folder = "file://" + expanded;
@@ -62,7 +71,29 @@ Controls.Dialog {
         }
     }
 
+    function select(path, isFile) {
+        selectedPath = path;
+        selectedIsFile = isFile;
+    }
+
+    function openFolder(url) {
+        folderModel.folder = url;
+        select("", false);
+    }
+
+    // In file mode Open waits for a file; a folder is entered, not chosen.
+    onOpened: {
+        const openButton = standardButton(Controls.Dialog.Open);
+        if (openButton)
+            openButton.enabled = Qt.binding(() => !root.chooseFile || root.selectedIsFile);
+    }
+
     onAccepted: {
+        if (chooseFile) {
+            if (selectedIsFile)
+                fileChosen(selectedPath);
+            return;
+        }
         const chosen = selectedPath !== "" ? selectedPath : localPath(folderModel.folder);
         folderChosen(chosen.indexOf(Quickshell.env("HOME") + "/") === 0
             ? "~" + chosen.slice(Quickshell.env("HOME").length) : chosen);
@@ -105,13 +136,13 @@ Controls.Dialog {
             color: upMouse.containsMouse || activeFocus ? Theme.hoverFill : "transparent"
             activeFocusOnTab: true
             Accessible.role: Accessible.Button
-            Accessible.name: "Parent folder"
-            Accessible.onPressAction: folderModel.folder = folderModel.parentFolder
+            Accessible.name: I18n.tr("Parent folder")
+            Accessible.onPressAction: root.openFolder(folderModel.parentFolder)
 
             Keys.onPressed: event => {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                         || event.key === Qt.Key_Space) {
-                    folderModel.folder = folderModel.parentFolder;
+                    root.openFolder(folderModel.parentFolder);
                     event.accepted = true;
                 }
             }
@@ -132,7 +163,7 @@ Controls.Dialog {
                 anchors.rightMargin: Theme.controlSpacing
                 anchors.verticalCenter: parent.verticalCenter
                 elide: Text.ElideMiddle
-                text: "Parent folder"
+                text: I18n.tr("Parent folder")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.navigation
                 color: Theme.textMid
@@ -143,7 +174,7 @@ Controls.Dialog {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: folderModel.folder = folderModel.parentFolder
+                onClicked: root.openFolder(folderModel.parentFolder)
             }
         }
 
@@ -160,7 +191,8 @@ Controls.Dialog {
                 model: FolderListModel {
                     id: folderModel
                     showDirs: true
-                    showFiles: false
+                    showFiles: root.chooseFile
+                    nameFilters: root.nameFilters
                     showDirsFirst: true
                     sortField: FolderListModel.Name
                 }
@@ -169,9 +201,20 @@ Controls.Dialog {
                     id: folderRow
                     required property string fileName
                     required property url fileUrl
+                    required property bool fileIsDir
                     required property int index
                     readonly property string path: root.localPath(fileUrl)
                     readonly property bool selected: root.selectedPath === path
+
+                    // Enter and double-click open a folder and choose a file.
+                    function open() {
+                        if (fileIsDir) {
+                            root.openFolder(fileUrl);
+                        } else {
+                            root.select(path, true);
+                            root.accept();
+                        }
+                    }
 
                     width: folderList.width
                     height: Theme.listRowHeight
@@ -185,7 +228,7 @@ Controls.Dialog {
                     Accessible.name: fileName
                     Accessible.selected: selected
                     Accessible.onPressAction: {
-                        root.selectedPath = path;
+                        root.select(path, !fileIsDir);
                         folderList.currentIndex = index;
                     }
 
@@ -203,11 +246,10 @@ Controls.Dialog {
                             root.focusFolder(folderList.count - 1);
                             event.accepted = true;
                         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                            folderModel.folder = fileUrl;
-                            root.selectedPath = "";
+                            folderRow.open();
                             event.accepted = true;
                         } else if (event.key === Qt.Key_Space) {
-                            root.selectedPath = path;
+                            root.select(path, !fileIsDir);
                             event.accepted = true;
                         }
                     }
@@ -217,7 +259,7 @@ Controls.Dialog {
                         anchors.left: parent.left
                         anchors.leftMargin: Theme.controlSpacing
                         anchors.verticalCenter: parent.verticalCenter
-                        name: "folder"
+                        name: folderRow.fileIsDir ? "folder" : "description"
                         size: Theme.iconMedium
                         color: Theme.textMid
                     }
@@ -243,11 +285,9 @@ Controls.Dialog {
                             folderRow.forceActiveFocus();
                             root.selectedPath = folderRow.path;
                             folderList.currentIndex = folderRow.index;
+                            root.selectedIsFile = !folderRow.fileIsDir;
                         }
-                        onDoubleClicked: {
-                            folderModel.folder = folderRow.fileUrl;
-                            root.selectedPath = "";
-                        }
+                        onDoubleClicked: folderRow.open()
                     }
                 }
             }

@@ -10,7 +10,9 @@ import Quickshell.Io
 // owns region selection, the freeze overlay, the output path and the saved
 // notification, and it is bound to a compositor key, so a recording can start
 // without the shell involved at all. Watching its state is what keeps the bar
-// chip honest either way.
+// chip honest either way. A scrolling screenshot (~/.local/bin/screenshot
+// scroll) publishes its capture in the same directory and lights the same
+// chip, and a --webcam recording its area for WebcamOverlay.
 Singleton {
     id: root
 
@@ -18,6 +20,8 @@ Singleton {
         (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/screen-record"
     readonly property string script:
         Quickshell.env("HOME") + "/.local/bin/screen-record"
+    readonly property string screenshotScript:
+        Quickshell.env("HOME") + "/.local/bin/screenshot"
 
     property bool active: false
     property int recorderPid: 0
@@ -30,6 +34,27 @@ Singleton {
     property double startedAt: 0
     // Seconds since the recording began, ticking once a second while active.
     property int elapsed: 0
+
+    // `screenshot scroll` publishes "PID START_TICKS" here while it captures
+    // frames. It shares the recording indicator: both mean "the screen is
+    // being captured; click to finish".
+    property bool scrolling: false
+    property int scrollPid: 0
+    property string scrollStartTicks: ""
+
+    // The area a `screen-record --webcam` recording covers ("X,Y WxH"); empty
+    // for any other recording. The camera bubble (WebcamOverlay) is shown
+    // inside it while the recording runs.
+    property string webcamGeometry: ""
+    readonly property bool webcamRequested: webcamGeometry !== ""
+    // The script publishes the request before the recorder has started, so
+    // the camera can warm up meanwhile. Only that start-up window is allowed
+    // without an active recording: a request left behind by a killed script
+    // must not keep a camera open.
+    readonly property bool webcamWanted: webcamRequested
+        && (active || webcamStartup.running)
+    // Where the user last dragged the bubble, for the rest of the session.
+    property string webcamCorner: "bottom-right"
 
     readonly property string elapsedLabel: {
         const total = Math.max(0, elapsed);
@@ -47,17 +72,36 @@ Singleton {
         settle.restart();
     }
 
+    // Finishes a running scrolling screenshot; never starts one.
+    function finishScroll() {
+        Quickshell.execDetached([root.screenshotScript, "scroll-stop"]);
+    }
+
     function refresh() {
         pidView.reload();
         ticksView.reload();
         stampView.reload();
         outputView.reload();
+        webcamView.reload();
+        scrollView.reload();
     }
 
+    // /proc comm is cut to 15 characters, so gpu-screen-recorder, which the
+    // script prefers on NVIDIA when it is installed, reads "gpu-screen-reco".
     function recomputeActive() {
-        active = recorderPid > 0 && recorderName === "wf-recorder"
+        active = recorderPid > 0
+            && (recorderName === "wf-recorder" || recorderName === "gpu-screen-reco")
             && expectedStartTicks !== ""
             && expectedStartTicks === actualStartTicks;
+    }
+
+    // Field 22 of /proc/PID/stat, the process start time. Fields following
+    // the final `) ` begin at field 3; process names may contain spaces, so
+    // splitting the whole line is not safe.
+    function startTicks(stat) {
+        const close = stat.lastIndexOf(") ");
+        const fields = close >= 0 ? stat.slice(close + 2).trim().split(/\s+/) : [];
+        return fields.length > 19 ? fields[19] : "";
     }
 
     function recomputeElapsed() {
@@ -171,14 +215,7 @@ Singleton {
         path: root.recorderPid > 0 ? "/proc/" + root.recorderPid + "/stat" : ""
         printErrors: false
         onLoaded: {
-            // Fields following the final `) ` begin at proc stat field 3;
-            // process names may contain spaces, so splitting the whole line is
-            // not safe. Start time is field 22, hence index 19 here.
-            const raw = text();
-            const close = raw.lastIndexOf(") ");
-            const fields = close >= 0
-                ? raw.slice(close + 2).trim().split(/\s+/) : [];
-            root.actualStartTicks = fields.length > 19 ? fields[19] : "";
+            root.actualStartTicks = root.startTicks(text());
             root.recomputeActive();
         }
         onLoadFailed: {
@@ -225,5 +262,68 @@ Singleton {
         onFileChanged: reload()
         onLoaded: root.outputFile = text().trim()
         onLoadFailed: root.outputFile = ""
+    }
+
+    Timer {
+        id: webcamStartup
+        interval: 6000
+    }
+
+    FileView {
+        id: webcamView
+        path: root.stateDir + "/webcam"
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: {
+            const geometry = text().trim();
+            if (geometry !== "" && geometry !== root.webcamGeometry)
+                webcamStartup.restart();
+            root.webcamGeometry = geometry;
+        }
+        onLoadFailed: root.webcamGeometry = ""
+    }
+
+    // A scrolling capture is published as one "PID START_TICKS" line and
+    // validated against procfs like the recorder, so a capture that was
+    // killed cannot leave the indicator lit. While a published capture is
+    // alive, procfs is read again every four seconds; otherwise nothing polls.
+    Timer {
+        interval: 4000
+        running: root.scrollPid > 0 && root.scrolling
+        repeat: true
+        onTriggered: scrollStatView.reload()
+    }
+
+    FileView {
+        id: scrollView
+        path: root.stateDir + "/scroll-capture"
+        printErrors: false
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: {
+            const fields = text().trim().split(/\s+/);
+            const pid = Number(fields[0]);
+            root.scrollPid = Number.isInteger(pid) && pid > 0 ? pid : 0;
+            root.scrollStartTicks = fields.length > 1 ? fields[1] : "";
+            if (root.scrollPid > 0)
+                scrollStatView.reload();
+            else
+                root.scrolling = false;
+        }
+        onLoadFailed: {
+            root.scrollPid = 0;
+            root.scrollStartTicks = "";
+            root.scrolling = false;
+        }
+    }
+
+    FileView {
+        id: scrollStatView
+        path: root.scrollPid > 0 ? "/proc/" + root.scrollPid + "/stat" : ""
+        printErrors: false
+        onLoaded: root.scrolling = root.scrollStartTicks !== ""
+            && root.startTicks(text()) === root.scrollStartTicks
+        onLoadFailed: root.scrolling = false
     }
 }

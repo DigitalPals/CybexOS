@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "cybexos",
+  "name": "CybexOS",
+  "mode": "dark",
+  "accent": "#d3d283",
+  "accentSource": "wallpaper",
+  "author": "CybexOS",
+  "license": "MIT",
+  "source": "https://github.com/DigitalPals/CybexOS",
+  "description": "The default look: accents from the wallpaper over warm charcoal"
+}

@@ -266,6 +266,31 @@ class RecoveryPointTests(unittest.TestCase):
         self.assertEqual(list((self.fx.store / "boot").iterdir()), [])
         self.assertEqual(list((self.fx.store / "metadata").iterdir()), [])
 
+    def test_factory_point_is_unique_and_outside_the_rotation(self) -> None:
+        factory = "20260801T120000Z-1"
+        self.assertEqual(self.fx.run("create", "--factory", CYBEXOS_SNAPSHOT_ID=factory).stdout, factory + "\n")
+        self.assertEqual((self.fx.store / "metadata" / f"{factory}.meta").read_text(), "factory state\n")
+        self.assertTrue((self.fx.store / "metadata" / f"{factory}.factory").is_file())
+        refused = self.fx.run("create", "--factory", "again", check=False, CYBEXOS_SNAPSHOT_ID="20260802T120000Z-2")
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn("factory recovery point already exists", refused.stderr)
+        self.assertFalse((self.fx.store / "root/20260802T120000Z-2").exists())
+        for index in range(1, 8):
+            self.fx.create(f"2026090{index}T120000Z-{index}", f"fixture {index}")
+        roots = sorted(path.name for path in (self.fx.store / "root").iterdir())
+        # Five ordinary points rotate; the factory point is kept beside them.
+        self.assertEqual(roots, [factory] + [f"2026090{index}T120000Z-{index}" for index in range(3, 8)])
+        listed = json.loads(self.fx.run("list", "--json").stdout)["points"]
+        self.assertEqual([point["id"] for point in listed if point["factory"]], [factory])
+        self.assertEqual(sum(1 for point in listed if not point["factory"]), 5)
+        self.assertTrue(self.fx.index()["points"][-1]["factory"])
+
+    def test_failed_factory_point_leaves_no_marker(self) -> None:
+        result = self.fx.run("create", "--factory", check=False, CYBEXOS_SNAPSHOT_ID="20260801T120000Z-1",
+                             MOCK_SNAPSHOT_FAIL="20260801T120000Z-1")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(list((self.fx.store / "metadata").iterdir()), [])
+
     def test_menu_entry_boots_the_snapshot_with_the_default_arguments(self) -> None:
         self.fx.create("20260901T120000Z-1", "update 20260901-1")
         menu = self.fx.menu()

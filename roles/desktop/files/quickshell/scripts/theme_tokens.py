@@ -38,6 +38,20 @@ HEX = re.compile(r'^#[0-9a-f]{6}$')
 FONT = re.compile(r'^[A-Za-z0-9 ._+-]{1,64}$')
 MAX_PATH = 4096
 
+# Text size. The shell exports its effective size in logical pixels
+# (Common/ShellMetrics.js: base size x interface scale x text size); 14 px is
+# a fresh install's. The targets do not share a unit — kitty and hyprlock size
+# fonts in points, GTK takes a scaling factor — nor a default: kitty ships
+# 12 pt, GTK 11 pt, the lock screen's clock 84. Converting 14 px to 10.5 pt
+# would shrink every one of them. Each target therefore keeps its own default
+# at the shell's default size and scales it by the same ratio, so "Large" text
+# is 15% larger everywhere.
+DEFAULT_TEXT_SIZE = 14
+TEXT_SIZE_RANGE = (6, 96)
+# GNOME's own range for text-scaling-factor; the other targets share it so an
+# extreme interface scale cannot make the terminal unusable.
+TEXT_SCALE_RANGE = (0.5, 3.0)
+
 
 class TokenError(ValueError):
     pass
@@ -52,6 +66,17 @@ def _color(value, key):
 def _font(value, key):
     if not isinstance(value, str) or not FONT.match(value):
         raise TokenError(f'font {key} is not a plain family name')
+    return value
+
+
+def _size(value):
+    # Absent in tokens saved by an older shell: the default, which renders
+    # exactly what the targets rendered before text size was exported.
+    if value is None:
+        return DEFAULT_TEXT_SIZE
+    low, high = TEXT_SIZE_RANGE
+    if type(value) is not int or not low <= value <= high:
+        raise TokenError(f'font size is not an integer from {low} to {high}')
     return value
 
 
@@ -93,11 +118,23 @@ def validate(raw):
         'mode': mode,
         'source': source,
         'colors': {key: _color(colors.get(key), key) for key in COLOR_KEYS},
-        'font': {'ui': _font(font.get('ui'), 'ui'), 'mono': _font(font.get('mono'), 'mono')},
+        'font': {'ui': _font(font.get('ui'), 'ui'), 'mono': _font(font.get('mono'), 'mono'),
+                 'size': _size(font.get('size'))},
         'radius': radius,
         'glass': glass,
         'wallpaper': _path(raw.get('wallpaper', '')),
     }
+
+
+def text_scale(tokens):
+    """How much larger than a fresh install's the shell draws text."""
+    low, high = TEXT_SCALE_RANGE
+    return min(high, max(low, tokens['font']['size'] / DEFAULT_TEXT_SIZE))
+
+
+def scaled(value, tokens):
+    """A whole-number size (points, pixels) scaled with the shell's text."""
+    return int(value * text_scale(tokens) + 0.5)
 
 
 def state_dir():

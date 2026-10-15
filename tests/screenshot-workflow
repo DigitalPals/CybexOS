@@ -2,13 +2,17 @@
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+script="$repo_root/assets/scripts/screenshot"
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
 
 mock_bin="$fixture/bin"
 test_home="$fixture/home"
 log_dir="$fixture/log"
-mkdir -p "$mock_bin" "$test_home" "$log_dir"
+runtime="$fixture/run"
+mkdir -p "$mock_bin" "$test_home" "$log_dir" "$runtime"
+chmod 0700 "$runtime"
+export XDG_RUNTIME_DIR="$runtime"
 
 write_mock() {
   local name=$1
@@ -17,19 +21,57 @@ write_mock() {
   chmod +x "$mock_bin/$name"
 }
 
+# Two outputs: a focused one with a tiled and a floating window, and one
+# showing a fullscreen window over a tiled one plus an open special
+# workspace. A window on a workspace nobody shows must not be offered.
+cat > "$fixture/monitors.json" <<'JSON'
+[{"id": 0, "x": 0, "y": 0, "focused": true, "activeWorkspace": {"id": 1},
+  "specialWorkspace": {"id": 0, "name": ""}},
+ {"id": 1, "x": 1920, "y": 0, "focused": false, "activeWorkspace": {"id": 3},
+  "specialWorkspace": {"id": -98, "name": "special:magic"}}]
+JSON
+cat > "$fixture/clients.json" <<'JSON'
+[{"at": [10, 20], "size": [800, 600], "workspace": {"id": 1}, "floating": false, "fullscreen": 0},
+ {"at": [100, 120], "size": [300, 200], "workspace": {"id": 1}, "floating": true, "fullscreen": 0},
+ {"at": [0, 0], "size": [1000, 700], "workspace": {"id": 2}, "floating": false, "fullscreen": 0},
+ {"at": [1920, 0], "size": [1280, 720], "workspace": {"id": 3}, "floating": false, "fullscreen": 2},
+ {"at": [1930, 10], "size": [500, 400], "workspace": {"id": 3}, "floating": false, "fullscreen": 0},
+ {"at": [2000, 100], "size": [640, 480], "workspace": {"id": -98}, "floating": true, "fullscreen": 0},
+ {"at": [5, 5], "size": [50, 50], "workspace": {"id": 1}, "hidden": true, "fullscreen": 0}]
+JSON
+
 write_mock pkill 'exit 1'
 write_mock hyprctl \
   'printf "hyprctl %s\n" "$*" >> "$SCREENSHOT_TEST_LOG/events"' \
   'case "$1" in' \
   '  getoption) printf "%s\n" '\''{"int":1}'\'' ;;' \
+  "  monitors) cat '$fixture/monitors.json' ;;" \
+  "  clients) cat '$fixture/clients.json' ;;" \
   '  eval|keyword) ;;' \
   '  *) exit 1 ;;' \
   'esac'
 write_mock wayfreeze \
   'printf "wayfreeze %s\n" "$*" >> "$SCREENSHOT_TEST_LOG/events"' \
   'while :; do sleep 1; done'
-write_mock slurp 'printf "%s\n" "${SCREENSHOT_TEST_SELECTION-10,20 300x200}"'
+write_mock slurp \
+  'cat > "$SCREENSHOT_TEST_LOG/slurp-boxes"' \
+  'printf "%s\n" "${SCREENSHOT_TEST_SELECTION-10,20 300x200}"'
+# Region captures write a file. Scrolling captures read PPM frames on stdout:
+# the mock serves the prepared frames in order, then repeats the last one and
+# presses the scrolling shortcut again, as the user would to finish.
 write_mock grim \
+  'if [[ $1 == -t ]]; then' \
+  '  printf "grim -t %s <frame>\n" "$2" >> "$SCREENSHOT_TEST_LOG/frames"' \
+  '  [[ -e $XDG_RUNTIME_DIR/screen-record/scroll-capture ]] &&' \
+  '    cp "$XDG_RUNTIME_DIR/screen-record/scroll-capture" "$SCREENSHOT_TEST_LOG/scroll-state"' \
+  '  count=$(cat "$SCREENSHOT_TEST_LOG/frame-count" 2>/dev/null || echo 0)' \
+  '  printf "%s\n" "$((count + 1))" > "$SCREENSHOT_TEST_LOG/frame-count"' \
+  '  if [[ ! -e $SCREENSHOT_TEST_FRAMES/$count.ppm ]]; then' \
+  '    count=$((count - 1))' \
+  "    bash '$script' scroll" \
+  '  fi' \
+  '  exec cat "$SCREENSHOT_TEST_FRAMES/$count.ppm"' \
+  'fi' \
   'printf "grim %s %s <output>\n" "$1" "$2" >> "$SCREENSHOT_TEST_LOG/events"' \
   '[[ ${SCREENSHOT_TEST_GRIM_FAIL:-0} == 1 ]] && exit 1' \
   'printf "%s\n" "$*" > "$SCREENSHOT_TEST_LOG/grim"' \
@@ -38,18 +80,32 @@ write_mock wl-copy \
   'printf "%s\n" "$*" > "$SCREENSHOT_TEST_LOG/wl-copy-args"' \
   'cat > "$SCREENSHOT_TEST_LOG/clipboard"'
 write_mock notify-send \
+  'if [[ " $* " == *" --print-id "* ]]; then' \
+  '  printf "%s\n" "$@" > "$SCREENSHOT_TEST_LOG/notify-hint"' \
+  '  printf "%s\n" 42' \
+  '  exit 0' \
+  'fi' \
   'printf "%s\n" "$@" > "$SCREENSHOT_TEST_LOG/notify-send"' \
   'printf "%s\n" default'
+write_mock gdbus \
+  'printf "gdbus %s\n" "$*" >> "$SCREENSHOT_TEST_LOG/events"'
 write_mock satty \
   'printf "%s\n" "$@" > "$SCREENSHOT_TEST_LOG/satty"'
 
-HOME="$test_home" SCREENSHOT_TEST_LOG="$log_dir" PATH="$mock_bin:$PATH" \
-  bash "$repo_root/assets/scripts/screenshot" region
+wait_for() {
+  for _ in {1..100}; do
+    [[ -f $1 ]] && return 0
+    sleep 0.02
+  done
+  return 1
+}
 
-for _ in {1..50}; do
-  [[ -f $log_dir/satty ]] && break
-  sleep 0.02
-done
+boxes=$(printf '%s\n' '10,20 800x600' '100,120 300x200' '1920,0 1280x720' '2000,100 640x480')
+
+HOME="$test_home" SCREENSHOT_TEST_LOG="$log_dir" PATH="$mock_bin:$PATH" \
+  bash "$script" region
+
+wait_for "$log_dir/satty"
 
 mapfile -t screenshots < <(find "$test_home/Pictures/Screenshots" -type f -name 'screenshot-*.png')
 [[ ${#screenshots[@]} -eq 1 ]]
@@ -57,28 +113,45 @@ mapfile -t screenshots < <(find "$test_home/Pictures/Screenshots" -type f -name 
 [[ $(<"$log_dir/clipboard") == captured-image ]]
 grep -Fxq -- '--type image/png' "$log_dir/wl-copy-args"
 grep -Fxq -- '--action=default=Edit screenshot' "$log_dir/notify-send"
+grep -Fxq -- 'Screenshot saved to clipboard and file' "$log_dir/notify-send"
 grep -Fxq -- '--filename' "$log_dir/satty"
 grep -Fxq -- "${screenshots[0]}" "$log_dir/satty"
 grep -Fxq -- '--actions-on-enter' "$log_dir/satty"
 grep -Fxq -- 'save-to-clipboard' "$log_dir/satty"
 grep -Fxq -- '--save-after-copy' "$log_dir/satty"
+# A click selects a visible window: only what the outputs show is offered,
+# and nothing hidden behind a fullscreen window.
+diff -u <(printf '%s\n' "$boxes") "$log_dir/slurp-boxes"
 diff -u <(printf '%s\n' \
   'hyprctl getoption cursor:no_hardware_cursors -j' \
   'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 0 } })' \
+  'hyprctl monitors -j' \
+  'hyprctl clients -j' \
   'wayfreeze --hide-cursor' \
   'grim -g 10,20 300x200 <output>' \
   'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 1 } })') \
   "$log_dir/events"
+[[ -z $(find "$runtime" -name 'windows.*') ]]
+
+# The window a click selects is captured exactly, as slurp reports it.
+window_home="$fixture/window-home"
+window_log="$fixture/window-log"
+mkdir -p "$window_home" "$window_log"
+HOME="$window_home" SCREENSHOT_TEST_LOG="$window_log" SCREENSHOT_TEST_SELECTION="2000,100 640x480" \
+  PATH="$mock_bin:$PATH" bash "$script" region
+grep -Fxq -- '-g 2000,100 640x480' <(sed 's/ [^ ]*$//' "$window_log/grim")
 
 cancel_home="$fixture/cancel-home"
 cancel_log="$fixture/cancel-log"
 mkdir -p "$cancel_home" "$cancel_log"
 HOME="$cancel_home" SCREENSHOT_TEST_LOG="$cancel_log" SCREENSHOT_TEST_SELECTION="" \
-  PATH="$mock_bin:$PATH" bash "$repo_root/assets/scripts/screenshot" region
+  PATH="$mock_bin:$PATH" bash "$script" region
 [[ ! -e $cancel_log/grim ]]
 diff -u <(printf '%s\n' \
   'hyprctl getoption cursor:no_hardware_cursors -j' \
   'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 0 } })' \
+  'hyprctl monitors -j' \
+  'hyprctl clients -j' \
   'wayfreeze --hide-cursor' \
   'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 1 } })') \
   "$cancel_log/events"
@@ -87,16 +160,93 @@ failure_home="$fixture/failure-home"
 failure_log="$fixture/failure-log"
 mkdir -p "$failure_home" "$failure_log"
 if HOME="$failure_home" SCREENSHOT_TEST_LOG="$failure_log" SCREENSHOT_TEST_GRIM_FAIL=1 \
-  PATH="$mock_bin:$PATH" bash "$repo_root/assets/scripts/screenshot" region; then
+  PATH="$mock_bin:$PATH" bash "$script" region; then
   printf 'Expected a failed grim capture to return non-zero\n' >&2
   exit 1
 fi
 diff -u <(printf '%s\n' \
   'hyprctl getoption cursor:no_hardware_cursors -j' \
   'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 0 } })' \
+  'hyprctl monitors -j' \
+  'hyprctl clients -j' \
   'wayfreeze --hide-cursor' \
   'grim -g 10,20 300x200 <output>' \
   'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 1 } })') \
   "$failure_log/events"
 
-printf 'Screenshot hides the cursor, restores compositor state, and preserves save/copy/edit behavior\n'
+# Without a running scrolling capture, the stop keys' command starts nothing.
+# Keys still bound to it can only be left over from a capture that was killed
+# outright (its published state names a process that is gone), so they are
+# released for the next press.
+idle_log="$fixture/idle-log"
+mkdir -p "$idle_log" "$runtime/screen-record"
+printf '%s\n' "999999999 12345" > "$runtime/screen-record/scroll-capture"
+HOME="$fixture/idle-home" SCREENSHOT_TEST_LOG="$idle_log" PATH="$mock_bin:$PATH" \
+  bash "$script" scroll-stop
+[[ ! -e $runtime/screenshot-$UID/scroll-stop ]]
+diff -u <(printf '%s\n' \
+  'hyprctl eval hl.unbind("Return")' \
+  'hyprctl eval hl.unbind("Escape")') \
+  "$idle_log/events"
+rm -f "$runtime/screen-record/scroll-capture"
+
+# Scrolling capture: frames of a page eight pixels wide and 40 rows tall,
+# scrolled by 10 and then 15 rows, become one 65-row image.
+frames="$fixture/frames"
+mkdir -p "$frames"
+python3 - "$frames" <<'PY'
+import random, sys
+from pathlib import Path
+rows = [random.Random(index).randbytes(8 * 3) for index in range(200)]
+for number, offset in enumerate((0, 0, 10, 25)):
+    data = b"P6\n8 40\n255\n" + b"".join(rows[offset:offset + 40])
+    (Path(sys.argv[1]) / f"{number}.ppm").write_bytes(data)
+(Path(sys.argv[1]) / "expected").write_bytes(b"".join(rows[:65]))
+PY
+scroll_home="$fixture/scroll-home"
+scroll_log="$fixture/scroll-log"
+mkdir -p "$scroll_home" "$scroll_log"
+HOME="$scroll_home" SCREENSHOT_TEST_LOG="$scroll_log" SCREENSHOT_TEST_FRAMES="$frames" \
+  PATH="$mock_bin:$PATH" bash "$script" scroll
+wait_for "$scroll_log/satty"
+mapfile -t screenshots < <(find "$scroll_home/Pictures/Screenshots" -type f -name 'screenshot-*.png')
+[[ ${#screenshots[@]} -eq 1 ]]
+python3 - "${screenshots[0]}" "$frames/expected" <<'PY'
+import struct, sys, zlib
+data = open(sys.argv[1], "rb").read()
+assert data[:8] == b"\x89PNG\r\n\x1a\n"
+width, height = struct.unpack(">II", data[16:24])
+assert (width, height) == (8, 65), (width, height)
+index, idat = 8, b""
+while index < len(data):
+    length, = struct.unpack(">I", data[index:index + 4])
+    if data[index + 4:index + 8] == b"IDAT":
+        idat += data[index + 8:index + 8 + length]
+    index += 12 + length
+raw = zlib.decompress(idat)
+rows = b"".join(raw[y * 25 + 1:(y + 1) * 25] for y in range(height))
+assert rows == open(sys.argv[2], "rb").read(), "stitched rows differ from the page"
+PY
+cmp -s "${screenshots[0]}" "$scroll_log/clipboard"
+grep -Fxq -- 'Scrolling screenshot saved to clipboard and file' "$scroll_log/notify-send"
+grep -Fxq -- 'Click to edit in Satty' "$scroll_log/notify-send"
+grep -Fxq -- '--print-id' "$scroll_log/notify-hint"
+# The capture announced itself to the menubar while it ran, as "PID TICKS".
+[[ $(<"$scroll_log/scroll-state") =~ ^[0-9]+\ [0-9]+$ ]]
+[[ ! -e $runtime/screen-record/scroll-capture && ! -e $runtime/screenshot-$UID/scroll-stop ]]
+(($(wc -l <"$scroll_log/frames") >= 4))
+printf -v stop_command '%q scroll-stop' "$(readlink -f -- "$script")"
+diff -u <(printf '%s\n' \
+  'hyprctl getoption cursor:no_hardware_cursors -j' \
+  'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 0 } })' \
+  'hyprctl monitors -j' \
+  'hyprctl clients -j' \
+  'gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.CloseNotification 42' \
+  "hyprctl eval hl.bind(\"Return\", hl.dsp.exec_cmd(\"$stop_command\"))" \
+  "hyprctl eval hl.bind(\"Escape\", hl.dsp.exec_cmd(\"$stop_command\"))" \
+  'hyprctl eval hl.unbind("Return")' \
+  'hyprctl eval hl.unbind("Escape")' \
+  'hyprctl eval hl.config({ cursor = { no_hardware_cursors = 1 } })') \
+  "$scroll_log/events"
+
+printf 'Screenshot selects regions or visible windows, stitches scrolling captures, restores compositor state, and preserves save/copy/edit behavior\n'

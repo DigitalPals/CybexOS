@@ -64,6 +64,15 @@ class FakeBackend:
         self.started = False
         self.failed = False
         self.rescanned = False
+        self.actions = [{"action-description": "create"}]
+        self.analysis = {"free": 1024**3, "partitions": [
+            {"id": "vda1", "path": "/dev/vda1", "size": 512 * 1024**2, "min_size": 512 * 1024**2,
+             "shrinkable": False, "filesystem": "efi"},
+            {"id": "vda3", "path": "/dev/vda3", "size": 400 * 1024**3, "min_size": 100 * 1024**3,
+             "shrinkable": True, "filesystem": "ntfs"},
+            {"id": "vda4", "path": "/dev/vda4", "size": 20 * 1024**3, "min_size": 2 * 1024**3,
+             "shrinkable": True, "filesystem": "ntfs"},
+        ]}
 
     def inventory(self):
         return self.choices
@@ -77,16 +86,21 @@ class FakeBackend:
     def keyboard(self, layout):
         return {"keyboard": layout, "boot_keyboard": layout}
 
-    def plan(self, account, password, disk):
+    def plan(self, account, credentials, disk):
         if self.failed:
             raise RuntimeError("fixture failure")
+        self.credentials = dict(credentials)
+        self.planned = account
         return dict(
             partitioning="/fixture",
-            actions=[{"action-description": "create"}],
+            actions=copy.deepcopy(self.actions),
             errors=[],
             warnings=[],
             boot_keyboard="us",
         )
+
+    def alongside(self, disk):
+        return copy.deepcopy(self.analysis)
 
     def check_plan(self, state):
         pass
@@ -314,6 +328,77 @@ class InstallerTests(unittest.TestCase):
         with self.assertRaises(backend.Invalid):
             self.plan()
 
+    def test_new_owner_plan_has_no_account_and_keeps_only_the_passphrase_in_memory(self):
+        data = {**ACCOUNT, "oem": True, "username": "", "password": "temporary handover 1",
+                "confirm": "temporary handover 1"}
+        plan = self.installer.plan(data)
+        self.assertEqual((plan["account"]["oem"], plan["account"]["username"]), (True, ""))
+        self.assertEqual(self.adapter.credentials, {"passphrase": "temporary handover 1"})
+        self.assertNotIn("temporary handover", (self.state.directory / "state.json").read_text())
+        # Unencrypted new-owner installations take no passphrase at all.
+        self.installer.plan({**data, "encrypted": False, "password": "", "confirm": ""})
+        self.assertEqual(self.adapter.credentials, {})
+        with self.assertRaises(backend.Invalid):
+            self.installer.plan({**data, "oem": "yes"})
+
+    def alongside(self, **changes):
+        return self.installer.plan({**ACCOUNT, "layout": "alongside", **changes})
+
+    def test_alongside_offers_and_accepts_only_the_largest_shrinkable_partition(self):
+        options = self.installer.alongside({"disk": "vda"})
+        self.assertEqual(options["mode"], "shrink")
+        self.assertEqual(options["partition"]["id"], "vda3")
+        self.assertEqual(options["floor"], 105 * 1024**3)
+        self.assertEqual(options["max_space"], 1024**3 + 400 * 1024**3 - 105 * 1024**3)
+        self.assertTrue(options["min_space"] <= options["default_space"] <= options["max_space"])
+        for shrink in ({"device": "vda4", "size": 10 * 1024**3},          # not the largest
+                       {"device": "vda3", "size": 104 * 1024**3},         # below its floor
+                       {"device": "vda3", "size": 400 * 1024**3},         # not a shrink
+                       {"device": "vda3", "size": 380 * 1024**3}):        # too little for CybexOS
+            with self.subTest(shrink=shrink), self.assertRaises(backend.Invalid):
+                self.alongside(shrink=shrink)
+        with self.assertRaises(backend.Invalid):
+            self.alongside()  # Free space alone is not enough here.
+        plan = self.alongside(shrink={"device": "vda3", "size": 300 * 1024**3})
+        self.assertEqual(plan["layout"]["resize"], {"path": "/dev/vda3", "filesystem": "ntfs",
+                                                     "from": 400 * 1024**3, "to": 300 * 1024**3})
+        self.assertEqual(plan["layout"]["space"], 101 * 1024**3)
+        self.assertEqual(plan["layout"]["kept"], ["/dev/vda1", "/dev/vda4"])
+        self.assertEqual(self.adapter.planned["shrink"], {"device": "vda3", "size": 300 * 1024**3})
+
+    def test_alongside_uses_free_space_without_shrinking_when_it_suffices(self):
+        self.adapter.analysis["free"] = 80 * 1024**3
+        self.assertEqual(self.installer.alongside({"disk": "vda"})["mode"], "free")
+        with self.assertRaises(backend.Invalid):
+            self.alongside(shrink={"device": "vda3", "size": 300 * 1024**3})
+        plan = self.alongside()
+        self.assertIsNone(plan["account"]["shrink"])
+        self.assertNotIn("resize", plan["layout"])
+
+    def test_alongside_plan_touching_other_partitions_is_refused(self):
+        self.adapter.analysis["free"] = 80 * 1024**3
+        for action in ({"action-type": "destroy", "device-id": "vda4"},
+                       {"action-type": "resize", "device-id": "vda4"},
+                       {"action-type": "create", "object-type": "format", "device-id": "vda1"},
+                       {"action-type": "create", "object-type": "format", "device-id": "vda"}):
+            with self.subTest(action=action):
+                self.adapter.actions = [{"action-type": "create", "device-id": "new-1"}, action]
+                with self.assertRaises(backend.Invalid):
+                    self.alongside()
+                self.assertEqual(self.state.read()["phase"], "failed-plan")
+        self.adapter.actions = [{"action-type": "create", "object-type": "device", "device-id": "new-1"},
+                                {"action-type": "create", "object-type": "format", "device-id": "new-1"}]
+        self.assertEqual(self.alongside()["phase"], "review")
+
+    def test_alongside_install_requires_its_own_confirmation(self):
+        self.adapter.analysis["free"] = 80 * 1024**3
+        plan = self.alongside()
+        with self.assertRaises(backend.Invalid):
+            self.commit(plan)  # erase_confirmed does not confirm a dual-boot install.
+        self.assertFalse(self.adapter.started)
+        self.installer.install({"token": plan["token"], "confirmed_disk": "vda", "alongside_confirmed": True})
+        self.assertTrue(self.adapter.started)
+
 
 # Strict proxy member sets were checked against the anaconda-44.30 interface
 # declarations linked in INSTALLER.md. Unknown property access or assignment
@@ -339,6 +424,7 @@ class StrictProxy:
 class Structure:
     __slots__ = (
         "name",
+        "gecos",
         "password",
         "is_crypted",
         "groups",
@@ -367,10 +453,22 @@ class AdapterContractTests(unittest.TestCase):
             {"Request": {}},
             {
                 "SetPassphrase": lambda password: self.calls.append(("passphrase", password)),
-                "ConfigureWithTask": lambda: "/configure",
+                "ConfigureWithTask": lambda: self.calls.append(("configure-request", dict(self.part.Request))) or "/configure",
                 "ValidateWithTask": lambda: "/validate",
+                "GetDeviceTree": lambda: self.calls.append(("tree",)) or "/tree",
             },
         )
+        # anaconda-44.30 ResizableDeviceTreeInterface (a DeviceTreeInterface).
+        self.tree = StrictProxy(methods={
+            "ShrinkDevice": lambda device, size: self.calls.append(("shrink", device, size)),
+            "GetDevicePartitions": lambda disk: ["vda1", "vda3"],
+            "IsDeviceShrinkable": lambda device: device == "vda3",
+            "GetDeviceSizeLimits": lambda device: (100 * 1024**3, 400 * 1024**3),
+            "GetDeviceData": lambda device: {"path": "/dev/" + device,
+                                             "size": {"vda1": 512 * 1024**2, "vda3": 400 * 1024**3}[device]},
+            "GetFormatData": lambda device: {"type": {"vda1": "efi", "vda3": "ntfs"}[device]},
+            "GetDiskFreeSpace": lambda disks: self.calls.append(("free", tuple(disks))) or 2 * 1024**3,
+        })
         self.modules = {
             ("Storage", ""): StrictProxy(
                 {"AppliedPartitioning": "/partitioning"},
@@ -432,8 +530,7 @@ class AdapterContractTests(unittest.TestCase):
 
     def get_proxy(self, service, path):
         self.assertEqual(service, "org.fedoraproject.Anaconda.Modules.Storage")
-        self.assertEqual(path, "/partitioning")
-        return self.part
+        return {"/partitioning": self.part, "/tree": self.tree}[path]
 
     def task(self, module, path, result=False):
         self.calls.append(("task", module, path))
@@ -443,7 +540,7 @@ class AdapterContractTests(unittest.TestCase):
 
     def test_exact_account_partition_and_validation_sequence(self):
         account = backend.validate_account(ACCOUNT, CHOICES)
-        result = self.adapter.plan(account, ACCOUNT["password"], DISK)
+        result = self.adapter.plan(account, {"password": ACCOUNT["password"], "passphrase": ACCOUNT["password"]}, DISK)
         self.assertEqual(result["boot_keyboard"], "us")
         self.assertEqual(
             self.part.Request,
@@ -467,7 +564,7 @@ class AdapterContractTests(unittest.TestCase):
 
     def test_unencrypted_path_never_sets_luks_password(self):
         account = backend.validate_account({**ACCOUNT, "encrypted": False}, CHOICES)
-        self.adapter.plan(account, ACCOUNT["password"], DISK)
+        self.adapter.plan(account, {"password": ACCOUNT["password"]}, DISK)
         self.assertFalse(self.part.Request["encrypted"])
         self.assertFalse(any(call[0] == "passphrase" for call in self.calls))
 
@@ -638,6 +735,74 @@ class AdapterContractTests(unittest.TestCase):
         task._methods["Finish"] = fail
         with self.assertRaises(RuntimeError):
             backend.Anaconda.task(self.adapter, "Storage", "/task")
+
+
+    # ---- installing alongside, new-owner and seeded accounts ----------------
+
+    def test_alongside_uses_free_space_and_shrinks_only_the_reviewed_partition(self):
+        account = backend.validate_account({**ACCOUNT, "layout": "alongside",
+                                            "shrink": {"device": "vda3", "size": 300 * 1024**3}}, CHOICES)
+        self.adapter.plan(account, {"password": ACCOUNT["password"], "passphrase": ACCOUNT["password"]}, DISK)
+        initialization = self.modules[("Storage", "/DiskInitialization")]
+        # CLEAR_PARTITIONS_NONE, nothing listed for clearing, no new disk label.
+        self.assertEqual(initialization.InitializationMode, 0)
+        self.assertEqual(initialization.DrivesToClear, [])
+        self.assertEqual(initialization.DevicesToClear, [])
+        self.assertFalse(initialization.InitializeLabelsEnabled)
+        self.assertEqual(self.modules[("Storage", "/DiskSelection")].SelectedDisks, ["vda"])
+        self.assertIn(("shrink", "vda3", 300 * 1024**3), self.calls)
+        # The shrink is scheduled on the same partitioning before it is configured.
+        self.assertLess(self.calls.index(("create", "AUTOMATIC")), self.calls.index(("tree",)))
+        self.assertLess(self.calls.index(("shrink", "vda3", 300 * 1024**3)),
+                        self.calls.index(("task", "Storage", "/configure")))
+        self.assertLess(self.calls.index(("task", "Storage", "/configure")),
+                        self.calls.index(("apply", "/partitioning")))
+
+    def test_alongside_without_a_shrink_never_resizes(self):
+        account = backend.validate_account({**ACCOUNT, "layout": "alongside"}, CHOICES)
+        self.adapter.plan(account, {"password": ACCOUNT["password"], "passphrase": ACCOUNT["password"]}, DISK)
+        self.assertFalse(any(call[0] in ("shrink", "tree") for call in self.calls))
+        self.assertEqual(self.modules[("Storage", "/DiskInitialization")].InitializationMode, 0)
+
+    def test_erase_still_clears_only_the_selected_disk(self):
+        account = backend.validate_account(ACCOUNT, CHOICES)
+        self.adapter.plan(account, {"password": ACCOUNT["password"], "passphrase": ACCOUNT["password"]}, DISK)
+        initialization = self.modules[("Storage", "/DiskInitialization")]
+        self.assertEqual((initialization.InitializationMode, initialization.DrivesToClear), (1, ["vda"]))
+        self.assertTrue(initialization.InitializeLabelsEnabled)
+        self.assertFalse(any(call[0] == "shrink" for call in self.calls))
+
+    def test_analysis_reads_limits_without_scheduling_and_resets(self):
+        analysis = self.adapter.alongside(DISK)
+        self.assertEqual(analysis["free"], 2 * 1024**3)
+        self.assertEqual(analysis["partitions"], [
+            {"id": "vda1", "path": "/dev/vda1", "size": 512 * 1024**2, "min_size": 512 * 1024**2,
+             "shrinkable": False, "filesystem": "efi"},
+            {"id": "vda3", "path": "/dev/vda3", "size": 400 * 1024**3, "min_size": 100 * 1024**3,
+             "shrinkable": True, "filesystem": "ntfs"},
+        ])
+        self.assertFalse(any(call[0] in ("shrink", "apply") for call in self.calls))
+        self.assertEqual(self.calls.count(("reset",)), 2)
+        self.assertEqual(self.modules[("Storage", "/DiskSelection")].SelectedDisks, [])
+
+    def test_new_owner_plan_creates_no_account_and_keeps_root_locked(self):
+        account = backend.validate_account({**ACCOUNT, "oem": True, "username": ""}, CHOICES)
+        self.assertEqual(account["username"], "")
+        with patch.dict("sys.modules", {"pyanaconda.core.users": types.SimpleNamespace(
+                crypt_password=lambda password: self.fail("an OEM plan hashes no account password"))}):
+            self.adapter.plan(account, {"passphrase": "temporary handover 1"}, DISK)
+        self.assertEqual(self.modules[("Users", "")].Users, [])
+        self.assertTrue(self.modules[("Users", "")].IsRootAccountLocked)
+        self.assertIn(("passphrase", "temporary handover 1"), self.calls)
+
+    def test_seed_plan_uses_the_hash_as_is_and_sets_the_full_name(self):
+        account = dict(backend.validate_account(ACCOUNT, CHOICES), full_name="Alice Example")
+        with patch.dict("sys.modules", {"pyanaconda.core.users": types.SimpleNamespace(
+                crypt_password=lambda password: self.fail("a seed hash is never rehashed"))}):
+            self.adapter.plan(account, {"password_hash": "$6$seed$fixture", "passphrase": "disk phrase 123"}, DISK)
+        user = self.modules[("Users", "")].Users[0]
+        self.assertEqual((user["password"], user["is-crypted"], user["gecos"]),
+                         ("$6$seed$fixture", True, "Alice Example"))
 
 
 class TargetTests(unittest.TestCase):
@@ -830,6 +995,7 @@ class TargetTests(unittest.TestCase):
                 "usr/bin/cybexos-installer-browser",
                 "usr/libexec/cybexos-installer-backend",
                 "usr/libexec/cybexos-installer-target",
+                "usr/libexec/cybexos-installer-seed",
             ]:
                 self.assertEqual((output / executable).stat().st_mode & 0o777, 0o755)
             self.assertEqual(
@@ -873,6 +1039,11 @@ class TargetTests(unittest.TestCase):
             hook.index("/usr/libexec/cybexos-seed-installed-users"),
             hook.index("dracut --force --regenerate-all"),
         )
+        # Seed choices reach the target before the in-target hook records config.yml.
+        self.assertTrue(hook.startswith("%post --nochroot --erroronfail"))
+        self.assertLess(hook.index("/usr/libexec/cybexos-installer-target --stage"),
+                        hook.index("/usr/libexec/cybexos-configure-installed --offline"))
+        self.assertIn("rm -f /usr/libexec/cybexos-installer-seed", hook)
 
 
 if __name__ == "__main__":

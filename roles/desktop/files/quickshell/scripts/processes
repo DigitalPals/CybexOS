@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Bounded /proc reader and signaller for the Control Center's Top processes
+# list (Common/ProcessList.qml). Only bash builtins run per process, so one
+# snapshot is a single short-lived process however many are running, and the
+# shell only calls it every two seconds while the list is on screen.
+#
+#   processes list
+#       The first line of /proc/stat, then one line per process: 1 when the
+#       caller owns it (0 otherwise), a space, and its /proc/<pid>/stat line.
+#       Common/ProcessListHelpers.js parses this.
+#   processes signal PID START TERM|KILL
+#       Signal PID only while it is still the process that started at START
+#       (field 22 of its stat line), so a pid reused since the list was read
+#       is never hit. Exit 0 when sent, 3 when that process is gone, 2 on bad
+#       arguments, 1 when kill fails (another user's process, say).
+set -uo pipefail
+
+list() {
+  local line pid own
+  cd /proc || exit 1
+  # A process can exit between the glob and the read; skip it quietly.
+  exec 2>/dev/null
+  read -r line <stat || exit 1
+  printf '%s\n' "$line"
+  for pid in [0-9]*; do
+    # kthreadd (pid 2) and its children are kernel threads: nothing to end,
+    # and on a busy machine they are half the list.
+    [[ $pid == 2 ]] && continue
+    read -r line <"$pid/stat" || continue
+    [[ ${line##*) } == ?' 2 '* ]] && continue
+    own=0
+    [[ -O $pid ]] && own=1
+    printf '%s %s\n' "$own" "$line"
+  done
+}
+
+signal() {
+  local pid=${1-} start=${2-} name=${3-} line fields
+  [[ $pid =~ ^[1-9][0-9]*$ && $start =~ ^[0-9]+$ ]] || exit 2
+  [[ $name == TERM || $name == KILL ]] || exit 2
+  read -r line 2>/dev/null <"/proc/$pid/stat" || exit 3
+  # The command name may hold spaces and parentheses; fields resume after
+  # the last ")". State is field 3, so the start time (22) is the 20th.
+  read -r -a fields <<<"${line##*) }"
+  [[ ${fields[19]-} == "$start" ]] || exit 3
+  kill -s "$name" "$pid" || exit 1
+}
+
+case ${1-} in
+  list) list ;;
+  signal) shift; signal "$@" ;;
+  *)
+    printf 'usage: %s list | signal PID START TERM|KILL\n' "${0##*/}" >&2
+    exit 2
+    ;;
+esac

@@ -183,7 +183,7 @@ Item {
             }
             Text {
                 anchors.centerIn: parent
-                text: "Never"
+                text: I18n.tr("Never")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.metadata
                 color: Theme.textFaint

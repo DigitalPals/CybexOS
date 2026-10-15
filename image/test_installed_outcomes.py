@@ -2,6 +2,7 @@
 import importlib.machinery
 import importlib.util
 import io
+import re
 from pathlib import Path
 import subprocess
 import tarfile
@@ -26,6 +27,19 @@ def fixture(installation='iso'):
                   graphical_session=True, sole_managed_shell=True, installed_packages=['quickshell.x86_64=1'],
                   required_packages={'quickshell': ['quickshell.x86_64=1']}, flatpaks=[], selinux='Enforcing')
     return result
+
+
+class FlatpakColumns(unittest.TestCase):
+    def test_capture_asks_only_for_columns_flatpak_118_accepts(self):
+        """Fedora 44's flatpak 1.18 exits "Unknown column: commit"; the
+        deployed commit is the `active` column (seen in a 2026-10-14 ISO run)."""
+        accepted = {'name', 'description', 'application', 'version', 'branch', 'arch', 'runtime',
+                    'origin', 'installation', 'ref', 'active', 'latest', 'size', 'options', 'all'}
+        source = Path(outcomes.__file__).read_text()
+        requested = re.findall(r"'--columns=([a-z,]+)'", source)
+        self.assertTrue(requested)
+        for columns in requested:
+            self.assertLessEqual(set(columns.split(',')), accepted, columns)
 
 
 class OutcomeComparison(unittest.TestCase):

@@ -5,7 +5,10 @@ A recovery point is a read-only snapshot of the `root` subvolume plus an
 archive of /boot, taken before package or configuration work. /home is a
 separate subvolume and is never rolled back.
 
-  create [DESCRIPTION]  take a recovery point; prints its ID last
+  create [--factory] [DESCRIPTION]
+                        take a recovery point; prints its ID last. --factory
+                        marks the one installation-time point that is never
+                        pruned and that `cybex factory-reset` restores
   list [--json]         retained recovery points
   restore ID            make a recovery point the next boot's `root`
   replaced [--json]     roots that restore set aside
@@ -46,6 +49,9 @@ SAFE_UUID = re.compile(r"^[A-Za-z0-9-]{4,64}$")
 UNSAFE_TITLE = re.compile(r"[^A-Za-z0-9 ._:+()-]")
 GRUB_MODULES = {"ext2": "ext2", "ext3": "ext2", "ext4": "ext2", "btrfs": "btrfs",
                 "xfs": "xfs", "vfat": "fat"}
+# The installation's factory point carries this marker beside its metadata.
+# It sits outside the five-point rotation and is never pruned.
+FACTORY_SUFFIX = ".factory"
 MENU_NAME = "cybexos-recovery.cfg"
 INDEX_NAME = "recovery-points.json"
 DRACUT_MARKER = "cybexos-recovery"
@@ -284,6 +290,14 @@ class Store:
         except (OSError, IndexError):
             return ""
 
+    def is_factory(self, point: str) -> bool:
+        return (self.metadata / f"{point}{FACTORY_SUFFIX}").is_file()
+
+    def factory_point(self) -> str:
+        """The installation's factory recovery point, or ""."""
+        points = [point for point in self.ids() if self.is_factory(point)]
+        return points[0] if len(points) == 1 else ""
+
     def recorded_kernel(self, point: str) -> str:
         try:
             value = (self.metadata / f"{point}.kernel").read_text().strip()
@@ -495,6 +509,7 @@ def describe_points(store: Store | None, entries: dict, with_menu: bool) -> tupl
             "bootable": bool(lines),
             "reason": "" if lines else reason,
             "archive": (store.boot / f"{point}.tar").is_file(),
+            "factory": store.is_factory(point),
         })
     return points, menu
 
@@ -767,7 +782,23 @@ def require_root() -> None:
         raise Failure(f"{PROGRAM} must run as root")
 
 
+def delete_point(store: Store, point: str) -> None:
+    """Remove one recovery point and everything recorded beside it."""
+    if not ID_PATTERN.match(point):
+        raise Failure(f"refusing to delete unexpected snapshot name: {point}")
+    if (store.roots / point).exists():
+        run(["btrfs", "subvolume", "delete", str(store.roots / point)])
+    for leftover in (store.boot / f"{point}.tar", store.metadata / f"{point}.meta",
+                     store.metadata / f"{point}.kernel", store.metadata / f"{point}.pin",
+                     store.metadata / f"{point}{FACTORY_SUFFIX}"):
+        with contextlib.suppress(FileNotFoundError):
+            leftover.unlink()
+
+
 def command_create(arguments: list[str]) -> int:
+    factory = bool(arguments) and arguments[0] == "--factory"
+    if factory:
+        arguments = arguments[1:]
     if len(arguments) > 1:
         return usage()
     layout = detect_layout()
@@ -784,7 +815,8 @@ def command_create(arguments: list[str]) -> int:
     for tool in ("btrfs", "findmnt", "tar"):
         if shutil.which(tool) is None:
             raise Failure(f"required snapshot tool is missing: {tool}")
-    description = " ".join((arguments[0] if arguments else "manual recovery point").splitlines())[:120]
+    default = "factory state" if factory else "manual recovery point"
+    description = " ".join((arguments[0] if arguments else default).splitlines())[:120]
     point = os.environ.get("CYBEXOS_SNAPSHOT_ID") or f"{stamp()}-{os.getpid()}"
     if not ID_PATTERN.match(point):
         raise Failure("invalid snapshot identifier")
@@ -793,6 +825,8 @@ def command_create(arguments: list[str]) -> int:
         archive = store.boot / f"{point}.tar"
         if root_target.exists() or archive.exists():
             raise Failure(f"snapshot already exists: {point}")
+        if factory and store.factory_point():
+            raise Failure(f"a factory recovery point already exists: {store.factory_point()}")
         temporary = store.boot / f".{point}.tar.tmp"
         try:
             run(["tar", "--acls", "--xattrs", "--selinux", "--numeric-owner", "--create",
@@ -801,6 +835,8 @@ def command_create(arguments: list[str]) -> int:
             os.replace(temporary, archive)
             run(["btrfs", "subvolume", "snapshot", "-r", str(SYSROOT), str(root_target)])
             (store.metadata / f"{point}.meta").write_text(description + "\n")
+            if factory:
+                (store.metadata / f"{point}{FACTORY_SUFFIX}").write_text(description + "\n")
             # The kernel that boots this point from the recovery menu.
             kernel = current_kernel()
             if kernel:
@@ -809,7 +845,7 @@ def command_create(arguments: list[str]) -> int:
             run(["sync", "-f", str(store.path / "latest")])
         except BaseException:
             for leftover in (temporary, archive, store.metadata / f"{point}.meta",
-                             store.metadata / f"{point}.kernel"):
+                             store.metadata / f"{point}.kernel", store.metadata / f"{point}{FACTORY_SUFFIX}"):
                 with contextlib.suppress(OSError):
                     leftover.unlink()
             if root_target.exists():
@@ -818,7 +854,10 @@ def command_create(arguments: list[str]) -> int:
             raise
         # Five recovery points bound disk growth while retaining several
         # independent transactions. Snapshots and archives rotate together.
-        snapshots = sorted(entry.name for entry in store.roots.iterdir() if entry.is_dir())
+        # The factory point is outside the rotation: it neither counts
+        # towards the five nor is ever pruned.
+        snapshots = sorted(entry.name for entry in store.roots.iterdir()
+                           if entry.is_dir() and not store.is_factory(entry.name))
         while len(snapshots) > KEEP:
             removable = [point for point in snapshots
                          if not (store.metadata / f"{point}.pin").exists()]
@@ -828,11 +867,7 @@ def command_create(arguments: list[str]) -> int:
             snapshots.remove(oldest)
             if not ID_PATTERN.match(oldest):
                 raise Failure(f"refusing to prune unexpected snapshot name: {oldest}")
-            run(["btrfs", "subvolume", "delete", str(store.roots / oldest)])
-            for leftover in (store.boot / f"{oldest}.tar", store.metadata / f"{oldest}.meta",
-                             store.metadata / f"{oldest}.kernel"):
-                with contextlib.suppress(FileNotFoundError):
-                    leftover.unlink()
+            delete_point(store, oldest)
         regenerate_quietly(layout, store)
     print(point, flush=True)
     return 0
@@ -1001,7 +1036,7 @@ COMMANDS = {
 
 
 def usage() -> int:
-    print("Usage: cybexos-system-snapshot create [DESCRIPTION]\n"
+    print("Usage: cybexos-system-snapshot create [--factory] [DESCRIPTION]\n"
           "       cybexos-system-snapshot list [--json]\n"
           "       cybexos-system-snapshot restore ID\n"
           "       cybexos-system-snapshot replaced [--json]\n"

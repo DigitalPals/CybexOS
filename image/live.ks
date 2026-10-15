@@ -5,7 +5,8 @@ keyboard us
 timezone UTC --utc
 rootpw --lock
 # with-mdns4 lets nss-mdns resolve .local names, matching the workstation.
-authselect select sssd with-silent-lastlog with-mdns4 --force
+# with-fingerprint offers fprintd beside the password (docs/security.md).
+authselect select sssd with-silent-lastlog with-mdns4 with-fingerprint --force
 selinux --enforcing
 firewall --enabled
 # Docker is socket-activated on demand by roles/base/tasks/docker-activation.yml,
@@ -17,8 +18,9 @@ part / --size=61440 --fstype=ext4
 # Repository configuration, including signature verification, is supplied
 # through image/compose's verified DNF adapter from image/build.repo.
 # The library also requires a syntactically present Kickstart repository;
-# the adapter replaces this entry with the signed DNF definitions.
-repo --name=fedora --baseurl=https://download.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/
+# the adapter replaces this entry with the signed DNF definitions. Like
+# build.repo, it names no release: compose sets $releasever from inventory.
+repo --name=fedora --baseurl=https://download.fedoraproject.org/pub/fedora/linux/releases/$releasever/Everything/x86_64/os/
 
 %packages --excludedocs --exclude-weakdeps
 @core

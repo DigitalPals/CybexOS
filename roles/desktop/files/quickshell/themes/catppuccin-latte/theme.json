@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "catppuccin-latte",
+  "name": "Catppuccin Latte",
+  "mode": "light",
+  "accent": "#8839ef",
+  "bar": "#e6e9ef",
+  "palette": {
+    "background": "#e6e9ef",
+    "surface": "#eff1f5",
+    "text": "#4c4f69",
+    "textMuted": "#5c5f77",
+    "textDim": "#6c6f85",
+    "red": "#d20f39",
+    "amber": "#df8e1d",
+    "green": "#40a02b"
+  },
+  "author": "Catppuccin",
+  "license": "MIT",
+  "source": "https://github.com/catppuccin/palette"
+}

@@ -1,0 +1,73 @@
+name: Fedora preview
+
+# The source contract on the next, not yet qualified Fedora release. It is
+# informational: the job may fail without failing the run, it is not a
+# required check, and release.yml never calls this workflow, so a preview can
+# neither block nor slow a release. Packages or Hyprland COPR builds the
+# release does not provide yet are skipped, so every check that can still run
+# does, and are then reported as a failure of the job. "Fedora 45
+# qualification" in docs/fedora-major-upgrade.md lists what a passing preview
+# does not establish.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, to notice when Fedora or the COPR catch up between pushes.
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fedora-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Fedora ${{ matrix.fedora }} source contract preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        # Unqualified releases only; tests/fedora-release.py rejects one that
+        # inventory or release-manifest.json already supports.
+        fedora: ["45"]
+    container:
+      image: fedora:${{ matrix.fedora }}
+    # The same headless environment as the required tests.yml job.
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      QT_QPA_PLATFORM: offscreen
+      QT_QUICK_BACKEND: software
+
+    steps:
+      - name: Install Git for the checkout
+        run: dnf install -y git-core
+
+      # actions/checkout v4.4.0, the commit tests.yml pins.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Prepare the Fedora source-test environment
+        id: environment
+        uses: ./.github/actions/fedora-source-environment
+        with:
+          fedora-release: ${{ matrix.fedora }}
+          best-effort: "true"
+
+      - name: Run every source check
+        run: ./tests/run
+
+      # Whatever tests/run reported, the release is not ready while anything
+      # the source contract installs was unavailable.
+      - name: Report what the release does not provide yet
+        if: ${{ !cancelled() && steps.environment.outputs.unavailable != '' }}
+        env:
+          FEDORA: ${{ matrix.fedora }}
+          UNAVAILABLE: ${{ steps.environment.outputs.unavailable }}
+        run: |
+          echo "::error title=Fedora $FEDORA preview::Unavailable: $UNAVAILABLE"
+          exit 1

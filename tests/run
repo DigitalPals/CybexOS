@@ -474,10 +474,12 @@ python_fixtures=(
   repository-policy
   application-defaults
   installation-parity
+  fedora-release
   login-policy
   session-launcher
   update-transaction
   update-bootstrap
+  update-download
   major-upgrade
   native-input-region
   omawrite
@@ -493,6 +495,16 @@ python_fixtures=(
   hermes-remote-runtime
   remote-server
   fusebox
+  cybexos-webapp
+  clipboard-tool
+  game-mode
+  nvidia-hardware
+  cybexos-report
+  backup
+  theme-packs
+  screenshot-stitch
+  network-connections
+  security-settings
 )
 python_fixture_limit=300
 
@@ -594,7 +606,7 @@ assert '(Quickshell.env("QS_REDUCED_MOTION") || "").trim()' in theme
 assert "(Type|Reference|Range)Error" in live_helpers
 assert 'hl.dsp.global("quickshell:launcherToggle")' in bindings
 assert "noctalia" not in autostart.lower()
-assert "qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|wallpaper)" in look
+assert "qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|wallpaper|overview|dock)" in look
 assert "hyprland-quickshell.desktop" in login_policy
 assert "/etc/cybexos/login.json" in finalize
 assert "noctalia-retired-" in finalize
@@ -1000,7 +1012,7 @@ stage_screenshot_workflow() {
   elapsed=$(( $(now_ms) - t0 ))
 
   if ((rc == 0)); then
-    pass 'screenshot' "save/copy/deferred-edit workflow $(took "$elapsed")"
+    pass 'screenshot' "region/window/scrolling capture and save/copy/edit workflow $(took "$elapsed")"
   else
     fail 'screenshot' 'workflow fixture failed'
     excerpt "${out:-unknown failure}"

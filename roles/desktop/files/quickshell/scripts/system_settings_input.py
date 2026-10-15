@@ -50,7 +50,7 @@ def validate(document):
                 raise ValueError('Invalid keyboard layout or variant')
     if 'shortcut' in keyboard and keyboard['shortcut'] not in SHORTCUTS:
         raise ValueError('Invalid layout switching shortcut')
-    for key in ('tap', 'naturalScroll'):
+    for key in ('tap', 'naturalScroll', 'workspaceSwipe'):
         if key in touchpad and type(touchpad[key]) is not bool:
             raise ValueError('Touchpad switches must be true or false')
     if 'sensitivity' in touchpad:
@@ -127,6 +127,9 @@ class InputSettings:
                                         for item in devices.get('keyboards', []) if item.get('main', False)]},
                 'touchpad': {'tap': self.option('touchpad:tap_to_click', 'bool'),
                              'naturalScroll': self.option('touchpad:natural_scroll', 'bool'),
+                             # A gesture, which Hyprland does not report as an
+                             # option: input.lua registers it unless saved off.
+                             'workspaceSwipe': document.get('touchpad', {}).get('workspaceSwipe', True),
                              'sensitivity': float(self.option('sensitivity', 'float'))}}
 
     def atomic_write(self, raw):
@@ -157,7 +160,8 @@ class InputSettings:
             raise ValueError('Unknown input operation')
         section = request['section']
         patch = request.get('values')
-        allowed = {'keyboard': {'layouts', 'shortcut'}, 'touchpad': {'tap', 'naturalScroll', 'sensitivity'}}[section]
+        allowed = {'keyboard': {'layouts', 'shortcut'},
+                   'touchpad': {'tap', 'naturalScroll', 'workspaceSwipe', 'sensitivity'}}[section]
         if not isinstance(patch, dict) or not patch or set(patch) - allowed:
             raise ValueError('Invalid input change')
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)

@@ -419,7 +419,7 @@ Surface {
             border.width: activeFocus ? 1 : 0
             border.color: Theme.accentText
             Accessible.role: Accessible.Button
-            Accessible.name: "Choose media player"
+            Accessible.name: I18n.tr("Choose media player")
             Accessible.description: root.player ? root.player.identity : "No player"
             Accessible.onPressAction: root.selectSource(1)
 
@@ -733,7 +733,7 @@ Surface {
                 width: parent.width
                 topPadding: 16
                 horizontalAlignment: Text.AlignHCenter
-                text: "Nothing playing"
+                text: I18n.tr("Nothing playing")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.primary
                 font.weight: Theme.weightSemibold
@@ -744,7 +744,7 @@ Surface {
                 width: parent.width
                 topPadding: 5
                 horizontalAlignment: Text.AlignHCenter
-                text: "Controls appear as soon as a player starts."
+                text: I18n.tr("Controls appear as soon as a player starts.")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.secondary
                 font.weight: Theme.weightRegular

@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -9,7 +10,7 @@ const { shellDir } = require("./shell.cjs");
 // Keep the pure-JS helper runtime tests in tests/qml and guard the shell-bound
 // interaction contract here until the package exposes a loadable QML plugin.
 function read(relative) {
-    return fs.readFileSync(path.join(shellDir, relative), "utf8");
+    return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
 test("popover action primitives are keyboard and assistive-technology operable", () => {
@@ -54,7 +55,7 @@ test("notification history exposes primary, action, disclosure, dismiss, and cle
     assert.match(card, /Accessible\.role:\s*actionable \? Accessible\.Button : Accessible\.StaticText/);
     assert.match(card, /Qt\.Key_Delete[\s\S]*card\.closeRequested\(\)/);
     assert.match(card,
-        /id:\s*closeButton[\s\S]*activeFocusOnTab:\s*card\.keyboardEnabled[\s\S]*Accessible\.name:\s*"Dismiss notification/);
+        /id:\s*closeButton[\s\S]*activeFocusOnTab:\s*card\.keyboardEnabled[\s\S]*Accessible\.name:[\s\S]{0,120}"Dismiss notification from %1"/);
     assert.match(card,
         /id:\s*textDisclosure[\s\S]*activeFocusOnTab:\s*visible && card\.keyboardEnabled[\s\S]*Accessible\.name:/);
     assert.match(actions,

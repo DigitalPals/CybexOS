@@ -32,3 +32,12 @@ systemctl --user start hyprland-session.target
 sleep 1
 systemctl --user restart \
   xdg-desktop-portal-hyprland.service xdg-desktop-portal.service
+
+# On NVIDIA systems, show a pending restart, Secure Boot key enrollment or
+# driver failure once per boot. The helper exists only where the NVIDIA role
+# ran; the delay lets the shell's notification server start. The background
+# job must not keep the session lock (fd 9).
+nvidia_helper=/usr/local/libexec/cybexos-nvidia
+if [[ -x $nvidia_helper ]]; then
+  (sleep 10; exec "$nvidia_helper" notify) 9>&- >/dev/null 2>&1 &
+fi

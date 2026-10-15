@@ -328,7 +328,7 @@ Item {
                     anchors.right: parent.right
                     anchors.margins: 10
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Session sign-in required. An HTTP 302 from Hermes WebUI means its browser session has expired or requires sign-in; it is not a usable API response. Enter the password again to renew this client session."
+                    text: I18n.tr("Session sign-in required. An HTTP 302 from Hermes WebUI means its browser session has expired or requires sign-in; it is not a usable API response. Enter the password again to renew this client session.")
                     wrapMode: Text.WordWrap
                     font.family: HermesTheme.fontUi
                     font.pixelSize: Theme.typography.secondary
@@ -351,7 +351,7 @@ Item {
                     anchors.right: parent.right
                     anchors.margins: 10
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "This signs in to a remote Hermes WebUI session. The password is sent once to the local bridge, is never retained or displayed by Quickshell, and is cleared from this form immediately."
+                    text: I18n.tr("This signs in to a remote Hermes WebUI session. The password is sent once to the local bridge, is never retained or displayed by Quickshell, and is cleared from this form immediately.")
                     wrapMode: Text.WordWrap
                     font.family: HermesTheme.fontUi
                     font.pixelSize: Theme.typography.secondary
@@ -362,7 +362,7 @@ Item {
             EntryField {
                 id: remoteUrlField
                 visible: !Hermes.remoteConnected
-                label: "Hermes WebUI URL"
+                label: I18n.tr("Hermes WebUI URL")
                 placeholder: "https://hermes.example.com"
                 inputHints: Qt.ImhUrlCharactersOnly
                 onTextChanged: {
@@ -375,8 +375,8 @@ Item {
             EntryField {
                 id: remotePasswordField
                 visible: !Hermes.remoteConnected
-                label: "WebUI password"
-                placeholder: "Not stored by the menubar"
+                label: I18n.tr("WebUI password")
+                placeholder: I18n.tr("Not stored by the menubar")
                 echoMode: TextInput.Password
                 inputHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
                 onAccepted: root.loginRemote()
@@ -409,7 +409,7 @@ Item {
 
                 AuthAction {
                     visible: !Hermes.remoteConnected
-                    label: root.remoteSigningIn ? "Signing in…" : "Sign in to WebUI"
+                    label: root.remoteSigningIn ? I18n.tr("Signing in…") : I18n.tr("Sign in to WebUI")
                     enabled: remoteUrlField.text.trim() !== ""
                         && remotePasswordField.text !== "" && !root.remoteBusy
                     hPadding: 22
@@ -424,7 +424,7 @@ Item {
                 AuthAction {
                     id: backToChat
                     visible: Hermes.remoteConnected
-                    label: "Back to chat"
+                    label: I18n.tr("Back to chat")
                     enabled: !root.remoteBusy
                     hPadding: 20
                     fontFamily: HermesTheme.fontUi
@@ -466,7 +466,7 @@ Item {
                 border.color: activeFocus ? HermesTheme.focus : HermesTheme.border
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
-                Accessible.name: "Advanced local model-provider setup"
+                Accessible.name: I18n.tr("Advanced local model-provider setup")
                 Accessible.onPressAction: root.advancedOpen = !root.advancedOpen
                 onActiveFocusChanged: if (activeFocus)
                     root.ensureVisible(advancedToggle)
@@ -498,7 +498,7 @@ Item {
                         spacing: 2
                         Text {
                             width: parent.width
-                            text: "ADVANCED · LOCAL MODEL PROVIDER"
+                            text: I18n.tr("ADVANCED · LOCAL MODEL PROVIDER")
                             font.family: HermesTheme.fontUi
                             font.pixelSize: Theme.typography.metadata
                             font.weight: Theme.weightSemibold
@@ -507,7 +507,7 @@ Item {
                         }
                         Text {
                             width: parent.width
-                            text: "Separate from remote WebUI sign-in. Use this only when Hermes runs on this machine."
+                            text: I18n.tr("Separate from remote WebUI sign-in. Use this only when Hermes runs on this machine.")
                             wrapMode: Text.WordWrap
                             font.family: HermesTheme.fontUi
                             font.pixelSize: Theme.typography.secondary
@@ -548,7 +548,7 @@ Item {
 
                 EntryField {
                     id: providerUrlField
-                    label: "OpenAI-compatible API URL"
+                    label: I18n.tr("OpenAI-compatible API URL")
                     placeholder: "http://127.0.0.1:8000/v1"
                     inputHints: Qt.ImhUrlCharactersOnly
                     onTextChanged: root.localErrorText = ""
@@ -557,15 +557,15 @@ Item {
 
                 EntryField {
                     id: providerModelField
-                    label: "Model ID"
-                    placeholder: "provider/model-id (optional when discoverable)"
+                    label: I18n.tr("Model ID")
+                    placeholder: I18n.tr("provider/model-id (optional when discoverable)")
                     onAccepted: providerSecretField.forceInputFocus()
                 }
 
                 EntryField {
                     id: providerSecretField
-                    label: "Provider API key (optional for local endpoints)"
-                    placeholder: "Cleared after this attempt"
+                    label: I18n.tr("Provider API key (optional for local endpoints)")
+                    placeholder: I18n.tr("Cleared after this attempt")
                     echoMode: TextInput.Password
                     inputHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
                     onAccepted: root.configureLocalProvider()
@@ -596,7 +596,7 @@ Item {
                     spacing: 8
 
                     AuthAction {
-                        label: root.localBusy ? "Connecting…" : "Configure local provider"
+                        label: root.localBusy ? I18n.tr("Connecting…") : I18n.tr("Configure local provider")
                         enabled: providerUrlField.text.trim() !== "" && !root.localBusy
                         hPadding: 20
                         fontFamily: HermesTheme.fontUi
@@ -608,7 +608,7 @@ Item {
                     }
 
                     AuthAction {
-                        label: "Open full local setup"
+                        label: I18n.tr("Open full local setup")
                         enabled: !root.localBusy
                         hPadding: 18
                         fontFamily: HermesTheme.fontUi
@@ -622,7 +622,7 @@ Item {
 
                 Text {
                     width: parent.width
-                    text: "Local provider credentials are stored by Hermes in ~/.hermes/.env. Remote WebUI passwords are never retained by the menubar."
+                    text: I18n.tr("Local provider credentials are stored by Hermes in ~/.hermes/.env. Remote WebUI passwords are never retained by the menubar.")
                     wrapMode: Text.WordWrap
                     font.family: HermesTheme.fontMono
                     font.pixelSize: Theme.typography.metadata

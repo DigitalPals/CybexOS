@@ -13,3 +13,7 @@ ShortcutsOverlay ShortcutsOverlay.qml
 SettingsWindow SettingsWindow.qml
 PolkitPrompt PolkitPrompt.qml
 PolkitWindow PolkitWindow.qml
+OverviewWindow OverviewWindow.qml
+OverviewView OverviewView.qml
+DockWindow DockWindow.qml
+WebcamOverlay WebcamOverlay.qml

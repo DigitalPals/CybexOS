@@ -1,0 +1,35 @@
+---
+# RPM Fusion nonfree's driver, installed only when an NVIDIA GPU is detected.
+# akmod-nvidia rebuilds the kernel module for every new kernel (akmods.service
+# runs before the display manager). The CUDA libraries carry NVDEC/NVENC for
+# FFmpeg and OBS; libva-nvidia-driver (Fedora's name for nvidia-vaapi-driver)
+# adds VA-API decoding for browsers and mpv.
+nvidia_driver_packages:
+  - akmod-nvidia
+  - xorg-x11-drv-nvidia-cuda-libs
+  - libva-nvidia-driver
+
+# Fedora tools the Secure Boot path needs before the driver is built.
+nvidia_support_packages:
+  - akmods
+  - mokutil
+
+# Shown in status and notifications. The image provisioning overrides it
+# with its own retry command.
+nvidia_retry_command: cybex install -- --tags nvidia
+
+# The ISO's boot-time hardware setup is unattended; there a Secure Boot key
+# enrollment the user skipped is requested again only by an explicit retry.
+nvidia_setup_automatic: false
+
+# Session variables for an NVIDIA-only desktop. Hybrid laptops keep the
+# integrated GPU as the renderer and get only the VA-API backend choice;
+# applications opt into the dGPU through switcheroo-control. GBM_BACKEND is
+# deliberately absent: Mesa selects nvidia-drm's GBM backend by driver name,
+# and forcing it is a known cause of browser crashes.
+nvidia_session_environment:
+  LIBVA_DRIVER_NAME: nvidia
+  __GLX_VENDOR_LIBRARY_NAME: nvidia
+  NVD_BACKEND: direct
+nvidia_hybrid_session_environment:
+  NVD_BACKEND: direct

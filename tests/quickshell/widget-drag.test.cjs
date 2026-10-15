@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -9,7 +10,7 @@ const CATALOG = load("WidgetCatalog.js");
 const SETTINGS = load("SettingsHelpers.js");
 
 function read(relative) {
-    return fs.readFileSync(path.join(shellDir, relative), "utf8");
+    return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
 function mods(left, center, right) {
@@ -183,7 +184,7 @@ test("no bar widget prevents the drag from taking the grab", () => {
         return out;
     };
     for (const file of walk(path.join(shellDir, "Bar")))
-        assert.doesNotMatch(fs.readFileSync(file, "utf8"), /preventStealing:\s*true/,
+        assert.doesNotMatch(untranslated(fs.readFileSync(file, "utf8")), /preventStealing:\s*true/,
             `${path.relative(shellDir, file)} would trap the press and block a drag`);
 });
 

@@ -293,7 +293,8 @@ function groupWifiNetworks(networks, profiles) {
     profileList.forEach(function (profile) {
         var type = physicalType(profile);
         var ssid = text(profile.ssid || profile.name);
-        if (type === "wifi" && ssid !== "" && !bySsid[ssid])
+        // The hotspot's own profile is not a network this computer joins.
+        if (type === "wifi" && ssid !== "" && !bySsid[ssid] && !sharedProfile(profile))
             bySsid[ssid] = profile;
     });
     var grouped = {};
@@ -522,10 +523,16 @@ function boolValue(value) {
         || text(value).toLowerCase() === "true" || Number(value) === 1;
 }
 
+// A profile that shares this computer's connection (the hotspot) serves its
+// clients' DNS itself, so the DNS presets leave it alone, as the helper does.
+function sharedProfile(profile) {
+    return text(profile && profile.ipv4Method).toLowerCase() === "shared";
+}
+
 function standalonePhysicalProfile(profile) {
     return physicalType(profile) !== "" && text(profile.master || profile.controller) === ""
         && text(profile.slaveType || profile.portType) === ""
-        && profile.standalone !== false;
+        && profile.standalone !== false && !sharedProfile(profile);
 }
 
 function profileDnsState(profile) {
@@ -564,6 +571,105 @@ function dnsState(profiles) {
     };
 }
 
+// ---- VPN and hotspot ------------------------------------------------------
+// `vpns` entries come from network-tool.py: {uuid, name, type, kind, label,
+// state, active, timestamp}, state being NetworkManager's activation state
+// ("activated", "activating", "deactivating" or "").
+
+function isVpnActive(vpn) {
+    var state = text(vpn && vpn.state);
+    return state === "activated" || state === "activating";
+}
+
+// The one VPN the drawer's compact row offers: a connected or connecting one,
+// else the most recently used, else the first by name.
+function preferredVpn(vpns) {
+    var list = (Array.isArray(vpns) ? vpns : []).filter(function (vpn) {
+        return vpn && text(vpn.uuid) !== "";
+    });
+    if (list.length === 0)
+        return null;
+    function rank(vpn) {
+        var state = text(vpn.state);
+        return state === "activated" ? 0 : state === "activating" ? 1 : 2;
+    }
+    return list.slice().sort(function (a, b) {
+        return rank(a) - rank(b)
+            || (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0)
+            || text(a.name).localeCompare(text(b.name));
+    })[0];
+}
+
+// What a VPN row says about its state; `pending` names a request running for
+// it ("connect" or "disconnect"), which wins over the last snapshot.
+function vpnStateText(vpn, pending) {
+    if (pending === "connect")
+        return "Connecting…";
+    if (pending === "disconnect")
+        return "Disconnecting…";
+    var state = text(vpn && vpn.state);
+    return state === "activated" ? "Connected"
+        : state === "activating" ? "Connecting…"
+        : state === "deactivating" ? "Disconnecting…" : "Off";
+}
+
+function vpnLabel(vpn) {
+    var label = text(vpn && vpn.label);
+    return label !== "" ? label : text(vpn && vpn.type) === "wireguard" ? "WireGuard" : "VPN";
+}
+
+// Why `name` cannot be a Wi-Fi network name, or "": an SSID is at most 32
+// bytes, which is fewer characters outside ASCII.
+function utf8Length(value) {
+    var length = 0;
+    for (var i = 0; i < value.length; i++) {
+        var unit = value.charCodeAt(i);
+        if (unit < 0x80)
+            length += 1;
+        else if (unit < 0x800)
+            length += 2;
+        else if (unit >= 0xd800 && unit <= 0xdbff && i + 1 < value.length) {
+            length += 4;
+            i++;
+        } else
+            length += 3;
+    }
+    return length;
+}
+
+function ssidProblem(name) {
+    var value = text(name);
+    if (/[\u0000-\u001f\u007f]/.test(value))
+        return "Use letters, digits, spaces and punctuation";
+    return utf8Length(value) > 32 ? "Use at most 32 bytes (about 32 letters)" : "";
+}
+
+// The Hotspot group's copy from network-tool.py's hotspot status: whether the
+// switch can be used and why not, the line under it, and the warning that
+// starting it drops this adapter's Wi-Fi connection. NetworkManager runs one
+// connection per adapter, so an adapter cannot join a network and host one
+// at the same time.
+function hotspotView(status) {
+    var value = status || {};
+    var hosting = text(value.state) === "activated" || text(value.state) === "activating";
+    var view = { visible: value.available === true, disabledReason: "", description: "", warning: "" };
+    if (!view.visible)
+        return view;
+    if (value.supported !== true)
+        view.disabledReason = "This Wi-Fi adapter cannot host a hotspot";
+    else if (value.radioOff === true && !hosting)
+        view.disabledReason = "Turn on Wi-Fi to use the hotspot";
+    view.description = text(value.state) === "activated"
+        ? "Devices can join " + text(value.ssid) + " to share this computer's connection"
+        : text(value.state) === "activating" ? "Starting…"
+        : "Share this computer's connection over Wi-Fi";
+    if (!hosting && value.dropsWifi === true && view.disabledReason === "")
+        view.warning = "This adapter cannot join Wi-Fi and host a hotspot at once, so "
+            + (text(value.wifiConnection) || "the current Wi-Fi network")
+            + " disconnects while the hotspot is on. Devices share your other connection, such as Ethernet.";
+    return view;
+}
+
 var exported = {
     PHYSICAL_TYPES: PHYSICAL_TYPES,
     DNS_PROVIDERS: DNS_PROVIDERS,
@@ -588,8 +694,15 @@ var exported = {
     isIpv6: isIpv6,
     validateDnsServers: validateDnsServers,
     standalonePhysicalProfile: standalonePhysicalProfile,
+    sharedProfile: sharedProfile,
     profileDnsState: profileDnsState,
-    dnsState: dnsState
+    dnsState: dnsState,
+    isVpnActive: isVpnActive,
+    preferredVpn: preferredVpn,
+    vpnStateText: vpnStateText,
+    vpnLabel: vpnLabel,
+    ssidProblem: ssidProblem,
+    hotspotView: hotspotView
 };
 
 if (typeof module !== "undefined" && module.exports)

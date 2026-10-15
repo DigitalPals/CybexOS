@@ -37,7 +37,7 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Idle"
+            title: I18n.tr("Idle")
 
             IdleTimeline {
                 width: parent.width
@@ -45,32 +45,32 @@ SettingsPage {
             }
             SelectRow {
                 width: parent.width
-                label: "Lock screen"
+                label: I18n.tr("Lock screen")
                 settingKey: "idleLockMins"
                 model: page.idleChoices(SettingsHelpers.IDLE_LOCK_MINS)
                 disabledReason: page.idleOverrideReason
             }
             SelectRow {
                 width: parent.width
-                label: "Screen off"
+                label: I18n.tr("Screen off")
                 settingKey: "idleScreenOffMins"
                 model: page.idleChoices(SettingsHelpers.IDLE_SCREEN_OFF_MINS)
                 disabledReason: page.idleOverrideReason
             }
             SelectRow {
                 width: parent.width
-                label: "Suspend"
+                label: I18n.tr("Suspend")
                 settingKey: "idleSuspendMins"
                 model: page.idleChoices(SettingsHelpers.IDLE_SUSPEND_MINS)
                 disabledReason: page.idleOverrideReason
-                hint: "Locks the screen first"
+                hint: I18n.tr("Locks the screen first")
             }
             SwitchRow {
                 width: parent.width
                 visible: Battery.isLaptop || Settings.idleSuspendBatteryOnly
-                label: "Only on battery"
+                label: I18n.tr("Only on battery")
                 settingKey: "idleSuspendBatteryOnly"
-                description: "Waits while plugged in; suspends once unplugged"
+                description: I18n.tr("Waits while plugged in; suspends once unplugged")
                 disabledReason: page.idleOverrideReason !== "" ? page.idleOverrideReason
                     : Settings.idleSuspendMins === 0 ? "Suspend is set to Never" : ""
             }
@@ -87,21 +87,21 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Stay awake"
+            title: I18n.tr("Stay awake")
 
             PickerRow {
                 width: parent.width
-                label: "Duration"
+                label: I18n.tr("Duration")
                 // Runtime session choice; there is no persisted default to reset.
                 dirty: false
                 resetKeys: []
                 current: SysInfo.idleInhibitMode
                 model: [
-                    { value: "off", label: "Off" },
-                    { value: "30m", label: "30 min" },
-                    { value: "1h", label: "1 hour" },
-                    { value: "unplugged", label: "Until unplugged" },
-                    { value: "always", label: "Always" }
+                    { value: "off", label: I18n.tr("Off") },
+                    { value: "30m", label: I18n.tr("30 min") },
+                    { value: "1h", label: I18n.tr("1 hour") },
+                    { value: "unplugged", label: I18n.tr("Until unplugged") },
+                    { value: "always", label: I18n.tr("Always") }
                 ]
                 hint: SysInfo.idleInhibitError !== "" ? SysInfo.idleInhibitError
                     : SysInfo.idleInhibited ? "Active · " + SysInfo.idleInhibitStatus
@@ -115,13 +115,13 @@ SettingsPage {
             // other bar widgets; this row only points there.
             ValueRow {
                 width: parent.width
-                label: "Bar indicator"
-                hint: "What a click on it starts, and whether it stays on after you sign in"
+                label: I18n.tr("Bar indicator")
+                hint: I18n.tr("What a click on it starts, and whether it stays on after you sign in")
 
                 SettingsAction {
-                    text: "Indicator settings"
+                    text: I18n.tr("Indicator settings")
                     glyph: "arrow_forward"
-                    Accessible.name: "Open Indicators widget settings"
+                    Accessible.name: I18n.tr("Open Indicators widget settings")
                     onTriggered: Settings.openWidgetSettings("indicators")
                 }
             }

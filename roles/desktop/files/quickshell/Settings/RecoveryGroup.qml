@@ -4,7 +4,7 @@ import "../Common"
 import "../Common/RecoveryHelpers.js" as RecoveryHelpers
 import "LocalTime.js" as LocalTime
 
-// Recovery points on the About page: taken before every update, bootable
+// Recovery points on the Backup & recovery page: taken before every update, bootable
 // from GRUB, restorable here. The recovery-boot notification scrolls to it
 // (settingKey "recoveryPoints").
 //
@@ -21,7 +21,7 @@ SettingsGroup {
     readonly property string restoreWarning:
         "Replaces the installed system at the next restart. Your home folder is not changed."
     width: parent.width
-    title: "Recovery points"
+    title: I18n.tr("Recovery points")
 
     function whenTaken(id) {
         return LocalTime.fromText(String(id).slice(0, 16), recoveryGroup.nowMs,
@@ -40,13 +40,13 @@ SettingsGroup {
         readonly property bool confirming: recoveryGroup.confirmId === Recovery.recoveryBootId
         width: parent.width
         visible: Recovery.recoveryBoot && !Recovery.restartPending
-        label: "Keep this system"
+        label: I18n.tr("Keep this system")
         hint: confirming ? recoveryGroup.restoreWarning
             : "Restores this recovery point as the installed system"
         hintTone: confirming ? "warning" : "info"
 
         SettingsAction {
-            text: keepRow.confirming ? "Confirm restore" : "Restore…"
+            text: keepRow.confirming ? I18n.tr("Confirm restore") : I18n.tr("Restore…")
             glyph: "history"
             danger: keepRow.confirming
             enabled: !Recovery.busy
@@ -61,7 +61,7 @@ SettingsGroup {
         }
         SettingsAction {
             visible: keepRow.confirming
-            text: "Cancel"
+            text: I18n.tr("Cancel")
             onTriggered: recoveryGroup.confirmId = ""
         }
     }
@@ -69,22 +69,23 @@ SettingsGroup {
         width: parent.width
         visible: Recovery.restartPending
         tone: "active"
-        text: "A restored recovery point starts at the next restart."
+        text: I18n.tr("A restored recovery point starts at the next restart.")
     }
     ValueRow {
         width: parent.width
         visible: Recovery.loaded && !Recovery.supported && !Recovery.recoveryBoot
-        label: "Recovery points"
+        label: I18n.tr("Recovery points")
         value: "Unavailable"
-        hint: "They need the standard Btrfs layout"
-            + (Recovery.unsupportedReason !== "" ? " (" + Recovery.unsupportedReason + ")." : ".")
+        hint: Recovery.unsupportedReason !== ""
+            ? I18n.format("They need the standard Btrfs layout (%1).", [Recovery.unsupportedReason])
+            : I18n.tr("They need the standard Btrfs layout.")
     }
     ValueRow {
         width: parent.width
         visible: Recovery.supported && Recovery.points.length === 0
-        label: "Recovery points"
+        label: I18n.tr("Recovery points")
         value: "None yet"
-        hint: "One is taken automatically before each update."
+        hint: I18n.tr("One is taken automatically before each update.")
     }
 
     Repeater {
@@ -105,7 +106,7 @@ SettingsGroup {
 
             SettingsAction {
                 visible: !pointRow.running && !Recovery.restartPending
-                text: pointRow.confirming ? "Confirm restore" : "Restore…"
+                text: pointRow.confirming ? I18n.tr("Confirm restore") : I18n.tr("Restore…")
                 glyph: "history"
                 danger: pointRow.confirming
                 enabled: !Recovery.busy
@@ -120,7 +121,7 @@ SettingsGroup {
             }
             SettingsAction {
                 visible: pointRow.confirming
-                text: "Cancel"
+                text: I18n.tr("Cancel")
                 onTriggered: recoveryGroup.confirmId = ""
             }
         }
@@ -136,8 +137,9 @@ SettingsGroup {
         width: parent.width
         visible: Recovery.supported
         maximumLines: 4
-        text: "The five newest are kept; your home folder is never rolled back. To try one "
-            + "without changing anything, restart and hold Shift (or press Esc) until the boot "
-            + "menu appears, then open CybexOS recovery points."
+        text: I18n.tr("The five newest are kept; your home folder is never rolled back. To try one without changing anything, restart and hold Shift (or press Esc) until the boot menu appears, then open CybexOS recovery points.")
+    }
+    FactoryResetRow {
+        width: parent.width
     }
 }

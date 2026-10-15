@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# `cybex theme`: list, apply, install, export and remove named appearance
+# themes (docs/shell-appearance.md#themes). The work happens in the active
+# shell runtime's scripts/theme-packs.py, which Settings → Appearance uses as
+# well, so both read the same theme schema; this wrapper only finds that
+# runtime, a development checkout included, and the IPC helper beside it.
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: cybex theme list [--json]
+       cybex theme apply ID
+       cybex theme install SOURCE [--replace]
+       cybex theme export ID|CURRENT [DIR] [--name NAME]
+       cybex theme remove ID
+
+SOURCE is a theme folder, a .tar.gz or .zip archive, or an https:// Git URL.
+Themes are data: theme.json and one optional PNG, JPEG or WebP wallpaper.
+USAGE
+}
+
+case ${1:-} in
+  -h|--help|help) usage; exit 0 ;;
+  '') usage >&2; exit 2 ;;
+esac
+
+helper_dir=$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")
+runtime=$helper_dir/cybexos-runtime
+if [[ ! -x $runtime ]]; then
+  runtime=$(command -v cybexos-runtime) || {
+    printf 'cybex theme: cybexos-runtime is not installed\n' >&2
+    exit 1
+  }
+fi
+quickshell=$("$runtime" path quickshell)
+script=$quickshell/scripts/theme-packs.py
+if [[ ! -f $script ]]; then
+  printf 'cybex theme: the active desktop release has no theme support\n' >&2
+  exit 1
+fi
+export CYBEXOS_RUNTIME_HELPER=$runtime
+exec python3 -B "$script" "$@"

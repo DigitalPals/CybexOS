@@ -186,9 +186,9 @@ SettingsPage {
 
             SettingsAction {
                 id: backAction
-                text: "Widgets"
+                text: I18n.tr("Widgets")
                 glyph: "arrow_back"
-                Accessible.name: "Back to widgets"
+                Accessible.name: I18n.tr("Back to widgets")
                 onTriggered: view.backRequested()
             }
 
@@ -204,17 +204,17 @@ SettingsPage {
 
         SectionHeader {
             visible: !view.inlineMode
-            label: "OPTIONS"
+            label: I18n.tr("OPTIONS")
         }
 
         PickerRow {
             visible: view.hasDetail
             width: parent.width
-            label: "Detail"
+            label: I18n.tr("Detail")
             model: [
-                { value: "auto", label: "Auto" },
-                { value: "prefer", label: "Prefer detail" },
-                { value: "compact", label: "Always compact" }
+                { value: "auto", label: I18n.tr("Auto") },
+                { value: "prefer", label: I18n.tr("Prefer detail") },
+                { value: "compact", label: I18n.tr("Always compact") }
             ]
             current: view.modEntry.detail
             dirty: view.modEntry.detail !== "auto"
@@ -272,15 +272,15 @@ SettingsPage {
 
             SettingsGroup {
                 width: parent.width
-                title: "Behavior"
+                title: I18n.tr("Behavior")
 
                 PickerRow {
                     width: parent.width
-                    label: "Visibility"
+                    label: I18n.tr("Visibility")
                     model: [
-                        { value: "hover", label: "Clock hover" },
-                        { value: "always", label: "Always show" },
-                        { value: "active", label: "Active only" }
+                        { value: "hover", label: I18n.tr("Clock hover") },
+                        { value: "always", label: I18n.tr("Always show") },
+                        { value: "active", label: I18n.tr("Active only") }
                     ]
                     current: view.opts.mode
                     dirty: view.optDirty("mode")
@@ -291,13 +291,13 @@ SettingsPage {
 
             SettingsGroup {
                 width: parent.width
-                title: "Actions"
+                title: I18n.tr("Actions")
 
                 SettingsHint {
                     width: parent.width
-                    text: "Drag to reorder. Hidden recording"
-                        + (Dictation.available ? " and dictation" : "")
-                        + " controls still return while active so they can be stopped."
+                    text: Dictation.available
+                        ? I18n.tr("Drag to reorder. Hidden recording and dictation controls still return while active so they can be stopped.")
+                        : I18n.tr("Drag to reorder. Hidden recording controls still return while active so they can be stopped.")
                 }
 
                 Item {
@@ -495,13 +495,13 @@ SettingsPage {
             SettingsGroup {
                 visible: Dictation.available
                 width: parent.width
-                title: "Dictation"
+                title: I18n.tr("Dictation")
 
                 SettingsTextRow {
                     width: parent.width
-                    label: "Primary language"
+                    label: I18n.tr("Primary language")
                     value: view.opts.dictationPrimaryLanguage
-                    placeholder: "en, nl, auto, or a comma-separated list"
+                    placeholder: I18n.tr("en, nl, auto, or a comma-separated list")
                     dirty: view.optDirty("dictationPrimaryLanguage")
                     onCommitted: text => view.setOpt("dictationPrimaryLanguage", text)
                     onResetRequested: view.resetOpt("dictationPrimaryLanguage")
@@ -509,9 +509,9 @@ SettingsPage {
 
                 SettingsTextRow {
                     width: parent.width
-                    label: "Alternate language"
+                    label: I18n.tr("Alternate language")
                     value: view.opts.dictationSecondaryLanguage
-                    placeholder: "Middle click · use off to disable"
+                    placeholder: I18n.tr("Middle click · use off to disable")
                     dirty: view.optDirty("dictationSecondaryLanguage")
                     onCommitted: text => view.setOpt("dictationSecondaryLanguage", text)
                     onResetRequested: view.resetOpt("dictationSecondaryLanguage")
@@ -519,7 +519,7 @@ SettingsPage {
 
                 PickerRow {
                     width: parent.width
-                    label: "Model"
+                    label: I18n.tr("Model")
                     model: SettingsHelpers.DICTATION_MODEL_CHOICES
                     current: view.opts.dictationModel
                     dirty: view.optDirty("dictationModel")
@@ -530,15 +530,15 @@ SettingsPage {
 
             SettingsGroup {
                 width: parent.width
-                title: "Screen recording"
+                title: I18n.tr("Screen recording")
 
                 PickerRow {
                     width: parent.width
-                    label: "Capture"
+                    label: I18n.tr("Capture")
                     model: [
-                        { value: "region", label: "Region" },
-                        { value: "window", label: "Window" },
-                        { value: "screen", label: "Screen" }
+                        { value: "region", label: I18n.tr("Region") },
+                        { value: "window", label: I18n.tr("Window") },
+                        { value: "screen", label: I18n.tr("Screen") }
                     ]
                     current: view.opts.recordingMode
                     dirty: view.optDirty("recordingMode")
@@ -548,8 +548,8 @@ SettingsPage {
 
                 SwitchRow {
                     width: parent.width
-                    label: "Elapsed time"
-                    description: "Show the running duration beside the recording icon"
+                    label: I18n.tr("Elapsed time")
+                    description: I18n.tr("Show the running duration beside the recording icon")
                     checked: view.opts.recordingShowElapsed
                     dirty: view.optDirty("recordingShowElapsed")
                     onToggled: value => view.setOpt("recordingShowElapsed", value)
@@ -559,14 +559,14 @@ SettingsPage {
 
             SettingsGroup {
                 width: parent.width
-                title: "Reminders"
+                title: I18n.tr("Reminders")
 
                 PickerRow {
                     width: parent.width
-                    label: "Active display"
+                    label: I18n.tr("Active display")
                     model: [
-                        { value: "icon", label: "Icon" },
-                        { value: "count", label: "Count" }
+                        { value: "icon", label: I18n.tr("Icon") },
+                        { value: "count", label: I18n.tr("Count") }
                     ]
                     current: view.opts.reminderDisplay
                     dirty: view.optDirty("reminderDisplay")
@@ -576,10 +576,10 @@ SettingsPage {
 
                 PickerRow {
                     width: parent.width
-                    label: "Primary click"
+                    label: I18n.tr("Primary click")
                     model: [
-                        { value: "list", label: "Open list" },
-                        { value: "quick-add", label: "Quick add" }
+                        { value: "list", label: I18n.tr("Open list") },
+                        { value: "quick-add", label: I18n.tr("Quick add") }
                     ]
                     current: view.opts.reminderClick
                     dirty: view.optDirty("reminderClick")
@@ -589,7 +589,7 @@ SettingsPage {
 
                 PickerRow {
                     width: parent.width
-                    label: "Quick add"
+                    label: I18n.tr("Quick add")
                     model: [5, 15, 30, 60].map(minutes =>
                         ({ value: minutes, label: minutes + " min" }))
                     current: view.opts.reminderMinutes
@@ -601,15 +601,15 @@ SettingsPage {
 
             SettingsGroup {
                 width: parent.width
-                title: "Night light"
+                title: I18n.tr("Night light")
 
                 PickerRow {
                     width: parent.width
-                    label: "At sign-in"
+                    label: I18n.tr("At sign-in")
                     model: [
-                        { value: "remember", label: "Remember" },
-                        { value: "off", label: "Off" },
-                        { value: "on", label: "On" }
+                        { value: "remember", label: I18n.tr("Remember") },
+                        { value: "off", label: I18n.tr("Off") },
+                        { value: "on", label: I18n.tr("On") }
                     ]
                     current: view.opts.nightLightStartup
                     dirty: view.optDirty("nightLightStartup")
@@ -619,10 +619,10 @@ SettingsPage {
 
                 ResponsiveActionRow {
                     width: parent.width
-                    description: "Warmth lives with night light on the Displays page"
+                    description: I18n.tr("Warmth lives with night light on the Displays page")
 
                     SettingsAction {
-                        text: "Night light settings"
+                        text: I18n.tr("Night light settings")
                         glyph: "arrow_forward"
                         onTriggered: Settings.showSetting("displays", "nightLight", "")
                     }
@@ -631,15 +631,15 @@ SettingsPage {
 
             SettingsGroup {
                 width: parent.width
-                title: "Do Not Disturb"
+                title: I18n.tr("Do Not Disturb")
 
                 PickerRow {
                     width: parent.width
-                    label: "At sign-in"
+                    label: I18n.tr("At sign-in")
                     model: [
-                        { value: "remember", label: "Remember" },
-                        { value: "off", label: "Off" },
-                        { value: "on", label: "On" }
+                        { value: "remember", label: I18n.tr("Remember") },
+                        { value: "off", label: I18n.tr("Off") },
+                        { value: "on", label: I18n.tr("On") }
                     ]
                     current: view.opts.dndStartup
                     dirty: view.optDirty("dndStartup")
@@ -649,11 +649,11 @@ SettingsPage {
 
                 PickerRow {
                     width: parent.width
-                    label: "Primary click"
+                    label: I18n.tr("Primary click")
                     model: [
-                        { value: "always", label: "Until off" },
-                        { value: "1h", label: "1 hour" },
-                        { value: "quiet-boundary", label: "Quiet boundary" }
+                        { value: "always", label: I18n.tr("Until off") },
+                        { value: "1h", label: I18n.tr("1 hour") },
+                        { value: "quiet-boundary", label: I18n.tr("Quiet boundary") }
                     ]
                     current: view.opts.dndDefaultMode
                     dirty: view.optDirty("dndDefaultMode")
@@ -663,10 +663,10 @@ SettingsPage {
 
                 ResponsiveActionRow {
                     width: parent.width
-                    description: "Quiet hours live on the Notifications page"
+                    description: I18n.tr("Quiet hours live on the Notifications page")
 
                     SettingsAction {
-                        text: "Quiet-hours settings"
+                        text: I18n.tr("Quiet-hours settings")
                         glyph: "arrow_forward"
                         onTriggered: Settings.page = "notifications"
                     }
@@ -675,18 +675,18 @@ SettingsPage {
 
             SettingsGroup {
                 width: parent.width
-                title: "Stay awake"
+                title: I18n.tr("Stay awake")
 
                 PickerRow {
                     width: parent.width
-                    label: "At sign-in"
+                    label: I18n.tr("At sign-in")
                     model: [
-                        { value: "remember", label: "Remember" },
-                        { value: "off", label: "Off" },
-                        { value: "on", label: "On" }
+                        { value: "remember", label: I18n.tr("Remember") },
+                        { value: "off", label: I18n.tr("Off") },
+                        { value: "on", label: I18n.tr("On") }
                     ]
                     current: view.opts.idleStartup
-                    hint: "Sign-in policy applies after login or reboot. Restarting only the menubar resumes its current state and original deadline."
+                    hint: I18n.tr("Sign-in policy applies after login or reboot. Restarting only the menubar resumes its current state and original deadline.")
                     dirty: view.optDirty("idleStartup")
                     onPicked: value => view.setOpt("idleStartup", value)
                     onResetRequested: view.resetOpt("idleStartup")
@@ -694,12 +694,12 @@ SettingsPage {
 
                 PickerRow {
                     width: parent.width
-                    label: "Primary click"
+                    label: I18n.tr("Primary click")
                     model: [
-                        { value: "30m", label: "30 min" },
-                        { value: "1h", label: "1 hour" },
-                        { value: "unplugged", label: "Until unplugged" },
-                        { value: "always", label: "Until off" }
+                        { value: "30m", label: I18n.tr("30 min") },
+                        { value: "1h", label: I18n.tr("1 hour") },
+                        { value: "unplugged", label: I18n.tr("Until unplugged") },
+                        { value: "always", label: I18n.tr("Until off") }
                     ]
                     current: view.opts.idleDefaultMode
                     dirty: view.optDirty("idleDefaultMode")
@@ -709,8 +709,8 @@ SettingsPage {
 
                 SwitchRow {
                     width: parent.width
-                    label: "Time remaining"
-                    description: "Show the remaining time directly beside a timed icon"
+                    label: I18n.tr("Time remaining")
+                    description: I18n.tr("Show the remaining time directly beside a timed icon")
                     checked: view.opts.idleShowRemaining
                     dirty: view.optDirty("idleShowRemaining")
                     onToggled: value => view.setOpt("idleShowRemaining", value)
@@ -729,7 +729,7 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Min slots"
+                label: I18n.tr("Min slots")
                 min: 1
                 max: 10
                 step: 1
@@ -742,8 +742,8 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
-                label: "Hide empty"
-                description: "Only show workspaces that have windows"
+                label: I18n.tr("Hide empty")
+                description: I18n.tr("Only show workspaces that have windows")
                 checked: view.opts.hideEmpty
                 dirty: view.optDirty("hideEmpty")
                 onToggled: value => view.setOpt("hideEmpty", value)
@@ -752,10 +752,10 @@ SettingsPage {
 
             PickerRow {
                 width: parent.width
-                label: "Style"
+                label: I18n.tr("Style")
                 model: [
-                    { value: "numbers", label: "Numbers" },
-                    { value: "dots", label: "Dots" }
+                    { value: "numbers", label: I18n.tr("Numbers") },
+                    { value: "dots", label: I18n.tr("Dots") }
                 ]
                 current: view.opts.style
                 dirty: view.optDirty("style")
@@ -773,11 +773,11 @@ SettingsPage {
 
             PickerRow {
                 width: parent.width
-                label: "Title"
+                label: I18n.tr("Title")
                 model: [
-                    { value: "title-artist", label: "Title — Artist" },
-                    { value: "title", label: "Title" },
-                    { value: "artist-title", label: "Artist — Title" }
+                    { value: "title-artist", label: I18n.tr("Title — Artist") },
+                    { value: "title", label: I18n.tr("Title") },
+                    { value: "artist-title", label: I18n.tr("Artist — Title") }
                 ]
                 current: view.opts.titleFormat
                 dirty: view.optDirty("titleFormat")
@@ -787,7 +787,7 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Max width"
+                label: I18n.tr("Max width")
                 min: 120
                 max: 360
                 step: 20
@@ -807,8 +807,8 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
-                label: "Seconds"
-                description: "Tick every second instead of every minute"
+                label: I18n.tr("Seconds")
+                description: I18n.tr("Tick every second instead of every minute")
                 checked: view.opts.seconds
                 dirty: view.optDirty("seconds")
                 onToggled: value => view.setOpt("seconds", value)
@@ -817,8 +817,8 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
-                label: "Date"
-                description: "Show the date next to the time"
+                label: I18n.tr("Date")
+                description: I18n.tr("Show the date next to the time")
                 checked: view.opts.showDate
                 dirty: view.optDirty("showDate")
                 onToggled: value => view.setOpt("showDate", value)
@@ -827,7 +827,7 @@ SettingsPage {
 
             PickerRow {
                 width: parent.width
-                label: "Date format"
+                label: I18n.tr("Date format")
                 model: ["ddd dd", "ddd d MMM", "dd MMM", "dd-MM"].map(fmt =>
                     ({ value: fmt, label: Qt.formatDateTime(new Date(), fmt) }))
                 current: view.opts.dateFormat
@@ -838,8 +838,8 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
-                label: "Events"
-                description: "Show upcoming system-calendar events in the popover"
+                label: I18n.tr("Events")
+                description: I18n.tr("Show upcoming system-calendar events in the popover")
                 checked: view.opts.showEvents
                 dirty: view.optDirty("showEvents")
                 onToggled: value => view.setOpt("showEvents", value)
@@ -849,7 +849,7 @@ SettingsPage {
             SliderRow {
                 visible: view.opts.showEvents
                 width: parent.width
-                label: "Look ahead"
+                label: I18n.tr("Look ahead")
                 min: 1
                 max: 31
                 step: 1
@@ -864,7 +864,7 @@ SettingsPage {
             SliderRow {
                 visible: view.opts.showEvents
                 width: parent.width
-                label: "Refresh"
+                label: I18n.tr("Refresh")
                 min: 5
                 max: 60
                 step: 5
@@ -880,10 +880,10 @@ SettingsPage {
             ResponsiveActionRow {
                 visible: view.opts.showEvents
                 width: parent.width
-                description: "Add or remove calendar accounts"
+                description: I18n.tr("Add or remove calendar accounts")
 
                 SettingsAction {
-                    text: "Online accounts"
+                    text: I18n.tr("Online accounts")
                     glyph: "manage_accounts"
                     onTriggered: Calendar.manageAccounts()
                 }
@@ -891,7 +891,7 @@ SettingsPage {
 
             SettingsHint {
                 width: parent.width
-                text: "12/24-hour time is set on the Region & formats page. Google sign-in is handled by GNOME Online Accounts; credentials never enter Quickshell."
+                text: I18n.tr("12/24-hour time is set on the Region & formats page. Google sign-in is handled by GNOME Online Accounts; credentials never enter Quickshell.")
             }
 
             WeatherLocationPicker {
@@ -912,9 +912,9 @@ SettingsPage {
             }
             SettingsTextRow {
                 width: parent.width
-                label: "SSH host"
-                placeholder: "user@hostname or SSH alias"
-                hint: "Uses your SSH config and keys. Connect once in a terminal to verify the host key. Requires Linux and Python 3.9+."
+                label: I18n.tr("SSH host")
+                placeholder: I18n.tr("user@hostname or SSH alias")
+                hint: I18n.tr("Uses your SSH config and keys. Connect once in a terminal to verify the host key. Requires Linux and Python 3.9+.")
                 value: view.opts.host
                 dirty: view.optDirty("host")
                 onCommitted: text => view.setOpt("host", text)
@@ -922,8 +922,8 @@ SettingsPage {
             }
             SettingsTextRow {
                 width: parent.width
-                label: "Display name"
-                placeholder: "My server"
+                label: I18n.tr("Display name")
+                placeholder: I18n.tr("My server")
                 value: view.opts.label
                 dirty: view.optDirty("label")
                 onCommitted: text => view.setOpt("label", text)
@@ -931,7 +931,7 @@ SettingsPage {
             }
             SelectRow {
                 width: parent.width
-                label: "Menubar statistic"
+                label: I18n.tr("Menubar statistic")
                 model: RemoteHelpers.METRICS
                 current: view.opts.metric
                 dirty: view.optDirty("metric")
@@ -940,7 +940,7 @@ SettingsPage {
             }
             SwitchRow {
                 width: parent.width
-                label: "Show server name"
+                label: I18n.tr("Show server name")
                 checked: view.opts.showLabel
                 dirty: view.optDirty("showLabel")
                 onToggled: value => view.setOpt("showLabel", value)
@@ -948,8 +948,8 @@ SettingsPage {
             }
             SettingsTextRow {
                 width: parent.width
-                label: "Filesystem"
-                hint: "Mount point used for the menubar storage statistic."
+                label: I18n.tr("Filesystem")
+                hint: I18n.tr("Mount point used for the menubar storage statistic.")
                 placeholder: "/"
                 value: view.opts.mount
                 dirty: view.optDirty("mount")
@@ -958,9 +958,9 @@ SettingsPage {
             }
             SettingsTextRow {
                 width: parent.width
-                label: "Network interface"
-                hint: "Leave empty to use the default route. Enter an interface name to pin it."
-                placeholder: "Automatic"
+                label: I18n.tr("Network interface")
+                hint: I18n.tr("Leave empty to use the default route. Enter an interface name to pin it.")
+                placeholder: I18n.tr("Automatic")
                 value: view.opts.interface
                 dirty: view.optDirty("interface")
                 onCommitted: text => view.setOpt("interface", text)
@@ -968,8 +968,8 @@ SettingsPage {
             }
             SliderRow {
                 width: parent.width
-                label: "Update every"
-                hint: "The open dashboard updates every 2 seconds."
+                label: I18n.tr("Update every")
+                hint: I18n.tr("The open dashboard updates every 2 seconds.")
                 min: 2; max: 60; step: 1
                 value: view.optValue("pollSecs")
                 unit: "s"
@@ -978,7 +978,7 @@ SettingsPage {
                 onResetRequested: view.resetOpt("pollSecs")
             }
             SettingsAction {
-                text: "Refresh connection"
+                text: I18n.tr("Refresh connection")
                 enabled: RemoteServer.host !== ""
                 onTriggered: RemoteServer.refresh()
             }
@@ -997,9 +997,9 @@ SettingsPage {
             }
             SettingsTextRow {
                 width: parent.width
-                label: "Server URL"
+                label: I18n.tr("Server URL")
                 placeholder: "https://fusebox.example.ts.net"
-                hint: "The address of Fusebox's dashboard."
+                hint: I18n.tr("The address of Fusebox's dashboard.")
                 value: view.opts.url
                 dirty: view.optDirty("url")
                 onCommitted: text => view.setOpt("url", text)
@@ -1010,12 +1010,12 @@ SettingsPage {
             // undo chip forgets the saved key.
             SettingsTextRow {
                 width: parent.width
-                label: "Management key"
+                label: I18n.tr("Management key")
                 secret: true
                 value: ""
                 dirty: Fusebox.keySaved
                 enabled: !Fusebox.keyBusy
-                placeholder: Fusebox.keySaved ? "Saved · paste a new key to replace it" : "Fusebox's management-key"
+                placeholder: Fusebox.keySaved ? I18n.tr("Saved · paste a new key to replace it") : I18n.tr("Fusebox's management-key")
                 hint: Fusebox.keyNotice !== "" ? Fusebox.keyNotice
                     : "Kept in a private file on this computer and sent only to this server."
                 hintTone: Fusebox.keyNotice !== "" && Fusebox.keyNotice !== "Key saved"
@@ -1025,7 +1025,7 @@ SettingsPage {
             }
             ValueRow {
                 width: parent.width
-                label: "Connection"
+                label: I18n.tr("Connection")
                 value: Fusebox.connection === "live"
                     ? "Live · " + Fusebox.accounts.length + (Fusebox.accounts.length === 1 ? " account" : " accounts")
                     : Fusebox.connection === "setup" ? (Fusebox.url ? "Needs the management key" : "Not set up")
@@ -1035,7 +1035,7 @@ SettingsPage {
                     : Theme.textFaint
 
                 SettingsAction {
-                    text: "Reconnect"
+                    text: I18n.tr("Reconnect")
                     compact: true
                     glyph: "refresh"
                     enabled: Fusebox.url !== "" && Fusebox.keySaved
@@ -1044,7 +1044,7 @@ SettingsPage {
             }
             SelectRow {
                 width: parent.width
-                label: "Menubar figure"
+                label: I18n.tr("Menubar figure")
                 model: FuseboxHelpers.METRICS
                 current: view.opts.metric
                 dirty: view.optDirty("metric")
@@ -1053,8 +1053,8 @@ SettingsPage {
             }
             PickerRow {
                 width: parent.width
-                label: "Quota meters"
-                hint: "Show each window's share used, or what is left. Amber and red still mean nearly used up."
+                label: I18n.tr("Quota meters")
+                hint: I18n.tr("Show each window's share used, or what is left. Amber and red still mean nearly used up.")
                 model: FuseboxHelpers.QUOTA_DISPLAYS
                 current: view.opts.quotaDisplay
                 dirty: view.optDirty("quotaDisplay")
@@ -1063,8 +1063,8 @@ SettingsPage {
             }
             SwitchRow {
                 width: parent.width
-                label: "Hide account emails"
-                hint: "Accounts read as their provider and number, for sharing your screen."
+                label: I18n.tr("Hide account emails")
+                hint: I18n.tr("Accounts read as their provider and number, for sharing your screen.")
                 checked: view.opts.hideEmails
                 dirty: view.optDirty("hideEmails")
                 onToggled: value => view.setOpt("hideEmails", value)
@@ -1072,8 +1072,8 @@ SettingsPage {
             }
             SwitchRow {
                 width: parent.width
-                label: "Notify about faults"
-                hint: "A desktop notification when an account trips, except for rate limits."
+                label: I18n.tr("Notify about faults")
+                hint: I18n.tr("A desktop notification when an account trips, except for rate limits.")
                 checked: view.opts.notify
                 dirty: view.optDirty("notify")
                 onToggled: value => view.setOpt("notify", value)
@@ -1094,7 +1094,7 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Update every"
+                label: I18n.tr("Update every")
                 min: 5
                 max: 60
                 step: 5
@@ -1115,11 +1115,11 @@ SettingsPage {
 
             PickerRow {
                 width: parent.width
-                label: "Title provider"
+                label: I18n.tr("Title provider")
                 model: [
-                    { value: "off", label: "Off" },
-                    { value: "codex", label: "Codex CLI" },
-                    { value: "claude", label: "Claude Code CLI" }
+                    { value: "off", label: I18n.tr("Off") },
+                    { value: "codex", label: I18n.tr("Codex CLI") },
+                    { value: "claude", label: I18n.tr("Claude Code CLI") }
                 ]
                 current: view.opts.titleProvider
                 hint: view.opts.titleProvider === "off"
@@ -1133,7 +1133,7 @@ SettingsPage {
             PickerRow {
                 visible: view.opts.titleProvider === "codex"
                 width: parent.width
-                label: "Codex model"
+                label: I18n.tr("Codex model")
                 model: SettingsHelpers.NOTE_CODEX_MODEL_CHOICES
                 current: view.opts.codexModel
                 dirty: view.optDirty("codexModel")
@@ -1144,7 +1144,7 @@ SettingsPage {
             PickerRow {
                 visible: view.opts.titleProvider === "codex"
                 width: parent.width
-                label: "Effort"
+                label: I18n.tr("Effort")
                 model: SettingsHelpers.NOTE_CODEX_EFFORT_CHOICES
                 current: view.opts.codexEffort
                 dirty: view.optDirty("codexEffort")
@@ -1155,7 +1155,7 @@ SettingsPage {
             PickerRow {
                 visible: view.opts.titleProvider === "claude"
                 width: parent.width
-                label: "Claude model"
+                label: I18n.tr("Claude model")
                 model: SettingsHelpers.NOTE_CLAUDE_MODEL_CHOICES
                 current: view.opts.claudeModel
                 dirty: view.optDirty("claudeModel")
@@ -1166,7 +1166,7 @@ SettingsPage {
             PickerRow {
                 visible: view.opts.titleProvider === "claude"
                 width: parent.width
-                label: "Effort"
+                label: I18n.tr("Effort")
                 model: SettingsHelpers.NOTE_CLAUDE_EFFORT_CHOICES
                 current: view.opts.claudeEffort
                 dirty: view.optDirty("claudeEffort")
@@ -1185,8 +1185,8 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
-                label: "Status label"
-                description: "Show the waiting/running word on the chip"
+                label: I18n.tr("Status label")
+                description: I18n.tr("Show the waiting/running word on the chip")
                 checked: view.opts.showLabel
                 dirty: view.optDirty("showLabel")
                 onToggled: value => view.setOpt("showLabel", value)
@@ -1213,9 +1213,9 @@ SettingsPage {
             id: modelUsage
 
             readonly property var providerOptions: [
-                { value: "claude", label: "Claude Code" },
-                { value: "codex", label: "OpenAI Codex" },
-                { value: "kimi", label: "Kimi Code" }
+                { value: "claude", label: I18n.tr("Claude Code") },
+                { value: "codex", label: I18n.tr("OpenAI Codex") },
+                { value: "kimi", label: I18n.tr("Kimi Code") }
             ]
             readonly property var barProviders: view.opts.barProviders || []
 
@@ -1223,11 +1223,11 @@ SettingsPage {
 
             PickerRow {
                 width: parent.width
-                label: "In the bar"
-                hint: "Percentages shows remaining quota per provider"
+                label: I18n.tr("In the bar")
+                hint: I18n.tr("Percentages shows remaining quota per provider")
                 model: [
-                    { value: "Percentages", label: "Percentages" },
-                    { value: "Icon", label: "Icon" }
+                    { value: "Percentages", label: I18n.tr("Percentages") },
+                    { value: "Icon", label: I18n.tr("Icon") }
                 ]
                 current: view.opts.barDisplayMode
                 dirty: view.optDirty("barDisplayMode")
@@ -1237,8 +1237,8 @@ SettingsPage {
 
             ChipToggleRow {
                 width: parent.width
-                label: "Bar providers"
-                hint: "Hidden providers stay in the panel"
+                label: I18n.tr("Bar providers")
+                hint: I18n.tr("Hidden providers stay in the panel")
                 model: modelUsage.providerOptions
                 chosen: modelUsage.barProviders
                 dirty: JSON.stringify(modelUsage.barProviders)
@@ -1252,7 +1252,7 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Warn below"
+                label: I18n.tr("Warn below")
                 min: 1
                 max: 100
                 step: 1
@@ -1265,7 +1265,7 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Critical below"
+                label: I18n.tr("Critical below")
                 min: 0
                 max: 100
                 step: 1
@@ -1278,7 +1278,7 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Refresh every"
+                label: I18n.tr("Refresh every")
                 min: 60
                 max: 3600
                 step: 60
@@ -1292,8 +1292,8 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
-                label: "Hide account emails"
-                description: "Show numbered accounts instead of usernames and emails"
+                label: I18n.tr("Hide account emails")
+                description: I18n.tr("Show numbered accounts instead of usernames and emails")
                 checked: view.opts.hideAccountEmails
                 dirty: view.optDirty("hideAccountEmails")
                 onToggled: value => view.setOpt("hideAccountEmails", value)
@@ -1302,8 +1302,8 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
-                label: "Square usage cards"
-                description: "Use square corners for the cards in Limits"
+                label: I18n.tr("Square usage cards")
+                description: I18n.tr("Use square corners for the cards in Limits")
                 checked: view.opts.squareUsageCards
                 dirty: view.optDirty("squareUsageCards")
                 onToggled: value => view.setOpt("squareUsageCards", value)
@@ -1316,14 +1316,14 @@ SettingsPage {
                     : "Add Model Usage to the bar first"
 
                 SettingsAction {
-                    text: "Source and accounts"
+                    text: I18n.tr("Source and accounts")
                     glyph: "arrow_forward"
                     enabled: ModelUsageHub.available
                     onTriggered: ModelUsageHub.showSettings()
                 }
 
                 SettingsAction {
-                    text: "Cost sources"
+                    text: I18n.tr("Cost sources")
                     glyph: "arrow_forward"
                     enabled: ModelUsageHub.available
                     onTriggered: ModelUsageHub.showCostSettings()
@@ -1340,8 +1340,8 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
-                label: "Status label"
-                description: "Show Hermes activity beside its icon"
+                label: I18n.tr("Status label")
+                description: I18n.tr("Show Hermes activity beside its icon")
                 checked: view.opts.showLabel
                 dirty: view.optDirty("showLabel")
                 onToggled: value => view.setOpt("showLabel", value)
@@ -1350,11 +1350,11 @@ SettingsPage {
 
             PickerRow {
                 width: parent.width
-                label: "Activity detail"
+                label: I18n.tr("Activity detail")
                 model: [
-                    { value: "full", label: "Full detail" },
-                    { value: "verb", label: "Verb only" },
-                    { value: "generic", label: "Working only" }
+                    { value: "full", label: I18n.tr("Full detail") },
+                    { value: "verb", label: I18n.tr("Verb only") },
+                    { value: "generic", label: I18n.tr("Working only") }
                 ]
                 current: view.opts.activityDetail
                 dirty: view.optDirty("activityDetail")
@@ -1380,11 +1380,11 @@ SettingsPage {
             PickerRow {
                 width: parent.width
                 minimumLabelWidth: githubRows.optionLabelWidth
-                label: "Badge"
+                label: I18n.tr("Badge")
                 model: [
-                    { value: "dot", label: "Dot" },
-                    { value: "count", label: "Count" },
-                    { value: "off", label: "Off" }
+                    { value: "dot", label: I18n.tr("Dot") },
+                    { value: "count", label: I18n.tr("Count") },
+                    { value: "off", label: I18n.tr("Off") }
                 ]
                 current: view.opts.badge
                 dirty: view.optDirty("badge")
@@ -1395,7 +1395,7 @@ SettingsPage {
             SliderRow {
                 width: parent.width
                 minimumLabelWidth: githubRows.optionLabelWidth
-                label: "Recent account repos"
+                label: I18n.tr("Recent account repos")
                 min: 3
                 max: 15
                 step: 1
@@ -1409,11 +1409,11 @@ SettingsPage {
             SliderRow {
                 width: parent.width
                 minimumLabelWidth: githubRows.optionLabelWidth
-                label: "Repo refresh"
+                label: I18n.tr("Repo refresh")
                 // Helpers.runPollDue: a repository with a running workflow or
                 // a fresh push, pull request, branch or release is read on
                 // every one-minute Inbox sweep; the rest wait this long.
-                hint: "Also how often quiet repos' workflow runs are read; busy ones every minute"
+                hint: I18n.tr("Also how often quiet repos' workflow runs are read; busy ones every minute")
                 min: 1
                 max: 30
                 step: 1
@@ -1427,8 +1427,8 @@ SettingsPage {
             SwitchRow {
                 width: parent.width
                 minimumLabelWidth: githubRows.optionLabelWidth
-                label: "CI reports"
-                description: "Workflow rows in the Inbox for recent and watched repositories"
+                label: I18n.tr("CI reports")
+                description: I18n.tr("Workflow rows in the Inbox for recent and watched repositories")
                 checked: view.opts.ciActivity
                 dirty: view.optDirty("ciActivity")
                 onToggled: value => view.setOpt("ciActivity", value)
@@ -1438,8 +1438,8 @@ SettingsPage {
             SwitchRow {
                 width: parent.width
                 minimumLabelWidth: githubRows.optionLabelWidth
-                label: "Toasts"
-                description: "Watched pushes and failed/action-required workflows"
+                label: I18n.tr("Toasts")
+                description: I18n.tr("Watched pushes and failed/action-required workflows")
                 checked: view.opts.toasts
                 dirty: view.optDirty("toasts")
                 onToggled: value => view.setOpt("toasts", value)
@@ -1462,13 +1462,13 @@ SettingsPage {
 
             PickerRow {
                 width: parent.width
-                label: "Grouping"
+                label: I18n.tr("Grouping")
                 model: [
-                    { value: "solo", label: "Separate" },
-                    { value: "status", label: "Status group" }
+                    { value: "solo", label: I18n.tr("Separate") },
+                    { value: "status", label: I18n.tr("Status group") }
                 ]
                 current: view.opts.group
-                hint: "Groups only with adjacent Volume, Network, Bluetooth, or Battery widgets."
+                hint: I18n.tr("Groups only with adjacent Volume, Network, Bluetooth, or Battery widgets.")
                 dirty: view.optDirty("group")
                 onPicked: value => view.setOpt("group", value)
                 onResetRequested: view.resetOpt("group")
@@ -1485,7 +1485,7 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Scroll step"
+                label: I18n.tr("Scroll step")
                 min: 1
                 max: 10
                 step: 1
@@ -1498,8 +1498,8 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
-                label: "Percentage"
-                description: "Show the volume number next to the icon"
+                label: I18n.tr("Percentage")
+                description: I18n.tr("Show the volume number next to the icon")
                 checked: view.opts.showPct
                 dirty: view.optDirty("showPct")
                 onToggled: value => view.setOpt("showPct", value)
@@ -1508,10 +1508,10 @@ SettingsPage {
 
             PickerRow {
                 width: parent.width
-                label: "Middle click"
+                label: I18n.tr("Middle click")
                 model: [
-                    { value: "mute", label: "Mute" },
-                    { value: "none", label: "Nothing" }
+                    { value: "mute", label: I18n.tr("Mute") },
+                    { value: "none", label: I18n.tr("Nothing") }
                 ]
                 current: view.opts.middleClick
                 dirty: view.optDirty("middleClick")
@@ -1529,8 +1529,8 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
-                label: "Percentage"
-                description: "Show the charge number next to the icon"
+                label: I18n.tr("Percentage")
+                description: I18n.tr("Show the charge number next to the icon")
                 checked: view.opts.showPct
                 dirty: view.optDirty("showPct")
                 onToggled: value => view.setOpt("showPct", value)
@@ -1539,7 +1539,7 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Amber below"
+                label: I18n.tr("Amber below")
                 min: 10
                 max: 40
                 step: 5
@@ -1552,7 +1552,7 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Alert below"
+                label: I18n.tr("Alert below")
                 min: 5
                 max: 20
                 step: 5
@@ -1573,7 +1573,7 @@ SettingsPage {
 
             SliderRow {
                 width: parent.width
-                label: "Check every"
+                label: I18n.tr("Check every")
                 min: 10
                 max: 240
                 step: 10
@@ -1586,7 +1586,7 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
-                label: "Include Flatpak"
+                label: I18n.tr("Include Flatpak")
                 checked: view.opts.flatpak
                 dirty: view.optDirty("flatpak")
                 onToggled: value => view.setOpt("flatpak", value)
@@ -1595,11 +1595,31 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
-                label: "Notify when updates appear"
+                label: I18n.tr("Notify when updates appear")
                 checked: view.opts.notify
                 dirty: view.optDirty("notify")
                 onToggled: value => view.setOpt("notify", value)
                 onResetRequested: view.resetOpt("notify")
+            }
+
+            // A system timer, not a widget option: its enablement is the
+            // setting (see Updates.autoDownloadState), and changing it asks
+            // for authorization. Hidden where the timer is not installed.
+            SwitchRow {
+                width: parent.width
+                visible: Updates.autoDownloadState !== "unavailable"
+                label: I18n.tr("Download updates automatically")
+                description: Updates.autoDownloadError !== "" ? Updates.autoDownloadError
+                    : "In the background, on AC power and unmetered networks. Installing still waits for you."
+                hintTone: Updates.autoDownloadError !== "" ? "error" : "info"
+                checked: Updates.autoDownloadState === "enabled"
+                // Nothing to reset here: systemd keeps the choice, not shell.json.
+                dirty: false
+                resetKeys: []
+                disabledReason: Updates.autoDownloadBusy ? "Waiting for authorization…"
+                    : Updates.autoDownloadState === "unknown" ? "Checking…" : ""
+                onToggled: value => Updates.setAutoDownload(value)
+                Component.onCompleted: Updates.refreshAutoDownload()
             }
         }
     }
@@ -1612,7 +1632,7 @@ SettingsPage {
 
             SwitchRow {
                 width: parent.width
-                label: "Start expanded"
+                label: I18n.tr("Start expanded")
                 checked: view.opts.expanded
                 dirty: view.optDirty("expanded")
                 onToggled: value => view.setOpt("expanded", value)

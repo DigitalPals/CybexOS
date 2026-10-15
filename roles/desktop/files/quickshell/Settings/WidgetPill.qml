@@ -193,7 +193,7 @@ Rectangle {
         width: parent.height - Theme.scaled(4)
         height: width
         text: (root.placed ? "Move or remove " : "Choose a section for ") + root.entry.name
-        tooltip: root.placed ? "Move or remove" : "Choose a section"
+        tooltip: root.placed ? I18n.tr("Move or remove") : I18n.tr("Choose a section")
         glyph: "more_horiz"
         compact: true
         enabled: !root.dragInProgress
@@ -214,7 +214,7 @@ Rectangle {
         palette.highlight: Theme.chipHover
         palette.highlightedText: Theme.textHi
         Controls.MenuItem {
-            text: "Widget settings…"
+            text: I18n.tr("Widget settings…")
             visible: root.placed
             height: visible ? implicitHeight : 0
             onTriggered: root.activated()
@@ -224,35 +224,35 @@ Rectangle {
             height: visible ? implicitHeight : 0
         }
         Controls.MenuItem {
-            text: "Move earlier"
+            text: I18n.tr("Move earlier")
             visible: root.placed
             height: visible ? implicitHeight : 0
             enabled: root.actionsEnabled && root.canMoveEarlier
             onTriggered: root.keyboardMove(-1)
         }
         Controls.MenuItem {
-            text: "Move later"
+            text: I18n.tr("Move later")
             visible: root.placed
             height: visible ? implicitHeight : 0
             enabled: root.actionsEnabled && root.canMoveLater
             onTriggered: root.keyboardMove(1)
         }
         Controls.MenuItem {
-            text: root.placed ? "Move to Left" : "Add to Left"
+            text: root.placed ? I18n.tr("Move to Left") : I18n.tr("Add to Left")
             visible: !root.placed || root.entry.section !== "left"
             height: visible ? implicitHeight : 0
             enabled: root.actionsEnabled
             onTriggered: root.moveRequested("left")
         }
         Controls.MenuItem {
-            text: root.placed ? "Move to Center" : "Add to Center"
+            text: root.placed ? I18n.tr("Move to Center") : I18n.tr("Add to Center")
             visible: !root.placed || root.entry.section !== "center"
             height: visible ? implicitHeight : 0
             enabled: root.actionsEnabled
             onTriggered: root.moveRequested("center")
         }
         Controls.MenuItem {
-            text: root.placed ? "Move to Right" : "Add to Right"
+            text: root.placed ? I18n.tr("Move to Right") : I18n.tr("Add to Right")
             visible: !root.placed || root.entry.section !== "right"
             height: visible ? implicitHeight : 0
             enabled: root.actionsEnabled
@@ -260,14 +260,14 @@ Rectangle {
         }
         Controls.MenuSeparator {}
         Controls.MenuItem {
-            text: "Remove from bar"
+            text: I18n.tr("Remove from bar")
             visible: root.placed
             height: visible ? implicitHeight : 0
             enabled: root.actionsEnabled
             onTriggered: root.removeRequested()
         }
         Controls.MenuItem {
-            text: "Widget settings…"
+            text: I18n.tr("Widget settings…")
             visible: !root.placed
             height: visible ? implicitHeight : 0
             onTriggered: root.activated()

@@ -138,7 +138,7 @@ SettingsPage {
 
                 Text {
                     width: parent.width
-                    text: "Community plugins for your desktop"
+                    text: I18n.tr("Community plugins for your desktop")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.primary
                     font.weight: Theme.weightSemibold
@@ -147,8 +147,7 @@ SettingsPage {
                 }
                 Text {
                     width: parent.width
-                    text: "Bar widgets, panels, overlays, menus and services made for Omarchy. "
-                        + "They run on CybexOS unchanged."
+                    text: I18n.tr("Bar widgets, panels, overlays, menus and services made for Omarchy. They run on CybexOS unchanged.")
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
                     color: Theme.textFaint
@@ -164,7 +163,7 @@ SettingsPage {
                     : (directory.height - height) / 2
                 primary: true
                 glyph: "open_in_new"
-                text: "Browse plugins"
+                text: I18n.tr("Browse plugins")
                 Accessible.description: "Opens " + page.directoryUrl + " in your browser"
                 onTriggered: Qt.openUrlExternally(page.directoryUrl)
             }
@@ -172,7 +171,7 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Add a plugin"
+            title: I18n.tr("Add a plugin")
 
             Column {
                 width: parent.width
@@ -187,25 +186,25 @@ SettingsPage {
                 Step {
                     width: parent.width
                     number: 2
-                    text: "Paste it into Source below and press Install. A Git URL or a local folder works too."
+                    text: I18n.tr("Paste it into Source below and press Install. A Git URL or a local folder works too.")
                 }
                 Step {
                     width: parent.width
                     number: 3
-                    text: "Switch it on under Installed. A bar widget then waits in the Bar page's Add widgets tray."
+                    text: I18n.tr("Switch it on under Installed. A bar widget then waits in the Bar page's Add widgets tray.")
                 }
             }
 
             FieldRow {
                 id: sourceRow
                 width: parent.width
-                label: "Source"
-                placeholder: "omarchy plugin add https://github.com/…"
-                hint: "Plugins run as your desktop user. Install only packages you trust. New packages start disabled."
+                label: I18n.tr("Source")
+                placeholder: I18n.tr("omarchy plugin add https://github.com/…")
+                hint: I18n.tr("Plugins run as your desktop user. Install only packages you trust. New packages start disabled.")
                 onAccepted: page.install()
 
                 SettingsAction {
-                    text: "Install"
+                    text: I18n.tr("Install")
                     glyph: "download"
                     enabled: !UserPlugins.busy && page.source !== ""
                     onTriggered: page.install()
@@ -247,7 +246,7 @@ SettingsPage {
                     Text {
                         id: emptyTitle
                         width: parent.width
-                        text: "No plugins yet"
+                        text: I18n.tr("No plugins yet")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.control
                         color: Theme.textMid
@@ -255,7 +254,7 @@ SettingsPage {
                     }
                     Text {
                         width: parent.width
-                        text: "Plugins you install appear here, switched off until you turn them on."
+                        text: I18n.tr("Plugins you install appear here, switched off until you turn them on.")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.secondary
                         color: Theme.textFaint

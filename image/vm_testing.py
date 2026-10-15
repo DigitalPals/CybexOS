@@ -382,17 +382,25 @@ class TestVM:
         non-US install without guessing how punctuation maps in Hyprland.
         Passwords are typed only at a recognized login/sudo prompt.
         """
-        self.keypress("ctrl+alt+f3")
         deadline = time.monotonic() + timeout
+        console = ""
         while time.monotonic() < deadline:
-            if re.search(r'login\s*:', self.screen_text(), re.IGNORECASE):
+            # Pressed on every pass: a switch made while the boot splash still
+            # owns the display, or before the display manager starts and takes
+            # its own VT, does not leave the text console in front.
+            self.keypress("ctrl+alt+f3")
+            time.sleep(1)
+            console = self.screen_text()
+            if re.search(r'login\s*:', console, re.IGNORECASE):
                 break
             self.alive()
             time.sleep(2)
         else:
-            raise RuntimeError("Installed text-console login prompt was not recognized")
+            raise RuntimeError("Installed text-console login prompt was not recognized; "
+                               f"screen OCR: {' '.join(console.split())[-1500:]}")
+        prompts = len(re.findall(r'login\s*:', console, re.IGNORECASE))
         self.type("qualification\n")
-        self._wait_password_prompt(deadline)
+        self._wait_password_prompt(deadline, username="qualification", prompts_when_typed=prompts)
         self.type(password + "\n")
         # A fresh standalone output line proves execution; the echoed command
         # cannot satisfy it. These letters also work before US/NL/DE keymap
@@ -464,14 +472,31 @@ class TestVM:
         self.wait_ssh(timeout=max(15, int(deadline - time.monotonic())), setup=False,
                       redactions=(password,))
 
-    def _wait_password_prompt(self, deadline):
+    def _wait_password_prompt(self, deadline, console="ctrl+alt+f3", username=None, prompts_when_typed=1):
+        # Login prompts on screen when the user name was last typed. While
+        # systemd-user-sessions has not started, pam_nologin refuses the login
+        # ("System is booting up") and getty prints a new prompt; the name is
+        # then typed again rather than waiting for a password prompt that
+        # cannot come (seen when a first-boot unit ran before user sessions).
+        screen = ""
         while time.monotonic() < deadline:
             screen = " ".join(self.screen_text().lower().split())
             if re.search(r'password\s*:|passwort\s*:|wachtwoord\s*:', screen):
                 return
+            prompts = len(re.findall(r'login\s*:', screen))
+            if prompts == 0:
+                # A display manager that starts after the switch to the text
+                # console takes the screen back; that console still waits.
+                self.keypress(console)
+            elif username is not None and prompts > prompts_when_typed:
+                # The retyped name answers the newest prompt; a further
+                # refusal prints one more.
+                self.type(username + "\n")
+                prompts_when_typed = prompts
             self.alive()
             time.sleep(1)
-        raise RuntimeError("Installed password prompt was not recognized; no password was typed")
+        raise RuntimeError("Installed password prompt was not recognized; no password was typed; "
+                           f"screen OCR: {screen[-1500:]}")
 
     def wait_desktop(self, timeout=120):
         deadline = time.monotonic() + timeout

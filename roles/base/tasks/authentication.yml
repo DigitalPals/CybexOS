@@ -1,0 +1,25 @@
+---
+# Fingerprints and security keys as alternatives to the password for sudo,
+# Polkit and the lock screen (docs/security.md). Workstation convergence, ISO
+# installation and repair, and upgrade reconciliation all run this one helper.
+# It enables authselect's with-fingerprint once and then leaves that choice to
+# the person, keeps SDDM password-only, never edits the password step, and
+# leaves an administrator's own pam_u2f configuration alone.
+- name: Offer fingerprints and security keys beside the password
+  ansible.builtin.script:
+    cmd: cybexos-auth-policy apply
+    executable: /usr/bin/python3
+  register: base_auth_policy
+  changed_when: base_auth_policy.rc == 0 and (base_auth_policy.stdout | from_json).changed
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Report a sign-in policy CybexOS could not apply
+  ansible.builtin.debug:
+    msg: >-
+      Fingerprint and security-key sign-in was not fully configured; the
+      password still works everywhere. {{ base_auth_policy.stdout | default('') }}
+      {{ base_auth_policy.stderr | default('') }}
+  when:
+    - base_auth_policy is not skipped
+    - base_auth_policy.rc | default(0) != 0

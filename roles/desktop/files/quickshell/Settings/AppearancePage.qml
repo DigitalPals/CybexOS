@@ -3,6 +3,7 @@ import QtQuick
 import "../Common"
 import "../Common" as Common
 import "../Common/SettingsHelpers.js" as SettingsHelpers
+import "../Common/ThemeHelpers.js" as ThemeHelpers
 
 // Appearance owns theme, text and size, colors, and panel chrome. Every
 // control that changes how large the shell draws sits in one group under a
@@ -28,12 +29,12 @@ SettingsPage {
     readonly property int accentHue: SettingsHelpers.hexHue(Settings.accent, 204)
     readonly property bool fixedPalette: Settings.paletteMode === "fixed"
     readonly property var paletteSwatches: [
-        { label: "Surface", color: Common.Palette.surface },
-        { label: "Panel", color: Theme.popBg },
-        { label: "Group", color: Common.Palette.surfaceContainerHigh },
-        { label: "Primary", color: Theme.accent },
-        { label: "Outline", color: Theme.stroke },
-        { label: "Error", color: Theme.red }
+        { label: I18n.tr("Surface"), color: Common.Palette.surface },
+        { label: I18n.tr("Panel"), color: Theme.popBg },
+        { label: I18n.tr("Group"), color: Common.Palette.surfaceContainerHigh },
+        { label: I18n.tr("Primary"), color: Theme.accent },
+        { label: I18n.tr("Outline"), color: Theme.stroke },
+        { label: I18n.tr("Error"), color: Theme.red }
     ]
     readonly property string paletteStatus: Common.Palette.busy
         ? "Generating colors from the current wallpaper…"
@@ -55,6 +56,29 @@ SettingsPage {
     function fontFamily(id) {
         const choice = Settings.fontChoices.find(entry => entry.id === id);
         return choice ? choice.family : Theme.fontMenu;
+    }
+
+    // Named themes: one dropdown whose options preview each theme in three
+    // dots. Picking one sets mode, colors, bar and font in one undoable step
+    // (Common/Themes.qml); a change made afterwards marks it "(modified)".
+    readonly property var themeState: Themes.current
+    readonly property var themeChoices: ThemeHelpers.choices(Themes.entries, page.themeState)
+    readonly property var themeReferences: ({
+        dark: { background: Theme.darkBackground.toString(), text: Theme.darkTextHi.toString() },
+        light: { background: Theme.lightBackground.toString(), text: Theme.lightTextHi.toString() }
+    })
+    property bool savingTheme: false
+
+    function themeSwatches(id) {
+        const entry = Themes.entries.find(item => item.id === id);
+        return entry ? ThemeHelpers.swatches(entry, page.themeReferences) : [];
+    }
+
+    function saveTheme() {
+        if (Themes.saveCurrent(themeNameRow.text)) {
+            page.savingTheme = false;
+            themeNameRow.text = "";
+        }
     }
 
     function revealFixedColors() {
@@ -81,20 +105,107 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Theme"
+            title: I18n.tr("Theme")
 
+            SettingsRow {
+                id: themeRow
+                width: parent.width
+                label: I18n.tr("Theme")
+                settingKey: "theme"
+                // Everything a theme sets, back to a fresh install's look.
+                // The wallpaper stays.
+                resetKeys: ThemeHelpers.RESET_KEYS
+                dirty: {
+                    void Settings.revision;
+                    return ThemeHelpers.differsFromDefault(Settings, Settings.defaults);
+                }
+                hint: Themes.error !== "" ? Themes.error
+                    : Themes.message !== "" ? Themes.message
+                    : "Sets mode, colors, bar and font together"
+                hintTone: Themes.error !== "" ? "error" : "info"
+                disabledReason: !Themes.loaded && Themes.busy ? "Loading themes…" : ""
+                narrowHeight: Theme.settingsStackOffset + Theme.settingsControlHeight
+                narrowLabelInset: themeRow.undoWidth
+                controlLeft: themeSelect.x
+
+                SettingsSelect {
+                    id: themeSelect
+                    readonly property real available: themeRow.contentRight
+                        - saveThemeAction.width - Theme.controlSpacing
+                    width: themeRow.narrow ? Math.max(0, available - themeRow.markInset)
+                        : Math.min(naturalWidth, Math.max(0, available - themeRow.labelWidth))
+                    x: themeRow.narrow ? themeRow.markInset : available - width
+                    y: themeRow.narrow ? Theme.settingsStackOffset
+                        : (themeRow.lineHeight - height) / 2
+                    opacity: themeRow.controlOpacity
+                    model: page.themeChoices
+                    current: page.themeState.value
+                    accessibleName: "Theme"
+                    swatchesFor: value => page.themeSwatches(value)
+                    onPicked: value => {
+                        if (value !== "")
+                            Themes.apply(value);
+                    }
+                }
+                SettingsAction {
+                    id: saveThemeAction
+                    x: themeRow.contentRight - width
+                    y: themeSelect.y + (themeSelect.height - height) / 2
+                    opacity: themeRow.controlOpacity
+                    compact: true
+                    glyph: "save"
+                    text: I18n.tr("Save current as theme…")
+                    onTriggered: {
+                        page.savingTheme = !page.savingTheme;
+                        if (page.savingTheme)
+                            themeNameRow.focusField();
+                    }
+                }
+            }
+            Revealer {
+                id: saveThemeReveal
+                width: parent.width
+                reveal: page.savingTheme
+
+                // A Column between the revealer and its row, as under Accent
+                // source: a row sized straight from the revealer it measures
+                // is a binding loop.
+                Column {
+                    width: saveThemeReveal.width
+
+                    FieldRow {
+                        id: themeNameRow
+                        width: parent.width
+                        label: I18n.tr("Theme name")
+                        placeholder: I18n.tr("My theme")
+                        hint: I18n.tr("Keeps mode, colors, bar and font. The wallpaper is not included.")
+                        onAccepted: page.saveTheme()
+
+                        SettingsAction {
+                            text: I18n.tr("Save")
+                            glyph: "save"
+                            enabled: !Themes.busy && ThemeHelpers.nameIn(themeNameRow.text) !== ""
+                            onTriggered: page.saveTheme()
+                        }
+                        SettingsAction {
+                            text: I18n.tr("Cancel")
+                            onTriggered: page.savingTheme = false
+                        }
+                    }
+                }
+            }
             PickerRow {
                 width: parent.width
-                label: "Mode"
+                label: I18n.tr("Mode")
                 settingKey: "themeMode"
                 model: [
-                    { value: "dark", label: "Dark" },
-                    { value: "light", label: "Light" }
+                    { value: "dark", label: I18n.tr("Dark") },
+                    { value: "light", label: I18n.tr("Light") }
                 ]
             }
             SwitchRow {
                 width: parent.width
-                label: "Glass effect"
+                label: I18n.tr("Glass effect")
                 settingKey: "glassEnabled"
                 description: Settings.glassApplyError
                     ? "Panels changed, but the compositor blur could not be updated"
@@ -107,7 +218,7 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Text & size"
+            title: I18n.tr("Text & size")
 
             // Replaces the sentence that spelled out the rendered size: the
             // bar and a popover, drawn at whatever the rows below produce.
@@ -116,7 +227,7 @@ SettingsPage {
             }
             SelectRow {
                 width: parent.width
-                label: "Interface font"
+                label: I18n.tr("Interface font")
                 settingKey: "font"
                 model: Settings.fontChoices.map(choice => ({
                     value: choice.id, label: choice.label
@@ -125,58 +236,58 @@ SettingsPage {
             }
             PickerRow {
                 width: parent.width
-                label: "Text size"
+                label: I18n.tr("Text size")
                 settingKey: "textScale"
                 model: [
-                    { value: "default", label: "Default" },
-                    { value: "large", label: "Large" },
-                    { value: "larger", label: "Larger" }
+                    { value: "default", label: I18n.tr("Default") },
+                    { value: "large", label: I18n.tr("Large") },
+                    { value: "larger", label: I18n.tr("Larger") }
                 ]
             }
             SliderRow {
                 width: parent.width
-                label: "Interface scale"
+                label: I18n.tr("Interface scale")
                 settingKey: "shellScale"
                 min: 75; max: 200; step: 5; unit: "%"
                 marks: [100]
-                hint: "Scales text and spacing together"
+                hint: I18n.tr("Scales text and spacing together")
             }
             PickerRow {
                 width: parent.width
-                label: "Density"
+                label: I18n.tr("Density")
                 settingKey: "interfaceDensity"
                 model: [
-                    { value: "compact", label: "Compact" },
-                    { value: "default", label: "Default" },
-                    { value: "comfortable", label: "Comfortable" }
+                    { value: "compact", label: I18n.tr("Compact") },
+                    { value: "default", label: I18n.tr("Default") },
+                    { value: "comfortable", label: I18n.tr("Comfortable") }
                 ]
-                hint: "Row height and touch-target size"
+                hint: I18n.tr("Row height and touch-target size")
             }
             // The base size is what Text size and Interface scale multiply,
             // so it is rarely the control to reach for; a search for it
             // still opens the disclosure.
             SettingsDisclosure {
                 width: parent.width
-                text: "Advanced text options"
+                text: I18n.tr("Advanced text options")
                 keys: ["shellFontSize"]
 
                 SliderRow {
                     width: parent.width
-                    label: "Base font size"
+                    label: I18n.tr("Base font size")
                     settingKey: "shellFontSize"
                     min: 10; max: 24; step: 1
-                    hint: "The size that Text size and Interface scale build on"
+                    hint: I18n.tr("The size that Text size and Interface scale build on")
                 }
             }
         }
 
         SettingsGroup {
             width: parent.width
-            title: "Colors"
+            title: I18n.tr("Colors")
 
             PickerRow {
                 width: parent.width
-                label: "Accent source"
+                label: I18n.tr("Accent source")
                 settingKey: "paletteMode"
                 // Returning to the wallpaper restores the fixed accent too:
                 // it is hidden under Wallpaper, and a reset should not leave
@@ -185,8 +296,8 @@ SettingsPage {
                 hint: Settings.paletteMode === "wallpaper"
                     ? "Follows the current wallpaper" : "Stays the same when the wallpaper changes"
                 model: [
-                    { value: "wallpaper", label: "Wallpaper" },
-                    { value: "fixed", label: "Fixed" }
+                    { value: "wallpaper", label: I18n.tr("Wallpaper") },
+                    { value: "fixed", label: I18n.tr("Fixed") }
                 ]
                 onPicked: value => {
                     if (value === "fixed")
@@ -215,7 +326,7 @@ SettingsPage {
                             + (page.accentChoices.length - 1) * swatchFlow.spacing
 
                         width: parent.width
-                        label: "Accent color"
+                        label: I18n.tr("Accent color")
                         settingKey: "accent"
                         resetLabel: "Accent"
                         hint: page.accentNames[Settings.accent]
@@ -311,7 +422,7 @@ SettingsPage {
                     SliderRow {
                         id: accentHueRow
                         width: parent.width
-                        label: "Accent hue"
+                        label: I18n.tr("Accent hue")
                         min: 0; max: 359; step: 1; unit: "°"
                         value: page.accentHue
                         hueTrack: true
@@ -335,7 +446,7 @@ SettingsPage {
                 SettingsRow {
                     id: paletteRow
                     width: wallpaperPaletteReveal.width
-                    label: "Wallpaper palette"
+                    label: I18n.tr("Wallpaper palette")
                     hint: page.paletteStatus
                     hintTone: Common.Palette.error !== "" ? "error" : "info"
                     narrowLabelInset: paletteRow.undoWidth
@@ -378,17 +489,17 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Panels"
+            title: I18n.tr("Panels")
 
             PickerRow {
                 width: parent.width
-                label: "Border"
+                label: I18n.tr("Border")
                 settingKey: "surfaceBorderMode"
                 resetLabel: "Panel border"
                 // The custom color only means something under Custom.
                 resetKeys: ["surfaceBorderMode", "surfaceBorderColor"]
-                model: [{ value: "accent", label: "Accent" }, { value: "subtle", label: "Subtle" },
-                    { value: "custom", label: "Custom" }]
+                model: [{ value: "accent", label: I18n.tr("Accent") }, { value: "subtle", label: I18n.tr("Subtle") },
+                    { value: "custom", label: I18n.tr("Custom") }]
             }
             Revealer {
                 id: borderColorReveal
@@ -397,7 +508,7 @@ SettingsPage {
 
                 SettingsTextRow {
                     width: borderColorReveal.width
-                    label: "Border color"
+                    label: I18n.tr("Border color")
                     settingKey: "surfaceBorderColor"
                     resetLabel: "Panel border color"
                     hexColor: true
@@ -406,14 +517,14 @@ SettingsPage {
             }
             SliderRow {
                 width: parent.width
-                label: "Border width"
+                label: I18n.tr("Border width")
                 settingKey: "surfaceBorderWidth"
                 resetLabel: "Panel border width"
                 min: 0; max: 8; step: 1
             }
             SliderRow {
                 width: parent.width
-                label: "Border opacity"
+                label: I18n.tr("Border opacity")
                 settingKey: "surfaceBorderOpacity"
                 resetLabel: "Panel border opacity"
                 min: 0; max: 100; step: 5; unit: "%"
@@ -421,7 +532,7 @@ SettingsPage {
             }
             SliderRow {
                 width: parent.width
-                label: "Corners"
+                label: I18n.tr("Corners")
                 settingKey: "surfaceCornerRadius"
                 resetLabel: "Panel corners"
                 min: 0; max: 30; step: 1
@@ -432,19 +543,19 @@ SettingsPage {
 
         SettingsGroup {
             width: parent.width
-            title: "Accessibility"
+            title: I18n.tr("Accessibility")
 
             SwitchRow {
                 width: parent.width
-                label: "High contrast"
+                label: I18n.tr("High contrast")
                 settingKey: "highContrast"
-                description: "Solid panels and stronger borders"
+                description: I18n.tr("Solid panels and stronger borders")
             }
             SwitchRow {
                 width: parent.width
-                label: "Reduce motion"
+                label: I18n.tr("Reduce motion")
                 settingKey: "reducedMotion"
-                description: "Turns off panel, reveal and hover animations"
+                description: I18n.tr("Turns off panel, reveal and hover animations")
             }
         }
     }

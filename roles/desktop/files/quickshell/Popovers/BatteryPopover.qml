@@ -156,7 +156,7 @@ Surface {
 
             Text {
                 width: parent.width
-                text: "Battery"
+                text: I18n.tr("Battery")
                 elide: Text.ElideRight
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.heading
@@ -265,7 +265,7 @@ Surface {
     }
 
     SectionLabel {
-        text: "BATTERY TELEMETRY"
+        text: I18n.tr("BATTERY TELEMETRY")
     }
 
     Row {
@@ -279,13 +279,13 @@ Surface {
             spacing: Theme.panelRowSpacing
 
             TelemetryPair {
-                label: "Capacity"
+                label: I18n.tr("Capacity")
                 value: BatteryView.formatWh(root.displayDevice
                     ? root.displayDevice.energyCapacity : undefined)
             }
 
             TelemetryPair {
-                label: "Cycles"
+                label: I18n.tr("Cycles")
                 value: root.cycleCountText
             }
         }
@@ -319,7 +319,7 @@ Surface {
 
         SectionLabel {
             width: parent.width
-            text: "BATTERY HEALTH"
+            text: I18n.tr("BATTERY HEALTH")
         }
 
         Rectangle {
@@ -351,7 +351,7 @@ Surface {
 
                 Text {
                     width: parent.width
-                    text: "Preserve battery health"
+                    text: I18n.tr("Preserve battery health")
                     elide: Text.ElideRight
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.primary
@@ -385,7 +385,7 @@ Surface {
     }
 
     SectionLabel {
-        text: "POWER PROFILE"
+        text: I18n.tr("POWER PROFILE")
     }
 
     // A single segmented radio. Saver and Balanced retain their existing
@@ -409,11 +409,11 @@ Surface {
                 id: profileRepeater
 
                 model: [
-                    { label: "Saver", glyph: "eco", profile: PowerProfile.PowerSaver,
+                    { label: I18n.tr("Saver"), glyph: "eco", profile: PowerProfile.PowerSaver,
                         available: true },
-                    { label: "Balanced", glyph: "balance", profile: PowerProfile.Balanced,
+                    { label: I18n.tr("Balanced"), glyph: "balance", profile: PowerProfile.Balanced,
                         available: true },
-                    { label: "Performance", glyph: "speed", profile: PowerProfile.Performance,
+                    { label: I18n.tr("Performance"), glyph: "speed", profile: PowerProfile.Performance,
                         available: PowerProfiles.hasPerformanceProfile }
                 ]
 

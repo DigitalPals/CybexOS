@@ -23,6 +23,13 @@ remain open behind a request it initiated.
 Passwords start masked, never echo the last character, and can be revealed
 with the eye button. PAM prompts that request visible responses are supported,
 as are informational messages while waiting for fingerprint or other methods.
+When PAM announces a fingerprint (`pam_fprintd`) or security-key (`pam_u2f`)
+step and asks for no input, the card says *Touch the fingerprint reader, or
+wait to enter your password.* or *Touch your security key, or wait to enter
+your password.*, adds *Not recognised.* after a mismatched scan, and shows a
+key glyph for the key step. These steps run one after another in Polkit's
+stack, so the password field appears when they give up; a stale step message
+is not repeated under it. See [Fingerprints and security keys](security.md).
 The response is cleared on submission, cancellation, account/prompt changes,
 completion and replacement by another request. Closing the window destroys
 the input. Responses go directly to the backend; no shell command, IPC method,

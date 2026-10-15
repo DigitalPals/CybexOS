@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import Quickshell
 import "Common"
 import "Common/LauncherNavigation.js" as Navigation
 import "Popovers"
@@ -18,6 +17,8 @@ Surface {
     readonly property int searchHeight: Theme.scaled(44)
     readonly property int rowHeight: Theme.scaled(42)
     readonly property int resultIconSize: Theme.scaled(28)
+    // A selected clipboard image grows its row to show the picture under it.
+    readonly property int previewRowHeight: rowHeight * 4
     readonly property int fullHeight: padding * 2 + tabHeight + searchHeight
         + maxResults * rowHeight + spacing * 2
     property int selected: 0
@@ -28,12 +29,18 @@ Surface {
     readonly property string term: LauncherProviders.term
     readonly property var rows: LauncherProviders.rows
     readonly property var tabs: LauncherProviders.tabProviders
-    readonly property string searchPlaceholder: ({
-        apps: "Search applications",
-        emoji: "Search emoji by name",
-        clipboard: "Search clipboard history",
-        actions: "Search actions"
-    })[provider.id] || "Search apps, commands and more"
+    readonly property var pendingAction: LauncherProviders.pendingAction
+    readonly property bool argumentMode: LauncherProviders.argumentMode
+    readonly property var selectedRow: rows[selected] || null
+    readonly property bool selectedPreview: !!(selectedRow && selectedRow.thumbnail)
+    readonly property string searchPlaceholder: argumentMode
+        ? (pendingAction.argument ? pendingAction.argument.placeholder : "Search web apps")
+        : ({
+            apps: "Search applications",
+            emoji: "Search emoji by name",
+            clipboard: "Search clipboard history",
+            actions: "Search actions"
+        })[provider.id] || "Search apps, commands and more"
 
     // The view is permanently warm. Reset synchronously on open and ask for
     // focus both now and on the next event-loop turn: the second request
@@ -44,8 +51,9 @@ Surface {
     }
 
     function prepareOpen(): void {
-        LauncherProviders.selectedProviderId = "apps";
-        search.text = "";
+        LauncherProviders.selectedProviderId = Launcher.openRequest.tab;
+        LauncherProviders.resetPending();
+        search.text = Launcher.openRequest.query;
         selected = 0;
         focusInput();
         resultList.positionViewAtBeginning();
@@ -63,6 +71,7 @@ Surface {
     function resetForClose(): void {
         LauncherProviders.selectedProviderId = "apps";
         search.text = "";
+        LauncherProviders.resetPending();
         selected = 0;
     }
 
@@ -78,6 +87,26 @@ Surface {
             if (Launcher.open)
                 root.prepareOpen();
         }
+
+        function onTargetRequested() {
+            root.selectTab(Launcher.openRequest.tab);
+            search.text = Launcher.openRequest.query;
+            search.cursorPosition = search.text.length;
+        }
+    }
+
+    // A prompt opening or closing replaces the field's text: empty for the
+    // new prompt, the earlier query when backing out of one.
+    Connections {
+        target: LauncherProviders
+
+        function onInputReplaced(text) {
+            search.text = text;
+            search.cursorPosition = search.text.length;
+            root.selected = 0;
+            resultList.positionViewAtBeginning();
+            root.focusInput();
+        }
     }
 
     onRowsChanged: {
@@ -91,13 +120,14 @@ Surface {
         Qt.callLater(() => resultList.positionViewAtBeginning());
     }
 
-    function activate(row): void {
-        LauncherProviders.activate(row);
+    function activate(row, copyOnly): void {
+        LauncherProviders.activate(row, copyOnly === true);
     }
 
     function selectTab(providerId): void {
         LauncherProviders.selectedProviderId = providerId;
         search.text = "";
+        LauncherProviders.resetPending();
         selected = 0;
         resultList.positionViewAtBeginning();
         focusInput();
@@ -136,7 +166,10 @@ Surface {
     // fallback. Enter is intentionally handled regardless of modifiers, so
     // it can launch the selected first row even if Super has not yet lifted.
     function handleCommandKey(event): bool {
-        if (event.key === Qt.Key_Escape) {
+        if (event.key === Qt.Key_Escape && argumentMode) {
+            // Backs out of a prompt to the list it came from.
+            LauncherProviders.cancelPending();
+        } else if (event.key === Qt.Key_Escape) {
             if (query !== "") {
                 search.text = "";
                 selected = 0;
@@ -147,6 +180,10 @@ Surface {
                 && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)) {
             cycleTab((event.key === Qt.Key_Backtab
                 || event.modifiers & Qt.ShiftModifier) ? -1 : 1);
+        } else if (argumentMode
+                && (event.key === Qt.Key_Left || event.key === Qt.Key_Right)) {
+            // A prompt's text is edited in place; the arrows move the cursor.
+            return false;
         } else if (event.key === Qt.Key_Left) {
             cycleTab(-1);
         } else if (event.key === Qt.Key_Right) {
@@ -157,8 +194,12 @@ Surface {
                 && event.key === Qt.Key_Delete
                 && LauncherProviders.canRemove(rows[selected])) {
             LauncherProviders.remove(rows[selected]);
+        } else if (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_P
+                && LauncherProviders.canPin(rows[selected])) {
+            LauncherProviders.togglePin(rows[selected]);
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-            activate(rows[selected]);
+            // Shift+Enter copies a clipboard entry or emoji without pasting.
+            activate(rows[selected], (event.modifiers & Qt.ShiftModifier) !== 0);
         } else if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) {
             wrapSelection(1);
         } else if (event.key === Qt.Key_Up) {
@@ -270,7 +311,7 @@ Surface {
 
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: providerTab.label
+                            text: I18n.tr(providerTab.label)
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.typography.title
                             font.weight: Theme.weightMedium
@@ -312,7 +353,7 @@ Surface {
             id: searchGlyph
             x: 16
             anchors.verticalCenter: parent.verticalCenter
-            name: root.provider.glyph
+            name: root.argumentMode ? root.pendingAction.glyph : root.provider.glyph
             size: 18
             color: Theme.textDim
         }
@@ -322,6 +363,7 @@ Surface {
             anchors.verticalCenter: parent.verticalCenter
             x: 44
             width: parent.width - x - (modeChip.visible ? modeChip.width + 24 : 16)
+                - (clipboardHint.visible ? clipboardHint.implicitWidth + 12 : 0)
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.heading
             font.weight: Theme.weightRegular
@@ -340,11 +382,28 @@ Surface {
             Keys.onPressed: event => event.accepted = root.handleCommandKey(event)
         }
 
-        // A typed utility prefix temporarily overrides the selected tab.
-        // Clicking its chip removes the prefix and returns to that tab.
+        // The one key the History tab adds. It names what Ctrl+P does to the
+        // selected entry; Enter pastes and Shift+Enter copies as elsewhere.
+        Text {
+            id: clipboardHint
+            visible: root.provider.id === "clipboard" && !root.argumentMode
+                && root.rows.length > 0
+            anchors.right: modeChip.visible ? modeChip.left : parent.right
+            anchors.rightMargin: modeChip.visible ? 8 : 14
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.selectedRow && root.selectedRow.pinned ? I18n.tr("Ctrl+P unpin") : I18n.tr("Ctrl+P pin")
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.typography.metadata
+            font.weight: Theme.weightMedium
+            color: Theme.textDim
+        }
+
+        // A typed utility prefix temporarily overrides the selected tab, and
+        // a prompt names the action it collects a value for. Clicking the
+        // chip removes the prefix, or backs out of the prompt.
         Rectangle {
             id: modeChip
-            visible: root.mode !== ""
+            visible: root.mode !== "" || root.argumentMode
             anchors.right: parent.right
             anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
@@ -356,7 +415,9 @@ Surface {
             Text {
                 id: modeLabel
                 anchors.centerIn: parent
-                text: root.mode !== "" ? root.provider.label : ""
+                text: root.argumentMode
+                    ? (root.pendingAction.argument ? root.pendingAction.argument.label : "REMOVE")
+                    : root.mode !== "" ? root.provider.label : ""
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.metadata
                 font.weight: Theme.weightMedium
@@ -369,7 +430,10 @@ Surface {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: search.text = root.term
+                onClicked: {
+                    if (!LauncherProviders.cancelPending())
+                        search.text = root.term;
+                }
             }
         }
     }
@@ -377,7 +441,8 @@ Surface {
     // ---- Results ---------------------------------------------------------
     Item {
         width: parent.width
-        height: Math.min(Math.min(root.maxResults, root.rows.length) * root.rowHeight,
+        height: Math.min(Math.min(root.maxResults * root.rowHeight, root.rows.length * root.rowHeight
+                + (root.selectedPreview ? root.previewRowHeight - root.rowHeight : 0)),
             root.availableHeight > 0 ? Math.max(0, root.availableHeight - root.padding * 2 - root.tabHeight - root.searchHeight - root.spacing * 2) : root.maxResults * root.rowHeight)
         clip: true
 
@@ -395,8 +460,13 @@ Surface {
                 required property var modelData
                 required property int index
                 readonly property bool isSelected: index === root.selected
+                // Only the selected image shows its picture; every other row
+                // keeps the single-line height.
+                readonly property bool previewing: isSelected && !!modelData.thumbnail
+                readonly property string iconUrl: modelData.thumbnail
+                    ? modelData.thumbnail : LauncherProviders.iconSource(modelData.icon)
                 width: resultList.width
-                height: root.rowHeight
+                height: previewing ? root.previewRowHeight : root.rowHeight
                 radius: Theme.rowRadius
                 // The selected result lights the bar's held chip. A full-accent
                 // slab across a 460px row was the loudest thing in the shell, and
@@ -407,22 +477,22 @@ Surface {
                 Item {
                     id: resultIcon
                     x: Theme.scaled(10)
-                    anchors.verticalCenter: parent.verticalCenter
+                    y: Math.round((root.rowHeight - height) / 2)
                     width: root.resultIconSize
                     height: root.resultIconSize
 
                     Image {
                         anchors.fill: parent
                         visible: source !== ""
-                        source: resultRow.modelData.icon
-                            ? Quickshell.iconPath(resultRow.modelData.icon, true) : ""
+                        source: resultRow.iconUrl
                         sourceSize: Qt.size(64, 64)
-                        fillMode: Image.PreserveAspectFit
+                        fillMode: resultRow.modelData.thumbnail
+                            ? Image.PreserveAspectCrop : Image.PreserveAspectFit
                         asynchronous: true
                     }
 
                     Rectangle {
-                        visible: !resultRow.modelData.icon
+                        visible: resultRow.iconUrl === ""
                         anchors.fill: parent
                         radius: 9
                         color: Theme.chip
@@ -448,8 +518,10 @@ Surface {
 
                 Text {
                     x: resultIcon.x + resultIcon.width + Theme.scaled(10)
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(0, parent.width - x - Theme.scaled(12))
+                    width: Math.max(0, parent.width - x - Theme.scaled(12)
+                        - (trailing.width > 0 ? trailing.width + Theme.scaled(10) : 0))
+                    height: root.rowHeight
+                    verticalAlignment: Text.AlignVCenter
                     textFormat: Text.StyledText
                     text: root.titleFor(resultRow.modelData)
                     font.family: Theme.fontMenu
@@ -457,6 +529,48 @@ Surface {
                     font.weight: Theme.weightMedium
                     color: Theme.textHi
                     elide: Text.ElideRight
+                }
+
+                // An action's group ("Capture"), or "Action" where one joins
+                // the app results; a pin glyph on a pinned clipboard entry.
+                Row {
+                    id: trailing
+                    anchors.right: parent.right
+                    anchors.rightMargin: Theme.scaled(12)
+                    y: Math.round((root.rowHeight - height) / 2)
+                    spacing: Theme.scaled(6)
+
+                    Text {
+                        visible: !!resultRow.modelData.tag
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: I18n.tr(resultRow.modelData.tag || "")
+                        font.family: Theme.fontMenu
+                        font.pixelSize: Theme.typography.metadata
+                        font.weight: Theme.weightMedium
+                        color: Theme.textDim
+                    }
+
+                    Sym {
+                        visible: !!resultRow.modelData.pinned
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "pin"
+                        size: Theme.iconSmall
+                        animateColor: false
+                        color: Theme.textDim
+                    }
+                }
+
+                Image {
+                    visible: resultRow.previewing
+                    x: resultIcon.x
+                    y: root.rowHeight
+                    width: parent.width - x * 2
+                    height: Math.max(0, parent.height - root.rowHeight - Theme.scaled(8))
+                    source: resultRow.previewing ? resultRow.modelData.thumbnail : ""
+                    sourceSize: Qt.size(512, 512)
+                    fillMode: Image.PreserveAspectFit
+                    horizontalAlignment: Image.AlignLeft
+                    asynchronous: true
                 }
 
                 MouseArea {
@@ -470,7 +584,8 @@ Surface {
                                 && LauncherProviders.canRemove(resultRow.modelData))
                             LauncherProviders.remove(resultRow.modelData);
                         else
-                            root.activate(resultRow.modelData);
+                            root.activate(resultRow.modelData,
+                                (mouse.modifiers & Qt.ShiftModifier) !== 0);
                     }
                 }
             }

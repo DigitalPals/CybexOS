@@ -90,11 +90,11 @@ Surface {
     readonly property real sessionActionWidth:
         Math.max(0, (contentWidth - 4 * sessionSpacing) / 5)
     readonly property var sessionActions: [
-        { key: "lock", glyph: "lock", label: "Lock" },
-        { key: "suspend", glyph: "bedtime", label: "Suspend" },
-        { key: "logout", glyph: "logout", label: "Log out" },
-        { key: "restart", glyph: "restart_alt", label: "Restart" },
-        { key: "shutdown", glyph: "power_settings_new", label: "Shut down" }
+        { key: "lock", glyph: "lock", label: I18n.tr("Lock") },
+        { key: "suspend", glyph: "bedtime", label: I18n.tr("Suspend") },
+        { key: "logout", glyph: "logout", label: I18n.tr("Log out") },
+        { key: "restart", glyph: "restart_alt", label: I18n.tr("Restart") },
+        { key: "shutdown", glyph: "power_settings_new", label: I18n.tr("Shut down") }
     ]
     property string pendingSessionKey: ""
     property string sessionAnnouncement: ""
@@ -595,7 +595,7 @@ Surface {
         spacing: 0
 
         SectionLabel {
-            text: "MACHINE"
+            text: I18n.tr("MACHINE")
         }
 
         Row {
@@ -603,19 +603,19 @@ Surface {
             spacing: root.cardSpacing
 
             StatCard {
-                label: "CPU"
+                label: I18n.tr("CPU")
                 display: Math.round(SysInfo.cpuUsage) + "%"
                 fraction: SysInfo.cpuUsage / 100
             }
 
             StatCard {
-                label: "RAM"
+                label: I18n.tr("RAM")
                 display: Math.round(SysInfo.memUsage) + "%"
                 fraction: SysInfo.memUsage / 100
             }
 
             StatCard {
-                label: "TEMP"
+                label: I18n.tr("TEMP")
                 display: SysInfo.cpuTemp + "\u00b0"
                 fraction: SysInfo.cpuTemp / 100
                 tone: SysInfo.cpuTemp >= 80 ? Theme.redText
@@ -632,7 +632,7 @@ Surface {
         spacing: 0
 
         SectionLabel {
-            text: "DISPLAY & SOUND"
+            text: I18n.tr("DISPLAY & SOUND")
         }
 
         Column {
@@ -683,7 +683,7 @@ Surface {
                     color: outputMouse.containsMouse || activeFocus ? Theme.chipHover : Theme.chip
                     activeFocusOnTab: true
                     Accessible.role: Accessible.Button
-                    Accessible.name: "Choose audio output"
+                    Accessible.name: I18n.tr("Choose audio output")
                     Accessible.description: Audio.outputName
                     Accessible.onPressAction: Popouts.openPanel("audio", "right")
                     border.width: activeFocus ? 1 : 0
@@ -729,7 +729,7 @@ Surface {
         spacing: 0
 
         SectionLabel {
-            text: "CONNECTIVITY"
+            text: I18n.tr("CONNECTIVITY")
         }
 
         Column {
@@ -739,7 +739,7 @@ Surface {
             RadioRow {
                 glyph: EthernetState.connected ? "lan"
                     : WifiState.enabled ? "wifi" : "wifi_off"
-                title: "Internet"
+                title: I18n.tr("Internet")
                 sub: EthernetState.connected && WifiState.connected ? "Ethernet + Wi-Fi"
                     : EthernetState.connected ? "Ethernet"
                     : WifiState.connected ? WifiState.name
@@ -750,7 +750,7 @@ Surface {
 
             RadioRow {
                 glyph: "bluetooth"
-                title: "Bluetooth"
+                title: I18n.tr("Bluetooth")
                 sub: {
                     if (!BluetoothState.enabled)
                         return "Off";
@@ -776,7 +776,7 @@ Surface {
         spacing: 0
 
         SectionLabel {
-            text: "QUICK ACTIONS"
+            text: I18n.tr("QUICK ACTIONS")
         }
 
         Column {
@@ -790,21 +790,21 @@ Surface {
 
                 QuickTile {
                     glyph: "dark_mode"
-                    title: "Dark mode"
+                    title: I18n.tr("Dark mode")
                     on: Theme.dark
                     onToggled: Settings.set("themeMode", Theme.dark ? "light" : "dark")
                 }
 
                 QuickTile {
                     glyph: "do_not_disturb_on"
-                    title: "Focus"
+                    title: I18n.tr("Focus")
                     on: Notifs.dnd
                     onToggled: Notifs.setDnd(!Notifs.dnd)
                 }
 
                 QuickTile {
                     glyph: "nightlight"
-                    title: "Night light"
+                    title: I18n.tr("Night light")
                     on: SysInfo.nightLight
                     effective: SysInfo.nightLightEffective
                     pending: SysInfo.nightLightPending
@@ -815,7 +815,7 @@ Surface {
 
                 QuickTile {
                     glyph: "coffee"
-                    title: "Idle inhibit"
+                    title: I18n.tr("Idle inhibit")
                     on: SysInfo.idleInhibited
                     effective: SysInfo.idleInhibitEffective
                     pending: SysInfo.idleInhibitPending
@@ -861,9 +861,9 @@ Surface {
 
                     Repeater {
                         model: [
-                            { key: "shot", glyph: "photo_camera", label: "Screenshot" },
+                            { key: "shot", glyph: "photo_camera", label: I18n.tr("Screenshot") },
                             { key: "record", glyph: "", label: "" },
-                            { key: "ocr", glyph: "document_scanner", label: "OCR" }
+                            { key: "ocr", glyph: "document_scanner", label: I18n.tr("OCR") }
                         ]
 
                         delegate: Rectangle {
@@ -962,7 +962,7 @@ Surface {
         spacing: 0
 
         SectionLabel {
-            text: "SESSION"
+            text: I18n.tr("SESSION")
         }
 
         Row {
@@ -1015,7 +1015,7 @@ Surface {
             border.width: activeFocus ? 1 : 0
             border.color: Theme.accentText
             Accessible.role: Accessible.Button
-            Accessible.name: "Open CybexOS Settings"
+            Accessible.name: I18n.tr("Open CybexOS Settings")
             Accessible.onPressAction: Settings.showPanel()
 
             Keys.onPressed: event => {
@@ -1045,7 +1045,7 @@ Surface {
                 anchors.left: settingsMark.right
                 anchors.leftMargin: 7
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Settings"
+                text: I18n.tr("Settings")
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.control
                 font.weight: Theme.weightMedium
@@ -1076,7 +1076,7 @@ Surface {
             border.color: Theme.accentText
 
             Accessible.role: Accessible.Button
-            Accessible.name: "Keyboard shortcuts"
+            Accessible.name: I18n.tr("Keyboard shortcuts")
             Accessible.onPressAction: Session.openKeys()
 
             Keys.onPressed: event => {

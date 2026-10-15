@@ -135,3 +135,45 @@ test("colour helpers agree with SettingsHelpers", () => {
         assert.equal(out[i][2], H.mixHex(value, background, 0.3));
     });
 });
+
+test("SystemTheme exports the effective text size the shell draws", () => {
+    const qml = read("Common/SystemTheme.qml");
+    assert.match(qml, /font: \{ui: Common\.Theme\.fontMenu, mono: Common\.Theme\.fontMono,\s+size: Common\.Theme\.fontBaseSize\}/);
+    // Theme.fontBaseSize is ShellMetrics' base x interface scale x text size.
+    assert.match(read("Common/Theme.qml"), /readonly property int fontBaseSize: metrics\.fontBase/);
+    const metrics = require(path.join(shellDir, "Common/ShellMetrics.js"));
+    const size = (shellFontSize, shellScale, textScale) => metrics.calculate({
+        shellFontSize, shellScale, textScale, interfaceDensity: "default" }).fontBase;
+    assert.equal(size(14, 100, "default"), 14);
+    assert.equal(size(14, 100, "large"), 16);
+    assert.equal(size(14, 100, "larger"), 18);
+    assert.equal(size(14, 150, "default"), 21);
+    assert.equal(size(24, 200, "larger"), 62);
+    assert.equal(size(10, 75, "default"), 8);
+});
+
+test("the text size is validated, defaults for older exports, and maps to one ratio", () => {
+    const valid = tokensModule("print(json.dumps([t.validate(json.loads(sys.stdin.read()))['font']['size']]))",
+        { ...darkTokens(), font: { ...darkTokens().font, size: 21 } });
+    assert.deepEqual(valid, [21]);
+    const older = tokensModule("print(json.dumps(t.validate(json.loads(sys.stdin.read()))['font']))",
+        darkTokens());
+    assert.equal(older.size, 14, "tokens saved before the size was exported render as before");
+    for (const size of [5, 97, 14.5, "14", true, null]) {
+        const out = tokensModule(
+            "raw = json.loads(sys.stdin.read())\n"
+            + "try:\n    t.validate(raw)\n    print('null')\n"
+            + "except t.TokenError as e:\n    print(json.dumps(str(e)))",
+            { ...darkTokens(), font: { ...darkTokens().font, size } });
+        if (size === null)
+            assert.equal(out, null, "an explicit null is an older export");
+        else
+            assert.match(out, /font size/, String(size));
+    }
+    const scales = tokensModule(
+        "print(json.dumps([t.text_scale({'font': {'size': s}}) for s in (6, 8, 14, 16, 21, 28, 62, 96)]))");
+    assert.deepEqual(scales, [0.5, 8 / 14, 1, 16 / 14, 1.5, 2, 3, 3]);
+    assert.deepEqual(tokensModule(
+        "print(json.dumps([t.scaled(v, {'font': {'size': 21}}) for v in (84, 85, 18, 1)]))"),
+    [126, 128, 27, 2]);
+});

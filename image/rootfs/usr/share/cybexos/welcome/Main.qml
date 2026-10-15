@@ -329,6 +329,9 @@ ApplicationWindow {
                             : welcome.hardwareState === "skipped" ? "Hardware setup: no special device support needed"
                             : welcome.hardwareState === "pending" && welcome.hardwareNote.indexOf("reboot") >= 0
                                 ? "Camera update installed — reboot to finish validation"
+                            : welcome.hardwareState === "pending"
+                              && (welcome.nvidiaState === "reboot" || welcome.nvidiaState === "enroll")
+                                ? "Hardware setup continues after a restart"
                             : welcome.hardwareState === "running" ? "Hardware setup in progress"
                             : welcome.hardwareState === "failed" ? "Hardware setup needs another attempt"
                             : "Hardware setup pending"
@@ -343,6 +346,26 @@ ApplicationWindow {
                         flat: true
                         onClicked: welcome.retryHardware()
                     }
+                }
+                // Only on NVIDIA systems. A failure also marks the hardware
+                // row above as failed, which carries the retry button.
+                Text {
+                    Layout.fillWidth: true
+                    visible: welcome.nvidiaState !== ""
+                    text: welcome.nvidiaState === "ready" ? "NVIDIA driver ready"
+                        : welcome.nvidiaState === "checking" ? "Checking the NVIDIA driver…"
+                        : welcome.nvidiaState === "reboot" ? "NVIDIA driver installed — restart to start using it"
+                        : welcome.nvidiaState === "enroll"
+                            ? "Secure Boot: restart, choose Enroll MOK at the blue screen, then Continue and Yes, and enter "
+                              + (welcome.nvidiaPassword !== "" ? "the one-time password " + welcome.nvidiaPassword
+                                                               : "the one-time password from the notification")
+                        : welcome.nvidiaState === "skipped" ? "Secure Boot key not enrolled — the open-source driver is in use"
+                        : welcome.nvidiaState === "failed" ? "NVIDIA driver setup failed — the open-source driver is in use"
+                        : "NVIDIA driver installs when the network is connected"
+                    color: welcome.nvidiaState === "ready" || welcome.nvidiaState === "checking"
+                        ? window.inkMid : window.accentText
+                    font.pixelSize: 13
+                    wrapMode: Text.WordWrap
                 }
                 RowLayout {
                     Layout.fillWidth: true

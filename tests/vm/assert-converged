@@ -35,6 +35,11 @@ for path in /etc/tuned/profiles/xps-performance /usr/local/share/xps-2026; do
 done
 grep -q '^performance=xps-performance$' /etc/tuned/ppd.conf &&
   fail 'the XPS performance mapping was installed on generic hardware'
+# The VM has no NVIDIA GPU: the NVIDIA role must stop at detection.
+for path in /usr/local/libexec/cybexos-nvidia /etc/cybexos/nvidia-session.env; do
+  [[ ! -e $path ]] || fail "$path was installed without an NVIDIA GPU"
+done
+rpm -q akmod-nvidia >/dev/null 2>&1 && fail 'akmod-nvidia was installed without an NVIDIA GPU'
 
 user_id=$(id -u fedora)
 for unit in quickshell.service hypridle.service; do
@@ -57,6 +62,11 @@ grep -q cybexos-recovery <<<"$initramfs_listing" ||
 [[ -x /usr/local/libexec/cybexos-session-action ]] || fail 'session action helper is not executable'
 [[ -r /usr/local/libexec/cybexos-common.sh ]] || fail 'shared installer helper is missing'
 [[ -x /home/fedora/.local/bin/cybexos-agent ]] || fail 'default AI agent helper is missing'
+[[ -x /home/fedora/.local/bin/game-mode ]] || fail 'game mode helper is missing'
+grep -q '^comment = "CybexOS qualified series' /etc/dnf/versionlock.toml ||
+  fail 'Hyprland and Quickshell are not held to their qualified series'
+dnf -q versionlock list | grep -qx 'Package name: hyprland' ||
+  fail 'dnf does not read the qualified series lock'
 runtime=/home/fedora/.local/share/cybexos/runtime
 [[ -f $runtime/quickshell/shell.qml ]] || fail 'vendor shell.qml is missing'
 [[ -f $runtime/hypr/hyprland.lua ]] || fail 'vendor Hyprland entry point is missing'
@@ -118,6 +128,8 @@ assert_content /home/fedora/.codex/skills/unrelated/SKILL.md \
 while IFS=: read -r uuid type; do
   case "$type" in
     802-3-ethernet|802-11-wireless)
+      # Shared (hotspot) profiles keep NetworkManager's nm-shared zone.
+      [[ $(nmcli -g ipv4.method connection show "$uuid") == shared ]] && continue
       [[ $(nmcli -g connection.zone connection show "$uuid") == cybexos ]] ||
         fail "$uuid is not bound to the CybexOS firewall zone"
       ;;

@@ -22,13 +22,13 @@ SettingsGroup {
     readonly property bool showOverrides: customizing || !matchesShell
 
     width: parent.width
-    title: "Omarchy plugins"
+    title: I18n.tr("Omarchy plugins")
 
     SwitchRow {
         width: parent.width
-        label: "Match shell style"
+        label: I18n.tr("Match shell style")
         checked: !root.showOverrides
-        description: "Plugins that use the shared components take the shell's size, borders and corners"
+        description: I18n.tr("Plugins that use the shared components take the shell's size, borders and corners")
         // Derived, not stored: the overrides below carry their own resets.
         dirty: false
         resetKeys: []
@@ -52,25 +52,25 @@ SettingsGroup {
             // as one control applied to different things.
             SliderRow {
                 width: parent.width
-                label: "Interface scale"
+                label: I18n.tr("Interface scale")
                 settingKey: "pluginScale"
                 resetLabel: "Plugin interface scale"
                 min: 75; max: 200; step: 5; unit: "%"
                 marks: [100]
-                hint: "100% follows the shell's text and size settings"
+                hint: I18n.tr("100% follows the shell's text and size settings")
             }
             PickerRow {
                 width: parent.width
-                label: "Border"
+                label: I18n.tr("Border")
                 settingKey: "pluginBorderMode"
                 resetLabel: "Plugin border"
                 // The custom color only means something under Custom.
                 resetKeys: ["pluginBorderMode", "pluginBorderColor"]
                 model: [
-                    { value: "inherit", label: "Shell" },
-                    { value: "accent", label: "Accent" },
-                    { value: "subtle", label: "Subtle" },
-                    { value: "custom", label: "Custom" }
+                    { value: "inherit", label: I18n.tr("Shell") },
+                    { value: "accent", label: I18n.tr("Accent") },
+                    { value: "subtle", label: I18n.tr("Subtle") },
+                    { value: "custom", label: I18n.tr("Custom") }
                 ]
             }
             Revealer {
@@ -80,7 +80,7 @@ SettingsGroup {
 
                 SettingsTextRow {
                     width: borderColorReveal.width
-                    label: "Border color"
+                    label: I18n.tr("Border color")
                     settingKey: "pluginBorderColor"
                     resetLabel: "Plugin border color"
                     hexColor: true
@@ -100,14 +100,14 @@ SettingsGroup {
 
                     SliderRow {
                         width: parent.width
-                        label: "Border width"
+                        label: I18n.tr("Border width")
                         settingKey: "pluginBorderWidth"
                         resetLabel: "Plugin border width"
                         min: 0; max: 8; step: 1
                     }
                     SliderRow {
                         width: parent.width
-                        label: "Border opacity"
+                        label: I18n.tr("Border opacity")
                         settingKey: "pluginBorderOpacity"
                         resetLabel: "Plugin border opacity"
                         min: 0; max: 100; step: 5; unit: "%"
@@ -117,13 +117,13 @@ SettingsGroup {
             }
             SliderRow {
                 width: parent.width
-                label: "Corners"
+                label: I18n.tr("Corners")
                 settingKey: "pluginRadius"
                 resetLabel: "Plugin corners"
                 min: -1; max: 30; step: 1
                 valueLabel: Settings.pluginRadius < 0 ? "Shell" : Settings.pluginRadius + " px"
                 valueWidth: 52
-                hint: "All the way left follows the shell's corners"
+                hint: I18n.tr("All the way left follows the shell's corners")
             }
         }
     }

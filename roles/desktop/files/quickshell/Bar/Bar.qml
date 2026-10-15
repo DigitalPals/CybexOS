@@ -961,7 +961,7 @@ PanelWindow {
                 restFill: Launcher.open && Launcher.screen === barWindow.screen
                     ? Theme.barChipHover : "transparent"
                 hPadding: 5
-                tooltip: "Apps  ·  Super Space"
+                tooltip: I18n.tr("Apps  ·  Super Space")
                 tooltipAlign: -1
                 onClicked: Launcher.toggle(barWindow.screen)
             }
@@ -1049,7 +1049,7 @@ PanelWindow {
                 tooltip: barWindow.overflowIds.length + " hidden widgets"
                 tooltipAlign: 1
                 Accessible.role: Accessible.Button
-                Accessible.name: "More widgets"
+                Accessible.name: I18n.tr("More widgets")
                 Accessible.description: tooltip
                 Sym {
                     anchors.verticalCenter: parent.verticalCenter

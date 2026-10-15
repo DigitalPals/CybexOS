@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -7,7 +8,7 @@ const { shellDir, load } = require("./shell.cjs");
 const H = load("UpdatesHelpers.js");
 
 function read(relative) {
-    return fs.readFileSync(path.join(shellDir, relative), "utf8");
+    return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
 test("dnf output keeps real package rows and their raw multiarch count", () => {
@@ -262,9 +263,14 @@ test("the completed widget gates reboot action and retains only positive advice"
     assert.match(updates, /property string recoveryPointId:\s*""/);
     assert.match(updates,
         /recoveryPointId = typeof data\.snapshotId === "string" \? data\.snapshotId : ""/);
+    // The last transaction's recovery point is one quiet line with a route
+    // to the Settings section that restores it, never a step row.
     assert.match(popover,
-        /heading: "RECOVERY POINT"\s*body: Updates\.recoveryPointId/,
-        "the recovery point is a detail, not a step row");
+        /id: recoveryLine\s*readonly property string pointId: Updates\.recoveryPointId\s*visible: pointId !== ""/,
+        "the recovery point is a quiet line, not a step row");
+    assert.match(popover, /text: "Recovery point · " \+ LocalTime\.fromText\(/);
+    assert.match(popover, /text: "Manage"[\s\S]{0,160}onClicked: Updates\.openRecoveryPoints\(\)/);
+    assert.doesNotMatch(popover, /heading: "RECOVERY POINT"/, "no raw recovery id in the details");
     assert.match(updates,
         /property string rebootRecommendation:\s*"unavailable"/);
     assert.match(updates,
@@ -439,7 +445,8 @@ test("the one-line summary says what is pending, else what could not be checked"
     const vm = require("node:vm");
     const source = read("Common/Updates.qml");
     const summary = source.match(/readonly property string summary: \{([\s\S]*?)\n    \}/)[1];
-    const state = { busy: false, total: 0, checkError: "", projectStatus: "" };
+    const state = { busy: false, total: 0, checkError: "", projectStatus: "",
+        downloadReady: false };
     const run = () => vm.runInNewContext("(() => {" + summary + "})()", state);
     assert.equal(run(), "Up to date");
     state.projectStatus = "desktop-channel-disabled";
@@ -450,6 +457,9 @@ test("the one-line summary says what is pending, else what could not be checked"
     assert.equal(run(), "Couldn’t check CybexOS releases");
     state.total = 2;
     assert.equal(run(), "2 updates available", "pending updates lead over a failed source");
+    state.downloadReady = true;
+    assert.equal(run(), "Updates downloaded — ready to install",
+        "a finished background download says so instead of the count");
     state.busy = true;
     assert.equal(run(), "Checking for updates…");
     const panel = read("Popovers/UpdatesPopover.qml");

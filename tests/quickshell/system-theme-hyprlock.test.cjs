@@ -89,7 +89,7 @@ test("the lock screen renders the shell's font and colours over a solid base", (
     assert.equal(lines[0], HEADER);
     assert.equal(lines[2], "$font = JetBrainsMono Nerd Font");
     assert.deepEqual(sections(config).map(s => s.name),
-        ["general", "animations", "background", "label", "label", "input-field"]);
+        ["general", "animations", "background", "label", "label", "input-field", "label"]);
     assert.deepEqual(section(config, "background"), { monitor: "", color: "rgba(1a1917ff)" });
     assert.equal(section(config, "label", 0).color, "rgba(f2f0eaff)");
     assert.equal(section(config, "label", 1).color, "rgba(b3afa4ff)");
@@ -99,7 +99,13 @@ test("the lock screen renders the shell's font and colours over a solid base", (
     assert.equal(field.check_color, "rgba(d3d283ff)");
     assert.equal(field.fail_color, "rgba(ff8f8fff)");
     assert.equal(field.placeholder_text, '<span foreground="##b3afa4">Password</span>');
-    assert.equal(field.fail_text, '<span foreground="##ff8f8f">$PAMFAIL</span>');
+    // $FAIL is the latest failure from PAM or hyprlock's fingerprint check.
+    assert.equal(field.fail_text, '<span foreground="##ff8f8f">$FAIL</span>');
+    // The fingerprint prompt under the field is empty, so unseen, unless
+    // cybexos-runtime turns on hyprlock's fprintd check (docs/security.md).
+    const prompt = section(config, "label", 2);
+    assert.equal(prompt.text, "$FPRINTPROMPT");
+    assert.equal(prompt.color, "rgba(b3afa4ff)");
     assert.equal(field.font_family, "$font");
     assert.doesNotMatch(config, /^shape \{$/m);
 });
@@ -149,6 +155,7 @@ test("every lock screen text reaches 4.5:1 on the worst backdrop", () => {
             ["dots", parseRgba(field.font_color)[0], fills],
             ["placeholder", markupColor(field.placeholder_text), fills],
             ["failure", markupColor(field.fail_text), fills],
+            ["fingerprint prompt", parseRgba(section(config, "label", 2).color)[0], backdrops],
         ];
         for (const [name, color, behind] of checks)
             for (const backdrop of behind)
@@ -171,7 +178,7 @@ test("rendering is deterministic and embeds only safe values", () => {
                 || /^\$font = [A-Za-z0-9 ._+-]+$/.test(line) || /^ {2}\w+ =( |$)/.test(line), line);
         }
         // Only the vendor's own hyprlock variables appear.
-        assert.deepEqual([...new Set(config.match(/\$\w+/g))].sort(), ["$PAMFAIL", "$TIME", "$font"]);
+        assert.deepEqual([...new Set(config.match(/\$\w+/g))].sort(), ["$FAIL", "$FPRINTPROMPT", "$TIME", "$font"]);
     }
 });
 
@@ -232,8 +239,16 @@ function resolverFixture(t) {
     const script = path.join(root, "cybexos-runtime");
     const source = fs.readFileSync(resolver, "utf8");
     assert.ok(source.includes("exec /usr/bin/hyprlock "));
-    fs.writeFileSync(script, source.replace("exec /usr/bin/hyprlock ", `exec ${hyprlock} `));
+    // The lock screen's PAM service and authselect's state, as fixtures.
+    const lockPam = path.join(root, "pam.d/cybexos-lock");
+    const authselect = path.join(root, "authselect/authselect.conf");
+    for (const [system] of [["lock_pam=/etc/pam.d/cybexos-lock"], ["authselect_conf=/etc/authselect/authselect.conf"]])
+        assert.ok(source.includes(system), system);
+    fs.writeFileSync(script, source.replace("exec /usr/bin/hyprlock ", `exec ${hyprlock} `)
+        .replace("lock_pam=/etc/pam.d/cybexos-lock", `lock_pam=${lockPam}`)
+        .replace("authselect_conf=/etc/authselect/authselect.conf", `authselect_conf=${authselect}`));
     return {
+        root, home, lockPam, authselect,
         user: path.join(config, "hypr/hyprlock.conf"),
         vendor: path.join(runtime, "hypr/hyprlock.conf"),
         generated: path.join(state, "cybexos/theme/hyprlock.conf"),
@@ -293,4 +308,91 @@ test("a linked, empty or foreign themed file falls back to the vendor lock scree
     fs.rmSync(f.generated);
     fs.mkdirSync(f.generated);
     assert.equal(f.exec(), f.vendor);
+});
+
+test("the lock screen's text and field grow with the shell's text size", () => {
+    const at = size => render({ ...withWallpaper(darkTokens(), WALLPAPER),
+        font: { ...darkTokens().font, size } });
+    const base = at(14);
+    assert.equal(base, render(withWallpaper(darkTokens(), WALLPAPER)),
+        "the default size renders exactly what an older export did");
+    const large = at(21);
+    const clock = section(large, "label", 0);
+    const date = section(large, "label", 1);
+    const field = section(large, "input-field");
+    assert.equal(clock.font_size, "126");
+    assert.equal(clock.position, "0, 225");
+    assert.equal(date.font_size, "36");
+    assert.equal(date.position, "0, 128");
+    assert.equal(field.size, "450, 81");
+    assert.equal(field.position, "0, -27");
+    // Colours, the wallpaper and the scrim are untouched by size.
+    assert.deepEqual(section(large, "background"), section(base, "background"));
+    assert.deepEqual(section(large, "shape"), section(base, "shape"));
+    // A small size keeps the same proportions.
+    const small = at(10);
+    assert.equal(section(small, "label", 0).font_size, "60");
+    assert.equal(section(small, "input-field").size, "214, 39");
+});
+
+// cybexos-runtime adds the sign-in factors at lock time (docs/security.md).
+test("the lock screen gains the fingerprint-free PAM service and hyprlock's fingerprint check", t => {
+    const f = resolverFixture(t);
+    const runtime = path.join(f.root, "run");
+    fs.mkdirSync(runtime, { mode: 0o700 });
+    const rendered = path.join(runtime, "cybexos/hyprlock.conf");
+    // Without the PAM service, the file is used as it is: naming a missing
+    // service would refuse every password.
+    assert.equal(f.exec({ XDG_RUNTIME_DIR: runtime }), f.vendor);
+
+    fs.mkdirSync(path.dirname(f.lockPam));
+    fs.writeFileSync(f.lockPam, "auth include password-auth\n");
+    fs.mkdirSync(path.dirname(f.authselect));
+    fs.writeFileSync(f.authselect, "sssd\nwith-silent-lastlog\nwith-mdns4\n");
+    assert.equal(f.exec({ XDG_RUNTIME_DIR: runtime }), rendered);
+    let config = fs.readFileSync(rendered, "utf8");
+    const vendor = fs.readFileSync(f.vendor, "utf8");
+    assert.ok(config.startsWith(vendor), "the layout is kept byte for byte");
+    assert.match(config, /auth \{\n  pam \{\n    module = cybexos-lock\n  \}/);
+    assert.match(config, /fingerprint \{\n    enabled = false\n/,
+        "no fingerprint check while authselect does not offer fingerprints");
+    assert.equal((fs.statSync(rendered).mode & 0o077), 0, "the rendered file is private");
+
+    fs.writeFileSync(f.authselect, "sssd\nwith-silent-lastlog\nwith-fingerprint\n");
+    f.exec({ XDG_RUNTIME_DIR: runtime });
+    config = fs.readFileSync(rendered, "utf8");
+    assert.match(config, /fingerprint \{\n    enabled = true\n    ready_message = Touch the fingerprint reader or enter your password\n/);
+    assert.doesNotMatch(config, /ignore_empty_input = false|security key/,
+        "nothing about keys without a registered key");
+
+    // The themed lock screen gets the same additions.
+    fs.writeFileSync(f.generated, render(darkTokens()));
+    f.exec({ XDG_RUNTIME_DIR: runtime });
+    assert.ok(fs.readFileSync(rendered, "utf8").startsWith(render(darkTokens())));
+
+    // A person's own lock file keeps exactly the authentication it sets.
+    fs.writeFileSync(f.user, "general {}\n");
+    assert.equal(f.exec({ XDG_RUNTIME_DIR: runtime }), f.user);
+});
+
+test("a registered security key can be used from an empty password field", t => {
+    const f = resolverFixture(t);
+    const runtime = path.join(f.root, "run");
+    fs.mkdirSync(runtime, { mode: 0o700 });
+    fs.mkdirSync(path.dirname(f.lockPam));
+    fs.writeFileSync(f.lockPam, "-auth sufficient pam_u2f.so\nauth include password-auth\n");
+    const mapping = path.join(f.home, ".config/Yubico/u2f_keys");
+    fs.mkdirSync(path.dirname(mapping), { recursive: true });
+    const user = require("node:os").userInfo().username;
+    fs.writeFileSync(mapping, `someone-else:kh,pk,es256,+presence\n`);
+    let config = fs.readFileSync(f.exec({ XDG_RUNTIME_DIR: runtime }), "utf8");
+    assert.doesNotMatch(config, /security key/, "another account's key is not this account's");
+
+    fs.writeFileSync(mapping, `${user}:kh,pk,es256,+presence`);
+    config = fs.readFileSync(f.exec({ XDG_RUNTIME_DIR: runtime }), "utf8");
+    // PAM tries the key when the field is submitted, so Enter on an empty
+    // field must reach it, and the wait for a touch is named.
+    assert.match(config, /^general:ignore_empty_input = false$/m);
+    assert.match(config, />Password or security key<\/span>/);
+    assert.match(config, /^ {2}placeholder_text = .*\n {2}check_text = Touch your security key if it flashes$/m);
 });

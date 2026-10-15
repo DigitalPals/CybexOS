@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -229,13 +230,13 @@ test("global mute state only counts channels that exist", () => {
 });
 
 test("the audio panel has routing, mixer, peak, snapshot, and scroll structure", () => {
-    const control = fs.readFileSync(path.join(shellDir,
-        "Popovers/ControlCenterPopover.qml"), "utf8");
-    const picker = fs.readFileSync(path.join(shellDir,
-        "Popovers/AudioPopover.qml"), "utf8");
-    const blockMeter = fs.readFileSync(path.join(shellDir,
-        "Popovers/BlockMeter.qml"), "utf8");
-    const audio = fs.readFileSync(path.join(shellDir, "Common/Audio.qml"), "utf8");
+    const control = untranslated(fs.readFileSync(path.join(shellDir,
+        "Popovers/ControlCenterPopover.qml"), "utf8"));
+    const picker = untranslated(fs.readFileSync(path.join(shellDir,
+        "Popovers/AudioPopover.qml"), "utf8"));
+    const blockMeter = untranslated(fs.readFileSync(path.join(shellDir,
+        "Popovers/BlockMeter.qml"), "utf8"));
+    const audio = untranslated(fs.readFileSync(path.join(shellDir, "Common/Audio.qml"), "utf8"));
 
     assert.match(control, /Accessible\.name:\s*"Choose audio output"/);
     assert.match(control, /Popouts\.openPanel\("audio",\s*"right"\)/);
@@ -303,7 +304,7 @@ test("the audio panel has routing, mixer, peak, snapshot, and scroll structure",
 });
 
 test("the output routing helper moves named apps but leaves filter internals", () => {
-    const route = fs.readFileSync(path.join(shellDir, "scripts/audio-route"), "utf8");
+    const route = untranslated(fs.readFileSync(path.join(shellDir, "scripts/audio-route"), "utf8"));
     assert.match(route, /pactl set-default-sink "\$target"/);
     assert.match(route, /application\[\.\]name/);
     assert.match(route, /pactl move-sink-input "\$input" "\$target"/);
@@ -337,7 +338,7 @@ printf '%s #43\\n\\tProperties:\\n\\t\\tapplication.name = "mpv"\\n' "$header"
             },
         });
         assert.equal(run.status, 0, run.stderr);
-        const moves = fs.readFileSync(calls, "utf8").split("\n")
+        const moves = untranslated(fs.readFileSync(calls, "utf8")).split("\n")
             .filter(line => line.includes("move-sink-input"))
             .map(line => line.replace(/^LC_ALL=\S* /, ""));
         assert.deepEqual(moves, ["move-sink-input 41 usb-dac", "move-sink-input 43 usb-dac"],
@@ -348,8 +349,8 @@ printf '%s #43\\n\\tProperties:\\n\\t\\tapplication.name = "mpv"\\n' "$header"
 });
 
 test("the input routing helper updates the default and existing recorders", () => {
-    const route = fs.readFileSync(path.join(shellDir,
-        "scripts/audio-source-route"), "utf8");
+    const route = untranslated(fs.readFileSync(path.join(shellDir,
+        "scripts/audio-source-route"), "utf8"));
     assert.match(route, /pactl set-default-source "\$target"/);
     assert.match(route, /pactl list short source-outputs/);
     assert.match(route, /pactl move-source-output "\$output" "\$target"/);

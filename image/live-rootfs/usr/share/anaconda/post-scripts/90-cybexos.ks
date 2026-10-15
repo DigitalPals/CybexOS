@@ -1,3 +1,11 @@
+%post --nochroot --erroronfail --log=/var/log/anaconda/cybexos-stage.log
+set -eu
+# Anaconda runs %post scripts in this file's order. This first one records an
+# unattended seed's explicit choices in the target before the in-target hook
+# below records config.yml from them. Nothing here is a credential.
+/usr/libexec/cybexos-installer-target --stage
+%end
+
 %post --erroronfail --log=/var/log/anaconda/cybexos-cleanup.log
 set -eu
 # These are exact live-image-owned paths, not user customization directories.
@@ -15,6 +23,7 @@ rm -f /etc/systemd/system/multi-user.target.wants/cybexos-live.service
 rm -f /usr/lib/systemd/system/cybexos-live.service
 rm -f /usr/libexec/cybexos-live-setup
 rm -f /usr/libexec/cybexos-installer-backend /usr/libexec/cybexos-installer-target
+rm -f /usr/libexec/cybexos-installer-seed
 rm -f /usr/bin/cybexos-installer-browser
 rm -rf /usr/share/cockpit/cybexos-installer
 rm -f /etc/anaconda/conf.d/20-cybexos.conf

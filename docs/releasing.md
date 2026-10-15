@@ -101,6 +101,14 @@ gh attestation verify cybexos-VERSION.tar.zst \
   --source-ref refs/tags/vVERSION --deny-self-hosted-runners
 ```
 
+The same attestation has a second subject: the ISO's SPDX SBOM,
+`CybexOS-Live-44-BUILD-ID.spdx.json`, which the workflow also verifies offline
+with this bundle. A separate SPDX attestation binds the SBOM to the ISO digest
+and is published as `CybexOS-Live-44-BUILD-ID.iso.sbom.sigstore.jsonl`;
+`SHA256SUMS` lists that bundle. See [the SBOM section of the ISO release
+guide](iso-releases.md#software-bill-of-materials) for its contents and
+verification.
+
 That offline attestation check, the immutable-release flag, and the API
 SHA-256 digest form the updater trust boundary. Updating needs no GitHub
 login, and a release without its bundle is refused. Files copied from an

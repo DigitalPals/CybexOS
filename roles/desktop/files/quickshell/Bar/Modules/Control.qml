@@ -13,9 +13,9 @@ BarModule {
         isle: root.isle
         anchorItem: root.groupAnchor ?? controlButton
         hPadding: 5
-        tooltip: "Control Center"
+        tooltip: I18n.tr("Control Center")
         Accessible.role: Accessible.Button
-        Accessible.name: "Control Center"
+        Accessible.name: I18n.tr("Control Center")
 
         BarBrandIcon {
             anchors.verticalCenter: parent.verticalCenter

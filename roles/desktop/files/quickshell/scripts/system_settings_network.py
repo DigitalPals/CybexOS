@@ -1,5 +1,12 @@
-"""Common profile editor using libnm validation and NM-owned rollback."""
+"""Common profile editor using libnm validation and NM-owned rollback.
+
+VPN and hotspot requests are answered by network-tool.py, the nmcli helper
+the drawer uses too, so both surfaces share one implementation.
+"""
+import functools
+import importlib.util
 import ipaddress
+from pathlib import Path
 import re
 import time
 
@@ -26,6 +33,34 @@ def ip_values(text, family, addresses=False):
         result.append(ip)
     if len(result) > 16:
         raise ValueError('Enter at most sixteen addresses')
+    return result
+
+
+@functools.cache
+def network_tool():
+    spec = importlib.util.spec_from_file_location('network_tool', Path(__file__).with_name('network-tool.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def connection_extras():
+    try:
+        return network_tool().connection_extras()
+    except Exception:
+        # A failing VPN or hotspot read must not hide the profiles this page
+        # edits; the VPN group says its list could not be read.
+        return dict(vpns=[], hotspot=dict(available=False), extrasError=True)
+
+
+def connection_action(kind, request):
+    tool = network_tool()
+    handler = tool.vpn_action if kind == 'vpn' else tool.hotspot_action
+    try:
+        result = handler(dict(request, action=str(request.get('op', ''))))
+    except tool.ToolError as error:
+        raise ValueError(error.message) from error
+    result.pop('success', None)
     return result
 
 
@@ -85,6 +120,10 @@ class NetworkSettings:
             kind = setting.props.type
             if kind not in PHYSICAL:
                 continue
+            # An access point (the hotspot) has its own group on the page.
+            wireless = connection.get_setting_wireless()
+            if wireless is not None and wireless.props.mode == 'ap':
+                continue
             ip4 = self.ip_snapshot(connection.get_setting_ip4_config(), 4)
             ip6 = self.ip_snapshot(connection.get_setting_ip6_config(), 6)
             supported = all(ip['method'] in ('auto', 'manual', 'disabled') for ip in (ip4, ip6))
@@ -95,7 +134,8 @@ class NetworkSettings:
                                  metered=int(setting.props.metered), ipv4=ip4, ipv6=ip6))
         devices = [dict(name=d.get_iface(), state=int(d.get_state())) for d in self.client.get_devices()
                    if d.get_device_type() in (self.NM.DeviceType.ETHERNET, self.NM.DeviceType.WIFI)]
-        return dict(profiles=sorted(profiles, key=lambda p: (not p['active'], p['name'])), devices=devices)
+        return dict(profiles=sorted(profiles, key=lambda p: (not p['active'], p['name'])), devices=devices,
+                    **connection_extras())
 
     def connection(self, request):
         remote = self.client.get_connection_by_uuid(str(request.get('uuid', '')))
@@ -160,6 +200,8 @@ class NetworkSettings:
         action = request.get('action', 'snapshot')
         if action == 'snapshot':
             return self.snapshot()
+        if action in ('vpn', 'hotspot'):
+            return connection_action(action, request)
         if action in ('confirm', 'rollback'):
             checkpoint = request.get('checkpoint')
             if not self.checkpoint_exists(checkpoint):

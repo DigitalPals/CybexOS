@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
 const {
@@ -17,11 +18,11 @@ const { shellDir } = require("./shell.cjs");
 const repoDir = path.resolve(__dirname, "../..");
 
 function readRepo(relativePath) {
-    return fs.readFileSync(path.join(repoDir, relativePath), "utf8");
+    return untranslated(fs.readFileSync(path.join(repoDir, relativePath), "utf8"));
 }
 
 function readShell(relativePath) {
-    return fs.readFileSync(path.join(shellDir, relativePath), "utf8");
+    return untranslated(fs.readFileSync(path.join(shellDir, relativePath), "utf8"));
 }
 
 function startProcess(command, args, env, input = "") {
@@ -337,7 +338,7 @@ test("browser-login ownership excludes competitors and logout settles its owner"
     runningChildren.push(first.child);
     const firstRecord = await waitFor(() => {
         try {
-            return JSON.parse(fs.readFileSync(browserLoginPath, "utf8"));
+            return JSON.parse(untranslated(fs.readFileSync(browserLoginPath, "utf8")));
         } catch {
             return null;
         }
@@ -367,14 +368,14 @@ test("browser-login ownership excludes competitors and logout settles its owner"
     await cancelled.text();
     const firstResult = await first.result;
     assert.equal(firstResult.status, 1);
-    assert.deepEqual(JSON.parse(fs.readFileSync(browserLoginPath, "utf8")), replacement,
+    assert.deepEqual(JSON.parse(untranslated(fs.readFileSync(browserLoginPath, "utf8"))), replacement,
         "the old owner's finally block must leave a newer callback record intact");
 
     const pending = startProcess(process.execPath, [script, "login"], env);
     runningChildren.push(pending.child);
     const pendingRecord = await waitFor(() => {
         try {
-            const record = JSON.parse(fs.readFileSync(browserLoginPath, "utf8"));
+            const record = JSON.parse(untranslated(fs.readFileSync(browserLoginPath, "utf8")));
             return record.operationId !== replacement.operationId ? record : null;
         } catch {
             return null;
@@ -774,14 +775,14 @@ require("node:fs").writeFileSync(${JSON.stringify(panelActivated)},
     });
     assert.doesNotMatch(connected.stdout,
         /clerk-native-client-token|relay-clerk-template-token|relay-access-token|environment-access-token|environment-bootstrap/);
-    const opened = JSON.parse(fs.readFileSync(browserOpened, "utf8"));
+    const opened = JSON.parse(untranslated(fs.readFileSync(browserOpened, "utf8")));
     assert.match(opened.landing, /^http:\/\/127\.0\.0\.1:\d+\/$/);
     assert.equal(opened.providerRedirect, "https://accounts.example.test/t3-connect");
-    assert.equal(fs.readFileSync(mimeCalled, "utf8"),
+    assert.equal(untranslated(fs.readFileSync(mimeCalled, "utf8")),
         "default t3code-nightly.desktop x-scheme-handler/t3code");
     const activation = await waitFor(() => {
         try {
-            return JSON.parse(fs.readFileSync(panelActivated, "utf8"));
+            return JSON.parse(untranslated(fs.readFileSync(panelActivated, "utf8")));
         } catch {
             return null;
         }
@@ -790,7 +791,7 @@ require("node:fs").writeFileSync(${JSON.stringify(panelActivated)},
         "call", "--", "popouts", "open", "t3code"]);
 
     const statePath = path.join(stateRoot, "t3code-bar.json");
-    const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    const state = JSON.parse(untranslated(fs.readFileSync(statePath, "utf8")));
     assert.deepEqual({
         authMode: state.authMode,
         cloudStatus: state.cloudStatus,

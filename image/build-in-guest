@@ -40,7 +40,8 @@ rpmbuild -bb --define "_topdir $build_root/rpmbuild" "$build_root/desktop.spec"
 mkdir -p "$build_root/repo"
 cp "$build_root"/rpmbuild/RPMS/*/*.rpm "$build_root/repo/"
 createrepo_c "$build_root/repo"
-ksvalidator --version F44 "$build_root/live.ks"
+fedora_release=$(python3 "$source_root/image/fedora_target.py")
+ksvalidator --version "F$fedora_release" "$build_root/live.ks"
 mkdir -p "$build_root/tmp"
 phase compose-and-compress
 cd "$artifacts"

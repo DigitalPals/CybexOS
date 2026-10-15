@@ -98,23 +98,27 @@ journalctl --user -u xps-speaker-tuning -b
 
 ## Optional fingerprint reader
 
-Fingerprint setup is separately hardware-gated. The detector trusts explicit
+Fingerprint support itself is no longer XPS-specific: every installation gets
+Fedora's `fprintd`/`fprintd-pam` and `authselect`'s `with-fingerprint`, and
+Settings > Security manages enrolment (see [Fingerprints and security
+keys](security.md)). Without a reader or an enrolled finger, every prompt asks
+for the password exactly as before.
+
+What remains in this role is the hardware gate. The detector trusts explicit
 fingerprint/biometric product descriptors and uses a conservative, unbound-USB
 vendor fallback. It explicitly rejects Synaptics `06cb:0701` (SVP7500), which
 is the IPU7 camera's USBIO bridge on the tested XPS 14 rather than a fingerprint
 reader. The tested SKU `0DB9` exposes that bridge but no fingerprint device to
-current `libfprint`, so the role makes no fingerprint package or PAM changes on
-that machine.
+current `libfprint`, so Settings > Security reports that no reader was found.
 
-If another precisely matched XPS build has a real reader, the role installs
-Fedora's `libfprint`, `fprintd`, and `fprintd-pam` packages. It asks fprintd over
-D-Bus whether the current libfprint release supports the device before enabling
-Fedora's managed `authselect` feature `with-fingerprint`. It never edits PAM
-files directly, does not enable the static D-Bus service manually, and keeps
-`pam_unix` password authentication as the fallback. No fingerprint is enrolled
-during Ansible.
+When a precisely matched XPS build has a possible reader, the role installs the
+`xps-fingerprint-check` diagnostic and asks fprintd over D-Bus whether the
+current libfprint release supports the device; if not, it reports that
+password authentication is unchanged. It never edits PAM files and enrols
+nothing. Existing installations keep their `with-fingerprint` state; the
+shared policy only adds the feature where it was absent, once.
 
-Enroll and test one interactively afterward:
+Enrol in Settings > Security, or interactively:
 
 ```bash
 fprintd-enroll
@@ -124,15 +128,12 @@ authselect current --raw
 /usr/local/libexec/xps-fingerprint-check "$USER"
 ```
 
-SDDM recovery login retains Fedora's stock password PAM stack. Fingerprint
-login through its greeter is not qualified; GDM's former dedicated fingerprint
-conversation is not part of the replacement. Hyprlock continues to use the
-system PAM configuration with password authentication available as the
-fallback. Fedora has no stock `authselect` feature for inserting a lid-state
-command into PAM, so the role does not copy Omarchy's custom clamshell helper.
-This does not matter on the tested `0DB9` without a reader; on a future
-reader-equipped configuration, password remains available when the reader is
-inaccessible.
+SDDM login stays password-only, so the login keyring is unlocked as before.
+The lock screen uses hyprlock's own fprintd check beside a fingerprint-free PAM
+service, and sudo and Polkit use Fedora's `system-auth` with password fallback.
+Fedora has no stock `authselect` feature for inserting a lid-state command into
+PAM, so the role does not copy Omarchy's custom clamshell helper; with the lid
+closed, the reader times out and the password is asked.
 
 ## OVTI08F4 / IPU7 camera
 
@@ -242,8 +243,10 @@ role prunes or upgrades any previously installed camera DKMS bundle.
 
 ### Secure Boot and kernel updates
 
-DKMS and RPM Fusion akmods share `/etc/pki/akmods`. With Secure Boot enabled,
-enroll that public key once:
+DKMS and RPM Fusion akmods share `/etc/pki/akmods`. On a machine with an
+NVIDIA GPU, the [NVIDIA role](nvidia.md) queues this key's enrollment for you;
+one enrollment covers both. Otherwise, with Secure Boot enabled, enroll that
+public key once:
 
 ```bash
 sudo mokutil --import /etc/pki/akmods/certs/public_key.der

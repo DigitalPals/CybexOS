@@ -307,7 +307,7 @@ PopoutPanel {
         }
 
         GroupLabel {
-            text: navGroup.modelData.toUpperCase()
+            text: I18n.tr(navGroup.modelData).toUpperCase()
             topPad: navGroup.index === 0 ? 0 : 6
             visible: !root.compactNav
         }
@@ -405,7 +405,7 @@ PopoutPanel {
                     clip: true
                     activeFocusOnTab: true
                     Accessible.role: Accessible.EditableText
-                    Accessible.name: "Search settings"
+                    Accessible.name: I18n.tr("Search settings")
                     onTextChanged: {
                         root.searchQuery = text;
                         root.searchSelection = 0;
@@ -432,7 +432,7 @@ PopoutPanel {
                         visible: parent.text === "" && !parent.activeFocus
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
-                        text: "Search"
+                        text: I18n.tr("Search")
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.control
                         color: Theme.textFaint
@@ -522,7 +522,7 @@ PopoutPanel {
             SettingsAction {
                 visible: Settings.undoAvailable
                 compact: root.compactNav
-                text: "Undo"
+                text: I18n.tr("Undo")
                 glyph: "undo"
                 Accessible.name: "Undo " + Settings.resetLabel + " reset"
                 onTriggered: Settings.undoReset()
@@ -531,7 +531,7 @@ PopoutPanel {
             SettingsAction {
                 visible: Settings.persistenceError && !Settings.undoAvailable
                 compact: root.compactNav
-                text: "Retry"
+                text: I18n.tr("Retry")
                 glyph: "refresh"
                 Accessible.name: Settings.loadError
                     ? "Retry loading settings" : "Retry saving settings"
@@ -616,7 +616,9 @@ PopoutPanel {
                 case "power": return powerPage;
                 case "region": return regionPage;
                 case "accounts": return accountsPage;
+                case "security": return securityPage;
                 case "plugins": return pluginsPage;
+                case "backup": return backupPage;
                 case "about": return aboutPage;
                 default: return appearancePage;
                 }
@@ -674,7 +676,7 @@ PopoutPanel {
                                 anchors.leftMargin: 10
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 180
-                                text: resultRow.modelData.pageLabel
+                                text: I18n.tr(resultRow.modelData.pageLabel)
                                     + "  ›  " + resultRow.modelData.group
                                 font.family: Theme.fontMenu
                                 font.pixelSize: Theme.typography.metadata
@@ -688,7 +690,7 @@ PopoutPanel {
                                 anchors.right: valueText.left
                                 anchors.rightMargin: 10
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: resultRow.modelData.label
+                                text: I18n.tr(resultRow.modelData.label)
                                 font.family: Theme.fontMenu
                                 font.pixelSize: Theme.typography.primary
                                 font.weight: Theme.weightMedium
@@ -743,8 +745,8 @@ PopoutPanel {
                     Repeater {
                         model: [
                             { keys: "↑↓", verb: "move" },
-                            { keys: "⏎", verb: "open row" },
-                            { keys: "Esc", verb: "back to page" }
+                            { keys: "⏎", verb: I18n.tr("open row") },
+                            { keys: "Esc", verb: I18n.tr("back to page") }
                         ]
 
                         delegate: Row {
@@ -758,7 +760,7 @@ PopoutPanel {
                                 color: Theme.textDim
                             }
                             Text {
-                                text: parent.modelData.verb
+                                text: I18n.tr(parent.modelData.verb)
                                 font.family: Theme.fontMenu
                                 font.pixelSize: Theme.typography.secondary
                                 color: Theme.textFaint
@@ -801,10 +803,12 @@ PopoutPanel {
         Component { id: soundPage; SoundPage {} }
         Component { id: displaysPage; DisplaysPage {} }
         Component { id: accountsPage; AccountsPage {} }
+        Component { id: securityPage; SecurityPage {} }
         Component { id: touchpadPage; TouchpadPage {} }
         Component { id: keyboardPage; KeyboardPage {} }
         Component { id: powerPage; PowerPage {} }
         Component { id: regionPage; RegionPage {} }
+        Component { id: backupPage; BackupPage {} }
         Component { id: aboutPage; AboutPage {} }
     }
 
@@ -838,7 +842,7 @@ PopoutPanel {
             Text {
                 id: headerTitle
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.searchActive ? "Search" : root.currentPage.label
+                text: root.searchActive ? I18n.tr("Search") : I18n.tr(root.currentPage.label)
                 font.family: Theme.fontMenu
                 font.pixelSize: Theme.typography.title
                 font.weight: Theme.weightSemibold
@@ -879,7 +883,7 @@ PopoutPanel {
 
             SettingsAction {
                 compact: true
-                text: "Close"
+                text: I18n.tr("Close")
                 glyph: "close"
                 onTriggered: Settings.closePanel()
             }

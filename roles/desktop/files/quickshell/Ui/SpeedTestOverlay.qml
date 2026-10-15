@@ -6,6 +6,7 @@ import Quickshell
 import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
+import "../Common"
 
 // Centered speed test overlay shared by the network and disk speed tests. No
 // card: like the Tucson's floating cluster, the two dials sit directly on a
@@ -166,7 +167,7 @@ PanelWindow {
         // Centered on the dial pair. Fades rather than unmounts while a run
         // is in flight, so the cluster never shifts.
         Button {
-          text: "Run Again"
+          text: I18n.tr("Run Again")
           tooltipText: root.runAgainTooltip
           bordered: true
           enabled: !root.running

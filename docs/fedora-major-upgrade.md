@@ -133,8 +133,10 @@ branch for all compatibility changes.
 
 Create an upgrade branch and audit every release-coupled input. At minimum:
 
-- change `fedora_release`, the play name in `site.yml`, README support text,
-  and the Fedora container/assertion in `.github/workflows/tests.yml`;
+- change `fedora_release` and `supportedFedora` together, the README support
+  text, and the required job's container and name in
+  `.github/workflows/tests.yml` (its release assertion and the image tooling
+  read `fedora_release`); see [Flipping the release](#flipping-the-release);
 - review required and optional RPM names (including the explicit `nodejs24`
   packages), RPM Fusion release packages, vendor repositories, COPR output,
   Flatpak behavior, and SELinux policy on the target release;
@@ -151,11 +153,13 @@ Create an upgrade branch and audit every release-coupled input. At minimum:
   changing comments;
 - review the dated Rust nightly and all other immutable dependency pins for
   compatibility, upgrading only those with a concrete reason; and
-- inspect hard-coded release strings with:
+- run `python3 tests/fedora-release.py`, which names every remaining
+  release literal that disagrees with `fedora_release`, and inspect the rest
+  with:
 
   ```bash
   rg -n 'Fedora 44|fedora:44|fc44|nodejs24|releasever|fedora_release' \
-    README.md docs inventory roles site.yml tests .github
+    README.md docs inventory roles site.yml tests image .github
   ```
 
 Parser fixtures containing `fc44` transaction examples do not need mechanical
@@ -220,3 +224,145 @@ Do not interrupt power during the offline transaction.
 Only merge the target-release branch and update the public support statement
 after the installed-system checks pass. Record hardware gaps in
 `docs/xps-2026-hardware.md` rather than hiding them with ignored failures.
+
+## Fedora 45 qualification
+
+**Fedora 45 is not qualified.** `fedora_release` remains `"44"` and
+`release-manifest.json` lists only `"44"` in `supportedFedora`. Neither changes
+until every item below has passed on a dedicated target branch, recorded with
+dates, versions and run links. The `Fedora preview` CI job is an early warning
+at source level; a passing fixture suite is not an installation result.
+
+### Repositories and COPR availability
+
+- [ ] Fedora 45 `fedora`, `updates` and `fedora-cisco-openh264` metalinks
+  resolve for x86_64, and the builder's `fedora-gpg-keys` ships
+  `RPM-GPG-KEY-fedora-45-x86_64`. `image/build.repo` uses `$releasever`, so it
+  needs no edit if the repository IDs keep their `fedora-N`,
+  `updates-released-fN` and `fedora-cisco-openh264-N` forms.
+- [ ] RPM Fusion publishes `rpmfusion-free-release-45` and
+  `rpmfusion-nonfree-release-45` at the URLs `roles/apps` derives from
+  `fedora_release`, signed by the pinned key fingerprints, and every codec and
+  akmod package the roles request from it resolves.
+- [ ] The Brave, 1Password, ChatGPT and Tailscale repositories only use
+  `$basearch`. Install each vendor RPM on Fedora 45 anyway: dependencies,
+  signatures under the new RPM, and scriptlets (the ChatGPT `%pretrans` that
+  `image/compose` installs in a second transaction) can still break.
+- [ ] The `sdegler/hyprland` COPR has a `fedora-45-x86_64` chroot with
+  successful builds of every package the desktop requires: `hyprland`,
+  `hyprland-guiutils`, `quickshell`, `hypridle`, `hyprlock`, `hyprsunset` and
+  `xdg-desktop-portal-hyprland` (`image/cybexos-desktop.spec`). Its signing
+  key must still match the pinned fingerprint.
+- [ ] Flathub has no Fedora release, but install every `apps_flatpaks` entry
+  on Fedora 45 to cover its Flatpak and OSTree versions.
+- [ ] Required and optional RPM names resolve, including `nodejs24` and
+  `nodejs24-npm`, `base_required_packages`, and the CI dependency list in
+  `.github/actions/fedora-source-environment/action.yml`.
+
+### Hyprland and Quickshell
+
+- [ ] Record the Hyprland and Quickshell versions the COPR builds for Fedora
+  45 and read the upstream changes since the last verified Fedora 44 versions
+  (Hyprland 0.56.2 and Quickshell 0.2.1 in this documentation).
+- [ ] The compositor configuration is Hyprland Lua
+  (`roles/desktop/files/*.lua`, `roles/desktop/templates/*.lua.j2`). Confirm
+  that the API it calls keeps its semantics: `hl.bind`, `hl.unbind`,
+  `hl.dispatch`, `hl.exec_cmd`, the `hl.dsp` dispatchers (`exec_cmd`,
+  `window`, `focus`, `layout`, `global`, `exit`, `send_key_state`),
+  `hl.config`, `hl.get_config`, `hl.env`, `hl.monitor`, `hl.get_monitors`,
+  `hl.on`, `hl.window_rule`, `hl.layer_rule`, `hl.workspace_rule`,
+  `hl.animation` and `hl.curve`. The luajit fixtures in `tests/hyprland-*`
+  stub this API, so only a live session with no configuration errors proves
+  it.
+- [ ] Run `tests/qml-lint` and the QML runtime stages with Fedora 45's Qt and
+  the COPR's `qs`, then run the shell through `quickshell.service` and check
+  its journal for QML errors. Check hypridle, hyprlock, the portals, screen
+  sharing and the authentication agent in the same session.
+
+### Anaconda and the custom installer
+
+- [ ] Diff the Fedora 45 Anaconda and anaconda-webui against the reviewed
+  reference, Anaconda 44.30 and anaconda-webui 68 (`image/INSTALLER.md`).
+  Review every interface `image/live-rootfs/usr/libexec/cybexos-installer-backend`
+  calls (storage scan, automatic partitioning with Btrfs and LUKS2, disk
+  initialization, tasks, users, localization and `InstallWithTasks`). Update
+  the strict proxy member sets in `image/test_installer.py` from the new
+  source rather than loosening them.
+- [ ] Re-check `image/live-rootfs/etc/anaconda/conf.d/20-cybexos.conf`: the
+  `webui_web_engine` hook, hidden pages and spokes, the Btrfs default scheme
+  and the network default. Re-check the liveinst launcher's authorization and
+  its refusal of Kickstart-based live installations.
+- [ ] Confirm that Anaconda still runs the post-scripts that
+  `usr/share/anaconda/interactive-defaults.ks` includes from
+  `post-scripts/90-cybexos.ks` through the Runtime DBus module, and validate
+  both kickstarts with pykickstart's `F45` handler.
+
+### Image build
+
+- [ ] `image/live.ks` and `image/build.repo` name no release, and
+  `image/compose`, `image/build-in-guest` and `image/build` read
+  `fedora_release` through `image/fedora_target.py`.
+- [ ] Review the builder's livecd-tools/imgcreate. `image/compose` adds the
+  signature verification livecd-tools 31 skips, loads RPM 6's SQLite database,
+  installs `Requires(pretrans)` packages in a second transaction and hooks
+  `_configure_bootloader`. Re-read each workaround against the new version and
+  never drop signature verification.
+- [ ] Pin the official Fedora Cloud 45 image name and SHA-256 together, from
+  Fedora's signed CHECKSUM file, in `image/build`, `image/qualify-checkout`
+  and `tests/fedora-vm-convergence` (and the literal in
+  `tests/repository-policy.py`). The builder runs the target release; the
+  source contract rejects a builder image for another release.
+- [ ] Check the live initramfs that compose regenerates with
+  `image/dracut-live.conf`, the Plymouth `cybex` theme, GRUB and syslinux
+  branding on UEFI and BIOS, and the kernel, firmware and Mesa packages
+  compose requires.
+- [ ] Sign the desktop RPM in a Fedora 45 container
+  (`.github/workflows/desktop-release.yml`) and publish a separate update
+  channel: `image/channels/stable.json` and `image/github_release.py` use the
+  `/44/x86_64` path.
+
+### CI preview job
+
+- [ ] The `Fedora preview` workflow (`.github/workflows/fedora-preview.yml`)
+  runs `./tests/run` in `fedora:45` on pull requests, pushes to `main`,
+  weekly and on demand. It shares the required job's dependency and COPR
+  setup, installs what Fedora 45 provides, runs every check it can, and then
+  fails the job if anything was unavailable. The job may fail without failing
+  its run; it is not a required check and `release.yml` never calls it.
+  Require a run with every stage passing and no `Unavailable` report before
+  flipping; even a clean preview qualifies nothing.
+
+### VM qualification
+
+- [ ] `./tests/fedora-vm-convergence` on the pinned Fedora Cloud 45 image:
+  a zero-change second pass and uninstall restoration.
+- [ ] Build a Fedora 45 ISO from the target revision and run `image/test-live`
+  and `image/qualify` for every scenario in `image/qualification.py`
+  (`encrypted-us`, `plain-us`, `encrypted-nl`, `plain-nl`, `encrypted-de`,
+  `plain-de`), then `image/qualify-checkout` and `image/release-gate`, which
+  also requires the prior-release RPM upgrade and recovery check.
+- [ ] Upgrade lifecycle: install the current Fedora 44 release, then run
+  `cybex upgrade-system` to 45 once with a signed target RPM and once with a
+  reviewed target checkout, plus a deliberately failed convergence that must
+  roll back. Use encrypted and plain installations.
+- [ ] Hardware: the XPS camera bundle and BTF ABI baseline, Secure Boot,
+  audio, haptics, fingerprint, external displays and suspend/resume, as in
+  [section 4](#4-converge-the-upgraded-system).
+
+### Flipping the release
+
+Only after every item above passes, on the target branch and in one change:
+
+1. Set `fedora_release: "45"` in `inventory/group_vars/all.yml` and
+   `"supportedFedora": ["45"]` in `release-manifest.json`. The playbook
+   targets exactly one release, so the manifest names only that one.
+2. Run `python3 tests/fedora-release.py`. It fails with each remaining
+   literal to review: the required job's container and name, the Fedora Cloud
+   pins, the signing container, the update channel path, the `fc45` mdview
+   asset and the source-build image comment.
+3. Rename the required check to `Fedora 45 source contract` in branch
+   protection and `docs/releasing.md`; the `fedora-44` job id can stay.
+4. Move the preview matrix to the following release. The source contract
+   rejects a preview of a supported release.
+5. Rebuild and qualify the ISO and RPM from that revision. Earlier reports do
+   not carry over.

@@ -110,7 +110,7 @@ Rectangle {
             visible: root.isInput && root.question !== null
                 && root.question.multiSelect === true
             width: parent.width
-            text: "Select one or more options."
+            text: I18n.tr("Select one or more options.")
             font.family: T3Theme.fontUi
             font.pixelSize: Theme.typography.secondary
             color: T3Theme.textFaint
@@ -287,7 +287,7 @@ Rectangle {
                 Text {
                     visible: custom.text === "" && !custom.activeFocus
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Or type a custom answer…"
+                    text: I18n.tr("Or type a custom answer…")
                     font.family: T3Theme.fontUi
                     font.pixelSize: Theme.typography.control
                     color: T3Theme.textFaint
@@ -305,7 +305,7 @@ Rectangle {
             spacing: 5
 
             Action {
-                label: "Back"
+                label: I18n.tr("Back")
                 enabled: root.actionable && root.questionIndex > 0
                 onTriggered: T3Code.setInputQuestionIndex(root.threadId,
                     root.request.requestId, root.questionIndex - 1)
@@ -313,7 +313,7 @@ Rectangle {
 
             Action {
                 visible: root.questionIndex < root.questions.length - 1
-                label: "Next"
+                label: I18n.tr("Next")
                 enabled: root.actionable && root.answered
                 tint: T3Theme.accentForeground
                 fill: T3Theme.accent
@@ -323,7 +323,7 @@ Rectangle {
 
             Action {
                 visible: root.questionIndex >= root.questions.length - 1
-                label: root.pending ? "Sending…" : "Submit"
+                label: root.pending ? I18n.tr("Sending…") : I18n.tr("Submit")
                 enabled: root.actionable && root.answers !== null
                 tint: T3Theme.accentForeground
                 fill: T3Theme.accent
@@ -344,14 +344,14 @@ Rectangle {
             spacing: 5
 
             Action {
-                label: "Cancel"
+                label: I18n.tr("Cancel")
                 enabled: !root.pending && T3Code.canDispatch
                 onTriggered: T3Code.respondApproval(root.threadId,
                     root.request.requestId, "cancel")
             }
 
             Action {
-                label: "Decline"
+                label: I18n.tr("Decline")
                 enabled: !root.pending && T3Code.canDispatch
                 tint: T3Theme.red
                 fill: T3Theme.redSoft
@@ -360,7 +360,7 @@ Rectangle {
             }
 
             Action {
-                label: "Always allow this session"
+                label: I18n.tr("Always allow this session")
                 enabled: !root.pending && T3Code.canDispatch
                 tint: T3Theme.accent
                 fill: T3Theme.accentSoft
@@ -369,7 +369,7 @@ Rectangle {
             }
 
             Action {
-                label: root.pending ? "Sending…" : "Approve"
+                label: root.pending ? I18n.tr("Sending…") : I18n.tr("Approve")
                 enabled: !root.pending && T3Code.canDispatch
                 tint: T3Theme.accentForeground
                 fill: T3Theme.accent

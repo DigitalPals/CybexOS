@@ -1,0 +1,58 @@
+# `cybex report` opens this form with the environment field prefilled
+# (?template=bug_report.yml&environment=...). Keep the field ids stable.
+name: Bug report
+description: Something in CybexOS does not work as expected
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Run `cybex report` first: it writes a
+        redacted diagnostic bundle (`cybexos-report-*.tar.gz`) on your computer
+        and prefills the environment below. Nothing is uploaded for you.
+
+        Security problems do not belong here; report them privately as
+        described in [SECURITY.md](https://github.com/DigitalPals/CybexOS/blob/main/SECURITY.md).
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Filled in by `cybex report`. Otherwise give the CybexOS version (`cybex version`), whether it was installed from the ISO or a checkout, and your GPU.
+    validations:
+      required: true
+  - type: textarea
+    id: bundle
+    attributes:
+      label: Diagnostic bundle
+      description: >-
+        Drag the `cybexos-report-*.tar.gz` file from `cybex report` into this box.
+        Look through it first; automatic redaction cannot recognize every private value.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues for this problem.
+          required: true
+        - label: The attached bundle and logs contain nothing I want to keep private.
+          required: false

@@ -38,11 +38,30 @@ Fastfetch, Voxtype, Oh My Posh, MIME associations, and npm configuration are
 seeded only when absent, as on the ISO. Managed Fish, Kitty, Git and SSH fragments remain updateable while their bytes
 match the shared ownership ledger. Conflicting edits and deletions are preserved
 on both paths. Git/Kitty includes precede user values; SSH fallbacks follow them.
+The default web apps (Slack, WhatsApp, YouTube, Google Photos and X) are seeded
+once per account by the same helper, `cybexos-webapp seed`: the checkout's
+dotfiles role runs it, and the ISO's `cybexos-user-init` runs it at
+installation and login. The helper records each default it seeds, so a web app
+the user removed is never added back on either path.
 
 The checkout path installs onto existing Fedora and retains source-release
 updates and uninstall; the ISO uses Anaconda for disk/account creation and RPM
 delivery for desktop updates and repair. These mechanisms are distinct from the
-installed policy. Comparing a development checkout with an older ISO is not a
+installed policy.
+
+Installer-only paths keep that policy. An unattended seed's `config` choices
+(and the choices a factory reset keeps for the next owner) pass through
+`installation_policy.choices`/`apply_choices`, the function the checkout
+installer's saved-choice merge uses; `test_installation_parity.py` checks that
+the same explicit choices produce the same configuration on both paths. The
+new-owner setup provisions its account with the same fresh-account
+`cybexos-configure-installed --offline` run as Anaconda's in-target hook. The
+first-start, new-owner and factory-reset units ship only in the ISO's RPM
+(with the graphical new-owner window and the `cage` package it needs): a
+checkout installation runs on an existing Fedora system with its own account,
+never has OEM state or a factory recovery point, and `cybex factory-reset`
+explains that. Factory-point retention lives in the shared
+`cybexos-system-snapshot`, so both paths prune identically. Comparing a development checkout with an older ISO is not a
 parity test: both artifacts must come from the same revision, with completed
 hardware setup and equivalent application choices.
 
@@ -58,7 +77,10 @@ unverifiable Btrfs, and the policy module shipped in the repair payload.
 The existing image package, desktop payload, installed policy and user parity
 tests cover package selections and shared task/template sources. Extend those
 checks whenever a package, setting, service or hardware path changes; a new
-feature cannot be added to only one installer's schema.
+feature cannot be added to only one installer's schema. Hardware roles run
+unchanged on both paths: `image/test_nvidia.py` checks that the checkout and
+the ISO's boot-time hardware setup apply the same NVIDIA role, payload and
+session environment.
 
 Release changes must pass the source and image gates from the same Git revision
 and the existing generic Fedora and ISO installation/upgrade qualification
@@ -127,6 +149,15 @@ and screenshots on success/failure, retaining compact reports.
 `--keep-artifacts` retains unresolved diagnostics, but never the cloud seed or
 SSH private key. Testing OS ISOs still use `/data/pxe/iso` and the existing
 checksum/iVentoy workflow. Existing Fedora hosts are never repartitioned.
+
+Known limit (2026-10-14): the saved-choice step reapplies the installation
+path with `cybexos-configure-installed`, whose shared baseline package task
+needs repository metadata. Qualification guests block outbound networking and
+the image ships no DNF metadata cache (`live.ks` runs `dnf clean all`), so that
+step fails with "Could not resolve host" before any saved choice is compared.
+The fresh capture itself succeeds. Running the gate therefore needs either a
+guest with package-repository access for that step or an offline-capable
+reapply; until one exists, `--capture-outcomes` cannot complete.
 
 `image/test_installed_outcomes.py` tests content identities, archive validation,
 comparison guards and guest workflow construction without booting a VM. These

@@ -217,12 +217,14 @@ hl.animation({ leaf = "workspaces", enabled = true, speed = 6, bezier = "default
 -- instantaneous so the menubar itself never replays a layer animation.
 hl.layer_rule({
   name = "quickshell-no-animation",
-  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|wallpaper)$]] },
+  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|wallpaper|overview|dock)$]] },
   no_anim = true,
 })
 
 -- Blur behind the glass. The wallpaper layer is deliberately absent: it is
--- opaque and at the bottom, so blurring it would only cost a pass.
+-- opaque and at the bottom, so blurring it would only cost a pass. So is the
+-- window overview: its backdrop is the wallpaper, and a blur behind live
+-- window captures would be recomputed on every frame.
 --
 -- Blur is applied per pixel of the *surface*, and each of these spans more
 -- than the shape it draws: the menubar's layer runs past the slab to leave room
@@ -239,21 +241,26 @@ hl.layer_rule({
 quickshell_blur_rule = hl.layer_rule({
   name = "quickshell-blur",
   enabled = persisted_glass_enabled(),
-  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|osd|shortcuts)$]] },
+  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|dock)$]] },
   blur = true,
   ignore_alpha = 0.1,
 })
 
 -- Power saver keeps blur to one pass and disables
 -- animations. Quickshell calls cybexos_power_saver() through `hyprctl eval`
--- when it starts and whenever the power profile changes. What the saver
--- replaced is read live and kept in _G, which outlives a config reload: a
--- reload that has just re-applied the full values above takes the saver
--- straight back up, and switching it off later restores what was there
--- before, including an override from user.lua.
+-- when it starts, whenever the power profile changes, and after every config
+-- reload: Hyprland 0.56 rebuilds the Lua state on a reload, so _G does not
+-- survive it and the shell sends the saver again (Settings.compositorReloaded).
+-- What the saver replaced is read live, so switching it off later restores
+-- what was there before, including an override from user.lua.
 local power_saver = rawget(_G, "__cybexos_power_saver") or {}
 _G.__cybexos_power_saver = power_saver
 local power_saver_config = { decoration = { blur = { passes = 1 } }, animations = { enabled = false } }
+-- Game mode (below) also holds animations off. Whichever of the two is
+-- switched off first hands the value it replaced to the other, so the last
+-- one off restores what was there before either.
+local game_mode = { error = nil }
+_G.__cybexos_game_mode = game_mode
 
 function cybexos_power_saver(enabled)
   if enabled and not power_saver.restore then
@@ -261,13 +268,22 @@ function cybexos_power_saver(enabled)
       passes = hl.get_config("decoration.blur.passes"),
       animations = hl.get_config("animations.enabled"),
     }
+    if game_mode.restore then
+      restore.animations = game_mode.restore["animations.enabled"]
+      game_mode.restore["animations.enabled"] = false
+    end
     hl.config(power_saver_config)
     power_saver.restore = restore
   elseif not enabled and power_saver.restore then
-    hl.config({
-      decoration = { blur = { passes = power_saver.restore.passes } },
-      animations = { enabled = power_saver.restore.animations },
-    })
+    if game_mode.restore then
+      game_mode.restore["animations.enabled"] = power_saver.restore.animations
+      hl.config({ decoration = { blur = { passes = power_saver.restore.passes } } })
+    else
+      hl.config({
+        decoration = { blur = { passes = power_saver.restore.passes } },
+        animations = { enabled = power_saver.restore.animations },
+      })
+    end
     power_saver.restore = nil
   end
 end
@@ -292,8 +308,14 @@ if previous then
   previous.subscription:remove()
   for _, entry in pairs(previous.rules) do entry.rule:set_enabled(false) end
 end
-local policy = { rules = {} }
+local policy = { rules = {}, suspended = false }
 _G.__fedora_single_window_width = policy
+
+-- Game mode turns every gap off, these margins included.
+function policy.suspend(value)
+  policy.suspended = value
+  for _, entry in pairs(policy.rules) do entry.rule:set_enabled(not value) end
+end
 
 local function update_single_window_width()
   local connected = {}
@@ -314,6 +336,7 @@ local function update_single_window_width()
             gaps_out = { top = 10, right = margin, bottom = 10, left = margin },
           }),
         }
+        if policy.suspended then policy.rules[monitor.name].rule:set_enabled(false) end
       end
     end
   end
@@ -327,6 +350,83 @@ end
 
 policy.subscription = hl.on("monitor.layout_changed", update_single_window_width)
 update_single_window_width()
+
+-- Game mode (the game-mode helper; docs/operations.md) turns animations,
+-- blur, shadows, window rounding and gaps off for games, and the helper holds
+-- idle locking off. `game-mode on|off` calls cybexos_game_mode() through
+-- `hyprctl eval`; what it replaced is kept here and put back exactly.
+--
+-- A config reload starts a fresh Lua state with every value back at its
+-- configured default, so the helper's state file is what carries game mode
+-- across one: when $XDG_RUNTIME_DIR/cybexos/game-mode.json is on for this
+-- compositor instance, game mode is applied again once the whole
+-- configuration, user.lua included, has loaded, and turning it off then
+-- restores the reloaded values. A new login is a new instance, so a file left
+-- behind never applies there. The file is data the helper writes: two fields
+-- are matched in it and nothing in it is evaluated. Diagnose with
+--   hyprctl repl 'return __cybexos_game_mode.error'
+local GAME_MODE_KEYS = {
+  "animations.enabled", "decoration.blur.enabled", "decoration.shadow.enabled",
+  "decoration.rounding", "general.gaps_in", "general.gaps_out",
+}
+local GAME_MODE_VALUES = {
+  ["animations.enabled"] = false, ["decoration.blur.enabled"] = false,
+  ["decoration.shadow.enabled"] = false, ["decoration.rounding"] = 0,
+  ["general.gaps_in"] = 0, ["general.gaps_out"] = 0,
+}
+local GAME_MODE_MAX_BYTES = 4096
+
+local function nested_config(values)
+  local config = {}
+  for _, key in ipairs(GAME_MODE_KEYS) do
+    if values[key] ~= nil then
+      local node, parts = config, {}
+      for part in key:gmatch("[^.]+") do parts[#parts + 1] = part end
+      for i = 1, #parts - 1 do
+        node[parts[i]] = node[parts[i]] or {}
+        node = node[parts[i]]
+      end
+      node[parts[#parts]] = values[key]
+    end
+  end
+  return config
+end
+
+function cybexos_game_mode(enabled)
+  if enabled and not game_mode.restore then
+    local restore = {}
+    for _, key in ipairs(GAME_MODE_KEYS) do restore[key] = hl.get_config(key) end
+    hl.config(nested_config(GAME_MODE_VALUES))
+    game_mode.restore = restore
+    policy.suspend(true)
+  elseif not enabled and game_mode.restore then
+    hl.config(nested_config(game_mode.restore))
+    game_mode.restore = nil
+    policy.suspend(false)
+  end
+  game_mode.error = nil
+  return game_mode.restore ~= nil
+end
+
+local function game_mode_requested()
+  local runtime = os.getenv("XDG_RUNTIME_DIR")
+  local instance = os.getenv("HYPRLAND_INSTANCE_SIGNATURE")
+  if not runtime or runtime == "" or not instance or instance == "" then return false end
+  local file = io.open(runtime .. "/cybexos/game-mode.json", "r")
+  if not file then return false end
+  local text = file:read(GAME_MODE_MAX_BYTES + 1)
+  file:close()
+  if not text or #text > GAME_MODE_MAX_BYTES then return false end
+  return text:match('[,{]%s*"active"%s*:%s*(%a+)') == "true"
+    and text:match('[,{]%s*"instance"%s*:%s*"([^"\\]*)"') == instance
+end
+
+if game_mode_requested() then
+  hl.on("config.reloaded", function()
+    local ok, failure = pcall(cybexos_game_mode, true)
+    if not ok then game_mode.error = tostring(failure) end
+  end)
+end
 
 hl.window_rule({ match = { class = [[.*]] }, suppress_event = "maximize" })
 hl.window_rule({ match = { class = [[.*]] }, opacity = "1.0 1.0" })

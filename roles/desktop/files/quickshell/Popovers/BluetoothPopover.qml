@@ -28,7 +28,7 @@ Surface {
         Text {
             x: 10
             anchors.verticalCenter: parent.verticalCenter
-            text: "Bluetooth"
+            text: I18n.tr("Bluetooth")
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.primary
             font.weight: Theme.weightSemibold
@@ -53,7 +53,7 @@ Surface {
         width: parent.width
         topPadding: 12
         bottomPadding: 14
-        text: BluetoothState.adapter === null ? "No Bluetooth adapter" : "Bluetooth is off"
+        text: BluetoothState.adapter === null ? I18n.tr("No Bluetooth adapter") : I18n.tr("Bluetooth is off")
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.secondary
@@ -65,7 +65,7 @@ Surface {
         width: parent.width
         topPadding: 12
         bottomPadding: 14
-        text: "No paired devices"
+        text: I18n.tr("No paired devices")
         horizontalAlignment: Text.AlignHCenter
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.secondary

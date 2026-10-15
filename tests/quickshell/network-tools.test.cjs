@@ -339,6 +339,7 @@ test("snapshot runs its independent lookups concurrently with an unchanged paylo
                     type: "wifi", device: "", active: false
                 }
             ],
+            vpns: [],
             wifi: {
                 interface: "wlan0",
                 networks: [

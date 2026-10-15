@@ -1,4 +1,7 @@
-FROM fedora:44
+# CI passes inventory fedora_release (image/fedora_target.py); this default
+# serves a plain local build and is kept equal to it by test_fedora_release.py.
+ARG FEDORA_RELEASE=44
+FROM fedora:${FEDORA_RELEASE}
 RUN dnf install -y python3-pyside6 python3-jinja2 python3-pyyaml python3-gobject-base glib2 gvfs \
     ShellCheck pykickstart qt6-qtdeclarative-devel desktop-file-utils \
     nodejs24 gnupg2 git ripgrep luajit ansible-core rpm-build rpm-sign createrepo_c \

@@ -33,7 +33,9 @@ test("Ansible pipelines modules and keeps notified handlers after a failure", ()
 });
 
 test("RPM Fusion trust and release packages converge without the network", () => {
-    const repos = read("roles/apps/tasks/repos.yml");
+    // Shared with the NVIDIA hardware role; the applications role imports it.
+    const repos = read("roles/apps/tasks/rpmfusion.yml");
+    assert.match(read("roles/apps/tasks/repos.yml"), /ansible\.builtin\.import_tasks: rpmfusion\.yml/);
     const main = read("roles/apps/tasks/main.yml");
     for (const [scope, digest, fingerprint] of [
         ["free", "10fc0a3e1a0307e8088357a31a9c5e4e3d9f9e0b01db2b03b5790d949a47f3b3",

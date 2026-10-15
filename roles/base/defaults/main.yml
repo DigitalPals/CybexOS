@@ -124,6 +124,14 @@ base_required_packages:
 - tcpdump
 - traceroute
 - whois
+# Fingerprint readers and FIDO2/U2F security keys as alternatives to the
+# password for sudo, Polkit and the lock screen (docs/security.md).
+- fprintd
+- fprintd-pam
+- libfprint
+- pam-u2f
+- pamu2fcfg
+- libfido2
 base_core_services:
 - NetworkManager.service
 - firewalld.service
