@@ -293,7 +293,9 @@ async function main() {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
     await page.setViewportSize({ width: 1280, height: 900 });
     // The details panel follows a chosen log at any stage.
-    await page.locator("#log-panel summary").click();
+    if (!await page.locator("#log-panel").evaluate(panel => panel.open))
+      await page.locator("#log-panel summary").click();
+    await page.selectOption("#log-source", "steps");
     await page.waitForFunction(() => document.querySelector("#log").textContent.includes("fixture steps log line 199"));
     await page.selectOption("#log-source", "storage");
     await page.waitForFunction(() => document.querySelector("#log").textContent.includes("fixture storage log line"));
