@@ -32,6 +32,20 @@ ACCOUNTS = load("desktop_seed_accounts", "image/rootfs/usr/libexec/cybexos-seed-
 
 
 class DesktopPayload(unittest.TestCase):
+    def test_launcher_focus_handoff_ships_identically_on_both_paths(self):
+        checkout = ROOT / "roles/desktop/files/quickshell"
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            prepare_quickshell(ROOT, payload)
+            installed = payload / "usr/share/cybexos/runtime/quickshell"
+            for relative in ("LauncherWindow.qml", "LauncherView.qml", "shell.qml"):
+                self.assertEqual((installed / relative).read_bytes(),
+                                 (checkout / relative).read_bytes(), relative)
+            window = (installed / "LauncherWindow.qml").read_text()
+            self.assertIn("root.contentItem.Window.active", window)
+            self.assertIn("active: Launcher.open && root.dismissalGrabReady", window)
+            self.assertIn("WlrKeyboardFocus.Exclusive", window)
+
     def test_model_usage_runtime_matches_checkout_including_rust_live_activity(self):
         source = ROOT / "roles/desktop/files/quickshell/ModelUsage"
         with tempfile.TemporaryDirectory() as temporary:
