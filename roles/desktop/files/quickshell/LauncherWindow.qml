@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
@@ -65,10 +66,35 @@ PanelWindow {
     // compositor for the keyboard as soon as the window maps; the view also
     // has an early-key fallback below for the frame before its TextInput
     // becomes the active focus item.
-    WlrLayershell.keyboardFocus: Launcher.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    // Once the dismissal grab owns focus, OnDemand permits outside clicks to
+    // reach Hyprland's grab dismissal path. Exclusive also captures pointers
+    // outside this surface on Hyprland 0.56.
+    WlrLayershell.keyboardFocus: !Launcher.open ? WlrKeyboardFocus.None
+        : dismissalGrab.active ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive
+
+    readonly property bool keyboardActive: root.contentItem.Window.active
+    property bool dismissalGrabReady: false
+    onKeyboardActiveChanged: {
+        if (keyboardActive && Launcher.open)
+            dismissalGrabReady = true;
+    }
+
+    Connections {
+        target: Launcher
+
+        function onOpenChanged() {
+            root.dismissalGrabReady = Launcher.open && root.keyboardActive;
+        }
+    }
 
     HyprlandFocusGrab {
-        active: Launcher.open
+        id: dismissalGrab
+        // Let layershell focus the window before installing the dismissal
+        // grab. Hyprland 0.56's seat-grab path can otherwise bypass the
+        // input-method relay, leaving the previous application's IME active.
+        // Keep it until close: losing focus must not delete the grab before
+        // its cleared signal can dismiss the launcher after an outside click.
+        active: Launcher.open && root.dismissalGrabReady
         windows: [root]
         onCleared: Launcher.close()
     }

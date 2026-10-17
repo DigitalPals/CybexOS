@@ -23,8 +23,7 @@ test("opening claims focus immediately and preserves the first typed key", () =>
     const window = read("LauncherWindow.qml");
     const view = read("LauncherView.qml");
 
-    assert.match(window,
-        /keyboardFocus:\s*Launcher\.open\s*\?\s*WlrKeyboardFocus\.Exclusive/);
+    assert.match(window, /keyboardFocus:\s*!Launcher\.open\s*\?\s*WlrKeyboardFocus\.None\s*:\s*dismissalGrab\.active\s*\?\s*WlrKeyboardFocus\.OnDemand\s*:\s*WlrKeyboardFocus\.Exclusive/);
     assert.match(window, /focus:\s*Launcher\.open/);
     assert.match(window, /!launcherView\.inputActiveFocus/);
     assert.match(window, /launcherView\.handleEarlyKey\(event\)/);
@@ -36,6 +35,20 @@ test("opening claims focus immediately and preserves the first typed key", () =>
     assert.match(view, /function handleEarlyKey\(event\): bool/);
     assert.match(view, /search\.insert\(search\.cursorPosition, event\.text\)/);
     assert.match(view, /focus:\s*Launcher\.open/);
+});
+
+test("the dismissal grab waits for layershell keyboard focus and keeps native text input", () => {
+    const window = read("LauncherWindow.qml");
+    const view = read("LauncherView.qml");
+    assert.match(window, /import QtQuick\.Window/);
+    assert.match(window, /readonly property bool keyboardActive:\s*root\.contentItem\.Window\.active/);
+    assert.match(window, /onKeyboardActiveChanged:\s*\{\s*if \(keyboardActive && Launcher\.open\)\s*dismissalGrabReady = true;/);
+    assert.match(window, /root\.dismissalGrabReady = Launcher\.open && root\.keyboardActive;/);
+    assert.match(window, /HyprlandFocusGrab\s*\{[\s\S]*?active:\s*Launcher\.open && root\.dismissalGrabReady/);
+    // Disabling Qt's input method or making the field read-only loses native
+    // IME/Compose support and does not repair the compositor's stale grab.
+    assert.doesNotMatch(read("shell.qml"), /QT_IM_MODULE/);
+    assert.doesNotMatch(view, /readOnly:\s*true|inputMethodHints:\s*Qt\.Imh/);
 });
 
 test("Enter activates the selected first result without waiting for animation", () => {
