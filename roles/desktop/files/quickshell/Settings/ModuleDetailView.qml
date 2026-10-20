@@ -1031,8 +1031,8 @@ SettingsPage {
                     : Fusebox.connection === "setup" ? (Fusebox.url ? "Needs the management key" : "Not set up")
                     : Fusebox.connection === "connecting" ? "Connecting…" : Fusebox.error || Fusebox.status
                 dotColor: Fusebox.connection === "live" ? Theme.ok
-                    : Fusebox.connection === "offline" || Fusebox.connection === "auth" ? Theme.redText
-                    : Theme.textFaint
+                    : Fusebox.troubled ? Theme.redText
+                    : Fusebox.connection === "restarting" ? Theme.amber : Theme.textFaint
 
                 SettingsAction {
                     text: I18n.tr("Reconnect")
@@ -1064,7 +1064,7 @@ SettingsPage {
             SwitchRow {
                 width: parent.width
                 label: I18n.tr("Hide account emails")
-                hint: I18n.tr("Accounts read as their provider and number, for sharing your screen.")
+                hint: I18n.tr("Accounts read as their provider and number, and client names and addresses are hidden, for sharing your screen.")
                 checked: view.opts.hideEmails
                 dirty: view.optDirty("hideEmails")
                 onToggled: value => view.setOpt("hideEmails", value)

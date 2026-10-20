@@ -3,21 +3,24 @@
 
 `live` holds one authenticated WebSocket to Fusebox's management API and
 prints newline-delimited JSON for Common/Fusebox.qml: a snapshot of the
-server, its accounts and its faults on every connect, then each change.
-`action` and `activity` are one-shot requests for the dashboard's breaker
-buttons and account details; `banked`, `banked-refresh` and `banked-action`
-read and spend banked subscription resets. `store-key`, `forget-key` and `key-status` own
-the private management key file.
+server, its accounts and its faults on every connect, then each change, and
+the connected clients and their budgets every few seconds. `action` and
+`activity` are one-shot requests for the dashboard's breaker buttons and
+account details; `banked`, `banked-refresh` and `banked-action` read and
+spend banked subscription resets. `store-key`, `forget-key` and `key-status`
+own the private management key file.
 
 The key is read from that file, sent only in an Authorization header and
 never printed, logged, or put in argv or a URL. Only allowlisted fields reach
-QML: /api/overview also carries client API keys and server paths, which are
-dropped here.
+QML: /api/overview also carries client API keys and server paths, and
+/api/config/settings the whole configuration, secrets included; everything
+but the named clients' names and limits is dropped here.
 """
 from __future__ import annotations
 
 import argparse
 from datetime import datetime
+import ipaddress
 import json
 import math
 import os
@@ -30,21 +33,35 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 
 MAX_RESPONSE = 2 * 1024 * 1024
 MAX_FRAME = 1024 * 1024
 MAX_ACCOUNTS = 512
 MAX_FAULTS = 128
+MAX_CLIENTS = 64
 MAX_KEY = 8192
 HEARTBEAT = 5       # seconds between heartbeat lines, so QML can tell a stalled helper
-STALE = 20          # Fusebox ticks every 5 s; this long without a frame is a dead socket
+# Fusebox 0.7 sends its 5-second tick only when the totals change, so an idle server
+# is silent. A quiet socket is pinged; one that doesn't answer is dead.
+PING_AFTER = 8      # seconds without a frame before asking the socket itself
+STALE = 20          # this long without a frame or a pong is a dead socket
 COALESCE = 3        # at most one account refetch this often after `accounts` events
 IDLE_REFRESH = 60   # quota and token state also change without an event
 DERIVE_EVERY = 5    # older servers: re-derive faults so expired pauses clear
 SETUP_RECHECK = 5   # waiting for a key: look for it this often
+# Fusebox locks an address out after five wrong management keys, for longer with
+# each one after. A rejected key is tried again only once it changes, or hourly:
+# Fusebox forgets an address's wrong keys after an hour, so that never adds up.
+AUTH_RETRY = 3600
+RESTART_GRACE = 90  # after Fusebox says it is restarting, failed dials read as the restart
+CLIENTS_EVERY = 15  # connected clients and budget use
+LIMITS_EVERY = 60   # named clients' limits, from the configuration
+REQUEST_LIMIT = 40  # the newest requests a fresh view needs
 
 ACCOUNT_KINDS = ("oauth", "api-key", "service-account")
-FAULT_KINDS = ("signin", "quota", "rate_limit", "error", "failures", "provider")
+FAULT_KINDS = ("signin", "quota", "rate_limit", "error", "failures", "provider", "pace", "storage")
+SOURCE_VIAS = ("direct", "proxy_protocol", "forwarded", "unknown")
 # The dashboard's SIGNIN_ERR (ui/app.js) and push/faults.rs signin_error().
 SIGNIN_ERROR = re.compile(r"invalid_grant|refresh token|sign in again|re-?authenticat|unauthori[sz]ed"
                           r"|\b401\b|token (?:has )?expired|expired token|revoked", re.I)
@@ -56,11 +73,12 @@ CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 class Failure(Exception):
     """A user-presentable failure. Never carries exception text, headers or the key."""
 
-    def __init__(self, state: str, message: str, status: int | None = None):
+    def __init__(self, state: str, message: str, status: int | None = None, retry: int | None = None):
         super().__init__(message)
         self.state = state
         self.message = message
         self.status = status
+        self.retry = retry
 
 
 # ---------------------------------------------------------------- the key
@@ -198,7 +216,8 @@ class Client:
         self.opener = urllib.request.build_opener(NoRedirects(), urllib.request.ProxyHandler({}))
 
     def request(self, path: str, *, method: str = "GET", payload: dict | None = None, timeout: float = 10):
-        headers = {"Authorization": "Bearer " + self.key, "Accept": "application/json"}
+        # Fusebox gzips its API answers; the request log shrinks about twentyfold.
+        headers = {"Authorization": "Bearer " + self.key, "Accept": "application/json", "Accept-Encoding": "gzip"}
         data = None
         if payload is not None:
             headers["Content-Type"] = "application/json"
@@ -207,25 +226,69 @@ class Client:
         try:
             with self.opener.open(request, timeout=timeout) as response:
                 raw = response.read(MAX_RESPONSE + 1)
+                encoding = response.headers.get("Content-Encoding")
         except urllib.error.HTTPError as error:
             body = error.read(65536) if error.fp else b""
+            encoding = error.headers.get("Content-Encoding") if error.headers else None
+            retry = retry_after(error.headers.get("Retry-After")) if error.headers else None
             error.close()
-            raise http_failure(error.code, server_message(body)) from None
+            try:
+                body = decoded(body, encoding)
+            except Failure:
+                body = b""
+            raise http_failure(error.code, server_message(body), retry) from None
         except (TimeoutError, urllib.error.URLError, OSError):
             raise Failure("offline", "Can't reach Fusebox. Check the URL, the network and its TLS certificate.") from None
         if len(raw) > MAX_RESPONSE:
             raise Failure("offline", "Fusebox sent an unexpectedly large response.")
+        raw = decoded(raw, encoding)
         try:
             return json.loads(raw)
         except (ValueError, UnicodeDecodeError, RecursionError):
             raise Failure("offline", "Fusebox sent a response the widget can't read.") from None
 
 
-def http_failure(status: int, message: str = "") -> Failure:
+def decoded(raw: bytes, encoding) -> bytes:
+    """A gzipped body, inflated no further than the size limit."""
+    encoding = (encoding or "").strip().lower()
+    if encoding in ("", "identity"):
+        return raw
+    if encoding != "gzip":
+        raise Failure("offline", "Fusebox sent a response the widget can't read.")
+    inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    try:
+        body = inflater.decompress(raw, MAX_RESPONSE + 1)
+    except zlib.error:
+        raise Failure("offline", "Fusebox sent a response the widget can't read.") from None
+    if len(body) > MAX_RESPONSE or inflater.unconsumed_tail:
+        raise Failure("offline", "Fusebox sent an unexpectedly large response.")
+    return body
+
+
+def retry_after(value):
+    """Seconds from a Retry-After header; Fusebox sends whole seconds."""
+    try:
+        seconds = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return seconds if 0 < seconds <= 86400 else None
+
+
+def wait_text(seconds: int) -> str:
+    minutes = math.ceil(seconds / 60)
+    return "a minute" if minutes <= 1 else f"{minutes} minutes"
+
+
+def http_failure(status: int, message: str = "", retry: int | None = None) -> Failure:
     if status == 401:
         return Failure("auth", "Fusebox rejected the management key.", status)
     if status == 403:
         return Failure("auth", "Fusebox refused remote management. Set management-key on the server.", status)
+    if status == 429:
+        # Management routes answer 429 only to an address that sent too many wrong keys.
+        wait = retry or 60
+        return Failure("locked", "Fusebox turned this computer away after too many wrong management keys. "
+                       f"It accepts it again in about {wait_text(wait)}.", status, wait)
     if 300 <= status < 400:
         return Failure("offline", "Fusebox redirected the request. Enter the server's own URL.", status)
     if status == 404:
@@ -249,6 +312,34 @@ def mapping(value) -> dict:
 
 def count(value) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < 2 ** 53 else 0
+
+
+def signed(value, limit: int = 1000) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and -limit <= value <= limit else 0
+
+
+def points(value) -> float:
+    """A share of a quota window, in percentage points."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        return 0.0
+    return round(max(0.0, min(100.0, float(value))), 2)
+
+
+def money(value) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+        return 0.0
+    return round(min(float(value), 1e9), 2)
+
+
+def source(value):
+    """Where a request came from: an address and how Fusebox knows it."""
+    if not isinstance(value, dict) or value.get("via") not in SOURCE_VIAS or not isinstance(value.get("ip"), str):
+        return None
+    try:
+        address = str(ipaddress.ip_address(value["ip"].strip()))
+    except ValueError:
+        return None
+    return {"ip": address, "via": value["via"], "login": clean(value.get("login"), 120)}
 
 
 def epoch_ms(value):
@@ -315,13 +406,56 @@ def account(row):
         "requests": count(counters.get("requests")),
         "failures": count(counters.get("failures")),
         "plan": clean(quota.get("plan"), 32),
+        # ChatGPT's plan alone doesn't tell Pro 100, 200 and 500 apart.
+        "subscriptionPlan": clean(quota.get("subscription_plan"), 48),
         "quotaAt": epoch_ms(quota.get("updated_at")),
         "windows": windows,
+        "priority": signed(row.get("priority")),
         "banked": count(inventory.get("available")),
         # A spend whose outcome is unresolved blocks further resets until reviewed.
         "bankedReview": isinstance(operation, dict) and operation_status(operation.get("status")) in UNRESOLVED,
+        "bankedPlan": banked_plan(row.get("banked_reset_plan")),
+        "attribution": attribution(row.get("quota_attribution")),
         "models": len(row["models"]) if isinstance(row.get("models"), list) else 0,
     }
+
+
+def banked_plan(value):
+    """When the soonest banked reset expires, and whether Fusebox redeems it by itself."""
+    if not isinstance(value, dict):
+        return None
+    expires = epoch_ms(value.get("expires_at"))
+    if expires is None:
+        return None
+    return {"expiresAt": expires, "redeemAt": epoch_ms(value.get("expiry_redeem_at")),
+            "prioritized": value.get("prioritized") is True, "auto": value.get("auto_redeem") is True,
+            "due": value.get("due") is True}
+
+
+def share_clients(rows, limit: int):
+    out = []
+    for c in rows[:limit] if isinstance(rows, list) else []:
+        if isinstance(c, dict) and points(c.get("points")) > 0:
+            out.append({"id": clean(c.get("id"), 120) or "", "label": clean(c.get("label"), 100) or "",
+                        "points": points(c.get("points"))})
+    return out
+
+
+def share(row):
+    if not isinstance(row, dict) or not isinstance(row.get("name"), str) or not WINDOW.fullmatch(row["name"]):
+        return None
+    return {"key": clean(row.get("key"), 200) or row["name"], "name": row["name"], "model": clean(row.get("model"), 160),
+            "resetsAt": epoch_ms(row.get("resets_at")), "used": points(row.get("used")),
+            "before": points(row.get("before")), "outside": points(row.get("outside")),
+            "byTokens": points(row.get("by_tokens")), "clients": share_clients(row.get("clients"), 12)}
+
+
+def attribution(value):
+    """Which clients used each current subscription window: Fusebox's estimate, in points of the window."""
+    if not isinstance(value, dict):
+        return None
+    current = value.get("current") if isinstance(value.get("current"), list) else []
+    return {"current": [s for s in map(share, current[:8]) if s]}
 
 
 def accounts(payload):
@@ -353,6 +487,9 @@ def fault(row):
         "detail": clean(row.get("detail"), 300),
         "until": epoch_ms(row.get("until")),
         "path": path if path.startswith("#/") else "",
+        # A pace warning can hold for days and asks for attention, not action:
+        # Fusebox leaves it out of its badge, and so does the menubar.
+        "badge": row.get("badge") is not False and row["kind"] != "pace",
     }
 
 
@@ -408,7 +545,8 @@ def derived_faults(entries, now_ms):
             out.append({"key": f"{'rate' if kind == 'rate_limit' else kind}:{a['id']}", "kind": kind,
                         "level": level, "provider": a["provider"], "providerName": provider_name(a),
                         "accountId": a["id"], "label": a["label"], "title": title, "detail": detail,
-                        "until": until, "path": "#/accounts/" + urllib.parse.quote(a["id"], safe="")})
+                        "until": until, "path": "#/accounts/" + urllib.parse.quote(a["id"], safe=""),
+                        "badge": True})
 
         pauses = [c for c in a["cooldowns"] if c["until"] > now_ms]
         latest = max(pauses, key=lambda c: c["until"]) if pauses else None
@@ -481,10 +619,12 @@ def request(row):
         "stream": row.get("stream") is True, "error": clean(row.get("error"), 200),
         "transport": row.get("transport") if row.get("transport") in ("http", "ws", "images", "video") else "http",
         "attempts": max(1, min(count(row.get("attempts")), 99)),
+        # The named client key it came with, and where from.
+        "keyLabel": clean(row.get("key_label"), 100), "source": source(row.get("source")),
     }
 
 
-def recent(payload, limit=40):
+def recent(payload, limit=REQUEST_LIMIT):
     """The newest finished requests, newest first, as Fusebox lists them."""
     rows = payload if isinstance(payload, list) else []
     return [entry for entry in map(request, rows[:limit * 2]) if entry][:limit]
@@ -508,16 +648,122 @@ def activity(payload):
     sessions = []
     for row in (rows or [])[:50] if isinstance(rows, list) else []:
         if isinstance(row, dict):
+            quota = {}
+            for key, value in list(mapping(row.get("quota")).items())[:8]:
+                if clean(key, 200) and points(value) > 0:
+                    quota[clean(key, 200)] = points(value)
             sessions.append({"lastSeen": epoch_ms(row.get("last_seen")), "since": epoch_ms(row.get("since")),
                              "active": row.get("active") is True, "client": clean(row.get("client_app"), 48)
                              or clean(row.get("client"), 32), "model": clean(row.get("model"), 160),
-                             "requests": count(row.get("requests"))})
+                             "requests": count(row.get("requests")), "quota": quota,
+                             "keyLabel": clean(row.get("key_label"), 100), "source": source(row.get("source"))})
     # The account's own minutes of the last hour, for its load chart.
     buckets = payload.get("series") if isinstance(payload, dict) else None
     series = [{"minute": b["minute"], "requests": count(b.get("requests")), "failed": count(b.get("failed"))}
               for b in (buckets or [])[-120:] if isinstance(buckets, list)
               if isinstance(b, dict) and isinstance(b.get("minute"), int) and not isinstance(b["minute"], bool)]
     return {"sessions": sessions, "series": series}
+
+
+def positive(value, kind=int):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        return None
+    return kind(min(value, 2 ** 53))
+
+
+def named_limits(payload):
+    """Each named client's name and limits, from /api/config/settings. That answer is
+    the whole configuration, provider and client keys included: only these fields
+    are read, and nothing else leaves this function."""
+    values = mapping(mapping(payload).get("values"))
+    rows = values.get("named-clients") if isinstance(values.get("named-clients"), list) else []
+    out = {}
+    for row in rows[:MAX_CLIENTS]:
+        if not isinstance(row, dict) or not clean(row.get("id"), 120):
+            continue
+        expires = row.get("expires")
+        out[clean(row["id"], 120)] = {
+            "label": clean(row.get("label"), 100),
+            "requestsPerMinute": positive(row.get("requests-per-minute")),
+            "tokensPerDay": positive(row.get("tokens-per-day")),
+            "usdPerMonth": positive(row.get("usd-per-month"), float),
+            "expires": expires if isinstance(expires, str) and re.fullmatch(r"\d{4}-\d\d-\d\d", expires) else None,
+        }
+    return out
+
+
+def clients_view(usage, limits):
+    """Which keys and addresses are using Fusebox now, and what each named client
+    used today and this month beside its limits."""
+    usage = mapping(usage)
+    limits = limits or {}
+    spend = mapping(usage.get("clients"))
+    last_used = mapping(usage.get("last_used"))
+    named = []
+    for identity in list(dict.fromkeys(list(limits) + list(spend)))[:MAX_CLIENTS]:
+        name = clean(identity, 120)
+        if not name:
+            continue
+        used, limit = mapping(spend.get(identity)), limits.get(identity, {})
+        named.append({"id": name, "label": limit.get("label") or name,
+                      "tokensToday": count(used.get("tokens_today")), "usdMonth": money(used.get("usd_month")),
+                      "tokensPerDay": limit.get("tokensPerDay"), "usdPerMonth": limit.get("usdPerMonth"),
+                      "requestsPerMinute": limit.get("requestsPerMinute"), "expires": limit.get("expires"),
+                      "lastUsed": epoch_ms(last_used.get(identity))})
+    connected = []
+    rows = usage.get("connected") if isinstance(usage.get("connected"), list) else []
+    for row in rows[:MAX_CLIENTS]:
+        where = source(row)
+        if not isinstance(row, dict) or not where:
+            continue
+        key = clean(row.get("key"), 120) or ""
+        connected.append({
+            # Only ids people gave their clients, or a program's name; shared keys go by label.
+            "id": key if key in limits or key in spend or key.startswith("app:") else "",
+            "label": clean(row.get("label"), 100) or "Other requests", **where,
+            "inFlight": count(row.get("in_flight")), "sockets": count(row.get("sockets")),
+            "last": epoch_ms(row.get("last"))})
+    return {"named": named, "connected": connected, "estimates": usage.get("estimates") is True}
+
+
+class Clients:
+    """Polls /api/clients/usage, and the named clients' limits less often. Releases
+    without it answer 401 through client-key authentication, so a refusal right after
+    /api/accounts accepted the key means the server doesn't have it."""
+
+    def __init__(self, client: Client, out: Output, clock):
+        self.client, self.out, self.clock = client, out, clock
+        self.supported = True
+        self.at = self.limits_at = -math.inf
+        self.limits = None
+        self.sent = None
+
+    def poll(self):
+        if not self.supported or self.clock() - self.at < CLIENTS_EVERY:
+            return
+        self.at = self.clock()
+        try:
+            usage = self.client.request("clients/usage")
+        except Failure as failure:
+            if failure.state == "locked":
+                raise
+            if failure.status in (401, 403, 404, 405):
+                self.supported = False
+                self.out.emit("clients", data=None)
+            # Otherwise try again next round: clients never take the live view down.
+            return
+        if mapping(usage).get("clients") and self.clock() - self.limits_at >= LIMITS_EVERY:
+            self.limits_at = self.clock()
+            try:
+                self.limits = named_limits(self.client.request("config/settings"))
+            except Failure as failure:
+                if failure.state == "locked":
+                    raise
+                # Use without limits is still worth showing.
+        view = clients_view(usage, self.limits)
+        if view != self.sent:
+            self.sent = view
+            self.out.emit("clients", data=view)
 
 
 # ---------------------------------------------------------------- live stream
@@ -551,8 +797,8 @@ def snapshot(client: Client, out: Output, now_ms: int):
     out.emit("overview", data=summary)
     entries = accounts(client.request("accounts"))
     out.emit("accounts", data=entries)
-    # The server keeps its latest few hundred requests; the dashboard opens on them too.
-    out.emit("requests", data=recent(client.request("requests")))
+    # The server keeps its latest few hundred requests; a fresh view needs only the newest.
+    out.emit("requests", data=recent(client.request(f"requests?limit={REQUEST_LIMIT}")))
     try:
         out.emit("faults", data=faults(client.request("faults")), source="server")
         return entries, None
@@ -570,7 +816,11 @@ def socket_failure(error) -> Failure:
     response = getattr(error, "response", None)
     status = getattr(response, "status_code", None)
     if isinstance(status, int):
-        return http_failure(status)
+        headers = getattr(response, "headers", None)
+        return http_failure(status, retry=retry_after(headers.get("Retry-After")) if headers is not None else None)
+    # Fusebox closes its live sockets with 1001 (going away) when it restarts.
+    if getattr(getattr(error, "rcvd", None), "code", None) == 1001:
+        return Failure("restarting", "Fusebox is restarting. Reconnecting…")
     if isinstance(error, (TimeoutError, OSError)):
         return Failure("offline", "Can't reach Fusebox. Check the URL, the network and its TLS certificate.")
     return Failure("offline", "The live connection to Fusebox closed. Reconnecting…")
@@ -593,14 +843,24 @@ def stream(base: str, out: Output, connect, clock=time.monotonic, wall=time.time
         out.emit("state", state="live")
         heard = fetched = derived_at = clock()
         refetch_at = None
+        pong = None
+        clients = Clients(client, out, clock)
         while True:
             now = clock()
+            if pong is not None and pong.is_set():
+                heard, pong = now, None
             if now - heard > STALE:
-                raise Failure("offline", "Fusebox stopped sending updates. Reconnecting…")
+                raise Failure("offline", "Fusebox stopped answering. Reconnecting…")
+            if pong is None and now - heard >= PING_AFTER:
+                try:
+                    pong = socket.ping()
+                except Exception as error:
+                    raise socket_failure(error) from None
             if (refetch_at is not None and now >= refetch_at) or now - fetched >= IDLE_REFRESH:
                 entries = accounts(client.request("accounts"))
                 out.emit("accounts", data=entries)
                 fetched, refetch_at, derived_at = clock(), None, -math.inf
+            clients.poll()
             if not server_faults and now - derived_at >= DERIVE_EVERY:
                 current = derived_faults(entries, int(wall() * 1000))
                 if current != derived:
@@ -638,7 +898,16 @@ def stream(base: str, out: Output, connect, clock=time.monotonic, wall=time.time
                 refetch_at = max(heard, fetched + COALESCE)
 
 
-def live(address: str, out: Output, connect, clock=time.monotonic, sleep=time.sleep):
+def key_signature():
+    """Changes whenever the key file is replaced or removed."""
+    try:
+        info = os.stat(key_path())
+    except OSError:
+        return None
+    return info.st_ino, info.st_mtime_ns, info.st_size
+
+
+def live(address: str, out: Output, connect, clock=time.monotonic, sleep=time.sleep, wall=time.time):
     try:
         base = normalize_url(address)
     except Failure as failure:
@@ -648,24 +917,42 @@ def live(address: str, out: Output, connect, clock=time.monotonic, sleep=time.sl
         out.emit("state", state="unsupported", message="Install python3-websockets for live Fusebox updates.")
         return 3
     delay = 2
+    restarted = None   # when Fusebox last said it was restarting
     while True:
         started = clock()
+        watch = None
         try:
-            stream(base, out, connect, clock=clock)
+            stream(base, out, connect, clock=clock, wall=wall)
         except Failure as failure:
-            out.emit("state", state=failure.state, message=failure.message)
-            if failure.state == "setup":
+            state, message, extra = failure.state, failure.message, {}
+            if clock() - started >= 30:
+                delay, restarted = 2, None
+            if state == "restarting":
+                restarted = clock()
+            elif state == "offline" and restarted is not None and clock() - restarted < RESTART_GRACE:
+                # Dials fail until the new process listens; that is still the restart.
+                state, message = "restarting", "Fusebox is restarting. Reconnecting…"
+            if state == "setup":
                 pause = SETUP_RECHECK
-            elif failure.state == "auth":
-                pause = 60
+            elif state == "auth":
+                # Every try with a wrong key brings a lockout closer, for every
+                # program on this computer: wait for a new key instead.
+                pause, watch = AUTH_RETRY, key_signature()
+            elif state == "locked":
+                pause = (failure.retry or 60) + 1
+                extra["until"] = int((wall() + pause) * 1000)
+            elif state == "restarting":
+                pause = 1 if failure.state == "restarting" else min(delay, 5)
+                delay = 2 if failure.state == "restarting" else min(60, delay * 2)
             else:
-                if clock() - started >= 30:
-                    delay = 2
                 pause = delay
                 delay = min(60, delay * 2)
+            out.emit("state", state=state, message=message, **extra)
         deadline = clock() + pause
         while clock() < deadline:
             out.heartbeat()
+            if watch is not None and key_signature() != watch:
+                break
             sleep(min(1, max(0, deadline - clock())))
 
 
@@ -767,7 +1054,10 @@ def run_banked_action(address: str, identity: str, action: str, request_id: str,
 # ---------------------------------------------------------------- one-shot
 
 
-ACTIONS = {"toggle": "toggle", "refresh": "refresh", "reset": "reset", "quota": "quota/refresh"}
+ACTIONS = {"toggle": "toggle", "refresh": "refresh", "reset": "reset", "quota": "quota/refresh",
+           "priority": "priority"}
+# New sessions go to higher priorities first: the dashboard's First, Normal and Last.
+PRIORITIES = (10, 0, -10)
 
 
 def account_path(identity: str) -> str:
@@ -776,9 +1066,11 @@ def account_path(identity: str) -> str:
     return "accounts/" + urllib.parse.quote(identity, safe="")
 
 
-def run_action(address: str, name: str, identity: str, disabled: bool | None = None):
+def run_action(address: str, name: str, identity: str, disabled: bool | None = None, priority: int | None = None):
+    if name == "priority" and priority not in PRIORITIES:
+        raise Failure("invalid", "That priority isn't one Fusebox offers.")
     client = Client(normalize_url(address), read_key())
-    payload = {"disabled": bool(disabled)} if name == "toggle" else None
+    payload = {"disabled": bool(disabled)} if name == "toggle" else {"priority": priority} if name == "priority" else None
     # Refreshing a sign-in also polls the provider's quota, which can take a while.
     client.request(account_path(identity) + "/" + ACTIONS[name], method="POST", payload=payload, timeout=45)
     return {"ok": True}
@@ -799,6 +1091,7 @@ def main(argv=None) -> int:
     action_parser.add_argument("name", choices=sorted(ACTIONS))
     action_parser.add_argument("account")
     action_parser.add_argument("--disabled", choices=("true", "false"))
+    action_parser.add_argument("--priority", type=int, choices=PRIORITIES)
     activity_parser = commands.add_parser("activity")
     activity_parser.add_argument("--url", required=True)
     activity_parser.add_argument("account")
@@ -831,7 +1124,9 @@ def main(argv=None) -> int:
             if args.command == "action":
                 if args.name == "toggle" and args.disabled is None:
                     parser.error("toggle needs --disabled")
-                reply(run_action(args.url, args.name, args.account, args.disabled == "true"))
+                if args.name == "priority" and args.priority is None:
+                    parser.error("priority needs --priority")
+                reply(run_action(args.url, args.name, args.account, args.disabled == "true", args.priority))
             elif args.command == "activity":
                 reply(run_activity(args.url, args.account))
             elif args.command == "banked":

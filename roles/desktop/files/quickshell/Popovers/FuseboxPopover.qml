@@ -13,14 +13,36 @@ PopoutPanel {
     id: root
 
     readonly property bool configured: Fusebox.connection !== "setup"
-    readonly property bool dimmed: Fusebox.stale
+    readonly property bool dimmed: Fusebox.stale && Fusebox.longDown
     readonly property double now: Fusebox.now
-    readonly property var circuits: Helpers.groupAccounts(Fusebox.accounts)
-    readonly property var latest: Fusebox.requests.slice(0, 6)
+    // Accounts by provider; recomputed when the accounts change, not by the clock.
+    readonly property var groups: Helpers.accountGroups(Fusebox.accounts)
+    readonly property var latest: Fusebox.requests.slice(0, 5)
     readonly property var loadBars: Helpers.bars(Fusebox.series, now)
     readonly property int loadPeak: Math.max(4, ...loadBars.map(b => b.requests))
     readonly property int loadTotal: loadBars.reduce((sum, b) => sum + b.requests, 0)
+    readonly property var pools: Helpers.weeklyPools(Fusebox.accounts, now)
+    readonly property var connected: Helpers.connectedRows(Fusebox.clients, Fusebox.hideEmails)
+    readonly property var budgets: Helpers.budgets(Fusebox.clients, Fusebox.hideEmails)
+    readonly property var priorityOptions: [
+        { value: 10, label: "First", description: "Take new sessions first" },
+        { value: 0, label: "Normal", description: "Take new sessions by the routing strategy" },
+        { value: -10, label: "Last", description: "Take new sessions only when no other account can" }
+    ]
+    readonly property var loadFigures: [
+        { value: String(Fusebox.figures.serving), label: "in progress" },
+        { value: String(Fusebox.figures.rpm), label: "req/min" },
+        { value: String(Fusebox.figures.failed), label: "failed", level: Fusebox.figures.failed > 0 ? "critical" : "ok" },
+        { value: Helpers.seconds(Fusebox.figures.ttft), label: "first token" }
+    ]
     readonly property int gutter: Theme.panelPadding
+    // One grid for every row: content starts at `pad`, names and text at
+    // `textX` after the icon column, and right-hand values end at `pad` from
+    // the right edge. Meters split the text column in two.
+    readonly property int pad: Theme.scaled(10)
+    readonly property int textX: pad + Theme.iconMedium + Theme.scaled(8)
+    readonly property int meterGap: Theme.scaled(16)
+    readonly property int lineHeight: Theme.scaled(30)
     readonly property int gap: Theme.scaled(12)
     readonly property int preferredWidth: Theme.scaled(472)
     // The account whose details are open, and one awaiting a second click to
@@ -86,17 +108,25 @@ PopoutPanel {
         font.features: Theme.tabularNumberFeatures
         color: Theme.textHi
     }
+    // A section's small-caps title on the grid's edges, with an optional detail
+    // and link on the right.
     component SectionTitle: Item {
         id: section
 
         property string label: ""
         property string detail: ""
+        property string action: ""
+        property string actionName: section.action
+        // Top-level sections align with the rows' padding; details sit flush.
+        property int inset: root.pad
+        signal acted()
 
         width: parent ? parent.width : 0
         height: sectionLabel.implicitHeight
 
         Text {
             id: sectionLabel
+            x: section.inset
             text: section.label.toUpperCase()
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.section
@@ -104,10 +134,23 @@ PopoutPanel {
             font.letterSpacing: 1
             color: Theme.textFaint
         }
-        Caption {
+        LinkText {
+            id: sectionAction
+            visible: section.action !== ""
             anchors.right: parent.right
+            anchors.rightMargin: section.inset
             anchors.baseline: sectionLabel.baseline
-            width: Math.min(implicitWidth, parent.width - sectionLabel.implicitWidth - Theme.scaled(12))
+            text: section.action
+            font.pixelSize: Theme.typography.metadata
+            accessibleName: section.actionName
+            onClicked: section.acted()
+        }
+        Caption {
+            anchors.right: sectionAction.visible ? sectionAction.left : parent.right
+            anchors.rightMargin: sectionAction.visible ? Theme.scaled(8) : section.inset
+            anchors.baseline: sectionLabel.baseline
+            width: Math.max(0, Math.min(implicitWidth, parent.width - section.inset * 2 - sectionLabel.implicitWidth
+                - (sectionAction.visible ? sectionAction.implicitWidth + Theme.scaled(8) : 0) - Theme.scaled(12)))
             horizontalAlignment: Text.AlignRight
             text: section.detail
             font.features: Theme.tabularNumberFeatures
@@ -143,115 +186,168 @@ PopoutPanel {
         }
     }
 
-    // A 5-hour or weekly quota meter: 20 blocks of 5%, filled and labelled with
-    // the share used or left. Amber from 75% used and red from 95%, either way.
-    component QuotaMeter: Row {
-        id: meter
+    // A quota meter: 20 blocks of 5%, as wide as its column allows, filled and
+    // labelled with the share used or left. Amber from 75% used and red from 95%,
+    // either way. A thin mark stands where even pace would be by now; it turns
+    // amber when this pace uses the window up before it resets.
+    component MeterBar: Item {
+        id: bar
 
-        required property var account
-        property bool short: true
-        readonly property var window: Helpers.windowOf(meter.account, meter.short, root.now)
-        readonly property var reading: Helpers.quota(meter.window, root.now)
-        readonly property var share: Helpers.quotaShare(meter.reading, Fusebox.quotaDisplay)
+        property string label: ""
+        property var reading: null
+        // 0 to 1 in the meter's own direction, or -1 without a reset time.
+        property real pace: -1
+        property bool early: false
+        readonly property var share: Helpers.quotaShare(bar.reading, Fusebox.quotaDisplay)
 
-        spacing: Theme.scaled(6)
-        Accessible.role: Accessible.StaticText
-        Accessible.name: Helpers.windowTitle(meter.window || { name: meter.short ? "5h" : "week" }) + " quota"
-        Accessible.description: meter.reading ? Helpers.percent(meter.share) + " " + Helpers.quotaWord(Fusebox.quotaDisplay)
-            + (meter.window.resetsAt ? ", resets in " + Helpers.span(meter.window.resetsAt - root.now) : "")
-            : "not reported"
+        implicitHeight: barPercent.implicitHeight
 
         Text {
+            id: barLabel
             anchors.verticalCenter: parent.verticalCenter
-            width: Theme.scaled(22)
-            text: Helpers.windowLabel(meter.window, meter.short)
+            width: Theme.scaled(24)
+            text: bar.label
             font.family: Theme.fontMenu
             font.pixelSize: Theme.typography.section
             font.weight: Theme.weightSemibold
             font.letterSpacing: 0.5
             color: Theme.textFaint
         }
-        BlockMeter {
+        Item {
+            id: blocks
+
+            readonly property int room: bar.width - barLabel.width - barPercent.width - Theme.scaled(12)
+            readonly property int blockWidth: Math.max(2, Math.floor((blocks.room + 2) / 20) - 2)
+
+            x: barLabel.width + Theme.scaled(6)
             anchors.verticalCenter: parent.verticalCenter
             // Exactly twenty blocks of five percent.
-            width: 20 * 5 - 2
+            width: 20 * (blocks.blockWidth + 2) - 2
             height: 7
-            blockWidth: 3
-            gap: 2
-            value: meter.reading ? meter.share / 100 : 0
-            fillColor: root.meterTone(meter.reading ? meter.reading.level : "ok")
+
+            BlockMeter {
+                anchors.fill: parent
+                blockWidth: blocks.blockWidth
+                gap: 2
+                value: bar.reading ? bar.share / 100 : 0
+                fillColor: root.meterTone(bar.reading ? bar.reading.level : "ok")
+            }
+            Rectangle {
+                visible: bar.reading !== null && bar.pace >= 0
+                x: Math.round(Math.max(0, bar.pace) * (parent.width - width))
+                y: -2
+                width: 2
+                height: parent.height + 4
+                radius: 1
+                color: bar.early ? Theme.amber : Theme.textMid
+            }
         }
         Text {
+            id: barPercent
+            anchors.left: blocks.right
+            anchors.leftMargin: Theme.scaled(6)
             anchors.verticalCenter: parent.verticalCenter
-            width: Theme.scaled(30)
-            text: meter.reading ? Helpers.percent(meter.share) : "–"
+            width: Theme.scaled(34)
+            text: bar.reading ? Helpers.percent(bar.share) : "–"
             horizontalAlignment: Text.AlignRight
             font.family: Theme.fontNumeric
             font.pixelSize: Theme.typography.metadata
             font.weight: Theme.weightMedium
             font.features: Theme.tabularNumberFeatures
-            color: meter.reading ? root.tone(meter.reading.level) : Theme.textFaint
+            color: bar.reading ? root.tone(bar.reading.level) : Theme.textFaint
         }
     }
 
-    // Fusebox's Used / Left switch for every meter, as a two-segment radio.
-    component QuotaSwitch: Rectangle {
-        id: quotaSwitch
+    // An account's 5-hour or weekly meter.
+    component QuotaMeter: MeterBar {
+        id: meter
 
-        width: quotaRow.implicitWidth + 4
+        required property var account
+        property bool short: true
+        readonly property var window: Helpers.windowOf(meter.account, meter.short, root.now)
+        readonly property var mark: Helpers.paceMark(meter.window, root.now, Fusebox.quotaDisplay)
+        readonly property var runsOut: Helpers.runsOutAt(meter.window, root.now)
+
+        label: Helpers.windowLabel(meter.window, meter.short)
+        reading: Helpers.quota(meter.window, root.now)
+        pace: meter.mark === null ? -1 : meter.mark
+        early: meter.runsOut !== null
+        Accessible.role: Accessible.StaticText
+        Accessible.name: Helpers.windowTitle(meter.window || { name: meter.short ? "5h" : "week" }) + " quota"
+        Accessible.description: !meter.reading ? "not reported"
+            : [Helpers.percent(meter.share) + " " + Helpers.quotaWord(Fusebox.quotaDisplay),
+                meter.runsOut !== null ? "runs out in " + Helpers.span(meter.runsOut - root.now) + " at this pace"
+                    : meter.window.resetsAt ? "resets in " + Helpers.span(meter.window.resetsAt - root.now) : "",
+                Helpers.rateText(Helpers.burnRate(meter.window, root.now))].filter(part => part).join(", ")
+    }
+
+    // A row of choices with one picked: the Used / Left switch and an account's
+    // priority. Arrow keys move the choice and the focus together.
+    component Segmented: Rectangle {
+        id: seg
+
+        // [{ value, label, description }]
+        property var options: []
+        property var current
+        property string accessibleName: ""
+        signal picked(var value)
+
+        width: segRow.implicitWidth + 4
         height: Theme.scaled(22)
         radius: Theme.chipRadius
         color: Theme.chip
+        opacity: seg.enabled ? 1 : 0.5
         Accessible.role: Accessible.Grouping
-        Accessible.name: I18n.tr("Quota meters")
+        Accessible.name: seg.accessibleName
 
         Row {
-            id: quotaRow
+            id: segRow
             anchors.centerIn: parent
             spacing: 2
 
             Repeater {
-                id: quotaSegments
-                model: Helpers.QUOTA_DISPLAYS
+                id: segments
+                model: seg.options
 
                 Rectangle {
                     id: segment
 
                     required property var modelData
                     required property int index
-                    readonly property bool current: Fusebox.quotaDisplay === modelData.value
-                    readonly property string word: segment.modelData.value === "remaining" ? "Left" : segment.modelData.label
+                    readonly property bool chosen: seg.current === segment.modelData.value
 
-                    function pick(value) {
-                        Fusebox.setQuotaDisplay(value);
+                    function pick(at) {
+                        const option = seg.options[at];
+                        if (option && seg.enabled && option.value !== seg.current)
+                            seg.picked(option.value);
                     }
-                    // Arrow keys move the choice and the focus together.
-                    function step(value) {
-                        segment.pick(value);
-                        const next = quotaSegments.itemAt(value === "remaining" ? 1 : 0);
-                        if (next)
-                            next.forceActiveFocus();
+                    function step(delta) {
+                        const next = Math.max(0, Math.min(seg.options.length - 1, segment.index + delta));
+                        segment.pick(next);
+                        const item = segments.itemAt(next);
+                        if (item)
+                            item.forceActiveFocus();
                     }
 
                     width: segmentText.implicitWidth + Theme.scaled(14)
-                    height: quotaSwitch.height - 4
+                    height: seg.height - 4
                     radius: Theme.chipRadius - 2
-                    color: segment.current ? Theme.chipHover
-                        : segmentMouse.containsMouse ? Theme.hoverFill : "transparent"
+                    color: segment.chosen ? Theme.chipHover
+                        : segmentMouse.containsMouse && seg.enabled ? Theme.hoverFill : "transparent"
                     border.width: segment.activeFocus ? 1 : 0
                     border.color: Theme.accentText
-                    activeFocusOnTab: segment.current
+                    activeFocusOnTab: segment.chosen && seg.enabled
                     Accessible.role: Accessible.RadioButton
-                    Accessible.name: "Show quota " + (segment.modelData.value === "remaining" ? "remaining" : "used")
-                    Accessible.checked: segment.current
-                    Accessible.onPressAction: segment.pick(segment.modelData.value)
+                    Accessible.name: segment.modelData.description || segment.modelData.label
+                    Accessible.checked: segment.chosen
+                    Accessible.onPressAction: segment.pick(segment.index)
                     Keys.onPressed: event => {
                         if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
-                            segment.step(event.key === Qt.Key_Left ? "used" : "remaining");
+                            segment.step(event.key === Qt.Key_Left ? -1 : 1);
                             event.accepted = true;
                         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                                 || event.key === Qt.Key_Space) {
-                            segment.pick(segment.modelData.value);
+                            segment.pick(segment.index);
                             event.accepted = true;
                         }
                     }
@@ -263,22 +359,34 @@ PopoutPanel {
                     Text {
                         id: segmentText
                         anchors.centerIn: parent
-                        text: segment.word
+                        text: segment.modelData.label
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.metadata
-                        font.weight: segment.current ? Theme.weightSemibold : Theme.weightMedium
-                        color: segment.current ? Theme.textHi : Theme.textDim
+                        font.weight: segment.chosen ? Theme.weightSemibold : Theme.weightMedium
+                        color: segment.chosen ? Theme.textHi : Theme.textDim
                     }
                     MouseArea {
                         id: segmentMouse
                         anchors.fill: parent
+                        enabled: seg.enabled
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: segment.pick(segment.modelData.value)
+                        onClicked: segment.pick(segment.index)
                     }
                 }
             }
         }
+    }
+
+    // Fusebox's Used / Left switch for every meter.
+    component QuotaSwitch: Segmented {
+        accessibleName: I18n.tr("Quota meters")
+        options: [
+            { value: "used", label: "Used", description: "Show quota used" },
+            { value: "remaining", label: "Left", description: "Show quota remaining" }
+        ]
+        current: Fusebox.quotaDisplay
+        onPicked: value => Fusebox.setQuotaDisplay(value)
     }
 
     // A labelled figure on the recessed strip below the faults.
@@ -658,7 +766,10 @@ PopoutPanel {
                 text: {
                     switch (panel.mode) {
                     case "summary":
-                        return "Clears a usage limit early. Always asks before spending.";
+                        // With automatic redemption on, Fusebox may spend one itself.
+                        return panel.account.bankedPlan && panel.account.bankedPlan.auto
+                            ? "Clears a usage limit early. Using one here always asks first."
+                            : "Clears a usage limit early. Always asks before spending.";
                     case "review":
                         return "New resets are blocked until it's resolved. Check the provider account, then record what happened"
                             + (Helpers.retryAllowed(panel.view, panel.account, root.now) ? ", or retry the saved request." : ".");
@@ -673,6 +784,19 @@ PopoutPanel {
                         return "";
                     }
                 }
+            }
+
+            // What Fusebox does about an expiring reset by itself.
+            Caption {
+                readonly property var plan: panel.account.bankedPlan || null
+                visible: plan !== null && (panel.mode === "summary" || panel.mode === "inventory"
+                    || (panel.mode === "redeem" && plan.auto && plan.due))
+                width: parent.width
+                wrapMode: Text.Wrap
+                elide: Text.ElideNone
+                lineHeight: 1.15
+                color: plan && plan.auto && plan.due ? Theme.amber : Theme.textLow
+                text: Helpers.bankedPlanText(plan, root.now)
             }
 
             // The grants, as the dashboard lists them.
@@ -935,6 +1059,233 @@ PopoutPanel {
         }
     }
 
+    // One client's share of a window: its name, a bar across the whole window in
+    // the meter's colour, and the points. Other use is greyed.
+    component ShareRow: Item {
+        id: shareRow
+
+        property string name: ""
+        property real points: 0
+        property bool other: false
+        property string level: "ok"
+
+        width: parent ? parent.width : 0
+        height: shareName.implicitHeight
+        Accessible.role: Accessible.StaticText
+        Accessible.name: shareRow.name
+        Accessible.description: Helpers.percent(shareRow.points) + " of the window"
+
+        Caption {
+            id: shareName
+            width: Math.round(parent.width * 0.4)
+            text: shareRow.name
+            color: shareRow.other ? Theme.textFaint : Theme.textMid
+        }
+        Rectangle {
+            anchors.left: shareName.right
+            anchors.leftMargin: Theme.scaled(8)
+            anchors.right: sharePercent.left
+            anchors.rightMargin: Theme.scaled(8)
+            anchors.verticalCenter: parent.verticalCenter
+            height: 4
+            radius: 2
+            color: Theme.hairline
+
+            Rectangle {
+                width: Math.max(2, parent.width * Math.min(100, shareRow.points) / 100)
+                height: parent.height
+                radius: 2
+                color: shareRow.other ? Theme.textFaint : root.meterTone(shareRow.level)
+            }
+        }
+        Caption {
+            id: sharePercent
+            anchors.right: parent.right
+            width: Theme.scaled(34)
+            horizontalAlignment: Text.AlignRight
+            font.features: Theme.tabularNumberFeatures
+            text: Helpers.percent(shareRow.points)
+        }
+    }
+
+    // A coding session pinned to an account: its program and model, since when,
+    // what it used of the account's windows and where it came from.
+    component SessionRow: Column {
+        id: sessionRow
+
+        required property var modelData
+        property var account: null
+        readonly property var session: modelData
+        readonly property string usage: Helpers.sessionQuota(sessionRow.account, sessionRow.session)
+        readonly property string origin: Helpers.originText(sessionRow.session, Fusebox.hideEmails)
+
+        width: parent ? parent.width : 0
+        spacing: Theme.scaled(1)
+        Accessible.role: Accessible.StaticText
+        Accessible.name: (sessionRow.session.client || "Session") + (sessionRow.session.model ? ", " + sessionRow.session.model : "")
+        Accessible.description: [sessionRow.session.active ? "a request in flight" : "", sessionRow.usage,
+            sessionRow.origin].filter(part => part).join(", ")
+
+        Item {
+            width: parent.width
+            height: sessionTitle.implicitHeight
+
+            // The in-flight dot sits after the title, so every title starts at the same edge.
+            Text {
+                id: sessionTitle
+                width: Math.min(implicitWidth, parent.width - sessionSince.implicitWidth - Theme.scaled(26))
+                elide: Text.ElideRight
+                textFormat: Text.PlainText
+                text: [sessionRow.session.client || "Session", sessionRow.session.model || ""]
+                    .filter(part => part).join(" · ")
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.metadata
+                font.weight: Theme.weightMedium
+                color: Theme.textHi
+            }
+            Rectangle {
+                visible: sessionRow.session.active
+                anchors.left: sessionTitle.right
+                anchors.leftMargin: Theme.scaled(6)
+                anchors.verticalCenter: sessionTitle.verticalCenter
+                width: 6
+                height: 6
+                radius: 3
+                color: Theme.ok
+            }
+            Caption {
+                id: sessionSince
+                anchors.right: parent.right
+                font.features: Theme.tabularNumberFeatures
+                color: Theme.textFaint
+                text: sessionRow.session.since ? "since " + Helpers.when(sessionRow.session.since, root.now)
+                    : sessionRow.session.lastSeen ? "seen " + Helpers.ago(root.now - sessionRow.session.lastSeen) : ""
+            }
+        }
+        Caption {
+            visible: text !== ""
+            width: parent.width
+            font.features: Theme.tabularNumberFeatures
+            color: Theme.textLow
+            text: [sessionRow.usage, sessionRow.origin].filter(part => part).join(" · ")
+        }
+    }
+
+    // A provider's mark in the icon column: its brand, or a generic glyph.
+    component ProviderMark: Item {
+        id: providerMark
+
+        property string provider: ""
+        property bool keys: false
+        property int size: Theme.iconMedium
+
+        width: Theme.iconMedium
+        height: Theme.iconMedium
+
+        BrandIcon {
+            id: providerIcon
+            visible: providerIcon.available
+            anchors.centerIn: parent
+            width: providerMark.size
+            height: providerMark.size
+            name: Helpers.providerMark(providerMark.provider)
+        }
+        Sym {
+            visible: !providerIcon.available
+            anchors.centerIn: parent
+            name: providerMark.keys ? "key" : "account_circle"
+            size: providerMark.size
+            color: Theme.textLow
+        }
+    }
+
+    // A provider's accounts together: its mark, name and plan, and for two or
+    // more subscriptions their combined weekly use, its meter in the accounts'
+    // weekly column, and how far that is from even pace.
+    component GroupHead: Item {
+        id: groupHead
+
+        property var group: ({ provider: "", name: "", keys: false, summary: "", accounts: [] })
+        readonly property var pool: groupHead.group.keys ? null
+            : root.pools.find(p => p.provider === groupHead.group.provider) || null
+        readonly property var gap: groupHead.pool ? Helpers.poolGap(groupHead.pool) : null
+
+        width: parent ? parent.width : 0
+        height: groupLine.height + (groupHead.pool ? Theme.scaled(6) + poolLine.height : 0) + Theme.scaled(12)
+        Accessible.role: Accessible.StaticText
+        Accessible.name: groupHead.group.name + ", " + groupHead.group.summary
+        Accessible.description: groupHead.pool ? [Helpers.percent(Helpers.quotaShare({ used: groupHead.pool.used },
+            Fusebox.quotaDisplay)) + " of the combined weekly quota " + Helpers.quotaWord(Fusebox.quotaDisplay),
+            Helpers.poolBasis([groupHead.pool]), groupHead.gap ? groupHead.gap.text : ""].filter(part => part).join(", ") : ""
+
+        Item {
+            id: groupLine
+            y: Theme.scaled(8)
+            width: parent.width
+            height: Math.max(groupName.implicitHeight, Theme.iconMedium)
+
+            ProviderMark {
+                x: root.pad
+                anchors.verticalCenter: parent.verticalCenter
+                provider: groupHead.group.provider
+                keys: groupHead.group.keys
+            }
+            Text {
+                id: groupName
+                x: root.textX
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                text: groupHead.group.name
+                font.family: Theme.fontMenu
+                font.pixelSize: Theme.typography.secondary
+                font.weight: Theme.weightSemibold
+                color: Theme.textHi
+            }
+            Caption {
+                anchors.left: groupName.right
+                anchors.leftMargin: Theme.scaled(8)
+                anchors.baseline: groupName.baseline
+                width: Math.min(implicitWidth, parent.width - x - groupGap.implicitWidth - root.pad - Theme.scaled(12))
+                color: Theme.textLow
+                text: groupHead.group.summary
+            }
+            Caption {
+                id: groupGap
+                anchors.right: parent.right
+                anchors.rightMargin: root.pad
+                anchors.baseline: groupName.baseline
+                font.features: Theme.tabularNumberFeatures
+                color: groupHead.gap && groupHead.gap.level === "warn" ? Theme.amber : Theme.textLow
+                text: groupHead.gap ? groupHead.gap.text : ""
+            }
+        }
+        Item {
+            id: poolLine
+            visible: groupHead.pool !== null
+            x: root.textX
+            anchors.top: groupLine.bottom
+            anchors.topMargin: Theme.scaled(6)
+            width: parent.width - x - root.pad
+            height: poolMeter.implicitHeight
+
+            Caption {
+                anchors.verticalCenter: parent.verticalCenter
+                width: (parent.width - root.meterGap) / 2
+                color: Theme.textFaint
+                text: I18n.tr("Combined")
+            }
+            MeterBar {
+                id: poolMeter
+                x: (parent.width + root.meterGap) / 2
+                width: (parent.width - root.meterGap) / 2
+                label: "WK" // i18n: untranslated
+                reading: groupHead.pool ? Helpers.quota({ name: "week", used: groupHead.pool.used }, root.now) : null
+                pace: !groupHead.pool || groupHead.pool.pace === null ? -1
+                    : Fusebox.quotaDisplay === "remaining" ? 1 - groupHead.pool.pace : groupHead.pool.pace
+            }
+        }
+    }
+
     component FaultRow: Rectangle {
         id: faultRow
 
@@ -969,20 +1320,21 @@ PopoutPanel {
         }
 
         Sym {
-            x: Theme.scaled(11)
-            y: Theme.scaled(10)
-            name: faultRow.serious ? "error" : "warning"
+            x: root.pad
+            y: Theme.scaled(9) + (faultTitle.implicitHeight - height) / 2
+            name: Helpers.faultGlyph(faultRow.fault)
             size: Theme.iconMedium
             color: faultRow.serious ? Theme.redText : Theme.amber
         }
         Column {
             id: faultText
-            x: Theme.scaled(36)
+            x: root.textX
             y: Theme.scaled(9)
             width: parent.width - x - dismissButton.width - Theme.scaled(36)
             spacing: Theme.scaled(2)
 
             Text {
+                id: faultTitle
                 width: parent.width
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
@@ -1063,10 +1415,15 @@ PopoutPanel {
         }
     }
 
+    // An account on the shared grid: its name and status on the first line, its
+    // 5-hour and weekly meters filling the second, in the same columns on every
+    // row. The provider's mark is on its group's head, so the icon column is empty.
     component AccountRow: Rectangle {
         id: circuit
 
         required property var modelData
+        // A group whose accounts share a plan names it once, on its head.
+        property bool showPlan: true
         readonly property var account: modelData
         readonly property var circuitState: Helpers.accountState(account, Fusebox.load, root.now)
         readonly property bool open: root.expanded === account.id
@@ -1076,9 +1433,10 @@ PopoutPanel {
         readonly property bool acting: Fusebox.actionBusy && Fusebox.actionAccount === account.id
         readonly property var result: Fusebox.actionResult && Fusebox.actionResult.account === account.id
             ? Fusebox.actionResult : null
+        readonly property string plan: circuit.showPlan ? Helpers.planName(circuit.account) : ""
 
         width: parent ? parent.width : 0
-        height: circuitBody.implicitHeight + Theme.scaled(16)
+        height: circuitBody.implicitHeight + Theme.scaled(14)
         radius: Theme.chipRadius
         color: circuit.open ? Theme.chip : circuitMouse.containsMouse ? Theme.hoverFill : "transparent"
         opacity: account.disabled ? 0.7 : 1
@@ -1087,12 +1445,10 @@ PopoutPanel {
             ColorAnimation { duration: Theme.chipFadeDuration }
         }
 
-        // The whole head is the disclosure; the breaker buttons below sit
+        // The name and meters are the disclosure; the breaker buttons below sit
         // outside it so they never also toggle the row.
         MouseArea {
             id: circuitMouse
-            x: 0
-            y: 0
             width: parent.width
             height: circuitBody.y + head.height + (meters.visible ? circuitBody.spacing + meters.height : 0)
                 + Theme.scaled(6)
@@ -1103,18 +1459,19 @@ PopoutPanel {
 
         Column {
             id: circuitBody
-            x: Theme.scaled(10)
-            y: Theme.scaled(8)
-            width: parent.width - x * 2
-            spacing: Theme.scaled(6)
+            x: root.textX
+            y: Theme.scaled(7)
+            width: parent.width - x - root.pad
+            spacing: Theme.scaled(5)
 
             Item {
                 id: head
                 width: parent.width
-                height: Math.max(nameText.implicitHeight, Theme.iconMedium)
+                height: Math.max(nameText.implicitHeight, statusRow.implicitHeight)
                 activeFocusOnTab: true
                 Accessible.role: Accessible.Button
                 Accessible.name: Fusebox.accountName(circuit.account) + ", " + Helpers.providerName(circuit.account)
+                    + (Helpers.planName(circuit.account) ? " " + Helpers.planName(circuit.account) : "")
                 // The label shows sessions; a screen reader also hears requests in progress.
                 Accessible.description: [circuit.circuitState.word,
                     circuit.sessionCount > 0 ? Helpers.statusText(circuit.circuitState, circuit.sessionCount, 0) : "",
@@ -1136,47 +1493,24 @@ PopoutPanel {
                     border.width: 1
                     border.color: Theme.accentText
                 }
-                Item {
-                    id: providerMark
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Theme.iconMedium
-                    height: Theme.iconMedium
-
-                    BrandIcon {
-                        id: providerIcon
-                        visible: providerIcon.available
-                        anchors.fill: parent
-                        name: Helpers.providerMark(circuit.account.provider)
-                    }
-                    Sym {
-                        visible: Helpers.providerMark(circuit.account.provider) === ""
-                        anchors.centerIn: parent
-                        name: circuit.account.kind === "api-key" ? "key" : "account_circle"
-                        size: Theme.iconMedium
-                        color: Theme.textLow
-                    }
-                }
                 Text {
                     id: nameText
-                    anchors.left: providerMark.right
-                    anchors.leftMargin: Theme.scaled(8)
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(implicitWidth, parent.width - x - planTag.width - reviewTag.width
-                        - statusRow.width - Theme.scaled(26))
+                    width: Math.min(implicitWidth, parent.width - planTag.width - reviewTag.width
+                        - statusRow.width - Theme.scaled(20))
                     elide: Text.ElideRight
                     textFormat: Text.PlainText
                     text: Fusebox.accountName(circuit.account)
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.secondary
-                    font.weight: Theme.weightSemibold
+                    font.weight: Theme.weightMedium
                     color: Theme.textHi
                 }
                 Rectangle {
                     id: planTag
-                    readonly property string plan: Helpers.planName(circuit.account)
-                    visible: plan !== ""
+                    visible: circuit.plan !== ""
                     anchors.left: nameText.right
-                    anchors.leftMargin: Theme.scaled(6)
+                    anchors.leftMargin: visible ? Theme.scaled(6) : 0
                     anchors.verticalCenter: parent.verticalCenter
                     width: visible ? planText.implicitWidth + Theme.scaled(10) : 0
                     height: planText.implicitHeight + Theme.scaled(2)
@@ -1186,7 +1520,7 @@ PopoutPanel {
                     Text {
                         id: planText
                         anchors.centerIn: parent
-                        text: planTag.plan
+                        text: circuit.plan
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.section
                         font.weight: Theme.weightSemibold
@@ -1225,66 +1559,48 @@ PopoutPanel {
                 }
             }
 
-            Row {
+            // The 5-hour and weekly meters, each filling half the row.
+            Item {
                 id: meters
                 visible: circuit.metered
-                x: providerMark.width + Theme.scaled(8)
-                spacing: Theme.scaled(14)
+                width: parent.width
+                height: shortMeter.implicitHeight
 
-                QuotaMeter { account: circuit.account; short: true }
-                QuotaMeter { account: circuit.account; short: false }
+                QuotaMeter {
+                    id: shortMeter
+                    width: (parent.width - root.meterGap) / 2
+                    account: circuit.account
+                    short: true
+                }
+                QuotaMeter {
+                    x: (parent.width + root.meterGap) / 2
+                    width: (parent.width - root.meterGap) / 2
+                    account: circuit.account
+                    short: false
+                }
             }
 
             // ---- details ----
             Column {
                 id: details
                 visible: circuit.open
-                x: providerMark.width + Theme.scaled(8)
-                width: parent.width - x
-                topPadding: Theme.scaled(4)
-                spacing: Theme.scaled(8)
+                width: parent.width
+                topPadding: Theme.scaled(6)
+                spacing: Theme.scaled(10)
 
                 readonly property var series: circuit.detail && circuit.detail.series ? circuit.detail.series : []
                 readonly property var accountBars: Helpers.bars(details.series, root.now)
                 readonly property int accountTotal: details.accountBars.reduce((sum, b) => sum + b.requests, 0)
                 readonly property string pauses: Helpers.pauseText(circuit.account, root.now)
-                readonly property var resets: Helpers.resetFacts(circuit.account, root.now)
+                readonly property var windows: Helpers.windowDetails(circuit.account, root.now, Fusebox.hideEmails)
+                readonly property var sessions: Helpers.namedSessions(circuit.detail)
+                readonly property int pinned: circuit.detail && !circuit.detail.error ? circuit.detail.sessions.length : 0
 
                 Caption {
                     width: parent.width
                     font.features: Theme.tabularNumberFeatures
                     color: Theme.textLow
                     text: Helpers.accountSubtitle(circuit.account, root.now)
-                }
-                FactStrip {
-                    fill: root.surfaceColor
-                    facts: Helpers.accountFacts(circuit.account, circuit.detail, root.now)
-                }
-                FactStrip {
-                    visible: details.resets.length > 0
-                    fill: root.surfaceColor
-                    facts: details.resets
-                }
-
-                // The account's own hour, from its activity.
-                Column {
-                    visible: details.series.length > 0
-                    width: parent.width
-                    spacing: Theme.scaled(5)
-
-                    SectionTitle {
-                        label: I18n.tr("Load · last 60 min")
-                        detail: Helpers.number(details.accountTotal) + (details.accountTotal === 1 ? " request" : " requests")
-                    }
-                    LoadBars {
-                        width: parent.width
-                        height: Theme.scaled(26)
-                        bars: details.accountBars
-                        peak: Math.max(2, ...details.accountBars.map(b => b.requests))
-                        Accessible.role: Accessible.Graphic
-                        Accessible.name: I18n.tr("Requests per minute on this account, last 60 minutes")
-                        Accessible.description: Helpers.number(details.accountTotal) + " requests"
-                    }
                 }
 
                 Notice {
@@ -1326,6 +1642,123 @@ PopoutPanel {
                         onActivated: Fusebox.runAction(circuit.account.id, "reset")
                     }
                 }
+                FactStrip {
+                    fill: root.surfaceColor
+                    facts: Helpers.accountFacts(circuit.account, circuit.detail, root.now)
+                }
+
+                // Each meter's window: its pace, when it resets or runs out, and
+                // who used it. Keyed by count, as the clock moves the windows along.
+                Repeater {
+                    model: details.windows.length
+
+                    Column {
+                        id: windowBlock
+
+                        required property int index
+                        readonly property var entry: details.windows[index]
+                            || ({ title: "", timing: "", level: "ok", rate: "", rows: [], meterLevel: "ok" })
+
+                        width: details.width
+                        spacing: Theme.scaled(4)
+
+                        Item {
+                            width: parent.width
+                            height: windowName.implicitHeight
+
+                            Text {
+                                id: windowName
+                                textFormat: Text.PlainText
+                                text: windowBlock.entry.title
+                                font.family: Theme.fontMenu
+                                font.pixelSize: Theme.typography.metadata
+                                font.weight: Theme.weightSemibold
+                                color: Theme.textMid
+                            }
+                            Caption {
+                                anchors.left: windowName.right
+                                anchors.leftMargin: Theme.scaled(8)
+                                anchors.baseline: windowName.baseline
+                                width: Math.max(0, Math.min(implicitWidth, windowTiming.x - x - Theme.scaled(10)))
+                                font.features: Theme.tabularNumberFeatures
+                                color: Theme.textFaint
+                                text: windowBlock.entry.rate
+                            }
+                            Caption {
+                                id: windowTiming
+                                anchors.right: parent.right
+                                anchors.baseline: windowName.baseline
+                                font.features: Theme.tabularNumberFeatures
+                                color: windowBlock.entry.level === "warn" ? Theme.amber : Theme.textLow
+                                text: windowBlock.entry.timing
+                            }
+                        }
+                        Repeater {
+                            model: windowBlock.entry.rows.length
+
+                            ShareRow {
+                                required property int index
+                                readonly property var row: windowBlock.entry.rows[index] || ({})
+
+                                name: row.name || ""
+                                points: row.points || 0
+                                other: !!row.other
+                                level: windowBlock.entry.meterLevel
+                            }
+                        }
+                    }
+                }
+                Caption {
+                    visible: details.windows.some(w => w.rows.length > 0)
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    elide: Text.ElideNone
+                    color: Theme.textFaint
+                    text: details.windows.some(w => w.byTokens)
+                        ? "Shares are Fusebox's estimate from its quota readings, partly by tokens."
+                        : "Shares are Fusebox's estimate from its quota readings."
+                }
+
+                // The account's own hour, from its activity.
+                Column {
+                    visible: details.series.length > 0
+                    width: parent.width
+                    spacing: Theme.scaled(5)
+
+                    SectionTitle {
+                        inset: 0
+                        label: I18n.tr("Load · last 60 min")
+                        detail: Helpers.number(details.accountTotal) + (details.accountTotal === 1 ? " request" : " requests")
+                    }
+                    LoadBars {
+                        width: parent.width
+                        height: Theme.scaled(26)
+                        bars: details.accountBars
+                        peak: Math.max(2, ...details.accountBars.map(b => b.requests))
+                        Accessible.role: Accessible.Graphic
+                        Accessible.name: I18n.tr("Requests per minute on this account, last 60 minutes")
+                        Accessible.description: Helpers.number(details.accountTotal) + " requests"
+                    }
+                }
+
+                Column {
+                    visible: details.sessions.length > 0
+                    width: parent.width
+                    spacing: Theme.scaled(6)
+
+                    SectionTitle {
+                        inset: 0
+                        readonly property int older: details.pinned - Math.min(4, details.sessions.length)
+                        label: I18n.tr("Pinned sessions")
+                        detail: older > 0 ? "+" + older + " older" : ""
+                    }
+                    Repeater {
+                        model: details.sessions.slice(0, 4)
+
+                        SessionRow { account: circuit.account }
+                    }
+                }
+
                 ResetPanel {
                     account: circuit.account
                     visible: Fusebox.resetsEnabled && Helpers.resetsSupported(circuit.account, true)
@@ -1339,6 +1772,50 @@ PopoutPanel {
                     elide: Text.ElideNone
                     color: Theme.redText
                     text: circuit.result ? circuit.result.error : ""
+                }
+
+                // Which accounts take new sessions first.
+                Item {
+                    width: parent.width
+                    height: Math.max(priorityText.implicitHeight, prioritySwitch.height)
+
+                    Column {
+                        id: priorityText
+                        anchors.left: parent.left
+                        anchors.right: prioritySwitch.left
+                        anchors.rightMargin: Theme.scaled(10)
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Theme.scaled(1)
+
+                        Text {
+                            width: parent.width
+                            elide: Text.ElideRight
+                            textFormat: Text.PlainText
+                            text: I18n.tr("New sessions")
+                            font.family: Theme.fontMenu
+                            font.pixelSize: Theme.typography.metadata
+                            font.weight: Theme.weightSemibold
+                            color: Theme.textMid
+                        }
+                        Caption {
+                            width: parent.width
+                            wrapMode: Text.Wrap
+                            elide: Text.ElideNone
+                            color: Theme.textFaint
+                            text: circuit.acting && Fusebox.actionName === "priority" ? "Saving…"
+                                : Helpers.priorityHelp(circuit.account.priority)
+                        }
+                    }
+                    Segmented {
+                        id: prioritySwitch
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        enabled: !Fusebox.actionBusy
+                        accessibleName: "Priority for new sessions on " + Fusebox.accountName(circuit.account)
+                        options: root.priorityOptions
+                        current: Helpers.priorityChoice(circuit.account.priority)
+                        onPicked: value => Fusebox.runAction(circuit.account.id, "priority", value)
+                    }
                 }
 
                 // The breaker: reversible switches on the left, the dashboard on the right.
@@ -1390,172 +1867,230 @@ PopoutPanel {
         }
     }
 
-    // One finished request, as the dashboard's latest requests show it: who served
-    // it, the model and client, its status and time; the account and its timing
-    // and tokens beneath; a failure's reason in red.
-    component RequestRow: Item {
-        id: requestRow
+    // A thin rule between the Activity card's blocks.
+    component Divider: Item {
+        width: parent ? parent.width : 0
+        height: Theme.scaled(9)
+
+        Rectangle {
+            x: root.pad
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - root.pad * 2
+            height: 1
+            color: Theme.hairlineSoft
+        }
+    }
+
+    // A key and address using Fusebox now: requests in flight, an open socket, or
+    // a request in the last five minutes.
+    component ClientLine: Item {
+        id: clientLine
 
         required property var modelData
-        required property int index
+        readonly property var entry: modelData
+
+        width: parent ? parent.width : 0
+        height: root.lineHeight
+        Accessible.role: Accessible.StaticText
+        Accessible.name: clientLine.entry.name
+        Accessible.description: [clientLine.entry.full, Helpers.connectedState(clientLine.entry, root.now)]
+            .filter(part => part).join(", ")
+
+        Rectangle {
+            x: root.pad + (Theme.iconMedium - width) / 2
+            anchors.verticalCenter: parent.verticalCenter
+            width: 7
+            height: 7
+            radius: 3.5
+            color: clientLine.entry.busy ? Theme.ok : Theme.textFaint
+        }
+        Text {
+            id: clientName
+            x: root.textX
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, (parent.width - x - root.pad) * 0.45)
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+            text: clientLine.entry.name
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.typography.metadata
+            font.weight: Theme.weightMedium
+            color: Theme.textHi
+        }
+        Caption {
+            anchors.left: clientName.right
+            anchors.leftMargin: Theme.scaled(8)
+            anchors.baseline: clientName.baseline
+            width: Math.max(0, clientState.x - x - Theme.scaled(10))
+            font.features: Theme.tabularNumberFeatures
+            color: Theme.textLow
+            text: clientLine.entry.where
+        }
+        Caption {
+            id: clientState
+            anchors.right: parent.right
+            anchors.rightMargin: root.pad
+            anchors.baseline: clientName.baseline
+            font.features: Theme.tabularNumberFeatures
+            color: clientLine.entry.busy ? Theme.ok : Theme.textFaint
+            text: Helpers.connectedState(clientLine.entry, root.now)
+        }
+    }
+
+    // A named client's daily token or monthly spending limit, and how far through it is.
+    component BudgetLine: Item {
+        id: budgetLine
+
+        required property var modelData
+        readonly property var entry: modelData
+
+        width: parent ? parent.width : 0
+        height: root.lineHeight
+        Accessible.role: Accessible.StaticText
+        Accessible.name: budgetLine.entry.name
+        Accessible.description: budgetLine.entry.text
+
+        Sym {
+            x: root.pad + (Theme.iconMedium - Theme.iconSmall) / 2
+            anchors.verticalCenter: parent.verticalCenter
+            name: "speed"
+            size: Theme.iconSmall
+            color: Theme.textFaint
+        }
+        Text {
+            id: budgetName
+            x: root.textX
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, (parent.width - x - root.pad) * 0.3)
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+            text: budgetLine.entry.name
+            font.family: Theme.fontMenu
+            font.pixelSize: Theme.typography.metadata
+            font.weight: Theme.weightMedium
+            color: Theme.textHi
+        }
+        BlockMeter {
+            x: root.textX + (parent.width - root.textX - root.pad) * 0.3 + Theme.scaled(8)
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.max(0, budgetText.x - x - Theme.scaled(10))
+            height: 5
+            blockWidth: 3
+            gap: 2
+            value: budgetLine.entry.share
+            fillColor: root.meterTone(budgetLine.entry.level)
+        }
+        Caption {
+            id: budgetText
+            anchors.right: parent.right
+            anchors.rightMargin: root.pad
+            anchors.verticalCenter: parent.verticalCenter
+            font.features: Theme.tabularNumberFeatures
+            color: budgetLine.entry.level === "ok" ? Theme.textLow : root.tone(budgetLine.entry.level)
+            text: budgetLine.entry.text
+        }
+    }
+
+    // One finished request on one line: the provider's mark, the model, its
+    // account and client key, status and time. A failure's reason follows in
+    // red; timing, tokens and tags are read to screen readers, and the typical
+    // time to first token is on the load card.
+    component RequestLine: Item {
+        id: requestLine
+
+        required property var modelData
         readonly property var request: modelData
         readonly property var account: Fusebox.accountById(request.accountId)
         readonly property string result: Helpers.outcome(request)
         readonly property bool showError: result === "failed" && !!request.error
-        readonly property var tags: Helpers.requestTags(request)
-        readonly property string mark: Helpers.providerMark(request.provider)
+        readonly property real room: Math.max(0, statusPill.x - Theme.scaled(10) - root.textX)
 
         width: parent ? parent.width : 0
-        height: requestBody.implicitHeight + Theme.scaled(18)
+        height: root.lineHeight + (requestLine.showError ? requestError.implicitHeight + Theme.scaled(4) : 0)
         Accessible.role: Accessible.StaticText
         Accessible.name: Helpers.clientLabel(request) + " to " + request.model
         Accessible.description: ["status " + request.status, Helpers.requestMetrics(request),
-            requestRow.showError ? Fusebox.privateText(request.error) : ""].filter(part => part).join(", ")
+            Helpers.requestTags(request).join(", "), Helpers.originText(request, Fusebox.hideEmails),
+            requestLine.showError ? Fusebox.privateText(request.error) : ""].filter(part => part).join(", ")
 
-        Rectangle {
-            visible: requestRow.index > 0
-            x: Theme.scaled(12)
-            width: parent.width - x * 2
-            height: 1
-            color: Theme.hairlineSoft
-        }
         Item {
-            id: requestMark
-            x: Theme.scaled(12)
-            y: Theme.scaled(10)
-            width: Theme.iconMedium
-            height: Theme.iconMedium
+            width: parent.width
+            height: root.lineHeight
 
-            BrandIcon {
-                visible: requestRow.mark !== ""
-                anchors.fill: parent
-                name: requestRow.mark
+            ProviderMark {
+                x: root.pad
+                anchors.verticalCenter: parent.verticalCenter
+                provider: requestLine.request.provider
+                size: Theme.iconSmall
             }
-            Sym {
-                visible: requestRow.mark === ""
-                anchors.centerIn: parent
-                name: "api"
-                size: Theme.iconMedium
+            Text {
+                id: requestModel
+                x: root.textX
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, requestLine.room * 0.42)
+                elide: Text.ElideRight
+                textFormat: Text.PlainText
+                text: requestLine.request.model || "—"
+                font.family: Theme.fontMono
+                font.pixelSize: Theme.typography.metadata
+                font.weight: Theme.weightMedium
+                color: Theme.textHi
+            }
+            // The account, then the named client key it came with.
+            Caption {
+                x: root.textX + requestLine.room * 0.42 + Theme.scaled(8)
+                anchors.baseline: requestModel.baseline
+                width: Math.max(0, requestLine.room * 0.58 - Theme.scaled(8))
                 color: Theme.textLow
+                text: [requestLine.account ? Fusebox.accountName(requestLine.account)
+                    : Fusebox.privateText(requestLine.request.account) || "No account",
+                    requestLine.request.keyLabel ? (Fusebox.hideEmails ? Helpers.HIDDEN : requestLine.request.keyLabel) : ""]
+                    .filter(part => part).join(" · ")
             }
-        }
-        Column {
-            id: requestBody
-            x: requestMark.x + requestMark.width + Theme.scaled(10)
-            y: Theme.scaled(9)
-            width: parent.width - x - Theme.scaled(12)
-            spacing: Theme.scaled(3)
-
-            Item {
-                width: parent.width
-                height: Math.max(modelText.implicitHeight, statusPill.height)
+            Rectangle {
+                id: statusPill
+                anchors.right: requestTime.left
+                anchors.rightMargin: Theme.scaled(8)
+                anchors.verticalCenter: parent.verticalCenter
+                width: Theme.scaled(36)
+                height: statusText.implicitHeight + Theme.scaled(4)
+                radius: height / 2
+                color: requestLine.result === "failed" ? Theme.redBgSoft
+                    : requestLine.result === "cancelled" ? Theme.hairlineSoft : Theme.okBgSoft
 
                 Text {
-                    id: modelText
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(implicitWidth, parent.width - tagRow.implicitWidth - lineEnd.width - Theme.scaled(16))
-                    elide: Text.ElideRight
-                    textFormat: Text.PlainText
-                    text: requestRow.request.model || "—"
-                    font.family: Theme.fontMono
-                    font.pixelSize: Theme.typography.secondary
-                    font.weight: Theme.weightMedium
-                    color: Theme.textHi
-                }
-                Row {
-                    id: tagRow
-                    anchors.left: modelText.right
-                    anchors.leftMargin: Theme.scaled(7)
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Theme.scaled(4)
-
-                    Repeater {
-                        model: requestRow.tags
-
-                        Rectangle {
-                            id: tag
-                            required property var modelData
-                            width: tagText.implicitWidth + Theme.scaled(10)
-                            height: tagText.implicitHeight + Theme.scaled(3)
-                            radius: Theme.scaled(4)
-                            color: Theme.hairlineSoft
-
-                            Text {
-                                id: tagText
-                                anchors.centerIn: parent
-                                text: tag.modelData
-                                textFormat: Text.PlainText
-                                font.family: Theme.fontMenu
-                                font.pixelSize: Theme.typography.section
-                                font.weight: Theme.weightSemibold
-                                color: Theme.textLow
-                            }
-                        }
-                    }
-                }
-                Row {
-                    id: lineEnd
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Theme.scaled(8)
-
-                    Rectangle {
-                        id: statusPill
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: statusText.implicitWidth + Theme.scaled(12)
-                        height: statusText.implicitHeight + Theme.scaled(4)
-                        radius: height / 2
-                        color: requestRow.result === "failed" ? Theme.redBgSoft
-                            : requestRow.result === "cancelled" ? Theme.hairlineSoft : Theme.okBgSoft
-
-                        Text {
-                            id: statusText
-                            anchors.centerIn: parent
-                            text: requestRow.request.status
-                            font.family: Theme.fontNumeric
-                            font.pixelSize: Theme.typography.metadata
-                            font.weight: Theme.weightSemibold
-                            font.features: Theme.tabularNumberFeatures
-                            color: requestRow.result === "failed" ? Theme.redText
-                                : requestRow.result === "cancelled" ? Theme.textDim : Theme.ok
-                        }
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: Helpers.when(requestRow.request.at, root.now)
-                        font.family: Theme.fontNumeric
-                        font.pixelSize: Theme.typography.metadata
-                        font.features: Theme.tabularNumberFeatures
-                        color: Theme.textFaint
-                    }
-                }
-            }
-            Item {
-                width: parent.width
-                height: requestAccount.implicitHeight
-
-                Caption {
-                    id: requestAccount
-                    width: Math.min(implicitWidth, parent.width - requestMetrics.implicitWidth - Theme.scaled(12))
-                    color: Theme.textLow
-                    text: requestRow.account ? Fusebox.accountName(requestRow.account)
-                        : Fusebox.privateText(requestRow.request.account) || "No account"
-                }
-                Caption {
-                    id: requestMetrics
-                    anchors.right: parent.right
+                    id: statusText
+                    anchors.centerIn: parent
+                    text: requestLine.request.status
+                    font.family: Theme.fontNumeric
+                    font.pixelSize: Theme.typography.metadata
+                    font.weight: Theme.weightSemibold
                     font.features: Theme.tabularNumberFeatures
-                    color: Theme.textFaint
-                    text: Helpers.requestMetrics(requestRow.request)
+                    color: requestLine.result === "failed" ? Theme.redText
+                        : requestLine.result === "cancelled" ? Theme.textDim : Theme.ok
                 }
             }
             Caption {
-                visible: requestRow.showError
-                width: parent.width
-                font.family: Theme.fontMono
-                color: Theme.redText
-                text: requestRow.showError ? Fusebox.privateText(requestRow.request.error) : ""
+                id: requestTime
+                anchors.right: parent.right
+                anchors.rightMargin: root.pad
+                anchors.baseline: requestModel.baseline
+                width: Theme.scaled(38)
+                horizontalAlignment: Text.AlignRight
+                font.features: Theme.tabularNumberFeatures
+                color: Theme.textFaint
+                text: Helpers.when(requestLine.request.at, root.now)
             }
+        }
+        Caption {
+            id: requestError
+            visible: requestLine.showError
+            x: root.textX
+            y: root.lineHeight - Theme.scaled(4)
+            width: parent.width - x - root.pad
+            font.family: Theme.fontMono
+            color: Theme.redText
+            text: requestLine.showError ? Fusebox.privateText(requestLine.request.error) : ""
         }
     }
 
@@ -1625,7 +2160,7 @@ PopoutPanel {
 
             readonly property string connection: Fusebox.connection
             readonly property color tint: connection === "live" ? Theme.ok
-                : connection === "offline" || connection === "auth" ? Theme.redText : Theme.textDim
+                : Fusebox.troubled ? Theme.redText : connection === "restarting" ? Theme.amber : Theme.textDim
 
             visible: root.configured
             anchors.right: privacy.left
@@ -1635,7 +2170,7 @@ PopoutPanel {
             height: Theme.scaled(24)
             radius: height / 2
             color: connection === "live" ? Theme.okBgSoft
-                : connection === "offline" || connection === "auth" ? Theme.redBgSoft : Theme.chip
+                : Fusebox.troubled ? Theme.redBgSoft : connection === "restarting" ? Theme.amberBgSoft : Theme.chip
             Accessible.role: Accessible.StaticText
             Accessible.name: I18n.tr("Connection")
             Accessible.description: Fusebox.status
@@ -1654,7 +2189,8 @@ PopoutPanel {
                     color: pill.tint
 
                     SequentialAnimation on opacity {
-                        running: pill.connection === "connecting" && !Theme.reducedMotion
+                        running: (pill.connection === "connecting" || pill.connection === "restarting"
+                            || (pill.connection === "offline" && !Fusebox.troubled)) && !Theme.reducedMotion
                         loops: Animation.Infinite
                         onRunningChanged: if (!running) pillDot.opacity = 1
                         NumberAnimation { from: 1; to: 0.3; duration: 700; easing.type: Easing.InOutSine }
@@ -1664,7 +2200,8 @@ PopoutPanel {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: ({ live: "Live", offline: Fusebox.hasData ? "Reconnecting" : "Offline",
-                        auth: "Key rejected", connecting: "Connecting" })[pill.connection] || ""
+                        auth: "Key rejected", locked: "Locked out", restarting: "Restarting",
+                        connecting: "Connecting" })[pill.connection] || ""
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.metadata
                     font.weight: Theme.weightSemibold
@@ -1760,48 +2297,75 @@ PopoutPanel {
                 }
             }
 
-            // Why the readings are missing or old. A rejected key or a lost
-            // connection is red wherever it shows: here, the pill and the badge.
+            // Why the readings are missing or old. A rejected key, a lockout or a
+            // lost connection is red wherever it shows: here, the pill and the
+            // badge. A restart is amber: Fusebox said it is coming back.
             Rectangle {
-                visible: root.configured && Fusebox.error !== "" && Fusebox.connection !== "live"
+                id: problemBox
+
+                readonly property bool restart: Fusebox.connection === "restarting"
+                readonly property bool lockedOut: Fusebox.connection === "locked"
+                readonly property bool needsKey: Fusebox.connection === "auth" || Fusebox.connection === "locked"
+
+                visible: root.configured && Fusebox.problemShown
                 width: parent.width
                 height: problem.implicitHeight + Theme.scaled(22)
                 radius: Theme.chipRadius
-                color: Theme.redBgSoft
+                color: problemBox.restart ? Theme.amberBgSoft : Theme.redBgSoft
                 border.width: 1
-                border.color: Theme.redBorder
+                border.color: problemBox.restart ? Theme.amberBorder : Theme.redBorder
 
                 Sym {
-                    x: Theme.scaled(12)
-                    y: Theme.scaled(12)
-                    name: "error"
+                    x: root.pad
+                    y: Theme.scaled(11) + (problemTitle.implicitHeight - height) / 2
+                    name: problemBox.restart ? "restart_alt" : problemBox.lockedOut ? "lock" : "error"
                     size: Theme.iconMedium
-                    color: Theme.redText
+                    color: problemBox.restart ? Theme.amber : Theme.redText
                 }
                 Column {
                     id: problem
-                    x: Theme.scaled(38)
+                    x: root.textX
                     y: Theme.scaled(11)
-                    width: parent.width - x - problemAction.width - Theme.scaled(22)
+                    width: parent.width - x - (problemAction.visible ? problemAction.width : 0) - Theme.scaled(22)
                     spacing: Theme.scaled(3)
 
                     Text {
+                        id: problemTitle
                         width: parent.width
                         wrapMode: Text.Wrap
                         textFormat: Text.PlainText
-                        text: Fusebox.connection === "auth" ? "Fusebox didn't accept the key"
-                            : Fusebox.hasData ? "Connection lost · showing the last update"
-                            : "Can't reach " + Fusebox.host
+                        text: {
+                            switch (Fusebox.connection) {
+                            case "auth": return "Fusebox didn't accept the key";
+                            case "locked": return "Locked out after wrong keys";
+                            case "restarting": return "Fusebox is restarting";
+                            default: return Fusebox.hasData ? "Connection lost · showing the last update"
+                                : "Can't reach " + Fusebox.host;
+                            }
+                        }
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.secondary
                         font.weight: Theme.weightSemibold
-                        color: Theme.redText
+                        color: problemBox.restart ? Theme.amber : Theme.redText
                     }
                     Text {
                         width: parent.width
                         wrapMode: Text.Wrap
                         textFormat: Text.PlainText
-                        text: Fusebox.error
+                        text: {
+                            switch (Fusebox.connection) {
+                            case "auth":
+                                return Fusebox.error + " The widget won't try this key again, so Fusebox doesn't lock this computer out. Enter the right key in Settings.";
+                            case "locked":
+                                return "Fusebox turns this computer away for "
+                                    + (Fusebox.lockedUntil > root.now ? Helpers.span(Fusebox.lockedUntil - root.now) : "a moment")
+                                    + " more, then the widget tries once. Each wrong key locks it out for longer.";
+                            case "restarting":
+                                return Fusebox.hasData ? "Showing the last update until it's back." : "Reconnecting as soon as it's back.";
+                            default:
+                                return Fusebox.error;
+                            }
+                        }
                         font.family: Theme.fontMenu
                         font.pixelSize: Theme.typography.metadata
                         color: Theme.textMid
@@ -1809,12 +2373,13 @@ PopoutPanel {
                 }
                 ActionButton {
                     id: problemAction
+                    visible: !problemBox.restart
                     anchors.right: parent.right
-                    anchors.rightMargin: Theme.scaled(10)
+                    anchors.rightMargin: root.pad
                     anchors.verticalCenter: parent.verticalCenter
-                    label: Fusebox.connection === "auth" ? "Settings" : "Retry"
+                    label: problemBox.needsKey ? "Settings" : "Retry"
                     tint: Theme.redText
-                    onTriggered: Fusebox.connection === "auth" ? Fusebox.configure() : Fusebox.refresh()
+                    onTriggered: problemBox.needsKey ? Fusebox.configure() : Fusebox.refresh()
                 }
             }
 
@@ -1849,30 +2414,22 @@ PopoutPanel {
                     width: parent.width
                     spacing: Theme.scaled(6)
 
+                    // Dismissed faults are one click from coming back.
+                    SectionTitle {
+                        label: I18n.tr("Faults")
+                        detail: Fusebox.dismissedCount > 0 ? Fusebox.dismissedCount + " dismissed" : ""
+                        action: Fusebox.dismissedCount > 0 ? "Show" : ""
+                        actionName: "Show dismissed faults again"
+                        onActed: Fusebox.restoreFaults()
+                    }
                     Repeater {
                         model: Fusebox.shownFaults
                         FaultRow {}
                     }
-                    // Dismissed faults are one click from coming back.
-                    Row {
-                        visible: Fusebox.dismissedCount > 0
-                        spacing: Theme.scaled(8)
-
-                        Caption {
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: Theme.textFaint
-                            text: Fusebox.dismissedCount + (Fusebox.dismissedCount === 1 ? " dismissed fault" : " dismissed faults")
-                        }
-                        LinkText {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: I18n.tr("Show")
-                            accessibleName: "Show dismissed faults again"
-                            onClicked: Fusebox.restoreFaults()
-                        }
-                    }
                     Caption {
                         visible: Fusebox.faultSource === "accounts" && Fusebox.shownFaults.length > 0
-                        width: parent.width
+                        x: root.pad
+                        width: parent.width - root.pad * 2
                         wrapMode: Text.Wrap
                         elide: Text.ElideNone
                         color: Theme.textFaint
@@ -1880,57 +2437,89 @@ PopoutPanel {
                     }
                 }
 
-                // ---- the main line ----
-                FactStrip {
-                    readonly property var f: Fusebox.figures
-                    facts: [
-                        { label: I18n.tr("In progress"), value: String(f.serving) },
-                        { label: I18n.tr("Last minute"), value: f.rpm + " req" },
-                        { label: I18n.tr("Failed · hour"), value: String(f.failed), level: f.failed > 0 ? "critical" : "ok" },
-                        { label: I18n.tr("First token"), value: Helpers.seconds(f.ttft) }
-                    ]
+                // ---- load: the figures over the hour's chart, on one card ----
+                Rectangle {
+                    width: parent.width
+                    height: loadCard.implicitHeight + root.pad * 2
+                    radius: Theme.chipRadius
+                    color: Theme.chip
+
+                    Column {
+                        id: loadCard
+                        x: root.pad
+                        y: root.pad
+                        width: parent.width - root.pad * 2
+                        spacing: Theme.scaled(8)
+
+                        // Keyed by count: the values move with every request.
+                        Flow {
+                            width: parent.width
+                            spacing: Theme.scaled(14)
+
+                            Repeater {
+                                model: root.loadFigures.length
+
+                                Item {
+                                    id: loadFigure
+
+                                    required property int index
+                                    readonly property var fact: root.loadFigures[index] || ({ value: "", label: "" })
+
+                                    width: figureValue.implicitWidth + Theme.scaled(4) + figureLabel.implicitWidth
+                                    height: figureValue.implicitHeight
+                                    Accessible.role: Accessible.StaticText
+                                    Accessible.name: loadFigure.fact.value + " " + loadFigure.fact.label
+
+                                    Figure {
+                                        id: figureValue
+                                        text: loadFigure.fact.value
+                                        color: root.tone(loadFigure.fact.level || "ok")
+                                    }
+                                    Caption {
+                                        id: figureLabel
+                                        anchors.left: figureValue.right
+                                        anchors.leftMargin: Theme.scaled(4)
+                                        anchors.baseline: figureValue.baseline
+                                        color: Theme.textLow
+                                        text: loadFigure.fact.label
+                                    }
+                                }
+                            }
+                        }
+                        LoadBars {
+                            width: parent.width
+                            height: Theme.scaled(40)
+                            bars: root.loadBars
+                            peak: root.loadPeak
+                            Accessible.role: Accessible.Graphic
+                            Accessible.name: I18n.tr("Requests per minute, last 60 minutes")
+                            Accessible.description: Helpers.number(root.loadTotal) + " requests, at most "
+                                + root.loadPeak + " in a minute"
+                        }
+                        Item {
+                            width: parent.width
+                            height: axisStart.implicitHeight
+
+                            Caption {
+                                id: axisStart
+                                font.features: Theme.tabularNumberFeatures
+                                color: Theme.textFaint
+                                text: "Last 60 min · " + Helpers.number(root.loadTotal)
+                                    + (root.loadTotal === 1 ? " request" : " requests")
+                            }
+                            Caption {
+                                anchors.right: parent.right
+                                text: "now"
+                                color: Theme.textFaint
+                            }
+                        }
+                    }
                 }
 
-                // ---- load ----
+                // ---- accounts, by provider ----
                 Column {
                     width: parent.width
-                    spacing: Theme.scaled(6)
-
-                    SectionTitle {
-                        label: I18n.tr("Load · last 60 min")
-                        detail: Helpers.number(root.loadTotal) + (root.loadTotal === 1 ? " request" : " requests")
-                    }
-                    LoadBars {
-                        width: parent.width
-                        height: Theme.scaled(44)
-                        bars: root.loadBars
-                        peak: root.loadPeak
-                        Accessible.role: Accessible.Graphic
-                        Accessible.name: I18n.tr("Requests per minute, last 60 minutes")
-                        Accessible.description: Helpers.number(root.loadTotal) + " requests, at most "
-                            + root.loadPeak + " in a minute"
-                    }
-                    Item {
-                        width: parent.width
-                        height: axisStart.implicitHeight
-
-                        Caption {
-                            id: axisStart
-                            text: I18n.tr("60 min ago")
-                            color: Theme.textFaint
-                        }
-                        Caption {
-                            anchors.right: parent.right
-                            text: "now"
-                            color: Theme.textFaint
-                        }
-                    }
-                }
-
-                // ---- accounts ----
-                Column {
-                    width: parent.width
-                    spacing: Theme.scaled(4)
+                    spacing: Theme.scaled(2)
 
                     Item {
                         width: parent.width
@@ -1939,61 +2528,87 @@ PopoutPanel {
                         SectionTitle {
                             id: accountsTitle
                             anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - (quotaSwitch.visible ? quotaSwitch.width + Theme.scaled(12) : 0)
                             label: I18n.tr("Accounts")
-                            detail: {
-                                const on = Fusebox.accounts.filter(a => !a.disabled).length;
-                                return on + " of " + Fusebox.accounts.length + " on";
-                            }
                         }
                         QuotaSwitch {
                             id: quotaSwitch
                             visible: Fusebox.accounts.some(a => a.windows.length > 0)
                             anchors.right: parent.right
+                            anchors.rightMargin: root.pad
                             anchors.verticalCenter: parent.verticalCenter
                         }
                     }
                     Caption {
                         visible: Fusebox.accounts.length === 0
-                        width: parent.width
+                        x: root.pad
+                        width: parent.width - root.pad * 2
                         color: Theme.textLow
                         text: I18n.tr("No accounts yet. Connect one in the Fusebox dashboard.")
                     }
                     Repeater {
-                        model: root.circuits
-                        AccountRow {}
+                        model: root.groups
+
+                        Column {
+                            id: groupBlock
+
+                            required property var modelData
+
+                            width: parent ? parent.width : 0
+
+                            GroupHead { group: groupBlock.modelData }
+                            Repeater {
+                                model: groupBlock.modelData.accounts
+                                AccountRow { showPlan: !groupBlock.modelData.uniformPlan }
+                            }
+                        }
                     }
                 }
 
-                // ---- latest requests ----
+                // ---- activity: who is connected, budgets and the latest requests ----
                 Column {
                     width: parent.width
                     spacing: Theme.scaled(6)
 
                     SectionTitle {
-                        label: I18n.tr("Latest requests")
-                        detail: Fusebox.totals ? Helpers.number(Fusebox.totals.requests) + " since start" : ""
+                        label: I18n.tr("Activity")
+                        detail: [Fusebox.clients !== null
+                            ? root.connected.length + (root.connected.length === 1 ? " client" : " clients") : "",
+                            Fusebox.totals ? Helpers.number(Fusebox.totals.requests) + " requests since start" : ""]
+                            .filter(part => part).join(" · ")
                     }
                     Caption {
-                        visible: root.latest.length === 0
-                        width: parent.width
+                        visible: !activityCard.visible
+                        x: root.pad
+                        width: parent.width - root.pad * 2
                         color: Theme.textLow
                         text: I18n.tr("Requests appear here as they finish.")
                     }
                     Rectangle {
-                        visible: root.latest.length > 0
+                        id: activityCard
+                        visible: root.latest.length > 0 || root.connected.length > 0 || root.budgets.length > 0
                         width: parent.width
-                        height: latestRows.implicitHeight
+                        height: activityRows.implicitHeight + Theme.scaled(8)
                         radius: Theme.chipRadius
                         color: Theme.chip
 
                         Column {
-                            id: latestRows
+                            id: activityRows
+                            y: Theme.scaled(4)
                             width: parent.width
 
                             Repeater {
+                                model: root.connected
+                                ClientLine {}
+                            }
+                            Divider { visible: root.connected.length > 0 && (root.budgets.length > 0 || root.latest.length > 0) }
+                            Repeater {
+                                model: root.budgets
+                                BudgetLine {}
+                            }
+                            Divider { visible: root.budgets.length > 0 && root.latest.length > 0 }
+                            Repeater {
                                 model: root.latest
-                                RequestRow {}
+                                RequestLine {}
                             }
                         }
                     }
@@ -2026,7 +2641,7 @@ PopoutPanel {
         }
         Caption {
             anchors.left: parent.left
-            anchors.leftMargin: 2
+            anchors.leftMargin: root.pad
             anchors.right: actions.left
             anchors.rightMargin: Theme.scaled(10)
             anchors.verticalCenter: parent.verticalCenter
@@ -2036,6 +2651,9 @@ PopoutPanel {
                 case "setup": return "Not connected yet";
                 case "connecting": return "Connecting…";
                 case "live": return "Live · updated " + Helpers.ago(root.now - Fusebox.updatedAt);
+                case "auth": return "Waiting for a new key";
+                case "locked": return Fusebox.lockedUntil > 0 ? "Trying again at " + Helpers.when(Fusebox.lockedUntil, root.now)
+                    : "Locked out";
                 default: return Fusebox.hasData ? "Last update " + Helpers.ago(root.now - Fusebox.updatedAt)
                     : "Retrying automatically";
                 }
@@ -2045,7 +2663,7 @@ PopoutPanel {
         Row {
             id: actions
             anchors.right: parent.right
-            anchors.rightMargin: 2
+            anchors.rightMargin: root.pad
             anchors.verticalCenter: parent.verticalCenter
             anchors.verticalCenterOffset: 1
             spacing: Theme.scaled(16)

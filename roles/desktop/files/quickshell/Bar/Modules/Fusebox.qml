@@ -4,14 +4,15 @@ import "../../Common"
 
 // The Fusebox mark and one live figure, recent sessions by default. The
 // mark carries a badge only when something needs attention: amber for a fault
-// that clears by itself, red for one that fails requests or for a lost
-// connection. A healthy server is just its number.
+// that clears by itself, red for one that fails requests, for a lost connection
+// or a rejected key. Pace warnings stay in the dashboard. A healthy server is
+// just its number.
 BarModule {
     id: root
 
     readonly property string connection: Fusebox.connection
     readonly property bool configured: connection !== "setup"
-    readonly property bool troubled: connection === "offline" || connection === "auth"
+    readonly property bool troubled: Fusebox.troubled
     readonly property string badge: troubled ? "critical" : Fusebox.faultLevel
     readonly property bool idle: Fusebox.options.metric !== "faults" && Fusebox.barValue === "0"
 
@@ -32,7 +33,7 @@ BarModule {
             if (Fusebox.hasData)
                 lines.push((f.sessions === 1 ? "1 session" : f.sessions + " sessions") + " · "
                     + f.serving + " in progress · " + f.rpm + " requests/min");
-            const shown = Fusebox.shownFaults;
+            const shown = Fusebox.badgeFaults;
             if (shown.length)
                 lines.push(shown.length === 1 ? "1 fault: " + shown[0].title
                     : shown.length + " faults · " + shown[0].title);
