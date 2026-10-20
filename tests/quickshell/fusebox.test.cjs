@@ -3,7 +3,7 @@ const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { shellDir } = require("./shell.cjs");
+const { shellDir, load } = require("./shell.cjs");
 const H = require("../../roles/desktop/files/quickshell/Common/FuseboxHelpers.js");
 const S = require("../../roles/desktop/files/quickshell/Common/SettingsHelpers.js");
 const Registry = require("../../roles/desktop/files/quickshell/Common/PanelRegistryData.js");
@@ -132,8 +132,8 @@ test("Remaining flips what a meter fills and prints, never what counts as nearly
     assert.deepEqual([H.quotaWord("used"), H.quotaWord("remaining")], ["used", "left"]);
     assert.deepEqual(H.QUOTA_DISPLAYS.map(d => d.value), ["used", "remaining"]);
     const meter = read("Popovers/FuseboxPopover.qml");
-    assert.match(meter, /value: meter\.reading \? meter\.share \/ 100 : 0/);
-    assert.match(meter, /fillColor: root\.meterTone\(meter\.reading \? meter\.reading\.level : "ok"\)/);
+    assert.match(meter, /value: bar\.reading \? bar\.share \/ 100 : 0/);
+    assert.match(meter, /fillColor: root\.meterTone\(bar\.reading \? bar\.reading\.level : "ok"\)/);
     assert.match(read("Settings/ModuleDetailView.qml"), /current: view\.opts\.quotaDisplay/);
 });
 
@@ -165,7 +165,7 @@ test("finished requests count into their minute and the figures read them", () =
     assert.deepEqual([bars[58].requests, bars[59].current, bars[0].requests], [3, true, 0]);
     const requests = [req(NOW, 200, 300), req(NOW, 500, 10), req(NOW, 200, 900), req(NOW, 200, null)];
     assert.deepEqual(H.figures(series, requests, 2, NOW),
-        { sessions: 0, serving: 2, rpm: 3, failed: 1, ttft: 600 });
+        { sessions: 0, serving: 2, rpm: 3, failed: 1, ttft: 600, clients: 0 });
     assert.equal(H.barValue("serving", H.figures(series, requests, 2, NOW), []), "2");
     // Between requests a session has nothing in progress, but it still counts.
     const idle = H.figures(series, requests, 0, NOW,
@@ -176,6 +176,11 @@ test("finished requests count into their minute and the figures read them", () =
     assert.equal(H.METRICS[0].value, "sessions", "sessions lead the menubar choices");
     assert.equal(H.barValue("rpm", H.figures(series, requests, 2, NOW), []), "3");
     assert.equal(H.barValue("faults", null, [{}, {}]), "2");
+    const connected = { connected: [{ ip: "10.0.0.2" }, { ip: "10.0.0.3" }], named: [] };
+    assert.equal(H.barValue("clients", H.figures(series, requests, 2, NOW, {}, connected), []), "2");
+    assert.equal(H.barValue("clients", H.figures(series, requests, 2, NOW, {}, null), []), "0",
+        "a server without the clients API reads 0");
+    assert.deepEqual(H.METRICS.map(m => m.value), ["sessions", "serving", "rpm", "faults", "clients"]);
 });
 
 test("faults count down to their time and only new, lasting ones notify", () => {
@@ -222,10 +227,11 @@ test("account details read as figures, resets and pauses", () => {
     assert.deepEqual(H.accountFacts({ ...a, expiresAt: NOW - 1 }, null, NOW)[3], { label: "Token", value: "Expired",
         level: "critical" });
     assert.equal(H.accountFacts(account("k", { kind: "api-key", requests: 0, failures: 0 }), null, NOW).length, 3);
-    const resets = H.resetFacts(a, NOW);
-    assert.deepEqual(resets.map(f => [f.label, f.level]), [["5-hour back", "warn"], ["Weekly resets", "ok"]]);
-    assert.match(resets[1].value, /^\d\d:\d\d · in 5h 40m$/);
-    assert.deepEqual(H.resetFacts(account("k", { windows: [] }), NOW), []);
+    const windows = H.windowDetails(a, NOW, false);
+    assert.deepEqual(windows.map(w => [w.title, w.level]), [["5-hour", "warn"], ["Weekly", "ok"]]);
+    assert.match(windows[0].timing, /^back \d\d:\d\d · in 50m$/, "a used-up window says when it is back");
+    assert.match(windows[1].timing, /^resets \d\d:\d\d · in 5h 40m$/);
+    assert.deepEqual(H.windowDetails(account("k", { windows: [] }), NOW, false), []);
     assert.equal(H.pauseText(a, NOW), "claude-opus · rate limited · back in 4m\nEvery model · usage limit used up · back in 50m");
     assert.deepEqual([H.authName({ kind: "api-key" }), H.authName({ kind: "oauth", provider: "kimi" }),
         H.authName({ kind: "service-account" })], ["API key", "Device code", "Service account"]);
@@ -345,11 +351,18 @@ test("a dismissed fault stays hidden while it lasts and returns when it changes 
     assert.match(read("Popovers/FuseboxPopover.qml"), /model: Fusebox\.shownFaults/);
 });
 
-test("latest requests carry no client tag", () => {
+test("a request is one line on the grid; tokens and tags are for screen readers", () => {
     const popover = read("Popovers/FuseboxPopover.qml");
-    const row = popover.slice(popover.indexOf("component RequestRow"), popover.indexOf("// ---- header"));
-    assert.match(row, /readonly property var tags: Helpers\.requestTags\(request\)/);
-    assert.doesNotMatch(row.split("Accessible.name")[0], /clientLabel/, "the client is not shown as a tag");
+    const row = popover.slice(popover.indexOf("component RequestLine"), popover.indexOf("// ---- header"));
+    assert.match(row, /height: root\.lineHeight \+ \(requestLine\.showError/);
+    assert.match(row, /Helpers\.requestTags\(request\)\.join\(", "\)/);
+    assert.match(row, /Helpers\.requestMetrics\(request\)/);
+    assert.match(popover, /readonly property var latest: Fusebox\.requests\.slice\(0, 5\)/);
+    // Every row starts its text at the same column and ends at the same edge.
+    for (const component of ["AccountRow", "GroupHead", "FaultRow", "ClientLine", "BudgetLine", "RequestLine"]) {
+        const body = popover.slice(popover.indexOf("component " + component + ":"));
+        assert.match(body.slice(0, 9000), /root\.textX/, component + " uses the text column");
+    }
 });
 
 test("the dashboard opens only on its own hash routes", () => {
@@ -384,4 +397,169 @@ test("the singleton keeps the key out of argv, settings and IPC", () => {
     assert.match(keyRow, /value: ""/);
     assert.match(keyRow, /onCommitted: text => Fusebox\.storeKey\(text\)/);
     assert.doesNotMatch(keyRow, /setOpt/);
+});
+
+test("pace marks even use, and a window this pace uses up early says when", () => {
+    const week = 7 * 24 * 60 * MIN;
+    // Half the week gone, 70% used: 1.4x even pace, out before the reset.
+    const hot = { name: "week", used: 70, resetsAt: NOW + week / 2, model: null };
+    assert.equal(H.windowElapsed(hot, NOW), 0.5);
+    assert.equal(H.paceMark(hot, NOW, "used"), 0.5);
+    assert.equal(H.paceMark({ ...hot, resetsAt: NOW + week / 4 }, NOW, "remaining"), 0.25, "Left mirrors the mark");
+    assert.ok(Math.abs(H.burnRate(hot, NOW) - 70 / 84) < 1e-9, "percent of the window per hour");
+    const out = H.runsOutAt(hot, NOW);
+    assert.ok(out > NOW && out < hot.resetsAt);
+    assert.equal(Math.round((out - NOW) / MIN), Math.round(30 / (70 / (week / 2)) / MIN));
+    assert.equal(H.runsOutAt({ ...hot, used: 40 }, NOW), null, "under even pace it lasts");
+    assert.equal(H.runsOutAt({ ...hot, used: 15, resetsAt: NOW + week * 0.9 }, NOW), null, "too early to say");
+    assert.equal(H.runsOutAt({ ...hot, resetsAt: null }, NOW), null);
+    assert.equal(H.paceMark({ name: "x9", used: 1, resetsAt: NOW + MIN }, NOW, "used"), null, "unknown length");
+    assert.equal(H.rateText(0.42), "0.4% an hour");
+    assert.equal(H.rateText(0.01), "", "a window barely in use shows no rate");
+    const facts = H.windowDetails(account("a", { windows: [hot] }), NOW, false);
+    assert.match(facts[0].timing, /^runs out /);
+    assert.equal(facts[0].level, "warn");
+    assert.equal(facts[0].rate, "0.8% an hour");
+    // The meter draws the mark and turns it amber when the window runs out early.
+    const popover = read("Popovers/FuseboxPopover.qml");
+    assert.match(popover, /pace: meter\.mark === null \? -1 : meter\.mark/);
+    assert.match(popover, /color: bar\.early \? Theme\.amber : Theme\.textMid/);
+});
+
+test("Codex Pro tiers and Claude plans read as the dashboard names them", () => {
+    assert.equal(H.planName({ provider: "codex", plan: "pro", subscriptionPlan: "chatgptpromax" }), "Pro 500");
+    assert.equal(H.planName({ provider: "codex", plan: "pro", subscriptionPlan: "chatgptprolite" }), "Pro 100");
+    assert.equal(H.planName({ provider: "codex", plan: "pro", subscriptionPlan: "something-new" }), "Pro");
+    assert.equal(H.planName({ provider: "claude", plan: "max_20x", subscriptionPlan: "chatgptpro" }), "Max 20x");
+    assert.equal(H.planName({ provider: "codex", subscriptionPlan: "toString" }), "", "no prototype lookups");
+});
+
+test("pace and storage faults list, but only badge-worthy ones count and notify", () => {
+    const pace = { key: "pace:a:week", kind: "pace", level: "warn", until: NOW + 90 * MIN, badge: false };
+    const storage = { key: "storage:usage", kind: "storage", level: "err", until: null, badge: true };
+    assert.equal(H.faultLevel([pace]), "ok", "a pace warning leaves the badge alone");
+    assert.equal(H.faultLevel([pace, storage]), "critical");
+    assert.equal(H.barValue("faults", null, [pace, storage]), "1");
+    assert.deepEqual(H.newFaults([], [pace, storage]).map(f => f.key), ["storage:usage"]);
+    assert.match(H.faultTiming(pace, NOW), /^Renews \d\d:\d\d, in 1h 30m$/);
+    const glyphs = [H.faultGlyph(pace), H.faultGlyph(storage), H.faultGlyph({ level: "err" }),
+        H.faultGlyph({ level: "warn" })];
+    assert.deepEqual(glyphs, ["speed", "server", "error", "warning"]);
+    const Tabler = load("TablerGlyphs.js");
+    for (const glyph of glyphs)
+        assert.ok(Tabler.has(glyph), glyph + " is bundled");
+    assert.match(read("Bar/Modules/Fusebox.qml"), /const shown = Fusebox\.badgeFaults;/);
+});
+
+test("combined weekly limits weigh plans by price and compare with even pace", () => {
+    const week = 7 * 24 * 60 * MIN;
+    const sub = (id, plan, used, extra = {}) => account(id, { plan, windows: [
+        { name: "week", used, resetsAt: NOW + week / 2, model: null }], ...extra });
+    const pools = H.weeklyPools([sub("a", "max_20x", 60), sub("b", "pro", 20), sub("c", "max_20x", 30),
+        sub("d", "max_20x", 99, { disabled: true }), account("k", { kind: "api-key" }),
+        sub("x", "pro", 50, { provider: "codex" })], NOW);
+    assert.equal(pools.length, 1, "a provider needs two subscriptions");
+    const p = pools[0];
+    assert.equal(p.priced, true);
+    assert.equal(Math.round(p.used * 100) / 100, Math.round((10 * 60 + 20 + 10 * 30) / 21 * 100) / 100);
+    assert.equal(p.pace, 0.5);
+    assert.deepEqual(H.poolGap(p), { text: "6 points under pace", level: "ok" });
+    assert.equal(H.poolBasis(pools), "weighted by plan price");
+    const unknown = H.weeklyPools([sub("a", null, 80), sub("b", "pro", 80)], NOW)[0];
+    assert.equal(unknown.priced, false, "an unknown plan weighs everyone equally");
+    assert.deepEqual(H.poolGap(unknown), { text: "30 points over pace", level: "warn" });
+    const popover = read("Popovers/FuseboxPopover.qml");
+    assert.match(popover, /readonly property var groups: Helpers\.accountGroups\(Fusebox\.accounts\)/,
+        "groups follow the accounts, not the clock");
+});
+
+test("accounts group by provider, naming a shared plan once on the group's head", () => {
+    const max = (id, extra = {}) => account(id, { plan: "max_20x", ...extra });
+    const groups = H.accountGroups([max("c"), max("a"), account("k1", { kind: "api-key" }),
+        account("x", { provider: "codex", plan: "pro", subscriptionPlan: "chatgptpro" }), max("b", { plan: "pro" }),
+        account("k2", { kind: "api-key" })]);
+    assert.deepEqual(groups.map(g => [g.name, g.keys, g.accounts.map(a => a.id), g.summary, g.uniformPlan]), [
+        ["Claude", false, ["a", "b", "c"], "2 Max 20x, 1 Pro", false],
+        ["Codex", false, ["x"], "Pro 200", true],
+        ["Claude", true, ["k1", "k2"], "2 keys", false]]);
+    assert.equal(H.accountGroups([max("a"), max("b")])[0].summary, "2 × Max 20x");
+    assert.equal(H.accountGroups([max("a"), account("b")])[0].summary, "2 accounts", "an unknown plan says only how many");
+});
+
+test("who used a window: the largest clients, then the rest, outside use and hidden names", () => {
+    const share = { key: "week", name: "week", model: null, used: 62, outside: 4, before: 1, byTokens: 0, clients: [
+        { id: "laptop", label: "Laptop", points: 30 }, { id: "app:Claude Code", label: "Claude Code", points: 12 },
+        { id: "", label: "", points: 6 }, { id: "ci", label: "CI", points: 5 }, { id: "nas", label: "", points: 3 },
+        { id: "pi", label: "Pi", points: 1 }] };
+    const a = account("a", { windows: [{ name: "week", used: 62, resetsAt: NOW + MIN, model: null }],
+        attribution: { current: [share] } });
+    const rows = H.shareRows(share, false);
+    assert.deepEqual(rows.map(r => [r.name, r.points, r.other]), [["Laptop", 30, false], ["Claude Code", 12, false],
+        ["Other requests", 6, false], ["CI", 5, false], ["2 more clients", 4, true], ["Outside Fusebox", 4, true],
+        ["Before Fusebox looked", 1, true]]);
+    assert.deepEqual(H.shareRows(share, true).slice(0, 2).map(r => r.name), [H.HIDDEN, "Claude Code"],
+        "named clients hide with the emails; programs don't");
+    const used = H.windowDetails(a, NOW, false);
+    assert.deepEqual(used.map(u => [u.title, u.rows.length]), [["Weekly", 7]]);
+    assert.equal(H.sessionQuota(a, { quota: { week: 4.2, "5h": 11, "week · opus": 0 } }), "4% of week · 11% of 5h");
+    assert.equal(H.windowName("week", "opus"), "week opus");
+});
+
+test("sources and clients read as the dashboard shows them, hidden with the emails", () => {
+    const tail = { ip: "100.64.0.3", via: "forwarded", login: "me@github" };
+    assert.equal(H.sourceText(tail, false), "100.64.0.3 · via Tailscale · me@github");
+    assert.equal(H.sourceText(tail, true), H.HIDDEN + " · via Tailscale · " + H.HIDDEN);
+    assert.equal(H.viaText({ ip: "127.0.0.1", via: "direct" }, false), "this machine");
+    assert.equal(H.viaText({ ip: "10.0.0.2", via: "proxy_protocol" }, false), "via TCP forwarder");
+    assert.equal(H.originText({ keyLabel: "Laptop", source: { ip: "10.0.0.2", via: "direct" } }, false),
+        "Laptop · 10.0.0.2 · direct");
+    assert.equal(H.originText({ source: tail }, false), "100.64.0.3 · via Tailscale", "rows leave the login out");
+    assert.deepEqual(H.namedSessions({ sessions: [{ client: "Codex" }, {}, { model: "m" }] }).length, 2);
+    assert.deepEqual(H.namedSessions({ error: "x", sessions: [{ client: "Codex" }] }), []);
+    const view = { estimates: true, named: [
+        { id: "laptop", label: "Laptop", tokensToday: 4e6, tokensPerDay: 5e6, usdMonth: 12.5, usdPerMonth: 100 },
+        { id: "ci", label: "CI", tokensToday: 0, tokensPerDay: null, usdMonth: 99, usdPerMonth: 100 },
+        { id: "free", label: "Free", tokensToday: 9, tokensPerDay: null, usdMonth: 1, usdPerMonth: null }],
+        connected: [
+            { id: "laptop", label: "Laptop", ip: "10.0.0.2", via: "direct", inFlight: 0, sockets: 0, last: NOW - 2 * MIN },
+            { id: "app:Codex", label: "Codex", ip: "10.0.0.3", via: "direct", inFlight: 2, sockets: 0, last: NOW }] };
+    assert.deepEqual(H.budgets(view, false).map(b => [b.name, b.text, b.level]), [
+        ["Laptop", "4.0M of 5.0M tokens today", "warn"], ["Laptop", "$12.50 of $100 this month", "ok"],
+        ["CI", "$99.00 of $100 this month", "critical"]]);
+    const rows = H.connectedRows(view, true);
+    assert.deepEqual(rows.map(r => r.name), ["Codex", H.HIDDEN], "busy first; programs keep their names");
+    assert.deepEqual(rows.map(r => H.connectedState(r, NOW)), ["2 requests", "2 min ago"]);
+});
+
+test("priority follows the dashboard's First, Normal and Last", () => {
+    assert.deepEqual(H.PRIORITIES.map(p => p.value), [10, 0, -10]);
+    assert.deepEqual([H.priorityChoice(3), H.priorityChoice(0), H.priorityChoice(-50)], [10, 0, -10]);
+    assert.equal(H.priorityHelp(-1), "Only when no other account can");
+    assert.equal(H.priorityHelp(0), "By the routing strategy");
+    const singleton = read("Common/Fusebox.qml");
+    assert.match(singleton, /command\.push\("--priority", String\(Helpers\.priorityChoice\(value\)\)\)/);
+});
+
+test("automatic banked resets say what Fusebox will do by itself", () => {
+    const at = NOW + 3 * 24 * 60 * MIN;
+    assert.equal(H.bankedPlanText(null, NOW), "");
+    assert.match(H.bankedPlanText({ expiresAt: at, redeemAt: at - 60 * MIN, auto: false }, NOW),
+        /^The next one expires [A-Z][a-z]{2} \d+, \d\d:\d\d\. Automatic redemption is off\.$/);
+    assert.match(H.bankedPlanText({ expiresAt: at, redeemAt: at - 60 * MIN, auto: true, prioritized: true }, NOW),
+        /at 95% weekly use, or at [A-Z][a-z]{2} \d+, \d\d:\d\d, an hour before it expires\. Until then, this account takes new work first\.$/);
+    assert.equal(H.bankedPlanText({ expiresAt: at, auto: true, due: true }, NOW), "Fusebox is about to use one by itself.");
+});
+
+test("a rejected key, a lockout and a restart each read as what they are", () => {
+    const singleton = read("Common/Fusebox.qml");
+    assert.match(singleton, /locked: "Locked out"/);
+    assert.match(singleton, /restarting: "Restarting"/);
+    assert.match(singleton, /troubled: connection === "auth" \|\| connection === "locked"\s*\|\| \(connection === "offline" && \(longDown \|\| !hasData\)\)/,
+        "a short reconnect isn't red");
+    assert.match(singleton, /longDown: connection !== "live" && downSince > 0 && now - downSince >= 30000/);
+    assert.match(read("Popovers/FuseboxPopover.qml"), /visible: root\.configured && Fusebox\.problemShown/);
+    assert.match(read("Bar/Modules/Fusebox.qml"), /readonly property bool troubled: Fusebox\.troubled/);
+    const popover = read("Popovers/FuseboxPopover.qml");
+    assert.match(popover, /The widget won't try this key again/);
+    assert.match(popover, /Fusebox\.lockedUntil - root\.now/);
 });

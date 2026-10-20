@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Fusebox widget transport: key custody, allowlisting, fault rules and the live stream."""
+import gzip
 import http.server
 import importlib.util
 import io
@@ -62,6 +63,28 @@ BANKED_VIEW = {"checked_at": "2026-10-09T10:00:00.123456789Z", "error": None, "q
                                          "clears": ["5-hour", "weekly"], "usable": True, "reason": None},
                                         {"id": "bad id!", "label": "x"}, "junk"]}}
 
+CLIENTS_USAGE = {
+    "clients": {"laptop": {"tokens_today": 1200, "usd_month": 3.456}}, "estimates": True,
+    "last_used": {"laptop": "2026-10-09T09:59:00Z"}, "shared_last_used": [None],
+    "addresses": {"laptop": [{"ip": "10.0.0.2", "via": "direct", "first": "2026-10-01T00:00:00Z"}]},
+    "connected": [
+        {"key": "laptop", "ip": "10.0.0.2", "via": "direct", "in_flight": 1, "sockets": 0,
+         "last": "2026-10-09T10:00:00Z", "label": "Laptop"},
+        {"key": "fbx_shared_secret_value", "ip": "10.0.0.7", "via": "proxy_protocol", "in_flight": 0, "sockets": 1,
+         "last": "2026-10-09T09:58:00Z", "label": "Shared key 73d4…"},
+        {"key": "app:Codex", "ip": "100.64.0.9", "via": "forwarded", "login": "me@github", "in_flight": 0,
+         "sockets": 0, "last": "2026-10-09T09:57:00Z", "label": "Codex"},
+        {"key": "laptop", "ip": "not-an-address", "via": "direct", "label": "Laptop"}]}
+
+SETTINGS = {"revision": "r1", "path": "/etc/fusebox/config.yaml", "values": {
+    "management-key": "mgmt-secret", "claude-api-key": [{"api-key": "sk-ant-provider"}],
+    "named-clients": [
+        {"id": "laptop", "label": "Laptop", "key": "fbx_laptop_key", "models": ["claude-*"],
+         "addresses": ["10.0.0.0/24"], "requests-per-minute": 60, "tokens-per-day": 5000000,
+         "usd-per-month": 100, "expires": "2026-12-31"},
+        {"id": "ci", "label": "", "key": "fbx_ci_key", "usd-per-month": -5, "tokens-per-day": True,
+         "expires": "soon"}, "junk"]}}
+
 FAULT = {"key": "quota:file:claude-a.json", "kind": "quota", "level": "warn", "provider": "claude",
          "provider_name": "Claude", "account_id": "file:claude-a.json", "label": "person@example.com",
          "title": "Weekly limit used up", "detail": None, "until": "2026-10-12T09:00:00+00:00",
@@ -80,6 +103,10 @@ class FakeFusebox:
         self.hold = 0.0
         self.spend = "applied"   # applied | conflict | hang | crash | garbage
         self.spends = []
+        self.gzip = False
+        self.locked = 0          # answer 429 with this Retry-After
+        self.clients = CLIENTS_USAGE   # None: a release without /api/clients/usage
+        self.encodings = []
         fake = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -88,9 +115,15 @@ class FakeFusebox:
 
             def reply(self, status, body, headers=()):
                 data = json.dumps(body).encode()
+                encoded = fake.gzip and "gzip" in (self.headers.get("Accept-Encoding") or "")
+                if encoded:
+                    data = gzip.compress(data)
+                fake.encodings.append("gzip" if encoded else None)
                 self.send_response(status)
                 for name, value in headers:
                     self.send_header(name, value)
+                if encoded:
+                    self.send_header("Content-Encoding", "gzip")
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
@@ -103,17 +136,27 @@ class FakeFusebox:
                 length = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(length)) if length else None
                 fake.calls.append((method, self.path, self.headers.get("Authorization"), body))
+                route, _, query = self.path.partition("?")
                 if fake.redirect:
                     return self.reply(302, {}, [("Location", "http://127.0.0.1:9/steal")])
+                if fake.locked:
+                    return self.reply(429, {"error": f"too many wrong keys; try again in {fake.locked}s"},
+                                      [("Retry-After", str(fake.locked))])
                 if self.headers.get("Authorization") != "Bearer " + KEY:
                     return self.reply(401, {"error": "unauthorized"})
-                if method == "GET" and self.path == "/api/overview":
+                if method == "GET" and route == "/api/overview":
                     return self.reply(200, OVERVIEW)
-                if method == "GET" and self.path == "/api/accounts":
+                if method == "GET" and route == "/api/accounts":
                     return self.reply(200, fake.accounts)
-                if method == "GET" and self.path == "/api/requests":
+                if method == "GET" and route == "/api/requests":
+                    limit = int(query.partition("limit=")[2] or 300)
                     return self.reply(200, [{"id": n, "ts": "2026-10-09T10:00:00Z", "status": 200,
-                                             "session_id": "private-session"} for n in range(90, 0, -1)])
+                                             "session_id": "private-session"} for n in range(90, 0, -1)][:limit])
+                if method == "GET" and route == "/api/clients/usage":
+                    # Older releases route unknown /api paths to client-key auth.
+                    return self.reply(200, fake.clients) if fake.clients else self.reply(401, {"error": "invalid api key"})
+                if method == "GET" and route == "/api/config/settings":
+                    return self.reply(200, SETTINGS)
                 if method == "GET" and self.path == "/api/faults":
                     # Older releases route unknown /api paths to client-key auth.
                     return self.reply(200, [FAULT]) if fake.faults else self.reply(401, {"error": "invalid api key"})
@@ -141,7 +184,10 @@ class FakeFusebox:
                     if self.path.endswith("/activity"):
                         return self.reply(200, {"sessions": [{"session": "s1", "last_seen": "2026-10-09T10:00:00Z",
                                                               "active": True, "client_app": "Claude Code",
-                                                              "model": "claude-x", "requests": 4}],
+                                                              "model": "claude-x", "requests": 4,
+                                                              "quota": {"week": 4.25, "5h": 0, "": 3},
+                                                              "key_label": "Laptop",
+                                                              "source": {"ip": "10.0.0.2", "via": "direct"}}],
                                                 "series": [{"minute": 29833000, "requests": 3, "failed": 1,
                                                             "tokens": 99}, {"minute": True}, "junk"]})
                     return self.reply(200, {"ok": True})
@@ -302,6 +348,31 @@ class Normalizing(unittest.TestCase):
         with self.assertRaises(fusebox.Failure):
             fusebox.accounts({"not": "a list"})
 
+    def test_accounts_carry_plans_priority_reset_plans_and_attribution(self):
+        row = account("file:codex.json", "codex", priority=10,
+                      quota={"windows": [], "plan": "pro", "subscription_plan": "chatgptpromax"},
+                      banked_reset_plan={"expires_at": "2026-10-12T00:00:00Z",
+                                         "expiry_redeem_at": "2026-10-11T23:00:00Z", "prioritized": True,
+                                         "auto_redeem": True, "due": "yes", "message": "server copy"},
+                      quota_attribution={"basis": "estimate", "previous": [{"name": "week", "used": 80}], "current": [
+                          {"key": "week", "name": "week", "model": None, "resets_at": "2026-10-12T00:00:00Z",
+                           "used": 62.5, "before": 1, "outside": 4, "by_tokens": float("inf"), "sessions": 3,
+                           "attributed": 57, "clients": [{"id": "laptop", "label": "Laptop", "points": 30.25},
+                                                         {"id": "app:Codex", "label": "Codex", "points": 0},
+                                                         {"id": "x", "label": "X", "points": "lots"}, "junk"],
+                           "models": [{"id": "gpt", "points": 9}]},
+                          {"key": "bad", "name": "Not A Window", "used": 1}]})
+        entry = fusebox.account(row)
+        self.assertEqual((entry["plan"], entry["subscriptionPlan"], entry["priority"]), ("pro", "chatgptpromax", 10))
+        self.assertEqual(entry["bankedPlan"], {"expiresAt": 1791763200000, "redeemAt": 1791759600000,
+                                               "prioritized": True, "auto": True, "due": False})
+        self.assertEqual(entry["attribution"], {"current": [{
+            "key": "week", "name": "week", "model": None, "resetsAt": 1791763200000, "used": 62.5, "before": 1.0,
+            "outside": 4.0, "byTokens": 0.0, "clients": [{"id": "laptop", "label": "Laptop", "points": 30.25}]}]})
+        odd = fusebox.account(account(priority=10 ** 6, banked_reset_plan={"expires_at": None},
+                                      quota_attribution="junk"))
+        self.assertEqual((odd["priority"], odd["bankedPlan"], odd["attribution"]), (0, None, None))
+
     def test_overview_drops_keys_and_paths(self):
         summary = fusebox.overview(OVERVIEW)
         text = json.dumps(summary)
@@ -320,6 +391,16 @@ class Normalizing(unittest.TestCase):
         self.assertEqual(rows[0]["path"], "", "only dashboard hash routes are kept")
         self.assertEqual(rows[1]["until"], 1791795600000)
         self.assertEqual(rows[1]["providerName"], "Claude")
+        self.assertTrue(rows[1]["badge"])
+
+    def test_pace_and_storage_faults_are_kept_and_pace_stays_off_the_badge(self):
+        pace = {**FAULT, "key": "pace:file:claude-a.json:week", "kind": "pace", "badge": False,
+                "title": "Weekly limit runs out early at this pace", "detail": "Laptop used 48% of it."}
+        storage = {"key": "storage:usage", "kind": "storage", "level": "err", "provider": "", "provider_name": "Usage",
+                   "title": "Disk almost full", "detail": "80 MB left", "until": None, "path": "#/usage"}
+        rows = fusebox.faults([pace, storage, {**pace, "key": "pace:x", "badge": True}])
+        self.assertEqual([(r["kind"], r["badge"]) for r in rows], [("storage", True), ("pace", False), ("pace", False)])
+        self.assertEqual(rows[0]["path"], "#/usage")
 
     def test_derived_faults_follow_the_server_rules(self):
         now = fusebox.epoch_ms("2026-10-09T10:00:00Z")
@@ -360,6 +441,16 @@ class Normalizing(unittest.TestCase):
                                "attempts": 10 ** 9})
         self.assertEqual((odd["transport"], odd["attempts"]), ("http", 99))
         self.assertNotIn("secret-session", json.dumps(row))
+        self.assertEqual((row["keyLabel"], row["source"]), (None, None))
+        sourced = fusebox.request({"id": 7, "ts": "2026-10-09T10:00:00Z", "status": 200, "key_label": "Laptop",
+                                   "key": "fbx_raw", "source": {"ip": "100.64.0.3", "via": "forwarded",
+                                                                "login": "me@github"}})
+        self.assertEqual((sourced["keyLabel"], sourced["source"]),
+                         ("Laptop", {"ip": "100.64.0.3", "via": "forwarded", "login": "me@github"}))
+        self.assertNotIn("fbx_raw", json.dumps(sourced))
+        for bad in ({"ip": "100.64.0.3", "via": "carrier"}, {"ip": "nope", "via": "direct"}, {"via": "direct"}, "x"):
+            self.assertIsNone(fusebox.source(bad), bad)
+        self.assertEqual(fusebox.source({"ip": "::ffff:10.0.0.1", "via": "direct"})["ip"], "::ffff:10.0.0.1")
         self.assertIsNone(fusebox.request({"id": 1, "ts": "bad", "status": 200}))
         self.assertIsNone(fusebox.request({"id": True, "ts": "2026-10-09T10:00:00Z", "status": 200}))
         self.assertEqual(fusebox.load({"a": {"in_flight": 2, "sessions": 3}, "b": {"in_flight": -1}, 5: {}}),
@@ -369,6 +460,91 @@ class Normalizing(unittest.TestCase):
         self.assertEqual(fusebox.load({"a": {"in_flight": 0, "sessions": 1, "ongoing_sessions": 2},
                                        "b": {"in_flight": 0, "sessions": 0, "ongoing_sessions": 3}}),
                          {"a": {"inFlight": 0, "sessions": 1}, "b": {"inFlight": 0, "sessions": 0}})
+
+
+class ClientsAndHttp(unittest.TestCase):
+    def test_clients_keep_names_limits_and_use_but_no_keys(self):
+        limits = fusebox.named_limits(SETTINGS)
+        self.assertEqual(limits, {
+            "laptop": {"label": "Laptop", "requestsPerMinute": 60, "tokensPerDay": 5000000, "usdPerMonth": 100.0,
+                       "expires": "2026-12-31"},
+            "ci": {"label": None, "requestsPerMinute": None, "tokensPerDay": None, "usdPerMonth": None,
+                   "expires": None}})
+        view = fusebox.clients_view(CLIENTS_USAGE, limits)
+        self.assertEqual(view["named"][0], {"id": "laptop", "label": "Laptop", "tokensToday": 1200, "usdMonth": 3.46,
+                                            "tokensPerDay": 5000000, "usdPerMonth": 100.0, "requestsPerMinute": 60,
+                                            "expires": "2026-12-31", "lastUsed": 1791539940000})
+        self.assertEqual(view["named"][1]["label"], "ci", "a client without a label goes by its id")
+        self.assertEqual([(c["id"], c["label"], c["ip"], c["via"]) for c in view["connected"]], [
+            ("laptop", "Laptop", "10.0.0.2", "direct"), ("", "Shared key 73d4…", "10.0.0.7", "proxy_protocol"),
+            ("app:Codex", "Codex", "100.64.0.9", "forwarded")], "unreadable addresses drop; shared keys lose their id")
+        text = json.dumps(view)
+        for secret in ("fbx_laptop_key", "fbx_ci_key", "fbx_shared_secret_value", "mgmt-secret", "sk-ant-provider"):
+            self.assertNotIn(secret, text)
+        self.assertEqual(fusebox.clients_view({"clients": {"x": {}}}, None)["named"][0]["tokensPerDay"], None,
+                         "use without the configuration still shows")
+
+    def test_gzip_answers_are_read_and_bounded(self):
+        fake = FakeFusebox()
+        self.addCleanup(fake.close)
+        fake.gzip = True
+        self.assertEqual(fusebox.Client(fake.base, KEY).request("accounts")[0]["id"], "file:claude-a.json")
+        self.assertEqual(fake.encodings, ["gzip"], "the helper asks for gzip")
+        with self.assertRaises(fusebox.Failure) as refused:
+            fusebox.Client(fake.base, KEY).request("accounts/file%3Amissing.json/refresh", method="POST")
+        self.assertIsNotNone(refused.exception.message)
+        with self.assertRaises(fusebox.Failure) as bomb:
+            fusebox.decoded(gzip.compress(b"0" * (fusebox.MAX_RESPONSE + 10)), "gzip")
+        self.assertIn("large", bomb.exception.message)
+        with self.assertRaises(fusebox.Failure):
+            fusebox.decoded(b"not gzip", "gzip")
+        with self.assertRaises(fusebox.Failure):
+            fusebox.decoded(b"{}", "br")
+        self.assertEqual(fusebox.decoded(b"{}", None), b"{}")
+
+    def test_a_lockout_reads_as_one_with_its_wait(self):
+        failure = fusebox.http_failure(429, "too many wrong keys; try again in 240s", fusebox.retry_after("240"))
+        self.assertEqual((failure.state, failure.retry), ("locked", 240))
+        self.assertIn("about 4 minutes", failure.message)
+        self.assertEqual(fusebox.http_failure(429).retry, 60, "no header: a minute")
+        self.assertEqual([fusebox.retry_after(v) for v in ("30", " 9 ", "0", "-1", "soon", None, "999999")],
+                         [30, 9, None, None, None, None, None])
+
+        class Response:
+            status_code = 429
+            headers = {"Retry-After": "90"}
+
+        class Refused(Exception):
+            response = Response()
+
+        self.assertEqual((fusebox.socket_failure(Refused()).state, fusebox.socket_failure(Refused()).retry),
+                         ("locked", 90), "the WebSocket upgrade is locked out the same way")
+
+        class Close:
+            code = 1001
+
+        class Closed(Exception):
+            rcvd = Close()
+
+        self.assertEqual(fusebox.socket_failure(Closed()).state, "restarting")
+
+    def test_a_restart_reconnects_quickly_and_reads_as_a_restart(self):
+        out, sleeps = Recorder(), []
+        failures = iter([fusebox.Failure("restarting", "Fusebox is restarting. Reconnecting…"),
+                         fusebox.Failure("offline", "Can't reach Fusebox."),
+                         fusebox.Failure("offline", "Can't reach Fusebox.")])
+
+        def stream(*args, **kwargs):
+            raise next(failures)
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+
+        with patch.object(fusebox, "stream", stream), self.assertRaises(StopIteration):
+            fusebox.live("https://fusebox.example", out, object(), sleep=sleep, clock=lambda: sum(sleeps))
+        self.assertEqual([s["state"] for s in out.of("state")], ["restarting", "restarting", "restarting"])
+        # A second after the notice, then 2 and 4 seconds: one-second naps.
+        self.assertEqual(sleeps, [1] * 7)
 
 
 @unittest.skipIf(ws_serve is None, "python3-websockets is required")
@@ -403,8 +579,8 @@ class LiveStream(unittest.TestCase):
         out, ended = self.run_stream(fake)
         self.assertEqual(ended.state, "offline", "a closed socket reconnects")
         kinds = [line["type"] for line in out.lines if line["type"] != "heartbeat"]
-        self.assertEqual(kinds, ["state", "overview", "accounts", "requests", "faults", "state", "load", "faults",
-                                 "request", "tick"])
+        self.assertEqual(kinds, ["state", "overview", "accounts", "requests", "faults", "state", "clients", "load",
+                                 "faults", "request", "tick"])
         seeded = out.of("requests")[0]["data"]
         self.assertEqual((len(seeded), seeded[0]["id"], seeded[-1]["id"]), (40, 90, 51), "the newest 40, newest first")
         self.assertEqual(out.of("faults")[0], {"type": "faults", "data": fusebox.faults([FAULT]), "source": "server"})
@@ -414,9 +590,11 @@ class LiveStream(unittest.TestCase):
         self.assertEqual(fake.connected_url, fake.base.replace("http", "ws") + "/api/live")
         self.assertEqual(fake.socket_requests, [("/api/live", "Bearer " + KEY)], "the key is a header, not the URL")
         self.assertEqual([call[1] for call in fake.calls],
-                         ["/api/overview", "/api/accounts", "/api/requests", "/api/faults"])
+                         ["/api/overview", "/api/accounts", "/api/requests?limit=40", "/api/faults",
+                          "/api/clients/usage", "/api/config/settings"])
         everything = out.stream.getvalue()
-        for secret in (KEY, "fbx_client_secret", "/etc/fusebox", "private-session"):
+        for secret in (KEY, "fbx_client_secret", "/etc/fusebox", "private-session", "mgmt-secret", "sk-ant-provider",
+                       "fbx_laptop_key", "fbx_shared_secret_value", "10.0.0.0/24", "claude-*"):
             self.assertNotIn(secret, everything)
 
     def test_account_events_coalesce_into_one_refetch(self):
@@ -457,6 +635,91 @@ class LiveStream(unittest.TestCase):
             fusebox.live(fake.base, out, fake.connect, sleep=sleep, clock=lambda: sum(sleeps))
         self.assertEqual(out.of("state")[-1], {"type": "state", "state": "auth",
                                                "message": "Fusebox rejected the management key."})
+
+    def test_a_rejected_key_is_not_tried_again_until_it_changes(self):
+        fake = self.server()
+        fusebox.store_key("wrong-key")
+        out, sleeps = Recorder(), []
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            if len(sleeps) == 600:
+                fusebox.store_key(KEY)
+            if len(sleeps) > 610:
+                raise KeyboardInterrupt
+
+        with self.assertRaises(KeyboardInterrupt):
+            fusebox.live(fake.base, out, fake.connect, sleep=sleep, clock=lambda: sum(sleeps))
+        overviews = [call[2] for call in fake.calls if call[1] == "/api/overview"]
+        self.assertEqual(overviews[:2], ["Bearer wrong-key", "Bearer " + KEY],
+                         "ten minutes without a retry, then the new key at once")
+        self.assertEqual(overviews.count("Bearer wrong-key"), 1)
+        self.assertIn("live", [line["state"] for line in out.of("state")])
+
+    def test_a_lockout_waits_as_long_as_fusebox_asks(self):
+        fake = self.server()
+        fake.locked = 240
+        out, sleeps = Recorder(), []
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            if sum(sleeps) > 300:
+                raise KeyboardInterrupt
+
+        with self.assertRaises(KeyboardInterrupt):
+            fusebox.live(fake.base, out, fake.connect, sleep=sleep, clock=lambda: sum(sleeps),
+                         wall=lambda: 1000.0 + sum(sleeps))
+        locked = out.of("state")[1]
+        self.assertEqual((locked["state"], locked["until"]), ("locked", 1_241_000))
+        self.assertIn("about 4 minutes", locked["message"])
+        self.assertEqual([call[1] for call in fake.calls].count("/api/overview"), 2, "one try per lockout")
+
+    def test_a_quiet_server_is_pinged_rather_than_dropped(self):
+        # Fusebox 0.7 ticks only when something changed: silence alone is not a dead socket.
+        fake = self.server()
+        fake.hold = 4.5
+        started = time.monotonic()
+        # The loop waits up to a second for a frame, so allow two for the pong.
+        with patch.object(fusebox, "PING_AFTER", 0.3), patch.object(fusebox, "STALE", 2.0):
+            out, ended = self.run_stream(fake)
+        self.assertGreaterEqual(time.monotonic() - started, 4.4, "it stayed until the server closed it")
+        self.assertEqual(ended.message, "The live connection to Fusebox closed. Reconnecting…")
+
+    def test_a_socket_that_stops_answering_pings_is_dropped(self):
+        fake = self.server()
+
+        class Silent:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def recv(self, timeout=None):
+                time.sleep(0.05)
+                raise TimeoutError
+
+            def ping(self):
+                self.pinged = True
+                return threading.Event()   # never answered
+
+        silent = Silent()
+        with patch.object(fusebox, "PING_AFTER", 0.2), patch.object(fusebox, "STALE", 0.6), \
+                patch.object(fusebox, "CLIENTS_EVERY", 60):
+            with self.assertRaises(fusebox.Failure) as ended:
+                fusebox.stream(fake.base, Recorder(), lambda *a, **k: silent)
+        self.assertEqual(ended.exception.message, "Fusebox stopped answering. Reconnecting…")
+        self.assertTrue(silent.pinged)
+
+    def test_releases_without_clients_leave_them_out_after_one_try(self):
+        fake = self.server()
+        fake.clients = None
+        fake.hold = 1.2
+        with patch.object(fusebox, "CLIENTS_EVERY", 0.2):
+            out, _ = self.run_stream(fake)
+        self.assertEqual(out.of("clients"), [{"type": "clients", "data": None}])
+        self.assertEqual([call[1] for call in fake.calls].count("/api/clients/usage"), 1)
+        self.assertNotIn("/api/config/settings", [call[1] for call in fake.calls])
 
     def test_a_url_without_fusebox_says_so(self):
         fake = self.server()
@@ -592,10 +855,24 @@ class OneShot(unittest.TestCase):
         with self.assertRaises(fusebox.Failure):
             fusebox.run_action(self.fake.base, "reset", "bad\nid")
 
+    def test_priority_sends_only_the_dashboards_choices(self):
+        self.assertEqual(fusebox.run_action(self.fake.base, "priority", "file:claude-a.json", priority=-10),
+                         {"ok": True})
+        self.assertEqual([(c[0], c[1], c[3]) for c in self.fake.calls],
+                         [("POST", "/api/accounts/file%3Aclaude-a.json/priority", {"priority": -10})])
+        with self.assertRaises(fusebox.Failure):
+            fusebox.run_action(self.fake.base, "priority", "file:claude-a.json", priority=5)
+        self.assertEqual(len(self.fake.calls), 1, "an unknown priority is never sent")
+        result = subprocess.run([sys.executable, "-B", str(SCRIPT), "action", "--url", self.fake.base, "priority",
+                                 "file:claude-a.json"], capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 2, "priority needs an explicit value")
+
     def test_activity_is_bounded_to_what_the_details_show(self):
         details = fusebox.run_activity(self.fake.base, "file:claude-a.json")
         self.assertEqual(details, {"sessions": [{"lastSeen": 1791540000000, "since": None, "active": True,
-                                                 "client": "Claude Code", "model": "claude-x", "requests": 4}],
+                                                 "client": "Claude Code", "model": "claude-x", "requests": 4,
+                                                 "quota": {"week": 4.25}, "keyLabel": "Laptop",
+                                                 "source": {"ip": "10.0.0.2", "via": "direct", "login": None}}],
                                    "series": [{"minute": 29833000, "requests": 3, "failed": 1}]})
 
     def test_cli_reports_failures_as_json(self):

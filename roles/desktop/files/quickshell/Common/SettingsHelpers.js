@@ -1013,7 +1013,7 @@ var MOD_OPT_CHECKS = {
     t3: { showLabel: boolIn },
     fusebox: {
         url: function(v, d) { return textIn(v, 512, d).trim(); },
-        metric: function(v, d) { return enumIn(v, ["sessions", "serving", "rpm", "faults"], d); },
+        metric: function(v, d) { return enumIn(v, ["sessions", "serving", "rpm", "faults", "clients"], d); },
         quotaDisplay: function(v, d) { return enumIn(v, ["used", "remaining"], d); },
         hideEmails: boolIn,
         notify: boolIn

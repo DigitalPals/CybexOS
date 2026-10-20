@@ -30,9 +30,12 @@ Singleton {
     readonly property bool wanted: url !== "" && keySaved && active
     readonly property string script: Quickshell.shellDir + "/scripts/fusebox.py"
 
-    // The helper's connection state: connecting, live, offline, auth, setup or unsupported.
+    // The helper's connection state: connecting, live, restarting, offline, auth,
+    // locked, setup or unsupported.
     property string linkState: ""
     property string error: ""
+    // Locked out after wrong keys: when Fusebox accepts this computer again.
+    property double lockedUntil: 0
     property var overview: null
     property var accounts: []
     property var load: ({})
@@ -41,6 +44,9 @@ Singleton {
     // widget work out what it can from account state.
     property string faultSource: ""
     property var requests: []
+    // Connected keys and addresses, and named clients' budgets; null until read,
+    // or when the server has no /api/clients/usage.
+    property var clients: null
     property var series: []
     property var totals: null
     property int serving: 0
@@ -57,16 +63,33 @@ Singleton {
             return "setup";
         if (linkState === "auth")
             return "auth";
+        if (linkState === "locked")
+            return "locked";
         if (linkState === "live" && worker.running)
             return "live";
+        if (linkState === "restarting")
+            return "restarting";
         if (error)
             return "offline";
         return "connecting";
     }
-    readonly property string status: ({ setup: "Set up", auth: "Key rejected", live: "Live",
-        offline: "Offline", connecting: "Connecting…" })[connection]
+    readonly property string status: ({ setup: "Set up", auth: "Key rejected", locked: "Locked out", live: "Live",
+        restarting: "Restarting", offline: "Offline", connecting: "Connecting…" })[connection]
+    // A rejected key or a lockout fail every reading: red at once. A lost
+    // connection turns red once it lasts half a minute, or with nothing to show.
+    readonly property bool troubled: connection === "auth" || connection === "locked"
+        || (connection === "offline" && (longDown || !hasData))
     readonly property bool stale: hasData && connection !== "live"
-    readonly property var figures: Helpers.figures(series, requests, serving, now, load)
+    // When the connection last stopped being live. A reconnect that takes less
+    // than half a minute changes only the pill; after that the dashboard says so.
+    property double downSince: 0
+    readonly property bool longDown: connection !== "live" && downSince > 0 && now - downSince >= 30000
+    // A rejected key or a lockout needs the user at once; a lost connection only
+    // once it lasts, or when there is nothing to show yet.
+    readonly property bool problemShown: connection !== "setup" && connection !== "live" && error !== ""
+        && (connection === "auth" || connection === "locked" || !hasData || longDown)
+    onConnectionChanged: downSince = connection === "live" ? 0 : downSince > 0 ? downSince : Date.now()
+    readonly property var figures: Helpers.figures(series, requests, serving, now, load, clients)
     // An unresolved reset spend blocks further resets: at least an amber badge.
     readonly property int resetReviews: accounts.filter(a => a.bankedReview).length
     // Faults the user dismissed stay listed in Fusebox but leave the widget's
@@ -76,6 +99,8 @@ Singleton {
     // until something is dismissed.
     property string persistedDismissed: "{}"
     readonly property var shownFaults: Helpers.visibleFaults(faults, dismissed)
+    // What the badge, the Faults figure and the tooltip count: not pace warnings.
+    readonly property var badgeFaults: Helpers.badgeFaults(shownFaults)
     readonly property int dismissedCount: faults.length - shownFaults.length
     readonly property string faultLevel: {
         const level = Helpers.faultLevel(shownFaults);
@@ -89,6 +114,7 @@ Singleton {
     readonly property bool actionBusy: actionRequest.running
     property string actionAccount: ""
     property string actionName: ""
+    property var actionValue: null
     property var actionResult: null
     // Account details, fetched when an account is expanded: id -> { at, sessions, series, error }.
     property var activity: ({})
@@ -133,7 +159,7 @@ Singleton {
 
     function clearData() {
         overview = null; accounts = []; load = ({}); faults = []; faultSource = "";
-        requests = []; series = []; totals = null; serving = 0; updatedAt = 0;
+        requests = []; series = []; totals = null; serving = 0; updatedAt = 0; clients = null;
         activity = ({}); actionResult = null; resets = ({});
     }
 
@@ -177,6 +203,7 @@ Singleton {
         case "state":
             linkState = message.state;
             error = message.state === "live" ? "" : message.message || "";
+            lockedUntil = message.state === "locked" && message.until > 0 ? message.until : 0;
             if (message.state === "live")
                 failures = 0;
             return;
@@ -205,6 +232,9 @@ Singleton {
         case "tick":
             totals = message.totals;
             serving = message.active;
+            break;
+        case "clients":
+            clients = message.data;
             break;
         default:
             return;
@@ -472,15 +502,19 @@ Singleton {
     }
 
     // ---- breaker actions and account details ----------------------------
-    function runAction(accountId, name, disabled) {
+    // `value`: whether a toggle turns the account off, or the priority to set.
+    function runAction(accountId, name, value) {
         if (actionRequest.running || !keySaved || !url)
             return;
         actionAccount = accountId;
         actionName = name;
+        actionValue = value === undefined ? null : value;
         actionResult = null;
         const command = ["python3", "-B", script, "action", "--url", url, name, accountId];
         if (name === "toggle")
-            command.push("--disabled", disabled ? "true" : "false");
+            command.push("--disabled", value ? "true" : "false");
+        else if (name === "priority")
+            command.push("--priority", String(Helpers.priorityChoice(value)));
         actionRequest.command = command;
         actionRequest.running = true;
     }
@@ -499,7 +533,12 @@ Singleton {
                 : reply && reply.error ? privateText(reply.error)
                 : code === 0 ? "" : failure ? "The request didn't complete." : "The request failed."
         };
-        // Fusebox broadcasts the account change; the live helper refetches.
+        // Fusebox broadcasts most account changes and the live helper refetches;
+        // a priority kept in config.yaml is only picked up by the next refetch.
+        if (actionResult.ok && actionName === "priority") {
+            const priority = Helpers.priorityChoice(actionValue);
+            accounts = accounts.map(a => a.id === actionAccount ? Object.assign({}, a, { priority: priority }) : a);
+        }
         if (actionResult.ok && actionAccount === activityAccount)
             loadActivity(actionAccount);
     }
@@ -533,7 +572,7 @@ Singleton {
 
     onUrlChanged: {
         clearData();
-        linkState = ""; error = ""; failures = 0;
+        linkState = ""; error = ""; failures = 0; lockedUntil = 0;
         // Another server's faults are not news about this one.
         seenFaultKeys = []; faultsSeeded = false;
         retry.stop();
@@ -584,6 +623,7 @@ Singleton {
                 state: root.linkState, error: root.error, keySaved: root.keySaved, running: worker.running,
                 watchers: root.watchers, updatedAt: root.updatedAt, version: root.overview ? root.overview.version : null,
                 accounts: root.accounts.length, faults: root.faults.length, faultSource: root.faultSource,
+                clients: root.clients ? root.clients.connected.length : null,
                 sessions: root.figures.sessions, serving: root.serving, metric: root.options.metric,
                 resetReviews: root.resetReviews, dismissedFaults: root.dismissedCount,
                 value: root.barValue });
