@@ -1,5 +1,17 @@
 # Workspace compositor contract
 
+Contract in tested product revision
+`d2037af92cb3a47a08a9755e5996d2c4b0cae28d`; source/image gates, the exact-source
+ISO/RPM build and testing PXE publication pass. All four ISO scenarios, both
+English/Dutch checkout parity cases, pristine offline/native/recovery and scoped
+native workspace/notification checks pass. The product is **not fully
+qualified**: startup measurement is blocked; first-frame, hardware and generic CSD
+limits remain open in [desktop validation](desktop-validation.md).
+This documentation update is separate from the tested installed-product artifacts.
+Main integration is complete at `bee9d722021301875823e6285a6eef2896b283eb`;
+the intervening CI-only fix 9974aaee changes no installed-product payload.
+Artifact qualification remains bound to d2037af.
+
 The compositor's `require("workspaces")` is the sole owner of identity,
 numbering, layouts, minimize and persistence. Shared remains the first-install
 mode; the managed base configuration uses dwindle. Without a personal workspace
@@ -125,10 +137,9 @@ workspaces, so no numeric opening window rule is installed. The shared
 float-exclusion collector is no longer consumed or modified by this module;
 native rules have already established independent floaters before the event.
 
-Native scrolling and optional decoration provenance/qualification, shortcuts,
-behavioral evidence, and remaining hardware gates are recorded below as the
-implementation is verified. Fixtures are source tests, not compositor or ISO
-qualification.
+Native scrolling and optional decoration provenance, shortcuts, behavioral
+evidence and remaining gates are recorded below and in desktop-validation.md.
+Fixtures are source tests, not compositor or ISO qualification.
 
 ## Identity, collisions and transitions
 
@@ -234,10 +245,12 @@ A missing/ABI-incompatible plugin never disables keyboard/mouse controls.
 Titlebars consume `cybexos/theme/tokens.json` (`surfaceRaised`, `text`, UI font
 and text size) through the strict JSON reader. The existing
 `cybexos_system_theme()` trigger refreshes them without another theme owner or
-polling. A native `clear_buttons()` extension permits safe live button theme
-changes; unmodified upstream supports only `add_button`, so its existing
-buttons retain their colors until a config reload. The parent owns that native
-extension and its qualification. User.lua can supply
+polling. The packaged native `clear_buttons()` extension clears existing
+buttons before exactly three themed buttons are added, preventing duplicate
+hit targets and stale icon textures. Its clear/re-add and pointer/theme behavior
+passed historical isolated native tests on earlier product source; the exact
+evidence scope and current-candidate gates are in desktop-validation.md.
+User.lua can supply
 `__cybexos_titlebar_colors={background,foreground,font,size}` deliberately.
 The loaded-plugin registry gates all native callbacks and dynamic no-bar rules.
 Runtime events, preference edits and theme refresh never declare/load plugins.
@@ -277,12 +290,13 @@ already included (`src/layout/algorithm/tiled/scrolling`); `layout="scrolling"`
 is a workspace rule. No compositor upgrade or scrolling plugin is needed.
 Runtime availability probes the registered `scrolling.column_width` option;
 unavailable Scrolling is not offered by cycle/setters and falls back to dwindle
-when reading saved choices from an incompatible build. Parent's Fedora test
-container had actual `hyprland-0.56.2-2.fc44`; its installed stubs were also read.
-Source inspection is not a live all-layout qualification.
+when reading saved choices from an incompatible build. The actual Fedora
+`hyprland-0.56.2-2.fc44` package and its installed stubs were inspected.
+Earlier all-layout native runs are recorded in desktop-validation.md;
+source inspection alone is not native qualification.
 
 Inspected optional `omacom/omarchy-hyprland-titlebars` commit
-`379ff910fcce9f0cc9b41f9a87c527997076a417` (parent selected v0.2.2), README,
+`379ff910fcce9f0cc9b41f9a87c527997076a417` (v0.2.2), README,
 CMakeLists, main.cpp, barDeco.cpp, tools/verify.py and both licenses. Native
 build needs CMake >=3.27, C++23, pkg-config `hyprland`, `libdrm`, `libinput`,
 `libudev`, `pixman-1`, `wayland-server`, `xkbcommon`; it uses `-fno-gnu-unique`.
@@ -294,76 +308,97 @@ hyprbars, with workspace_tag and add_button support.
 
 Upstream skips X11 border opt-outs and supports explicit hyprbars:no_bar rules;
 it does not automatically detect Wayland client-side titlebars. Automatic CSD
-avoidance remains unresolved; the parent's clear_buttons native patch and the
-exact-class exclusions need runtime qualification. The inspected 0.56.2
+avoidance remains blocked on a supported API. The packaged clear_buttons patch
+has historical isolated native runtime evidence; exact-class exclusions remain
+explicit policy with mixed-client acceptance limited as documented in
+native-titlebars.md and desktop-validation.md. The inspected 0.56.2
 `LuaBindingsConfigRules.cpp` resolves nonbuiltin `hl.window_rule` keys through
 the registered window effect table, so `['hyprbars:no_bar']=true` is added only
 after the native registry proves the plugin is loaded. Do not advertise general
 duplicate-decoration avoidance. Its verifier needs a running outer
 Hyprland, foot, grim, wayland-scanner and a C compiler; it launches a nested
-compositor. On thebeast that verifier must run under the parent's managed
-resource/VM lifecycle, not an unmanaged host session.
+compositor. On thebeast that verifier must run under an agent-resource managed
+task/VM lifecycle.
 
 ## Evidence and remaining gates
 
-Starting revision `3b310d106255558ca213c955ef37ee314e8681f2`; tests ran on the
-shared uncommitted implementation diff (the parent records the final integrated
-revision). The R2 ownership/override follow-up was tested on `66b14a2` plus the
-owned Lua/fixture/documentation diff. The titlebar availability follow-up was
-tested on `78903e9` plus its owned three-file diff. Actual source checks run by
-this agent:
+Starting revision: `3b310d106255558ca213c955ef37ee314e8681f2`. The R15/R16/R18
+workspace corrections are committed in
+`607bce226d9f85c4e6307567a75cc5cfbc8b1243` and included in exact tested product
+`d2037af92cb3a47a08a9755e5996d2c4b0cae28d`. The contracts above include the
+reviewed renamed-opening, manual-group and named-provenance corrections.
 
-- `./tests/hyprland-workspace-modes`: Passed, 233 behavioral assertions using
-  local rpmlua. Covers serial ambiguity, connector changes, occupied/named IDs,
-  full slots/guests, mirrors/lid reconnect, visible-workspace swap avoidance,
-  mode transitions, native capability failure, gesture opt-out, independent
-  floaters/fullscreen/groups/opening tags, manual ownership, minimize/reload/
-  activate/group restore, scale/rotation/reserved areas, live-window validation,
-  corrupted/bounded JSON and subscription retirement.
-  Review regressions cover a first-introduction user.lua master default,
-  unmanaged native workspace rules, mode/titlebar edits and reload without
-  taking layout ownership, explicit overrides/default reset/cycling, legacy v1
-  compatibility, manual tiling of OPENED* windows, Shared allocation around
-  named ID 18, and declarative plugin/registry/known-CSD rule lifecycle.
-  R15 regressions cover named/renamed positive-ID openings, suspended overrides,
-  native dialog/user float rules, inherited mode/manual group ownership and reload. They
-  require no numeric opening rules and no consumption or mutation of collected
-  class/title exclusion arrays. Actual first-frame/client configure behavior
-  remains a separate native check.
-  R2 regressions require every grouped member to release mode ownership before
-  one manual toggle, preserve that choice through reload, and permit a later
-  Floating selection to reclaim the tiled group. Explicit layout choices equal
-  to old/new defaults survive default edits and reload, while default reset,
-  inherited rows and legacy sparse preference maps retain distinct semantics.
-  Titlebar availability regressions cover loaded Tiled, disabled/enabled Floating,
-  reload, missing/unrelated registry entries with an installed file, missing APIs,
-  failed native config/button setup and recovery. Counters verify no event loads,
-  redundant config/button churn or duplicate buttons; only rendering toggles
-  update enabled, and deliberate theme refresh clears/rebuilds exactly three.
-- `./tests/hyprland-workspaces`: Passed XPS hotplug and explicit policy switching,
-  and single-window margin fixtures for generic and XPS machines.
-- Owned Lua syntax (`loadfile` via rpmlua), bash syntax and scoped diff whitespace
-  checks: Passed.
+`./tests/hyprland-workspace-modes` passes 233 pure-Lua behavioral assertions.
+The exact Fedora source gate includes those assertions; XPS hotplug/policy,
+single-window margins, syntax, source/image parity and actual Qt/runtime gates
+also pass. These checks cover:
 
-No host VM/container or installed-desktop change was made by this agent. Parent
-owns the leased native environment and must run actual compositor loading,
-all three native layouts, opening dialogs/app rules/groups/fullscreen,
-minimize/restore/window activation, live hotplug/mirror/lid/geometry tests, native
-plugin/CSD/drag/buttons/reload/theme verification, plus both installation paths'
-source/image parity and rebuilt payload qualification at one revision. Existing
-fixtures are not an end-to-end install or real monitor qualification. Physical
-hardware permutations and native titlebar CSD are still qualification gates.
+- Physical identity ambiguity, connector changes, occupied/named IDs, full
+  slots/guests, mirrors/lid reconnect, visible-workspace swap avoidance and
+  Shared/Per-monitor transitions.
+- Native capability failure, gesture opt-outs, independent floaters, fullscreen,
+  groups/opening tags, manual ownership, minimize/reload/activate/group restore,
+  scale/rotation/reserved areas and stale live-window validation.
+- Strict/bounded/corrupt JSON, safe writer behavior and event-subscription
+  retirement. user.lua master defaults and unmanaged native rules survive mode/titlebar edits and reload without taking ownership. Explicit choices equal
+  to defaults survive default edits; reset, cycling and legacy sparse/v1
+  inheritance retain their distinct meanings.
+- R15 renamed positive-ID openings and suspended overrides, native dialog/user
+  float rules and group ownership. There are no numeric opening rules and no
+  consumption/mutation of the shared float-exclusion arrays.
+- R16 manual-group provenance inherited before arrangement, and R18 ownership
+  inherited while named/special without changing native floating state. Reload,
+  original-owner closure and return to numbered workspaces preserve the choice.
+- Declarative titlebar/registry/known-CSD rule lifecycle; loaded Tiled and disabled
+  Floating capability reports; missing APIs/registry and native setup failures;
+  recovery, cached successful setup and exactly-three-button theme refresh
+  without event loads, redundant writes or duplicate buttons.
 
-Native directory-writer follow-up: on the parent's supervised GPU VM running
-Hyprland 0.56.2-2.fc44 / Lua 5.4, a completed `io.popen` helper returned valid
-stdout but `pclose` reported `nil, "No child processes", 10` because the
-compositor had reaped its child. workspace_state accepts this Linux ECHILD case
-only alongside the exact bounded helper success token; absent/malformed tokens
-and explicit nonzero exit status remain failures. The fixed module source was
-evaluated in that native compositor (without replacing its installed modules):
-writing a JSON file returned `true:nil`, the directory mode was 0700 and the
-expected JSON was read back. Diagnostic files were then removed. Four new
-behavioral assertions cover ECHILD success, cached event writes, no success
-token and explicit failed exit. This proves the native writer fix, not the
-complete monitor/layout/minimize integration; parent must retransfer and rerun
-those acceptance checks.
+Fresh independent R22 found no actionable issue in the final correction scope.
+Its detailed probes, historical native runs, external-helper reviews and
+resource status are centralized in desktop-validation.md and the ledger.
+Earlier native layout/titlebar tests retain their earlier product scope.
+
+The writer accepts Linux ECHILD from `pclose` only with the exact bounded helper
+success token; absent/malformed tokens and explicit nonzero exit status remain
+failures. Its historical native JSON/0700 result and regression evidence are
+recorded in validation.
+
+All four exact d2037af ISO scenarios and English/Dutch checkout fresh/saved parity,
+settings lifecycle and saved choices passed. Pristine offline upgrade/native
+rebuild/convergence/recovery also passed. Its candidate-runtime report verifies
+exact provenance, loaded titlebars, true capabilities, empty snapshot error and
+one explicit Floating workspace.
+
+The separate `qualification-plain-us-evidence/r15-workspace-rename-native.json`
+report passed renamed/numbered opening, named-group provenance, original-owner
+closure, manual tiled/floating groups, reload and restoration. These are stable
+native observations, not first-frame/client-configure proof. Exact notification
+action separation and restoration passed separately; validation records its
+scope and the source/runtime-fixture coverage of action-bound/label edges.
+
+The core prerequisite aggregate passes. Independent R27 is clean within its
+completed scopes; English checkout was verified separately by the parent.
+Actual startup/pixel/performance measurement is **BLOCKED** after four failed
+attempts, zero accepted samples/comparison. R11 is scoped inert review only.
+Warm04 passed root-policy/reconciliation validation but its Welcome frame was
+black background/pointer only; null review response sent no input. Failure
+preceded SSH fixture/warm-up; cause unknown, no proof of product regression.
+Warm02's cause and warm03's exact offending bytes remain unknown. All startup
+leases are closed/empty. No further VM series is planned; a future benchmark
+requires visibly verified Welcome/portals and eight fresh equivalent boots with
+current prerequisites, a reviewed retarget and unchanged guards, as detailed in
+validation. R30 independently accepted scoped retention and verified both R29
+repairs; it does not grant runtime/release acceptance. All 53 recorded leases are
+closed, MAIN's workspace absent and no temporary VM/container retained; shared
+services untouched. Baseline/intermediate payloads were removed; final testing
+deliverables and bounded evidence remain. Original paths are historical map-resolution
+identities. Validation records the historical-source limit and cleanup-time inventory
+snapshot, which excludes later documentation/review/PR records.
+Physical lid/mirror/dock/two-external/connector/identity/scaling permutations and generic Wayland CSD remain blocked.
+[PR #21](https://github.com/DigitalPals/CybexOS/pull/21) merged at bee9d722 on
+`2026-10-21T14:01:19Z` after both required hosted checks succeeded; origin/main
+was verified at that merge. Validation distinguishes the tested d2037af
+artifacts from the CI-only fix and merge. Active user desktop rollout
+and public release remain unauthorized. These scoped results do not establish
+full desktop/release acceptance.

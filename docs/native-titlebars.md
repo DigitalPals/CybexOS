@@ -1,5 +1,19 @@
 # Native Fedora titlebars
 
+The exact tested product revision is
+`d2037af92cb3a47a08a9755e5996d2c4b0cae28d`; source/image gates, the exact-source
+ISO/RPM build and testing PXE publication pass. All four ISO scenarios, both
+English/Dutch checkout parity cases, pristine offline/native/recovery and scoped
+native workspace/notification checks pass. The core aggregate and R27 evidence
+audit pass within their recorded scopes; English was verified separately by
+the parent. The product is **not fully qualified**: startup measurement is blocked;
+first-frame acceptance remains open, and representative hardware and generic
+Wayland CSD detection remain blocked. This documentation update is separate
+from the tested installed-product artifacts.
+Main integration is complete at `bee9d722021301875823e6285a6eef2896b283eb`;
+the intervening CI-only fix 9974aaee changes no installed-product payload.
+The titlebar artifacts and installed qualification remain bound to d2037af.
+
 The optional Floating layout titlebars are built from
 `omacom/omarchy-hyprland-titlebars` tag `v0.2.2`, full commit
 `379ff910fcce9f0cc9b41f9a87c527997076a417`. The authorized codeload archive
@@ -107,37 +121,70 @@ rules, upstream X11 border opt-outs and missing-component fallback remain
 supported. A future automatic solution needs a supported compositor API or
 protocol-aware compositor patch and real mixed-client qualification.
 
-## Validation
+## Validation and scope
 
-On 2026-10-21, the patched source built successfully against actual Fedora
-`hyprland-0.56.2-2.fc44.x86_64` and matching `hyprland-devel`. Compositor source
-commit: `efb50993780079460b0cbed1363e2166a2de1d9f`; ELF build ID:
-`04b20094d13879e70824418ba363f8dcc3253b34`. A second offline invocation reported
-unchanged. These builds used the parent's leased Fedora environment; no active
-desktop was modified.
+The native source pin and qualified Fedora compositor identity are unchanged:
+Hyprland `0.56.2-2.fc44.x86_64` plus matching `hyprland-devel`, source
+`efb50993780079460b0cbed1363e2166a2de1d9f`, executable ELF build ID
+`04b20094d13879e70824418ba363f8dcc3253b34`. The exact d2037af ISO/RPM set is
+built and published for testing; artifact paths, sizes, hashes and source
+provenance are in [desktop validation](desktop-validation.md).
 
-The parent also confirmed native load, capability discovery and `clear_buttons`
-without config errors in its isolated GPU VM. Stack inspection of an initial
-post-unload IPC stall found recursive `reload → postConfigReload →
-handlePluginLoads → reload`, caused by changing the configuration declaration
-between parses. The parent owns the stable-declaration integration fix and its
-runtime retest; this observation is not a qualified unload/reload result.
+The exact pristine-upgrade fixture passed forced native compilation, one-line
+unchanged convergence, candidate boot/runtime snapshot and recovery boot/restore. `native-offline-rebuild.json` in the recorded offline-upgrade evidence
+binds the converged plugin SHA-256
+`1142347ed31dcfb67733602b8ec6d88733131e0f8140ad8c3f50c870ef24e878`.
+`native-candidate-runtime.json` confirms exact clean d2037af provenance, loaded
+hyprbars, Scrolling/titlebar capabilities, empty error and a Floating workspace.
+The separate exact-source native workspace report now passes renamed/numbered
+opening, named/manual group provenance, original-owner closure, reload and
+restoration. Those stable observations do not establish first-frame behavior
+or requalify titlebar pointer controls on this artifact.
 
-`python3 tests/titlebars.py` exercises real CMake/C++ fixture builds, offline
-convergence and repair, same-source Fedora release rebuilds, checksum/traversal
-rejection, build failures, SDK mismatch and concurrent update rejection. A
-native shared-library probe tests the running executable ELF guard with matching
-and mismatching build IDs under release optimization, including unchanged handle
-state after rejection. A byte replacement of the full expected-ID text in a
-compiled plugin is not a valid mismatch test: the inspected GCC Release build
-compares five inline immediate constants and retains an unused full text literal.
-That experiment left the real check intact and demonstrated no guard failure.
-The parent separately qualifies an actual plugin recompiled with a deliberately
-wrong expected build ID; the source pin and product install path stay unchanged.
-Package recipe parity and absent-artifact rejection
-are separate from a complete installed-system test.
+Historical isolated native tests passed compilation/offline convergence,
+load/capability discovery, stable declarations/reloads, themed clear/re-add,
+pointer drag/maximize/minimize/close and an actually recompiled wrong-build-ID
+rejection. Those results retain their earlier product scope. Detailed native
+failure/correction evidence, helper reviews, gate skips and resource history
+are centralized in validation and the ledger.
 
-The parent records integrated source/image parity, RPM/ISO qualification and
-isolated real compositor load/reload/unload, button actions/theme changes,
-drag/maximize, and mixed CSD clients in the desktop ledger. Compilation and
-fixtures alone do not qualify those runtime or physical-display requirements.
+`python3 tests/titlebars.py` covers CMake/C++ fixture builds, offline convergence
+and repair, same-source Fedora rebuilds, checksum/traversal rejection,
+compiler/SDK failures and concurrent updates. A release-optimized native probe
+checks the running-executable ELF guard and unchanged handle state after
+rejection. These and payload-parity/admission checks establish local contracts;
+they do not complete installed-session or mixed-client/hardware qualification.
+
+| Exact d2037af acceptance | Current status |
+| --- | --- |
+| ISO/RPM build and testing PXE publication | Passed; exact identities and publisher checks in validation |
+| Installed forced native build/offline unchanged convergence, boot and recovery | Passed within the exact pristine-upgrade fixture; runtime evidence is the limited plugin/capability/Floating snapshot described above |
+| Renamed opening and named/manual group lifecycle | Passed within the exact plain-US native fixture; stable observations, not first-frame/configure proof or a new titlebar pointer test |
+| Settings pixels and remaining interaction coverage | Recorded encrypted-US settings/empty-overview frame review passed within scope; unsampled interactions, assistive technology and first-frame behavior remain unqualified |
+| Generic negotiated Wayland CSD detection | Blocked on a supported qualified compositor API and mixed-client tests |
+| Physical lid/dock/mirror/two-external/scaling placement | Blocked on representative hardware |
+
+The exact-class no-bar policy and keyboard/overview fallback controls remain
+supported. First-frame, new-artifact pointer and unavailable hardware/CSD
+acceptance remain open; general duplicate-decoration avoidance must not be
+advertised as complete. [PR #21](https://github.com/DigitalPals/CybexOS/pull/21)
+merged at bee9d722 on `2026-10-21T14:01:19Z` after both required hosted checks
+succeeded; origin/main was verified at that merge. The missing-`patch` CI
+failure, exact sole-path correction and clean R28 review are recorded in
+validation/ledger, separately from d2037af artifact qualification. Startup/pixel/performance measurement is **BLOCKED** after four failed attempts,
+zero accepted samples/comparison. R11 is scoped inert tooling review only.
+Warm04 passed root-policy/reconciliation validation but its Welcome frame
+showed black background/pointer only; null review response sent no input.
+Failure preceded SSH fixture/warm-up; cause unknown, no product-regression proof.
+Warm02's cause and warm03's exact offending bytes remain unknown. All leases
+closed/empty. No further VM series is planned; any future benchmark needs
+visibly verified Welcome/portals, a reviewed retarget and eight fresh equivalent
+boots with current prerequisites. Detailed identities and guards are in validation.
+Validation records R30 scoped retention acceptance, both independently verified
+R29 repairs and completed teardown: all 53 recorded leases closed, MAIN absent,
+no temporary VM/container retained, shared services untouched. Baseline/intermediate
+payloads were removed; final testing deliverables and bounded evidence remain.
+Original evidence paths are historical identities resolved through durable maps;
+R30 is not runtime/release acceptance. Its historical-source limits and cleanup-time
+inventory snapshot are documented in validation.
+Active user desktop rollout/restart/reboot and public release remain unauthorized.
