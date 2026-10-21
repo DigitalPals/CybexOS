@@ -5,6 +5,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const {load, shellDir} = require('./shell.cjs');
 const P = load('NotifPolicy.js'), S = load('NotifSmart.js'), H = load('NotifHelpers.js');
+const Holds = load('NotifHolds.js');
 const row = (changes = {}) => ({appName:'Chat', desktopEntry:'chat', summary:'Alice', body:'hello',
     displayAppName:'Chat', displaySummary:'Alice', displayBody:'hello', urgency:1,
     arrived:1000, occurrences:1, appIcon:'', image:'', ...changes});
@@ -121,6 +122,7 @@ function service(){
         localSerial:0,historyGeneration:0,historyProcess:{running:false},historyWrite:{stop(){}},fingerprintImage:()=>'',
         I18n:{tr:s=>s},queue};
     context.root=context;
+    context.groupHoldQueue=Holds.create(context.Qt.callLater,groups=>{context.heldGroups=groups;});
     context.historyRetention={stop(){},start(){}};
     context.snoozeTimer={stop(){},start(){}};
     context.dndTimer={stop(){},start(){}};
@@ -130,7 +132,7 @@ function service(){
     for(const name of ['describe','remoteSource','publish','updateEntry','removeEntry','hideToast','dismiss','invoke',
         'defaultAction','secondaryActions','canActivate','invokeDefault','timeoutFor','send','clearAll',
         'historyReply','queueHistory','pruneHistory','scheduleRetention','setDndMode','setDnd','scheduleDndTick',
-        'snoozeSource','unsnooze','scheduleSnoozes']){
+        'snoozeSource','unsnooze','scheduleSnoozes','holdGroup']){
         const match=source.match(new RegExp('^    function '+name+'\\([^]*?^    }','m'));
         assert.ok(match,name);
         vm.runInContext(match[0],context);
@@ -154,6 +156,29 @@ function sender(summary='Hello',body='Message',extra={}){
     value.expire=()=>value.closed.emit(); value.dismiss=value.expire;
     return value;
 }
+
+test('service hold updates defer QML writes but gate arrivals immediately during delegate churn',()=>{
+    const c=service(),owner={},replacement={};
+    const key=P.sourceKey(row());
+    let inBinding=true,writes=0,snapshot=c.heldGroups;
+    Object.defineProperty(c,'heldGroups',{get(){return snapshot;},set(value){
+        assert.equal(inBinding,false,'reactive publication reentered screenGroups model evaluation');
+        writes++;snapshot=value;
+    }});
+    c.holdGroup(key,false,owner);
+    c.holdGroup(key,true,owner);
+    c.receive(sender('Held before the deferred publish','message'));
+    assert.equal(c.toasts.length,0);assert.equal(c.entries.length,1);assert.equal(writes,0);
+    inBinding=false;c.flush();assert.equal(snapshot[key],true);assert.equal(writes,1);
+    inBinding=true;
+    c.holdGroup(key,true,replacement);c.holdGroup(key,false,owner);
+    c.receive(sender('Still held after old deck destruction','message'));
+    assert.equal(c.toasts.length,0);
+    inBinding=false;c.flush();assert.equal(writes,1,'replacement must preserve one aggregate hold');
+    c.holdGroup(key,false,replacement);c.flush();assert.equal(snapshot[key],undefined);
+    assert.equal(c.toasts.length,0,'released holds never replay history');
+    c.receive(sender('New after release','message'));assert.equal(c.toasts.length,1);
+});
 
 test('qualified origins separate dedupe, popup groups and snoozes while default ports agree', () => {
     const c=service();

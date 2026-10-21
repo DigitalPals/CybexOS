@@ -60,7 +60,7 @@ UI strings are returned for English/Dutch integration by the lead.
   at tag `v4.5.0-rc1`, revision `03ff1eff3812933f7088484533784d2f63eaf19a`.
 - Three actual Codex tasks implemented compositor, desktop UI and
   notifications with explicit disjoint ownership. A fourth native packaging
-  task and two fresh independent review rounds cover integration. All use the requested Codex
+  task and four fresh independent review rounds cover integration. All use the requested Codex
   provider and inherited gpt-6.1-sol/xhigh/priority selection.
 - Baseline Fedora 44 source gate passed all 17 stages, including 1,380 Node
   checks and 43 Python fixtures. Image source gate also passed (519 image fixtures plus 27 application and 14 installer Node tests) after supplying the missing gvfs schema dependency. Initial container
@@ -134,5 +134,39 @@ source checkout is `/tmp/cybexos-desktop-20261021-titlebars`; remove it too.
   identities, and reject startup kernel/dependency drift. Actual group and
   origin regressions pass. A properly recompiled incompatible titlebar plugin
   fails its running ELF guard without changing the good plugin registry or
-  APIs; the guard now precedes shared handle assignment. Fresh R3 review is
-  checking the stable correction set before final qualification.
+  APIs; the guard now precedes shared handle assignment. Fresh R3 review of
+  c5b5c96 completed without actionable findings (62 Node, four startup, 161 Lua
+  checks and native optimized guard isolation).
+
+- Native grouped-toast/output lifecycle testing found a screenGroups binding
+  loop despite passing visible behavior assertions. Notification owner is
+  correcting it; the journal failure is not waived. Stopped the superseded
+  c5b5c96 ISO build and verified lease 61012ebf5d4b48778778691793472495 closed
+  with no remaining resources. No ISO was published from that attempt.
+- Baseline image build uses exact 3b310d1 in a disposable local clone, owned by
+  supervised lease 51e5828e0d7c4684b99d264e531b1ac7. Build cache, disks and media
+  are private to that lease. This prepares installed startup evidence; it does
+  not establish a measured speedup.
+- Native experiment isolated the remaining toast cycle: screenGroups used the
+  live PanelWindow screen, while screenGroups also controlled visibility.
+  Using the authoritative Variants output model passed a full D-Bus matrix
+  and three fullscreen/output lifecycle matrices with clean invocation
+  journals. Product correction and fresh independent review are in progress.
+- Final product source (not just the diagnostic experiment) now passes the
+  full actual D-Bus matrix plus three repeated grouped-burst/fullscreen/output
+  create/disconnect matrices, with invocation journals clean after each. Normal
+  product shell and sole service-owned qs were restored. Fresh R4 review and
+  full source/image gates precede the candidate rebuild.
+- Independent R4 review of the final toast correction found no actionable
+  correctness/security findings, with 53 focused Node checks, packaging-path
+  inspection and read-only final native journal inspection. Full source/image
+  gates are rerunning in the configured Fedora container account. An earlier
+  invocation used an absent UID and is excluded as an invalid environment run.
+- Final toast correction passes all 17 Fedora source stages (1,440 Node tests,
+  46 Python fixtures, 355 QML files/four harnesses, actual Qt/runtime fixtures)
+  and image source parity (27 application, 520 image with three existing skips,
+  14 installer Node checks). R4 is clean.
+- Baseline build reached desktop/offline RPM creation; compose failed on an
+  official Fedora OpenH264 metadata HTTP 404. Lease 51e5828e0d7c4684b99d264e531b1ac7
+  closed cleanly. The endpoint subsequently returned HTTP 200 with exactly the
+  checksum advertised by MirrorManager, so the unchanged build can be retried.

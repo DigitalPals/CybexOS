@@ -7,6 +7,7 @@ import Quickshell.Wayland
 import "NotifPolicy.js" as Policy
 import "NotifSmart.js" as Smart
 import "NotifHelpers.js" as Helpers
+import "NotifHolds.js" as Holds
 import "SettingsHelpers.js" as SettingsHelpers
 import "Format.js" as Format
 
@@ -44,6 +45,8 @@ Singleton {
     property var snoozes: []
     property var burstEvents: []
     property var heldGroups: ({})
+    readonly property var groupHoldQueue: Holds.create(callback => Qt.callLater(callback),
+        groups => { root.heldGroups = groups; })
     property bool historyLoaded: false
     property bool historyError: false
     property bool historyPending: false
@@ -346,7 +349,7 @@ Singleton {
         if (!existing) {
             const gate = Policy.burst(burstEvents, entry.sourceKey, arrived, Settings.notifBurstLimit);
             burstEvents = gate.events;
-            if (!gate.allowed || heldGroups[entry.sourceKey])
+            if (!gate.allowed || groupHoldQueue.isHeld(entry.sourceKey))
                 return entry;
             const sourceDeck = toasts.find(item => item.sourceKey === entry.sourceKey);
             const display = Policy.targetScreen(sourceDeck ? sourceDeck.screenName
@@ -583,11 +586,10 @@ Singleton {
 
     Timer { id: snoozeTimer; onTriggered: root.scheduleSnoozes() }
 
-    function holdGroup(key, held) {
-        const next = Object.assign({}, heldGroups);
-        if (held) next[key] = true;
-        else delete next[key];
-        heldGroups = next;
+    function holdGroup(key, held, owner) {
+        // Creation/destruction and hover signals can run while screenGroups
+        // is evaluating. Mutate only plain JS here; publish after that stack.
+        groupHoldQueue.set(owner ?? key, key, held);
     }
 
     function dismissGroup(key) {
@@ -843,4 +845,5 @@ Singleton {
     }
 
     Component.onCompleted: applyStartupPolicy()
+    Component.onDestruction: groupHoldQueue.dispose()
 }

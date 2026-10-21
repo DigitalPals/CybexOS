@@ -294,14 +294,65 @@ image/replacement/snooze/action and private-history restart/redaction checks
 passed before this R2 fix; the new origin routing needs its integrated runtime
 rerun. This agent made no VM changes for R2.
 
-QML engine loading, real D-Bus replacement/action execution, pointer/keyboard
-and assistive-technology behavior, hover countdowns, fullscreen routing,
-multi-monitor/hotplug/scaling and shell/login restart are **pending parent VM
-qualification**, not established by these fixtures. Settings now provides Send
-test, Send grouped preview and Send verification preview using the same
-in-shell admission path. The parent must run source/image installation parity
-and runtime qualification against its integrated revision. The installed native
-module remains in the parent's existing container for final source lint.
+After `c5b5c96d284654bf9eb31766aaff09b098fbb574`, the parent's native
+group/fullscreen/output matrix passed its behavior assertions but the same
+invocation logged a `screenGroups` binding loop. The first change deferred
+hold/focus publication during delegate teardown; a native rerun still failed,
+so those lifecycle fixtures did not establish that the loop was fixed.
+
+The confirmed remaining cycle was `screenGroups` → window visibility → native
+window creation → `screenChanged` → `screenGroups`. The old filter read
+`PanelWindow.screen`. In the installed Quickshell revision `dacfa9d`,
+`src/window/proxywindow.cpp`'s `setVisibleDirect` creates the backing window;
+`createWindow` calls `completeWindow`, which unconditionally emits
+`screenChanged` after connecting it, even for the same output. Toast selection
+now reads `modelData.screen`, the authoritative output supplied by Variants.
+Geometry can still read the live window screen without making popup admission
+depend on window mapping. No timer, count, group bound or output-routing policy
+changes are needed.
+
+`NotifHolds.js` now keeps owner claims in plain JavaScript state and coalesces
+reactive publication through `Qt.callLater`, with idempotent no-ops and disposal
+guards. Admission reads the claims immediately, so notifications cannot slip
+into a hovered group while publication waits. Old delegates cannot release a
+new delegate's hold for the same source. Buttons and cards share deferred focus
+claims, preserving the aggregate pause during focus transfers and cancelling
+callbacks when a deck dies. Group bounds, identities and countdown animation
+state remain unchanged.
+
+The focused notification/adjacent suite passes 137 Node checks, including a
+guard against synchronous reactive writes during the actual service's
+holdGroup function and owner/focus-transfer races. The guard fails against the
+old c5b5c96 holdGroup teardown. A further regression executes the production
+`screenGroups` expression with a forbidden live-screen getter and checks
+assigned-output changes, mixed-output groups, missing screens and card order.
+It fails against the old filter. This is a dependency-boundary test, not a
+simulation of native window mapping. A real Qt6 qmltestrunner regression passes 24
+model rebuild/output-removal/queued-focus destruction cycles with every QML
+warning treated as a failure (3 QtTest passes including init/cleanup). It uses
+the production queues in a Qt model/delegate graph; it does not construct the
+Quickshell PanelWindow/ScriptModel.
+
+The parent's guarded VM experiment changed only the output predicate on top of
+the hold/focus change: the full D-Bus matrix and three complete toast matrices
+passed, with a clean invocation journal after each. These exercise grouped
+burst bounds, single-output fullscreen suppression, alternate-output routing,
+output creation/disconnection and focus preservation. The trap restored the
+product source/service and verified the sole qs process. The parent then
+transferred the final production source and repeated the full actual D-Bus
+matrix plus all three toast/output matrices: exit 0, clean journal after each,
+and the product shell restored with only the service-owned qs process. Full
+Fedora QML lint passes all 355 files and four harnesses; git diff --check passes.
+No VM or service was mutated by this agent for the binding-loop fix.
+
+The Node and Qt fixtures do not establish native behavior; the separate parent
+VM runs supply that evidence for the exercised paths. Untested pointer/keyboard
+and assistive-technology interactions, physical multi-monitor/scaling behavior
+and installed-product qualification remain outside these checks. Settings
+provides Send test, Send grouped preview and Send verification preview using
+the same in-shell admission path. The parent owns final source/image gates,
+independent review and release qualification against the integrated revision.
+The native module remains in the parent's existing container for final lint.
 A 92,160-byte matching VM module/recipe/license payload is retained at
 `/var/lib/agent-resources/leases/29c5e2febb054008b06ff08cd794e589/workspace/notification-images-native-module.tar`
 for the parent's isolated VM qualification, SHA-256

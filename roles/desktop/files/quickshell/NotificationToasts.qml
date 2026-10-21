@@ -5,6 +5,7 @@ import Quickshell.Services.Notifications
 import Quickshell.Wayland
 import "Common"
 import "Common/Format.js" as Format
+import "Common/NotifHolds.js" as Holds
 
 // One source-grouped, bounded popup surface per output. Decks stay on the
 // display chosen on arrival. Hover or explicit expansion pauses all members;
@@ -15,9 +16,12 @@ Scope {
         delegate: PanelWindow {
             id: root
             required property var modelData
+            // Select by the Variants output, never the live PanelWindow screen.
+            // Mapping the window emits screenChanged synchronously, even for the
+            // same output; reading that property here closes a cycle via visible.
             readonly property var screenGroups: Notifs.toastGroups.map(group => ({
                 key: group.key, app: group.app,
-                items: group.items.filter(entry => root.screen && entry.screenName === root.screen.name)
+                items: group.items.filter(entry => root.modelData.screen && entry.screenName === root.modelData.screen.name)
             })).filter(group => group.items.length > 0)
             readonly property var groupKeys: screenGroups.map(group => group.key)
 
@@ -210,12 +214,21 @@ Scope {
                         || ({ key: modelData, app: "", items: [] })
                     property bool expandedByUser: false
                     property bool focusedWithin: false
-                    property int focusedSlots: 0
-                    readonly property bool expanded: expandedByUser || deckHover.hovered || focusedWithin || focusedSlots > 0
+                    // Focus can transfer between two controls while a model
+                    // rebuild destroys another card. Coalesce owner claims so
+                    // neither transfer collapses the deck nor teardown writes
+                    // a reactive counter inside the screenGroups binding.
+                    readonly property var focusHolds: Holds.create(callback => Qt.callLater(callback),
+                        groups => { deck.focusedWithin = !!groups.focus; })
+                    readonly property bool expanded: expandedByUser || deckHover.hovered || focusedWithin
                     width: ListView.view.width
                     spacing: 4
-                    onExpandedChanged: Notifs.holdGroup(modelData, expanded)
-                    Component.onDestruction: Notifs.holdGroup(modelData, false)
+                    onExpandedChanged: Notifs.holdGroup(modelData, expanded, deck)
+                    Component.onCompleted: Notifs.holdGroup(modelData, expanded, deck)
+                    Component.onDestruction: {
+                        focusHolds.dispose();
+                        Notifs.holdGroup(modelData, false, deck);
+                    }
                     HoverHandler { id: deckHover }
                     Keys.onEscapePressed: { expandedByUser = false; }
 
@@ -223,18 +236,22 @@ Scope {
                         width: parent.width
                         spacing: 4
                         NotifButton {
+                            id: expandGroup
                             visible: deck.group.items.length > 1
                             text: (deck.expandedByUser ? I18n.tr("Collapse group") : I18n.tr("Expand group"))
                                 + " · " + deck.group.items.length
                             Accessible.description: deck.group.app
-                            onActiveFocusChanged: deck.focusedWithin = activeFocus
+                            onActiveFocusChanged: deck.focusHolds.set(expandGroup, "focus", activeFocus)
+                            Component.onDestruction: deck.focusHolds.set(expandGroup, "focus", false)
                             onTriggered: deck.expandedByUser = !deck.expandedByUser
                         }
                         NotifButton {
+                            id: dismissGroup
                             visible: deck.group.items.length > 1
                             text: I18n.tr("Dismiss group")
                             Accessible.description: deck.group.app
-                            onActiveFocusChanged: deck.focusedWithin = activeFocus
+                            onActiveFocusChanged: deck.focusHolds.set(dismissGroup, "focus", activeFocus)
+                            Component.onDestruction: deck.focusHolds.set(dismissGroup, "focus", false)
                             onTriggered: Notifs.dismissPopupGroup(deck.modelData)
                         }
                     }
@@ -281,11 +298,8 @@ Scope {
                                 framedIcon: true
                                 expandTextOnHover: true
                                 keyboardEnabled: true
-                                onHoldsFocusChanged: deck.focusedSlots = Math.max(0, deck.focusedSlots + (holdsFocus ? 1 : -1))
-                                Component.onDestruction: {
-                                    if (holdsFocus)
-                                        deck.focusedSlots = Math.max(0, deck.focusedSlots - 1);
-                                }
+                                onHoldsFocusChanged: deck.focusHolds.set(card, "focus", holdsFocus)
+                                Component.onDestruction: deck.focusHolds.set(card, "focus", false)
                                 width: parent.width
                                 height: contentHeight
                                 radius: Theme.panelRadius
