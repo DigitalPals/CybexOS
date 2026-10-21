@@ -302,11 +302,63 @@ test("Default is a transient clear-override action, including unmanaged native d
     assert.match(page, /I18n\.format\("Unmanaged \(%1\)"/);
     // Evaluate the actual picker binding for unmanaged inheritance/overrides.
     const expression = page.match(/readonly property string selectedLayout: ([\s\S]*?)\n\n/)[1];
-    const picker = { selectedWorkspace: { layout: "unmanaged", layoutManaged: false },
+    const picker = { selectedWorkspace: { layout: "unmanaged", layoutManaged: false, layoutOverride: false },
         DesktopWorkspaces: { defaultLayout: "unmanaged", defaultLayoutManaged: false } };
     assert.equal(vm.runInNewContext(expression, picker), "default");
-    picker.selectedWorkspace = { layout: "dwindle", layoutManaged: true };
+    picker.selectedWorkspace = { layout: "dwindle", layoutManaged: true, layoutOverride: true };
     assert.equal(vm.runInNewContext(expression, picker), "dwindle", "an override remains explicit even with an unmanaged default");
+});
+
+test("an explicit Tiled choice remains explicit when equal to the default and after the default changes", () => {
+    const expression = read("Settings/WorkspacesPage.qml").match(/readonly property string selectedLayout: ([\s\S]*?)\n\n/)[1];
+    const value = fixture();
+    value.defaultLayoutManaged = true;
+    Object.assign(value.workspaces[0], { layout: "dwindle", layoutManaged: true, layoutOverride: true });
+    const picked = state => vm.runInNewContext(expression, { selectedWorkspace: H.workspace(state, 41) });
+    const context = owner(true);
+    assert.equal(context.setLayout(41, "dwindle"), true);
+    assert.equal(context.commandProc.command[2], W.desktopLayout(41, "dwindle"));
+    const tiled = H.parseSnapshot(JSON.stringify(value));
+    assert.equal(H.workspace(tiled, 41).layoutOverride, true);
+    assert.equal(picked(tiled), "dwindle", "an explicit choice equal to the default must not display Default");
+    value.defaultLayout = "floating";
+    const changed = H.parseSnapshot(JSON.stringify(value));
+    assert.equal(picked(changed), "dwindle");
+    assert.equal(H.workspace(changed, 41).layoutOverride, true);
+    const entry = H.decorateOverview(O.workspaceEntries([{ id: 41, name: "41", active: true }], []), changed, "eDP-1")[0];
+    assert.equal(entry.layoutOverride, true);
+    assert.equal(entry.layout, "dwindle");
+    const reset = owner(true);
+    assert.equal(reset.setLayout(41, "default"), true);
+    assert.equal(reset.commandProc.command[2], W.desktopLayout(41, "default"));
+    value.workspaces[0].layoutOverride = false;
+    // The explicit false bit wins even while effective layout data catches up.
+    assert.equal(picked(H.parseSnapshot(JSON.stringify(value))), "default");
+    value.workspaces[0].layout = "floating";
+    assert.equal(picked(H.parseSnapshot(JSON.stringify(value))), "default");
+    value.workspaces[0].layoutManaged = false;
+    value.workspaces[0].layoutOverride = true;
+    assert.equal(picked(H.parseSnapshot(JSON.stringify(value))), "floating",
+        "layoutManaged is not an inheritance discriminator");
+});
+
+test("snapshots without layoutOverride retain the previous inheritance heuristic", () => {
+    const expression = read("Settings/WorkspacesPage.qml").match(/readonly property string selectedLayout: ([\s\S]*?)\n\n/)[1];
+    for (const [defaultManaged, managed, selected, expected] of [
+        [true, true, "dwindle", "default"],
+        [true, true, "floating", "floating"],
+        [false, true, "dwindle", "dwindle"],
+        [false, false, "unmanaged", "default"],
+        [true, false, "floating", "default"],
+        [undefined, undefined, "dwindle", "default"]
+    ]) {
+        const value = fixture();
+        value.defaultLayoutManaged = defaultManaged;
+        Object.assign(value.workspaces[0], { layout: selected, layoutManaged: managed });
+        const row = H.workspace(H.parseSnapshot(JSON.stringify(value)), 41);
+        assert.equal(row.layoutOverride, expected !== "default");
+        assert.equal(vm.runInNewContext(expression, { selectedWorkspace: row }), expected);
+    }
 });
 
 test("renameworkspace 1 research preserves tile identity and native selection/drop with or without a snapshot", () => {

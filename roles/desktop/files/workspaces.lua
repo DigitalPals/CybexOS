@@ -295,6 +295,7 @@ local function write_snapshot()
       monitor = row.name, label = guest and (tostring(workspace_id) .. " · " .. ((owner and owner.connector) or row.name)) or tostring(number),
       layout = valid_layout[selected] and selected or "unmanaged", nativeLayout = selected == "floating" and "dwindle" or selected,
       layoutManaged = preferences.manageDefaultLayout or preferences.layouts[tostring(workspace_id)] ~= nil,
+      layoutOverride = preferences.layouts[tostring(workspace_id)] ~= nil,
       guest = guest, ownerIdentity = owner and owner.identity or "" }
   end
   for _, monitor in ipairs(all_monitors) do
@@ -578,7 +579,6 @@ end
 function M.set_default_layout(value)
   check_layout(value)
   local candidate = copy_preferences(); candidate.defaultLayout, candidate.manageDefaultLayout = value, true
-  for key, saved in pairs(candidate.layouts) do if saved == value then candidate.layouts[key] = nil end end
   save_preferences(candidate); refresh()
 end
 local function layout_id(workspace_id)
@@ -595,9 +595,7 @@ function M.set_layout(workspace_id, value)
   workspace_id = layout_id(workspace_id)
   local candidate = copy_preferences()
   candidate.layouts[tostring(workspace_id)] = nil
-  if value ~= "default" and (not preferences.manageDefaultLayout or value ~= preferences.defaultLayout) then
-    candidate.layouts[tostring(workspace_id)] = value
-  end
+  if value ~= "default" then candidate.layouts[tostring(workspace_id)] = value end
   save_preferences(candidate); refresh()
 end
 function M.cycle_layout(workspace_id)
@@ -614,8 +612,14 @@ function M.set_titlebars_enabled(enabled)
 end
 function M.toggle_floating(target)
   local window = live_window(target)
-  floating.tag(window, floating.FLOATED, false)
-  floating.tag(window, floating.USER, true)
+  local members = window.group and window.group.members or { window }
+  assert(type(members) == "table", "cannot inspect window group")
+  -- The compositor toggles the whole group. Release every member before the
+  -- dispatch so no remaining mode-owned member can immediately float it back.
+  for _, member in ipairs(members) do
+    floating.tag(member, floating.FLOATED, false)
+    floating.tag(member, floating.USER, true)
+  end
   hl.dispatch(hl.dsp.window.float({ action = "toggle", window = window }))
   schedule()
 end

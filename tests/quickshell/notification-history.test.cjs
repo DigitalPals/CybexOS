@@ -37,12 +37,13 @@ test('one long-lived helper writes atomically, restores across process restart a
 test('code redaction covers raw, displayed, encoded, alternate, nested and sensitive derived fields',t=>{
     const env=fixture(t);
     const cases=[
-        row({displaySummary:'Your verification code is 482913',displayBody:'482913',appName:'482913',desktopEntry:'482913',webOrigin:'482913.example'}),
+        row({displaySummary:'Your verification code is 482913',displayBody:'482913',appName:'482913',desktopEntry:'482913',webOrigin:'482913.example',webSourceIdentity:'https://482913.example:443'}),
         row({rawBody:'Your OTP is &#52;&#56;&#50;&#57;&#49;&#51;',displayBody:'482913'}),
         row({summary:'Your code',body:'482913',displayBody:'482913'}),
         row({codes:['482913'],appName:'482913',displayBody:'482913'}),
         row({derived:{nested:{body:'verification code 482913'}},displaySummary:'482913'}),
         row({summary:'Your code',alternate:'482913',displaySummary:'482913'}),
+        row({webOrigin:'code.example',webSourceIdentity:'https://code.example:48291'}),
     ];
     const replies=run(env,[{op:'write',entries:cases},{op:'read'}]);
     assert.ok(replies.every(r=>r.ok));
@@ -50,7 +51,41 @@ test('code redaction covers raw, displayed, encoded, alternate, nested and sensi
     for(const entry of replies[1].entries){
         assert.equal(entry.displaySummary,'Verification notification');
         assert.equal(entry.appName,'Notification'); assert.equal(entry.desktopEntry,''); assert.equal(entry.webOrigin,'');
+        assert.equal(entry.webSourceIdentity,'');
     }
+});
+
+test('restart preserves qualified origins, migrates old hosts without guessing and drops unsafe identity data',t=>{
+    const env=fixture(t);
+    const cases=[
+        row({webOrigin:'chat.example',webSourceIdentity:'https://chat.example:443'}),
+        row({webOrigin:'chat.example',webSourceIdentity:'https://chat.example:8443'}),
+        row({webOrigin:'chat.example',webSourceIdentity:'http://chat.example:80'}),
+        row({webOrigin:'chat.example'}),
+        row({webOrigin:'chat.example',webSourceIdentity:'unqualified:chat.example:8443'}),
+        row({webOrigin:'[2001:db8:0:0:0:0:0:1]',webSourceIdentity:'https://[2001:db8:0:0:0:0:0:1]:443'}),
+        row({webOrigin:'chat.example',webSourceIdentity:'https://chat.example.:443'}),
+        row({webOrigin:'chat.example',webSourceIdentity:'https://chat.example:443/private?token=do-not-store#secret'}),
+        row({webOrigin:'chat.example',webSourceIdentity:'https://user:pass@chat.example:443'}),
+        row({webOrigin:'chat.example',webSourceIdentity:'https://other.example:443'}),
+        row({webOrigin:'chat.example',webSourceIdentity:'https://chat.example:0'}),
+        row({webOrigin:'chat.example',webSourceIdentity:'https://chat.example:65536'}),
+        row({webOrigin:'chat.example',webSourceIdentity:'x'.repeat(10000)}),
+    ];
+    const now=Date.now();cases.forEach(entry=>{entry.arrived=now;});
+    assert.ok(run(env,[{op:'write',entries:cases}])[0].ok);
+    const entries=run(env,[{op:'read'}])[0].entries;
+    assert.deepEqual(entries.map(e=>e.webSourceIdentity),[
+        'https://chat.example:443','https://chat.example:8443','http://chat.example:80',
+        'unqualified:chat.example','unqualified:chat.example:8443',
+        'https://[2001:db8:0:0:0:0:0:1]:443','https://chat.example.:443',...Array(6).fill('unqualified:chat.example')]);
+    const disk=fs.readFileSync(env.file,'utf8');
+    for(const secret of ['do-not-store','/private','user:pass','other.example','x'.repeat(321)])assert.ok(!disk.includes(secret));
+    // Read an actual earlier v1 store lacking the additive identity field.
+    fs.writeFileSync(env.file,JSON.stringify({v:1,entries:[row({webOrigin:'chat.example'})]}));
+    const legacy=run(env,[{op:'read'}])[0].entries[0];
+    assert.equal(legacy.webSourceIdentity,'unqualified:chat.example');
+    assert.equal(JSON.parse(fs.readFileSync(env.file,'utf8')).entries[0].webSourceIdentity,legacy.webSourceIdentity);
 });
 
 test('count, age and actual encoded storage bytes apply together, including malicious numbers',t=>{

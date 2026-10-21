@@ -77,6 +77,47 @@ test("generic browser origins use a normalized hostname", () => {
     assert.equal(result.displayAppName, "news.example.com");
     assert.equal(result.webOrigin, "news.example.com");
     assert.equal(result.brandIcon, "");
+    assert.equal(result.webSourceIdentity, "https://news.example.com:443");
+});
+
+test("web identity preserves scheme and effective port separately from display host", () => {
+    const cases = [
+        ["HTTPS://Chat.Example/path?secret=482913#fragment", "chat.example", "https://chat.example:443"],
+        ["https://chat.example./", "chat.example", "https://chat.example.:443"],
+        ["https://chat.example:443", "chat.example", "https://chat.example:443"],
+        ["https://chat.example:0443/", "chat.example", "https://chat.example:443"],
+        ["https://chat.example:8443", "chat.example", "https://chat.example:8443"],
+        ["http://chat.example", "chat.example", "http://chat.example:80"],
+        ["http://chat.example:443", "chat.example", "http://chat.example:443"],
+        ["chat.example", "chat.example", "unqualified:chat.example"],
+        ["chat.example:8443", "chat.example", "unqualified:chat.example:8443"],
+        ["//chat.example:8443", "chat.example", "unqualified:chat.example:8443"],
+        ["Origin: https://chat.example/", "chat.example", "https://chat.example:443"],
+        ["http://localhost:8080/", "localhost", "http://localhost:8080"],
+        ["http://127.0.0.1/", "127.0.0.1", "http://127.0.0.1:80"],
+        ["https://[2001:DB8::1]:8443/", "[2001:db8:0:0:0:0:0:1]", "https://[2001:db8:0:0:0:0:0:1]:8443"],
+        ["https://[::ffff:192.0.2.1]/", "[0:0:0:0:0:ffff:c000:201]", "https://[0:0:0:0:0:ffff:c000:201]:443"],
+    ];
+    for (const [raw, hostname, identity] of cases) {
+        const result = H.derivePresentation(chromeNotification({hints:{"x-kde-origin-name":raw}}));
+        assert.equal(result.webOrigin,hostname,raw);
+        assert.equal(result.webSourceIdentity,identity,raw);
+        assert.equal(H.canonicalWebSourceIdentity(identity,hostname),identity);
+    }
+    const ambiguous=H.derivePresentation(chromeNotification({hints:{"x-kde-origin-name":"chat.example"},
+        body:'<a href="https://chat.example/">chat.example</a>hello'}));
+    assert.equal(ambiguous.webSourceIdentity,'unqualified:chat.example');
+    assert.equal(H.canonicalWebSourceIdentity('https://other.example:443','chat.example'),'');
+});
+
+test("unsafe or malformed source origins are rejected without repairing their identity", () => {
+    for (const raw of ['https://chat.example:0','https://chat.example:65536','https://chat.example:443x',
+        'https://chat.example@evil.example','https://chat.example\\evil','javascript://chat.example',
+        'https://cha\nt.example','https://chat.example\u200b','https://chat%2eexample','https://chat..example',
+        'https://127.1','https://0x7f.0.0.0x1','https://127.00.0.1','https://[:::1]',
+        'https://[fe80::1%eth0]','https://'+ 'a'.repeat(64)+'.example','x'.repeat(4097)]) {
+        assert.equal(H.webSource(raw).identity,'',JSON.stringify(raw));
+    }
 });
 
 test("native notifications keep their application identity", () => {

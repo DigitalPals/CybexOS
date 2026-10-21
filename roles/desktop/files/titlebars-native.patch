@@ -27,12 +27,12 @@
 +}
 +
  static PLUGIN_DESCRIPTION_INFO initializeOmarchyFloating(HANDLE handle) {
-   OMARCHY_FLOATING_PHANDLE = handle;
-+
 +  // A Fedora release rebuild may keep the source/API hash while changing
 +  // the executable ABI. Never enter plugin state against another ELF build.
 +  if (cybexosHyprlandBuildId() != CYBEXOS_HYPRLAND_BUILD_ID)
 +    throw std::runtime_error("[hyprbars] Fedora Hyprland build ID mismatch; rebuild native titlebars");
++
+   OMARCHY_FLOATING_PHANDLE = handle;
  
    const std::string HASH = __hyprland_api_get_hash();
    const std::string CLIENT_HASH = __hyprland_api_get_client_hash();

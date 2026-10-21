@@ -92,16 +92,20 @@ test('strict explicit URL offers reject alternate schemes, credentials, controls
 
 test('persistence never copies code-bearing alternate fields, images or executable/live capabilities', () => {
     const secret=row({appName:'otp 482913',summary:'Your code',body:'482913',codes:['482913'],
-        desktopEntry:'482913',webOrigin:'482913.example',displaySummary:'482913',displayBody:'482913',
+        desktopEntry:'482913',webOrigin:'482913.example',webSourceIdentity:'https://482913.example:443',displaySummary:'482913',displayBody:'482913',
         rawBody:'482913',execArgv:['sh','-c','482913'],image:'data:482913',actions:[{text:'482913'}]});
     const stored=S.persistable(secret);
     assert.equal(stored.displaySummary,'Verification notification');
     assert.ok(!JSON.stringify(stored).includes('482913'));
-    assert.deepEqual(Object.keys(stored).sort(),['appName','arrived','desktopEntry','displayAppName','displayBody','displaySummary','occurrences','urgency','webOrigin'].sort());
+    assert.deepEqual(Object.keys(stored).sort(),['appName','arrived','desktopEntry','displayAppName','displayBody','displaySummary','occurrences','urgency','webOrigin','webSourceIdentity'].sort());
+    assert.equal(stored.webSourceIdentity,'');
     const normal=S.persistable(row({execArgv:['sh','-c','evil'],actions:[{}],notif:{},image:'data:image/png,x',
         imageFingerprint:'sha256:'+'a'.repeat(64),appIconFingerprint:'sha256:'+'b'.repeat(64)}));
     for(const field of ['execArgv','actions','notif','image','imageFingerprint','appIconFingerprint','summary','body','actionSignature','sourceKey','codes','links'])
         assert.equal(normal[field],undefined,field);
+    const identityOnly=S.persistable(row({webOrigin:'code.example',webSourceIdentity:'https://code.example:48291'}));
+    assert.equal(identityOnly.webSourceIdentity,'');
+    assert.equal(identityOnly.displaySummary,'Verification notification');
 });
 
 // Execute the actual service functions and notification subscriptions, with
@@ -150,6 +154,49 @@ function sender(summary='Hello',body='Message',extra={}){
     value.expire=()=>value.closed.emit(); value.dismiss=value.expire;
     return value;
 }
+
+test('qualified origins separate dedupe, popup groups and snoozes while default ports agree', () => {
+    const c=service();
+    const web=(origin,summary='Hello')=>sender(summary,'Message',{appName:'Chromium',desktopEntry:'chromium',
+        hints:{'x-kde-origin-name':origin}});
+    c.receive(web('https://chat.example'));
+    const secure=c.entries[0];
+    c.receive(web('HTTPS://CHAT.EXAMPLE:443/'));
+    assert.equal(c.entries.length,1);assert.equal(c.entries[0].occurrences,2);
+    for(const origin of ['https://chat.example:8443','http://chat.example','chat.example','https://chat.example.'])c.receive(web(origin));
+    assert.equal(c.entries.length,5);
+    assert.equal(new Set(c.entries.map(e=>e.sourceKey)).size,5);
+    assert.equal(P.groups(c.entries).length,5);
+    c.snoozeSource(secure.sourceKey,'https://chat.example:443',15);
+    assert.equal(c.toasts.some(e=>e.sourceKey===secure.sourceKey),false);
+    c.receive(web('https://chat.example:443','Muted'));
+    assert.equal(c.toasts.some(e=>e.sourceKey===secure.sourceKey),false);
+    c.receive(web('https://chat.example:8443','Other port'));
+    assert.equal(c.toasts[0].webSourceIdentity,'https://chat.example:8443');
+    c.unsnooze(secure.sourceKey);
+    assert.equal(c.toasts.some(e=>e.sourceKey===secure.sourceKey),false);
+    c.receive(web('https://chat.example','Future arrival'));
+    assert.equal(c.toasts[0].sourceKey,secure.sourceKey);
+});
+
+test('restored origin identity preserves qualified sources and migrates legacy hosts conservatively', () => {
+    const c=service();c.historyGeneration=1;c.Settings.notifHistoryPersist=true;
+    c.historyReply(JSON.stringify({id:1,ok:true,op:'read',entries:[
+        row({webOrigin:'chat.example',webSourceIdentity:'https://chat.example:443'}),
+        row({webOrigin:'chat.example',webSourceIdentity:'https://chat.example:8443'}),
+        row({webOrigin:'chat.example'}),
+        row({webOrigin:'chat.example',webSourceIdentity:'https://chat.example:443/private?token=secret'}),
+        row({webOrigin:'chat.example',webSourceIdentity:'https://other.example:443'}),
+    ].map(item=>({...item,arrived:Date.now()}))}));
+    assert.deepEqual(Array.from(c.entries,e=>e.webSourceIdentity),[
+        'https://chat.example:443','https://chat.example:8443','unqualified:chat.example',
+        'unqualified:chat.example','unqualified:chat.example']);
+    assert.equal(new Set(c.entries.map(e=>e.sourceKey)).size,3);
+    c.snoozeSource(c.entries[0].sourceKey,'secure',15);
+    assert.equal(P.quietReason(false,false,c.snoozes,c.entries[1].sourceKey,Date.now()),'');
+    assert.equal(P.quietReason(false,false,c.snoozes,c.entries[2].sourceKey,Date.now()),'');
+    assert.ok(c.entries.every(e=>!c.canActivate(e)));
+});
 
 test('service obtains content identities and preserves distinct or unresolved attached images', () => {
     const c=service(), fp='sha256:'+'a'.repeat(64), other='sha256:'+'b'.repeat(64);

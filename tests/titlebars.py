@@ -138,9 +138,24 @@ class NativeTitlebars(unittest.TestCase):
         build_id = re.search(r'Build ID: ([0-9a-f]+)', subprocess.check_output(['readelf', '-n', host], text=True))[1]
         for expected, status in ((build_id, 0), ('0' * len(build_id), 1)):
             library = self.root / 'probe.so'
-            subprocess.run(['g++', '-shared', '-fPIC', str(self.root / 'probe.cpp'), '-ldl',
+            subprocess.run(['g++', '-O3', '-shared', '-fPIC', str(self.root / 'probe.cpp'), '-ldl',
                             '-DEXPECTED="' + expected + '"', '-o', str(library)], check=True)
             self.assertEqual(subprocess.run([str(host), str(library)]).returncode, status)
+        # Compile the patched initialization prefix too: rejection must happen
+        # before assigning a handle shared with an already loaded good copy.
+        section = patch.split(' static PLUGIN_DESCRIPTION_INFO initializeOmarchyFloating(HANDLE handle) {\n', 1)[1]
+        section = section.split('   const std::string HASH', 1)[0]
+        prefix = '\n'.join(line[1:] for line in section.splitlines() if line.startswith(('+', ' ')))
+        (self.root / 'failure.cpp').write_text('#include "cybexosBuildId.hpp"\n#include <stdexcept>\n'
+            'static void* OMARCHY_FLOATING_PHANDLE = reinterpret_cast<void*>(1);\n'
+            'static void initialize(void* handle) {\n' + prefix + '\n}\n'
+            'extern "C" int check() { try { initialize(reinterpret_cast<void*>(2)); } '
+            'catch(const std::runtime_error&) { return OMARCHY_FLOATING_PHANDLE == reinterpret_cast<void*>(1) ? 0 : 1; } '
+            'return 2; }\n')
+        rejected = self.root / 'failure.so'
+        subprocess.run(['g++', '-O3', '-shared', '-fPIC', str(self.root / 'failure.cpp'), '-ldl',
+                        '-DCYBEXOS_HYPRLAND_BUILD_ID="' + 'f' * len(build_id) + '"', '-o', str(rejected)], check=True)
+        self.assertEqual(subprocess.run([str(host), str(rejected)]).returncode, 0)
 
     def test_rpm_recipe_reuses_checkout_pin_helper_and_units(self):
         inventory = yaml.safe_load((ROOT / 'inventory/group_vars/all.yml').read_text())

@@ -66,14 +66,26 @@ def compare(before, after):
     samples = before + after
     if not before or not after:
         raise ValueError("both before and after samples are required")
-    for key in ("host", "configuration", "bootKind", "loginKind", "architecture"):
+    for key in ("host", "configuration", "bootKind", "loginKind", "architecture", "kernel"):
         if len({sample.get(key) for sample in samples}) != 1 or not samples[0].get(key):
             raise ValueError("samples must share an explicit " + key)
     if samples[0]["bootKind"] not in ("cold", "warm"):
         raise ValueError("cold and warm boots must be identified and analyzed separately")
+    if samples[0]["loginKind"] not in ("first", "normal"):
+        raise ValueError("first and normal logins must be identified separately")
+    packages = []
+    for sample in samples:
+        diagnostic = sample.get("diagnostics", {}).get("desktop_packages", {})
+        lines = diagnostic.get("stdout", "")
+        if diagnostic.get("status") != 0 or not isinstance(lines, str) or not lines.strip():
+            raise ValueError("successful desktop dependency capture is required; qualification is blocked")
+        packages.append(tuple(sorted(line.strip() for line in lines.splitlines() if line.strip())))
+    if len(set(packages)) != 1:
+        raise ValueError("samples have different desktop dependency versions")
     if len({sample.get("bootId") for sample in samples}) != len(samples):
         raise ValueError("repeated captures of the same boot are not independent samples")
-    output = {"v": 1, "status": "passed", "comparison": {}}
+    output = {"v": 1, "status": "passed", "kernel": samples[0]["kernel"],
+              "desktopPackages": list(packages[0]), "comparison": {}}
     for name, group in (("before", before), ("after", after)):
         if len(group) < 3 or any(not sample.get("bootId") for sample in group):
             raise ValueError("at least three identified boots are required per revision")

@@ -27,6 +27,10 @@ enables compositor management; simply opening Settings never changes it.
 An individual workspace's **Default** option and reset clear its saved override
 with `set_layout(id, "default")`, including when the default is unmanaged.
 The action value `default` is never a saved layout preference.
+An explicit layout choice remains owned by that workspace even when it equals
+the global default. For example, choosing Tiled while the default is Tiled
+keeps that workspace Tiled after changing the default to Floating. The picker
+continues to show Tiled and offers reset; only Default clears the override.
 
 ## Window and keyboard controls
 
@@ -102,6 +106,14 @@ documented in [the compositor contract](desktop-workspace-architecture.md).
   `layout: "unmanaged"` and unknown custom layouts never become Tiled in the UI.
   Snapshot rows carry an explicit numbered kind in presentation; live named
   workspaces are not decorated or dispatched as those cached rows.
+- Workspace `layoutOverride:boolean` is the authoritative inheritance bit.
+  The picker and its reset state use it independently of `layoutManaged` and
+  equality with the global default. `layoutManaged` describes layout support/
+  management, not inheritance. For older v1 snapshots missing `layoutOverride`,
+  the parser retains the previous heuristic: unmanaged rows and rows equal to
+  a managed default display Default; other managed rows display their layout.
+  That compatibility path cannot reconstruct a same-layout explicit choice
+  absent from the older snapshot. No UI setter is sent to repair or guess it.
 - The UI also touches the dedicated `Common/Dock.qml` model, in addition to
   DockWindow.qml, to route all dock activation through restore-before-focus.
 - Public module calls execute with argv `["hyprctl", "eval", expression]`, in
@@ -139,7 +151,7 @@ Tested against the local diff based on
 shared checkout. The integrated final revision and release gates are the lead's
 responsibility.
 
-- **Passed:** 103 Node tests across desktop-workspaces, window-commands,
+- **Passed:** 105 Node tests across desktop-workspaces, window-commands,
   workspaces, overview-helpers, desktop-navigation, launcher-providers,
   dock-helpers and tabler-icons. These exercise arbitrary non-block IDs,
   monitor-specific state, connector changes, guests, missing/corrupt snapshots,
@@ -149,6 +161,10 @@ responsibility.
   and drops, missing/stale snapshots, named launcher/dock activation, closed
   native windows, safe quoted names, unmanaged/custom layout fields, older v1
   compatibility, Default override clearing, and focused dock minimization.
+  The R2 explicit-override follow-up was tested on the uncommitted diff based
+  on `66b14a22dcc691851ed5ba87c57d88c7f98df8ef`: an explicit Tiled choice equal
+  to the default remains selected after a global Floating change, Default
+  clears ownership, and older snapshots retain their previous heuristic.
 - **Passed:** `git diff --check` for the working tree at the UI handoff.
 - **Blocked on host prerequisites:** `python3 -B tests/installation-parity.py`
   ran 21 tests and reported 24 fixture errors from missing `ansible-playbook`;

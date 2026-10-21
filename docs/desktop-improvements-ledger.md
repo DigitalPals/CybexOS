@@ -128,3 +128,11 @@ source checkout is `/tmp/cybexos-desktop-20261021-titlebars`; remove it too.
   workspace override/reset/cycle, new Floating window manually tiled through
   refresh/reload, positive-ID named navigation, deliberate default ownership
   and three stable plugin reloads. configerrors and snapshot.error are empty.
+
+- R2 corrections preserve explicit layout ownership (`layoutOverride`), apply
+  manual float ownership to all group members, separate website scheme/port
+  identities, and reject startup kernel/dependency drift. Actual group and
+  origin regressions pass. A properly recompiled incompatible titlebar plugin
+  fails its running ELF guard without changing the good plugin registry or
+  APIs; the guard now precedes shared handle assignment. Fresh R3 review is
+  checking the stable correction set before final qualification.

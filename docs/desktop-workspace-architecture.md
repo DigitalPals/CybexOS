@@ -25,7 +25,7 @@ compositor events. Arrays are JSON arrays (including when empty):
   `error:string` (empty on success).
 - `monitors:[{name,identity,label,activeWorkspace,workspaces:[integer IDs]}]`.
   Only independent enabled outputs occur here; mirrors own no workspaces.
-- `workspaces:[{id,localNumber,monitor,label,layout,layoutManaged,nativeLayout,guest,ownerIdentity}]`.
+- `workspaces:[{id,localNumber,monitor,label,layout,layoutManaged,layoutOverride,nativeLayout,guest,ownerIdentity}]`.
   `monitor` is the current reachable output, `ownerIdentity` the persisted
   physical owner (empty for an unowned guest). `localNumber` is 1–10 for a local
   slot; guest rows use 0 and an unambiguous label. In Shared mode regular global
@@ -37,6 +37,13 @@ compositor events. Arrays are JSON arrays (including when empty):
   native layouts such as master report `layout:"unmanaged",nativeLayout:"master"`;
   never normalize this to Tiled. Native strings are bounded to 64 safe token
   characters. Floating reports its underlying native layout as dwindle.
+  `layoutOverride:boolean` separately reports a recorded explicit per-workspace
+  choice. It remains true even when that choice equals the default. An inherited
+  managed default has `layoutManaged:true,layoutOverride:false`; an inherited
+  native layout has both false. UI inheritance/reset state must use
+  layoutOverride, never effective-layout equality. New snapshots always include
+  the flag; parsers must tolerate its absence in older v1 snapshots and retain
+  their legacy behavior until receiving the updated compositor snapshot.
 - `minimized:[{address,workspace,monitor}]`: original regular workspace and
   last known monitor. Windows live in `special:cybexos-minimized` until restore.
   The compositor validates the live window before acting; UI cached rows confer
@@ -71,9 +78,12 @@ Mode, titlebar and workspace-only edits preserve this false flag, including
 across reloads. The stored defaultLayout is a managed enum placeholder until
 `set_default_layout` deliberately sets manageDefaultLayout true. Existing v1
 files without the flag retain their previous managed-default semantics.
-When managed, layouts matching the default are omitted so later default edits
-reach those slots. When unmanaged, every deliberate per-workspace choice is
-saved, even dwindle, because a native workspace rule might select master.
+Every deliberate per-workspace choice is saved, including choices equal to the
+current default. Default edits preserve all these overrides and affect only
+inheriting workspaces. Only `set_layout(id,"default")` removes an override.
+Existing sparse preference maps retain every recorded entry; choices discarded
+by an older implementation cannot be reconstructed, and missing entries keep
+their inherited semantics. No migration invents missing personal choices.
 Settings reads this compositor snapshot and sends setters only for deliberate
 edits. workspaceMode/workspaceDefaultLayout/floatingTitlebars are not persisted
 in shell.json; there is no second preference owner or startup push of defaults.
@@ -161,7 +171,8 @@ mode-owned tags only when the mode actually floats them or its opening rule did;
 pre-existing floaters and excluded app float rules keep their ownership. All
 members are claimed before any grouped window floats. Fullscreen and pinned
 windows retain their state; reconciliation runs again when they leave it.
-Explicit Super+F floating choices release mode ownership.
+Explicit Super+F floating choices release mode ownership for every member of
+the selected window's group before the compositor toggles that group once.
 That manual tag takes precedence over the opening-rule tag, including its
 dynamic `*` form, so newly opened Floating windows remain tiled after Super+F
 through subsequent events and configuration reloads.
@@ -268,9 +279,10 @@ resource/VM lifecycle, not an unmanaged host session.
 
 Starting revision `3b310d106255558ca213c955ef37ee314e8681f2`; tests ran on the
 shared uncommitted implementation diff (the parent records the final integrated
-revision). Actual source checks run by this agent:
+revision). The R2 ownership/override follow-up was tested on `66b14a2` plus the
+owned Lua/fixture/documentation diff. Actual source checks run by this agent:
 
-- `./tests/hyprland-workspace-modes`: Passed, 147 behavioral assertions using
+- `./tests/hyprland-workspace-modes`: Passed, 161 behavioral assertions using
   local rpmlua. Covers serial ambiguity, connector changes, occupied/named IDs,
   full slots/guests, mirrors/lid reconnect, visible-workspace swap avoidance,
   mode transitions, native capability failure, gesture opt-out, independent
@@ -286,6 +298,11 @@ revision). Actual source checks run by this agent:
   failure before the fix; regression checks require a clean initial snapshot,
   unchanged external tables, correct negative opening matches, no rule rebuild
   for identical patterns, and replacement rules after an in-place pattern edit.
+  R2 regressions require every grouped member to release mode ownership before
+  one manual toggle, preserve that choice through reload, and permit a later
+  Floating selection to reclaim the tiled group. Explicit layout choices equal
+  to old/new defaults survive default edits and reload, while default reset,
+  inherited rows and legacy sparse preference maps retain distinct semantics.
 - `./tests/hyprland-workspaces`: Passed XPS hotplug and explicit policy switching,
   and single-window margin fixtures for generic and XPS machines.
 - Owned Lua syntax (`loadfile` via rpmlua), bash syntax and scoped diff whitespace

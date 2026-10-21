@@ -88,6 +88,35 @@ never deduplicate. A D-Bus replacement updates its existing slot and restarts
 its displayed lifetime, without increasing the occurrence count. Obsolete
 senders cannot close or update a slot transferred to a later duplicate.
 
+The display-only `webOrigin` hostname is separate from the bounded
+`webSourceIdentity` used for deduplication, snoozes, burst limits and groups.
+Qualified HTTP(S) senders use canonical lowercase scheme/host and effective
+port: `https://chat.example` and `https://chat.example:443` both identify
+`https://chat.example:443`; `https://chat.example:8443` and
+`http://chat.example:80` are separate sources. IPv4/IPv6 forms are validated,
+IPv6 spelling is canonicalized, and a DNS root dot stays distinct in source
+identity even though the display hostname omits it. Invalid ports, credentials,
+controls, escaped authorities and unsafe/ambiguous numeric hosts are rejected.
+
+A supplied bare hostname has no known scheme. Its identity is
+`unqualified:chat.example`, separate from every qualified URL origin; a supplied
+port is retained without inventing a scheme. An explicit origin hint keeps
+precedence over a body anchor. If only an actual HTTP(S) origin anchor or legacy
+origin prefix supplies the source, its supplied scheme and port are retained.
+Snooze controls show the qualified authority (or bare host/port) so two ports
+remain distinguishable in the unsnooze list. Existing friendly names, brands
+and icon consumers continue to use `webOrigin`.
+
+History's additive `webSourceIdentity` field is at most 320 characters and
+contains only an origin authority, never path, query, fragment, credentials or
+an executable link. Both admission and the storage helper validate it. Existing
+v1 history with only a hostname migrates to the unqualified namespace; the lost
+scheme/port cannot be reconstructed. Invalid or mismatched stored identity
+also falls back conservatively to its validated unqualified hostname. Code
+redaction includes this field in detection and clears it along with all other
+source/display fields. Source snoozes remain session-only; no preference or
+shared-schema migration is required.
+
 Popups group by exact website origin or the native desktop-entry/app-name pair;
 friendly brand labels do not combine unrelated websites. There are at most
 three groups with three cards each by default, with at most five new popup
@@ -253,6 +282,17 @@ tests/qml-lint passes all 355 QML files plus four harnesses with the native
 module installed. Ruff, yamllint, ansible-lint and git diff --check pass.
 These native tests establish the public Qt contract; the provider is a fake,
 so they do not establish actual Quickshell/D-Bus image behavior.
+
+Independent review R2 found and fixed a further source collision: display-host
+normalization had collapsed origins with different schemes/ports. The focused
+fixtures now cover effective/default ports, scheme/nondefault-port/root-dot
+separation, ambiguous hostname sources, canonical IPv4/IPv6, hostile origin
+input, per-origin dedupe/groups/snoozes, additive v1 history migration and
+identity-only code redaction. The notification/adjacent suite passes 130 Node
+checks; full Fedora QML lint and helper Ruff pass. Parent reports actual D-Bus
+image/replacement/snooze/action and private-history restart/redaction checks
+passed before this R2 fix; the new origin routing needs its integrated runtime
+rerun. This agent made no VM changes for R2.
 
 QML engine loading, real D-Bus replacement/action execution, pointer/keyboard
 and assistive-technology behavior, hover countdowns, fullscreen routing,

@@ -205,6 +205,12 @@ function hl.dsp.window.tag(spec) return function()
 end end
 function hl.dsp.window.float(spec) return function()
   local members = spec.window.group and spec.window.group.members or { spec.window }
+  if spec.action == "toggle" and spec.window.group then
+    for _, member in ipairs(members) do
+      check(floating.tagged(member, floating.USER) and not floating.tagged(member, floating.FLOATED),
+        "group toggle dispatched before every member released mode ownership")
+    end
+  end
   local enabled = spec.action == "on" or (spec.action == "toggle" and not spec.window.floating)
   for _, win in ipairs(members) do win.floating = enabled end
 end end
@@ -263,7 +269,7 @@ check(world.general_layout == "master" and world.layout_writes == 0, "first intr
 check(not ws.snapshot.defaultLayoutManaged and ws.snapshot.defaultLayout == "unmanaged"
   and ws.snapshot.nativeDefaultLayout == "master", "custom native default was mislabeled as managed Tiled")
 check(snapshot_row(ws, 1).layout == "unmanaged" and snapshot_row(ws, 1).nativeLayout == "master"
-  and not snapshot_row(ws, 1).layoutManaged, "custom workspace layout was mislabeled")
+  and not snapshot_row(ws, 1).layoutManaged and snapshot_row(ws, 1).layoutOverride == false, "custom workspace layout was mislabeled")
 check(data.read(ws.path) == nil, "first introduction created a personal layout preference")
 workspace(2).tiled_layout = "scrolling"; ws.refresh()
 check(snapshot_row(ws, 2).layout == "scrolling" and not snapshot_row(ws, 2).layoutManaged,
@@ -274,9 +280,11 @@ ws = load()
 check(world.layout_writes == 0 and not ws.snapshot.defaultLayoutManaged, "titlebar edits/reload took default layout ownership")
 ws.set_layout(1, "dwindle")
 check(snapshot_row(ws, 1).layout == "dwindle" and snapshot_row(ws, 1).layoutManaged
+  and snapshot_row(ws, 1).layoutOverride == true
   and world.general_layout == "master", "explicit workspace Tiled choice was dropped under custom default")
 ws.set_layout(1, "default")
-check(snapshot_row(ws, 1).layout == "unmanaged" and not snapshot_row(ws, 1).layoutManaged, "reset failed to restore native inheritance")
+check(snapshot_row(ws, 1).layout == "unmanaged" and not snapshot_row(ws, 1).layoutManaged
+  and snapshot_row(ws, 1).layoutOverride == false, "reset failed to restore native inheritance")
 ws.cycle_layout(1)
 check(snapshot_row(ws, 1).layout == "dwindle", "cycling custom native layout did nothing")
 ws.set_layout(1, "default")
@@ -390,6 +398,17 @@ check(first.floating and floating.tagged(first, floating.FLOATED), "tiled window
 check(independent.floating and not floating.tagged(independent, floating.FLOATED), "independent floating window was claimed")
 check(not fullscreen.floating and fullscreen.fullscreen == 2, "fullscreen was disturbed")
 check(floating.tagged(grouped1, floating.FLOATED) and floating.tagged(grouped2, floating.FLOATED), "not all group members were claimed before float")
+ws.toggle_floating(grouped1.address); flush()
+check(not grouped1.floating and not grouped2.floating
+  and floating.tagged(grouped1, floating.USER) and floating.tagged(grouped2, floating.USER),
+  "manual group tiling was reversed by another member's mode ownership")
+ws = load(); flush()
+check(not grouped1.floating and not grouped2.floating
+  and not floating.tagged(grouped1, floating.FLOATED) and not floating.tagged(grouped2, floating.FLOATED),
+  "reload reclaimed a manually tiled group")
+ws.set_layout(1, "dwindle"); ws.set_layout(1, "floating")
+check(grouped1.floating and grouped2.floating and floating.tagged(grouped1, floating.FLOATED)
+  and floating.tagged(grouped2, floating.FLOATED), "new Floating selection could not reclaim the tiled group")
 local opened = window("0xac0", workspace(1), { floating = true, tags = { floating.OPENED .. "*" } })
 emit("window.open", opened)
 check(floating.tagged(opened, floating.FLOATED), "opening-rule float was not claimed")
@@ -437,6 +456,32 @@ ws = load()
 check(ws.snapshot.mode == "per-monitor" and ws.snapshot.defaultLayout == "floating", "reload lost personal mode/default")
 check(ws.snapshot.defaultLayoutManaged and world.general_layout == "dwindle" and world.layout_writes > 0,
   "deliberate default selection did not take ownership")
+-- Explicit choices remain distinct from inheritance even when values match.
+check(not snapshot_row(ws, 2).layoutOverride and snapshot_row(ws, 2).layoutManaged,
+  "managed default was mislabeled as an explicit workspace override")
+ws.set_layout(1, "dwindle")
+ws.set_default_layout("dwindle")
+check(snapshot_row(ws, 1).layoutOverride == true and snapshot_row(ws, 1).layout == "dwindle",
+  "selecting a matching default deleted an existing explicit Tiled choice")
+ws = load(); ws.set_default_layout("floating")
+check(snapshot_row(ws, 1).layoutOverride == true and snapshot_row(ws, 1).layout == "dwindle"
+  and snapshot_row(ws, 2).layoutOverride == false and snapshot_row(ws, 2).layout == "floating",
+  "default change altered explicit Tiled choice or missed an inherited workspace")
+ws.set_layout(1, "default")
+check(snapshot_row(ws, 1).layoutOverride == false and snapshot_row(ws, 1).layout == "floating"
+  and snapshot_row(ws, 1).layoutManaged, "default reset did not restore managed inheritance")
+ws.set_layout(1, "floating")
+check(snapshot_row(ws, 1).layoutOverride == true, "explicit choice equal to current default was omitted")
+ws = load(); ws.set_default_layout("dwindle")
+check(snapshot_row(ws, 1).layoutOverride == true and snapshot_row(ws, 1).layout == "floating"
+  and snapshot_row(ws, 2).layoutOverride == false and snapshot_row(ws, 2).layout == "dwindle",
+  "reload/default edit lost an explicit choice equal to its previous default")
+local recorded_preferences = assert(data.read(ws.path, function(value) return value end))
+check(recorded_preferences.layouts["1"] == "floating" and recorded_preferences.layouts["2"] == nil,
+  "persistence did not distinguish explicit choice from inherited default")
+ws.set_layout(1, "default"); ws = load(); ws.set_default_layout("floating")
+check(snapshot_row(ws, 1).layoutOverride == false and snapshot_row(ws, 1).layout == "floating",
+  "explicit default reset did not survive reload and later default change")
 -- Installed plugins are declared on each parse, never on event/runtime edits.
 local native_open = io.open
 io.open = function(path, mode)
@@ -462,9 +507,12 @@ check(world.plugin_declarations == 2 and ws.snapshot.capabilities.titlebars and 
 io.open, world.plugin_loaded = native_open, false
 -- Old schema-v1 preferences retain managed semantics when the flag is absent.
 local old_preferences = assert(data.read(ws.path, function(value) return value end)); old_preferences.manageDefaultLayout = nil
+old_preferences.layouts["1"] = "dwindle"
 check(data.write(ws.path, old_preferences), "could not prepare legacy v1 preference fixture")
 ws = load()
 check(ws.snapshot.defaultLayoutManaged and ws.snapshot.defaultLayout == "floating", "legacy explicit default lost ownership")
+check(snapshot_row(ws, 1).layoutOverride == true and snapshot_row(ws, 1).layout == "dwindle"
+  and snapshot_row(ws, 2).layoutOverride == false, "legacy sparse preferences lost recorded overrides or invented missing choices")
 world.native_scrolling = false; ws = load()
 check(not ws.snapshot.capabilities.scrolling, "missing scrolling capability was invented")
 fails(function() ws.set_layout(1, "scrolling") end, "unavailable native layout was offered")

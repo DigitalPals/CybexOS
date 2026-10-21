@@ -49,6 +49,9 @@ revision and record kernel, packages, monitor setup, encryption, power source
 and bootloader state. `startup-evidence.py compare --before ... --after ...`
 reports median/minimum/maximum, refusing mixed hosts/configurations, repeated
 captures of one boot, missing observed milestones and fewer than three boots.
+It also requires a captured kernel and successful dependency inventory, rejecting
+different kernels or desktop package versions even when configuration labels
+match. The accepted comparison includes those exact versions for review.
 The comparison cannot prove the observation supplied by its caller; retain the
 referenced observer evidence for review.
 

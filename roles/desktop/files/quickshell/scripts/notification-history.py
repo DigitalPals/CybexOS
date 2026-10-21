@@ -5,6 +5,7 @@ Only a small inert whitelist reaches disk. Reads/writes use directory-relative
 O_NOFOLLOW descriptors; an invalid, corrupt or oversized file restores empty.
 """
 import json
+import ipaddress
 import math
 import os
 import re
@@ -15,7 +16,7 @@ import unicodedata
 
 HARD_BYTES = 1048576
 MAX_REQUEST = 8388608
-FIELDS = {"arrived", "appName", "desktopEntry", "webOrigin", "displayAppName",
+FIELDS = {"arrived", "appName", "desktopEntry", "webOrigin", "webSourceIdentity", "displayAppName",
           "displaySummary", "displayBody", "urgency", "occurrences"}
 WORDS = re.compile(r"\b(verificatiecode|beveiligingscode|inlogcode|bevestigingscode|toegangscode|pincode|code|otp|one[\s-]?time|verification|verify|passcode|pin|2fa|two[\s-]factor|security key|confirm(?:ation)?)\b", re.I)
 SHAPE = re.compile(r"(?<![\w-])(?:[A-Za-z]-)?(?:\d{2,4}[\s-]\d{2,5}|\d{4,8}|(?=[A-Z0-9]{5,8}(?![\w-]))(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{5,8})(?![\w-])")
@@ -65,6 +66,47 @@ def secret(value, depth=0):
     return False
 
 
+def origin_host(value, preserve_root_dot=False):
+    if not isinstance(value, str) or not value.isascii() or len(value) > 253:
+        return ""
+    host = value.lower().removesuffix(".")
+    root_dot = "." if preserve_root_dot and value.endswith(".") else ""
+    if host.startswith("[") and host.endswith("]"):
+        try:
+            expanded = ipaddress.IPv6Address(host[1:-1]).exploded
+            return "[" + ":".join(format(int(word, 16), "x") for word in expanded.split(":")) + "]"
+        except ipaddress.AddressValueError:
+            return ""
+    if host == "localhost":
+        return host + root_dot
+    if re.fullmatch(r"(?:[0-9]+\.){3}[0-9]+", host):
+        try:
+            return str(ipaddress.IPv4Address(host))
+        except ipaddress.AddressValueError:
+            return ""
+    label = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    if (not re.fullmatch(label + r"(?:\." + label + r")+", host)
+            or re.fullmatch(r"(?:0x[0-9a-f]*|[0-9]+)", host.rsplit(".", 1)[-1])):
+        return ""
+    return host + root_dot
+
+
+def source_identity(value, hostname):
+    """Only canonical origin authorities; legacy hosts never acquire a scheme."""
+    fallback = "unqualified:" + hostname if hostname else ""
+    if not isinstance(value, str) or len(value) > 320 or not hostname:
+        return fallback
+    match = re.fullmatch(r"(https?://|unqualified:)(\[[0-9a-f:]+\]|[a-z0-9.-]+)(?::([0-9]{1,5}))?", value)
+    if not match or origin_host(match[2]) != hostname:
+        return fallback
+    prefix, host, port_text = match.groups()
+    port = int(port_text) if port_text else 0
+    if (prefix != "unqualified:" and not port_text) or (port_text and not 1 <= port <= 65535):
+        return fallback
+    canonical = prefix + origin_host(host, preserve_root_dot=True) + (":" + str(port) if port_text else "")
+    return canonical if canonical == value else fallback
+
+
 def sanitize(row, now, hours):
     if not isinstance(row, dict):
         return None
@@ -76,7 +118,7 @@ def sanitize(row, now, hours):
     clean = {"arrived": int(at), "urgency": integer(row.get("urgency"), 0, 2, 1),
              "occurrences": integer(row.get("occurrences"), 1, 9999, 1)}
     if secret(row):
-        clean.update(appName="Notification", desktopEntry="", webOrigin="",
+        clean.update(appName="Notification", desktopEntry="", webOrigin="", webSourceIdentity="",
                      displayAppName="Notification", displaySummary="Verification notification",
                      displayBody="Content redacted")
     else:
@@ -85,8 +127,8 @@ def sanitize(row, now, hours):
             clean[name] = text(row.get(name), size)
         if not re.fullmatch(r"[A-Za-z0-9_.-]{1,256}", clean["desktopEntry"]):
             clean["desktopEntry"] = ""
-        if not re.fullmatch(r"[a-z0-9.-]{1,253}", clean["webOrigin"]):
-            clean["webOrigin"] = ""
+        clean["webOrigin"] = origin_host(clean["webOrigin"])
+        clean["webSourceIdentity"] = source_identity(row.get("webSourceIdentity"), clean["webOrigin"])
     return clean
 
 

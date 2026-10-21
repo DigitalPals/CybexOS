@@ -1,8 +1,12 @@
 // Bounded, deterministic notification admission shared by QML and Node tests.
 function sourceKey(row) {
-    // An exact browser origin is a source, not its friendly brand label.
-    if (row.webOrigin)
-        return "web:" + String(row.webOrigin).toLowerCase();
+    // webSourceIdentity is canonicalized by the admission/restore boundary.
+    // Legacy hostname-only history never acquires an invented HTTP(S) origin.
+    if (row.webOrigin) {
+        var identity = typeof row.webSourceIdentity === "string" && row.webSourceIdentity.length <= 320
+            ? row.webSourceIdentity : "";
+        return "web:" + (identity || "unqualified:" + String(row.webOrigin).slice(0, 253).toLowerCase());
+    }
     // Keep punctuation and case: lossy slugs alias unrelated native senders.
     return "app:" + JSON.stringify([row.desktopEntry || "", row.appName || "Notification"]);
 }

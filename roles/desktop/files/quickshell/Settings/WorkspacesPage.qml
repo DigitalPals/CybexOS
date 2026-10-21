@@ -25,9 +25,8 @@ SettingsPage {
     property int selectedId: 0
     readonly property var selectedWorkspace: workspaceRows.find(row => row.id === selectedId) ?? null
     readonly property var workspaceLayouts: [{ value: "default", label: I18n.tr("Default") }].concat(layouts)
-    readonly property string selectedLayout: !selectedWorkspace || !selectedWorkspace.layoutManaged
-        || (DesktopWorkspaces.defaultLayoutManaged && selectedWorkspace.layout === DesktopWorkspaces.defaultLayout)
-            ? "default" : selectedWorkspace.layout
+    readonly property string selectedLayout: selectedWorkspace && selectedWorkspace.layoutOverride
+        ? selectedWorkspace.layout : "default"
 
     function settleWorkspace() {
         if (!workspaceRows.some(row => row.id === selectedId)) {

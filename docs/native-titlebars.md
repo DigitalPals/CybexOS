@@ -41,7 +41,8 @@ The patch embeds that exact compositor ELF build ID. During plugin
 initialization it reads the **running process's mapped ELF notes**, so replacing
 `/usr/bin/Hyprland` during an update cannot fool an old compositor into loading
 a plugin built for the new executable. Missing or different build IDs fail
-before plugin state/event hooks are created. Upstream's source/library ABI hash
+before assigning the plugin handle or creating plugin state/event hooks.
+Upstream's source/library ABI hash
 check remains in place too. The ELF guard also detects Fedora rebuilds that
 retain the same source commit and upstream API hash.
 
@@ -126,7 +127,14 @@ runtime retest; this observation is not a qualified unload/reload result.
 convergence and repair, same-source Fedora release rebuilds, checksum/traversal
 rejection, build failures, SDK mismatch and concurrent update rejection. A
 native shared-library probe tests the running executable ELF guard with matching
-and mismatching build IDs. Package recipe parity and absent-artifact rejection
+and mismatching build IDs under release optimization, including unchanged handle
+state after rejection. A byte replacement of the full expected-ID text in a
+compiled plugin is not a valid mismatch test: the inspected GCC Release build
+compares five inline immediate constants and retains an unused full text literal.
+That experiment left the real check intact and demonstrated no guard failure.
+The parent separately qualifies an actual plugin recompiled with a deliberately
+wrong expected build ID; the source pin and product install path stay unchanged.
+Package recipe parity and absent-artifact rejection
 are separate from a complete installed-system test.
 
 The parent records integrated source/image parity, RPM/ISO qualification and

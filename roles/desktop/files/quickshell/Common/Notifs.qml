@@ -244,7 +244,8 @@ Singleton {
             return;
         }
         if (action.kind === "snooze") {
-            snoozeSource(current.sourceKey, current.displayAppName, action.minutes);
+            snoozeSource(current.sourceKey, current.webSourceIdentity
+                ? current.webSourceIdentity.replace(/^unqualified:/, "") : current.displayAppName, action.minutes);
             return;
         }
         if (action.kind === "unsnooze") {
@@ -414,7 +415,7 @@ Singleton {
         let anchor;
         while ((anchor = anchorPattern.exec(body)) !== null && detected.links.length < 4) {
             const url = Smart.safeHttpUrl(Helpers.decodeEntities(anchor[1]));
-            if (url && Smart.canonicalHostname(url.split("/")[2]) !== presentation.webOrigin
+            if (url && Helpers.webSource(url).identity !== presentation.webSourceIdentity
                     && detected.links.indexOf(url) < 0)
                 detected.links.push(url);
         }
@@ -431,6 +432,7 @@ Singleton {
             displaySummary: presentation.displaySummary,
             displayBody: presentation.displayBody,
             webOrigin: presentation.webOrigin,
+            webSourceIdentity: presentation.webSourceIdentity,
             brandIcon: requestedBrand || derivedBrand,
             urgency: source.urgency ?? NotificationUrgency.Normal,
             expireTimeout: source.expireTimeout ?? -1,
@@ -690,6 +692,9 @@ Singleton {
                 });
                 clean.summary = clean.displaySummary;
                 clean.body = clean.displayBody;
+                clean.webOrigin = Helpers.canonicalOriginHost(clean.webOrigin);
+                clean.webSourceIdentity = Helpers.canonicalWebSourceIdentity(clean.webSourceIdentity, clean.webOrigin)
+                    || (clean.webOrigin ? "unqualified:" + clean.webOrigin : "");
                 clean.sourceKey = Policy.sourceKey(clean);
                 return clean;
             });

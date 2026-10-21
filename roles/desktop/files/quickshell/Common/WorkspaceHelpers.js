@@ -40,20 +40,27 @@ function parseSnapshot(text) {
                 || !Array.isArray(value.workspaces) || value.workspaces.length > 2048
                 || !Array.isArray(value.minimized) || value.minimized.length > 4096)
             return null;
+        var defaultLayout = layout(value.defaultLayout);
+        var defaultLayoutManaged = value.defaultLayoutManaged !== false;
         var ids = {};
         var workspaces = value.workspaces.map(function(row) {
             if (!row || !regularId(row.id) || ids[row.id]
                     || typeof row.monitor !== "string" || row.monitor.length > 256)
                 throw new Error("invalid workspace");
             ids[row.id] = true;
+            var rowLayout = layout(row.layout);
             return {
                 id: row.id,
                 kind: "numbered", workspaceName: String(row.id),
                 localNumber: row.localNumber === 0 || regularId(row.localNumber) ? row.localNumber : row.id,
                 monitor: row.monitor,
                 label: String(row.label || row.localNumber || row.id).slice(0, 256),
-                layout: layout(row.layout),
+                layout: rowLayout,
                 layoutManaged: row.layoutManaged !== false,
+                // Only the compositor knows explicit ownership. Older v1
+                // snapshots lack that bit; retain their presentation heuristic.
+                layoutOverride: typeof row.layoutOverride === "boolean" ? row.layoutOverride
+                    : row.layoutManaged !== false && !(defaultLayoutManaged && rowLayout === defaultLayout),
                 nativeLayout: nativeLayout(row.nativeLayout, row.layout),
                 guest: row.guest === true,
                 ownerIdentity: String(row.ownerIdentity || "").slice(0, 512)
@@ -81,8 +88,8 @@ function parseSnapshot(text) {
                 monitor: String(row.monitor || "").slice(0, 256) };
         });
         return {
-            v: 1, mode: value.mode, defaultLayout: layout(value.defaultLayout),
-            defaultLayoutManaged: value.defaultLayoutManaged !== false,
+            v: 1, mode: value.mode, defaultLayout: defaultLayout,
+            defaultLayoutManaged: defaultLayoutManaged,
             nativeDefaultLayout: nativeLayout(value.nativeDefaultLayout, value.defaultLayout),
             titlebarsEnabled: value.titlebarsEnabled !== false,
             monitors: monitors, workspaces: workspaces, minimized: minimized,
@@ -173,7 +180,8 @@ function decorateOverview(entries, snapshot, targetMonitor) {
         var row = numbered(entry) ? workspace(snapshot, entry.id) : null;
         return row ? Object.assign({}, entry, { name: row.label, label: row.label,
             localNumber: row.localNumber, monitor: row.monitor, layout: row.layout,
-            nativeLayout: row.nativeLayout, layoutManaged: row.layoutManaged, guest: row.guest }) : entry;
+            nativeLayout: row.nativeLayout, layoutManaged: row.layoutManaged,
+            layoutOverride: row.layoutOverride, guest: row.guest }) : entry;
     });
 }
 

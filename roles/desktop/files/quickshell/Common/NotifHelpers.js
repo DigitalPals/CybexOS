@@ -75,25 +75,77 @@ function singleLine(value) {
     return stripMarkup(value).replace(/\s+/g, " ").trim();
 }
 
+function canonicalOriginHost(value, preserveRootDot) {
+    var host = value.toLowerCase().replace(/\.$/, "");
+    var rootDot = preserveRootDot && /\.$/.test(value) ? "." : "";
+    if (host.length > 253) return "";
+    if (host.charAt(0) === "[") {
+        if (!/^\[[0-9a-f:.]+\]$/.test(host)) return "";
+        var address = host.slice(1, -1);
+        if (address.indexOf(".") >= 0) {
+            var at = address.lastIndexOf(":");
+            var ipv4 = canonicalOriginHost(address.slice(at + 1));
+            if (!/^(?:[0-9]+\.){3}[0-9]+$/.test(ipv4)) return "";
+            var octets4 = ipv4.split(".").map(Number);
+            address = address.slice(0, at + 1) + (octets4[0] * 256 + octets4[1]).toString(16)
+                + ":" + (octets4[2] * 256 + octets4[3]).toString(16);
+        }
+        var halves = address.split("::");
+        if (halves.length > 2) return "";
+        var left = halves[0] ? halves[0].split(":") : [];
+        var right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+        var words = left.concat(right);
+        if (!words.every(function(word) { return /^[0-9a-f]{1,4}$/.test(word); })
+                || (halves.length === 1 ? words.length !== 8 : words.length >= 8)) return "";
+        var missing = halves.length === 2 ? 8 - words.length : 0;
+        var expanded = left.concat(Array(missing).fill("0"), right);
+        return "[" + expanded.map(function(word) { return parseInt(word, 16).toString(16); }).join(":") + "]";
+    }
+    if (host === "localhost") return host + rootDot;
+    if (/^(?:[0-9]+\.){3}[0-9]+$/.test(host)) {
+        var octets = host.split(".");
+        return octets.every(function(octet) { return /^(?:0|[1-9][0-9]{0,2})$/.test(octet) && +octet <= 255; }) ? host : "";
+    }
+    // Reject numeric-looking hosts with browser-specific IPv4 spellings.
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(host)
+            || /^(?:0x[0-9a-f]*|[0-9]+)$/.test(host.split(".").pop())) return "";
+    return host + rootDot;
+}
+
+function webSource(value) {
+    var empty = { hostname: "", identity: "" };
+    // Never repair controls/markup into an apparently trusted origin. Only
+    // the HTTP(S) authority is retained; paths, credentials and queries are
+    // never part of a source identity or its persisted representation.
+    if (typeof value !== "string" || value.length > 4096
+            || /[\x00-\x1f\x7f-\x9f\\<>"'\u0080-\uffff]/.test(value)) return empty;
+    var origin = value.trim().replace(/^origin: */i, "");
+    var qualified = origin.match(/^(https?):\/\/([^/?#]+)(?:[/?#][^]*)?$/i);
+    var authority = qualified ? qualified[2] : origin.replace(/^\/\//, "");
+    if (!qualified && /[/?#]/.test(authority)) return empty;
+    var match = authority.match(/^(\[[0-9a-f:.]+\]|[^:%@\s]+)(?::([0-9]{1,5}))?$/i);
+    if (!match) return empty;
+    var host = canonicalOriginHost(match[1]);
+    // A DNS root dot is harmless for display, but browsers retain it in
+    // origin identity. Do not alias two distinct browser origins.
+    var identityHost = canonicalOriginHost(match[1], true);
+    var port = match[2] ? +match[2] : 0;
+    if (!host || (match[2] && (port < 1 || port > 65535))) return empty;
+    var scheme = qualified ? qualified[1].toLowerCase() : "";
+    return { hostname: host, identity: scheme
+        ? scheme + "://" + identityHost + ":" + (port || (scheme === "https" ? 443 : 80))
+        : "unqualified:" + identityHost + (port ? ":" + port : "") };
+}
+
+function canonicalWebSourceIdentity(identity, hostname) {
+    var raw = typeof identity === "string" ? identity : "";
+    if (raw.length > 320) return "";
+    var parsed = webSource(raw.indexOf("unqualified:") === 0 ? raw.slice(12) : raw);
+    return parsed.hostname === hostname && parsed.identity === raw ? raw : "";
+}
+
 function normalizeOrigin(value) {
-    var origin = singleLine(value).toLowerCase();
-    if (origin === "")
-        return "";
-    origin = origin.replace(/^origin:\s*/i, "")
-        .replace(/^https?:\/\//i, "")
-        .replace(/^\/\//, "");
-    origin = origin.split(/[\/?#]/, 1)[0];
-    if (origin.indexOf("@") !== -1 || /[\x00-\x20\x7f-\x9f\\%]/.test(origin))
-        return "";
-    if (/^\[[0-9a-f:]+\](?::\d+)?$/i.test(origin))
-        return origin.replace(/:\d+$/, "");
-    origin = origin.replace(/:\d+$/, "").replace(/\.+$/, "");
-    if (origin === "localhost" || /^(?:\d{1,3}\.){3}\d{1,3}$/.test(origin))
-        return origin;
-    if (origin.indexOf(" ") !== -1 || origin.indexOf(".") === -1
-            || !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(origin))
-        return "";
-    return origin;
+    return webSource(value).hostname;
 }
 
 function isBrowser(appName, desktopEntry) {
@@ -106,12 +158,13 @@ function parseLegacyBody(value) {
     var body = stripMarkup(value);
     var separator = body.search(/\n\s*\n/);
     if (separator === -1)
-        return { origin: "", body: body };
-    var candidate = normalizeOrigin(body.slice(0, separator));
-    if (candidate === "")
-        return { origin: "", body: body };
+        return { origin: "", identity: "", body: body };
+    var candidate = webSource(body.slice(0, separator));
+    if (candidate.hostname === "")
+        return { origin: "", identity: "", body: body };
     return {
-        origin: candidate,
+        origin: candidate.hostname,
+        identity: candidate.identity,
         body: body.slice(separator).replace(/^\s+/, "").trim()
     };
 }
@@ -150,15 +203,20 @@ function derivePresentation(notification) {
     var legacy = parseLegacyBody(notification.body);
     var advertisedOrigin = notification.originName
         || hintValue(notification.hints, "x-kde-origin-name");
-    var hintedOrigin = normalizeOrigin(advertisedOrigin);
+    var hinted = webSource(advertisedOrigin);
     var anchor = textValue(notification.body).match(/^\s*<a\s+href=["'](https?:\/\/[^"']+)["'][^>]*>([^]*?)<\/a>\s*/i);
-    var anchorOrigin = anchor ? normalizeOrigin(decodeEntities(anchor[1])) : "";
-    var origin = browser ? (hintedOrigin || anchorOrigin || legacy.origin) : "";
+    var anchored = webSource(anchor ? decodeEntities(anchor[1]) : "");
+    // Preserve a supplied hostname's ambiguity instead of inventing a scheme
+    // from another body field. Explicit origin hints keep their precedence.
+    var selected = hinted.hostname ? hinted : anchored.hostname ? anchored
+        : { hostname: legacy.origin, identity: legacy.identity };
+    var origin = browser ? selected.hostname : "";
+    var sourceIdentity = browser ? selected.identity : "";
     var source = webSourceForOrigin(origin);
     var body = rawBody;
-    if (browser && anchor && anchorOrigin === origin)
+    if (browser && anchor && anchored.identity === sourceIdentity)
         body = stripMarkup(textValue(notification.body).slice(anchor[0].length));
-    else if (origin !== "" && legacy.origin === origin)
+    else if (origin !== "" && legacy.identity === sourceIdentity)
         body = legacy.body;
 
     var summary = singleLine(notification.summary);
@@ -172,6 +230,7 @@ function derivePresentation(notification) {
         displaySummary: summary,
         displayBody: body,
         webOrigin: origin,
+        webSourceIdentity: sourceIdentity,
         brandIcon: source ? source.brandIcon : ""
     };
 }
@@ -281,6 +340,9 @@ var exported = {
     stripMarkup: stripMarkup,
     singleLine: singleLine,
     normalizeOrigin: normalizeOrigin,
+    webSource: webSource,
+    canonicalOriginHost: canonicalOriginHost,
+    canonicalWebSourceIdentity: canonicalWebSourceIdentity,
     isBrowser: isBrowser,
     parseLegacyBody: parseLegacyBody,
     derivePresentation: derivePresentation,

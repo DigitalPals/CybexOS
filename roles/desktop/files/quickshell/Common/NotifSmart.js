@@ -168,8 +168,8 @@ function scan(summary, body) {
 }
 function persistable(row) {
     // Whitelist rather than copying the live row: no hints, raw text, images,
-    // URLs, fingerprints, executable payloads or QObject/action references.
-    var candidates = [row.appName, row.desktopEntry, row.webOrigin, row.summary,
+    // URL paths/queries, fingerprints, executable payloads or QObject/action references.
+    var candidates = [row.appName, row.desktopEntry, row.webOrigin, row.webSourceIdentity, row.summary,
         row.body, row.displayAppName, row.displaySummary, row.displayBody];
     var sensitive = row.codes && row.codes.length > 0;
     var keyword = false, shape = false;
@@ -189,6 +189,7 @@ function persistable(row) {
         out.appName = "Notification";
         out.desktopEntry = "";
         out.webOrigin = "";
+        out.webSourceIdentity = "";
         out.displayAppName = "Notification";
         out.displaySummary = "Verification notification";
         out.displayBody = "Content redacted";
@@ -196,6 +197,12 @@ function persistable(row) {
         out.appName = bounded(row.appName, 256);
         out.desktopEntry = bounded(row.desktopEntry, 256);
         out.webOrigin = bounded(row.webOrigin, 253);
+        // Only this bounded authority identity is allowed, never a source URL
+        // with path/query. The persistent helper independently validates it.
+        var identity = typeof row.webSourceIdentity === "string" && row.webSourceIdentity.length <= 320
+            && out.webOrigin ? row.webSourceIdentity : "";
+        out.webSourceIdentity = /^(?:https?:\/\/|unqualified:)(?:[a-z0-9.-]+|\[[0-9a-f:]+\])(?::[0-9]{1,5})?$/.test(identity)
+            && !/[\r\n]/.test(identity) ? identity : "";
         out.displayAppName = bounded(row.displayAppName, 256);
         out.displaySummary = bounded(row.displaySummary, 2048);
         out.displayBody = bounded(row.displayBody, 4096);
