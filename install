@@ -138,9 +138,6 @@ detected_locale=${detected_locale:-en_US.UTF-8}
 [[ $detected_locale == C || $detected_locale == C.* || $detected_locale == POSIX ]] \
   && detected_locale=en_US.UTF-8
 detected_regional=$detected_locale
-detected_keyboard_layout=$(localectl show --property=X11Layout --value 2>/dev/null || true)
-detected_keyboard_layout=${detected_keyboard_layout:-us}
-detected_keyboard_variant=$(localectl show --property=X11Variant --value 2>/dev/null || true)
 
 valid_user() {
   local account home
@@ -168,6 +165,44 @@ if ! python3 -c 'import yaml' >/dev/null 2>&1; then
   run_step 'Install installer prerequisites' /tmp/cybexos-bootstrap-ansible.log \
     sudo dnf -y --setopt=install_weak_deps=False install python3-pyyaml ansible-core
 fi
+
+# localectl has no "show" command. Read locale1's public properties through
+# busctl's structured output instead, retaining commas and empty variant slots.
+# Discover after checking Python's prerequisites; --check never installs them.
+detected_keyboard_layout=us
+detected_keyboard_variant=
+if keyboard_properties=$(timeout 5s busctl --system --json=short get-property \
+    org.freedesktop.locale1 /org/freedesktop/locale1 \
+    org.freedesktop.locale1 X11Layout X11Variant) \
+    && keyboard_values=$(python3 -c '
+import json
+import re
+import sys
+try:
+    properties = [json.loads(line) for line in sys.stdin]
+    if len(properties) != 2:
+        raise ValueError
+    values = []
+    for prop in properties:
+        if not isinstance(prop, dict) or prop.get("type") != "s":
+            raise ValueError
+        value = prop.get("data")
+        if not isinstance(value, str) or re.fullmatch(r"[A-Za-z0-9_,-]*", value) is None:
+            raise ValueError
+        values.append(value)
+except (ValueError, TypeError):
+    sys.exit("install: invalid locale1 keyboard properties")
+print(":".join(values))
+' <<<"$keyboard_properties"); then
+  # An unset layout has no associated variant, like the ISO identity probe.
+  if [[ -n ${keyboard_values%%:*} ]]; then
+    detected_keyboard_layout=${keyboard_values%%:*}
+    detected_keyboard_variant=${keyboard_values#*:}
+  fi
+else
+  echo 'install: could not discover the system X11 keyboard; using us with no variant.' >&2
+fi
+
 defaults_command=(python3 -B "$repo_dir/scripts/installer-defaults")
 [[ -r $config_path ]] && defaults_command+=(--config "$config_path")
 if [[ $check_only == false ]]; then
@@ -239,7 +274,16 @@ else
   ask_text machine_locale 'Language locale' "$detected_locale" valid_locale
   ask_text regional_locale 'Regional locale' "$detected_regional" valid_locale
   ask_text machine_keyboard_layout 'Keyboard layout' "$detected_keyboard_layout" valid_keyboard_layout
-  ask_text machine_keyboard_variant 'Keyboard variant (blank for default)' "$detected_keyboard_variant" valid_keyboard_variant
+  # Variant lists belong to the selected layouts in their original order.
+  keyboard_variant_default=
+  if [[ $machine_keyboard_layout == "$detected_keyboard_layout" ]]; then
+    keyboard_variant_default=$detected_keyboard_variant
+  fi
+  ask_text machine_keyboard_variant 'Keyboard variant (Enter accepts shown value; - for no variant)' \
+    "$keyboard_variant_default" valid_keyboard_variant
+  if [[ $machine_keyboard_variant == - ]]; then
+    machine_keyboard_variant=
+  fi
   echo
   ask_bool developer_tools 'Install developer and Android tooling?' "$developer_tools"
   ask_bool steam 'Install gaming tools and Steam?' "$steam"

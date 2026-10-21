@@ -57,11 +57,42 @@ referenced observer evidence for review.
 
 ## Qualification status
 
-Baseline source checks run on a disposable Fedora 44 container with the
-qualified Hyprland/Quickshell builds. The Debian host has no CybexOS user
-session (`quickshell.service` inactive). Container startup is not a boot sample.
-Full boot, unlock, login, portal/screen-sharing, shutdown and recovery timings
-remain unmeasured until an isolated installed VM or authorized representative
-hardware completes the protocol above. No speedup is claimed and no ineffective
-performance patch is retained. Native compositor and QML qualification are
-tracked separately in the desktop validation report.
+Source checks pass in a disposable Fedora 44 container with the qualified
+Hyprland/Quickshell builds. The Debian host has no CybexOS user session
+(`quickshell.service` inactive); container startup is not a boot sample.
+
+Actual baseline 3b310d1 installed boots and superseded candidate 63f7785
+installation scenarios were exercised. The original three baseline probes
+failed inventory collection and retained no usable UI frames. Their earlier
+offline upgrade also failed because the pristine baseline lacked the newly
+required native SDK dependencies. Those failures are preserved. A supported,
+artifact-bound offline dependency transport now exists; its installation gate
+is independent of startup comparison.
+
+One superseded 63f7785 first encrypted login reported systemd startup of 27.949s
+(kernel 0.626s, initrd 18.853s, userspace 8.469s; graphical.target at 8.442s of
+userspace). This is a diagnostic observation with human authentication,
+first-login work and console test-access bootstrap. It is not desktop-ready
+time, a normal-login series or evidence of improvement. A long ldconfig unit
+alone did not establish a recurring critical-path cost.
+
+That run's initial bar frame was black; typing in the launcher rendered a
+responsive bar. A single Escape cleared the query without dismissing the
+launcher, obscuring the real file picker; the picker and ScreenCast probes did
+not complete. No readiness sample or UI attestation was accepted. External
+observer corrections now verify two-step dismissal, preserve partial failures,
+gate subsequent probes on cleanup and avoid input after terminal portal events.
+Fresh independent review passed 61 inert cases, 18 additional race fixtures and
+exact baseline/candidate guards. Fixtures do not qualify actual portal pixels.
+
+The final b4dfdf6 encrypted installation ran the observer before settings tests. Inventory and fixed-path root hashes succeeded, the launcher was dismissed, and the normal shell audit passed. The file chooser rendered, but Escape returned portal error code 2; it was correctly rejected. ScreenCast reached CreateSession=0, then SelectSources remained pending and cleanup was not confirmed. No readiness sample or UI attestation was accepted.
+
+Version-pinned source inspection explains two observer assumptions: Hyprland portal 1.4.1 opens its source picker during SelectSources, whereas the observer only captured/interacted during Start. GTK portal 1.15.3 maps Escape/dialog-close to code 2, while explicit Cancel maps to code 1. These explain the observation gap and file-close result; they do not prove that the actual screen picker rendered or that session cleanup succeeded. The failed evidence remains preserved. A corrected observer must exercise SelectSources, successful Start with streams and confirmed session cleanup, and use deliberate file selection or explicit Cancel. No portal/backend product change is justified by this observer failure alone.
+The 82 additional SDK packages still make the original baseline/candidate
+inventories nonequivalent for performance comparison. Neither a single-candidate
+observation nor a passed offline-upgrade gate waives that mismatch. A controlled
+equivalent fixture, three independent observed boots per revision, actual
+picker/screen-selection review and representative hardware remain required.
+No startup optimization or speedup is claimed; GRUB, binfmt and the portal grace
+were left unchanged. Installed lifecycle and native compositor/QML evidence are
+tracked separately in the [validation report](desktop-validation.md).

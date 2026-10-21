@@ -165,7 +165,8 @@ class ApplicationDefaults(unittest.TestCase):
                 "id": "printf '%s\\n' cybex-test",
                 "hostnamectl": "printf '%s\\n' cybex-test",
                 "timedatectl": "printf '%s\\n' UTC",
-                "localectl": "exit 0",
+                "localectl": "echo 'unsupported installer probe: localectl' >&2; exit 98",
+                "busctl": 'printf \'%s\\n\' \'{"type":"s","data":""}\' \'{"type":"s","data":""}\'',
                 "findmnt": "exit 1",
                 "sudo": "echo 'sudo must not run during --check' >&2; exit 97",
             }

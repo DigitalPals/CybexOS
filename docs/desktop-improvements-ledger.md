@@ -78,7 +78,9 @@ Slack Super+M and lock Super+L remain intact. See [controls](desktop-workspaces.
 Product commits: `66b14a2` initial implementation; `c5b5c96` ownership/origin/
 startup/native guard corrections; `9702355` native toast lifecycle fix;
 `629219f` offline input admission; `63f7785` constrained package audit;
-`78903e9` verified offline qualification dependency transport (tooling only).
+`78903e9` verified offline qualification dependency transport (tooling only);
+`b4dfdf6` titlebar availability/render separation; `00f71b4` fresh-candidate
+release-gate dependency binding (tooling only).
 
 R1 found five issues; R2 found four; all were corrected with focused regressions
 and affected native retesting. Fresh R3/R4 reviews found no remaining actionable
@@ -88,20 +90,25 @@ without weakening RPM/source/native minimums. Native tests additionally fixed
 Hyprland ECHILD handling, recursive declarative plugin registration, nonempty
 float-exclusion serialization and toast native-screen binding feedback.
 
-Exact product revision `63f7785d45f22386660f02f8c3bb26daeaa1f176` passes all 17
+Exact product revision `b4dfdf68cc324e4b209294b4d9bbafa73357cfa8` passes all 17
 source stages: 1,440 Node tests, 46 Python suites, 355 QML files/four harnesses,
-actual native Qt and lifecycle cases, and 161 compositor assertions plus XPS/
-hotplug/margin fixtures. Image source checks pass 30 application tests, 521 image
+actual native Qt and lifecycle cases, and 178 compositor assertions plus XPS/
+hotplug/margin fixtures. Image source checks pass 30 application tests, 538 image
 fixtures (three existing skips) and 14 installer Node tests. These checks ran in
 a real Git clone of that commit in Fedora, not an unversioned copied tree.
+Qualification-tooling commit 00f71b4 also passes all 17 stages and 554 image
+fixtures with the same three skips. Its changes do not alter the installed
+payload.
 
 The exact 63f7785 ISO/RPM set completed build and signed-package audits and was
-published to testing PXE with checksum and iVentoy verification. Plain English
-fresh/saved-choice installation and UI checks passed. English/Dutch encryption
-and checkout runs continue. Visual review caught a titlebar availability warning
-when the component is loaded but no Floating workspace is active; the correction now passes 178 behavioral assertions and a clean independent
-R9 review (plus four reviewer failure/recovery probes). A rebuilt exact-source
-candidate and native installed retest are required.
+published to testing PXE with checksum and iVentoy verification. All four
+plain/encrypted English/Dutch installation scenarios passed. Its checkout run
+failed downloading the pinned OPPO font archive (TLS handshake timeout), which
+remains recorded. Visual review caught a titlebar availability warning when the
+component was loaded but no Floating workspace was active. The b4dfdf6 fix
+passes a clean independent R9 review (plus four reviewer failure/recovery
+probes). A clean b4dfdf6 ISO/RPM set is now built and published with verified
+checksum/iVentoy checks. All four final installed scenarios pass, including saved-choice lifecycle, and encrypted authentication/keyring recovery. The Dutch checkout completed but failed parity: unsupported localectl show falls back to US keyboard despite the Dutch selection; the same discovery bug exists in the baseline. A checkout correction and exact-source retest are required. Offline-upgrade validation remains in progress. Final artifact identity is in the validation report.
 
 An actual baseline 3b310d1 install passed installed/application audits, but the
 earlier 629219f two-RPM offline upgrade failed because new Fedora SDK dependencies
@@ -110,15 +117,23 @@ were unavailable with all repositories disabled. That failure is preserved.
 transaction after recovery creation. Independent R7 found account-writable
 staging could race verification; fresh root-owned copies now protect both
 candidates and dependencies through DNF. Fresh R8 found no actionable issues
-(71 targeted tests). Actual upgrade/native rebuild/recovery testing is running;
-requirements were not weakened and dependencies were not preinstalled.
+(71 targeted tests). 00f71b4 additionally snapshots optional release-gate raw
+inputs before building and binds them to the actual new candidate hashes.
+Independent R10 found no actionable issues (38 scoped tests plus eight
+adversarial fixtures). The final 82-RPM fixture was reverified for metadata,
+checksums and installed Fedora trust-key signatures, then bound to both final
+RPMs and the original baseline ISO. Actual upgrade/native rebuild/recovery
+testing is running; requirements were not weakened and dependencies were not
+preinstalled.
 
 Earlier baseline startup probes failed before collecting UI frames; these are
 diagnostics, not readiness samples. A separate final observation helper retains
 bounded redacted errors and fixed-path privileged hashes. Four independent
 helper rounds corrected JSON type equality, output argument validation and stat
-error handling; latest review is clean with 43 inert tests. Actual installed
-observations remain distinct from equivalent three-boot readiness comparisons.
+error handling. Actual 63f7785 observations subsequently exposed launcher
+dismissal and portal lifecycle problems in that helper; those failures remain
+preserved. Its final b4dfdf6 copy now passes fresh R6 review, 61 inert tests and
+18 independent portal-race fixtures, with exact revision guards. The actual final encrypted observation passed inventory/root hashes, launcher dismissal and normal-shell restoration, but file Escape returned error 2 and ScreenCast stalled at SelectSources with unresolved cleanup. Pinned backend source confirms the observer incorrectly expected the source picker only during Start; GTK dialog-close also differs from explicit Cancel. Those failures remain preserved and cannot establish readiness. Equivalent three-boot comparisons and speedup remain unqualified.
 
 ## Resources and remaining gates
 
@@ -131,8 +146,9 @@ image build lease `4b9db6f753b34936b2fc593393f7ce97` is closed and verified empt
 Installed qualification runs use separate supervised leases. Temporary
 upstream checkouts were removed after recording provenance.
 
-Remaining work: availability correction and exact-source rebuild, installed fresh/
-saved-choice UI and checkout parity, verified offline upgrade/rebuild/recovery,
+Remaining work: checkout keyboard discovery/variant correction, fresh review
+and exact-source artifact rebuild/requalification; final checkout parity;
+verified offline upgrade/rebuild/recovery,
 startup observations, final evidence consolidation and resource cleanup. Generic
 Wayland CSD detection needs a supported compositor API. Physical lid/mirror/
 dock/two-external/connector-identity tests require representative hardware.
