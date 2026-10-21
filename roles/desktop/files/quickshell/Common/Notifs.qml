@@ -422,8 +422,6 @@ Singleton {
                     && detected.links.indexOf(url) < 0)
                 detected.links.push(url);
         }
-        const actions = Helpers.actionList(source.actions).slice(0, 16).map(action =>
-            [Helpers.actionIdentifier(action), Helpers.singleLine(action.text).slice(0, 256)]);
         const image = Helpers.textValue(source.image).slice(0, 2048);
         const appIcon = Helpers.textValue(source.appIcon).slice(0, 1024);
         const row = {
@@ -440,7 +438,7 @@ Singleton {
             urgency: source.urgency ?? NotificationUrgency.Normal,
             expireTimeout: source.expireTimeout ?? -1,
             codes: detected.codes, links: detected.links,
-            actionSignature: JSON.stringify(actions),
+            actionSignature: Helpers.actionSignature(source.actions),
             progress: typeof hints.value === "number" || typeof hints["x-kde-progress"] === "number",
             oversized: rawSummary.length > 2048 || rawBody.length > 32768
                 || Helpers.textValue(source.appName).length > 256

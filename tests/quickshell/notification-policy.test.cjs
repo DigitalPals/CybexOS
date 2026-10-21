@@ -32,6 +32,16 @@ test('dedupe compares exact full content in a first-occurrence window; progress 
     assert.equal(P.duplicate([first],row(),2000,0),null);
 });
 
+test('a null action comparison disables dedupe on either side without changing source identity', () => {
+    const bounded=row({actionSignature:'[]'}), overflow=row({actionSignature:null});
+    assert.equal(P.signature(overflow),null);
+    assert.equal(P.duplicate([bounded],overflow,2000,10),null);
+    assert.equal(P.duplicate([overflow],bounded,2000,10),null);
+    assert.equal(P.duplicate([overflow],overflow,2000,10),null);
+    assert.equal(P.sourceKey(overflow),P.sourceKey(bounded));
+    assert.equal(P.duplicate([bounded],bounded,2000,10),bounded);
+});
+
 test('dynamic images merge by verified pixels and never by unresolved provider handles', () => {
     const image = 'image://qsimage/1/2', next = 'image://qsimage/3/4';
     const fp = 'sha256:'+'a'.repeat(64), other = 'sha256:'+'b'.repeat(64);
@@ -237,6 +247,187 @@ test('service obtains content identities and preserves distinct or unresolved at
     c.receive(sender('Hello','Message',{image:'image://qsimage/9/9'}));
     c.receive(sender('Hello','Message',{image:'image://qsimage/9/9'}));
     assert.equal(c.entries.length,4);
+});
+
+test('service keeps opaque action IDs exact without merging or expiring distinct senders', () => {
+    for (const [firstId, secondId] of [['OPEN','open'], ['open',' open'], ['open','open '],
+        ['open item','open  item'], ['open','<b>open</b>'], ['a&b','a&amp;b'], ['caf\u00e9','cafe\u0301']]) {
+        const c=service(); c.Date={now:()=>1000};
+        const first=sender('Hello','Message',{actions:[{identifier:firstId,text:'Open'}]});
+        const second=sender('Hello','Message',{actions:[{identifier:secondId,text:'Open'}]});
+        let expired=0; first.closed.connect(()=>expired++);
+        c.receive(first); const firstKey=c.entries[0].key;
+        c.receive(second);
+        assert.equal(c.entries.length,2,JSON.stringify([firstId,secondId]));
+        assert.equal(c.toasts.length,2);
+        assert.equal(expired,0,'a distinct action must not expire the earlier sender');
+        const retained=c.entries.find(entry=>entry.notif===first);
+        assert.equal(retained.key,firstKey); assert.equal(retained.live,true);
+        assert.notEqual(c.entries[0].key,firstKey);
+        assert.ok(c.entries.every(entry=>entry.occurrences===1 && entry.arrived===1000));
+        assert.equal(retained.actionSignature,JSON.stringify([[firstId,'Open']]));
+        assert.equal(c.entries[0].actionSignature,JSON.stringify([[secondId,'Open']]));
+    }
+});
+
+test('service dedupes identical opaque action IDs with equivalent visible labels and transfers live actions', () => {
+    const c=service(); c.Date={now:()=>1000};
+    let expired=0,invoked=0;
+    const first=sender('Hello','Message',{actions:[{identifier:'OPEN',text:'<b>Open</b>',invoke:()=>invoked++}]});
+    const second=sender('Hello','Message',{actions:[{identifier:'OPEN',text:' Open ',invoke:()=>invoked++}]});
+    first.closed.connect(()=>expired++);
+    c.receive(first); const key=c.entries[0].key;
+    c.Date={now:()=>2000}; c.receive(second);
+    assert.equal(c.entries.length,1); assert.equal(c.toasts.length,1);
+    const entry=c.entries[0];
+    assert.equal(entry.key,key); assert.equal(entry.arrived,1000); assert.equal(entry.occurrences,2);
+    assert.equal(entry.actionSignature,JSON.stringify([['OPEN','Open']]));
+    assert.equal(entry.notif,second); assert.equal(entry.live,true); assert.equal(expired,1);
+    assert.equal(entry.actions,second.actions);
+    c.invoke(entry,first.actions[0]); assert.equal(invoked,0,'superseded action handles stay invalid');
+    c.invoke(entry,second.actions[0]); assert.equal(invoked,1);
+});
+
+test('service replacements update exact action IDs in place before later dedupe', () => {
+    const c=service(); c.Date={now:()=>1000};
+    const first=sender('Hello','Message',{actions:[{identifier:'OPEN',text:'Open'}]});
+    let expired=0; first.closed.connect(()=>expired++);
+    c.receive(first); const key=c.entries[0].key;
+    first.actions=[{identifier:'open',text:'Open'}];
+    first.actionsChanged.emit(); first.actionsChanged.emit(); c.flush();
+    assert.equal(c.entries.length,1); assert.equal(c.entries[0].key,key);
+    assert.equal(c.entries[0].occurrences,1); assert.equal(c.entries[0].revision,1);
+    assert.equal(c.entries[0].actionSignature,JSON.stringify([['open','Open']]));
+    assert.equal(c.entries[0].actions,first.actions); assert.equal(expired,0);
+    const distinct=sender('Hello','Message',{actions:[{identifier:'OPEN',text:'Open'}]});
+    c.receive(distinct); assert.equal(c.entries.length,2); assert.equal(expired,0);
+    const duplicate=sender('Hello','Message',{actions:[{identifier:'open',text:'Open'}]});
+    c.receive(duplicate); assert.equal(c.entries.length,2); assert.equal(expired,1);
+    const updated=c.entries.find(entry=>entry.key===key);
+    assert.equal(updated.notif,duplicate); assert.equal(updated.live,true); assert.equal(updated.occurrences,2);
+    assert.ok(c.entries.some(entry=>entry.notif===distinct && entry.live && entry.occurrences===1));
+});
+
+test('service never dedupes incoming or existing action overflow or expires either live sender', () => {
+    const actions=count=>Array.from({length:count},(_,i)=>({identifier:'action-'+i,text:'Action '+i}));
+    const label=text=>[{identifier:'OPEN',text}];
+    const id=identifier=>[{identifier,text:'Open'}];
+    const seventeenthId=actions(17); seventeenthId[16].identifier='different';
+    const seventeenthLabel=actions(17); seventeenthLabel[16].text='Different';
+    for (const [name, firstActions, secondActions, firstOverflow, secondOverflow] of [
+        ['action 17 ID',actions(17),seventeenthId,true,true],
+        ['action 17 label',actions(17),seventeenthLabel,true,true],
+        ['incoming action 17',actions(16),actions(17),false,true],
+        ['existing action 17',actions(17),actions(16),true,false],
+        ['label suffix after 256',label('x'.repeat(256)+'A'),label('x'.repeat(256)+'B'),true,true],
+        ['incoming label overflow',label('x'.repeat(256)),label('x'.repeat(257)),false,true],
+        ['existing label overflow',label('x'.repeat(257)),label('x'.repeat(256)),true,false],
+        ['incoming cleaned label overflow',label('&'.repeat(256)),label('<b>'+'&amp;'.repeat(257)+'</b>'),false,true],
+        ['existing cleaned label overflow',label('<b>'+'&amp;'.repeat(257)+'</b>'),label('&'.repeat(256)),true,false],
+        ['incoming ID overflow',id('I'.repeat(256)),id('I'.repeat(257)),false,true],
+        ['existing ID overflow',id('I'.repeat(257)),id('I'.repeat(256)),true,false],
+    ]) {
+        const c=service(); c.Date={now:()=>1000};
+        const invoked=[0,0];
+        firstActions[0].invoke=()=>invoked[0]++;
+        secondActions[0].invoke=()=>invoked[1]++;
+        const first=sender('Hello','Message',{actions:firstActions});
+        const second=sender('Hello','Message',{actions:secondActions});
+        let expired=0; first.closed.connect(()=>expired++); second.closed.connect(()=>expired++);
+        c.receive(first); const firstKey=c.entries[0].key;
+        c.Date={now:()=>2000}; c.receive(second);
+        assert.equal(c.entries.length,2,name);
+        assert.equal(c.toasts.length,2,name);
+        assert.equal(expired,0,name+': distinct live senders must not expire');
+        const retained=c.entries.find(entry=>entry.notif===first), incoming=c.entries[0];
+        assert.equal(retained.key,firstKey); assert.equal(retained.arrived,1000);
+        assert.notEqual(incoming.key,firstKey); assert.equal(incoming.arrived,2000);
+        assert.equal(retained.actionSignature===null,firstOverflow,name);
+        assert.equal(incoming.actionSignature===null,secondOverflow,name);
+        assert.ok(c.entries.every(entry=>entry.live && entry.occurrences===1 && !entry.oversized));
+        assert.equal(retained.sourceKey,incoming.sourceKey,'action overflow must not alter source routing');
+        assert.equal(retained.actions,firstActions); assert.equal(incoming.actions,secondActions);
+        assert.equal(P.duplicate([incoming],retained,2000,10),null,name+': reverse comparison');
+        c.invoke(retained,firstActions[0]); c.invoke(incoming,secondActions[0]);
+        assert.deepEqual(invoked,[1,1],name+': original action handles remain usable');
+        assert.equal(expired,0);
+    }
+});
+
+test('service compares action 16 and cleaned character 256 exactly and dedupes at both limits', () => {
+    const actions=()=>Array.from({length:16},(_,i)=>({identifier:'action-'+i,text:'Open'}));
+    for (const field of ['identifier','text']) {
+        const c=service(); c.Date={now:()=>1000};
+        const firstActions=actions(), secondActions=actions();
+        firstActions[15][field]='x'.repeat(255)+'A';
+        secondActions[15][field]='x'.repeat(255)+'B';
+        const first=sender('Hello','Message',{actions:firstActions});
+        let expired=0; first.closed.connect(()=>expired++);
+        c.receive(first); c.receive(sender('Hello','Message',{actions:secondActions}));
+        assert.equal(c.entries.length,2,field+': character 256 of action 16 differs');
+        assert.equal(expired,0); assert.ok(c.entries.every(entry=>entry.actionSignature!==null));
+    }
+    const c=service(); c.Date={now:()=>1000};
+    const firstActions=actions(), secondActions=actions();
+    firstActions[15]={identifier:'I'.repeat(256),text:'&'.repeat(256)};
+    secondActions[15]={identifier:'I'.repeat(256),text:' <b>'+'&amp;'.repeat(256)+'</b>\u200b '};
+    const first=sender('Hello','Message',{actions:firstActions});
+    const second=sender('Hello','Message',{actions:secondActions});
+    let expired=0; first.closed.connect(()=>expired++);
+    c.receive(first); const key=c.entries[0].key;
+    c.Date={now:()=>2000}; c.receive(second);
+    assert.equal(c.entries.length,1); assert.equal(c.toasts.length,1); assert.equal(expired,1);
+    const entry=c.entries[0];
+    assert.equal(entry.key,key); assert.equal(entry.arrived,1000); assert.equal(entry.occurrences,2);
+    assert.equal(entry.notif,second); assert.equal(entry.actions,secondActions);
+    assert.equal(JSON.parse(entry.actionSignature).length,16);
+    assert.deepEqual(JSON.parse(entry.actionSignature)[15],['I'.repeat(256),'&'.repeat(256)]);
+});
+
+test('action overflow preserves native and web snoozes, popup groups and burst accounting', () => {
+    for (const identity of [{}, {appName:'Chromium',desktopEntry:'chromium',
+        hints:{'x-kde-origin-name':'https://chat.example:8443'}}]) {
+        const c=service(); c.Date={now:()=>1000};
+        const actions=Array.from({length:17},(_,i)=>({identifier:'action-'+i,text:'Open'}));
+        c.receive(sender('Hello','Message',{...identity,actions}));
+        const key=c.entries[0].sourceKey;
+        c.receive(sender('Hello','Message',{...identity,actions:actions.slice(0,16)}));
+        assert.equal(c.entries.length,2); assert.equal(c.toasts.length,2);
+        assert.equal(P.groups(c.entries).length,1);
+        assert.ok(c.entries.every(entry=>entry.sourceKey===key && !entry.oversized));
+        assert.equal(c.burstEvents.length,2); assert.ok(c.burstEvents.every(event=>event.key===key));
+        c.snoozeSource(key,'Chat',15);
+        assert.equal(c.toasts.length,0);
+        c.receive(sender('During snooze','Message',{...identity,actions}));
+        assert.equal(c.entries.length,3); assert.equal(c.toasts.length,0);
+        assert.ok(c.entries.every(entry=>entry.sourceKey===key && entry.live));
+        assert.equal(c.burstEvents.length,2,'snoozed arrivals do not consume another burst slot');
+    }
+});
+
+test('replacement action overflow disables dedupe until a complete bounded signature is restored', () => {
+    const c=service(); c.Date={now:()=>1000};
+    const first=sender('Hello','Message',{actions:[{identifier:'OPEN',text:'Open'}]});
+    let expired=0; first.closed.connect(()=>expired++);
+    c.receive(first); const original=c.entries[0];
+    first.actions=[{identifier:'OPEN',text:'Open'+'x'.repeat(253)}];
+    first.actionsChanged.emit(); c.flush();
+    const overflow=c.entries[0];
+    assert.equal(overflow.key,original.key); assert.equal(overflow.sourceKey,original.sourceKey);
+    assert.equal(overflow.revision,1); assert.equal(overflow.occurrences,1);
+    assert.equal(overflow.actionSignature,null); assert.equal(overflow.actions,first.actions);
+    c.receive(sender('Hello','Message',{actions:[{identifier:'OPEN',text:'Open'+'x'.repeat(252)}]}));
+    assert.equal(c.entries.length,2); assert.equal(expired,0);
+    first.actions=[{identifier:'OPEN',text:'<b>Open</b>'}];
+    first.actionsChanged.emit(); c.flush();
+    const restored=c.entries.find(entry=>entry.key===original.key);
+    assert.equal(restored.revision,2); assert.equal(restored.actionSignature,JSON.stringify([['OPEN','Open']]));
+    const duplicate=sender('Hello','Message',{actions:[{identifier:'OPEN',text:' Open '}]});
+    c.receive(duplicate);
+    assert.equal(c.entries.length,2); assert.equal(expired,1);
+    const merged=c.entries.find(entry=>entry.key===original.key);
+    assert.equal(merged.notif,duplicate); assert.equal(merged.occurrences,2);
+    assert.equal(merged.arrived,original.arrived); assert.equal(merged.sourceKey,original.sourceKey);
 });
 
 test('real service replaces in place, counts duplicates and ignores superseded sender close/update signals', () => {

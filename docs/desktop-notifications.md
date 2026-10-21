@@ -79,7 +79,11 @@ arrivals stay in the center; they never become a delayed popup queue.
 Exact repeated messages show “Repeated N times”. The window is measured from
 the first occurrence, so a continuous repeat cannot keep extending it. Source,
 full bounded summary/body, urgency, icon/image content and action identity/labels
-must match. Quickshell's transient numeric image handles are compared using
+must match. Opaque action IDs are compared verbatim, including case and
+whitespace. Visible and accessible action labels use the same plain-text
+cleanup as the comparison. More than 16 actions, or an action ID or cleaned
+label longer than 256 code units, disables deduplication without changing
+source grouping or snoozes. Quickshell's transient numeric image handles are compared using
 bounded native pixel fingerprints. Different handles containing identical
 pixels can merge; different pixels remain separate. A missing module, invalid
 handle, unavailable provider or oversized image disables deduplication for that

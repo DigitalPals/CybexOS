@@ -238,7 +238,8 @@ function derivePresentation(notification) {
 function actionIdentifier(action) {
     if (!action || typeof action !== "object")
         return "";
-    return textValue(action.identifier || action.id || action.key).toLowerCase();
+    // Opaque protocol identifiers must retain case, whitespace and markup.
+    return textValue(action.identifier || action.id || action.key);
 }
 
 function actionList(actions) {
@@ -250,10 +251,27 @@ function actionList(actions) {
     return list;
 }
 
+function actionSignature(actions) {
+    // An incomplete comparison must never expire a distinct live sender.
+    // Keep both the scan and JSON bounded; opaque IDs are rejected from
+    // dedupe above the bound, never shortened or changed for invocation.
+    if (actions && typeof actions.length === "number" && actions.length > 16)
+        return null;
+    var list = actionList(actions), result = [];
+    for (var i = 0; i < list.length; i++) {
+        var identifier = actionIdentifier(list[i]);
+        var label = singleLine(list[i] && list[i].text);
+        if (identifier.length > 256 || label.length > 256)
+            return null;
+        result.push([identifier, label]);
+    }
+    return JSON.stringify(result);
+}
+
 function defaultAction(actions) {
     var list = actionList(actions);
     for (var i = 0; i < list.length; i++) {
-        if (actionIdentifier(list[i]) === "default")
+        if (actionIdentifier(list[i]).toLowerCase() === "default")
             return list[i];
     }
     return null;
@@ -262,7 +280,7 @@ function defaultAction(actions) {
 function secondaryActions(actions) {
     var list = actionList(actions);
     return list.filter(function(action) {
-        var identifier = actionIdentifier(action);
+        var identifier = actionIdentifier(action).toLowerCase();
         return identifier !== "default" && identifier !== "close"
             && singleLine(action && action.text) !== "";
     }).slice(0, 2);
@@ -334,6 +352,7 @@ function countdownTickMs(untilMs, nowMs, minimumMs) {
 var exported = {
     textValue: textValue,
     actionList: actionList,
+    actionSignature: actionSignature,
     MIN_TIMEOUT_MS: MIN_TIMEOUT_MS,
     MAX_TIMEOUT_MS: MAX_TIMEOUT_MS,
     decodeEntities: decodeEntities,

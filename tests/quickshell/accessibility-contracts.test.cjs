@@ -60,7 +60,7 @@ test("notification history exposes primary, action, disclosure, dismiss, and cle
     assert.match(card,
         /id:\s*textDisclosure[\s\S]*activeFocusOnTab:\s*visible && card\.keyboardEnabled[\s\S]*Accessible\.name:/);
     assert.match(actions,
-        /activeFocusOnTab:\s*root\.keyboardEnabled && root\.reveal[\s\S]*Accessible\.name:\s*pill\.modelData\.text/);
+        /activeFocusOnTab:\s*root\.keyboardEnabled && root\.reveal[\s\S]*Accessible\.name:\s*pillText\.text/);
     assert.match(actions, /hasFocusedAction:\s*focusedActions > 0/,
         "focus must keep contextual actions revealed after the pointer leaves");
 

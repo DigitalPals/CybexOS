@@ -28,6 +28,9 @@ function imageIdentity(source, fingerprint) {
 }
 
 function signature(row) {
+    // null marks action data that cannot be compared in full within bounds.
+    // Keep its source identity intact for grouping, snoozes and burst limits.
+    if (row.actionSignature === null) return null;
     var image = imageIdentity(row.image, row.imageFingerprint);
     var icon = imageIdentity(row.appIcon, row.appIconFingerprint);
     if (image === null || icon === null) return null;

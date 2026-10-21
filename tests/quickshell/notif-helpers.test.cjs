@@ -173,6 +173,28 @@ test("default and close actions do not become secondary pills", () => {
     assert.equal(H.defaultAction(actions), actions[0]);
     assert.deepEqual(H.secondaryActions(actions).map((action) => action.identifier),
         ["reply", "mute"]);
+    const uppercase = actions.map(action => ({ ...action, identifier: action.identifier.toUpperCase() }));
+    assert.equal(H.defaultAction(uppercase), uppercase[0]);
+    assert.deepEqual(H.secondaryActions(uppercase).map(action => action.identifier), ["REPLY", "MUTE"]);
+});
+
+test("action comparisons reject overflow without scanning extra actions or truncating opaque IDs", () => {
+    let reads = 0;
+    const overfull = { length: 17, get 0() { reads++; throw new Error("unnecessary scan"); } };
+    assert.equal(H.actionSignature(overfull), null);
+    assert.equal(reads, 0);
+    assert.equal(H.actionSignature(undefined), '[]');
+    const exact = Array.from({length: 16}, (_, i) => ({identifier: 'id-' + i, text: 'Open'}));
+    exact[15] = {identifier: 'I'.repeat(256), text: '<b>' + '&amp;'.repeat(256) + '</b>'};
+    const signature = JSON.parse(H.actionSignature(exact));
+    assert.equal(signature.length, 16);
+    assert.deepEqual(signature[15], ['I'.repeat(256), '&'.repeat(256)]);
+    assert.equal(H.actionSignature([...exact, {identifier: 'extra', text: 'Extra'}]), null);
+    assert.equal(H.actionSignature([{identifier: 'id', text: '<b>' + 'x'.repeat(257) + '</b>'}]), null);
+    const opaque = {identifier: ' X&<b>'.repeat(50), text: 'Open'};
+    assert.equal(H.actionSignature([opaque]), null);
+    assert.equal(H.actionIdentifier(opaque), opaque.identifier);
+    assert.equal(H.secondaryActions([opaque])[0], opaque, 'invocation retains the original action object');
 });
 
 test("adaptive timing uses 8 seconds through 80 characters and caps at 12", () => {
