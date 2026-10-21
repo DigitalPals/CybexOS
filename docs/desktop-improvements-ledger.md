@@ -170,3 +170,9 @@ source checkout is `/tmp/cybexos-desktop-20261021-titlebars`; remove it too.
   official Fedora OpenH264 metadata HTTP 404. Lease 51e5828e0d7c4684b99d264e531b1ac7
   closed cleanly. The endpoint subsequently returned HTTP 200 with exactly the
   checksum advertised by MirrorManager, so the unchanged build can be retried.
+- The 9702355 candidate built both native modules but stopped at the offline
+  payload admission guard: shared native inputs changed without advancing the
+  independently versioned manifest. Advanced offline-apps from 1.4.0 to 1.5.0
+  using its supported generator. Added a real-checkout admission regression;
+  the prior tests exercised only synthetic input trees. Rebuild qualification
+  must use the corrected source revision, not the rejected 9702355 attempt.

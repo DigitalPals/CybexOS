@@ -10,6 +10,11 @@ import offline_payload as offline
 
 
 class OfflinePayload(unittest.TestCase):
+    def test_checkout_manifest_matches_reviewed_inputs(self):
+        # Validate the real checkout as well as the synthetic fixture: an
+        # outdated manifest otherwise fails only after expensive native builds.
+        self.assertEqual(offline.configuration()['inputs_sha256'], offline.input_digest())
+
     def test_reviewed_inputs_fail_closed_and_exclude_desktop_shell_changes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
