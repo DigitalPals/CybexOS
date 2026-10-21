@@ -1,4 +1,4 @@
-// Pure grouping, pinning, click and placement rules for the optional dock
+// Pure visibility, matching, grouping, pinning, click and placement rules for the dock
 // (DockWindow.qml). Desktop-entry lookups and Hyprland state stay in
 // Common/Dock.qml; this module only sees plain records, so the dock's
 // behaviour is tested under Node. Keep it free of Qt APIs.
@@ -17,6 +17,41 @@ var SHELL_APP_IDS = ["org.quickshell", "quickshell"];
 // browser (read from mimeapps.list), Files and the terminal — the apps the
 // Super+B, Super+E and Super+Return bindings open.
 var SUGGESTED_PINS = ["org.gnome.Nautilus", "kitty"];
+
+// Use the live workspace identity with the compositor's layout snapshot.
+// A stale numbered row must not enable the dock after a workspace is renamed.
+function showOnWorkspace(always, live, saved) {
+    return always === true || !!(live && saved && live.id === saved.id
+        && live.id > 0 && String(live.name) === String(live.id)
+        && saved.layout === "floating");
+}
+
+// Chromium's URL-app desktop id is <browser>-<host>_<path>-<profile>.
+// Its filename replaces slash and other illegal path characters with '_';
+// scheme, port, query and fragment do not participate. Match the whole app
+// name, so two apps on the same host but different paths stay separate.
+function webAppName(url) {
+    var parts = String(url || "").match(/^https?:\/\/([^/?#]+)(\/[^?#]*)?(?:[?#].*)?$/i);
+    if (!parts || parts[1].indexOf("@") !== -1)
+        return "";
+    var host = parts[1].toLowerCase().replace(/:\d+$/, "");
+    return (host + "_" + (parts[2] || "/")).replace(/[\\/<>:"|?*\x00-\x1f]/g, "_");
+}
+
+function webAppEntryId(appId, apps) {
+    var match = String(appId || "").match(/^(?:brave|chrome|chromium|msedge)-(.+)$/);
+    if (!match)
+        return "";
+    var matches = (Array.isArray(apps) ? apps : []).filter(function(app) {
+        if (!app || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(app.id))
+            return false;
+        var name = webAppName(app.url);
+        return name !== "" && match[1].indexOf(name + "-") === 0
+            && /^[A-Za-z0-9_.-]+$/.test(match[1].slice(name.length + 1));
+    });
+    // URLs differing only by query/port (or sanitized path) are ambiguous.
+    return matches.length === 1 ? "cybexos-webapp-" + matches[0].id : "";
+}
 
 function validId(id) {
     return typeof id === "string" && DESKTOP_ID.test(id);
@@ -254,6 +289,9 @@ function menuActions(app, pins) {
 }
 
 var exported = {
+    showOnWorkspace: showOnWorkspace,
+    webAppName: webAppName,
+    webAppEntryId: webAppEntryId,
     DESKTOP_ID: DESKTOP_ID,
     MAX_PINS: MAX_PINS,
     SHELL_APP_IDS: SHELL_APP_IDS,

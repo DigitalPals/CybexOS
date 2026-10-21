@@ -166,7 +166,8 @@ Around the windows themselves:
   applies themes as plain data. The terminal, GTK applications and the lock
   screen follow the shell's colours and text size. See
   [themes](docs/shell-appearance.md#themes).
-- **Optional extras:** a dock (Settings → Bar → Dock, off by default), the
+- **Dock and extras:** floating workspaces show a dock automatically
+  (Settings → Bar → Dock can show it in all layouts), alongside the
   busiest processes in the Control Center's Overview, and a game mode
   (`Super+Shift+G`) that turns effects, gaps and the idle lock off. See
   [window overview, dock and top processes](docs/overview-and-dock.md).

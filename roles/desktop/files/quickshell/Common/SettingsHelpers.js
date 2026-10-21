@@ -450,7 +450,7 @@ function defaults() {
         drawerWidth: 400,
         mods: defaultMods(),
         modOpts: defaultModOpts(),
-        // The optional dock (DockWindow.qml): off by default. Pins are desktop
+        // Show the dock in all layouts (Floating always shows it). Pins are desktop
         // entry ids; an empty default lets the dock suggest the browser, Files
         // and the terminal until the person pins or unpins something.
         dock: false,

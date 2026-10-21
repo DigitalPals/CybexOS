@@ -194,6 +194,9 @@ class DesktopPayload(unittest.TestCase):
                  "Common/Overview.qml", "Common/Dock.qml", "Common/ProcessList.qml",
                  "Common/OverviewHelpers.js", "Common/DockHelpers.js",
                  "Common/ProcessListHelpers.js", "Common/WindowCommands.js",
+                 "Common/DesktopWorkspaces.qml", "Common/WorkspaceHelpers.js",
+                 "Common/LauncherProviders.js", "Common/SettingsSearchData.js",
+                 "Common/i18n/nl.js", "Settings/WorkspacesPage.qml",
                  "Popovers/Drawer/DrawerProcesses.qml", "Popovers/Drawer/DrawerOverview.qml",
                  "Settings/BarLayoutGroups.qml", "scripts/processes"]
         with tempfile.TemporaryDirectory() as temporary:
@@ -204,7 +207,7 @@ class DesktopPayload(unittest.TestCase):
                 self.assertEqual((installed / relative).read_bytes(), (checkout / relative).read_bytes(), relative)
             # Both paths run the helper through bash; the ISO also marks it executable.
             self.assertEqual((installed / "scripts/processes").stat().st_mode & 0o777, 0o755)
-            # One schema decides the defaults on both: the dock starts off and
+            # One schema decides the defaults on both: all-layout dock starts off and
             # unpinned, Top processes starts shown.
             script = ("const H = require(process.argv[1]); const d = H.merge(null); "
                       "console.log(JSON.stringify([d.dock, d.dockAutoHide, d.dockPinned, d.drawerOverview.processes]));")
@@ -213,6 +216,23 @@ class DesktopPayload(unittest.TestCase):
                         for base in (checkout, installed)]
             self.assertEqual(defaults[0], defaults[1])
             self.assertEqual(json.loads(defaults[1]), [False, False, [], True])
+            # Exercise visibility and browser matching from both payloads.
+            probe = '''
+const D = require(process.argv[1]);
+const live = {id: 41, name: "41"};
+console.log(JSON.stringify([
+    D.showOnWorkspace(false, live, {id: 41, layout: "floating"}),
+    D.showOnWorkspace(false, live, {id: 41, layout: "dwindle"}),
+    D.showOnWorkspace(false, live, {id: 41, layout: "scrolling"}),
+    D.showOnWorkspace(true, live, {id: 41, layout: "dwindle"}),
+    D.webAppEntryId("brave-web.whatsapp.com__-Default",
+        [{id: "whatsapp", url: "https://web.whatsapp.com/"}])
+]));
+'''
+            for tree in (checkout, installed):
+                result = subprocess.run(["node", "-e", probe, str(tree / "Common/DockHelpers.js")],
+                                        check=True, capture_output=True, text=True)
+                self.assertEqual(json.loads(result.stdout), [True, False, False, True, "cybexos-webapp-whatsapp"])
         # Super+Tab and the overview/dock layer rules come from the one
         # bindings.lua and looknfeel template that both installs use.
         bindings = (ROOT / "roles/desktop/files/bindings.lua").read_text()

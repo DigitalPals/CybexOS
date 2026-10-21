@@ -747,7 +747,6 @@ var MESSAGES = {
     "Pick a colour": "Kleur kiezen",
     "Ping": "Ping",
     "Pinned": "Vastgezet",
-    "Pinned and running apps at the bottom of each screen; right-click an app to pin it": "Vastgezette en actieve apps onderaan elk scherm; klik met de rechtermuisknop op een app om hem vast te zetten",
     "Pinned sessions": "Vastgezette sessies",
     "Place label": "Plaatslabel",
     "Placement": "Plaatsing",
@@ -970,9 +969,9 @@ var MESSAGES = {
     "Show Hermes activity beside its icon": "Toon Hermes-activiteit naast het pictogram",
     "Show commits": "Commits tonen",
     "Show details": "Details tonen",
-    "Show dock": "Dock tonen",
     "Show each window's share used, or what is left. Amber and red still mean nearly used up.": "Toon per tijdvenster het verbruikte deel of wat er nog over is. Oranje en rood betekenen nog steeds bijna op.",
     "Show full request": "Volledig verzoek tonen",
+    "Show in all layouts": "Tonen bij alle indelingen",
     "Show less": "Minder tonen",
     "Show more": "Meer tonen",
     "Show numbered accounts instead of usernames and emails": "Toon genummerde accounts in plaats van gebruikersnamen en e-mailadressen",
@@ -1075,7 +1074,8 @@ var MESSAGES = {
     "The address of Fusebox's dashboard.": "Het adres van het Fusebox-dashboard.",
     "The bar layout button cycles the layout of its own display": "De indelingsknop op de balk wisselt de indeling van het eigen beeldscherm",
     "The configured count applies to recent account and org repositories. Every watched repository is additive to that list and, when enabled, the workflow-report scope. Repository refresh uses the interval above; the Inbox checks repository events and GitHub notifications every minute.": "Het ingestelde aantal geldt voor recente repository's van het account en organisaties. Elke gevolgde repository komt bij die lijst en, indien ingeschakeld, bij het bereik van de workflowrapporten. Repository's worden vernieuwd volgens het interval hierboven; de Inbox controleert elke minuut op repository-gebeurtenissen en GitHub-meldingen.",
-    "The dock is optional in every layout. Minimized windows remain in the overview and launcher.": "Het dock is optioneel bij elke indeling. Geminimaliseerde vensters blijven in het overzicht en de starter.",
+    "The dock appears automatically on floating workspaces. Also show it in tiled and scrolling layouts.": "Het dock verschijnt automatisch op zwevende werkbladen. Toon het ook bij tegel- en schuifindelingen.",
+    "The dock appears on floating workspaces. Minimized windows remain in the overview and launcher.": "Het dock verschijnt op zwevende werkbladen. Geminimaliseerde vensters blijven in het overzicht en de starter.",
     "The five newest are kept; your home folder is never rolled back. To try one without changing anything, restart and hold Shift (or press Esc) until the boot menu appears, then open CybexOS recovery points.": "De vijf nieuwste worden bewaard; je thuismap wordt nooit teruggezet. Om er een te proberen zonder iets te wijzigen, start je opnieuw op en houd je Shift ingedrukt (of druk je op Esc) tot het opstartmenu verschijnt; open daar CybexOS recovery points.",
     "The open dashboard updates every 2 seconds.": "Het geopende dashboard wordt elke 2 seconden bijgewerkt.",
     "The size that Text size and Interface scale build on": "De grootte waarop Tekstgrootte en Interfaceschaal voortbouwen",
@@ -1223,7 +1223,7 @@ var MESSAGES = {
     "omarchy plugin add https://github.com/…": "omarchy plugin add https://github.com/…",
     "open row": "rij openen",
     "provider/model-id (optional when discoverable)": "provider/model-id (optioneel als het automatisch gevonden kan worden)",
-    "user@hostname or SSH alias": "gebruiker@hostnaam of SSH-alias"
+    "user@hostname or SSH alias": "gebruiker@hostnaam of SSH-alias",
 };
 
 if (typeof module !== "undefined" && module.exports)

@@ -4,8 +4,8 @@ Open **Settings → Workspaces** to choose **Shared** or **Per-monitor** numberi
 the default layout, and a layout for an individual workspace. Existing and new
 installations start in Shared mode. Without a saved managed layout choice, the
 compositor preserves the native `general.layout` from the user's configuration
-(normally dwindle). Changing layout never
-enables the dock or changes its pins or auto-hide preference.
+(normally dwindle). Floating workspaces show the dock automatically on their
+own display; changing layout never changes its saved pins or auto-hide preference.
 
 In Per-monitor mode the compositor supplies each display's local numbers 1–10.
 Each bar marks the workspace visible on its own display, including displays
@@ -64,13 +64,14 @@ special workspaces and control characters remain rejected. Named-workspace
 windows remain reachable through the launcher and dock; numbered-layout and
 minimize controls are unavailable for them, matching the compositor API.
 
-The optional dock restores minimized windows on click or through **Restore
+The dock restores minimized windows on click or through **Restore
 window** in its menu. Clicking a focused app with exactly one window minimizes
 it; apps with multiple windows retain cycling. Its menu also provides minimize.
 Configure it through **Settings → Bar → Dock**, linked from the workspace page.
-With the dock off, global minimize/restore shortcuts and the overview/launcher
-remain available. If native titlebars are unavailable, Super+mouse drag/resize
-and the overview's maximize, minimize and close controls remain usable.
+When the dock is absent in other layouts, global minimize/restore shortcuts
+and the overview/launcher remain available. If native titlebars are unavailable,
+Super+mouse drag/resize and the overview's maximize, minimize and close controls
+remain usable.
 
 The compositor's personal choices live only in
 `$XDG_CONFIG_HOME/cybexos/workspaces.json` (normally
@@ -211,7 +212,7 @@ follow-up adds only `Custom (%1)` and `Unmanaged (%1)`; `Default` already exists
   "Shared": "Gedeeld",
   "Shared keeps global numbers. Per-monitor gives each display its own 1–10.": "Gedeeld gebruikt globale nummers. Per beeldscherm geeft elk beeldscherm eigen nummers van 1 tot 10.",
   "The bar layout button cycles the layout of its own display": "De indelingsknop in de balk wisselt de indeling van het eigen beeldscherm",
-  "The dock is optional in every layout. Minimized windows remain in the overview and launcher.": "Het dock is optioneel bij elke indeling. Geminimaliseerde vensters blijven in het overzicht en de starter staan.",
+  "The dock appears on floating workspaces. Minimized windows remain in the overview and launcher.": "Het dock verschijnt op zwevende werkbladen. Geminimaliseerde vensters blijven in het overzicht en de starter.",
   "Tiled": "Getegeld",
   "Used by workspaces without their own layout choice": "Voor werkbladen zonder eigen indelingskeuze",
   "Visiting workspace": "Werkblad van een ander beeldscherm",

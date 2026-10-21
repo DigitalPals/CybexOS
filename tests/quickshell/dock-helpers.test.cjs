@@ -5,6 +5,48 @@ const { load } = require("./shell.cjs");
 const D = load("DockHelpers.js");
 const S = load("SettingsHelpers.js");
 
+test("automatic docks follow layout per monitor, including empty floating workspaces", () => {
+    const live = { id: 41, name: "41" };
+    for (const layout of ["floating", "dwindle", "scrolling", "unmanaged"])
+        assert.equal(D.showOnWorkspace(false, live, { id: 41, layout }), layout === "floating");
+    assert.equal(D.showOnWorkspace(false, live, null), false);
+    assert.equal(D.showOnWorkspace(false, null, { id: 41, layout: "floating" }), false);
+    assert.equal(D.showOnWorkspace(false, live, { id: 7, layout: "floating" }), false,
+        "a workspace switch cannot borrow the previous layout");
+    for (const other of [{ id: 41, name: "research" }, { id: -98, name: "special:scratchpad" }])
+        assert.equal(D.showOnWorkspace(false, other, { id: other.id, layout: "floating" }), false);
+    for (const saved of [null, { id: 41, layout: "dwindle" }])
+        assert.equal(D.showOnWorkspace(true, live, saved), true, "preserve the all-layout preference");
+    assert.equal(D.showOnWorkspace(true, null, null), true);
+    const state = { 41: { id: 41, layout: "floating" }, 7: { id: 7, layout: "dwindle" } };
+    const outputs = [{ id: 41, name: "41" }, { id: 7, name: "7" }];
+    assert.deepEqual(outputs.filter(row => D.showOnWorkspace(false, row, state[row.id])), [outputs[0]]);
+    state[7].layout = "floating";
+    assert.equal(outputs.filter(row => D.showOnWorkspace(false, row, state[row.id])).length, 2);
+    state[41].layout = "scrolling";
+    assert.deepEqual(outputs.filter(row => D.showOnWorkspace(false, row, state[row.id])), [outputs[1]]);
+});
+
+test("Brave URL-app classes resolve to installed web-app entries across browser profiles", () => {
+    const apps = [{ id: "whatsapp", url: "https://web.whatsapp.com/" },
+        { id: "chat", url: "https://example.com/chat/" },
+        { id: "mail", url: "https://example.com/mail/?folder=inbox#top" }];
+    for (const browser of ["brave", "chrome", "chromium", "msedge"])
+        for (const profile of ["Default", "Profile_1"])
+            assert.equal(D.webAppEntryId(`${browser}-web.whatsapp.com__-${profile}`, apps), "cybexos-webapp-whatsapp");
+    assert.equal(D.webAppEntryId("brave-example.com__chat_-Default", apps), "cybexos-webapp-chat");
+    assert.equal(D.webAppEntryId("brave-example.com__mail_-Default", apps), "cybexos-webapp-mail");
+    for (const appId of ["brave-origin", "firefox", "brave-web.whatsapp.com.evil__-Default",
+        "brave-example.com__unknown-Default", "brave-web.whatsapp.com__-", "web.whatsapp.com"])
+        assert.equal(D.webAppEntryId(appId, apps), "", appId);
+    assert.equal(D.webAppEntryId("brave-web.whatsapp.com__-Default", []), "", "removed apps do not match");
+    assert.equal(D.webAppEntryId("brave-web.whatsapp.com__-Default",
+        apps.concat([{ id: "duplicate", url: "https://web.whatsapp.com/?other" }])), "", "ambiguous apps do not match");
+    assert.equal(D.webAppName("https://EXAMPLE.com:8443/chat/?q=1#x"), "example.com__chat_");
+    assert.equal(D.webAppName("not a url"), "");
+    assert.equal(D.webAppName("https://user@example.com/"), "");
+});
+
 const windows = [
     { address: "k1", appId: "kitty", entryId: "kitty" },
     { address: "f1", appId: "firefox", entryId: "firefox" },
@@ -128,7 +170,7 @@ test("pinned and running groups are separated, and the menu fits the item", () =
     assert.deepEqual(D.menuActions(null, []), []);
 });
 
-test("the settings schema defaults the dock off and normalizes pins as the dock does", () => {
+test("the settings schema defaults to automatic floating docks and normalizes pins", () => {
     const defaults = S.merge(null);
     assert.equal(defaults.dock, false);
     assert.equal(defaults.dockAutoHide, false);

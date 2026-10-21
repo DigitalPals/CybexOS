@@ -5,6 +5,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import "Bar"
 import "Common"
+import "Common/DockHelpers.js" as DockHelpers
 
 // The static linter cannot resolve Quickshell's private PostReloadHook base from the
 // installed qmltypes. The shell does not instantiate it; importing Quickshell
@@ -317,11 +318,16 @@ ShellRoot {
         }
     }
 
-    // The optional dock (Settings → Bar → Dock), one per output like the
-    // bar. Off, the model is empty and nothing — not even the Dock singleton
-    // — is constructed.
+    // Floating workspaces get a dock automatically, independently per output.
+    // The saved dock preference additionally shows it in other layouts.
+    // With no eligible output, even the shared Dock model stays unconstructed.
     Variants {
-        model: Settings.dock ? Screens.layerSurfaceModel : []
+        model: Screens.layerSurfaceModel.filter(output => {
+            const monitor = Hyprland.monitorFor(output.screen);
+            const active = monitor ? monitor.activeWorkspace : null;
+            return DockHelpers.showOnWorkspace(Settings.dock, active,
+                DesktopWorkspaces.workspace(active ? active.id : 0));
+        })
 
         DockWindow {}
     }
