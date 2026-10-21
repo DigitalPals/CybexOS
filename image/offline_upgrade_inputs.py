@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -108,7 +109,10 @@ def validate_record(record):
             or len(signature['value']) > 1024
             or not re.fullmatch(r'[\x20-\x7e]+ Key ID [0-9a-fA-F]{8,64}', signature['value'])):
         raise ValueError('Missing or malformed RPM signature identity')
-    repository = record['repository']
+    validate_repository(record['repository'])
+
+
+def validate_repository(repository):
     exact_fields(repository, ('id', 'url'))
     if (not isinstance(repository['id'], str)
             or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,127}', repository['id'])
@@ -230,6 +234,85 @@ def create_manifest(directory, baseline_iso, candidate_rpm, candidate_offline_rp
                            candidate_offline_rpm=candidate_offline_rpm)
     except BaseException:
         destination.unlink()
+        raise
+
+
+@dataclass(frozen=True)
+class RawDependencyFixture:
+    """Private pre-build snapshots, with a content identity but no artifact bindings."""
+    directory: Path
+    records: list
+    provenance_sha256: str
+
+    def evidence(self):
+        value = {'schema': 1, 'provenance_sha256': self.provenance_sha256, 'rpms': self.records}
+        sha = hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        return {**value, 'fixture_sha256': sha, 'total_bytes': sum(record['size'] for record in self.records)}
+
+    def bind(self, baseline_iso, candidate_rpm, candidate_offline_rpm):
+        bundle = create_manifest(self.directory, baseline_iso, candidate_rpm, candidate_offline_rpm,
+                                 {record['filename']: record['repository'] for record in self.records})
+        if bundle.manifest['rpms'] != self.records:
+            (self.directory / MANIFEST).unlink()
+            raise ValueError('Raw dependency fixture changed after admission')
+        return bundle
+
+
+def snapshot_raw_dependencies(directory, provenance_file, destination):
+    """Admit trusted raw RPMs before a build, without changing caller inputs."""
+    directory, provenance_file, destination = (Path(path).absolute() for path in (directory, provenance_file, destination))
+    if any(path.is_symlink() for path in (directory, *directory.parents)) or not directory.is_dir():
+        raise ValueError('Raw dependency input must be a directory without symlinks')
+    if any(path.is_symlink() for path in (provenance_file, *provenance_file.parents)):
+        raise ValueError('Dependency provenance must not use symlinks')
+    if destination.resolve().is_relative_to(directory.resolve()):
+        raise ValueError('Dependency staging must be outside the caller input directory')
+    provenance, provenance_sha = read_json(provenance_file)
+    entries = list(itertools.islice(directory.iterdir(), MAX_RPMS + 1))
+    if (not 1 <= len(entries) <= MAX_RPMS or not isinstance(provenance, dict)
+            or set(provenance) != {path.name for path in entries}):
+        raise ValueError('Provenance must describe every raw RPM and no extra files (1 to 256 RPMs)')
+    for path in entries:
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._+~^-]*\.rpm', path.name):
+            raise ValueError('Unsafe raw dependency RPM filename')
+        validate_repository(provenance[path.name])
+    destination.mkdir(mode=0o700)
+    try:
+        records, identities, total = [], set(), 0
+        for path in sorted(entries):
+            copied = destination / path.name
+            with regular_stream(path, MAX_RPM_BYTES) as (source, size):
+                total += size
+                if total > MAX_TOTAL_BYTES:
+                    raise ValueError('Raw dependency fixture exceeds total size limit')
+                sha, remaining = hashlib.sha256(), size
+                with copied.open('xb') as output:
+                    while remaining:
+                        chunk = source.read(min(1024 * 1024, remaining))
+                        if not chunk:
+                            raise ValueError('Raw dependency RPM changed while copying')
+                        output.write(chunk)
+                        sha.update(chunk)
+                        remaining -= len(chunk)
+                    if source.read(1):
+                        raise ValueError('Raw dependency RPM grew while copying')
+                    os.fchmod(output.fileno(), 0o400)
+            record = {'filename': path.name, **rpm_identity(copied), 'size': size,
+                      'sha256': sha.hexdigest(), 'repository': provenance[path.name]}
+            validate_record(record)
+            identity = (record['name'], record['architecture'])
+            if identity in identities:
+                raise ValueError('Duplicate raw dependency package architecture')
+            identities.add(identity)
+            records.append(record)
+        # Artifact hashes have fixed length, so reject a fixture that cannot
+        # fit the bound manifest before spending time on the candidate build.
+        preview = {'schema': 1, **{key: '0' * 64 for key in BINDINGS}, 'rpms': records}
+        if len(json.dumps(preview, indent=2, sort_keys=True).encode()) + 1 > MAX_MANIFEST_BYTES:
+            raise ValueError('Raw dependency manifest exceeds size limit')
+        return RawDependencyFixture(destination, records, provenance_sha)
+    except BaseException:
+        shutil.rmtree(destination)
         raise
 
 

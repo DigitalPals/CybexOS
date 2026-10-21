@@ -68,8 +68,31 @@ point before installing both candidates and all dependencies in **one** DNF
 transaction with every repository disabled. `--recovery-check` additionally
 boots and restores that point. `qualification.json` records the bundle digest,
 identities and verified signatures. This input targets exact prebuilt upgrade
-artifacts; release-gate's fresh-build workflow does not accept a prebound bundle.
-Omitting the option retains the existing upgrade path.
+artifacts. Omitting the option retains the existing upgrade path.
+
+For `image/release-gate`, which always builds new candidates, supply the reviewed
+raw RPMs and the same separate filename-to-`{id, url}` provenance JSON as a pair:
+
+```bash
+image/release-gate --output NEW_OUTPUT --baseline-iso BASELINE.iso --tag vX.Y.Z --execute \
+  --upgrade-dependency-rpms RAW_RPM_DIR --upgrade-dependency-provenance provenance.json
+```
+
+This optional path requires host `rpm`. The raw directory contains only the
+reviewed, signed third-party RPMs, without a prebound manifest. An incomplete flag
+pair, malformed inputs or RPM metadata stop the gate before building or starting VMs.
+The gate copies bounded inputs into private staging before the build, records
+their hashes, identities and provenance, then binds those copies to the actual
+baseline ISO and both freshly built RPM hashes. Caller inputs are never changed;
+later caller changes cannot affect the staged fixture. The gate forwards the
+bound bundle only to the original upgrade qualifier, retaining recovery and all
+signature, checksum and single-transaction checks. It also checks that the
+returned qualification evidence identifies that exact bundle and artifacts.
+`release-gate.json` records the raw fixture content digest, provenance digest,
+bound manifest digest and upgrade report digest; `upgrade-dependency-manifest.json`
+retains the exact bound manifest. Private dependency RPM copies are removed on
+success or failure and are never included in release artifacts. Omitting both
+flags preserves the existing release-gate behavior.
 
 The source archive is published by `.github/workflows/release.yml` after all
 required jobs pass. Its prerequisite job checks the tag against `VERSION`,

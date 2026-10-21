@@ -188,6 +188,131 @@ class DependencyInputs(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'unsigned'):
                 inputs.rpm_identity(self.rpm)
 
+    def raw_fixture(self):
+        (self.directory / inputs.MANIFEST).unlink()
+        provenance = self.root / 'provenance.json'
+        provenance.write_text(json.dumps({self.rpm.name: self.record['repository']}))
+        identity = {key: self.record[key] for key in ('name', 'nevra', 'architecture', 'signature')}
+        return provenance, self.root / 'private-stage', identity
+
+    def test_raw_snapshot_preserves_source_and_binds_only_after_candidates_exist(self):
+        provenance, stage, identity = self.raw_fixture()
+        original_rpm, original_provenance = self.rpm.read_bytes(), provenance.read_bytes()
+        source_mode = self.rpm.stat().st_mode
+        with patch.object(inputs, 'rpm_identity', return_value=identity):
+            fixture = inputs.snapshot_raw_dependencies(self.directory, provenance, stage)
+            self.assertEqual(fixture.records, [self.record])
+            self.assertEqual(self.rpm.read_bytes(), original_rpm)
+            self.assertEqual(self.rpm.stat().st_mode, source_mode)
+            self.assertEqual(provenance.read_bytes(), original_provenance)
+            self.assertNotEqual((stage / self.rpm.name).stat().st_ino, self.rpm.stat().st_ino)
+            self.assertEqual(stage.stat().st_mode & 0o777, 0o700)
+            self.assertEqual((stage / self.rpm.name).stat().st_mode & 0o777, 0o400)
+            self.assertFalse((stage / inputs.MANIFEST).exists())
+            evidence = fixture.evidence()
+            self.assertEqual(evidence['provenance_sha256'], digest(provenance))
+            self.assertEqual(evidence['total_bytes'], self.record['size'])
+            self.assertEqual(len(evidence['fixture_sha256']), 64)
+            self.assertNotIn('candidate_rpm_sha256', evidence)
+            self.rpm.unlink()
+            self.rpm.symlink_to(provenance)
+            provenance.write_text('{}')
+            for path in self.artifacts.values():
+                path.write_bytes(b'fresh build: ' + path.name.encode())
+            bundle = fixture.bind(*self.artifacts.values())
+        self.assertEqual(bundle.manifest['rpms'], [self.record])
+        self.assertEqual(bundle.manifest['candidate_rpm_sha256'], digest(self.artifacts['candidate_rpm']))
+        with inputs.transfer_stream(bundle, self.record) as stream:
+            self.assertEqual(stream.read(), original_rpm)
+        self.assertFalse((self.directory / inputs.MANIFEST).exists())
+
+    def test_raw_snapshot_rejects_symlink_and_fifo_before_rpm_parser(self):
+        provenance, stage, _ = self.raw_fixture()
+        original = self.rpm.read_bytes()
+        for kind in ('rpm-link', 'rpm-fifo', 'directory-link', 'provenance-link'):
+            self.rpm.unlink()
+            self.rpm.write_bytes(original)
+            directory, source = self.directory, provenance
+            if kind == 'rpm-link':
+                self.rpm.unlink()
+                self.rpm.symlink_to(provenance)
+            elif kind == 'rpm-fifo':
+                self.rpm.unlink()
+                os.mkfifo(self.rpm)
+            elif kind == 'directory-link':
+                directory = self.root / 'linked-directory'
+                directory.symlink_to(self.directory, target_is_directory=True)
+            else:
+                source = self.root / 'linked-provenance'
+                source.symlink_to(provenance)
+            with self.subTest(kind=kind), patch.object(inputs, 'rpm_identity') as parser, \
+                 self.assertRaises((ValueError, OSError)):
+                inputs.snapshot_raw_dependencies(directory, source, stage)
+            parser.assert_not_called()
+            self.assertFalse(stage.exists())
+
+    def test_raw_snapshot_bounds_provenance_rpm_count_size_and_total_before_parser(self):
+        provenance, stage, _ = self.raw_fixture()
+        for limit, value in (('MAX_MANIFEST_BYTES', 1), ('MAX_RPMS', 0),
+                             ('MAX_RPM_BYTES', self.record['size'] - 1), ('MAX_TOTAL_BYTES', self.record['size'] - 1)):
+            with self.subTest(limit=limit), patch.object(inputs, limit, value), \
+                 patch.object(inputs, 'rpm_identity') as parser, self.assertRaises(ValueError):
+                inputs.snapshot_raw_dependencies(self.directory, provenance, stage)
+            parser.assert_not_called()
+            self.assertFalse(stage.exists())
+
+    def test_raw_provenance_rejects_duplicate_keys_traversal_unknown_and_missing_entries(self):
+        provenance, stage, _ = self.raw_fixture()
+        valid = {self.rpm.name: self.record['repository']}
+        malformed = [
+            '{"same": {}, "same": {}}', '[]', '{}',
+            json.dumps({**valid, 'extra.rpm': self.record['repository']}),
+            json.dumps({'../outside.rpm': self.record['repository']}),
+            json.dumps({self.rpm.name: {**self.record['repository'], 'unchecked': 'extra'}}),
+            json.dumps({self.rpm.name: {'id': 'fedora', 'url': 'https://user:secret@example.org/'}}),
+        ]
+        for value in malformed:
+            provenance.write_text(value)
+            with self.subTest(value=value), patch.object(inputs, 'rpm_identity') as parser, self.assertRaises(ValueError):
+                inputs.snapshot_raw_dependencies(self.directory, provenance, stage)
+            parser.assert_not_called()
+            self.assertFalse(stage.exists())
+
+    def test_duplicate_or_unsigned_raw_rpms_remove_partial_snapshot(self):
+        provenance, stage, identity = self.raw_fixture()
+        second = self.directory / 'patch-2.9-1.fc44.x86_64.rpm'
+        second.write_bytes(b'another inert RPM')
+        provenance.write_text(json.dumps({name: self.record['repository'] for name in (self.rpm.name, second.name)}))
+        with patch.object(inputs, 'rpm_identity', return_value=identity), \
+             self.assertRaisesRegex(ValueError, 'Duplicate raw dependency'):
+            inputs.snapshot_raw_dependencies(self.directory, provenance, stage)
+        self.assertFalse(stage.exists())
+        self.assertTrue(second.exists())
+        with patch.object(inputs, 'rpm_identity', side_effect=[identity, ValueError('Dependency RPM is unsigned')]), \
+             self.assertRaisesRegex(ValueError, 'unsigned'):
+            inputs.snapshot_raw_dependencies(self.directory, provenance, stage)
+        self.assertFalse(stage.exists())
+
+    def test_raw_fixture_that_cannot_fit_bound_manifest_fails_during_admission(self):
+        provenance, stage, identity = self.raw_fixture()
+        with patch.object(inputs, 'rpm_identity', return_value=identity), \
+             patch.object(inputs, 'MAX_MANIFEST_BYTES', provenance.stat().st_size + 1), \
+             self.assertRaisesRegex(ValueError, 'Raw dependency manifest exceeds size limit'):
+            inputs.snapshot_raw_dependencies(self.directory, provenance, stage)
+        self.assertFalse(stage.exists())
+
+    def test_raw_snapshot_never_adopts_existing_stage_or_stages_in_caller_directory(self):
+        provenance, stage, identity = self.raw_fixture()
+        stage.mkdir()
+        sentinel = stage / 'caller-file'
+        sentinel.write_bytes(b'keep')
+        with patch.object(inputs, 'rpm_identity', return_value=identity), self.assertRaises(FileExistsError):
+            inputs.snapshot_raw_dependencies(self.directory, provenance, stage)
+        self.assertEqual(sentinel.read_bytes(), b'keep')
+        with self.assertRaisesRegex(ValueError, 'outside the caller'):
+            inputs.snapshot_raw_dependencies(self.directory, provenance, self.directory / 'stage')
+        self.assertFalse((self.directory / 'stage').exists())
+
     def test_guest_script_executes_identity_hash_and_trusted_signature_checks(self):
         # Real generated guest Python, with only the RPM executable replaced.
         tools = self.root / 'bin'

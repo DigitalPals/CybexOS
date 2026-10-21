@@ -11,6 +11,7 @@ import subprocess
 
 from build_support import atomic_json, digest
 from browser_qualification import browser_dependencies
+from offline_upgrade_inputs import snapshot_raw_dependencies
 from vm_testing import require_test_iso
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,10 +53,16 @@ def main():
     parser.add_argument('--baseline-iso', type=Path, required=True)
     parser.add_argument('--tag', required=True)
     parser.add_argument('--memory', type=int, default=24576)
+    parser.add_argument('--upgrade-dependency-rpms', type=Path,
+                        help='Trusted raw third-party RPM directory, snapshotted before the build')
+    parser.add_argument('--upgrade-dependency-provenance', type=Path,
+                        help='Matching filename-to-{id,url} JSON; requires --upgrade-dependency-rpms and host rpm')
     parser.add_argument('--execute', action='store_true')
     args = parser.parse_args()
     if not args.execute:
         parser.error('--execute explicitly authorizes a build and tests on new disposable VM disks')
+    if bool(args.upgrade_dependency_rpms) != bool(args.upgrade_dependency_provenance):
+        parser.error('--upgrade-dependency-rpms and --upgrade-dependency-provenance must be supplied together')
     if not re.fullmatch(r'v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?', args.tag):
         parser.error('Use a versioned release tag')
     if (ROOT / 'VERSION').read_text().strip() != args.tag[1:]:
@@ -69,10 +76,18 @@ def main():
     output = args.output.resolve()
     if output.exists() or output.is_relative_to(Path('/data/pxe/iso')):
         parser.error('Output must be a new directory outside the served ISO tree')
+    if args.upgrade_dependency_rpms and output.is_relative_to(args.upgrade_dependency_rpms.resolve()):
+        parser.error('Output must be outside the raw dependency input directory')
     output.mkdir(parents=True, mode=0o700)
     report = {'status': 'running', 'tag': args.tag, 'baseline_iso': str(baseline)}
     build = output / 'build'
+    dependency_staging = output / 'upgrade-dependencies'
     try:
+        fixture = None
+        if args.upgrade_dependency_rpms:
+            fixture = snapshot_raw_dependencies(args.upgrade_dependency_rpms,
+                                                args.upgrade_dependency_provenance, dependency_staging)
+            report['upgrade_dependency_fixture'] = fixture.evidence()
         run_child([str(ROOT / 'image/build'), '--output', str(build), '--memory', str(args.memory),
                         '--update-channel', str(ROOT / 'image/channels/stable.json')])
         artifacts = build / 'artifacts'
@@ -85,6 +100,13 @@ def main():
             raise RuntimeError('Build must deliver exactly one ISO, desktop RPM, offline applications RPM and SPDX SBOM')
         if digest(baseline) == digest(isos[0]):
             raise RuntimeError('Upgrade baseline must be a different prior ISO, not the candidate image')
+        dependencies = None
+        if fixture:
+            # This build creates a new EVR and new bytes. Bind only now, before
+            # publication or any VM qualification, to these exact artifacts.
+            dependencies = fixture.bind(baseline, rpms[0], offline[0])
+            report['candidate_dependencies'] = dependencies.evidence()
+            atomic_json(output / 'upgrade-dependency-manifest.json', dependencies.manifest)
         run_child([str(ROOT / 'image/publish-pxe'), str(artifacts), '--execute'])
         iso = require_test_iso(Path('/data/pxe/iso') / isos[0].name)
         report['testing_iso'] = str(iso)
@@ -118,13 +140,28 @@ def main():
             atomic_json(output / scenario / 'qualification.json', fresh)
             report['installation_parity'].append({'scenario': scenario, 'source_content_sha256': checkout['source_content_sha256'],
                                                  'checkout_report_sha256': digest(directory / 'checkout-qualification.json')})
-        run_child([str(ROOT / 'image/qualify'), str(baseline), '--output', str(output / 'upgrade'),
+        command = [str(ROOT / 'image/qualify'), str(baseline), '--output', str(output / 'upgrade'),
                         '--execute-vm', '--erase-disposable-disk', '--scenario', 'encrypted-us',
                         '--candidate-rpm', str(rpms[0]), '--candidate-offline-rpm', str(offline[0]),
-                        '--recovery-check', '--legacy-installer'])
+                        '--recovery-check', '--legacy-installer']
+        if dependencies:
+            command += ['--candidate-dependencies', str(dependencies.directory)]
+        run_child(command)
+        if dependencies:
+            evidence = output / 'upgrade/qualification.json'
+            qualified = json.loads(evidence.read_text())
+            actual = qualified.get('candidate_dependencies', {})
+            required = {'installed-rpm-upgrade', 'recovery-boot-restore', 'offline-dependency-signatures-and-single-transaction'}
+            if (qualified.get('status') != 'passed' or actual.get('guest_signatures_verified') is not True
+                    or any(actual.get(key) != value for key, value in dependencies.evidence().items())
+                    or not required.issubset(qualified.get('checks', []))
+                    or any(qualified.get(key) != dependencies.manifest[binding] for key, binding in (
+                        ('iso_sha256', 'baseline_iso_sha256'), ('candidate_rpm_sha256', 'candidate_rpm_sha256'),
+                        ('candidate_offline_rpm_sha256', 'candidate_offline_rpm_sha256')))):
+                raise RuntimeError('Upgrade did not qualify the exact dependency fixture, artifacts and recovery')
+            report['upgrade_qualification_sha256'] = digest(evidence)
         report['status'] = 'passed'
         report['artifacts'] = str(artifacts)
-        print(json.dumps(report))
     except BaseException as error:
         report.update(status='failed', error=str(error) or type(error).__name__)
         # QEMU helpers always stop their guests. Preserve only compact evidence
@@ -133,7 +170,15 @@ def main():
             shutil.rmtree(build)
         raise
     finally:
-        atomic_json(output / 'release-gate.json', report)
+        try:
+            if args.upgrade_dependency_rpms and dependency_staging.exists():
+                shutil.rmtree(dependency_staging)
+        except BaseException as error:
+            report.update(status='failed', cleanup_error=f'{dependency_staging}: {error}')
+            raise
+        finally:
+            atomic_json(output / 'release-gate.json', report)
+    print(json.dumps(report))
 
 
 if __name__ == '__main__':
