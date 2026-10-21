@@ -85,7 +85,8 @@ local function apply_workspace_policy()
     end
   end
   local external = preferred_external(monitors)
-  local signature = (internal and internal.name or "-")
+  local mode = rawget(_G, "__cybexos_workspace_mode") or "shared"
+  local signature = mode .. ":" .. (internal and internal.name or "-")
       .. ":" .. (external and external.name or "-")
   if signature == workspace_policy.signature then return end
 
@@ -94,6 +95,10 @@ local function apply_workspace_policy()
   end
   workspace_policy.rules = {}
   workspace_policy.signature = signature
+
+  -- The authoritative owner replaces this policy only on an explicit choice.
+  -- Shared users retain the ISO's existing XPS defaults.
+  if mode == "per-monitor" then return end
 
   local workspace_one_monitor = internal or external
   if workspace_one_monitor then
@@ -114,6 +119,7 @@ local function apply_workspace_policy()
     end
   end
 end
+workspace_policy.apply = apply_workspace_policy
 
 table.insert(workspace_policy.subscriptions,
   hl.on("monitor.layout_changed", apply_workspace_policy))

@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import "NotifHelpers.js" as Helpers
 
 // The contextual action pills under a notification's body. The first action
 // carries the accent, the rest are neutral. They are revealed on hover, and
@@ -27,6 +28,11 @@ Revealer {
         if (reveal)
             refreshItems();
     }
+    Connections {
+        target: Notifs
+        function onSnoozesChanged() { if (root.reveal) root.refreshItems(); }
+    }
+
     onEntryChanged: {
         if (reveal)
             refreshItems();
@@ -61,7 +67,9 @@ Revealer {
                 border.width: activeFocus ? 1 : 0
                 border.color: Theme.accentText
                 Accessible.role: Accessible.Button
-                Accessible.name: pill.modelData.text
+                Accessible.name: pillText.text
+                Accessible.description: pill.modelData.kind === "link" ? pill.modelData.value
+                    : pill.modelData.kind === "copy-code" ? pill.modelData.value : ""
                 Accessible.onPressAction: Notifs.invoke(root.entry, pill.modelData)
 
                 onActiveFocusChanged: root.focusedActions = Math.max(0,
@@ -89,7 +97,8 @@ Revealer {
                     id: pillText
                     anchors.centerIn: parent
                     width: parent.width - 16
-                    text: pill.modelData.text
+                    text: Helpers.singleLine(pill.modelData.text)
+                    textFormat: Text.PlainText
                     font.family: root.face
                     font.pixelSize: root.pixelSize
                     font.weight: Theme.weightMedium

@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import pty
 import shlex
 import subprocess
 import unittest
@@ -29,18 +30,34 @@ class InstallationParity(Fixture):
             'hostnamectl': "printf '%s\\n' studio",
             'timedatectl': "printf '%s\\n' Europe/Amsterdam",
             'locale': "printf '%s\\n' LANG=nl_NL.UTF-8",
-            'localectl': 'case "$*" in *X11Layout*) echo us;; *X11Variant*) echo dvorak;; esac',
+            'localectl': 'echo "unsupported installer probe: localectl $*" >&2; exit 98',
             'sudo': 'echo "--check must never elevate or install" >&2; exit 97',
         }.items():
             self.command(name, body)
         self.environment = dict(os.environ, HOME=str(self.home), SUDO_USER='alice',
                                 CYBEXOS_CONFIG_FILE=str(self.path),
                                 PATH=f"{self.bin}:{os.environ['PATH']}", PYTHONDONTWRITEBYTECODE='1')
+        self.keyboard('us', 'dvorak')
 
     def command(self, name, body):
         path = self.bin / name
         path.write_text('#!/bin/sh\n' + body + '\n')
         path.chmod(0o755)
+
+    def keyboard(self, layout, variant):
+        # busctl get-property emits one typed JSON object per requested
+        # property, with a scalar string in data (not the call command's array).
+        response = '\n'.join(json.dumps({'type': 's', 'data': value})
+                             for value in (layout, variant))
+        arguments = ('--system --json=short get-property '
+                     'org.freedesktop.locale1 /org/freedesktop/locale1 '
+                     'org.freedesktop.locale1 X11Layout X11Variant')
+        self.discovery_log = self.root / 'keyboard-discovery.log'
+        self.command('busctl',
+                     'printf "%s\\n" "$*" >> ' + shlex.quote(str(self.discovery_log)) + '\n'
+                     '[ "$*" = ' + shlex.quote(arguments)
+                     + ' ] || { echo "unsupported busctl arguments: $*" >&2; exit 98; }\n'
+                     'printf "%s\\n" ' + shlex.quote(response))
 
     def encryption(self, encrypted, *, mixed=False, fail=False):
         self.command('findmnt', "printf '%s\\n' " + shlex.quote(json.dumps({'filesystems': [
@@ -84,17 +101,36 @@ class InstallationParity(Fixture):
         self.assertEqual(default.resolve(), graphical)
         self.assertEqual(active.resolve(), console, 'the running session is not isolated or restarted')
 
-    def checkout(self, *extra, interactive=False, answers=''):
+    def checkout(self, *extra, interactive=False, terminal=False, answers='', warning=None):
         source = self.installer
-        if interactive:
+        if interactive and not terminal:
             # Replace terminal detection only; feed the actual questionnaire.
             source = self.root / 'interactive-install'
             source.write_text(self.installer.read_text().replace(
                 '[[ $non_interactive == false && ! -t 0 ]]', 'false'))
-        result = subprocess.run(['bash', str(source), '--check',
-                                 *([] if interactive else ['--non-interactive']), *extra],
-                                env=self.environment, input=answers, text=True, capture_output=True, timeout=20)
+        command = ['bash', str(source), '--check',
+                   *([] if interactive else ['--non-interactive']), *extra]
+        if terminal:
+            # Exercise the terminal guard and real read prompts unchanged.
+            master_fd, slave_fd = pty.openpty()
+            try:
+                os.write(master_fd, answers.encode())
+                result = subprocess.run(command, stdin=slave_fd, env=self.environment,
+                                        text=True, capture_output=True, timeout=20)
+            finally:
+                os.close(master_fd)
+                os.close(slave_fd)
+        else:
+            result = subprocess.run(command, env=self.environment, input=answers,
+                                    text=True, capture_output=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)
+        if terminal:
+            self.assertIn('Keyboard variant', result.stderr)
+            self.assertNotIn('Invalid value:', result.stderr)
+        elif warning is None:
+            self.assertEqual(result.stderr, '')
+        else:
+            self.assertIn(warning, result.stderr)
         return yaml.safe_load(result.stdout[result.stdout.index('---\n'):])
 
     def installed_iso(self, encrypted):
@@ -122,6 +158,91 @@ class InstallationParity(Fixture):
                 self.assertIs(expected['desktop_autologin'], encrypted)
                 self.assertFalse((self.root / 'etc/sudoers.d/10-wheel-nopasswd').exists())
                 self.assertFalse(self.path.exists())
+
+    def test_supported_keyboard_discovery_matches_iso_and_preserves_variant_positions(self):
+        self.encryption(False)
+        for layout, variant in (('nl', ''), ('us', ''), ('us', 'dvorak'),
+                                ('nl,us', ',dvorak'), ('us,nl', 'intl,'),
+                                ('us,nl,de', ',,nodeadkeys'), ('', ''), ('', 'dvorak')):
+            with self.subTest(layout=layout, variant=variant):
+                self.keyboard(layout, variant)
+                (self.root / 'etc/vconsole.conf').write_text(
+                    f'XKBLAYOUT="{layout}"\nXKBVARIANT="{variant}"\n')
+                expected = self.installed_iso(False)
+                self.assertEqual(self.checkout(), expected)
+                self.assertEqual(self.checkout(interactive=True, answers='\n' * 30), expected)
+                self.assertEqual(expected['machine_keyboard_layout'], layout or 'us')
+                self.assertEqual(expected['machine_keyboard_variant'], variant if layout else '')
+
+    def test_keyboard_discovery_failure_is_reported_and_keeps_first_install_fallback(self):
+        self.encryption(False)
+        failures = (
+            'echo "Failed to connect to bus" >&2; exit 1',
+            'echo "busctl: command not found" >&2; exit 127',
+            # A partial response must not mix a discovered layout with a
+            # variant obtained from an unsuccessful query.
+            'printf \'%s\\n\' \'{"type":"s","data":"nl"}\'; exit 1',
+            'exit 0',
+            'printf \'%s\\n\' \'not JSON\'',
+            'printf \'%s\\n\' \'{"type":"s","data":"nl"}\'',
+            'printf \'%s\\n\' \'{"type":"s","data":["nl"]}\' \'{"type":"s","data":""}\'',
+            'printf \'%s\\n\' \'{"type":"as","data":["nl"]}\' \'{"type":"s","data":""}\'',
+            'printf \'%s\\n\' \'{"type":"s","data":"nl"}\' \'{"type":"s","data":"bad variant"}\'',
+        )
+        for failure in failures:
+            with self.subTest(failure=failure):
+                self.command('busctl', failure)
+                value = self.checkout(warning='could not discover the system X11 keyboard')
+                self.assertEqual((value['machine_keyboard_layout'], value['machine_keyboard_variant']),
+                                 ('us', ''))
+                self.assertIs(value['manage_system_identity'], False)
+
+    def test_interactive_layout_change_resets_the_detected_variant(self):
+        self.encryption(False)
+        for detected_layout, detected_variant, layout, answer, variant in (
+                ('us', 'dvorak', 'nl', '', ''),
+                ('us,nl', 'dvorak,', 'nl,us', '', ''),
+                ('us,nl', 'dvorak,', 'us', '', ''),
+                ('us', 'dvorak', 'nl,us', ',dvorak', ',dvorak')):
+            with self.subTest(detected_layout=detected_layout, layout=layout, answer=answer):
+                self.keyboard(detected_layout, detected_variant)
+                value = self.checkout(interactive=True, terminal=True,
+                                      answers='\n' * 5 + layout + '\n' + answer + '\n' * 30)
+                self.assertEqual((value['machine_keyboard_layout'], value['machine_keyboard_variant']),
+                                 (layout, variant))
+                self.assertIs(value['manage_system_identity'], True)
+                detected = self.checkout()
+                self.assertEqual((detected['machine_keyboard_layout'], detected['machine_keyboard_variant']),
+                                 (detected_layout, detected_variant))
+
+    def test_interactive_variant_can_be_cleared_without_changing_the_layout(self):
+        self.encryption(False)
+        for layout, variant in (('us', 'dvorak'), ('us,nl', 'dvorak,')):
+            with self.subTest(layout=layout, variant=variant):
+                self.keyboard(layout, variant)
+                # Keep the username, host, timezone, locales and keyboard
+                # layout, then explicitly clear the variant with '-'.
+                value = self.checkout(interactive=True, terminal=True,
+                                      answers='\n' * 6 + '-\n' + '\n' * 30)
+                self.assertEqual((value['machine_keyboard_layout'], value['machine_keyboard_variant']),
+                                 (layout, ''))
+                self.assertIs(value['manage_system_identity'], True)
+                kept = self.checkout(interactive=True, terminal=True, answers='\n' * 30)
+                self.assertEqual((kept['machine_keyboard_layout'], kept['machine_keyboard_variant']),
+                                 (layout, variant))
+                self.assertIs(kept['manage_system_identity'], False)
+
+    def test_saved_keyboard_choices_are_reused_without_discovery(self):
+        self.encryption(False)
+        saved = self.checkout()
+        saved.update(machine_keyboard_layout='nl,us', machine_keyboard_variant=',dvorak')
+        original = config.render(saved)
+        self.path.write_text(original)
+        self.discovery_log.unlink(missing_ok=True)
+        self.command('busctl', 'touch ' + shlex.quote(str(self.discovery_log)) + '; exit 1')
+        self.assertEqual(self.checkout(), saved)
+        self.assertEqual(self.path.read_text(), original)
+        self.assertFalse(self.discovery_log.exists(), 'saved choices need no system discovery')
 
     def test_generic_checkout_selects_the_isos_shared_hardware_packages(self):
         from test_installed_policy import repair

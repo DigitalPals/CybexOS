@@ -33,6 +33,10 @@ fi
 echo "581bd602d10705eb89003680335ffc3684b922c587073b6e52c371f949843fd7  $build_root/hyprland.gpg" | sha256sum --check
 phase offline-applications
 python3 "$source_root/image/applications"
+phase native-titlebars
+python3 "$source_root/image/titlebars"
+phase native-notification-images
+python3 "$source_root/image/notification_images.py"
 phase desktop-payload
 python3 "$source_root/image/package" --output "$build_root"
 phase desktop-rpm
@@ -50,6 +54,8 @@ phase manifests-and-cache
 cp "$build_root/repo/"*.rpm "$artifacts/"
 cp "$build_root/package-manifest.json" "$build_root/applications.json" "$artifacts/"
 cp "$build_root/offline-payload.json" "$artifacts/"
+cp "$build_root/titlebars.json" "$artifacts/"
+cp "$build_root/notification-images.json" "$artifacts/"
 cp "$source_root/image/build-provenance.json" "$artifacts/"
 rpm -qa --qf '%{NEVRA}\n' | sort > "$artifacts/builder-packages.txt"
 python3 "$source_root/image/download_cache.py" export /home/builder/cache-export

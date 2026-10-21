@@ -45,7 +45,8 @@ test("a replaced notification updates its toast and history entry in place", () 
     assert.match(notifs, /notif\[name\]\.connect\(changed\)/);
     assert.match(notifs, /notif\[name\]\.disconnect\(changed\)/,
         "a closed notification must drop its replacement handlers");
-    assert.match(notifs, /root\.updateEntry\(entry\.key, Object\.assign\(\s*\{ actions: notif\.actions \}, root\.describe\(root\.remoteSource\(notif\)\)\)\)/);
+    assert.match(notifs, /const changes = Object\.assign\(\{ actions: notif\.actions,[\s\S]*?root\.describe\(root\.remoteSource\(notif\)\)\)/);
+    assert.match(notifs, /root\.updateEntry\(entry\.key, changes\)/);
     assert.match(notifs, /Qt\.callLater\(refresh\)/,
         "one replacement changes many properties; rebuild once");
 });

@@ -227,6 +227,8 @@ PanelWindow {
                             readonly property var app: separator ? null : Dock.appByKey[modelData] ?? null
                             readonly property bool focusedApp: app !== null
                                 && app.windows.indexOf(Dock.activeAddress) !== -1
+                            readonly property bool minimizedApp: app !== null && app.windows.length > 0
+                                && app.windows.every(address => DesktopWorkspaces.isMinimized(address))
                             readonly property string title: app ? Dock.titleFor(app) : ""
 
                             width: separator ? Theme.scaled(9) : root.itemSize
@@ -234,6 +236,7 @@ PanelWindow {
 
                             Accessible.role: separator ? Accessible.Separator : Accessible.Button
                             Accessible.name: separator ? "" : item.title
+                                + (item.minimizedApp ? ", " + I18n.tr("Minimized") : "")
                                 + (item.focusedApp ? ", focused" : app && app.running ? ", running" : "")
                             Accessible.onPressAction: {
                                 if (!item.separator)
@@ -277,6 +280,7 @@ PanelWindow {
                                 height: Theme.scaled(4)
                                 radius: height / 2
                                 color: item.focusedApp ? Theme.accent : Theme.textMid
+                                opacity: item.minimizedApp ? 0.5 : 1
 
                                 Behavior on width {
                                     NumberAnimation {

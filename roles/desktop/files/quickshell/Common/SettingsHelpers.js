@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 28;
+var VERSION = 29;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -434,6 +434,16 @@ function defaults() {
         notifIcons: true,
         notifProgress: true,
         notifBodyLines: 2,
+        // History remains in memory unless the user explicitly opts in.
+        notifHistoryPersist: false,
+        notifHistoryCount: 50,
+        notifHistoryHours: 24,
+        notifHistoryBytes: 262144,
+        notifDedupeSeconds: 10,
+        notifBurstLimit: 5,
+        notifPopupGroups: 3,
+        notifPopupPerGroup: 3,
+        notifFullscreen: "away",
         drawerTabs: defaultDrawerTabs(),
         drawerOverview: defaultDrawerOverview(),
         drawerHover: "open",
@@ -1419,6 +1429,15 @@ function merge(raw, context) {
         notifIcons: boolIn(parsed.notifIcons, d.notifIcons),
         notifProgress: boolIn(parsed.notifProgress, d.notifProgress),
         notifBodyLines: intIn(parsed.notifBodyLines, 0, 3, 1, d.notifBodyLines),
+        notifHistoryPersist: boolIn(parsed.notifHistoryPersist, d.notifHistoryPersist),
+        notifHistoryCount: intIn(parsed.notifHistoryCount, 10, 200, 1, d.notifHistoryCount),
+        notifHistoryHours: intIn(parsed.notifHistoryHours, 1, 168, 1, d.notifHistoryHours),
+        notifHistoryBytes: intIn(parsed.notifHistoryBytes, 16384, 1048576, 1, d.notifHistoryBytes),
+        notifDedupeSeconds: intIn(parsed.notifDedupeSeconds, 0, 60, 1, d.notifDedupeSeconds),
+        notifBurstLimit: intIn(parsed.notifBurstLimit, 1, 20, 1, d.notifBurstLimit),
+        notifPopupGroups: intIn(parsed.notifPopupGroups, 1, 5, 1, d.notifPopupGroups),
+        notifPopupPerGroup: intIn(parsed.notifPopupPerGroup, 1, 5, 1, d.notifPopupPerGroup),
+        notifFullscreen: enumIn(parsed.notifFullscreen, ["away", "show"], d.notifFullscreen),
         drawerTabs: normalizeDrawerTabs(parsed.drawerTabs),
         drawerOverview: normalizeDrawerOverview(parsed.drawerOverview),
         drawerHover: enumIn(parsed.drawerHover, DRAWER_HOVER_MODES, d.drawerHover),

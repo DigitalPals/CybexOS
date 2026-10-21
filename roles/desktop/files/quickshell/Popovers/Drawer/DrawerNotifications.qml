@@ -10,7 +10,7 @@ Column {
     id: root
 
     property double nowMs: Date.now()
-    readonly property var entries: Notifs.entries.slice(0, 12)
+    readonly property var entries: Notifs.entries
     // Entries are newest first, so the recent hour is a prefix. The clock
     // tick only moves this int; the lists below re-slice when it actually
     // changes, not every 30 s, and the ScriptModels keep each surviving
@@ -151,6 +151,8 @@ Column {
             }
         }
     }
+
+    NotifSnoozes { width: parent.width }
 
     // ---- cards -----------------------------------------------------------
     Column {

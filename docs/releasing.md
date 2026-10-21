@@ -28,6 +28,72 @@ repository signing must likewise pass `--previous-repository` with the previous
 signed directory or its HTTPS URL. A missing public manifest (HTTP 404) allows
 the first release; invalid signatures and other download failures stop signing.
 
+An older installed baseline can need additional Fedora RPMs for a candidate's
+SDK dependencies. Supply those only as an optional qualification fixture with
+`image/qualify ... --candidate-dependencies DIR`. Do not publish them as
+first-party release artifacts.
+Keep a flat directory of signed, verified candidate-build downloads and a
+separate provenance JSON mapping each RPM filename to
+`{"id": "fedora", "url": "https://.../original-repository/"}`. On a host with
+`rpm`, create and verify its manifest with:
+
+```bash
+python3 image/offline_upgrade_inputs.py create DIR --provenance provenance.json \
+  --baseline-iso BASELINE.iso --candidate-rpm DESKTOP.rpm --candidate-offline-rpm OFFLINE.rpm
+python3 image/offline_upgrade_inputs.py verify DIR \
+  --baseline-iso BASELINE.iso --candidate-rpm DESKTOP.rpm --candidate-offline-rpm OFFLINE.rpm
+```
+
+Manual generators may write `DIR/manifest.json`: the exact top-level keys are
+`schema` (integer `1`), `baseline_iso_sha256`, `candidate_rpm_sha256`,
+`candidate_offline_rpm_sha256`, and `rpms`. Each RPM record has exactly
+`filename`, `name`, `nevra`, `architecture`, `sha256`, `size` (bytes),
+`signature` (`{"tag": "RSAHEADER", "value": "<rpm pgpsig output>"}`), and
+`repository` (`id` and HTTPS `url`). NEVRA includes the numeric epoch, including
+zero: `name-0:version-release.x86_64`. Signature values come from
+`LC_ALL=C TZ=UTC rpm -qp --qf '%{RSAHEADER:pgpsig}'`; `DSAHEADER`, `SIGPGP`, and `SIGGPG` are also
+supported. The JSON file's SHA-256 is the bundle identity, binding every RPM's
+identity, bytes and provenance to all three input artifacts.
+
+Admission rejects symlinks, traversal, duplicate identities, unknown fields,
+extra/missing files, non-x86_64/noarch RPMs and mismatches. Limits are 256 RPMs,
+512 MiB per RPM, 2 GiB total and a 1 MiB manifest. Root copies both candidates
+and all dependencies into fresh private staging files using bounded,
+no-symlink reads, then verifies the copied hashes, NEVRAs and signature headers.
+Only those root-owned copies are checked and installed; changing the original
+account-owned transfers cannot change the transaction. Dependencies pass
+`rpm --checksig --verbose` using installed trust keys; no keys are imported.
+Root staging is removed on success or failure. Qualification creates a bootable recovery
+point before installing both candidates and all dependencies in **one** DNF
+transaction with every repository disabled. `--recovery-check` additionally
+boots and restores that point. `qualification.json` records the bundle digest,
+identities and verified signatures. This input targets exact prebuilt upgrade
+artifacts. Omitting the option retains the existing upgrade path.
+
+For `image/release-gate`, which always builds new candidates, supply the reviewed
+raw RPMs and the same separate filename-to-`{id, url}` provenance JSON as a pair:
+
+```bash
+image/release-gate --output NEW_OUTPUT --baseline-iso BASELINE.iso --tag vX.Y.Z --execute \
+  --upgrade-dependency-rpms RAW_RPM_DIR --upgrade-dependency-provenance provenance.json
+```
+
+This optional path requires host `rpm`. The raw directory contains only the
+reviewed, signed third-party RPMs, without a prebound manifest. An incomplete flag
+pair, malformed inputs or RPM metadata stop the gate before building or starting VMs.
+The gate copies bounded inputs into private staging before the build, records
+their hashes, identities and provenance, then binds those copies to the actual
+baseline ISO and both freshly built RPM hashes. Caller inputs are never changed;
+later caller changes cannot affect the staged fixture. The gate forwards the
+bound bundle only to the original upgrade qualifier, retaining recovery and all
+signature, checksum and single-transaction checks. It also checks that the
+returned qualification evidence identifies that exact bundle and artifacts.
+`release-gate.json` records the raw fixture content digest, provenance digest,
+bound manifest digest and upgrade report digest; `upgrade-dependency-manifest.json`
+retains the exact bound manifest. Private dependency RPM copies are removed on
+success or failure and are never included in release artifacts. Omitting both
+flags preserves the existing release-gate behavior.
+
 The source archive is published by `.github/workflows/release.yml` after all
 required jobs pass. Its prerequisite job checks the tag against `VERSION`,
 requires a non-empty `CYBEXOS_BASELINE_ISO` repository variable and a root

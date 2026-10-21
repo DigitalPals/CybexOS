@@ -607,6 +607,7 @@ PopoutPanel {
                 switch (Settings.page) {
                 case "wallpaper": return wallpaperPage;
                 case "bar": return barPage;
+                case "workspaces": return workspacesPage;
                 case "notifications": return notificationsPage;
                 case "displays": return displaysPage;
                 case "sound": return soundPage;
@@ -797,6 +798,7 @@ PopoutPanel {
                 }
             }
         }
+        Component { id: workspacesPage; WorkspacesPage {} }
         Component { id: notificationsPage; NotificationsPage {} }
         Component { id: pluginsPage; PluginsPage {} }
         Component { id: networkPage; NetworkPage {} }

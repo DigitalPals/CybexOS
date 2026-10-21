@@ -50,6 +50,8 @@ Rectangle {
     readonly property bool urgent: groupUrgent
         || entry.urgency === NotificationUrgency.Critical
     readonly property bool hovered: cardHover.hovered
+    readonly property bool holdsFocus: activeFocus || closeButton.activeFocus
+        || textDisclosure.activeFocus || notificationActions.hasFocusedAction
     readonly property bool textExpanded: textExpandedByUser
         || (expandTextOnHover && hovered)
     readonly property bool textTruncated: header.truncated
@@ -64,11 +66,13 @@ Rectangle {
     readonly property real contentHeight: cardContent.implicitHeight + card.padV * 2
 
     height: contentHeight
-    activeFocusOnTab: keyboardEnabled && actionable
+    activeFocusOnTab: keyboardEnabled
     Accessible.role: actionable ? Accessible.Button : Accessible.StaticText
     Accessible.name: (entry.displayAppName || "Notification")
         + (entry.displaySummary ? ": " + entry.displaySummary : "")
-    Accessible.description: entry.displayBody || ""
+    Accessible.description: (entry.displayBody || "")
+        + ((entry.occurrences || 1) > 1
+            ? " · " + I18n.format("Repeated %1 times", [entry.occurrences]) : "")
     Accessible.onPressAction: {
         if (card.actionable)
             card.activated();
@@ -156,6 +160,7 @@ Rectangle {
 
                 Text {
                     id: header
+                    textFormat: Text.PlainText
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - trailing.width - 8
@@ -366,10 +371,12 @@ Rectangle {
 
             Text {
                 id: summary
+                textFormat: Text.PlainText
                 visible: card.style.stackedHeader && card.showApp
                     && card.entry.displaySummary !== ""
                 width: parent.width
-                text: card.entry.displaySummary || ""
+                text: card.entry.displaySummary === "Verification notification"
+                    ? I18n.tr("Verification notification") : card.entry.displaySummary || ""
                 font.family: card.style.face
                 font.pixelSize: card.style.header
                 font.weight: Theme.weightSemibold
@@ -380,9 +387,11 @@ Rectangle {
 
             Text {
                 id: bodyText
+                textFormat: Text.PlainText
                 visible: text !== "" && card.style.bodyLines > 0
                 width: parent.width
-                text: card.entry.displayBody || ""
+                text: card.entry.displayBody === "Content redacted"
+                    ? I18n.tr("Content redacted") : card.entry.displayBody || ""
                 font.family: card.style.face
                 font.pixelSize: card.style.body
                 color: card.urgent ? Theme.textHi : card.style.bodyColor
@@ -391,6 +400,14 @@ Rectangle {
                     ? 2147483647 : Math.max(1, card.style.bodyLines)
                 elide: card.textExpanded ? Text.ElideNone : Text.ElideRight
                 lineHeight: card.style.bodyLeading
+            }
+
+            Text {
+                visible: (card.entry.occurrences || 1) > 1
+                text: I18n.format("Repeated %1 times", [card.entry.occurrences || 1])
+                font.family: card.style.face
+                font.pixelSize: card.style.pill
+                color: Theme.textDim
             }
 
             NotifActions {

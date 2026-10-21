@@ -31,7 +31,8 @@ test("nothing unvalidated reaches the Lua expression", () => {
     assert.equal(W.closeWindow(""), "");
     assert.equal(W.moveWindow("abc", { id: -98, name: "special:scratchpad" }), "",
         "special workspaces are never a destination");
-    assert.equal(W.moveWindow("abc", { id: -1337, name: "a\"b" }), "");
+    assert.equal(W.moveWindow("abc", { id: -1337, name: "a\"b" }),
+        'hl.dsp.window.move({ workspace = "name:a\\"b", follow = false, window = "address:0xabc" })');
     assert.equal(W.moveWindow("abc", { id: -1337, name: "x\n" }), "");
     assert.equal(W.moveWindow("zz", { id: 2 }), "");
     assert.equal(W.focusWorkspace(0), "");
@@ -39,8 +40,26 @@ test("nothing unvalidated reaches the Lua expression", () => {
     assert.equal(W.focusWorkspace(null), "");
 });
 
-test("the launcher's own focus string agrees with the shared builder", () => {
+test("positive-ID renamed workspaces use quoted native selectors, never numbered APIs", () => {
+    const target = { id: 1, name: "research" };
+    assert.equal(W.workspaceKind(target), "named");
+    assert.equal(W.focusWorkspace(target), 'hl.dsp.focus({ workspace = "name:research" })');
+    assert.equal(W.moveWindow("abc", target),
+        'hl.dsp.window.move({ workspace = "name:research", follow = false, window = "address:0xabc" })');
+    for (const builder of [W.desktopFocus, W.desktopCycleLayout])
+        assert.equal(builder(target), "");
+    assert.equal(W.desktopMove("abc", target), "");
+    assert.equal(W.desktopLayout(target, "floating"), "");
+    const labeled = { id: 41, name: "1", kind: "numbered", workspaceName: "41" };
+    assert.equal(W.desktopFocus(labeled), 'require("workspaces").focus_id(41)');
+    const hostile = { id: 1, kind: "named", workspaceName: 'research\\";error("x")' };
+    assert.equal(W.workspaceArgument(hostile), W.luaString('name:' + hostile.workspaceName));
+    for (const name of ["special:scratchpad", "special", "bad\nname", "a".repeat(252)])
+        assert.equal(W.focusWorkspace({ id: 1, kind: "named", workspaceName: name }), "");
+});
+
+test("the launcher uses the live checked restore-before-focus owner", () => {
     const providers = fs.readFileSync(path.join(shellDir, "Common/LauncherProviders.qml"), "utf8");
-    assert.match(providers, /hl\.dsp\.focus\(\{ window = "address:0x'\s*\+ row\.win\.address \+ '" \}\)/);
+    assert.match(providers, /row\.win && DesktopWorkspaces\.activate\(row\.win\.address\)/);
     assert.equal(W.focusWindow("abc"), 'hl.dsp.focus({ window = "address:0x' + "abc" + '" })');
 });

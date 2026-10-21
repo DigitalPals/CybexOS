@@ -140,6 +140,12 @@ omawrite_version: v0.5.0
 omawrite_commit: 8f98892b26768236b2c20f4e637cf4b102d898bf
 omawrite_checksum: sha256:7277c05472930f15a5b13842a88260b0abe3a26bb0e7db9f9c852681e515842e
 
+# Native Fedora build only: never install the Arch titlebars binary. Rebuild
+# against the exact installed Hyprland RPM and its matching devel package.
+titlebars_version: v0.2.2
+titlebars_commit: 379ff910fcce9f0cc9b41f9a87c527997076a417
+titlebars_checksum: sha256:a453ae6b0a39f75e9a559a0258746e7df24a9432d5571ce505501cd0a333aa72
+
 github_release_apps:
   - name: lazygit
     enabled: "{{ features.developer_tools }}"

@@ -16,6 +16,8 @@ from application_payload import relativize_seed_links, include_applications
 from desktop_payload import prepare_defaults, prepare_session, split_seed, prepare_managed_defaults, prepare_app_launchers, prepare_quickshell, prepare_font_licenses
 from provision_payload import prepare_provision
 from release_metadata import install_update_channel, render_spec
+from titlebars_payload import prepare_titlebars
+from notification_images import prepare_notification_images
 from offline_payload import configuration as offline_configuration, file_lists, inventory as offline_inventory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,7 +69,10 @@ def main():
     copy("LICENSE", "usr/share/licenses/cybexos-desktop/LICENSE")
     copy("release-manifest.json", "usr/share/cybexos/release-manifest.json")
     prepare_quickshell(ROOT, payload)
-    for name in ("hyprland.lua", "bindings.lua", "autostart.lua", "displays.lua", "input_preferences.lua"):
+    prepare_titlebars(ROOT, build, payload)
+    prepare_notification_images(ROOT, build, payload)
+    for name in ("hyprland.lua", "bindings.lua", "autostart.lua", "displays.lua", "input_preferences.lua",
+                 "workspace_state.lua", "workspace_model.lua", "workspace_layouts.lua", "workspaces.lua"):
         content = (ROOT / "roles/desktop/files" / name).read_text()
         content = content.replace("/usr/local/libexec/cybexos-", "/usr/libexec/cybexos-")
         write(f"{runtime}/hypr/{name}", content)
@@ -228,6 +233,10 @@ def main():
     (sources / "offline.files").write_text("\n".join(file_lists(payload)) + "\n")
     (build / "offline-payload.json").write_text(json.dumps({**offline, **offline_inventory(payload)}, indent=2) + "\n")
     spec = render_spec((ROOT / "image/cybexos-desktop.spec").read_text(), ROOT / "VERSION", provenance)
+    native = json.loads((build / "titlebars.json").read_text())
+    hyprland_rpm = native["inputs"]["hyprland"]["rpm"].rsplit(".", 1)[0]
+    spec = spec.replace("# Native compositor EVR requirement inserted by image/package",
+                        "Requires:       hyprland = " + hyprland_rpm)
     spec = spec.replace("%global offline_version 1.0.0", "%global offline_version " + offline["version"])
     spec = spec.replace("%global offline_inputs unconfigured", "%global offline_inputs " + offline["inputs_sha256"])
     (build / "desktop.spec").write_text(spec)

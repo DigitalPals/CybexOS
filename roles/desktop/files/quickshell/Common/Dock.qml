@@ -81,7 +81,16 @@ Singleton {
     }
 
     function menuActions(key) {
-        return DockHelpers.menuActions(appByKey[key], pins);
+        const app = appByKey[key];
+        const actions = DockHelpers.menuActions(app, pins);
+        if (DesktopWorkspaces.ready && app && app.windows.length > 0) {
+            const hidden = app.windows.some(address => DesktopWorkspaces.isMinimized(address));
+            if (hidden)
+                actions.unshift({ id: "restore", label: I18n.tr("Restore window"), glyph: "open_in_full" });
+            else if (app.windows.some(address => DesktopWorkspaces.canMinimize(address)))
+                actions.unshift({ id: "minimize", label: I18n.tr("Minimize"), glyph: "remove" });
+        }
+        return actions;
     }
 
     function runAction(key, action) {
@@ -91,6 +100,21 @@ Singleton {
             togglePin(key);
         else if (action === "close")
             closeApp(key);
+        else if (action === "minimize" || action === "restore") {
+            const app = appByKey[key];
+            if (!app)
+                return;
+            const address = action === "restore"
+                ? app.windows.find(address => DesktopWorkspaces.isMinimized(address))
+                : app.windows.indexOf(activeAddress) !== -1 && DesktopWorkspaces.canMinimize(activeAddress) ? activeAddress
+                    : app.windows.find(address => DesktopWorkspaces.canMinimize(address));
+            if (isLive(address)) {
+                if (action === "restore")
+                    DesktopWorkspaces.activate(address);
+                else
+                    DesktopWorkspaces.minimize(address);
+            }
+        }
     }
 
     function isLive(address) {
@@ -105,12 +129,27 @@ Singleton {
 
     function activate(key) {
         const action = DockHelpers.clickAction(appByKey[key], activeAddress);
+        const app = appByKey[key];
+        if (action.kind === "none" && app && app.windows.length === 1
+                && app.windows[0] === activeAddress && DesktopWorkspaces.canMinimize(activeAddress)) {
+            DesktopWorkspaces.minimize(activeAddress);
+            return;
+        }
         if (action.kind === "launch") {
             launch(key);
         } else if (action.kind === "focus" && isLive(action.address)) {
-            const command = WindowCommands.focusWindow(action.address);
+            // Clicking a focused, single-window app minimizes it. Multiple
+            // windows keep the existing cycling behavior. Nothing enables
+            // the dock or changes its auto-hide/pin preferences on floating.
+            if (DesktopWorkspaces.ready && app && app.windows.length === 1
+                    && action.address === activeAddress && !DesktopWorkspaces.isMinimized(action.address)
+                    && DesktopWorkspaces.canMinimize(action.address)) {
+                DesktopWorkspaces.minimize(action.address);
+                return;
+            }
+            const command = DesktopWorkspaces.activateCommand(action.address);
             if (command !== "")
-                Hyprland.dispatch(command);
+                DesktopWorkspaces.dispatch(command, action.address);
         }
     }
 

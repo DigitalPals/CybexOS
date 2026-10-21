@@ -1,15 +1,19 @@
 """Offline N→N+1 RPM and Btrfs recovery checks inside a task-owned VM."""
 import json
+from contextlib import contextmanager
 from pathlib import Path
 import re
+import shlex
 
 from build_support import digest
+from offline_upgrade_inputs import guest_sealing_script, transfer_stream
 from vm_testing import run
 
 CANDIDATE = '/tmp/cybexos-qualification-candidate.rpm'
 OFFLINE_CANDIDATE = '/tmp/cybexos-qualification-offline-apps.rpm'
 SNAPSHOT = '/usr/libexec/cybexos-system-snapshot'
 MANAGED_MARKER = '# cybexos qualification: preserve this user edit'
+SEALED_DIRECTORY = r'/tmp/cybexos-qualification-sealed-[A-Za-z0-9_-]{8}'
 
 
 def prepare_user_choices(vm, password, root_script):
@@ -52,7 +56,15 @@ def verify_user_choices(vm, password, root_script, position):
     root_script(vm, script, password)
 
 
-def inspect_version(vm):
+def inspect_version(vm, package='cybexos-desktop', candidate=CANDIDATE, *, root_script=None, password=None):
+    allowed = {'cybexos-desktop': (CANDIDATE, 'candidate.rpm'),
+               'cybexos-offline-apps': (OFFLINE_CANDIDATE, 'offline_candidate.rpm')}
+    if package not in allowed:
+        raise ValueError('Unknown first-party candidate')
+    original, sealed_name = allowed[package]
+    if candidate != original and not (root_script and re.fullmatch(
+            SEALED_DIRECTORY + '/candidates/' + re.escape(sealed_name), candidate)):
+        raise ValueError('Unknown first-party candidate')
     script = '''python3 - <<'PY'
 import json, subprocess
 import rpm
@@ -69,6 +81,9 @@ comparison = rpm.labelCompare(
 print(json.dumps({'installed': installed, 'candidate': candidate, 'comparison': comparison}))
 PY
 '''
+    script = script.replace('cybexos-desktop', package).replace(CANDIDATE, candidate)
+    if root_script:
+        return json.loads(root_script(vm, script, password, timeout=30).stdout)
     return json.loads(run([*vm.ssh, 'bash -s'], input=script, text=True,
                           capture_output=True, timeout=30).stdout)
 
@@ -105,36 +120,99 @@ def create_recovery_point(vm, password, root_script):
     return point
 
 
-def upgrade(vm, candidate, password, root_script, offline_candidate=None):
+@contextmanager
+def copy_dependencies(vm, bundle, password, root_script, *, firstparty=None):
+    if bundle is None:
+        yield {'candidate': CANDIDATE, 'offline_candidate': OFFLINE_CANDIDATE, 'dependencies': []}
+        return
+    bundle.revalidate()
+    directory = run([*vm.ssh, 'mktemp -d /tmp/cybexos-qualification-dependencies.XXXXXXXXXX'],
+                    text=True, capture_output=True, timeout=30).stdout.strip()
+    if not re.fullmatch(r'/tmp/cybexos-qualification-dependencies\.[A-Za-z0-9]{10}', directory):
+        raise RuntimeError('Invalid guest dependency staging directory')
+    try:
+        for record in bundle.manifest['rpms']:
+            destination = directory + '/' + record['filename']
+            with transfer_stream(bundle, record) as stream:
+                run([*vm.ssh, 'cat > ' + shlex.quote(destination)], stdin=stream,
+                    capture_output=True, timeout=300)
+        sealed = json.loads(root_script(vm, guest_sealing_script(directory, bundle.manifest['rpms'], firstparty),
+                                        password, timeout=300 + 60 * len(bundle.manifest['rpms'])).stdout)
+        sealed_directory = sealed.get('directory') if isinstance(sealed, dict) else None
+        if not isinstance(sealed_directory, str) or not re.fullmatch(SEALED_DIRECTORY, sealed_directory):
+            raise RuntimeError('Invalid root-owned upgrade staging directory')
+        try:
+            expected = {'directory': sealed_directory,
+                        'candidate': sealed_directory + '/candidates/candidate.rpm',
+                        'offline_candidate': sealed_directory + '/candidates/offline_candidate.rpm',
+                        'dependencies': [sealed_directory + '/dependencies/' + record['filename']
+                                         for record in bundle.manifest['rpms']]}
+            if sealed != expected:
+                raise RuntimeError('Invalid root-owned upgrade staging paths')
+            yield sealed
+        finally:
+            try:
+                root_script(vm, 'rm -rf -- ' + shlex.quote(sealed_directory) + '\n', password, timeout=30)
+            except BaseException as error:
+                raise RuntimeError(f'Could not remove root-owned upgrade staging: {sealed_directory}') from error
+    finally:
+        run([*vm.ssh, 'rm -rf -- ' + shlex.quote(directory)], capture_output=True, timeout=30)
+
+
+def upgrade(vm, candidate, password, root_script, offline_candidate=None, *, candidate_dependencies=None):
     sha = copy_candidate(vm, candidate)
+    offline_sha = None
     if offline_candidate:
-        copy_candidate(vm, offline_candidate, OFFLINE_CANDIDATE)
-    versions = inspect_version(vm)
-    if versions['comparison'] <= 0:
-        raise RuntimeError('Candidate RPM is not newer than the baseline installed RPM')
-    config_before = root_script(vm, 'sha256sum /etc/cybexos/config.yml\n', password).stdout.split()[0]
-    candidates = CANDIDATE + (' ' + OFFLINE_CANDIDATE if offline_candidate else '')
-    root_script(vm, f"dnf -y --disablerepo='*' install {candidates}\n"
-                "systemctl daemon-reload\n"
-                "systemctl start cybexos-reconcile.service\n", password, timeout=1200)
-    status = json.loads(root_script(vm, '/usr/libexec/cybexos-reconcile --status\n', password).stdout)
-    if (status.get('state') != 'ready' or status.get('pending') is not False
-            or status.get('version') != status.get('desiredVersion')):
-        raise RuntimeError('Installed RPM reconciliation did not finish successfully')
-    accounts = status.get('accounts', {})
-    if not isinstance(accounts, dict) or accounts.get('qualification', {}).get('state') != 'ready':
-        raise RuntimeError('Installed account reconciliation did not finish successfully')
-    after = inspect_version(vm)
-    if after['installed'] != versions['candidate']:
-        raise RuntimeError('Installed desktop RPM did not match the candidate version')
-    if offline_candidate:
-        root_script(vm, "test \"$(rpm -q --qf '%{NEVRA}' cybexos-offline-apps)\" = "
-                    f"\"$(rpm -qp --qf '%{{NEVRA}}' {OFFLINE_CANDIDATE})\"\n", password)
-    root_script(vm, f"test ! -e {CANDIDATE}.password\n", password)
-    config_after = root_script(vm, 'sha256sum /etc/cybexos/config.yml\n', password).stdout.split()[0]
-    if config_after != config_before:
-        raise RuntimeError('RPM upgrade changed saved installation choices')
-    return sha, versions
+        offline_sha = copy_candidate(vm, offline_candidate, OFFLINE_CANDIDATE)
+    if candidate_dependencies:
+        bindings = candidate_dependencies.manifest
+        if sha != bindings['candidate_rpm_sha256'] or offline_sha != bindings['candidate_offline_rpm_sha256']:
+            raise ValueError('Dependency bundle first-party candidate binding mismatch')
+    firstparty = None
+    if candidate_dependencies:
+        firstparty = {'candidate': {'source': CANDIDATE, 'size': Path(candidate).stat().st_size, 'sha256': sha},
+                      'offline_candidate': {'source': OFFLINE_CANDIDATE,
+                                            'size': Path(offline_candidate).stat().st_size, 'sha256': offline_sha}}
+    with copy_dependencies(vm, candidate_dependencies, password, root_script, firstparty=firstparty) as staged:
+        inspect_options = {'root_script': root_script, 'password': password} if candidate_dependencies else {}
+        versions = inspect_version(vm, candidate=staged['candidate'], **inspect_options)
+        if versions['comparison'] <= 0:
+            raise RuntimeError('Candidate RPM is not newer than the baseline installed RPM')
+        if offline_candidate:
+            offline_versions = inspect_version(vm, 'cybexos-offline-apps', staged['offline_candidate'], **inspect_options)
+            # Unchanged application inputs intentionally reuse the same immutable
+            # offline NEVRA. A downgrade must still fail before the transaction.
+            if offline_versions['comparison'] < 0:
+                raise RuntimeError('Candidate offline applications RPM is older than the baseline')
+            versions['offline_apps'] = offline_versions
+            versions['candidate_offline_rpm_sha256'] = offline_sha
+        config_before = root_script(vm, 'sha256sum /etc/cybexos/config.yml\n', password).stdout.split()[0]
+        if candidate_dependencies:
+            # Dependencies are never preinstalled outside the upgrade. Recovery
+            # covers the complete transaction, including the SDK's closure.
+            versions['recovery_point'] = create_recovery_point(vm, password, root_script)
+        candidates = [staged['candidate']] + ([staged['offline_candidate']] if offline_candidate else []) + staged['dependencies']
+        root_script(vm, "dnf -y --disablerepo='*' install " + shlex.join(candidates) + '\n'
+                    "systemctl daemon-reload\n"
+                    "systemctl start cybexos-reconcile.service\n", password, timeout=1200)
+        status = json.loads(root_script(vm, '/usr/libexec/cybexos-reconcile --status\n', password).stdout)
+        if (status.get('state') != 'ready' or status.get('pending') is not False
+                or status.get('version') != status.get('desiredVersion')):
+            raise RuntimeError('Installed RPM reconciliation did not finish successfully')
+        accounts = status.get('accounts', {})
+        if not isinstance(accounts, dict) or accounts.get('qualification', {}).get('state') != 'ready':
+            raise RuntimeError('Installed account reconciliation did not finish successfully')
+        after = inspect_version(vm, candidate=staged['candidate'], **inspect_options)
+        if after['installed'] != versions['candidate']:
+            raise RuntimeError('Installed desktop RPM did not match the candidate version')
+        if offline_candidate:
+            root_script(vm, "test \"$(rpm -q --qf '%{NEVRA}' cybexos-offline-apps)\" = "
+                        f"\"$(rpm -qp --qf '%{{NEVRA}}' {staged['offline_candidate']})\"\n", password)
+        root_script(vm, f"test ! -e {CANDIDATE}.password\n", password)
+        config_after = root_script(vm, 'sha256sum /etc/cybexos/config.yml\n', password).stdout.split()[0]
+        if config_after != config_before:
+            raise RuntimeError('RPM upgrade changed saved installation choices')
+        return sha, versions
 
 
 def select_recovery_boot(vm, point, password, root_script):

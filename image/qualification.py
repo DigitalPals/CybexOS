@@ -12,6 +12,7 @@ from build_support import atomic_json, digest
 from browser_qualification import browser_dependencies, ensure_installer_started, qualify_browser
 from login_qualification import qualify_login
 from installed_outcomes import capture_guest
+from offline_upgrade_inputs import load_bundle
 from parity_qualification import desktop_lifecycle, prepare_saved_choices, verify_saved_choices
 from upgrade_qualification import (create_recovery_point, prepare_user_choices, select_recovery_boot,
                                    upgrade, verify_recovery_boot, verify_restored, verify_user_choices)
@@ -268,6 +269,8 @@ def main():
     parser.add_argument('--scenario', choices=tuple(SCENARIOS), default='encrypted-us')
     parser.add_argument('--candidate-rpm', type=Path, help='Newer desktop RPM for an offline N to N+1 upgrade')
     parser.add_argument('--candidate-offline-rpm', type=Path, help='Companion offline applications RPM for the same upgrade')
+    parser.add_argument('--candidate-dependencies', type=Path,
+                        help='Manifest-bound third-party RPM directory for the single offline upgrade transaction')
     parser.add_argument('--recovery-check', action='store_true', help='Boot and restore the pre-upgrade recovery point')
     parser.add_argument('--legacy-installer', action='store_true', help='Permit baseline installer without new policy/rescan controls')
     parser.add_argument('--execute-vm', action='store_true')
@@ -284,6 +287,8 @@ def main():
         parser.error('--recovery-check requires --candidate-rpm')
     if args.candidate_offline_rpm and not args.candidate_rpm:
         parser.error('--candidate-offline-rpm requires --candidate-rpm')
+    if args.candidate_dependencies and not (args.candidate_rpm and args.candidate_offline_rpm):
+        parser.error('--candidate-dependencies requires both --candidate-rpm and --candidate-offline-rpm')
     if args.candidate_offline_rpm and (args.candidate_offline_rpm.is_symlink() or not args.candidate_offline_rpm.is_file()
                                       or args.candidate_offline_rpm.suffix != '.rpm'):
         parser.error('--candidate-offline-rpm must be a regular .rpm file')
@@ -293,6 +298,13 @@ def main():
     if args.candidate_rpm and (args.candidate_rpm.is_symlink() or not args.candidate_rpm.is_file()
                                or args.candidate_rpm.suffix != '.rpm'):
         parser.error('--candidate-rpm must be a regular .rpm file')
+    dependencies = None
+    if args.candidate_dependencies:
+        try:
+            dependencies = load_bundle(args.candidate_dependencies, baseline_iso=iso,
+                                       candidate_rpm=args.candidate_rpm, candidate_offline_rpm=args.candidate_offline_rpm)
+        except (ValueError, OSError) as error:
+            parser.error(str(error))
     # Direct invocations need the same early host check as release-gate.
     # Missing browser/Node dependencies must not consume a live boot or disk.
     browser_dependencies()
@@ -306,6 +318,8 @@ def main():
               'candidate_offline_rpm_sha256': digest(args.candidate_offline_rpm) if args.candidate_offline_rpm else None,
               'boot_entry': args.boot_entry, 'scenario': args.scenario, 'firmware': args.firmware, 'status': 'failed', 'checks': [],
               'network': 'outbound-blocked', 'bootstrap': 'recognized disk-unlock prompt; bounded graphical SSH setup', 'scope': 'QEMU fixture; does not qualify physical hardware or Secure Boot'}
+    if dependencies:
+        report['candidate_dependencies'] = dependencies.evidence()
     try:
         vm.prepare()
         untouched_sha = digest(vm.unused_disk)
@@ -376,14 +390,22 @@ def main():
             qualify_login(vm, password, root_script, report, secrets.token_urlsafe(32))
         if args.candidate_rpm:
             preference = prepare_user_choices(vm, password, root_script)
-            point = create_recovery_point(vm, password, root_script) if args.recovery_check else None
+            point = create_recovery_point(vm, password, root_script) if args.recovery_check and not dependencies else None
+            options = {'candidate_dependencies': dependencies} if dependencies else {}
             sha, versions = upgrade(vm, args.candidate_rpm, password, root_script,
-                                    offline_candidate=args.candidate_offline_rpm)
+                                    offline_candidate=args.candidate_offline_rpm, **options)
             if sha != report['candidate_rpm_sha256']:
                 raise RuntimeError('Candidate RPM checksum changed during qualification')
+            if args.candidate_offline_rpm and versions['candidate_offline_rpm_sha256'] != report['candidate_offline_rpm_sha256']:
+                raise RuntimeError('Candidate offline RPM checksum changed during qualification')
+            if dependencies:
+                point = versions['recovery_point']
+                report['candidate_dependencies']['guest_signatures_verified'] = True
+                report['checks'].append('offline-dependency-signatures-and-single-transaction')
+                report['pre_upgrade_recovery_point'] = point
             report['checks'].append('installed-rpm-upgrade')
             verify_user_choices(vm, password, root_script, preference)
-            if point:
+            if point and args.recovery_check:
                 select_recovery_boot(vm, point, password, root_script)
                 poweroff_installed(vm, password)
                 # The recovery overlay cannot prove encrypted root ancestry,

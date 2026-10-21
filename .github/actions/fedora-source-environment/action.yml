@@ -64,6 +64,7 @@ runs:
           jq \
           luajit \
           nodejs24 \
+          patch \
           procps-ng \
           python3 \
           python3-gobject-base \

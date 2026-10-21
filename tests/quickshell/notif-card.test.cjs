@@ -56,13 +56,14 @@ test("the card anatomy is defined once, in Common/", () => {
     }
 });
 
-test("web notification icons fall through to the shared origin resolver", () => {
+test("web notification icons resolve locally without sender-triggered lookup processes or network fetches", () => {
     const icon = read(path.join("Common", "NotifIcon.qml"));
     const resolver = read(path.join("Common", "WebIcons.qml"));
     const notifs = read(path.join("Common", "Notifs.qml"));
 
-    assert.match(icon, /WebIcons\.request\(entry\.webOrigin\)/);
-    assert.match(icon, /WebIcons\.sourceFor\(entry\.webOrigin \|\| ""\)/);
+    assert.doesNotMatch(icon, /WebIcons\.(?:request|sourceFor)\(/);
+    assert.match(notifs, /Smart\.localImageUrl\(value\)/);
+    assert.match(icon, /readonly property string siteSource: ""/);
     assert.match(icon, /status === Image\.Error[\s\S]*?root\.primaryFailed = true/,
         "an expired Chromium image-path must fall through to the cached favicon");
     assert.match(resolver, /scripts\/notification-icon\.py/);
@@ -138,7 +139,7 @@ test("toast geometry and list motion stay compact and edge-aware", () => {
     assert.match(toast, /property real reservedListHeight:\s*0/,
         "the panel must remain mapped while the exit transition paints");
     assert.match(toast,
-        /visible:\s*Notifs\.toasts\.length > 0 \|\| reservedListHeight > 0/,
+        /visible:\s*root\.screenGroups\.length > 0 \|\| reservedListHeight > 0/,
         "the final toast's exit must finish before the layer is unmapped");
 });
 
