@@ -1,184 +1,141 @@
 # Desktop improvements implementation ledger
 
-Starting revision: `3b310d106255558ca213c955ef37ee314e8681f2` (current origin/main,
-2026-10-21). The original main checkout remains at
-`6f4bdca3168d46cc76e8047fa94d172dac3cb696`. Work is isolated on
-`feat/desktop-improvements-20261021`; no active desktop rollout or reboot is
-authorized. Final tested revision and evidence will be recorded below.
+Work is isolated on `feat/desktop-improvements-20261021`, starting from
+`3b310d106255558ca213c955ef37ee314e8681f2`. The original main checkout remains
+clean at `6f4bdca3168d46cc76e8047fa94d172dac3cb696`. No active desktop rollout,
+reboot, main merge or public release is authorized or performed.
 
-## Ownership and interfaces
+## Ownership and implementation status
 
-- Workspace/compositor agent: `roles/desktop/files/workspaces.lua`,
-  `bindings.lua`, `hyprland.lua`, `roles/desktop/templates/monitors.lua.j2`,
-  workspace/layout behavioral tests, and `docs/desktop-workspace-architecture.md`.
-- Desktop UI agent: workspace singleton and pure UI helpers, bar, overview,
-  dock, launcher workspace consumers, workspace settings UI, and
-  `docs/desktop-workspaces.md`. No shared settings schema or translation edits.
-- Notifications agent: existing notification service and UI, notification
-  persistence helper, behavioral tests, and `docs/desktop-notifications.md`.
-  No shared settings schema or translation edits.
-- Lead: shared settings schema, translations, deployment/package integration,
-  startup analysis and measurement tooling, installation parity, integration,
-  and independent Codex review/qualification.
+Actual T3 Codex delegates implemented disjoint compositor, desktop UI,
+notification and native-titlebar scopes. Fresh independent Codex tasks reviewed
+integration and each correction set. Returned selections were verified as
+`codex/gpt-6.1-sol`, `reasoningEffort=xhigh`, `serviceTier=priority`. Concurrency
+never exceeds four including the parent. The parent owns shared schema 29,
+English/Dutch strings, package/installation parity, native integration,
+qualification and cleanup.
 
-One compositor-owned module, `require("workspaces")`, owns monitor identity,
-mapping, layout and minimize state. Its bounded runtime JSON snapshot is
-`$XDG_RUNTIME_DIR/cybexos/workspaces.json`, schema `v:1`, with `mode`,
-`defaultLayout`, `monitors` (name, identity, label, activeWorkspace, workspaces),
-`workspaces` (id, localNumber, monitor, label, layout, guest, ownerIdentity), and `minimized`
-(address, workspace, monitor) arrays. The UI reads this snapshot and never
-allocates IDs or independently computes physical identity. Missing snapshots
-fall back to existing shared workspace behavior.
+| Area | Implementation | Qualification |
+| --- | --- | --- |
+| Shared / Per-monitor workspaces | Complete | Source and isolated native checks pass; physical hardware matrix blocked. |
+| Tiled / Scrolling / Floating | Complete | Actual qualified compositor, grouped ownership, placement, minimize and reload checks pass. |
+| Floating titlebars | Complete | Fedora build, pointer controls, theme refresh and incompatible-build rejection pass; generic Wayland CSD detection blocked. |
+| Notification refinements | Complete | Actual D-Bus actions, replacements, image identity, origins, privacy/restart and repeated output/fullscreen lifecycle checks pass. |
+| Installation integration | Complete | Exact-source parity checks pass; final installed ISO/checkout and upgrade qualification in progress. |
+| Startup | Evidence tooling and investigation complete | No optimization or speedup claimed. Installed diagnostics do not yet establish comparable observed readiness. |
 
-Public operations: `focus(localNumber, monitorName)`,
-`move(address, localNumber, monitorName)`, `focus_id(id)`,
-`move_id(address, id)`, `next(direction, monitorName)`,
-`new_workspace(monitorName)`, `set_mode(mode)`,
-`set_default_layout(layout)`, `set_layout(id, layout)`, `cycle_layout(id)`,
-`minimize(address)`, `restore(address)`, `activate(address)`, and
-`move_monitor(direction, address)`. Optional address/monitor arguments select
-the focused window/monitor; implementations validate all inputs. UI command
-builders quote constrained values and check window existence before dispatch.
+## Authoritative workspace contract
 
-Shared defaults: `mode: "shared"`, `titlebarsEnabled: true`. With no
-preference file, `manageDefaultLayout:false` preserves the effective native
-layout (normally dwindle, including explicit user.lua overrides). Only a
-deliberate default-layout selection takes ownership in workspaces.json;
-these are deliberately not duplicated in shell.json. Existing dock preferences
-stay unchanged. Existing users keep Shared mode.
-Layout IDs are `dwindle`, `scrolling`, `floating`. Native scrolling and
-decoration support must be checked against the qualified Hyprland build;
-unavailable dependencies are explicit qualification blockers.
+`require("workspaces")` owns physical monitor identity, assignments, layout and
+minimize state. Preferences live in user-owned
+`$XDG_CONFIG_HOME/cybexos/workspaces.json`; assignments live under
+`$XDG_STATE_HOME/cybexos`; the bounded runtime snapshot is
+`$XDG_RUNTIME_DIR/cybexos/workspaces.json`, schema `v:1`.
 
-Notification setting additions are defined in docs/desktop-notifications.md and integrated in shell schema 29. Persistence defaults off. All new
-UI strings are returned for English/Dutch integration by the lead.
+Snapshot monitor rows contain name, identity, label, activeWorkspace and ordered
+workspace **ID arrays**. Workspace rows include localNumber, monitor, layout,
+guest, ownerIdentity, layoutOverride, layoutManaged and nativeLayout. The root
+includes defaultLayoutManaged and nativeDefaultLayout. Minimized rows preserve
+address, original workspace and monitor. The UI consumes this mapping and never
+allocates IDs or invents monitor identity. Missing snapshots fall back to Shared
+behavior. Disconnected workspaces retain their unique IDs and remain reachable
+as guests; there is no transition renumbering or merging.
 
-## Progress and evidence
+Public operations are `focus(localNumber,monitorName)`,
+`move(address,localNumber,monitorName)`, `focus_id(id)`, `move_id(address,id)`,
+`next(direction,monitorName)`, `new_workspace(monitorName)`, `set_mode(mode)`,
+`set_default_layout(layout)`, `set_layout(id,layout)`, `cycle_layout(id)`,
+`minimize(address)`, `restore(address)`, `activate(address)` and
+`move_monitor(direction,address)`. Optional address/monitor arguments use the
+focused window/monitor; all input and live destinations are validated.
 
-- Discovery: clean base and remote verified; applicable AGENTS.md read.
-- Pinned Omarchy reference checkout: `/tmp/cybexos-desktop-20261021-upstream`
-  at tag `v4.5.0-rc1`, revision `03ff1eff3812933f7088484533784d2f63eaf19a`.
-- Three actual Codex tasks implemented compositor, desktop UI and
-  notifications with explicit disjoint ownership. A fourth native packaging
-  task and four fresh independent review rounds cover integration. All use the requested Codex
-  provider and inherited gpt-6.1-sol/xhigh/priority selection.
-- Baseline Fedora 44 source gate passed all 17 stages, including 1,380 Node
-  checks and 43 Python fixtures. Image source gate also passed (519 image fixtures plus 27 application and 14 installer Node tests) after supplying the missing gvfs schema dependency. Initial container
-  /root traversal permissions were corrected before the successful rerun;
-  this was an environment setup issue, not a waived source failure.
-- Runtime test packages: hyprland-0.56.2-2.fc44 and
-  quickshell-0.2.1^git20260209.dacfa9d-5.fc44. Native scrolling is present.
-- Titlebar reference tag v0.2.2 resolves to
-  `379ff910fcce9f0cc9b41f9a87c527997076a417`; native ABI/CSD qualification
-  and packaging are implemented with an exact Fedora ELF build-ID guard. Generic CSD detection remains blocked; see native-titlebars.md. Never load an Arch binary on Fedora.
-- Implementation and source installation-parity checks pass. Native runtime
-  and independent review are in progress; installed-image, physical hardware
-  and startup qualification remain outstanding.
+Shared remains the first-install and existing-user default. No preference file
+means `manageDefaultLayout:false`: the effective native layout, including
+user.lua overrides, is retained. Only deliberate default selection takes global
+ownership. Explicit per-workspace choices persist even when equal to the
+default; `set_layout(id,"default")` alone clears an override. Unknown native
+layouts display as Custom/Unmanaged and are never sent back as setter values.
+Workspace preferences are not duplicated in shell.json. Existing dock opt-outs,
+Slack Super+M and lock Super+L remain intact. See [controls](desktop-workspaces.md).
 
-## Resources
+## Provenance and dependencies
 
-Task-owned upstream checkout above is temporary and must be removed after
-provenance findings are recorded. Host workloads require `agent-resource`;
-the installed `ci-platform` CLI currently lists other projects and does not
-offer a CybexOS job. Disposable Fedora container is owned by interactive lease
-`29c5e2febb054008b06ff08cd794e589`, including all temporary test logs under its
-workspace. Release and verify this lease before handoff. A second temporary
-source checkout is `/tmp/cybexos-desktop-20261021-titlebars`; remove it too.
+- Omarchy `v4.5.0-rc1`: `03ff1eff3812933f7088484533784d2f63eaf19a`.
+- Titlebars `v0.2.2`: `379ff910fcce9f0cc9b41f9a87c527997076a417`, with both
+  required licenses and reviewed native patch. Installed at
+  `/usr/lib64/cybexos/titlebars.so`.
+- Qualified Fedora Hyprland `0.56.2-2.fc44.x86_64`, source
+  `efb50993780079460b0cbed1363e2166a2de1d9f`, executable ELF ID
+  `04b20094d13879e70824418ba363f8dcc3253b34`; Quickshell
+  `0.2.1^git20260209.dacfa9d-5.fc44`.
+- Declarative plugin load is registered on every config parse; only rendering
+  follows Floating mode. Native APIs are used only after registry confirmation.
+  Exact SDK/RPM identity, cached source, offline rebuild and the running ELF
+  guard prevent loading an Arch or stale Fedora binary.
 
-## Integration checkpoints
+## Review and revision evidence
 
-- Integrated Fedora source gate passed all 17 stages: 1,415 Node tests, 45
-  Python fixtures, 354 QML files plus four harnesses, real-engine QML lifecycle
-  checks, compositor behavioral fixtures, packaging and installation contracts.
-  These are an intermediate source snapshot, not final-revision qualification.
-- Managed isolated GPU VM uses Hyprland 0.56.2-2.fc44 (ELF build ID
-  `04b20094d13879e70824418ba363f8dcc3253b34`) and Quickshell
-  0.2.1^git20260209.dacfa9d-5.fc44. Actual tests passed Floating window launch,
-  minimize metadata/special workspace, activation restore, Scrolling retiling,
-  cross-monitor move, disconnected-owner guest reachability and three reloads.
-- The isolated shell loads through quickshell.service. Its MainPID was the sole
-  qs process and the current invocation passed tests/lib/quickshell-live journal
-  checks. This VM is a provisioned Fedora Cloud fixture, not an installed
-  CybexOS product or a representative physical device.
-- Native tests found and fixed two issues hidden by mocks: Hyprland's SIGCHLD
-  causes successful popen close to report ECHILD, and declarative plugin loads
-  must remain stable on every config parse. The latter otherwise recursively
-  loads/unloads/reloads and starves IPC. Stable declarations now pass reloads.
-- Independent Codex review round 1 found five issues: explicit native layout
-  overrides overwritten; opening float tags overriding manual tiling; Shared
-  allocation colliding with named IDs; positive-ID named UI routing; and unique
-  qsimage handles preventing identical image-content deduplication. All five are fixed with focused regressions; round 2 is reviewing the
-  integrated implementation. A later full-config native run also found/fixed
-  nonempty floating-exclusion signature encoding (147 compositor assertions).
-- No startup speedup is claimed. Read-only capture/comparison tooling and
-  GRUB/binfmt/session-ordering source analysis are implemented; installed-system
-  boot/unlock/portal/screensharing/recovery measurements remain outstanding.
-- Second supervised resource lease `6494f7f7250b4f8da62baee029cbfa9b` owns the
-  GPU VM and all of its private disk/key/media. Stop via the parent lease's
-  native-vm-stop file, wait for supervisor exit, then check absence at handoff.
+Product commits: `66b14a2` initial implementation; `c5b5c96` ownership/origin/
+startup/native guard corrections; `9702355` native toast lifecycle fix;
+`629219f` offline input admission; `63f7785` constrained package audit;
+`78903e9` verified offline qualification dependency transport (tooling only).
 
-- Final integrated working-tree source gate passed all 17 stages: 1,426 Node
-  tests, 46 Python fixtures, 355 QML files and four harnesses. QML lint builds
-  the real native image module in scratch and runs its 11 Qt cases first.
-  Image source gate passed 27 application tests, 520 image tests (three existing
-  skips) and 14 installer Node tests. These are source gates, not an installed
-  product qualification.
-- Full generated compositor config native review checks pass: nonempty app
-  float exclusions, unmanaged master preservation through mode/titlebar edits,
-  workspace override/reset/cycle, new Floating window manually tiled through
-  refresh/reload, positive-ID named navigation, deliberate default ownership
-  and three stable plugin reloads. configerrors and snapshot.error are empty.
+R1 found five issues; R2 found four; all were corrected with focused regressions
+and affected native retesting. Fresh R3/R4 reviews found no remaining actionable
+findings in their correction scopes. R5 independently proved the offline
+manifest admission regression; R6 verified constrained package normalization
+without weakening RPM/source/native minimums. Native tests additionally fixed
+Hyprland ECHILD handling, recursive declarative plugin registration, nonempty
+float-exclusion serialization and toast native-screen binding feedback.
 
-- R2 corrections preserve explicit layout ownership (`layoutOverride`), apply
-  manual float ownership to all group members, separate website scheme/port
-  identities, and reject startup kernel/dependency drift. Actual group and
-  origin regressions pass. A properly recompiled incompatible titlebar plugin
-  fails its running ELF guard without changing the good plugin registry or
-  APIs; the guard now precedes shared handle assignment. Fresh R3 review of
-  c5b5c96 completed without actionable findings (62 Node, four startup, 161 Lua
-  checks and native optimized guard isolation).
+Exact product revision `63f7785d45f22386660f02f8c3bb26daeaa1f176` passes all 17
+source stages: 1,440 Node tests, 46 Python suites, 355 QML files/four harnesses,
+actual native Qt and lifecycle cases, and 161 compositor assertions plus XPS/
+hotplug/margin fixtures. Image source checks pass 30 application tests, 521 image
+fixtures (three existing skips) and 14 installer Node tests. These checks ran in
+a real Git clone of that commit in Fedora, not an unversioned copied tree.
 
-- Native grouped-toast/output lifecycle testing found a screenGroups binding
-  loop despite passing visible behavior assertions. Notification owner is
-  correcting it; the journal failure is not waived. Stopped the superseded
-  c5b5c96 ISO build and verified lease 61012ebf5d4b48778778691793472495 closed
-  with no remaining resources. No ISO was published from that attempt.
-- Baseline image build uses exact 3b310d1 in a disposable local clone, owned by
-  supervised lease 51e5828e0d7c4684b99d264e531b1ac7. Build cache, disks and media
-  are private to that lease. This prepares installed startup evidence; it does
-  not establish a measured speedup.
-- Native experiment isolated the remaining toast cycle: screenGroups used the
-  live PanelWindow screen, while screenGroups also controlled visibility.
-  Using the authoritative Variants output model passed a full D-Bus matrix
-  and three fullscreen/output lifecycle matrices with clean invocation
-  journals. Product correction and fresh independent review are in progress.
-- Final product source (not just the diagnostic experiment) now passes the
-  full actual D-Bus matrix plus three repeated grouped-burst/fullscreen/output
-  create/disconnect matrices, with invocation journals clean after each. Normal
-  product shell and sole service-owned qs were restored. Fresh R4 review and
-  full source/image gates precede the candidate rebuild.
-- Independent R4 review of the final toast correction found no actionable
-  correctness/security findings, with 53 focused Node checks, packaging-path
-  inspection and read-only final native journal inspection. Full source/image
-  gates are rerunning in the configured Fedora container account. An earlier
-  invocation used an absent UID and is excluded as an invalid environment run.
-- Final toast correction passes all 17 Fedora source stages (1,440 Node tests,
-  46 Python fixtures, 355 QML files/four harnesses, actual Qt/runtime fixtures)
-  and image source parity (27 application, 520 image with three existing skips,
-  14 installer Node checks). R4 is clean.
-- Baseline build reached desktop/offline RPM creation; compose failed on an
-  official Fedora OpenH264 metadata HTTP 404. Lease 51e5828e0d7c4684b99d264e531b1ac7
-  closed cleanly. The endpoint subsequently returned HTTP 200 with exactly the
-  checksum advertised by MirrorManager, so the unchanged build can be retried.
-- The 9702355 candidate built both native modules but stopped at the offline
-  payload admission guard: shared native inputs changed without advancing the
-  independently versioned manifest. Advanced offline-apps from 1.4.0 to 1.5.0
-  using its supported generator. Added a real-checkout admission regression;
-  the prior tests exercised only synthetic input trees. Rebuild qualification
-  must use the corrected source revision, not the rejected 9702355 attempt.
-- The 629219f compose then reached its installed-package audit and rejected
-  the literal application-manifest entry `cmake >= 3.27`. The application
-  collector now emits its bare name only when the shared RPM contract enforces
-  the exact same normalized constraint; source DNF and native/RPM minimums
-  remain enforced. Real-contract and rejection fixtures cover this boundary.
-  Regenerated offline inputs as 1.5.1; final artifacts require another rebuild.
+The exact 63f7785 ISO/RPM set completed build and signed-package audits and was
+published to testing PXE with checksum and iVentoy verification. Plain English
+fresh/saved-choice installation and UI checks passed. English/Dutch encryption
+and checkout runs continue. Visual review caught a titlebar availability warning
+when the component is loaded but no Floating workspace is active; the correction now passes 178 behavioral assertions and a clean independent
+R9 review (plus four reviewer failure/recovery probes). A rebuilt exact-source
+candidate and native installed retest are required.
+
+An actual baseline 3b310d1 install passed installed/application audits, but the
+earlier 629219f two-RPM offline upgrade failed because new Fedora SDK dependencies
+were unavailable with all repositories disabled. That failure is preserved.
+78903e9 adds a bounded, artifact-bound dependency fixture and one offline
+transaction after recovery creation. Independent R7 found account-writable
+staging could race verification; fresh root-owned copies now protect both
+candidates and dependencies through DNF. Fresh R8 found no actionable issues
+(71 targeted tests). Actual upgrade/native rebuild/recovery testing is running;
+requirements were not weakened and dependencies were not preinstalled.
+
+Earlier baseline startup probes failed before collecting UI frames; these are
+diagnostics, not readiness samples. A separate final observation helper retains
+bounded redacted errors and fixed-path privileged hashes. Four independent
+helper rounds corrected JSON type equality, output argument validation and stat
+error handling; latest review is clean with 43 inert tests. Actual installed
+observations remain distinct from equivalent three-boot readiness comparisons.
+
+## Resources and remaining gates
+
+All temporary workloads use agent-resource. The isolated native GPU VM lease
+`6494f7f7250b4f8da62baee029cbfa9b` is closed and verified empty. Diagnostic
+installed VM lease `de986d746416429ca45ea8de98b34100` is closed and verified empty;
+its temporary SSH fixture was restored before teardown. Parent lease
+`29c5e2febb054008b06ff08cd794e589` owns the Fedora container/helpers/evidence;
+image build lease `4b9db6f753b34936b2fc593393f7ce97` is closed and verified empty.
+Installed qualification runs use separate supervised leases. Temporary
+upstream checkouts were removed after recording provenance.
+
+Remaining work: availability correction and exact-source rebuild, installed fresh/
+saved-choice UI and checkout parity, verified offline upgrade/rebuild/recovery,
+startup observations, final evidence consolidation and resource cleanup. Generic
+Wayland CSD detection needs a supported compositor API. Physical lid/mirror/
+dock/two-external/connector-identity tests require representative hardware.
+These are explicit acceptance limits, not waived gates. See
+[validation](desktop-validation.md), [startup](desktop-startup.md),
+[titlebars](native-titlebars.md) and [notifications](desktop-notifications.md).

@@ -118,15 +118,24 @@ local function move_workspace(ws, mon)
   for _, win in ipairs(world.windows) do if win.workspace == ws then win.monitor = mon end end
 end
 hl = { dsp = { window = {}, workspace = {} }, plugin = {},
-  get_loaded_plugins = function() return world.plugin_loaded and { { name = "hyprbars" } } or {} end }
+  get_loaded_plugins = function() return world.plugin_loaded and { { name = world.plugin_name or "hyprbars" } } or {} end }
 function hl.plugin.load(path)
   assert(path == "/usr/lib64/cybexos/titlebars.so", "unexpected plugin path")
   world.plugin_declarations = world.plugin_declarations + 1
 end
 setmetatable(hl.plugin, { __index = function(_, key)
-  assert(key == "hyprbars" and world.plugin_loaded, "plugin callbacks accessed before native registry")
-  return { add_button = function() world.plugin_buttons = world.plugin_buttons + 1 end,
-    clear_buttons = function() world.plugin_buttons = 0 end }
+  assert(key == "hyprbars" and world.plugin_loaded and not world.plugin_name, "plugin callbacks accessed before native registry")
+  world.plugin_namespace_reads = (world.plugin_namespace_reads or 0) + 1
+  if world.plugin_api_missing then return {} end
+  return { add_button = function()
+      assert(not world.plugin_button_failure, "native button setup failed")
+      world.plugin_button_adds = (world.plugin_button_adds or 0) + 1
+      world.plugin_buttons = world.plugin_buttons + 1
+    end,
+    clear_buttons = function()
+      world.plugin_clears = (world.plugin_clears or 0) + 1
+      world.plugin_buttons = 0
+    end }
 end })
 function hl.get_config(key)
   if key == "scrolling.column_width" and world.native_scrolling then return 0.5 end
@@ -135,6 +144,12 @@ function hl.get_config(key)
 end
 function hl.config(spec)
   world.config = spec
+  if spec.plugin and spec.plugin.hyprbars then
+    assert(world.plugin_loaded and not world.plugin_name, "plugin config accessed before native registry")
+    assert(not world.plugin_config_failure, "native titlebar configuration failed")
+    world.plugin_config_writes = (world.plugin_config_writes or 0) + 1
+    world.plugin_rendering = spec.plugin.hyprbars.enabled
+  end
   if spec.general and spec.general.layout then
     world.general_layout, world.layout_writes = spec.general.layout, world.layout_writes + 1
   end
@@ -491,19 +506,71 @@ end
 ws = load()
 check(world.plugin_declarations == 1 and not ws.snapshot.capabilities.titlebars and world.plugin_buttons == 0,
   "declarative load accessed callbacks before the plugin registry was ready")
+ws.set_default_layout("dwindle")
 world.plugin_loaded = true; ws.refresh()
-check(ws.snapshot.capabilities.titlebars and world.plugin_buttons == 3, "loaded plugin did not configure titlebar buttons")
+check(ws.snapshot.capabilities.titlebars and not world.plugin_rendering and world.plugin_buttons == 3,
+  "loaded native titlebars were unavailable merely because the default was Tiled")
+local config_writes, button_adds, button_clears = world.plugin_config_writes, world.plugin_button_adds, world.plugin_clears
+ws.refresh(); emit("window.open", opened)
+check(world.plugin_config_writes == config_writes and world.plugin_button_adds == button_adds
+  and world.plugin_clears == button_clears, "unchanged Tiled events churned native setup/buttons")
 local csd_rule
 for _, handle in ipairs(world.rules) do if handle.enabled and handle.spec["hyprbars:no_bar"] then csd_rule = handle end end
 check(csd_rule and csd_rule.spec.match.class == "^(org[.]gnome[.]Nautilus|org[.]gnome[.]TextEditor)$",
   "known CSD exclusion was missing or matched arbitrary clients")
-ws.set_titlebars_enabled(false); ws = load()
+ws.set_titlebars_enabled(false); ws.set_default_layout("floating")
+check(ws.snapshot.capabilities.titlebars and not world.plugin_rendering and world.plugin_buttons == 3,
+  "disabling Floating titlebars incorrectly removed native capability")
+check(world.plugin_config_writes == config_writes and world.plugin_button_adds == button_adds
+  and world.plugin_clears == button_clears, "disabled preferences repeated unchanged native setup")
+ws = load()
 check(not csd_rule.enabled, "reload leaked the previous dynamic CSD rule")
-check(world.plugin_declarations == 2 and not ws.snapshot.capabilities.titlebars,
-  "disabled plugin was not declared on the next config parse")
-ws.set_titlebars_enabled(true); ws.set_default_layout("floating"); ws.refresh_theme(); emit("window.open", opened)
-check(world.plugin_declarations == 2 and ws.snapshot.capabilities.titlebars and world.plugin_buttons == 3,
-  "runtime edits/events reloaded the native plugin or duplicated buttons")
+check(world.plugin_declarations == 2 and ws.snapshot.capabilities.titlebars and not world.plugin_rendering
+  and world.plugin_buttons == 3, "disabled plugin lost declaration/capability or duplicated buttons on reload")
+config_writes, button_adds, button_clears = world.plugin_config_writes, world.plugin_button_adds, world.plugin_clears
+ws.set_titlebars_enabled(true)
+check(ws.snapshot.capabilities.titlebars and world.plugin_rendering and world.plugin_buttons == 3,
+  "available native titlebars did not render when Floating was enabled")
+check(world.plugin_config_writes == config_writes + 1 and world.plugin_button_adds == button_adds
+  and world.plugin_clears == button_clears, "rendering toggle rebuilt unchanged native buttons")
+config_writes = world.plugin_config_writes
+ws.set_default_layout("floating"); emit("window.open", opened); ws.refresh()
+check(world.plugin_config_writes == config_writes and world.plugin_button_adds == button_adds
+  and world.plugin_clears == button_clears, "unchanged Floating events churned native setup/buttons")
+ws.refresh_theme()
+check(world.plugin_declarations == 2 and ws.snapshot.capabilities.titlebars and world.plugin_buttons == 3
+  and world.plugin_clears == button_clears + 1, "theme refresh reloaded the plugin or duplicated buttons")
+-- Native failures must stay unavailable even when rendering is not requested.
+world.plugin_config_failure = true; ws.set_titlebars_enabled(false); ws.set_default_layout("dwindle")
+check(not ws.snapshot.capabilities.titlebars, "failed disabled native setup was reported available")
+ws.set_titlebars_enabled(true); ws.set_default_layout("floating")
+check(not ws.snapshot.capabilities.titlebars, "failed native setup reused a stale successful rendering cache")
+world.plugin_config_failure = false; ws.set_titlebars_enabled(false); ws.set_default_layout("dwindle"); ws.refresh()
+check(ws.snapshot.capabilities.titlebars and not world.plugin_rendering, "repaired native config did not recover while Tiled")
+world.plugin_api_missing = true; ws.refresh()
+check(not ws.snapshot.capabilities.titlebars, "loaded plugin with missing native API was reported usable")
+world.plugin_api_missing = false; ws.refresh()
+check(ws.snapshot.capabilities.titlebars and world.plugin_buttons == 3, "repaired native API did not reinitialize cleanly")
+world.plugin_button_failure = true; ws.refresh_theme()
+check(not ws.snapshot.capabilities.titlebars, "failed button setup was reported available while disabled")
+world.plugin_button_failure = false; ws.refresh()
+check(ws.snapshot.capabilities.titlebars and world.plugin_buttons == 3, "failed button setup recovery duplicated buttons")
+local namespace_reads = world.plugin_namespace_reads
+config_writes, button_adds, button_clears = world.plugin_config_writes, world.plugin_button_adds, world.plugin_clears
+world.plugin_name = "unrelated"; ws.refresh()
+check(not ws.snapshot.capabilities.titlebars and world.plugin_namespace_reads == namespace_reads
+  and world.plugin_config_writes == config_writes and world.plugin_button_adds == button_adds
+  and world.plugin_clears == button_clears, "unrelated registry entry enabled/accessed native titlebar APIs")
+world.plugin_name = nil; world.plugin_loaded = false; ws.refresh(); ws = load()
+check(world.plugin_declarations == 3 and not ws.snapshot.capabilities.titlebars
+  and world.plugin_namespace_reads == namespace_reads and world.plugin_config_writes == config_writes,
+  "installed ABI-incompatible/absent registry plugin was accessed or not declared on reload")
+world.plugin_loaded = true; ws.refresh()
+check(ws.snapshot.capabilities.titlebars and not world.plugin_rendering and world.plugin_buttons == 3,
+  "native registry recovery reused stale setup or duplicated buttons")
+ws.set_titlebars_enabled(true); ws.set_default_layout("floating")
+check(world.plugin_declarations == 3 and ws.snapshot.capabilities.titlebars and world.plugin_rendering,
+  "capability/rendering edits declared a runtime plugin load")
 io.open, world.plugin_loaded = native_open, false
 -- Old schema-v1 preferences retain managed semantics when the flag is absent.
 local old_preferences = assert(data.read(ws.path, function(value) return value end)); old_preferences.manageDefaultLayout = nil

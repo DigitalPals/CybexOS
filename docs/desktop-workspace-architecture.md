@@ -23,6 +23,9 @@ compositor events. Arrays are JSON arrays (including when empty):
   `defaultLayoutManaged:boolean`, `nativeDefaultLayout:string`,
   `titlebarsEnabled:boolean`, `capabilities:{scrolling:boolean,titlebars:boolean}`,
   `error:string` (empty on success).
+  `capabilities.titlebars` describes native availability, independently of the
+  titlebarsEnabled preference or whether any workspace uses Floating. It stays
+  true for a loaded, successfully configured component while its bars are hidden.
 - `monitors:[{name,identity,label,activeWorkspace,workspaces:[integer IDs]}]`.
   Only independent enabled outputs occur here; mirrors own no workspaces.
 - `workspaces:[{id,localNumber,monitor,label,layout,layoutManaged,layoutOverride,nativeLayout,guest,ownerIdentity}]`.
@@ -200,7 +203,16 @@ die with their windows, so recycled addresses do not inherit hidden state.
 Optional native titlebars are declared on every compositor config parse when installed,
 and render only for Floating layouts. The fixed path is
 `/usr/lib64/cybexos/titlebars.so`. `titlebarsEnabled` is the personal request;
-`capabilities.titlebars` means a plugin is actually loaded and configured.
+`capabilities.titlebars` means the native registry confirms the plugin, its
+required callback exists, and native configuration/button setup succeeded.
+Loaded Tiled and disabled Floating modes report capability true with native
+rendering disabled. Missing/unrelated registry entries, missing required APIs,
+or failed configuration/button setup report false, even with an installed file.
+Setup runs once per Lua lifecycle/theme change while hidden or visible;
+rendering changes update only the enabled option. Unchanged event refreshes
+reuse successful setup without config writes, button resets or duplicate buttons.
+Loss of registry/API availability or any setup failure invalidates the cached
+success, so recovery verifies setup again even when returning to old preferences.
 A missing/ABI-incompatible plugin never disables keyboard/mouse controls.
 Titlebars consume `cybexos/theme/tokens.json` (`surfaceRaised`, `text`, UI font
 and text size) through the strict JSON reader. The existing
@@ -280,9 +292,11 @@ resource/VM lifecycle, not an unmanaged host session.
 Starting revision `3b310d106255558ca213c955ef37ee314e8681f2`; tests ran on the
 shared uncommitted implementation diff (the parent records the final integrated
 revision). The R2 ownership/override follow-up was tested on `66b14a2` plus the
-owned Lua/fixture/documentation diff. Actual source checks run by this agent:
+owned Lua/fixture/documentation diff. The titlebar availability follow-up was
+tested on `78903e9` plus its owned three-file diff. Actual source checks run by
+this agent:
 
-- `./tests/hyprland-workspace-modes`: Passed, 161 behavioral assertions using
+- `./tests/hyprland-workspace-modes`: Passed, 178 behavioral assertions using
   local rpmlua. Covers serial ambiguity, connector changes, occupied/named IDs,
   full slots/guests, mirrors/lid reconnect, visible-workspace swap avoidance,
   mode transitions, native capability failure, gesture opt-out, independent
@@ -303,6 +317,11 @@ owned Lua/fixture/documentation diff. Actual source checks run by this agent:
   Floating selection to reclaim the tiled group. Explicit layout choices equal
   to old/new defaults survive default edits and reload, while default reset,
   inherited rows and legacy sparse preference maps retain distinct semantics.
+  Titlebar availability regressions cover loaded Tiled, disabled/enabled Floating,
+  reload, missing/unrelated registry entries with an installed file, missing APIs,
+  failed native config/button setup and recovery. Counters verify no event loads,
+  redundant config/button churn or duplicate buttons; only rendering toggles
+  update enabled, and deliberate theme refresh clears/rebuilds exactly three.
 - `./tests/hyprland-workspaces`: Passed XPS hotplug and explicit policy switching,
   and single-window margin fixtures for generic and XPS machines.
 - Owned Lua syntax (`loadfile` via rpmlua), bash syntax and scoped diff whitespace

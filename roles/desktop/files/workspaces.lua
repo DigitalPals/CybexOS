@@ -235,15 +235,13 @@ local function titlebars()
   end
   local wanted = preferences.manageDefaultLayout and preferences.defaultLayout == "floating"
   for _, selected in pairs(preferences.layouts) do if selected == "floating" then wanted = true end end
-  if not preferences.titlebarsEnabled or not wanted then
-    if plugin then pcall(hl.config, { plugin = { hyprbars = { enabled = false } } }) end
-    state.titlebars_signature = nil
+  if not plugin or type(plugin.add_button) ~= "function" then
+    state.titlebars_signature, state.titlebars_rendering, state.buttons_added = nil, nil, false
     return
   end
-  if not plugin then
-    return
-  end
-  if not plugin or not plugin.add_button then return end
+  -- Native availability is independent of the user's rendering preference and
+  -- current layouts. Configure once even when hidden to verify usable APIs.
+  local rendering = preferences.titlebarsEnabled and wanted
   if not state.titlebar_theme then
     local theme_dir = os.getenv("CYBEXOS_THEME_STATE_DIR") or state_home .. "/cybexos/theme"
     state.titlebar_theme = data.read(theme_dir .. "/tokens.json", function(document)
@@ -260,9 +258,14 @@ local function titlebars()
   local colors = rawget(_G, "__cybexos_titlebar_colors") or state.titlebar_theme
   local background, foreground = colors.background or "rgb(292b31)", colors.foreground or "rgb(e4e4e7)"
   local signature = data.encode(colors)
-  if signature == state.titlebars_signature then state.capabilities.titlebars = true; return end
+  local theme_changed = signature ~= state.titlebars_signature
+  if not theme_changed and rendering == state.titlebars_rendering then state.capabilities.titlebars = true; return end
   local ok, err = pcall(function()
-    hl.config({ plugin = { hyprbars = { enabled = true, workspace_tag = floating.FLOATING,
+    if not theme_changed then
+      hl.config({ plugin = { hyprbars = { enabled = rendering } } })
+      return
+    end
+    hl.config({ plugin = { hyprbars = { enabled = rendering, workspace_tag = floating.FLOATING,
       bar_height = 30, bar_color = background, col = { text = foreground },
       bar_text_font = colors.font or "sans-serif", bar_text_size = math.floor((colors.size or 14) * 12 / 14), bar_text_align = "left",
       bar_buttons_alignment = "right", bar_part_of_window = true,
@@ -279,8 +282,11 @@ local function titlebars()
     end
   end)
   state.capabilities.titlebars = ok
-  if ok then state.titlebars_signature = signature end
-  if not ok then state.error = "titlebar setup failed: " .. tostring(err) end
+  if ok then state.titlebars_signature, state.titlebars_rendering = signature, rendering end
+  if not ok then
+    state.titlebars_signature, state.titlebars_rendering, state.buttons_added = nil, nil, false
+    state.error = "titlebar setup failed: " .. tostring(err)
+  end
 end
 local function write_snapshot()
   local all_monitors, monitor_rows, workspace_rows, minimized_rows = monitors(), data.array(), data.array(), data.array()
