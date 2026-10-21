@@ -176,3 +176,9 @@ source checkout is `/tmp/cybexos-desktop-20261021-titlebars`; remove it too.
   using its supported generator. Added a real-checkout admission regression;
   the prior tests exercised only synthetic input trees. Rebuild qualification
   must use the corrected source revision, not the rejected 9702355 attempt.
+- The 629219f compose then reached its installed-package audit and rejected
+  the literal application-manifest entry `cmake >= 3.27`. The application
+  collector now emits its bare name only when the shared RPM contract enforces
+  the exact same normalized constraint; source DNF and native/RPM minimums
+  remain enforced. Real-contract and rejection fixtures cover this boundary.
+  Regenerated offline inputs as 1.5.1; final artifacts require another rebuild.

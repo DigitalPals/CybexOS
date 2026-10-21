@@ -13,6 +13,7 @@ from unittest.mock import patch
 import yaml
 
 from application_payload import relativize_seed_links, include_applications
+from system_packages import PACKAGE
 
 ROOT = Path(__file__).resolve().parent
 
@@ -54,6 +55,73 @@ class OfflineApplications(unittest.TestCase):
         self.assertIn("mesa-dri-drivers.i686", package_section)
         self.assertIn("vulkan-loader.i686", package_section)
         self.assertEqual(source.split("%post", 1)[1], result.split("%post", 1)[1])
+
+    def test_current_manifest_uses_package_names_and_retains_native_cmake_minimum(self):
+        packages, _ = applications.package_names()
+        self.assertEqual(packages.count("cmake"), 1)
+        self.assertTrue(all(PACKAGE.fullmatch(name) for name in packages),
+                        "The compose audit passes these entries directly to rpm -q")
+        shared = applications.system_package_contract(ROOT.parent)
+        self.assertIn("cmake >= 3.27", shared["selectors"])
+        tasks = yaml.safe_load((ROOT.parent / "roles/desktop/tasks/titlebars.yml").read_text())
+        native = next(task["ansible.builtin.dnf"]["name"] for task in tasks
+                      if task.get("name") == "Install native titlebar build dependencies")
+        self.assertIn("cmake >= 3.27", native)
+
+    def package_contract_fixture(self, root):
+        files = {
+            "image/live.ks": "%packages --exclude-weakdeps\nbase-package\n%end\n",
+            "image/cybexos-desktop.spec": "Requires: cmake >= 3.27 coreutils >= 9.5\n%description\nfixture\n",
+            "roles/base/defaults/main.yml": "base_required_packages: [baseline-package]\n",
+        }
+        defaults = {key: [] for key in ("apps_required_fedora_packages", "apps_optional_fedora_packages",
+                    "apps_omawrite_packages", "apps_developer_fedora_packages", "apps_podman_packages",
+                    "apps_steam_packages", "apps_flatpaks", "apps_steam_flatpaks")}
+        defaults["apps_required_fedora_packages"] = ["editor-package"]
+        files["roles/apps/defaults/main.yml"] = yaml.safe_dump(defaults)
+        for relative, contents in files.items():
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(contents)
+        task = root / "roles/desktop/tasks/fixture.yml"
+        task.parent.mkdir(parents=True)
+        return task
+
+    def test_task_constraints_normalize_only_when_the_shared_rpm_enforces_them(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = self.package_contract_fixture(root)
+            task.write_text(yaml.safe_dump([{"name": "Fixture packages", "ansible.builtin.dnf": {
+                "name": ["cmake>=3.27", "coreutils  >=  9.5", "mesa-dri-drivers.i686", "plain-name+1"]}}]))
+            before = applications.system_package_contract(root)
+            with patch.object(applications, "ROOT", root), patch.object(applications, "PACKAGE_TASKS", (
+                    (str(task.relative_to(root)), {"Fixture packages"}),)):
+                packages, _ = applications.package_names()
+            self.assertTrue({"cmake", "coreutils", "mesa-dri-drivers.i686", "plain-name+1",
+                             "base-package", "baseline-package", "editor-package"}.issubset(packages))
+            self.assertTrue(all(PACKAGE.fullmatch(name) for name in packages))
+            self.assertEqual(applications.system_package_contract(root), before)
+            self.assertIn("cmake >= 3.27", before["selectors"])
+            self.assertIn("coreutils >= 9.5", before["selectors"])
+            kickstart = include_applications((root / "image/live.ks").read_text(), packages)
+            section = kickstart.split("%packages", 1)[1].split("%end", 1)[0].splitlines()[1:]
+            self.assertIn("cmake", section)
+            self.assertIn("mesa-dri-drivers.i686", section)
+            self.assertTrue(all(PACKAGE.fullmatch(name) for name in section))
+
+    def test_malformed_or_unrepresented_task_constraints_stop_manifest_generation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            task = self.package_contract_fixture(root)
+            with patch.object(applications, "ROOT", root), patch.object(applications, "PACKAGE_TASKS", (
+                    (str(task.relative_to(root)), {"Fixture packages"}),)):
+                for selection in ("cmake >= 3.26", "cmake <= 3.27", "ninja >= 1.13",
+                                  "cmake >= 3.27 extra", "cmake >=", "cmake | ninja", ""):
+                    with self.subTest(selection=selection):
+                        task.write_text(yaml.safe_dump([{"name": "Fixture packages", "ansible.builtin.dnf": {
+                            "name": selection}}]))
+                        with self.assertRaises(ValueError):
+                            applications.package_names()
 
     def test_native_and_editor_links_relocate_to_each_users_home(self):
         with tempfile.TemporaryDirectory() as temporary:

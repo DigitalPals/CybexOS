@@ -10,7 +10,7 @@ import subprocess
 
 import yaml
 from application_payload import relativize_seed_links
-from system_packages import contract as system_package_contract
+from system_packages import DEPENDENCY, contract as system_package_contract
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = Path("/home/builder/build")
@@ -52,12 +52,26 @@ PACKAGE_TASKS = (
 )
 
 
+def manifest_package_name(selection, selectors):
+    """Use bare names for RPM queries; the shared RPM must enforce constraints."""
+    dependency = DEPENDENCY.fullmatch(selection.strip()) if isinstance(selection, str) else None
+    if not dependency:
+        raise ValueError(f"Unsupported application package selection: {selection!r}")
+    name, operator, version = dependency.groups()
+    if operator:
+        constraint = f"{name} {operator} {version}"
+        if constraint not in selectors:
+            raise ValueError("Application package constraint is not represented in the shared RPM contract: " + constraint)
+    return name
+
+
 def package_names():
     """Read package groups from the application and desktop contracts."""
     defaults = yaml.safe_load((ROOT / "roles/apps/defaults/main.yml").read_text())
     baseline = yaml.safe_load((ROOT / "roles/base/defaults/main.yml").read_text())
     packages = list(baseline["base_required_packages"])
-    packages.extend(system_package_contract(ROOT)['packages'])
+    system_packages = system_package_contract(ROOT)
+    packages.extend(system_packages['packages'])
     # The workstation skips unavailable optional packages at converge time.
     # The compose has no --ignoremissing, so one Fedora drops fails the build
     # visibly instead of shipping an image that silently lacks it.
@@ -70,7 +84,9 @@ def package_names():
                 selected = task["ansible.builtin.dnf"]["name"]
                 packages.extend([selected] if isinstance(selected, str) else selected)
     packages += ["tailscale", "java-25-openjdk-devel", "rpmfusion-free-release", "rpmfusion-nonfree-release"]
-    return sorted(set(packages)), defaults["apps_flatpaks"] + defaults["apps_steam_flatpaks"]
+    selectors = set(system_packages['selectors'])
+    return sorted({manifest_package_name(package, selectors) for package in packages}), \
+        defaults["apps_flatpaks"] + defaults["apps_steam_flatpaks"]
 
 
 def application_repositories(repo_directory=Path("/etc/yum.repos.d")):
