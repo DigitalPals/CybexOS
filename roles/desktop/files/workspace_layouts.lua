@@ -64,10 +64,9 @@ function M.place(window, saved, cascade)
   hl.dispatch(hl.dsp.window.move({ x = x, y = y, relative = false, window = window }))
 end
 function M.new(get_layout)
-  local self = { get_layout = get_layout, rules = {}, open_rules = {}, rule_signature = "", cascade = 0 }
+  local self = { get_layout = get_layout, rules = {}, rule_signature = "", cascade = 0 }
   function self:retire()
     for _, rule in ipairs(self.rules) do rule:set_enabled(false) end
-    for _, rule in ipairs(self.open_rules) do rule:set_enabled(false) end
   end
   function self:arrange(windows)
     local claiming = {}
@@ -75,7 +74,12 @@ function M.new(get_layout)
     -- float the rest, which must still be returned to tiling afterwards.
     for _, window in ipairs(windows) do
       local workspace = window.workspace
-      if model.regular(workspace) then
+      if not model.regular(workspace) then
+        -- Named/special destinations keep their native floating state. Retain
+        -- the origin's ownership for a later return (including minimize), but
+        -- never render a Floating-workspace decoration on this destination.
+        M.tag(window, M.FLOATING, false)
+      else
         local floating = self.get_layout(workspace.id) == "floating"
         M.tag(window, M.FLOATING, floating)
         if floating then
@@ -102,58 +106,58 @@ function M.new(get_layout)
       end
     end
   end
+  function self:opened(window)
+    local members = window.group and window.group.members or { window }
+    -- Native grouping precedes openLate. Origin provenance follows the group
+    -- even through named/special destinations; copying tags must not depend on
+    -- today's layout, fullscreen or pin state. Arrange alone decides whether
+    -- this destination permits floating/tiling or Floating titlebar tags.
+    for _, member in ipairs(members) do
+      if member ~= window and M.tagged(member, M.USER) then
+        M.tag(window, M.FLOATED, false)
+        M.tag(window, M.USER, true)
+        break
+      end
+    end
+    -- A manual group choice wins over mode ownership. Without either origin
+    -- tag on another member, independent native/app floaters stay unclaimed.
+    if not M.tagged(window, M.USER) then
+      for _, member in ipairs(members) do
+        if member ~= window and M.tagged(member, M.FLOATED) then
+          M.tag(window, M.FLOATED, true)
+          break
+        end
+      end
+    end
+    self:arrange(members)
+  end
   function self:sync_rules(preferences)
     local data = require("workspace_state")
-    -- The config collector owns ordinary Lua arrays. Encode private copies as
-    -- JSON arrays without adding our .n marker to those shared input tables.
-    local exclusions = {}
-    for key, patterns in pairs(_G.__cybexos_float_exclusions or {}) do
-      local copy = {}
-      for i, pattern in ipairs(patterns) do copy[i] = pattern end
-      exclusions[key] = data.array(copy)
+    -- Saved numbered overrides stay dormant while their ID has a user name.
+    -- Include this boundary in the signature so renames/reloads retire the
+    -- old numeric native rule without discarding the saved choice.
+    local named, suspended = {}, data.array()
+    for _, workspace in ipairs(hl.get_workspaces()) do
+      local key = tostring(workspace.id)
+      if preferences.layouts[key] and not model.regular(workspace) then
+        named[key] = true
+        suspended[#suspended + 1] = key
+      end
     end
+    table.sort(suspended); suspended.n = #suspended
     local signature = data.encode({ defaultLayout = preferences.defaultLayout, manageDefaultLayout = preferences.manageDefaultLayout,
-      layouts = preferences.layouts,
-      exclusions = exclusions })
+      layouts = preferences.layouts, suspended = suspended })
     if signature == self.rule_signature then return end
     self.rule_signature = signature
     for _, rule in ipairs(self.rules) do rule:set_enabled(false) end
-    for _, rule in ipairs(self.open_rules) do rule:set_enabled(false) end
-    self.rules, self.open_rules = {}, {}
+    self.rules = {}
     if preferences.manageDefaultLayout ~= false then
       hl.config({ general = { layout = preferences.defaultLayout == "floating" and "dwindle" or preferences.defaultLayout } })
     end
-    local exceptions = {}
     for id, layout in pairs(preferences.layouts) do
-      exceptions[#exceptions + 1] = tonumber(id)
-      self.rules[#self.rules + 1] = hl.workspace_rule({ workspace = id,
-        layout = layout == "floating" and "dwindle" or layout })
-    end
-    table.sort(exceptions)
-    local ranges, start = {}, 1
-    if preferences.manageDefaultLayout ~= false and preferences.defaultLayout == "floating" then
-      for _, id in ipairs(exceptions) do
-        if preferences.layouts[tostring(id)] ~= "floating" then
-          if start < id then ranges[#ranges + 1] = { start, id - 1 } end
-          start = id + 1
-        end
-      end
-      ranges[#ranges + 1] = { start, model.MAX_ID }
-    else
-      for _, id in ipairs(exceptions) do
-        if preferences.layouts[tostring(id)] == "floating" then ranges[#ranges + 1] = { id, id } end
-      end
-    end
-    for i, range in ipairs(ranges) do
-      if range[1] <= range[2] then
-        local match = { workspace = string.format("r[%d-%d]", range[1], range[2]), modal = false }
-        for key, patterns in pairs(exclusions) do
-          if #patterns > 0 then match[key] = "negative:" .. table.concat(patterns, "|") end
-        end
-        self.open_rules[#self.open_rules + 1] = hl.window_rule({ name = "cybexos-floating-open-" .. i,
-          match = match, float = true, tag = "+" .. M.OPENED,
-          size = "min(1100,monitor_w*0.64) min(760,monitor_h*0.68)",
-          move = "(monitor_w-min(1100,monitor_w*0.64))/2 (monitor_h-min(760,monitor_h*0.68))/2" })
+      if not named[id] then
+        self.rules[#self.rules + 1] = hl.workspace_rule({ workspace = id,
+          layout = layout == "floating" and "dwindle" or layout })
       end
     end
   end

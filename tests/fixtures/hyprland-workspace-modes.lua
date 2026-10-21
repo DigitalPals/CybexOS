@@ -182,8 +182,11 @@ local function flush()
     for _, timer in ipairs(timers) do if timer.enabled then timer.callback() end end
   end
 end
-local function emit(event, ...)
+local function deliver(event, ...)
   for _, sub in ipairs(world.listeners[event] or {}) do if sub.enabled then sub.callback(...) end end
+end
+local function emit(event, ...)
+  deliver(event, ...)
   flush()
 end
 local function rule(spec)
@@ -255,6 +258,59 @@ local function window(pointer, ws, opts)
   for key, value in pairs(opts or {}) do win[key] = value end
   world.windows[#world.windows + 1] = win
   count_windows(); return win
+end
+-- Model the qualified efb5099 CWorkspace::matchesStaticSelector, independently
+-- of model.regular. In particular n[false] tests the native ID class, not the
+-- name: a renamed positive ID still matches it and a numeric named ID does not.
+local function matches_workspace(selector, target)
+  if selector:match("^%d+$") then return target.id == tonumber(selector) end
+  if selector:sub(1, 5) == "name:" then return target.name == selector:sub(6) end
+  if selector:sub(1, 7) == "special" then return target.name == selector end
+  for part in selector:gmatch("%S+") do
+    local low, high = part:match("^r%[(%d+)%-(%d+)%]$")
+    local named = part:match("^n%[(%a+)%]$")
+    local special = part:match("^s%[(%a+)%]$")
+    if low then
+      if target.id < tonumber(low) or target.id > tonumber(high) then return false end
+    elseif named then
+      assert(named == "true" or named == "false", "unsupported named selector")
+      if (target.id <= -1337) ~= (named == "true") then return false end
+    elseif special then
+      assert(special == "true" or special == "false", "unsupported special selector")
+      if (target.special == true) ~= (special == "true") then return false end
+    else error("unsupported fixture workspace selector: " .. part) end
+  end
+  return true
+end
+local function excluded(value, expression)
+  assert(expression:sub(1, 9) == "negative:", "unsupported fixture rule expression")
+  -- Only the collector's simple class/title alternatives below are needed to
+  -- replay the old opening rule; this is not a general RE2 implementation.
+  for pattern in expression:sub(10):gmatch("[^|]+") do
+    pattern = pattern:gsub("%(%?:", ""):gsub("[()]", ""):gsub("%-", "%%-")
+    if (value or ""):match(pattern) then return true end
+  end
+  return false
+end
+local function open_window(pointer, target, opts)
+  local win = window(pointer, target, opts)
+  -- Replay static opening effects before openLate. This deliberately exposes
+  -- ID-range rules that float a renamed workspace before Lua can claim it.
+  for _, handle in ipairs(world.rules) do
+    local spec, match = handle.spec, handle.spec.match
+    if handle.enabled and spec.float ~= nil and match and match.workspace
+      and matches_workspace(match.workspace, target)
+      and (match.modal == nil or match.modal == (win.modal == true))
+      and (not match.class or not excluded(win.class, match.class))
+      and (not match.title or not excluded(win.title, match.title)) then
+      win.floating = spec.float
+      if spec.tag then win.tags[#win.tags + 1] = spec.tag:sub(2) .. "*" end
+    end
+  end
+  deliver("window.open", win)
+  -- Leave deferred timers pending: callers can assert the state at the end of
+  -- the mapping callback, before a compositor could render its first frame.
+  return win
 end
 local function load()
   package.loaded.workspaces = nil
@@ -389,26 +445,13 @@ local fullscreen = window("0xabd", workspace(1), { fullscreen = 2 })
 local grouped1, grouped2 = window("0xabe", workspace(1)), window("0xabf", workspace(1))
 local group = { members = { grouped1, grouped2 } }; grouped1.group, grouped2.group = group, group
 ws.set_layout(1, "floating")
-local opening_rule
-for _, handle in ipairs(world.rules) do
-  if handle.enabled and handle.spec.name == "cybexos-floating-open-1" then opening_rule = handle end
-end
-check(opening_rule and opening_rule.spec.match.class == "negative:" .. table.concat(exclusions.class, "|")
-  and opening_rule.spec.match.title == "negative:" .. table.concat(exclusions.title, "|"),
-  "nonempty class/title exclusions were lost from the floating opening rule")
 local rules_before_refresh = #world.rules
 ws.refresh()
-check(#world.rules == rules_before_refresh, "unchanged nonempty exclusions rebuilt opening rules")
+check(#world.rules == rules_before_refresh, "unchanged preferences rebuilt native layout rules")
 exclusions.title[#exclusions.title + 1] = "(?:^Extra dialog$)"
 ws.refresh()
-check(ws.snapshot.error == "" and not opening_rule.enabled and #world.rules > rules_before_refresh
-  and exclusions.title.n == nil and #exclusions.title == 3, "in-place exclusion change was missed or mutated")
-local refreshed_opening_rule
-for _, handle in ipairs(world.rules) do
-  if handle.enabled and handle.spec.name == "cybexos-floating-open-1" then refreshed_opening_rule = handle end
-end
-check(refreshed_opening_rule and refreshed_opening_rule.spec.match.title == "negative:" .. table.concat(exclusions.title, "|"),
-  "updated exclusions were missing from replacement opening rules")
+check(ws.snapshot.error == "" and exclusions.title.n == nil and #exclusions.title == 3,
+  "native floating rule collection was mutated")
 check(first.floating and floating.tagged(first, floating.FLOATED), "tiled window was not mode-owned")
 check(independent.floating and not floating.tagged(independent, floating.FLOATED), "independent floating window was claimed")
 check(not fullscreen.floating and fullscreen.fullscreen == 2, "fullscreen was disturbed")
@@ -497,6 +540,210 @@ check(recorded_preferences.layouts["1"] == "floating" and recorded_preferences.l
 ws.set_layout(1, "default"); ws = load(); ws.set_default_layout("floating")
 check(snapshot_row(ws, 1).layoutOverride == false and snapshot_row(ws, 1).layout == "floating",
   "explicit default reset did not survive reload and later default change")
+-- R15: Hyprland's native selector boundary differs from our numbered policy.
+-- Rename without a refresh before opening: a snapshot-filtered range could
+-- still be stale here, and adding n[false] would not exclude this workspace.
+local renamed = workspace(1)
+renamed.name, renamed.tiled_layout = "research", "master"
+local native_named = { id = -1337, name = "native-research", monitor = internal, windows = 0, tiled_layout = "scrolling" }
+local numeric_named = { id = -1338, name = "1", monitor = internal, windows = 0, tiled_layout = "master" }
+world.workspaces[#world.workspaces + 1], world.workspaces[#world.workspaces + 2] = native_named, numeric_named
+check(matches_workspace("r[1-20] n[false]", renamed) and not model.regular(renamed),
+  "fixture incorrectly treated n[false] as excluding renamed positive IDs")
+check(matches_workspace("name:research", renamed) and matches_workspace("n[true]", native_named)
+  and matches_workspace("name:1", numeric_named) and not matches_workspace("n[false]", numeric_named),
+  "fixture lost native named/name selector semantics")
+local research_client = open_window("0xd150", renamed)
+check(not research_client.floating and not floating.tagged(research_client, floating.FLOATED)
+  and not floating.tagged(research_client, floating.OPENED) and not floating.tagged(research_client, floating.FLOATING),
+  "R15: default Floating floated an unowned client on a renamed positive-ID workspace")
+local named_client = open_window("0xd151", native_named)
+local numeric_client = open_window("0xd152", numeric_named)
+local special_client = open_window("0xd153", special)
+local named_floater = open_window("0xd154", renamed, { floating = true })
+flush(); ws.set_default_layout("dwindle"); ws = load(); flush()
+check(not research_client.floating and not named_client.floating and not numeric_client.floating and not special_client.floating
+  and named_floater.floating and not floating.tagged(named_floater, floating.FLOATED),
+  "default transition/reload changed native named/special floating state")
+check(renamed.tiled_layout == "master" and native_named.tiled_layout == "scrolling" and numeric_named.tiled_layout == "master",
+  "opening ownership changed a named workspace's native layout")
+check(first.floating and not floating.tagged(first, floating.FLOATING),
+  "leaving the numbered namespace tiled an existing window or retained its Floating titlebar tag")
+renamed.name = "1"; emit("config.props_refreshed")
+check(not first.floating and not floating.tagged(first, floating.FLOATED),
+  "returning to a numbered Tiled workspace stranded its original mode-owned float")
+-- Saved numeric overrides are suspended, rather than erased, by a rename.
+local function native_override(target)
+  for _, handle in ipairs(world.rules) do
+    if handle.enabled and handle.spec.workspace == tostring(target) and handle.spec.layout then return handle.spec.layout end
+  end
+end
+ws.set_layout(1, "scrolling")
+check(native_override(1) == "scrolling", "explicit numbered native layout was not installed")
+renamed.name = "research"; emit("config.props_refreshed")
+check(native_override(1) == nil and renamed.tiled_layout == "master", "renamed ID retained a numbered native layout rule")
+ws = load(); ws.set_default_layout("floating")
+local saved_override = assert(data.read(ws.path, function(value) return value end))
+check(native_override(1) == nil and saved_override.layouts["1"] == "scrolling",
+  "reload/default change applied or discarded a suspended numbered override")
+renamed.name = "1"; emit("config.props_refreshed")
+check(native_override(1) == "scrolling" and snapshot_row(ws, 1).layoutOverride,
+  "returning to the numbered namespace lost its explicit layout")
+-- Opening obeys explicit overrides and completes before the deferred refresh.
+ws.set_layout(1, "dwindle")
+local tiled_open = open_window("0xd155", renamed)
+check(not tiled_open.floating and not floating.tagged(tiled_open, floating.FLOATED),
+  "default Floating overrode an explicit Tiled opening")
+flush(); ws.set_layout(1, "scrolling")
+local scrolling_open = open_window("0xd156", renamed)
+check(not scrolling_open.floating, "default Floating overrode an explicit Scrolling opening")
+flush(); ws.set_layout(1, "floating"); ws.set_default_layout("dwindle")
+local regular_open = open_window("0xd157", renamed)
+check(regular_open.floating and floating.tagged(regular_open, floating.FLOATED)
+  and floating.tagged(regular_open, floating.FLOATING) and not floating.tagged(regular_open, floating.OPENED),
+  "explicit Floating did not claim/decorate a new client before the mapping callback returned")
+local app_open = open_window("0xd158", renamed, { floating = true, class = "cybex", title = "CybexOS Settings" })
+local dialog_open = open_window("0xd159", renamed, { floating = true, modal = true })
+local full_open = open_window("0xd15a", renamed, { fullscreen = 2 })
+local pinned_open = open_window("0xd15b", renamed, { floating = true, pinned = true })
+check(app_open.floating and dialog_open.floating and not floating.tagged(app_open, floating.FLOATED)
+  and not floating.tagged(dialog_open, floating.FLOATED) and app_open.at.x == 20 and dialog_open.size.x == 900,
+  "synchronous opening claimed/repositioned native app floaters or dialogs")
+check(not full_open.floating and full_open.fullscreen == 2 and pinned_open.floating
+  and not floating.tagged(pinned_open, floating.FLOATED), "opening disturbed fullscreen/pinned state")
+ws.toggle_floating(regular_open.address); flush(); ws = load(); flush()
+check(not regular_open.floating and floating.tagged(regular_open, floating.USER)
+  and not floating.tagged(regular_open, floating.FLOATED), "reload reversed a new client's explicit manual tiling")
+ws.set_layout(1, "default")
+check(not regular_open.floating and app_open.floating and dialog_open.floating,
+  "returning to Tiled changed independent opening floaters")
+ws.set_default_layout("floating")
+local parent_open = open_window("0xd15c", renamed); flush()
+local child_open = window("0xd15d", renamed, { floating = true })
+local opening_group = { members = { parent_open, child_open } }
+parent_open.group, child_open.group = opening_group, opening_group
+deliver("window.open", child_open)
+check(floating.tagged(child_open, floating.FLOATED) and floating.tagged(child_open, floating.FLOATING),
+  "native automatic grouping stranded a newly floated member without ownership")
+for i, win in ipairs(world.windows) do if win == parent_open then table.remove(world.windows, i); break end end
+opening_group.members = { child_open }; count_windows(); emit("window.close", parent_open)
+ws = load(); ws.set_default_layout("dwindle")
+check(not child_open.floating and not floating.tagged(child_open, floating.FLOATED),
+  "closing the original group owner stranded the new member through reload/transition")
+ws.set_default_layout("floating")
+-- R16: openLate runs after native automatic grouping. A tiled new member must
+-- inherit the group's manual choice before arrange can float the whole group.
+local manual1, manual2 = window("0xd160", renamed), window("0xd161", renamed)
+local manual_group = { members = { manual1, manual2 } }
+manual1.group, manual2.group = manual_group, manual_group
+ws.refresh(); ws.toggle_floating(manual1.address); flush()
+local manual_tiled_open = window("0xd162", renamed, { group = manual_group })
+manual_group.members[#manual_group.members + 1] = manual_tiled_open
+deliver("window.open", manual_tiled_open)
+check(not manual1.floating and not manual2.floating and not manual_tiled_open.floating
+  and floating.tagged(manual_tiled_open, floating.USER) and not floating.tagged(manual_tiled_open, floating.FLOATED),
+  "R16: opening a grouped client reversed the group's manual tiling")
+flush(); ws = load(); flush()
+for _, member in ipairs(manual_group.members) do
+  check(not member.floating and floating.tagged(member, floating.USER) and not floating.tagged(member, floating.FLOATED),
+    "reload reclaimed a manually tiled group after opening a new member")
+end
+ws.toggle_floating(manual1.address); flush()
+local manual_floating_open = window("0xd163", renamed, { floating = true, group = manual_group })
+manual_group.members[#manual_group.members + 1] = manual_floating_open
+deliver("window.open", manual_floating_open)
+check(manual_floating_open.floating and floating.tagged(manual_floating_open, floating.USER)
+  and not floating.tagged(manual_floating_open, floating.FLOATED),
+  "opening a member of a manually floating group failed to inherit the manual choice")
+flush(); ws = load(); flush()
+for _, member in ipairs(manual_group.members) do
+  check(member.floating and floating.tagged(member, floating.USER) and not floating.tagged(member, floating.FLOATED),
+    "reload claimed a manually floating group after opening a new member")
+end
+ws.set_default_layout("dwindle")
+for _, member in ipairs(manual_group.members) do
+  check(member.floating and not floating.tagged(member, floating.FLOATED),
+    "returning to Tiled changed a manually floating group's new member")
+end
+ws.set_default_layout("floating")
+-- R18: origin provenance outlives a numbered workspace's name. New group
+-- members must carry it through reload and back into the numbered namespace.
+local named_manual_owner = open_window("0xd180", renamed); flush()
+local named_manual_group = { members = { named_manual_owner } }
+named_manual_owner.group = named_manual_group
+ws.toggle_floating(named_manual_owner.address); flush()
+renamed.name = "research-r18-manual"; emit("config.props_refreshed")
+local named_manual_child = window("0xd181", renamed, { group = named_manual_group })
+named_manual_group.members[#named_manual_group.members + 1] = named_manual_child
+deliver("window.open", named_manual_child)
+check(not named_manual_child.floating and floating.tagged(named_manual_child, floating.USER)
+  and not floating.tagged(named_manual_child, floating.FLOATED) and not floating.tagged(named_manual_child, floating.FLOATING),
+  "R18: new named group member lost its original group's manual tiling provenance")
+flush(); ws = load(); flush()
+renamed.name = "1"; emit("config.props_refreshed")
+for _, member in ipairs(named_manual_group.members) do
+  check(not member.floating and floating.tagged(member, floating.USER) and not floating.tagged(member, floating.FLOATED),
+    "renumbering after reload reversed a named group's inherited manual choice")
+end
+for i, win in ipairs(world.windows) do if win == named_manual_owner then table.remove(world.windows, i); break end end
+named_manual_group.members = { named_manual_child }; count_windows(); emit("window.close", named_manual_owner)
+ws = load(); flush()
+check(not named_manual_child.floating and floating.tagged(named_manual_child, floating.USER),
+  "closing the original manual owner lost the named group's inherited choice through reload")
+local named_mode_owner = open_window("0xd182", renamed); flush()
+local named_mode_group = { members = { named_mode_owner } }
+named_mode_owner.group = named_mode_group
+renamed.name = "research-r18-mode"; emit("config.props_refreshed")
+local named_mode_child = window("0xd183", renamed, { floating = true, group = named_mode_group,
+  at = { x = 130, y = 170 }, size = { x = 500, y = 360 } })
+named_mode_group.members[#named_mode_group.members + 1] = named_mode_child
+deliver("window.open", named_mode_child)
+check(named_mode_child.floating and floating.tagged(named_mode_child, floating.FLOATED)
+  and not floating.tagged(named_mode_child, floating.USER) and not floating.tagged(named_mode_child, floating.FLOATING),
+  "R18: new named group member lost its original group's mode provenance")
+check(named_mode_child.at.x == 130 and named_mode_child.at.y == 170
+  and named_mode_child.size.x == 500 and named_mode_child.size.y == 360,
+  "inheriting mode provenance repositioned a named workspace's native floater")
+local named_native_owner = open_window("0xd184", renamed, { floating = true })
+local named_native_group = { members = { named_native_owner } }
+named_native_owner.group = named_native_group
+local named_native_child = window("0xd185", renamed, { floating = true, group = named_native_group })
+named_native_group.members[#named_native_group.members + 1] = named_native_child
+deliver("window.open", named_native_child)
+for _, member in ipairs(named_native_group.members) do
+  check(member.floating and not floating.tagged(member, floating.FLOATED)
+    and not floating.tagged(member, floating.USER) and not floating.tagged(member, floating.FLOATING),
+    "opening a named native floating group invented ownership or a Floating titlebar tag")
+end
+for i, win in ipairs(world.windows) do if win == named_mode_owner then table.remove(world.windows, i); break end end
+named_mode_group.members = { named_mode_child }; count_windows(); emit("window.close", named_mode_owner)
+ws = load(); flush()
+check(named_mode_child.floating and floating.tagged(named_mode_child, floating.FLOATED)
+  and not floating.tagged(named_mode_child, floating.FLOATING),
+  "closing the original mode owner lost the named group's provenance through reload")
+renamed.name = "1"; emit("config.props_refreshed"); ws.set_default_layout("dwindle")
+check(not named_mode_child.floating and not floating.tagged(named_mode_child, floating.FLOATED),
+  "returning a surviving named group member to numbered Tiled stranded its origin's mode float")
+check(named_native_owner.floating and named_native_child.floating,
+  "returning to numbered Tiled changed a named group's independent native floaters")
+-- Layout provenance also survives other nonregular destinations. Exercise the
+-- layout controller alone: minimize origin/session metadata stays with its
+-- coordinator and is not manufactured by an opening ownership callback.
+local origin_layout = floating.new(function() error("nonregular destination queried a managed layout") end)
+local minimized_destination = { id = -99, name = "special:cybexos-minimized", special = true, monitor = internal }
+for _, target in ipairs({ native_named, special, minimized_destination }) do
+  for _, provenance in ipairs({ floating.USER, floating.FLOATED }) do
+    local native_float = provenance == floating.FLOATED
+    local owner = { workspace = target, floating = native_float, tags = { provenance, floating.FLOATING } }
+    local child = { workspace = target, floating = native_float, tags = {} }
+    local transient_group = { members = { owner, child } }; owner.group, child.group = transient_group, transient_group
+    origin_layout:opened(child)
+    check(child.floating == native_float and owner.floating == native_float and floating.tagged(child, provenance)
+      and not floating.tagged(child, floating.FLOATING) and not floating.tagged(owner, floating.FLOATING),
+      "nonregular destination changed native state or lost the group's origin provenance: " .. target.name)
+  end
+end
+ws.set_default_layout("floating")
 -- Installed plugins are declared on each parse, never on event/runtime edits.
 local native_open = io.open
 io.open = function(path, mode)

@@ -752,10 +752,18 @@ function M.move_monitor(direction, target)
   end, { type = "oneshot", timeout = 1 })
 end
 for _, event in ipairs({ "monitor.layout_changed", "monitor.added", "monitor.focused", "workspace.active",
-  "workspace.created", "workspace.removed", "workspace.move_to_monitor", "window.open", "window.close",
-  "window.move_to_workspace", "window.fullscreen", "window.pin", "config.reloaded", "hyprland.start" }) do
+  "workspace.created", "workspace.removed", "workspace.move_to_monitor", "window.close",
+  "window.move_to_workspace", "window.fullscreen", "window.pin", "config.reloaded", "config.props_refreshed", "hyprland.start" }) do
   state.subscriptions[#state.subscriptions + 1] = hl.on(event, schedule)
 end
+state.subscriptions[#state.subscriptions + 1] = hl.on("window.open", function(window)
+  -- Qualified 0.56.2 emits this at openLate, with native float/dialog rules,
+  -- grouping and the layout target established, before mapWindow returns.
+  -- Float synchronously before rendering instead of using an ID-range rule:
+  -- r[] and even n[false] also match renamed positive-ID workspaces.
+  if not state.retired and not state.busy then layout:opened(window) end
+  schedule()
+end)
 state.subscriptions[#state.subscriptions + 1] = hl.on("monitor.removed", function(monitor)
   refresh(monitor and monitor.name)
   schedule()

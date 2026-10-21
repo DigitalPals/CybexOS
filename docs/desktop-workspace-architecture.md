@@ -115,13 +115,15 @@ availability is reported independently of the user's enabled preference.
 
 Deploy `workspaces.lua` and every `workspace_*.lua` companion alongside the
 other compositor modules on both install paths. Load after monitors/displays,
-looknfeel and user.lua, so opening rules can exclude independent floating
-rules. The XPS Shared policy exposes a mode switch to the authoritative owner;
-it is disabled only while Per-monitor is selected.
-The collected `__cybexos_float_exclusions.class/title` values are ordinary Lua
-arrays. Rule signatures encode private array copies with JSON length markers;
-the collector's tables stay unchanged. Both signatures and opening rules use
-the same copied patterns, including nonempty Settings/welcome/app exclusions.
+looknfeel and user.lua. The XPS Shared policy exposes a mode switch to the
+authoritative owner; it is disabled only while Per-monitor is selected.
+Opening ownership runs synchronously on `window.open`, bound to the qualified
+compositor's `openLate` event after native floating rules and grouping. It reads
+the actual workspace name and native floating state before mapping returns.
+Numeric `r[]` and `n[false]` selectors both include renamed positive-ID
+workspaces, so no numeric opening window rule is installed. The shared
+float-exclusion collector is no longer consumed or modified by this module;
+native rules have already established independent floaters before the event.
 
 Native scrolling and optional decoration provenance/qualification, shortcuts,
 behavioral evidence, and remaining hardware gates are recorded below as the
@@ -170,15 +172,30 @@ The vendor three-finger horizontal swipe is replaced with an event-driven local
 list gesture while Per-monitor is selected and restored in Shared. Existing
 Touchpad opt-outs and user.lua gesture overrides take precedence. Special and
 named workspaces keep their existing bindings/behavior. Floating windows get
-mode-owned tags only when the mode actually floats them or its opening rule did;
-pre-existing floaters and excluded app float rules keep their ownership. All
+mode-owned tags only when the mode actually floats them, or a legacy opening
+tag proves ownership. Pre-existing floaters and native app/dialog rules keep
+their ownership. A new member of a mode-owned floating group inherits that
+ownership before the original member can close. All
 members are claimed before any grouped window floats. Fullscreen and pinned
 windows retain their state; reconciliation runs again when they leave it.
 Explicit Super+F floating choices release mode ownership for every member of
-the selected window's group before the compositor toggles that group once.
-That manual tag takes precedence over the opening-rule tag, including its
+the selected window's group before the compositor toggles that group once. New
+members inherit the existing group's manual choice before arrangement, so
+opening a grouped client cannot reverse manual tiling or floating through reload.
+Group provenance also follows new members while named or special, so renaming
+back or closing the original owner cannot discard that choice; it does not
+change the native floating state on those destinations.
+That manual tag takes precedence over a legacy opening-rule tag, including its
 dynamic `*` form, so newly opened Floating windows remain tiled after Super+F
 through subsequent events and configuration reloads.
+
+Renamed/named/special workspaces retain their native floating state and never
+gain Floating-workspace decorations. Existing origin ownership stays with a
+window for a later return to a numbered destination. A saved numbered layout
+override suspends while its ID has a user name and resumes when numbered again;
+renaming never deletes the saved choice. Previously unowned floating windows
+are preserved because they cannot be distinguished safely from deliberate user
+floaters.
 
 Minimize records every group member and uses a hidden special workspace with a
 window-local origin tag. PID, live mapped address, tag and compositor-session
@@ -249,7 +266,7 @@ The tag's migration cases for named workspace selection and saved layout/default
 handling informed strict numeric selectors and explicit default overrides.
 No subsequent moving-branch fixes were copied. Monitor allocation/persistence is
 an independent implementation; floating claim tags, claim-before-group-float,
-opening-rule ownership and logical/rotated geometry are adaptations of the
+legacy opening ownership and logical/rotated geometry are adaptations of the
 pinned workspace-modes.lua. Its MIT copyright/permission/warranty notice is
 retained in workspace_layouts.lua.
 
@@ -296,7 +313,7 @@ owned Lua/fixture/documentation diff. The titlebar availability follow-up was
 tested on `78903e9` plus its owned three-file diff. Actual source checks run by
 this agent:
 
-- `./tests/hyprland-workspace-modes`: Passed, 178 behavioral assertions using
+- `./tests/hyprland-workspace-modes`: Passed, 233 behavioral assertions using
   local rpmlua. Covers serial ambiguity, connector changes, occupied/named IDs,
   full slots/guests, mirrors/lid reconnect, visible-workspace swap avoidance,
   mode transitions, native capability failure, gesture opt-out, independent
@@ -308,10 +325,11 @@ this agent:
   taking layout ownership, explicit overrides/default reset/cycling, legacy v1
   compatibility, manual tiling of OPENED* windows, Shared allocation around
   named ID 18, and declarative plugin/registry/known-CSD rule lifecycle.
-  Nonempty ordinary class/title arrays reproduce the generated-config signature
-  failure before the fix; regression checks require a clean initial snapshot,
-  unchanged external tables, correct negative opening matches, no rule rebuild
-  for identical patterns, and replacement rules after an in-place pattern edit.
+  R15 regressions cover named/renamed positive-ID openings, suspended overrides,
+  native dialog/user float rules, inherited mode/manual group ownership and reload. They
+  require no numeric opening rules and no consumption or mutation of collected
+  class/title exclusion arrays. Actual first-frame/client configure behavior
+  remains a separate native check.
   R2 regressions require every grouped member to release mode ownership before
   one manual toggle, preserve that choice through reload, and permit a later
   Floating selection to reclaim the tiled group. Explicit layout choices equal
