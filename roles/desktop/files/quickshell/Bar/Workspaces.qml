@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell.Hyprland
 import "../Common"
 import "../Common/WorkspaceMotion.js" as WorkspaceMotion
+import "../Common/WorkspaceHelpers.js" as WorkspaceHelpers
 
 // The screenshot's hybrid workspace strip: occupied workspaces are numbers,
 // empty slots are dots, and the current workspace is a wider accent chip. Dot
@@ -13,8 +14,13 @@ Rectangle {
     property Bar host: null
 
     readonly property bool numbered: Settings.modOpts.ws.style === "numbers"
-    readonly property int focusedId: Hyprland.focusedWorkspace
-        ? Hyprland.focusedWorkspace.id : -1
+    readonly property string monitorName: host ? host.outputName : Screens.focused ? Screens.focused.name : ""
+    readonly property var monitorState: DesktopWorkspaces.monitor(monitorName)
+    readonly property var liveMonitor: host && host.screen ? Hyprland.monitorFor(host.screen) : Hyprland.focusedMonitor
+    // Every display marks the workspace it shows, including an unfocused
+    // display. The runtime snapshot also corrects stale monitor IPC events.
+    readonly property int focusedId: monitorState ? monitorState.activeWorkspace
+        : liveMonitor && liveMonitor.activeWorkspace ? liveMonitor.activeWorkspace.id : -1
     // Only numbered workspaces get a slot: the scratchpad and other special
     // workspaces show over the current one and never shift the strip.
     readonly property var existingIds: WorkspaceMotion.regularIds(Hyprland.workspaces.values)
@@ -24,17 +30,22 @@ Rectangle {
     // the same. Round-tripping through a string gives the Repeater a new
     // model only when the ids really change; a fresh array every time would
     // recreate every pip (and its hover/tooltip state) on each event.
-    readonly property string visibleIdsKey: JSON.stringify(WorkspaceMotion.visibleIds(slots,
-        existingIds, -1, Settings.modOpts.ws.hideEmpty))
+    readonly property var entries: WorkspaceHelpers.barEntries(DesktopWorkspaces.snapshot,
+        monitorName, Hyprland.workspaces.values, Settings.modOpts.ws.minSlots,
+        Settings.modOpts.ws.hideEmpty, focusedId)
+    readonly property string visibleIdsKey: JSON.stringify(entries.map(entry => entry.id))
     readonly property var visibleIds: JSON.parse(visibleIdsKey)
     readonly property string structureKey: JSON.stringify([
-        slots, existingIds, Settings.modOpts.ws.hideEmpty
+        visibleIdsKey, monitorName, Settings.modOpts.ws.hideEmpty
     ])
+    readonly property var activeWorkspace: DesktopWorkspaces.workspace(focusedId)
+    readonly property string activeLayout: activeWorkspace ? activeWorkspace.layout : "dwindle"
+    property real wheelAccumulator: 0
     property int previousFocusedId: -1
     property bool indicatorReady: false
     property bool snapRequested: true
 
-    implicitWidth: pips.width + 10
+    implicitWidth: pips.width + 10 + (layoutChip.visible ? layoutChip.width + 4 : 0)
     implicitHeight: Theme.chipHeight
     radius: Theme.chipRadius
     color: "transparent"
@@ -61,7 +72,7 @@ Rectangle {
             return;
         }
         const durations = WorkspaceMotion.edgeDurations(previousFocusedId,
-            focusedId, animate && indicatorReady && !snapRequested);
+            focusedId, animate && indicatorReady && !snapRequested && !Theme.reducedMotion);
         activeLozenge.leftDuration = durations.left;
         activeLozenge.rightDuration = durations.right;
         activeLozenge.animateEdges = durations.direction !== 0;
@@ -70,6 +81,28 @@ Rectangle {
         indicatorReady = true;
         previousFocusedId = focusedId;
         snapRequested = false;
+    }
+
+    function focusWorkspace(id) {
+        DesktopWorkspaces.focus(id);
+    }
+
+    function scrollWorkspaces(wheel) {
+        wheelAccumulator += wheel.angleDelta.y !== 0 ? wheel.angleDelta.y / 120 : wheel.pixelDelta.y / 40;
+        const steps = Math.trunc(wheelAccumulator);
+        wheelAccumulator -= steps;
+        if (steps === 0)
+            return;
+        if (DesktopWorkspaces.ready) {
+            for (let step = 0; step < Math.min(10, Math.abs(steps)); step++)
+                DesktopWorkspaces.next(steps > 0 ? -1 : 1, monitorName);
+        } else {
+            const at = visibleIds.indexOf(focusedId);
+            const next = Math.max(0, Math.min(visibleIds.length - 1, at - steps));
+            if (at >= 0 && next !== at)
+                focusWorkspace(visibleIds[next]);
+        }
+        wheel.accepted = true;
     }
 
     onFocusedIdChanged: focusSettle.restart()
@@ -98,7 +131,8 @@ Rectangle {
 
     Item {
         id: pips
-        anchors.centerIn: parent
+        x: 5
+        anchors.verticalCenter: parent.verticalCenter
         width: root.visibleIds.length * WorkspaceMotion.CELL_WIDTH
         height: Theme.chipHeight
 
@@ -154,6 +188,8 @@ Rectangle {
                 required property int index
                 required property int modelData
                 readonly property int wsId: modelData
+                readonly property var entry: root.entries.find(entry => entry.id === wsId) ?? null
+                readonly property string label: entry ? entry.label : String(wsId)
                 readonly property var ws: Hyprland.workspaces.values.find(
                     workspace => workspace.id === wsId) ?? null
                 readonly property bool exists: ws !== null
@@ -175,12 +211,12 @@ Rectangle {
                 z: 2
 
                 Accessible.role: Accessible.Button
-                Accessible.name: "Workspace " + wsId
+                Accessible.name: I18n.tr("Workspace") + " " + label
                     + (focused ? ", current" : urgent ? ", urgent"
                         : exists ? ", occupied" : ", empty")
                 Accessible.onPressAction: {
                     workspaceState.pulseCenter();
-                    Hyprland.dispatch("hl.dsp.focus({ workspace = " + wsId + " })");
+                    root.focusWorkspace(wsId);
                 }
 
                 Rectangle {
@@ -212,7 +248,11 @@ Rectangle {
                 Text {
                     visible: slot.showNumber
                     anchors.centerIn: parent
-                    text: slot.wsId
+                    text: slot.label
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight
+                    textFormat: Text.PlainText
                     font.family: Theme.fontMenu
                     font.pixelSize: Theme.typography.bar
                     font.weight: slot.focused || slot.urgent
@@ -233,19 +273,60 @@ Rectangle {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Hyprland.dispatch(
-                        "hl.dsp.focus({ workspace = " + slot.wsId + " })")
+                    onClicked: root.focusWorkspace(slot.wsId)
+                    onWheel: wheel => root.scrollWorkspaces(wheel)
                 }
 
                 BarTooltip {
                     check: workspaceState.check
-                    text: "Workspace " + slot.wsId
-                        + (slot.focused ? " · current" : slot.urgent ? " · urgent"
-                            : slot.exists ? " · occupied" : " · empty")
+                    text: I18n.tr("Workspace") + " " + slot.label
+                        + (slot.entry && slot.entry.guest ? " · " + I18n.tr("Visiting workspace") : "")
+                        + (slot.focused && root.activeWorkspace ? " · " + DesktopWorkspaces.layoutLabel(root.activeLayout, root.activeWorkspace.nativeLayout) : "")
                     y: root.height + 8
                     x: (slot.width - width) / 2
                 }
             }
+        }
+    }
+
+    Item {
+        id: layoutChip
+        visible: root.activeWorkspace !== null && DesktopWorkspaces.canSetLayout(root.activeWorkspace)
+        x: pips.x + pips.width + 4
+        width: 24
+        height: parent.height
+        Accessible.role: Accessible.Button
+        Accessible.name: I18n.tr("Cycle workspace layout") + ": " + DesktopWorkspaces.layoutLabel(root.activeLayout, root.activeWorkspace ? root.activeWorkspace.nativeLayout : "")
+        Accessible.onPressAction: DesktopWorkspaces.cycleLayout(root.focusedId)
+        BarHover {
+            id: layoutState
+            anchors.fill: parent
+            host: root.host
+            target: layoutChip
+            radius: Theme.chipRadius
+            pressed: layoutMouse.pressed
+            tint: Theme.barTextHi
+            pressPoint: Qt.point(layoutMouse.mouseX, layoutMouse.mouseY)
+        }
+        Sym {
+            anchors.centerIn: parent
+            name: DesktopWorkspaces.layoutGlyph(root.activeLayout)
+            size: Theme.iconSmall
+            color: Theme.barTextLow
+        }
+        MouseArea {
+            id: layoutMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: DesktopWorkspaces.cycleLayout(root.focusedId)
+            onWheel: wheel => root.scrollWorkspaces(wheel)
+        }
+        BarTooltip {
+            check: layoutState.check
+            text: I18n.tr("Cycle workspace layout") + ": " + DesktopWorkspaces.layoutLabel(root.activeLayout, root.activeWorkspace ? root.activeWorkspace.nativeLayout : "")
+            y: root.height + 8
+            x: (parent.width - width) / 2
         }
     }
 

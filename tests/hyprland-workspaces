@@ -2,6 +2,16 @@
 set -euo pipefail
 
 cd -- "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+if command -v luajit >/dev/null; then
+  lua_command=(luajit -)
+elif command -v lua >/dev/null; then
+  lua_command=(lua -)
+elif command -v rpmlua >/dev/null; then
+  lua_command=(rpmlua -e 'assert(load(io.read("*a"), "workspace fixture"))()')
+else
+  echo 'Lua interpreter required (luajit, lua or rpmlua)' >&2
+  exit 1
+fi
 
 rendered=$(mktemp)
 trap 'rm -f -- "$rendered"' EXIT
@@ -9,7 +19,7 @@ awk '/^{% if cybexos_xps_2026 \| bool %}$/ { next }
      /^{% else %}$/ { exit }
      { print }' roles/desktop/templates/monitors.lua.j2 >"$rendered"
 
-FEDORA_MONITORS_CONFIG=$rendered luajit - <<'LUA'
+FEDORA_MONITORS_CONFIG=$rendered "${lua_command[@]}" <<'LUA'
 local config = assert(os.getenv("FEDORA_MONITORS_CONFIG"))
 local monitors = {}
 local rules = {}
@@ -123,6 +133,19 @@ for _, listener in ipairs(listeners["monitor.layout_changed"]) do
 end
 assert(active_listeners == 1, "reload left stale monitor callbacks active")
 
+-- Explicit Per-monitor selection replaces the XPS policy, and switching back
+-- restores the exact ISO Shared defaults without a second rule owner.
+_G.__cybexos_workspace_mode = "per-monitor"
+_G.__fedora_workspace_policy.apply()
+assert(count(enabled_rules()) == 0, "XPS rules compete with per-monitor ownership")
+emit("monitor.layout_changed")
+assert(count(enabled_rules()) == 0, "hotplug reenabled competing XPS rules")
+_G.__cybexos_workspace_mode = "shared"
+_G.__fedora_workspace_policy.apply()
+active = enabled_rules()
+assert(count(active) == 10 and active["1"].monitor == "eDP-1" and active["2"].monitor == "DP-2",
+  "Shared transition did not restore existing XPS policy")
+
 print("Hyprland workspace hotplug policy fixtures passed")
 LUA
 
@@ -130,7 +153,7 @@ LUA
 for xps in false true; do
   sed "s/{{ .* }}/$xps/" \
     roles/desktop/templates/looknfeel.lua.j2 >"$rendered"
-  FEDORA_APPEARANCE_CONFIG=$rendered luajit - <<'LUA'
+  FEDORA_APPEARANCE_CONFIG=$rendered "${lua_command[@]}" <<'LUA'
 local config = assert(os.getenv("FEDORA_APPEARANCE_CONFIG"))
 local monitors, rules, listeners = {}, {}, {}
 hl = {

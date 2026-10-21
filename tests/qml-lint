@@ -70,6 +70,17 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 mkdir -- "$work/imports" && ln -s "$shell_dir" "$work/imports/qs" || exit 1
 
+# Analyze the same public-Qt module the installed shell loads. Its CTest suite
+# also checks real QML registration/provider access before linting consumers.
+native_build="$work/notification-images"
+if ! { cmake -S "$repo_root/roles/desktop/files/notification-images" \
+    -B "$native_build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON &&
+    cmake --build "$native_build" --parallel 2 &&
+    ctest --test-dir "$native_build" --output-on-failure; } >"$work/native.out" 2>&1; then
+  cat "$work/native.out" >&2
+  exit 1
+fi
+
 cd -- "$shell_dir" || exit 1
 mapfile -t -d '' files < <(find . -name '*.qml' -print0 | sort -z)
 if ((${#files[@]} == 0)); then
@@ -89,7 +100,7 @@ per=$(( (${#files[@]} + shards - 1) / shards ))
 # and the combined output keeps the tree's file order.
 reports=()
 for ((first = 0; first < ${#files[@]}; first += per)); do
-  "$qmllint" -I "$qml_import_path" -I "$work/imports" -I . "${files[@]:first:per}" \
+  "$qmllint" -I "$native_build/qml" -I "$qml_import_path" -I "$work/imports" -I . "${files[@]:first:per}" \
     >"$work/tree.$first.out" 2>&1 &
   lint_pids+=("$!")
   reports+=("$work/tree.$first.out")
@@ -104,7 +115,7 @@ for index in "${!harnesses[@]}"; do
       ln -s "$harness/tree" "$harness/imports/qs" &&
       cd -- "$harness/tree" || exit 1
     # Findings name the tracked harness, not the throwaway copy.
-    "$qmllint" -I "$qml_import_path" -I "$harness/imports" -I . ./shell.qml 2>&1 \
+    "$qmllint" -I "$native_build/qml" -I "$qml_import_path" -I "$harness/imports" -I . ./shell.qml 2>&1 \
       | sed "s#\\./shell\\.qml:#${harnesses[index]}:#g"
   ) >"$harness.out" 2>&1 &
   lint_pids+=("$!")

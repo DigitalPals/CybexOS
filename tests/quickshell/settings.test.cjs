@@ -381,7 +381,7 @@ test("regression fixes keep asynchronous state identity-safe", () => {
 
 test("schema twenty-three keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
-    assert.match(helpers, /var VERSION = 28/);
+    assert.match(helpers, /var VERSION = 29/);
     // Schema 17: the drawer becomes configurable (turn-3 settings design).
     assert.match(helpers, /drawerHover: "open"/);
     assert.match(helpers, /drawerWidth: 400/);
@@ -582,7 +582,7 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
     // key or page cannot leave a search row jumping nowhere.
     const schemaKeys = Object.keys(load("SettingsHelpers.js").defaults());
     const validPages = [...settings.matchAll(/\{ id: "([a-z]+)", group: "/g)].map(m => m[1]);
-    assert.deepEqual(validPages, ["appearance", "wallpaper", "bar", "notifications", "displays",
+    assert.deepEqual(validPages, ["appearance", "wallpaper", "bar", "workspaces", "notifications", "displays",
         "sound", "network", "touchpad", "keyboard", "power", "region", "accounts", "security", "plugins", "backup",
         "about"]);
     const rows = load("SettingsSearchData.js").ROWS;
@@ -854,7 +854,7 @@ test("notification settings drive the toasts and the notification center", () =>
     assert.match(toasts, /showProgress:\s*Settings\.notifProgress && !critical/);
     // A plain array model recreates every delegate when one toast expires,
     // resetting the survivors' countdowns; ScriptModel diffs by identity.
-    assert.match(toasts, /model:\s*ScriptModel\s*\{\s*values:\s*Notifs\.toasts\s*\}/);
+    assert.match(toasts, /model:\s*ScriptModel\s*\{\s*values:\s*root\.groupKeys\s*\}/);
     assert.doesNotMatch(toasts, /model:\s*Notifs\.toasts/);
     assert.match(notifs, /readonly property bool dnd:\s*Settings\.notifDnd/);
     assert.match(notifs, /toastsSuppressed:\s*dnd \|\| quietActive/);
@@ -878,7 +878,7 @@ test("notification settings drive the toasts and the notification center", () =>
     const values = [...body.slice(0, body.indexOf("]")).matchAll(/value: (\d+)/g)].map(m => Number(m[1]));
     assert.deepEqual(values, Array.from({ length: Number(clamp[2]) - Number(clamp[1]) + 1 },
         (_, i) => Number(clamp[1]) + i));
-    assert.doesNotMatch(style, /SliderRow \{/, "four line counts are choices, not a slider");
+    assert.doesNotMatch(body.slice(0, body.indexOf("]")), /SliderRow \{/, "four line counts are choices, not a slider");
     // DND writers must go through the persisted setting, never the singleton.
     for (const name of ["Popovers/NotifsPopover.qml", "Popovers/ControlCenterPopover.qml"])
         assert.doesNotMatch(read(name), /Notifs\.dnd\s*=/,

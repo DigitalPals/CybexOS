@@ -5,6 +5,7 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import "LauncherProviders.js" as ProviderHelpers
 import "ProcHelpers.js" as ProcHelpers
+import "WindowCommands.js" as WindowCommands
 
 // All command-palette data and side effects live here. LauncherView only
 // renders normalized rows, so adding a provider no longer expands the view's
@@ -108,7 +109,9 @@ Singleton {
                 providerId: "windows",
                 kind: "window",
                 title: win.title || "Untitled window",
-                subtitle: windowClass,
+                subtitle: windowClass + (DesktopWorkspaces.isMinimized(win.address)
+                    ? " · " + I18n.tr("Minimized") : "")
+                    + root.workspaceDescription(win),
                 glyph: root.activeProvider.glyph,
                 win: win,
                 score: ProviderHelpers.windowScore(win.title, windowClass,
@@ -118,6 +121,15 @@ Singleton {
             .sort((a, b) => b.score - a.score
                 || a.title.localeCompare(b.title))
             .slice(0, root.maxResults);
+    }
+
+    function workspaceDescription(win) {
+        const minimized = DesktopWorkspaces.minimizedWindow(win.address);
+        if (!minimized && win.workspace && WindowCommands.workspaceKind(win.workspace) === "named")
+            return " · " + I18n.tr("Workspace") + " " + win.workspace.name;
+        const workspaceId = minimized ? minimized.workspace : win.workspace ? win.workspace.id : 0;
+        const workspace = DesktopWorkspaces.workspace(workspaceId);
+        return workspace ? " · " + workspace.monitor + " · " + I18n.tr("Workspace") + " " + workspace.label : "";
     }
 
     // Entries for a feature the installation left out (developer tools,
@@ -323,12 +335,10 @@ Singleton {
             Launcher.close();
             break;
         case "windows":
-            // Hyprland reads a dispatch as Lua, and its address selector
-            // matches the 0x-prefixed form that Quickshell's hex address
-            // leaves out.
-            Hyprland.dispatch('hl.dsp.focus({ window = "address:0x'
-                + row.win.address + '" })');
-            Launcher.close();
+            // A stale result must not fall back to the active window. The
+            // module restores hidden windows to their saved monitor first.
+            if (row.win && DesktopWorkspaces.activate(row.win.address))
+                Launcher.close();
             break;
         case "clipboard":
             root.useClipboardEntry(row, !copyOnly);

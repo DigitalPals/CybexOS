@@ -62,7 +62,7 @@ test("a closed overview maps nothing and captures nothing", () => {
     assert.match(overviewWindow, /HyprlandFocusGrab \{\s*active: Overview\.open/);
     assert.match(overviewWindow, /onOutputPresentChanged:[\s\S]{0,120}?Overview\.close\(\)/,
         "an unplugged output takes its overview with it");
-    assert.match(overviewView, /ScreencopyView \{[\s\S]{0,200}?captureSource: thumb\.toplevel \? thumb\.toplevel\.wayland : null[\s\S]{0,80}?live: Overview\.open/);
+    assert.match(overviewView, /ScreencopyView \{[\s\S]{0,200}?captureSource: thumb\.info && thumb\.info\.minimized \? null\s*: thumb\.toplevel \? thumb\.toplevel\.wayland : null[\s\S]{0,80}?live: Overview\.open/);
     assert.doesNotMatch(overviewView, /ClippingRectangle \{[^}]*ScreencopyView/,
         "an offscreen-clipped capture would re-render its clip on every frame");
 });
@@ -78,7 +78,7 @@ test("opening refreshes window geometry, and only an open overview refreshes it 
 
 test("the overview leaves special workspaces out and keys delegates structurally", () => {
     assert.match(overviewView, /OverviewHelpers\.isSpecialWorkspace\(\{ id: workspace\.id, name: workspace\.name \}\)/);
-    assert.match(overviewView, /OverviewHelpers\.workspaceEntries\(workspaceRecords, windows\)/);
+    assert.match(overviewView, /OverviewHelpers\.workspaceEntries\(workspaceRecords, windows, \{ authoritative: DesktopWorkspaces\.ready \}\)/);
     assert.match(overviewView, /readonly property string tilesKey: JSON\.stringify/);
     assert.match(overviewView, /readonly property var tiles: JSON\.parse\(tilesKey\)/);
     assert.match(overviewView, /model: root\.tiles/);
@@ -93,11 +93,12 @@ test("the overview leaves special workspaces out and keys delegates structurally
 test("every overview dispatch is validated and checks the window still exists", () => {
     assert.doesNotMatch(overviewView, /Hyprland\.dispatch\(["'`]/, "no hand-built dispatch strings");
     assert.match(functionBody(overviewView, "activateWindow"),
-        /root\.toplevelByAddress\[address\] \? WindowCommands\.focusWindow\(address\) : ""/);
+        /root\.toplevelByAddress\[address\] \? DesktopWorkspaces\.activateCommand\(address\) : ""/);
     const finish = functionBody(overviewView, "finishDrag");
     assert.match(finish, /!root\.toplevelByAddress\[address\]/);
-    assert.match(finish, /WindowCommands\.moveWindow\(address, tile\)/);
-    assert.match(functionBody(overviewView, "activateWorkspace"), /WindowCommands\.focusWorkspace\(tile\)/);
+    assert.match(finish, /DesktopWorkspaces\.moveCommand\(address, tile\)/);
+    assert.match(finish, /WindowCommands\.desktopNewAndMove\(address, root\.output\.name\)/);
+    assert.match(functionBody(overviewView, "activateWorkspace"), /DesktopWorkspaces\.focusCommand\(tile\)/);
     assert.match(overviewView, /onToplevelByAddressChanged:[\s\S]{0,160}?dragAddress = ""/,
         "a window closing mid-drag cancels the drag");
 });
@@ -108,7 +109,7 @@ test("the overview's keys: arrows, Tab, Enter, and Esc clears before it closes",
         ["Down", "down"], ["Tab", "next"], ["Backtab", "previous"]])
         assert.match(keys, new RegExp(`Qt\\.Key_${key}:\\s*root\\.move\\("${action}"\\)`));
     assert.match(keys, /Qt\.Key_Escape:\s*if \(filterInput\.text !== ""\)\s*filterInput\.text = "";\s*else\s*Overview\.close\(\);/);
-    assert.match(keys, /Qt\.Key_Enter:\s*root\.activateWindow\(root\.selected\)/);
+    assert.match(keys, /Qt\.Key_Enter:[\s\S]{0,250}?root\.activateWorkspace\(root\.tiles\[root\.selectedTileIndex\]\)[\s\S]{0,80}?root\.activateWindow\(root\.selected\)/);
 });
 
 test("overview motion uses the shared tokens, which reduced motion zeroes", () => {

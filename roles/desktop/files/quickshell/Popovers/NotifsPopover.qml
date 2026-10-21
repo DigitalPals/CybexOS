@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Services.Notifications
 import "../Common"
 import "../Common/Format.js" as Format
+import "../Common/NotifPolicy.js" as NotifPolicy
 
 // Notification center built from the same anatomy as the popup card: source
 // icon, app · summary header, timestamp, wrapped body, whole-card default
@@ -73,21 +74,7 @@ Surface {
             Notifs.dismiss(entry);
     }
 
-    readonly property var groups: {
-        const seen = {};
-        const list = [];
-        for (const entry of Notifs.entries.slice(0, 18)) {
-            const key = entry.displayAppName || "Other";
-            let group = seen[key];
-            if (!group) {
-                group = { app: key, items: [] };
-                seen[key] = group;
-                list.push(group);
-            }
-            group.items.push(entry);
-        }
-        return list;
-    }
+    readonly property var groups: NotifPolicy.groups(Notifs.entries)
 
     readonly property real nowMs: relativeClock.date.getTime()
     readonly property var recentGroups: groups.filter(group =>
@@ -163,11 +150,13 @@ Surface {
         }
     }
 
+    NotifSnoozes { width: parent.width }
+
     component GroupBlock: Column {
         id: block
         required property var group
         property bool dim: false
-        readonly property bool expanded: root.expandedApps[group.app] === true
+        readonly property bool expanded: root.expandedApps[group.key] === true
         readonly property var newest: group.items[0]
         readonly property bool hasUrgent: group.items.some(item =>
             item.urgency === NotificationUrgency.Critical)
@@ -183,7 +172,7 @@ Surface {
             groupUrgent: block.hasUrgent
             onActivated: {
                 if (block.group.items.length > 1)
-                    root.toggleApp(block.group.app);
+                    root.toggleApp(block.group.key);
                 else
                     Notifs.invokeDefault(block.newest);
             }
@@ -214,12 +203,12 @@ Surface {
                     Accessible.role: Accessible.Button
                     Accessible.name: "Collapse notifications from " + block.group.app
                     Accessible.description: block.group.items.length + " notifications"
-                    Accessible.onPressAction: root.toggleApp(block.group.app)
+                    Accessible.onPressAction: root.toggleApp(block.group.key)
 
                     Keys.onPressed: event => {
                         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
                                 || event.key === Qt.Key_Space) {
-                            root.toggleApp(block.group.app);
+                            root.toggleApp(block.group.key);
                             event.accepted = true;
                         } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down) {
                             root.moveFocus(groupHeader, true);
@@ -248,7 +237,7 @@ Surface {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             groupHeader.forceActiveFocus();
-                            root.toggleApp(block.group.app);
+                            root.toggleApp(block.group.key);
                         }
                     }
 

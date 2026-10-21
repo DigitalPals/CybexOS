@@ -45,6 +45,8 @@ PACKAGE_TASKS = (
         "Install explicit Panther Lake firmware, media, and regulatory packages",
         "Install full Panther Lake video-codec acceleration",
     }),
+    ("roles/desktop/tasks/titlebars.yml", {"Install native titlebar build dependencies"}),
+    ("roles/desktop/tasks/notification-images.yml", {"Install native notification image build dependencies"}),
     ("roles/desktop/tasks/main.yml", {"Install stable Hyprland and desktop integration packages",
                                       "Install Fedora fuzzel and matugen rather than COPR variants"}),
 )

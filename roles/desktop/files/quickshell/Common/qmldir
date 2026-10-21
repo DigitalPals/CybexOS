@@ -18,6 +18,7 @@ singleton SystemTheme SystemTheme.qml
 singleton Themes Themes.qml
 singleton Popouts Popouts.qml
 singleton Screens Screens.qml
+singleton DesktopWorkspaces DesktopWorkspaces.qml
 singleton Launcher Launcher.qml
 singleton LauncherProviders LauncherProviders.qml
 singleton T3Code T3Code.qml
@@ -86,6 +87,8 @@ HSlider HSlider.qml
 Sym Sym.qml
 BrandIcon BrandIcon.qml
 NotifActions NotifActions.qml
+NotifButton NotifButton.qml
+NotifSnoozes NotifSnoozes.qml
 NotifCard NotifCard.qml
 NotifIcon NotifIcon.qml
 Revealer Revealer.qml

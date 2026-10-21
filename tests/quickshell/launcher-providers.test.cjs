@@ -122,18 +122,14 @@ function qmlFiles(dir) {
 // Hyprland here reads every dispatch as Lua (`hl.dispatch(<request>)`), so a
 // plain dispatcher word such as `focuswindow address:…` is a syntax error
 // that fails silently from the shell's side.
-test("window activation dispatches a Lua focus with Hyprland's address form", () => {
+test("window activation restores through the checked workspace API", () => {
     const providers = fs.readFileSync(
         path.join(shellDir, "Common/LauncherProviders.qml"), "utf8");
-    const call = providers.match(
-        /case "windows":\s*(?:\/\/.*\n\s*)*Hyprland\.dispatch\(([\s\S]*?)\);\n/);
-    assert.ok(call, "the windows provider must dispatch through Hyprland");
-    // Quickshell reports the address as bare hex; Hyprland's selector
-    // compares against the 0x-prefixed form.
-    const request = new Function("row", `return ${call[1]};`)(
-        { win: { address: "55a33dbecb20" } });
-    assert.equal(request,
-        'hl.dsp.focus({ window = "address:0x55a33dbecb20" })');
+    assert.match(providers, /case "windows":[\s\S]*?row\.win && DesktopWorkspaces\.activate\(row\.win\.address\)/);
+    const owner = fs.readFileSync(path.join(shellDir, "Common/DesktopWorkspaces.qml"), "utf8");
+    assert.match(owner, /return !isLive\(address\) \? "" : ready/);
+    assert.match(owner, /WindowCommands\.desktopActivate\(address\) : WindowCommands\.focusWindow\(address\)/);
+    assert.match(owner, /commandProc\.command = \["hyprctl", "eval", next\.expression\]/);
 
     for (const file of qmlFiles(shellDir)) {
         const source = fs.readFileSync(file, "utf8");

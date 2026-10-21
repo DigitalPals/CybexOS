@@ -8,6 +8,8 @@ import "Common"
 import "Common/LauncherProviders.js" as LauncherHelpers
 import "Common/OverviewHelpers.js" as OverviewHelpers
 import "Common/WindowCommands.js" as WindowCommands
+import "Common/WorkspaceHelpers.js" as WorkspaceHelpers
+import "Settings"
 
 // The overview's content, constructed only while OverviewWindow is mapped.
 // Workspaces are a grid of tiles, each holding its windows as live captures
@@ -41,16 +43,39 @@ FocusScope {
     // scratchpad) or one hidden behind its group's active tab is left out.
     readonly property var windows: toplevels.map(toplevel => root.record(toplevel))
         .filter(entry => entry !== null)
-    readonly property var workspaceRecords: Hyprland.workspaces.values.map(workspace => ({
-        id: workspace.id,
-        name: workspace.name,
-        monitor: workspace.monitor ? workspace.monitor.name : "",
-        active: workspace.active
-    }))
-    readonly property var entries: OverviewHelpers.workspaceEntries(workspaceRecords, windows)
+    readonly property var workspaceRecords: {
+        const records = Hyprland.workspaces.values.map(workspace => ({
+            id: workspace.id, name: workspace.name,
+            workspaceName: workspace.name, kind: WindowCommands.workspaceKind(workspace),
+            monitor: workspace.monitor ? workspace.monitor.name : "",
+            active: workspace.active
+        }));
+        if (DesktopWorkspaces.ready) {
+            for (const row of DesktopWorkspaces.snapshot.workspaces) {
+                const monitor = DesktopWorkspaces.monitor(row.monitor);
+                const entry = records.find(record => record.id === row.id);
+                if (entry) {
+                    if (entry.kind === "numbered") {
+                        entry.monitor = row.monitor;
+                        entry.active = monitor !== null && monitor.activeWorkspace === row.id;
+                    }
+                } else {
+                    records.push({ id: row.id, name: row.label, monitor: row.monitor,
+                        kind: "numbered", workspaceName: String(row.id),
+                        active: monitor !== null && monitor.activeWorkspace === row.id });
+                }
+            }
+        }
+        return records;
+    }
+    readonly property var entries: WorkspaceHelpers.decorateOverview(
+        OverviewHelpers.workspaceEntries(workspaceRecords, windows, { authoritative: DesktopWorkspaces.ready }),
+        DesktopWorkspaces.snapshot, output.name)
     // Tiles are recreated only when the set of workspaces changes.
     readonly property string tilesKey: JSON.stringify(entries.map(entry => ({
-        id: entry.id, name: entry.name, monitor: entry.monitor, isNew: entry.isNew
+        id: entry.id, name: entry.name, monitor: entry.monitor, isNew: entry.isNew,
+        kind: entry.kind, workspaceName: entry.workspaceName,
+        layout: entry.layout || "", nativeLayout: entry.nativeLayout || "", guest: entry.guest === true
     })))
     readonly property var tiles: JSON.parse(tilesKey)
     readonly property int focusedWorkspaceId: Hyprland.focusedWorkspace
@@ -101,6 +126,17 @@ FocusScope {
     readonly property var items: OverviewHelpers.selectionItems(geometry.placements, scores)
     readonly property bool anyMatch: items.some(item => item.enabled)
     property string selected: ""
+    property int selectedTileIndex: -1
+    onTilesChanged: {
+        if (selectedTileIndex >= tiles.length)
+            selectedTileIndex = tiles.length - 1;
+    }
+    readonly property var selectedWindow: selectedTileIndex < 0 ? windowFor(selected) : null
+    readonly property int selectedWorkspaceId: selectedTileIndex >= 0 && tiles[selectedTileIndex]
+        ? tiles[selectedTileIndex].id : selectedWindow ? selectedWindow.workspaceId : focusedWorkspaceId
+    readonly property var selectedWorkspaceTarget: selectedTileIndex >= 0 ? tiles[selectedTileIndex]
+        : selectedWindow ? { id: selectedWindow.workspaceId, kind: selectedWindow.workspaceKind,
+            workspaceName: selectedWindow.workspaceName } : Hyprland.focusedWorkspace
     // Read once as the overview opens: an exclusive overlay can take the
     // compositor's notion of the focused window with it.
     property string initialActive: ""
@@ -113,23 +149,27 @@ FocusScope {
 
     function record(toplevel) {
         const workspace = toplevel.workspace;
-        if (!workspace || OverviewHelpers.isSpecialWorkspace({ id: workspace.id, name: workspace.name }))
+        const minimized = DesktopWorkspaces.minimizedWindow(toplevel.address);
+        if (!minimized && (!workspace || OverviewHelpers.isSpecialWorkspace({ id: workspace.id, name: workspace.name })))
             return null;
         const ipc = toplevel.lastIpcObject || {};
-        if (ipc.mapped === false || ipc.hidden === true)
+        if (!minimized && (ipc.mapped === false || ipc.hidden === true))
             return null;
         const wayland = toplevel.wayland;
         return {
             address: toplevel.address,
-            workspaceId: workspace.id,
+            workspaceId: minimized ? minimized.workspace : workspace.id,
+            workspaceKind: minimized ? "numbered" : WindowCommands.workspaceKind(workspace),
+            workspaceName: minimized ? String(minimized.workspace) : workspace.name,
+            minimized: minimized !== null,
             title: toplevel.title || "",
             appClass: (wayland && wayland.appId) || ipc.class || ipc.initialClass || "",
-            at: ipc.at,
-            size: ipc.size,
-            floating: ipc.floating === true,
+            at: minimized ? undefined : ipc.at,
+            size: minimized ? undefined : ipc.size,
+            floating: !minimized && ipc.floating === true,
             // 1 is maximized, which keeps its tiled geometry; 2 and 3 cover
             // the monitor.
-            fullscreen: ipc.fullscreen === true || Number(ipc.fullscreen) >= 2,
+            fullscreen: !minimized && (ipc.fullscreen === true || Number(ipc.fullscreen) >= 2),
             focusHistoryID: ipc.focusHistoryID,
             activated: toplevel.activated
         };
@@ -153,10 +193,15 @@ FocusScope {
     }
 
     function settleSelection() {
+        if (selectedTileIndex >= 0) {
+            selected = "";
+            return;
+        }
         selected = OverviewHelpers.reselect(items, selected, scores, initialActive, query);
     }
 
     function move(direction) {
+        selectedTileIndex = -1;
         const index = OverviewHelpers.indexOfAddress(items, selected);
         const next = direction === "next" || direction === "previous"
             ? OverviewHelpers.step(items, index, direction === "next" ? 1 : -1)
@@ -168,19 +213,48 @@ FocusScope {
     // Hyprland falls back to the active window when a selector does not
     // resolve, so every dispatch first checks the window is still here.
     function activateWindow(address) {
-        const command = root.toplevelByAddress[address] ? WindowCommands.focusWindow(address) : "";
+        const command = root.toplevelByAddress[address] ? DesktopWorkspaces.activateCommand(address) : "";
         if (command === "")
             return;
         Overview.close();
-        Hyprland.dispatch(command);
+        DesktopWorkspaces.dispatch(command, address);
     }
 
     function activateWorkspace(tile) {
-        const command = WindowCommands.focusWorkspace(tile);
+        const command = tile.isNew && DesktopWorkspaces.ready
+            ? WindowCommands.desktopNew(root.output.name) : DesktopWorkspaces.focusCommand(tile);
         if (command === "")
             return;
         Overview.close();
-        Hyprland.dispatch(command);
+        DesktopWorkspaces.dispatch(command);
+    }
+
+    function selectWorkspace(direction) {
+        const current = selectedTileIndex >= 0 ? selectedTileIndex
+            : Math.max(0, tiles.findIndex(tile => !tile.isNew && tile.id === selectedWorkspaceId));
+        selectedTileIndex = Math.max(0, Math.min(tiles.length - 1, current + direction));
+        selected = "";
+    }
+
+    function minimizeSelected() {
+        if (selectedWindow && !selectedWindow.minimized && DesktopWorkspaces.minimize(selected))
+            selected = "";
+    }
+
+    function maximizeSelected() {
+        if (!selectedWindow || selectedWindow.minimized || !DesktopWorkspaces.isLive(selected))
+            return;
+        const command = WindowCommands.maximizeWindow(selected);
+        if (command !== "")
+            Hyprland.dispatch(command);
+    }
+
+    function closeSelected() {
+        if (!DesktopWorkspaces.isLive(selected))
+            return;
+        const command = WindowCommands.closeWindow(selected);
+        if (command !== "")
+            Hyprland.dispatch(command);
     }
 
     function beginDrag(address, point) {
@@ -196,13 +270,17 @@ FocusScope {
         if (!tile || !source || !root.toplevelByAddress[address]
                 || (!tile.isNew && tile.id === source.workspaceId))
             return;
-        const command = WindowCommands.moveWindow(address, tile);
+        // Allocation and moving the dropped window execute together inside
+        // the module, never by guessing a free global workspace ID in QML.
+        const command = tile.isNew && DesktopWorkspaces.ready
+            ? WindowCommands.desktopNewAndMove(address, root.output.name)
+            : DesktopWorkspaces.moveCommand(address, tile);
         if (command !== "")
-            Hyprland.dispatch(command);
+            DesktopWorkspaces.dispatch(command, address);
     }
 
     onItemsChanged: settleSelection()
-    onQueryChanged: settleSelection()
+    onQueryChanged: { selectedTileIndex = -1; settleSelection(); }
     Component.onCompleted: {
         initialActive = Hyprland.activeToplevel ? Hyprland.activeToplevel.address : "";
         settleSelection();
@@ -315,6 +393,24 @@ FocusScope {
             onTextChanged: root.query = text
 
             Keys.onPressed: event => {
+                if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_M) {
+                    root.minimizeSelected(); event.accepted = true; return;
+                }
+                if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_L) {
+                    DesktopWorkspaces.cycleLayout(root.selectedWorkspaceTarget);
+                    event.accepted = true; return;
+                }
+                if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_N) {
+                    root.activateWorkspace(root.tiles[root.tiles.length - 1]);
+                    event.accepted = true; return;
+                }
+                if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_W) {
+                    root.closeSelected(); event.accepted = true; return;
+                }
+                if ((event.modifiers & Qt.ControlModifier)
+                        && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+                    root.maximizeSelected(); event.accepted = true; return;
+                }
                 switch (event.key) {
                 case Qt.Key_Escape:
                     if (filterInput.text !== "")
@@ -324,7 +420,16 @@ FocusScope {
                     break;
                 case Qt.Key_Return:
                 case Qt.Key_Enter:
-                    root.activateWindow(root.selected);
+                    if (root.selectedTileIndex >= 0)
+                        root.activateWorkspace(root.tiles[root.selectedTileIndex]);
+                    else
+                        root.activateWindow(root.selected);
+                    break;
+                case Qt.Key_PageUp:
+                    root.selectWorkspace(-1);
+                    break;
+                case Qt.Key_PageDown:
+                    root.selectWorkspace(1);
                     break;
                 case Qt.Key_Left:
                     root.move("left");
@@ -370,10 +475,53 @@ FocusScope {
         anchors.topMargin: Theme.controlSpacing
         text: root.windows.length === 0 ? "No open windows"
             : !root.anyMatch ? "No windows match “" + root.query.trim() + "”"
-            : "Enter to switch · drag to move · Esc to close"
+            : I18n.tr("Enter to restore or switch · drag to move · Page Up/Down for workspaces")
         font.family: Theme.fontMenu
         font.pixelSize: Theme.typography.secondary
         color: Theme.textMid
+    }
+
+    Flow {
+        id: windowActions
+        width: Math.min(Theme.scaled(900), root.width - Theme.scaled(48))
+        height: childrenRect.height
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: status.bottom
+        anchors.topMargin: Theme.controlSpacing
+        spacing: Theme.controlSpacing
+        SettingsAction {
+            text: I18n.tr("New workspace")
+            glyph: "add"
+            onTriggered: root.activateWorkspace(root.tiles[root.tiles.length - 1])
+        }
+        SettingsAction {
+            text: I18n.tr("Cycle workspace layout")
+            glyph: "view_quilt"
+            enabled: DesktopWorkspaces.canSetLayout(root.selectedWorkspaceTarget)
+            onTriggered: DesktopWorkspaces.cycleLayout(root.selectedWorkspaceTarget)
+        }
+        SettingsAction {
+            text: I18n.tr("Minimize")
+            glyph: "remove"
+            enabled: root.selectedWindow !== null && !root.selectedWindow.minimized && DesktopWorkspaces.canMinimize(root.selected)
+            onTriggered: root.minimizeSelected()
+        }
+        SettingsAction {
+            text: I18n.tr("Maximize / restore")
+            glyph: "open_in_full"
+            enabled: root.selectedWindow !== null && !root.selectedWindow.minimized
+            onTriggered: {
+                root.maximizeSelected();
+            }
+        }
+        SettingsAction {
+            text: I18n.tr("Close window")
+            glyph: "close"
+            enabled: root.selectedWindow !== null
+            onTriggered: {
+                root.closeSelected();
+            }
+        }
     }
 
     // ---- workspace grid --------------------------------------------------
@@ -382,7 +530,7 @@ FocusScope {
 
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.top: status.bottom
+        anchors.top: windowActions.bottom
         anchors.bottom: parent.bottom
         anchors.leftMargin: Theme.scaled(48)
         anchors.rightMargin: Theme.scaled(48)
@@ -408,8 +556,10 @@ FocusScope {
                 required property int index
                 readonly property var cell: root.layout.cells[index] ?? null
                 readonly property var placement: root.geometry.perTile[index] ?? null
-                readonly property bool current: !modelData.isNew
-                    && modelData.id === root.focusedWorkspaceId
+                readonly property var monitorState: DesktopWorkspaces.monitor(modelData.monitor)
+                readonly property bool current: !modelData.isNew && (monitorState && modelData.kind === "numbered"
+                    ? monitorState.activeWorkspace === modelData.id
+                    : root.workspaceRecords.some(entry => entry.id === modelData.id && entry.active))
                 readonly property bool dropTarget: root.dropIndex === index
                 // A tile's thumbnails are keyed by address alone. The string
                 // notifies only when the set really changes; `placement` is a
@@ -431,9 +581,10 @@ FocusScope {
                     spacing: Theme.iconTextSpacing
 
                     Rectangle {
+                        id: workspaceBadge
                         anchors.verticalCenter: parent.verticalCenter
                         visible: !tile.modelData.isNew
-                        width: Math.max(height, number.implicitWidth + Theme.scaled(12))
+                        width: Math.min(tile.width * 0.45, Math.max(height, number.implicitWidth + Theme.scaled(12)))
                         height: Theme.chipInnerHeight
                         radius: Theme.chipRadius
                         // The current workspace wears the accent pill, as on the bar.
@@ -442,7 +593,11 @@ FocusScope {
                         Text {
                             id: number
                             anchors.centerIn: parent
-                            text: tile.modelData.id > 0 ? String(tile.modelData.id) : tile.modelData.name
+                            width: Math.max(0, parent.width - Theme.scaled(12))
+                            horizontalAlignment: Text.AlignHCenter
+                            elide: Text.ElideRight
+                            text: tile.modelData.name
+                            textFormat: Text.PlainText
                             font.family: Theme.fontMenu
                             font.pixelSize: Theme.typography.secondary
                             font.weight: Theme.weightSemibold
@@ -453,11 +608,14 @@ FocusScope {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: tile.modelData.isNew ? "New workspace"
-                            : tile.current ? "Current"
-                            : tile.modelData.monitor !== "" && Quickshell.screens.length > 1
-                            ? tile.modelData.monitor : ""
+                        width: Math.max(0, tile.width - (workspaceBadge.visible ? workspaceBadge.width + label.spacing : 0))
+                        elide: Text.ElideRight
+                        text: tile.modelData.isNew ? I18n.tr("New workspace")
+                            : [tile.modelData.monitor, tile.modelData.guest ? I18n.tr("Visiting workspace") : "",
+                                tile.modelData.layout ? DesktopWorkspaces.layoutLabel(tile.modelData.layout, tile.modelData.nativeLayout) : ""]
+                                .filter(part => part !== "").join(" · ")
                         font.family: Theme.fontMenu
+                        textFormat: Text.PlainText
                         font.pixelSize: Theme.typography.secondary
                         color: Theme.textMid
                     }
@@ -561,8 +719,10 @@ FocusScope {
                                 ScreencopyView {
                                     id: capture
                                     anchors.fill: parent
-                                    captureSource: thumb.toplevel ? thumb.toplevel.wayland : null
-                                    live: Overview.open
+                                    captureSource: thumb.info && thumb.info.minimized ? null
+                                        : thumb.toplevel ? thumb.toplevel.wayland : null
+                                    live: Overview.open && !(thumb.info && thumb.info.minimized)
+                                    visible: !(thumb.info && thumb.info.minimized)
                                     paintCursor: false
                                 }
 
@@ -592,7 +752,8 @@ FocusScope {
                                         width: parent.width - Theme.scaled(16)
                                         horizontalAlignment: Text.AlignHCenter
                                         elide: Text.ElideRight
-                                        text: thumb.info ? (thumb.info.title || thumb.info.appClass) : ""
+                                        text: thumb.info ? (thumb.info.minimized ? I18n.tr("Minimized") + " · " : "")
+                                            + (thumb.info.title || thumb.info.appClass) : ""
                                         font.family: Theme.fontMenu
                                         font.pixelSize: Theme.typography.secondary
                                         color: Theme.textHi
@@ -612,8 +773,10 @@ FocusScope {
                                     preventStealing: true
                                     cursorShape: thumb.dragged ? Qt.ClosedHandCursor : Qt.PointingHandCursor
                                     onEntered: {
-                                        if (thumb.matches && root.dragAddress === "")
+                                        if (thumb.matches && root.dragAddress === "") {
+                                            root.selectedTileIndex = -1;
                                             root.selected = thumb.address;
+                                        }
                                     }
                                     onPressed: mouse => {
                                         pressAt = Qt.point(mouse.x, mouse.y);
@@ -658,8 +821,8 @@ FocusScope {
                     height: surface.height + 6
                     radius: surface.radius + 3
                     color: "transparent"
-                    border.width: tile.dropTarget ? 2 : 1
-                    border.color: tile.dropTarget ? Theme.accentText
+                    border.width: tile.dropTarget || root.selectedTileIndex === tile.index ? 2 : 1
+                    border.color: tile.dropTarget || root.selectedTileIndex === tile.index ? Theme.accentText
                         : tile.modelData.isNew ? Theme.stroke : "transparent"
                 }
 

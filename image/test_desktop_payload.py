@@ -32,6 +32,33 @@ ACCOUNTS = load("desktop_seed_accounts", "image/rootfs/usr/libexec/cybexos-seed-
 
 
 class DesktopPayload(unittest.TestCase):
+    def test_workspace_and_notification_runtime_ship_on_both_paths(self):
+        checkout = ROOT / "roles/desktop/files/quickshell"
+        files = ("Common/DesktopWorkspaces.qml", "Common/WorkspaceHelpers.js",
+                 "Settings/WorkspacesPage.qml", "Common/NotifPolicy.js",
+                 "Common/NotifSmart.js", "Common/NotifSnoozes.qml", "Common/NotifButton.qml",
+                 "scripts/notification-history.py")
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            prepare_quickshell(ROOT, payload)
+            installed = payload / "usr/share/cybexos/runtime/quickshell"
+            for relative in files:
+                self.assertEqual((installed / relative).read_bytes(),
+                                 (checkout / relative).read_bytes(), relative)
+            self.assertEqual((installed / "scripts/notification-history.py").stat().st_mode & 0o777, 0o644)
+        tasks = yaml.safe_load((ROOT / "roles/desktop/tasks/main.yml").read_text())
+        modules = {"workspaces.lua", "workspace_state.lua", "workspace_model.lua", "workspace_layouts.lua"}
+        copy = next(t for t in tasks if "bindings.lua" in t.get("loop", []))
+        self.assertTrue(modules.issubset(copy["loop"]))
+        # The RPM and checkout copy the very same source files, and the stale
+        # runtime cleanup must retain the companion modules on re-convergence.
+        package = (ROOT / "image/package").read_text()
+        cleanup = next(t for t in tasks if any("basename not in" in str(w) for w in t.get("when", [])))
+        for name in modules:
+            self.assertIn('"' + name + '"', package)
+            self.assertIn(name, str(cleanup["when"]))
+            self.assertTrue((ROOT / "roles/desktop/files" / name).is_file())
+
     def test_launcher_focus_handoff_ships_identically_on_both_paths(self):
         checkout = ROOT / "roles/desktop/files/quickshell"
         with tempfile.TemporaryDirectory() as temporary:

@@ -42,6 +42,8 @@
     enabled: false
     state: stopped
   loop:
+    - cybexos-titlebars-build.path
+    - cybexos-titlebars-build.service
     - cybexos-btrfs-scrub.timer
     - cybexos-recovery-refresh.service
     - cybexos-update-recover.service
@@ -54,6 +56,23 @@
     - xps-ipu7-camera.service
     - xps-ipu7-camera-resume.service
   failed_when: false
+
+- name: Remove managed native titlebar build and payload
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /usr/lib/systemd/system/cybexos-titlebars-build.path
+    - /usr/lib/systemd/system/cybexos-titlebars-build.service
+    - /usr/libexec/cybexos-titlebars-install
+    - /usr/lib64/cybexos/titlebars.so
+    - /usr/lib64/cybexos/titlebars.json
+    - /usr/share/cybexos/titlebars
+    - /usr/share/licenses/cybexos-titlebars
+    - /var/cache/cybexos-titlebars
+    - /usr/lib64/qt6/qml/CybexOS/Images
+    - /usr/share/cybexos/notification-images
+    - /usr/share/licenses/cybexos-notification-images
 
 - name: Remove the managed Kitty include
   become: true

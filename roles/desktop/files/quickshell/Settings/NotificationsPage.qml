@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell
 import "../Common"
 import "../Common/SettingsHelpers.js" as SettingsHelpers
 
@@ -22,9 +21,19 @@ SettingsPage {
     }
 
     function sendTest() {
-        Quickshell.execDetached(["notify-send", "-a", "CybexOS Settings",
-            "-i", "preferences-system-notifications", "Test notification",
-            "Toasts use your current position, duration, and style settings."]);
+        Notifs.send({ appName: "CybexOS Settings", appIcon: "preferences-system-notifications",
+            summary: I18n.tr("Test notification"),
+            body: I18n.tr("Toasts use your current position, duration, and style settings.") });
+    }
+
+    function sendGroupedPreview() {
+        for (let i = 1; i <= 4; i++)
+            Notifs.send({ appName: "CybexOS Settings", summary: I18n.tr("Grouped popups"), body: "Preview " + i });
+    }
+
+    function sendVerificationPreview() {
+        Notifs.send({ appName: "CybexOS Settings", summary: I18n.tr("Send verification preview"),
+            body: "Your verification code is 482913. https://example.com/" });
     }
 
     Column {
@@ -319,6 +328,86 @@ SettingsPage {
                     { value: 3, label: I18n.tr("3 lines") }
                 ]
             }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            title: I18n.tr("Grouped popups")
+            PickerRow {
+                width: parent.width
+                label: I18n.tr("Fullscreen notifications")
+                settingKey: "notifFullscreen"
+                model: [
+                    { value: "away", label: I18n.tr("Use another display or history") },
+                    { value: "show", label: I18n.tr("Show over fullscreen") }
+                ]
+            }
+            SliderRow {
+                width: parent.width
+                label: I18n.tr("Burst limit")
+                settingKey: "notifBurstLimit"
+                min: 1; max: 20; step: 1; unit: ""
+                hint: I18n.tr("Extra notifications collect in the center")
+            }
+            Flow {
+                width: parent.width
+                spacing: Theme.controlSpacing
+                SettingsAction {
+                    text: I18n.tr("Send grouped preview")
+                    onTriggered: page.sendGroupedPreview()
+                }
+                SettingsAction {
+                    text: I18n.tr("Send verification preview")
+                    onTriggered: page.sendVerificationPreview()
+                }
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            title: I18n.tr("Notification history")
+            SwitchRow {
+                width: parent.width
+                label: I18n.tr("Remember notification history")
+                settingKey: "notifHistoryPersist"
+                description: I18n.tr("Store private history across shell restarts and logins")
+            }
+            PickerRow {
+                width: parent.width
+                label: I18n.tr("Retention")
+                settingKey: "notifHistoryHours"
+                model: [
+                    { value: 1, label: I18n.tr("1 hour") },
+                    { value: 24, label: I18n.tr("24 hours") },
+                    { value: 168, label: I18n.tr("7 days") }
+                ]
+            }
+            SliderRow {
+                width: parent.width
+                label: I18n.tr("History limit")
+                settingKey: "notifHistoryCount"
+                min: 10; max: 200; step: 10; unit: ""
+            }
+            SettingsAction {
+                text: I18n.tr("Clear notification history")
+                onTriggered: Notifs.clearAll()
+            }
+            SettingsHint {
+                width: parent.width
+                visible: Notifs.historyError
+                text: I18n.tr("History storage unavailable")
+            }
+        }
+
+        SettingsGroup {
+            width: parent.width
+            title: I18n.tr("Source snoozes")
+            SettingsHint {
+                width: parent.width
+                visible: Notifs.snoozes.length === 0
+                text: I18n.tr("No sources snoozed")
+            }
+            NotifSnoozes { width: parent.width }
         }
 
         SettingsGroup {

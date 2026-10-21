@@ -108,7 +108,7 @@ bind(mainMod .. " + CTRL + V", hl.dsp.exec_cmd(home .. "/.local/bin/cybexos-runt
   { description = "Clipboard: Clipboard history" })
 
 bind(mainMod .. " + Q", hl.dsp.window.close(), { description = "Windows: Close window" })
-bind(mainMod .. " + F", hl.dsp.window.float({ action = "toggle" }), { description = "Windows: Toggle floating" })
+bind(mainMod .. " + F", function() require("workspaces").toggle_floating() end, { description = "Windows: Toggle floating" })
 bind(mainMod .. " + J", hl.dsp.layout("togglesplit"), { description = "Windows: Toggle split" })
 bind(mainMod .. " + BACKSPACE", hl.dsp.window.set_prop({ prop = "alpha", value = "0.85 toggle" }),
   { description = "Windows: Toggle transparency" })
@@ -129,13 +129,26 @@ for _, direction in ipairs({ "left", "right", "up", "down" }) do
 end
 for i = 1, 10 do
   local key = i % 10
-  bind(mainMod .. " + " .. key, hl.dsp.focus({ workspace = i }),
+  local number = i
+  bind(mainMod .. " + " .. key, function() require("workspaces").focus(number) end,
     { description = "Workspaces: Switch to workspace " .. i })
-  bind(mainMod .. " + SHIFT + " .. key, hl.dsp.window.move({ workspace = i }),
+  bind(mainMod .. " + SHIFT + " .. key, function() require("workspaces").move(nil, number) end,
     { description = "Workspaces: Move window to workspace " .. i })
 end
-bind(mainMod .. " + mouse_down", hl.dsp.focus({ workspace = "e+1" }), { description = "Workspaces: Next workspace" })
-bind(mainMod .. " + mouse_up", hl.dsp.focus({ workspace = "e-1" }), { description = "Workspaces: Previous workspace" })
+bind(mainMod .. " + mouse_down", function() require("workspaces").next(1) end, { description = "Workspaces: Next workspace" })
+bind(mainMod .. " + mouse_up", function() require("workspaces").next(-1) end, { description = "Workspaces: Previous workspace" })
+-- Super+L remains screen lock. These combinations were unused in the baseline.
+bind(mainMod .. " + CTRL + L", function() require("workspaces").cycle_layout() end,
+  { description = "Workspaces: Cycle workspace layout" })
+bind(mainMod .. " + CTRL + ALT + M", function() require("workspaces").minimize() end,
+  { description = "Windows: Minimize window" })
+bind(mainMod .. " + CTRL + M", function() require("workspaces").restore_last() end,
+  { description = "Windows: Restore minimized window" })
+for _, direction in ipairs({ "left", "right", "up", "down" }) do
+  local selected = direction
+  bind(mainMod .. " + CTRL + SHIFT + " .. direction, function() require("workspaces").move_monitor(selected) end,
+    { description = "Windows: Move window to display" })
+end
 
 -- The scratchpad is a special workspace shown over the current one. Moving a
 -- window there leaves it hidden until the scratchpad is shown.

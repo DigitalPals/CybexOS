@@ -310,6 +310,7 @@ stage_hyprland_workspaces() {
   out=$({
     r=0
     bash tests/hyprland-workspaces || r=1
+    bash tests/hyprland-workspace-modes || r=1
     bash tests/hyprland-features || r=1
     bash tests/hyprland-input || r=1
     exit "$r"
@@ -477,6 +478,9 @@ python_fixtures=(
   fedora-release
   login-policy
   session-launcher
+  startup-evidence
+  titlebars
+  notification-images
   update-transaction
   update-bootstrap
   update-download

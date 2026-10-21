@@ -51,7 +51,8 @@ test("notification history exposes primary, action, disclosure, dismiss, and cle
     const actions = read("Common/NotifActions.qml");
     const centre = read("Popovers/NotifsPopover.qml");
 
-    assert.match(card, /activeFocusOnTab:\s*keyboardEnabled && actionable/);
+    assert.match(card, /activeFocusOnTab:\s*keyboardEnabled\s*\n/,
+        "nonactivatable cards still need a keyboard entry point for code, links and snooze actions");
     assert.match(card, /Accessible\.role:\s*actionable \? Accessible\.Button : Accessible\.StaticText/);
     assert.match(card, /Qt\.Key_Delete[\s\S]*card\.closeRequested\(\)/);
     assert.match(card,

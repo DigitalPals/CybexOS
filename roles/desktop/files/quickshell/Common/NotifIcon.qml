@@ -16,11 +16,11 @@ Item {
     property bool primaryFailed: false
     readonly property string primarySource: brand.available
         ? "" : Notifs.iconSource(entry)
-    readonly property string siteSource: WebIcons.sourceFor(entry.webOrigin || "")
+    // Never turn untrusted sender metadata into a network fetch or subprocess.
+    readonly property string siteSource: ""
 
     function requestSiteIcon() {
-        if (entry.webOrigin && !entry.brandIcon)
-            WebIcons.request(entry.webOrigin);
+        // Site brand icons and safe sender images are resolved in process.
     }
 
     onEntryChanged: {

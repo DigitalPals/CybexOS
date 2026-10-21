@@ -64,7 +64,7 @@ function stripMarkup(value) {
         .replace(/<\s*br\s*\/?\s*>/gi, "\n")
         .replace(/<\s*\/?\s*(?:div|p|li)(?:\s[^>]*)?>/gi, "\n")
         .replace(/<[^>]*>/g, "");
-    text = decodeEntities(text).replace(/[\u200b-\u200d\ufeff]/g, "");
+    text = decodeEntities(text).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, "");
     var lines = text.split("\n").map(function(line) {
         return line.replace(/[\t\f\v ]+/g, " ").trim();
     });
@@ -80,11 +80,11 @@ function normalizeOrigin(value) {
     if (origin === "")
         return "";
     origin = origin.replace(/^origin:\s*/i, "")
-        .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+        .replace(/^https?:\/\//i, "")
         .replace(/^\/\//, "");
     origin = origin.split(/[\/?#]/, 1)[0];
-    if (origin.indexOf("@") !== -1)
-        origin = origin.slice(origin.lastIndexOf("@") + 1);
+    if (origin.indexOf("@") !== -1 || /[\x00-\x20\x7f-\x9f\\%]/.test(origin))
+        return "";
     if (/^\[[0-9a-f:]+\](?::\d+)?$/i.test(origin))
         return origin.replace(/:\d+$/, "");
     origin = origin.replace(/:\d+$/, "").replace(/\.+$/, "");
@@ -98,7 +98,7 @@ function normalizeOrigin(value) {
 
 function isBrowser(appName, desktopEntry) {
     var identity = (textValue(appName) + " " + textValue(desktopEntry)).toLowerCase();
-    return /(?:^|[^a-z0-9])(?:google[ -]?chrome(?:-stable)?|chrome|chromium|brave|vivaldi|opera|microsoft[ -]?edge|msedge)(?:[^a-z0-9]|$)/
+    return /(?:^|[^a-z0-9])(?:google[ -]?chrome(?:-stable)?|chrome|chromium|brave|vivaldi|opera|microsoft[ -]?edge|msedge|firefox|librewolf|zen)(?:[^a-z0-9]|$)/
         .test(identity);
 }
 
@@ -151,10 +151,14 @@ function derivePresentation(notification) {
     var advertisedOrigin = notification.originName
         || hintValue(notification.hints, "x-kde-origin-name");
     var hintedOrigin = normalizeOrigin(advertisedOrigin);
-    var origin = browser ? (hintedOrigin || legacy.origin) : "";
+    var anchor = textValue(notification.body).match(/^\s*<a\s+href=["'](https?:\/\/[^"']+)["'][^>]*>([^]*?)<\/a>\s*/i);
+    var anchorOrigin = anchor ? normalizeOrigin(decodeEntities(anchor[1])) : "";
+    var origin = browser ? (hintedOrigin || anchorOrigin || legacy.origin) : "";
     var source = webSourceForOrigin(origin);
     var body = rawBody;
-    if (origin !== "" && legacy.origin === origin)
+    if (browser && anchor && anchorOrigin === origin)
+        body = stripMarkup(textValue(notification.body).slice(anchor[0].length));
+    else if (origin !== "" && legacy.origin === origin)
         body = legacy.body;
 
     var summary = singleLine(notification.summary);
@@ -182,7 +186,7 @@ function actionList(actions) {
     if (!actions || typeof actions.length !== "number")
         return [];
     var list = [];
-    for (var i = 0; i < actions.length; i++)
+    for (var i = 0; i < Math.min(16, actions.length); i++)
         list.push(actions[i]);
     return list;
 }
@@ -269,6 +273,8 @@ function countdownTickMs(untilMs, nowMs, minimumMs) {
 }
 
 var exported = {
+    textValue: textValue,
+    actionList: actionList,
     MIN_TIMEOUT_MS: MIN_TIMEOUT_MS,
     MAX_TIMEOUT_MS: MAX_TIMEOUT_MS,
     decodeEntities: decodeEntities,

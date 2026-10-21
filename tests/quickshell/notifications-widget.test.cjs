@@ -53,7 +53,7 @@ test("opening notification history does not consume its retained entries", () =>
     const notifs = read("Common/Notifs.qml");
     assert.match(notifs, /readonly property int count:\s*entries\.length/);
     assert.match(notifs, /function dismiss\(entry\)[\s\S]{0,100}?removeEntry\(entry\.key\)/);
-    assert.match(notifs, /function clearAll\(\)[\s\S]{0,100}?entries = \[\]/);
+    assert.match(notifs, /function clearAll\(\)[\s\S]*?entries = \[\]/);
     assert.doesNotMatch(moduleSource, /Notifs\.(?:dismiss|clearAll|removeEntry)\(/,
         "opening the panel must not mark retained session history as read");
 });

@@ -10,6 +10,7 @@ GitHubWatchList GitHubWatchList.qml
 ModuleDetailView ModuleDetailView.qml
 ModulesPage ModulesPage.qml
 NotificationsPage NotificationsPage.qml
+WorkspacesPage WorkspacesPage.qml
 PickerRow PickerRow.qml
 PillRow PillRow.qml
 ResponsiveActionRow ResponsiveActionRow.qml

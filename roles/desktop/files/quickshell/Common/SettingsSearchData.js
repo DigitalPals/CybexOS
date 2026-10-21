@@ -9,6 +9,12 @@
 // against SettingsHelpers' schema under Node.
 
 var ROWS = [
+    { page: "workspaces", pageLabel: "Workspaces", group: "Workspaces", label: "Workspace mode", key: "", terms: "shared per-monitor display local numbers hotplug external" },
+    { page: "workspaces", pageLabel: "Workspaces", group: "Workspace layout", label: "Default workspace layout", key: "", terms: "dwindle tiled scrolling floating desktop" },
+    { page: "workspaces", pageLabel: "Workspaces", group: "Floating windows", label: "Floating titlebars", key: "", terms: "decoration close maximize minimize restore dock" },
+    { page: "notifications", pageLabel: "Notifications", group: "Notification history", label: "Remember notification history", key: "notifHistoryPersist", terms: "persist private retention restart" },
+    { page: "notifications", pageLabel: "Notifications", group: "Source snoozes", label: "Source snoozes", key: "", terms: "snooze mute application website unsnooze" },
+    { page: "notifications", pageLabel: "Notifications", group: "Grouped popups", label: "Burst limit", key: "notifBurstLimit", terms: "group stack duplicates repeated count" },
     { page: "keyboard", pageLabel: "Keyboard", group: "Keyboard layouts", label: "Keyboard layouts", key: "", terms: "input language variant qwerty azerty dvorak colemak" },
     { page: "keyboard", pageLabel: "Keyboard", group: "Switch layouts", label: "Layout switching", key: "", terms: "keyboard shortcut caps lock alt shift next layout" },
     { page: "touchpad", pageLabel: "Touchpad", group: "Touchpad", label: "Tap to click", key: "", terms: "touchpad tapping click input" },

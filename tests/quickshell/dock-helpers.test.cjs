@@ -152,5 +152,6 @@ test("the settings schema defaults the dock off and normalizes pins as the dock 
     assert.equal(legacy.dock, false);
     assert.equal(legacy.drawerOverview.processes, true);
     assert.equal(S.merge({ v: S.VERSION, drawerOverview: { processes: false } }).drawerOverview.processes, false);
-    assert.equal(S.VERSION, 28, "new keys are default-filled; no schema bump");
+    assert.equal(S.merge({ v: 28, dock: false }).dock, false,
+        "migrating a prior shell schema keeps the dock opt-out");
 });

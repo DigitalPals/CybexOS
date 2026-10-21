@@ -1,0 +1,21 @@
+---
+- name: Install native notification image build dependencies
+  ansible.builtin.dnf:
+    name: [cmake, gcc-c++, make, pkgconf-pkg-config, qt6-qtbase-devel, qt6-qtdeclarative-devel]
+    state: present
+
+- name: Install the local native notification image recipe
+  ansible.builtin.copy:
+    src: notification-images/
+    dest: /usr/share/cybexos/notification-images/
+    owner: root
+    group: root
+    mode: "0644"
+    directory_mode: "0755"
+
+- name: Build the notification image module against installed public Qt headers
+  ansible.builtin.command:
+    argv: [python3, /usr/share/cybexos/notification-images/build.py]
+  register: desktop_notification_images_build
+  changed_when: (desktop_notification_images_build.stdout | regex_search('(?m)^CHANGED:')) is not none
+  when: not ansible_check_mode

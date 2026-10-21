@@ -30,7 +30,7 @@ test("Hyprland loads saved displays after vendor monitors and before user.lua, c
     const displays = entry.indexOf('pcall(require, "displays")');
     const user = entry.indexOf('dofile(user_dir .. "/user.lua")');
     assert.ok(monitors > 0 && monitors < displays && displays < user);
-    assert.match(entry, /"autostart", "displays" \}\) do\s+package\.loaded\[module\] = nil/,
+    assert.match(entry, /"autostart", "displays",[\s\S]*?\}\) do\s+package\.loaded\[module\] = nil/,
         "a reload evicts the module so saved changes and subscriptions are rebuilt");
     const template = untranslated(fs.readFileSync(path.join(repo, "roles/desktop/templates/monitors.lua.j2"), "utf8"));
     assert.doesNotMatch(template, /\bhl\.monitor\(\{/, "vendor rules go through the recording helper");

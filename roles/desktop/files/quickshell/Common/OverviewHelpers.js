@@ -49,11 +49,16 @@ function newWorkspaceId(ids) {
 //
 //   workspaces: [{ id, name, monitor, active }]
 //   windows:    [{ address, workspaceId }]  (special workspaces already out)
-function workspaceEntries(workspaces, windows) {
+function workspaceEntries(workspaces, windows, options) {
     var counts = {};
+    var windowWorkspaces = {};
     (Array.isArray(windows) ? windows : []).forEach(function(window) {
-        if (window && window.workspaceId !== undefined)
+        if (window && window.workspaceId !== undefined) {
             counts[window.workspaceId] = (counts[window.workspaceId] || 0) + 1;
+            if (!windowWorkspaces[window.workspaceId] || window.workspaceKind === "named")
+                windowWorkspaces[window.workspaceId] = { id: window.workspaceId,
+                    name: window.workspaceName, kind: window.workspaceKind, workspaceName: window.workspaceName };
+        }
     });
     var seen = {};
     var entries = [];
@@ -61,6 +66,8 @@ function workspaceEntries(workspaces, windows) {
         if (isSpecialWorkspace(workspace))
             return;
         var id = finite(workspace.id, 0);
+        if (windowWorkspaces[id] && windowWorkspaces[id].kind === "named")
+            workspace = Object.assign({}, workspace, windowWorkspaces[id]);
         var count = counts[id] || 0;
         if (seen[id] || (count === 0 && !workspace.active))
             return;
@@ -68,6 +75,8 @@ function workspaceEntries(workspaces, windows) {
         entries.push({
             id: id,
             name: String(workspace.name || id),
+            workspaceName: String(workspace.workspaceName !== undefined ? workspace.workspaceName : workspace.name || id),
+            kind: workspace.kind || (workspace.name && workspace.name !== String(id) ? "named" : id > 0 ? "numbered" : "named"),
             monitor: String(workspace.monitor || ""),
             windows: count,
             isNew: false
@@ -80,11 +89,18 @@ function workspaceEntries(workspaces, windows) {
         if (seen[id] || isSpecialWorkspace({ id: id, name: "" }))
             return;
         seen[id] = true;
-        entries.push({ id: id, name: String(id), monitor: "", windows: counts[key], isNew: false });
+        var native = windowWorkspaces[id];
+        var name = String(native.name || id);
+        entries.push({ id: id, name: name, workspaceName: name,
+            kind: native.kind || (name !== String(id) || id < 0 ? "named" : "numbered"),
+            monitor: "", windows: counts[key], isNew: false });
     });
     entries.sort(compareWorkspaces);
     entries.push({
-        id: newWorkspaceId(entries.map(function(entry) { return entry.id; })),
+        // With the module present only it may allocate IDs. The fallback
+        // keeps the existing shared behavior when no snapshot is available.
+        id: options && options.authoritative ? 0
+            : newWorkspaceId(entries.map(function(entry) { return entry.id; })),
         name: "",
         monitor: "",
         windows: 0,

@@ -26,8 +26,20 @@ package.path = source_dir .. "/?.lua;" .. source_dir .. "/?/init.lua;"
   .. generated_dir .. "/?.lua;" .. generated_dir .. "/?/init.lua;"
   .. user_dir .. "/?.lua;" .. user_dir .. "/?/init.lua;" .. package.path
 
-for _, module in ipairs({ "features", "monitors", "input", "input_preferences", "bindings", "looknfeel", "autostart", "displays" }) do
+for _, module in ipairs({ "features", "monitors", "input", "input_preferences", "bindings", "looknfeel", "autostart", "displays",
+    "workspaces", "workspace_model", "workspace_state", "workspace_layouts" }) do
   package.loaded[module] = nil
+end
+
+-- Record independent float rules from managed configuration and user.lua.
+-- Floating workspace opening rules must pass over those applications/dialogs.
+-- Keep the native function across reloads instead of wrapping a wrapper.
+local native_window_rule = rawget(_G, "__cybexos_native_window_rule") or hl.window_rule
+_G.__cybexos_native_window_rule = native_window_rule
+local window_rules = {}
+hl.window_rule = function(spec)
+  window_rules[#window_rules + 1] = spec
+  return native_window_rule(spec)
 end
 
 require("monitors")
@@ -52,4 +64,32 @@ local user_entry = io.open(user_dir .. "/user.lua", "r")
 if user_entry then
   user_entry:close()
   dofile(user_dir .. "/user.lua")
+end
+
+local exclusions, float_tags = { class = {}, title = {} }, {}
+for _, rule in ipairs(window_rules) do
+  if rule.float == true and rule.match and rule.match.tag then float_tags[rule.match.tag] = true end
+end
+for _, rule in ipairs(window_rules) do
+  local match = rule.match or {}
+  if rule.float == true or (type(rule.tag) == "string" and float_tags[rule.tag:gsub("^%+", "")]) then
+    for _, key in ipairs({ "class", "title" }) do
+      if type(match[key]) == "string" then exclusions[key][#exclusions[key] + 1] = "(?:" .. match[key] .. ")" end
+    end
+  end
+end
+_G.__cybexos_float_exclusions = exclusions
+hl.window_rule = native_window_rule
+local workspaces_ok, workspaces_error = pcall(require, "workspaces")
+if not workspaces_ok then _G.__cybexos_workspaces_error = tostring(workspaces_error)
+else _G.__cybexos_workspaces_error = nil end
+
+-- The existing system-theme owner remains the trigger; titlebars consume its
+-- bounded JSON tokens and need no polling or compositor reload on theme edits.
+if workspaces_ok and type(cybexos_system_theme) == "function" then
+  local apply_theme = cybexos_system_theme
+  cybexos_system_theme = function(path)
+    apply_theme(path)
+    require("workspaces").refresh_theme()
+  end
 end

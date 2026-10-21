@@ -26,10 +26,15 @@ Requires:       bash coreutils util-linux systemd python3 ansible-core gnupg2 op
 Requires:       sddm sddm-wayland-generic systemd-pam gnome-keyring-pam
 # Settings > Security and the lock screen's fingerprint and security-key steps.
 Requires:       fprintd fprintd-pam pam-u2f pamu2fcfg
-Requires:       hyprland hyprland-guiutils quickshell hypridle hyprlock hyprsunset
+# Native compositor EVR requirement inserted by image/package
+Requires:       hyprland
+Requires:       cmake >= 3.27
+Requires:       gcc-c++ make pkgconf-pkg-config hyprland-devel libdrm-devel libinput-devel systemd-devel pixman-devel wayland-devel libxkbcommon-devel patch binutils
+Requires:       hyprland-guiutils quickshell hypridle hyprlock hyprsunset
 Requires:       xdg-desktop-portal-hyprland xdg-desktop-portal-gtk xdg-utils
 Requires:       qt6-qtwebsockets-devel qt6-qt5compat qt6-qtsvg
 Requires:       qt6-qtbase qt6-qtdeclarative qt6-qtwayland
+Requires:       qt6-qtbase-devel qt6-qtdeclarative-devel
 Requires:       python3-pyside6 python3-websockets python3-gobject
 Requires:       kitty firefox nautilus jq curl NetworkManager iw qrencode iproute iputils dnsmasq
 Requires:       pipewire pipewire-pulseaudio wireplumber bluez brightnessctl playerctl
@@ -83,6 +88,12 @@ cp -a usr opt etc %{buildroot}/
 
 %files
 %license /usr/share/licenses/cybexos-desktop/LICENSE
+%license /usr/share/licenses/cybexos-titlebars/
+%license /usr/share/licenses/cybexos-notification-images/
+/usr/lib64/qt6/qml/CybexOS/Images/
+/usr/lib64/cybexos/
+/usr/lib/systemd/system/cybexos-titlebars-build.service
+/usr/lib/systemd/system/cybexos-titlebars-build.path
 %config(noreplace) /etc/yum.repos.d/cybexos-desktop.repo
 %config(noreplace) /etc/fonts/conf.d/49-cybexos-defaults.conf
 /usr/bin/cybex
@@ -131,6 +142,8 @@ cp -a usr opt etc %{buildroot}/
 %files -n cybexos-offline-apps -f %{SOURCE1}
 
 %posttrans
+systemctl enable --now --no-block cybexos-titlebars-build.path >/dev/null 2>&1 || :
+systemctl enable cybexos-titlebars-build.service >/dev/null 2>&1 || :
 # Record work only inside the RPM transaction. A timer runs it after RPM releases
 # its transaction lock, and repeats only for changed payloads/new accounts.
 /usr/libexec/cybexos-reconcile --queue

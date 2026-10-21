@@ -1,0 +1,81 @@
+---
+- name: Install native titlebar build dependencies
+  ansible.builtin.dnf:
+    name:
+      - cmake >= 3.27
+      - gcc-c++
+      - make
+      - pkgconf-pkg-config
+      - hyprland-devel
+      - libdrm-devel
+      - libinput-devel
+      - systemd-devel
+      - pixman-devel
+      - wayland-devel
+      - libxkbcommon-devel
+      - patch
+      - binutils
+    state: present
+
+- name: Create the pinned native titlebar recipe directory
+  ansible.builtin.file:
+    path: /usr/share/cybexos/titlebars
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the native titlebar build helper
+  ansible.builtin.copy:
+    src: titlebars-install
+    dest: /usr/libexec/cybexos-titlebars-install
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the native titlebar source patch
+  ansible.builtin.copy:
+    src: titlebars-native.patch
+    dest: /usr/share/cybexos/titlebars/native.patch
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Record the authorized native titlebar source
+  ansible.builtin.copy:
+    content: "{{ {'version': titlebars_version, 'commit': titlebars_commit, 'checksum': titlebars_checksum} | to_nice_json }}\n"
+    dest: /usr/share/cybexos/titlebars/source.json
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Build the pinned native titlebars against installed Fedora headers
+  ansible.builtin.command:
+    argv: [/usr/libexec/cybexos-titlebars-install]
+  register: desktop_titlebars_build
+  changed_when: (desktop_titlebars_build.stdout | regex_search('(?m)^CHANGED:')) is not none
+  when: not ansible_check_mode
+
+- name: Install native titlebar rebuild units
+  ansible.builtin.copy:
+    src: "titlebars-build.{{ item }}"
+    dest: "/usr/lib/systemd/system/cybexos-titlebars-build.{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [service, path]
+  register: desktop_titlebars_units
+
+- name: Watch Hyprland updates and check native titlebars at boot
+  ansible.builtin.systemd_service:
+    name: "cybexos-titlebars-build.{{ item }}"
+    enabled: true
+    daemon_reload: "{{ desktop_titlebars_units.changed }}"
+  loop: [service, path]
+  when: not ansible_check_mode
+
+- name: Start watching native titlebar build inputs
+  ansible.builtin.systemd_service:
+    name: cybexos-titlebars-build.path
+    state: started
+  when: not ansible_check_mode

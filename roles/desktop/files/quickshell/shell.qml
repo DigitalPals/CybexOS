@@ -352,6 +352,7 @@ ShellRoot {
     // start-up timers (Reminders restore 8 s, Calendar 12 s,
     // Updates 20 s) so a login does not run them all at once.
     Component.onCompleted: {
+        void DesktopWorkspaces.ready;
         void OmarchyPlugins.ready;
         void Notifs.server;
         void GitHub.pollEnabled;

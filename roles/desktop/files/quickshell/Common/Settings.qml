@@ -108,6 +108,15 @@ Singleton {
     property bool notifIcons: defaults.notifIcons
     property bool notifProgress: defaults.notifProgress
     property int notifBodyLines: defaults.notifBodyLines
+    property bool notifHistoryPersist: defaults.notifHistoryPersist
+    property int notifHistoryCount: defaults.notifHistoryCount
+    property int notifHistoryHours: defaults.notifHistoryHours
+    property int notifHistoryBytes: defaults.notifHistoryBytes
+    property int notifDedupeSeconds: defaults.notifDedupeSeconds
+    property int notifBurstLimit: defaults.notifBurstLimit
+    property int notifPopupGroups: defaults.notifPopupGroups
+    property int notifPopupPerGroup: defaults.notifPopupPerGroup
+    property string notifFullscreen: defaults.notifFullscreen
     property var drawerTabs: defaults.drawerTabs
     property var drawerOverview: defaults.drawerOverview
     property string drawerHover: defaults.drawerHover
@@ -185,6 +194,8 @@ Singleton {
             description: "Desktop image and automatic rotation" },
         { id: "bar", group: "Personalize", label: I18n.tr("Bar"), glyph: "space_dashboard",
             description: "Widgets, placement, shape and behavior" },
+        { id: "workspaces", group: "Personalize", label: I18n.tr("Workspaces"), glyph: "view_quilt",
+            description: "Per-display workspaces, layouts and floating windows" },
         { id: "notifications", group: "Personalize", label: I18n.tr("Notifications"), glyph: "notifications",
             description: "Pop-ups, quiet hours and the on-screen display" },
         { id: "displays", group: "Devices", label: I18n.tr("Displays"), glyph: "monitor",
@@ -261,11 +272,15 @@ Singleton {
         bar: ["position", "barStyle", "gap", "barHeight", "barRadius", "autoHide",
             "exclusive", "barColorMode", "barCustomHue", "barCustomSaturation",
             "barCustomLightness", "mods", "modOpts", "dock", "dockAutoHide", "dockPinned"],
+        workspaces: [],
         plugins: [],
         drawer: ["drawerTabs", "drawerOverview", "drawerHover", "drawerWidth"],
         notifications: ["notifDnd", "notifDndUntilMs", "notifQuiet", "notifQuietStart", "notifQuietEnd",
             "notifDuration", "notifPosition", "notifDensity", "notifIcons",
-            "notifProgress", "notifBodyLines", "osd"],
+            "notifProgress", "notifBodyLines", "osd", "notifHistoryPersist",
+            "notifHistoryCount", "notifHistoryHours", "notifHistoryBytes",
+            "notifDedupeSeconds", "notifBurstLimit", "notifPopupGroups",
+            "notifPopupPerGroup", "notifFullscreen"],
         // Night light is a shell setting that lives beside the display rows.
         displays: ["nightLight", "warmth"],
         touchpad: ["scrollFactor"],
@@ -965,6 +980,15 @@ Singleton {
     onNotifIconsChanged: scheduleSave()
     onNotifProgressChanged: scheduleSave()
     onNotifBodyLinesChanged: scheduleSave()
+    onNotifHistoryPersistChanged: scheduleSave()
+    onNotifHistoryCountChanged: scheduleSave()
+    onNotifHistoryHoursChanged: scheduleSave()
+    onNotifHistoryBytesChanged: scheduleSave()
+    onNotifDedupeSecondsChanged: scheduleSave()
+    onNotifBurstLimitChanged: scheduleSave()
+    onNotifPopupGroupsChanged: scheduleSave()
+    onNotifPopupPerGroupChanged: scheduleSave()
+    onNotifFullscreenChanged: scheduleSave()
     onDrawerTabsChanged: scheduleSave()
     onDrawerOverviewChanged: scheduleSave()
     onDrawerHoverChanged: scheduleSave()
