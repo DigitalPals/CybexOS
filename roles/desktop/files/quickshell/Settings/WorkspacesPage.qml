@@ -142,7 +142,7 @@ SettingsPage {
             }
             SettingsHint {
                 width: parent.width
-                text: I18n.tr("The dock is optional in every layout. Minimized windows remain in the overview and launcher.")
+                text: I18n.tr("The dock appears on floating workspaces. Minimized windows remain in the overview and launcher.")
                 maximumLines: 4
             }
             SettingsAction {

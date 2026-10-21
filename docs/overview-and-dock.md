@@ -1,7 +1,7 @@
 # Window overview, dock and top processes
 
 Three ways to find and manage what is running. The overview and the process
-list ship on; the dock is optional and starts off.
+list ship on; floating workspaces show the dock automatically.
 
 ## Window overview
 
@@ -35,10 +35,15 @@ fade and scale into a cut.
 
 ## Dock
 
-Turn it on in **Settings → Bar → Dock → Show dock**. It sits centred at the
-bottom of every screen and shows pinned apps first, then other running apps,
-with a line between them. A running app has a dot; the focused app has a wider
-accent mark.
+The dock appears automatically on each screen whose current workspace uses
+the Floating layout. Switching that screen to Tiled or Scrolling removes its
+dock. **Settings → Bar → Dock → Show in all layouts** also shows it in other
+layouts; existing saved choices for that switch are retained. Auto-hide is
+available in either case, and changing layout never changes your pins.
+
+It sits centred at the bottom of the screen and shows pinned apps first,
+then other running apps, with a line between them. A running app has a dot;
+the focused app has a wider accent mark.
 
 - Click an app to open it, switch to its last-used window, or cycle through
   its windows when one is already focused.
@@ -51,6 +56,11 @@ Until you pin or unpin something, the dock suggests your default browser,
 Files and the terminal. Pins are desktop entry ids stored in `dockPinned` in
 `~/.config/cybexos/shell.json`. A pinned app that is not installed is not
 shown, but it stays pinned.
+
+Browser web-app windows, including Brave's URL-based app windows, match their
+installed web-app launcher so the dock uses the app's name and saved icon and
+can pin or relaunch it. Different app paths on the same host stay separate;
+ambiguous matches keep the normal window fallback.
 
 With **Auto-hide** on, the dock slides away when the pointer leaves it. Point
 at the bottom edge where it was to bring it back. Without auto-hide, tiled
@@ -92,3 +102,12 @@ empty desktop and runs two samples of the process list.
 same files and defaults. Live behaviour still needs checking on a Hyprland
 session: thumbnail capture, drag-to-move, multi-monitor tiles, dock auto-hide
 over a bottom bar and the touchpad gesture.
+
+The 2026-10-21 development-session check verified automatic dock appearance
+on an empty Floating workspace, removal on Tiled and Scrolling, and the
+all-layout override. The running Brave WhatsApp window resolved to its
+WhatsApp launcher, name and saved icon; a dock-only capture confirmed the
+rendered icon. The test restored the temporary workspace override and focus,
+left pins and auto-hide unchanged, and finished with one service-owned
+Quickshell process and a clean current-invocation journal. This was a live
+desktop check, not an ISO build or an end-to-end installation qualification.

@@ -1,4 +1,4 @@
-// Structure contracts for the window overview, the optional dock and the
+// Structure contracts for the window overview, the workspace dock and the
 // Control Center's Top processes list. The pure rules are tested in
 // overview-helpers, dock-helpers, process-list-helpers and window-commands;
 // this holds the QML to the lifetimes those rules depend on — nothing runs
@@ -9,7 +9,8 @@ const { untranslated } = require("./shell.cjs");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { shellDir } = require("./shell.cjs");
+const vm = require("node:vm");
+const { shellDir, load } = require("./shell.cjs");
 
 const read = relative => untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 const shell = read("shell.qml");
@@ -120,8 +121,10 @@ test("overview motion uses the shared tokens, which reduced motion zeroes", () =
 
 // ---- dock -----------------------------------------------------------------
 
-test("the dock is off by default and constructs nothing until enabled", () => {
-    assert.match(shell, /Variants \{\s*model: Settings\.dock \? Screens\.layerSurfaceModel : \[\]\s*DockWindow \{\}/);
+test("the dock follows each monitor's live workspace and saved layout", () => {
+    assert.match(shell, /model: Screens\.layerSurfaceModel\.filter\(output => \{/);
+    assert.match(shell, /const monitor = Hyprland\.monitorFor\(output\.screen\)/);
+    assert.match(shell, /DockHelpers\.showOnWorkspace\(Settings\.dock, active,\s*DesktopWorkspaces\.workspace\(active \? active\.id : 0\)\)/);
     assert.equal((shell.match(/\bDock\./g) || []).length, 0, "naming the singleton would construct it");
     assert.match(dockWindow, /WlrLayershell\.namespace: "qs-dock"/);
     assert.match(dockWindow, /anchors\.bottom: true/);
@@ -154,11 +157,47 @@ test("dock items are keyed by app and act through the Dock singleton", () => {
         "pins resolve again once desktop entries have loaded");
 });
 
-test("the dock's two settings sit in the Bar page and are searchable", () => {
+test("running web apps reuse their launcher's icon, name and pinned group", () => {
+    const entries = {
+        "brave-origin": { id: "brave-origin", name: "Brave", icon: "brave-origin" },
+        "cybexos-webapp-whatsapp": { id: "cybexos-webapp-whatsapp", name: "WhatsApp",
+            icon: "/home/alice/.local/share/cybexos/webapps/whatsapp/icon.png" }
+    };
+    const context = {
+        DockHelpers: load("DockHelpers.js"),
+        webApps: [{ id: "whatsapp", url: "https://web.whatsapp.com/" }],
+        DesktopEntries: { byId: id => entries[id] || null,
+            heuristicLookup: () => entries["brave-origin"] },
+        Quickshell: { iconPath: name => name }
+    };
+    context.root = context;
+    vm.createContext(context);
+    for (const name of ["entryIdFor", "entryFor", "titleFor", "iconFor"])
+        vm.runInContext(functionBody(dock, name), context);
+    const appId = "brave-web.whatsapp.com__-Default";
+    const entryId = context.entryIdFor(appId);
+    const apps = context.DockHelpers.groupApps([{ address: "w1", appId, entryId }],
+        ["cybexos-webapp-whatsapp"], []);
+    assert.equal(apps.length, 1, "a running web app joins its pin rather than adding a fallback item");
+    assert.equal(apps[0].running, true);
+    assert.equal(context.titleFor(apps[0]), "WhatsApp");
+    assert.equal(context.iconFor(apps[0]), entries[entryId].icon);
+    assert.equal(context.entryIdFor("brave-origin"), "brave-origin");
+    delete entries[entryId];
+    assert.equal(context.entryIdFor(appId), "brave-origin", "removed desktop entries fall back to the native resolver");
+    assert.match(dock, /onDesktopAppsChanged: webAppRefresh\.restart\(\)/,
+        "install/remove causes a fresh registry read");
+    assert.match(dock, /command: \[Quickshell\.env\("HOME"\) \+ "\/\.local\/bin\/cybexos-webapp", "list", "--json"\]/);
+});
+
+test("the dock's all-layout preference and auto-hide sit in the Bar page and are searchable", () => {
     const groups = read("Settings/BarLayoutGroups.qml");
     assert.match(groups, /SettingsGroup \{\s*width: parent\.width\s*title: "Dock"/);
     assert.match(groups, /settingKey: "dock"/);
-    assert.match(groups, /Revealer \{[\s\S]{0,120}?reveal: Settings\.dock[\s\S]{0,200}?settingKey: "dockAutoHide"/);
+    assert.match(groups, /label: "Show in all layouts"/);
+    assert.match(groups, /settingKey: "dockAutoHide"/);
+    assert.doesNotMatch(groups, /reveal: Settings\.dock/,
+        "auto-hide is available for automatic floating docks too");
     const search = require(path.join(shellDir, "Common/SettingsSearchData.js"));
     for (const key of ["dock", "dockAutoHide"])
         assert.ok(search.ROWS.some(row => row.key === key && row.page === "bar"), key);

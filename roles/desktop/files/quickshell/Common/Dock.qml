@@ -5,10 +5,10 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import "DockHelpers.js" as DockHelpers
 import "WindowCommands.js" as WindowCommands
+import "LauncherProviders.js" as ProviderHelpers
 
-// The optional dock's shared model and actions (DockWindow.qml draws it on
-// every output). Nothing names this singleton while the dock is off, so a
-// disabled dock constructs nothing at all.
+// The dock's shared model and actions (DockWindow.qml draws it on each
+// eligible output). No eligible output means this singleton is not constructed.
 //
 // Items are the pinned apps (desktop entry ids in Settings.dockPinned) and
 // every running app, grouped by desktop entry. Running windows come from
@@ -20,6 +20,13 @@ Singleton {
     // Focus history, most recent first, for "focus the app's last window".
     property var recent: []
     property string browserId: ""
+    property var webApps: []
+    readonly property var desktopApps: DesktopEntries.applications.values
+
+    // One local registry read on construction and when desktop entries change,
+    // coalesced across installs/removals. No network or per-window subprocess.
+    onDesktopAppsChanged: webAppRefresh.restart()
+    Component.onCompleted: webAppRefresh.restart()
 
     readonly property string activeAddress: Hyprland.activeToplevel
         ? Hyprland.activeToplevel.address : ""
@@ -59,7 +66,10 @@ Singleton {
     function entryIdFor(appId) {
         if (appId === "" || DockHelpers.isShellWindow(appId))
             return "";
-        const entry = DesktopEntries.heuristicLookup(appId);
+        const webId = DockHelpers.webAppEntryId(appId, webApps);
+        const entry = DesktopEntries.byId(appId)
+            || (webId !== "" ? DesktopEntries.byId(webId) : null)
+            || DesktopEntries.heuristicLookup(appId);
         return entry ? entry.id : "";
     }
 
@@ -139,8 +149,8 @@ Singleton {
             launch(key);
         } else if (action.kind === "focus" && isLive(action.address)) {
             // Clicking a focused, single-window app minimizes it. Multiple
-            // windows keep the existing cycling behavior. Nothing enables
-            // the dock or changes its auto-hide/pin preferences on floating.
+            // windows keep the existing cycling behavior. Layout changes
+            // never write the dock's auto-hide or pin preferences.
             if (DesktopWorkspaces.ready && app && app.windows.length === 1
                     && action.address === activeAddress && !DesktopWorkspaces.isMinimized(action.address)
                     && DesktopWorkspaces.canMinimize(action.address)) {
@@ -178,6 +188,24 @@ Singleton {
     onActiveAddressChanged: {
         if (activeAddress !== "")
             recent = DockHelpers.touchRecent(recent, activeAddress);
+    }
+
+    Timer {
+        id: webAppRefresh
+        interval: 100
+        onTriggered: {
+            if (!webAppList.running)
+                webAppList.running = true;
+            else
+                restart();
+        }
+    }
+    Process {
+        id: webAppList
+        command: [Quickshell.env("HOME") + "/.local/bin/cybexos-webapp", "list", "--json"]
+        stdout: StdioCollector {
+            onStreamFinished: root.webApps = ProviderHelpers.parseWebApps(text)
+        }
     }
 
     // The default browser joins the suggested pins. mimeapps.list is the

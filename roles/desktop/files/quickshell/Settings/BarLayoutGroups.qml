@@ -182,7 +182,7 @@ Column {
         }
     }
 
-    // The optional dock lives with the bar: both are edge furniture, and the
+    // The dock lives with the bar: both are edge furniture, and the
     // dock steps above a bottom bar rather than covering it. Pins are edited
     // from the dock itself (right-click an app).
     SettingsGroup {
@@ -191,22 +191,17 @@ Column {
 
         SwitchRow {
             width: parent.width
-            label: I18n.tr("Show dock")
+            label: I18n.tr("Show in all layouts")
             settingKey: "dock"
-            description: I18n.tr("Pinned and running apps at the bottom of each screen; right-click an app to pin it")
+            description: I18n.tr("The dock appears automatically on floating workspaces. Also show it in tiled and scrolling layouts.")
         }
 
-        Revealer {
-            id: dockReveal
+        SwitchRow {
             width: parent.width
-            reveal: Settings.dock
-            SwitchRow {
-                width: dockReveal.width
-                label: I18n.tr("Auto-hide")
-                resetLabel: "Dock auto-hide"
-                settingKey: "dockAutoHide"
-                description: I18n.tr("Hides until you point at the bottom edge")
-            }
+            label: I18n.tr("Auto-hide")
+            resetLabel: "Dock auto-hide"
+            settingKey: "dockAutoHide"
+            description: I18n.tr("Hides until you point at the bottom edge")
         }
     }
 }

@@ -8,7 +8,7 @@ import "Common"
 import "Common/BarGeometry.js" as BarGeometry
 import "Common/DockHelpers.js" as DockHelpers
 
-// The optional dock (Settings → Bar → Dock, off by default): pinned and
+// The dock (automatic on Floating; Settings → Bar → Dock for all layouts): pinned and
 // running apps in a bottom-centred pill, one per output like the bar, so it
 // is under the pointer whichever screen that is on and hotplug creates or
 // removes just that output's copy. The items and every action live in the

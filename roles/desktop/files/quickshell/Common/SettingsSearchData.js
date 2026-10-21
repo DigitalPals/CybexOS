@@ -85,7 +85,7 @@ var ROWS = [
     { page: "bar", pageLabel: "Bar", group: "Background", label: "Bar background", key: "barColorMode", terms: "menubar color custom black white graphite slate macos hue" },
     { page: "bar", pageLabel: "Bar", group: "Behavior", label: "Auto-hide", key: "autoHide", terms: "hide idle reveal" },
     { page: "bar", pageLabel: "Bar", group: "Behavior", label: "Reserve space", key: "exclusive", terms: "exclusive zone tiled windows" },
-    { page: "bar", pageLabel: "Bar", group: "Dock", label: "Show dock", key: "dock", terms: "dock taskbar pinned running apps launcher bottom" },
+    { page: "bar", pageLabel: "Bar", group: "Dock", label: "Show in all layouts", key: "dock", terms: "dock taskbar pinned running apps launcher bottom floating tiled scrolling" },
     { page: "bar", pageLabel: "Bar", group: "Dock", label: "Dock auto-hide", key: "dockAutoHide", terms: "dock hide reveal bottom edge" },
 
     // Bar widgets and their options
