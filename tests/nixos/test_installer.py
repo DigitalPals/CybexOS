@@ -21,7 +21,7 @@ from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'lifecycle'))
-loader = importlib.machinery.SourceFileLoader('cybexos_installer', str(ROOT / 'installer/cybexos-install'))
+loader = importlib.machinery.SourceFileLoader('nerdos_installer', str(ROOT / 'installer/nerdos-install'))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 installer = importlib.util.module_from_spec(spec)
 loader.exec_module(installer)
@@ -39,15 +39,15 @@ def nix_lock(config, nixpkgs=None):
     lock = json.loads((config / 'flake.lock').read_text())
     if nixpkgs is not None:
         lock['nodes']['nixpkgs'] = nixpkgs
-    lock['nodes']['root']['inputs']['cybexos'] = 'cybexos'
-    lock['nodes']['cybexos'] = {'inputs': {'nixpkgs': ['nixpkgs']},
+    lock['nodes']['root']['inputs']['nerdos'] = 'nerdos'
+    lock['nodes']['nerdos'] = {'inputs': {'nixpkgs': ['nixpkgs']},
                                 'locked': {'type': 'path', 'path': str(ROOT), 'narHash': 'sha256-' + 'C' * 43 + '='},
                                 'original': {'type': 'path', 'path': str(ROOT)}}
     (config / 'flake.lock').write_text(json.dumps(lock))
 
 
 def plan():
-    return {'disk': '/dev/vda', 'serial': 'QA-DISK', 'hostname': 'cybexos-test', 'username': 'tester',
+    return {'disk': '/dev/vda', 'serial': 'QA-DISK', 'hostname': 'nerdos-test', 'username': 'tester',
             'timezone': 'UTC', 'locale': 'en_US.UTF-8', 'keyboard': 'us',
             'encrypted': True, 'autoLogin': True, 'secureBoot': False, 'nvidiaOpen': True}
 
@@ -77,7 +77,7 @@ class PlanTests(unittest.TestCase):
 
 class HardwareTests(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(prefix='cybexos-installer-fixture-')
+        self.directory = tempfile.TemporaryDirectory(prefix='nerdos-installer-fixture-')
         self.addCleanup(self.directory.cleanup)
         self.sys = Path(self.directory.name)
         self.cpu = self.sys / 'cpuinfo'; self.cpu.write_text('Intel Core Ultra')
@@ -169,7 +169,7 @@ class DiskSafetyTests(unittest.TestCase):
             return {'/sys/firmware/efi':efi, '/sys/firmware/efi/efivars':variables, STORE_SOURCE:ROOT}.get(value, real_path(value, *args))
         revision = 'a' * 40
         nar = 'sha256-' + 'A' * 43 + '='
-        source = 'github:DigitalPals/CybexOS/' + revision
+        source = 'github:DigitalPals/NerdOS/' + revision
         choice = plan(); choice.update(encrypted=False, autoLogin=False)
         for fetched in ({'hash': nar, 'storePath': STORE_SOURCE}, {'hash': nar}, {'hash': nar, 'storePath': '../source'},
                         {'hash': 'sha256-' + 'B' * 43 + '='}, {}):
@@ -226,17 +226,17 @@ class DiskSafetyTests(unittest.TestCase):
                 self.assertIn('--no-channel-copy', args)
                 target = real_path(args[2])
                 for directory in (target.parent, target, target / 'var', target / 'var/lib',
-                                  target / 'var/lib/cybexos', target / 'var/lib/cybexos/working', target / 'etc'):
+                                  target / 'var/lib/nerdos', target / 'var/lib/nerdos/working', target / 'etc'):
                     self.assertEqual(directory.stat().st_mode & 0o777, 0o755, str(directory))
-                self.assertEqual((target / 'var/lib/cybexos/secrets').stat().st_mode & 0o777, 0o700)
-                self.assertEqual((target / 'var/lib/cybexos/working/initial/flake.nix').stat().st_mode & 0o777, 0o644)
+                self.assertEqual((target / 'var/lib/nerdos/secrets').stat().st_mode & 0o777, 0o700)
+                self.assertEqual((target / 'var/lib/nerdos/working/initial/flake.nix').stat().st_mode & 0o777, 0o644)
                 raise installer.Failure('stop before fixture system build')
             return 'unused-credential-hash'
         choice = plan(); choice.update(encrypted=False, autoLogin=False)
         hardware = {'camera':False, 'nvidia':False, 'nvidiaPrime':{'enable':False}, 'xps':False}
         previous_umask = os.umask(0o077)
         try:
-            with self.trusted_install_directory(), patch.dict(os.environ, {'CYBEXOS_UPDATER_SHARE':str(ROOT / 'templates')}), patch.object(installer, 'disk_guard'), patch.object(installer, 'detect', return_value=hardware), patch.object(installer, 'Path', side_effect=path), patch('cybexos.inputs.validate_machine'), patch('cybexos.inputs.identity', return_value={}), self.assertRaisesRegex(installer.Failure, 'stop before fixture system build'):
+            with self.trusted_install_directory(), patch.dict(os.environ, {'NERDOS_UPDATER_SHARE':str(ROOT / 'templates')}), patch.object(installer, 'disk_guard'), patch.object(installer, 'detect', return_value=hardware), patch.object(installer, 'Path', side_effect=path), patch('nerdos.inputs.validate_machine'), patch('nerdos.inputs.identity', return_value={}), self.assertRaisesRegex(installer.Failure, 'stop before fixture system build'):
                 installer.install(choice, {'password':'qualification-password-123'}, f'path:{ROOT}', 'revision', 'nar', run, channel='beta')
         finally:
             os.umask(previous_umask)
@@ -257,10 +257,10 @@ class DiskSafetyTests(unittest.TestCase):
                 elif args[:3] == ('nix', 'flake', 'lock'):
                     nix_lock(real_path(str(args[-1]).removeprefix('path:')))
                 elif args[0] == 'nixos-install':
-                    machine.append((real_path(args[2]) / 'var/lib/cybexos/working/initial/machine.nix').read_text())
+                    machine.append((real_path(args[2]) / 'var/lib/nerdos/working/initial/machine.nix').read_text())
                     raise installer.Failure('stop before fixture system build')
                 return 'unused-credential-hash'
-            with self.subTest(channel=channel), self.trusted_install_directory(), patch.dict(os.environ, {'CYBEXOS_UPDATER_SHARE':str(ROOT / 'templates')}), patch.object(installer, 'disk_guard'), patch.object(installer, 'detect', return_value=hardware), patch.object(installer, 'Path', side_effect=path), patch('cybexos.inputs.validate_machine'), patch('cybexos.inputs.identity', return_value={}), self.assertRaisesRegex(installer.Failure, 'stop before fixture system build'):
+            with self.subTest(channel=channel), self.trusted_install_directory(), patch.dict(os.environ, {'NERDOS_UPDATER_SHARE':str(ROOT / 'templates')}), patch.object(installer, 'disk_guard'), patch.object(installer, 'detect', return_value=hardware), patch.object(installer, 'Path', side_effect=path), patch('nerdos.inputs.validate_machine'), patch('nerdos.inputs.identity', return_value={}), self.assertRaisesRegex(installer.Failure, 'stop before fixture system build'):
                 installer.install(choice, {'password':'qualification-password-123'}, f'path:{ROOT}', 'revision', 'nar', run, channel=channel)
             # A later vendor release changes only the version-derived default;
             # the machine keeps the explicit channel it was installed with.
@@ -277,7 +277,7 @@ class TestedNixpkgsTests(unittest.TestCase):
     def setUp(self):
         timezone = patch.object(installer, 'known_timezone', return_value=True)
         timezone.start(); self.addCleanup(timezone.stop)
-        directory = tempfile.TemporaryDirectory(prefix='cybexos-installer-nixpkgs-')
+        directory = tempfile.TemporaryDirectory(prefix='nerdos-installer-nixpkgs-')
         self.addCleanup(directory.cleanup)
         self.base = Path(directory.name)
 
@@ -364,7 +364,7 @@ class TestedNixpkgsTests(unittest.TestCase):
                     raise installer.Failure('stop before fixture system build')
                 return 'unused-credential-hash'
             with self.subTest(name), patch.object(installer.tempfile, 'TemporaryDirectory', side_effect=lambda *a, **k: create(*a, **{x: y for x, y in k.items() if x != 'dir'})), \
-                    patch.dict(os.environ, {'CYBEXOS_UPDATER_SHARE': str(ROOT / 'templates')}), self.efi(), patch.object(installer, 'disk_guard'), \
+                    patch.dict(os.environ, {'NERDOS_UPDATER_SHARE': str(ROOT / 'templates')}), self.efi(), patch.object(installer, 'disk_guard'), \
                     patch.object(installer, 'detect', return_value=hardware), self.assertRaises(installer.Failure) as raised:
                 installer.install(choice, {'password': 'qualification-password-123'}, f'path:{ROOT}', 'revision', 'nar', run, channel='beta')
             # Only the root Nixpkgs node is seeded; its branch selector stays.
@@ -381,14 +381,14 @@ class TestedNixpkgsTests(unittest.TestCase):
 
 REVISION, OTHER_REVISION = '1' * 40, '3' * 40
 NAR, OTHER_NAR = 'sha256-' + 'A' * 43 + '=', 'sha256-' + 'B' * 43 + '='
-RELEASES = 'https://github.com/DigitalPals/CybexOS/releases/download/'
+RELEASES = 'https://github.com/DigitalPals/NerdOS/releases/download/'
 
 
 def manifest(version='1.0.0-beta.1', **changes):
     release = {'schema':1, 'version':version, 'revision':REVISION, 'narHash':NAR,
                'architectures':['x86_64-linux'], 'nixos':['26.05'], 'configurationApi':1, 'pluginApi':1,
                'minUpdater':1, 'notes':'Qualified medium', 'vendorInputs':['lanzaboote'],
-               'assets':[{'name':f'cybexos-{version}-x86_64-linux.iso', 'url':f'{RELEASES}v{version}/cybexos-{version}-x86_64-linux.iso',
+               'assets':[{'name':f'nerdos-{version}-x86_64-linux.iso', 'url':f'{RELEASES}v{version}/nerdos-{version}-x86_64-linux.iso',
                           'sha256':'f' * 64, 'bytes':1}]}
     release.update(changes)
     return release
@@ -401,7 +401,7 @@ class MediaAuthenticationTests(unittest.TestCase):
     def setUp(self):
         timezone = patch.object(installer, 'known_timezone', return_value=True)
         timezone.start(); self.addCleanup(timezone.stop)
-        directory = tempfile.TemporaryDirectory(prefix='cybexos-installer-media-')
+        directory = tempfile.TemporaryDirectory(prefix='nerdos-installer-media-')
         self.addCleanup(directory.cleanup)
         self.base = Path(directory.name)
         self.keys = {}
@@ -424,7 +424,7 @@ class MediaAuthenticationTests(unittest.TestCase):
         moved = json.dumps({'schema':1, 'channel':'beta', 'sequence':9, 'expires':'2099-01-01T00:00:00Z',
                             'manifest':RELEASES + 'v1.0.0-beta.2/manifest.json',
                             'sha256':hashlib.sha256(json.dumps(newer).encode()).hexdigest()}).encode()
-        channel = 'https://digitalpals.github.io/CybexOS/channels/beta.json'
+        channel = 'https://digitalpals.github.io/NerdOS/channels/beta.json'
         self.served[channel], self.served[channel + '.sig'] = moved, self.sign(moved)
         self.transport()
 
@@ -474,7 +474,7 @@ class MediaAuthenticationTests(unittest.TestCase):
             # bounded reads and cache publication remain in the path.
             response.url = request.full_url
             return response
-        transport = patch('cybexos.trust.urllib.request.urlopen', side_effect=urlopen)
+        transport = patch('nerdos.trust.urllib.request.urlopen', side_effect=urlopen)
         transport.start(); self.addCleanup(transport.stop)
 
     def main(self, *arguments, runner=None):
@@ -484,7 +484,7 @@ class MediaAuthenticationTests(unittest.TestCase):
         os.write(write_end, json.dumps({'password':'qualification-password-123', 'passphrase':'qualification-passphrase-123'}).encode())
         os.close(write_end)
         output = io.StringIO()
-        argv = ['cybexos-install', '--plan-file', str(plan_file), '--secrets-fd', str(read_end), *arguments]
+        argv = ['nerdos-install', '--plan-file', str(plan_file), '--secrets-fd', str(read_end), *arguments]
         try:
             with patch.object(installer, 'ETC', self.etc), patch.object(installer, 'CACHE', self.base / 'cache'), \
                     patch.object(installer.os, 'geteuid', return_value=0), patch.object(installer, 'Runner', return_value=runner or Mock()), \
@@ -511,10 +511,10 @@ class MediaAuthenticationTests(unittest.TestCase):
         install, output = self.main()
         install.assert_called_once()
         args, kwargs = install.call_args
-        self.assertEqual(args[2:5], ('github:DigitalPals/CybexOS/' + REVISION, REVISION, NAR))
+        self.assertEqual(args[2:5], ('github:DigitalPals/NerdOS/' + REVISION, REVISION, NAR))
         self.assertEqual(kwargs['channel'], 'beta')
         self.assertEqual(args[0], plan())
-        self.assertIn('Authenticated CybexOS 1.0.0-beta.1 • beta channel • exact revision ' + REVISION, output)
+        self.assertIn('Authenticated NerdOS 1.0.0-beta.1 • beta channel • exact revision ' + REVISION, output)
         # Only this medium's immutable manifest is consulted; the moved
         # channel and its newer release are never fetched or selected.
         self.assertEqual(self.requests, [RELEASES + 'v1.0.0-beta.1/manifest.json', RELEASES + 'v1.0.0-beta.1/manifest.json.sig'])

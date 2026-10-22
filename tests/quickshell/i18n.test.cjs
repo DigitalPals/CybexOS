@@ -18,9 +18,9 @@ test("the session's locale picks the language, C and POSIX name none", () => {
     assert.equal(I18n.languageFor(["de_DE.UTF-8", "", "", "nl_NL.UTF-8"]), "en",
         "an unsupported language falls back to English, as gettext does");
     assert.equal(I18n.languageFor([]), "en");
-    // CYBEXOS_LANG is read first by I18n.qml, ahead of LC_ALL, LC_MESSAGES, LANG.
+    // NERDOS_LANG is read first by I18n.qml, ahead of LC_ALL, LC_MESSAGES, LANG.
     const qml = fs.readFileSync(path.join(shellDir, "Common/I18n.qml"), "utf8");
-    assert.match(qml, /Quickshell\.env\("CYBEXOS_LANG"\), Quickshell\.env\("LC_ALL"\),\s*Quickshell\.env\("LC_MESSAGES"\), Quickshell\.env\("LANG"\)/);
+    assert.match(qml, /Quickshell\.env\("NERDOS_LANG"\), Quickshell\.env\("LC_ALL"\),\s*Quickshell\.env\("LC_MESSAGES"\), Quickshell\.env\("LANG"\)/);
     assert.match(fs.readFileSync(path.join(shellDir, "Common/qmldir"), "utf8"), /^singleton I18n I18n\.qml$/m);
 });
 

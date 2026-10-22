@@ -24,7 +24,7 @@ describe('simulated terminal', () => {
   it('rejects prototype names as directories or app commands', () => {
     expect(runCommand('cd __proto__').output).toContain('no such sample directory');
     expect(runCommand('ls constructor').output).toContain('no such sample directory');
-    expect(runCommand('cybex constructor').openApp).toBeUndefined();
+    expect(runCommand('nerd constructor').openApp).toBeUndefined();
   });
 
   it('treats shell syntax as data and never executes commands or expands variables', () => {
@@ -46,8 +46,8 @@ describe('simulated terminal', () => {
   });
 
   it('returns explicit desktop intents without host side effects', () => {
-    expect(runCommand('cybex settings').openApp).toBe('settings');
-    expect(runCommand('cybex notes').openApp).toBe('notes');
+    expect(runCommand('nerd settings').openApp).toBe('settings');
+    expect(runCommand('nerd notes').openApp).toBe('notes');
     expect(runCommand('clear').clear).toBe(true);
     expect(runCommand('whoami').output).toBe('guest');
     expect(runCommand('help').output).toContain('never run on your device');
@@ -56,9 +56,9 @@ describe('simulated terminal', () => {
 });
 
 
-describe('CybexOS system commands', () => {
-  it('renders the CybexOS overview based on the parsed command, including quotes, whitespace, and options', () => {
-    for (const command of ['fastfetch', '  fastfetch  ', 'fastfetch --logo cybexos', 'neofetch', '"fastfetch"']) {
+describe('NerdOS system commands', () => {
+  it('renders the NerdOS overview based on the parsed command, including quotes, whitespace, and options', () => {
+    for (const command of ['fastfetch', '  fastfetch  ', 'fastfetch --logo nerdos', 'neofetch', '"fastfetch"']) {
       const result = runCommand(command);
       expect(result.presentation).toBe('fastfetch');
       expect(result.output).toBe(SYSTEM_INFO);
@@ -88,8 +88,9 @@ describe('CybexOS system commands', () => {
 describe('terminal completion', () => {
   it('completes commands and app intents and exposes ambiguous candidates', () => {
     expect(completeInput('fas').input).toBe('fastfetch ');
-    expect(completeInput('cybex set').input).toBe('cybex settings ');
-    expect(completeInput('c').candidates).toEqual(expect.arrayContaining(['cat', 'cd', 'clear', 'cybex']));
+    expect(completeInput('nerd set').input).toBe('nerd settings ');
+    expect(completeInput('c').candidates).toEqual(expect.arrayContaining(['cat', 'cd', 'clear']));
+    expect(completeInput('n').candidates).toContain('nerd');
     expect(completeInput('c').input).toBe('c');
     expect(completeInput('unsupported /etc').input).toBe('unsupported /etc');
   });
@@ -121,6 +122,6 @@ describe('terminal completion', () => {
   it('completes at the caret and preserves subsequent arguments', () => {
     const result = completeInput('cat Wel Documents/Shortcuts.txt', HOME_PATH, 7);
     expect(result.input).toBe('cat Welcome.txt Documents/Shortcuts.txt');
-    expect(runCommand(result.input).output).toContain('CybexOS browser shortcuts');
+    expect(runCommand(result.input).output).toContain('NerdOS browser shortcuts');
   });
 });

@@ -25,15 +25,15 @@ Omarchy instances. Moving a widget preserves its settings and enablement.
 ## Storage and ownership
 
 Default paths below follow XDG config and data roots. The runtime
-exports `CYBEXOS_PLUGIN_ROOT` and `CYBEXOS_USER_CONFIG_ROOT` for
+exports `NERDOS_PLUGIN_ROOT` and `NERDOS_USER_CONFIG_ROOT` for
 the shell; the command helper honors these when present too.
 
 | Contents | Default path | Update/rollback behavior |
 | --- | --- | --- |
-| Package source and assets | `~/.local/share/cybexos/plugins/<id>/` | Never reconciled with vendor files |
-| Enablement, column, order, width, settings | `~/.config/cybexos/plugins.json` | Never written by deployment or shell-settings migrations |
-| Plugin data | `~/.local/share/cybexos/plugin-data/<id>/` | Retained; plugin controls its own format |
-| Loader and API adapter | `/etc/cybexos/runtime/quickshell/` | Replaced by distro updates |
+| Package source and assets | `~/.local/share/nerdos/plugins/<id>/` | Never reconciled with vendor files |
+| Enablement, column, order, width, settings | `~/.config/nerdos/plugins.json` | Never written by deployment or shell-settings migrations |
+| Plugin data | `~/.local/share/nerdos/plugin-data/<id>/` | Retained; plugin controls its own format |
+| Loader and API adapter | `/etc/nerdos/runtime/quickshell/` | Replaced by distro updates |
 
 System updates and generation rollback retain user widget packages and data.
 Disabling a widget changes only its enablement flag. Existing releases before API 1 cannot display these
@@ -85,10 +85,10 @@ registry fields survive command writes. Corrupt registries and unsupported
 registry versions are reported and preserved; writes refuse to reset them.
 
 ```bash
-cybex plugin list
-cybex plugin enable personal.focus --width 120 --order 0
-cybex plugin set personal.focus label '"Deep work"'
-cybex plugin disable personal.focus
+nerd plugin list
+nerd plugin enable personal.focus --width 120 --order 0
+nerd plugin set personal.focus label '"Deep work"'
+nerd plugin disable personal.focus
 ```
 
 `list` outputs JSON including disabled, missing, and incompatible packages.
@@ -167,7 +167,7 @@ On an installed desktop, follow `tests/lib/quickshell-live` for service/PID
 reconciliation and current-invocation journal checks.
 
 For an agent-ready example, see the installed
-[user widget skill reference](../../agent-skills/cybexos/references/user-widgets.md).
+[user widget skill reference](../../agent-skills/nerdos/references/user-widgets.md).
 
 ### Shared typography
 

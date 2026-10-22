@@ -18,7 +18,7 @@ BUILD = runpy.run_path(str(ROOT / PAYLOAD.RECIPE / 'build.py'))
 
 class ImageArtifactContracts(unittest.TestCase):
     def setUp(self):
-        temporary = tempfile.TemporaryDirectory(prefix='cybexos-notification-images-test-')
+        temporary = tempfile.TemporaryDirectory(prefix='nerdos-notification-images-test-')
         self.addCleanup(temporary.cleanup)
         self.build = Path(temporary.name)
         self.staged = self.build / 'notification-images-root'
@@ -46,7 +46,7 @@ class ImageArtifactContracts(unittest.TestCase):
             self.assertEqual((self.staged / name).read_bytes(), (self.payload / name).read_bytes())
         for name in PAYLOAD.SOURCES:
             self.assertEqual(PAYLOAD.sha256(ROOT / PAYLOAD.RECIPE / name),
-                             PAYLOAD.sha256(self.payload / 'usr/share/cybexos/notification-images' / name))
+                             PAYLOAD.sha256(self.payload / 'usr/share/nerdos/notification-images' / name))
 
     def test_changed_source_manifest_is_rejected(self):
         self.manifest['inputs']['source_sha256']['imagefingerprints.cpp'] = '0' * 64
@@ -55,7 +55,7 @@ class ImageArtifactContracts(unittest.TestCase):
             PAYLOAD.prepare_notification_images(ROOT, self.build, self.payload)
 
     def test_changed_staged_recipe_is_rejected(self):
-        (self.staged / 'usr/share/cybexos/notification-images/plugin.cpp').write_text('changed')
+        (self.staged / 'usr/share/nerdos/notification-images/plugin.cpp').write_text('changed')
         with self.assertRaisesRegex(RuntimeError, 'recipe differs'):
             PAYLOAD.prepare_notification_images(ROOT, self.build, self.payload)
 

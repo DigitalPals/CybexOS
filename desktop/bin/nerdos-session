@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Hyprland XDG_SESSION_DESKTOP=Hyprland
+export MOZ_ENABLE_WAYLAND=1 QT_QPA_PLATFORM=wayland XMODIFIERS=@im=ibus
+export NERDOS_USER_CONFIG_ROOT="${XDG_CONFIG_HOME:-$HOME/.config}/nerdos"
+export NERDOS_PLUGIN_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/nerdos/plugins"
+# SDDM must get control again after a compositor crash.
+trap 'systemctl --user stop hyprland-session.target' EXIT
+Hyprland --config /etc/nerdos/runtime/hypr/hyprland.lua "$@"

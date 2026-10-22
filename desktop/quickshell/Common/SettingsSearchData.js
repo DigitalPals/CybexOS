@@ -102,7 +102,7 @@ var ROWS = [
     { page: "bar", pageLabel: "Bar", group: "Model Usage", label: "Model Usage", key: "", widget: "modelusage", terms: "ai claude codex kimi quota limits reset percentage providers cliproxy proxy accounts credentials cost tokens t3 refresh warning critical" },
     { page: "bar", pageLabel: "Bar", group: "Updates", label: "Download updates automatically", key: "", widget: "updates", terms: "background download updates automatic schedule timer nix packages metered power check every interval notify" },
 
-    { page: "bar", pageLabel: "Bar", group: "Control Center", label: "Control Center widget", key: "", widget: "control", terms: "cybexos button move drag reorder show hide drawer" },
+    { page: "bar", pageLabel: "Bar", group: "Control Center", label: "Control Center widget", key: "", widget: "control", terms: "nerdos button move drag reorder show hide drawer" },
 
     // Control Center (also searchable by its former Drawer name)
     { page: "bar", pageLabel: "Bar", widget: "control", group: "Tabs", label: "Tab order", key: "", terms: "drawer reorder overview sound network bluetooth power notifications usage" },
@@ -134,7 +134,7 @@ var ROWS = [
     { page: "power", pageLabel: "Power", group: "Stay awake", label: "Bar indicator", key: "", terms: "stay awake indicator sign-in widget options" },
     { page: "notifications", pageLabel: "Notifications", group: "On-screen display", label: "Placement", key: "osd", terms: "osd volume brightness popup overlay" },
 
-    // Backup & recovery: backups belong to the cybexos-backup helper, so the
+    // Backup & recovery: backups belong to the nerdos-backup helper, so the
     // rows navigate rather than naming shell.json keys.
     { page: "backup", pageLabel: "Backup & recovery", group: "Backups", label: "Back up personal files", key: "", terms: "backup restic encrypted external drive usb disk ssh sftp server nas home folder copy set up" },
     { page: "backup", pageLabel: "Backup & recovery", group: "Backups", label: "Automatic backups", key: "", terms: "daily schedule timer reminder battery metered" },

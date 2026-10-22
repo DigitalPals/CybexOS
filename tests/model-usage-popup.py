@@ -16,7 +16,7 @@ def main():
     if not shutil.which('qs') or subprocess.run(['pgrep', '-x', 'qs'], stdout=subprocess.DEVNULL).returncode == 0:
         print('Model Usage popup test deferred to isolated CI')
         return
-    with tempfile.TemporaryDirectory(prefix='cybexos-model-popup-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='nerdos-model-popup-') as temporary:
         base = Path(temporary)
         runtime = base / 'run'
         runtime.mkdir(mode=0o700)

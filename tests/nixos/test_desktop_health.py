@@ -9,9 +9,9 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'lifecycle'))
-from cybexos.common import Failure
-from cybexos.desktop_check import compositor_command, verify_compositor
-from cybexos.health import LIVE_BEGIN, LIVE_END, desktop, system_services, user_services
+from nerdos.common import Failure
+from nerdos.desktop_check import compositor_command, verify_compositor
+from nerdos.health import LIVE_BEGIN, LIVE_END, desktop, system_services, user_services
 
 SYSTEM = '/nix/store/' + 'a' * 32 + '-nixos-system-test'
 GUARD = Path(__file__).resolve().parents[1] / 'lib/quickshell-live'
@@ -141,7 +141,7 @@ class FakeUserManager:
     """Service state shared by the real guard script and Python probes."""
 
     def __init__(self, test):
-        directory = tempfile.TemporaryDirectory(prefix='cybexos-health-live-')
+        directory = tempfile.TemporaryDirectory(prefix='nerdos-health-live-')
         test.addCleanup(directory.cleanup)
         self.state = Path(directory.name)
         self.reset()
@@ -308,7 +308,7 @@ class HealthTests(unittest.TestCase):
                 calls += 1
                 self.plugins['discovering'] = calls == 1
             return self.command(*args)
-        with patch('cybexos.health.time.sleep') as sleep:
+        with patch('nerdos.health.time.sleep') as sleep:
             desktop([], discovering, '/guard')
         self.assertEqual(calls, 2)
         sleep.assert_called_once_with(1)
@@ -316,11 +316,11 @@ class HealthTests(unittest.TestCase):
     def test_unavailable_or_stuck_discovery_cannot_pass_health(self):
         for value in (None, True):
             self.plugins['discovering'] = value
-            with self.subTest(value=value), patch('cybexos.health.time.sleep'), self.assertRaises(Failure):
+            with self.subTest(value=value), patch('nerdos.health.time.sleep'), self.assertRaises(Failure):
                 desktop([], self.command, '/guard')
 
     def test_end_guard_cannot_mask_failed_begin(self):
-        with tempfile.TemporaryDirectory(prefix='cybexos-health-guard-') as directory:
+        with tempfile.TemporaryDirectory(prefix='nerdos-health-guard-') as directory:
             guard = Path(directory) / 'guard'
             guard.write_text('qs_live_begin() { return 1; }\nqs_live_end() { return 0; }\n')
             def run(*args):
@@ -366,19 +366,19 @@ class HealthTests(unittest.TestCase):
 
 class ConfigurationSandboxTests(unittest.TestCase):
     def test_candidate_absolute_paths_are_bound_without_host_configuration(self):
-        with patch('cybexos.desktop_check.shutil.which', side_effect=lambda name: '/nix/store/test/bin/' + name):
+        with patch('nerdos.desktop_check.shutil.which', side_effect=lambda name: '/nix/store/test/bin/' + name):
             command = compositor_command(SYSTEM, '/tmp/task-check.lua')
         self.assertIn('--unshare-all', command)
         self.assertIn('--clearenv', command)
         self.assertIn('--verify-config', command)
         binds = [command[i+1:i+3] for i, value in enumerate(command) if value == '--ro-bind']
-        self.assertIn([SYSTEM + '/etc/cybexos', '/etc/cybexos'], binds)
+        self.assertIn([SYSTEM + '/etc/nerdos', '/etc/nerdos'], binds)
         self.assertNotIn(['/etc', '/etc'], binds)
         self.assertFalse(any(source.startswith('/home/') for source, target in binds))
 
     def test_namespace_or_compositor_failure_blocks_staging(self):
-        with tempfile.TemporaryDirectory(prefix='cybexos-compositor-check-') as directory:
-            with patch('cybexos.desktop_check.shutil.which', return_value='/nix/store/test/bin/command'):
+        with tempfile.TemporaryDirectory(prefix='nerdos-compositor-check-') as directory:
+            with patch('nerdos.desktop_check.shutil.which', return_value='/nix/store/test/bin/command'):
                 with self.assertRaises(Failure):
                     verify_compositor(SYSTEM, directory,
                                       run=lambda *args, **kwargs: subprocess.CompletedProcess(args, 1, '', 'namespace unavailable'))

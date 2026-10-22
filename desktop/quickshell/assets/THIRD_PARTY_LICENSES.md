@@ -84,9 +84,9 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## CybexOS monogram
+## NerdOS glasses
 
-The CybexOS C monogram is original repository vector code under the repository
-MIT license. Its white variant changes paint only. It is not adapted from a
-third-party operating-system mark. This code license does not grant rights in
-other depicted brands.
+The NerdOS glasses are original project artwork supplied in October 2026 under
+the repository MIT license. The canonical and white variants are unmodified
+files from the identity kit. This code license does not grant rights in other
+depicted brands. See `assets/brand/USAGE.md` for identity usage rules.

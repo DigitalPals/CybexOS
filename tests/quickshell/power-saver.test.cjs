@@ -27,7 +27,7 @@ const luajit = ["/usr/bin/luajit", "/usr/local/bin/luajit"].find(file => fs.exis
 // Renders looknfeel.lua.j2 (its one Jinja expression is a hardware gate) and
 // runs `driver` after it under luajit with a recording `hl` double.
 function runLookAndFeel(driver, files) {
-    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-looknfeel-"));
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "nerdos-looknfeel-"));
     try {
         const template = fs.readFileSync(
             path.resolve(shellDir, "../hypr/looknfeel.lua"), "utf8");
@@ -134,24 +134,24 @@ assert(passes() == 1 and animations() == true, "the configured values")
 -- A user.lua override is what comes back afterwards.
 hl.config({ decoration = { blur = { passes = 2 } } })
 
-cybexos_power_saver(true)
+nerdos_power_saver(true)
 assert(passes() == 1 and animations() == false, "power saver")
 local before = calls()
-cybexos_power_saver(true)
+nerdos_power_saver(true)
 assert(calls() == before, "a repeated request is a no-op")
 
 -- A config reload re-applies the full values and must take the saver back up.
 dofile(look)
 assert(passes() == 1 and animations() == false, "power saver survives a reload")
 
-cybexos_power_saver(false)
+nerdos_power_saver(false)
 assert(passes() == 2 and animations() == true, "restores what the saver replaced")
 before = calls()
-cybexos_power_saver(false)
+nerdos_power_saver(false)
 assert(calls() == before, "the shell's startup request touches nothing when off")
 
 -- A compositor restart starts a fresh state; the shell re-sends its request.
-_G.__cybexos_power_saver = nil
+_G.__nerdos_power_saver = nil
 dofile(look)
 assert(passes() == 1 and animations() == true)
 `);
@@ -168,7 +168,7 @@ test("the shell sends the power profile to the compositor on startup and on chan
     vm.runInContext(functionSource(settings, "applyPowerSaver"), context);
     context.applyPowerSaver();
     assert.deepEqual([...context.powerSaverProc.command],
-        ["hyprctl", "eval", "cybexos_power_saver(true)"]);
+        ["hyprctl", "eval", "nerdos_power_saver(true)"]);
     assert.equal(context.powerSaverProc.running, true);
     context.Activity.powerSaver = false;
     context.applyPowerSaver();
@@ -183,7 +183,7 @@ test("the shell sends the power profile to the compositor on startup and on chan
         /if \(root\.dispatchedPowerSaver !== Activity\.powerSaver \|\| root\.powerSaverResendPending\) \{\s*root\.powerSaverResendPending = false;\s*powerSaverReplayTimer\.restart\(\)/);
     const look = fs.readFileSync(
         path.resolve(shellDir, "../hypr/looknfeel.lua"), "utf8");
-    assert.match(look, /^function cybexos_power_saver\(enabled\)$/m,
+    assert.match(look, /^function nerdos_power_saver\(enabled\)$/m,
         "the eval handle must be a global");
 });
 
@@ -195,9 +195,9 @@ test("compositor blur follows the shell's glass default when nothing is stored",
 assert(layer_rules["quickshell-blur"].enabled == ${value},
   "quickshell-blur enabled = " .. tostring(layer_rules["quickshell-blur"].enabled))`;
     runLookAndFeel(glass(false));
-    runLookAndFeel(glass(false), { ".config/cybexos/shell.json": '{"v": 23, "barHeight": 40}' });
-    runLookAndFeel(glass(true), { ".config/cybexos/shell.json": '{"v": 23, "glassEnabled": true}' });
-    runLookAndFeel(glass(false), { ".config/cybexos/shell.json": '{"v": 23, "glassEnabled": false}' });
+    runLookAndFeel(glass(false), { ".config/nerdos/shell.json": '{"v": 23, "barHeight": 40}' });
+    runLookAndFeel(glass(true), { ".config/nerdos/shell.json": '{"v": 23, "glassEnabled": true}' });
+    runLookAndFeel(glass(false), { ".config/nerdos/shell.json": '{"v": 23, "glassEnabled": false}' });
     runLookAndFeel(glass(true),
         { ".local/state/quickshell/shell-settings.json": '{\n  "glassEnabled": true\n}' });
 });

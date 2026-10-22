@@ -56,7 +56,7 @@ if (!accepted("cliproxyKeyFile", "~/.config/key") || !accepted("costKeeperUrl", 
 def main() -> None:
     subprocess.run(["node", "-e", SETTINGS_CHECK, str(HELPERS), str(TESTS / "manifest.json")],
                    check=True)
-    with tempfile.TemporaryDirectory(prefix="cybex-model-usage-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="nerd-model-usage-") as temporary:
         package = Path(temporary) / "model-usage"
         shutil.copytree(RUNTIME, package)
         integration = ROOT / 'scripts/model-usage/integration.patch'

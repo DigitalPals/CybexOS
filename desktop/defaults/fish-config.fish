@@ -73,8 +73,8 @@ if status is-interactive
     alias ll='eza --icons -la'
     alias la='eza --icons -A'
     alias l='eza --icons -CF'
-    alias update='cybex update check'
-    alias a='cybex agent'
+    alias update='nerd update check'
+    alias a='nerd agent'
     # Product default for interactive Codex; `command codex` bypasses this alias.
     alias codex='codex --dangerously-bypass-approvals-and-sandbox'
     alias claude='claude --dangerously-skip-permissions'

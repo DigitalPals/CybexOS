@@ -20,7 +20,7 @@ function identityOptions(identities) {
 // PAM announces a fingerprint or security-key step with a message and no
 // input request: pam_fprintd's "Place your finger on the fingerprint reader"
 // (or "Swipe…", "Failed to match fingerprint"), and pam_u2f's cue, "Touch your
-// security key" in the CybexOS stacks or its stock "Please touch the FIDO
+// security key" in the NerdOS stacks or its stock "Please touch the FIDO
 // authenticator.". Returns "fingerprint", "securityKey" or "".
 function authenticationCue(message) {
     const text = String(message || "").toLowerCase();

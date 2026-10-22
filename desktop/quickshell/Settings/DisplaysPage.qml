@@ -5,7 +5,7 @@ import "../Common/DisplayHelpers.js" as Displays
 
 // Settings -> Displays. Edits are drafted against the live outputs, applied
 // as a trial that restores itself unless kept, and only then saved to
-// ~/.config/cybexos/displays.json, which Hyprland reads through displays.lua.
+// ~/.config/nerdos/displays.json, which Hyprland reads through displays.lua.
 //
 // The arrangement is also the display picker: the group under it edits
 // whichever display is selected there. Unlike the shell settings on the
@@ -404,12 +404,12 @@ SettingsPage {
                 label: I18n.tr("Adaptive sync")
                 choices: Displays.VRR_CHOICES
                 current: page.selected ? page.selected.vrr : -1
-                hint: I18n.tr("Default keeps CybexOS's policy for this display. Fullscreen enables variable refresh only for fullscreen windows.")
+                hint: I18n.tr("Default keeps NerdOS's policy for this display. Fullscreen enables variable refresh only for fullscreen windows.")
                 onPicked: value => page.edit(page.selected.key, { vrr: value })
             }
             SettingsHint {
                 width: parent.width
-                text: I18n.tr("Saved per display in ~/.config/cybexos/displays.json. Monitor rules in ~/.config/cybexos/hypr/user.lua take precedence.")
+                text: I18n.tr("Saved per display in ~/.config/nerdos/displays.json. Monitor rules in ~/.config/nerdos/hypr/user.lua take precedence.")
             }
         }
 

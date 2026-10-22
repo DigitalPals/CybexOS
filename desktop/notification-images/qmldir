@@ -1,4 +1,4 @@
-module CybexOS.Images
-plugin cybexosnotificationimagesplugin
+module NerdOS.Images
+plugin nerdosnotificationimagesplugin
 classname NotificationImagesPlugin
 typeinfo plugins.qmltypes

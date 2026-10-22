@@ -21,18 +21,18 @@ SettingsPage {
     }
 
     function sendTest() {
-        Notifs.send({ appName: "CybexOS Settings", appIcon: "preferences-system-notifications",
+        Notifs.send({ appName: "NerdOS Settings", appIcon: "preferences-system-notifications",
             summary: I18n.tr("Test notification"),
             body: I18n.tr("Toasts use your current position, duration, and style settings.") });
     }
 
     function sendGroupedPreview() {
         for (let i = 1; i <= 4; i++)
-            Notifs.send({ appName: "CybexOS Settings", summary: I18n.tr("Grouped popups"), body: "Preview " + i });
+            Notifs.send({ appName: "NerdOS Settings", summary: I18n.tr("Grouped popups"), body: "Preview " + i });
     }
 
     function sendVerificationPreview() {
-        Notifs.send({ appName: "CybexOS Settings", summary: I18n.tr("Send verification preview"),
+        Notifs.send({ appName: "NerdOS Settings", summary: I18n.tr("Send verification preview"),
             body: "Your verification code is 482913. https://example.com/" });
     }
 

@@ -51,7 +51,7 @@ async def scenario() -> None:
     previous_remote = os.environ.pop("HERMES_REMOTE_URL", None)
     try:
         with tempfile.TemporaryDirectory(
-            prefix="cybexos-hermes-conversations."
+            prefix="nerdos-hermes-conversations."
         ) as temporary:
             root = Path(temporary)
             state = root / "conversations.json"
@@ -284,7 +284,7 @@ class RecordingSocket:
 
 
 async def delivery_scenario() -> None:
-    with tempfile.TemporaryDirectory(prefix="cybexos-hermes-delivery.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="nerdos-hermes-delivery.") as temporary:
         root = Path(temporary)
         state = root / "conversations.json"
         state.write_text(
@@ -404,7 +404,7 @@ async def observer_backoff_scenario() -> None:
     BRIDGE.remote_observer_retry_delay = no_wait
     BRIDGE.REMOTE_OBSERVER_HEALTHY_SECONDS = 0.05
     try:
-        with tempfile.TemporaryDirectory(prefix="cybexos-hermes-observer.") as temporary:
+        with tempfile.TemporaryDirectory(prefix="nerdos-hermes-observer.") as temporary:
             root = Path(temporary)
             state = root / "conversations.json"
             state.write_text(
@@ -492,7 +492,7 @@ async def refresh_coalescing_scenario() -> None:
 
 
 async def _refresh_coalescing_scenario() -> None:
-    with tempfile.TemporaryDirectory(prefix="cybexos-hermes-refresh.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="nerdos-hermes-refresh.") as temporary:
         root = Path(temporary)
         registry = BRIDGE.ConversationRegistry(root / "conversations.json")
         bridge = BRIDGE.HermesBridge(
@@ -594,11 +594,11 @@ def unit_restart_policy() -> None:
 
 def packaged_entrypoint() -> None:
     """The renamed installed executable resolves its sibling package alone."""
-    with tempfile.TemporaryDirectory(prefix="cybexos-hermes-package.") as scratch:
+    with tempfile.TemporaryDirectory(prefix="nerdos-hermes-package.") as scratch:
         directory = Path(scratch)
-        entry = directory / "cybexos-hermes-bridge"
+        entry = directory / "nerdos-hermes-bridge"
         shutil.copy2(BRIDGE_PATH, entry)
-        shutil.copytree(BRIDGE_PATH.parent / "cybex_hermes", directory / "cybex_hermes")
+        shutil.copytree(BRIDGE_PATH.parent / "nerdos_hermes", directory / "nerdos_hermes")
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
         env.pop("PYTHONPATH", None)
         result = subprocess.run([sys.executable, "-B", str(entry), "--help"],

@@ -4,8 +4,8 @@ A theme is a directory holding `theme.json` and, optionally, the one wallpaper
 image it names (PNG, JPEG or WebP). Nothing in a theme is executed or
 interpreted beyond the schema below. Built-in themes ship read-only in the
 shell runtime (`themes/` beside `scripts/`); user themes live in the
-user-owned theme root, `$CYBEXOS_THEME_ROOT` (default
-`~/.local/share/cybexos/themes`), which installs and updates never prune
+user-owned theme root, `$NERDOS_THEME_ROOT` (default
+`~/.local/share/nerdos/themes`), which installs and updates never prune
 (docs/architecture/ownership.md).
 
 theme.json, schema 1:
@@ -27,7 +27,7 @@ theme.json, schema 1:
 
 Applying a theme is one settings change: settings_patch() maps it to the
 shell.json keys that Settings → Appearance (Common/Themes.qml) and
-`cybex theme apply` set together. That mapping exists only here.
+`nerd theme apply` set together. That mapping exists only here.
 """
 from datetime import datetime, timezone
 import importlib.machinery
@@ -345,11 +345,11 @@ def builtin_root():
 
 
 def user_root():
-    override = os.environ.get('CYBEXOS_THEME_ROOT')
+    override = os.environ.get('NERDOS_THEME_ROOT')
     if override:
         return Path(override)
     data = os.environ.get('XDG_DATA_HOME') or os.path.join(os.path.expanduser('~'), '.local/share')
-    return Path(data) / 'cybexos/themes'
+    return Path(data) / 'nerdos/themes'
 
 
 def _read_regular(path, limit):
@@ -422,7 +422,7 @@ def catalogue(builtin=None, user=None):
         except ThemeError as error:
             invalid.append({'id': entry.name, 'error': str(error)})
     builtin_ids = {theme['id'] for theme in themes}
-    themes.sort(key=lambda theme: (theme['id'] != 'cybexos', theme['name'].lower()))
+    themes.sort(key=lambda theme: (theme['id'] != 'nerdos', theme['name'].lower()))
     personal = []
     for entry in _theme_dirs(user):
         if entry.name in builtin_ids:
@@ -444,7 +444,7 @@ def find(theme_id, builtin=None, user=None):
     for entry in listing['invalid']:
         if entry['id'] == theme_id:
             raise ThemeError(f'theme {theme_id} is not usable: {entry["error"]}')
-    raise ThemeError(f'no theme called {theme_id}; see `cybex theme list`')
+    raise ThemeError(f'no theme called {theme_id}; see `nerd theme list`')
 
 
 def summary(theme):
@@ -468,7 +468,7 @@ def expand_home(path):
 
 def settings_path():
     config = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
-    return Path(config) / 'cybexos/shell.json'
+    return Path(config) / 'nerdos/shell.json'
 
 
 def read_settings(path=None):
@@ -547,7 +547,7 @@ def resolve(theme, directory=None):
 
 def _settings_store():
     path = Path(__file__).resolve().parent / 'settings-store'
-    loader = importlib.machinery.SourceFileLoader('cybexos_settings_store', str(path))
+    loader = importlib.machinery.SourceFileLoader('nerdos_settings_store', str(path))
     spec = importlib.util.spec_from_loader(loader.name, loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
@@ -581,7 +581,7 @@ def persist(patch, path=None):
         raise ThemeError(f'{path} cannot be read: {error}') from None
     stored = current.get('v')
     if isinstance(stored, (int, float)) and not isinstance(stored, bool) and stored > version:
-        raise ThemeError(f'{path} was saved by a newer CybexOS; apply the theme from Settings instead')
+        raise ThemeError(f'{path} was saved by a newer NerdOS; apply the theme from Settings instead')
     # The file keeps its schema version: an older file is still migrated by
     # the shell, which reads these keys the same way in every schema.
     candidate = {**current, **patch}

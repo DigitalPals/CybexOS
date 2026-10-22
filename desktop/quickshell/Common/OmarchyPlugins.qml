@@ -31,7 +31,7 @@ Singleton {
         const config = JSON.parse(JSON.stringify(UserPlugins.barConfig));
         const layout = { left: [], center: [], right: [] };
         for (const item of UserPlugins.enabledWidgets.filter(entry => entry.format === "omarchy" && !entry.error))
-            layout[item.section || "right"].push(Object.assign({}, item.settings, { id: item.id, __cybexInstance: item.instanceName || "" }));
+            layout[item.section || "right"].push(Object.assign({}, item.settings, { id: item.id, __nerdosInstance: item.instanceName || "" }));
         return Object.assign({ position: Settings.position, transparent: false }, config, { layout: layout });
     }
 
@@ -412,7 +412,7 @@ Singleton {
         try {
             const selector = JSON.parse(selectorJson || "{}");
             const value = JSON.parse(valueJson);
-            if (!selector || typeof selector !== "object" || Array.isArray(selector) || ["id", "__cybexInstance"].includes(key)) return "invalid selector or key";
+            if (!selector || typeof selector !== "object" || Array.isArray(selector) || ["id", "__nerdosInstance"].includes(key)) return "invalid selector or key";
             const layout = JSON.parse(JSON.stringify(barConfig.layout));
             const section = selector.fromSection || selector.section;
             const index = selector.fromIndex !== undefined ? selector.fromIndex : selector.index;

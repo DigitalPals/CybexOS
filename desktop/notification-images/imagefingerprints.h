@@ -5,7 +5,7 @@
 #include <QPointer>
 #include <QQmlEngine>
 
-namespace CybexOS {
+namespace NerdOS {
 constexpr qint64 ImageByteLimit = 16 * 1024 * 1024;
 constexpr int ImageDimensionLimit = 4096;
 // Hash dimensions and canonical RGBA pixels. Never retains the input image.

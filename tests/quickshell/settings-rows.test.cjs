@@ -116,7 +116,7 @@ test("rows that cannot use settingKey still wire themselves completely", () => {
         // Their enable/remove controls preserve state, rather than inventing a reset.
         // System-owned values have no shell schema default. Their pages own
         // live writes or an explicit Apply/Cancel draft, never shell reset.
-        // Backups belong to the cybexos-backup helper in the same way.
+        // Backups belong to the nerdos-backup helper in the same way.
         if (["ModulesPage", "PluginWidgetSettings", "SoundPage", "NetworkPage", "DisplaysPage", "AccountsPage", "IpSettings", "KeyboardPage", "TouchpadPage", "RegionPage", "BackupPage",
             "SecurityPage"]
                 .some(name => block.at.startsWith(`Settings/${name}.qml:`))) {

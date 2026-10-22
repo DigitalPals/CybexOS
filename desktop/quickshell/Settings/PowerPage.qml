@@ -77,7 +77,7 @@ SettingsPage {
             SettingsHint {
                 width: parent.width
                 text: SysInfo.idleUserConfig
-                    ? "~/.config/cybexos/hypr/hypridle.conf replaces these timeouts. Remove it to use them."
+                    ? "~/.config/nerdos/hypr/hypridle.conf replaces these timeouts. Remove it to use them."
                     : SysInfo.idleTimeoutsError !== "" ? SysInfo.idleTimeoutsError
                     : "Counted from the last keyboard or pointer input. Stay awake pauses them."
                 tone: SysInfo.idleUserConfig ? "warning"

@@ -105,7 +105,7 @@ class SecuritySettingsTests(unittest.TestCase):
         self.nixos_policy = self.root / 'fingerprint-enabled'
         self.nixos_policy.write_text('enabled\n')
         self.pam = self.root / 'sudo'
-        self.pam.write_text('auth sufficient pam_u2f.so cue nouserok=false userpresence=1 origin=pam://cybexos appid=pam://cybexos authfile=.config/Yubico/u2f_keys\n')
+        self.pam.write_text('auth sufficient pam_u2f.so cue nouserok=false userpresence=1 origin=pam://nerdos appid=pam://nerdos authfile=.config/Yubico/u2f_keys\n')
         self.fprintd = FakeFprintd(fingers=['right-index-finger'])
         self.runner = Runner()
         self.service = security.SecuritySettings(
@@ -165,7 +165,7 @@ class SecuritySettingsTests(unittest.TestCase):
         before = self.nixos_policy.read_bytes()
         for enabled in (False, True):
             with self.subTest(enabled=enabled), self.assertRaisesRegex(
-                    ValueError, r'cybexos\.authentication\.fingerprint.*stage local'):
+                    ValueError, r'nerdos\.authentication\.fingerprint.*stage local'):
                 self.service.dispatch({'action': 'fingerprint-auth', 'enabled': enabled})
         with self.assertRaisesRegex(ValueError, 'Invalid fingerprint setting'):
             self.service.dispatch({'action': 'fingerprint-auth', 'enabled': 'yes'})
@@ -176,7 +176,7 @@ class SecuritySettingsTests(unittest.TestCase):
         self.runner.results['pamu2fcfg'] = (0, ':' + CREDENTIAL, '')
         self.service.dispatch({'action': 'add-key'})
         argv = self.runner.calls[0]
-        self.assertEqual(argv[1:], ['-n', '-o', 'pam://cybexos', '-i', 'pam://cybexos'])
+        self.assertEqual(argv[1:], ['-n', '-o', 'pam://nerdos', '-i', 'pam://nerdos'])
         mapping = self.home / '.config/Yubico/u2f_keys'
         self.assertEqual(mapping.read_text(), 'alice:' + CREDENTIAL + '\n')
         self.assertEqual(stat.S_IMODE(mapping.stat().st_mode), 0o600)
@@ -387,7 +387,7 @@ class FprintdOverDBus(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
-        configuration = os.environ.get('CYBEXOS_DBUS_SESSION_CONFIG')
+        configuration = os.environ.get('NERDOS_DBUS_SESSION_CONFIG')
         bus_configuration = ['--config-file=' + configuration] if configuration else ['--session']
         bus = subprocess.Popen(['dbus-daemon', *bus_configuration, '--nofork', '--print-address=1'],
                                stdout=subprocess.PIPE, text=True)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cybexos-webapp contracts: strict addresses, desktop entries, defaults.
+"""nerdos-webapp contracts: strict addresses, desktop entries, defaults.
 
 The network is never used: every fetch goes through a stubbed Fetcher, and
 ImageMagick is hidden so icons pass through as the fixture's own PNG bytes.
@@ -19,8 +19,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-HELPER = ROOT / "assets/scripts/cybexos-webapp"
-LOADER = importlib.machinery.SourceFileLoader("cybexos_webapp", str(HELPER))
+HELPER = ROOT / "assets/scripts/nerdos-webapp"
+LOADER = importlib.machinery.SourceFileLoader("nerdos_webapp", str(HELPER))
 SPEC = importlib.util.spec_from_loader(LOADER.name, LOADER)
 webapp = importlib.util.module_from_spec(SPEC)
 LOADER.exec_module(webapp)
@@ -95,10 +95,10 @@ class Fixture(unittest.TestCase):
         self.addCleanup(stub.stop)
 
     def apps(self):
-        return self.home / ".local/share/cybexos/webapps"
+        return self.home / ".local/share/nerdos/webapps"
 
     def entry(self, identifier):
-        return self.home / f".local/share/applications/cybexos-webapp-{identifier}.desktop"
+        return self.home / f".local/share/applications/nerdos-webapp-{identifier}.desktop"
 
 
 class Addresses(unittest.TestCase):
@@ -138,10 +138,10 @@ class Install(Fixture):
         entry = desktop(self.entry("mail-co-evil-1"))
         self.assertEqual(entry["Name"], "Mail & Co Evil=1", "a newline cannot add keys")
         self.assertEqual(entry["Exec"],
-                         "/run/current-system/sw/bin/cybexos-webapp launch mail-co-evil-1")
+                         "/run/current-system/sw/bin/nerdos-webapp launch mail-co-evil-1")
         self.assertNotIn("example.com", entry["Exec"], "the address never reaches Exec")
         self.assertEqual(entry["Icon"], str(self.apps() / "mail-co-evil-1/icon.svg"))
-        self.assertEqual(entry["X-CybexOS-WebApp"], "mail-co-evil-1")
+        self.assertEqual(entry["X-NerdOS-WebApp"], "mail-co-evil-1")
         self.assertEqual(entry["Type"], "Application")
         svg = (self.apps() / "mail-co-evil-1/icon.svg").read_text()
         self.assertIn(">M</text>", svg)
@@ -229,10 +229,10 @@ class Install(Fixture):
         webapp.install("https://a.example/", "Alpha", offline=True)
         foreign = self.entry("foreign")
         foreign.write_text("[Desktop Entry]\nName=Mine\n")
-        with self.assertRaisesRegex(webapp.WebAppError, "not a CybexOS web app"):
+        with self.assertRaisesRegex(webapp.WebAppError, "not a NerdOS web app"):
             webapp.remove("foreign")
         self.assertTrue(foreign.exists())
-        with self.assertRaisesRegex(webapp.WebAppError, "not a CybexOS web app"):
+        with self.assertRaisesRegex(webapp.WebAppError, "not a NerdOS web app"):
             webapp.install("https://b.example/", "Foreign", offline=True)
         webapp.remove("alpha")
         self.assertFalse(self.entry("alpha").exists())
@@ -273,7 +273,7 @@ class Defaults(Fixture):
         error = io.StringIO()
         with contextlib.redirect_stderr(error):
             self.assertEqual(webapp.main(["launch", "youtube"]), 1)
-        self.assertIn("cybexos-webapp install --name YouTube --url https://youtube.com/",
+        self.assertIn("nerdos-webapp install --name YouTube --url https://youtube.com/",
                       error.getvalue())
         self.assertTrue(self.notified)
         self.assertEqual(self.spawned, [])
@@ -329,7 +329,7 @@ class Defaults(Fixture):
         self.assertEqual(browser.split(), [webapp.BRAVE, *webapp.BRAVE_FLAGS])
         for identifier, _name, _url in webapp.DEFAULTS:
             self.assertIn(f'web_app("{identifier}")', bindings)
-        self.assertIn('return "cybexos-webapp launch " .. id', bindings)
+        self.assertIn('return "nerdos-webapp launch " .. id', bindings)
 
 
 class CommandLine(Fixture):

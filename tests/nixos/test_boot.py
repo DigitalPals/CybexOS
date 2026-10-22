@@ -5,8 +5,8 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'lifecycle'))
-from cybexos.boot import entry, trial
-from cybexos.common import Failure
+from nerdos.boot import entry, trial
+from nerdos.common import Failure
 
 OLD = '/nix/store/' + 'a' * 32 + '-nixos-system-old'
 NEW = '/nix/store/' + 'b' * 32 + '-nixos-system-new'

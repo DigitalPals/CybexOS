@@ -60,9 +60,9 @@ input[type=range] { accent-color: var(--accent); cursor: pointer; }
 .status-cluster { gap: 0; font-size: 10px; }
 .status-cluster .bar-button { padding-inline: 6px; min-width: 27px; gap: 4px; }
 .status-off { opacity: .5; }
-.cybexos-button { margin-left: 3px; color: #76a6df; }
-.cybexos-button:hover, .cybexos-button.selected { color: var(--text); }
-.cybexos-mark { display: block; width: 18px; height: 18px; background: currentColor; mask: url('/cybexos.svg') center / contain no-repeat; }
+.nerdos-button { margin-left: 3px; }
+.nerdos-mark { display: block; width: 18px; height: 18px; background: url('/nerdos.svg') center / contain no-repeat; }
+.nerdos-button:hover .nerdos-mark, .nerdos-button.selected .nerdos-mark { background-image: url('/nerdos-white.svg'); }
 .battery-reading { font-size: 10px; }
 .notification-dot { position: absolute; right: 7px; top: 5px; height: 4px; width: 4px; background: var(--accent); border-radius: 50%; }
 .window-layer { position: absolute; inset: 0; overflow: auto; pointer-events: none; scrollbar-width: thin; scroll-padding: 46px 0 48px; }
@@ -79,11 +79,11 @@ input[type=range] { accent-color: var(--accent); cursor: pointer; }
 .window-subtitle { opacity: .5; margin-left: 14px; }
 .window-layout-label { display: none; font-size: 8px; color: var(--muted); opacity: .55; margin-left: 4px; }
 .app-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; flex-shrink: 0; }
-.dot-welcome { background: #dd0034; }
+.dot-welcome { background: #C8FF1F; }
 .window-controls { display: flex; flex-shrink: 0; align-items: center; gap: 2px; }
 .window-controls button { display: grid; place-items: center; width: 26px; height: 25px; color: var(--muted); border-radius: 5px; }
 .window-controls button:hover { background: var(--raised); color: var(--text); }
-.window-controls .close-window:hover { background: #dd0034; color: #fff; }
+.window-controls .close-window:hover { background: #C8FF1F; color: #1A1B1E; }
 .window-controls select { border: 0; background: transparent; color: var(--muted); width: 46px; font-size: 10px; margin-right: 3px; }
 .window-controls option { background: var(--surface); }
 .window-content { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: auto; }
@@ -99,7 +99,7 @@ input[type=range] { accent-color: var(--accent); cursor: pointer; }
 .window-welcome.desktop-window .window-label { color: #b4b4bb; }
 .window-welcome .window-controls button, .window-welcome .window-controls select { color: #b4b4bb; }
 .window-welcome .window-controls button:hover { background: #202024; color: #f4f4f5; }
-.window-welcome .window-controls .close-window:hover { background: #dd0034; }
+.window-welcome .window-controls .close-window:hover { background: #C8FF1F; color: #1A1B1E; }
 .eyebrow { letter-spacing: 1.7px; font-size: 8px; font-weight: 600; }
 .status-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #c9d7ad; flex-shrink: 0; }
 .text-button { display: inline-flex; align-items: center; gap: 8px; padding: 3px 0; color: var(--muted); font-size: 11px; }
@@ -309,3 +309,7 @@ kbd { display: inline-block; padding: 3px 5px; border: 1px solid var(--line, #ff
   .window-controls select { width: 37px; }
   .window-label .app-dot { width: 4px; height: 4px; }
 }
+
+/* NerdOS ASCII: original frames and lime repair tape from the supplied kit. */
+.terminal-logo-frames { color: #F3F2EC; }
+.terminal-logo-tape { color: #C8FF1F; }

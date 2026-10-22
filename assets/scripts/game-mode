@@ -1,5 +1,5 @@
 #!/usr/bin/python3 -I
-"""Turn CybexOS game mode on or off.
+"""Turn NerdOS game mode on or off.
 
   game-mode toggle|on|off|status [--json]
 
@@ -8,9 +8,9 @@ and gaps off and holds idle locking and idle suspend off until it is turned
 off again. Super+Shift+G toggles it; the menubar shows an indicator while it
 is on, and clicking that turns it off.
 
-The compositor side is cybexos_game_mode() in looknfeel.lua, which keeps what
+The compositor side is nerdos_game_mode() in looknfeel.lua, which keeps what
 it replaced and restores exactly that. This helper records the request in
-$XDG_RUNTIME_DIR/cybexos/game-mode.json ({"active": bool, "instance": ...,
+$XDG_RUNTIME_DIR/nerdos/game-mode.json ({"active": bool, "instance": ...,
 "since": ...}), which the compositor reads again after a configuration reload
 and the menubar watches for its indicator. The file names the Hyprland
 instance it belongs to: a new login starts a new instance, so game mode always
@@ -35,7 +35,7 @@ import time
 
 STATE_NAME = "game-mode.json"
 MAX_BYTES = 4096
-INHIBITOR_UNIT = "cybexos-game-mode-inhibit.service"
+INHIBITOR_UNIT = "nerdos-game-mode-inhibit.service"
 SESSION_TARGET = "hyprland-session.target"
 COMMAND_TIMEOUT = 10
 
@@ -48,7 +48,7 @@ def runtime_dir():
     value = os.environ.get("XDG_RUNTIME_DIR", "")
     if not value or not os.path.isabs(value):
         raise Failure("XDG_RUNTIME_DIR is not set; run game mode from the desktop session")
-    return Path(value) / "cybexos"
+    return Path(value) / "nerdos"
 
 
 def instance():
@@ -100,7 +100,7 @@ def run(argv):
 
 def compositor(enabled):
     """Ask looknfeel.lua to apply or restore; hyprctl answers "ok" on success."""
-    call = "cybexos_game_mode(" + ("true" if enabled else "false") + ")"
+    call = "nerdos_game_mode(" + ("true" if enabled else "false") + ")"
     result = run(["hyprctl", "eval", call])
     reply = (result.stdout or "").strip()
     if result.returncode != 0 or reply.lower() != "ok":
@@ -122,7 +122,7 @@ def start_inhibitor():
     run(["systemctl", "--user", "reset-failed", INHIBITOR_UNIT])
     result = run([
         "systemd-run", "--user", "--quiet", "--collect", "--unit=" + INHIBITOR_UNIT,
-        "--description=CybexOS game mode idle inhibitor",
+        "--description=NerdOS game mode idle inhibitor",
         "--property=PartOf=" + SESSION_TARGET,
         "--", "systemd-inhibit", "--what=idle", "--who=Game mode",
         "--why=Game mode is on", "--mode=block", "sleep", "infinity",
@@ -191,7 +191,7 @@ def turn_off(directory, current):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="game-mode", description="Turn CybexOS game mode on or off.")
+    parser = argparse.ArgumentParser(prog="game-mode", description="Turn NerdOS game mode on or off.")
     parser.add_argument("action", choices=("toggle", "on", "off", "status"))
     parser.add_argument("--json", action="store_true", help="print the resulting state as JSON")
     args = parser.parse_args(argv)

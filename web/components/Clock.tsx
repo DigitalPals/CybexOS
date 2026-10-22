@@ -36,7 +36,7 @@ export function DesktopClock({ clock24, lock = false }: { clock24: boolean; lock
   const now = useWallTime();
   const time = now?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: !clock24 });
   return lock ? <><div className="lock-time">{time || '—:—'}</div><p>{now?.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</p></>
-    : <><span className="clock-time">{time || '—:—'}</span><span className="clock-date">{now?.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit' }) || 'CybexOS'}</span></>;
+    : <><span className="clock-time">{time || '—:—'}</span><span className="clock-date">{now?.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit' }) || 'NerdOS'}</span></>;
 }
 
 export function CalendarWithClock(props: { clock24: boolean; close: () => void }) {

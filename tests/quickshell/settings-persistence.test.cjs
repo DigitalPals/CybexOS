@@ -51,7 +51,7 @@ function settingsHarness() {
     const source = read("Common/Settings.qml");
     const calls = { applied: 0, rechecks: 0, backups: 0, writes: 0 };
     const context = {
-        SettingsHelpers: H, filePath: "/home/test/.config/cybexos/shell.json",
+        SettingsHelpers: H, filePath: "/home/test/.config/nerdos/shell.json",
         loaded: false, ready: false, firstRun: false, migrationPending: false,
         loadError: false, loadErrorText: "", newerSchema: false, recheckPending: false,
         initialLoadHandled: false, lastPersistedText: "", savePending: false,

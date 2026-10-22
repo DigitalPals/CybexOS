@@ -215,7 +215,7 @@ Singleton {
 
     FileView {
         id: stateFile
-        path: Quickshell.env("HOME") + "/.local/state/cybexos/shell/github.json"
+        path: Quickshell.env("HOME") + "/.local/state/nerdos/shell/github.json"
         printErrors: false
         blockLoading: true
         // qmllint disable unqualified

@@ -1,6 +1,6 @@
 """A short-lived NetworkManager secret agent for one VPN activation.
 
-CybexOS runs no network applet, so when a VPN needs a password
+NerdOS runs no network applet, so when a VPN needs a password
 NetworkManager finds no secret agent to ask and fails the activation with
 "no secrets". For the length of one user-requested activation this module
 registers a secret agent on the system bus and activates the profile from
@@ -306,7 +306,7 @@ class Activation:
                                                          self.on_method, None, None)
             try:
                 self.call(AGENT_MANAGER_PATH, NM_BUS + ".AgentManager", "RegisterWithCapabilities",
-                          "(su)", (f"org.cybexos.network.vpn-{os.getpid()}", CAPABILITY_VPN_HINTS))
+                          "(su)", (f"org.nerdos.network.vpn-{os.getpid()}", CAPABILITY_VPN_HINTS))
                 self.registered = True
             except GLib.Error as error:
                 raise AgentError("agent_failed", "NetworkManager did not accept the VPN sign-in helper") from error

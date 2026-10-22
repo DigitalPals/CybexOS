@@ -154,14 +154,14 @@ ShellRoot {
             return SystemTheme.status();
         }
 
-        // `cybex theme apply`: a named theme its helper has validated and
+        // `nerd theme apply`: a named theme its helper has validated and
         // resolved (scripts/theme-packs.py), checked again here before it
         // changes anything. Returns "ok" or "error: <reason>".
         function use(theme: string): string {
             return Themes.use(theme);
         }
 
-        // Re-reads the theme folders after `cybex theme install` or `remove`.
+        // Re-reads the theme folders after `nerd theme install` or `remove`.
         function refresh(): void {
             Themes.refresh();
         }

@@ -4,7 +4,7 @@
  
  #include <algorithm>
  
-+#include "cybexosBuildId.hpp"
++#include "nerdosBuildId.hpp"
 +
  #include "barDeco.hpp"
  #include "globals.hpp"
@@ -29,7 +29,7 @@
  static PLUGIN_DESCRIPTION_INFO initializeOmarchyFloating(HANDLE handle) {
 +  // A Nixpkgs rebuild may keep the source/API hash while changing
 +  // the executable ABI. Never enter plugin state against another ELF build.
-+  if (cybexosHyprlandBuildId() != CYBEXOS_HYPRLAND_BUILD_ID)
++  if (nerdosHyprlandBuildId() != NERDOS_HYPRLAND_BUILD_ID)
 +    throw std::runtime_error("[hyprbars] Nixpkgs Hyprland build ID mismatch; rebuild native titlebars");
 +
    OMARCHY_FLOATING_PHANDLE = handle;
@@ -54,17 +54,17 @@
  # Hyprland exposes inline globals through its headers, so whole-library hidden
  # visibility breaks the host API. Our own types/globals have unique OmarchyFloating names.
  target_compile_options(titlebars PRIVATE -fno-gnu-unique)
-+if(NOT CYBEXOS_HYPRLAND_BUILD_ID MATCHES "^[0-9a-f]+$")
-+  message(FATAL_ERROR "CYBEXOS_HYPRLAND_BUILD_ID must identify the installed Nixpkgs Hyprland executable")
++if(NOT NERDOS_HYPRLAND_BUILD_ID MATCHES "^[0-9a-f]+$")
++  message(FATAL_ERROR "NERDOS_HYPRLAND_BUILD_ID must identify the installed Nixpkgs Hyprland executable")
 +endif()
-+target_compile_definitions(titlebars PRIVATE CYBEXOS_HYPRLAND_BUILD_ID="${CYBEXOS_HYPRLAND_BUILD_ID}")
++target_compile_definitions(titlebars PRIVATE NERDOS_HYPRLAND_BUILD_ID="${NERDOS_HYPRLAND_BUILD_ID}")
  
  find_package(PkgConfig REQUIRED)
  pkg_check_modules(deps REQUIRED IMPORTED_TARGET
 --- /dev/null
-+++ b/cybexosBuildId.hpp
++++ b/nerdosBuildId.hpp
 @@ -0,0 +1,44 @@
-+// CybexOS native compositor build guard. SPDX-License-Identifier: MIT
++// NerdOS native compositor build guard. SPDX-License-Identifier: MIT
 +#pragma once
 +#include <link.h>
 +#include <cstring>
@@ -72,7 +72,7 @@
 +
 +// Read the running executable's mapped ELF notes: a package upgrade can select
 +// a new executable while the older compositor is still running.
-+static std::string cybexosHyprlandBuildId() {
++static std::string nerdosHyprlandBuildId() {
 +  std::string result;
 +  dl_iterate_phdr([](dl_phdr_info *info, size_t, void *data) -> int {
 +    if (info->dlpi_name && info->dlpi_name[0])

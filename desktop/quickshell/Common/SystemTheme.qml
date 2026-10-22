@@ -11,7 +11,7 @@ import "SettingsHelpers.js" as SettingsHelpers
 // terminal, compositor, GTK and the lock screen. Theme has already chosen
 // between the fixed and wallpaper palettes and applied its contrast floors, so
 // this exports those results rather than a second design. scripts/
-// theme-apply.py renders them into ~/.local/state/cybexos/theme and reloads
+// theme-apply.py renders them into ~/.local/state/nerdos/theme and reloads
 // only the applications whose files changed (docs/system-theme.md).
 Singleton {
     id: root

@@ -90,10 +90,10 @@ ignore the previous connection's late output. SSH failures appear in the view.
 Read-only diagnostics and manual refresh use the normal runtime IPC entrypoint:
 
 ```sh
-cybexos-runtime ipc remoteServer status
-cybexos-runtime ipc remoteServer refresh
-cybexos-runtime ipc remoteServer configure
-cybexos-runtime ipc popouts open remote
+nerdos-runtime ipc remoteServer status
+nerdos-runtime ipc remoteServer refresh
+nerdos-runtime ipc remoteServer configure
+nerdos-runtime ipc popouts open remote
 ```
 
 `tests/quickshell/remote-server.test.cjs` covers interface selection, metric

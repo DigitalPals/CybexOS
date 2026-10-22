@@ -158,7 +158,7 @@ def state_dir(create):
     # The XDG root is user configured; owned descendants may never be symlinks.
     fd = os.open(base, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        for part in ("cybexos", "notifications"):
+        for part in ("nerdos", "notifications"):
             if create:
                 try:
                     os.mkdir(part, mode=0o700, dir_fd=fd)

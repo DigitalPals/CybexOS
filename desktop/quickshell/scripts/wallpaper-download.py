@@ -36,7 +36,7 @@ SIGNATURES = {"jpg": b"\xff\xd8\xff", "png": b"\x89PNG\r\n\x1a\n"}
 MAX_BYTES = 64 * 1024 * 1024
 CHUNK = 64 * 1024
 TIMEOUT = 30
-USER_AGENT = "CybexOS-wallpaper-picker/1"
+USER_AGENT = "NerdOS-wallpaper-picker/1"
 
 
 class Failure(Exception):

@@ -1,13 +1,18 @@
-import { DEMO_SYSTEM, CYBEXOS_LOGO, SYSTEM_DETAILS } from '../lib/terminal';
+import type { ReactNode } from 'react';
+import { DEMO_SYSTEM, NERDOS_LOGO_COLORED, SYSTEM_DETAILS } from '../lib/terminal';
 
 /** A semantic rendering of the same sample data returned by the command parser. */
 export function Fastfetch() {
   return (
-    <section className="terminal-fastfetch" aria-label="CybexOS system overview">
-      <div className="terminal-cybexos-art" aria-hidden="true">
-        <pre>{CYBEXOS_LOGO}</pre>
-        <span>cybexos</span>
-        <small>Freedom. Friends. Features. First.</small>
+    <section className="terminal-fastfetch" aria-label="NerdOS system overview">
+      <div className="terminal-nerdos-art" aria-hidden="true">
+        <pre>{NERDOS_LOGO_COLORED.split('\n').map((line, row) => (
+          <span className="terminal-logo-line" key={row}>{line.split(/(\$[12])/).reduce<{ color: string; parts: ReactNode[] }>((state, part, index) => {
+            if (part === '$1' || part === '$2') return { ...state, color: part === '$2' ? 'tape' : 'frames' };
+            state.parts.push(<span className={`terminal-logo-${state.color}`} key={index}>{part}</span>);
+            return state;
+          }, { color: 'frames', parts: [] }).parts}{'\n'}</span>
+        ))}</pre>
       </div>
       <div className="terminal-fetch-info">
         <div className="terminal-fetch-title"><strong>guest</strong><span>@</span><strong>{DEMO_SYSTEM.hostname}</strong></div>

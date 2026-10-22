@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir } = require("./shell.cjs");
 
-// Quickshell's CybexOS package embeds quickshell-coreplugin into the `qs`
+// Quickshell's NerdOS package embeds quickshell-coreplugin into the `qs`
 // executable, so standalone qmltestrunner cannot instantiate these controls.
 // Keep the pure-JS helper runtime tests in tests/qml and guard the shell-bound
 // interaction contract here until the package exposes a loadable QML plugin.
@@ -102,7 +102,7 @@ test("Control Center focus reaches rows, toggles, audio, capture, session, and f
         /id:\s*outputButton[\s\S]*Accessible\.name:\s*"Choose audio output"/);
     assert.match(control,
         /required property var modelData[\s\S]*Accessible\.name:\s*capture\.label[\s\S]*root\.runCapture/);
-    for (const label of ["Open CybexOS Settings", "Keyboard shortcuts"])
+    for (const label of ["Open NerdOS Settings", "Keyboard shortcuts"])
         assert.match(control, new RegExp(`Accessible\\.name: "${label}"`));
 });
 

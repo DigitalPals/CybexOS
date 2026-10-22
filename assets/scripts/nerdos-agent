@@ -1,0 +1,302 @@
+#!/usr/bin/env bash
+# Select and launch one supported coding agent without owning its credentials
+# or permission policy. Desktop callers use --window; terminal callers keep
+# their current working directory and TTY.
+set -uo pipefail
+
+umask 077
+
+config_home=${XDG_CONFIG_HOME:-${HOME:?HOME is required}/.config}
+defaults_dir="$config_home/nerdos/defaults"
+preference_file="$defaults_dir/agent"
+window_child=false
+temporary=
+chosen_agent=
+
+cleanup() {
+  [[ -z ${temporary:-} || ! -e $temporary ]] || rm -f -- "$temporary"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+pause_after_error() {
+  if [[ $window_child == true && -t 0 ]]; then
+    printf '\nPress Enter to close.' >&2
+    IFS= read -r || true
+  fi
+}
+
+fail() {
+  local status=$1
+  shift
+  printf 'nerd agent: %s\n' "$*" >&2
+  pause_after_error
+  exit "$status"
+}
+
+usage() {
+  cat <<'EOF'
+Usage: nerd agent [--window] [--pick]
+       nerd agent get
+       nerd agent set [opencode|claude|codex]
+       nerd agent unset
+       nerd agent list
+       nerd agent prompt <text>
+
+With no subcommand, launch the selected agent in the current directory. The
+first interactive launch asks for a default. --pick always asks before launch,
+and --window opens the agent in a dedicated Kitty window rooted at ~/Code.
+
+The launcher does not add automatic-approval or permission-bypass flags.
+Authentication and agent-specific settings remain owned by the selected CLI.
+EOF
+}
+
+supported_agent() {
+  case $1 in
+    opencode|claude|codex) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+agent_label() {
+  case $1 in
+    opencode) printf 'OpenCode' ;;
+    claude) printf 'Claude Code' ;;
+    codex) printf 'Codex CLI' ;;
+  esac
+}
+
+agent_description() {
+  case $1 in
+    opencode) printf 'provider-neutral, hosted or local models' ;;
+    claude) printf 'Anthropic account' ;;
+    codex) printf 'ChatGPT account or OpenAI API key' ;;
+  esac
+}
+
+agent_available() {
+  command -v -- "$1" >/dev/null 2>&1
+}
+
+load_default() {
+  local selected
+  [[ -f $preference_file && -r $preference_file ]] || return 1
+  selected=$(<"$preference_file")
+  supported_agent "$selected" || return 2
+  printf '%s\n' "$selected"
+}
+
+store_default() {
+  local selected=$1
+  supported_agent "$selected" \
+    || fail 2 "unsupported agent '$selected' (choose opencode, claude, or codex)"
+  agent_available "$selected" \
+    || fail 127 "$(agent_label "$selected") is not installed; enable nerdos.features.developer in /etc/nixos/local and preview with 'nerd update stage local'"
+  mkdir -p -- "$defaults_dir" \
+    || fail 1 "could not create $defaults_dir"
+  temporary=$(mktemp "$defaults_dir/.agent.XXXXXX") \
+    || fail 1 "could not stage the default-agent preference"
+  printf '%s\n' "$selected" >"$temporary" \
+    || fail 1 "could not write the default-agent preference"
+  chmod 0600 "$temporary" \
+    || fail 1 "could not protect the default-agent preference"
+  mv -fT -- "$temporary" "$preference_file" \
+    || fail 1 "could not activate the default-agent preference"
+  temporary=
+  printf 'Default AI agent: %s\n' "$(agent_label "$selected")"
+}
+
+pick_agent() {
+  local agent choice
+  local choices=()
+
+  for agent in opencode claude codex; do
+    if agent_available "$agent"; then
+      choices+=("$agent"$'\t'"$(agent_label "$agent") - $(agent_description "$agent")")
+    fi
+  done
+  ((${#choices[@]} > 0)) \
+    || fail 127 "no supported AI agent is installed; enable nerdos.features.developer in /etc/nixos/local and preview with 'nerd update stage local'"
+  # stdout is intentionally captured by the caller so only the selected ID
+  # flows into the adapter; stdin remains the reliable interactive boundary.
+  [[ -t 0 ]] \
+    || fail 1 "no default is selected; run 'nerd agent set' in a terminal"
+  agent_available fzf \
+    || fail 127 "fzf is required to choose a default AI agent"
+
+  choice=$(printf '%s\n' "${choices[@]}" | fzf \
+    --height=40% --layout=reverse --border \
+    --delimiter=$'\t' --with-nth=2.. --prompt='Default AI agent> ') || return 130
+  agent=${choice%%$'\t'*}
+  supported_agent "$agent" && agent_available "$agent" \
+    || fail 1 "the agent picker returned an invalid selection"
+  printf '%s\n' "$agent"
+}
+
+choose_default() {
+  local status
+  chosen_agent=$(pick_agent)
+  status=$?
+  ((status == 0)) || return "$status"
+  store_default "$chosen_agent"
+}
+
+launch_agent() {
+  local force_pick=$1 prompt_mode=$2 prompt=${3:-}
+  local selected status
+  local command=()
+
+  if [[ $force_pick == true ]]; then
+    choose_default
+    status=$?
+    ((status == 0)) || return "$status"
+    selected=$chosen_agent
+  else
+    selected=$(load_default)
+    status=$?
+    if ((status != 0)); then
+      if ((status == 2)); then
+        printf 'nerd agent: ignoring invalid preference in %s\n' \
+          "$preference_file" >&2
+      fi
+      choose_default
+      status=$?
+      ((status == 0)) || return "$status"
+      selected=$chosen_agent
+    fi
+  fi
+  agent_available "$selected" \
+    || fail 127 "$(agent_label "$selected") is selected but its '$selected' command is missing"
+
+  case $selected in
+    opencode)
+      command=(opencode)
+      [[ $prompt_mode == false ]] || command+=(--prompt "$prompt")
+      ;;
+    claude)
+      command=(claude)
+      [[ $prompt_mode == false ]] || command+=(-- "$prompt")
+      ;;
+    codex)
+      command=(codex)
+      [[ $prompt_mode == false ]] || command+=(-- "$prompt")
+      ;;
+  esac
+
+  exec "${command[@]}"
+  fail 127 "could not launch $(agent_label "$selected")"
+}
+
+launch_window() {
+  local workspace launcher
+  agent_available kitty || fail 127 "Kitty is not installed"
+  launcher=$(command -v nerd) \
+    || fail 127 "the nerd command is not installed"
+  workspace=${NERDOS_AGENT_WORKSPACE:-$HOME/Code}
+  [[ -d $workspace ]] || workspace=$HOME
+  exec kitty --class nerdos-agent --directory "$workspace" \
+    -e "$launcher" agent --window-child "$@"
+  fail 127 "could not open the AI agent terminal"
+}
+
+list_agents() {
+  local agent selected='' status marker availability
+  selected=$(load_default)
+  status=$?
+  ((status == 0)) || selected=
+  for agent in opencode claude codex; do
+    marker=' '
+    [[ $agent != "$selected" ]] || marker='*'
+    availability=missing
+    agent_available "$agent" && availability=installed
+    printf '%s %-8s %-9s %s\n' "$marker" "$agent" "$availability" \
+      "$(agent_label "$agent")"
+  done
+}
+
+join_prompt() {
+  local value=$1 part
+  shift
+  for part in "$@"; do
+    value+=" $part"
+  done
+  printf '%s' "$value"
+}
+
+main() {
+  local selected status prompt
+
+  if [[ ${1:-} == --window ]]; then
+    shift
+    launch_window "$@"
+  fi
+  if [[ ${1:-} == --window-child ]]; then
+    window_child=true
+    shift
+  fi
+
+  case ${1:-} in
+    '' )
+      launch_agent false false
+      ;;
+    --pick|pick)
+      shift
+      (($# == 0)) || fail 2 "--pick does not accept arguments"
+      launch_agent true false
+      ;;
+    get)
+      shift
+      (($# == 0)) || fail 2 "get does not accept arguments"
+      selected=$(load_default)
+      status=$?
+      case $status in
+        0) printf '%s\n' "$selected" ;;
+        1) fail 1 "no default AI agent is selected" ;;
+        2) fail 1 "the preference in $preference_file is invalid" ;;
+      esac
+      ;;
+    set)
+      shift
+      (($# <= 1)) || fail 2 "set accepts at most one agent name"
+      if (($# == 1)); then
+        store_default "$1"
+      else
+        selected=$(pick_agent)
+        status=$?
+        ((status == 0)) || return "$status"
+        store_default "$selected"
+      fi
+      ;;
+    unset)
+      shift
+      (($# == 0)) || fail 2 "unset does not accept arguments"
+      if [[ -e $preference_file || -L $preference_file ]]; then
+        rm -f -- "$preference_file" \
+          || fail 1 "could not remove the default-agent preference"
+        printf 'Default AI agent cleared.\n'
+      fi
+      ;;
+    list)
+      shift
+      (($# == 0)) || fail 2 "list does not accept arguments"
+      list_agents
+      ;;
+    prompt)
+      shift
+      (($# > 0)) || fail 2 "prompt requires text"
+      prompt=$(join_prompt "$@")
+      [[ -n $prompt ]] || fail 2 "prompt requires non-empty text"
+      launch_agent false true "$prompt"
+      ;;
+    help|-h|--help)
+      usage
+      ;;
+    *)
+      fail 2 "unknown option or subcommand '$1'"
+      ;;
+  esac
+}
+
+main "$@"

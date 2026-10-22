@@ -8,7 +8,7 @@ FloatingWindow {
     id: window
 
     // Stable compositor target; the workspace header carries localized copy.
-    title: "CybexOS Settings" // i18n: untranslated (compositor identity)
+    title: "NerdOS Settings" // i18n: untranslated (compositor identity)
     visible: false
     color: Theme.panelSurface
     implicitWidth: Math.min(Theme.scaled(900, Theme.contentScale),
@@ -31,7 +31,7 @@ FloatingWindow {
 
         function onPresentPanel() {
             window.minimized = false;
-            Hyprland.dispatch('hl.dsp.focus({ window = "title:^CybexOS Settings$" })');
+            Hyprland.dispatch('hl.dsp.focus({ window = "title:^NerdOS Settings$" })');
         }
     }
 

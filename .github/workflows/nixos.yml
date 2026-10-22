@@ -14,7 +14,7 @@ permissions:
   contents: read
 jobs:
   source:
-    runs-on: [self-hosted, linux, x64, cybexos-isolated]
+    runs-on: [self-hosted, linux, x64, nerdos-isolated]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -29,11 +29,12 @@ jobs:
       - run: nix build .#checks.x86_64-linux.lifecycle -L
       - run: nix build .#checks.x86_64-linux.parity -L
       - run: nix develop -c tests/run
+      - run: python3 -B scripts/check_leftovers.py --repo . --allowlist scripts/rename-leftovers-allowlist.txt
       - run: nix develop -c tests/qml-lint
       - run: nix develop -c python3 -B tests/user-plugins.py
       - run: nix develop -c python3 -B tests/nixos-native
   product:
-    runs-on: [self-hosted, linux, x64, cybexos-isolated]
+    runs-on: [self-hosted, linux, x64, nerdos-isolated]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -48,7 +49,7 @@ jobs:
       - name: Build matched XPS stack and evaluate NVIDIA independently
         run: nix build .#checks.x86_64-linux.xps-system .#checks.x86_64-linux.nvidia-evaluation -L
   vm:
-    runs-on: [self-hosted, linux, x64, cybexos-isolated]
+    runs-on: [self-hosted, linux, x64, nerdos-isolated]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -61,7 +62,7 @@ jobs:
       - run: python3 -B scripts/check-ci-capacity --vm
       - run: nix build .#checks.x86_64-linux.vm -L
   image:
-    runs-on: [self-hosted, linux, x64, cybexos-isolated]
+    runs-on: [self-hosted, linux, x64, nerdos-isolated]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -75,9 +76,9 @@ jobs:
       - name: Build and qualify the exact source image in isolated VMs
         run: |
           set -euo pipefail
-          staging=$(mktemp -d "$RUNNER_TEMP/cybexos-image-XXXXXX")
+          staging=$(mktemp -d "$RUNNER_TEMP/nerdos-image-XXXXXX")
           revision=$(git rev-parse HEAD)
-          image="/data/pxe/iso/cybexos-$revision-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.iso"
+          image="/data/pxe/iso/nerdos-$revision-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.iso"
           trap 'rm -rf "$staging"; sudo rm -f "$image" "$image.sha256"' EXIT
           nix build .#iso -L --out-link "$staging/result"
           sudo install -d -m 0755 /data/pxe/iso

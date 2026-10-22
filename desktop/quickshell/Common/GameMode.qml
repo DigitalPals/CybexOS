@@ -5,14 +5,14 @@ import Quickshell.Io
 import "GameModeState.js" as GameModeState
 
 // Game mode, read from the state file game-mode keeps in
-// $XDG_RUNTIME_DIR/cybexos. The helper owns the compositor effects and the
+// $XDG_RUNTIME_DIR/nerdos. The helper owns the compositor effects and the
 // idle inhibitor and is bound to Super+Shift+G, so game mode can start without
 // the shell; watching its state keeps the indicator honest either way.
 Singleton {
     id: root
 
     readonly property string stateDir:
-        (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/cybexos"
+        (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/nerdos"
     readonly property string helper:
         "game-mode"
     readonly property string instance:

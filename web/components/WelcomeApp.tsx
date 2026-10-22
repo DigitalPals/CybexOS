@@ -19,13 +19,13 @@ export function WelcomeApp({ openApp, notify, preferences, updatePreferences, on
   return (
     <div className="welcome-app">
       <header className="welcome-header">
-        <img className="welcome-wordmark" src="/cybex-wordmark.svg" alt="Cybex" width="127" height="30" />
+        <img className="welcome-wordmark" src="/nerdos-logo.svg" alt="NerdOS" width="225" height="30" />
         <span className="welcome-section-label">Your desktop</span>
       </header>
 
       <div className="welcome-intro">
         <h1>Welcome to your new desktop.</h1>
-        <p>Pick a wallpaper to start: the desktop’s colors follow it. You can come back here any time from the app launcher.</p>
+        <p>NerdOS — the Opinionated System. Pick a wallpaper to start: the desktop’s colors follow it. You can come back here any time from the app launcher.</p>
       </div>
 
       <section className="welcome-personalize" aria-labelledby="welcome-wallpapers-heading">

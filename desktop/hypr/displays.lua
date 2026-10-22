@@ -1,14 +1,14 @@
 -- Display preferences saved by Settings -> Displays.
 --
--- ~/.config/cybexos/displays.json is data, never code. It is parsed here by a
+-- ~/.config/nerdos/displays.json is data, never code. It is parsed here by a
 -- strict, bounded JSON reader and turned into hl.monitor() rules, so an EDID
 -- string can never become Lua and a hostile or truncated file costs bounded
 -- work. A missing file changes nothing. An unreadable or invalid one is
--- reported in $XDG_RUNTIME_DIR/cybexos/displays-status.json and ignored as a
+-- reported in $XDG_RUNTIME_DIR/nerdos/displays-status.json and ignored as a
 -- whole: the vendor rules stay in effect and Hyprland always starts.
 --
 -- hyprland.lua requires this module after the vendor `monitors` module and
--- before ~/.config/cybexos/hypr/user.lua. Hyprland resolves monitor rules
+-- before ~/.config/nerdos/hypr/user.lua. Hyprland resolves monitor rules
 -- last-first, so a saved choice overrides the vendor rule for its monitor and
 -- user.lua still overrides both. Each rule starts from the vendor rules that
 -- match the same monitor, which keeps vendor-only fields such as bitdepth,
@@ -24,8 +24,8 @@ local home = os.getenv("HOME") or ""
 local config_home = os.getenv("XDG_CONFIG_HOME") or (home .. "/.config")
 local runtime_dir = os.getenv("XDG_RUNTIME_DIR")
 
-M.path = config_home .. "/cybexos/displays.json"
-M.status_path = runtime_dir and (runtime_dir .. "/cybexos/displays-status.json") or nil
+M.path = config_home .. "/nerdos/displays.json"
+M.status_path = runtime_dir and (runtime_dir .. "/nerdos/displays-status.json") or nil
 M.MAX_BYTES = 262144
 M.MAX_ENTRIES = 64
 M.MAX_DEPTH = 16
@@ -468,7 +468,7 @@ local function vendor_matches(selector, entry)
 end
 
 function M.vendor_rules()
-  local rules = rawget(_G, "__cybexos_vendor_monitor_rules")
+  local rules = rawget(_G, "__nerdos_vendor_monitor_rules")
   return type(rules) == "table" and rules or {}
 end
 
@@ -539,7 +539,7 @@ end
 
 -- ------------------------------------------------------------ runtime ----
 
-local previous = rawget(_G, "__cybexos_displays")
+local previous = rawget(_G, "__nerdos_displays")
 if previous then
   for _, subscription in ipairs(previous.subscriptions or {}) do
     if subscription and subscription.remove then subscription:remove() end
@@ -552,7 +552,7 @@ local state = {
   decisions = {},
   source = M.path,
 }
-_G.__cybexos_displays = state
+_G.__nerdos_displays = state
 
 local function current_monitors()
   local ok, monitors = pcall(hl.get_monitors)

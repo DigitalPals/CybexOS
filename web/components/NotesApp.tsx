@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Check, Download, Eye, FileText, Pencil } from 'lucide-react';
 import type { AppProps } from '../lib/types';
 
-const NOTES_KEY = 'cybexos-demo-notes-v1';
+const NOTES_KEY = 'nerdos-demo-notes-v1';
 const INITIAL_NOTE = `# A little space to think.
 
 Welcome to Omawrite. A quiet place for words, ideas,

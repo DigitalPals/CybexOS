@@ -70,10 +70,10 @@ VPN_LABELS = {
 # profiles. The name is the fallback match if NetworkManager ever assigns a
 # different UUID.
 HOTSPOT_UUID = "6f1c2d9a-3b7e-4c5a-9e21-c7b0f4a8d153"
-HOTSPOT_NAME = "CybexOS hotspot"
+HOTSPOT_NAME = "NerdOS hotspot"
 # Shared mode runs NetworkManager's DHCP and DNS for the clients; the
 # nm-shared firewalld zone admits exactly those and forwards their traffic.
-# The CybexOS zone drops them, so the hotspot never joins it. WPA2-only
+# The NerdOS zone drops them, so the hotspot never joins it. WPA2-only
 # (CCMP) with PMF off works with the widest range of clients and access-point
 # drivers; 2.4 GHz avoids the no-IR limits many adapters have on 5 GHz.
 HOTSPOT_SETTINGS = (
@@ -1270,7 +1270,7 @@ def vpn_import(request: dict[str, Any]) -> dict[str, Any]:
                                     or path.suffix != ".conf"):
             # A symlink under a valid name, not a copy: the private key is
             # never duplicated into a temporary file.
-            scratch = Path(tempfile.mkdtemp(prefix="cybexos-vpn-import-"))
+            scratch = Path(tempfile.mkdtemp(prefix="nerdos-vpn-import-"))
             target = scratch / f"{wireguard_interface(path.stem)}.conf"
             target.symlink_to(path)
         result = run(["nmcli", "connection", "import", "type", kind, "file", str(target)],
@@ -1358,7 +1358,7 @@ def generate_password() -> str:
 def default_hotspot_ssid() -> str:
     host = socket.gethostname().split(".", 1)[0].strip()
     if not host or host.lower() in ("localhost", "localhost-live"):
-        return "CybexOS hotspot"
+        return "NerdOS hotspot"
     name = f"{host} hotspot"
     while len(name.encode("utf-8")) > 32:
         host = host[:-1]

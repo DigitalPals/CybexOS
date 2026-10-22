@@ -4,8 +4,8 @@ set -uo pipefail
 readonly virtual_sink=xps_speaker_tuning
 readonly output_node=xps_speaker_tuning_output
 readonly speaker_pattern='^alsa_output.*sof_sdw.*HiFi__Speaker__sink$'
-readonly profile=/etc/cybexos/xps-audio/filter-chain.conf
-readonly host=/etc/cybexos/xps-audio/host.conf
+readonly profile=/etc/nerdos/xps-audio/filter-chain.conf
+readonly host=/etc/nerdos/xps-audio/host.conf
 readonly speaker_wait_attempts=60
 readonly speaker_stable_samples=4
 readonly speaker_wait_interval=0.25
@@ -84,8 +84,8 @@ move_apps_to() {
 }
 
 plugin_present() {
-  [[ -n ${CYBEXOS_LSP_LV2:-} && -d $CYBEXOS_LSP_LV2 ]] &&
-    grep -Rqs 'http://lsp-plug.in/plugins/lv2/limiter_stereo' "$CYBEXOS_LSP_LV2"
+  [[ -n ${NERDOS_LSP_LV2:-} && -d $NERDOS_LSP_LV2 ]] &&
+    grep -Rqs 'http://lsp-plug.in/plugins/lv2/limiter_stereo' "$NERDOS_LSP_LV2"
 }
 
 prepare_runtime_config() {

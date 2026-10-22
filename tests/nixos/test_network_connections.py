@@ -289,7 +289,7 @@ class VpnActions(Stubbed):
         self.assertEqual(self.argvs('down'), [['connection', 'down', 'uuid', HOME_WG]],
                          'NetworkManager starts an imported WireGuard profile; the import stops it')
         self.assertEqual(response['name'], 'My Office VPN')
-        self.assertEqual(list(self.scratch.glob('cybexos-vpn-import-*')), [], 'the symlink directory is removed')
+        self.assertEqual(list(self.scratch.glob('nerdos-vpn-import-*')), [], 'the symlink directory is removed')
         self.assertNotIn(key, stdout + self.log.read_text())
 
     def test_import_validates_the_file_before_nmcli_sees_it(self):
@@ -330,7 +330,7 @@ def hotspot_rules(*, profile=None, ap='yes', state='connected', up=None):
              {'all': ['WIFI-PROPERTIES.AP'], 'stdout': f'WIFI-PROPERTIES.AP:{ap}\n'},
              {'all': ['802-11-wireless.ssid,connection.interface-name'],
               'stdout': '802-11-wireless.ssid:Studio\\: guests\nconnection.interface-name:wlan0\n'},
-             {'all': ['connection', 'add'], 'stdout': f"Connection 'CybexOS hotspot' ({HOTSPOT}) successfully added.\n"},
+             {'all': ['connection', 'add'], 'stdout': f"Connection 'NerdOS hotspot' ({HOTSPOT}) successfully added.\n"},
              {'all': ['connection', 'up'], **(up or {})},
              {'all': ['connection', 'show'], 'none': ['uuid'], 'stdout': connection_list(*records)}]
     return rules
@@ -338,7 +338,7 @@ def hotspot_rules(*, profile=None, ap='yes', state='connected', up=None):
 
 class Hotspot(Stubbed):
     def test_status_reports_adapter_profile_and_the_dropped_wifi(self):
-        self.rules(hotspot_rules(profile=('CybexOS hotspot', HOTSPOT, '802-11-wireless', '--', '', '0')))
+        self.rules(hotspot_rules(profile=('NerdOS hotspot', HOTSPOT, '802-11-wireless', '--', '', '0')))
         status, response, _ = self.invoke('hotspot', {'action': 'status'})
         self.assertEqual(status, 0, response)
         self.assertEqual({key: response[key] for key in ('available', 'supported', 'interface', 'configured',
@@ -355,7 +355,7 @@ class Hotspot(Stubbed):
         add = self.argvs('connection', 'add')[0]
         settings = dict(zip(add[add.index('ssid') + 2::2], add[add.index('ssid') + 3::2]))
         self.assertEqual(add[:10], ['connection', 'add', 'type', 'wifi', 'ifname', 'wlan0',
-                                    'con-name', 'CybexOS hotspot', 'ssid', 'Studio guests'])
+                                    'con-name', 'NerdOS hotspot', 'ssid', 'Studio guests'])
         for key, value in {'connection.uuid': HOTSPOT, 'connection.autoconnect': 'no',
                            'connection.zone': 'nm-shared', '802-11-wireless.mode': 'ap',
                            'ipv4.method': 'shared', '802-11-wireless-security.key-mgmt': 'wpa-psk'}.items():
@@ -370,7 +370,7 @@ class Hotspot(Stubbed):
         self.assertEqual(response['message'], 'Hotspot Studio guests is on')
 
     def test_start_reuses_and_renames_an_existing_profile(self):
-        self.rules(hotspot_rules(profile=('CybexOS hotspot', HOTSPOT, '802-11-wireless', '--', '', '0')))
+        self.rules(hotspot_rules(profile=('NerdOS hotspot', HOTSPOT, '802-11-wireless', '--', '', '0')))
         status, response, _ = self.invoke('hotspot', {'action': 'start', 'ssid': 'New name'})
         self.assertEqual(status, 0, response)
         self.assertEqual(self.argvs('connection', 'add'), [])
@@ -379,14 +379,14 @@ class Hotspot(Stubbed):
         self.assertEqual(len(self.argvs('connection', 'up')), 1)
 
     def test_rename_while_off_never_starts_it(self):
-        self.rules(hotspot_rules(profile=('CybexOS hotspot', HOTSPOT, '802-11-wireless', '--', '', '0')))
+        self.rules(hotspot_rules(profile=('NerdOS hotspot', HOTSPOT, '802-11-wireless', '--', '', '0')))
         status, response, _ = self.invoke('hotspot', {'action': 'rename', 'ssid': 'Quiet room'})
         self.assertEqual(status, 0, response)
         self.assertEqual(len(self.argvs('modify')), 1)
         self.assertEqual(self.argvs('connection', 'up'), [])
 
     def test_stop_takes_the_profile_down(self):
-        self.rules(hotspot_rules(profile=('CybexOS hotspot', HOTSPOT, '802-11-wireless', 'wlan0', 'activated', '0'),
+        self.rules(hotspot_rules(profile=('NerdOS hotspot', HOTSPOT, '802-11-wireless', 'wlan0', 'activated', '0'),
                                  state='connected'))
         status, response, _ = self.invoke('hotspot', {'action': 'stop'})
         self.assertEqual(status, 0, response)
@@ -698,7 +698,7 @@ class AgentOnPrivateBus(Stubbed):
         self.assertEqual(response['message'], 'Connected to Office')
         events = self.events()
         merged = {key: value for entry in events for key, value in entry.items()}
-        self.assertRegex(merged['registered'], r'^org\.cybexos\.network\.vpn-\d+$')
+        self.assertRegex(merged['registered'], r'^org\.nerdos\.network\.vpn-\d+$')
         self.assertEqual(merged['capabilities'], 1)
         self.assertEqual(merged['activate'], ['/org/freedesktop/NetworkManager/Settings/7', '/', '/'])
         self.assertTrue(merged['sender_is_agent'], 'the agent and the activation share one process')

@@ -1,11 +1,11 @@
 # Security
 
-CybexOS configures a NixOS workstation's login, authorization, firewall and
+NerdOS configures a NixOS workstation's login, authorization, firewall and
 privileged update lifecycle. The NixOS port is unreleased and is not yet
 production-qualified. Report security issues privately through the repository's
 GitHub security advisories; do not include credentials or personal archives.
 
-Nixpkgs supplies upstream packages. CybexOS releases and stable/beta channel
+Nixpkgs supplies upstream packages. NerdOS releases and stable/beta channel
 manifests use explicit Ed25519 publisher trust. Source revision and NAR identity
 must match authenticated metadata. Invalid signatures, expiry, replay, API
 incompatibility and normal-update downgrades are rejected. No production trust
