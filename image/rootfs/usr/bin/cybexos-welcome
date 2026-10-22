@@ -160,6 +160,17 @@ class Welcome(QObject):
             self._reconcile_state = 'error'
             self.setupChanged.emit()
 
+    @Slot(str, result="QVariantMap")
+    def availableWorkArea(self, name):
+        # QML's ScreenInfo exposes virtual desktop size, which can span
+        # several monitors. Ask QScreen for this window's actual work area.
+        screens = QGuiApplication.screens()
+        screen = next((item for item in screens if item.name() == name),
+                      QGuiApplication.primaryScreen())
+        area = screen.availableGeometry() if screen else None
+        return {"width": max(1, area.width()) if area else 760,
+                "height": max(1, area.height()) if area else 660}
+
     @Property(bool, constant=True)
     def isLive(self):
         return self.live

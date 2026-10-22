@@ -49,7 +49,9 @@ test("every overflowed widget remains keyboard reachable with visible focus", ()
 test("notification history exposes primary, action, disclosure, dismiss, and clear paths", () => {
     const card = read("Common/NotifCard.qml");
     const actions = read("Common/NotifActions.qml");
-    const centre = read("Popovers/NotifsPopover.qml");
+    const centre = read("Popovers/Drawer/DrawerNotifications.qml");
+    const drawer = read("Popovers/Drawer/DrawerPopover.qml");
+    const footer = read("Popovers/Drawer/DrawerFooter.qml");
 
     assert.match(card, /activeFocusOnTab:\s*keyboardEnabled\s*\n/,
         "nonactivatable cards still need a keyboard entry point for code, links and snooze actions");
@@ -64,13 +66,18 @@ test("notification history exposes primary, action, disclosure, dismiss, and cle
     assert.match(actions, /hasFocusedAction:\s*focusedActions > 0/,
         "focus must keep contextual actions revealed after the pointer leaves");
 
-    assert.match(centre, /focus:\s*visible/);
-    assert.match(centre, /Keys\.onEscapePressed:\s*Popouts\.close\(\)/);
-    assert.match(centre, /function focusInitial\(\)/);
+    assert.match(drawer, /id: notificationsTab[\s\S]*DrawerNotifications \{/);
     assert.match(centre, /keyboardEnabled:\s*true/);
-    assert.match(centre, /id:\s*clearAll[\s\S]*enabled:\s*Notifs\.count > 0/);
-    assert.match(centre, /Accessible\.role:\s*Accessible\.AlertMessage/,
-        "notification-count changes need a nonvisual announcement channel");
+    assert.match(centre, /DrawerFooter \{[\s\S]*actionText: Notifs\.count > 0[\s\S]*onActionClicked: Notifs\.clearAll\(\)/);
+    assert.match(footer, /onClicked: root\.actionClicked\(\)/);
+    assert.match(centre, /delegate: ActionButton \{[\s\S]*id: modeChoice[\s\S]*onTriggered: Notifs\.setDnd\(modelData\.dnd\)/);
+    assert.match(centre, /Accessible\.role: Accessible\.RadioButton[\s\S]*Accessible\.checked: modeChoice\.on/);
+    const primitive = read("Popovers/ActionButton.qml");
+    assert.match(primitive, /activeFocusOnTab: enabled && visible && revealed/);
+    assert.match(primitive, /Accessible\.onPressAction:/);
+    assert.match(primitive, /Qt\.Key_Return[\s\S]*Qt\.Key_Enter[\s\S]*Qt\.Key_Space/);
+    assert.match(primitive, /border\.width: activeFocus \? 1 : 0/);
+
 });
 
 test("Control Center focus reaches rows, toggles, audio, capture, session, and footer actions", () => {

@@ -55,8 +55,9 @@ trap cleanup EXIT
 
 [[ $revision =~ ^[[:xdigit:]]{40}$ ]] || { echo "Authorized source commit is not a full SHA-1" >&2; exit 1; }
 
-# The authorized commit, image, and recipe identify the build completely. An
-# intact matching deployment needs no network: a routine converge makes no
+# The authorized inputs identify a requested deployment, not its resolved
+# toolchain: Fedora packages in the derived image can move. An intact
+# matching deployment needs no network: a routine converge makes no
 # remote round trip and an offline one reports no false update failure.
 recipe=$(sha256sum "$0" | awk '{print $1}')
 manifest="revision=$revision image=$build_image recipe=$recipe"
@@ -112,18 +113,31 @@ if ! podman image exists "$builder_tag"; then
   fi
   podman build --pull=never --tag "$builder_tag" -f "$work/Containerfile" "$work" >>"$log" 2>&1
 fi
+# Capture under the cache lock; a tag can later be replaced or recreated.
+# Both metadata and compilation below use this immutable local image ID.
+builder_id=$(podman image inspect --format '{{.Id}}' "$builder_tag")
+# Podman versions differ on whether inspect prefixes the local ID.
+builder_id="sha256:${builder_id#sha256:}"
+[[ $builder_id =~ ^sha256:[[:xdigit:]]{64}$ ]] || {
+  echo "Builder did not resolve to an immutable image ID" >&2
+  exit 1
+}
 flock -u "$builder_lock_fd"
+target_cache="$cache_root/$name-$recipe/${builder_id#sha256:}"
+install -d -m 0700 "$target_cache"
 # A single target directory must not be relabelled/mutated by parallel builds.
 exec {target_lock_fd}>"$cache_root/$name-$recipe.lock"
 flock "$target_lock_fd"
-if ! podman run --rm --network=host \
+if ! podman run --rm --pull=never --network=host \
   -v "$work/src:/src:Z,ro" -v "$work/out:/out:Z" \
   -v "$cache_root/registry:/root/.cargo/registry:z" \
-  -v "$cache_root/$name-$recipe:/build-cache:Z" \
+  -v "$target_cache:/build-cache:Z" \
   -e CARGO_TARGET_DIR=/build-cache \
-  "$builder_tag" bash -euxo pipefail -c '
+  "${builder_id#sha256:}" bash -euxo pipefail -c '
     cp -a /src /tmp/source
     cd /tmp/source
+    rpm -qa --qf "%{NAME}\t%{EPOCHNUM}\t%{VERSION}\t%{RELEASE}\t%{ARCH}\n" | LC_ALL=C sort > /out/packages.tsv
+    for tool in rustc cargo gcc g++; do "$tool" --version > "/out/$tool.version"; done
     cargo build --release --locked
     for binary in "$@"; do cp -- "/build-cache/release/$binary" "/out/$binary"; done
   ' -- "${binaries[@]}" >>"$log" 2>&1; then
@@ -131,7 +145,7 @@ if ! podman run --rm --network=host \
   exit 1
 fi
 
-deployment_key="${revision}-${recipe:0:16}"
+deployment_key="${revision}-${recipe:0:16}-${builder_id:7:16}"
 stage="$root/versions/$deployment_key"
 if [[ -e $stage ]]; then
   deployment_key="${deployment_key}.repair-$(date +%s)"
@@ -145,7 +159,37 @@ for binary in "${binaries[@]}"; do
   install -m 0755 "$candidate" "$stage/bin/$binary"
 done
 printf '%s\n' "$manifest" >"$stage/.cybexos-build"
-podman image inspect --format '{{.Id}}' "$builder_tag" >"$stage/.cybexos-builder"
+printf '%s\n' "$builder_id" >"$stage/.cybexos-builder"
+# Installed evidence travels with the offline payload; applications.json also
+# exports it as a checksum-covered release artifact, outside Podman storage.
+python3 - "$work/out" "$stage" "$name" "$repo" "$tag" "$revision" "$build_image" "$recipe" "$builder_id" <<'PYTHON'
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+out, stage = map(Path, sys.argv[1:3])
+name, repository, tag, revision, base, recipe, builder = sys.argv[3:]
+fields = ("name", "epoch", "version", "release", "arch")
+packages = []
+for line in (out / "packages.tsv").read_text().splitlines():
+    values = line.split("\t")
+    if len(values) != len(fields) or not all(values):
+        raise ValueError("Incomplete builder RPM inventory")
+    packages.append(dict(zip(fields, values)))
+if not packages:
+    raise ValueError("Empty builder RPM inventory")
+compilers = {tool: (out / (tool + ".version")).read_text().strip()
+             for tool in ("rustc", "cargo", "gcc", "g++")}
+if not all(compilers.values()):
+    raise ValueError("Incomplete compiler version inventory")
+record = {"schema": 1, "name": name, "repository": repository, "tag": tag,
+          "revision": revision, "base_image": base, "recipe_sha256": recipe,
+          "builder_image_id": builder, "packages": packages, "compilers": compilers,
+          "binaries": {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                       for path in sorted((stage / "bin").iterdir())}}
+(stage / ".cybexos-build-provenance.json").write_text(json.dumps(record, indent=2) + "\n")
+PYTHON
 for binary in "${binaries[@]}"; do
   command_link="/usr/local/bin/$binary"
   if [[ ! -e $command_link && ! -L $command_link ]]; then

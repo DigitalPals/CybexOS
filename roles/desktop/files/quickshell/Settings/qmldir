@@ -77,3 +77,5 @@ ValueRow ValueRow.qml
 FieldRow FieldRow.qml
 RowCluster RowCluster.qml
 PluginRow PluginRow.qml
+InputDraftState InputDraftState.qml
+singleton InputDrafts InputDrafts.qml

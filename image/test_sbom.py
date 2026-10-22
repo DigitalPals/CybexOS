@@ -512,6 +512,7 @@ class ReleaseFiles(unittest.TestCase):
         (artifacts / ISO).write_bytes(b"fixture ISO")
         (artifacts / DESKTOP).write_bytes(b"fixture unsigned RPM")
         (artifacts / "source.tar.gz").write_bytes(b"fixture source")
+        (artifacts / "source-build-provenance.json").write_text("[]\n")
         return checkout, artifacts
 
     def test_build_helper_names_sbom_after_iso_and_binds_artifact_digests(self):
@@ -522,6 +523,8 @@ class ReleaseFiles(unittest.TestCase):
             self.assertEqual(sorted(item.name for item in artifacts.iterdir() if item.name.startswith(".")), [])
             result = sbom.verify_release_sbom(path, ISO, "f" * 64, [sbom.sha256_file(artifacts / DESKTOP)])
             self.assertIn(sbom.sha256_file(artifacts / "source.tar.gz"), sbom.described_package(result)["sourceInfo"])
+            self.assertIn(sbom.sha256_file(artifacts / "source-build-provenance.json"),
+                          sbom.described_package(result)["sourceInfo"])
             with self.assertRaisesRegex(ValueError, "exact ISO"):
                 sbom.verify_release_sbom(path, ISO, "0" * 64)
             with self.assertRaisesRegex(ValueError, "exact ISO"):
@@ -581,7 +584,8 @@ class PipelineWiring(unittest.TestCase):
         provenance = steps["attest"]
         self.assertEqual(provenance["uses"], pinned)
         self.assertEqual([line.strip() for line in provenance["with"]["subject-path"].splitlines() if line.strip()],
-                         ["dist/cybexos-*.tar.zst", "${{ steps.sbom.outputs.path }}"])
+                         ["dist/cybexos-*.tar.zst", "${{ steps.sbom.outputs.path }}",
+                          "dist/distribution-inventories/*.json", "dist/distribution-review.json"])
         attestation = steps["attest-sbom"]
         self.assertEqual(attestation["uses"], pinned)
         self.assertEqual(attestation["with"], {"subject-checksums": "${{ steps.sbom.outputs.iso-checksum }}",

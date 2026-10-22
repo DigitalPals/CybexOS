@@ -11,6 +11,8 @@ import time
 from build_support import atomic_json, digest
 from browser_qualification import browser_dependencies, ensure_installer_started, qualify_browser
 from login_qualification import qualify_login
+from qualification_contract import SCHEMA, validate as validate_qualification
+from public_update_qualification import qualify_public_updater
 from installed_outcomes import capture_guest
 from offline_upgrade_inputs import load_bundle
 from parity_qualification import desktop_lifecycle, prepare_saved_choices, verify_saved_choices
@@ -283,6 +285,10 @@ def main():
     args = parser.parse_args()
     if not args.execute_vm or not args.erase_disposable_disk:
         parser.error('qualification requires --execute-vm --erase-disposable-disk; no VM or installer starts without both')
+    if args.candidate_rpm and not (args.recovery_check and args.candidate_offline_rpm):
+        parser.error('Candidate qualification requires --recovery-check and both candidate RPMs')
+    if args.candidate_rpm and args.scenario != 'encrypted-us':
+        parser.error('Candidate/public updater qualification reuses the encrypted-us guest')
     if args.recovery_check and not args.candidate_rpm:
         parser.error('--recovery-check requires --candidate-rpm')
     if args.candidate_offline_rpm and not args.candidate_rpm:
@@ -313,7 +319,9 @@ def main():
     # Hex uses the same physical keys under US, NL and DE layouts, including
     # the early boot unlock and text-console bootstrap paths.
     password = secrets.token_hex(24)
-    report = {'iso_sha256': digest(iso),
+    report = {'evidence_schema': SCHEMA, 'execution_mode': 'qemu',
+              'qualification_kind': 'upgrade' if args.candidate_rpm else 'fresh',
+              'legacy_installer': args.legacy_installer, 'iso_sha256': digest(iso),
               'candidate_rpm_sha256': digest(args.candidate_rpm) if args.candidate_rpm else None,
               'candidate_offline_rpm_sha256': digest(args.candidate_offline_rpm) if args.candidate_offline_rpm else None,
               'boot_entry': args.boot_entry, 'scenario': args.scenario, 'firmware': args.firmware, 'status': 'failed', 'checks': [],
@@ -374,6 +382,9 @@ def main():
         vm.expect_shell = True
         boot_installed(vm, password, encrypted)  # No ISO/CD-ROM attached.
         vm.audit()
+        if not args.candidate_rpm:
+            build = json.loads(root_script(vm, 'cat /usr/share/cybexos/build.json\n', password).stdout)
+            report.update({key: build[key] for key in ('source_revision', 'source_content_sha256')})
         verify_installed_audit(vm, encrypted, not args.legacy_installer,
                                keyboard, browser_result['boot_keyboard'], locale, timezone, password)
         run([*vm.ssh, f'python3 - {keyboard}'], input=DESKTOP_KEYBOARD_AUDIT,
@@ -417,6 +428,11 @@ def main():
                 verify_restored(vm, versions['installed'], password, root_script)
                 verify_user_choices(vm, password, root_script, preference)
                 report['checks'].append('recovery-boot-restore')
+                qualify_public_updater(vm, args.candidate_rpm, args.candidate_offline_rpm,
+                                       password, root_script, candidate_dependencies=dependencies,
+                                       boot_installed=boot_installed, poweroff_installed=poweroff_installed,
+                                       verify_user_choices=verify_user_choices, preference=preference,
+                                       report=report)
         if args.capture_outcomes:
             desktop_lifecycle(vm)
             fresh = capture_guest(vm, root_script, password, installation='iso', scenario=args.scenario,
@@ -444,7 +460,9 @@ def main():
         if digest(vm.unused_disk) != untouched_sha:
             raise RuntimeError('The unused disposable guard disk changed after installed boot')
         report['status'] = 'passed'
+        validate_qualification(report)
     except BaseException as error:
+        report['status'] = 'failed'
         report['error'] = str(error) or type(error).__name__
         raise
     finally:

@@ -19,33 +19,13 @@
     mode: "0644"
     force: false
 
-- name: Inspect existing shell preferences
+- name: Seed shell preferences only when the file is absent
   become: true
   become_user: "{{ primary_user }}"
-  ansible.builtin.stat:
-    path: "{{ primary_home }}/.config/cybexos/shell.json"
-  register: wallpaper_settings_file
-
-- name: Read existing shell preferences
-  become: true
-  become_user: "{{ primary_user }}"
-  ansible.builtin.slurp:
-    src: "{{ primary_home }}/.config/cybexos/shell.json"
-  register: wallpaper_settings_content
-  when: wallpaper_settings_file.stat.exists
-
-- name: Preserve existing shell preferences when choosing a default
-  ansible.builtin.set_fact:
-    wallpaper_settings: "{{ (wallpaper_settings_content.content | b64decode | from_json) if wallpaper_settings_file.stat.exists else {} }}"
-
-- name: Select the bundled mountain wallpaper when no selection exists
-  become: true
-  become_user: "{{ primary_user }}"
-  ansible.builtin.copy:
+  cybexos_managed_file:
     dest: "{{ primary_home }}/.config/cybexos/shell.json"
     mode: "0600"
-    # Other seeded defaults, including the font, must preserve saved choices.
-    content: "{{ cybexos_desktop_contract.shell | combine(wallpaper_settings) | combine({'wall': cybexos_desktop_contract.shell.wall}) | to_nice_json }}\n"
-  when:
-    - wallpaper_settings.wall | default('') == ''
-    - wallpaper_settings.wallDir | default('~/Pictures/Wallpapers') in ['~/Pictures/Wallpapers', primary_home + '/Pictures/Wallpapers']
+    seed_only: true
+    # The ISO copies this same document only if absent. Empty selections,
+    # sparse overrides and future/corrupt documents all belong to the user.
+    content: "{{ cybexos_desktop_contract.shell | to_nice_json }}\n"

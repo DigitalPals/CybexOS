@@ -45,8 +45,9 @@ trap cleanup EXIT
 mock_bin="$fixture/bin"
 active_dir="$fixture/active"
 mock_libexec="$fixture/libexec"
+manager_fixture="$fixture/manager"
 mkdir -p -- "$mock_bin" "$mock_libexec" "$active_dir" "$fixture/home" \
-  "$fixture/state" "$fixture/runtime"
+  "$fixture/state" "$fixture/runtime" "$manager_fixture"
 
 apply_mock() {
   local target=$1
@@ -57,6 +58,9 @@ apply_mock() {
 
 apply_mock systemctl \
   'set -euo pipefail' \
+  'if [[ " $* " == *" daemon-reload "* ]]; then' \
+  "  exec /usr/bin/bash '$manager_fixture/probe' reload \"\$@\"" \
+  'fi' \
   'unit=""' \
   'for arg in "$@"; do [[ $arg == *.service ]] && unit=$arg; done' \
   'if [[ " $* " == *" show "* ]]; then' \
@@ -77,6 +81,60 @@ apply_mock systemctl \
   '  [[ -z ${MOCK_STOP_DEFER:-} ]] || exit 0' \
   '  [[ -z $unit ]] || rm -f -- "$MOCK_ACTIVE_DIR/$unit"' \
   'fi'
+
+# These probes run under the production empty environment and real timeout.
+# File controls keep failures observable without passing fixture variables
+# through that environment or bypassing production reply validation.
+apply_mock busctl "exec /usr/bin/bash '$manager_fixture/probe' query \"\$@\""
+cat >"$manager_fixture/probe" <<'MANAGER'
+#!/usr/bin/env bash
+set -euo pipefail
+directory=${BASH_SOURCE[0]%/*}
+action=$1
+shift
+for name in $(compgen -e); do
+  case $name in
+    PATH|LC_ALL|PWD|SHLVL|_) ;;
+    *) echo "unexpected manager environment: $name" >&2; exit 91 ;;
+  esac
+done
+[[ $PATH == /usr/sbin:/usr/bin:/sbin:/bin && $LC_ALL == C ]]
+mapfile -d '' -t parent_args <"/proc/$PPID/cmdline"
+[[ ${parent_args[0]##*/} == timeout && ${parent_args[1]} == --kill-after=5s ]]
+case $action in
+  reload)
+    [[ ${parent_args[2]} == 30s && $* == '--system --no-ask-password daemon-reload' ]]
+    ;;
+  query)
+    [[ ${parent_args[2]} == 15s && $* == '--system --timeout=10s --json=short get-property org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager Version' ]]
+    ;;
+  *) exit 64 ;;
+esac
+printf '%s\n' "$action" >>"$directory/calls.log"
+printf 'manager %s\n' "$action" >>"$directory/../order.log"
+if [[ -e $directory/$action.hang ]]; then
+  # Ignore TERM to exercise the reload's external kill deadline, rather than
+  # relying on a mock's bus timeout or cooperative cancellation.
+  [[ $action != reload ]] || trap '' TERM
+  while :; do sleep 1; done
+fi
+if [[ -e $directory/$action.rc ]]; then
+  echo "fixture manager $action failed" >&2
+  exit "$(cat "$directory/$action.rc")"
+fi
+if [[ $action == query ]]; then
+  count=$(grep -cx query "$directory/calls.log")
+  if [[ -e $directory/query.fail-at && $count == "$(cat "$directory/query.fail-at")" ]]; then
+    echo 'fixture public manager disconnected' >&2
+    exit 48
+  fi
+  if [[ -e $directory/query.reply ]]; then
+    cat "$directory/query.reply"
+  else
+    printf '%s\n' '{"type":"s","data":"259.10 (259.10-1.fc44)"}'
+  fi
+fi
+MANAGER
 
 apply_mock systemd-run \
   'set -euo pipefail' \
@@ -142,7 +200,9 @@ apply_mock dnf \
   '    : >"$MOCK_DNF_GATE.finished"' \
   '  fi' \
   '  printf "Repositories loaded.\nNothing to do.\n"' \
-  '  exit "${MOCK_DNF_UPGRADE_RC:-0}"' \
+  '  rc=${MOCK_DNF_UPGRADE_RC:-0}' \
+  '  [[ " $* " == *" --downloadonly "* ]] || rc=${MOCK_DNF_APPLY_RC:-$rc}' \
+  '  exit "$rc"' \
   'fi' \
   'if [[ " $* " == *" needs-restarting "* ]]; then' \
   '  if [[ -n ${MOCK_REBOOT_GATE:-} ]]; then' \
@@ -156,6 +216,11 @@ apply_mock dnf \
   '  exit "${MOCK_REBOOT_RC:-2}"' \
   'fi' \
   'exit 98'
+
+apply_mock flatpak \
+  'printf "flatpak update\n" >>"$MOCK_ORDER_LOG"' \
+  'printf "Flatpak fixture finished\n"' \
+  'exit "${MOCK_FLATPAK_RC:-0}"'
 
 apply_mock ansible-playbook \
   'set -euo pipefail' \
@@ -544,6 +609,7 @@ deferred_run=$($backend status --json "$defer_id")
 [[ $(jq -r .rebootRecommendation <<<"$deferred_run") != pending ]]
 [[ ! -e $MOCK_TESTS_RAN ]]
 [[ ! -e $MOCK_ANSIBLE_ARGS_LOG ]]
+[[ ! -s $manager_fixture/calls.log ]]
 grep -Fq -- '--what=shutdown:sleep --mode=block' "$MOCK_INHIBIT_LOG"
 grep -Fq '[inhibit] shutdown and sleep are blocked' \
   "$XDG_STATE_HOME/cybexos/update/logs/$defer_id/run.log"
@@ -716,7 +782,7 @@ set -e
 # One invocation, as root through the package umask wrapper, after dnf.
 [[ $(<"$MOCK_FIRMWARE_LOG") == "install --events $firmware_dir/firmware-events.log" ]]
 [[ $(tail -n 1 "$MOCK_FIRMWARE_UMASK_LOG") =~ ^0?022$ ]]
-[[ $(<"$MOCK_ORDER_LOG") == $'dnf upgrade\nfirmware install' ]]
+[[ $(<"$MOCK_ORDER_LOG") == $'dnf upgrade\nmanager reload\nmanager query\nfirmware install' ]]
 grep -qx -- '-y upgrade --refresh --no-best' "$MOCK_DNF_LOG"
 if ((EUID != 0)); then
   dnf_line=$(grep -n -- 'cybexos-update-package dnf -y upgrade' "$MOCK_PACKAGE_LOG" \
@@ -1113,6 +1179,8 @@ protected_run() {
   : >"$MOCK_TRANSACTION_LOG"
   : >"$MOCK_TRANSACTION_ARGS_LOG"
   : >"$MOCK_BOOTSTRAP_LOG"
+  : >"$MOCK_DNF_LOG"
+  : >"$manager_fixture/calls.log"
   local started
   started=$($backend start --json "$@")
   protected_id=$(jq -er .id <<<"$started")
@@ -1128,6 +1196,7 @@ protected_run --full --skip-tests --no-packages --repo "$defer_repo"
 [[ $protected_rc == 0 ]]
 [[ $(jq -r .transactionProtection <<<"$protected_status") == btrfs ]]
 [[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,commit ]]
+[[ $(paste -sd, "$manager_fixture/calls.log") == query ]]
 
 # A pre-feature installation obtains a second, protected checkpoint before
 # any package download/application. Every transaction call uses the returned
@@ -1139,7 +1208,7 @@ protected_run --no-flatpak
 [[ $protected_rc == 0 ]]
 [[ $(jq -r .snapshotId <<<"$protected_status") == 20260930T120001Z-124 ]]
 [[ $(jq -sr 'map(.[0]) | join(",")' "$MOCK_BOOTSTRAP_LOG") == ready,prepare,finalize ]]
-[[ $(paste -sd, "$MOCK_ORDER_LOG") == 'bootstrap ready,bootstrap prepare,transaction begin,dnf upgrade,transaction applying,dnf upgrade,transaction commit,bootstrap finalize' ]]
+[[ $(paste -sd, "$MOCK_ORDER_LOG") == 'bootstrap ready,bootstrap prepare,transaction begin,dnf upgrade,transaction applying,dnf upgrade,manager reload,manager query,manager query,transaction commit,bootstrap finalize' ]]
 grep -Fxq "$MOCK_BOOTSTRAP_BUNDLE/cybexos-update-transaction begin $protected_id 20260930T120001Z-124 --uid ${CYBEXOS_UPDATE_OWNER_UID:-$UID}" \
   "$MOCK_TRANSACTION_ARGS_LOG"
 [[ $(awk '{print $1}' "$MOCK_TRANSACTION_ARGS_LOG" | sort -u) \
@@ -1271,7 +1340,7 @@ cat >"$mock_libexec/cybexos-reconcile" <<'RECONCILE'
 #!/usr/bin/env bash
 printf '%s\n' "$1" >>"$MOCK_RECONCILE_LOG"
 case $1 in
-  --retry) exit "${MOCK_RECONCILE_RC:-0}" ;;
+  --retry) printf 'reconcile\n' >>"$MOCK_ORDER_LOG"; exit "${MOCK_RECONCILE_RC:-0}" ;;
   --status) cat "$MOCK_RECONCILE_STATUS_FILE"; exit "${MOCK_RECONCILE_STATUS_RC:-0}" ;;
   *) exit 64 ;;
 esac
@@ -1326,6 +1395,141 @@ unset MOCK_RECONCILE_RC
 # The remaining runs reach a reconciled, ready installed policy.
 printf '{"state":"ready","pending":false,"version":"fixture","desiredVersion":"fixture","accounts":{"fixture":{"state":"ready","version":"fixture","uid":%s}}}\n' \
   "$UID" >"$MOCK_RECONCILE_STATUS_FILE"
+
+# Successful packages synchronize exactly once before reconciliation, and a
+# fresh public query gates commit. Inherited session/manager redirects must
+# not reach either probe. The same fixture runs as a user (sudo wrapper) and
+# as root (system worker), without touching a real manager.
+export SYSTEMCTL_FORCE_BUS=1 SYSTEMD_BUS_ADDRESS=unix:path=/fixture-private
+export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/fixture-system
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/fixture-session
+export SYSTEMD_HOST=fixture-host SYSTEMD_MACHINE=fixture-machine
+export SYSTEMD_OFFLINE=1 SYSTEMD_IN_CHROOT=1 SYSTEMD_BUS_TIMEOUT=1
+: >"$MOCK_ORDER_LOG"
+: >"$MOCK_PACKAGE_LOG"
+protected_run --system-unit --no-flatpak
+unset SYSTEMCTL_FORCE_BUS SYSTEMD_BUS_ADDRESS DBUS_SYSTEM_BUS_ADDRESS
+unset DBUS_SESSION_BUS_ADDRESS SYSTEMD_HOST SYSTEMD_MACHINE
+unset SYSTEMD_OFFLINE SYSTEMD_IN_CHROOT SYSTEMD_BUS_TIMEOUT
+[[ $protected_rc == 0 ]]
+[[ $(paste -sd, "$manager_fixture/calls.log") == reload,query,query ]]
+[[ $(paste -sd, "$MOCK_ORDER_LOG") == 'bootstrap ready,transaction begin,dnf upgrade,transaction applying,dnf upgrade,manager reload,manager query,reconcile,manager query,transaction commit' ]]
+if ((EUID != 0)); then
+  [[ $(grep -c '^-n sh -c .*cybexos-update-package env -i ' "$MOCK_PACKAGE_LOG") == 3 ]]
+fi
+
+assert_single_package_application() {
+  [[ $(grep -c ' upgrade ' "$MOCK_DNF_LOG") == 2 ]]
+  [[ $(grep -c -- '--downloadonly' "$MOCK_DNF_LOG") == 1 ]]
+  [[ $(grep ' upgrade ' "$MOCK_DNF_LOG" | grep -cv -- '--downloadonly') == 1 ]]
+}
+assert_single_package_application
+
+# Both package processes must finish successfully before synchronization.
+# Flatpak runs concurrently, so only its position before reload is fixed.
+: >"$MOCK_ORDER_LOG"
+protected_run
+[[ $protected_rc == 0 ]]
+[[ $(paste -sd, "$manager_fixture/calls.log") == reload,query,query ]]
+flatpak_line=$(grep -n '^flatpak update$' "$MOCK_ORDER_LOG" | cut -d: -f1)
+reload_line=$(grep -n '^manager reload$' "$MOCK_ORDER_LOG" | cut -d: -f1)
+((flatpak_line < reload_line))
+assert_single_package_application
+
+export MOCK_DNF_APPLY_RC=47
+protected_run --no-flatpak
+unset MOCK_DNF_APPLY_RC
+[[ $protected_rc == 47 && ! -s $manager_fixture/calls.log ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
+assert_single_package_application
+export MOCK_FLATPAK_RC=49
+protected_run
+unset MOCK_FLATPAK_RC
+[[ $protected_rc == 49 && ! -s $manager_fixture/calls.log ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
+assert_single_package_application
+
+# Reload and public-bus failures preserve successful DNF diagnostics and
+# select recovery, without reaching reconciliation or commit or retrying RPMs.
+for action in reload query; do
+  printf '48\n' >"$manager_fixture/$action.rc"
+  : >"$MOCK_RECONCILE_LOG"
+  protected_run --no-flatpak
+  rm -- "$manager_fixture/$action.rc"
+  [[ $protected_rc == 48 ]]
+  [[ $(jq -r .phase <<<"$protected_status") == packages ]]
+  [[ $(jq -r .dnfRc <<<"$protected_status") == 0 ]]
+  [[ $(jq -r .rollbackState <<<"$protected_status") == restart-required ]]
+  [[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
+  [[ ! -s $MOCK_RECONCILE_LOG ]]
+  if [[ $action == reload ]]; then
+    [[ $(paste -sd, "$manager_fixture/calls.log") == reload ]]
+  else
+    [[ $(paste -sd, "$manager_fixture/calls.log") == reload,query ]]
+  fi
+  grep -Fq 'Repositories loaded.' "$XDG_STATE_HOME/cybexos/update/logs/$protected_id/dnf.log"
+  grep -Fq "fixture manager $action failed" "$XDG_STATE_HOME/cybexos/update/logs/$protected_id/run.log"
+  assert_single_package_application
+done
+
+# A zero exit status with an empty, malformed or wrongly typed reply is not
+# evidence that the public manager answered the property query.
+for reply in '' 'invalid json' '{}' '{"type":"s","data":""}' \
+  '{"type":"s","data":" "}' '{"type":"s","data":"unavailable"}' \
+  '{"type":"u","data":259}' '{"type":"s","data":[]}' \
+  $'{"type":"s","data":"259"}\n{"type":"s","data":"259"}'; do
+  printf '%s\n' "$reply" >"$manager_fixture/query.reply"
+  protected_run --no-flatpak
+  [[ $protected_rc == 125 ]]
+  [[ $(jq -r .phase <<<"$protected_status") == packages ]]
+  [[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
+  [[ $(paste -sd, "$manager_fixture/calls.log") == reload,query ]]
+  assert_single_package_application
+done
+rm -- "$manager_fixture/query.reply"
+
+# Readiness can disappear after reconciliation. Commit must fail closed on a
+# fresh query, with no second reload even when the package boundary succeeded.
+printf '2\n' >"$manager_fixture/query.fail-at"
+protected_run --no-flatpak
+[[ $protected_rc == 48 ]]
+[[ $(jq -r .phase <<<"$protected_status") == health ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
+[[ $(paste -sd, "$manager_fixture/calls.log") == reload,query,query ]]
+assert_single_package_application
+
+# --no-packages still checks the public manager before committing, and never
+# reloads or invokes DNF's package application to repair a failed check.
+printf '1\n' >"$manager_fixture/query.fail-at"
+protected_run --full --skip-tests --no-packages --repo "$defer_repo"
+[[ $protected_rc == 48 ]]
+[[ $(jq -r .phase <<<"$protected_status") == health ]]
+[[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
+[[ $(paste -sd, "$manager_fixture/calls.log") == query ]]
+[[ $(grep -c ' upgrade ' "$MOCK_DNF_LOG") == 0 ]]
+rm -- "$manager_fixture/query.fail-at"
+
+# Exercise the real external deadlines. The reload ignores TERM; timeout
+# must escalate after five seconds. The public query is also process-bounded
+# even if its own --timeout option is ineffective.
+for action in reload query; do
+  : >"$manager_fixture/$action.hang"
+  manager_started=$SECONDS
+  protected_run --no-flatpak
+  manager_elapsed=$((SECONDS - manager_started))
+  rm -- "$manager_fixture/$action.hang"
+  if [[ $action == reload ]]; then
+    [[ $protected_rc == 137 ]]
+    ((manager_elapsed >= 30 && manager_elapsed < 55))
+  else
+    [[ $protected_rc == 124 ]]
+    ((manager_elapsed >= 15 && manager_elapsed < 35))
+  fi
+  [[ $(jq -r .phase <<<"$protected_status") == packages ]]
+  [[ $(jq -r .rollbackState <<<"$protected_status") == restart-required ]]
+  [[ $(paste -sd, "$MOCK_TRANSACTION_LOG") == begin,applying,status,rollback ]]
+  assert_single_package_application
+done
 
 # The recovery point is published as soon as it exists. The first-upgrade
 # bootstrap runs between the first point and the protected one, and already

@@ -4,6 +4,13 @@ Use an authenticated `gh` account with access to public and private repositories
 including at least one repository with GitHub Actions and Discussions enabled.
 Keep the GitHub module enabled unless a step explicitly says otherwise.
 
+- [ ] Expand a commit while GitHub is unreachable. Its statistics show
+  **Statistics unavailable**, with **Retry**, rather than zero counts or
+  permanent counting. Restore connectivity and press Retry (or collapse and
+  reopen the commit); the real counts appear. Repeated clicks while the
+  request is pending issue only one read. An actual empty commit displays
+  zero files/additions/deletions and reuses that successful result on reopen.
+
 ## Inbox lifecycle and cadence
 
 - [ ] Open the GitHub module settings at the normal panel width. **Recent

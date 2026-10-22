@@ -200,3 +200,49 @@ os.execv(${JSON.stringify(realGit)}, ["git"] + sys.argv[1:])
         f.cleanup();
     }
 });
+
+test("a held registry lock expires before mutation, preserves bytes, then permits the next edit", () => {
+    const f = fixture();
+    try {
+        f.plugin("example.locked");
+        f.cli("set", "example.locked", "preserved", '"original"');
+        const registry = path.join(f.config, "plugins.json");
+        const before = fs.readFileSync(registry, "utf8");
+        // A separate process holds the same real flock used by discovery and
+        // writers. The production CLI must return by itself; no writer is killed.
+        const result = spawnSync("python3", ["-c", `
+import fcntl, pathlib, subprocess, sys, time
+helper, registry = sys.argv[1:]
+before = pathlib.Path(registry).read_bytes()
+with open(registry + ".lock", "a") as holder:
+    fcntl.flock(holder, fcntl.LOCK_EX)
+    started = time.monotonic()
+    result = subprocess.run([sys.executable, helper, "merge", "example.locked",
+                             '{"preserved":"lost","partial":true}'],
+                            capture_output=True, text=True, timeout=10)
+    elapsed = time.monotonic() - started
+    assert result.returncode == 2, result
+    assert "preferences are busy" in result.stderr and "retry" in result.stderr, result.stderr
+    assert 4.5 <= elapsed < 9, elapsed
+    assert pathlib.Path(registry).read_bytes() == before
+    # A waiter expiring must not remove/replace the holder's lock inode.
+    with open(registry + ".lock", "a") as contender:
+        try:
+            fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            pass
+        else:
+            raise AssertionError("lock holder was bypassed")
+`, helper, registry], { env: f.env, encoding: "utf8", timeout: 15000 });
+        assert.equal(result.error, undefined);
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(fs.readFileSync(registry, "utf8"), before);
+        assert.ok(!fs.readdirSync(f.config).some(name => name.startsWith(".plugins")),
+            "a timeout must not leave a partial preference write");
+        f.cli("set", "example.locked", "afterTimeout", "42");
+        const settings = JSON.parse(fs.readFileSync(registry, "utf8")).plugins["example.locked"].settings;
+        assert.deepEqual(settings, { preserved: "original", afterTimeout: 42 });
+    } finally {
+        f.cleanup();
+    }
+});

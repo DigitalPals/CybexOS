@@ -120,6 +120,16 @@ that pre-upgrade point and verifies that the baseline RPM is active again. This
 older-image upgrade and recovery qualification is separate from the four
 fresh-install scenarios.
 
+Release admission uses the versioned scenario-specific evidence contract in
+`image/qualification_contract.py`. Every encrypted fresh scenario must include
+its executed keyring, cold-boot, logout/crash/restart and authentication recovery
+checks. The existing encrypted-US upgrade guest must additionally qualify public
+updater commit, interruption after applying, automatic pre-login recovery and a
+further settled boot, including root/package/vendor identity, personal-file
+preservation and empty worker cgroups. The producer and verifier reject missing
+checks or incompatible execution modes. Old compact reports cannot validate a
+new release by copying only their `passed` status.
+
 A release is rejected unless qualification reports identify the SHA-256 of the
 exact ISO and candidate RPM and all five scenarios pass. Reports are retained
 as bounded workflow artifacts; the desktop assets are retained briefly for the

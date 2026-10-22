@@ -7,43 +7,29 @@ import "InputDraft.js" as Draft
 SettingsPage {
     id: page
     pageReset: true
-    readonly property SystemSettingsBackend service: SystemSettings.input
-    property var draft: ({tap: true, naturalScroll: true, workspaceSwipe: true, sensitivity: 0})
-    property var original: ({tap: true, naturalScroll: true, workspaceSwipe: true, sensitivity: 0})
-    property string version: ""
-    readonly property var changes: Draft.patch(draft, original, ["tap", "naturalScroll", "workspaceSwipe", "sensitivity"])
-    readonly property bool dirty: Object.keys(changes).length > 0
+    readonly property InputDraftState editState: InputDrafts.touchpad
+    readonly property var service: editState.service
+    readonly property var draft: editState.draft
+    readonly property bool dirty: editState.dirty
     readonly property string disabledReason: service.busy ? "Applying…" : !service.loaded ? "Loading…" : ""
     bottomInset: applyBar.reservedHeight
-    function load() {
-        if (!service.loaded || !service.snapshot.touchpad) return;
-        original = Draft.clone(service.snapshot.touchpad);
-        draft = Draft.clone(original);
-        version = service.snapshot.version;
-    }
     function edit(key, value) {
         const updated = Draft.clone(draft);
         updated[key] = value;
-        draft = updated;
+        editState.draft = updated;
     }
     Claim {
         active: page.visible && Settings.panelOpen
-        onClaimed: { page.service.acquire(); page.load(); }
+        onClaimed: { page.service.acquire(); page.editState.refresh(); }
         onReleased: page.service.release()
-    }
-    Connections {
-        target: page.service
-        function onSnapshotChanged() { if (!page.dirty) page.load(); }
-        function onLoadedChanged() { if (!page.dirty) page.load(); }
-        function onCompleted(result) { if (result.success) page.original = Draft.clone(page.draft); }
     }
     overlay: ApplyBar {
         id: applyBar
         pending: page.dirty
         title: I18n.tr("Touchpad changes not applied yet")
         busy: page.service.busy
-        onDiscard: page.load()
-        onApply: page.service.run({action: "apply", section: "touchpad", version: page.version, values: page.changes})
+        onDiscard: page.editState.load()
+        onApply: page.editState.apply()
     }
 
     Column {

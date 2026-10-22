@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Input persistence and native region authorization with no host mutations."""
 import copy
+import hashlib
 import importlib
 import json
 import os
@@ -57,6 +58,45 @@ class InputPersistence(unittest.TestCase):
             self.apply(version=version)
         self.run.assert_not_called()
         self.assertTrue(self.service.read()[0]['future'])
+
+    def test_apply_returns_the_committed_version_for_the_next_edit(self):
+        previous = self.service.read()[1]
+        result = self.apply()
+        self.assertEqual(result['version'], hashlib.sha256(self.service.path.read_bytes()).hexdigest())
+        self.assertNotEqual(result['version'], previous)
+        following = self.apply(values={'naturalScroll': False}, version=result['version'])
+        self.assertEqual(following['version'], self.service.read()[1])
+        self.assertNotEqual(following['version'], result['version'])
+        self.assertEqual(self.service.read()[0]['touchpad'], {'tap': False, 'naturalScroll': False})
+
+    def test_committed_version_still_rejects_a_later_external_writer(self):
+        result = self.apply()
+        external = b'{"v":1,"touchpad":{"tap":true},"future":"preserve"}\n'
+        self.service.path.write_bytes(external)
+        self.run.reset_mock()
+        with self.assertRaisesRegex(ValueError, 'changed elsewhere'):
+            self.apply(values={'naturalScroll': False}, version=result['version'])
+        self.run.assert_not_called()
+        self.assertEqual(self.service.path.read_bytes(), external)
+
+    def test_apply_version_matches_snapshot_including_payload_newline(self):
+        for section, values in [('keyboard', {'layouts': [{'layout': 'nl', 'variant': ''}]}),
+                                ('touchpad', {'tap': False})]:
+            with self.subTest(section=section):
+                self.service.path.write_text('{"v":1,"future":"caf\u00e9"}', encoding='utf-8')
+                result = self.apply(section, values)
+                payload = self.service.path.read_bytes()
+                self.assertTrue(payload.endswith(b'\n'))
+                self.assertIn('caf\u00e9'.encode('utf-8'), payload)
+                self.assertEqual(result['version'], hashlib.sha256(payload).hexdigest())
+                self.assertNotEqual(result['version'], hashlib.sha256(payload[:-1]).hexdigest())
+                options = {'kb_layout': 'nl', 'kb_variant': '', 'kb_options': '',
+                           'touchpad:tap_to_click': False, 'touchpad:natural_scroll': True,
+                           'sensitivity': 0.0}
+                with patch.object(self.service, 'option', side_effect=lambda name, _field: options[name]), \
+                        patch.object(inputs, 'run', return_value='{"keyboards": []}'):
+                    snapshot = self.service.dispatch({'action': 'snapshot'})
+                self.assertEqual(snapshot['version'], result['version'])
 
     def test_rejected_reload_restores_original_bytes(self):
         old = b'{ "v": 1, "future": 2 }\n'

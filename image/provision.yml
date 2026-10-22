@@ -162,13 +162,38 @@
             - image_hermes_mask.stat.lnk_source | default('') == '/dev/null'
 
         # The running shell keeps its environment; the next login applies it.
+        # Use the local account bus, without a transient --machine bridge.
+        - name: Inspect the account's runtime bus
+          ansible.builtin.stat:
+            path: "/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}/bus"
+          register: image_account_bus
+          when: not cybexos_offline | bool
+
         - name: Reload the account's user manager after a feature change
           ansible.builtin.command:
-            argv: [systemctl, --user, "--machine={{ primary_user }}@.host", daemon-reload]
+            argv:
+              - /usr/bin/timeout
+              - --kill-after=5s
+              - 30s
+              - /usr/sbin/runuser
+              - -u
+              - "{{ primary_user }}"
+              - --
+              - /usr/bin/env
+              - -i
+              - PATH=/usr/sbin:/usr/bin:/sbin:/bin
+              - "HOME={{ primary_home }}"
+              - LANG=C.UTF-8
+              - PYTHONDONTWRITEBYTECODE=1
+              - "XDG_RUNTIME_DIR=/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}"
+              - "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ ansible_facts.getent_passwd[primary_user][1] }}/bus"
+              - /usr/bin/systemctl
+              - --user
+              - daemon-reload
           changed_when: true
-          failed_when: false
           when:
             - not cybexos_offline | bool
+            - image_account_bus.stat.exists | default(false)
             - image_shell_features is changed or image_reconcile_shell_features is changed or image_hermes_masked is changed or image_hermes_unmasked is changed
 
     - name: Detect hardware during offline installation as well as repair

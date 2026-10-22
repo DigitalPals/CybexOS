@@ -23,6 +23,7 @@ ID = re.compile(r"[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*\Z")
 KINDS = {"bar-widget": "barWidget", "panel": "panel", "overlay": "overlay",
          "menu": "menu", "service": "service", "bar": "bar"}
 PACKAGE_ID = re.compile(r"[A-Za-z][A-Za-z0-9_.-]*\Z")
+LOCK_TIMEOUT_SECONDS = 5
 
 
 def valid_id(plugin_id: str) -> bool:
@@ -237,7 +238,19 @@ def locked(config: Path):
     config.parent.mkdir(parents=True, exist_ok=True)
     flags = os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW
     with os.fdopen(os.open(str(config) + ".lock", flags, 0o600), "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        # Discovery may be slow or its owner stopped. Bound the wait before
+        # entering a transaction, never interrupt a writer holding the lock.
+        deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Plugin preferences are busy; no changes were made. "
+                                       "Wait for the other plugin operation to finish, then retry.") from None
+                time.sleep(min(0.05, remaining))
         if config.is_symlink():
             raise ValueError("Refusing to replace a symlinked plugins.json")
         yield

@@ -180,9 +180,10 @@ Surface {
                 && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)) {
             cycleTab((event.key === Qt.Key_Backtab
                 || event.modifiers & Qt.ShiftModifier) ? -1 : 1);
-        } else if (argumentMode
-                && (event.key === Qt.Key_Left || event.key === Qt.Key_Right)) {
-            // A prompt's text is edited in place; the arrows move the cursor.
+        } else if ((query !== "" || argumentMode)
+                && (event.key === Qt.Key_Left || event.key === Qt.Key_Right
+                    || event.key === Qt.Key_Home || event.key === Qt.Key_End)) {
+            // Let TextInput handle caret, word and selection movement.
             return false;
         } else if (event.key === Qt.Key_Left) {
             cycleTab(-1);

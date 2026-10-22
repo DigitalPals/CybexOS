@@ -131,21 +131,31 @@ def github_environment(root: Path, package: str = "") -> dict[str, str]:
 name=${@: -1}
 if [[ $1 == -q ]]; then
   [[ $name == "$MOCK_PACKAGE" ]] || exit 1
+  [[ -z ${MOCK_INSTALLED_MARKER:-} || -f $MOCK_INSTALLED_MARKER ]] || exit 1
   if [[ ${2:-} == --qf ]]; then printf '%s' "$MOCK_NEVRA"; fi
   exit 0
 fi
 if [[ $1 == -qp && ${2:-} == --qf ]]; then
-  if [[ $3 == '%{NAME}' ]]; then printf '%s' "$MOCK_PACKAGE";
+  if [[ $3 == '%{NAME}' ]]; then printf '%s' "${MOCK_ASSET_PACKAGE:-$MOCK_PACKAGE}";
   else printf '%s' "$MOCK_NEVRA"; fi
   exit 0
 fi
 exit 2
 ''',
     )
-    executable(mock_bin / "dnf", 'printf "%s\\n" "$*" >> "$MOCK_DNF_LOG"\n')
+    executable(mock_bin / "dnf", '''
+printf '%s\\n' "$*" >> "$MOCK_DNF_LOG"
+if [[ -n ${MOCK_DNF_EXPECTED:-} ]]; then
+  [[ ${@: -1} == *.rpm ]]
+  [[ $(/usr/bin/sha256sum "${@: -1}" | awk '{print $1}') == "$MOCK_DNF_EXPECTED" ]]
+fi
+[[ -z ${MOCK_INSTALLED_MARKER:-} ]] || touch "$MOCK_INSTALLED_MARKER"
+''')
     executable(mock_bin / "curl", 'echo "unexpected curl invocation" >&2; exit 99\n')
+    executable(mock_bin / "restorecon", 'exit 0\n')
     return {
         "PATH": f"{mock_bin}:/usr/bin:/bin",
+        "GH_TOKEN": "",
         "MOCK_PACKAGE": package,
         "MOCK_NEVRA": f"{package or 'absent'}-1.0-1.x86_64",
         "MOCK_DNF_LOG": str(root / "dnf.log"),
@@ -225,9 +235,7 @@ def test_github_rpm_convergence_and_tag_endpoint() -> None:
             f"tag=v1 checksum=sha256:{digest}"
         )
         assert (state / "nevra").read_text().strip() == env["MOCK_NEVRA"]
-        assert Path(env["MOCK_API_LOG"]).read_text().strip().endswith(
-            "/releases/tags/v1"
-        )
+        assert not Path(env["MOCK_API_LOG"]).exists()
         assert "releases?per_page=" not in (
             ROOT / "roles/apps/files/github-release-install"
         ).read_text()
@@ -235,7 +243,7 @@ def test_github_rpm_convergence_and_tag_endpoint() -> None:
         # The authorized tag and checksum already describe the intact package,
         # so convergence makes no GitHub round trip and survives being offline.
         Path(env["MOCK_DNF_LOG"]).write_text("")
-        Path(env["MOCK_API_LOG"]).unlink()
+        Path(env["MOCK_API_LOG"]).unlink(missing_ok=True)
         offline = dict(env, MOCK_RELEASE_JSON=str(root / "offline.json"))
         result = run(argv, env=offline)
         assert result.returncode == 0, (result.stdout, result.stderr)
@@ -243,14 +251,17 @@ def test_github_rpm_convergence_and_tag_endpoint() -> None:
         assert Path(env["MOCK_DNF_LOG"]).read_text() == ""
         assert not Path(env["MOCK_API_LOG"]).exists()
 
-        # Whenever the package must be (re)installed, the pin must still agree
-        # with GitHub's digest.
+        # On a cache miss, the pin must still agree with GitHub's digest.
         (state / "version").unlink()
+        (cache / "demo.rpm").unlink()
         release_json(release, "v1", "demo.rpm", "f" * 64)
         result = run(argv, env=env)
         assert result.returncode == 75
         assert "disagrees with GitHub's release digest" in result.stderr
         assert Path(env["MOCK_DNF_LOG"]).read_text() == ""
+        assert Path(env["MOCK_API_LOG"]).read_text().strip().endswith(
+            "/releases/tags/v1"
+        )
 
 
 def make_zip(path: Path, files: dict[str, bytes], executable_names: set[str] | None = None) -> None:
@@ -261,6 +272,247 @@ def make_zip(path: Path, files: dict[str, bytes], executable_names: set[str] | N
             mode = 0o100755 if name in executable_names else 0o100644
             info.external_attr = mode << 16
             archive.writestr(info, payload)
+
+
+
+def github_cache_fixture(
+    root: Path, kind: str, *, rpm_asset: bool = False, tag: str = "v1"
+) -> tuple[dict[str, str], list[str], Path, Path]:
+    """Run the production installer/common helpers; mock only external commands."""
+    common = root / "common.sh"
+    common.write_text("source " + shlex.quote(str(ROOT / "roles/apps/files/cybexos-common.sh")) + "\n")
+    installer = root / "github-release-install"
+    render_installer(ROOT / "roles/apps/files/github-release-install", installer, root, common)
+    rpm_mode = kind == "rpm" or rpm_asset
+    env = github_environment(root, "demo" if rpm_mode else "")
+    env["MOCK_INSTALLED_MARKER"] = str(root / "rpm-installed")
+    env["MOCK_NETWORK_LOG"] = str(root / "network.log")
+    env["MOCK_DOWNLOAD"] = str(root / "payload")
+    env["MOCK_RELEASE_JSON"] = str(root / "release.json")
+    (root / "temporary").mkdir()
+    env["TMPDIR"] = str(root / "temporary")
+    executable(
+        root / "mock-bin/curl",
+        r"""
+output=""
+previous=""
+api=""
+for argument in "$@"; do
+  if [[ $previous == -o || $previous == --output ]]; then output=$argument; fi
+  [[ $argument != https://api.github.com/* ]] || api=$argument
+  previous=$argument
+done
+printf '%s\n' "$*" >> "$MOCK_NETWORK_LOG"
+if [[ -n $api ]]; then
+  printf '%s\n' "$api" >> "$MOCK_API_LOG"
+  if [[ ${MOCK_NETWORK_OK:-0} == 1 ]]; then
+    /usr/bin/cp -- "$MOCK_RELEASE_JSON" "$output"
+    printf 200
+  else
+    : > "$output"
+    printf 403
+  fi
+else
+  [[ ${MOCK_NETWORK_OK:-0} == 1 ]] || exit 99
+  /usr/bin/cp -- "$MOCK_DOWNLOAD" "$output"
+fi
+""",
+    )
+    asset_name = "demo.rpm" if rpm_mode else ("demo" if kind == "binary" else "demo.zip")
+    cache = root / "cache/demo" / tag.replace("/", "_") / asset_name
+    cache.parent.mkdir(parents=True)
+    if rpm_mode:
+        cache.write_bytes(b"inventory-authorized RPM fixture\n")
+    elif kind == "binary":
+        cache.write_bytes(b"#!/usr/bin/env bash\necho verified\n")
+    else:
+        contents = {"LICENSE.txt": b"bundled license\n"}
+        contents["Demo.ttf" if kind == "font" else "demo"] = b"verified payload\n"
+        make_zip(cache, contents, set() if kind == "font" else {"demo"})
+    digest = hashlib.sha256(cache.read_bytes()).hexdigest()
+    env["MOCK_DNF_EXPECTED"] = digest
+    Path(env["MOCK_DOWNLOAD"]).write_bytes(cache.read_bytes())
+    release_json(Path(env["MOCK_RELEASE_JSON"]), tag, asset_name, digest)
+    argv = [str(installer), "demo", "owner/repo", "^" + asset_name.replace(".", "[.]") + "$",
+            kind, tag, f"sha256:{digest}"]
+    install_root = root / ("fonts" if kind == "font" else "apps") / "demo"
+    return env, argv, cache, install_root
+
+
+def test_github_verified_cache_kinds_without_network() -> None:
+    for kind, rpm_asset in (("rpm", True), ("archive-auto", True), ("archive", False),
+                            ("archive-auto", False), ("font", False), ("binary", False)):
+        with tempfile.TemporaryDirectory(prefix="cybexos-pinned-cache.") as temporary:
+            root = Path(temporary)
+            env, argv, cache, install_root = github_cache_fixture(
+                root, kind, rpm_asset=rpm_asset, tag="release/v1")
+            result = run(argv, env=env)
+            assert result.returncode == 0, (kind, result.stdout, result.stderr)
+            assert result.stdout.strip() == "CHANGED: installed demo release/v1"
+            assert not Path(env["MOCK_NETWORK_LOG"]).exists()
+            assert not list(Path(env["TMPDIR"]).iterdir())
+            if rpm_asset:
+                assert (root / "rpm-installed").exists()
+                assert (root / "state/demo/version").read_text().strip() == (
+                    f"tag=release/v1 checksum={argv[-1]}")
+            elif kind == "binary":
+                assert (install_root / "current/bin/demo").read_bytes() == cache.read_bytes()
+            else:
+                assert (install_root / "current/LICENSE.txt").read_bytes() == b"bundled license\n"
+                assert (install_root / ("current/Demo.ttf" if kind == "font" else "current/bin/demo")).is_file()
+            # Healthy installed convergence still needs neither cache nor API.
+            cache.unlink()
+            result = run(argv, env=env)
+            assert result.returncode == 0, (kind, result.stdout, result.stderr)
+            assert result.stdout.strip() == "UNCHANGED: demo release/v1"
+            assert not Path(env["MOCK_NETWORK_LOG"]).exists()
+            assert not list(Path(env["TMPDIR"]).iterdir())
+
+
+def test_github_cache_misses_and_unsafe_paths() -> None:
+    for case in ("missing", "corrupt", "wrong-tag", "wrong-regex", "ambiguous", "directory-asset",
+                 "invalid-checksum", "no-checksum", "symlink-asset", "symlink-tag",
+                 "symlink-parent", "dot-tag", "traversal-name"):
+        with tempfile.TemporaryDirectory(prefix="cybexos-cache-reject.") as temporary:
+            root = Path(temporary)
+            env, argv, cache, install_root = github_cache_fixture(root, "binary")
+            if case == "missing":
+                cache.unlink()
+            elif case == "corrupt":
+                cache.write_bytes(b"unchecked corrupt bytes\n")
+            elif case == "wrong-tag":
+                cache.parent.rename(cache.parent.with_name("v2"))
+            elif case == "wrong-regex":
+                cache.rename(cache.with_name("different-asset"))
+            elif case == "ambiguous":
+                argv[3] = "^demo"
+                cache.with_name("demo-other").write_bytes(cache.read_bytes())
+            elif case == "directory-asset":
+                cache.unlink()
+                cache.mkdir()
+                (cache / "nested-payload").write_bytes(Path(env["MOCK_DOWNLOAD"]).read_bytes())
+            elif case in ("invalid-checksum", "no-checksum"):
+                argv[-1] = "sha256:bad" if case == "invalid-checksum" else ""
+            elif case == "symlink-asset":
+                cache.unlink()
+                cache.symlink_to(root / "payload")
+            elif case in ("symlink-tag", "symlink-parent"):
+                target = cache.parent if case == "symlink-tag" else cache.parent.parent
+                outside = root / "outside"
+                target.rename(outside)
+                target.symlink_to(outside, target_is_directory=True)
+            elif case == "dot-tag":
+                argv[-2] = ".."
+            elif case == "traversal-name":
+                argv[1] = "demo/../demo"
+            before = tree_snapshot(root / "cache")
+            result = run(argv, env=env)
+            assert not list(Path(env["TMPDIR"]).iterdir())
+            assert result.returncode not in (0, 75), (case, result.stdout, result.stderr)
+            assert "CHANGED:" not in result.stdout
+            assert not (install_root / "current").exists()
+            assert not list((root / "bin").iterdir())
+            assert not Path(env["MOCK_DNF_LOG"]).exists()
+            # The ordinary API helper may create its metadata directory on a
+            # miss, but must not change any existing payload or follow a link.
+            after = [entry for entry in tree_snapshot(root / "cache") if entry[0] != "demo/api"]
+            assert after == before, case
+            unsafe = case.startswith("symlink-") or case in ("dot-tag", "traversal-name")
+            if unsafe:
+                assert "Refusing unsafe cached asset path" in result.stderr, (case, result.stderr)
+                assert not Path(env["MOCK_NETWORK_LOG"]).exists()
+            else:
+                assert "HTTP 403" in result.stderr, (case, result.stderr)
+                assert Path(env["MOCK_API_LOG"]).read_text().strip().endswith("/releases/tags/v1")
+
+
+def test_github_cache_miss_download_and_rpm_identity() -> None:
+    for case in ("missing", "corrupt", "ambiguous", "digest-conflict", "wrong-rpm-name", "unpinned-rpm"):
+        with tempfile.TemporaryDirectory(prefix="cybexos-cache-fallback.") as temporary:
+            root = Path(temporary)
+            env, argv, cache, install_root = github_cache_fixture(
+                root, "archive-auto", rpm_asset=case in ("wrong-rpm-name", "unpinned-rpm"))
+            env["MOCK_NETWORK_OK"] = "1"
+            if case == "wrong-rpm-name":
+                env["MOCK_ASSET_PACKAGE"] = "unauthorized-package"
+            elif case == "unpinned-rpm":
+                argv[-1] = ""
+            else:
+                if case == "ambiguous":
+                    argv[3] = "^demo"
+                    cache.with_name("demo-other.zip").write_bytes(cache.read_bytes())
+                else:
+                    cache.unlink()
+                    if case == "corrupt":
+                        cache.write_bytes(b"bad cache\n")
+                if case == "digest-conflict":
+                    release_json(Path(env["MOCK_RELEASE_JSON"]), "v1", "demo.zip", "f" * 64)
+            result = run(argv, env=env)
+            assert not list(Path(env["TMPDIR"]).iterdir())
+            if case in ("digest-conflict", "wrong-rpm-name", "unpinned-rpm"):
+                assert result.returncode not in (0, 75), (case, result.stdout, result.stderr)
+                assert "CHANGED:" not in result.stdout
+                assert not Path(env["MOCK_DNF_LOG"]).exists()
+                assert not (install_root / "current").exists()
+                message = {"wrong-rpm-name": "expected demo package", "digest-conflict": "disagrees",
+                           "unpinned-rpm": "requires an inventory-pinned release tag and SHA-256"}[case]
+                assert message in result.stderr
+            else:
+                assert result.returncode == 0, (case, result.stdout, result.stderr)
+                assert (install_root / "current/bin/demo").read_bytes() == b"verified payload\n"
+            if case == "wrong-rpm-name":
+                assert not Path(env["MOCK_NETWORK_LOG"]).exists()
+            else:
+                assert Path(env["MOCK_API_LOG"]).exists()
+                if case in ("missing", "corrupt"):
+                    assert cache.read_bytes() == Path(env["MOCK_DOWNLOAD"]).read_bytes()
+
+
+def test_github_cache_snapshot_and_final_verification() -> None:
+    for mutation in ("replace-cache", "delete-cache", "corrupt-copy", "delete-copy", "delete-before-verify"):
+        with tempfile.TemporaryDirectory(prefix="cybexos-cache-mutation.") as temporary:
+            root = Path(temporary)
+            env, argv, cache, install_root = github_cache_fixture(root, "binary")
+            env.update(MOCK_CACHE=str(cache), MOCK_MUTATION=mutation)
+            executable(
+                root / "mock-bin/jq",
+                r"""
+if [[ ${2:-} == .digest && $MOCK_MUTATION == delete-before-verify ]]; then
+  rm -- "$TMPDIR"/*/demo
+fi
+exec /usr/bin/jq "$@"
+""",
+            )
+            executable(
+                root / "mock-bin/sha256sum",
+                r"""
+case "$MOCK_MUTATION" in
+  replace-cache) printf unchecked > "$MOCK_CACHE" ;;
+  delete-cache) rm -- "$MOCK_CACHE" ;;
+  corrupt-copy) printf unchecked > "$1" ;;
+  delete-copy) rm -- "$1" ;;
+esac
+exec /usr/bin/sha256sum "$@"
+""",
+            )
+            old = install_root / "versions/old"
+            executable(old / "bin/demo", "echo retained\n")
+            (old / ".cybexos-release").write_text("old manifest\n")
+            (install_root / "current").symlink_to("versions/old")
+            (root / "bin/demo").symlink_to(install_root / "current/bin/demo")
+            before = tree_snapshot(install_root)
+            result = run(argv, env=env)
+            assert not Path(env["MOCK_NETWORK_LOG"]).exists()
+            assert not list(Path(env["TMPDIR"]).iterdir())
+            if mutation.endswith("cache"):
+                assert result.returncode == 0, (mutation, result.stdout, result.stderr)
+                assert (install_root / "current/bin/demo").read_bytes() == Path(env["MOCK_DOWNLOAD"]).read_bytes()
+            else:
+                assert result.returncode == 75, (mutation, result.stdout, result.stderr)
+                assert ("disappeared" if mutation == "delete-before-verify" else "changed before installation") in result.stderr
+                assert "CHANGED:" not in result.stdout
+                assert tree_snapshot(install_root) == before
+                assert (root / "bin/demo").readlink() == install_root / "current/bin/demo"
 
 
 def test_github_font_payload_and_post_commit_warning() -> None:
@@ -347,7 +599,7 @@ def test_github_font_payload_and_post_commit_warning() -> None:
         assert "could not prune older versions" in result.stderr
         assert (root / "apps/demo/current/bin/demo").is_file()
 
-        Path(env["MOCK_API_LOG"]).unlink()
+        Path(env["MOCK_API_LOG"]).unlink(missing_ok=True)
         env["MOCK_RELEASE_JSON"] = str(root / "offline.json")
         result = run(
             [
@@ -401,7 +653,11 @@ if [[ $1 == image && $2 == exists ]]; then
   [[ -f $MOCK_BUILDER_READY ]]
   exit
 elif [[ $1 == image && $2 == inspect ]]; then
-  echo sha256:fixture-builder
+  if [[ ${MOCK_INSPECT_BARE_ID:-} == 1 ]]; then
+    echo "${MOCK_BUILDER_ID#sha256:}"
+  else
+    echo "$MOCK_BUILDER_ID"
+  fi
   exit
 elif [[ $1 == pull ]]; then
   exit
@@ -414,6 +670,10 @@ for argument in "$@"; do
   if [[ $argument == *:/out:Z ]]; then output=${argument%:/out:Z}; fi
 done
 mkdir -p "$output"
+[[ " $* " == *" ${MOCK_BUILDER_ID#sha256:} bash "* ]]
+printf 'rust\t0\t%s\t1.fc44\tx86_64\n' "${MOCK_RUST_VERSION:-1.90}" > "$output/packages.tsv"
+for tool in rustc cargo gcc g++; do printf '%s %s\n' "$tool" "${MOCK_RUST_VERSION:-1.90}" > "$output/$tool.version"; done
+[[ -z ${MOCK_METADATA_FAIL:-} ]] || rm "$output/rustc.version"
 printf '#!/usr/bin/env bash\necho built\n' > "$output/$MOCK_BINARY"
 chmod 0755 "$output/$MOCK_BINARY"
 ''',
@@ -428,6 +688,7 @@ chmod 0755 "$output/$MOCK_BINARY"
             "MOCK_BINARY": "demo",
             "MOCK_PODMAN_LOG": str(root / "podman.log"),
             "MOCK_BUILDER_READY": str(root / "builder-ready"),
+            "MOCK_BUILDER_ID": "sha256:" + "d" * 64,
         }
         old = root / "builds/demo/versions/old"
         (old / "bin").mkdir(parents=True)
@@ -457,9 +718,16 @@ chmod 0755 "$output/$MOCK_BINARY"
         assert sum(call.startswith("pull ") for call in calls) == 1, calls
         assert any("CARGO_TARGET_DIR=/build-cache" in call and ":/root/.cargo/registry:z" in call
                    and ":/build-cache:Z" in call for call in calls), calls
-        assert (root / "builds/demo/current/.cybexos-builder").read_text() == "sha256:fixture-builder\n"
+        assert (root / "builds/demo/current/.cybexos-builder").read_text() == env["MOCK_BUILDER_ID"] + "\n"
 
-        # The authorized commit, image, and recipe describe the intact build;
+        evidence = json.loads((root / "builds/demo/current/.cybexos-build-provenance.json").read_text())
+        assert evidence["builder_image_id"] == env["MOCK_BUILDER_ID"]
+        assert evidence["packages"][0]["version"] == "1.90"
+        assert evidence["compilers"]["rustc"] == "rustc 1.90"
+        assert evidence["binaries"]["demo"] == hashlib.sha256(
+            (root / "builds/demo/current/bin/demo").read_bytes()).hexdigest()
+
+        # The requested inputs describe the intact deployment;
         # the next converge must not contact the remote at all.
         result = run(
             [
@@ -486,6 +754,38 @@ chmod 0755 "$output/$MOCK_BINARY"
         calls = Path(env["MOCK_PODMAN_LOG"]).read_text().splitlines()
         assert sum(call.startswith("build ") for call in calls) == 1, calls
         assert sum(call.startswith("run ") for call in calls) == 2, calls
+        warm = json.loads((root / "builds/demo/current/.cybexos-build-provenance.json").read_text())
+        assert warm["builder_image_id"] == evidence["builder_image_id"]
+        assert warm["packages"] == evidence["packages"]
+        # A recreated derived image may resolve newer Fedora packages. Keep the
+        # registry cache, isolate compiled objects by image ID, and report facts.
+        Path(env["MOCK_BUILDER_READY"]).unlink()
+        third = "e" * 40
+        command = [str(installer), "demo", "https://example.invalid/demo.git", "demo", "v3",
+                   third, "fedora@sha256:" + ("b" * 64)]
+        changed_env = dict(env, MOCK_REVISION=third, MOCK_TAG="v3",
+                           MOCK_BUILDER_ID="sha256:" + "f" * 64, MOCK_RUST_VERSION="1.91",
+                           MOCK_INSPECT_BARE_ID="1")
+        result = run(command, env=changed_env)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        changed = json.loads((root / "builds/demo/current/.cybexos-build-provenance.json").read_text())
+        assert changed["builder_image_id"] != warm["builder_image_id"]
+        assert changed["packages"][0]["version"] == "1.91"
+        calls = Path(env["MOCK_PODMAN_LOG"]).read_text().splitlines()
+        assert sum(call.startswith("build ") for call in calls) == 2, calls
+        runs = [call for call in calls if call.startswith("run ")]
+        def mounts(call):
+            return next(part for part in call.split() if ":/build-cache:Z" in part)
+        assert mounts(runs[0]) == mounts(runs[1])
+        assert mounts(runs[1]) != mounts(runs[2])
+        before = (root / "builds/demo/current").readlink()
+        command[4:6] = ["v4", "1" * 40]
+        result = run(command, env=dict(changed_env, MOCK_REVISION="1" * 40, MOCK_TAG="v4",
+                                       MOCK_METADATA_FAIL="1"))
+        assert result.returncode == 75, (result.stdout, result.stderr)
+        assert (root / "builds/demo/current").readlink() == before
+        assert json.loads((root / "builds/demo/current/.cybexos-build-provenance.json").read_text()) == changed
+        assert not list((root / "builds/demo").glob(".build.*"))
 
 
 def test_android_command_tools_rollback() -> None:
@@ -828,6 +1128,10 @@ def test_font_archive_checksum_contract() -> None:
 if __name__ == "__main__":
     test_prune_count()
     test_github_rpm_convergence_and_tag_endpoint()
+    test_github_verified_cache_kinds_without_network()
+    test_github_cache_misses_and_unsafe_paths()
+    test_github_cache_miss_download_and_rpm_identity()
+    test_github_cache_snapshot_and_final_verification()
     test_github_font_payload_and_post_commit_warning()
     test_source_build_post_commit_warning()
     test_android_command_tools_rollback()

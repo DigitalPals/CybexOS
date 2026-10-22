@@ -11,6 +11,7 @@ import tempfile
 from urllib.parse import urljoin
 import xml.etree.ElementTree as ET
 
+from qualification_contract import FRESH_SCENARIOS, validate as validate_qualification
 from release_metadata import fingerprint, public_key
 from release_repository import rename_new_directory, sha256, verify_signed_rpm
 from sbom import sbom_name, verify_release_sbom
@@ -173,7 +174,7 @@ def verify_metadata(directory, packages):
 
 def verify_qualifications(paths, iso_digest, packages):
     """Require fresh installer and prior-release upgrade/recovery evidence."""
-    scenarios = {'encrypted-us', 'plain-us', 'encrypted-nl', 'plain-nl'}
+    scenarios = FRESH_SCENARIOS
     fresh, upgrade, reports = set(), False, []
     candidates = {package['unsigned_input_sha256'] for package in packages
                   if package.get('name', 'cybexos-desktop') == 'cybexos-desktop'}
@@ -186,13 +187,15 @@ def verify_qualifications(paths, iso_digest, packages):
         report = json.loads(path.read_text())
         if not isinstance(report, dict) or report.get('status') != 'passed':
             raise ValueError('Every qualification report must have passed')
+        validate_qualification(report)
         checks = report.get('checks')
         if not isinstance(checks, list) or not all(isinstance(item, str) for item in checks):
             raise ValueError('Qualification checks must be a list of completed check names')
         prior = report.get('iso_sha256', '')
         if not isinstance(prior, str) or not re.fullmatch(r'[0-9a-f]{64}', prior):
             raise ValueError('Qualification must identify the tested ISO SHA-256')
-        if prior == iso_digest and 'graphical-installer' in checks and report.get('scenario') in scenarios:
+        if (prior == iso_digest and report['qualification_kind'] == 'fresh'
+                and report['boot_entry'] == 'install' and report.get('scenario') in scenarios):
             if report['scenario'].startswith('plain-'):
                 checkout = report.get('checkout_parity', {})
                 content = report.get('source_content_sha256', '')
@@ -205,11 +208,15 @@ def verify_qualifications(paths, iso_digest, packages):
                                 'full-graphical-session'} <= set(checkout.get('checks', []))):
                     raise ValueError('Release requires same-source real checkout/ISO parity for fresh and saved choices')
             fresh.add(report['scenario'])
-        if (prior != iso_digest and report.get('candidate_rpm_sha256') in candidates
+        if (report['qualification_kind'] == 'upgrade' and prior != iso_digest
+                and report.get('candidate_rpm_sha256') in candidates
                 and (offline is None or report.get('candidate_offline_rpm_sha256') == offline)
                 and {'installed-rpm-upgrade', 'recovery-boot-restore'} <= set(checks)):
             upgrade = True
         reports.append(report)
+    sources = {(report['source_revision'], report['source_content_sha256']) for report in reports}
+    if len(sources) > 1:
+        raise ValueError('Qualification reports must bind the same candidate source revision and content digest')
     if fresh != scenarios:
         raise ValueError('Release requires all four fresh ISO installer qualifications: ' + ', '.join(sorted(scenarios - fresh)))
     if not upgrade:

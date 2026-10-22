@@ -206,4 +206,7 @@ class InputSettings:
                 except Exception:
                     raise ValueError('Input preferences were restored, but Hyprland could not reload. Sign out to restore the session.') from error
                 raise ValueError('Hyprland could not apply the change. Previous preferences were restored.') from error
-        return {'message': 'Input preferences saved. Personal Hyprland overrides still take precedence.'}
+        # Hash the exact committed bytes, including the newline. Re-reading
+        # after releasing the lock could return another writer's version.
+        return {'version': hashlib.sha256(payload).hexdigest(),
+                'message': 'Input preferences saved. Personal Hyprland overrides still take precedence.'}

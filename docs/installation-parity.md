@@ -31,10 +31,22 @@ enable autologin if its access is insufficient to verify encryption.
 
 Saved choices take precedence. Re-running or updating an installation must not
 silently turn on personal defaults or passwordless access for an older account.
+Docker membership uses the same ownership-aware grant/revoke policy on checkout,
+ISO configuration and RPM reconciliation. An explicit saved choice for the
+selected account can revoke Docker access even on an older ISO without an
+ownership marker. Automatic convergence without that choice removes only
+CybexOS-owned grants; independently administered access and unrelated groups
+are preserved. Changes take effect in new login sessions. When repair first
+records an older installation's choices, it retains existing Docker access
+until the administrator explicitly changes it with `cybex configure`.
 `--reconfigure` offers the saved boolean choices as its defaults. An explicit
 identity change in the checkout questionnaire still applies that choice.
 Neither parity nor a release update authorizes repartitioning an existing
 Fedora installation or resetting user settings to match a clean account.
+Shell preferences, including wallpaper selection, are seeded only if the
+entire settings file is absent. An explicit empty wallpaper, sparse overrides,
+unknown fields and future or corrupt documents remain unchanged on both paths;
+concurrent creation of a settings file takes precedence over seeding.
 Fastfetch, Voxtype, Oh My Posh, MIME associations, and npm configuration are
 seeded only when absent, as on the ISO. Managed Fish, Kitty, Git and SSH fragments remain updateable while their bytes
 match the shared ownership ledger. Conflicting edits and deletions are preserved
@@ -93,6 +105,18 @@ feature cannot be added to only one installer's schema. Hardware roles run
 unchanged on both paths: `image/test_nvidia.py` checks that the checkout and
 the ISO's boot-time hardware setup apply the same NVIDIA role, payload and
 session environment.
+
+Recovery boot hooks preserve existing upstream directory permissions and
+ownership on both paths. Fedora's
+[`grub2-common-1:2.12-66.fc44` RPM](https://kojipkgs.fedoraproject.org/packages/grub2/2.12/66.fc44/noarch/grub2-common-2.12-66.fc44.noarch.rpm)
+(SHA-256 `8482c540ca4badf57eaee30576af74f238bc23eabfd456498e00aa1a29d111b0`)
+owns `/etc/grub.d` as `0700 root:root`; checkout must not force it to `0755`.
+Checkout creates missing hook directories and manages its own root-owned files.
+The image RPM owns the GRUB hook and vendor kernel-install hook, without
+claiming their upstream parent directories. `image/test_update_recovery.py`,
+also run by the source parity gate, executes the real Ansible tasks twice and
+compares the RPM assembly with existing restricted and missing directories,
+including preservation of administrator ownership.
 
 Release changes must pass the source and image gates from the same Git revision
 and the existing generic Fedora and ISO installation/upgrade qualification

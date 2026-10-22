@@ -86,7 +86,7 @@ test("the recovery UI is wired into the shell and the Backup & recovery page", (
     assert.match(service, /path: RecoveryHelpers\.INDEX_PATH[\s\S]{0,80}watchChanges: true/);
     assert.match(service, /"--urgency=critical"/, "the notice persists until dismissed");
     assert.match(service, /Settings\.showSetting\("backup", "recoveryPoints", ""\)/);
-    assert.match(page, /readonly property string settingKey: "recoveryPoints"/);
+    assert.match(page, /readonly property string searchAnchor: "recoveryPoints"/);
     assert.match(page, /"Confirm restore"/, "restore always takes a second, explicit press");
     assert.match(page, /hold Shift \(or press Esc\)/);
     assert.ok(search.some(row => row.page === "backup" && row.group === "Recovery points"

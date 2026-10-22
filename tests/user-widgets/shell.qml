@@ -11,6 +11,7 @@ ShellRoot {
     property var runningPomodoro: null
     property bool openedPopup: false
     property var hosts: []
+    property bool checkedDiscoveryRecovery: false
 
     function done(ok, detail) {
         if (finished)
@@ -19,6 +20,33 @@ ShellRoot {
         console.warn("USER_WIDGET_RESULT " + (ok ? "pass " : "fail ") + detail);
         Quickshell.execDetached(["/usr/bin/bash", "-c",
             "sleep 0.2; kill -TERM -- \"$1\"", "bash", String(Quickshell.processId)]);
+    }
+
+    // The actual singleton, including Qt's shared error binding. Run after
+    // its first real scan and before constructing the external widgets.
+    function checkDiscoveryRecovery() {
+        const good = UserPlugins.lastResult;
+        const plugins = UserPlugins.plugins;
+        const widgets = UserPlugins.widgets;
+        UserPlugins.settleDiscovery(0, "malformed registry", false);
+        if (!UserPlugins.error || UserPlugins.plugins !== plugins || UserPlugins.widgets !== widgets)
+            return false;
+        UserPlugins.settleDiscovery(0, good, false);
+        if (UserPlugins.error || UserPlugins.plugins !== plugins || UserPlugins.widgets !== widgets)
+            return false;
+        UserPlugins.settleDiscovery(-1, good, true);
+        if (!UserPlugins.error || UserPlugins.plugins !== plugins)
+            return false;
+        UserPlugins.settleDiscovery(0, good, false);
+        if (UserPlugins.error || UserPlugins.plugins !== plugins)
+            return false;
+        const command = ["python3", UserPlugins.helper, "set"];
+        UserPlugins.settleWrite(2, command, "preferences busy; retry");
+        UserPlugins.settleDiscovery(0, good, false);
+        if (UserPlugins.error !== "preferences busy; retry" || UserPlugins.discoveryError)
+            return false;
+        UserPlugins.settleWrite(0, command, "");
+        return UserPlugins.error === "";
     }
 
     Component {
@@ -53,6 +81,13 @@ ShellRoot {
             }
             if (UserPlugins.plugins.length !== 5)
                 return;
+            if (!root.checkedDiscoveryRecovery) {
+                root.checkedDiscoveryRecovery = true;
+                if (!root.checkDiscoveryRecovery()) {
+                    root.done(false, "discovery or mutation error recovery failed");
+                    return;
+                }
+            }
             if (root.hosts.length === 0) {
                 for (const descriptor of UserPlugins.plugins) {
                     if (descriptor.format === "omarchy")

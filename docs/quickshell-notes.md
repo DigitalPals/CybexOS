@@ -349,7 +349,13 @@ them when changing the surrounding files.
   Package trees are polled every 5 min only while a plugin is enabled (2 s
   while Settings is open), never while idle, and a package is rehashed only
   when its stat signature in `<runtime-root>/.revisions.json` changes. A
-  registry error keeps the last good plugins.
+  registry error keeps the last good plugins. A successful scan clears
+  discovery failures even when its output matches the last good scan. Scan
+  health and mutation failures are separate: a rescan cannot hide a failed
+  preference write. Registry lock acquisition waits at most five seconds,
+  then reports that preferences are busy and asks for a retry without
+  changing preferences or interrupting the holder; queued edits continue.
+  Git clone and fetch remain outside the registry lock.
 - **Long-lived helpers are bounded.** `gh` reads, brightness reads/writes,
   matugen, `calendar-events.py`, wallpaper thumbnails and the plugin scanner
   each have a timeout or watchdog. Helpers settle on the falling
@@ -420,6 +426,13 @@ them when changing the surrounding files.
   owns the furniture at either end and the fit pass.
 - `Popovers/` — panel contents, all built on `PopoutPanel` / `Surface`.
 - `Settings/` — the settings window; rows build on `Settings/SettingsRow.qml`.
+  Keyboard and Touchpad edits belong to the session-owned `Settings/InputDrafts`
+  singleton: search, page navigation and closing the window retain them until
+  Apply or Discard. Their original backend version stays with the draft, and
+  a completion settles only the submitted section, even after its page unloads.
+  Network checkpoints and display trials retain their own rollback lifetimes.
+  Search matches catalog translations and English aliases; non-preference
+  destinations use `searchAnchor`, separate from `shell.json` keys.
 - `tests/quickshell/` — Node tests. `shell.cjs` locates the source tree;
   `load("X.js")` pulls a helper out of `Common/`.
 
@@ -445,9 +458,12 @@ entry travel, anchored top-left at offsets from the output edge, not the whole
 output: the compositor blurs every pixel of a blurred surface. Clicks outside
 it clear the `HyprlandFocusGrab`, which closes the launcher.
 
-`Left`/`Right` cycle tabs, as do `Ctrl+Tab` and `Ctrl+Shift+Tab`. `Up`, `Down`,
+`Ctrl+Tab` and `Ctrl+Shift+Tab` cycle tabs. `Left`/`Right` also cycle tabs
+while the input is empty. With text or an argument prompt, `Left`, `Right`,
+`Home` and `End` retain normal caret, word and selection editing (including
+Ctrl and Shift). With empty input, `Home`/`End` select the first/last result. `Up`, `Down`,
 and result-navigation `Tab` wrap at the list ends; `PageUp`/`PageDown` jump six
-rows and clamp to the first or last result. `Home`, `End`, `Alt+1…8`, immediate
+rows and clamp to the first or last result. `Alt+1…8`, immediate
 `Enter`, and clipboard `Shift+Delete` remain available. Escape clears a
 non-empty query and returns to the active tab's full results; a second Escape
 closes the launcher. The result highlight and its glyph color change

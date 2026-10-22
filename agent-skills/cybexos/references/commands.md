@@ -56,6 +56,11 @@ status.
 helper as Settings → Backup & recovery. `status --json` (read-only, no
 restic), `snapshots --json` (may ask to unlock the keyring) and `excludes`
 (extra patterns go in `~/.config/cybexos/backup-exclude`) only inspect.
+Steam userdata, Proton prefixes and rootless container volumes are included;
+downloaded games, container images and writable layers are excluded. Live
+database files are not a consistent export: use the application's dump/backup
+tool into a backed-up home folder, or stop it for the whole backup. System
+stores and separately mounted filesystems are outside this home backup.
 `setup`, `now`, `restore`, `automatic`, `recovery-key` and `confirm-key` need
 explicit user intent. `restore` writes only into a new folder under
 `~/Restored`. Never ask for, print, store, or copy a recovery key or the

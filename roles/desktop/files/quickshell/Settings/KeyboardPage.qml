@@ -5,38 +5,24 @@ import "InputDraft.js" as Draft
 
 SettingsPage {
     id: page
-    readonly property SystemSettingsBackend service: SystemSettings.input
-    property var draft: ({layouts: [], shortcut: ""})
-    property var original: ({layouts: [], shortcut: ""})
-    property string version: ""
+    readonly property InputDraftState editState: InputDrafts.keyboard
+    readonly property var service: editState.service
+    readonly property var draft: editState.draft
+    readonly property bool dirty: editState.dirty
     property string query: ""
-    readonly property var changes: Draft.patch(draft, original, ["layouts", "shortcut"])
-    readonly property bool dirty: Object.keys(changes).length > 0
     readonly property var catalog: service.snapshot.catalog || []
     readonly property string disabledReason: service.busy ? "Applying…" : !service.loaded ? "Loading…" : ""
     bottomInset: applyBar.reservedHeight
 
-    function load() {
-        if (!service.loaded || !service.snapshot.keyboard) return;
-        original = Draft.clone(service.snapshot.keyboard);
-        draft = Draft.clone(original);
-        version = service.snapshot.version;
-    }
-    function editLayouts(value) { draft = Object.assign({}, draft, {layouts: value}); }
+    function editLayouts(value) { editState.draft = Object.assign({}, draft, {layouts: value}); }
     function variants(layout) {
         const entry = catalog.find(choice => choice.value === layout);
         return entry ? entry.variants : [{value: "", label: I18n.tr("Default")}];
     }
     Claim {
         active: page.visible && Settings.panelOpen
-        onClaimed: { page.service.acquire(); page.load(); }
+        onClaimed: { page.service.acquire(); page.editState.refresh(); }
         onReleased: page.service.release()
-    }
-    Connections {
-        target: page.service
-        function onSnapshotChanged() { if (!page.dirty) page.load(); }
-        function onLoadedChanged() { if (!page.dirty) page.load(); }
-        function onCompleted(result) { if (result.success) page.original = Draft.clone(page.draft); }
     }
     overlay: ApplyBar {
         id: applyBar
@@ -45,8 +31,8 @@ SettingsPage {
         detail: I18n.tr("Layouts apply to your desktop session.")
         busy: page.service.busy
         applyEnabled: page.service.loaded && page.draft.layouts.length > 0
-        onDiscard: page.load()
-        onApply: page.service.run({action: "apply", section: "keyboard", version: page.version, values: page.changes})
+        onDiscard: page.editState.load()
+        onApply: page.editState.apply()
     }
     Column {
         anchors.left: parent.left
@@ -128,7 +114,7 @@ SettingsPage {
                     {value: "grp:alt_shift_toggle", label: I18n.tr("Alt + Shift")}, {value: "grp:ctrl_shift_toggle", label: I18n.tr("Ctrl + Shift")},
                     {value: "grp:caps_toggle", label: I18n.tr("Caps Lock")}], "", page.draft.shortcut)
                 disabledReason: page.disabledReason
-                onPicked: value => page.draft = Object.assign({}, page.draft, {shortcut: value})
+                onPicked: value => page.editState.draft = Object.assign({}, page.draft, {shortcut: value})
             }
             ValueRow {
                 width: parent.width

@@ -144,6 +144,17 @@ SettingsPage {
             width: parent.width
             title: I18n.tr("Backups")
 
+            SettingsHint {
+                width: parent.width
+                visible: page.status.coverage !== ""
+                text: I18n.tr("Includes readable home files, Steam saves and rootless container volumes. Caches, downloaded games, container images and mounted filesystems are excluded.")
+            }
+            SettingsHint {
+                width: parent.width
+                visible: page.status.consistency !== ""
+                text: I18n.tr("Export databases to a readable home folder before backup. Stop databases when backing up their files directly; private container volumes still need a readable export.")
+            }
+
             // ---- Not set up --------------------------------------------
             ValueRow {
                 width: parent.width

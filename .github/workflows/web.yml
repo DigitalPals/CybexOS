@@ -58,7 +58,7 @@ jobs:
             if curl --fail --silent --max-time 2 http://127.0.0.1:5174/ >"$RUNNER_TEMP/cybexos-web.html"; then
               grep -q 'CybexOS' "$RUNNER_TEMP/cybexos-web.html"
               curl --fail --silent --show-error --max-time 10 \
-                http://127.0.0.1:5174/wallpapers/moon-mountains-1280.webp >/dev/null
+                http://127.0.0.1:5174/wallpapers/moon-mountains-1280.png >/dev/null
               exit 0
             fi
             if ! kill -0 "$service_pid" 2>/dev/null; then exit 1; fi

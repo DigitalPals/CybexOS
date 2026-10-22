@@ -473,6 +473,7 @@ python_fixtures=(
   shell-health
   shell-recovery
   repository-policy
+  distribution-review
   application-defaults
   installation-parity
   fedora-release

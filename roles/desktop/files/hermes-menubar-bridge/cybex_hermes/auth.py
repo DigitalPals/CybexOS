@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
+from contextvars import copy_context
 from http.cookiejar import Cookie, CookieJar
 import json
 import os
@@ -11,7 +13,7 @@ from pathlib import Path
 import re
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.request import (
@@ -173,6 +175,9 @@ class RemoteLoginFault(RpcFault):
         super().__init__(code, message, status)
 
 
+RemoteSession = tuple[str, CookieJar]
+
+
 class RemoteWebUIAuth:
     """Origin-bound Hermes WebUI cookie session manager.
 
@@ -192,6 +197,9 @@ class RemoteWebUIAuth:
     def __init__(self, path: Path, environment_url: str | None = None):
         self.path = path
         self._lock = threading.RLock()
+        # Optional discovery and stream reads can occupy every default worker
+        # on a small machine. Authentication must still reach the server.
+        self._auth_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="hermes-auth")
         self.cookie_jar = CookieJar()
         self.base_url = ""
         self.source = "none"
@@ -226,12 +234,34 @@ class RemoteWebUIAuth:
                 message="Remote Hermes has not been checked",
             )
 
+    async def _auth_call(self, function: Callable[..., Any], *args: Any) -> Any:
+        context = copy_context()
+        return await asyncio.get_running_loop().run_in_executor(
+            self._auth_executor, context.run, function, *args
+        )
+
+    def close(self) -> None:
+        # Existing HTTP deadlines bound requests already running; discard work
+        # that has not started without blocking the bridge's event loop.
+        self._auth_executor.shutdown(wait=False, cancel_futures=True)
+
     @property
     def status(self) -> dict[str, Any]:
         # Writers replace ``_status`` wholesale under ``_lock``, so copying the
         # current reference always yields one complete status. Reading it
         # lock-free keeps the event loop off a writer's critical section.
         return dict(self._status)
+
+    @property
+    def session_identity(self) -> RemoteSession:
+        """Private identity for work that must not outlive an origin/sign-in."""
+
+        with self._lock:
+            return self.base_url, self.cookie_jar
+
+    def is_current_session(self, session: RemoteSession) -> bool:
+        with self._lock:
+            return self.base_url == session[0] and self.cookie_jar is session[1]
 
     @staticmethod
     def _jar_cookies(jar: CookieJar) -> list[Cookie]:
@@ -697,7 +727,7 @@ class RemoteWebUIAuth:
             )
 
     async def probe(self, url: Any = None, timeout: float = 10.0) -> dict[str, Any]:
-        return await asyncio.to_thread(self._probe_sync, url, timeout)
+        return await self._auth_call(self._probe_sync, url, timeout)
 
     def _probe_sync(self, url: Any, timeout: float) -> dict[str, Any]:
         with self._lock:
@@ -727,6 +757,11 @@ class RemoteWebUIAuth:
                 # A sign-in or sign-out replaced this session while it was
                 # being probed; the replacement's status is authoritative.
                 return dict(self._status)
+            if status.get("errorKind") == "offline":
+                # Keep a known password requirement across a network outage;
+                # losing it would turn missing credentials into retryable auth.
+                for key in ("authEnabled", "passwordAuthEnabled"):
+                    status[key] = self._status.get(key, False)
             if status["state"] == "expired" and self._jar_cookies(jar):
                 self.cookie_jar = CookieJar()
                 if self.source == "persisted":
@@ -742,7 +777,7 @@ class RemoteWebUIAuth:
             raise RpcFault(-32602, "Password is required")
         if len(password.encode("utf-8")) > 65536:
             raise RpcFault(-32602, "Password is too large")
-        return await asyncio.to_thread(self._login_sync, url, password, timeout)
+        return await self._auth_call(self._login_sync, url, password, timeout)
 
     def _login_sync(
         self, url: Any, password: str, timeout: float
@@ -851,7 +886,7 @@ class RemoteWebUIAuth:
             return dict(status)
 
     async def logout(self, timeout: float = 10.0) -> dict[str, Any]:
-        return await asyncio.to_thread(self._logout_sync, timeout)
+        return await self._auth_call(self._logout_sync, timeout)
 
     def _logout_sync(self, timeout: float) -> dict[str, Any]:
         with self._lock:
@@ -902,12 +937,17 @@ class RemoteWebUIAuth:
         path: str,
         payload: dict[str, Any] | None = None,
         timeout: float = 30.0,
+        *,
+        session: RemoteSession | None = None,
     ) -> dict[str, Any]:
         """Reusable authenticated request primitive for the remote adapter."""
 
-        return await asyncio.to_thread(
-            self._request_json_sync, method, path, payload, timeout
+        session = self.session_identity if session is None else session
+        result = await asyncio.to_thread(
+            self._request_json_sync, method, path, payload, timeout, session
         )
+        self._current_session(session)
+        return result
 
     async def upload_file(
         self,
@@ -931,15 +971,20 @@ class RemoteWebUIAuth:
         )
 
     async def probe_multipart_route(
-        self, path: str, timeout: float = 15.0
+        self, path: str, timeout: float = 15.0, *, session: RemoteSession | None = None
     ) -> int:
         """Return a multipart route's status after a fully consumed empty form."""
 
-        return await asyncio.to_thread(
-            self._probe_multipart_route_sync, path, timeout
+        session = self.session_identity if session is None else session
+        result = await asyncio.to_thread(
+            self._probe_multipart_route_sync, path, timeout, session
         )
+        self._current_session(session)
+        return result
 
-    def _probe_multipart_route_sync(self, path: str, timeout: float) -> int:
+    def _probe_multipart_route_sync(
+        self, path: str, timeout: float, session: RemoteSession | None = None
+    ) -> int:
         boundary = "----HermesMenubarProbe" + uuid.uuid4().hex
         encoded = (
             f"--{boundary}\r\n"
@@ -947,7 +992,7 @@ class RemoteWebUIAuth:
             "\r\n"
             f"--{boundary}--\r\n"
         ).encode("ascii")
-        base_url, jar = self._current_session()
+        base_url, jar = self._current_session(session)
         try:
             response = self._request(
                 base_url,
@@ -969,6 +1014,7 @@ class RemoteWebUIAuth:
             raise RpcFault(-32042, "Remote Hermes is unreachable") from None
         if response["status"] == 401:
             raise self._session_fault(base_url, jar, 401)
+        self._current_session((base_url, jar))
         return int(response["status"])
 
     def _upload_file_sync(
@@ -1046,8 +1092,9 @@ class RemoteWebUIAuth:
         path: str,
         payload: dict[str, Any] | None,
         timeout: float,
+        session: RemoteSession | None = None,
     ) -> dict[str, Any]:
-        base_url, jar = self._current_session()
+        base_url, jar = self._current_session(session)
         try:
             response = self._request(
                 base_url,
@@ -1069,17 +1116,25 @@ class RemoteWebUIAuth:
             raise RpcFault(-32042, "Remote Hermes is unreachable") from None
         if response["status"] == 401:
             raise self._session_fault(base_url, jar, 401)
+        self._current_session((base_url, jar))
         if not 200 <= response["status"] < 300:
             raise self._http_error_fault(response)
         return self._json_response(response)
 
-    async def probe_contract(self, timeout: float = 10.0) -> dict[str, Any]:
+    async def probe_contract(
+        self, timeout: float = 10.0, *, session: RemoteSession | None = None
+    ) -> dict[str, Any]:
         """Read the WebUI's non-streaming SSE capability probe and server tag."""
 
-        return await asyncio.to_thread(self._probe_contract_sync, timeout)
+        session = self.session_identity if session is None else session
+        result = await asyncio.to_thread(self._probe_contract_sync, timeout, session)
+        self._current_session(session)
+        return result
 
-    def _probe_contract_sync(self, timeout: float) -> dict[str, Any]:
-        base_url, jar = self._current_session()
+    def _probe_contract_sync(
+        self, timeout: float, session: RemoteSession | None = None
+    ) -> dict[str, Any]:
+        base_url, jar = self._current_session(session)
         try:
             response = self._request(
                 base_url,
@@ -1097,6 +1152,8 @@ class RemoteWebUIAuth:
             ) from None
         except _RemoteTransportError:
             raise RpcFault(-32042, "Remote Hermes is unreachable") from None
+
+        self._current_session((base_url, jar))
 
         server = re.sub(
             r"[^A-Za-z0-9._/ +()-]", "", str(response["headers"].get("Server", ""))
@@ -1123,10 +1180,12 @@ class RemoteWebUIAuth:
             "fallbackPollMs": max(5000, min(300000, fallback_poll_ms)),
         }
 
-    def _current_session(self) -> tuple[str, CookieJar]:
+    def _current_session(self, expected: RemoteSession | None = None) -> RemoteSession:
         """Snapshot the origin and cookie jar one unlocked request will use."""
 
         with self._lock:
+            if expected is not None and not self.is_current_session(expected):
+                raise RpcFault(-32042, "Remote Hermes session changed during the request")
             if not self.base_url:
                 raise RpcFault(-32040, "Remote Hermes is not configured")
             return self.base_url, self.cookie_jar
@@ -1173,6 +1232,7 @@ class RemoteWebUIAuth:
         *,
         last_event_id: str = "",
         timeout: float = 45.0,
+        session: RemoteSession | None = None,
     ) -> Any:
         """Open one authenticated, same-origin WebUI SSE response.
 
@@ -1182,7 +1242,7 @@ class RemoteWebUIAuth:
         bridge process.
         """
 
-        base_url, jar = self._current_session()
+        base_url, jar = self._current_session(session)
         if not isinstance(path, str) or not path.startswith("/") or "://" in path:
             raise RpcFault(-32602, "Remote Hermes API path is invalid")
         headers = {
@@ -1228,6 +1288,11 @@ class RemoteWebUIAuth:
             raise RpcFault(
                 -32041, "Remote Hermes returned an invalid event stream"
             )
+        try:
+            self._current_session((base_url, jar))
+        except RpcFault:
+            response.close()
+            raise
         return response
 
     def authenticated_headers(self, path: str = "/") -> dict[str, str]:

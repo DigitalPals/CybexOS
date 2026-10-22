@@ -28,6 +28,13 @@ test("the helper's status is typed and bounded before the page shows it", () => 
     const empty = helpers.parseStatus(JSON.stringify({ configured: false, running: false }));
     assert.equal(empty.valid, true);
     assert.equal(empty.configured, false);
+    assert.equal(empty.coverage, "");
+    const coverage = helpers.parseStatus(JSON.stringify({configured: false,
+        coverage: "included saves", consistency: "export databases"}));
+    assert.equal(coverage.coverage, "included saves", "coverage is available before setup");
+    assert.equal(coverage.consistency, "export databases");
+    assert.equal(status({coverage: 42, consistency: "x".repeat(1500)}).coverage, "");
+    assert.equal(status({consistency: "x".repeat(1500)}).consistency.length, 1000);
     const parsed = status({ destination: { type: "evil", display: "x".repeat(500) }, reachable: "yes",
         running: true, progress: { operation: "backup", percent: 7 }, mediaRoot: "relative" });
     assert.equal(parsed.destination.type, "local");
@@ -52,6 +59,11 @@ test("the status line reads as last backup, its health and the next run", () => 
     assert.equal(helpers.tone(failed), "error");
     assert.equal(helpers.hintTone(failed), "error");
     assert.equal(helpers.statusHint(failed, due, now, format), "The backup destination is full.");
+    const partial = status({lastResult: "partial", lastError: "Some container files could not be read. Export the data first."});
+    assert.equal(helpers.tone(partial), "warning");
+    assert.equal(helpers.hintTone(partial), "warning");
+    assert.equal(helpers.statusHint(partial, due, now, format), partial.lastError);
+    assert.match(helpers.statusHint(status({lastResult: "partial"}), due, now, format), /backup is incomplete/);
     const stale = status({ stale: true });
     assert.equal(helpers.tone(stale), "warning");
     assert.match(helpers.statusHint(stale, due, now, format), /^More than a week since the last backup\./);

@@ -6,7 +6,7 @@ import "LocalTime.js" as LocalTime
 
 // Recovery points on the Backup & recovery page: taken before every update, bootable
 // from GRUB, restorable here. The recovery-boot notification scrolls to it
-// (settingKey "recoveryPoints").
+// (searchAnchor "recoveryPoints").
 //
 // Each point is a row named by when it was taken, in local time; the boot
 // menu lists points in UTC, so a bootable point also gives that stamp.
@@ -14,7 +14,7 @@ import "LocalTime.js" as LocalTime
 // with Confirm restore and Cancel.
 SettingsGroup {
     id: recoveryGroup
-    readonly property string settingKey: "recoveryPoints"
+    readonly property string searchAnchor: "recoveryPoints"
     property string confirmId: ""
     // The page's clock, so "Today" turns into "Yesterday" at midnight.
     property real nowMs: Date.now()

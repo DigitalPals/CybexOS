@@ -234,10 +234,10 @@ test("closing settings releases the page after a short keep-alive", () => {
 
 test("plugin discovery keeps the last good state and cannot wedge", () => {
     const plugins = read("Common/UserPlugins.qml");
-    const handler = plugins.slice(plugins.indexOf("id: scanner"), plugins.indexOf("id: writer"));
-    const guard = handler.indexOf("if (result.error || !Array.isArray(result.plugins))");
+    const handler = functionSource(plugins, "settleDiscovery");
+    const guard = handler.indexOf("if (!result || result.error || !Array.isArray(result.plugins))");
     assert.ok(guard > 0, "a registry error must not be applied");
-    assert.ok(guard < handler.indexOf("root.plugins = result.plugins"));
+    assert.ok(guard < handler.indexOf("plugins = result.plugins"));
     assert.match(plugins, /id: scanWatchdog[^]*?scanner\.running = false;/);
     assert.match(plugins, /interval: Settings\.panelOpen && \(Settings\.page === "bar" \|\| Settings\.page === "plugins"\) \? 2000 : 300000/);
     // Package trees are polled only for an enabled plugin, never while idle.
@@ -255,7 +255,8 @@ test("plugin discovery keeps the last good state and cannot wedge", () => {
         assert.doesNotMatch(exited.slice(0, exited.indexOf("}")),
             /refresh|nextWrite|widgetMembershipFinished/, id + " must not settle in onExited");
     }
-    assert.match(plugins, /exitSeen \? lastExit : ProcHelpers\.NOT_STARTED[\s\S]{0,700}?Qt\.callLater\(root\.nextWrite\)/);
+    assert.match(plugins, /const code = exitSeen \? lastExit : ProcHelpers\.NOT_STARTED;\s*root\.settleWrite\(code, command, errorText\)/);
+    assert.match(functionSource(plugins, "settleWrite"), /Qt\.callLater\(root\.nextWrite\)/);
 });
 
 test("one plugin's exception cannot abort the registry sync", () => {

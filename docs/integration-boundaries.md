@@ -10,6 +10,13 @@ transport lifetime, domain state and view code have separate owners:
   coordinates the conversation domain and keeps its public imports for tools
   and existing tests. Modules never import the bridge entrypoint. Both install
   paths must ship the package beside the executable.
+  Authentication/status replies do not wait for optional discovery or the
+  conversation list. Discovery shares in-flight work and caches results for
+  the current origin and sign-in session; replacing that session cancels stale
+  work. An initially unreachable configured remote retries with exponential
+  backoff capped at five minutes, stopping for expired or known missing
+  authentication. A healthy local bridge socket alone does not establish
+  remote connectivity.
 - **GitHub:** `GitHubQueue.js` implements deterministic deduplication and
   interactive FIFO priority. `CommandRequest.qml` owns subprocess output,
   launch failure and bounded termination. `GitHub.qml` owns caches, conditional

@@ -191,7 +191,7 @@ test("the launcher defaults to Apps and exposes the discoverable provider tabs",
         /Qt\.Key_Left\) \{\s*cycleTab\(-1\);[\s\S]*Qt\.Key_Right\) \{\s*cycleTab\(1\);/);
     assert.doesNotMatch(view,
         /Qt\.NoModifier[\s\S]{0,80}Qt\.Key_(?:Left|Right)/,
-        "arrow tab navigation must tolerate compositor keyboard flags");
+        "empty-input arrow navigation must tolerate compositor keyboard flags");
     assert.match(view, /Accessible\.role:\s*Accessible\.PageTab/);
 });
 

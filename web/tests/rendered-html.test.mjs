@@ -18,7 +18,7 @@ test('production Worker renders the desktop and its metadata', async () => {
 });
 
 test('production assets and Sites metadata are packaged', async () => {
-  for (const width of [1280, 2560, 5120]) await access(new URL(`../dist/client/wallpapers/moon-mountains-${width}.webp`, import.meta.url));
+  for (const width of [1280, 2560, 5120]) await access(new URL(`../dist/client/wallpapers/moon-mountains-${width}.png`, import.meta.url));
   await access(new URL('../dist/client/cybex-wordmark.svg', import.meta.url));
   const [packaged, source] = await Promise.all(['../dist/.openai/hosting.json', '../.openai/hosting.json'].map(path => readFile(new URL(path, import.meta.url), 'utf8')));
   assert.deepEqual(JSON.parse(packaged), JSON.parse(source));

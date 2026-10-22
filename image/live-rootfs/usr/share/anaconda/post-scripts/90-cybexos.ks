@@ -79,7 +79,7 @@ restorecon -RF /etc/cybexos /var/lib/AccountsService/users
 # Provisioning first records the account's installation choices, never a
 # password, in /etc/cybexos/config.yml; the target helper below updates its
 # autologin choice after verifying encryption. `cybex configure` changes them.
-/usr/libexec/cybexos-configure-installed --offline
+/usr/libexec/cybexos-configure-installed --offline --installer-target
 restorecon -RF /etc/cybexos
 /usr/libexec/cybexos-seed-installed-users
 # Anaconda's initial initramfs was created before this post script removed the

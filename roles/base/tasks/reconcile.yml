@@ -10,13 +10,16 @@
   ansible.builtin.group:
     name: "{{ item }}"
     state: present
-  loop: "{{ base_account_groups + ((features.docker | bool and docker_sudoless | bool) | ternary(['docker'], [])) }}"
+  loop: "{{ base_account_groups }}"
 
 - name: Add selected account groups while preserving the login shell
   ansible.builtin.user:
     name: "{{ primary_user }}"
-    groups: "{{ (base_account_groups + ((features.docker | bool and docker_sudoless | bool) | ternary(['docker'], []))) | join(',') }}"
+    groups: "{{ base_account_groups | join(',') }}"
     append: true
+
+- name: Apply the shared Docker administrator access policy
+  ansible.builtin.import_tasks: docker-access.yml
 
 - name: Reconcile owned sudo policy
   cybexos_managed_file:

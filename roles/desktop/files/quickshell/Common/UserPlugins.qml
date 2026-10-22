@@ -11,7 +11,9 @@ Singleton {
     property var plugins: []
     property var widgets: []
     property var barConfig: ({})
-    property string error: ""
+    property string discoveryError: ""
+    property string mutationError: ""
+    readonly property string error: [mutationError, discoveryError].filter(message => message !== "").join("\n")
     property string lastResult: ""
     property var pendingWrites: []
     readonly property bool busy: writer.running || pendingWrites.length > 0
@@ -96,40 +98,58 @@ Singleton {
     function nextWrite() {
         if (writer.running || pendingWrites.length === 0)
             return;
-        error = "";
+        mutationError = "";
         operationResult = "";
         writer.command = pendingWrites[0];
         pendingWrites = pendingWrites.slice(1);
         writer.running = true;
     }
 
+    function settleDiscovery(code, text, timedOut) {
+        if (code !== 0 || timedOut) {
+            discoveryError = timedOut ? "Plugin discovery timed out" : "Could not inspect user widgets";
+            return;
+        }
+        try {
+            const result = JSON.parse(text);
+            if (!result || result.error || !Array.isArray(result.plugins)) {
+                // A malformed registry must never unload the last good set.
+                discoveryError = result && result.error || "Could not read user widgets";
+                return;
+            }
+            // Recovery can return the very same bytes as the last good scan.
+            // Settle health first, then avoid recreating unchanged plugins.
+            discoveryError = "";
+            if (text === lastResult)
+                return;
+            barConfig = result.bar || {};
+            widgets = result.widgets || [];
+            plugins = result.plugins;
+            lastResult = text;
+        } catch (exception) {
+            discoveryError = "Could not read user widgets";
+        }
+    }
+
+    function settleWrite(code, command, errText) {
+        mutationError = code === 0 ? "" : ProcHelpers.commandError("user-plugins.py", code, errText);
+        if (command[2] === "configure-widget") {
+            const changes = JSON.parse(command[4]);
+            if (typeof changes.enabled === "boolean")
+                widgetMembershipFinished(command[3], changes.enabled, code === 0,
+                    code === 0 ? "" : mutationError);
+        }
+        refresh();
+        Qt.callLater(root.nextWrite);
+    }
+
     Process {
         id: scanner
         property bool timedOut: false
+        property string output: ""
         command: ["python3", root.helper, "list", "--live"]
         stdout: StdioCollector {
-            onStreamFinished: {
-                if (text === root.lastResult)
-                    return;
-                try {
-                    const result = JSON.parse(text);
-                    if (result.error || !Array.isArray(result.plugins)) {
-                        // A malformed or half-written registry is shown, never
-                        // repaired with defaults — and never applied: an empty
-                        // list would unload every running plugin until the
-                        // next good scan. Keep the last good state.
-                        root.error = result.error || "Could not read user widgets";
-                        return;
-                    }
-                    root.error = "";
-                    root.barConfig = result.bar || {};
-                    root.widgets = result.widgets || [];
-                    root.plugins = result.plugins;
-                    root.lastResult = text;
-                } catch (exception) {
-                    root.error = "Could not read user widgets";
-                }
-            }
+            onStreamFinished: scanner.output = text
         }
         property bool exitSeen: false
         property int lastExit: 0
@@ -142,14 +162,14 @@ Singleton {
         onRunningChanged: {
             if (running) {
                 timedOut = false;
+                output = "";
                 exitSeen = false;
                 lastExit = 0;
                 scanWatchdog.restart();
                 return;
             }
             scanWatchdog.stop();
-            if (!exitSeen || lastExit !== 0)
-                root.error = timedOut ? "Plugin discovery timed out" : "Could not inspect user widgets";
+            root.settleDiscovery(exitSeen ? lastExit : ProcHelpers.NOT_STARTED, output, timedOut);
             if (root.refreshPending) {
                 root.refreshPending = false;
                 Qt.callLater(root.refresh);
@@ -161,14 +181,12 @@ Singleton {
         id: writer
         property bool exitSeen: false
         property int lastExit: 0
+        property string errorText: ""
         stdout: StdioCollector {
             onStreamFinished: root.operationResult = text.trim()
         }
         stderr: StdioCollector {
-            onStreamFinished: {
-                if (text.trim())
-                    root.error = text.trim();
-            }
+            onStreamFinished: writer.errorText = text.trim()
         }
         onExited: (code, status) => {
             writer.exitSeen = true;
@@ -181,19 +199,11 @@ Singleton {
             if (running) {
                 exitSeen = false;
                 lastExit = 0;
+                errorText = "";
                 return;
             }
             const code = exitSeen ? lastExit : ProcHelpers.NOT_STARTED;
-            if (code === ProcHelpers.NOT_STARTED && root.error === "")
-                root.error = ProcHelpers.commandError("user-plugins.py", code, "");
-            if (command[2] === "configure-widget") {
-                const changes = JSON.parse(command[4]);
-                if (typeof changes.enabled === "boolean")
-                    root.widgetMembershipFinished(command[3], changes.enabled, code === 0,
-                        code === 0 ? "" : root.error || "Could not save widget changes");
-            }
-            root.refresh();
-            Qt.callLater(root.nextWrite);
+            root.settleWrite(code, command, errorText);
         }
     }
 
@@ -206,7 +216,7 @@ Singleton {
             if (!scanner.running)
                 return;
             scanner.timedOut = true;
-            root.error = "Plugin discovery timed out";
+            root.discoveryError = "Plugin discovery timed out";
             scanner.running = false;
         }
     }

@@ -15,7 +15,7 @@ from unittest.mock import patch
 import jinja2
 import yaml
 
-from desktop_payload import KITTY_INCLUDE, prepare_session, split_seed
+from desktop_payload import KITTY_INCLUDE, prepare_defaults, prepare_session, split_seed
 from provision_payload import prepare_provision
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -244,6 +244,89 @@ class ProvisioningContract(unittest.TestCase):
                                              'ANSIBLE_ROLES_PATH': str(provision / 'roles')},
                                         text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class WallpaperPreferencesParity(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix='cybexos-wallpaper-parity-')
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.managed = load('wallpaper_seed_writer', 'image/library/cybexos_managed_file.py')
+        self.contract = json.loads((ROOT / 'assets/desktop-contract.json').read_text())
+        self.seed_task = task('roles/dotfiles/tasks/wallpapers.yml',
+                              'Seed shell preferences only when the file is absent')['cybexos_managed_file']
+        self.assertTrue(self.seed_task['seed_only'])
+        environment = jinja2.Environment(undefined=jinja2.StrictUndefined)
+        environment.filters['bool'] = bool
+        environment.filters['ternary'] = lambda condition, yes, no: yes if condition else no
+        environment.filters['to_nice_json'] = lambda value: json.dumps(value, indent=4)
+        self.content = environment.from_string(self.seed_task['content']).render(
+            cybexos_desktop_contract=self.contract).encode()
+        prepare_defaults(ROOT, self.root / 'payload', environment, INVENTORY)
+        self.iso_source = self.root / 'payload/usr/share/cybexos/user-seed/.config/cybexos/shell.json'
+
+    def checkout(self, target):
+        return self.managed.manage(target, self.content, self.root / 'unused-ledger',
+                                   seed_only=self.seed_task['seed_only'],
+                                   mode=int(self.seed_task['mode'], 8))
+
+    def test_absent_and_explicit_preferences_produce_the_same_outcomes(self):
+        originals = [None, b'{"v":27,"wall":""}\n', b'{"v":27}\n',
+                     b'{"v":27,"wall":"mine.png","future":{"retain":true}}\n',
+                     b'{"wallDir":"/srv/my-wallpapers","wall":""}\n',
+                     b'{"v":999,"unknown":{"wall":"future"}}\n', b'{broken JSON', b'']
+        for index, original in enumerate(originals):
+            with self.subTest(original=original):
+                paths = [self.root / f'{index}-{path}/shell.json' for path in ('checkout', 'iso')]
+                for path in paths:
+                    path.parent.mkdir()
+                    if original is not None:
+                        path.write_bytes(original)
+                        path.chmod(0o640)
+                result = self.checkout(paths[0])
+                INIT.copy_absent(self.iso_source, paths[1])
+                self.assertEqual(result['changed'], original is None)
+                if original is None:
+                    self.assertEqual(json.loads(paths[0].read_bytes()), json.loads(paths[1].read_bytes()))
+                    self.assertEqual(json.loads(paths[0].read_bytes()), self.contract['shell'])
+                else:
+                    for path in paths:
+                        self.assertEqual(path.read_bytes(), original)
+                        self.assertEqual(path.stat().st_mode & 0o777, 0o640)
+                self.assertFalse(self.checkout(paths[0])['changed'])
+        self.assertFalse((self.root / 'unused-ledger').exists(), 'personal files must not be adopted')
+
+    def test_concurrent_creation_and_symlinks_take_precedence_on_both_paths(self):
+        link = os.link
+        for name, operation in (('checkout', self.checkout),
+                                ('iso', lambda target: INIT.copy_absent(self.iso_source, target))):
+            path = self.root / name / 'shell.json'
+            path.parent.mkdir()
+
+            def publish_user_edit(source, destination):
+                Path(destination).write_text('{"wall":"","future":"concurrent edit"}\n')
+                return link(source, destination)
+
+            with patch.object(os, 'link', publish_user_edit):
+                operation(path)
+            self.assertEqual(path.read_text(), '{"wall":"","future":"concurrent edit"}\n')
+            self.assertEqual(list(path.parent.glob('.cybexos-seed-*')), [])
+            path.unlink()
+            path.symlink_to(path.parent / 'missing-personal-settings')
+            operation(path)
+            self.assertTrue(path.is_symlink())
+            self.assertFalse(path.exists())
+
+    def test_failed_seed_publication_cleans_up_and_can_retry(self):
+        path = self.root / 'retry/shell.json'
+        path.parent.mkdir()
+        with patch.object(os, 'link', side_effect=OSError('fixture publication failure')):
+            with self.assertRaisesRegex(OSError, 'publication failure'):
+                self.checkout(path)
+        self.assertFalse(path.exists())
+        self.assertEqual(list(path.parent.iterdir()), [])
+        self.assertTrue(self.checkout(path)['changed'])
+        self.assertEqual(json.loads(path.read_bytes()), self.contract['shell'])
 
 
 class SessionPayload(unittest.TestCase):

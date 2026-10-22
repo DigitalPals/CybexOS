@@ -98,11 +98,21 @@ SYSTEM_FOLDERS = frozenset(("bin", "boot", "dev", "etc", "lib", "lib64", "proc",
 HOME_EXCLUDES = (
     ".cache",
     ".local/share/Trash",
-    ".local/share/Steam",
-    ".steam",
     ".var/app/*/cache",
-    ".local/share/containers",
-    ".local/share/docker",
+    # Image/build stores include disposable writable layers; named volumes
+    # remain personal data when readable by this user. Private subordinate-UID
+    # data needs a readable export; live databases also need consistency.
+    ".local/share/containers/storage/overlay",
+    ".local/share/containers/storage/overlay-images",
+    ".local/share/containers/storage/overlay-layers",
+    ".local/share/containers/storage/vfs",
+    ".local/share/containers/storage/vfs-images",
+    ".local/share/containers/storage/vfs-layers",
+    ".local/share/containers/cache",
+    ".local/share/docker/overlay2",
+    ".local/share/docker/image",
+    ".local/share/docker/buildkit",
+    ".local/share/docker/containerd",
     ".local/share/flatpak",
     ".local/share/cybexos/runtime",
     ".local/share/cybexos/releases",
@@ -133,6 +143,26 @@ HOME_EXCLUDES = (
     ".config/**/ShaderCache",
     ".config/**/Service Worker/CacheStorage",
     ".config/**/component_crx_cache",
+) + tuple(
+    root + "/" + relative
+    for root in (".local/share/Steam", ".steam", ".steam/steam", ".steam/root",
+                 ".var/app/com.valvesoftware.Steam/.local/share/Steam")
+    for relative in ("appcache", "depotcache", "package", "logs", "config/htmlcache",
+                     "steamapps/common", "steamapps/downloading", "steamapps/shadercache",
+                     "steamapps/temp", "steamapps/workshop/downloads")
+)
+BACKUP_COVERAGE = (
+    "Includes readable home files, Steam userdata and Proton saves, and readable rootless container volumes. "
+    "Skips caches, downloaded games, container images and writable layers, and mounted filesystems. "
+    "Run cybex backup excludes for all exclusions."
+)
+BACKUP_CONSISTENCY = (
+    "Live database files may be inconsistent. Export databases to a home folder readable by your account "
+    "before backup (for example pg_dump or mysqldump), or stop the database for the whole backup. "
+    "Private container volumes owned by subordinate UIDs require readable exports; stopping the database "
+    "alone does not make those files readable. "
+    "Keep persistent container data in volumes or home bind mounts; system paths and mounts "
+    "outside the home filesystem are not included."
 )
 # Dependency trees and build output, wherever a project keeps them. Cargo's
 # target/ and most tool caches carry CACHEDIR.TAG, which --exclude-caches
@@ -160,10 +190,11 @@ BROWSER_PROFILES = (
 class Failure(Exception):
     """A failure to report in plain words, with its exit status."""
 
-    def __init__(self, message, status=EXIT_FAILED):
+    def __init__(self, message, status=EXIT_FAILED, *, result="failed"):
         super().__init__(message)
         self.message = message
         self.status = status
+        self.result = result
 
 
 class Context:
@@ -580,18 +611,32 @@ class Restic:
                 os.close(descriptor)
         errors = collections.deque(maxlen=40)
         lines = []
+        # restic --json emits error records on stderr, beside its plain-text
+        # diagnostics. Deliver both streams without concurrently mutating Progress.
+        stream_lock = threading.Lock()
+
+        def report(line):
+            with stream_lock:
+                on_line(line.rstrip("\n"))
+
+        def read_errors():
+            for line in process.stderr:
+                errors.append(line)
+                if on_line is not None:
+                    report(line)
+
         with process:
             # stderr drains beside stdout, so neither pipe can fill and stall restic.
-            drain = threading.Thread(target=lambda: errors.extend(process.stderr), daemon=True)
+            drain = threading.Thread(target=read_errors, daemon=True)
             drain.start()
             for line in process.stdout:
                 line = line.rstrip("\n")
                 if on_line is None:
                     lines.append(line)
                 else:
-                    on_line(line)
+                    report(line)
             status = process.wait()
-            drain.join(5)
+            drain.join()
         return status, lines, "".join(errors)
 
     def explain(self, status, stderr):
@@ -708,7 +753,8 @@ class Progress:
         self.started = stamp(utcnow())
         self.last_write = 0.0
         self.summary = None
-        self.errors = []
+        self.errors = collections.deque(maxlen=40)
+        self.error_count = 0
         self.write({"percent": 0})
 
     def write(self, values):
@@ -728,7 +774,10 @@ class Progress:
             self.summary = message
         elif kind == "error":
             error = message.get("error") or {}
-            self.errors.append(f"{message.get('item', '')}: {error.get('message', '')}".strip(": "))
+            detail = error.get("message", "") if isinstance(error, dict) else str(error)
+            self.error_count += 1
+            self.errors.append(f"{message.get('item', '')}: {detail}".strip(": ")
+                               or "restic reported an unspecified read error")
         elif kind == "status" and time.monotonic() - self.last_write >= 1:
             self.last_write = time.monotonic()
             percent = message.get("percent_done") or 0
@@ -960,22 +1009,46 @@ def run_backup(context, config, password, echo=False):
     status, _, stderr = repository.run(backup_arguments(context, config), password,
                                        on_line=progress)
     progress.finish()
-    # 3: the snapshot was made, but some files could not be read.
+    # 3: a snapshot can be saved, but files/directories were omitted. A denied
+    # directory can hide any number of files; count reported read errors only.
     if status not in (0, 3):
         raise Failure(repository.explain(status, stderr))
     summary = progress.summary or {}
     now = utcnow()
-    state = update_state(context, lastSuccess=stamp(now), lastAttempt=stamp(now), lastResult="ok",
-                         lastError="", lastSkip="",
+    incomplete = status == 3 or progress.error_count > 0
+    errors = list(progress.errors)
+    if incomplete:
+        if progress.error_count:
+            detail = (f"{progress.error_count} read error(s) were reported. "
+                      "Files or directories were omitted; the total number of missing files is unknown.")
+        else:
+            detail = "Some files or directories could not be read; the unreadable count is unknown."
+            if stderr.strip():
+                errors = [stderr.strip()]
+        message = "Backup incomplete. " + detail
+        if summary.get("snapshot_id"):
+            message += " A partial snapshot was saved; its readable files can be restored."
+        else:
+            message += " Check the available snapshots for saved files."
+        if errors:
+            message += " Restic: " + errors[0]
+    else:
+        message = ""
+    state = update_state(context, lastAttempt=stamp(now),
+                         lastResult="partial" if incomplete else "ok", lastError=message, lastSkip="",
                          lastSnapshot=summary.get("snapshot_id", ""),
                          lastSummary={"files": summary.get("total_files_processed", 0),
                                       "bytes": summary.get("total_bytes_processed", 0),
                                       "added": summary.get("data_added", 0),
-                                      "unreadable": len(progress.errors) if status == 3 else 0})
+                                      "unreadable": (progress.error_count or None) if incomplete else 0,
+                                      "errors": errors})
+    if incomplete:
+        # Preserve the last complete success and all snapshots. Do not apply
+        # retention after an incomplete run or suppress the next scheduled retry.
+        raise Failure(message, result="partial")
+    update_state(context, lastSuccess=stamp(now))
     line = (f"Backed up {summary.get('total_files_processed', 0):,} files "
             f"({human_size(summary.get('data_added', 0))} new) to {config['destination']['display']}.")
-    if status == 3:
-        line += f" {len(progress.errors)} could not be read."
     last_maintenance = parse_time(state.get("lastMaintenance"))
     if last_maintenance is None or now - last_maintenance >= MAINTAIN_AFTER:
         maintenance = Progress(context, "cleanup")
@@ -990,9 +1063,9 @@ def run_backup(context, config, password, echo=False):
     return line
 
 
-def record_failure(context, message, notify_user, now=None):
+def record_failure(context, message, notify_user, now=None, *, result="failed"):
     now = now or utcnow()
-    state = update_state(context, lastAttempt=stamp(now), lastResult="failed", lastError=message)
+    state = update_state(context, lastAttempt=stamp(now), lastResult=result, lastError=message)
     if notify_user and failure_notice_due(state, message, now):
         update_state(context, failureNotice={"date": now.astimezone().date().isoformat(),
                                              "message": message})
@@ -1012,10 +1085,11 @@ def back_up_now(context, notify_user):
             return run_backup(context, config, password, echo=sys.stderr.isatty())
         except Failure as error:
             failure = error
-            record_failure(context, error.message, False)
+            record_failure(context, error.message, False, result=error.result)
     # Notified after the lock is released, so Settings already shows the result.
     if notify_user:
-        notify(context, "Backup failed", failure.message, "critical")
+        notify(context, "Backup incomplete" if failure.result == "partial" else "Backup failed",
+               failure.message, "normal" if failure.result == "partial" else "critical")
     raise failure
 
 
@@ -1056,8 +1130,10 @@ def scheduled(context, now=None):
                     except KeyringLocked:
                         skip, reason = "keyring", "Unlock the keyring to back up."
                     except Failure as error:
-                        if record_failure(context, error.message, True, now):
-                            notice = ("Backup failed", error.message, "critical")
+                        if record_failure(context, error.message, True, now, result=error.result):
+                            notice = (("Backup incomplete", error.message, "normal")
+                                      if error.result == "partial" else
+                                      ("Backup failed", error.message, "critical"))
                 if skip:
                     update_state(context, lastSkip=skip, lastSkipAt=stamp(now))
             state = load_state(context)
@@ -1100,7 +1176,8 @@ def status_report(context, now=None):
     progress = progress_info(context)
     report = {"configured": config is not None, "running": progress is not None,
               "progress": progress, "lastRestore": state.get("lastRestore"),
-              "mediaRoot": media_root()}
+              "mediaRoot": media_root(), "coverage": BACKUP_COVERAGE,
+              "consistency": BACKUP_CONSISTENCY}
     if config is None:
         return report
     reachable, reason = destination_reachable(config["destination"])
@@ -1126,6 +1203,8 @@ def status_report(context, now=None):
 
 
 def print_status(report):
+    print(report["coverage"])
+    print(report["consistency"])
     if not report["configured"]:
         print("Backups are not set up. Run: cybex backup setup local PATH, or "
               "cybex backup setup sftp HOST [PATH].")
@@ -1135,9 +1214,9 @@ def print_status(report):
           + ("" if report["reachable"] is not False else " (" + report["unreachableReason"] + ")"))
     print("Automatic:    " + ("daily" if report["automatic"] else "off"))
     last = parse_time(report["lastSuccess"])
-    print("Last backup:  " + (last.astimezone().strftime("%Y-%m-%d %H:%M") if last else "never"))
-    if report["lastResult"] == "failed":
-        print("Last attempt: failed: " + report["lastError"])
+    print("Last complete backup: " + (last.astimezone().strftime("%Y-%m-%d %H:%M") if last else "never"))
+    if report["lastResult"] in ("failed", "partial"):
+        print("Last attempt: " + report["lastResult"] + ": " + report["lastError"])
     if report["running"]:
         progress = report["progress"]
         print(f"Running:      {progress['operation']} {progress['percent'] * 100:.0f} %")
@@ -1375,7 +1454,8 @@ def main(argv=None, environ=None, program=None):
             start_timer()
             if getattr(arguments, "json", False):
                 print(json.dumps({"ok": True, "destination": config["destination"]["display"],
-                                  "recoveryKey": recovery or ""}))
+                                  "recoveryKey": recovery or "", "coverage": BACKUP_COVERAGE,
+                                  "consistency": BACKUP_CONSISTENCY}))
             elif recovery:
                 print(f"Backups go to {config['destination']['display']}.\n\nRecovery key:\n\n"
                       f"    {recovery}\n\nSave it somewhere safe, such as a password manager. It "
@@ -1384,6 +1464,9 @@ def main(argv=None, environ=None, program=None):
                       "cybex backup confirm-key")
             else:
                 print(f"Connected the backups at {config['destination']['display']}.")
+            if not getattr(arguments, "json", False):
+                print(BACKUP_COVERAGE)
+                print(BACKUP_CONSISTENCY)
         elif arguments.command == "confirm-key":
             config = require_config(context)
             config["recoveryKeyConfirmed"] = True
@@ -1424,6 +1507,8 @@ def main(argv=None, environ=None, program=None):
             if config["automatic"]:
                 start_timer()
         elif arguments.command == "excludes":
+            print(BACKUP_COVERAGE)
+            print(BACKUP_CONSISTENCY)
             config = load_config(context) or {"destination": {}}
             arguments_list = exclude_arguments(context, config)
             for flag, value in zip(arguments_list, arguments_list[1:]):

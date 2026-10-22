@@ -10,8 +10,11 @@ import json
 import os
 from pathlib import Path
 import pwd
+import signal
 import subprocess
 import sys
+import time
+import uuid
 
 
 PROVISION = Path('/usr/share/cybexos/provision')
@@ -26,6 +29,143 @@ def load(name, path):
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
     return module
+
+
+# A fixed unit also fences an orphaned workload after its caller is killed.
+# setsid/double-fork do not escape a systemd cgroup; process groups do.
+WORK_UNIT = 'cybexos-provision-work.service'
+WORK_CGROUP = Path('/sys/fs/cgroup/system.slice') / WORK_UNIT
+
+
+def populated():
+    try:
+        return 'populated 1' in (WORK_CGROUP / 'cgroup.events').read_text().splitlines()
+    except FileNotFoundError:
+        return False
+
+
+def require_manager():
+    if not Path('/sys/fs/cgroup/cgroup.controllers').is_file():
+        raise RuntimeError('Live provisioning requires the systemd cgroup v2 manager')
+    subprocess.run(['/usr/bin/systemctl', 'show', '--property=Version', '--value'],
+                   check=True, stdout=subprocess.DEVNULL, timeout=30)
+
+
+def drain_workload():
+    """Keep the provisioning lock until the entire previous workload is gone."""
+    require_manager()
+    try:
+        subprocess.run(['/usr/bin/systemctl', 'stop', WORK_UNIT], check=False,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+    except subprocess.TimeoutExpired:
+        pass
+    warned = False
+    while populated():
+        # cgroup.kill includes sub-cgroups and detached descendants atomically.
+        # An unkillable kernel task must fence further provisioning/recovery,
+        # rather than releasing serialization on an unverified timeout.
+        try:
+            (WORK_CGROUP / 'cgroup.kill').write_text('1\n')
+        except FileNotFoundError:
+            continue
+        if not warned:
+            print('Waiting for the provisioning cgroup to become empty; serialization remains held',
+                  file=sys.stderr, flush=True)
+            warned = True
+        time.sleep(0.1)
+    subprocess.run(['/usr/bin/systemctl', 'reset-failed', WORK_UNIT], check=False,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+
+
+def drain():
+    # Cancellation cannot unwind the lock's context before teardown finishes.
+    blocked = {signal.SIGTERM, signal.SIGHUP, signal.SIGINT}
+    previous = signal.pthread_sigmask(signal.SIG_BLOCK, blocked)
+    try:
+        drain_workload()
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous)
+
+
+def provision_output(identifier, cursor=None):
+    """Read a bounded journal batch for this launch, including after collection."""
+    command = ['/usr/bin/journalctl', '--boot', '--no-pager', '--output=short-precise',
+               '--show-cursor', '--lines=100', 'SYSLOG_IDENTIFIER=' + identifier]
+    if cursor:
+        command += ['--after-cursor=' + cursor]
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=5)
+        output = []
+        for line in result.stdout.splitlines(keepends=True):
+            if line.startswith('-- cursor: '):
+                cursor = line.removeprefix('-- cursor: ').strip()
+            else:
+                output.append(line)
+        # Bound caller output as well as the number of journal entries.
+        text = ''.join(output)
+        if len(text) > 32768:
+            print('[Provisioning journal batch truncated to its last 32768 characters]', flush=True)
+        if text:
+            print(text[-32768:], end='' if text.endswith('\n') else '\n', flush=True)
+    except (OSError, subprocess.SubprocessError) as error:
+        # Diagnostic failure must never hide the worker's result or its drain.
+        print(f'Provisioning journal unavailable ({identifier}): {error}', file=sys.stderr, flush=True)
+    return cursor
+
+
+def contained(command, *, env, cwd=None, timeout=600):
+    # Called only while main owns provision.lock. Drain a preceding caller's
+    # abandoned unit before launching anything or changing saved choices.
+    drain()
+    # Journal snapshots preserve service containment without forwarding caller
+    # descriptors to PID 1. --wait still depends on the public manager bus.
+    # A fresh identifier prevents the fixed unit's older launches leaking in.
+    identifier = 'cybexos-provision-' + uuid.uuid4().hex
+    launch = ['/usr/bin/systemd-run', '--system', '--quiet', '--wait', '--collect',
+              '--unit=' + WORK_UNIT, '--service-type=exec',
+              '--property=ExitType=cgroup', '--property=KillMode=control-group',
+              '--property=StandardOutput=journal', '--property=StandardError=journal',
+              '--property=SyslogIdentifier=' + identifier,
+              '--property=TimeoutStopSec=15s', '--property=SendSIGKILL=yes',
+              '--property=RuntimeMaxSec=' + str(timeout) + 's']
+    if cwd:
+        launch += ['--working-directory=' + str(cwd)]
+    launch += ['--setenv=' + key + '=' + value for key, value in env.items()]
+    launch += ['--', *command]
+    cursor = None
+    print(f'Provisioning in {WORK_UNIT} (limit {timeout}s); journal identifier: {identifier}', flush=True)
+    try:
+        # Poll finite journal snapshots, never an orphanable journal follower.
+        # Kill the client on cancellation and let its context reap it. Only
+        # drain() establishes that its service and detached descendants stopped.
+        with subprocess.Popen(launch, env=env) as client:
+            deadline = time.monotonic() + timeout + 60
+            try:
+                while True:
+                    try:
+                        result = client.wait(timeout=max(.01, min(15, deadline - time.monotonic())))
+                    except subprocess.TimeoutExpired:
+                        if time.monotonic() >= deadline:
+                            raise subprocess.TimeoutExpired(launch, timeout + 60) from None
+                        print(f'Provisioning still running in {WORK_UNIT}', flush=True)
+                        cursor = provision_output(identifier, cursor)
+                    else:
+                        if result:
+                            raise subprocess.CalledProcessError(result, launch)
+                        break
+            finally:
+                if client.poll() is None:
+                    client.kill()
+    finally:
+        # A timed-out systemd-run client is not proof that its unit stopped.
+        try:
+            drain()
+        finally:
+            provision_output(identifier, cursor)
+
+
+def interrupted(signum, _frame):
+    raise InterruptedError('Provisioning interrupted by signal ' + str(signum))
 
 
 def encrypted_root():
@@ -77,7 +217,7 @@ def accounts(entries, selected=None):
             and (selected is None or entry.pw_name == selected)]
 
 
-def configure(account, offline=False, hardware=False, reconcile=False, automatic=False):
+def configure(account, offline=False, hardware=False, reconcile=False, automatic=False, installer_target=False):
     # Do not inherit a user's callback plugins, Ansible configuration or Python
     # path into a root provisioning process. The payload contains reviewed roles.
     environment = {
@@ -97,6 +237,9 @@ def configure(account, offline=False, hardware=False, reconcile=False, automatic
         # an explicit cybex repair --hardware.
         'cybexos_hardware_automatic': automatic,
         'cybexos_reconcile': reconcile,
+        # Repair is not fresh consent for the selected account. In particular,
+        # another account's saved Docker choice must not become its own.
+        'cybexos_docker_direct_install': False,
         'start_optional_hardware_services': not offline,
     }
     # Seeding a later non-admin account must not promote it to wheel.
@@ -109,7 +252,11 @@ def configure(account, offline=False, hardware=False, reconcile=False, automatic
     if saved.is_file():
         command += ['--extra-vars', '@' + str(saved)]
     command += ['--extra-vars', json.dumps(values)]
-    subprocess.run(command, cwd=PROVISION, env=environment, check=True)
+    if installer_target:
+        # Only the explicit, verified Anaconda chroot has no target manager.
+        subprocess.run(command, cwd=PROVISION, env=environment, check=True, timeout=2700)
+    else:
+        contained(command, cwd=PROVISION, env=environment, timeout=600 if reconcile else 2700)
 
 
 def retire_legacy_fish(account):
@@ -164,6 +311,9 @@ def merge_nvidia(state, reason, nvidia):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--installer-target', action='store_true',
+                        help='Provision the offline Anaconda target chroot without a target systemd')
+    parser.add_argument('--drain', action='store_true', help='Wait for abandoned provisioning workers to stop')
     parser.add_argument('--offline', action='store_true')
     parser.add_argument('--hardware', action='store_true')
     parser.add_argument('--reconcile', action='store_true')
@@ -180,11 +330,21 @@ def main():
         parser.error('--automatic is only valid for hardware setup')
     if args.save_config and (args.offline or args.hardware or args.reconcile or not args.user):
         parser.error('--save-config applies one account in the running installed system')
+    if args.installer_target:
+        if not args.offline or args.drain or subprocess.run(
+                ['/usr/bin/systemd-detect-virt', '--chroot', '--quiet'], check=False).returncode != 0:
+            parser.error('--installer-target requires --offline in a verified installer chroot')
     text = sys.stdin.read() if args.save_config else None
     lock_directory = Path('/run/lock/cybexos')
     lock_directory.mkdir(mode=0o755, exist_ok=True)
     with (lock_directory / 'provision.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
+        for signum in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+            signal.signal(signum, interrupted)
+        if not args.installer_target:
+            drain()
+        if args.drain:
+            return
         users = accounts(pwd.getpwall(), args.user)
         if args.user and not users:
             parser.error('Select an existing installed desktop account')
@@ -230,7 +390,11 @@ def main():
             marker.with_name('hardware-result.json').unlink(missing_ok=True)
         for account in users:
             try:
-                configure(account, args.offline, args.hardware, args.reconcile, args.automatic)
+                if args.installer_target:
+                    configure(account, args.offline, args.hardware, args.reconcile, args.automatic,
+                              installer_target=True)
+                else:
+                    configure(account, args.offline, args.hardware, args.reconcile, args.automatic)
             except subprocess.CalledProcessError:
                 diagnostic = Path('/var/lib/xps-hardware/ipu7/abi-failed.log')
                 # The hardware role deliberately reuses a cached ABI diagnostic
@@ -244,6 +408,15 @@ def main():
                     write_hardware_status(status_path, {'version': 1, 'state': 'failed', 'identity': identity,
                                                         'boot_id': this_boot, 'reason': 'hardware role failed; run cybex repair --hardware'})
                 raise
+            if args.reconcile:
+                # Home traversal keeps the account's privileges and shares the
+                # same containment and serialization as baseline convergence.
+                contained(['/usr/sbin/runuser', '-u', account.pw_name, '--', '/usr/bin/env', '-i',
+                           'HOME=' + account.pw_dir, 'USER=' + account.pw_name,
+                           'PATH=/usr/bin:/bin', 'LANG=C.UTF-8', 'PYTHONDONTWRITEBYTECODE=1',
+                           '/usr/libexec/cybexos-user-init', '--essential'],
+                          env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'HOME': '/root',
+                               'LANG': 'C.UTF-8', 'PYTHONDONTWRITEBYTECODE': '1'}, timeout=120)
             if not args.hardware and not args.reconcile:
                 retire_legacy_fish(account)
         # The Anaconda target helper decides login intent after verifying encryption.

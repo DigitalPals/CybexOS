@@ -268,6 +268,7 @@ class HardwareStatus(unittest.TestCase):
                  patch.object(configure.os, 'uname', return_value=types.SimpleNamespace(release='kernel')), \
                  patch.object(configure, 'boot_id', side_effect=lambda: boot[0]), \
                  patch.object(configure.pwd, 'getpwall', return_value=[account]), \
+                 patch.object(configure, 'drain'), \
                  patch.object(configure, 'configure', side_effect=applied) as apply, \
                  patch('sys.argv', ['configure-installed', '--hardware', '--automatic']):
                 configure.main()

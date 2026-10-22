@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import github_release as release
 import sbom
+from qualification_contract import SCHEMA, required_checks
 
 loader = importlib.machinery.SourceFileLoader('reconstruct_iso', str(Path(__file__).with_name('reconstruct-iso')))
 spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -95,8 +96,14 @@ class GitHubRelease(unittest.TestCase):
 
     def report(self, scenario, iso, checks, rpm=None):
         path = self.root / (scenario + '.json')
-        report = {'scenario': scenario, 'iso_sha256': iso, 'status': 'passed', 'checks': checks,
-                  'candidate_rpm_sha256': rpm}
+        kind = 'upgrade' if rpm else 'fresh'
+        actual_scenario = 'encrypted-us' if scenario == 'upgrade' else scenario
+        report = {'scenario': actual_scenario, 'iso_sha256': iso, 'status': 'passed',
+                  'checks': sorted(required_checks(actual_scenario, kind)),
+                  'evidence_schema': SCHEMA, 'execution_mode': 'qemu', 'qualification_kind': kind,
+                  'network': 'outbound-blocked', 'firmware': 'uefi', 'boot_entry': 'install',
+                  'legacy_installer': bool(rpm), 'source_revision': 'a' * 40,
+                  'source_content_sha256': 'd' * 64, 'candidate_rpm_sha256': rpm}
         if scenario.startswith('plain-'):
             report.update(source_revision='a' * 40, source_content_sha256='d' * 64,
                           checkout_parity={'status': 'passed', 'scenario': scenario, 'source_revision': 'a' * 40,
@@ -228,10 +235,47 @@ class GitHubRelease(unittest.TestCase):
                         {'candidate_rpm_sha256': 'd' * 64},
                         {'checks': ['installed-rpm-upgrade']}):
             upgrade.write_text(json.dumps({**base, **changes}))
-            with self.assertRaisesRegex(ValueError, 'prior ISO'):
+            with self.assertRaisesRegex(ValueError, 'prior ISO|required scenario evidence'):
                 self.prepare()
         upgrade.write_text(json.dumps({**base, 'status': 'failed'}))
         with self.assertRaisesRegex(ValueError, 'must have passed'):
+            self.prepare()
+
+    def test_every_mandatory_scenario_check_is_required_by_release_admission(self):
+        for path in self.reports:
+            original = json.loads(path.read_text())
+            mandatory = required_checks(original['scenario'], original['qualification_kind'])
+            for check in sorted(mandatory):
+                with self.subTest(report=path.name, omitted=check):
+                    report = {**original, 'checks': [item for item in original['checks'] if item != check]}
+                    path.write_text(json.dumps(report))
+                    with self.assertRaisesRegex(ValueError, 'required scenario evidence'):
+                        self.prepare()
+                    self.assertFalse(self.output.exists())
+            path.write_text(json.dumps(original))
+
+    def test_execution_and_schema_omissions_cannot_claim_passed_guest_evidence(self):
+        path = self.reports[0]
+        original = json.loads(path.read_text())
+        for key in ('evidence_schema', 'execution_mode', 'qualification_kind', 'firmware',
+                    'boot_entry', 'network', 'legacy_installer', 'source_revision', 'source_content_sha256'):
+            for replacement in (None, 'fixture', True):
+                with self.subTest(key=key, replacement=replacement):
+                    report = {**original, key: replacement}
+                    if replacement is None:
+                        report.pop(key)
+                    path.write_text(json.dumps(report))
+                    with self.assertRaises(ValueError):
+                        self.prepare()
+                    self.assertFalse(self.output.exists())
+        path.write_text(json.dumps(original))
+
+    def test_candidate_source_binding_cannot_disagree_between_scenarios(self):
+        path = self.reports[-1]
+        report = json.loads(path.read_text())
+        report['source_revision'] = 'e' * 40
+        path.write_text(json.dumps(report))
+        with self.assertRaisesRegex(ValueError, 'same candidate source'):
             self.prepare()
 
     def test_signed_verification_uses_the_expected_key_and_both_signatures(self):

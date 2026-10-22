@@ -13,6 +13,126 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RecoveryParity(unittest.TestCase):
+    def test_boot_hooks_preserve_upstream_directories_and_converge_on_both_paths(self):
+        # Fedora grub2-common-1:2.12-66.fc44 owns /etc/grub.d as 0700;
+        # kernel-install's parent can also have administrator-set attributes.
+        # Exercise the actual Ansible modules and RPM assembly without GRUB,
+        # systemd, an installed package transaction or host filesystem writes.
+        recovery = yaml.safe_load((ROOT / 'roles/base/tasks/recovery.yml').read_text())
+        hook_index = next(index for index, task in enumerate(recovery)
+                          if task.get('name') == 'Install the recovery boot menu and refresh hooks')
+        main = next(node for node in ast.parse((ROOT / 'image/package').read_text()).body
+                    if isinstance(node, ast.FunctionDef) and node.name == 'main')
+        start = next(index for index, node in enumerate(main.body)
+                     if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
+                     and node.value.value == 'roles/base/files/recovery')
+        end = next(index for index, node in enumerate(main.body[start:], start)
+                   if isinstance(node, ast.For) and isinstance(node.iter, ast.Tuple)
+                   and isinstance(node.iter.elts[0], ast.Constant)
+                   and node.iter.elts[0].value == 'cybexos-session-action')
+        assembly = compile(ast.Module(body=main.body[start:end], type_ignores=[]),
+                           str(ROOT / 'image/package'), 'exec')
+        parents = {'etc/grub.d': 'etc/grub.d',
+                   'etc/kernel/install.d': 'usr/lib/kernel/install.d'}
+        with tempfile.TemporaryDirectory(prefix='cybexos-recovery-hooks-') as temporary:
+            directory = Path(temporary)
+            for existing in (True, False):
+                with self.subTest(existing=existing):
+                    fixture = directory / ('existing' if existing else 'missing')
+                    checkout, payload = fixture / 'checkout', fixture / 'rpm'
+                    (checkout / 'etc/systemd/system').mkdir(parents=True)
+                    expected = {}
+                    for index, (source, installed) in enumerate(parents.items()):
+                        mode = (0o700, 0o710)[index] if existing else 0o755
+                        uid = gid = 65534 if existing and os.geteuid() == 0 else None
+                        for root, relative in ((checkout, source), (payload, installed)):
+                            if existing:
+                                path = root / relative
+                                path.mkdir(parents=True)
+                                path.chmod(mode)
+                                if uid is not None:
+                                    os.chown(path, uid, gid)
+                        expected[source] = (mode, uid if uid is not None else os.geteuid(),
+                                            gid if gid is not None else os.getegid())
+
+                    tasks = copy.deepcopy(recovery[:hook_index + 1])
+                    for task in tasks:
+                        task['become'] = False
+                        task.pop('notify', None)
+                        for module in ('stat', 'file', 'copy'):
+                            options = task.get('ansible.builtin.' + module)
+                            if options is not None:
+                                for key, value in (('owner', os.geteuid()), ('group', os.getegid())):
+                                    if key in options:
+                                        options[key] = str(value)
+                                if module == 'copy':
+                                    options['src'] = str(ROOT / 'roles/base/files') + '/' + options['src']
+                        if isinstance(task.get('loop'), list):
+                            task['loop'] = [dict(item, dest=str(checkout) + item['dest'])
+                                            if isinstance(item, dict) else str(checkout) + item
+                                            for item in task['loop']]
+                    playbook = fixture / 'hooks.yml'
+                    playbook.write_text(yaml.safe_dump([{
+                        'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
+                        'vars': {'base_root_filesystem': {'stdout': 'btrfs'}}, 'tasks': tasks,
+                    }]))
+
+                    def write(relative, content, executable=False):
+                        target = payload / relative
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_text(content)
+                        target.chmod(0o755 if executable else 0o644)
+
+                    def package_copy(source, relative, executable=False):
+                        write(relative, (ROOT / source).read_text(), executable)
+
+                    for attempt in range(2):
+                        result = subprocess.run(
+                            ['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                            capture_output=True, text=True, timeout=60,
+                            env={**os.environ, 'ANSIBLE_STDOUT_CALLBACK': 'default',
+                                 'ANSIBLE_NOCOLOR': '1', 'ANSIBLE_FORCE_COLOR': '0',
+                                 'ANSIBLE_LOCAL_TEMP': str(fixture / 'ansible-local'),
+                                 'ANSIBLE_REMOTE_TEMP': str(fixture / 'ansible-remote')})
+                        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                        if attempt:
+                            self.assertRegex(result.stdout, r'changed=0\s')
+                        exec(assembly, {'ROOT': ROOT, 'payload': payload,
+                                        'write': write, 'copy': package_copy})
+                        for source, installed in parents.items():
+                            for root, relative in ((checkout, source), (payload, installed)):
+                                attributes = (root / relative).stat()
+                                self.assertEqual((attributes.st_mode & 0o7777, attributes.st_uid,
+                                                  attributes.st_gid), expected[source], relative)
+                        for item in recovery[hook_index]['loop']:
+                            relative = item['dest'].lstrip('/')
+                            installed = relative.replace('etc/kernel/', 'usr/lib/kernel/').replace(
+                                'etc/systemd/system/', 'usr/lib/systemd/system/')
+                            source_file, installed_file = checkout / relative, payload / installed
+                            expected_content = source_file.read_text()
+                            if relative.startswith('etc/systemd/system/'):
+                                expected_content = expected_content.replace(
+                                    '/usr/local/libexec/cybexos-', '/usr/libexec/cybexos-')
+                            self.assertEqual(installed_file.read_text(), expected_content, relative)
+                            for path in (source_file, installed_file):
+                                attributes = path.stat()
+                                self.assertEqual(attributes.st_mode & 0o7777,
+                                                 0o644 if relative.endswith('.service') else 0o755)
+                                self.assertEqual((attributes.st_uid, attributes.st_gid),
+                                                 (os.geteuid(), os.getegid()))
+                        if not existing and not attempt:
+                            # Reapply grub2-common's directory metadata between
+                            # passes: the old task reports another change here.
+                            for root in (checkout, payload):
+                                (root / 'etc/grub.d').chmod(0o700)
+                            expected['etc/grub.d'] = (0o700, os.geteuid(), os.getegid())
+        # The RPM owns its GRUB hook, never the upstream directory itself.
+        manifest = (ROOT / 'image/cybexos-desktop.spec').read_text().split('%files', 1)[1]
+        self.assertIn('/etc/grub.d/42_cybexos_recovery', manifest.splitlines())
+        self.assertNotRegex(manifest, r'(?m)^(?:%dir\s+)?/etc/grub\.d/?\s*$')
+        self.assertIn('/usr/lib/kernel/install.d/95-cybexos-recovery.install', manifest.splitlines())
+        self.assertNotRegex(manifest, r'(?m)^(?:%dir\s+)?/usr/lib/kernel/install\.d/?\s*$')
+
     def test_both_installers_deploy_the_same_recovery_protocol_and_login_barrier(self):
         names = {
             'Install transactional Btrfs recovery helper',

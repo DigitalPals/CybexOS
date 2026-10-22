@@ -51,7 +51,8 @@ class InstalledPolicy(unittest.TestCase):
             with patch.object(configure, 'PROVISION', provision), patch.object(configure, 'Path', side_effect=paths), \
                  patch.object(configure.os, 'geteuid', return_value=0), patch.object(configure.os, 'uname', return_value=kernel), \
                  patch.object(configure, 'boot_id', side_effect=lambda: boot[0]), \
-                 patch.object(configure.pwd, 'getpwall', return_value=[account]), patch.object(configure, 'configure', side_effect=applied) as apply, \
+                 patch.object(configure.pwd, 'getpwall', return_value=[account]), patch.object(configure, 'drain'), \
+                 patch.object(configure, 'configure', side_effect=applied) as apply, \
                  patch('sys.argv', ['configure-installed', '--hardware', '--automatic']):
                 configure.main()
                 configure.main()
@@ -89,6 +90,7 @@ class InstalledPolicy(unittest.TestCase):
                  patch.object(configure.os, 'uname', return_value=types.SimpleNamespace(release='same-kernel')), \
                  patch.object(configure, 'boot_id', side_effect=lambda: boot[0]), \
                  patch.object(configure.pwd, 'getpwall', return_value=[account]), \
+                 patch.object(configure, 'drain'), \
                  patch.object(configure, 'configure', side_effect=applied) as apply, \
                  patch('sys.argv', ['configure-installed', '--hardware', '--automatic']):
                 configure.main()
@@ -121,6 +123,7 @@ class InstalledPolicy(unittest.TestCase):
                  patch.object(configure, 'boot_id', return_value='boot'), \
                  patch.object(configure.pwd, 'getpwall', return_value=[account]), \
                  patch.object(configure, 'configure'), \
+                 patch.object(configure, 'drain'), \
                  patch('sys.argv', ['configure-installed', '--hardware', '--automatic']):
                 with self.assertRaisesRegex(SystemExit, 'did not report an outcome'):
                     configure.main()
@@ -150,6 +153,7 @@ class InstalledPolicy(unittest.TestCase):
                  patch.object(configure.os, 'uname', return_value=types.SimpleNamespace(release='same-kernel')), \
                  patch.object(configure, 'boot_id', return_value='same-boot'), \
                  patch.object(configure.pwd, 'getpwall', return_value=[account]), \
+                 patch.object(configure, 'drain'), \
                  patch.object(configure, 'configure', side_effect=applied) as apply, \
                  patch('sys.argv', ['configure-installed', '--hardware', '--automatic']):
                 configure.main()
@@ -470,7 +474,7 @@ class InstalledPolicy(unittest.TestCase):
             return grp.struct_group(('wheel', 'x', 10, ['john']))
         with patch.object(configure.grp, 'getgrnam', side_effect=group_name), \
              patch.object(configure.grp, 'getgrgid', return_value=grp.struct_group(('guest', 'x', 1001, []))), \
-             patch.object(configure.subprocess, 'run') as run:
+             patch.object(configure, 'contained') as run:
             configure.configure(account, offline=True)
         values = json.loads(run.call_args.args[0][-1])
         self.assertNotIn('wheel', values['base_account_groups'])

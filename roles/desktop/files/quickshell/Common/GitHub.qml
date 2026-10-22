@@ -44,6 +44,9 @@ Singleton {
 
     property var commitCache: ({})
     property var statsCache: ({})
+    // Only successful immutable responses belong in statsCache. Failures are
+    // process-local and retried when the row is reopened or Retry is pressed.
+    property var statsErrors: ({})
     readonly property int commitCacheMs: 60000
 
     // ---- Inbox state -----------------------------------------------------
@@ -969,7 +972,17 @@ Singleton {
         if (queue.some(job => job.kind === "stats" && job.sha === sha)
                 || (active !== null && active.kind === "stats" && active.sha === sha))
             return;
+        patchStatsError(sha, "");
         enqueue({ kind: "stats", slug: slug, sha: sha, interactive: true });
+    }
+
+    function patchStatsError(sha, message) {
+        const next = Object.assign({}, statsErrors);
+        if (message === "")
+            delete next[sha];
+        else
+            next[sha] = message;
+        statsErrors = next;
     }
 
     function patchStats(sha, entry) {
@@ -1068,8 +1081,14 @@ Singleton {
         }
         case "stats": {
             const stats = failed ? null : Helpers.parseCommitStats(body);
-            patchStats(job.sha,
-                stats ?? ({ sha: job.sha, files: 0, additions: 0, deletions: 0 }));
+            if (stats !== null && stats.sha === job.sha) {
+                patchStats(job.sha, stats);
+                patchStatsError(job.sha, "");
+            } else {
+                patchStatsError(job.sha, failed
+                    ? ProcHelpers.commandError("gh api commit", exitCode, errText)
+                    : "Invalid commit statistics response");
+            }
             break;
         }
         }

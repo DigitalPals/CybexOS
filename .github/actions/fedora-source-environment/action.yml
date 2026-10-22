@@ -97,9 +97,11 @@ runs:
           /etc/pki/rpm-gpg/CYBEXOS-sdegler-hyprland-copr.gpg
         install -m 0644 roles/desktop/templates/hyprland-copr.repo.j2 \
           '/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:sdegler:hyprland.repo'
+        python3 .github/actions/fedora-source-environment/qualified_packages.py prepare
         # The key is verified either way. Only a preview tolerates a COPR
         # without a build for its release, and it says so on the run.
-        if ! dnf install -y quickshell; then
+        if ! dnf install -y quickshell || \
+            ! python3 .github/actions/fedora-source-environment/qualified_packages.py verify quickshell; then
           test "$BEST_EFFORT" = true
           . /etc/os-release
           echo "::warning title=Hyprland COPR::sdegler/hyprland has no installable quickshell for fedora-$VERSION_ID-x86_64; checks that need qs will fail."

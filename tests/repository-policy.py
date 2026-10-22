@@ -455,41 +455,30 @@ def verify_codex_latest(values: dict) -> None:
 
 def verify_asset_provenance() -> None:
     document = json.loads((ROOT / "assets/PROVENANCE.json").read_text())
-    assert document["schemaVersion"] == 1
-    assert document["rightsPolicy"]["status"] in {
-        "unknown-owner-action-required",
-        "resolved-no-undocumented-large-assets",
-    }
+    assert document["schemaVersion"] == 2
+    assert document["rightsPolicy"]["status"] == "documented-original-artwork"
     records = {entry["path"]: entry for entry in document["assets"]}
     assert len(records) == len(document["assets"]), "duplicate provenance path"
-
-    large_assets = {
-        path.relative_to(ROOT).as_posix()
-        for path in (ROOT / "assets").rglob("*")
-        if path.is_file() and path.stat().st_size > 1024 * 1024
-    }
-    assert set(records) == large_assets, (
-        f"provenance mismatch: missing={large_assets - set(records)}, "
-        f"extra={set(records) - large_assets}"
-    )
+    wallpapers = {path.relative_to(ROOT).as_posix()
+                  for folder in ("assets/wallpapers", "web/public/wallpapers")
+                  for path in (ROOT / folder).rglob("*") if path.is_file()}
+    assert set(records) == wallpapers, (
+        f"provenance mismatch: missing={wallpapers - set(records)}, extra={set(records) - wallpapers}")
+    generator = hashlib.sha256((ROOT / "scripts/generate-wallpapers.py").read_bytes()).hexdigest()
     for relative, record in records.items():
         path = ROOT / relative
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        assert record["sha256"] == digest, f"stale hash for {relative}"
-        assert record["bytes"] == path.stat().st_size, f"stale size for {relative}"
-        rights_status = record.get("rightsStatus", document["rightsPolicy"]["status"])
-        if rights_status == "unknown-owner-action-required":
-            assert record["creator"] is None
-            assert record["sourceUrl"] is None
-            assert record["license"] is None
-        elif rights_status == "documented":
-            assert all(
-                isinstance(record[field], str) and record[field].strip()
-                for field in ("creator", "sourceUrl", "license")
-            ), f"incomplete documented rights for {relative}"
-        else:
-            raise AssertionError(f"unknown rights status for {relative}: {rights_status}")
-        assert re.fullmatch(r"[0-9a-f]{40}", record["introducedByCommit"])
+        assert not path.is_symlink()
+        assert record["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest(), relative
+        assert record["bytes"] == path.stat().st_size, relative
+        assert record["rightsStatus"] == "documented"
+        assert record["license"] == "MIT"
+        assert record["creator"] and record["sourceUrl"] == "scripts/generate-wallpapers.py"
+        assert record["creation"]["generatorSha256"] == generator
+        assert "introducedByCommit" not in record, "New artwork must not claim a historic commit"
+    default = json.loads((ROOT / "assets/desktop-contract.json").read_text())["shell"]["wall"]
+    assert "assets/wallpapers/" + default in records
+    assert (ROOT / "assets/wallpapers" / default).read_bytes() == (
+        ROOT / "web/public/wallpapers/moon-mountains-2560.png").read_bytes()
 
 
 if __name__ == "__main__":
@@ -498,4 +487,4 @@ if __name__ == "__main__":
     verify_user_updater_runtime(values)
     verify_codex_latest(values)
     verify_asset_provenance()
-    print("dependency pins and large-asset provenance are internally consistent")
+    print("dependency pins and bundled-wallpaper provenance are internally consistent")

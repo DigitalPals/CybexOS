@@ -3,17 +3,31 @@
 # still installed, and dracut boots it read-only under an in-memory overlay.
 # The helper rewrites only the sourced submenu; grub.cfg is regenerated once.
 # Expects base_root_filesystem and base_snapshot_helper from main.yml.
-- name: Create the recovery boot hook directories
-  ansible.builtin.file:
+- name: Inspect the upstream recovery boot hook directories
+  ansible.builtin.stat:
     path: "{{ item }}"
+    follow: true
+  loop:
+    - /etc/grub.d
+    - /etc/kernel/install.d
+  register: base_recovery_hook_directories
+  when: base_root_filesystem.stdout | trim == 'btrfs'
+
+# Fedora's grub2-common owns /etc/grub.d as 0700. Keep upstream and admin
+# permissions/ownership on existing directories; manage only our hook files.
+- name: Create missing recovery boot hook directories
+  ansible.builtin.file:
+    path: "{{ item.item }}"
     state: directory
     owner: root
     group: root
     mode: "0755"
-  loop:
-    - /etc/grub.d
-    - /etc/kernel/install.d
-  when: base_root_filesystem.stdout | trim == 'btrfs'
+  loop: "{{ base_recovery_hook_directories.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - base_root_filesystem.stdout | trim == 'btrfs'
+    - not item.stat.exists
 
 - name: Install the recovery boot menu and refresh hooks
   ansible.builtin.copy:

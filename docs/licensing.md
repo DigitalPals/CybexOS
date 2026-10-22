@@ -32,10 +32,25 @@ The bundled wallpaper collection is installed into `~/Pictures/Wallpapers`.
 The installer selects the mountain wallpaper when no wallpaper is configured,
 while preserving existing wallpaper selections and custom folders.
 
-`assets/PROVENANCE.json` records the bundled images, their checksums, and the
-available provenance. Unknown creator, source, and license fields remain
-explicitly unset. `tests/repository-policy.py` verifies the inventory, file
-sizes, and checksums; it does not establish or grant redistribution rights.
+The seven native wallpapers and three responsive web variants are original
+procedural landscapes. `python3 -B scripts/generate-wallpapers.py` recreates
+them from geometric shapes using Python's standard library, without input
+images, downloaded assets, or generative image services. `--check` compares all
+rendered pixels and recorded artifact digests/provenance; zlib implementations
+can encode identical pixels into different PNG bytes. `assets/PROVENANCE.json` records every native and web
+wallpaper regardless of size, its dimensions, byte digest, generator digest,
+palette and authorship method. Newly authored files do not claim a historical
+introduction commit. These original assets use the repository's MIT license.
+
+The former undocumented bundled JPEGs and web derivatives have been removed
+from the distributable tree. Installers copy new wallpapers only when absent
+and retain saved selections and user-owned files, including earlier wallpapers
+already in a user's home. This replacement does not rewrite Git history or
+assert rights in earlier distributions.
+
+`tests/repository-policy.py` verifies complete native/web wallpaper coverage,
+checksums and generator identity. This is distinct from the owner review of
+other third-party software and marks needed for public distribution.
 
 ## Redistribution audit
 
@@ -43,7 +58,11 @@ sizes, and checksums; it does not establish or grant redistribution rights.
 packages, applications, fonts, wallpapers, marks, and firmware in each release
 channel, records what could and could not be verified, and lists the blockers
 before a public ISO. It is an engineering inventory for owner and legal review,
-not a legal opinion.
+not a legal opinion. Public publication additionally requires a channel-specific,
+reviewed distribution manifest bound to the actual artifact inventories; see
+[the distribution review process](licensing-audit.md#public-distribution-gate).
+Internal builds, fixture tests and ISO qualification remain available while
+review is unresolved.
 
 ## Built-in theme palettes
 
