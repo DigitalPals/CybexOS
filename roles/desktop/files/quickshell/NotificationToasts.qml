@@ -9,7 +9,8 @@ import "Common/NotifHolds.js" as Holds
 
 // One source-grouped, bounded popup surface per output. Decks stay on the
 // display chosen on arrival. Hover or explicit expansion pauses all members;
-// critical cards wait for dismissal. Focus is requested only by user input.
+// critical cards wait for dismissal. Popups never take keyboard focus;
+// keyboard interaction is available in the notification centre.
 Scope {
     Variants {
         model: Screens.layerSurfaceModel
@@ -92,8 +93,10 @@ Scope {
 
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.namespace: "qs-notifications"
-            // Only explicit pointer interaction requests keyboard focus.
-            WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+            // OnDemand can take focus on hover (including a popup appearing
+            // beneath the pointer) with Hyprland's focus-follows-mouse policy.
+            // Mouse actions still work without giving this surface the keyboard.
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
             mask: Region {
                 item: toastList.contentItem
@@ -297,7 +300,7 @@ Scope {
                                 iconSize: Theme.scaled(24, Theme.typeScale)
                                 framedIcon: true
                                 expandTextOnHover: true
-                                keyboardEnabled: true
+                                keyboardEnabled: false
                                 onHoldsFocusChanged: deck.focusHolds.set(card, "focus", holdsFocus)
                                 Component.onDestruction: deck.focusHolds.set(card, "focus", false)
                                 width: parent.width
