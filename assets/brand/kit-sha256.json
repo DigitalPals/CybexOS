@@ -1,0 +1,629 @@
+{
+  "schema": 1,
+  "files": {
+    "assets/brand/USAGE.md": {
+      "source": "brand/USAGE.md",
+      "sha256": "8ae447144f308c75628b89a96697e01b67dc84e4253b75bbdb8fc7da9e2fca96"
+    },
+    "assets/brand/_source/README.md": {
+      "source": "brand/_source/README.md",
+      "sha256": "ab96d87d6243d1b7e20660c1a0acacce8e339d860ded44301005245a5c52f563"
+    },
+    "assets/brand/_source/ascii_export.py": {
+      "source": "brand/_source/ascii_export.py",
+      "sha256": "f402d465c53d91d4873e5a76118f81d01ad52cf8ca7eb342a22fb6b6940083c1"
+    },
+    "assets/brand/_source/brand.py": {
+      "source": "brand/_source/brand.py",
+      "sha256": "dffed5718b027c3767356dbefe76479295e94d62eb01855a4da317642aa5f086"
+    },
+    "assets/brand/_source/export.py": {
+      "source": "brand/_source/export.py",
+      "sha256": "9bd9565f64b2f10acb27d97612d940306cfa12ecd455fb2bffff523c9ebd4f13"
+    },
+    "assets/brand/_source/geo.py": {
+      "source": "brand/_source/geo.py",
+      "sha256": "209527cff27a137d895ae61c4e57f8b30ffb00662b7003bb2c7f289ae9492bf5"
+    },
+    "assets/brand/_source/glyphs.py": {
+      "source": "brand/_source/glyphs.py",
+      "sha256": "4e454b40d1523f5bdc28444e8ea52abdfbf644cfe01b3114cc23541c1f74c4de"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-dark-1024.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-dark-1024.png",
+      "sha256": "45d3181326e019c28aca171467bea0eabe914cbdb8b108bca5b449e7fa86dd46"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-dark-128.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-dark-128.png",
+      "sha256": "ce944fd99af250afafa52428194b8826d7b91b2525747b4d5a5d430c426d5bc9"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-dark-256.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-dark-256.png",
+      "sha256": "c86362dbe6b338a2e391a697f6d5f33ec2cd761ebecaa43ec5642b9997a782d4"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-dark-512.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-dark-512.png",
+      "sha256": "e41775c68992cf78c14605f9a90d18b13059b3c8af14ef19a9d3e76f4c4f43fa"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-dark-64.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-dark-64.png",
+      "sha256": "267a41f605ff475ec53e8181bd9e2df110f00c39230119d875f81a41d492d6b7"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-dark-square-1024.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-dark-square-1024.png",
+      "sha256": "502aaea886086a393a51e2460ad66c2d6ce337a6aff646311e61398729b4780b"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-light-1024.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-light-1024.png",
+      "sha256": "732f72b17ab37ad67f1c426d3b089e44d2c2eae8b477eabfff6ffcf27a6c43e2"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-light-128.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-light-128.png",
+      "sha256": "f8f01e2162288c3cfd0f7f81effa57da2942c6bbed36c06c1e5d368bfe591cb9"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-light-256.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-light-256.png",
+      "sha256": "cc3f4500ff6a4b30d717dafb9fae9d881240af0343608e3125351d02cbea2d53"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-light-512.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-light-512.png",
+      "sha256": "ca81e9f3d4061adc3eafbd299302d89c7bb028e955bd64c1768c4f7c0735dd08"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-light-64.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-light-64.png",
+      "sha256": "f207a27ddf196318b12cfb0b558a5e15e72eef8d1876f64bac942ed038a8c4c6"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-light-square-1024.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-light-square-1024.png",
+      "sha256": "e24b63cda623cc255779361108a48d16fda3e8ae442a74fa6e6bdc98d100ad1e"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-mono-black-1024.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-mono-black-1024.png",
+      "sha256": "224ce8f4e1a00652e107844b7af90da1007e7afe74edacc1c5cd2b69d178e1fc"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-mono-black-128.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-mono-black-128.png",
+      "sha256": "b8d32b66a00164de549e6c3dfdd7cecd62d21f2d72fdc044f267b0dc722d1645"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-mono-black-256.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-mono-black-256.png",
+      "sha256": "95e821b2983cdf46fba9e1d33831b43b158fd24e479e5a730fb7c980e32b18b3"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-mono-black-512.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-mono-black-512.png",
+      "sha256": "ad589f69fa4682bad66add8e5fc8fc43d446641a116705404d7bea4302fbad10"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-mono-black-64.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-mono-black-64.png",
+      "sha256": "535289f971565cedf80a65805d507deff758c69a650fbd08b7bb17419f9ddef2"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-mono-black-square-1024.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-mono-black-square-1024.png",
+      "sha256": "116ea3801510b23c1a55df25d9e354e0fdc5a64698beda7d9f59f4c166c9c7ce"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-mono-white-1024.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-mono-white-1024.png",
+      "sha256": "f70e2250f8a6c9b69424e3b572b9b35a4ff122ecb19effc971561b14c7f94ae8"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-mono-white-128.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-mono-white-128.png",
+      "sha256": "944aa62aaa6e4a69cf0659b94962d84fca8eb49cc06669f960d3fa02e9b95e1e"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-mono-white-256.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-mono-white-256.png",
+      "sha256": "4174e2b02c7d15eea8c2b470df7c220a9fb6d7949d6e5631ef8643578420de3e"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-mono-white-512.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-mono-white-512.png",
+      "sha256": "329154f1e94c6b409cf637941db9dad1b184ab7f01b98b8598d245f9f79e51c0"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-mono-white-64.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-mono-white-64.png",
+      "sha256": "d15d38cdb43fde033ac53b854fb84290404db9ec74d3d99afa79274f3f78a9ff"
+    },
+    "assets/brand/app-icon/png/nerdos-app-icon-mono-white-square-1024.png": {
+      "source": "brand/app-icon/png/nerdos-app-icon-mono-white-square-1024.png",
+      "sha256": "27fa24918b12da5f600b7aa44918c1be37ab60d5f964bebdc96e059bff77936f"
+    },
+    "assets/brand/app-icon/svg/nerdos-app-icon-dark-square.svg": {
+      "source": "brand/app-icon/svg/nerdos-app-icon-dark-square.svg",
+      "sha256": "2be2f7744475fab13c7c60682b6060a4b372857594635a1fb70b84e4e2b1f0d1"
+    },
+    "assets/brand/app-icon/svg/nerdos-app-icon-dark.svg": {
+      "source": "brand/app-icon/svg/nerdos-app-icon-dark.svg",
+      "sha256": "2873aa6c576593fe6f6a0dc3b315615b352e27068f6ab407d78dc092120ea223"
+    },
+    "assets/brand/app-icon/svg/nerdos-app-icon-light-square.svg": {
+      "source": "brand/app-icon/svg/nerdos-app-icon-light-square.svg",
+      "sha256": "8573f093c8b2091a18955be8a283b65107bd79ac51cd432db7427772aa0db582"
+    },
+    "assets/brand/app-icon/svg/nerdos-app-icon-light.svg": {
+      "source": "brand/app-icon/svg/nerdos-app-icon-light.svg",
+      "sha256": "d034dbe906d1723b6db23500a191fd44245406de596e98f6c03e69e943df34b4"
+    },
+    "assets/brand/app-icon/svg/nerdos-app-icon-mono-black-square.svg": {
+      "source": "brand/app-icon/svg/nerdos-app-icon-mono-black-square.svg",
+      "sha256": "549e833101f04aa889ec305379e9ab5abcd019c86e7eb6fd82f71f66fbac70d9"
+    },
+    "assets/brand/app-icon/svg/nerdos-app-icon-mono-black.svg": {
+      "source": "brand/app-icon/svg/nerdos-app-icon-mono-black.svg",
+      "sha256": "e89dff92d205bd27e1619eec8c8bc14834348f06bbd1e7792abc59a7b7b6fe66"
+    },
+    "assets/brand/app-icon/svg/nerdos-app-icon-mono-white-square.svg": {
+      "source": "brand/app-icon/svg/nerdos-app-icon-mono-white-square.svg",
+      "sha256": "35ebcb5251485355f6d2344d1292340cab8b973832ed1534a5abcd8c025cb7c4"
+    },
+    "assets/brand/app-icon/svg/nerdos-app-icon-mono-white.svg": {
+      "source": "brand/app-icon/svg/nerdos-app-icon-mono-white.svg",
+      "sha256": "75a5bfbbeb6410f5f69f8498a043c7bfa4df8a348ffc40c8d279e2be7ed8c053"
+    },
+    "assets/brand/ascii/README.md": {
+      "source": "brand/ascii/README.md",
+      "sha256": "ca2d785d7c0967df4eb9f772b9daa35529c97f4abbadc3ee7556972430fa23df"
+    },
+    "assets/brand/ascii/fastfetch-config.jsonc": {
+      "source": "brand/ascii/fastfetch-config.jsonc",
+      "sha256": "bbfbcd03c7f2b7c624a520a50180e81361fe8246054773c912cf74fa9dc52d45"
+    },
+    "assets/brand/ascii/nerdos-banner.fastfetch.txt": {
+      "source": "brand/ascii/nerdos-banner.fastfetch.txt",
+      "sha256": "f2f01615875cdad90450951400d480a46452b4dfa72d0d821993e8b3f4baf2d3"
+    },
+    "assets/brand/ascii/nerdos-banner.txt": {
+      "source": "brand/ascii/nerdos-banner.txt",
+      "sha256": "65058fc7fb811fef59c09c77e8ba69fcadbacce7c3d6a4f00300189da90f0c29"
+    },
+    "assets/brand/ascii/nerdos-compact.fastfetch.txt": {
+      "source": "brand/ascii/nerdos-compact.fastfetch.txt",
+      "sha256": "f014612980594d6bfd0508949a69746f141ae5ce17f6203bba539deadc9827dd"
+    },
+    "assets/brand/ascii/nerdos-compact.txt": {
+      "source": "brand/ascii/nerdos-compact.txt",
+      "sha256": "d2c47db127df6f36952be4c4b09a40be8537bf3c89f94c0de35adc00e619a674"
+    },
+    "assets/brand/ascii/nerdos-large.fastfetch.txt": {
+      "source": "brand/ascii/nerdos-large.fastfetch.txt",
+      "sha256": "5ccde93ad0438685b5a98e83c830d90db4763019061f09f91d35c8d3e4c23719"
+    },
+    "assets/brand/ascii/nerdos-large.txt": {
+      "source": "brand/ascii/nerdos-large.txt",
+      "sha256": "6ae8b1831ab7f2ff51b6c8fedd919a79012d3e1d4166b5e3180513f58dbace0a"
+    },
+    "assets/brand/favicon/apple-touch-icon.png": {
+      "source": "brand/favicon/apple-touch-icon.png",
+      "sha256": "0e2a93b95565706ae74bf253d95eefbac1c3830fa813532e552a9d98f30a05a6"
+    },
+    "assets/brand/favicon/extras/favicon-transparent-on-dark-16x16.png": {
+      "source": "brand/favicon/extras/favicon-transparent-on-dark-16x16.png",
+      "sha256": "836ff72564581743a1f18d3f1ec3445a03a80715358f500dc839e07a96875739"
+    },
+    "assets/brand/favicon/extras/favicon-transparent-on-dark-32x32.png": {
+      "source": "brand/favicon/extras/favicon-transparent-on-dark-32x32.png",
+      "sha256": "bef995cb1cde5f813c894ea7beb7b20c983bfcd5a5136e85d046c43029c9fcd6"
+    },
+    "assets/brand/favicon/extras/favicon-transparent-on-light-16x16.png": {
+      "source": "brand/favicon/extras/favicon-transparent-on-light-16x16.png",
+      "sha256": "6891cb1a69af95c5a5d73d311a47d528244d8d63ae662aeacdb78c27d10ffd29"
+    },
+    "assets/brand/favicon/extras/favicon-transparent-on-light-32x32.png": {
+      "source": "brand/favicon/extras/favicon-transparent-on-light-32x32.png",
+      "sha256": "f7855bf944e8139619aba90792a72c75ee6dc951a7a23c1d0f37025a6daf63ca"
+    },
+    "assets/brand/favicon/favicon-16x16.png": {
+      "source": "brand/favicon/favicon-16x16.png",
+      "sha256": "b869eda05d19e57c95d17db415e8c125f214b7715da864c84d5662c1ec7bf9a4"
+    },
+    "assets/brand/favicon/favicon-32x32.png": {
+      "source": "brand/favicon/favicon-32x32.png",
+      "sha256": "f7603e818306af0d538119eb3f8c17d64fe9a6d032d1f15d10af991b7a59fbd0"
+    },
+    "assets/brand/favicon/favicon-48x48.png": {
+      "source": "brand/favicon/favicon-48x48.png",
+      "sha256": "4cc8d3cbb5b2a5c2906130dc44da4b773df33ae204cf8f9967aba6084c4f7c67"
+    },
+    "assets/brand/favicon/favicon.ico": {
+      "source": "brand/favicon/favicon.ico",
+      "sha256": "6b857f20017a10eff8011cd08cce855fcc53adf6c0f1b53885852ca495c9ecca"
+    },
+    "assets/brand/favicon/favicon.svg": {
+      "source": "brand/favicon/favicon.svg",
+      "sha256": "6c4b62896433102986f5db64938cb21ce512cd2738dac6e569ad0be8d6b5a39e"
+    },
+    "assets/brand/favicon/head-snippet.html": {
+      "source": "brand/favicon/head-snippet.html",
+      "sha256": "ac6f50324f55f497c13cb780ee034be5702e1c010646bad7ce66a64e869f5de4"
+    },
+    "assets/brand/favicon/icon-192.png": {
+      "source": "brand/favicon/icon-192.png",
+      "sha256": "831bc4146971cc0c4a2a635d1cf934eb8346de696ce87c9199f6c1887f40bf30"
+    },
+    "assets/brand/favicon/icon-512.png": {
+      "source": "brand/favicon/icon-512.png",
+      "sha256": "d885a30c89f5340863a5e29853e21e91f60e3eb514ad045d78e059fea940e058"
+    },
+    "assets/brand/favicon/icon-maskable-192.png": {
+      "source": "brand/favicon/icon-maskable-192.png",
+      "sha256": "a6510ec52256e25ada0d5cd1678298121f424c4c0d260256a151f7adcc2a74f7"
+    },
+    "assets/brand/favicon/icon-maskable-512.png": {
+      "source": "brand/favicon/icon-maskable-512.png",
+      "sha256": "2a34c0b42090950cf99c6e392d2228619a5b4549428873cbb41b245ab16813a6"
+    },
+    "assets/brand/favicon/site.webmanifest": {
+      "source": "brand/favicon/site.webmanifest",
+      "sha256": "a0595de67c8e2f2dbf1a3698f55341d43d94ffbf9e45a6b74a60e062fc1b6a40"
+    },
+    "assets/brand/favicon/source/apple-touch-icon.svg": {
+      "source": "brand/favicon/source/apple-touch-icon.svg",
+      "sha256": "4d3e1680eb430c7f07a090f00e62085993808a108628d507b60ae16edc484d05"
+    },
+    "assets/brand/favicon/source/favicon-tile-16.svg": {
+      "source": "brand/favicon/source/favicon-tile-16.svg",
+      "sha256": "51e126ad81f0519320c50bc6421305b7cecca5ec93ee2ee7aafe2e68cd757f45"
+    },
+    "assets/brand/favicon/source/favicon-tile-32.svg": {
+      "source": "brand/favicon/source/favicon-tile-32.svg",
+      "sha256": "bb54cd4422fbb2ea1528a3c651ac52770720bef59c2d6a17edb9ca1773b3e916"
+    },
+    "assets/brand/favicon/source/favicon-tile-48.svg": {
+      "source": "brand/favicon/source/favicon-tile-48.svg",
+      "sha256": "0a52ad7fa1328376cd8002171dd7164799b6e7ef4b00d41a766f029c3cb21abf"
+    },
+    "assets/brand/favicon/source/icon-maskable.svg": {
+      "source": "brand/favicon/source/icon-maskable.svg",
+      "sha256": "3413d85c4aed8d3e2123703ed7d72b80c233b88f23959e9e0bb959d9384b3b6b"
+    },
+    "assets/brand/logo/png/nerdos-logo-descriptor-mono-black-1024.png": {
+      "source": "brand/logo/png/nerdos-logo-descriptor-mono-black-1024.png",
+      "sha256": "cb6441de7744e7955d6b6050803fda1aec2b7df327e37f6c9742ab42fde2db8c"
+    },
+    "assets/brand/logo/png/nerdos-logo-descriptor-mono-black-2048.png": {
+      "source": "brand/logo/png/nerdos-logo-descriptor-mono-black-2048.png",
+      "sha256": "1d3036cdd7cb8c64c9c51fcc35e132474ddb1458e6a4854854fb9657985a95e1"
+    },
+    "assets/brand/logo/png/nerdos-logo-descriptor-mono-black-512.png": {
+      "source": "brand/logo/png/nerdos-logo-descriptor-mono-black-512.png",
+      "sha256": "1a9c5e64ff8c7ba3b2550cf95a8f6b7c4902f09d13dc95451bc3b3f53f41c51c"
+    },
+    "assets/brand/logo/png/nerdos-logo-descriptor-mono-white-1024.png": {
+      "source": "brand/logo/png/nerdos-logo-descriptor-mono-white-1024.png",
+      "sha256": "b6a31e6b48169ec5bb079f6d7846114625a06ff25457a4d866c92805fef344db"
+    },
+    "assets/brand/logo/png/nerdos-logo-descriptor-mono-white-2048.png": {
+      "source": "brand/logo/png/nerdos-logo-descriptor-mono-white-2048.png",
+      "sha256": "9d418f8778d49b9f0ac12ee6c8a11cffdd7a999e369ce5f8feaf08c59a799c75"
+    },
+    "assets/brand/logo/png/nerdos-logo-descriptor-mono-white-512.png": {
+      "source": "brand/logo/png/nerdos-logo-descriptor-mono-white-512.png",
+      "sha256": "9dbfc55ce2aaae9278f21b8b8ce406f021a263849d5124619ae680bbf2f80b87"
+    },
+    "assets/brand/logo/png/nerdos-logo-descriptor-on-dark-1024.png": {
+      "source": "brand/logo/png/nerdos-logo-descriptor-on-dark-1024.png",
+      "sha256": "e81105dbbc9af13df15361c67f23556e0a2b9b09109674ee710d7dafb80a82a3"
+    },
+    "assets/brand/logo/png/nerdos-logo-descriptor-on-dark-2048.png": {
+      "source": "brand/logo/png/nerdos-logo-descriptor-on-dark-2048.png",
+      "sha256": "2551497507c9831fb5475d8ea6e0e6b85fd2b98e2756b36026168567fc3c34a4"
+    },
+    "assets/brand/logo/png/nerdos-logo-descriptor-on-dark-512.png": {
+      "source": "brand/logo/png/nerdos-logo-descriptor-on-dark-512.png",
+      "sha256": "241309536e7f4197b21b433b501f5af14bd9a5e41e6b78cd87d655f3b20728e4"
+    },
+    "assets/brand/logo/png/nerdos-logo-descriptor-on-light-1024.png": {
+      "source": "brand/logo/png/nerdos-logo-descriptor-on-light-1024.png",
+      "sha256": "be84dd9ad95688b53d5bf8d86a951e01020ec13e24a10fe6ce6ec1e3f4aa673b"
+    },
+    "assets/brand/logo/png/nerdos-logo-descriptor-on-light-2048.png": {
+      "source": "brand/logo/png/nerdos-logo-descriptor-on-light-2048.png",
+      "sha256": "e9d0e728d7b1796038058b2dcd2ce5e4fc22b2db944262a8e577107049b349e6"
+    },
+    "assets/brand/logo/png/nerdos-logo-descriptor-on-light-512.png": {
+      "source": "brand/logo/png/nerdos-logo-descriptor-on-light-512.png",
+      "sha256": "5fd4e6fa53f2d7587eda3fd5df06866bfe8064e649045219a35d336e42bb8113"
+    },
+    "assets/brand/logo/png/nerdos-logo-mono-black-1024.png": {
+      "source": "brand/logo/png/nerdos-logo-mono-black-1024.png",
+      "sha256": "dbb9a93f7c06f1053a194cde32acdb93cd90e7ea6d053991d3f7ab7f1df2fa38"
+    },
+    "assets/brand/logo/png/nerdos-logo-mono-black-2048.png": {
+      "source": "brand/logo/png/nerdos-logo-mono-black-2048.png",
+      "sha256": "3f245f2046de238cc1f600a72db6efc0430ba690abc6e08c87e91779d1ed94af"
+    },
+    "assets/brand/logo/png/nerdos-logo-mono-black-512.png": {
+      "source": "brand/logo/png/nerdos-logo-mono-black-512.png",
+      "sha256": "2637ba93ff85d0df31ff550cefdfb54cfe428d6357a81eb54771ca5b96ac1fa0"
+    },
+    "assets/brand/logo/png/nerdos-logo-mono-white-1024.png": {
+      "source": "brand/logo/png/nerdos-logo-mono-white-1024.png",
+      "sha256": "084f91b48c4f08c873e016459817adb437055b2906dabd3d2981b50f54537f93"
+    },
+    "assets/brand/logo/png/nerdos-logo-mono-white-2048.png": {
+      "source": "brand/logo/png/nerdos-logo-mono-white-2048.png",
+      "sha256": "197099c0d3ede611e099cc54a28eecc2560474973a89b20a71cc0537def1ec8b"
+    },
+    "assets/brand/logo/png/nerdos-logo-mono-white-512.png": {
+      "source": "brand/logo/png/nerdos-logo-mono-white-512.png",
+      "sha256": "2d69621e545b7a713796e4e2f9c43bf41e80231fa1ad200b9947b7fe46fe5290"
+    },
+    "assets/brand/logo/png/nerdos-logo-on-dark-1024.png": {
+      "source": "brand/logo/png/nerdos-logo-on-dark-1024.png",
+      "sha256": "d4bcc5ca25d03ba38e5a11cbd201af3b192fbafca0fdb193824f6a3a72205102"
+    },
+    "assets/brand/logo/png/nerdos-logo-on-dark-2048.png": {
+      "source": "brand/logo/png/nerdos-logo-on-dark-2048.png",
+      "sha256": "4f330305a70661343c1461ee6b15f25b9245d6e7e127804ddda4080cc8a6ba9c"
+    },
+    "assets/brand/logo/png/nerdos-logo-on-dark-512.png": {
+      "source": "brand/logo/png/nerdos-logo-on-dark-512.png",
+      "sha256": "2eb30c23637f5e6cf156f34d5e84e46fb979b8f07c9345776d995e23ee02da2d"
+    },
+    "assets/brand/logo/png/nerdos-logo-on-light-1024.png": {
+      "source": "brand/logo/png/nerdos-logo-on-light-1024.png",
+      "sha256": "6d6d5aeeb6e3d0d5c4a749cf8c1b599771f2e25979b21ec26d9343af5004dd91"
+    },
+    "assets/brand/logo/png/nerdos-logo-on-light-2048.png": {
+      "source": "brand/logo/png/nerdos-logo-on-light-2048.png",
+      "sha256": "9c6c30ffa44326b44a504cf57fc7d1cff2147d6d20c3c1f60ca5529d2b592d47"
+    },
+    "assets/brand/logo/png/nerdos-logo-on-light-512.png": {
+      "source": "brand/logo/png/nerdos-logo-on-light-512.png",
+      "sha256": "b4e5babbbbea73291f12608e89812778f1297e40e983f0cd352133273e6b96d0"
+    },
+    "assets/brand/logo/svg/nerdos-logo-descriptor-mono-black.svg": {
+      "source": "brand/logo/svg/nerdos-logo-descriptor-mono-black.svg",
+      "sha256": "7e1e8d42434d45f5a6572af954a4d80d1bf3112a23b85d8cd768e2f081ce410e"
+    },
+    "assets/brand/logo/svg/nerdos-logo-descriptor-mono-white.svg": {
+      "source": "brand/logo/svg/nerdos-logo-descriptor-mono-white.svg",
+      "sha256": "b37de20b32667b770767d72efa60987b32eeacaa9a21f34b3340c6557d303ddb"
+    },
+    "assets/brand/logo/svg/nerdos-logo-descriptor-on-dark.svg": {
+      "source": "brand/logo/svg/nerdos-logo-descriptor-on-dark.svg",
+      "sha256": "8133f2a5c6158f619b90aa16908a88b2aeb0f5ed86939f5912d2e2a8e62c0076"
+    },
+    "assets/brand/logo/svg/nerdos-logo-descriptor-on-light.svg": {
+      "source": "brand/logo/svg/nerdos-logo-descriptor-on-light.svg",
+      "sha256": "42e042f173aefdd1e201b2c8cb6221515b85b3f82efd6e16ff25ebad6b67dd0d"
+    },
+    "assets/brand/logo/svg/nerdos-logo-mono-black.svg": {
+      "source": "brand/logo/svg/nerdos-logo-mono-black.svg",
+      "sha256": "e4875f3e5c1dedcf66df2b151eca1a9612417de5770769fe68e68b16ce0f76bb"
+    },
+    "assets/brand/logo/svg/nerdos-logo-mono-white.svg": {
+      "source": "brand/logo/svg/nerdos-logo-mono-white.svg",
+      "sha256": "3b2a592f75fb270235f23f582d6102e54c009b9654722e49611107f1618cb6c0"
+    },
+    "assets/brand/logo/svg/nerdos-logo-on-dark.svg": {
+      "source": "brand/logo/svg/nerdos-logo-on-dark.svg",
+      "sha256": "155559f61f6dfbea345c643e905ae1ff46f9681dad77839b99a4f36481a362b3"
+    },
+    "assets/brand/logo/svg/nerdos-logo-on-light.svg": {
+      "source": "brand/logo/svg/nerdos-logo-on-light.svg",
+      "sha256": "30d9094ac663a5f6b2847b22aab100fe87482584a8e06f7fb244d4a0de12c724"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-mono-black-1024.png": {
+      "source": "brand/symbol/png/nerdos-symbol-mono-black-1024.png",
+      "sha256": "18bb5f21e354e0147252181a23578cea887a9a52636f6ac86894cbc4d228f5b1"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-mono-black-128.png": {
+      "source": "brand/symbol/png/nerdos-symbol-mono-black-128.png",
+      "sha256": "c0d6a2111eca8af64150a74554c690c1c1a5bf815a951920a01e84857d15dcef"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-mono-black-256.png": {
+      "source": "brand/symbol/png/nerdos-symbol-mono-black-256.png",
+      "sha256": "5e4540996b3b406b01702e1da909f0468932c848dddbf4b17a4cea798c0aa55b"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-mono-black-512.png": {
+      "source": "brand/symbol/png/nerdos-symbol-mono-black-512.png",
+      "sha256": "5660648ac30bd820acd852329ce7ca6ed4d19e63ecf6fe7f8d90444b8b3940f5"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-mono-white-1024.png": {
+      "source": "brand/symbol/png/nerdos-symbol-mono-white-1024.png",
+      "sha256": "3c3e5cac5690fdb1d97072f7edc3d7d426c6d5db8b7a1ad53c7aafe20c57d187"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-mono-white-128.png": {
+      "source": "brand/symbol/png/nerdos-symbol-mono-white-128.png",
+      "sha256": "955cef7b05afdcffef6771b70db7f95cd6c4e0037644965c00a4ef1841318d36"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-mono-white-256.png": {
+      "source": "brand/symbol/png/nerdos-symbol-mono-white-256.png",
+      "sha256": "1fbc76b6e735d7e28317b0fa35d8454dd47327ec9db154b11244ce032c4ebb11"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-mono-white-512.png": {
+      "source": "brand/symbol/png/nerdos-symbol-mono-white-512.png",
+      "sha256": "77624e3a90dc7de4fbecd4231448a9c4138cbebec17bd2e8367e72eaa61aa9ff"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-on-dark-1024.png": {
+      "source": "brand/symbol/png/nerdos-symbol-on-dark-1024.png",
+      "sha256": "c2267f9fe818e4d22f656230b0f3ca0d9ccca1898135e0188ea1ec270c20c229"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-on-dark-128.png": {
+      "source": "brand/symbol/png/nerdos-symbol-on-dark-128.png",
+      "sha256": "ea1da2bb11e3fadd6216f4c20b4e4cc2e04851e5967f6636ed16c27fb5ee14a6"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-on-dark-256.png": {
+      "source": "brand/symbol/png/nerdos-symbol-on-dark-256.png",
+      "sha256": "5888c492d48a35ab7d68835d7bf3615006edfec8840fa52cf56054269e316699"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-on-dark-512.png": {
+      "source": "brand/symbol/png/nerdos-symbol-on-dark-512.png",
+      "sha256": "8f60fa2e1f73c4556b66cbbaeba92eff2f83ca012b1c8e486dbc416d25f2e207"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-on-light-1024.png": {
+      "source": "brand/symbol/png/nerdos-symbol-on-light-1024.png",
+      "sha256": "02ab9ba9620fbf3f388ac8de466f3caad1ff6dcef676bb0c92a9ddf5cf1a62e3"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-on-light-128.png": {
+      "source": "brand/symbol/png/nerdos-symbol-on-light-128.png",
+      "sha256": "2075ae79b2308ca9302a1bd81f0626d05b25124d2990d8ff75f74283414b7364"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-on-light-256.png": {
+      "source": "brand/symbol/png/nerdos-symbol-on-light-256.png",
+      "sha256": "2927de4d51d7270a08c429decab7a0c0b31ab1ddca630e4dc23624cd53243523"
+    },
+    "assets/brand/symbol/png/nerdos-symbol-on-light-512.png": {
+      "source": "brand/symbol/png/nerdos-symbol-on-light-512.png",
+      "sha256": "d4df37aa38696799f39e1a61de16c22da0b1d14daf35007405d3989bfa77e5b8"
+    },
+    "assets/brand/symbol/png/small/nerdos-symbol-16px-on-dark.png": {
+      "source": "brand/symbol/png/small/nerdos-symbol-16px-on-dark.png",
+      "sha256": "836ff72564581743a1f18d3f1ec3445a03a80715358f500dc839e07a96875739"
+    },
+    "assets/brand/symbol/png/small/nerdos-symbol-16px-on-light.png": {
+      "source": "brand/symbol/png/small/nerdos-symbol-16px-on-light.png",
+      "sha256": "6891cb1a69af95c5a5d73d311a47d528244d8d63ae662aeacdb78c27d10ffd29"
+    },
+    "assets/brand/symbol/png/small/nerdos-symbol-32px-on-dark.png": {
+      "source": "brand/symbol/png/small/nerdos-symbol-32px-on-dark.png",
+      "sha256": "bef995cb1cde5f813c894ea7beb7b20c983bfcd5a5136e85d046c43029c9fcd6"
+    },
+    "assets/brand/symbol/png/small/nerdos-symbol-32px-on-light.png": {
+      "source": "brand/symbol/png/small/nerdos-symbol-32px-on-light.png",
+      "sha256": "f7855bf944e8139619aba90792a72c75ee6dc951a7a23c1d0f37025a6daf63ca"
+    },
+    "assets/brand/symbol/svg/nerdos-symbol-mono-black.svg": {
+      "source": "brand/symbol/svg/nerdos-symbol-mono-black.svg",
+      "sha256": "1e4a49670021e99c0ff3604bc91466a8706a19cfed6b4747c8fa9e818171538a"
+    },
+    "assets/brand/symbol/svg/nerdos-symbol-mono-white.svg": {
+      "source": "brand/symbol/svg/nerdos-symbol-mono-white.svg",
+      "sha256": "c82b0cb43201a5cf4d74b134c11148929082e480068beae0e8f0d047bf7da1ad"
+    },
+    "assets/brand/symbol/svg/nerdos-symbol-on-dark.svg": {
+      "source": "brand/symbol/svg/nerdos-symbol-on-dark.svg",
+      "sha256": "53814ae267a3a4a05d7484740d8111d55bf3d38b1017b86fca659172b013a34f"
+    },
+    "assets/brand/symbol/svg/nerdos-symbol-on-light.svg": {
+      "source": "brand/symbol/svg/nerdos-symbol-on-light.svg",
+      "sha256": "c301fd8212a34ce506217381d316816707c217d2269360e112a40d771ba5631f"
+    },
+    "assets/brand/symbol/svg/small/nerdos-symbol-16px-on-dark.svg": {
+      "source": "brand/symbol/svg/small/nerdos-symbol-16px-on-dark.svg",
+      "sha256": "08ba9fd9a0b63f353663a7f1e3f40bd174339c784be266c9682025bac5780134"
+    },
+    "assets/brand/symbol/svg/small/nerdos-symbol-16px-on-light.svg": {
+      "source": "brand/symbol/svg/small/nerdos-symbol-16px-on-light.svg",
+      "sha256": "6eb0c274e02962dc1dd15616748c4d976b71a5664df626df9672df83724190e4"
+    },
+    "assets/brand/symbol/svg/small/nerdos-symbol-32px-on-dark.svg": {
+      "source": "brand/symbol/svg/small/nerdos-symbol-32px-on-dark.svg",
+      "sha256": "2f5e2118b5fe668bfa5525771f900896dc73b58eff793703d37c9cde014d4241"
+    },
+    "assets/brand/symbol/svg/small/nerdos-symbol-32px-on-light.svg": {
+      "source": "brand/symbol/svg/small/nerdos-symbol-32px-on-light.svg",
+      "sha256": "4e98e9fb8ab1f08a74f8da9cc35dc7aca0842525fe5526187dd6fcdd8bfc85eb"
+    },
+    "desktop/plymouth/logo.png": {
+      "source": "derived/plymouth/logo.png",
+      "sha256": "d98d1d16eecc1ae3feaa3854a528ba9bc6dc5ccadf6f32167b401c1eeef0ae08"
+    },
+    "desktop/plymouth/logo@2x.png": {
+      "source": "derived/plymouth/logo@2x.png",
+      "sha256": "c38adffdf829d0070c6028bdc5262760ee0605e66ccb26fc512adaa4146b826f"
+    },
+    "desktop/quickshell/assets/nerdos-white.svg": {
+      "source": "derived/quickshell/nerdos-white.svg",
+      "sha256": "03151aacc479c421a52f92669e3801c45a7d4642e16728c2dfd5958594f5d668"
+    },
+    "desktop/quickshell/assets/nerdos.svg": {
+      "source": "derived/quickshell/nerdos.svg",
+      "sha256": "ec82cf7f8a235a689c973158af084660ceb0b4875da5bd196634e0d4545b815a"
+    },
+    "desktop/icons/hicolor/128x128/apps/nerdos.png": {
+      "source": "derived/hicolor/128x128/apps/nerdos.png",
+      "sha256": "ce944fd99af250afafa52428194b8826d7b91b2525747b4d5a5d430c426d5bc9"
+    },
+    "desktop/icons/hicolor/16x16/apps/nerdos.png": {
+      "source": "derived/hicolor/16x16/apps/nerdos.png",
+      "sha256": "b869eda05d19e57c95d17db415e8c125f214b7715da864c84d5662c1ec7bf9a4"
+    },
+    "desktop/icons/hicolor/256x256/apps/nerdos.png": {
+      "source": "derived/hicolor/256x256/apps/nerdos.png",
+      "sha256": "c86362dbe6b338a2e391a697f6d5f33ec2cd761ebecaa43ec5642b9997a782d4"
+    },
+    "desktop/icons/hicolor/32x32/apps/nerdos.png": {
+      "source": "derived/hicolor/32x32/apps/nerdos.png",
+      "sha256": "f7603e818306af0d538119eb3f8c17d64fe9a6d032d1f15d10af991b7a59fbd0"
+    },
+    "desktop/icons/hicolor/48x48/apps/nerdos.png": {
+      "source": "derived/hicolor/48x48/apps/nerdos.png",
+      "sha256": "4cc8d3cbb5b2a5c2906130dc44da4b773df33ae204cf8f9967aba6084c4f7c67"
+    },
+    "desktop/icons/hicolor/512x512/apps/nerdos.png": {
+      "source": "derived/hicolor/512x512/apps/nerdos.png",
+      "sha256": "e41775c68992cf78c14605f9a90d18b13059b3c8af14ef19a9d3e76f4c4f43fa"
+    },
+    "desktop/icons/hicolor/64x64/apps/nerdos.png": {
+      "source": "derived/hicolor/64x64/apps/nerdos.png",
+      "sha256": "267a41f605ff475ec53e8181bd9e2df110f00c39230119d875f81a41d492d6b7"
+    },
+    "desktop/icons/hicolor/scalable/apps/nerdos.svg": {
+      "source": "derived/hicolor/scalable/apps/nerdos.svg",
+      "sha256": "2873aa6c576593fe6f6a0dc3b315615b352e27068f6ab407d78dc092120ea223"
+    },
+    "desktop/fastfetch/nerdos-banner.txt": {
+      "source": "derived/fastfetch/nerdos-banner.txt",
+      "sha256": "65058fc7fb811fef59c09c77e8ba69fcadbacce7c3d6a4f00300189da90f0c29"
+    },
+    "desktop/fastfetch/nerdos-compact.fastfetch.txt": {
+      "source": "derived/fastfetch/nerdos-compact.fastfetch.txt",
+      "sha256": "f014612980594d6bfd0508949a69746f141ae5ce17f6203bba539deadc9827dd"
+    },
+    "desktop/fastfetch/nerdos-compact.txt": {
+      "source": "derived/fastfetch/nerdos-compact.txt",
+      "sha256": "d2c47db127df6f36952be4c4b09a40be8537bf3c89f94c0de35adc00e619a674"
+    },
+    "desktop/fastfetch/nerdos-large.fastfetch.txt": {
+      "source": "derived/fastfetch/nerdos-large.fastfetch.txt",
+      "sha256": "5ccde93ad0438685b5a98e83c830d90db4763019061f09f91d35c8d3e4c23719"
+    },
+    "desktop/fastfetch/nerdos-large.txt": {
+      "source": "derived/fastfetch/nerdos-large.txt",
+      "sha256": "6ae8b1831ab7f2ff51b6c8fedd919a79012d3e1d4166b5e3180513f58dbace0a"
+    },
+    "web/public/apple-touch-icon.png": {
+      "source": "derived/web/apple-touch-icon.png",
+      "sha256": "0e2a93b95565706ae74bf253d95eefbac1c3830fa813532e552a9d98f30a05a6"
+    },
+    "web/public/favicon.ico": {
+      "source": "derived/web/favicon.ico",
+      "sha256": "6b857f20017a10eff8011cd08cce855fcc53adf6c0f1b53885852ca495c9ecca"
+    },
+    "web/public/favicon.svg": {
+      "source": "derived/web/favicon.svg",
+      "sha256": "6c4b62896433102986f5db64938cb21ce512cd2738dac6e569ad0be8d6b5a39e"
+    },
+    "web/public/icon-192.png": {
+      "source": "derived/web/icon-192.png",
+      "sha256": "831bc4146971cc0c4a2a635d1cf934eb8346de696ce87c9199f6c1887f40bf30"
+    },
+    "web/public/icon-512.png": {
+      "source": "derived/web/icon-512.png",
+      "sha256": "d885a30c89f5340863a5e29853e21e91f60e3eb514ad045d78e059fea940e058"
+    },
+    "web/public/icon-maskable-192.png": {
+      "source": "derived/web/icon-maskable-192.png",
+      "sha256": "a6510ec52256e25ada0d5cd1678298121f424c4c0d260256a151f7adcc2a74f7"
+    },
+    "web/public/icon-maskable-512.png": {
+      "source": "derived/web/icon-maskable-512.png",
+      "sha256": "2a34c0b42090950cf99c6e392d2228619a5b4549428873cbb41b245ab16813a6"
+    },
+    "web/public/site.webmanifest": {
+      "source": "derived/web/site.webmanifest",
+      "sha256": "a0595de67c8e2f2dbf1a3698f55341d43d94ffbf9e45a6b74a60e062fc1b6a40"
+    },
+    "web/public/nerdos-logo.svg": {
+      "source": "derived/welcome/nerdos-logo.svg",
+      "sha256": "155559f61f6dfbea345c643e905ae1ff46f9681dad77839b99a4f36481a362b3"
+    },
+    "web/public/nerdos.svg": {
+      "source": "derived/quickshell/nerdos.svg",
+      "sha256": "ec82cf7f8a235a689c973158af084660ceb0b4875da5bd196634e0d4545b815a"
+    },
+    "web/public/nerdos-white.svg": {
+      "source": "derived/quickshell/nerdos-white.svg",
+      "sha256": "03151aacc479c421a52f92669e3801c45a7d4642e16728c2dfd5958594f5d668"
+    }
+  }
+}

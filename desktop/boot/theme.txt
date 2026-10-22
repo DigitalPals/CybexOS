@@ -1,0 +1,33 @@
+# NerdOS ISO menu appearance. Logo reused unchanged from Plymouth.
+desktop-color: "#0d0d0d"
+title-text: ""
+terminal-font: "Unifont Regular 16"
+
++ image {
+  left = 50%-180
+  top = 12%
+  width = 360
+  height = 48
+  file = "logo.png"
+}
++ label {
+  left = 0
+  top = 23%
+  width = 100%
+  align = "center"
+  text = "NerdOS - Opinionated System"
+  color = "#F3F2EC"
+  font = "Unifont Regular 16"
+}
++ boot_menu {
+  left = 15%
+  top = 35%
+  width = 70%
+  height = 50%
+  item_font = "Unifont Regular 16"
+  item_color = "#F3F2EC"
+  selected_item_color = "#C8FF1F"
+  item_height = 32
+  item_padding = 8
+  item_spacing = 4
+}
