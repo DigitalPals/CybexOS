@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
+from contextvars import copy_context
 from http.cookiejar import Cookie, CookieJar
 import json
 import os
@@ -11,7 +13,7 @@ from pathlib import Path
 import re
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.request import (
@@ -195,6 +197,9 @@ class RemoteWebUIAuth:
     def __init__(self, path: Path, environment_url: str | None = None):
         self.path = path
         self._lock = threading.RLock()
+        # Optional discovery and stream reads can occupy every default worker
+        # on a small machine. Authentication must still reach the server.
+        self._auth_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="hermes-auth")
         self.cookie_jar = CookieJar()
         self.base_url = ""
         self.source = "none"
@@ -228,6 +233,17 @@ class RemoteWebUIAuth:
                 url=self.base_url,
                 message="Remote Hermes has not been checked",
             )
+
+    async def _auth_call(self, function: Callable[..., Any], *args: Any) -> Any:
+        context = copy_context()
+        return await asyncio.get_running_loop().run_in_executor(
+            self._auth_executor, context.run, function, *args
+        )
+
+    def close(self) -> None:
+        # Existing HTTP deadlines bound requests already running; discard work
+        # that has not started without blocking the bridge's event loop.
+        self._auth_executor.shutdown(wait=False, cancel_futures=True)
 
     @property
     def status(self) -> dict[str, Any]:
@@ -711,7 +727,7 @@ class RemoteWebUIAuth:
             )
 
     async def probe(self, url: Any = None, timeout: float = 10.0) -> dict[str, Any]:
-        return await asyncio.to_thread(self._probe_sync, url, timeout)
+        return await self._auth_call(self._probe_sync, url, timeout)
 
     def _probe_sync(self, url: Any, timeout: float) -> dict[str, Any]:
         with self._lock:
@@ -761,7 +777,7 @@ class RemoteWebUIAuth:
             raise RpcFault(-32602, "Password is required")
         if len(password.encode("utf-8")) > 65536:
             raise RpcFault(-32602, "Password is too large")
-        return await asyncio.to_thread(self._login_sync, url, password, timeout)
+        return await self._auth_call(self._login_sync, url, password, timeout)
 
     def _login_sync(
         self, url: Any, password: str, timeout: float
@@ -870,7 +886,7 @@ class RemoteWebUIAuth:
             return dict(status)
 
     async def logout(self, timeout: float = 10.0) -> dict[str, Any]:
-        return await asyncio.to_thread(self._logout_sync, timeout)
+        return await self._auth_call(self._logout_sync, timeout)
 
     def _logout_sync(self, timeout: float) -> dict[str, Any]:
         with self._lock:

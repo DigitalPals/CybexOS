@@ -361,6 +361,21 @@ boot claim. The encrypted task's lease, capacity reservation, six QMP runtime
 directories, 12 recorded processes, workspace, cgroup, path alias and mounts
 were released and independently verified absent, with no cleanup errors.
 
+PR #24's Fedora 44 and Fedora 45 source jobs subsequently exposed Hermes
+worker starvation on smaller machines. Optional HTTP discovery could occupy
+every default executor worker, leaving an authentication probe queued until
+those requests finished. Authentication now uses a separate two-worker pool,
+closed when the bridge stops. A regression fills a two-worker ordinary pool
+and requires status, login and logout to finish while both requests remain
+held; restoring shared-worker authentication makes that regression fail.
+The discovery fixture that deliberately parks all independent endpoints now
+provides explicit worker capacity for those holds, independent of runner CPU
+count. Existing authentication deadlines are unchanged. Both installation
+paths consume the same bridge sources. This installed Hermes correction
+postdates the artifact build above: those exact-artifact guest reports remain
+historical evidence, and a release containing this later correction requires
+newly rebuilt, same-source artifacts and qualification.
+
 Real local Restic fixtures cover restoring synthetic saves, readable volumes,
 and a SQLite export, plus unreadable-volume partial-result handling. Backing up
 a live database directory is still not a consistent database export; stopping

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import io
@@ -157,6 +158,9 @@ class HermesHandler(BaseHTTPRequestHandler):
         if self.path == "/auth-status-final":
             return self.auth_status()
         if self.path == "/api/held":
+            with FIXTURE.request_lock:
+                key = self.path
+                FIXTURE.request_counts[key] = FIXTURE.request_counts.get(key, 0) + 1
             FIXTURE.slow_entered.set()
             FIXTURE.slow_release.wait(timeout=10)
             if FIXTURE.slow_status == 401:
@@ -509,6 +513,10 @@ def fixture_bridge(root: Path) -> Any:
 async def discovery_scenario() -> None:
     """Slow optional endpoints never delay auth or multiply on concurrent opens."""
 
+    # This fixture deliberately parks every independent discovery endpoint at
+    # once. Give those server holds enough workers on two-core CI machines;
+    # the separate saturation scenario exercises a fully occupied small pool.
+    asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(max_workers=16))
     FIXTURE.mode = "normal"
     FIXTURE.model = "fixture-original"
     FIXTURE.request_counts.clear()
@@ -604,6 +612,45 @@ async def discovery_scenario() -> None:
         finally:
             FIXTURE.optional_release.set()
             await bridge.stop()
+            await eventually(lambda: not any(thread.is_alive()
+                                             for thread in bridge.remote_auth._auth_executor._threads))
+
+
+async def auth_executor_scenario() -> None:
+    """Authentication works while ordinary HTTP workers are all occupied."""
+
+    asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(max_workers=2))
+    FIXTURE.mode = "normal"
+    FIXTURE.slow_status = 200
+    FIXTURE.slow_release.clear()
+    FIXTURE.request_counts.clear()
+    with RunningServer(HermesHandler) as remote, tempfile.TemporaryDirectory(
+        prefix="hermes-auth-workers."
+    ) as temporary:
+        manager = BRIDGE.RemoteWebUIAuth(Path(temporary) / "auth.json", environment_url="")
+        held = []
+        watchdog = threading.Timer(8, FIXTURE.slow_release.set)
+        watchdog.start()
+        try:
+            await manager.login(remote.url, FIXTURE.password)
+            held = [asyncio.create_task(manager.request_json("GET", "/api/held"))
+                    for _ in range(2)]
+            await eventually(lambda: FIXTURE.request_counts.get("/api/held") == 2)
+            assert (await asyncio.wait_for(manager.probe(), 2))["state"] == "connected"
+            assert (await asyncio.wait_for(manager.login(remote.url, FIXTURE.password), 2))[
+                "state"] == "connected"
+            signed_out = await asyncio.wait_for(manager.logout(), 2)
+            assert signed_out["state"] == "disconnected" and signed_out["remoteLogout"]
+            assert not manager.path.exists()
+            assert not FIXTURE.slow_release.is_set()
+            assert all(not task.done() for task in held)
+        finally:
+            watchdog.cancel()
+            FIXTURE.slow_release.set()
+            await asyncio.gather(*held, return_exceptions=True)
+            manager.close()
+            await eventually(lambda: not any(thread.is_alive()
+                                             for thread in manager._auth_executor._threads))
 
 
 async def auth_recovery_scenario() -> None:
@@ -877,6 +924,7 @@ async def observer_cancellation_scenario() -> None:
 if __name__ == "__main__":
     asyncio.run(scenario())
     asyncio.run(concurrency_scenario())
+    asyncio.run(auth_executor_scenario())
     asyncio.run(discovery_scenario())
     asyncio.run(auth_recovery_scenario())
     asyncio.run(selected_observer_discovery_scenario())

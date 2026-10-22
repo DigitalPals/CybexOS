@@ -257,15 +257,18 @@ class HermesBridge:
 
     async def stop(self) -> None:
         self.remote_stopping = True
-        await self.stop_remote_background()
-        await self.stop_remote_observers()
-        await asyncio.gather(*self.remote_observer_cleanup_tasks, return_exceptions=True)
-        await self.stop_remote_streams()
-        await self.gateway.stop()
-        self.registry.flush()
-        for client in list(self.clients):
-            with suppress(Exception):
-                await client.websocket.close(code=1001, reason="bridge stopping")
+        try:
+            await self.stop_remote_background()
+            await self.stop_remote_observers()
+            await asyncio.gather(*self.remote_observer_cleanup_tasks, return_exceptions=True)
+            await self.stop_remote_streams()
+            await self.gateway.stop()
+            self.registry.flush()
+            for client in list(self.clients):
+                with suppress(Exception):
+                    await client.websocket.close(code=1001, reason="bridge stopping")
+        finally:
+            self.remote_auth.close()
 
     def public_conversation(self, conversation: dict[str, Any]) -> dict[str, Any]:
         # A WebUI conversation is identified directly by its native session id.
