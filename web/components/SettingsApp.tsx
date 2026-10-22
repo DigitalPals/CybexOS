@@ -30,7 +30,7 @@ const accents = [
 ];
 
 const wallpapers = [
-  { id: 'mountains', name: 'Moonlit peaks', detail: 'The CybexOS original' },
+  { id: 'mountains', name: 'Moonlit peaks', detail: 'The NerdOS original' },
   { id: 'aurora', name: 'Aurora', detail: 'A quieter kind of green' },
   { id: 'dusk', name: 'After hours', detail: 'The last light of the day' },
 ] as const;
@@ -69,7 +69,7 @@ export function SettingsApp({ preferences, updatePreferences, notify }: Settings
   function resetPreferences() {
     updatePreferences({ ...DEFAULT_PREFERENCES });
     setConfirmReset(false);
-    notify('Desktop preferences restored to CybexOS defaults.');
+    notify('Desktop preferences restored to NerdOS defaults.');
     resetButton.current?.focus();
   }
 
@@ -212,19 +212,19 @@ export function SettingsApp({ preferences, updatePreferences, notify }: Settings
           <section aria-labelledby="settings-about-heading">
             <header className="settings-page-heading">
               <span className="settings-eyebrow">A DESKTOP THAT FEELS LIKE YOURS</span>
-              <h2 id="settings-about-heading">CybexOS</h2>
+              <h2 id="settings-about-heading">NerdOS</h2>
               <p>Thoughtfully simple. Unmistakably personal.</p>
             </header>
-            <div className="settings-about-brand"><span>cybex<span>os</span><i /></span><small>THE BROWSER EXPERIENCE</small></div>
+            <div className="settings-about-brand"><img src="/nerdos-logo.svg" alt="NerdOS" width="240" height="32" /><small>OPINIONATED SYSTEM · THE BROWSER EXPERIENCE</small></div>
             <div className="settings-group settings-about-facts">
               <div><span>Native foundation</span><strong>NixOS 26.05</strong></div>
               <div><span>Window compositor</span><strong>Hyprland</strong></div>
               <div><span>Desktop shell</span><strong>Quickshell</strong></div>
               <div><span>This experience</span><strong>Interactive web demo</strong></div>
             </div>
-            <div className="settings-help-note settings-about-note"><ShieldCheck size={18} /><p>This is an interactive simulation of CybexOS. It does not install Linux or control your computer. Notes and preferences are stored locally in this browser.</p></div>
+            <div className="settings-help-note settings-about-note"><ShieldCheck size={18} /><p>This is an interactive simulation of NerdOS. It does not install Linux or control your computer. Notes and preferences are stored locally in this browser.</p></div>
             <a className="settings-repository-link" href={REPOSITORY_URL} target="_blank" rel="noreferrer">
-              Explore CybexOS on GitHub <ArrowUpRight size={16} />
+              Explore NerdOS on GitHub <ArrowUpRight size={16} />
             </a>
           </section>
         )}

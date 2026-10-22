@@ -3,7 +3,7 @@
 | Asset | Source | Rights information |
 | --- | --- | --- |
 | `public/wallpapers/moon-mountains-{1280,2560,5120}.png` | Original procedural landscapes from `../scripts/generate-wallpapers.py`; native `moon-mountains.png` and the 2560-pixel web file are byte-identical. All dimensions and generator/file digests are in `../assets/PROVENANCE.json`. | Newly authored geometric artwork under the repository MIT license; no third-party input images. |
-| `public/cybex-wordmark.svg` | Repository Cybex wordmark | Existing Cybex brand asset; no additional license is asserted here. |
+| `public/nerdos-logo.svg`, favicon set and web manifest | Supplied NerdOS identity kit, `derived/welcome/` and `derived/web/`; canonical source in `../assets/brand/` | Original project artwork, October 2026, repository MIT license. Outlined Space Grotesk/JetBrains Mono lettering (SIL OFL 1.1); font notices in `../assets/brand/FONT-LICENSES/`. |
 | Figtree | `@fontsource/figtree`, installed through the npm lockfile | SIL Open Font License 1.1. Copyright 2022 The Figtree Project Authors, https://github.com/erikdkennedy/figtree. The full license is also shipped in `public/licenses/`. |
 | JetBrains Mono | `@fontsource/jetbrains-mono`, installed through the npm lockfile | SIL Open Font License 1.1. Copyright 2020 The JetBrains Mono Project Authors, https://github.com/JetBrains/JetBrainsMono. The full license is also shipped in `public/licenses/`. |
 | Interface icons | `lucide-react`, installed through the npm lockfile | ISC license and included upstream notices; the complete license and Feather notices are shipped in `public/licenses/lucide.txt`. |
@@ -28,4 +28,6 @@ widget. Its notices identify their source as `basecamp/omarchy` commit
 shipped at `public/licenses/model-usage-marks.txt`. Provider marks belong to
 their owners and do not imply affiliation or endorsement.
 
-`public/cybexos.svg`: original CybexOS monogram, MIT.
+`public/nerdos.svg` and `public/nerdos-white.svg`: unchanged glasses from the
+kit's `derived/quickshell/`, original project artwork, MIT. See
+`../assets/brand/USAGE.md`. Trademark clearance for NerdOS has not been done.

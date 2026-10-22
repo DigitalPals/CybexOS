@@ -1,9 +1,9 @@
-# CybexOS in your browser
+# NerdOS in your browser
 
-An interactive recreation of the CybexOS desktop: the Quickshell-inspired
+An interactive recreation of the NerdOS desktop: the Quickshell-inspired
 menubar, workspaces, application launcher, Hyprland-style tiling, attached control drawer,
 terminal, sample files, Omawrite notes, and appearance settings. The default
-mountain wallpaper and Cybex wordmark come from the native desktop.
+mountain wallpaper and NerdOS wordmark come from the native desktop.
 
 This is a browser simulation. It does not boot Linux, connect to your desktop,
 install applications, execute shell commands, or change the host's settings.
@@ -47,11 +47,11 @@ The image builds the app, runs as the unprivileged `node` user, and checks the
 production page for readiness. Source files and the host filesystem are not
 mounted into the container.
 
-Set `CYBEXOS_WEB_PORT` to choose another host port. Set `CYBEXOS_WEB_HOST` to
+Set `NERDOS_WEB_PORT` to choose another host port. Set `NERDOS_WEB_HOST` to
 choose the host interface; for example, to serve only on loopback:
 
 ```bash
-CYBEXOS_WEB_HOST=127.0.0.1 CYBEXOS_WEB_PORT=5175 docker compose up --build -d --wait
+NERDOS_WEB_HOST=127.0.0.1 NERDOS_WEB_PORT=5175 docker compose up --build -d --wait
 ```
 
 After changing the application on `thebeast`, rebuild and restart this service
@@ -63,15 +63,15 @@ host's HTTPS reverse proxy or use the Sites build.
 
 ## Explore the desktop
 
-The welcome screen follows the installed CybexOS desktop: a centered window,
-Cybex wordmark, wallpaper previews, and a Settings action. Choosing a wallpaper
+The welcome screen follows the installed NerdOS desktop: a centered window,
+NerdOS wordmark, wallpaper previews, and a Settings action. Choosing a wallpaper
 also applies its matching accent and saves both in this browser. **Get started**
 closes the welcome; reopen it from Applications whenever needed.
 
 Click Applications to open apps or the workspace numbers to switch desktops.
 The clock shows time first and opens an attached day sheet with a week strip,
 month navigation, and the browser's time zone. Its time follows the 12/24-hour
-preference. The CybexOS mark opens the control drawer, attached to the right
+preference. The NerdOS mark opens the control drawer, attached to the right
 screen edge. Sound, Network, Bluetooth, Power, and Notifications glyphs open
 their corresponding tabs in that same drawer. Arrow keys, Home, and End
 navigate its tabs. Sliders and toggles share state across tabs.
@@ -119,16 +119,16 @@ Native Hyprland uses Super-based shortcuts. This browser preview adapts them
 to Alt; some browsers or operating systems reserve these combinations.
 Clickable controls are also available.
 
-## Terminal and CybexOS overview
+## Terminal and NerdOS overview
 
 The Kitty-inspired terminal has a Fish-style prompt and a small, fixed command
 set against an in-memory sample filesystem. `fastfetch` and `neofetch` show a
-blue CybexOS ASCII logo beside NixOS 26.05, Hyprland on Wayland, Quickshell,
+blue NerdOS ASCII logo beside NixOS 26.05, Hyprland on Wayland, Quickshell,
 Kitty, and sample kernel, CPU, GPU, package, memory, and disk information. The
 overview identifies its data as simulated and adapts to narrow tiled windows.
 No hardware, installed packages, or kernel information is read from the host.
 
-Try `help`, `ls`, `cd Documents`, `cat Shortcuts.txt`, or `cybex settings`.
+Try `help`, `ls`, `cd Documents`, `cat Shortcuts.txt`, or `nerd settings`.
 `hostname`, `uptime`, `uname -a`, `free -h`, and `df -h` report the same sample
 workstation. Tab completes commands, desktop app names, and virtual paths,
 including quoted filenames with spaces. History preserves an unfinished draft;
@@ -141,7 +141,7 @@ packages, access the host filesystem, or make network requests.
 ## Model Usage and CLIProxyAPI demo
 
 Click the Codex or Claude mark in the menubar, choose **Model Usage** from the
-launcher, use the welcome window's subscription shortcut, or run `cybex usage`
+launcher, use the welcome window's subscription shortcut, or run `nerd usage`
 in the simulated terminal. Each provider has three fictional subscriptions:
 Codex Pro 20×, Pro 5× and Plus; Claude Max 20×, Max 5× and Pro.
 
@@ -170,8 +170,8 @@ requested by the browser.
 
 ## Browser storage
 
-Appearance preferences use the localStorage key `cybexos-web-preferences-v1`.
-Omawrite saves notes under `cybexos-demo-notes-v1` and offers a Markdown download.
+Appearance preferences use the localStorage key `nerdos-web-preferences-v1`.
+Omawrite saves notes under `nerdos-demo-notes-v1` and offers a Markdown download.
 These values are local to this browser profile and site origin; they are not
 uploaded or synchronized. Changing the hostname, scheme, or port opens a
 different storage area. Clearing site data removes the saved values, and
@@ -191,14 +191,14 @@ The [web workflow](../.github/workflows/web.yml) runs these checks and a
 production HTTP smoke test for changes in `web/`. Native desktop checks remain
 separate. Layout and interaction coverage includes nonoverlapping tiles,
 floating and minimized reflow, stable editor focus, swaps, workspace moves,
-main split controls, narrow-screen stacking, and CybexOS terminal completion.
+main split controls, narrow-screen stacking, and NerdOS terminal completion.
 Key native references are
 [`Common/Theme.qml`](../desktop/quickshell/Common/Theme.qml),
 [`Common/SettingsHelpers.js`](../desktop/quickshell/Common/SettingsHelpers.js),
 [Hyprland layout settings](../desktop/hypr/looknfeel.lua),
 [the native drawer](../desktop/quickshell/Popovers/Drawer/DrawerPopover.qml),
 [the day sheet](../desktop/quickshell/Popovers/DaySheetPopover.qml),
-and the [welcome window](../installer/cybexos-install).
+and the [welcome window](../installer/nerdos-install).
 Asset sources and license information are recorded in
 [ASSETS.md](ASSETS.md).
 

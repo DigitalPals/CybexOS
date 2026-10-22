@@ -1,0 +1,6 @@
+NerdOS glasses, wordmark, icons and favicons: original project artwork,
+supplied in October 2026 under the repository MIT license.
+The mark and white variant are unchanged identity-kit assets.
+Outlined lettering: Space Grotesk and JetBrains Mono, SIL OFL 1.1.
+See assets/brand/USAGE.md and assets/brand/FONT-LICENSES in the source.
+No trademark clearance is asserted.

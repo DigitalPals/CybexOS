@@ -9,7 +9,7 @@ import { Fastfetch } from './Fastfetch';
 type Entry = { id: number; command: string; cwd: string; output: string; fastfetch?: boolean; cancelled?: boolean };
 
 function PromptContext({ cwd }: { cwd: string }) {
-  return <div className="terminal-prompt-context"><span className="terminal-user">guest<span>@</span>cybexos</span><span className="terminal-path">{displayPath(cwd)}</span></div>;
+  return <div className="terminal-prompt-context"><span className="terminal-user">guest<span>@</span>nerdos</span><span className="terminal-path">{displayPath(cwd)}</span></div>;
 }
 
 export function TerminalApp({ openApp }: AppProps) {
@@ -110,7 +110,7 @@ export function TerminalApp({ openApp }: AppProps) {
   return (
     <div className="terminal-app" onClick={() => { if (!window.getSelection()?.toString()) inputRef.current?.focus(); }}>
       <div className="terminal-scroll" ref={scrollRef}>
-        <div className="terminal-intro"><span>fish <span className="terminal-intro-version">4.3</span> <span className="terminal-intro-divider">/</span> Welcome to CybexOS</span><button onClick={(event) => { event.stopPropagation(); setInput('help'); setHistoryIndex(-1); setCompletions([]); inputRef.current?.focus(); }}>help ↵</button></div>
+        <div className="terminal-intro"><span>fish <span className="terminal-intro-version">4.3</span> <span className="terminal-intro-divider">/</span> Welcome to NerdOS</span><button onClick={(event) => { event.stopPropagation(); setInput('help'); setHistoryIndex(-1); setCompletions([]); inputRef.current?.focus(); }}>help ↵</button></div>
         <div className="terminal-history" role="log" aria-label="Terminal output" aria-live="polite">
           {entries.map((entry) => <div className="terminal-entry" key={entry.id}>
             <div className="terminal-command">

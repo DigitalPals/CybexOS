@@ -30,4 +30,4 @@ export const DEFAULT_PREFERENCES: Preferences = {
   theme: 'dark', accent: '#d3d283', wallpaper: 'mountains', glass: false,
   clock24: true, reducedMotion: false, font: 'mono',
 };
-export const REPOSITORY_URL = 'https://github.com/DigitalPals/CybexOS';
+export const REPOSITORY_URL = 'https://github.com/DigitalPals/NerdOS';

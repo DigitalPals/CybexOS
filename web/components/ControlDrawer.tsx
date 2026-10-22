@@ -101,8 +101,8 @@ export function ControlDrawer({ tab, setTab, close, volume, setVolume, brightnes
     <div className="drawer-body" ref={body} role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${tab}`}>
       {tab === 'overview' && <>
         <div className="drawer-system">
-          <div className="drawer-system-identity"><img src="/cybexos.svg" width="48" height="48" alt="" /><div><h2>NixOS</h2><p>Version 44 · CybexOS</p><span>Hyprland desktop</span></div><span className="drawer-demo-tag">DEMO</span></div>
-          <div className="drawer-system-session"><span><span className="drawer-status-dot" />visitor@cybexos</span><span>Browser session</span></div>
+          <div className="drawer-system-identity"><img src="/nerdos.svg" width="48" height="48" alt="" /><div><h2>NerdOS</h2><p>NixOS 26.05 · Opinionated System</p><span>Hyprland desktop</span></div><span className="drawer-demo-tag">DEMO</span></div>
+          <div className="drawer-system-session"><span><span className="drawer-status-dot" />visitor@nerdos</span><span>Browser session</span></div>
         </div>
         <div className="drawer-sliders">{brightnessSlider}{volumeSlider}</div>
         <div className="drawer-toggles">
@@ -130,14 +130,14 @@ export function ControlDrawer({ tab, setTab, close, volume, setVolume, brightnes
       {tab === 'network' && <>
         <div className="drawer-section-heading"><h2>Network</h2><span>{wifi ? 'Connected' : 'Disconnected'}</span></div>
         <SwitchRow icon={wifi ? Wifi : WifiOff} label="Wi-Fi" on={wifi} toggle={() => setWifi(!wifi)} />
-        {wifi ? <><div className="drawer-section-label">CURRENT CONNECTION</div><div className="drawer-device"><Wifi size={23} /><div><strong>Cybex network</strong><span>Demo wireless connection</span></div><Check size={16} /></div><dl className="drawer-details"><div><dt>Signal</dt><dd>Excellent</dd></div><div><dt>Security</dt><dd>WPA3</dd></div></dl></> : <div className="drawer-empty"><WifiOff size={29} /><h3>Wi-Fi is off</h3><p>Turn it on to restore the demo connection.</p></div>}
+        {wifi ? <><div className="drawer-section-label">CURRENT CONNECTION</div><div className="drawer-device"><Wifi size={23} /><div><strong>NerdOS network</strong><span>Demo wireless connection</span></div><Check size={16} /></div><dl className="drawer-details"><div><dt>Signal</dt><dd>Excellent</dd></div><div><dt>Security</dt><dd>WPA3</dd></div></dl></> : <div className="drawer-empty"><WifiOff size={29} /><h3>Wi-Fi is off</h3><p>Turn it on to restore the demo connection.</p></div>}
         <p className="drawer-note">This sample connection demonstrates the installed desktop. Your network settings stay unchanged.</p>
       </>}
 
       {tab === 'bluetooth' && <>
         <div className="drawer-section-heading"><h2>Bluetooth</h2><span>{bluetooth ? 'On' : 'Off'}</span></div>
         <SwitchRow icon={Bluetooth} label="Bluetooth" on={bluetooth} toggle={() => setBluetooth(!bluetooth)} />
-        <div className="drawer-empty"><Bluetooth size={29} /><h3>{bluetooth ? 'Ready to connect' : 'Bluetooth is off'}</h3><p>{bluetooth ? 'On CybexOS, your nearby devices appear here.' : 'Turn it on to explore the Bluetooth panel.'}</p></div>
+        <div className="drawer-empty"><Bluetooth size={29} /><h3>{bluetooth ? 'Ready to connect' : 'Bluetooth is off'}</h3><p>{bluetooth ? 'On NerdOS, your nearby devices appear here.' : 'Turn it on to explore the Bluetooth panel.'}</p></div>
         <p className="drawer-note">Bluetooth is simulated in this browser session. No nearby devices are scanned.</p>
       </>}
 
@@ -153,7 +153,7 @@ export function ControlDrawer({ tab, setTab, close, volume, setVolume, brightnes
       {tab === 'notifications' && <>
         <SwitchRow icon={BellOff} label="Do not disturb" on={dnd} toggle={() => setDnd(!dnd)} />
         <div className="drawer-notification-heading"><h2>Notifications <span>{notices.length}</span></h2>{notices.length > 0 && <button onClick={() => { tabs.current.notifications?.focus(); setNotices([]); }}>Clear all</button>}</div>
-        {notices.length ? <div className="drawer-notices">{notices.map((notice, index) => <article className="drawer-notice" key={`${notice}-${index}`}><div><Command size={14} /><strong>CybexOS</strong><span>This session</span><button className="drawer-icon-button" aria-label={`Dismiss notification ${index + 1}`} onClick={() => { tabs.current.notifications?.focus(); setNotices(items => items.filter((_, itemIndex) => itemIndex !== index)); }}><X size={13} /></button></div><p>{notice}</p></article>)}</div> : <div className="drawer-empty"><Check size={30} /><h3>All caught up.</h3><p>New notifications will appear here.</p></div>}
+        {notices.length ? <div className="drawer-notices">{notices.map((notice, index) => <article className="drawer-notice" key={`${notice}-${index}`}><div><Command size={14} /><strong>NerdOS</strong><span>This session</span><button className="drawer-icon-button" aria-label={`Dismiss notification ${index + 1}`} onClick={() => { tabs.current.notifications?.focus(); setNotices(items => items.filter((_, itemIndex) => itemIndex !== index)); }}><X size={13} /></button></div><p>{notice}</p></article>)}</div> : <div className="drawer-empty"><Check size={30} /><h3>All caught up.</h3><p>New notifications will appear here.</p></div>}
         {dnd && <p className="drawer-note">Do not disturb is on. New notifications arrive quietly.</p>}
       </>}
     </div>
