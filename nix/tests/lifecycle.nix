@@ -1,5 +1,8 @@
 { pkgs, module, inputSources, candidate }:
 let
+  passwordSink = pkgs.writeShellScript "nerdos-plymouth-answer" ''
+    ${pkgs.coreutils}/bin/cat > /run/nerdos-plymouth-answer
+  '';
   sourceLock = builtins.fromJSON (builtins.readFile ../../flake.lock);
   upstream = sourceLock.nodes.${sourceLock.nodes.${sourceLock.root}.inputs.nixpkgs};
   initialLock = pkgs.writeText "nerdos-preview-lock.json" (builtins.toJSON {
@@ -86,17 +89,23 @@ in pkgs.testers.runNixOSTest {
     # independently of SDDM. This is a splash/password-UI check, not a LUKS
     # installation or physical display qualification.
     machine.succeed("systemctl stop display-manager.service")
-    machine.succeed("systemd-run --unit=nerdos-plymouth-test --service-type=exec -- $(command -v plymouthd) --no-daemon --mode=boot --tty=/dev/tty2 --debug --debug-file=/run/nerdos-plymouth.log")
+    machine.succeed("systemd-run --unit=nerdos-plymouth-test --service-type=exec -- $(command -v plymouthd) --no-daemon --mode=boot --tty=/dev/tty2 --kernel-command-line='quiet splash plymouth.ignore-serial-consoles' --debug --debug-file=/run/nerdos-plymouth.log")
     machine.wait_until_succeeds("plymouth --ping", timeout=30)
     machine.succeed("plymouth --show-splash; chvt 2")
     machine.sleep(2)
     machine.screenshot("nerdos-plymouth-splash")
-    machine.succeed("systemd-run --unit=nerdos-plymouth-ask --service-type=exec -- $(command -v plymouth) ask-for-password --prompt='Unlock NerdOS qualification disk' --command='cat > /run/nerdos-plymouth-answer'")
+    machine.succeed("systemd-run --unit=nerdos-plymouth-ask --service-type=exec -- $(command -v plymouth) ask-for-password --prompt='Unlock NerdOS qualification disk' --command=${passwordSink}")
     machine.sleep(2)
     machine.screenshot("nerdos-plymouth-unlock")
     machine.send_chars("qualification-password")
+    machine.sleep(1)
+    machine.screenshot("nerdos-plymouth-password")
     machine.send_key("ret")
-    machine.wait_until_succeeds("grep -q qualification-password /run/nerdos-plymouth-answer")
+    try:
+        machine.wait_until_succeeds("grep -q qualification-password /run/nerdos-plymouth-answer", timeout=30)
+    except Exception:
+        machine.log(machine.succeed("journalctl -u nerdos-plymouth-test -u nerdos-plymouth-ask --no-pager; test ! -e /run/nerdos-plymouth.log || cat /run/nerdos-plymouth.log"))
+        raise
     machine.succeed("plymouth quit")
     machine.fail("grep -Ei 'script.*(parse error|syntax error)|failed to load.*nerdos' /run/nerdos-plymouth.log")
     machine.succeed("systemctl start display-manager.service")
