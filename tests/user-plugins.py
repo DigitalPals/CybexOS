@@ -16,8 +16,10 @@ import time
 import sys
 
 
+DBUS = ["dbus-run-session", *(["--config-file", os.environ["CYBEXOS_DBUS_SESSION_CONFIG"]] if os.environ.get("CYBEXOS_DBUS_SESSION_CONFIG") else []), "--"]
+
 ROOT = Path(__file__).resolve().parents[1]
-SHELL = ROOT / "roles/desktop/files/quickshell"
+SHELL = ROOT / "desktop/quickshell"
 HELPER = SHELL / "scripts/user-plugins.py"
 
 
@@ -276,7 +278,9 @@ Label {
 
         if not shutil.which("qs"):
             raise RuntimeError("qs is required for user widget runtime tests")
-        if any(path.read_text().strip() == "qs" for path in Path("/proc").glob("[0-9]*/comm")
+        if any(path.read_text().strip() in ("qs", "quickshell", ".quickshell-wra")
+               and path.with_name('stat').read_text().rsplit(')', 1)[1].split()[0] != 'Z'
+               for path in Path("/proc").glob("[0-9]*/comm")
                if path.exists()):
             print("User plugin storage tests passed; real-engine checks deferred to isolated CI (qs active)")
             return
@@ -292,23 +296,20 @@ Label {
         env.pop("DISPLAY", None)
         sway_config = base / "sway.conf"
         sway_config.write_text("output HEADLESS-1 mode 1280x720\n")
-        # Fedora's file capabilities can exceed a container's bounding set.
+        # File capabilities can exceed a container's bounding set.
         # A private byte-copy runs unprivileged; headless needs no DRM access.
         sway_binary = base / "sway"
-        shutil.copyfile(shutil.which("sway"), sway_binary)
+        shutil.copyfile(os.environ.get('CYBEXOS_SWAY_BINARY', shutil.which("sway")), sway_binary)
         sway_binary.chmod(0o700)
         compositor_log = stack.enter_context((base / "sway.log").open("w+"))
-        compositor = subprocess.Popen([str(sway_binary), "-c", str(sway_config)], env=env,
-                                      stdout=compositor_log, stderr=subprocess.STDOUT)
+        compositor = subprocess.Popen([*DBUS, str(sway_binary), "-c", str(sway_config)], env=env,
+                                      stdout=compositor_log, stderr=subprocess.STDOUT,
+                                      start_new_session=True)
 
         def stop_compositor():
-            if compositor.poll() is None:
-                compositor.terminate()
-                try:
-                    compositor.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    compositor.kill()
-                    compositor.wait()
+            # dbus-run-session is a wrapper; terminating only its PID leaves
+            # sway and swaybg alive. Own and reap the entire isolated group.
+            end_session(compositor)
 
         stack.callback(stop_compositor)
         deadline = time.monotonic() + 10
@@ -339,7 +340,7 @@ Label {
             (runtime / "release.txt").write_text(release)
             test_env = dict(env, WIDGET_TEST_WRITE="1" if release == "rollback-N" else "0",
                             OMARCHY_PATH=str(runtime / "compat/omarchy"))
-            process = subprocess.Popen(["dbus-run-session", "--", "qs", "--no-color",
+            process = subprocess.Popen([*DBUS, "qs", "--no-color",
                                         "-p", str(runtime)], env=test_env,
                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                        text=True, start_new_session=True)
@@ -403,7 +404,7 @@ Label {
         assert not bundle["manifest"]["__isFirstParty"]
         assert bundle["manifest"]["__hostCapabilities"] == []
         shutil.copy2(ROOT / "tests/omarchy-plugins/shell.qml", runtime / "shell.qml")
-        process = subprocess.Popen(["dbus-run-session", "--", "qs", "--no-color", "-p", str(runtime)],
+        process = subprocess.Popen([*DBUS, "qs", "--no-color", "-p", str(runtime)],
                                    env=dict(env, OMARCHY_PATH=str(runtime / "compat/omarchy")),
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, start_new_session=True)
         try:
@@ -424,7 +425,20 @@ if __name__ == "__main__":
     if os.geteuid() == 0:
         # wlroots refuses a privileged compositor. CI runs inside a root
         # container, so run this entire disposable fixture as nobody.
-        raise SystemExit(subprocess.call(["runuser", "-u", "nobody", "--", sys.executable, __file__]))
+        # Rootless build containers can bind a private (0750) checkout. Copy
+        # this test's public fixtures rather than changing checkout permissions.
+        with tempfile.TemporaryDirectory(prefix='cybexos-plugin-source-', dir='/tmp') as temporary:
+            source = Path(temporary)
+            shutil.copytree(ROOT / 'desktop', source / 'desktop')
+            shutil.copytree(ROOT / 'tests', source / 'tests')
+            for entry in (source, *source.rglob('*')):
+                entry.chmod(0o755 if entry.is_dir() or entry.stat().st_mode & 0o111 else 0o644)
+            def demote():
+                os.setgroups([])
+                os.setgid(65534)
+                os.setuid(65534)
+            raise SystemExit(subprocess.call([sys.executable, str(source / 'tests/user-plugins.py')],
+                                            env=dict(os.environ, TMPDIR='/tmp'), preexec_fn=demote))
     # tests/run stops a fixture that overruns its limit with SIGTERM. Unwind
     # instead of dying on the spot, so the compositor and qs sessions, each in
     # a process group of its own, are still stopped.

@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const shellRoot = path.resolve(__dirname,
-    "../../roles/desktop/files/quickshell");
+    "../../desktop/quickshell");
 const health = untranslated(fs.readFileSync(path.join(shellRoot, "Common/ShellHealth.qml"), "utf8"));
 const page = untranslated(fs.readFileSync(path.join(shellRoot, "Settings/AboutPage.qml"), "utf8"));
 const helper = untranslated(fs.readFileSync(path.join(shellRoot, "scripts/shell-health.py"), "utf8"));
@@ -13,7 +13,7 @@ const helper = untranslated(fs.readFileSync(path.join(shellRoot, "scripts/shell-
 test("Shell Health is read-only, bounded, and refreshable", () => {
     assert.match(health, /readonly property var integrationIssues/);
     assert.match(health, /FileView\s*{[\s\S]*?watchChanges:\s*true/);
-    assert.match(health, /command:\s*\["\/usr\/bin\/python3", root\.helper\]/);
+    assert.match(health, /command:\s*\["python3", root\.helper\]/);
     assert.match(health, /property bool exitSeen:\s*false/);
     assert.match(health, /Qt\.callLater\(root\.finishProbe\)/);
     assert.doesNotMatch(health, /systemctl[\s\S]{0,40}?(restart|stop|start)/);

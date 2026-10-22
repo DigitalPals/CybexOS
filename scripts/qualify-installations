@@ -1,0 +1,472 @@
+#!/usr/bin/env python3
+"""Real, disposable UEFI ISO installation tests; never operates on host disks.
+
+Requires qemu-system-x86_64, OVMF and Python pexpect (nix develop).
+The returned evidence is only for the actual ISO/source identities observed.
+It is not physical hardware or published-channel update qualification.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import shlex
+import shutil
+import socket
+import subprocess
+import tempfile
+import time
+
+import pexpect
+
+PASSWORD = 'qualification-password-123'
+
+
+class VM:
+    def __init__(self, directory, disk, iso=None):
+        self.directory, self.disk, self.iso = directory, disk, iso
+        self.process = None
+        self.command_ready = False
+        self.firmware = Path(os.environ['CYBEXOS_OVMF'])
+        self.vars = directory / 'vars.fd'
+        if not self.vars.exists():
+            shutil.copyfile(self.firmware / 'OVMF_VARS.fd', self.vars)
+
+    def start(self):
+        self.command_ready = False
+        qmp = self.directory / 'qmp.sock'; qmp.unlink(missing_ok=True)
+        args = ['-machine','q35','-accel','kvm' if os.access('/dev/kvm',os.R_OK|os.W_OK) else 'tcg,thread=multi',
+                '-cpu','host' if os.access('/dev/kvm',os.R_OK|os.W_OK) else 'max', '-m','6144','-smp','4',
+                '-drive',f'if=pflash,format=raw,readonly=on,file={self.firmware / "OVMF_CODE.fd"}',
+                '-drive',f'if=pflash,format=raw,file={self.vars}',
+                '-drive',f'file={self.disk},if=none,id=systemdisk,format=qcow2','-device','virtio-blk-pci,drive=systemdisk,serial=CYBEXOS-QA-DISK',
+                '-netdev','user,id=net','-device','virtio-net-pci,netdev=net','-device','virtio-vga',
+                '-display','none','-serial','stdio','-no-reboot', '-qmp',f'unix:{qmp},server=on,wait=off']
+        if self.iso:
+            args += ['-cdrom',str(self.iso),'-boot','d']
+        self.process = pexpect.spawn('qemu-system-x86_64',args,encoding='utf-8',timeout=600,maxread=65536)
+        self.process.delaybeforesend = 0.05
+        # This private, disposable log contains only public QA credentials.
+        self.log = (self.directory / 'serial.log').open('a')
+        self.process.logfile_read = self.log
+
+    def login(self, live=False, encrypted=False):
+        if encrypted:
+            self.process.expect(r'(?i)(passphrase for|enter passphrase)',timeout=600)
+            self.process.sendline(PASSWORD)
+        index = self.process.expect([r'login:',r'nixos@cybexos-installer',r'root@cybexos'],timeout=600)
+        if index == 0:
+            self.process.sendline('nixos' if live else 'cybexqa')
+            if not live:
+                self.process.expect('Password:');self.process.sendline(PASSWORD)
+        # Fish's terminal capability queries can take ten seconds on a serial
+        # console; wait for the live shell before sending administration commands.
+        time.sleep(12 if live else 2)
+        self.process.sendline('sudo -i')
+        index = self.process.expect([r'password for cybexqa:',r'root@'],timeout=60)
+        if index == 0:
+            self.process.sendline(PASSWORD)
+            self.process.expect(r'root@',timeout=60)
+        self.process.sendline('export TERM=dumb; export PS1="CYBEX_ROOT> "; stty -echo')
+        self.process.expect('CYBEX_ROOT> ',timeout=30)
+        self.command('true')
+
+    def command(self, script, timeout=1800):
+        marker = 'CYBEX_QA_' + os.urandom(6).hex()
+        command = 'bash -c ' + shlex.quote('printf "\\n' + marker + '_BEGIN\\n"\n(set -e\n' + script + '\n)\nqa_result=$?\nprintf "\\n'+marker+':%s\\n" "$qa_result"')
+        self.command_ready = False
+        self.process.sendline(command)
+        self.process.expect(r'\r*\n'+marker+r'_BEGIN\r*\n',timeout=timeout)
+        self.process.expect(r'\r*\n'+marker+r':([0-9]+)\r*\n',timeout=timeout)
+        self.command_ready = True
+        body=self.process.before
+        if self.process.match.group(1) != '0':
+            raise RuntimeError('Guest command failed: '+script[:160]+'\n'+body[-4000:])
+        return body
+
+    def failure_diagnostics(self):
+        """Read bounded diagnostics only when a completed command left a shell.
+
+        Do not inject another command after a broken serial transport, during
+        login, or into an installer still running. No credential files, full
+        process environments or build logs are collected.
+        """
+        if not self.command_ready or self.process is None or not self.process.isalive():
+            return {'state': 'unavailable', 'reason': 'No authenticated idle serial command transport'}
+        script = r'''python3 - <<'QA_DIAGNOSTIC'
+import json, shutil, subprocess
+from pathlib import Path
+output = {}
+def run(label, args):
+    try:
+        result = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15)
+        output[label] = {'status': result.returncode, 'output': result.stdout[-3000:]}
+        return result.stdout
+    except Exception as error:
+        output[label] = {'error': str(error)}
+        return ''
+run('updaterStatus', ['cybex', 'update', 'status'])
+prefix = ['runuser', '-u', 'cybexqa', '--', 'env', 'XDG_RUNTIME_DIR=/run/user/1000', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus']
+environment = run('environment', prefix + ['systemctl', '--user', 'show-environment'])
+output.pop('environment')
+signature = next((line.split('=', 1)[1] for line in environment.splitlines() if line.startswith('HYPRLAND_INSTANCE_SIGNATURE=')), '')
+if signature:
+    run('hyprlandConfigErrors', prefix + ['HYPRLAND_INSTANCE_SIGNATURE=' + signature, 'hyprctl', '-j', 'configerrors'])
+pid = run('quickshellPid', prefix + ['systemctl', '--user', 'show', 'quickshell.service', '-p', 'MainPID', '--value']).strip()
+if pid.isdecimal() and int(pid) > 0:
+    try:
+        path = next((entry.decode(errors='replace')[5:] for entry in Path('/proc', pid, 'environ').read_bytes().split(b'\0') if entry.startswith(b'PATH=')), '')
+        output['quickshellPath'] = path[:3000]
+        output['quickshellHelpers'] = {name: shutil.which(name, path=path) for name in ['cybex', 'quickshell-reminder', 'tailscale']}
+    except OSError as error:
+        output['quickshellPath'] = {'error': str(error)}
+invocation = run('quickshellInvocation', prefix + ['systemctl', '--user', 'show', 'quickshell.service', '-p', 'InvocationID', '--value']).strip()
+if invocation:
+    run('quickshellCurrentWarnings', ['journalctl', '--no-pager', '_SYSTEMD_INVOCATION_ID=' + invocation, '-p', 'warning', '-n', '20'])
+run('failedSystemUnits', ['systemctl', '--failed', '--no-pager', '--no-legend'])
+print(json.dumps(output))
+QA_DIAGNOSTIC'''
+        try:
+            return {'state': 'collected', 'checks': json.loads(self.command(script, timeout=120).strip())}
+        except Exception as error:
+            return {'state': 'failed', 'error': str(error)[-2000:]}
+
+    def reboot(self, encrypted):
+        self.process.sendline('systemctl reboot')
+        self.process.expect(pexpect.EOF, timeout=120)
+        self.stop()
+        self.iso = None
+        self.start()
+        self.login(encrypted=encrypted)
+
+    def login_desktop(self):
+        # SDDM has one normal account; its password field has initial focus.
+        qmp = socket.socket(socket.AF_UNIX)
+        qmp.connect(str(self.directory/'qmp.sock'))
+        stream=qmp.makefile('rwb',buffering=0)
+        json.loads(stream.readline())
+        def call(execute, arguments=None):
+            stream.write((json.dumps({'execute':execute,'arguments':arguments or {}})+'\n').encode())
+            while True:
+                result=json.loads(stream.readline())
+                if 'error' in result:raise RuntimeError(str(result))
+                if 'return' in result:return result
+        call('qmp_capabilities')
+        for char in PASSWORD:
+            key={'-':'minus'}.get(char,char)
+            call('human-monitor-command',{'command-line':'sendkey '+key})
+            time.sleep(.08)
+        call('human-monitor-command',{'command-line':'sendkey ret'})
+        stream.close();qmp.close()
+        self.command('for n in $(seq 1 90); do cybexos-health desktop-required && exit 0; sleep 2; done; exit 1',timeout=240)
+
+    def stop(self):
+        if self.process is not None:
+            if self.process.isalive():
+                self.process.terminate(force=True)
+            self.process.close()
+            self.log.close()
+            self.process=None
+
+
+def wait_state(vm, expected, timeout=2100, previous=None):
+    """Observe the real worker; asynchronous acceptance is not completion."""
+    script = '''deadline=$((SECONDS + TIMEOUT))
+while test "$SECONDS" -lt "$deadline"; do
+  read -r state transaction < <(cybex update status | python3 -c 'import json,sys;s=json.load(sys.stdin);print(s["state"],s.get("transaction",""))')
+  if test "$transaction" = PREVIOUS; then sleep 2; continue; fi
+  case "$state" in
+    EXPECTED) cybex update status; exit 0 ;;
+    failed|rolled-back) cybex update status; exit 1 ;;
+  esac
+  sleep 2
+done
+cybex update status
+exit 1'''.replace('TIMEOUT', str(timeout)).replace('EXPECTED', '|'.join(expected)).replace('PREVIOUS', shlex.quote(previous or 'no-previous-transaction'))
+    return vm.command(script, timeout=timeout + 30)
+
+
+def stage_request(vm, scope='local'):
+    previous = json.loads(vm.command('cybex update status').strip()).get('transaction')
+    vm.command('cybex update stage ' + shlex.quote(scope))
+    return previous
+
+
+def stage(vm, scope='local'):
+    previous = stage_request(vm, scope)
+    wait_state(vm, ('ready',), previous=previous)
+    vm.command('cybex update status > /run/qa-status.json')
+    # Parsing directly from the serial console can include prompts; have the
+    # guest produce only base64 JSON between the command's completion markers.
+    import base64
+    payload = vm.command('base64 -w0 /run/qa-status.json').strip()
+    return json.loads(base64.b64decode(payload))
+
+
+def apply(vm, status):
+    vm.command('cybex update apply ' + shlex.quote(status['transaction']) + ' ' + shlex.quote(status['reviewToken']))
+    wait_state(vm, ('awaiting-boot',), timeout=300)
+
+
+def authenticated_boot(vm, encrypted):
+    vm.reboot(encrypted)
+    wait_state(vm, ('awaiting-login',), timeout=180)
+    if not encrypted:
+        vm.login_desktop()
+    vm.command('cybexos-health desktop-required', timeout=180)
+
+
+def confirm(vm):
+    vm.command('cybex update confirm')
+    wait_state(vm, ('done',), timeout=180)
+    vm.command('test ! -e /var/lib/cybexos/pending.json')
+
+
+PERSONAL_MODULE = '''{ pkgs, ... }: {
+  environment.systemPackages = [ pkgs.hello ];
+  environment.etc."cybexos-qualification-generation".text = "baseline";
+  networking.wg-quick.interfaces.qualification = {
+    autostart = false; address = [ "192.0.2.2/32" ];
+    privateKeyFile = "/var/lib/cybexos/secrets/qualification-vpn.key";
+  };
+  systemd.services.cybexos-qualification-state = {
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = { Type = "oneshot"; RemainAfterExit = true; StateDirectory = "cybexos-qualification"; };
+    script = "test -e /var/lib/cybexos-qualification/state || printf personal-state > /var/lib/cybexos-qualification/state";
+  };
+}
+'''
+
+
+def edit_import(vm, filename, text=None):
+    """Modify only a task-owned local module and its explicit import."""
+    code = '''from pathlib import Path
+root = Path('/etc/nixos/local')
+path = root / FILENAME
+default = root / 'default.nix'
+text = default.read_text()
+TEXT
+'''.replace('FILENAME', repr(filename))
+    if text is None:
+        action = "default.write_text(text.replace('./' + path.name + ' ', '', 1)); path.unlink()"
+    else:
+        action = "path.write_text(" + repr(text) + "); default.write_text(text.replace('imports = [ ', 'imports = [ ./' + path.name + ' ', 1))"
+    vm.command("python3 - <<'QA'\n" + code.replace('TEXT', action) + '\nQA')
+
+
+def qualify_lifecycle(vm, encrypted, checks=None):
+    """Deploy a personal known-good baseline before testing candidate rollback.
+
+    QA secrets are generated only inside the disposable guest; they do not
+    enter a Nix expression, retained evidence or host serial log.
+    """
+    checks = {} if checks is None else checks
+    discovery = json.loads(vm.command('cybex update check', timeout=240).strip())
+    if discovery['upstream']['state'] not in ('current', 'available'):
+        raise RuntimeError('Cannot qualify independent upstream discovery: ' + json.dumps(discovery))
+    if discovery['cybexos']['state'] != 'unavailable' or not discovery['cybexos'].get('error'):
+        raise RuntimeError('This development test requires an accurately unavailable vendor channel: ' + json.dumps(discovery))
+    before = json.loads(vm.command('''python3 - <<'QA'
+from pathlib import Path
+import hashlib, json
+path = Path('/etc/nixos/flake.lock')
+lock = json.loads(path.read_text())
+root = lock['nodes'][lock['root']]['inputs']
+print(json.dumps({'lockSha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                 **{name: lock['nodes'][root[name]]['locked'] for name in ('nixpkgs', 'cybexos')}}))
+QA
+''').strip())
+    upstream = stage(vm, 'upstream')
+    if upstream['inputs']['cybexos'] != before['cybexos']:
+        raise RuntimeError('Upstream staging changed the installed CybexOS identity')
+    after_hash = vm.command("sha256sum /etc/nixos/flake.lock | cut -d ' ' -f 1").strip()
+    if after_hash != before['lockSha256']:
+        raise RuntimeError('Staging changed the working machine lock')
+    checks['upstreamWithUnavailableVendor'] = {
+        'result': 'passed', 'discovery': discovery, 'transaction': upstream['transaction'],
+        'upstreamBefore': before['nixpkgs'], 'upstreamAfter': upstream['inputs']['nixpkgs'],
+        'upstreamChanged': before['nixpkgs'] != upstream['inputs']['nixpkgs'], 'applied': False,
+        'scope': 'actual independent discovery and complete upstream worker build/validation; candidate remains unapplied; unchanged identity is not changed-package update qualification'}
+    edit_import(vm, 'qualification.nix', PERSONAL_MODULE)
+    vm.command('''python3 - <<'QA'
+from pathlib import Path
+import json, os, pwd, base64
+secret = Path('/var/lib/cybexos/secrets/qualification-vpn.key')
+secret.write_text(base64.b64encode(os.urandom(32)).decode() + '\\n'); secret.chmod(0o600)
+user = pwd.getpwnam('cybexqa'); home = Path(user.pw_dir)
+plugin = home / '.local/share/cybexos/plugins/personal.qualification'
+plugin.mkdir(parents=True)
+(plugin / 'manifest.json').write_text(json.dumps({'id':'personal.qualification','name':'Qualification', 'version':'1.0.0','apiVersion':1,'entrypoint':'Widget.qml'}))
+(plugin / 'Widget.qml').write_text('import QtQuick\\nText { required property var pluginApi; text: pluginApi.settings.label; Component.onCompleted: console.log("CYBEX_QA_PLUGIN_API:" + pluginApi.version + ":" + pluginApi.settings.label) }\\n')
+preferences = home / '.config/cybexos/shell.json'
+saved = json.loads(preferences.read_text()) if preferences.exists() else {}
+saved['reducedMotion'] = True
+preferences.write_text(json.dumps(saved))
+for path in [plugin, *plugin.rglob('*'), preferences]:
+    os.chown(path, user.pw_uid, user.pw_gid)
+QA
+runuser -u cybexqa -- cybex plugin enable personal.qualification --width 120 --order 2
+runuser -u cybexqa -- cybex plugin set personal.qualification label '"persistent-widget"'
+runuser -u cybexqa -- sh -c 'printf personal-plugin-state > "$HOME/.local/share/cybexos/plugin-data/personal.qualification/state"'
+''')
+    baseline = stage(vm)
+    apply(vm, baseline)
+    authenticated_boot(vm, encrypted)
+    confirm(vm)
+    checks['personalBaseline'] = {'result': 'passed', 'transaction': baseline['transaction']}
+    # Snapshot after the shell has normalized the supported preference schema.
+    vm.command('''uid=$(id -u cybexqa)
+invocation=$(runuser -u cybexqa -- env XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus systemctl --user show quickshell.service -p InvocationID --value)
+journalctl --no-pager _SYSTEMD_INVOCATION_ID=$invocation | grep -F 'CYBEX_QA_PLUGIN_API:1:persistent-widget'
+systemctl is-active cybexos-qualification-state.service
+hello --version
+test "$(cat /etc/cybexos-qualification-generation)" = baseline
+# The lifecycle selects /etc/nixos through an owned working-tree symlink.
+# Resolve that root before pure evaluation, matching the staged configuration.
+configuration=$(readlink -f /etc/nixos)
+test "$(nix eval --raw --no-update-lock-file "path:$configuration#nixosConfigurations.cybexos.config.networking.wg-quick.interfaces.qualification.privateKeyFile")" = /var/lib/cybexos/secrets/qualification-vpn.key
+python3 - <<'QA'
+from pathlib import Path
+import hashlib, json
+paths = ['/etc/nixos/local/default.nix', '/etc/nixos/local/qualification.nix',
+ '/var/lib/cybexos/secrets/qualification-vpn.key', '/var/lib/cybexos-qualification/state',
+ '/home/cybexqa/.config/cybexos/shell.json', '/home/cybexqa/.config/cybexos/plugins.json',
+ '/home/cybexqa/.local/share/cybexos/plugins/personal.qualification/manifest.json',
+ '/home/cybexqa/.local/share/cybexos/plugins/personal.qualification/Widget.qml',
+ '/home/cybexqa/.local/share/cybexos/plugin-data/personal.qualification/state']
+Path('/var/lib/cybexos-qualification/hashes.json').write_text(json.dumps({p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths}))
+QA
+''')
+    preserve = '''python3 - <<'QA'
+from pathlib import Path
+import hashlib, json
+for path, expected in json.loads(Path('/var/lib/cybexos-qualification/hashes.json').read_text()).items():
+    assert hashlib.sha256(Path(path).read_bytes()).hexdigest() == expected, 'Personal file changed: ' + path
+QA
+systemctl is-active cybexos-qualification-state.service
+hello --version
+cybexos-health desktop-required
+'''
+    for name, expression in (
+        ('evaluationFailure', '{ ... }: throw "intentional qualification evaluation failure"'),
+        ('buildFailure', '{ pkgs, ... }: { environment.systemPackages = [ (pkgs.runCommand "cybexos-qualification-build-failure" {} "exit 93") ]; }')):
+        vm.command('readlink -f /run/current-system > /run/qa-system-before; sha256sum /etc/nixos/flake.lock > /run/qa-lock-before')
+        edit_import(vm, 'qualification-fault.nix', expression)
+        previous = stage_request(vm)
+        wait_state(vm, ('failed',), previous=previous)
+        vm.command('test "$(readlink -f /run/current-system)" = "$(cat /run/qa-system-before)"; sha256sum -c /run/qa-lock-before\ntest ! -e /var/lib/cybexos/pending.json')
+        edit_import(vm, 'qualification-fault.nix')
+        vm.command(preserve)
+        checks[name] = {'result': 'passed'}
+
+    # Kill the actual staging worker during a real build, then let the boot
+    # recovery service inspect its durable status. No fabricated pending record.
+    edit_import(vm, 'qualification-fault.nix', '{ pkgs, ... }: { environment.systemPackages = [ (pkgs.runCommand "cybexos-qualification-interruption" {} "sleep 300; touch $out") ]; }')
+    previous = stage_request(vm)
+    wait_state(vm, ('building',), timeout=180, previous=previous)
+    vm.command('systemctl kill --kill-whom=all --signal=KILL cybexos-stage@local.service')
+    vm.reboot(encrypted)
+    wait_state(vm, ('interrupted',), timeout=180)
+    if not encrypted:
+        vm.login_desktop()
+    edit_import(vm, 'qualification-fault.nix')
+    vm.command(preserve)
+    checks['interruptedStageRecovery'] = {'result': 'passed'}
+
+    edit_import(vm, 'qualification-candidate.nix', '{ ... }: { environment.etc."cybexos-qualification-candidate".text = "candidate"; }')
+    candidate = stage(vm)
+    apply(vm, candidate)
+    authenticated_boot(vm, encrypted)
+    confirm(vm)
+    # default.nix now intentionally includes the candidate import.
+    vm.command(preserve.replace('    assert hashlib', "    if path.endswith('/local/default.nix'): continue\n    assert hashlib"))
+    vm.command('test "$(cat /etc/cybexos-qualification-candidate)" = candidate')
+    checks['localApplyBootConfirm'] = {'result': 'passed', 'transaction': candidate['transaction']}
+    vm.command('cybex update rollback ' + candidate['transaction'])
+    wait_state(vm, ('rolled-back',), timeout=180)
+    vm.reboot(encrypted)
+    if not encrypted:
+        vm.login_desktop()
+    vm.command(preserve)
+    vm.command('test ! -e /etc/cybexos-qualification-candidate\ntest "$(cat /etc/cybexos-qualification-generation)" = baseline\ntest ! -e /var/lib/cybexos/pending.json')
+    checks['rollbackAndPersonalPersistence'] = {'result': 'passed'}
+    return checks
+
+
+def qualify(iso, encrypted, base, lifecycle=True, evidence=None):
+    evidence = {} if evidence is None else evidence
+    milestones = evidence.setdefault('milestones', {})
+    case=base/('encrypted' if encrypted else 'plain');case.mkdir()
+    disk=case/'disk.qcow2'
+    subprocess.run(['qemu-img','create','-f','qcow2',str(disk),'40G'],check=True,capture_output=True)
+    plan={'disk':'/dev/vda','serial':'CYBEXOS-QA-DISK','hostname':'cybexos-qa','username':'cybexqa',
+          'timezone':'UTC','locale':'en_US.UTF-8','keyboard':'us','encrypted':encrypted,'autoLogin':encrypted,
+          'secureBoot':False,'nvidiaOpen':True,'serialConsole':True,
+          'features':{'developer':False,'proprietary':False,'steam':False,'docker':False,'connectedWidgets':False}}
+    import base64
+    plan64=base64.b64encode(json.dumps(plan).encode()).decode()
+    secrets=json.dumps({'password':PASSWORD,'passphrase':PASSWORD})
+    vm=VM(case,disk,iso)
+    try:
+        vm.start();vm.login(live=True)
+        identity=json.loads(vm.command('cat /etc/cybexos/release.json').strip())
+        source_metadata=json.loads(vm.command('nix flake metadata --json \"path:$(cat /etc/cybexos/installer-source)\"', timeout=240).strip())
+        if identity['narHash'] != source_metadata['locked']['narHash']:
+            raise RuntimeError('ISO release identity differs from its installer source NAR')
+        evidence['isoReleaseIdentity'] = identity
+        milestones['isoSourceIdentity'] = {'result': 'passed'}
+        vm.command(f'printf %s {plan64} | base64 -d > /run/qa-plan.json')
+        try:
+            vm.command('cybexos-install --plan-file /run/qa-plan.json --secrets-fd 3 --development-source "$(cat /etc/cybexos/installer-source)" 3< <(printf %s '+shlex.quote(secrets)+')',timeout=10800)
+        except RuntimeError as error:
+            diagnostics = vm.command('tail -c 6000 /run/cybexos-installer.log')
+            raise RuntimeError(str(error) + '\nInstaller diagnostics (disposable QA guest):\n' + diagnostics) from error
+        milestones['installerCompleted'] = {'result': 'passed'}
+        vm.process.sendline('systemctl poweroff');vm.process.expect(pexpect.EOF,timeout=90);vm.stop()
+        vm.iso=None;vm.start();vm.login(encrypted=encrypted)
+        milestones['installedBootAndSerialPasswordLogin'] = {'result': 'passed'}
+        vm.command('test -L /etc/nixos && test -e /etc/cybexos/runtime/quickshell/shell.qml')
+        installed_identity=json.loads(vm.command('cat /etc/cybexos/release.json').strip())
+        if installed_identity != identity:
+            raise RuntimeError('Installed product differs from ISO source identity')
+        milestones['installedSourceIdentity'] = {'result': 'passed'}
+        vm.command('cybexos-verify-encryption' if encrypted else '! cybexos-verify-encryption')
+        milestones['runtimeEncryption'] = {'result': 'passed', 'encrypted': encrypted}
+        vm.command('cybexos-desktop-check')
+        milestones['desktopConfigurationCheck'] = {'result': 'passed'}
+        if not encrypted:vm.login_desktop()
+        vm.command('cybexos-health desktop-required',timeout=180)
+        milestones['authenticatedDesktopHealth'] = {'result': 'passed', 'login': 'encryption-gated automatic login' if encrypted else 'SDDM password login'}
+        if not lifecycle:
+            evidence.update(result='passed', scope='actual ISO install, installed boot/login, encryption; no update application')
+        else:
+            qualify_lifecycle(vm, encrypted, evidence.setdefault('lifecycle', {}))
+            evidence.update(result='passed', scope='actual ISO installation, boot/login, local updater failure/interruption, staged application, trial boot/confirmation and rollback; no signed channel or physical qualification')
+        return evidence
+    except Exception:
+        evidence['failureDiagnostics'] = vm.failure_diagnostics()
+        raise
+    finally:
+        vm.stop()
+
+
+def main():
+    parser=argparse.ArgumentParser();parser.add_argument('iso',type=Path);parser.add_argument('--output',type=Path)
+    parser.add_argument('--case', choices=('plain', 'encrypted', 'both'), default='both')
+    parser.add_argument('--scenario', choices=('install', 'lifecycle'), default='lifecycle',
+                        help='install stops after actual installed desktop login; lifecycle additionally exercises local deployments and recovery')
+    args=parser.parse_args();iso=args.iso.resolve()
+    result={'kind':'isolated-installation-evidence','isoSha256':hashlib.file_digest(iso.open('rb'),'sha256').hexdigest(),'checks':{}}
+    with tempfile.TemporaryDirectory(prefix='cybexos-qualification-') as temporary:
+        for encrypted in ((False,True) if args.case == 'both' else (args.case == 'encrypted',)):
+            name='encrypted-install' if encrypted else 'plain-install'
+            evidence = result['checks'][name] = {'result': 'running'}
+            try:qualify(iso,encrypted,Path(temporary), args.scenario == 'lifecycle', evidence)
+            except Exception as error:evidence.update(result='failed', error=str(error))
+    data=json.dumps(result,indent=2)+'\n'
+    if args.output:args.output.write_text(data)
+    print(data)
+    if any(v['result']!='passed' for v in result['checks'].values()):raise SystemExit(1)
+
+
+if __name__=='__main__':main()

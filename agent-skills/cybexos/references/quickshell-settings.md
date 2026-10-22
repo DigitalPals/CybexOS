@@ -9,18 +9,18 @@ separate preferences use [the user widget API](user-widgets.md).
 Do not assume a schema version or copy defaults from another release. Read:
 
 ```text
-~/.local/share/cybexos/current/roles/desktop/files/quickshell/Common/SettingsHelpers.js
-~/.local/share/cybexos/current/roles/desktop/files/quickshell/Common/Settings.qml
+/etc/cybexos/runtime/quickshell/Common/SettingsHelpers.js
+/etc/cybexos/runtime/quickshell/Common/Settings.qml
 ```
 
 `SettingsHelpers.js` is authoritative for `VERSION`, `defaults()`, accepted
 enums and ranges, module IDs, composite normalization, and migrations.
-`Settings.qml` identifies the persisted properties and the live watcher. It can
-be loaded with Node because it exports its pure helpers:
+`Settings.qml` identifies the persisted properties and the live watcher.
+`SettingsHelpers.js` can be loaded with Node because it exports its pure helpers:
 
 ```bash
 node -e 'const s=require(process.argv[1]); console.log(JSON.stringify({version:s.VERSION,defaults:s.defaults(),modules:s.MODULE_IDS},null,2))' \
-  "$HOME/.local/share/cybexos/current/roles/desktop/files/quickshell/Common/SettingsHelpers.js"
+  /etc/cybexos/runtime/quickshell/Common/SettingsHelpers.js
 ```
 
 The stable top-level setting families are:
@@ -46,10 +46,10 @@ not partial patches. Do not set or lower the `v` field manually.
 
 ## Merge safely
 
-1. If a live shell will be checked, first locate the applicable checkout (the
-   active release is sufficient for diagnostics), source
-   `tests/lib/quickshell-live`, and call `qs_live_begin`. Arrange cleanup so
-   `qs_live_end` runs even after failure or interruption.
+1. If a live shell will be checked, source the installed
+   `/run/current-system/sw/share/cybexos/lib/quickshell-live` and call
+   `qs_live_begin`. In a checkout use `tests/lib/quickshell-live`. Arrange cleanup
+   so `qs_live_end` runs even after failure or interruption.
 2. Read the current file. If it exists, require a regular, valid JSON object;
    stop on a symlink, non-regular file, malformed JSON, or read failure.
 3. Put only the requested keys in a JSON object patch. Preserve arrays in full.

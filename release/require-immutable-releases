@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Read-only publisher preflight. The publishing token cannot read admin policy.
+set -euo pipefail
+if [[ -z ${IMMUTABILITY_CHECK_TOKEN:-} ]]; then
+    echo 'Immutable release policy cannot be verified: configure the protected IMMUTABILITY_CHECK_TOKEN with repository Administration read permission.' >&2
+    exit 1
+fi
+if ! enabled=$(GH_TOKEN="$IMMUTABILITY_CHECK_TOKEN" gh api \
+    "repos/${GITHUB_REPOSITORY:?}/immutable-releases" --jq .enabled); then
+    echo 'Cannot read GitHub immutable release policy; publication is blocked. Check the read-only policy credential and GitHub availability.' >&2
+    exit 1
+fi
+if [[ $enabled != true ]]; then
+    echo 'GitHub immutable releases are disabled or the policy response is invalid. Enable immutable releases before publishing.' >&2
+    exit 1
+fi

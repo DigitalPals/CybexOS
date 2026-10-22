@@ -1,0 +1,291 @@
+#!/usr/bin/env python3
+"""Input persistence and NixOS region previews without host mutations."""
+import copy
+import hashlib
+import importlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import shutil
+import sys
+import tempfile
+import unittest
+from unittest.mock import Mock, patch
+
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPTS = ROOT / 'desktop/quickshell/scripts'
+sys.path.insert(0, str(SCRIPTS))
+inputs = importlib.import_module('system_settings_input')
+region = importlib.import_module('system_settings_region')
+CATALOG = [{'value': 'us', 'label': 'English', 'variants': [{'value': '', 'label': 'Default'}, {'value': 'intl', 'label': 'International'}]},
+           {'value': 'nl', 'label': 'Dutch', 'variants': [{'value': '', 'label': 'Default'}]}]
+
+
+class InputPersistence(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='cybexos-input-test-')
+        self.addCleanup(self.temp.cleanup)
+        self.service = inputs.InputSettings()
+        self.service.path = Path(self.temp.name) / 'config/input.json'
+        self.service.path.parent.mkdir()
+        self.run = patch.object(inputs, 'run', return_value='ok').start()
+        self.addCleanup(patch.stopall)
+        patch.object(inputs, 'catalog', return_value=CATALOG).start()
+
+    def apply(self, section='touchpad', values=None, version=None):
+        return self.service.dispatch({'action': 'apply', 'section': section,
+                                     'values': {'tap': False} if values is None else values,
+                                     'version': self.service.read()[1] if version is None else version})
+
+    def test_unknown_values_and_layout_metadata_survive(self):
+        original = {'v': 1, 'future': {'unknown': [1, 'data']},
+                    'keyboard': {'other': True, 'layouts': [{'layout': 'us', 'variant': '', 'future': 7}]},
+                    'touchpad': {'future': 'keep', 'naturalScroll': False}}
+        self.service.path.write_text(json.dumps(original))
+        self.apply()
+        saved = self.service.read()[0]
+        expected = copy.deepcopy(original)
+        expected['touchpad']['tap'] = False
+        self.assertEqual(saved, expected)
+        self.apply('keyboard', {'layouts': [{'layout': 'us', 'variant': ''}, {'layout': 'nl', 'variant': ''}]})
+        self.assertEqual(self.service.read()[0]['keyboard']['layouts'][0]['future'], 7)
+        self.assertEqual(self.service.path.stat().st_mode & 0o777, 0o600)
+
+    def test_stale_version_does_not_save_or_reload(self):
+        version = self.service.read()[1]
+        self.service.path.write_text('{"v":1,"future":true}')
+        with self.assertRaisesRegex(ValueError, 'changed elsewhere'):
+            self.apply(version=version)
+        self.run.assert_not_called()
+        self.assertTrue(self.service.read()[0]['future'])
+
+    def test_apply_returns_the_committed_version_for_the_next_edit(self):
+        previous = self.service.read()[1]
+        result = self.apply()
+        self.assertEqual(result['version'], hashlib.sha256(self.service.path.read_bytes()).hexdigest())
+        self.assertNotEqual(result['version'], previous)
+        following = self.apply(values={'naturalScroll': False}, version=result['version'])
+        self.assertEqual(following['version'], self.service.read()[1])
+        self.assertNotEqual(following['version'], result['version'])
+        self.assertEqual(self.service.read()[0]['touchpad'], {'tap': False, 'naturalScroll': False})
+
+    def test_committed_version_still_rejects_a_later_external_writer(self):
+        result = self.apply()
+        external = b'{"v":1,"touchpad":{"tap":true},"future":"preserve"}\n'
+        self.service.path.write_bytes(external)
+        self.run.reset_mock()
+        with self.assertRaisesRegex(ValueError, 'changed elsewhere'):
+            self.apply(values={'naturalScroll': False}, version=result['version'])
+        self.run.assert_not_called()
+        self.assertEqual(self.service.path.read_bytes(), external)
+
+    def test_apply_version_matches_snapshot_including_payload_newline(self):
+        for section, values in [('keyboard', {'layouts': [{'layout': 'nl', 'variant': ''}]}),
+                                ('touchpad', {'tap': False})]:
+            with self.subTest(section=section):
+                self.service.path.write_text('{"v":1,"future":"caf\u00e9"}', encoding='utf-8')
+                result = self.apply(section, values)
+                payload = self.service.path.read_bytes()
+                self.assertTrue(payload.endswith(b'\n'))
+                self.assertIn('caf\u00e9'.encode('utf-8'), payload)
+                self.assertEqual(result['version'], hashlib.sha256(payload).hexdigest())
+                self.assertNotEqual(result['version'], hashlib.sha256(payload[:-1]).hexdigest())
+                options = {'kb_layout': 'nl', 'kb_variant': '', 'kb_options': '',
+                           'touchpad:tap_to_click': False, 'touchpad:natural_scroll': True,
+                           'sensitivity': 0.0}
+                with patch.object(self.service, 'option', side_effect=lambda name, _field: options[name]), \
+                        patch.object(inputs, 'run', return_value='{"keyboards": []}'):
+                    snapshot = self.service.dispatch({'action': 'snapshot'})
+                self.assertEqual(snapshot['version'], result['version'])
+
+    def test_rejected_reload_restores_original_bytes(self):
+        old = b'{ "v": 1, "future": 2 }\n'
+        self.service.path.write_bytes(old)
+        self.run.side_effect = ['error: bad configuration', 'ok']
+        with self.assertRaisesRegex(ValueError, 'restored'):
+            self.apply()
+        self.assertEqual(self.service.path.read_bytes(), old)
+        self.assertEqual(self.run.call_count, 2)
+
+    def test_failed_first_save_removes_created_file(self):
+        self.run.side_effect = [ValueError('unavailable'), 'ok']
+        with self.assertRaisesRegex(ValueError, 'restored'):
+            self.apply()
+        self.assertFalse(self.service.path.exists())
+        self.assertFalse(list(self.service.path.parent.glob('.input-*')))
+
+    def test_contained_lua_error_also_restores_original_preferences(self):
+        old = b'{"v":1,"touchpad":{"tap":true}}\n'
+        self.service.path.write_bytes(old)
+        self.run.side_effect = ['ok', 'error: input loader failed', 'ok']
+        with self.assertRaisesRegex(ValueError, 'restored'):
+            self.apply()
+        self.assertEqual(self.service.path.read_bytes(), old)
+
+    def test_symlink_and_invalid_document_are_never_replaced(self):
+        destination = self.service.path.parent / 'personal.json'
+        destination.write_text('{"v":1}')
+        self.service.path.symlink_to(destination)
+        with self.assertRaisesRegex(ValueError, 'symlink'):
+            self.apply()
+        self.assertEqual(destination.read_text(), '{"v":1}')
+        self.service.path.unlink()
+        self.service.path.write_text('{"v":1,"v":1}')
+        with self.assertRaisesRegex(ValueError, 'invalid'):
+            self.apply()
+        self.run.assert_not_called()
+
+    def test_invalid_changes_do_not_write(self):
+        for section, values in [('touchpad', {'tap': 'yes'}), ('touchpad', {'workspaceSwipe': 0}),
+                                ('touchpad', {'workspaceSwipe': None}), ('touchpad', {'sensitivity': float('nan')}),
+                                ('touchpad', {'sensitivity': 2}), ('touchpad', {'naturalScroll': 1}),
+                                ('keyboard', {'layouts': []}), ('keyboard', {'layouts': [{'layout': 'bad";code()'}]}),
+                                ('keyboard', {'layouts': [{'layout': 'us', 'variant': 'missing'}]}),
+                                ('keyboard', {'shortcut': 'exec:bad'})]:
+            with self.subTest(values=values), self.assertRaises(ValueError):
+                self.apply(section, values)
+        self.assertFalse(self.service.path.exists())
+        self.run.assert_not_called()
+
+    def test_workspace_swipe_is_saved_and_reported_from_the_preferences(self):
+        replies = {
+            'input:kb_layout': {'str': 'us', 'set': True},
+            'input:kb_variant': {'str': '', 'set': True},
+            'input:kb_options': {'str': '', 'set': True},
+            'input:touchpad:tap_to_click': {'bool': True, 'set': True},
+            'input:touchpad:natural_scroll': {'bool': True, 'set': True},
+            'input:sensitivity': {'float': 0.0, 'set': False},
+            'devices': {'keyboards': []},
+        }
+        self.apply(values={'workspaceSwipe': False})
+        self.assertIs(self.service.read()[0]['touchpad']['workspaceSwipe'], False)
+        # The loader's contained-error check runs after every reload.
+        self.assertIn(['hyprctl', 'eval', 'assert(__cybexos_input_error == nil, __cybexos_input_error)'],
+                      [call.args[0] for call in self.run.call_args_list])
+        self.run.side_effect = lambda command: json.dumps(replies[command[-1]])
+        self.assertIs(self.service.dispatch({'action': 'snapshot'})['touchpad']['workspaceSwipe'], False)
+        self.service.path.unlink()
+        self.assertIs(self.service.dispatch({'action': 'snapshot'})['touchpad']['workspaceSwipe'], True,
+                      'without a saved choice the vendor gesture is on')
+
+    def test_switch_uses_fixed_argument_array_without_saving(self):
+        self.service.dispatch({'action': 'switch', 'layout': '$(false)'})
+        self.run.assert_called_once_with(['hyprctl', 'switchxkblayout', 'all', 'next'])
+        self.assertFalse(self.service.path.exists())
+
+    def test_snapshot_accepts_current_and_legacy_hyprland_boolean_responses(self):
+        # Current Hyprland Boolean response shape captured from a live
+        # desktop. The other documented response fields remain unchanged.
+        for field, tap, natural in [('bool', False, True), ('int', 0, 1)]:
+            with self.subTest(field=field):
+                replies = {
+                    'input:kb_layout': {'str': 'us,nl', 'set': True},
+                    'input:kb_variant': {'str': 'intl,', 'set': True},
+                    'input:kb_options': {'str': 'compose:caps,grp:alt_shift_toggle', 'set': True},
+                    'input:touchpad:tap_to_click': {field: tap, 'set': True},
+                    'input:touchpad:natural_scroll': {field: natural, 'set': True},
+                    'input:sensitivity': {'float': 0.0, 'set': False},
+                    'devices': {'keyboards': [{'name': 'keyboard', 'active_keymap': 'English (US)', 'main': True}]},
+                }
+                self.run.side_effect = lambda command: json.dumps(replies[command[-1]])
+                result = self.service.dispatch({'action': 'snapshot'})
+                self.assertEqual(result['touchpad'], {'tap': False, 'naturalScroll': True,
+                                                      'workspaceSwipe': True, 'sensitivity': 0.0})
+                self.assertEqual(result['keyboard']['layouts'], [
+                    {'layout': 'us', 'variant': 'intl'}, {'layout': 'nl', 'variant': ''}])
+                self.assertEqual(result['keyboard']['shortcut'], 'grp:alt_shift_toggle')
+                self.assertEqual(result['keyboard']['active'][0]['layout'], 'English (US)')
+                self.assertFalse(self.service.path.exists(), 'reading input must not create preferences')
+
+    def test_malformed_boolean_options_do_not_become_enabled_switches(self):
+        for reply in ({'bool': 'false'}, {'int': '0'}, {'int': 2}, {'int': False},
+                      {'bool': None, 'int': 0}, {}, []):
+            with self.subTest(reply=reply), self.assertRaisesRegex(ValueError, 'input configuration'):
+                self.run.return_value = json.dumps(reply)
+                self.service.option('touchpad:tap_to_click', 'bool')
+
+    def test_catalog_reads_variants_from_xkb_data(self):
+        path = Path(self.temp.name) / 'evdev.xml'
+        path.write_text('<xkbConfigRegistry><layoutList><layout><configItem><name>us</name><description>English</description></configItem>'
+                        '<variantList><variant><configItem><name>intl</name><description>International</description></configItem></variant></variantList>'
+                        '</layout></layoutList></xkbConfigRegistry>')
+        # This test intentionally bypasses the action tests' catalog mock.
+        patch.stopall()
+        result = inputs.catalog(path)
+        self.assertEqual(result[0]['variants'][1], {'value': 'intl', 'label': 'International'})
+
+    def test_real_stdin_protocol_handles_subprocess_failure(self):
+        binary = Path(self.temp.name) / 'hyprctl'
+        binary.write_text(f'#!{shutil.which("sh")}\nexit 7\n')
+        binary.chmod(0o755)
+        result = subprocess.run([sys.executable, '-B', str(SCRIPTS / 'system-settings.py'), 'input'],
+                                input='{"action":"switch"}\n', capture_output=True, text=True,
+                                env={**os.environ, 'PATH': str(binary.parent), 'XDG_CONFIG_HOME': self.temp.name}, timeout=10)
+        self.assertEqual(result.returncode, 0)
+        self.assertFalse(json.loads(result.stdout)['success'])
+        self.assertEqual(result.stderr, '')
+
+
+class RegionTransactions(unittest.TestCase):
+    def setUp(self):
+        self.service = object.__new__(region.RegionSettings)
+        self.service.call = Mock()
+        self.timezone = 'Europe/Amsterdam'
+        self.locale = ['LANG=en_US.UTF-8', 'LC_TIME=nl_NL.UTF-8', 'LC_NUMERIC=C']
+        self.service.properties = Mock(side_effect=lambda service: {'Timezone': self.timezone} if service == region.TIME else {'Locale': self.locale.copy()})
+        patch.object(region, 'choices', side_effect=lambda command: ['Europe/Amsterdam', 'UTC'] if command[0] == 'timedatectl' else ['en_US.UTF-8', 'nl_NL.UTF-8']).start()
+        self.addCleanup(patch.stopall)
+
+    def test_snapshot_preserves_explicit_locale_categories(self):
+        result = self.service.dispatch({'action': 'snapshot'})
+        self.assertEqual(result['timezone'], self.timezone)
+        self.assertEqual(result['locale'], 'en_US.UTF-8')
+        self.assertEqual(result['localeValues'], self.locale)
+        self.assertEqual(result['timezones'], ['Europe/Amsterdam', 'UTC'])
+        self.assertEqual(result['locales'], ['en_US.UTF-8', 'nl_NL.UTF-8'])
+        self.service.call.assert_not_called()
+
+    def test_locale_stages_nixos_preview_preserving_all_previous_categories(self):
+        previous = self.locale.copy()
+        with patch.object(region.subprocess, 'run', return_value=Mock(returncode=0)) as run:
+            result = self.service.dispatch({'action': 'locale', 'value': 'nl_NL.UTF-8', 'previous': previous})
+        self.assertTrue(result['staged'])
+        self.assertIn('review', result['message'])
+        command = run.call_args.args[0]
+        self.assertEqual(command[:5], ['cybex', 'config', 'region', 'locale', 'nl_NL.UTF-8'])
+        self.assertEqual(json.loads(command[5]), previous)
+        self.assertEqual(self.locale, previous)
+        self.service.call.assert_not_called()
+
+    def test_timezone_stages_nixos_preview_without_mutable_service_writes(self):
+        with patch.object(region.subprocess, 'run', return_value=Mock(returncode=0)) as run:
+            result = self.service.dispatch({'action': 'timezone', 'value': 'UTC', 'previous': self.timezone})
+        self.assertTrue(result['staged'])
+        self.assertEqual(run.call_args.args[0],
+                         ['cybex', 'config', 'region', 'timezone', 'UTC', json.dumps(self.timezone)])
+        self.assertEqual(self.timezone, 'Europe/Amsterdam')
+        self.service.call.assert_not_called()
+
+    def test_denied_preview_reports_failure_without_success(self):
+        with patch.object(region.subprocess, 'run', return_value=Mock(returncode=1)):
+            with self.assertRaisesRegex(ValueError, 'authorization'):
+                self.service.dispatch({'action': 'timezone', 'value': 'UTC', 'previous': self.timezone})
+        self.assertEqual(self.timezone, 'Europe/Amsterdam')
+        self.service.call.assert_not_called()
+
+    def test_stale_and_uninstalled_choices_never_start_a_preview(self):
+        with patch.object(region.subprocess, 'run') as run:
+            for request in [{'action': 'timezone', 'value': 'UTC', 'previous': 'stale'},
+                            {'action': 'locale', 'value': 'nl_NL.UTF-8', 'previous': ['LANG=changed']},
+                            {'action': 'locale', 'value': 'missing', 'previous': self.locale},
+                            {'action': 'timezone', 'value': '../etc/passwd', 'previous': self.timezone},
+                            {'action': 'timezone', 'value': ['UTC'], 'previous': self.timezone}]:
+                with self.subTest(request=request), self.assertRaises(ValueError):
+                    self.service.dispatch(request)
+            run.assert_not_called()
+        self.service.call.assert_not_called()
+
+
+if __name__ == '__main__':
+    unittest.main()

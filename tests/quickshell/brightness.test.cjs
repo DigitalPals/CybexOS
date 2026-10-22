@@ -34,7 +34,7 @@ test("SysInfo reads and writes brightness through brightness-control", () => {
     const sys = read("Common/SysInfo.qml");
 
     assert.match(sys,
-        /readonly property string brightnessTool:\s*\n?\s*Quickshell\.env\("HOME"\) \+ "\/\.local\/bin\/brightness-control"/);
+        /readonly property string brightnessTool:\s*\n?\s*"brightness-control"/);
     assert.match(sys, /command:\s*\[root\.brightnessTool, "get"\]/,
         "the reading must come from the same helper that writes it");
     assert.match(sys, /\[root\.brightnessTool, "set",/,
@@ -120,9 +120,9 @@ test("a refresh during a running read re-reads once that read settles", () => {
 
 test("brightness-control keeps the verbs its callers use", () => {
     const script = fs.readFileSync(path.resolve(shellDir,
-        "../../../dotfiles/templates/brightness-control.j2"), "utf8");
+        "../../assets/scripts/brightness-control"), "utf8");
     const bindings = fs.readFileSync(path.resolve(shellDir,
-        "../bindings.lua"), "utf8");
+        "../hypr/bindings.lua"), "utf8");
 
     for (const verb of ["up", "down", "set", "get"])
         assert.ok(script.includes(verb), `brightness-control must handle ${verb}`);

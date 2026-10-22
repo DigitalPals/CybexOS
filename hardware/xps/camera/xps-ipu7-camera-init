@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Loaded only by the matched NixOS XPS camera unit. Core/ISYS/CVS modules are
+# owned by the selected kernel and must never be unloaded by this initializer.
+set -euo pipefail
+
+die() { echo "xps-ipu7-camera-init: $*" >&2; exit 1; }
+[[ $(cat /sys/class/dmi/id/sys_vendor) == 'Dell Inc.' ]] || die 'not a Dell system'
+case "$(cat /sys/class/dmi/id/product_sku)" in
+  0DB9|0DBA) ;;
+  *) die 'DMI SKU is not a supported XPS 2026 model' ;;
+esac
+[[ -e /sys/bus/acpi/devices/OVTI08F4:00 || -e /sys/bus/acpi/devices/OVTI08F4:01 ]] \
+  || die 'OVTI08F4 ACPI camera is absent'
+matched=false
+for device in /sys/bus/pci/devices/*; do
+  if [[ $(cat "$device/vendor") == 0x8086 && $(cat "$device/device") == 0xb05d ]]; then
+    matched=true
+    break
+  fi
+done
+"$matched" || die 'Panther Lake IPU7 PCI function (8086:b05d) is absent'
+kernel_log=$(journalctl -k -b --no-pager) || die 'cannot inspect this boot for camera kernel faults'
+if grep -Eq 'RIP: .*ipu7|BUG:.*ipu7' <<< "$kernel_log"; then
+  die 'this boot recorded an IPU7 kernel fault; reboot before retrying the camera'
+fi
+if grep -q '^ov08x40 ' /proc/modules && ! grep -q '^intel_cvs ' /proc/modules; then
+  modprobe -r ov08x40 || die 'sensor is busy; reboot to apply CVS-first ordering'
+fi
+modprobe intel_cvs
+sleep 2
+modprobe ov08x40
+modprobe intel_ipu7_psys
+udevadm settle --timeout=10
+for _ in {1..30}; do
+  [[ -e /dev/ipu7-psys0 || -e /dev/ipu-psys0 ]] && exit 0
+  sleep 0.2
+done
+die 'IPU7 PSYS device did not appear'

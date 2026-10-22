@@ -7,15 +7,15 @@ const H = load("SysInfoHelpers.js");
 test("os-release parsing handles quoted values and escapes", () => {
     const parsed = H.parseOsRelease(String.raw`
 # fixture comment
-NAME="Fedora \"Blue\" Linux"
+NAME="CybexOS \"Blue\" Linux"
 VERSION_ID="44"
 VARIANT='Workstation Edition'
-ID=fedora
+ID=cybexos
 PRETTY_NAME="ignored aggregate"
 `);
     assert.deepEqual(parsed, {
-        id: "fedora",
-        name: 'Fedora "Blue" Linux',
+        id: "cybexos",
+        name: 'CybexOS "Blue" Linux',
         version: "44",
         variant: "Workstation Edition",
     });
@@ -23,9 +23,9 @@ PRETTY_NAME="ignored aggregate"
 
 test("os-release parsing ignores malformed assignments and falls back to VERSION", () => {
     assert.deepEqual(H.parseOsRelease(
-        "NAME=Fedora\\ Linux\nVERSION='Rawhide'\nBROKEN=\"open\nnot-a-key\n"), {
+        "NAME=CybexOS\\ Linux\nVERSION='Rawhide'\nBROKEN=\"open\nnot-a-key\n"), {
         id: "",
-        name: "Fedora Linux",
+        name: "CybexOS Linux",
         version: "Rawhide",
         variant: "",
     });

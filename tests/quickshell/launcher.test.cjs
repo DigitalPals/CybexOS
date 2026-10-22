@@ -260,27 +260,26 @@ test("result navigation wraps, pages by six, and Escape clears before closing", 
 
 test("clipboard, emoji, and action providers have installed data sources", () => {
     const providers = read("Common/LauncherProviders.qml");
-    const packages = untranslated(fs.readFileSync(path.resolve(shellDir,
-        "../../../apps/defaults/main.yml"), "utf8"));
+    const packages = fs.readFileSync(path.resolve(__dirname, "../../nix/modules/applications.nix"), "utf8");
     const actions = JSON.parse(read("launcher-actions.json"));
 
     assert.match(providers,
         /wl-paste --type text --watch [\s\S]{0,100}?clipboard-history-store/);
     assert.match(providers,
         /wl-paste --type image --watch [\s\S]{0,100}?clipboard-history-store/);
-    assert.match(providers, /\/usr\/share\/unicode\/emoji\/emoji-test\.txt/);
+    assert.match(providers, /\/etc\/cybexos\/emoji-test\.txt/);
     assert.match(providers, /watchChanges:\s*true/);
-    assert.match(packages, /^\s+- cliphist$/m);
-    assert.match(packages, /^\s+- unicode-emoji$/m);
+    assert.match(packages, /\bcliphist\b/);
+    assert.match(packages, /unicode-emoji/);
     // The AI agent entries moved into the built-in catalogue, gated on the
     // developer tools that install the agents; the file is the user's own.
     assert.deepEqual(actions, []);
     const catalogue = Object.fromEntries(load("LauncherProviders.js").BUILTIN_ACTIONS
         .map(action => [action.id, action]));
     assert.deepEqual(catalogue["ai-agent-launch"].command,
-        ["~/.local/bin/cybex", "agent", "--window"]);
+        ["cybex", "agent", "--window"]);
     assert.deepEqual(catalogue["ai-agent-choose"].command,
-        ["~/.local/bin/cybex", "agent", "--window", "--pick"]);
+        ["cybex", "agent", "--window", "--pick"]);
 });
 
 test("emoji activation pastes into the previously active window", () => {
@@ -299,7 +298,7 @@ test("emoji activation pastes into the previously active window", () => {
 
 test("Super+Space uses Hyprland's in-process global shortcut", () => {
     const shell = read("shell.qml");
-    const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8"));
+    const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../hypr/bindings.lua"), "utf8"));
 
     assert.match(shell, /GlobalShortcut\s*\{/);
     assert.match(shell, /appid:\s*"quickshell"/);
@@ -311,7 +310,7 @@ test("Super+Space uses Hyprland's in-process global shortcut", () => {
 });
 
 test("the default AI agent is discoverable from the launcher and shortcut sheet", () => {
-    const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8"));
+    const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../hypr/bindings.lua"), "utf8"));
 
     // The sheet is drawn from the binding's own description.
     assert.match(bindings,
@@ -349,7 +348,7 @@ test("launcher IPC opens a requested tab, and Super+Ctrl+V opens History", () =>
     const window = read("LauncherWindow.qml");
     const launcher = read("Common/Launcher.qml");
     const view = read("LauncherView.qml");
-    const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8"));
+    const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../hypr/bindings.lua"), "utf8"));
 
     assert.match(window,
         /target: "launcher"[\s\S]*function open\(providerId: string\): void \{\s*Launcher\.openProvider\(providerId\);/);
@@ -358,7 +357,7 @@ test("launcher IPC opens a requested tab, and Super+Ctrl+V opens History", () =>
         "opening an open launcher switches tabs instead of closing it");
     assert.match(view, /function onTargetRequested\(\) \{\s*root\.selectTab\(Launcher\.openRequest\.tab\);/);
     assert.match(bindings,
-        /mainMod \.\. " \+ CTRL \+ V", hl\.dsp\.exec_cmd\(home \.\. "\/\.local\/bin\/cybexos-runtime ipc launcher open clipboard"\),\s*\{ description = "Clipboard: Clipboard history" \}/);
+        /mainMod \.\. " \+ CTRL \+ V", hl\.dsp\.exec_cmd\("cybexos-runtime ipc launcher open clipboard"\),\s*\{ description = "Clipboard: Clipboard history" \}/);
 });
 
 test("argument mode turns the field into a prompt that Escape backs out of", () => {

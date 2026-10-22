@@ -20,7 +20,7 @@ import unittest
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / 'roles/desktop/files/quickshell/scripts'
+SCRIPTS = ROOT / 'desktop/quickshell/scripts'
 CLI = SCRIPTS / 'theme-packs.py'
 sys.path.insert(0, str(SCRIPTS))
 sys.dont_write_bytecode = True

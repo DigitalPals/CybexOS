@@ -4,10 +4,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir, load } = require("./shell.cjs");
-const H = require("../../roles/desktop/files/quickshell/Common/FuseboxHelpers.js");
-const S = require("../../roles/desktop/files/quickshell/Common/SettingsHelpers.js");
-const Registry = require("../../roles/desktop/files/quickshell/Common/PanelRegistryData.js");
-const Catalog = require("../../roles/desktop/files/quickshell/Common/WidgetCatalog.js");
+const H = require("../../desktop/quickshell/Common/FuseboxHelpers.js");
+const S = require("../../desktop/quickshell/Common/SettingsHelpers.js");
+const Registry = require("../../desktop/quickshell/Common/PanelRegistryData.js");
+const Catalog = require("../../desktop/quickshell/Common/WidgetCatalog.js");
 
 const NOW = Date.UTC(2026, 9, 9, 10, 0, 0);
 const MIN = 60000;

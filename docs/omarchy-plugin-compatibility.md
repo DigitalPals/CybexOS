@@ -11,13 +11,11 @@ The implementation targets Omarchy commit
 inspected on 2026-09-19. Its `schemaVersion: 1` describes manifest structure;
 it does not freeze the host API across future upstream releases.
 
-## Parity assessment and implementation (2026-09-19)
+## Compatibility assessment
 
-**The main management and runtime gaps are now implemented; compatibility is
-still qualified by the limits below.** The preceding audit used a fresh
-`git ls-remote` and upstream checkout to confirm that the pinned commit above is
-still Omarchy's default-branch HEAD. This comparison does not cover its separate
-development branch.
+The implemented contract targets the exact revision above. Future Omarchy
+changes require an explicit API comparison and runtime qualification; a moving
+default branch is not the compatibility boundary.
 
 | Capability | Assessment against that upstream revision |
 | --- | --- |
@@ -47,14 +45,9 @@ Comparison sources at the pinned revision:
 [management menu](https://github.com/omacom/omarchy/blob/60663faf8764253646f1d6166e864b608d4a0fa1/bin/omarchy-menu-plugin),
 and [service proxies](https://github.com/omacom/omarchy/blob/60663faf8764253646f1d6166e864b608d4a0fa1/shell/services/PluginFirstPartyServiceApi.qml).
 
-Audit verification: `node --test tests/quickshell/*.test.cjs` completed with
-736 passes, two skips (installed Qt enum checks unavailable on the Debian host),
-and no failures. `tests/user-plugins.py` passed in a disposable Fedora 44
-container with Quickshell and two headless Sway outputs, including runtime
-replacement/rollback and the Omarchy entrypoint suite. Eight Omarchy fixture
-files matched current upstream HEAD byte-for-byte; both Pomodoro fixture files
-matched their recorded commit. This audit did not repeat the full `tests/run`
-pipeline or physical desktop qualification. That audit changed only this document; the implementation below adds code and regression tests.
+Current NixOS validation and its limits are recorded in
+[the validation record](validation.md). Historical source counts do not qualify
+the current installed desktop.
 
 ## Install and configure
 
@@ -107,7 +100,6 @@ reloads at once, and `cybex plugin reload` requests an immediate scan through
 the running shell. `cybex plugin restart` explicitly restarts the managed
 `quickshell.service`.
 Disable with `cybex plugin disable <id>`; files and preferences remain.
-Deploy the updated Quickshell role before using this on an older desktop.
 
 Manage packages in **Settings → Omarchy plugins**, or from the CLI. The page
 links the community directory at <https://plugins.omarchy.org/>; its Source
@@ -191,11 +183,6 @@ but the scripts share their state and saved keys (`~/.local/state/omarchy/`,
 `~/.config/omarchy/model-usage/`), so re-enter only the source and server
 settings.
 
-The first built-in usage widget, retired in settings schema 25, left a quota
-cache (`~/.cache/quickshell/model-usage.json`) that deployment deletes. Proxy
-management keys it saved under `~/.local/state/quickshell/model-usage-*.key`
-are left in place; delete them yourself if you no longer need them.
-
 ## Host contract
 
 | Area | Implemented behavior |
@@ -256,7 +243,7 @@ plugins that create their own windows control their own placement.
 
 Native surfaces and Omarchy plugins share the font, logical-pixel sizing,
 accessibility scale, spacing density, border and corner settings described in
-[Shell appearance](shell-appearance.md). Appearance settings apply individually;
+[Shell typography](shell-typography.md). Appearance settings apply individually;
 there are no appearance presets.
 
 The defaults use JetBrainsMono Nerd Font at 14px, standard spacing, no panel
@@ -297,7 +284,7 @@ retain their status indications.
 
 - No automatic emulation of Arch packages, Omarchy's general command suite,
   Hyprland scripts, system paths, or external backends. Plugins depending on
-  those still need their dependencies installed or a Fedora-specific adapter.
+  those still need their dependencies installed or a NixOS-specific adapter.
 - Authentication, lock-screen/polkit services, and privileged first-party
   host capabilities are not supplied. Cross-plugin private service lookup is
   unavailable; full bars receive only the four narrow service adapters. The compatibility theme's lock/polkit colors do not implement
@@ -334,7 +321,7 @@ retain their status indications.
 - Mihoro's network backend and arbitrary marketplace packages have not been
   qualified. The fixture results must not be generalized to every plugin.
 
-The [vendored source notes](../roles/desktop/files/quickshell/compat/omarchy/README.md)
+The [vendored source notes](../desktop/quickshell/compat/omarchy/README.md)
 describe upstream provenance and modifications. MIT notices accompany the
 runtime components and immutable test fixtures.
 
@@ -361,29 +348,13 @@ engine checks if another `qs` is active. Task-owned engines, compositors,
 sockets and user roots are cleaned up. Static QML lint covers the whole shared
 UI kit; not every form control, media backend or gesture has runtime coverage.
 
-Validation runs in Fedora 44 containers on a Debian build server, which has no managed
-Quickshell desktop service. No persistent user plugins are installed by the
-tests. A physical Hyprland session, real audio/notifications, and pointer/grab
-behavior still need live qualification under the repository's sole-PID and
-journal checks. Headless validation does not establish universal or future
-version compatibility.
+The current port's real-engine plugin suite passed in an isolated Nix build
+container on a Debian host. No persistent user plugins or workstation desktop
+were changed. Physical Hyprland, audio/notifications, and pointer/grab behavior
+still need qualification under the repository's sole-PID and journal checks.
+Headless validation does not establish universal or future version compatibility.
 
-The earlier runtime implementation passed all 16 `tests/run` source stages, including 738 JavaScript tests and
-242 QML files (no lint errors; six nonfatal upstream warnings). The final
-active-bar geometry change was rechecked with QML lint and the complete
-real-engine plugin suite. The container and downloaded upstream sources used
-for this validation were disposable; no persistent desktop deployment was made.
-
-Implementation verification adds `tests/plugin-packages.py` for Git installation,
-preview, valid/invalid updates, dirty-checkout protection, clone restoration,
-built-in imports, removal retention and snapshot identity. The Quickshell suite
-also loads the Plugins settings page, exercises added IPC calls and first-party
-adapter scope, and edits a relative JS import while both outputs are running to
-verify UI reload and retained service identity/state. QML lint covers the new UI.
-Physical audio/idle/nightlight behavior is not qualified by the headless fixture.
-
-For this management/reload change, validation passed with 736 JavaScript tests
-(two host Qt-enum skips), all 244 QML files linted, the extended two-output engine
-suite, package transaction tests, both deployment fixtures, Ruff and ShellCheck.
-The full 16-stage source gate was not repeated. No persistent desktop deployment
-was possible on the Debian build server, which has no installed Quickshell.
+`tests/plugin-packages.py` separately checks Git installation, valid/invalid
+updates, dirty-checkout protection, clone restoration, built-in imports,
+removal retention and snapshot identity. Current source and installation evidence
+is tracked in [validation](validation.md).

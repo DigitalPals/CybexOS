@@ -18,7 +18,7 @@ from fontTools.ttLib import TTFont
 VERSION = "3.48.0"
 SHA256 = "0525656a825b56735c2e87e83d9906ad1e3c42f400918c5ae245217909cffd42"
 URL = f"https://registry.npmjs.org/@tabler/icons-webfont/-/icons-webfont-{VERSION}.tgz"
-ROOT = Path(__file__).resolve().parents[1] / "roles/desktop/files/quickshell"
+ROOT = Path(__file__).resolve().parents[1] / "desktop/quickshell"
 ASSETS = ROOT / "assets/tabler"
 
 

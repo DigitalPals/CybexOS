@@ -60,9 +60,9 @@ input[type=range] { accent-color: var(--accent); cursor: pointer; }
 .status-cluster { gap: 0; font-size: 10px; }
 .status-cluster .bar-button { padding-inline: 6px; min-width: 27px; gap: 4px; }
 .status-off { opacity: .5; }
-.fedora-button { margin-left: 3px; color: #76a6df; }
-.fedora-button:hover, .fedora-button.selected { color: var(--text); }
-.fedora-mark { display: block; width: 18px; height: 18px; background: currentColor; mask: url('/fedora.svg') center / contain no-repeat; }
+.cybexos-button { margin-left: 3px; color: #76a6df; }
+.cybexos-button:hover, .cybexos-button.selected { color: var(--text); }
+.cybexos-mark { display: block; width: 18px; height: 18px; background: currentColor; mask: url('/cybexos.svg') center / contain no-repeat; }
 .battery-reading { font-size: 10px; }
 .notification-dot { position: absolute; right: 7px; top: 5px; height: 4px; width: 4px; background: var(--accent); border-radius: 50%; }
 .window-layer { position: absolute; inset: 0; overflow: auto; pointer-events: none; scrollbar-width: thin; scroll-padding: 46px 0 48px; }

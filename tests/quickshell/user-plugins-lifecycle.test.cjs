@@ -25,6 +25,27 @@ function harness() {
 const good = JSON.stringify({ plugins: [{ id: "example.good", enabled: true }],
     widgets: [{ key: "example.good" }], bar: { position: "top" } });
 
+test("public plugin IPC reports discovery health while retaining the last good registry", () => {
+    const { context: h } = harness();
+    const source = fs.readFileSync(path.join(shellDir, "Common/OmarchyPlugins.qml"), "utf8");
+    const declaration = source.match(/        function listPlugins\(\): string \{[^]*?^        }/m)[0]
+        .replace("(): string", "()");
+    const ipc = vm.createContext({ UserPlugins: h, root: { errors: {} } });
+    vm.runInContext(declaration, ipc);
+    h.settleDiscovery(0, good, false);
+    h.discoveryBusy = false;
+    assert.equal(JSON.parse(ipc.listPlugins()).discoveryError, "");
+    h.settleDiscovery(0, "broken registry", false);
+    let status = JSON.parse(ipc.listPlugins());
+    assert.ok(status.discoveryError);
+    assert.equal(status.plugins[0].id, "example.good");
+    assert.equal(status.discovering, false);
+    h.discoveryBusy = true;
+    assert.equal(JSON.parse(ipc.listPlugins()).discovering, true);
+    h.settleDiscovery(0, good, false);
+    assert.equal(JSON.parse(ipc.listPlugins()).discoveryError, "");
+});
+
 test("valid A -> invalid -> restored A clears discovery health without recreating plugins", () => {
     const { context: h } = harness();
     h.settleDiscovery(0, good, false);

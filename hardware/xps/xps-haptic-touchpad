@@ -1,0 +1,352 @@
+#!/usr/bin/python3
+"""Keep the Dell XPS 2026 Synaptics haptic feature state applied."""
+
+import argparse
+import ctypes
+import errno
+import fcntl
+import glob
+import os
+import select
+import signal
+import struct
+import sys
+import time
+
+
+VENDOR = "06CB"
+CONFIG_PATH = "/etc/cybexos/xps-haptic.conf"
+BUTTON_SWITCH_REPORT = 0x06
+HAPTIC_INTENSITY_REPORT = 0x37
+BUTTON_SWITCHES = 0x03  # Surface switch and physical button switch.
+DEFAULT_INTENSITY = 100
+VALID_INTENSITIES = {10, 50, 100}
+
+EV_SYN = 0x00
+EV_KEY = 0x01
+PHYSICAL_BUTTONS = {0x110, 0x111, 0x112}  # BTN_LEFT/RIGHT/MIDDLE
+EVENT_FORMAT = "llHHi"
+EVENT_SIZE = struct.calcsize(EVENT_FORMAT)
+# linux/input.h: struct input_mask { __u32 type; __u32 codes_size;
+# __u64 codes_ptr; } and EVIOCSMASK = _IOW('E', 0x93, struct input_mask).
+# Mask type 0 selects which event types reach this fd; EV_SYN itself is never
+# filtered, and a report whose events were all filtered is dropped whole.
+INPUT_MASK_FORMAT = "=IIQ"
+EV_CNT = 0x20
+KEY_CNT = 0x300
+READBACK_UNSUPPORTED = {
+    errno.EINVAL,
+    errno.ENOTTY,
+    errno.EOPNOTSUPP,
+    errno.EREMOTEIO,
+}
+POWER_CONTROL_PATHS = (
+    "/sys/bus/pci/devices/0000:00:19.0/power/control",
+    "/sys/bus/platform/devices/i2c_designware.0/power/control",
+)
+
+stop_requested = False
+reload_requested = False
+
+
+def hid_feature_ioctl(operation, length):
+    return 0xC0000000 | (length << 16) | (ord("H") << 8) | operation
+
+
+def ioc_write(kind, number, size):
+    # asm-generic _IOW: direction 1 (write) in bits 30-31, size in 16-29.
+    return (1 << 30) | (size << 16) | (ord(kind) << 8) | number
+
+
+EVIOCSMASK = ioc_write("E", 0x93, struct.calcsize(INPUT_MASK_FORMAT))
+
+
+def code_bitmap(codes, count):
+    """Pack codes into the kernel's unsigned long bitmap for `count` bits."""
+    bits_per_long = struct.calcsize("L") * 8
+    longs = [0] * ((count + bits_per_long - 1) // bits_per_long)
+    for code in codes:
+        longs[code // bits_per_long] |= 1 << (code % bits_per_long)
+    return struct.pack(f"{len(longs)}L", *longs)
+
+
+def set_event_mask(fd, event_type, codes, count):
+    data = code_bitmap(codes, count)
+    # The kernel copies the bitmap from codes_ptr during the ioctl, so it only
+    # has to stay alive until the call returns.
+    bitmap = ctypes.create_string_buffer(data, len(data))
+    request = struct.pack(
+        INPUT_MASK_FORMAT, event_type, len(data), ctypes.addressof(bitmap)
+    )
+    fcntl.ioctl(fd, EVIOCSMASK, request)
+
+
+def mask_to_physical_buttons(fd):
+    """Have the kernel deliver only the button reports this daemon acts on.
+
+    Without a mask every touch frame (ABS/MSC/SYN at the report rate) wakes
+    the daemon.  Returns False when the kernel refuses the mask; the event
+    loop then falls back to reading and discarding everything else.
+    """
+    try:
+        set_event_mask(fd, EV_KEY, PHYSICAL_BUTTONS, KEY_CNT)
+        set_event_mask(fd, 0, (EV_SYN, EV_KEY), EV_CNT)
+    except OSError as error:
+        print(f"Could not mask touchpad events, filtering in userspace: {error}",
+              file=sys.stderr, flush=True)
+        return False
+    return True
+
+
+def read_uevent(path):
+    values = {}
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                key, _, value = line.strip().partition("=")
+                if key:
+                    values[key] = value
+    except OSError:
+        pass
+    return values
+
+
+def find_touchpad_event():
+    for path in sorted(glob.glob("/sys/class/input/event*/device/name")):
+        try:
+            with open(path, encoding="utf-8") as handle:
+                name = handle.read().strip().upper()
+            if VENDOR not in name or "TOUCHPAD" not in name:
+                continue
+            device_dir = os.path.dirname(path)
+            values = read_uevent(os.path.join(device_dir, "uevent"))
+            event = path.split("/")[-3]
+            return os.path.join("/dev/input", event), values.get("PHYS"), name
+        except OSError:
+            continue
+    return None, None, None
+
+
+def find_hidraw(phys):
+    candidates = []
+    for path in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
+        values = read_uevent(os.path.join(path, "device", "uevent"))
+        if f"0000{VENDOR}" not in values.get("HID_ID", "").upper():
+            continue
+        device = os.path.join("/dev", os.path.basename(path))
+        candidates.append((device, values.get("HID_PHYS")))
+        if phys and values.get("HID_PHYS") == phys:
+            return device
+    # A unique Synaptics hidraw node is safe when this kernel omits HID_PHYS.
+    return candidates[0][0] if len(candidates) == 1 else None
+
+
+def find_devices(timeout=15):
+    deadline = time.monotonic() + timeout
+    while not stop_requested and time.monotonic() < deadline:
+        event, phys, name = find_touchpad_event()
+        hidraw = find_hidraw(phys) if event else None
+        if event and hidraw:
+            return event, hidraw, phys, name
+        time.sleep(0.5)
+    return None, None, None, None
+
+
+def keep_controller_awake():
+    paths = list(POWER_CONTROL_PATHS)
+    paths.extend(glob.glob("/sys/bus/i2c/devices/i2c-VEN_06CB:*/power/control"))
+    for path in paths:
+        try:
+            with open(path, "w", encoding="ascii") as handle:
+                handle.write("on\n")
+        except OSError as error:
+            print(f"Could not keep {path} awake: {error}", file=sys.stderr)
+
+
+def configured_intensity():
+    intensity = DEFAULT_INTENSITY
+    try:
+        with open(CONFIG_PATH, encoding="ascii") as handle:
+            for line in handle:
+                key, separator, value = line.strip().partition("=")
+                if separator and key == "INTENSITY":
+                    intensity = int(value)
+    except (OSError, ValueError) as error:
+        print(f"Using default haptic intensity: {error}", file=sys.stderr)
+        intensity = DEFAULT_INTENSITY
+    if intensity not in VALID_INTENSITIES:
+        raise ValueError(f"INTENSITY must be one of {sorted(VALID_INTENSITIES)}")
+    return intensity
+
+
+def set_feature(fd, report_id, value):
+    report = struct.pack("BB", report_id, value)
+    fcntl.ioctl(fd, hid_feature_ioctl(0x06, len(report)), report)
+
+
+def get_feature(fd, report_id):
+    report = bytearray((report_id, 0))
+    fcntl.ioctl(fd, hid_feature_ioctl(0x07, len(report)), report, True)
+    return report[1]
+
+
+def readback(fd, expected):
+    observed = {}
+    for report_id, value in expected.items():
+        try:
+            observed[report_id] = get_feature(fd, report_id)
+        except OSError as error:
+            if error.errno in READBACK_UNSUPPORTED:
+                return None
+            raise
+        if observed[report_id] != value:
+            raise RuntimeError(
+                f"feature 0x{report_id:02x} read back as {observed[report_id]}, expected {value}"
+            )
+    return observed
+
+
+def apply_features(fd, intensity):
+    expected = {
+        BUTTON_SWITCH_REPORT: BUTTON_SWITCHES,
+        HAPTIC_INTENSITY_REPORT: intensity,
+    }
+    for report_id, value in expected.items():
+        set_feature(fd, report_id, value)
+    return readback(fd, expected)
+
+
+def check_devices():
+    event, hidraw, phys, name = find_devices(timeout=3)
+    if not event or not hidraw:
+        print("Synaptics haptic touchpad pair was not found", file=sys.stderr)
+        return 1
+    intensity = configured_intensity()
+    with open(hidraw, "rb+", buffering=0) as handle:
+        try:
+            values = readback(
+                handle.fileno(),
+                {
+                    BUTTON_SWITCH_REPORT: BUTTON_SWITCHES,
+                    HAPTIC_INTENSITY_REPORT: intensity,
+                },
+            )
+        except RuntimeError as error:
+            print(f"{event} <-> {hidraw} ({phys}): {error}", file=sys.stderr)
+            return 1
+    status = "unsupported (write-only HID transport)" if values is None else "verified"
+    print(
+        f"event={event} hidraw={hidraw} phys={phys} name={name} "
+        f"switches={BUTTON_SWITCHES} intensity={intensity} readback={status}"
+    )
+    return 0
+
+
+def drain(fd):
+    try:
+        while os.read(fd, 512):
+            pass
+    except BlockingIOError:
+        pass
+
+
+def monitor_pair(event, hidraw, phys, wakeup_fd):
+    global reload_requested
+    intensity = configured_intensity()
+    event_fd = os.open(event, os.O_RDONLY | os.O_NONBLOCK)
+    hidraw_fd = os.open(hidraw, os.O_RDWR)
+    poller = select.poll()
+    poller.register(event_fd, select.POLLIN | select.POLLERR | select.POLLHUP | select.POLLNVAL)
+    # Signals write to this pipe (signal.set_wakeup_fd), so an unbounded poll
+    # still returns for SIGTERM and SIGHUP: Python retries an interrupted
+    # poll() after running the handler, which alone would never return.
+    poller.register(wakeup_fd, select.POLLIN)
+    try:
+        masked = mask_to_physical_buttons(event_fd)
+        values = apply_features(hidraw_fd, intensity)
+        readback_status = "verified" if values is not None else "unsupported"
+        print(
+            f"Haptic touchpad: hidraw={hidraw} input={event} phys={phys} "
+            f"switches={BUTTON_SWITCHES} intensity={intensity} readback={readback_status} "
+            f"event_mask={'buttons' if masked else 'none'}",
+            flush=True,
+        )
+
+        while not stop_requested:
+            # Config changes arrive as SIGHUP (the NixOS module restarts the unit when
+            # it templates a new file), so there is nothing to time out for.
+            events = poller.poll(-1)
+            if reload_requested:
+                reload_requested = False
+                intensity = configured_intensity()
+                apply_features(hidraw_fd, intensity)
+                print(f"Reapplied configured haptic intensity={intensity}", flush=True)
+
+            for fd, flags in events:
+                if fd == wakeup_fd:
+                    drain(wakeup_fd)
+                    continue
+                if flags & (select.POLLERR | select.POLLHUP | select.POLLNVAL):
+                    raise OSError(errno.ENODEV, "touchpad disappeared")
+                try:
+                    data = os.read(event_fd, EVENT_SIZE * 32)
+                except BlockingIOError:
+                    continue
+                for offset in range(0, len(data) - EVENT_SIZE + 1, EVENT_SIZE):
+                    _, _, event_type, code, value = struct.unpack(
+                        EVENT_FORMAT, data[offset : offset + EVENT_SIZE]
+                    )
+                    if event_type == EV_KEY and code in PHYSICAL_BUTTONS and value in (0, 1):
+                        # Some controller resets first show up as a dead click.
+                        apply_features(hidraw_fd, intensity)
+    finally:
+        os.close(event_fd)
+        os.close(hidraw_fd)
+
+
+def request_stop(_signum, _frame):
+    global stop_requested
+    stop_requested = True
+
+
+def request_reload(_signum, _frame):
+    global reload_requested
+    reload_requested = True
+
+
+def install_signal_handlers():
+    """Install the handlers and return the fd every handled signal wakes."""
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGHUP, request_reload)
+    wakeup_read, wakeup_write = os.pipe2(os.O_NONBLOCK | os.O_CLOEXEC)
+    signal.set_wakeup_fd(wakeup_write, warn_on_full_buffer=False)
+    return wakeup_read
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check", action="store_true", help="verify pairing and HID readback")
+    args = parser.parse_args()
+    if args.check:
+        return check_devices()
+
+    wakeup_fd = install_signal_handlers()
+
+    while not stop_requested:
+        keep_controller_awake()
+        event, hidraw, phys, _ = find_devices()
+        if not event or not hidraw:
+            print("Synaptics haptic touchpad pair has not appeared; retrying", file=sys.stderr)
+            time.sleep(3)
+            continue
+        try:
+            monitor_pair(event, hidraw, phys, wakeup_fd)
+        except (OSError, RuntimeError, ValueError) as error:
+            print(f"Touchpad needs re-enumeration/reapply: {error}", file=sys.stderr)
+            time.sleep(1)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

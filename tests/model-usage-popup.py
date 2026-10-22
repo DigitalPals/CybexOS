@@ -34,7 +34,7 @@ def main():
         config = base / 'sway.conf'
         config.write_text('output HEADLESS-1 mode 1280x720\n')
         shell = base / 'shell'
-        shutil.copytree(ROOT / 'roles/desktop/files/quickshell', shell)
+        shutil.copytree(ROOT / 'desktop/quickshell', shell)
         shutil.copyfile(ROOT / 'tests/model-usage-popup/shell.qml', shell / 'shell.qml')
         with (base / 'sway.log').open('w+') as log:
             sway = subprocess.Popen([str(binary), '-c', str(config)], env=env, stdout=log, stderr=subprocess.STDOUT)

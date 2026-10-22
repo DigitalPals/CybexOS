@@ -1,11 +1,13 @@
 #!/usr/bin/python3 -I
-"""Install fwupd device firmware for the durable CybexOS updater.
+"""Inspect and install fwupd device firmware independently of Nix generations.
 
-cybexos-update-run runs `install` as root after the package phase. It picks
-the same devices and releases as `fwupdmgr update`, but reports every step as
-structured events that Quickshell renders, instead of prompting in a terminal:
+The desktop opens `interactive` in a terminal. It refreshes firmware metadata,
+shows the exact device/release plan and requires confirmation before installing.
+fwupd handles authorization and verifies publisher signatures. Firmware changes
+are not reverted by a Nix generation rollback. No command reboots the machine.
 
   cybexos-firmware-update plan
+  cybexos-firmware-update interactive
   cybexos-firmware-update install [--events PATH]
 
 `plan` is read-only and prints {"devices": [...]}. `install` appends one
@@ -15,9 +17,8 @@ stream with exactly one `summary`. Exit status: 0 when nothing failed
 (including nothing to do), 1 when any device failed, 2 when fwupd could not
 be used at all.
 
-The interpreter is the system Python in isolated mode: PyGObject comes from
-python3-gobject, and a root process must not import packages from the update
-owner's user site directory (the worker keeps that user's HOME).
+The Nix package wraps Python and PyGObject with their native fwupd typelibs;
+the isolated interpreter never imports packages from the user's site directory.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 
 EXIT_OK = 0
@@ -611,7 +613,7 @@ def command_plan(out):
     return EXIT_OK
 
 
-def command_install(events_path, out):
+def command_install(events_path, out, interactive=False):
     try:
         events = EventLog(events_path)
     except OSError as error:
@@ -632,7 +634,36 @@ def command_install(events_path, out):
             events.emit("failed", id="", reason=reason, message=message)
             events.emit("summary", installed=0, failed=1, needsReboot=False)
             return EXIT_SETUP
+        if interactive and plan:
+            out.line("Available firmware updates:")
+            for planned in plan:
+                out.line("  " + planned.label)
+            out.line("Firmware cannot be rolled back with NixOS generations. Keep external power connected.")
+            try:
+                approved = input("Install these firmware updates? [y/N] ").strip().lower() in ("y", "yes")
+            except (EOFError, KeyboardInterrupt):
+                approved = False
+            if not approved:
+                out.line("Firmware installation cancelled; no firmware was installed.")
+                return EXIT_OK
         return Installer(api, client, events, out).run(plan)
+
+
+def command_interactive(out):
+    if not sys.stdin.isatty():
+        out.line("Open firmware updates in a terminal to inspect and confirm the device plan.")
+        return EXIT_SETUP
+    out.line("Refreshing signed firmware metadata…")
+    try:
+        result = subprocess.run(["fwupdmgr", "refresh"], check=False)
+    except OSError as error:
+        out.line(f"Cannot refresh firmware metadata: {error}")
+        return EXIT_SETUP
+    # fwupdmgr returns 2 for an operation with nothing to do.
+    if result.returncode not in (0, 2):
+        out.line("Firmware metadata could not be refreshed. Check the network and fwupd service, then retry.")
+        return EXIT_SETUP
+    return command_install(None, out, interactive=True)
 
 
 def warn(text):
@@ -645,6 +676,7 @@ def main(argv=None):
         description="Install fwupd firmware updates with structured progress.")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("plan", help="print the updates `install` would apply (read-only)")
+    commands.add_parser("interactive", help="refresh metadata, review and confirm firmware installation in a terminal")
     install = commands.add_parser("install", help="install every available firmware update")
     install.add_argument("--events", metavar="PATH",
                          help="append JSON-lines progress events to PATH")
@@ -655,6 +687,8 @@ def main(argv=None):
     out = HumanOutput(sys.stdout)
     if args.command == "plan":
         return command_plan(out)
+    if args.command == "interactive":
+        return command_interactive(out)
     return command_install(args.events, out)
 
 

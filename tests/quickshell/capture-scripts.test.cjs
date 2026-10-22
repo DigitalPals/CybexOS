@@ -19,6 +19,17 @@ function fixture(t) {
         fs.mkdirSync(directory);
     const children = [];
     t.after(() => {
+        const running = path.join(log, "running");
+        if (fs.existsSync(running)) {
+            const pid = Number(fs.readFileSync(running, "utf8"));
+            try {
+                const command = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8");
+                if (command.includes(path.join(base, "bin")))
+                    process.kill(pid, "SIGKILL");
+            } catch (error) {
+                if (!["ENOENT", "ESRCH"].includes(error.code)) throw error;
+            }
+        }
         // Children are spawned detached, so the whole stub group (including
         // a stub's own `sleep`) goes with them.
         for (const child of children) {
@@ -35,19 +46,22 @@ function fixture(t) {
         base, bin, log, children,
         env: {
             ...process.env,
-            PATH: `${bin}:/usr/bin:/bin`,
+            PATH: `${bin}:${process.env.PATH}`,
             XDG_RUNTIME_DIR: runtime,
             TEST_LOG: log
         },
         stub(name, body) {
             // /bin/bash, not env: the process name must stay the stub's own
             // so the OCR script can recognise its slurp by /proc comm.
-            fs.writeFileSync(path.join(bin, name), `#!/bin/bash\n${body}\n`, { mode: 0o755 });
+            fs.writeFileSync(path.join(bin, name), `#!${require("./shell.cjs").executable("bash")}\n${body}\n`, { mode: 0o755 });
         },
         // A Python stub, for processes that must handle SIGINT: bash cannot
         // trap a signal it was started with ignored, as a background job is.
         pyStub(name, body) {
-            fs.writeFileSync(path.join(bin, name), `#!/usr/bin/python3\n${body}\n`, { mode: 0o755 });
+            // Nix's Python environment can exec through a wrapper that resets
+            // comm to python3.13. Model the native recorder's actual identity.
+            const identity = `import ctypes, os, sys\nctypes.CDLL(None).prctl(15, os.path.basename(sys.argv[0]).encode()[:15], 0, 0, 0)\n`;
+            fs.writeFileSync(path.join(bin, name), `#!${require("./shell.cjs").executable("python3")}\n${identity}${body}\n`, { mode: 0o755 });
         },
         events() {
             const file = path.join(log, "events");
@@ -331,7 +345,7 @@ test("recording picks hardware encoding the driver offers, else software", t => 
     vainfoStub(f, { renderD128: "encode" });
     assert.equal(encoder(f), "wf-recorder vaapi /dev/dri/renderD128");
 
-    // Fedora's own Mesa: VA-API is there, H.264 encoding is not.
+    // CybexOS's own Mesa: VA-API is there, H.264 encoding is not.
     f = fixture(t);
     drmTree(f, [AMD]);
     vainfoStub(f, { renderD128: "decode" });
@@ -395,12 +409,12 @@ with open(os.path.join(log, "recorders"), "a") as stream:
     stream.write(json.dumps([os.path.basename(sys.argv[0])] + sys.argv[1:]) + "\\n")
 if any(flag in sys.argv for flag in ${JSON.stringify(failing)}):
     sys.exit(1)
-with open(os.path.join(log, "running"), "w") as stream:
-    stream.write(str(os.getpid()))
 def stop(*_):
     os.remove(os.path.join(log, "running"))
     sys.exit(0)
 signal.signal(signal.SIGINT, stop)
+with open(os.path.join(log, "running"), "w") as stream:
+    stream.write(str(os.getpid()))
 while True:
     time.sleep(0.05)`;
     f.pyStub("wf-recorder", recorder);
@@ -451,6 +465,7 @@ test("a webcam recording publishes its area, and stopping clears it", t => {
         "-c", "h264_vaapi", "-d", "/dev/dri/renderD128", "-f"]);
     assert.match(run[8], /\/Videos\/Screen Recordings\/screen-recording-.*\.mp4$/);
     // The selection is normalised to even dimensions for the encoder.
+    assert.ok(fs.existsSync(path.join(state, "webcam")), result.stderr + fs.readFileSync(path.join(f.log, "notify"), "utf8"));
     assert.equal(fs.readFileSync(path.join(state, "webcam"), "utf8"), "10,20 300x200\n");
     assert.equal(fs.readFileSync(path.join(state, "wf-recorder.pid"), "utf8").trim(),
         fs.readFileSync(path.join(f.log, "running"), "utf8"));
@@ -524,7 +539,7 @@ test("an exited recorder awaiting its parent's reap clears recording state", t =
     f.env.HOME = path.join(f.base, "home");
     f.stub("notify-send", 'printf "%s\\n" "${@: -1}" >> "$TEST_LOG/notify"');
     const state = path.join(f.env.XDG_RUNTIME_DIR, "screen-record");
-    const result = spawnSync("/usr/bin/python3", ["-c", `
+    const result = spawnSync("python3", ["-c", `
 import ctypes, os, pathlib, subprocess, sys
 state = pathlib.Path(sys.argv[1])
 state.mkdir()

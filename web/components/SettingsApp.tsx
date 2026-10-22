@@ -217,7 +217,7 @@ export function SettingsApp({ preferences, updatePreferences, notify }: Settings
             </header>
             <div className="settings-about-brand"><span>cybex<span>os</span><i /></span><small>THE BROWSER EXPERIENCE</small></div>
             <div className="settings-group settings-about-facts">
-              <div><span>Native foundation</span><strong>Fedora 44</strong></div>
+              <div><span>Native foundation</span><strong>NixOS 26.05</strong></div>
               <div><span>Window compositor</span><strong>Hyprland</strong></div>
               <div><span>Desktop shell</span><strong>Quickshell</strong></div>
               <div><span>This experience</span><strong>Interactive web demo</strong></div>

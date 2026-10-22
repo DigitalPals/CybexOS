@@ -77,7 +77,7 @@ The Control Center's Overview tab lists the six busiest processes under the
 CPU and memory meters. **CPU** and **Memory** choose the ranking. CPU is each
 process's share of the whole machine since the previous reading, on the same
 scale as the CPU meter. The list is read every two seconds only while it is on
-screen, by one short-lived helper (`scripts/processes`) that uses shell
+screen, by one short-lived helper (`desktop/quickshell/scripts/processes`) that uses shell
 builtins only. Hide it under the Control Center widget's **Overview** settings
 (**Top processes**).
 
@@ -98,7 +98,7 @@ Node tests cover the pure rules: `overview-helpers`, `dock-helpers`,
 and `window-commands`. `desktop-navigation.test.cjs` covers the QML lifetimes
 and wiring. The real-engine lifecycle harness builds the overview view on an
 empty desktop and runs two samples of the process list.
-`image/test_desktop_payload.py` checks that both installation paths ship the
+The shared NixOS module checks checks that both installation paths ship the
 same files and defaults. Live behaviour still needs checking on a Hyprland
 session: thumbnail capture, drag-to-move, multi-monitor tiles, dock auto-hide
 over a bottom bar and the touchpad gesture.

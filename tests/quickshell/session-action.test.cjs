@@ -6,7 +6,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { shellDir } = require("./shell.cjs");
 
-const helper = path.resolve(shellDir, "../cybexos-session-action");
+const helper = path.resolve(shellDir, "../bin/cybexos-session-action");
 
 // `locker` is what the lock unit does once started: "locks" (hyprctl reports
 // the session locked after `lockDelay` more queries), "hangs" (the unit stays

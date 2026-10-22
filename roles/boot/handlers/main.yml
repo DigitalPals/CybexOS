@@ -1,4 +1,0 @@
----
-- name: Rebuild Fedora initramfs
-  ansible.builtin.command: dracut --regenerate-all --force
-  changed_when: true

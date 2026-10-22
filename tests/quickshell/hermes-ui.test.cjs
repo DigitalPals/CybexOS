@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir, load } = require("./shell.cjs");
 
-const repo = path.resolve(shellDir, "../../../..");
+const repo = path.resolve(__dirname, "../..");
 const SettingsHelpers = load("SettingsHelpers.js");
 const PanelRegistry = load("PanelRegistryData.js");
 
@@ -113,31 +113,6 @@ test("the transport reconciles native WebUI conversations without replaying prom
     assert.match(facade, /function onOpened\(\) \{ root\.hello\(\); \}/);
 });
 
-test("new chat is the non-persisted default and first send creates a WebUI session", () => {
-    const conversations = read("Common/HermesConversations.qml");
-    const facade = read("Common/Hermes.qml");
-    const bridge = readRepo(
-        "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py");
-    const service = readRepo(
-        "roles/desktop/templates/hermes-menubar-bridge.service.j2");
-
-    assert.match(conversations, /property string selectedConversationId:\s*""/);
-    assert.match(conversations, /title:\s*"New chat"/);
-    assert.match(conversations,
-        /function createConversation[\s\S]*?"conversations\.create"/);
-    assert.doesNotMatch(conversations,
-        /selectedConversationId[\s\S]{0,100}?settings\.setValue/);
-    assert.match(facade,
-        /function submit\(conversationId, text\)[\s\S]*?conversationId === ""[\s\S]*?createConversation[\s\S]*?root\.submit\(conversation\.id, prompt\)/);
-    assert.match(facade,
-        /function startNewChat\(\)[\s\S]*?selectConversation\("", false\)/);
-    assert.match(bridge, /GET", "\/api\/sessions\?exclude_hidden=1"/);
-    assert.match(bridge, /POST", "\/api\/session\/new"/);
-    assert.match(bridge, /POST",\s*"\/api\/session\/delete"/);
-    assert.match(service, /\/conversations\.json/);
-    assert.doesNotMatch(bridge, /"channels\.|"channel\./);
-    assert.doesNotMatch(bridge, /HomeAssistant|"general"|"homeassistant"/);
-});
 
 test("historical chats are selectable from a dropdown and no channel rail remains", () => {
     const commonQmldir = read("Common/qmldir");
@@ -251,7 +226,7 @@ test("streaming, tools, requests, stop, steering, and private input use conversa
     const request = read("Popovers/HermesRequestCard.qml");
     const tool = read("Popovers/HermesToolCard.qml");
     const bridge = readRepo(
-        "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py");
+        "desktop/hermes-menubar-bridge/hermes_bridge.py");
 
     assert.match(conversations, /Helpers\.applyMessageEvent/);
     assert.match(conversations, /Helpers\.applyToolEvent/);
@@ -346,7 +321,7 @@ test("Hermes history projects prose, one tool activity line, pagination, and com
     const transcript = read("Popovers/HermesTranscript.qml");
     const tool = read("Popovers/HermesToolCard.qml");
     const bridge = readRepo(
-        "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py");
+        "desktop/hermes-menubar-bridge/hermes_bridge.py");
 
     assert.match(helpers, /function renderableMessage/);
     assert.match(helpers, /return "metadata"/,
@@ -428,7 +403,7 @@ test("Hermes uses the compact T3-style composer with live model and reasoning co
     const strip = read("Popovers/HermesSessionStrip.qml");
     const auth = read("Popovers/HermesAuthPanel.qml");
     const bridge = readRepo(
-        "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py");
+        "desktop/hermes-menubar-bridge/hermes_bridge.py");
 
     assert.match(theme, /readonly property color composerGlass:/);
     assert.match(composer, /color:\s*HermesTheme\.composerGlass/);
@@ -534,9 +509,9 @@ test("Hermes exposes capability-gated attachments, branches, editing, and regene
     const inbox = read("Popovers/HermesInboxPage.qml");
     const helpers = read("Common/HermesHelpers.js");
     const bridge = readRepo(
-        "roles/desktop/files/hermes-menubar-bridge/hermes_bridge.py")
-        + readRepo("roles/desktop/files/hermes-menubar-bridge/cybex_hermes/auth.py")
-        + readRepo("roles/desktop/files/hermes-menubar-bridge/cybex_hermes/protocol.py");
+        "desktop/hermes-menubar-bridge/hermes_bridge.py")
+        + readRepo("desktop/hermes-menubar-bridge/cybex_hermes/auth.py")
+        + readRepo("desktop/hermes-menubar-bridge/cybex_hermes/protocol.py");
 
     assert.match(composer, /Hermes\.capabilities\.attachments === true/);
     assert.match(facade, /"zenity", "--file-selection", "--multiple"/);

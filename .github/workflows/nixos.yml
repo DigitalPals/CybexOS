@@ -1,0 +1,91 @@
+name: NixOS qualification
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      source_ref:
+        type: string
+        required: false
+        default: ''
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: [self-hosted, linux, x64, cybexos-isolated]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
+      - uses: cachix/install-nix-action@3c6342b75005b9cc7c7d4069c3e9179247c89012
+        with:
+          extra_nix_config: |
+            max-jobs = 2
+            cores = 4
+      - run: python3 -B scripts/check-ci-capacity
+      - run: nix flake check --no-build
+      - run: nix build .#checks.x86_64-linux.lifecycle -L
+      - run: nix build .#checks.x86_64-linux.parity -L
+      - run: nix develop -c tests/run
+      - run: nix develop -c tests/qml-lint
+      - run: nix develop -c python3 -B tests/user-plugins.py
+      - run: nix develop -c python3 -B tests/nixos-native
+  product:
+    runs-on: [self-hosted, linux, x64, cybexos-isolated]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
+      - uses: cachix/install-nix-action@3c6342b75005b9cc7c7d4069c3e9179247c89012
+        with:
+          extra_nix_config: |
+            max-jobs = 2
+            cores = 4
+      - run: python3 -B scripts/check-ci-capacity
+      - run: nix build .#checks.x86_64-linux.product -L
+      - name: Build matched XPS stack and evaluate NVIDIA independently
+        run: nix build .#checks.x86_64-linux.xps-system .#checks.x86_64-linux.nvidia-evaluation -L
+  vm:
+    runs-on: [self-hosted, linux, x64, cybexos-isolated]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
+      - uses: cachix/install-nix-action@3c6342b75005b9cc7c7d4069c3e9179247c89012
+        with:
+          extra_nix_config: |
+            max-jobs = 2
+            cores = 4
+      - run: python3 -B scripts/check-ci-capacity --vm
+      - run: nix build .#checks.x86_64-linux.vm -L
+  image:
+    runs-on: [self-hosted, linux, x64, cybexos-isolated]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
+      - uses: cachix/install-nix-action@3c6342b75005b9cc7c7d4069c3e9179247c89012
+        with:
+          extra_nix_config: |
+            max-jobs = 2
+            cores = 4
+      - run: python3 -B scripts/check-ci-capacity --vm
+      - name: Build and qualify the exact source image in isolated VMs
+        run: |
+          set -euo pipefail
+          staging=$(mktemp -d "$RUNNER_TEMP/cybexos-image-XXXXXX")
+          revision=$(git rev-parse HEAD)
+          image="/data/pxe/iso/cybexos-$revision-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.iso"
+          trap 'rm -rf "$staging"; sudo rm -f "$image" "$image.sha256"' EXIT
+          nix build .#iso -L --out-link "$staging/result"
+          sudo install -d -m 0755 /data/pxe/iso
+          sudo install -m 0644 "$staging"/result/iso/*.iso "$image"
+          (cd /data/pxe/iso; sha256sum "$(basename "$image")") > "$staging/checksum"
+          sudo install -m 0644 "$staging/checksum" "$image.sha256"
+          (cd /data/pxe/iso; sha256sum -c "$image.sha256")
+          # The disposable runner has no PXE service. Local PXE delivery
+          # separately requires the refresh/service/image-list checks in AGENTS.md.
+          nix develop -c scripts/check-image-parity "$image" . --output "$staging/image-parity.json"
+          nix develop -c scripts/qualify-installations "$image" --output "$staging/installations.json"

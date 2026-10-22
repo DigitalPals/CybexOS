@@ -35,8 +35,7 @@ test("one monitored NetworkManager snapshot drives online work", () => {
         ["Updates", updates]])
         assert.doesNotMatch(text, /"env", "LC_ALL=C"/, `${label} must not wrap commands in env`);
     assert.match(ethernet, /"device", "show"\][\s\S]{0,400}?environment: \(\{ LC_ALL: "C" \}\)/);
-    for (const binary of ["dnf", "flatpak", "fwupdmgr"])
-        assert.match(updates, new RegExp(`command: \\["timeout", "45s", "${binary}",[^\\]]*\\][\\s\\S]{0,400}?environment: \\(\\{ LC_ALL: "C" \\}\\)`));
+    assert.match(updates, /command: \["cybex", "update", "check"\]/);
     assert.match(status,
         /onRead: line => \{\s*snapshotDebounce\.restart\(\);\s*root\.monitorEvent\(line\);/);
     assert.match(status, /signal monitorEvent\(string line\)/);
@@ -90,10 +89,5 @@ test("weather and update startup checks wait for the shared online edge", () => 
         /Component\.onCompleted:\s*\{[\s\S]*?if \(NetworkStatus\.online && wanted\)[\s\S]*?refresh\(\)/,
         "the startup fallback must retain the same online guard as the shared edge");
 
-    assert.match(updates,
-        /target: NetworkStatus[\s\S]*?function onOnlineChanged\(\)[\s\S]*?root\.automaticCheck\(true, false\)/);
-    assert.match(updates,
-        /function automaticCheck\(resetRetries, failedOnly\)\s*\{[\s\S]*?if \(!NetworkStatus\.online\)[\s\S]*?return;/,
-        "all automatic startup paths must fail closed while offline");
-    assert.match(updates, /checkFailureCount <= 4[\s\S]*?NetworkStatus\.online/);
+    assert.match(updates, /command: \["cybex", "update", "check"\]/);
 });

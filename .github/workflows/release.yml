@@ -1,297 +1,112 @@
 name: Qualified immutable release
-
 on:
-  push:
-    tags:
-      # The build step applies the repository's strict SemVer validator.
-      - "v*"
-
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact existing semantic tag (v1.2.3 or v1.2.3-beta.1)
+        required: true
+      qualification_url:
+        description: HTTPS URL of the same-revision complete physical and lifecycle qualification report
+        required: true
 permissions:
   contents: read
-
-# Never cancel a release in flight; a second run for the same tag waits.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  prerequisites:
-    name: Release prerequisites
+  resolve:
     runs-on: ubuntu-latest
+    outputs:
+      revision: ${{ steps.source.outputs.revision }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Require version and older ISO
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - id: source
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
-          BASELINE_ISO: ${{ vars.CYBEXOS_BASELINE_ISO }}
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          test -n "$BASELINE_ISO"
-          version=${RELEASE_TAG#v}
-          scripts/semver validate "$version"
-          test "$(cat VERSION)" = "$version"
-
-  source:
-    name: Source contract
-    # The exact job that gates main: same packages, same verified COPR key.
-    uses: ./.github/workflows/tests.yml
-
-  image-source:
-    name: Image source contract
-    uses: ./.github/workflows/live-image.yml
-
-  vm:
-    name: Generic Fedora VM install
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - run: |
-          sudo apt-get update
-          sudo apt-get install -y cloud-image-utils qemu-system-x86 qemu-utils
-          if test -e /dev/kvm; then sudo chmod a+rw /dev/kvm; fi
-      - run: ./tests/fedora-vm-convergence
-
-  iso:
-    name: ISO install, upgrade and recovery
-    needs: [prerequisites, source, image-source, vm]
-    uses: ./.github/workflows/desktop-release.yml
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[0-9]+)?$ ]]
+          test "${TAG#v}" = "$(cat VERSION)"
+          revision=$(git rev-parse HEAD)
+          test "$revision" = "$(git rev-parse "$TAG^{commit}")"
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+  qualify:
+    needs: resolve
+    uses: ./.github/workflows/nixos.yml
     with:
-      tag: ${{ github.ref_name }}
-      baseline_iso: ${{ vars.CYBEXOS_BASELINE_ISO }}
-    secrets: inherit
-
+      source_ref: ${{ needs.resolve.outputs.revision }}
   publish:
-    name: Review, attest, and publish release assets
-    environment: public-distribution
-    needs: [source, vm, iso]
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    needs: [resolve, qualify]
+    runs-on: [self-hosted, linux, x64, cybexos-isolated]
+    environment: cybexos-release
     permissions:
       contents: write
-      id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Download qualified desktop assets
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: cybexos-desktop-release
-          path: dist/desktop-release
-      - name: Install release build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ansible-core jq zstd
-      - name: Build the versioned source asset
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          version=${RELEASE_TAG#v}
-          [[ $RELEASE_TAG == v$version ]]
-          scripts/semver validate "$version"
-          root="dist/cybexos-$version"
-          mkdir -p "$root"
-          git archive HEAD | tar -x -C "$root"
-          printf '%s\n' "$version" >"$root/VERSION"
-          jq --arg version "$version" '. + {version:$version}' \
-            "$root/release-manifest.json" >"$root/release-manifest.json.new"
-          mv "$root/release-manifest.json.new" "$root/release-manifest.json"
-          source_epoch=$(git show -s --format=%ct HEAD)
-          tar --create --zstd --sort=name --mtime="@$source_epoch" \
-            --owner=0 --group=0 --numeric-owner --file "dist/cybexos-$version.tar.zst" \
-            --directory dist "cybexos-$version"
-          (
-            cd dist
-            sha256sum "cybexos-$version.tar.zst" >SHA256SUMS
-          )
-          mkdir dist/verify
-          tar --extract --zstd --file "dist/cybexos-$version.tar.zst" \
-            --directory dist/verify --strip-components=1
-          test "$(tr -d '[:space:]' <dist/verify/VERSION)" = "$version"
-          test -x dist/verify/install
-          test -x dist/verify/scripts/manage-agent-skills
-          test -r dist/verify/agent-skills/cybexos/SKILL.md
-          ansible-playbook dist/verify/site.yml --syntax-check
-      - name: Locate the SBOM of the qualified ISO
-        id: sbom
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          sboms=(dist/desktop-release/assets/*.spdx.json)
-          test "${#sboms[@]}" -eq 1
-          iso_checksum="${sboms[0]%.spdx.json}.iso.sha256"
-          # The SBOM must describe the exact ISO whose parts are published.
-          python3 image/sbom.py verify "${sboms[0]}" --iso-checksum "$iso_checksum"
-          {
-            printf 'path=%s\n' "${sboms[0]}"
-            printf 'iso-checksum=%s\n' "$iso_checksum"
-          } >>"$GITHUB_OUTPUT"
-      - name: Capture the actual distribution inventories
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-          SBOM_PATH: ${{ steps.sbom.outputs.path }}
-        run: |
-          set -euo pipefail
-          version=${RELEASE_TAG#v}
-          mkdir -p dist/distribution-inventories
-          python3 -B image/distribution_review.py capture --channel source \
-            --root dist/verify --artifact "dist/cybexos-$version.tar.zst" \
-            --output dist/distribution-inventories/source-distribution-inventory.json
-          python3 -B - <<'PYTHON'
-          import json
-          from pathlib import Path
-          import shutil
-          import sys
-          sys.path.insert(0, 'image')
-          from distribution_review import revalidate_artifacts
-          for channel in ('desktop-rpm', 'offline-rpm'):
-              path = Path('dist/desktop-release') / (channel + '-distribution-inventory.json')
-              record = json.loads(path.read_text())
-              if record.get('channel') != channel:
-                  raise ValueError('Wrong captured RPM channel')
-              revalidate_artifacts(record, Path('dist/desktop-release/assets'))
-              shutil.copyfile(path, Path('dist/distribution-inventories') / path.name)
-          PYTHON
-          python3 -B image/distribution_review.py capture --channel iso \
-            --root dist/desktop-release/assets --sbom "$SBOM_PATH" \
-            --output dist/distribution-inventories/iso-distribution-inventory.json
-      - name: Retain exact inventories for owner and legal review
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+          ref: ${{ needs.resolve.outputs.revision }}
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@3c6342b75005b9cc7c7d4069c3e9179247c89012
         with:
-          name: public-distribution-inventories
-          path: dist/distribution-inventories/
-          if-no-files-found: error
-          retention-days: 30
-      - name: Require reviewed PUBLIC distribution for every channel
+          extra_nix_config: |
+            max-jobs = 2
+            cores = 4
+      - run: python3 -B scripts/check-ci-capacity --vm
+      - name: Verify tag and exact qualification identity
         env:
-          # Owner-supplied after inspecting this exact run's artifacts. Keeping
-          # approvals outside the archive avoids a self-referential digest.
-          PUBLIC_REVIEW: ${{ vars.CYBEXOS_PUBLIC_DISTRIBUTION_REVIEW }}
+          TAG: ${{ inputs.tag }}
+          REPORT_URL: ${{ inputs.qualification_url }}
         run: |
           set -euo pipefail
-          python3 -B - <<'PYTHON'
-          import json
-          import os
-          from pathlib import Path
-          import sys
-          sys.path.insert(0, 'image')
-          from distribution_review import verify
-          review = json.loads(os.environ.get('PUBLIC_REVIEW') or Path('assets/distribution-review.json').read_text())
-          for channel in ('source', 'desktop-rpm', 'offline-rpm', 'iso'):
-              path = Path('dist/distribution-inventories') / (channel + '-distribution-inventory.json')
-              verify(json.loads(path.read_text()), review)
-          Path('dist/distribution-review.json').write_text(json.dumps(review, indent=2) + '\n')
-          PYTHON
-          (
-            cd dist
-            sha256sum distribution-review.json >>SHA256SUMS
-            cd distribution-inventories
-            sha256sum *.json >>../SHA256SUMS
-          )
-      - name: Attest the exact release archive and ISO SBOM
-        id: attest
-        # actions/attest v4.2.2
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
-        with:
-          subject-path: |
-            dist/cybexos-*.tar.zst
-            ${{ steps.sbom.outputs.path }}
-            dist/distribution-inventories/*.json
-            dist/distribution-review.json
-      - name: Attest the SPDX SBOM of the exact ISO
-        id: attest-sbom
-        # actions/attest v4.2.2: sbom-path makes an SPDX predicate attestation
-        # whose subject is the ISO digest from its published checksum file.
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
-        with:
-          subject-checksums: ${{ steps.sbom.outputs.iso-checksum }}
-          sbom-path: ${{ steps.sbom.outputs.path }}
-      # Installed systems verify updates offline from this bundle, so checking
-      # for and applying a release needs no GitHub login or API token.
-      - name: Package the provenance bundles for offline verification
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[0-9]+)?$ ]]
+          test "${TAG#v}" = "$(cat VERSION)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$TAG^{commit}")"
+          test -z "$(git status --porcelain)"
+          mkdir -p release-output
+          curl --proto '=https' --fail --location "$REPORT_URL" -o release-output/qualification.json
+          nix flake metadata --json > source-metadata.json
+          python3 release/manage.py gate release-output/qualification.json "$(git rev-parse HEAD)" "$(jq -r .locked.narHash source-metadata.json)"
+          nix flake check -L
+          staging=$(mktemp -d "$RUNNER_TEMP/cybexos-release-image-XXXXXX")
+          revision=$(git rev-parse HEAD)
+          image="/data/pxe/iso/cybexos-$revision-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.iso"
+          trap 'rm -rf "$staging"; sudo rm -f "$image" "$image.sha256"' EXIT
+          nix build .#iso -L --out-link "$staging/result"
+          sudo install -d -m 0755 /data/pxe/iso
+          sudo install -m 0644 "$staging"/result/iso/*.iso "$image"
+          (cd /data/pxe/iso; sha256sum "$(basename "$image")") > "$staging/checksum"
+          sudo install -m 0644 "$staging/checksum" "$image.sha256"
+          (cd /data/pxe/iso; sha256sum -c "$image.sha256")
+          nix develop -c scripts/check-image-parity "$image" . --output release-output/image-parity.json
+          nix develop -c scripts/qualify-installations "$image" --output release-output/installation-evidence.json
+          cp "$image" "release-output/cybexos-${TAG#v}-x86_64-linux.iso"
+      - name: Prepare immutable assets and manifest
         env:
-          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
-          SBOM_BUNDLE_PATH: ${{ steps.attest-sbom.outputs.bundle-path }}
-          SBOM_PATH: ${{ steps.sbom.outputs.path }}
-          ISO_CHECKSUM: ${{ steps.sbom.outputs.iso-checksum }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag }}
+          SIGNING_KEY: ${{ secrets.RELEASE_ED25519_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.RELEASE_KEY_ID }}
         run: |
           set -euo pipefail
-          version=${RELEASE_TAG#v}
-          bundle="dist/cybexos-$version.tar.zst.sigstore.jsonl"
-          jq -c . "$BUNDLE_PATH" >"$bundle"
-          test -s "$bundle"
-          # The same pinned, offline check the updater runs, without a token.
-          # The archive's provenance also covers the published SBOM file.
-          for subject in "dist/cybexos-$version.tar.zst" "$SBOM_PATH"; do
-            env -u GH_TOKEN -u GITHUB_TOKEN gh attestation verify \
-              "$subject" --bundle "$bundle" \
-              --repo "$GITHUB_REPOSITORY" \
-              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
-              --source-ref "refs/tags/$RELEASE_TAG" --deny-self-hosted-runners
-          done
-          # The SBOM attestation's subject is the ISO, published only as parts,
-          # so check its predicate type and subject digest structurally here.
-          iso_name=$(basename "$ISO_CHECKSUM" .sha256)
-          sbom_bundle="$iso_name.sbom.sigstore.jsonl"
-          jq -c . "$SBOM_BUNDLE_PATH" >"dist/$sbom_bundle"
-          read -r iso_digest _ <"$ISO_CHECKSUM"
-          jq -e --arg digest "$iso_digest" '.dsseEnvelope.payload | @base64d | fromjson
-            | .predicateType == "https://spdx.dev/Document/v2.3"
-              and any(.subject[]; .digest.sha256 == $digest)' "dist/$sbom_bundle" >/dev/null
-          (
-            cd dist
-            sha256sum "cybexos-$version.tar.zst.sigstore.jsonl" "$sbom_bundle" >>SHA256SUMS
-          )
-      - name: Publish the completed release
+          trap 'rm -f signing-key' EXIT
+          umask 077
+          printf '%s\n' "$SIGNING_KEY" > signing-key
+          git archive --format=tar.gz --prefix=cybexos/ HEAD > release-output/cybexos-source.tar.gz
+          cp release/notes.md release-output/release-notes.md
+          (cd release-output; sha256sum ./*.iso cybexos-source.tar.gz > SHA256SUMS)
+          python3 release/manage.py manifest release-output "${TAG#v}" "$(git rev-parse HEAD)" "$(jq -r .locked.narHash source-metadata.json)" release/notes.md
+          python3 release/manage.py sign release-output/manifest.json signing-key "$KEY_ID" --trust release/keys/trust.json --purpose release
+          python3 release/verify-assets.py release-output/manifest.json release/keys/trust.json --local
+      - name: Publish all assets together and verify public delivery
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          IMMUTABILITY_CHECK_TOKEN: ${{ secrets.IMMUTABILITY_CHECK_TOKEN }}
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          version=${RELEASE_TAG#v}
-          prerelease=()
-          [[ $version != *-* ]] || prerelease+=(--prerelease)
-          gh release create "$RELEASE_TAG" --verify-tag --draft \
-            --generate-notes --title "CybexOS $version" "${prerelease[@]}"
-          gh release upload "$RELEASE_TAG" \
-            "dist/cybexos-$version.tar.zst" \
-            "dist/cybexos-$version.tar.zst.sigstore.jsonl" dist/SHA256SUMS \
-            dist/*.iso.sbom.sigstore.jsonl dist/desktop-release/assets/* \
-            dist/distribution-inventories/*.json dist/distribution-review.json
-          gh release edit "$RELEASE_TAG" --draft=false
-          for _attempt in $(seq 1 12); do
-            if test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .immutable)" = true; then
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "GitHub did not make $RELEASE_TAG immutable after publication" >&2
-          exit 1
-
-  pages:
-    name: Publish signed desktop repository metadata
-    needs: publish
-    # Prerelease assets are downloadable but must never advance stable clients.
-    if: ${{ !contains(github.ref_name, '-') }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: cybexos-desktop-release
-          path: desktop-release
-      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa
-        with:
-          path: desktop-release/pages
-      - name: Deploy verified metadata after RPM assets exist
-        id: deploy
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
+          release/require-immutable-releases
+          gh release create "$TAG" --draft --verify-tag --title "CybexOS ${TAG#v}" --notes-file release/notes.md
+          gh release upload "$TAG" release-output/*
+          release/require-immutable-releases
+          gh release edit "$TAG" --draft=false
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .immutable)" = true
+          python3 release/verify-assets.py release-output/manifest.json release/keys/trust.json

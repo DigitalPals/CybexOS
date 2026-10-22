@@ -10,7 +10,7 @@ const { shellDir, load } = require("./shell.cjs");
 
 const helpers = load("BackupHelpers.js");
 const read = name => untranslated(fs.readFileSync(path.join(shellDir, name), "utf8"));
-const repo = path.resolve(shellDir, "../../../..");
+const repo = path.resolve(__dirname, "../..");
 
 function status(overrides) {
     return helpers.parseStatus(JSON.stringify(Object.assign({
@@ -77,7 +77,7 @@ test("the status line reads as last backup, its health and the next run", () => 
 });
 
 test("destinations are validated as data before the helper sees them", () => {
-    const helper = "/home/tester/.local/bin/cybexos-backup";
+    const helper = "cybexos-backup";
     assert.equal(helpers.helperPath("/home/tester"), helper);
     assert.deepEqual(helpers.setupCommand(helper, "local", "/run/media/tester/T7", "", false),
         [helper, "setup", "local", "/run/media/tester/T7", "--json"]);
@@ -184,13 +184,4 @@ test("About keeps shell health and the settings file, not recovery points", () =
     const about = read("Settings/AboutPage.qml");
     assert.doesNotMatch(about, /RecoveryGroup|Recovery points/);
     assert.match(read("Common/Settings.qml"), /description: "Shell health and the settings file"/);
-});
-
-test("both cybex dispatchers route backup to the same helper", () => {
-    const checkout = untranslated(fs.readFileSync(path.join(repo, "roles/dotfiles/templates/cybex.j2"), "utf8"));
-    const iso = untranslated(fs.readFileSync(path.join(repo, "image/rootfs/usr/bin/cybex"), "utf8"));
-    assert.match(checkout, /backup\)\n\s+exec \{\{ \(primary_home \+ '\/\.local\/bin\/cybexos-backup'\) \| quote \}\} "\$@"/);
-    assert.match(iso, /backup\) exec \/usr\/share\/cybexos\/bin\/cybexos-backup "\$@" ;;/);
-    const contract = JSON.parse(untranslated(fs.readFileSync(path.join(repo, "assets/desktop-contract.json"), "utf8")));
-    assert.ok(contract.userHelpers.includes("cybexos-backup"));
 });

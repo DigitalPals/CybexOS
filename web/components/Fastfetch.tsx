@@ -1,12 +1,12 @@
-import { DEMO_SYSTEM, FEDORA_LOGO, SYSTEM_DETAILS } from '../lib/terminal';
+import { DEMO_SYSTEM, CYBEXOS_LOGO, SYSTEM_DETAILS } from '../lib/terminal';
 
 /** A semantic rendering of the same sample data returned by the command parser. */
 export function Fastfetch() {
   return (
-    <section className="terminal-fastfetch" aria-label="Fedora system overview">
-      <div className="terminal-fedora-art" aria-hidden="true">
-        <pre>{FEDORA_LOGO}</pre>
-        <span>fedora</span>
+    <section className="terminal-fastfetch" aria-label="CybexOS system overview">
+      <div className="terminal-cybexos-art" aria-hidden="true">
+        <pre>{CYBEXOS_LOGO}</pre>
+        <span>cybexos</span>
         <small>Freedom. Friends. Features. First.</small>
       </div>
       <div className="terminal-fetch-info">

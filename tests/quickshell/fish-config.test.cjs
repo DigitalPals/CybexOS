@@ -6,7 +6,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const repoDir = path.resolve(__dirname, "../..");
-const config = path.join(repoDir, "roles/dotfiles/files/fish-config.fish");
+const config = path.join(repoDir, "desktop/defaults/fish-config.fish");
 const hasFish = spawnSync("fish", ["--version"]).status === 0;
 
 // conf.d/50-cybexos.fish is sourced by every fish, including `fish -c` from
@@ -34,7 +34,7 @@ test("sourcing the fish config spawns nothing unless the shell is interactive",
         fs.writeFileSync(calls, "");
         for (const name of ["sh", "oh-my-posh", "zoxide", "fzf", "direnv"])
             fs.writeFileSync(path.join(bin, name),
-                `#!/bin/bash\nprintf '%s\\n' "${name}" >>"$FISH_CONFIG_CALLS"\n`,
+                `#!${require("./shell.cjs").executable("bash")}\nprintf '%s\\n' "${name}" >>"$FISH_CONFIG_CALLS"\n`,
                 { mode: 0o755 });
         const run = interactive => spawnSync("fish",
             ["--no-config", ...(interactive ? ["-i"] : []), "-c", `source ${config}`], {
@@ -47,7 +47,7 @@ test("sourcing the fish config spawns nothing unless the shell is interactive",
                     XDG_CONFIG_HOME: path.join(tmp, "config"),
                     XDG_DATA_HOME: path.join(tmp, "data"),
                     XDG_CACHE_HOME: path.join(tmp, "cache"),
-                    PATH: `${bin}:/usr/bin:/bin`,
+                    PATH: `${bin}:${process.env.PATH}`,
                     FISH_CONFIG_CALLS: calls,
                 },
             });

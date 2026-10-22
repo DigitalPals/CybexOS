@@ -23,8 +23,8 @@ generated monogram, and the real icon is fetched on a later launch.
 
 `seed` installs the CybexOS defaults (Slack, WhatsApp, YouTube, Google Photos
 and X) once per account, offline. Every default it has seeded is recorded, so
-one the user removes is never added back. Both installation paths run it:
-the checkout's dotfiles role and the ISO's per-account initialization.
+one the user removes is never added back. The shared NixOS personal-init
+service runs it for both the live desktop and installed accounts.
 
 The site address is data. It never reaches a shell, a desktop-entry Exec
 line, or a command-line option position.
@@ -64,8 +64,8 @@ USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) CybexOS-webapp/1"
 
 # The defaults CybexOS has always offered on Super+M, Super+W, Super+Y,
 # Super+Shift+P and Super+Shift+X. Their bindings launch them by these ids.
-# cybexos-user-init stops calling `seed` once defaults.json exists, so a
-# release that adds a default must also give it a way to be seeded.
+# The managed personal-init service calls `seed` at login. Recorded deletions
+# remain absent; newly declared defaults are seeded once.
 DEFAULTS = (
     ("slack", "Slack", "https://app.slack.com/"),
     ("whatsapp", "WhatsApp", "https://web.whatsapp.com/"),
@@ -75,7 +75,7 @@ DEFAULTS = (
 )
 
 # Brave Origin exactly as bindings.lua starts it for Super+B, plus app mode.
-BRAVE = "brave-origin-stable"
+BRAVE = "brave"
 BRAVE_FLAGS = (
     "--enable-features=TouchpadOverscrollHistoryNavigation,PipeWireCamera",
     "--enable-wayland-ime",
@@ -126,9 +126,8 @@ def desktop_path(identifier: str) -> Path:
 
 
 def helper_path() -> Path:
-    # Both installation paths provide the helper here: a copy on a checkout,
-    # a link to /usr/share/cybexos/bin on the ISO.
-    return home() / ".local/bin/cybexos-webapp"
+    # The shared NixOS package provides this stable selected-system entry point.
+    return Path("/run/current-system/sw/bin/cybexos-webapp")
 
 
 def directory(path: Path) -> Path:
@@ -645,8 +644,8 @@ def launch(identifier: str) -> None:
             record = read_record(identifier)
         if record is None:
             default = next((entry for entry in DEFAULTS if entry[0] == identifier), None)
-            hint = (f"cybex webapp install --name {default[1]} --url {default[2]}"
-                    if default else "cybex webapp install --url ADDRESS")
+            hint = (f"cybexos-webapp install --name {default[1]} --url {default[2]}"
+                    if default else "cybexos-webapp install --url ADDRESS")
             raise WebAppError(
                 f"The {default[1] if default else identifier} web app was removed. "
                 f"Reinstall it with Install web app… in the launcher, or {hint}")
@@ -737,7 +736,7 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as error:
         print(f"cybexos-webapp: {error}", file=sys.stderr)
         if announce or arguments.command == "launch":
-            notify("Web apps", "The web app could not be changed. Run cybex webapp in a "
+            notify("Web apps", "The web app could not be changed. Run cybexos-webapp in a "
                    "terminal for details.")
         return 1
     return 0

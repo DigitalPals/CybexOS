@@ -12,9 +12,7 @@
     "test": "vitest run",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "test:render": "node --test tests/rendered-html.test.mjs",
-    "typecheck": "tsc --noEmit",
-    "review:inventory": "python3 -B ../image/distribution_review.py capture --channel web --root dist --output distribution-inventory.json",
-    "review:public": "python3 -B ../image/distribution_review.py check-public --channel web --root dist --output distribution-inventory.json"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fontsource/figtree": "^5.3.0",

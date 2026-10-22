@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
-import "../../roles/desktop/files/quickshell/Common/Persistence" as Common
-import "../../roles/desktop/files/quickshell/Common/SettingsHelpers.js" as Helpers
+import "../../desktop/quickshell/Common/Persistence" as Common
+import "../../desktop/quickshell/Common/SettingsHelpers.js" as Helpers
 
 Item {
     Component { id: factory; Common.SettingsDocument {} }

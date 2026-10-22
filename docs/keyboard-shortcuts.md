@@ -33,9 +33,9 @@ The Web apps group opens the web apps CybexOS installs for every account:
 Photos and `Super+Shift+X` X. Each binding runs `cybexos-webapp launch ID`,
 which opens the site in Brave Origin's app mode when Brave Origin is installed
 and in Firefox otherwise. Remove one with **Remove web app…** in the launcher
-or `cybex webapp remove ID`; it is not added back by later updates, and its
+or `cybexos-webapp remove ID`; it is not added back by later updates, and its
 shortcut then shows how to reinstall it. Add other sites with **Install web
-app…** in the launcher or `cybex webapp install --url ADDRESS`. Installed web
+app…** in the launcher or `cybexos-webapp install --url ADDRESS`. Installed web
 apps appear in the launcher's Apps tab.
 
 ## Clipboard history

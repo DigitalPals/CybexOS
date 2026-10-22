@@ -6,6 +6,6 @@ contact_links:
   - name: Documentation
     url: https://github.com/DigitalPals/CybexOS#readme
     about: Installation, updates, recovery, and links to the guides in docs/.
-  - name: Operations and recovery guide
-    url: https://github.com/DigitalPals/CybexOS/blob/main/docs/operations.md
-    about: Commands, update logs, recovery points, and troubleshooting.
+  - name: Recovery guide
+    url: https://github.com/DigitalPals/CybexOS/blob/main/docs/recovery.md
+    about: Deployment recovery, rollback, persistent state, and troubleshooting.

@@ -1,0 +1,380 @@
+#!/usr/bin/env python3
+"""Real Nix/Git and authenticated HTTPS integration; no installed-system test.
+
+Run in the isolated Nix development environment:
+  nix develop -c python3 -B tests/nixos-native
+
+Sources and signing keys are disposable local test repositories. The HTTPS
+CONNECT proxy changes only this process's environment and verifies a local CA;
+production endpoint policy, signature verification and Nix fetchers are intact.
+"""
+import argparse
+import base64
+import contextlib
+import datetime as dt
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import socketserver
+import ssl
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import threading
+from urllib.parse import urlencode, urlsplit
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'lifecycle'))
+from cybexos.common import Failure
+from cybexos.inputs import unchanged_graph
+from cybexos.trust import Fetcher, discover
+
+
+def command(*args, cwd=None, fail=False):
+    result = subprocess.run(list(map(str, args)), cwd=cwd, capture_output=True, text=True, timeout=180)
+    if fail:
+        assert result.returncode != 0, 'Expected command rejection: ' + str(args[:3])
+    elif result.returncode:
+        raise RuntimeError('Command failed: ' + str(args[:4]) + '\n' + result.stderr[-3000:])
+    return result.stdout
+
+
+def nix(*args, **kwargs):
+    # Nix's store-path installable heuristic can select the current source
+    # store object before an explicit flake reference when invoked from that
+    # object. Qualification often runs immutable source. Use a neutral CWD;
+    # every input/output target below is still an explicit disposable path.
+    kwargs.setdefault('cwd', tempfile.gettempdir())
+    return command('nix', '--extra-experimental-features', 'nix-command flakes', *args, **kwargs)
+
+
+def repository(directory, flake):
+    directory.mkdir()
+    command('git', 'init', '--initial-branch=stable', directory)
+    command('git', 'config', 'user.name', 'CybexOS isolated qualification', cwd=directory)
+    command('git', 'config', 'user.email', 'qualification@invalid.example', cwd=directory)
+    (directory / 'flake.nix').write_text(flake)
+    return directory
+
+
+def commit(directory):
+    command('git', 'add', '.', cwd=directory)
+    command('git', 'commit', '-m', 'Isolated native integration input', cwd=directory)
+    return command('git', 'rev-parse', 'HEAD', cwd=directory).strip()
+
+
+def git_url(directory, **identity):
+    return 'git+' + directory.as_uri() + '?' + urlencode(identity)
+
+
+def stamp(value):
+    return '{ outputs = { self }: { stamp = ' + json.dumps(value) + '; }; }\n'
+
+
+def installed_source_transfer(base):
+    # Model the ISO's validity-only registration in an entirely private store.
+    # A real signed/cache fetch retains its CA metadata; the live ISO does not.
+    source = base / 'authenticated-input'
+    source.mkdir()
+    (source / 'flake.lock').write_text('{"qualification":"authenticated local source"}\n')
+    live = base / 'live-store'
+    live_url = 'local?root=' + str(live)
+    path = nix('--store', live_url, 'store', 'add-path', source).strip()
+    database = live / 'nix/var/nix/db/db.sqlite'
+    with sqlite3.connect(database) as db:
+        db.execute('UPDATE ValidPaths SET ca = NULL, sigs = NULL, ultimate = 0')
+    info = json.loads(nix('--store', live_url, 'path-info', '--json', path))[path]
+    assert not info.get('ca') and not info.get('signatures') and not info.get('ultimate')
+    rejected = subprocess.run(['nix', '--extra-experimental-features', 'nix-command flakes',
+                               'copy', '--from', live_url, '--to',
+                               'local?root=' + str(base / 'untrusted-target'), path],
+                              capture_output=True, text=True, timeout=60)
+    assert rejected.returncode != 0 and 'lacks a signature by a trusted key' in rejected.stderr
+    loader = importlib.machinery.SourceFileLoader('native_installer', str(ROOT / 'installer/cybexos-install'))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    installer = importlib.util.module_from_spec(spec)
+    loader.exec_module(installer)
+    archive = {'path': path, 'inputs': {'shared': {'path': path, 'inputs': {}}}}
+    target = base / 'installed-target'
+    def run(*args):
+        assert args[0] == 'nix'
+        return nix('--store', live_url, *args[1:])
+    installer.copy_initial_inputs(archive, target, run)
+    copied = target / path.lstrip('/')
+    assert (copied / 'flake.lock').read_bytes() == (source / 'flake.lock').read_bytes()
+    roots = list((target / 'nix/var/nix/gcroots/cybexos-initial').iterdir())
+    assert len(roots) == 1 and os.readlink(roots[0]) == path
+    assert json.loads((target / 'var/lib/cybexos/initial-inputs.json').read_text()) == archive
+    return {'isoRegisteredSourceTransfer': {'result': 'passed',
+            'scope': 'Real private Nix stores; default copy rejects ISO-style unsigned registration, installer copies identical bytes and retains input roots with a local-only signature exemption'}}
+
+
+def native_inputs(base):
+    upstream = repository(base / 'upstream', stamp('upstream-one'))
+    upstream_one = commit(upstream)
+    dependency = repository(base / 'dependency', stamp('dependency-one'))
+    commit(dependency)
+    personal = repository(base / 'personal', stamp('personal-one'))
+    personal_one = commit(personal)
+    vendor = repository(base / 'vendor', '''{
+  inputs.nixpkgs.url = UPSTREAM;
+  inputs.vendorlib.url = DEPENDENCY;
+  outputs = { nixpkgs, vendorlib, ... }: {
+    stamp = "vendor-one"; upstream = nixpkgs.stamp; dependency = vendorlib.stamp;
+  };
+}
+'''.replace('UPSTREAM', json.dumps(git_url(upstream, ref='stable')))
+       .replace('DEPENDENCY', json.dumps(git_url(dependency, ref='stable'))))
+    nix('flake', 'lock', 'path:' + str(vendor))
+    vendor_one = commit(vendor)
+
+    def machine(name, revision):
+        directory = base / name
+        directory.mkdir()
+        (directory / 'flake.nix').write_text('''{
+  inputs.nixpkgs.url = UPSTREAM;
+  inputs.cybexos.url = VENDOR;
+  inputs.cybexos.inputs.nixpkgs.follows = "nixpkgs";
+  inputs.personal.url = PERSONAL;
+  outputs = { nixpkgs, cybexos, personal, ... }: { stamps = {
+    upstream = nixpkgs.stamp; vendor = cybexos.stamp;
+    vendorUpstream = cybexos.upstream; dependency = cybexos.dependency;
+    personal = personal.stamp;
+  }; };
+}
+'''.replace('UPSTREAM', json.dumps(git_url(upstream, ref='stable')))
+           .replace('VENDOR', json.dumps(git_url(vendor, rev=revision)))
+           .replace('PERSONAL', json.dumps(git_url(personal, ref='stable'))))
+        return directory
+
+    initial = machine('initial', vendor_one)
+    nix('flake', 'lock', 'path:' + str(initial))
+    old = json.loads((initial / 'flake.lock').read_text())
+
+    # All remotes advance, including the unrelated personal branch. Only named
+    # update scopes may advance its locked graph.
+    (upstream / 'flake.nix').write_text(stamp('upstream-two'))
+    upstream_two = commit(upstream)
+    (personal / 'flake.nix').write_text(stamp('personal-two'))
+    commit(personal)
+    (dependency / 'flake.nix').write_text(stamp('dependency-two'))
+    commit(dependency)
+    (vendor / 'flake.nix').write_text((vendor / 'flake.nix').read_text().replace('vendor-one', 'vendor-two'))
+    nix('flake', 'update', 'vendorlib', '--flake', 'path:' + str(vendor))
+    vendor_two = commit(vendor)
+
+    checks = {}
+    for scope in ('upstream', 'cybexos', 'both'):
+        target = machine('machine-' + scope, vendor_two if scope != 'upstream' else vendor_one)
+        (target / 'flake.lock').write_text(json.dumps(old))
+        if scope in ('upstream', 'both'):
+            nix('flake', 'update', 'nixpkgs', '--flake', 'path:' + str(target))
+        if scope in ('cybexos', 'both'):
+            nix('flake', 'update', 'cybexos', '--flake', 'path:' + str(target))
+        new = json.loads((target / 'flake.lock').read_text())
+        assert unchanged_graph(old, new, 'personal'), 'Unrelated personal dependency refreshed'
+        root = new['nodes'][new['root']]['inputs']
+        vendor_node = new['nodes'][root['cybexos']]
+        assert vendor_node['inputs']['nixpkgs'] == ['nixpkgs']
+        assert len([node for node in new['nodes'].values()
+                    if node.get('locked', {}).get('url') == upstream.as_uri()]) == 1
+        if scope == 'upstream':
+            assert unchanged_graph(old, new, 'cybexos')
+        if scope == 'cybexos':
+            assert unchanged_graph(old, new, 'nixpkgs')
+        stamps = json.loads(nix('eval', '--json', '--no-update-lock-file', 'path:' + str(target) + '#stamps'))
+        assert stamps['personal'] == 'personal-one'
+        assert stamps['upstream'] == stamps['vendorUpstream']
+        assert stamps['upstream'] == ('upstream-one' if scope == 'cybexos' else 'upstream-two')
+        assert stamps['vendor'] == ('vendor-one' if scope == 'upstream' else 'vendor-two')
+        assert stamps['dependency'] == ('dependency-one' if scope == 'upstream' else 'dependency-two')
+        checks[scope] = {'result': 'passed', 'stamps': stamps}
+
+    # The retained exact vendor source is already in the Nix store. Its
+    # unavailable remote must not prevent a named upstream lock refresh.
+    target = machine('vendor-unreachable', vendor_one)
+    (target / 'flake.lock').write_text(json.dumps(old))
+    vendor.rename(base / 'vendor-offline')
+    try:
+        nix('flake', 'update', 'nixpkgs', '--flake', 'path:' + str(target))
+        new = json.loads((target / 'flake.lock').read_text())
+        assert unchanged_graph(old, new, 'cybexos') and unchanged_graph(old, new, 'personal')
+    finally:
+        (base / 'vendor-offline').rename(vendor)
+    checks['unavailableVendorRemote'] = {'result': 'passed'}
+
+    ref = git_url(vendor, rev=vendor_two)
+    prefetched = json.loads(nix('flake', 'prefetch', '--json', ref))
+    exact = json.loads(nix('flake', 'prefetch', '--json', ref + '&' + urlencode({'narHash': prefetched['hash']})))
+    assert exact['hash'] == prefetched['hash']
+    wrong = 'sha256-' + 'A' * 43 + '='
+    try:
+        mismatched = json.loads(nix('flake', 'prefetch', '--json', ref + '&' + urlencode({'narHash': wrong})))
+    except RuntimeError:
+        pass
+    else:
+        # Some Nix fetchers return the measured hash rather than enforcing a
+        # URL narHash. The installer/updater explicitly compare that result.
+        assert mismatched['hash'] != wrong, 'Prefetch accepted an unmeasured source identity: ' + str(mismatched)
+    checks['exactNarPrefetch'] = {'result': 'passed', 'revision': vendor_two, 'narHash': exact['hash']}
+    return checks, vendor_two, exact['hash']
+
+
+class HTTPSDelivery(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
+class DeliveryHandler(socketserver.BaseRequestHandler):
+    @staticmethod
+    def headers(connection):
+        result = bytearray()
+        while not result.endswith(b'\r\n\r\n'):
+            block = connection.recv(1)
+            if not block or len(result) > 16384:
+                raise ConnectionError('Incomplete local integration request')
+            result.extend(block)
+        return result.decode('ascii')
+
+    def handle(self):
+        self.request.settimeout(20)
+        connect = self.headers(self.request).splitlines()[0].split()
+        assert connect[0] == 'CONNECT' and connect[1] in ('digitalpals.github.io:443', 'github.com:443')
+        self.request.sendall(b'HTTP/1.1 200 Connection established\r\n\r\n')
+        with self.server.tls.wrap_socket(self.request, server_side=True) as connection:
+            headers = self.headers(connection).splitlines()
+            method, path, _ = headers[0].split()
+            assert method == 'GET'
+            host = connect[1].split(':')[0]
+            status, body = self.server.routes.get((host, path), (404, b'unknown qualification route'))
+            etag = '"' + hashlib.sha256(body).hexdigest() + '"'
+            if status == 200 and any(line.lower().startswith('if-none-match:') and line.split(':', 1)[1].strip() == etag for line in headers[1:]):
+                status, body = 304, b''
+            connection.sendall(('HTTP/1.1 ' + str(status) + ' Local qualification\r\nContent-Length: '
+                                + str(len(body)) + '\r\nETag: ' + etag + '\r\nConnection: close\r\n\r\n').encode() + body)
+
+
+@contextlib.contextmanager
+def delivery(base):
+    cert, key = base / 'transport.pem', base / 'transport-key.pem'
+    command('openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+            '-subj', '/CN=CybexOS isolated native integration',
+            '-addext', 'subjectAltName=DNS:digitalpals.github.io,DNS:github.com',
+            '-keyout', key, '-out', cert)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert, key)
+    with HTTPSDelivery(('127.0.0.1', 0), DeliveryHandler) as server:
+        server.tls, server.routes = context, {}
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        names = ('https_proxy', 'HTTPS_PROXY', 'SSL_CERT_FILE', 'NIX_SSL_CERT_FILE', 'NO_PROXY', 'no_proxy')
+        previous = {name: os.environ.get(name) for name in names}
+        proxy = 'http://127.0.0.1:' + str(server.server_address[1])
+        os.environ.update(https_proxy=proxy, HTTPS_PROXY=proxy, SSL_CERT_FILE=str(cert),
+                          NIX_SSL_CERT_FILE=str(cert), NO_PROXY='', no_proxy='')
+        try:
+            yield server.routes
+        finally:
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+            server.shutdown()
+            thread.join(timeout=5)
+
+
+def authenticated_delivery(base, revision, nar_hash):
+    signing = base / 'publisher.pem'
+    command('openssl', 'genpkey', '-algorithm', 'ED25519', '-out', signing)
+    public = command('openssl', 'pkey', '-in', signing, '-pubout')
+    key_id = hashlib.sha256(public.encode()).hexdigest()[:16]
+    trust = {'schema': 1, 'keys': {key_id: {
+        'publicKey': public, 'purposes': ['release', 'channel'],
+        'notAfter': (dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=1)).isoformat(),
+    }}}
+    release = {'schema': 1, 'version': '1.0.0-beta.2', 'revision': revision, 'narHash': nar_hash,
+               'architectures': ['x86_64-linux'], 'nixos': ['26.05'], 'configurationApi': 1,
+               'pluginApi': 1, 'minUpdater': 1, 'notes': 'Isolated authenticated transport qualification',
+               'vendorInputs': ['vendorlib'], 'assets': [{
+                   'name': 'qualification-source.tar.gz',
+                   'url': 'https://github.com/DigitalPals/CybexOS/releases/download/v1.0.0-beta.2/qualification-source.tar.gz',
+                   'sha256': '0' * 64, 'bytes': 1,
+               }]}
+    channel_url = 'https://digitalpals.github.io/CybexOS/channels/beta.json'
+    manifest_url = 'https://github.com/DigitalPals/CybexOS/releases/download/v1.0.0-beta.2/manifest.json'
+    channel = {'schema': 1, 'channel': 'beta', 'sequence': 2,
+               'expires': (dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)).isoformat(),
+               'manifest': manifest_url, 'sha256': ''}
+
+    def signed(document):
+        body = json.dumps(document, sort_keys=True).encode()
+        path = base / 'signing-input.json'
+        path.write_bytes(body)
+        signature = subprocess.check_output(['openssl', 'pkeyutl', '-sign', '-rawin', '-inkey', str(signing), '-in', str(path)])
+        return body, json.dumps({'keyId': key_id, 'signature': base64.b64encode(signature).decode()}).encode()
+
+    def route(routes, url, status, body):
+        parsed = urlsplit(url)
+        routes[parsed.hostname, parsed.path] = status, body
+
+    with delivery(base) as routes:
+        def publish():
+            body, signature = signed(release)
+            route(routes, manifest_url, 200, body)
+            route(routes, manifest_url + '.sig', 200, signature)
+            channel['sha256'] = hashlib.sha256(body).hexdigest()
+            body, signature = signed(channel)
+            route(routes, channel_url, 200, body)
+            route(routes, channel_url + '.sig', 200, signature)
+
+        publish()
+        fetcher = Fetcher(base / 'metadata-cache')
+        def discover_actual():
+            return discover(fetcher, trust, 'beta', '1.0.0-beta.1', 'x86_64-linux', '26.05', 1)
+        actual, sequence = discover_actual()
+        assert actual == release and sequence == 2
+        assert discover_actual() == (release, 2), 'Authenticated ETag cache refresh failed'
+        checks = {'validSignedHttpsAndCache': {'result': 'passed'}}
+
+        route(routes, manifest_url + '.sig', 200, json.dumps({'keyId': key_id, 'signature': base64.b64encode(bytes(64)).decode()}).encode())
+        for name, setup, message in (
+            ('invalidSignature', lambda: None, 'signature'),
+            ('incompatibleSignedMetadata', lambda: (release.update(pluginApi=2), publish()), 'incompatible'),
+            ('unavailableChannelWithCache', lambda: route(routes, channel_url, 503, b'unavailable'), 'unavailable'),
+        ):
+            setup()
+            try:
+                discover_actual()
+            except Failure as error:
+                assert message in str(error).lower(), str(error)
+            else:
+                raise AssertionError('Invalid or unavailable delivery was accepted: ' + name)
+            checks[name] = {'result': 'passed'}
+        return checks
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--output', type=Path)
+    args = parser.parse_args()
+    with tempfile.TemporaryDirectory(prefix='cybexos-native-') as directory:
+        base = Path(directory)
+        inputs, revision, nar_hash = native_inputs(base)
+        authentication = authenticated_delivery(base, revision, nar_hash)
+        transfer = installed_source_transfer(base)
+    report = {'kind': 'native-input-and-authenticated-transport-integration',
+              'scope': 'Real Nix lock/prefetch, isolated installation-source store transfer and production metadata verification over isolated HTTPS; no system build, installed updater, activation, boot or physical qualification',
+              'testedCode': str(ROOT), 'checks': inputs | authentication | transfer}
+    body = json.dumps(report, indent=2) + '\n'
+    if args.output:
+        args.output.write_text(body)
+    print(body)
+
+
+if __name__ == '__main__':
+    main()

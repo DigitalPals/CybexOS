@@ -68,7 +68,11 @@ ShellRoot {
         onTriggered: {
             if (++root.attempts > 280) {
                 root.done(false, "timeout at " + root.stage + " " + JSON.stringify(OmarchyPlugins.errors)
-                    + " " + UserPlugins.widgetHosts.map(h => h.error));
+                    + " " + UserPlugins.error + " hosts=" + JSON.stringify(UserPlugins.widgetHosts
+                        .filter(h => h.descriptor.id === "example.bundle")
+                        .map(h => ({ready:h.ready, revision:h.widget ? h.widget.reloadRevision : -1,
+                            source:h.descriptor.source, error:h.error})))
+                    + " screens=" + Quickshell.screens.length);
                 return;
             }
             if (root.stage === 0) {

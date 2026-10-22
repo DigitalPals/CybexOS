@@ -4,7 +4,7 @@
     scripts/sync-model-usage <commit> [--source <git-url-or-checkout>]
 
 Copies the plugin's runtime files at one commit into the shell tree
-(roles/desktop/files/quickshell/ModelUsage/) and its unit tests into
+(desktop/quickshell/ModelUsage/) and its unit tests into
 tests/model-usage/, replacing what was there, then records the commit. The
 files receive the reviewed scripts/model-usage/integration.patch. A patch
 conflict aborts before replacing the installed copy. Review the diff and
@@ -23,7 +23,7 @@ import tempfile
 
 REPOSITORY = "https://github.com/DigitalPals/omarchy-modelusage.git"
 ROOT = Path(__file__).resolve().parents[1]
-RUNTIME = ROOT / "roles/desktop/files/quickshell/ModelUsage"
+RUNTIME = ROOT / "desktop/quickshell/ModelUsage"
 TESTS = ROOT / "tests/model-usage"
 INTEGRATION = ROOT / "scripts/model-usage/integration.patch"
 # Kept across syncs: CybexOS's own notes on the vendored copy.

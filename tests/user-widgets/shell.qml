@@ -18,7 +18,7 @@ ShellRoot {
             return;
         finished = true;
         console.warn("USER_WIDGET_RESULT " + (ok ? "pass " : "fail ") + detail);
-        Quickshell.execDetached(["/usr/bin/bash", "-c",
+        Quickshell.execDetached(["bash", "-c",
             "sleep 0.2; kill -TERM -- \"$1\"", "bash", String(Quickshell.processId)]);
     }
 

@@ -62,14 +62,9 @@ test("spinners stop while their view is hidden", () => {
     };
     for (const [file, pattern] of Object.entries(sites))
         assert.match(read(file), pattern, file);
-    const updates = read("Popovers/UpdatesPopover.qml");
-    assert.match(updates, /running:\s*root\.spinning && headerMark\.visible/);
-    assert.match(updates, /&& stepMark\.visible && !Theme\.reducedMotion/);
     // A stopped value source keeps its angle; the marks that replace the arc
     // must not inherit the tilt.
-    for (const [file, id] of [["Popovers/UpdatesPopover.qml", "headerMark"],
-            ["Popovers/UpdatesPopover.qml", "stepMark"],
-            ["Popovers/HermesToolCard.qml", "statusGlyph"],
+    for (const [file, id] of [["Popovers/HermesToolCard.qml", "statusGlyph"],
             ["Popovers/WifiPopover.qml", "signalGlyph"]])
         assert.match(read(file),
             new RegExp(`onRunningChanged: if \\(!running\\) ${id}\\.rotation = 0`), `${file} ${id}`);

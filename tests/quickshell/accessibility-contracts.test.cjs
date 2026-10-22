@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir } = require("./shell.cjs");
 
-// Quickshell's Fedora package embeds quickshell-coreplugin into the `qs`
+// Quickshell's CybexOS package embeds quickshell-coreplugin into the `qs`
 // executable, so standalone qmltestrunner cannot instantiate these controls.
 // Keep the pure-JS helper runtime tests in tests/qml and guard the shell-bound
 // interaction contract here until the package exposes a loadable QML plugin.
@@ -137,7 +137,6 @@ test("reduced-motion mode stops infinite activity loops instead of busy-looping 
         "Popovers/BatteryPopover.qml",
         "Popovers/T3Composer.qml",
         "Popovers/T3ThreadPage.qml",
-        "Popovers/UpdatesPopover.qml",
         "Popovers/WifiPopover.qml"
     ]) {
         const source = read(relative);

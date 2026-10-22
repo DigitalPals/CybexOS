@@ -1,5 +1,3 @@
 #!/usr/bin/env bash
-# Backward-compatible entry point. New installations use ./install directly.
 set -euo pipefail
-repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
-exec "$repo_dir/install" "$@"
+exec cybex install "$@"

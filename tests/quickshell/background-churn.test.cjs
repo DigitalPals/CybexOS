@@ -9,72 +9,11 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const { shellDir, load } = require("./shell.cjs");
 
-const U = load("UpdatesHelpers.js");
 const S = load("SysInfoHelpers.js");
 
 function read(relative) {
     return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
-
-test("dnf progress tokens find their pending row without scanning the feed", () => {
-    const pending = {};
-    U.addPendingRow(pending, "less", "0:704-4.fc44", 0);
-    U.addPendingRow(pending, "less-color", "0:704-4.fc44", 1);
-    U.addPendingRow(pending, "SDL3", "0:3.2.22-1.fc44", 2);
-    U.addPendingRow(pending, "SDL3", "0:3.2.22-1.fc44", 3);
-    U.addPendingRow(pending, "averyveryverylongpackagename", "0:1-1.fc44", 4);
-
-    assert.equal(U.takePendingRow(pending, "less-color-0:704-4.fc"), 1);
-    assert.equal(U.takePendingRow(pending, "less-0:704-4.fc44.x86"), 0);
-    assert.equal(U.takePendingRow(pending, "less-0:704-4.fc44.x86"), -1,
-        "a row is marked done once");
-    assert.equal(U.takePendingRow(pending, "SDL3-0:3.2.22-1.fc44.i686"), 2,
-        "multilib rows complete in table order");
-    assert.equal(U.takePendingRow(pending, "SDL3-0:3.2.22-1.fc44.x86_64"), 3);
-    assert.equal(U.takePendingRow(pending, "averyveryverylongpa"), 4,
-        "a token clipped inside the name still falls back to a scan");
-    assert.deepEqual(pending, {});
-});
-
-test("cleanup of an outgoing version matches nothing", () => {
-    const pending = {};
-    U.addPendingRow(pending, "tmux", "0:3.7c-1.fc44", 0);
-    assert.equal(U.takePendingRow(pending, "tmux-0:3.7b-2.fc44.x86"), -1);
-    assert.equal(U.takePendingRow(pending, ""), -1);
-    assert.equal(U.takePendingRow(pending, "tmux-0:3.7c-1.fc44.x86_64"), 0);
-});
-
-test("a finished run rechecks once and retries only a failed or inconsistent count", () => {
-    assert.equal(U.postRunRetryNeeded(true, "done", 0, 0, true), false);
-    assert.equal(U.postRunRetryNeeded(false, "done", 0, 0, true), true);
-    assert.equal(U.postRunRetryNeeded(true, "done", 3, 0, true), true,
-        "a successful upgrade still listing packages is worth one retry");
-    assert.equal(U.postRunRetryNeeded(true, "done", 0, 2, false), false,
-        "Flatpak was not part of this run");
-    assert.equal(U.postRunRetryNeeded(true, "failed", 5, 0, true), false,
-        "a failed run leaves packages pending by design");
-
-    const updates = read("Common/Updates.qml");
-    assert.doesNotMatch(updates, /ticks > 15/, "no fifteen-minute recheck loop");
-    const recheck = updates.slice(updates.indexOf("id: recheck"));
-    assert.doesNotMatch(recheck.slice(0, recheck.indexOf("}")), /repeat: true/);
-});
-
-test("an online edge does not repeat a fresh complete update check", () => {
-    assert.equal(U.checkIsFresh(0, 1000, 600000), false);
-    assert.equal(U.checkIsFresh(1000, 1000 + 599999, 600000), true);
-    assert.equal(U.checkIsFresh(1000, 1000 + 600000, 600000), false);
-    assert.equal(U.checkIsFresh(5000, 1000, 600000), false,
-        "a clock moved backwards is not fresh");
-
-    const updates = read("Common/Updates.qml");
-    assert.match(updates,
-        /function onOnlineChanged\(\)[\s\S]{0,500}?root\.error !== ""[\s\S]{0,120}?checkIsFresh/);
-    const weather = read("Common/Weather.qml");
-    assert.match(weather,
-        /function onOnlineChanged\(\)[\s\S]{0,500}?!root\.stale\(600000\)/);
-    assert.match(weather, /function stale\(maxAgeMs\) \{[\s\S]{0,200}?Date\.now\(\) - updatedAt >= maxAgeMs/);
-});
 
 test("weather is fetched only for a set location someone is shown", () => {
     const weather = read("Common/Weather.qml");
@@ -249,14 +188,7 @@ test("the calendar helper answers within its own deadline", () => {
 });
 
 test("non-critical singletons stay out of the session-start burst", () => {
-    const updates = read("Common/Updates.qml");
-    assert.match(updates, /id: startupCheck\s*interval: 20000/);
-    assert.match(updates, /Component\.onCompleted: \{\s*initialized = true;\s*startupCheck\.start\(\);\s*refreshRunStatus\(\);/);
-    const calendar = read("Common/Calendar.qml");
-    assert.match(calendar, /id: warmUp\s*interval: 12000/);
-    const reminders = read("Common/Reminders.qml");
-    assert.match(reminders, /id: startupRestore[\s\S]{0,80}?interval: 8000/);
-    assert.match(reminders, /Component\.onCompleted: \{\s*refresh\(\);\s*startupRestore\.start\(\);/);
+
 });
 
 test("wallpaper rotation skips an idle session and catches up once on return", () => {

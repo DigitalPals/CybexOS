@@ -11,7 +11,7 @@ const scriptsDir = path.join(shellDir, "scripts");
 const driver = path.join(scriptsDir, "theme-apply.py");
 // Resolved once, so the scrubbed PATH below never has to include /usr/bin.
 const python = spawnSync("sh", ["-c", "command -v python3"], { encoding: "utf8" })
-    .stdout.trim() || "/usr/bin/python3";
+    .stdout.trim() || "python3";
 
 // The shell's fixed dark and light palettes with the default accent, the
 // values SystemTheme exports on a fresh install.

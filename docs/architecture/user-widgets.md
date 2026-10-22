@@ -33,10 +33,10 @@ the shell; the command helper honors these when present too.
 | Package source and assets | `~/.local/share/cybexos/plugins/<id>/` | Never reconciled with vendor files |
 | Enablement, column, order, width, settings | `~/.config/cybexos/plugins.json` | Never written by deployment or shell-settings migrations |
 | Plugin data | `~/.local/share/cybexos/plugin-data/<id>/` | Retained; plugin controls its own format |
-| Loader and API adapter | `~/.local/share/cybexos/runtime/quickshell/` | Replaced by distro updates |
+| Loader and API adapter | `/etc/cybexos/runtime/quickshell/` | Replaced by distro updates |
 
-Uninstall retains user widget packages and data. Disabling a widget changes
-only its enablement flag. Existing releases before API 1 cannot display these
+System updates and generation rollback retain user widget packages and data.
+Disabling a widget changes only its enablement flag. Existing releases before API 1 cannot display these
 widgets, but their ownership boundary retains the files for re-enablement on
 a supporting release. Compatibility claims apply to releases supporting API 1.
 
@@ -130,10 +130,10 @@ column; the default is right. The left and center areas each have 15% of
 the screen width; the right area has 25%, with room reserved for an overflow
 count. Excess widgets are hidden with a tooltip listing their names.
 Placement and width budgets are defined by
-[`Bar.qml`](../../roles/desktop/files/quickshell/Bar/Bar.qml) and
-[`UserWidgets.qml`](../../roles/desktop/files/quickshell/Bar/UserWidgets.qml);
+[`Bar.qml`](../../desktop/quickshell/Bar/Bar.qml) and
+[`UserWidgets.qml`](../../desktop/quickshell/Bar/UserWidgets.qml);
 registry validation lives in
-[`user-plugins.py`](../../roles/desktop/files/quickshell/scripts/user-plugins.py).
+[`user-plugins.py`](../../desktop/quickshell/scripts/user-plugins.py).
 Built-in drag ordering and custom shell popouts are not part of this plugin API. Use QtQuick content inside the
 supplied bounds.
 
@@ -152,7 +152,7 @@ An incompatible plugin is preserved with its enabled preference intact so a
 future compatible host can load it again. Do not claim that merely retaining
 its files makes it functional on a host that does not support its API.
 
-`tests/user-plugins.py`, included in `tests/run`, runs a fixed API 1 widget in
+`tests/user-plugins.py`, run separately in CI, runs a fixed API 1 widget in
 the real Quickshell engine with its package outside the runtime. It replaces
 the runtime tree for simulated N, N+1, and rollback runs, checks package bytes
 and preferences, tests local QML imports, malformed/incompatible widgets, and

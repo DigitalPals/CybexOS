@@ -8,8 +8,8 @@ transport lifetime, domain state and view code have separate owners:
   `registry.py` owns atomic conversation metadata; `gateway.py` owns bounded
   local-client delivery and the reconnecting local upstream. `hermes_bridge.py`
   coordinates the conversation domain and keeps its public imports for tools
-  and existing tests. Modules never import the bridge entrypoint. Both install
-  paths must ship the package beside the executable.
+  and existing tests. Modules never import the bridge entrypoint. The native Nix package
+  ships the Python package beside the executable.
   Authentication/status replies do not wait for optional discovery or the
   conversation list. Discovery shares in-flight work and caches results for
   the current origin and sign-in session; replacing that session cancels stale
@@ -26,17 +26,18 @@ transport lifetime, domain state and view code have separate owners:
   feedback. The RPC facade forwards its existing command methods and
   properties, preserving callers. Request acceptance still does not resolve
   provider approvals; a disconnected or partially accepted batch never replays.
-- **Fusebox:** `scripts/fusebox.py` owns the management key file, the
+- **Fusebox:** `desktop/quickshell/scripts/fusebox.py` owns the management key file, the
   authenticated transport, reconnects and the allowlist of what reaches QML.
   `Fusebox.qml` owns connection state, the request history, fault
   notifications and one-shot breaker requests through `CommandRequest`;
   `FuseboxHelpers.js` owns the dashboard-equivalent rules. Popovers and
   Settings retain presentation only.
-- **Updates:** `UpdateLogReader.qml` owns bounded byte-range transport and
-  run/offset validation. `Updates.qml` owns transaction state and parses only
-  accepted log data. The privileged updater still owns the transaction; a shell
-  reload does not stop it. Log responses for another run or an earlier offset
-  trigger a fresh read instead of modifying the current transaction.
+- **Updates:** `desktop/quickshell/Common/Updates.qml` invokes the supported
+  `cybex update` CLI and polls durable transaction status. The privileged updater
+  owns staging and activation; reloading the shell does not interrupt its
+  systemd worker. Apply requests name the reviewed transaction and token.
+  Independent source errors remain visible instead of implying that an
+  unreachable channel is current.
 
 `CommandRequest` has `command`, `running`, `stdinEnabled`, `inputText`,
 `timeoutMs`, `killGraceMs` and `timeoutMessage` inputs. Set the command and then
@@ -46,8 +47,8 @@ transport lifetime, domain state and view code have separate owners:
 partial output before hanging. A second expiry sends SIGKILL. Do not launch the
 next command while `running` is true. No command is retried by the transport.
 
-The real-engine lifecycle fixture covers output, missing executables,
-SIGTERM-resistant timeouts, reuse after timeout and stdin. It runs in CI with an
-isolated HOME/session when no other Quickshell is active. Node behavior tests
-exercise GitHub queue priority and T3 partial-batch, approval and expiry rules;
-the existing Hermes HTTP/WebSocket fixtures exercise the split Python modules.
+Node behavior tests exercise GitHub queue priority, T3 partial-batch and
+approval rules, and the Hermes/Fusebox presentation boundaries. They do not
+establish real subprocess interruption, remote HTTP/WebSocket behavior or
+installed-service qualification. Exercise those paths in isolated runtime tests
+before release.

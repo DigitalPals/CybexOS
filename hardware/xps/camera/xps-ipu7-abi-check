@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+"""Refuse PSYS use when the selected NixOS kernel's in-tree IPU7 private ABI has changed."""
+
+from __future__ import annotations
+
+import gzip
+import lzma
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+class AbiChanged(RuntimeError):
+    pass
+
+
+# PSYS dereferences these private structures allocated/owned by the in-tree
+# base driver. This signature was recorded from the previously reviewed upstream IPU7 BTF;
+# checking offsets (rather than a kernel version) permits harmless kernel
+# updates while refusing a layout that this compatibility patch has not seen.
+EXPECTED = {
+    "ipu7_device": (
+        304,
+        (
+            ("pdev", 0),
+            ("devices", 8),
+            ("isys", 24),
+            ("psys", 32),
+            ("buttress", 40),
+            ("cpd_fw", 256),
+            ("cpd_fw_name", 264),
+            ("fw_code_region", 272),
+            ("base", 280),
+            ("pb_base", 288),
+            ("hw_ver", 296),
+            ("ipc_reinit", 297),
+            ("secure_mode", 298),
+            ("ipu7_bus_ready_to_probe", 299),
+        ),
+    ),
+    "ipu7_bus_device": (
+        992,
+        (
+            ("auxdev", 0),
+            ("auxdrv", 856),
+            ("auxdrv_data", 864),
+            ("list", 872),
+            ("subsys", 888),
+            ("pdata", 896),
+            ("mmu", 904),
+            ("isp", 912),
+            ("ctrl", 920),
+            ("dma_mask", 928),
+            ("fw_sgt", 936),
+            ("fw_entry", 952),
+            ("syscom", 960),
+            ("boot_config", 968),
+            ("boot_config_dma_addr", 976),
+            ("boot_config_size", 984),
+        ),
+    ),
+    "ipu7_psys_pdata": (
+        16,
+        (("base", 0), ("ipdata", 8)),
+    ),
+    "ipu7_auxdrv_data": (
+        24, (("isr", 0), ("isr_threaded", 8), ("wake_isr_thread", 16)),
+    ),
+    "ipu7_syscom_context": (
+        48, (("num_input_queues", 0), ("num_output_queues", 2),
+             ("queue_configs", 8), ("queue_indices", 16),
+             ("queue_mem_dma_addr", 24), ("queue_mem", 32), ("queue_mem_size", 40)),
+    ),
+    "syscom_queue_config": (
+        16, (("token_array_mem", 0), ("queue_size", 8),
+             ("token_size_in_bytes", 12), ("max_capacity", 14)),
+    ),
+    "ia_gofo_boot_config": (
+        276, (("length", 0), ("config_version", 4), ("client_version_support", 8),
+              ("pkg_dir", 24), ("subsys_config", 28), ("uc_tile_frequency", 32),
+              ("checksum", 36), ("uc_tile_frequency_units", 38), ("padding", 39),
+              ("reserved", 40), ("syscom_context_config", 272)),
+    ),
+    "syscom_config_s": (
+        4, (("max_output_queues", 0), ("max_input_queues", 2)),
+    ),
+    "syscom_queue_params_config": (
+        8, (("token_array_mem", 0), ("token_size_in_bytes", 4), ("max_capacity", 6)),
+    ),
+}
+
+# Upstream Linux 7.2 grows the public auxiliary_device by eight bytes. PSYS uses the
+# matching kernel headers, so its following fields move with that embedded
+# object. This second complete signature was reviewed against stock 7.2.7 BTF;
+# continue rejecting any other private layout rather than accepting arbitrary
+# shifts or relaxing individual offset checks.
+REVIEWED_ALTERNATES = {
+    "ipu7_bus_device": (
+        1000,
+        (
+            ("auxdev", 0), ("auxdrv", 864), ("auxdrv_data", 872),
+            ("list", 880), ("subsys", 896), ("pdata", 904), ("mmu", 912),
+            ("isp", 920), ("ctrl", 928), ("dma_mask", 936), ("fw_sgt", 944),
+            ("fw_entry", 960), ("syscom", 968), ("boot_config", 976),
+            ("boot_config_dma_addr", 984), ("boot_config_size", 992),
+        ),
+    ),
+}
+
+
+MEMBER_RE = re.compile(
+    r"^\s*.*?\b([A-Za-z_][A-Za-z0-9_]*)\s*(?:\[[^]]+\])?"
+    r"\s*(?:__attribute__\(\([^;]+\)\))?;"
+    r"\s*/\*\s*(\d+)\s+\d+\s*\*/\s*$"
+)
+CALLBACK_RE = re.compile(
+    r"^\s*.*?\(\*([A-Za-z_][A-Za-z0-9_]*)\)\([^;]*\);"
+    r"\s*/\*\s*(\d+)\s+\d+\s*\*/\s*$"
+)
+SIZE_RE = re.compile(r"/\*\s*size:\s*(\d+),.*members:\s*(\d+)\s*\*/")
+
+
+def run(argv: list[str], *, text: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(argv, check=False, capture_output=True, text=text)
+
+
+def command_output(argv: list[str]) -> str:
+    result = run(argv)
+    if result.returncode:
+        detail = (result.stderr or result.stdout).strip()
+        raise AbiChanged(f"command failed ({' '.join(argv)}): {detail}")
+    return result.stdout.strip()
+
+
+def parse_layout(output: str) -> tuple[int, tuple[tuple[str, int], ...]]:
+    members: list[tuple[str, int]] = []
+    size = None
+    declared_members = None
+    for line in output.splitlines():
+        if match := CALLBACK_RE.match(line) or MEMBER_RE.match(line):
+            members.append((match.group(1), int(match.group(2))))
+        if match := SIZE_RE.search(line):
+            size = int(match.group(1))
+            declared_members = int(match.group(2))
+    if size is None or declared_members is None or len(members) != declared_members:
+        raise AbiChanged("could not parse a complete structure layout from module BTF")
+    return size, tuple(members)
+
+
+def unpack_module(source: Path, destination: Path) -> None:
+    if source.suffix == ".xz":
+        with lzma.open(source, "rb") as incoming, destination.open("wb") as outgoing:
+            shutil.copyfileobj(incoming, outgoing)
+    elif source.suffix == ".gz":
+        with gzip.open(source, "rb") as incoming, destination.open("wb") as outgoing:
+            shutil.copyfileobj(incoming, outgoing)
+    elif source.suffix == ".zst":
+        with destination.open("wb") as outgoing:
+            result = subprocess.run(
+                ["zstd", "--quiet", "--decompress", "--stdout", str(source)],
+                check=False,
+                stdout=outgoing,
+                stderr=subprocess.PIPE,
+            )
+        if result.returncode:
+            detail = result.stderr.decode().strip()
+            raise AbiChanged(f"cannot decompress {source}: {detail}")
+    elif source.suffix == ".ko":
+        shutil.copyfile(source, destination)
+    else:
+        raise AbiChanged(f"unsupported stock-module compression: {source}")
+
+
+def stock_module(kernel: str, name: str) -> Path:
+    prefix = ["modinfo", "-b", "/run/booted-system/kernel-modules", "-k", kernel]
+    path = Path(command_output([*prefix, "-n", name]))
+    if command_output([*prefix, "-F", "intree", name]) != "Y" or "/kernel/" not in str(path):
+        raise AbiChanged(f"{name} is not the selected in-tree module: {path}")
+    if not str(path.resolve()).startswith("/nix/store/"):
+        raise AbiChanged("Kernel module is outside the immutable selected closure")
+    return path
+
+
+def layout_reviewed(structure: str, actual: tuple) -> bool:
+    return actual == EXPECTED[structure] or actual == REVIEWED_ALTERNATES.get(structure)
+
+
+def check_kernel(kernel: str) -> None:
+    if kernel != command_output(["uname", "-r"]):
+        raise AbiChanged("Runtime BTF can only validate the booted kernel")
+    if not shutil.which("pahole"):
+        raise AbiChanged("The native dwarves package is missing")
+    base_module = stock_module(kernel, "intel_ipu7")
+    stock_module(kernel, "intel_ipu7_isys")
+    stock_module(kernel, "intel_cvs")
+    modules = Path(f"/run/booted-system/kernel-modules/lib/modules/{kernel}/kernel")
+    if any(modules.rglob("*ipu7*psys.ko*")):
+        raise AbiChanged("Upstream now supplies PSYS; remove the external companion before proceeding")
+    base = Path("/sys/kernel/btf/vmlinux")
+    if not base.is_file():
+        raise AbiChanged("Booted kernel does not expose BTF; private ABI is unproved")
+    with tempfile.TemporaryDirectory(prefix="xps-ipu7-abi.") as work:
+        module = Path(work) / "intel-ipu7.ko"
+        unpack_module(base_module, module)
+        for structure, expected in EXPECTED.items():
+            result = run(["pahole", f"--btf_base={base}", "-F", "btf", "-C", structure, str(module)])
+            if result.returncode or not layout_reviewed(structure, parse_layout(result.stdout)):
+                raise AbiChanged(f"Unreviewed private layout: {structure}; expected {expected}")
+
+
+def self_test() -> None:
+    fixture = """
+struct sample {
+        void * base; /* 0 8 */
+        const void * ipdata; /* 8 8 */
+        /* size: 16, cachelines: 1, members: 2 */
+};
+"""
+    assert parse_layout(fixture) == (16, (("base", 0), ("ipdata", 8)))
+    try:
+        parse_layout(fixture.replace("members: 2", "members: 3"))
+    except AbiChanged:
+        pass
+    else:
+        raise AssertionError("incomplete layout was accepted")
+    assert layout_reviewed("ipu7_bus_device", EXPECTED["ipu7_bus_device"])
+    assert layout_reviewed("ipu7_bus_device", REVIEWED_ALTERNATES["ipu7_bus_device"])
+    size, fields = REVIEWED_ALTERNATES["ipu7_bus_device"]
+    assert not layout_reviewed("ipu7_bus_device", (size + 8, fields))
+    assert not layout_reviewed("ipu7_bus_device", (size, fields[:-1]))
+    callback_fixture = """
+struct callbacks {
+        void (*handler)(struct device *); /* 0 8 */
+        void * base __attribute__((__aligned__(8))); /* 8 8 */
+        /* size: 16, cachelines: 1, members: 2 */
+};
+"""
+    assert parse_layout(callback_fixture) == (16, (("handler", 0), ("base", 8)))
+    print("IPU7 ABI parser self-test passed")
+
+
+def main() -> int:
+    if len(sys.argv) == 2 and sys.argv[1] == "--self-test":
+        self_test()
+        return 0
+    args = sys.argv[1:]
+    if len(args) > 1 or (args and args[0].startswith("--")):
+        print("usage: xps-ipu7-abi-check [kernel]", file=sys.stderr)
+        return 2
+    kernel = args[0] if args else command_output(["uname", "-r"])
+    try:
+        check_kernel(kernel)
+    except AbiChanged as error:
+        print(
+            "IPU7_STOCK_ABI_CHANGED: the selected NixOS kernel's stock IPU7 ABI no longer matches "
+            f"the reviewed PSYS compatibility layer for {kernel}: {error}. "
+            "The camera stack will not start; the selected NixOS kernel's stock "
+            "intel_ipu7 and intel_ipu7_isys modules remain untouched.",
+            file=sys.stderr,
+        )
+        return 78
+    print(f"IPU7_STOCK_ABI_OK kernel={kernel}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

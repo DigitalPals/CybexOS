@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
-import "../../roles/desktop/files/quickshell/Settings/LocalTime.js" as LocalTime
-import "../../roles/desktop/files/quickshell/Settings/IdleTimelineModel.js" as Timeline
+import "../../desktop/quickshell/Settings/LocalTime.js" as LocalTime
+import "../../desktop/quickshell/Settings/IdleTimelineModel.js" as Timeline
 
 // The About and Power pages' pure helpers under Qt's JavaScript engine, not
 // only Node's: the two have disagreed about date strings before, which is

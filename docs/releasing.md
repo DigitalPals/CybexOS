@@ -1,207 +1,147 @@
-# Publishing CybexOS releases
+# Release delivery and publisher trust
 
-CybexOS has two release surfaces. Source-checkout releases publish a
-versioned source archive; ISO releases publish signed desktop and offline-apps RPMs, a bootable
-ISO, and RPM update metadata. Both use a semantic-version Git tag and share
-the repository source contract and generic Fedora VM gate. The release also
-runs the image-source contract, then requires trusted PXE-host qualification
-before publication. See [ISO and desktop RPM releases](iso-releases.md) for
-runner setup, signing, the installer matrix, reconstruction, and channel
-enrollment.
+CybexOS uses semantic tags (`v1.2.3`, `v1.2.3-beta.1`), immutable GitHub
+Releases, and small signed GitHub Pages documents under `channels/stable.json`
+and `channels/beta.json`. Normal clients use public HTTPS without GitHub
+credentials. A release is always selected by exact commit and NAR content
+identity, never by checking out a moving branch after discovery.
 
-The large offline application seed has its own version in
-`image/offline-payload.json`. Run `python3 image/offline_payload.py --version X.Y.Z`
-with a newer version after changing its reviewed application inputs. Packaging
-refuses a stale input digest. Shell-only changes keep that version and RPM
-release unchanged; desktop RPMs retain their source/build identity. The desktop
-also requires the exact application input digest, preventing an unrelated
-newer offline package from satisfying its installation contract.
+The installed `release/keys/trust.json` is deliberately empty. An owner must
+supply real Ed25519 publisher public keys before production installation or
+CybexOS channel updates can work. Upstream-only updates do not use this
+channel. Do not ship a generated development key as publisher trust.
 
-Treat a published offline NEVRA as immutable. Reuse its artifact for unchanged
-inputs; if a moving upstream tool resolves differently, review it and advance
-the offline version before publishing different payload bytes. Sign and ship
-both RPMs together. The upgrade qualification installs both in one offline DNF
-transaction and binds their checksums in the release report and SPDX SBOM.
-The signing workflow authenticates the previous channel manifest and rejects
-changed file contents or ownership under an existing offline NEVRA. Manual
-repository signing must likewise pass `--previous-repository` with the previous
-signed directory or its HTTPS URL. A missing public manifest (HTTP 404) allows
-the first release; invalid signatures and other download failures stop signing.
+Keep private signing keys outside the repository and Nix store. The protected
+`cybexos-release` and `cybexos-channel` GitHub environments hold separate
+`RELEASE_ED25519_PRIVATE_KEY` and `CHANNEL_ED25519_PRIVATE_KEY` secrets, with
+`RELEASE_KEY_ID` and `CHANNEL_KEY_ID` environment variables. Require owner
+review, protected tags, and restricted workflow changes. Enable immutable
+releases in GitHub settings before publication. Enable GitHub Pages with
+Actions delivery and prepare its `gh-pages` branch; promotion preserves the
+existing site. These settings and trust provisioning are release prerequisites.
 
-An older installed baseline can need additional Fedora RPMs for a candidate's
-SDK dependencies. Supply those only as an optional qualification fixture with
-`image/qualify ... --candidate-dependencies DIR`. Do not publish them as
-first-party release artifacts.
-Keep a flat directory of signed, verified candidate-build downloads and a
-separate provenance JSON mapping each RPM filename to
-`{"id": "fedora", "url": "https://.../original-repository/"}`. On a host with
-`rpm`, create and verify its manifest with:
+The release environment also needs `IMMUTABILITY_CHECK_TOKEN`: a repository-
+scoped GitHub App or fine-grained credential with **Administration: read**.
+The ordinary Actions publishing token cannot read this policy. The workflow
+checks GitHub's immutable-release setting before draft creation and again before
+publication, and fails closed on a disabled setting or an unavailable API.
+This separate credential cannot change the setting; publication still uses the
+Actions contents token. Keep repository policy changes protected during release
+publication. Installed users need neither credential nor a GitHub account.
 
-```bash
-python3 image/offline_upgrade_inputs.py create DIR --provenance provenance.json \
-  --baseline-iso BASELINE.iso --candidate-rpm DESKTOP.rpm --candidate-offline-rpm OFFLINE.rpm
-python3 image/offline_upgrade_inputs.py verify DIR \
-  --baseline-iso BASELINE.iso --candidate-rpm DESKTOP.rpm --candidate-offline-rpm OFFLINE.rpm
-```
+Full Nix/product/image jobs require a `cybexos-isolated` self-hosted runner;
+standard hosted runners do not provide enough space for the complete desktop,
+build dependencies, ISO copies and installation VMs. Provision a fresh,
+single-job disposable x86_64 Linux VM with at least 256 GiB of disk, 32 GiB
+RAM, four CPU cores and accessible nested KVM. The preflight requires 160 GiB
+free for the Nix store plus 32 GiB for work (192 GiB when they share a
+filesystem), at least 24 GiB available memory, and KVM for VM/image jobs.
+Build concurrency is bounded to two builds and four cores per build.
+Discard the runner, workspace and attached disks after each job. It must have
+no workstation data, persistent credentials, production network access or
+production PXE mount. Untrusted pull-request checks receive no signing secrets;
+only the protected publisher step receives its scoped signing secrets.
+Runner provisioning and isolation are owner-managed release prerequisites,
+not an instruction to enroll the running workstation as a runner.
 
-Manual generators may write `DIR/manifest.json`: the exact top-level keys are
-`schema` (integer `1`), `baseline_iso_sha256`, `candidate_rpm_sha256`,
-`candidate_offline_rpm_sha256`, and `rpms`. Each RPM record has exactly
-`filename`, `name`, `nevra`, `architecture`, `sha256`, `size` (bytes),
-`signature` (`{"tag": "RSAHEADER", "value": "<rpm pgpsig output>"}`), and
-`repository` (`id` and HTTPS `url`). NEVRA includes the numeric epoch, including
-zero: `name-0:version-release.x86_64`. Signature values come from
-`LC_ALL=C TZ=UTC rpm -qp --qf '%{RSAHEADER:pgpsig}'`; `DSAHEADER`, `SIGPGP`, and `SIGGPG` are also
-supported. The JSON file's SHA-256 is the bundle identity, binding every RPM's
-identity, bytes and provenance to all three input artifacts.
+1. Commit the final source, set VERSION and release notes, and create a semantic
+   tag. Never reuse a tag. Record `nix flake metadata --json` revision/NAR.
+2. Run source checks, real ISO installation and updater tests, plus representative
+   physical hardware/security qualification on that exact revision. A complete
+   report must use `installation-update-and-physical-qualification`, include
+   `revision`, `narHash`, and every check in `release/manage.py:REQUIRED`, with
+   passed results and reviewable evidence. A fixture report cannot pass the gate.
+3. Run the protected release workflow with that tag and the reviewed report URL.
+   It repeats checks/builds, prepares the ISO, versioned source, notes, checksums,
+   qualification report and signed manifest, authenticates the local signature
+   and every asset, then uploads all assets to a draft.
+   Publication must produce an immutable release. The report URL is evidence
+   supplied for owner review; it is not an independent hardware attestation.
+4. Verify public assets against the authenticated manifest. Only then run the
+   separate promotion workflow with a strictly increasing channel sequence.
+   Stable rejects prereleases. Promotion authenticates the previous signed
+   channel/release, rejects version downgrades and nonadvancing sequences, and
+   verifies the selected release and every public asset before changing Pages.
+   The signed version, exact commit and NAR must match the requested tag's
+   checked-out source; a valid manifest copied from another release is rejected
+   before its asset URLs are fetched.
+   Expired channel documents can be renewed for the same release. An expired
+   signing key requires the documented trust/recovery procedure.
 
-Admission rejects symlinks, traversal, duplicate identities, unknown fields,
-extra/missing files, non-x86_64/noarch RPMs and mismatches. Limits are 256 RPMs,
-512 MiB per RPM, 2 GiB total and a 1 MiB manifest. Root copies both candidates
-and all dependencies into fresh private staging files using bounded,
-no-symlink reads, then verifies the copied hashes, NEVRAs and signature headers.
-Only those root-owned copies are checked and installed; changing the original
-account-owned transfers cannot change the transaction. Dependencies pass
-`rpm --checksig --verbose` using installed trust keys; no keys are imported.
-Root staging is removed on success or failure. Qualification creates a bootable recovery
-point before installing both candidates and all dependencies in **one** DNF
-transaction with every repository disabled. `--recovery-check` additionally
-boots and restores that point. `qualification.json` records the bundle digest,
-identities and verified signatures. This input targets exact prebuilt upgrade
-artifacts. Omitting the option retains the existing upgrade path.
+Ed25519 signatures authenticate the exact JSON bytes using OpenSSL; detached
+signature envelopes identify a trusted key and its purpose. The signed manifest
+contains version, exact source revision/NAR, supported architectures and NixOS
+releases, configuration/plugin APIs, minimum updater API, declared vendor inputs,
+notes, and each asset's name, URL, size and SHA-256. The channel authenticates
+the manifest hash, expiry and sequence. Unknown/expired keys, malformed metadata,
+unsupported APIs/platforms, mismatched identities, replays and normal downgrades
+are rejected before selected code evaluation. The machine records successful
+channel sequence high-water marks outside user caches. Explicit retained-generation
+rollback is separate from channel selection.
 
-For `image/release-gate`, which always builds new candidates, supply the reviewed
-raw RPMs and the same separate filename-to-`{id, url}` provenance JSON as a pair:
+Clients use bounded downloads, atomic cached responses, ETags, and actionable
+unavailable/rate-limit errors. An endpoint failure means unknown availability;
+it never means current. Interrupted downloads do not change the working lock.
+Expired channel documents must be re-signed and promoted with a greater sequence,
+including when the release itself remains unchanged.
 
-```bash
-image/release-gate --output NEW_OUTPUT --baseline-iso BASELINE.iso --tag vX.Y.Z --execute \
-  --upgrade-dependency-rpms RAW_RPM_DIR --upgrade-dependency-provenance provenance.json
-```
+For rotation, first publish a release signed by an existing trusted release key
+that adds the new public keys, validity dates and purpose restrictions. Keep
+old and new keys overlapping until supported machines have installed that trust
+update. Promote using the old channel key during the overlap, then switch to
+the new channel key. Do not expire the only key usable by supported updaters.
+Revocation of a compromised sole key requires an independently authenticated
+recovery/trust update; signatures by that compromised key cannot establish new
+trust. Increasing updater/schema requirements requires an overlap release that
+old updaters can authenticate and install.
 
-This optional path requires host `rpm`. The raw directory contains only the
-reviewed, signed third-party RPMs, without a prebound manifest. An incomplete flag
-pair, malformed inputs or RPM metadata stop the gate before building or starting VMs.
-The gate copies bounded inputs into private staging before the build, records
-their hashes, identities and provenance, then binds those copies to the actual
-baseline ISO and both freshly built RPM hashes. Caller inputs are never changed;
-later caller changes cannot affect the staged fixture. The gate forwards the
-bound bundle only to the original upgrade qualifier, retaining recovery and all
-signature, checksum and single-transaction checks. It also checks that the
-returned qualification evidence identifies that exact bundle and artifacts.
-`release-gate.json` records the raw fixture content digest, provenance digest,
-bound manifest digest and upgrade report digest; `upgrade-dependency-manifest.json`
-retains the exact bound manifest. Private dependency RPM copies are removed on
-success or failure and are never included in release artifacts. Omitting both
-flags preserves the existing release-gate behavior.
+Nixpkgs supplies Quickshell, Qt, Hyprland, applications and fonts through the
+machine's stable Nixpkgs input and upstream binary cache. CybexOS supplies the
+desktop interface, assets, native notification-image module and extensions.
+Narrow Intel camera/OMaWrite/font source pins and the temporary Hyprland/native
+library compatibility overlay are source derivations, not another Nixpkgs
+universe; requalify their ABI/license constraints when updating them.
+T3 Code is an exact hashed upstream AppImage wrapped with Nixpkgs because the
+selected stable package set does not provide the application. Replace that
+source recipe with the maintained Nixpkgs package when available, after product
+runtime qualification; its successful wrapper build is not desktop validation.
+The selected stable Nixpkgs ChatGPT recipe is macOS-only. The Linux recipe pins
+OpenAI's versioned Debian pool object and SHA-256, reviewed against the signed
+OpenAI repository metadata; it executes no distribution maintainer scripts or
+repository enrollment. Preserve the Chromium sandbox and exact-executable
+AppArmor user-namespace allowance when updating it. Replace the recipe with a
+maintained native Nixpkgs Linux package after runtime qualification.
 
-The source archive is published by `.github/workflows/release.yml` after all
-required jobs pass. Its prerequisite job checks the tag against `VERSION`,
-requires a non-empty `CYBEXOS_BASELINE_ISO` repository variable and a root
-license file, and validates semantic versioning. The ISO job additionally
-validates that the baseline file and checksum sidecar exist on the PXE host.
+Brave Origin reuses the selected Nixpkgs Chromium wrapper/libraries and pins the
+official Origin Debian asset because stable Nixpkgs does not yet select that
+edition. Review both exact proprietary package pins on every vendor release;
+replace the Origin override when a maintained equivalent enters Nixpkgs.
+They remain part of the explicit proprietary-application choice and require
+installed runtime, security and redistribution qualification.
 
-## Source archive setup
+The maintained NetworkManager Libreswan plugin uses Nixpkgs sources and a
+scoped helper-path correction: the selected recipe points to `libexec/`, while
+Libreswan 5 installs its daemon/controller helpers in `libexec/ipsec/`.
+Build-time assertions check each replacement target. CybexOS uses the native
+NixOS `ipsec.service` to manage the backend; the plugin's legacy standalone
+startup expects a removed `_stackmanager` helper. A working managed service is
+therefore required and must pass installed health qualification.
+Remove the override after the upstream recipe is
+corrected and the installed VPN path qualifies; it does not suppress or patch
+the archived vpnc plugin's vulnerabilities.
+The reviewed desktop runtime series live in `desktop/runtime-compatibility.json`;
+a candidate outside that matrix fails staging until qualified.
 
-1. Immutable GitHub Releases are enabled for the repository. Keep Actions
-   permitted to create attestations and write release contents; the workflow
-   grants only those job-level permissions.
-2. The `desktop-release` environment and its `CYBEXOS_RPM_SIGNING_KEY` secret
-   provide signing access only to the GitHub-hosted signing job. The PXE
-   qualification runner never receives that secret. The `github-pages`
-   environment deploys stable repository metadata after release publication.
-3. Keep `CYBEXOS_BASELINE_ISO` set to the verified older ISO and configure the
-   on-demand trusted self-hosted PXE runner as described in
-   [the ISO release guide](iso-releases.md).
-4. Branch protection requires pull requests, up-to-date branches, and the
-   GitHub Actions checks `Fedora 44 source contract` and `Image tooling,
-   installer fixtures and account isolation`. Admins are subject to the rule;
-   force pushes and branch deletion are disabled. The generic Fedora VM is a
-   release-tag gate, not a required branch check.
+No durable CybexOS binary cache is configured. Before advertising fast public
+updates, provision a public Nix cache (for example an object-store-backed Nix
+cache or Cachix), publish its independent Nix cache signing public key and
+substituter URL, and prebuild each release/architecture. Add cache trust through
+the shared module after reviewing that key. GitHub Actions artifacts and GitHub
+Release download archives are not a public Nix binary cache. Source builds remain
+possible; publisher metadata signatures and Nix cache signatures have different
+purposes. Redistribution/license review remains required for the actual payload.
 
-The updater refuses a release when GitHub reports `immutable: false`, even if
-the archive checksum is otherwise correct.
-
-GitHub Pages is configured at the desktop update URL but is currently empty;
-the first stable ISO release workflow will deploy signed metadata there.
-Prerelease tags publish downloadable assets but do not update the stable Pages
-repository.
-
-## Source archive release checklist
-
-1. Review `release-manifest.json`, `VERSION`, the Fedora release,
-   configuration schema, minimum updater version, and all dependency pins.
-2. Run `./tests/run` and `./tests/fedora-vm-convergence` locally when practical.
-   Run `python3 -B image/check-source` as well. Both source suites enforce the
-   [ISO-leading installation contract](installation-parity.md); changes to
-   applications, defaults or policy must cover both installation paths. Build
-   and qualify ISO/RPM artifacts from the same release revision rather than
-   reusing an older image as parity evidence.
-   The source gate includes an N to N+1 ownership test that advances vendor
-   runtime while requiring every user customization sentinel to remain
-   byte-identical.
-   The user-widget fixture also loads a fixed API 1 package outside the
-   runtime through simulated replacement and rollback. Retain supported API
-   adapters when changing the shell; see [the widget contract](architecture/user-widgets.md).
-3. Commit the intended source and create a signed semantic-version tag, such
-   as `git tag -s v1.0.0 -m 'CybexOS 1.0.0'`.
-4. Push the commit and tag. A version containing a hyphen, such as
-   `v1.1.0-beta.1`, is published as a prerelease for the beta channel.
-5. Wait for the workflow to build, attest, verify the provenance bundle
-   offline, upload, publish, and confirm the immutable release before
-   announcing it.
-6. On a clean supported machine, run `cybex update --check --json`,
-   apply the release, and run `cybex verify --system`.
-
-Do not edit an existing release. Immutability makes correction explicit: fix
-forward, increment the version, and publish a new tag. If rollout must stop,
-remove the bad release from channel discovery and publish a corrected release.
-On the managed Btrfs layout, failed application or health validation selects
-the previous root and restores the vendor desktop checkpoint while preserving
-personal settings; users must restart to enter the restored root. Interrupted
-application is recovered before login. On other filesystems the updater reports
-`transactionProtection: unavailable`: failed activation restores the previous
-`current` and saved configuration, but partially deployed files can remain
-(`mixedState: true`). Converge the active release with
-`~/.local/share/cybexos/current/install` or apply a corrected release.
-See [update recovery and its limits](operations.md#update-recovery-points).
-
-## What the source workflow publishes
-
-The release contains a versioned source archive, its provenance bundle
-`cybexos-VERSION.tar.zst.sigstore.jsonl`, and `SHA256SUMS`. The checksum
-entries use the asset basenames, so they can be verified directly after the
-files are downloaded into one directory. The archive
-is reconstructed from the tagged Git tree, its `VERSION` and manifest version
-are set to the tag, its installer is checked, and Ansible syntax is validated.
-
-The bundle is the Sigstore bundle of the `actions/attest` provenance
-attestation. Before publishing, the workflow verifies it offline without a
-token, exactly as installed systems do:
-
-```bash
-gh attestation verify cybexos-VERSION.tar.zst \
-  --bundle cybexos-VERSION.tar.zst.sigstore.jsonl \
-  --repo DigitalPals/CybexOS \
-  --signer-workflow DigitalPals/CybexOS/.github/workflows/release.yml \
-  --source-ref refs/tags/vVERSION --deny-self-hosted-runners
-```
-
-The same attestation has a second subject: the ISO's SPDX SBOM,
-`CybexOS-Live-44-BUILD-ID.spdx.json`, which the workflow also verifies offline
-with this bundle. A separate SPDX attestation binds the SBOM to the ISO digest
-and is published as `CybexOS-Live-44-BUILD-ID.iso.sbom.sigstore.jsonl`;
-`SHA256SUMS` lists that bundle. See [the SBOM section of the ISO release
-guide](iso-releases.md#software-bill-of-materials) for its contents and
-verification.
-
-That offline attestation check, the immutable-release flag, and the API
-SHA-256 digest form the updater trust boundary. Updating needs no GitHub
-login, and a release without its bundle is refused. Files copied from an
-arbitrary branch or mutable URL are not accepted as updates.
-
-Until a source archive release is published, source-checkout
-`cybex update --check` reports that no release exists on its channel. On ISO
-installations, use `cybex update-channel status --json`; that command's channel
-status is separate from source archive discovery. See [ISO and desktop RPM
-releases](iso-releases.md) for channel enrollment after the first stable
-desktop release has been published.
+Physical/security qualification must include `mandatory-access-control` and
+`firewall` evidence. Record enforced profile/process coverage, negative access
+probes and packet-level policy behavior. AppArmor being enabled alone cannot
+satisfy the mandatory access control check.

@@ -1,0 +1,75 @@
+name: Promote authenticated channel
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        required: true
+        description: Existing qualified immutable release tag
+      channel:
+        required: true
+        type: choice
+        options: [beta, stable]
+      sequence:
+        required: true
+        description: Strictly increasing channel sequence
+permissions:
+  contents: read
+concurrency:
+  group: cybexos-channel-promotion
+  cancel-in-progress: false
+jobs:
+  promote:
+    environment: cybexos-channel
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@3c6342b75005b9cc7c7d4069c3e9179247c89012
+      - name: Authenticate complete immutable release before promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          CHANNEL: ${{ inputs.channel }}
+          SEQUENCE: ${{ inputs.sequence }}
+          SIGNING_KEY: ${{ secrets.CHANNEL_ED25519_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.CHANNEL_KEY_ID }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[0-9]+)?$ ]]
+          [[ "$SEQUENCE" =~ ^[1-9][0-9]*$ ]]
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .immutable)" = true
+          revision=$(git rev-parse HEAD)
+          test "$revision" = "$(git rev-parse "$TAG^{commit}")"
+          test "${TAG#v}" = "$(cat VERSION)"
+          nix flake metadata --no-update-lock-file --json > source-metadata.json
+          mkdir downloaded
+          gh release download "$TAG" --pattern 'manifest.json*' --dir downloaded
+          python3 release/verify-assets.py downloaded/manifest.json release/keys/trust.json --expected-version "${TAG#v}" --expected-revision "$revision" --expected-nar-hash "$(jq -r .locked.narHash source-metadata.json)"
+          gh auth setup-git
+          git clone --single-branch --branch gh-pages "https://github.com/$GITHUB_REPOSITORY.git" site
+          mkdir -p site/channels
+          previous=()
+          if test -f "site/channels/$CHANNEL.json"; then
+            previous=(--previous "site/channels/$CHANNEL.json")
+          fi
+          umask 077
+          trap 'rm -f channel-key' EXIT
+          printf '%s\n' "$SIGNING_KEY" > channel-key
+          python3 release/manage.py channel downloaded/manifest.json "$CHANNEL" "$SEQUENCE" "site/channels/$CHANNEL.json" --trust release/keys/trust.json "${previous[@]}"
+          python3 release/manage.py sign "site/channels/$CHANNEL.json" channel-key "$KEY_ID" --trust release/keys/trust.json --purpose channel
+          git -C site config user.name cybexos-release
+          git -C site config user.email release@cybexos.invalid
+          git -C site add channels
+          git -C site commit -m "Promote $CHANNEL to $TAG"
+          git -C site push origin gh-pages
+          rm -rf site/.git
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa
+        with:
+          path: site
+      - uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e

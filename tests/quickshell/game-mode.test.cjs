@@ -25,7 +25,7 @@ function runLookAndFeel(driver, { state, env } = {}) {
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-game-mode-"));
     try {
         const template = fs.readFileSync(
-            path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8");
+            path.resolve(shellDir, "../hypr/looknfeel.lua"), "utf8");
         const look = path.join(scratch, "looknfeel.lua");
         fs.writeFileSync(look, template.replace(/\{\{.*?\}\}/g, "false"));
         const home = path.join(scratch, "home");
@@ -235,7 +235,7 @@ test("the shell reads game mode for this compositor instance only", () => {
         "the directory watch needs the directory before game mode first starts");
     assert.match(singleton,
         /function turnOff\(\) \{\s*Quickshell\.execDetached\(\[root\.helper, "off"\]\);/);
-    assert.match(singleton, /Quickshell\.env\("HOME"\) \+ "\/\.local\/bin\/game-mode"/);
+    assert.match(singleton, /"game-mode"/);
     assert.match(read("Common/qmldir"), /^singleton GameMode GameMode\.qml$/m);
 });
 

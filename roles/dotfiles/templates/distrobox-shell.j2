@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-name=dev-{{ item.name }}
-image={{ item.image | quote }}
-command -v distrobox >/dev/null || { echo "distrobox is not installed" >&2; exit 1; }
-if ! distrobox list --no-color 2>/dev/null | awk -F'|' 'NR>1 {gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}' | grep -Fxq "$name"; then
-  distrobox create --yes --name "$name" --image "$image" --additional-flags "--security-opt label=disable"
-fi
-exec distrobox enter --name "$name" -- bash -lc 'printf "\033]0;{{ item.name }}\007"; exec "${SHELL:-/bin/bash}" -l'

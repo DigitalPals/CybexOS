@@ -1,9 +1,0 @@
----
-- name: Detect the NVIDIA hardware contract
-  ansible.builtin.import_tasks: detect.yml
-
-- name: Install and verify the NVIDIA driver on detected hardware
-  ansible.builtin.import_tasks: setup.yml
-  when:
-    - nvidia_is_present | bool
-    - not ansible_check_mode

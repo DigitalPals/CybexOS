@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-HELPER = ROOT / "roles/desktop/files/quickshell/scripts/user-plugins.py"
+HELPER = ROOT / "desktop/quickshell/scripts/user-plugins.py"
 
 with tempfile.TemporaryDirectory(prefix="cybex-plugin-packages-") as temporary:
     base = Path(temporary)

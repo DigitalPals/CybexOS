@@ -66,8 +66,8 @@ render_nodes() {
   ((${#nvidia_nodes[@]} == 0)) || printf '%s\n' "${nvidia_nodes[@]}"
 }
 
-# Whether VA-API offers H.264 encoding on a render node. Mesa as Fedora
-# builds it leaves H.264 out (RPM Fusion's freeworld drivers add it back), and
+# Whether VA-API offers H.264 encoding on a render node. Mesa as NixOS
+# builds it leaves H.264 out (codec support depends on the selected driver), and
 # nvidia-vaapi-driver only decodes, so the vendor alone proves nothing: the
 # driver's own list of entrypoints is the answer.
 vaapi_encodes_h264() {
@@ -87,7 +87,7 @@ ffmpeg_has_nvenc() {
 }
 
 # One line: the recorder, then how it encodes. gpu-screen-recorder is not
-# packaged for Fedora; when a user installs it, it is the better recorder on
+# packaged for NixOS; when a user installs it, it is the better recorder on
 # NVIDIA, where it encodes with NVENC directly.
 select_encoder() {
   local entry node vendor driver nvidia=0 nodes=()
@@ -318,7 +318,8 @@ OUTPUT_FILE="$OUTPUT_DIR/screen-recording-${TS}.mp4"
 # shell can open the camera while the encoder initialises. Without any video
 # device there is nothing to show; say so once and record anyway.
 if ((webcam)); then
-  if compgen -G "$V4L_ROOT/video*" >/dev/null; then
+  cameras=("$V4L_ROOT"/video*)
+  if [[ -e ${cameras[0]} ]]; then
     publish_state "$WEBCAM_STATE" "$SELECTION"
   else
     webcam=0

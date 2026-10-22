@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const root = path.resolve(__dirname, '../../roles/desktop/files/quickshell');
+const root = path.resolve(__dirname, '../../desktop/quickshell');
 const read = name => untranslated(fs.readFileSync(path.join(root, name), 'utf8'));
 
 test('settings subsections own separation inside revealers and preserve the row grid', () => {
@@ -71,7 +71,7 @@ test('shortcut rows size from their column, not a parent that closing unsets', (
 });
 
 test('accent ink remains readable without changing the chosen fill', () => {
-    const helpers = require('../../roles/desktop/files/quickshell/Common/SettingsHelpers.js');
+    const helpers = require('../../desktop/quickshell/Common/SettingsHelpers.js');
     for (const background of ['#201e1b', '#eeedf3', '#f7f5fb']) {
         for (const accent of ['#d1d581', '#9ecbeb', '#a992e0', '#79b88b', '#d3b47e', '#e8837a']) {
             const ink = helpers.ensureContrast(accent, background, 4.5);

@@ -1,32 +1,40 @@
 # Repository agent instructions
 
-## Installation parity: ISO is authoritative
+## NixOS installation and lifecycle contract
 
-- The current ISO installation defines the CybexOS product. Keep `./install`,
-  `./bootstrap`, and ISO installations equivalent for the same release,
-  hardware, and explicit user choices. Resolve differences by bringing the
-  checkout path into line with the ISO, not by changing the ISO to match an
-  older checkout default.
-- Treat applications, desktop and personal defaults, authentication, enabled
-  services, firewall policy, hardware support, and recovery as one shared
-  installation contract. Reuse the shared policy, task files, templates, and
-  package selections; do not add independent installer defaults.
-- Preserve explicit saved choices and user-owned data during installs,
-  reconfiguration, and updates. Matching a fresh installation never authorizes
-  repartitioning an existing Fedora system or resetting personal settings.
-  Automatic login must retain the ISO's verified-encryption requirement.
-- Every change to the installed product must cover both installation paths in
-  the same change, with regression coverage that compares their outcomes.
-  Run the source and image parity checks before handoff. A passing fixture
-  suite must not be reported as a completed end-to-end installation test.
-- Release comparisons must use artifacts from the same source revision.
-  When preparing a release, rebuild and qualify the ISO/RPM if its installed
-  payload changed; an older ISO or an older qualification report does not
-  validate the new release.
+- NixOS is the sole supported operating system. Target fresh installations.
+  Do not add installation migration, compatibility shims, or alternate
+  provisioning/update paths.
+- `nix/modules` defines the shared installation contract for the ISO, installed
+  system, configuration tools and lifecycle. `install` and `bootstrap` invoke
+  the same fresh installer, available only in the live environment.
+- Vendor files are immutable. Personal modules and machine-owned locks belong
+  in `/etc/nixos`; secrets/state stay outside the Nix store. Never overwrite
+  personal packages, services, VPNs, widgets, preferences, data or skills to make
+  an update pass. Never implicitly refresh unrelated personal inputs.
+- Nixpkgs follows the supported stable branch independently; CybexOS follows
+  the machine Nixpkgs and is pinned to an authenticated exact release revision
+  and NAR identity. Major NixOS upgrades are deliberate; do not change
+  `system.stateVersion` during routine updates.
+- Preserve password fallback, password-only first login, encryption-gated
+  automatic login, firewall protections and supported hardware. Hardware stack
+  failure blocks qualification; it must not silently remove support or disable
+  Secure Boot.
+- Validate changes through the actual staged updater. Source/fixture tests and
+  a Nix build are not end-to-end installation, runtime or physical hardware
+  qualification. Test ISO/source parity and use the exact same source identity
+  for release artifacts and qualification. Record what was actually exercised.
+- Do not modify the running workstation, partition existing systems, publish
+  releases, or reboot the host without explicit authorization. Use isolated
+  build/test environments and preserve unrelated work.
 
 ## ISO testing location
 
 - Always place completed ISOs for testing in `/data/pxe/iso`.
+- The PXE host is **thebeast (`10.10.0.7`)**, reached with
+  `ssh john@10.10.0.7`. Its `/data/pxe/README.md` documents the service.
+  A development machine's directory with the same path is not the served tree;
+  copy the verified final ISO/checksum to the Beast before refreshing it.
 - Build in a unique task-specific staging directory, then copy the completed
   ISO and its SHA-256 checksum into `/data/pxe/iso`. Preserve existing images
   unless their replacement or removal is explicitly requested.
@@ -35,7 +43,8 @@
   incomplete ISOs outside the served ISO tree. Use ASCII filenames without
   spaces and permissions that allow iVentoy to read the files.
 - Prefer **ISO Management → Refresh** in the PXE host's iVentoy web UI
-  (port 26000; the host is documented in `/data/pxe/README.md`).
+  (`http://10.10.0.7:26000`; deployment details are in the Beast's
+  `/data/pxe/README.md`).
   On the PXE host, the equivalent requests below were verified with iVentoy
   1.0.41. They use the installed UI's internal API, so recheck
   `http://127.0.0.1:26000/vtoy_image.html` after an iVentoy upgrade:
@@ -106,3 +115,10 @@
 - A live test is not complete until `quickshell.service` is active, its
   `MainPID` is the sole remaining `qs` PID, and the current invocation's
   journal has been checked for QML errors.
+- Scope process comparisons to the authenticated user's UID; another user's
+  independent desktop session is not an unmanaged menubar. Updater health
+  reports extra developer processes without terminating them. The live-test
+  guard may terminate only the confirmed task/developer instances above.
+- Count Nixpkgs' Qt-wrapped Quickshell (`.quickshell-wrapped`, with Linux
+  `comm` truncated to `.quickshell-wra`) in these comparisons as well as
+  `pgrep -x qs`; the wrapper is the same upstream executable, not a second shell.

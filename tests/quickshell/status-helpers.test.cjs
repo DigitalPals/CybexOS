@@ -167,7 +167,7 @@ test("the active player is playing, else paused, else the first known", () => {
 function qmlRoot() {
     const candidates = [
         process.env.QT_INSTALL_QML,
-        "/usr/lib64/qt6/qml",
+        "/nix/store/test-qtdeclarative/lib/qt-6/qml",
         "/usr/lib/qt6/qml",
     ];
     return candidates.find(dir => dir && fs.existsSync(dir)) ?? null;
@@ -189,7 +189,7 @@ const skip = root === null ? "Qt QML directory not found" : false;
 test("the mirrored UPower device states match the installed enum", { skip }, () => {
     const file = path.join(root, "Quickshell/Services/UPower",
         "quickshell-service-upower.qmltypes");
-    assert.ok(fs.existsSync(file), `${file} missing (dnf install quickshell)`);
+    assert.ok(fs.existsSync(file), `${file} missing (nix develop)`);
     assert.deepEqual(
         enumValues(file, "qs::service::upower::UPowerDeviceState"),
         H.BATTERY_STATE);
@@ -198,7 +198,7 @@ test("the mirrored UPower device states match the installed enum", { skip }, () 
 test("the mirrored Mpris playback states match the installed enum", { skip }, () => {
     const file = path.join(root, "Quickshell/Services/Mpris",
         "quickshell-service-mpris.qmltypes");
-    assert.ok(fs.existsSync(file), `${file} missing (dnf install quickshell)`);
+    assert.ok(fs.existsSync(file), `${file} missing (nix develop)`);
     assert.deepEqual(
         enumValues(file, "qs::service::mpris::MprisPlaybackState"),
         H.PLAYBACK_STATE);

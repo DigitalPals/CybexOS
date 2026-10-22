@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const H = require("../../roles/desktop/files/quickshell/Common/RemoteServerHelpers.js");
-const S = require("../../roles/desktop/files/quickshell/Common/SettingsHelpers.js");
+const H = require("../../desktop/quickshell/Common/RemoteServerHelpers.js");
+const S = require("../../desktop/quickshell/Common/SettingsHelpers.js");
 
 function sample() {
     return { version: 1, boot: "a", uptime: 1200, cpu: 25, perCore: [20, 30], load: [1, 2, 3],

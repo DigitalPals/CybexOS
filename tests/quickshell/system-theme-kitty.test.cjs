@@ -1,5 +1,5 @@
 // The kitty system theme target: scripts/theme_kitty.py and the vendor
-// fragment (roles/dotfiles/files/kitty.conf) that falls back to its default
+// fragment (desktop/defaults/kitty.conf) that falls back to its default
 // dark output and includes the generated file.
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -10,7 +10,7 @@ const {
 } = require("./system-theme.cjs");
 
 const repoRoot = path.resolve(__dirname, "../..");
-const vendorConf = fs.readFileSync(path.join(repoRoot, "roles/dotfiles/files/kitty.conf"), "utf8");
+const vendorConf = fs.readFileSync(path.join(repoRoot, "desktop/defaults/kitty.conf"), "utf8");
 const INCLUDE = "include ~/.local/state/cybexos/theme/kitty.conf";
 const COLOR_LINE = /^([a-z0-9_]+) (#[0-9a-f]{6})$/;
 const FONT_SIZE_LINE = /^font_size (\d+\.\d)$/;
@@ -83,14 +83,6 @@ test("the terminal's font size scales with the shell's text", () => {
     assert.equal(size(6), "font_size 6.0");
 });
 
-test("the vendor fragment includes the generated file after its fallback", () => {
-    const lines = settingLines(vendorConf);
-    assert.equal(lines.at(-1), INCLUDE, "the include is the last setting, so it wins");
-    assert.equal(lines.filter(line => /^(glob|env|gen)?include /.test(line)).length, 1);
-    const tasks = fs.readFileSync(path.join(repoRoot, "roles/dotfiles/tasks/personal.yml"), "utf8");
-    assert.match(tasks, /content:.*files\/kitty\.conf[^\n]*\n\s+dest: "\{\{ primary_home \}\}\/\.config\/kitty\/cybexos\.conf"/);
-    assert.match(tasks, /cybexos_user_include:[\s\S]*?kind: kitty/);
-});
 
 test("kitty is signalled only when its file changed, or on --force", t => {
     const state = scratch(t);

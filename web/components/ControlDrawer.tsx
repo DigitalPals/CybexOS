@@ -101,7 +101,7 @@ export function ControlDrawer({ tab, setTab, close, volume, setVolume, brightnes
     <div className="drawer-body" ref={body} role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-tab-${tab}`}>
       {tab === 'overview' && <>
         <div className="drawer-system">
-          <div className="drawer-system-identity"><img src="/fedora.svg" width="48" height="48" alt="" /><div><h2>Fedora Linux</h2><p>Version 44 · CybexOS</p><span>Hyprland desktop</span></div><span className="drawer-demo-tag">DEMO</span></div>
+          <div className="drawer-system-identity"><img src="/cybexos.svg" width="48" height="48" alt="" /><div><h2>NixOS</h2><p>Version 44 · CybexOS</p><span>Hyprland desktop</span></div><span className="drawer-demo-tag">DEMO</span></div>
           <div className="drawer-system-session"><span><span className="drawer-status-dot" />visitor@cybexos</span><span>Browser session</span></div>
         </div>
         <div className="drawer-sliders">{brightnessSlider}{volumeSlider}</div>
@@ -137,7 +137,7 @@ export function ControlDrawer({ tab, setTab, close, volume, setVolume, brightnes
       {tab === 'bluetooth' && <>
         <div className="drawer-section-heading"><h2>Bluetooth</h2><span>{bluetooth ? 'On' : 'Off'}</span></div>
         <SwitchRow icon={Bluetooth} label="Bluetooth" on={bluetooth} toggle={() => setBluetooth(!bluetooth)} />
-        <div className="drawer-empty"><Bluetooth size={29} /><h3>{bluetooth ? 'Ready to connect' : 'Bluetooth is off'}</h3><p>{bluetooth ? 'On Fedora, your nearby devices appear here.' : 'Turn it on to explore the Bluetooth panel.'}</p></div>
+        <div className="drawer-empty"><Bluetooth size={29} /><h3>{bluetooth ? 'Ready to connect' : 'Bluetooth is off'}</h3><p>{bluetooth ? 'On CybexOS, your nearby devices appear here.' : 'Turn it on to explore the Bluetooth panel.'}</p></div>
         <p className="drawer-note">Bluetooth is simulated in this browser session. No nearby devices are scanned.</p>
       </>}
 

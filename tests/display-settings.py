@@ -14,7 +14,7 @@ import unittest
 sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / 'roles/desktop/files/quickshell/scripts/display-settings.py'
+SCRIPT = ROOT / 'desktop/quickshell/scripts/display-settings.py'
 FIXTURES = ROOT / 'tests/displays'
 
 loader = importlib.machinery.SourceFileLoader('display_settings', str(SCRIPT))

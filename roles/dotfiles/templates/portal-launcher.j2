@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-binary={{ private_services.portal_binary | quote }}
-if [[ ! -x $binary ]]; then
-  command -v notify-send >/dev/null && notify-send "Portal" "Missing executable: $binary" || true
-  exit 0
-fi
-export WGPU_BACKEND=${WGPU_BACKEND:-vulkan,gl}
-exec "$binary" "$@"

@@ -162,7 +162,7 @@ test("menubar content uses its colour-derived palette", () => {
 
 test("the named Hyprland blur rule persists and applies without remapping surfaces", () => {
     const look = untranslated(fs.readFileSync(
-        path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8"));
+        path.resolve(shellDir, "../hypr/looknfeel.lua"), "utf8"));
     const settings = read("Common/Settings.qml");
 
     assert.match(look, /local function persisted_glass_enabled\(\)/);
@@ -194,7 +194,7 @@ function persistedBlur(t, settings) {
     const root = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "cybexos-tests.glass."));
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
     const template = untranslated(fs.readFileSync(
-        path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8"));
+        path.resolve(shellDir, "../hypr/looknfeel.lua"), "utf8"));
     fs.writeFileSync(path.join(root, "looknfeel.lua"), template.replace(/\{\{.*?\}\}/g, "false"));
     if (settings !== undefined) {
         fs.mkdirSync(path.join(root, ".config/cybexos"), { recursive: true });
@@ -213,7 +213,7 @@ dofile(${JSON.stringify(path.join(root, "looknfeel.lua"))})
 io.write(tostring(rules["quickshell-blur"]))
 `;
     const result = require("node:child_process").spawnSync(luajit, ["-e", driver], {
-        encoding: "utf8", env: { HOME: root, PATH: "/usr/bin:/bin" },
+        encoding: "utf8", env: { HOME: root, PATH: process.env.PATH },
     });
     assert.equal(result.status, 0, result.stderr);
     return result.stdout;

@@ -36,7 +36,7 @@ test("Brave URL-app classes resolve to installed web-app entries across browser 
             assert.equal(D.webAppEntryId(`${browser}-web.whatsapp.com__-${profile}`, apps), "cybexos-webapp-whatsapp");
     assert.equal(D.webAppEntryId("brave-example.com__chat_-Default", apps), "cybexos-webapp-chat");
     assert.equal(D.webAppEntryId("brave-example.com__mail_-Default", apps), "cybexos-webapp-mail");
-    for (const appId of ["brave-origin", "firefox", "brave-web.whatsapp.com.evil__-Default",
+    for (const appId of ["brave", "firefox", "brave-web.whatsapp.com.evil__-Default",
         "brave-example.com__unknown-Default", "brave-web.whatsapp.com__-", "web.whatsapp.com"])
         assert.equal(D.webAppEntryId(appId, apps), "", appId);
     assert.equal(D.webAppEntryId("brave-web.whatsapp.com__-Default", []), "", "removed apps do not match");
@@ -113,8 +113,8 @@ test("pinning appends once, unpinning removes, and the list is bounded", () => {
 });
 
 test("suggested pins hold until the person pins or unpins anything", () => {
-    const suggestions = D.suggestedPins("brave-origin");
-    assert.deepEqual(suggestions, ["brave-origin", "org.gnome.Nautilus", "kitty"]);
+    const suggestions = D.suggestedPins("brave");
+    assert.deepEqual(suggestions, ["brave", "org.gnome.Nautilus", "kitty"]);
     assert.deepEqual(D.suggestedPins(""), ["org.gnome.Nautilus", "kitty"]);
     assert.deepEqual(D.effectivePins([], false, suggestions), suggestions);
     assert.deepEqual(D.effectivePins([], true, suggestions), [], "an explicit empty dock stays empty");
@@ -127,10 +127,10 @@ test("the default browser is read from mimeapps.list's default group only", () =
         "x-scheme-handler/https=chromium.desktop;",
         "[Default Applications]",
         "text/html=firefox.desktop",
-        "x-scheme-handler/https=brave-origin.desktop;firefox.desktop;",
+        "x-scheme-handler/https=brave.desktop;firefox.desktop;",
         ""
     ].join("\n");
-    assert.equal(D.defaultBrowserId(text), "brave-origin");
+    assert.equal(D.defaultBrowserId(text), "brave");
     assert.equal(D.defaultBrowserId("[Default Applications]\nx-scheme-handler/https = firefox.desktop\n"), "firefox");
     assert.equal(D.defaultBrowserId("[Default Applications]\nx-scheme-handler/https=../evil.desktop\n"), "");
     assert.equal(D.defaultBrowserId(""), "");

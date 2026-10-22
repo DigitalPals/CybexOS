@@ -8,9 +8,9 @@ const {
     darkTokens, lightTokens, scratch, runDriver, renderTarget, stubBin,
 } = require("./system-theme.cjs");
 
-const repoRoot = path.resolve(shellDir, "../../../..");
+const repoRoot = path.resolve(__dirname, "../..");
 const resolver = path.join(repoRoot, "assets/scripts/cybexos-runtime");
-const template = path.join(repoRoot, "roles/desktop/templates/hyprlock.conf.j2");
+const template = path.join(repoRoot, "desktop/hypr/hyprlock.conf");
 const HEADER = "# CybexOS lock screen, rendered by the system theme (theme_hyprlock.py).";
 const WALLPAPER = "/home/test/Pictures/Wallpapers/mountains.jpg";
 
@@ -212,7 +212,7 @@ test("apply writes the lock screen and reload touches nothing", t => {
 
 test("the vendor lock screen is the dark default rendered without a wallpaper", () => {
     const vendor = fs.readFileSync(template, "utf8");
-    // Installed with Ansible's template module: it must stay free of Jinja.
+    // Installed with NixOS modules's template module: it must stay free of Jinja.
     assert.doesNotMatch(vendor, /\{[{%#]/);
     const rendered = render(withWallpaper(darkTokens(), ""));
     const lines = rendered.split("\n");
@@ -238,17 +238,17 @@ function resolverFixture(t) {
     fs.writeFileSync(hyprlock, "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\"\n", { mode: 0o755 });
     const script = path.join(root, "cybexos-runtime");
     const source = fs.readFileSync(resolver, "utf8");
-    assert.ok(source.includes("exec /usr/bin/hyprlock "));
-    // The lock screen's PAM service and authselect's state, as fixtures.
+    assert.ok(source.includes("exec hyprlock "));
+    // The lock screen's PAM service and fingerprintPolicy's state, as fixtures.
     const lockPam = path.join(root, "pam.d/cybexos-lock");
-    const authselect = path.join(root, "authselect/authselect.conf");
-    for (const [system] of [["lock_pam=/etc/pam.d/cybexos-lock"], ["authselect_conf=/etc/authselect/authselect.conf"]])
+    const fingerprintPolicy = path.join(root, "policy/fingerprint-enabled");
+    for (const [system] of [["lock_pam=/etc/pam.d/cybexos-lock"], ["fingerprint_policy=/etc/cybexos/fingerprint-enabled"]])
         assert.ok(source.includes(system), system);
-    fs.writeFileSync(script, source.replace("exec /usr/bin/hyprlock ", `exec ${hyprlock} `)
+    fs.writeFileSync(script, source.replace("runtime_root=/etc/cybexos/runtime", `runtime_root=${runtime}`).replace("exec hyprlock ", `exec ${hyprlock} `)
         .replace("lock_pam=/etc/pam.d/cybexos-lock", `lock_pam=${lockPam}`)
-        .replace("authselect_conf=/etc/authselect/authselect.conf", `authselect_conf=${authselect}`));
+        .replace("fingerprint_policy=/etc/cybexos/fingerprint-enabled", `fingerprint_policy=${fingerprintPolicy}`));
     return {
-        root, home, lockPam, authselect,
+        root, home, lockPam, fingerprintPolicy,
         user: path.join(config, "hypr/hyprlock.conf"),
         vendor: path.join(runtime, "hypr/hyprlock.conf"),
         generated: path.join(state, "cybexos/theme/hyprlock.conf"),
@@ -347,18 +347,18 @@ test("the lock screen gains the fingerprint-free PAM service and hyprlock's fing
 
     fs.mkdirSync(path.dirname(f.lockPam));
     fs.writeFileSync(f.lockPam, "auth include password-auth\n");
-    fs.mkdirSync(path.dirname(f.authselect));
-    fs.writeFileSync(f.authselect, "sssd\nwith-silent-lastlog\nwith-mdns4\n");
+    fs.mkdirSync(path.dirname(f.fingerprintPolicy));
+
     assert.equal(f.exec({ XDG_RUNTIME_DIR: runtime }), rendered);
     let config = fs.readFileSync(rendered, "utf8");
     const vendor = fs.readFileSync(f.vendor, "utf8");
     assert.ok(config.startsWith(vendor), "the layout is kept byte for byte");
     assert.match(config, /auth \{\n  pam \{\n    module = cybexos-lock\n  \}/);
     assert.match(config, /fingerprint \{\n    enabled = false\n/,
-        "no fingerprint check while authselect does not offer fingerprints");
+        "no fingerprint check while fingerprintPolicy does not offer fingerprints");
     assert.equal((fs.statSync(rendered).mode & 0o077), 0, "the rendered file is private");
 
-    fs.writeFileSync(f.authselect, "sssd\nwith-silent-lastlog\nwith-fingerprint\n");
+    fs.writeFileSync(f.fingerprintPolicy, "enabled\n");
     f.exec({ XDG_RUNTIME_DIR: runtime });
     config = fs.readFileSync(rendered, "utf8");
     assert.match(config, /fingerprint \{\n    enabled = true\n    ready_message = Touch the fingerprint reader or enter your password\n/);

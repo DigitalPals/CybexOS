@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+"""Compare a completed ISO with one exact evaluated source, without booting it.
+
+Requires Nix, xorriso and unsquashfs (nix develop). Reference package outputs
+must already exist from that source's build; this command never builds them.
+It extracts only the compressed store plus selected store entries, without
+mounts, and never runs an executable taken from the image. This is image/source
+parity evidence, not installation or runtime qualification.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+import tempfile
+
+
+class ParityFailure(RuntimeError):
+    pass
+
+
+def run(*args):
+    if args[0] == 'nix':
+        args = ('nix', '--extra-experimental-features', 'nix-command flakes', *args[1:])
+    result = subprocess.run(list(map(str, args)), stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if result.returncode:
+        raise ParityFailure(f'{Path(str(args[0])).name} failed: ' + result.stderr.decode(errors='replace')[-3000:])
+    return result.stdout
+
+
+def canonical(data):
+    """Allow only Nix's interpreter-path rewrite when comparing source scripts."""
+    if not data.startswith(b'#!'):
+        return data
+    first, separator, rest = data.partition(b'\n')
+    try:
+        words = shlex.split(first[2:].decode())
+    except (ValueError, UnicodeError):
+        return data
+    if words and Path(words[0]).name == 'env':
+        words = words[1:]
+    if not words:
+        return data
+    words[0] = Path(words[0]).name
+    return ('#!' + ' '.join(words)).encode() + separator + rest
+
+
+def manifest(path, normalize=False):
+    """Hash bytes, executable bits and link targets, without following links."""
+    path = Path(path)
+    entries = [path] if not path.is_dir() else [path, *sorted(path.rglob('*'))]
+    result = {}
+    for item in entries:
+        name = str(item.relative_to(path))
+        if item.is_symlink():
+            result[name] = ['link', os.readlink(item)]
+        elif item.is_dir():
+            result[name] = ['directory']
+        elif item.is_file():
+            data = item.read_bytes()
+            result[name] = ['file', bool(item.stat().st_mode & 0o111),
+                            hashlib.sha256(canonical(data) if normalize else data).hexdigest()]
+        else:
+            raise ParityFailure('Unexpected special file: ' + str(item))
+    return result
+
+
+def compare(left, right, label, normalize=False):
+    a, b = manifest(left, normalize), manifest(right, normalize)
+    if a != b:
+        differences = sorted(name for name in set(a) | set(b) if a.get(name) != b.get(name))
+        raise ParityFailure(label + ' differs: ' + ', '.join(differences[:12]))
+    return {'files': sum(v[0] == 'file' for v in a.values()),
+            'sha256': hashlib.sha256(json.dumps(a, sort_keys=True).encode()).hexdigest()}
+
+
+def check(iso, flake, staging=None):
+    metadata = json.loads(run('nix', 'flake', 'metadata', '--json', '--no-update-lock-file', flake))
+    source = Path(metadata['path'])
+    identity = metadata['locked']['narHash']
+    expression = '''c: {
+      desktop = toString c.cybexos.desktopPackage;
+      updater = toString c.cybexos.updaterPackage;
+      system = toString c.system.build.toplevel;
+      etc = toString c.system.build.etc;
+      releaseFile = toString c.environment.etc."cybexos/release.json".source;
+      installerSource = c.environment.etc."cybexos/installer-source".text;
+      installerSourceFile = toString c.environment.etc."cybexos/installer-source".source;
+      installerInputs = builtins.fromJSON c.environment.etc."cybexos/installer-inputs.json".text;
+      installerInputsFile = toString c.environment.etc."cybexos/installer-inputs.json".source;
+      release = builtins.fromJSON c.environment.etc."cybexos/release.json".text;
+    }'''
+    expected = json.loads(run('nix', 'eval', '--json', '--no-update-lock-file',
+                              '--option', 'allow-import-from-derivation', 'false',
+                              metadata['url'] + '#nixosConfigurations.installer.config', '--apply', expression))
+    if expected['release']['narHash'] != identity:
+        raise ParityFailure('Evaluated release identity differs from exact source NAR')
+    # Nix may reimport identical source under another store name. The ISO's
+    # declared installer path is authoritative; its NAR must still match the
+    # independently resolved exact source identity.
+    paths = {'source': expected['installerSource'].strip()} | {name: expected[name] for name in
+              ('desktop', 'updater', 'system', 'etc', 'releaseFile', 'installerSourceFile', 'installerInputsFile')}
+    if not expected['installerInputs'] or len(set(expected['installerInputs'])) != len(expected['installerInputs']):
+        raise ParityFailure('ISO input source declaration is empty or contains duplicates')
+    paths.update({'inputSource:' + str(index): value for index, value in enumerate(expected['installerInputs'])})
+    for name, value in paths.items():
+        if not re.fullmatch(r'/nix/store/[a-z0-9]{32}-[^/]+', value):
+            raise ParityFailure('Unexpected evaluated store path for ' + name)
+    checks = {}
+    with tempfile.TemporaryDirectory(prefix='cybexos-image-parity-', dir=staging) as temporary:
+        task = Path(temporary)
+        squash = task / 'nix-store.squashfs'
+        run('xorriso', '-osirrox', 'on', '-indev', iso, '-extract', '/nix-store.squashfs', squash)
+        listing = run('unsquashfs', '-l', '-max-depth', '1', squash).decode()
+        # NixOS places store entries directly at the squashfs root. Require
+        # every exact source/output path, rather than choosing a similar name.
+        present = {line.removeprefix('squashfs-root/') for line in listing.splitlines()
+                   if line.startswith('squashfs-root/')}
+        missing = [name for name, value in paths.items() if Path(value).name not in present]
+        if missing:
+            raise ParityFailure('ISO does not contain the exact evaluated source/output identities: ' + ', '.join(missing))
+        for value in paths.values():
+            if not Path(value).exists():
+                raise ParityFailure('Reference output is unavailable; build the exact source before checking: ' + value)
+        extracted = task / 'selected'
+        run('unsquashfs', '-no-progress', '-no-xattrs', '-d', extracted, squash,
+            *sorted({Path(value).name for value in paths.values()}))
+        selected = {name: extracted / Path(value).name for name, value in paths.items()}
+        # Hash the extracted source itself, not a path in the builder's store.
+        nar = run('nix', 'hash', 'path', '--type', 'sha256', selected['source']).decode().strip()
+        if nar != identity:
+            raise ParityFailure('Source extracted from the ISO has a different NAR identity')
+        for name in paths:
+            checks[name] = compare(paths[name], selected[name], name)
+        if json.loads(selected['releaseFile'].read_bytes()) != expected['release']:
+            raise ParityFailure('ISO release metadata differs from evaluated release')
+        if selected['installerSourceFile'].read_text().strip() != expected['installerSource'].strip():
+            raise ParityFailure('ISO installer refers to a different source snapshot')
+        if json.loads(selected['installerInputsFile'].read_bytes()) != expected['installerInputs']:
+            raise ParityFailure('ISO retained input sources differ from the tested inputs')
+        runtime = selected['desktop'] / 'share/cybexos/runtime'
+        for label, relative, installed in (
+            ('quickshell', 'desktop/quickshell', runtime / 'quickshell'),
+            ('hyprlandConfiguration', 'desktop/hypr', runtime / 'hypr'),
+            ('wallpapers', 'assets/wallpapers', runtime / 'wallpapers'),
+            ('desktopSkill', 'agent-skills/cybexos', selected['desktop'] / 'share/cybexos/skills/cybexos'),
+            ('updaterSkill', 'agent-skills/cybexos', selected['updater'] / 'share/cybexos/skill'),
+            ('machineTemplate', 'templates/machine', selected['updater'] / 'share/cybexos/machine'),
+            ('updaterCode', 'lifecycle/cybexos', selected['updater'] / 'lib/cybexos')):
+            checks[label] = compare(source / relative, installed, label, normalize=True)
+        for name, original in [(p.name, p) for p in (source / 'lifecycle/bin').iterdir() if p.is_file()] + [('cybexos-install', source / 'installer/cybexos-install')]:
+            wrapped = selected['updater'] / 'bin' / ('.' + name + '-wrapped')
+            checks['updaterExecutable:' + name] = compare(original, wrapped, name, normalize=True)
+        for boot_path in ('/EFI/BOOT/grub.cfg', '/isolinux/isolinux.cfg'):
+            output = task / Path(boot_path).name
+            run('xorriso', '-osirrox', 'on', '-indev', iso, '-extract', boot_path, output)
+            if ('init=' + expected['system'] + '/init') not in output.read_text():
+                raise ParityFailure('ISO boot menu does not select the evaluated system: ' + boot_path)
+        # TemporaryDirectory removes only task-owned files. Restore owner write
+        # permission on extracted read-only directories so cleanup works for
+        # ordinary users as well as isolated root builders.
+        for directory in [extracted, *extracted.rglob('*')]:
+            if directory.is_dir() and not directory.is_symlink():
+                directory.chmod(directory.stat().st_mode | 0o700)
+    with iso.open('rb') as stream:
+        digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+    return {'kind': 'image-source-parity-evidence', 'result': 'passed', 'isoSha256': digest,
+            'sourceNarHash': identity, 'sourceRevision': expected['release']['revision'],
+            'release': expected['release'], 'checks': checks,
+            'scope': 'static source/image/package identity and payload parity; no installation/runtime qualification'}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('iso', type=Path)
+    parser.add_argument('flake', help='exact source flake, for example path:/absolute/snapshot')
+    parser.add_argument('--output', type=Path)
+    parser.add_argument('--staging-dir', type=Path)
+    args = parser.parse_args()
+    try:
+        result = check(args.iso.resolve(), args.flake, args.staging_dir)
+    except (ParityFailure, OSError, ValueError, KeyError) as error:
+        result = {'kind': 'image-source-parity-evidence', 'result': 'failed', 'error': str(error)}
+    payload = json.dumps(result, indent=2) + '\n'
+    if args.output:
+        args.output.write_text(payload)
+    print(payload)
+    if result['result'] != 'passed':
+        raise SystemExit(1)
+
+
+if __name__ == '__main__':
+    main()

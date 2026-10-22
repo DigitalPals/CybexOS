@@ -18,14 +18,14 @@ describe('terminal interactions', () => {
 });
 
 describe('improved terminal', () => {
-  it('shows a readable Fedora overview for fastfetch aliases and options', async () => {
+  it('shows a readable CybexOS overview for fastfetch aliases and options', async () => {
     const user = userEvent.setup();
     render(<TerminalApp openApp={vi.fn()} notify={vi.fn()} />);
-    expect(screen.getByRole('region', { name: 'Fedora system overview' })).toHaveTextContent('Fedora Linux 44 x86_64');
-    expect(screen.getByRole('region', { name: 'Fedora system overview' })).toHaveTextContent('Hyprland (Wayland)');
+    expect(screen.getByRole('region', { name: 'CybexOS system overview' })).toHaveTextContent('NixOS 26.05 x86_64');
+    expect(screen.getByRole('region', { name: 'CybexOS system overview' })).toHaveTextContent('Hyprland (Wayland)');
     const input = screen.getByRole('textbox', { name: 'Terminal command' });
-    await user.type(input, '  neofetch --logo fedora  {Enter}');
-    const overviews = screen.getAllByRole('region', { name: 'Fedora system overview' });
+    await user.type(input, '  neofetch --logo cybexos  {Enter}');
+    const overviews = screen.getAllByRole('region', { name: 'CybexOS system overview' });
     expect(overviews).toHaveLength(2);
     expect(overviews[1]).toHaveTextContent('Demo system information');
     expect(overviews[1]).toHaveTextContent('Kitty');

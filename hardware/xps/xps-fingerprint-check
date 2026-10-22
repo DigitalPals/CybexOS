@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+fprintd-list "${1:-$USER}"
+grep -q pam_unix /etc/pam.d/sudo
+grep -q pam_fprintd /etc/pam.d/sudo

@@ -1,0 +1,17 @@
+Allow stable Aquamarine to use hyprutils 0.14's explicit bool conversions.
+Only boolean-valued methods change; pointer-valued returns are preserved.
+
+--- a/src/backend/Backend.cpp
++++ b/src/backend/Backend.cpp
+@@ -238,3 +238,3 @@
+ bool Aquamarine::CBackend::hasSession() {
+-    return session;
++    return static_cast<bool>(session);
+ }
+--- a/src/backend/drm/DRM.cpp
++++ b/src/backend/drm/DRM.cpp
+@@ -603,3 +603,3 @@
+ bool Aquamarine::CDRMBackend::shouldBlit() {
+-    return primary;
++    return static_cast<bool>(primary);
+ }

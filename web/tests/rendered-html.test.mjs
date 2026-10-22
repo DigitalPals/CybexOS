@@ -22,7 +22,7 @@ test('production assets and Sites metadata are packaged', async () => {
   await access(new URL('../dist/client/cybex-wordmark.svg', import.meta.url));
   const [packaged, source] = await Promise.all(['../dist/.openai/hosting.json', '../.openai/hosting.json'].map(path => readFile(new URL(path, import.meta.url), 'utf8')));
   assert.deepEqual(JSON.parse(packaged), JSON.parse(source));
-  for (const asset of ['fedora.svg', 'licenses/fedora-mark.txt', 'providers/codex.svg', 'providers/claude.svg', 'licenses/model-usage-marks.txt']) {
+  for (const asset of ['cybexos.svg', 'licenses/cybexos-mark.txt', 'providers/codex.svg', 'providers/claude.svg', 'licenses/model-usage-marks.txt']) {
     await access(new URL(`../dist/client/${asset}`, import.meta.url));
   }
 });

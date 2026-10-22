@@ -45,11 +45,11 @@ def capture(args):
         "journalctl", "--user", "-b", "-n", "500", "--no-pager", "-o", "short-monotonic",
         "-u", "hyprland-session.target", "-u", "quickshell.service",
         "-u", "xdg-desktop-portal.service", "-u", "xdg-desktop-portal-hyprland.service"])
-    diagnostics["grub_environment"] = command(["grub2-editenv", "/boot/grub2/grubenv", "list"])
+    diagnostics["boot_manager"] = command(["bootctl", "status"])
     diagnostics["binfmt_units"] = command([
         "systemctl", "cat", "systemd-binfmt.service", "proc-sys-fs-binfmt_misc.mount",
         "proc-sys-fs-binfmt_misc.automount"])
-    diagnostics["desktop_packages"] = command(["rpm", "-q", "hyprland", "quickshell", "systemd"])
+    diagnostics["desktop_packages"] = command(["nix", "path-info", "/run/current-system"])
     return {"v": 1, "revision": args.revision, "configuration": args.configuration,
             "bootKind": args.boot_kind, "loginKind": args.login_kind,
             "bootId": read("/proc/sys/kernel/random/boot_id"),

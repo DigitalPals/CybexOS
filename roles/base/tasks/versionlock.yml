@@ -1,9 +1,0 @@
----
-# Hyprland and Quickshell follow the series this release qualified
-# (qualified_package_series, docs/dependency-policy.md). Only CybexOS's own
-# entries in /etc/dnf/versionlock.toml change; an administrator's are kept.
-# Checkout installs, image installs and upgrade reconciliation all run this
-# file, and it runs before any role installs or updates either package.
-- name: Hold the compositor and shell to their qualified series
-  cybexos_versionlock:
-    series: "{{ qualified_package_series }}"

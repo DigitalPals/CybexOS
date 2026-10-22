@@ -1,7 +1,0 @@
-{
-  "product": "cybexos",
-  "configSchema": 1,
-  "supportedFedora": ["44"],
-  "architectures": ["x86_64"],
-  "minimumUpdater": "0.1.0"
-}

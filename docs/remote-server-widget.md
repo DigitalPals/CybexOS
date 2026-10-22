@@ -67,7 +67,7 @@ overlay mounts are excluded from capacity collection.
 ## Implementation and lifecycle
 
 `Common/RemoteServer.qml` owns a single `Process` for the whole shell, independent
-of monitor count. `scripts/remote-server.py` validates the destination and execs
+of monitor count. `desktop/quickshell/scripts/remote-server.py` validates the destination and execs
 SSH, sending the self-contained `remote_server_probe.py` as a quoted Python
 program. One persistent SSH channel streams newline-delimited JSON. Its stdin
 accepts cadence/refresh messages, and EOF terminates the probe. The connection
@@ -96,8 +96,8 @@ cybexos-runtime ipc remoteServer configure
 cybexos-runtime ipc popouts open remote
 ```
 
-Tests cover counter resets, memory semantics, cache lifetime, transport quoting,
-SSH restrictions, stream cadence/EOF, malformed samples, interface selection,
-metric formatting, warning levels, chart windows and scales, filesystem and
-sensor presentation, history bounds and settings migration. Run `./tests/run`.
+`tests/quickshell/remote-server.test.cjs` covers interface selection, metric
+formatting, warning levels, chart windows, presentation and settings. SSH
+transport restrictions, stream cadence/EOF and real remote hosts still require
+isolated runtime qualification. Run `./tests/run`.
 For live checks, use `tests/lib/quickshell-live` begin/end and the managed service.

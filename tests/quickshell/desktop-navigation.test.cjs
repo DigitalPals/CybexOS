@@ -22,8 +22,8 @@ const dock = read("Common/Dock.qml");
 const processList = read("Common/ProcessList.qml");
 const processes = read("Popovers/Drawer/DrawerProcesses.qml");
 const drawerOverview = read("Popovers/Drawer/DrawerOverview.qml");
-const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8"));
-const look = untranslated(fs.readFileSync(path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8"));
+const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../hypr/bindings.lua"), "utf8"));
+const look = untranslated(fs.readFileSync(path.resolve(shellDir, "../hypr/looknfeel.lua"), "utf8"));
 
 function functionBody(source, name) {
     const start = source.indexOf(`function ${name}(`);
@@ -159,7 +159,7 @@ test("dock items are keyed by app and act through the Dock singleton", () => {
 
 test("running web apps reuse their launcher's icon, name and pinned group", () => {
     const entries = {
-        "brave-origin": { id: "brave-origin", name: "Brave", icon: "brave-origin" },
+        "brave": { id: "brave", name: "Brave", icon: "brave" },
         "cybexos-webapp-whatsapp": { id: "cybexos-webapp-whatsapp", name: "WhatsApp",
             icon: "/home/alice/.local/share/cybexos/webapps/whatsapp/icon.png" }
     };
@@ -167,7 +167,7 @@ test("running web apps reuse their launcher's icon, name and pinned group", () =
         DockHelpers: load("DockHelpers.js"),
         webApps: [{ id: "whatsapp", url: "https://web.whatsapp.com/" }],
         DesktopEntries: { byId: id => entries[id] || null,
-            heuristicLookup: () => entries["brave-origin"] },
+            heuristicLookup: () => entries["brave"] },
         Quickshell: { iconPath: name => name }
     };
     context.root = context;
@@ -182,12 +182,12 @@ test("running web apps reuse their launcher's icon, name and pinned group", () =
     assert.equal(apps[0].running, true);
     assert.equal(context.titleFor(apps[0]), "WhatsApp");
     assert.equal(context.iconFor(apps[0]), entries[entryId].icon);
-    assert.equal(context.entryIdFor("brave-origin"), "brave-origin");
+    assert.equal(context.entryIdFor("brave"), "brave");
     delete entries[entryId];
-    assert.equal(context.entryIdFor(appId), "brave-origin", "removed desktop entries fall back to the native resolver");
+    assert.equal(context.entryIdFor(appId), "brave", "removed desktop entries fall back to the native resolver");
     assert.match(dock, /onDesktopAppsChanged: webAppRefresh\.restart\(\)/,
         "install/remove causes a fresh registry read");
-    assert.match(dock, /command: \[Quickshell\.env\("HOME"\) \+ "\/\.local\/bin\/cybexos-webapp", "list", "--json"\]/);
+    assert.match(dock, /command: \["cybexos-webapp", "list", "--json"\]/);
 });
 
 test("the dock's all-layout preference and auto-hide sit in the Bar page and are searchable", () => {

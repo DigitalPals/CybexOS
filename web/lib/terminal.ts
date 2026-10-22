@@ -126,11 +126,11 @@ function tokenize(input: string): string[] | null {
 /** Deliberately fictional workstation data, shared by all system commands. */
 export const DEMO_SYSTEM = {
   hostname: 'cybexos',
-  os: 'Fedora Linux 44 x86_64 · CybexOS',
+  os: 'NixOS 26.05 x86_64 · CybexOS',
   host: 'Cybex Workstation (demo)',
-  kernel: '6.19.8-200.fc44.x86_64',
+  kernel: '6.18.57',
   uptime: '42 mins (demo session)',
-  packages: '2148 (rpm), 12 (flatpak)',
+  packages: '2148 (nix), 12 (flatpak)',
   shell: 'fish 4.3',
   wm: 'Hyprland (Wayland)',
   wmTheme: 'CybexOS · Quickshell',
@@ -138,12 +138,12 @@ export const DEMO_SYSTEM = {
   cpu: 'AMD Ryzen 9 7950X (32) @ 5.70 GHz',
   gpu: 'AMD Radeon RX 7800 XT · 16 GiB',
   memory: '3.24 GiB / 31.19 GiB (10%)',
-  disk: '64.2 GiB / 953.9 GiB (7%) · btrfs',
+  disk: '64.2 GiB / 953.9 GiB (7%) · ext4',
   theme: 'CybexOS',
   font: 'JetBrains Mono · 12 pt',
 } as const;
 
-export const FEDORA_LOGO = [
+export const CYBEXOS_LOGO = [
   '       __________',
   '      / _________|',
   '     / /',
@@ -281,7 +281,7 @@ export function runCommand(input: string, cwd = HOME_PATH, now = new Date()): Co
   uptime             Demo session uptime
   free [-h]          Sample memory usage
   df [-h]            Sample disk usage
-  uname [-a/-r/-m]   Sample Fedora kernel information
+  uname [-a/-r/-m]   Sample CybexOS kernel information
   history            Show this terminal’s command history
   echo <text>        Print text
   clear              Clear the terminal
@@ -344,8 +344,8 @@ This terminal is simulated. Commands never run on your device.`);
     case 'sudo':
     case 'apt':
     case 'pacman':
-    case 'dnf':
-    case 'rpm':
+    case 'nix':
+    case 'nixos-rebuild':
     case 'flatpak':
     case 'rm':
     case 'curl':

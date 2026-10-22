@@ -1,4 +1,0 @@
-#!/usr/bin/bash
-# The relay has opened /dev/video50; make the logged-in session rediscover it.
-sleep 2
-exec /usr/bin/systemctl --user --machine={{ primary_user }}@.host try-restart wireplumber.service

@@ -14,7 +14,7 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const { allKeys } = require(path.join(root, "tests/quickshell/i18n-keys.cjs"));
-const catalogDir = path.join(root, "roles/desktop/files/quickshell/Common/i18n");
+const catalogDir = path.join(root, "desktop/quickshell/Common/i18n");
 
 function catalogPath(language) {
     if (!/^[a-z]{2}$/.test(language))

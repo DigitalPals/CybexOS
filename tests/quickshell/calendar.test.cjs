@@ -85,39 +85,7 @@ test("upcoming events retain ongoing items and obey the configured limit", () =>
     assert.deepEqual(rows.map(item => item.summary), ["Ongoing", "Soon"]);
 });
 
-test("the calendar bridge delegates credentials and recurrence to GNOME", () => {
-    const service = read("Common/Calendar.qml");
-    const helper = read("scripts/calendar-events.py");
-    const popover = read("Popovers/CalendarPopover.qml");
-    const settings = read("Common/SettingsHelpers.js");
-    const tasks = fs.readFileSync(path.resolve(shellDir, "../../tasks/main.yml"), "utf8");
 
-    assert.match(service,
-        /Settings\.showPanel\("accounts"\)/);
-    assert.match(service, /scripts\/calendar-events\.py/);
-    assert.match(service, /gnome-calendar", "--date"/);
-    assert.match(helper, /SourceRegistry\.new_sync/);
-    assert.match(helper, /generate_instances_sync/);
-    assert.match(helper, /get_selected\(\)/);
-    assert.match(helper, /Goa\.Client\.new_sync/);
-    assert.doesNotMatch(helper, /get_oauth2_access_token|password|secret\.get/i,
-        "the bridge must never retrieve credentials into the shell process");
-    assert.match(popover, /CalendarHelpers\.upcoming/);
-    assert.match(popover, /Connect Google Calendar/);
-    assert.match(popover, /Calendar\.manageAccounts\(\)/);
-    assert.match(settings,
-        /showEvents: true, daysAhead: 14, pollMins: 15/);
-    for (const packageName of ["gnome-online-accounts", "gnome-control-center",
-        "gnome-calendar", "evolution-data-server", "python3-gobject"])
-        assert.match(tasks, new RegExp(`- ${packageName.replaceAll("-", "\\-")}`));
-
-    const syntax = spawnSync("python3", ["-c",
-        "import ast,sys; ast.parse(sys.stdin.read())"], {
-        input: helper,
-        encoding: "utf8"
-    });
-    assert.equal(syntax.status, 0, syntax.stderr);
-});
 
 test("invalid helper ranges still return a machine-readable envelope", () => {
     const script = path.join(shellDir, "scripts", "calendar-events.py");

@@ -1,12 +1,14 @@
 // Locates the Quickshell source tree for the tests in this directory.
 //
 // The tests used to live inside that tree, at Common/tests/, which meant the
-// Ansible copies them into the vendor runtime along with the shell —
+// NixOS modules copies them into the vendor runtime along with the shell —
 // non-runtime files accumulating in a directory that is supposed to be
 // disposable. They are repo tests, so they live with the other repo tests now.
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
+const executable = name => execFileSync("sh", ["-c", "command -v " + name], { encoding: "utf8" }).trim();
 
-const shellDir = path.resolve(__dirname, "../../roles/desktop/files/quickshell");
+const shellDir = path.resolve(__dirname, "../../desktop/quickshell");
 
 // require() a pure-JS helper out of Common/ by name.
 function load(name) {
@@ -34,4 +36,4 @@ function untranslated(source) {
     return String(source).replace(/I18n\.tr\(("(?:[^"\\]|\\.)*")\)/g, "$1");
 }
 
-module.exports = { shellDir, load, VENDORED_DIRS, isVendored, untranslated };
+module.exports = { shellDir, load, VENDORED_DIRS, isVendored, untranslated, executable };

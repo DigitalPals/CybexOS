@@ -15,9 +15,9 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNTIME = ROOT / "roles/desktop/files/quickshell/ModelUsage"
+RUNTIME = ROOT / "desktop/quickshell/ModelUsage"
 TESTS = ROOT / "tests/model-usage"
-HELPERS = ROOT / "roles/desktop/files/quickshell/Common/SettingsHelpers.js"
+HELPERS = ROOT / "desktop/quickshell/Common/SettingsHelpers.js"
 
 SETTINGS_CHECK = r"""
 const H = require(process.argv[1]);

@@ -154,7 +154,7 @@ edit_screenshot() {
     --early-exit \
     --actions-on-enter save-to-clipboard \
     --save-after-copy \
-    --copy-command "$HOME/.local/bin/clipboard-copy-image"
+    --copy-command "clipboard-copy-image"
 }
 
 # offer_edit FILE [SUMMARY] [BODY]

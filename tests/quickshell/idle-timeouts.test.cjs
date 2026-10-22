@@ -8,11 +8,11 @@ const { spawnSync } = require("node:child_process");
 const { shellDir, load } = require("./shell.cjs");
 
 const H = load("SettingsHelpers.js");
-const repoRoot = path.resolve(shellDir, "../../../..");
+const repoRoot = path.resolve(__dirname, "../..");
 const generator = path.join(shellDir, "scripts/hypridle-config.py");
 const resolver = path.join(repoRoot, "assets/scripts/cybexos-runtime");
-const template = path.join(repoRoot, "roles/desktop/templates/hypridle.conf.j2");
-const action = "/usr/local/libexec/cybexos-session-action";
+const template = path.join(repoRoot, "desktop/hypr/hypridle.conf");
+const action = "cybexos-session-action";
 
 function read(relative) {
     return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
@@ -146,7 +146,7 @@ function resolverFixture(t) {
     fs.writeFileSync(hypridle, "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\"\n", { mode: 0o755 });
     const script = path.join(root, "cybexos-runtime");
     fs.writeFileSync(script, untranslated(fs.readFileSync(resolver, "utf8"))
-        .replace("exec /usr/bin/hypridle", `exec ${hypridle}`));
+        .replace("runtime_root=/etc/cybexos/runtime", `runtime_root=${runtime}`).replace("exec hypridle", `exec ${hypridle}`));
     return {
         config: path.join(config, "cybexos"),
         runtime,

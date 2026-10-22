@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname,
-    "../../roles/desktop/files/quickshell/Popovers");
+    "../../desktop/quickshell/Popovers");
 const source = name => fs.readFileSync(path.join(root, name), "utf8");
 
 test("GitHub and Hermes retain bounded, keyboard-collapsible workspaces", () => {

@@ -30,7 +30,7 @@ function runLookAndFeel(driver, files) {
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-looknfeel-"));
     try {
         const template = fs.readFileSync(
-            path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8");
+            path.resolve(shellDir, "../hypr/looknfeel.lua"), "utf8");
         const look = path.join(scratch, "looknfeel.lua");
         fs.writeFileSync(look, template.replace(/\{\{.*?\}\}/g, "false"));
         const home = path.join(scratch, "home");
@@ -182,7 +182,7 @@ test("the shell sends the power profile to the compositor on startup and on chan
     assert.match(proc,
         /if \(root\.dispatchedPowerSaver !== Activity\.powerSaver \|\| root\.powerSaverResendPending\) \{\s*root\.powerSaverResendPending = false;\s*powerSaverReplayTimer\.restart\(\)/);
     const look = fs.readFileSync(
-        path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8");
+        path.resolve(shellDir, "../hypr/looknfeel.lua"), "utf8");
     assert.match(look, /^function cybexos_power_saver\(enabled\)$/m,
         "the eval handle must be a global");
 });
@@ -215,6 +215,6 @@ test("an active power saver is sent again after a compositor reload", () => {
     assert.match(hook, /if \(powerSaverProc\.running\) \{\s*\n\s*powerSaverResendPending = true;/,
         "a reload during a dispatch queues one more");
     assert.match(settings, /root\.dispatchedPowerSaver !== Activity\.powerSaver \|\| root\.powerSaverResendPending/);
-    const look = fs.readFileSync(path.join(shellDir, "../../templates/looknfeel.lua.j2"), "utf8");
+    const look = fs.readFileSync(path.join(shellDir, "../hypr/looknfeel.lua"), "utf8");
     assert.match(look, /_G does not\s*\n-- survive it/);
 });

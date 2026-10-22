@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=cybex
-Comment=Install CybexOS or explore your desktop
-Exec=cybex welcome
-Icon=computer
-Terminal=false
-Categories=System;
-StartupNotify=true

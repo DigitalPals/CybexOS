@@ -93,7 +93,7 @@ store_default() {
   supported_agent "$selected" \
     || fail 2 "unsupported agent '$selected' (choose opencode, claude, or codex)"
   agent_available "$selected" \
-    || fail 127 "$(agent_label "$selected") is not installed; run 'cybex configure'"
+    || fail 127 "$(agent_label "$selected") is not installed; enable cybexos.features.developer in /etc/nixos/local and preview with 'cybex update stage local'"
   mkdir -p -- "$defaults_dir" \
     || fail 1 "could not create $defaults_dir"
   temporary=$(mktemp "$defaults_dir/.agent.XXXXXX") \
@@ -118,7 +118,7 @@ pick_agent() {
     fi
   done
   ((${#choices[@]} > 0)) \
-    || fail 127 "no supported AI agent is installed; run 'cybex configure'"
+    || fail 127 "no supported AI agent is installed; enable cybexos.features.developer in /etc/nixos/local and preview with 'cybex update stage local'"
   # stdout is intentionally captured by the caller so only the selected ID
   # flows into the adapter; stdin remains the reliable interactive boundary.
   [[ -t 0 ]] \

@@ -1,6 +1,6 @@
 import QtQuick
 import QtTest
-import "../../roles/desktop/files/quickshell/Common/Location" as Location
+import "../../desktop/quickshell/Common/Location" as Location
 
 TestCase {
     id: testCase

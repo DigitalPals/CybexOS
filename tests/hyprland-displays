@@ -14,7 +14,7 @@ cat >"$scratch/fixture.lua" <<'LUA'
 local repo = assert(os.getenv("CYBEXOS_DISPLAYS_REPO"))
 local config = os.getenv("XDG_CONFIG_HOME") .. "/cybexos/displays.json"
 local status_path = os.getenv("XDG_RUNTIME_DIR") .. "/cybexos/displays-status.json"
-package.path = repo .. "/roles/desktop/files/?.lua;" .. package.path
+package.path = repo .. "/desktop/hypr/?.lua;" .. package.path
 
 local function read(path)
   local file = assert(io.open(path, "rb"))
@@ -200,33 +200,5 @@ run_fixture() {
     "$@"
 }
 
-run_fixture luajit "$scratch/fixture.lua"
-
-# Hyprland on Fedora embeds Lua 5.4 (lua-libs, which rpm itself requires);
-# LuaJIT is 5.1. Run the same fixture on the real runtime when it is present:
-# integer/float typing, patterns and string escapes differ between the two.
-if python3 -c 'import ctypes; ctypes.CDLL("liblua-5.4.so")' 2>/dev/null; then
-  run_fixture python3 - "$scratch/fixture.lua" <<'PY'
-import ctypes
-import sys
-
-lua = ctypes.CDLL("liblua-5.4.so")
-lua.luaL_newstate.restype = ctypes.c_void_p
-lua.luaL_openlibs.argtypes = [ctypes.c_void_p]
-lua.luaL_loadstring.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-lua.lua_pcallk.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                           ctypes.c_void_p, ctypes.c_void_p]
-lua.lua_tolstring.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
-lua.lua_tolstring.restype = ctypes.c_char_p
-lua.lua_close.argtypes = [ctypes.c_void_p]
-state = lua.luaL_newstate()
-lua.luaL_openlibs(state)
-with open(sys.argv[1], "rb") as handle:
-    status = lua.luaL_loadstring(state, handle.read())
-if status == 0:
-    status = lua.lua_pcallk(state, 0, 0, 0, None, None)
-if status != 0:
-    sys.exit("Lua 5.4: " + (lua.lua_tolstring(state, -1, None) or b"?").decode(errors="replace"))
-lua.lua_close(state)
-PY
-fi
+# Exercise the same Lua 5.4 series supplied by the selected Nixpkgs.
+run_fixture lua "$scratch/fixture.lua"

@@ -114,9 +114,6 @@ HOME_EXCLUDES = (
     ".local/share/docker/buildkit",
     ".local/share/docker/containerd",
     ".local/share/flatpak",
-    ".local/share/cybexos/runtime",
-    ".local/share/cybexos/releases",
-    ".local/share/cybexos/current",
     ".local/share/nvim/lazy",
     ".local/share/nvim/mason",
     ".local/share/voxtype/models",
@@ -794,7 +791,7 @@ class Progress:
 
 
 def runtime_command(context):
-    installed = context.home / ".local/bin/cybexos-runtime"
+    installed = Path(shutil.which("cybexos-runtime") or "/run/current-system/sw/bin/cybexos-runtime")
     return str(installed) if installed.exists() else shutil.which("cybexos-runtime")
 
 

@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: 'Experience the CybexOS desktop. Explore workspaces, open apps, try the terminal, and make it yours. No installation needed.',
   icons: { icon: '/cybex-wordmark.svg' },
   openGraph: {
-    title: 'CybexOS — The Fedora desktop, in your browser',
+    title: 'CybexOS — The CybexOS desktop, in your browser',
     description: 'Explore the CybexOS desktop: Quickshell controls, Hyprland-style workspaces, wallpapers, and apps.',
     type: 'website',
   },

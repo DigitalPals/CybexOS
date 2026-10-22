@@ -34,19 +34,28 @@ for arg in "$@"; do
 done
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-shell_dir="$repo_root/roles/desktop/files/quickshell"
+shell_dir="$repo_root/desktop/quickshell"
 
-# Fedora installs the binary as qmllint-qt6.
+# Resolve Qt tools from the Nix development shell.
 qmllint=$(command -v qmllint-qt6 || command -v qmllint || true)
 if [[ -z $qmllint ]]; then
-  printf '\033[31mFAIL\033[0m  qmllint not installed (dnf install qt6-qtdeclarative-devel)\n' >&2
+  printf '\033[31mFAIL\033[0m  qmllint not installed (enter nix develop)\n' >&2
   exit 1
 fi
 
 # Ask Qt where its QML modules live rather than hardcoding a lib64 path.
 qml_import_path=$(qtpaths6 --query QT_INSTALL_QML 2>/dev/null \
   || qtpaths --query QT_INSTALL_QML 2>/dev/null || true)
-[[ -d ${qml_import_path:-} ]] || qml_import_path=/usr/lib64/qt6/qml
+import_args=()
+[[ -d ${qml_import_path:-} ]] && import_args+=(-I "$qml_import_path")
+IFS=: read -ra nix_imports <<<"${CYBEXOS_QML_IMPORT_PATH:-}"
+for module_path in "${nix_imports[@]}"; do
+  [[ -d $module_path ]] && import_args+=(-I "$module_path")
+done
+if ((${#import_args[@]} == 0)); then
+  printf 'No Qt QML import paths; enter nix develop.\n' >&2
+  exit 1
+fi
 
 harnesses=(
   tests/qml-lifecycle/shell.qml
@@ -73,7 +82,7 @@ mkdir -- "$work/imports" && ln -s "$shell_dir" "$work/imports/qs" || exit 1
 # Analyze the same public-Qt module the installed shell loads. Its CTest suite
 # also checks real QML registration/provider access before linting consumers.
 native_build="$work/notification-images"
-if ! { cmake -S "$repo_root/roles/desktop/files/notification-images" \
+if ! { cmake -S "$repo_root/desktop/notification-images" \
     -B "$native_build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON &&
     cmake --build "$native_build" --parallel 2 &&
     ctest --test-dir "$native_build" --output-on-failure; } >"$work/native.out" 2>&1; then
@@ -100,7 +109,7 @@ per=$(( (${#files[@]} + shards - 1) / shards ))
 # and the combined output keeps the tree's file order.
 reports=()
 for ((first = 0; first < ${#files[@]}; first += per)); do
-  "$qmllint" -I "$native_build/qml" -I "$qml_import_path" -I "$work/imports" -I . "${files[@]:first:per}" \
+  "$qmllint" -I "$native_build/qml" "${import_args[@]}" -I "$work/imports" -I . "${files[@]:first:per}" \
     >"$work/tree.$first.out" 2>&1 &
   lint_pids+=("$!")
   reports+=("$work/tree.$first.out")
@@ -115,7 +124,7 @@ for index in "${!harnesses[@]}"; do
       ln -s "$harness/tree" "$harness/imports/qs" &&
       cd -- "$harness/tree" || exit 1
     # Findings name the tracked harness, not the throwaway copy.
-    "$qmllint" -I "$native_build/qml" -I "$qml_import_path" -I "$harness/imports" -I . ./shell.qml 2>&1 \
+    "$qmllint" -I "$native_build/qml" "${import_args[@]}" -I "$harness/imports" -I . ./shell.qml 2>&1 \
       | sed "s#\\./shell\\.qml:#${harnesses[index]}:#g"
   ) >"$harness.out" 2>&1 &
   lint_pids+=("$!")

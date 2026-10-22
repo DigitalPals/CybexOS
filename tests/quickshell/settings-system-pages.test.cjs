@@ -62,12 +62,8 @@ test("About reads status in the status colours and the check as a time", () => {
         "a path label keeps both of its ends");
 
     const recovery = read("Settings/RecoveryGroup.qml");
-    assert.match(recovery, /delegate: ValueRow \{/, "each recovery point is a row");
-    assert.match(recovery, /label: recoveryGroup\.whenTaken\(modelData\.id\)/);
-    assert.match(recovery, /modelData\.bootable \? RecoveryHelpers\.pointTime\(modelData\.id\)/,
-        "a bootable point also gives the UTC stamp the boot menu lists");
-    assert.match(recovery, /label: "Recovery points"\s*value: "None yet"/);
-    assert.doesNotMatch(recovery, /ResponsiveActionRow/);
+    assert.match(recovery, /generation|Generation/);
+    assert.doesNotMatch(recovery, /RecoveryHelpers/);
 });
 
 test("Online accounts has an explicit empty state and no standing Refresh", () => {

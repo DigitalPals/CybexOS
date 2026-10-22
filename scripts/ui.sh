@@ -1,4 +1,4 @@
-# Shared terminal UI helpers for the XPS Fedora wrapper scripts.
+# Shared terminal UI helpers for the XPS NixOS wrapper scripts.
 # Source this file; do not execute it.
 # shellcheck shell=bash
 #

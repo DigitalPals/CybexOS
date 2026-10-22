@@ -8,7 +8,7 @@ import sys
 import unittest
 from unittest.mock import patch, Mock
 
-SCRIPTS = Path(__file__).resolve().parents[1] / 'roles/desktop/files/quickshell/scripts'
+SCRIPTS = Path(__file__).resolve().parents[1] / 'desktop/quickshell/scripts'
 sys.path.insert(0, str(SCRIPTS))
 audio = importlib.import_module("system_settings_audio")
 network = importlib.import_module("system_settings_network")

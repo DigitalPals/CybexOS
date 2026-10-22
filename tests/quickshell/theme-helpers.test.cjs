@@ -15,7 +15,7 @@ const { shellDir, load } = require("./shell.cjs");
 const H = load("SettingsHelpers.js");
 const T = load("ThemeHelpers.js");
 const python = spawnSync("sh", ["-c", "command -v python3"], { encoding: "utf8" })
-    .stdout.trim() || "/usr/bin/python3";
+    .stdout.trim() || "python3";
 
 function read(relative) {
     return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));

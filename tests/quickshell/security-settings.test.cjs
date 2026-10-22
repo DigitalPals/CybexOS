@@ -7,7 +7,7 @@ const { shellDir, load } = require("./shell.cjs");
 
 // Settings > Security (docs/security.md): fingerprints and security keys as
 // alternatives to the password. The Python side is covered by
-// tests/security-settings.py; this holds the copy, the page's structure and
+// tests/nixos/test_security_settings.py; this holds the copy, the page's structure and
 // its place in Settings.
 
 const Security = load("SecurityHelpers.js");
@@ -68,7 +68,7 @@ test("a missing reader or key support is one short line, not empty controls", ()
     assert.match(Security.readerLine("none"), /^No fingerprint reader was found\.$/);
     assert.ok(Security.readerLine("unavailable"));
     assert.equal(Security.keyLine("ready"), "");
-    for (const state of ["missing", "authselect", "inactive"])
+    for (const state of ["missing", "inactive"])
         assert.match(Security.keyLine(state), /^[A-Z].*\.$/, state);
 
     const page = read("Settings/SecurityPage.qml");
@@ -84,13 +84,16 @@ test("the page has exactly the Fingerprint and Security keys groups", () => {
     const page = read("Settings/SecurityPage.qml");
     const groups = [...page.matchAll(/SettingsGroup \{\s*width: parent\.width\s*title: "([^"]+)"/g)].map(m => m[1]);
     assert.deepEqual(groups, ["Fingerprint", "Security keys"]);
-    // One switch: fingerprints for unlocking and authorising, shown once a
-    // finger is enrolled; everything else is an action.
+    // The NixOS authentication policy is read-only here. Enrolment remains an
+    // action; policy changes use a personal module and the staged lifecycle.
     const switches = [...page.matchAll(/SwitchRow \{[\s\S]*?label: "([^"]+)"/g)].map(m => m[1]);
-    assert.deepEqual(switches, ["Use fingerprint to unlock and authorise"]);
+    assert.deepEqual(switches, []);
     assert.match(page, /visible: page\.readerReady && page\.fingers\.length > 0\s*\n\s*label: "Use fingerprint/);
-    assert.match(page, /checked: page\.snapshot\.fingerprintAuth === true/);
-    assert.match(page, /page\.act\(\{ action: "fingerprint-auth", enabled: value \}\)/);
+    assert.match(page, /value: page\.snapshot\.fingerprintAuth === true \? "Enabled" : "Disabled"/);
+    assert.match(page, /hint: "Managed in \/etc\/nixos\/local"/);
+    assert.match(page, /cybexos\.authentication\.fingerprint[\s\S]*cybex update stage local[\s\S]*apply the reviewed change/);
+    assert.doesNotMatch(page, /action:\s*"fingerprint-auth"/,
+        "a read-only policy indicator cannot attempt direct authentication changes");
     for (const action of ["Add fingerprint", "Remove fingerprint", "Remove key"])
         assert.match(page, new RegExp(`text: "${action}"`), action);
     assert.match(page, /text: page\.addingKey \? "Waiting…" : "Add security key"/);

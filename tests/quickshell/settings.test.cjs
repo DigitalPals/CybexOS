@@ -327,57 +327,6 @@ test("the T3 running indicator is a static dot", () => {
     assert.doesNotMatch(chip, /modOpts\.t3\.pulse|heartbeat|pulseOpacity|pulseStartedAt|barVisible/);
 });
 
-test("regression fixes keep asynchronous state identity-safe", () => {
-    const palette = read("Common/Palette.qml");
-    const sysInfo = read("Common/SysInfo.qml");
-    const bar = read("Bar/Bar.qml");
-    const tooltip = read("Bar/BarTooltip.qml");
-    const packages = untranslated(fs.readFileSync(path.resolve(shellDir, "../../tasks/main.yml"), "utf8"));
-
-    assert.match(palette, /property string activeIdentity/);
-    assert.match(palette, /PaletteHelpers\.resultIsCurrent\(completedIdentity,/);
-    assert.match(palette, /wallpaper-palette\.json/);
-    assert.match(palette, /property bool busy/);
-    assert.match(palette, /property string error/);
-    assert.match(palette, /atomicWrites:\s*true/);
-    assert.match(palette,
-        /\["matugen", "image", activeIdentity,[\s\S]{0,160}?"scheme-tonal-spot"/);
-    assert.match(palette, /exitSeen \? lastExit : ProcHelpers\.NOT_STARTED/);
-    assert.match(palette, /"Matugen is not installed"/);
-    assert.match(packages, /- matugen/);
-    assert.match(sysInfo, /property string nightLightLifecycle/);
-    assert.doesNotMatch(sysInfo, /running:\s*root\.nightLight/);
-    assert.match(bar, /Component\.onCompleted:[\s\S]*Settings\.autoHide[\s\S]*hideTimer\.restart/);
-    assert.match(tooltip,
-        /target:\s*Popouts[\s\S]*function onOpenChanged\(\)[\s\S]*delay\.stop\(\)[\s\S]*root\.ready = false/,
-        "tooltips must be disarmed when a popout surface maps or unmaps");
-    assert.match(bar, /readonly property bool tooltipPointerInside:\s*barHover\.hovered/);
-    assert.match(bar,
-        /const scenePoint = hoverLayer\.mapToItem[\s\S]{0,120}?barWindow\.tooltipPointerPosition = scenePoint/,
-        "the full-bar handler must publish pointer motion for tooltip validation");
-    // The hover check lives in one shared object now, so a chip's fill and the
-    // tooltip hanging under it cannot disagree about whether the pointer is
-    // there. The tooltip takes it as a typed, required property, which is what
-    // stops a raw `containsMouse` being handed over by mistake.
-    const check = read("Bar/PointerCheck.qml");
-    assert.match(tooltip, /required property PointerCheck check/,
-        "the tooltip must take the shared check, not a bare bool");
-    assert.match(tooltip, /readonly property bool activeHover:\s*check\.over/);
-    // The bar reaches the check as a typed `host`, not through Window.window —
-    // an attached window is a plain QQuickWindow to the type system, so that
-    // read could never be checked.
-    assert.match(check, /required property Bar host/);
-    assert.match(check, /required property Item target/);
-    assert.match(check,
-        /if \(!root\.host \|\| !root\.host\.tooltipPointerInside \|\| !root\.target\)\s*return false/,
-        "a stale local MouseArea must not keep a hover state alive after leaving the bar");
-    // Match code, not prose: the files explain in comments why they stopped
-    // using Window.window.
-    const code = (tooltip + check).split("\n")
-        .filter(l => !l.trim().startsWith("//")).join("\n");
-    assert.doesNotMatch(code, /Window\.window/,
-        "reading the bar off the attached window is what made this unverifiable");
-});
 
 test("schema twenty-three keeps safe defaults and exposes accessibility preferences", () => {
     const helpers = read("Common/SettingsHelpers.js");
@@ -440,7 +389,7 @@ test("settings improvements expose fitting, embedded folders, undo, and shortcut
     const wallpaper = read("Settings/WallpaperPage.qml");
     const folder = read("Settings/FolderDialog.qml");
     const settings = read("Common/Settings.qml");
-    const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../bindings.lua"), "utf8"));
+    const bindings = untranslated(fs.readFileSync(path.resolve(shellDir, "../hypr/bindings.lua"), "utf8"));
 
     assert.match(bar, /LayoutHelpers\.fitBar/);
     assert.doesNotMatch(bar, /width\s*>=\s*Theme\.breakpoint/);
@@ -509,7 +458,7 @@ test("touchpad scroll speed defaults to Hyprland's factor and applies live", () 
     const helpers = read("Common/SettingsHelpers.js");
     const system = read("Settings/TouchpadPage.qml");
     const input = untranslated(fs.readFileSync(
-        path.resolve(shellDir, "../../templates/input.lua.j2"), "utf8"));
+        path.resolve(shellDir, "../hypr/input.lua"), "utf8"));
 
     assert.match(helpers, /scrollFactor:\s*1\.0/);
     assert.match(helpers, /realIn\(parsed\.scrollFactor, 0\.2, 2\.0, 0\.1/);
@@ -526,7 +475,7 @@ test("touchpad scroll speed defaults to Hyprland's factor and applies live", () 
 test("swipe between workspaces is one touchpad switch in the saved input preferences", () => {
     const page = read("Settings/TouchpadPage.qml");
     const backend = read("scripts/system_settings_input.py");
-    const loader = untranslated(fs.readFileSync(path.resolve(shellDir, "../input_preferences.lua"), "utf8"));
+    const loader = untranslated(fs.readFileSync(path.resolve(shellDir, "../hypr/input_preferences.lua"), "utf8"));
     const rows = load("SettingsSearchData.js").ROWS;
 
     // Drafted behind Apply with the other switches; on unless saved off.

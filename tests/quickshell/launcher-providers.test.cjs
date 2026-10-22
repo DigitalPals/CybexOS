@@ -196,24 +196,24 @@ test("the catalogue groups every action under one known verb, in verb order", ()
 test("the catalogue wires every cross-package command exactly as named", () => {
     const byId = Object.fromEntries(P.BUILTIN_ACTIONS.map(action => [action.id, action]));
     const commands = {
-        "webapp-install": ["~/.local/bin/cybexos-webapp", "install", "--notify", "--url", "{argument}"],
-        "webapp-remove": ["~/.local/bin/cybexos-webapp", "remove", "--notify", "{argument}"],
-        "theme-install": ["~/.local/bin/cybex", "theme", "install", "{argument}"],
-        "ai-agent-choose": ["~/.local/bin/cybex", "agent", "--window", "--pick"],
-        "ai-agent-launch": ["~/.local/bin/cybex", "agent", "--window"],
-        "game-mode": ["~/.local/bin/game-mode", "toggle"],
-        "updates-check": ["~/.local/bin/cybexos-runtime", "ipc", "updates", "check"],
-        "updates-open": ["~/.local/bin/cybexos-runtime", "ipc", "updates", "open"],
-        "screenshot-region": ["~/.local/bin/screenshot", "region"],
-        "screenshot-fullscreen": ["~/.local/bin/screenshot", "fullscreen"],
-        "screenshot-scroll": ["~/.local/bin/screenshot", "scroll"],
-        "screen-record": ["~/.local/bin/screen-record"],
-        "screen-record-webcam": ["~/.local/bin/screen-record", "--webcam"],
-        "color-picker": ["~/.local/bin/color-picker"],
-        "screen-ocr": ["~/.local/bin/screen-ocr"],
-        "backup-now": ["~/.local/bin/cybex", "backup", "now"],
-        "overview": ["~/.local/bin/cybexos-runtime", "ipc", "overview", "open"],
-        "report": ["~/.local/bin/cybex", "report"]
+        "webapp-install": ["cybexos-webapp", "install", "--notify", "--url", "{argument}"],
+        "webapp-remove": ["cybexos-webapp", "remove", "--notify", "{argument}"],
+        "theme-install": ["cybex", "theme", "install", "{argument}"],
+        "ai-agent-choose": ["cybex", "agent", "--window", "--pick"],
+        "ai-agent-launch": ["cybex", "agent", "--window"],
+        "game-mode": ["game-mode", "toggle"],
+        "updates-check": ["cybexos-runtime", "ipc", "updates", "check"],
+        "updates-open": ["cybexos-runtime", "ipc", "updates", "open"],
+        "screenshot-region": ["screenshot", "region"],
+        "screenshot-fullscreen": ["screenshot", "fullscreen"],
+        "screenshot-scroll": ["screenshot", "scroll"],
+        "screen-record": ["screen-record"],
+        "screen-record-webcam": ["screen-record", "--webcam"],
+        "color-picker": ["color-picker"],
+        "screen-ocr": ["screen-ocr"],
+        "backup-now": ["cybex", "backup", "now"],
+        "overview": ["cybexos-runtime", "ipc", "overview", "open"],
+        "report": ["cybex", "report"]
     };
     for (const [id, command] of Object.entries(commands))
         assert.deepEqual(byId[id] && byId[id].command, command, id);
@@ -231,10 +231,10 @@ test("the catalogue wires every cross-package command exactly as named", () => {
     // Every capture waits for the launcher to leave the screen.
     for (const action of P.BUILTIN_ACTIONS.filter(action => action.verb === "capture"))
         assert.equal(action.settle, true, action.id);
-    // Commands resolve from ~/.local/bin, where both installation paths put
-    // the helpers; the shell service's PATH need not include it.
+    // Commands resolve from the system PATH, where NixOS installs
+    // the immutable wrappers; personal actions can use explicit personal paths.
     for (const action of P.BUILTIN_ACTIONS.filter(action => action.command))
-        assert.match(action.command[0], /^~\/\.local\/bin\/[a-z-]+$/, action.id);
+        assert.match(action.command[0], /^[a-z][a-z-]+$/, action.id);
 });
 
 test("factory reset is never one launcher Enter away", () => {
@@ -339,7 +339,7 @@ test("the argument reaches the command as one argv element, never spliced", () =
     const install = P.BUILTIN_ACTIONS.find(action => action.id === "webapp-install");
     const hostile = "https://example.com/a b;$(id)`x`";
     assert.deepEqual(P.expandCommand(install.command, "/home/alex", hostile), [
-        "/home/alex/.local/bin/cybexos-webapp", "install", "--notify", "--url", hostile
+        "cybexos-webapp", "install", "--notify", "--url", hostile
     ]);
     assert.deepEqual(P.expandCommand(install.command, "/home/alex", ""), [],
         "a missing argument runs nothing");

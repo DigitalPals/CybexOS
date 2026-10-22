@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { shellDir } = require("./shell.cjs");
 
-const template = path.resolve(shellDir, "../../templates/hyprlock.conf.j2");
+const template = path.resolve(shellDir, "../hypr/hyprlock.conf");
 
 test("the lock screen clock does not spawn a process every second", () => {
     const config = fs.readFileSync(template, "utf8");

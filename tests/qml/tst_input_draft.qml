@@ -1,6 +1,6 @@
 import QtQuick
 import QtTest
-import "../../roles/desktop/files/quickshell/Settings/InputDraft.js" as Draft
+import "../../desktop/quickshell/Settings/InputDraft.js" as Draft
 
 TestCase {
     name: "NativeInputDraft"

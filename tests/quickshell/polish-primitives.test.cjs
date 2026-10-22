@@ -165,9 +165,9 @@ test("menubar icons keep bright system ink and shared monochrome brands", () => 
         "the launcher keeps the shared resting icon tone");
     const control = read("Bar/Modules/Control.qml");
     assert.match(control,
-        /BarChip\s*\{[\s\S]{0,220}?panelName:\s*"control"[\s\S]{0,700}?name:\s*"fedora"/,
-        "the Control Center widget must use Fedora's bundled vector");
-    assert.match(control, /BarBrandIcon\s*\{[\s\S]{0,180}?name:\s*"fedora"/);
+        /BarChip\s*\{[\s\S]{0,220}?panelName:\s*"control"[\s\S]{0,700}?name:\s*"cybexos"/,
+        "the Control Center widget must use CybexOS's bundled vector");
+    assert.match(control, /BarBrandIcon\s*\{[\s\S]{0,180}?name:\s*"cybexos"/);
     assert.match(control,
         /highlighted:\s*controlButton\.held \|\| controlButton\.hovered/);
     assert.match(updates,

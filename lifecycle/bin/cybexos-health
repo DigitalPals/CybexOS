@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+import os
+from pathlib import Path
+import pwd
+import re
+import subprocess
+import sys
+from cybexos.common import read
+from cybexos.health import desktop, system_services, user_services
+
+
+def run(*argv):
+    return subprocess.check_output(argv, text=True, stderr=subprocess.STDOUT).strip()
+
+
+try:
+    mode = sys.argv[1]
+    if mode == 'system':
+        system_services(run, read('/etc/cybexos/health-services.json'))
+        if not Path('/run/booted-system').exists():
+            raise ValueError('Booted system identity missing')
+    else:
+        sessions = []
+        for directory in Path('/run/user').glob('[0-9]*'):
+            try:
+                user = pwd.getpwuid(int(directory.name))
+            except KeyError:
+                continue
+            prefix = ['runuser', '-u', user.pw_name, '--', 'env', f'XDG_RUNTIME_DIR={directory}',
+                      f'DBUS_SESSION_BUS_ADDRESS=unix:path={directory}/bus']
+            try:
+                if run(*prefix, 'systemctl', '--user', 'is-active', 'hyprland-session.target') != 'active':
+                    continue
+            except subprocess.CalledProcessError:
+                continue
+            sessions.append(user.pw_name)
+            user_services(prefix, run, read('/etc/cybexos/health-services.json'))
+            guard = os.environ['CYBEXOS_UPDATER_SHARE'] + '/lib/quickshell-live'
+            expected = read(Path(os.environ['CYBEXOS_UPDATER_SHARE']) / 'desktop-runtime.json') if mode == 'desktop-required' else None
+            desktop(prefix, run, guard, expected)
+        if not sessions and mode == 'desktop-required':
+            raise ValueError('No authenticated CybexOS desktop session. Sign in before confirming.')
+except Exception as error:
+    print(str(error), file=sys.stderr)
+    sys.exit(1)

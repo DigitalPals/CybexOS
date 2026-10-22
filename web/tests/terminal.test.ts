@@ -56,13 +56,13 @@ describe('simulated terminal', () => {
 });
 
 
-describe('Fedora system commands', () => {
-  it('renders the Fedora overview based on the parsed command, including quotes, whitespace, and options', () => {
-    for (const command of ['fastfetch', '  fastfetch  ', 'fastfetch --logo fedora', 'neofetch', '"fastfetch"']) {
+describe('CybexOS system commands', () => {
+  it('renders the CybexOS overview based on the parsed command, including quotes, whitespace, and options', () => {
+    for (const command of ['fastfetch', '  fastfetch  ', 'fastfetch --logo cybexos', 'neofetch', '"fastfetch"']) {
       const result = runCommand(command);
       expect(result.presentation).toBe('fastfetch');
       expect(result.output).toBe(SYSTEM_INFO);
-      expect(result.output).toContain('Fedora Linux 44 x86_64');
+      expect(result.output).toContain('NixOS 26.05 x86_64');
       expect(result.output).toContain('Hyprland (Wayland)');
       expect(result.output).toContain('Demo system information');
     }
@@ -81,7 +81,7 @@ describe('Fedora system commands', () => {
     expect(runCommand('uptime').output).toContain('42 min');
     expect(runCommand('free -h').output).toContain('3.24Gi');
     expect(runCommand('df -h').output).toContain('Demo system information');
-    expect(runCommand('dnf install fish').output).toContain('simulated terminal');
+    expect(runCommand('nix shell nixpkgs#fish').output).toContain('simulated terminal');
   });
 });
 

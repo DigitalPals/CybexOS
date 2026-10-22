@@ -1,9 +1,9 @@
 import QtQuick
 import QtTest
-import "../../roles/desktop/files/quickshell/Common/Format.js" as Format
-import "../../roles/desktop/files/quickshell/Common/LayoutHelpers.js" as Layout
-import "../../roles/desktop/files/quickshell/Common/SysInfoHelpers.js" as SysInfo
-import "../../roles/desktop/files/quickshell/Common/T3CodeHelpers.js" as T3
+import "../../desktop/quickshell/Common/Format.js" as Format
+import "../../desktop/quickshell/Common/LayoutHelpers.js" as Layout
+import "../../desktop/quickshell/Common/SysInfoHelpers.js" as SysInfo
+import "../../desktop/quickshell/Common/T3CodeHelpers.js" as T3
 
 Item {
     TestCase {

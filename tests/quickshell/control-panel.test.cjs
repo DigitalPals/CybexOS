@@ -9,7 +9,7 @@ function read(relative) {
     return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
-test("the Fedora widget owns Control Center through the normal module pipeline", () => {
+test("the CybexOS widget owns Control Center through the normal module pipeline", () => {
     const bar = read("Bar/Bar.qml");
     const registry = load("PanelRegistryData.js");
     const button = read("Bar/Modules/Control.qml");
@@ -22,12 +22,12 @@ test("the Fedora widget owns Control Center through the normal module pipeline",
     assert.match(button, /panelName:\s*"control"/);
     assert.match(button, /tooltip:\s*"Control Center"/);
     assert.match(button, /BarBrandIcon\s*\{/);
-    assert.match(button, /name:\s*"fedora"/);
+    assert.match(button, /name:\s*"cybexos"/);
     assert.match(button, /width:\s*Theme\.barIconSize/);
     assert.match(button, /height:\s*Theme\.barIconSize/);
     assert.match(button,
         /highlighted:\s*controlButton\.held \|\| controlButton\.hovered/,
-        "the Fedora mark must switch to its exact white SVG on hover");
+        "the CybexOS mark must switch to its exact white SVG on hover");
     assert.equal(registry.byName("control").moduleId, "control",
         "Control Center must follow its movable widget");
 });
@@ -79,7 +79,7 @@ test("the Control Panel exposes five equal session actions with guarded destruct
 test("session actions use the installed helper and report observed failures", () => {
     const session = read("Common/Session.qml");
     assert.match(session,
-        /sessionAction\.command = \["\/usr\/local\/libexec\/cybexos-session-action", action\]/);
+        /sessionAction\.command = \["cybexos-session-action", action\]/);
     assert.match(session, /readonly property bool actionBusy:\s*sessionAction\.running/);
     assert.match(session, /Process \{[\s\S]*id:\s*sessionAction/);
     assert.match(session, /ProcHelpers\.NOT_STARTED/);
@@ -113,17 +113,4 @@ test("launcher and session power compatibility routes toggle control", () => {
     assert.match(shell,
         /function close\(\): void \{[\s\S]*Session\.closeAll\(\);[\s\S]*Popouts\.currentName === "control"[\s\S]*Popouts\.close\(\);/,
         "session close must dismiss the panel opened by session power");
-});
-
-test("the full-screen power overlay is retired from source and deployment", () => {
-    assert.equal(fs.existsSync(path.join(shellDir, "PowerMenu.qml")), false);
-    assert.doesNotMatch(read("qmldir"), /\bPowerMenu\b/);
-    assert.doesNotMatch(read("shell.qml"), /\bPowerMenu\s*\{/);
-
-    const tasks = untranslated(fs.readFileSync(path.resolve(shellDir,
-        "../../../desktop/tasks/main.yml"), "utf8"));
-    assert.match(tasks, /Remove files and links that are stale or unsafe copy destinations/,
-        "deploys must remove every stale destination-only file");
-    assert.match(tasks, /--exclude-standard/,
-        "the manifest must include intended new source files but exclude ignored caches");
 });

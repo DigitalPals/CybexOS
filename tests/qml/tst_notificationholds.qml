@@ -1,7 +1,7 @@
 import QtQuick
 import QtTest
-import "../../roles/desktop/files/quickshell/Common/NotifHolds.js" as Holds
-import "../../roles/desktop/files/quickshell/Common/NotifPolicy.js" as Policy
+import "../../desktop/quickshell/Common/NotifHolds.js" as Holds
+import "../../desktop/quickshell/Common/NotifPolicy.js" as Policy
 
 // Exercise real Qt binding evaluation and delegate destruction with the
 // production queues. The parent's matrix covers the actual PanelWindow,

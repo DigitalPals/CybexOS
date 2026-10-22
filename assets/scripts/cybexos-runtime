@@ -5,7 +5,7 @@ umask 077
 
 config_root=${XDG_CONFIG_HOME:-$HOME/.config}/cybexos
 data_root=${XDG_DATA_HOME:-$HOME/.local/share}/cybexos
-runtime_root=$data_root/runtime
+runtime_root=/etc/cybexos/runtime
 dev_source_file=$config_root/dev-source
 
 usage() {
@@ -43,10 +43,10 @@ validate_checkout() {
   top=$(git -C "$canonical" rev-parse --show-toplevel 2>/dev/null) || return 1
   top=$(readlink -f -- "$top") || return 1
   [[ $top == "$canonical" ]] || return 1
-  [[ -f $canonical/roles/desktop/files/quickshell/shell.qml
-      && -f $canonical/roles/desktop/files/hyprland.lua
-      && -f $canonical/roles/desktop/files/bindings.lua
-      && -f $canonical/roles/desktop/files/autostart.lua ]] || return 1
+  [[ -f $canonical/desktop/quickshell/shell.qml
+      && -f $canonical/desktop/hypr/hyprland.lua
+      && -f $canonical/desktop/hypr/bindings.lua
+      && -f $canonical/desktop/hypr/autostart.lua ]] || return 1
   printf '%s\n' "$canonical"
 }
 
@@ -75,18 +75,21 @@ active_source() {
 }
 
 runtime_path() {
-  local kind=$1 source
+  local kind=$1 source selected
   case $kind in
     quickshell)
       if source=$(active_source); then
-        printf '%s/roles/desktop/files/quickshell\n' "$source"
+        selected=$source/desktop/quickshell
       else
-        printf '%s/quickshell\n' "$runtime_root"
+        selected=$runtime_root/quickshell
       fi
+      # Quickshell hashes the supplied path for IPC without canonicalizing
+      # aliases. Launchers, recovery and bundled helpers must use one identity.
+      readlink -f -- "$selected"
       ;;
     hypr-source)
       if source=$(active_source); then
-        printf '%s/roles/desktop/files\n' "$source"
+        printf '%s/desktop/hypr\n' "$source"
       else
         printf '%s/hypr\n' "$runtime_root"
       fi
@@ -178,9 +181,7 @@ dev_command() {
 render_hypridle_config() {
   local vendor=$1 script output_dir output temporary session_action
   script=$(runtime_path quickshell)/scripts/hypridle-config.py
-  session_action=/usr/local/libexec/cybexos-session-action
-  [[ -x $session_action || ! -x /usr/libexec/cybexos-session-action ]] ||
-    session_action=/usr/libexec/cybexos-session-action
+  session_action=$(command -v cybexos-session-action)
   output_dir=${XDG_RUNTIME_DIR:-}/cybexos
   output=$output_dir/hypridle.conf
   if [[ -z ${XDG_RUNTIME_DIR:-} || ! -f $script ]] ||
@@ -227,16 +228,16 @@ registered_security_key() {
   return 1
 }
 
-# Adds the sign-in factors to a CybexOS lock screen (docs/security.md): the
+# Adds the sign-in factors to a CybexOS lock screen (docs/hardware-security.md): the
 # cybexos-lock PAM service, which has no pam_fprintd step and tries a
 # registered security key before the password, and hyprlock's own fprintd
-# check beside it while authselect offers fingerprints. Prints the rendered
+# check beside it while the NixOS module enables fingerprints. Prints the rendered
 # file, or the input file when that PAM service is absent: a lock naming a
 # missing service would refuse every password, and hyprlock's default service
 # already asks fprintd itself.
 render_hyprlock_config() {
   local selected=$1 lock_pam=/etc/pam.d/cybexos-lock
-  local authselect_conf=/etc/authselect/authselect.conf
+  local fingerprint_policy=/etc/cybexos/fingerprint-enabled
   local output_dir output temporary fingerprint=false keys=false
   output_dir=${XDG_RUNTIME_DIR:-}/cybexos
   output=$output_dir/hyprlock.conf
@@ -246,7 +247,7 @@ render_hyprlock_config() {
     printf '%s\n' "$selected"
     return 0
   fi
-  grep -qx 'with-fingerprint' "$authselect_conf" 2>/dev/null && fingerprint=true
+  test -e "$fingerprint_policy" && fingerprint=true
   registered_security_key && keys=true
   if {
       if [[ $keys == true ]]; then
@@ -262,7 +263,7 @@ render_hyprlock_config() {
       fi
     } >"$temporary" && cat >>"$temporary" <<EOF
 
-# Added by cybexos-runtime at lock time (docs/security.md).
+# Added by cybexos-runtime at lock time (docs/hardware-security.md).
 auth {
   pam {
     module = cybexos-lock
@@ -316,7 +317,7 @@ exec_runtime() {
       if [[ -f $selected/scripts/shell-recovery.py ]]; then
         exec python3 "$selected/scripts/shell-recovery.py" run "$selected"
       fi
-      exec /usr/bin/qs -p "$selected"
+      exec qs -p "$selected"
       ;;
     hypridle|hyprlock)
       user_config=$config_root/hypr/$kind.conf
@@ -339,9 +340,9 @@ exec_runtime() {
         selected=$(render_hyprlock_config "$selected")
       fi
       if [[ $kind == hypridle ]]; then
-        exec /usr/bin/hypridle --config "$selected"
+        exec hypridle --config "$selected"
       else
-        exec /usr/bin/hyprlock --config "$selected" \
+        exec hyprlock --config "$selected" \
           --immediate-render --no-fade-in --quiet
       fi
       ;;

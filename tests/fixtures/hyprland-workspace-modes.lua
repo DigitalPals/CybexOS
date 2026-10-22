@@ -1,4 +1,4 @@
-package.path = "roles/desktop/files/?.lua;" .. package.path
+package.path = "desktop/hypr/?.lua;" .. package.path
 local data = require("workspace_state")
 local model = require("workspace_model")
 local floating = require("workspace_layouts")
@@ -120,7 +120,7 @@ end
 hl = { dsp = { window = {}, workspace = {} }, plugin = {},
   get_loaded_plugins = function() return world.plugin_loaded and { { name = world.plugin_name or "hyprbars" } } or {} end }
 function hl.plugin.load(path)
-  assert(path == "/usr/lib64/cybexos/titlebars.so", "unexpected plugin path")
+  assert(path == "/etc/cybexos/titlebars.so", "unexpected plugin path")
   world.plugin_declarations = world.plugin_declarations + 1
 end
 setmetatable(hl.plugin, { __index = function(_, key)
@@ -747,7 +747,7 @@ ws.set_default_layout("floating")
 -- Installed plugins are declared on each parse, never on event/runtime edits.
 local native_open = io.open
 io.open = function(path, mode)
-  if path == "/usr/lib64/cybexos/titlebars.so" then return { close = function() end } end
+  if path == "/etc/cybexos/titlebars.so" then return { close = function() end } end
   return native_open(path, mode)
 end
 ws = load()
@@ -832,6 +832,29 @@ check(not ws.snapshot.capabilities.scrolling, "missing scrolling capability was 
 fails(function() ws.set_layout(1, "scrolling") end, "unavailable native layout was offered")
 ws.cycle_layout(1)
 check(snapshot_row(ws, 1).layout ~= "scrolling", "cycle selected unsupported scrolling")
+-- The native verifier emits config.reloaded without an event loop. Keep all
+-- declarations and the initial snapshot, but never call its unavailable timer.
+local arguments = "Hyprland\0--verify-config\0"
+io.open = function(path, mode)
+  if path == "/proc/self/cmdline" then
+    return { read = function() return arguments end, close = function() end }
+  end
+  return native_open(path, mode)
+end
+ws = load()
+check(ws.snapshot and world.listeners["config.reloaded"], "verification skipped workspace declarations")
+local native_timer = hl.timer
+hl.timer = function() error("verifier has no event loop") end
+emit("config.reloaded"); emit("config.props_refreshed")
+check(ws.snapshot ~= nil, "verification lost its initial refresh")
+hl.timer = native_timer
+arguments = "Hyprland\0--verify-config-extra\0"
+ws = load()
+local timer_calls = 0
+hl.timer = function(...) timer_calls = timer_calls + 1; return native_timer(...) end
+emit("config.reloaded")
+check(timer_calls > 0, "normal runtime scheduling was disabled by a partial flag match")
+io.open, hl.timer = native_open, native_timer
 -- Strict bounded data input, never execute malformed personal state.
 local preferences_path = ws.path
 local file = assert(io.open(preferences_path, "wb")); file:write('{"v":1,"mode":"shared","mode":"per-monitor"}'); file:close()

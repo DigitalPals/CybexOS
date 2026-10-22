@@ -70,7 +70,7 @@ function dataKeys() {
         add(match[1]);
     add("move");
     // Shortcut sheet rows come from bindings.lua descriptions, "Group: Label".
-    const bindings = fs.readFileSync(path.join(shellDir, "../bindings.lua"), "utf8");
+    const bindings = fs.readFileSync(path.join(shellDir, "../hypr/bindings.lua"), "utf8");
     for (const match of bindings.matchAll(/description = "([^":]+): ([^"]+)"/g)) {
         add(match[1]);
         // Numbered labels ("Switch to workspace " .. i) are composed, not shown as is.

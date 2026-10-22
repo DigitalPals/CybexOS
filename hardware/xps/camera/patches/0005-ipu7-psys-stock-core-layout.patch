@@ -1,0 +1,79 @@
+From 9a37ac0b0dd9f7ab751e4456cdb728ee8f03a7ed Mon Sep 17 00:00:00 2001
+From: CybexOS <cybexos@localhost>
+Date: Wed, 19 Aug 2026 12:15:00 +0200
+Subject: [PATCH] media: intel/ipu7: build PSYS for the stock 7.1 core ABI
+
+Linux 7.1 ships the IPU7 base and ISYS drivers in-tree. Their ipu7_device
+does not contain the optional debugfs directory pointer added by Intel's
+later out-of-tree debugfs patch. Retaining that member shifts hw_ver and
+ipu7_bus_ready_to_probe relative to the stock core's allocation, causing
+PSYS to defer forever.
+
+For kernels which already provide base and ISYS, compile only PSYS, match
+the in-tree structure layout, and give PSYS an independent debugfs root.
+NixOS's base and ISYS modules remain unmodified and are not installed by
+this native module package.
+---
+diff --git a/drivers/media/pci/intel/ipu7/Makefile b/drivers/media/pci/intel/ipu7/Makefile
+index 0750ef9..95a6c32 100644
+--- a/drivers/media/pci/intel/ipu7/Makefile
++++ b/drivers/media/pci/intel/ipu7/Makefile
+@@ -10,6 +10,7 @@ endif
+ endif
+ endif
+
++ifndef IPU7_PSYS_ONLY
+ intel-ipu7-objs				+= ipu7.o \
+ 					   ipu7-bus.o \
+ 					   ipu7-dma.o \
+@@ -32,6 +33,7 @@ ifdef CONFIG_VIDEO_INTEL_IPU7_MGC
+ intel-ipu7-isys-objs                    += ipu7-isys-tpg.o
+ endif
+ obj-$(CONFIG_VIDEO_INTEL_IPU7)		+= intel-ipu7-isys.o
++endif
+
+ obj-$(CONFIG_VIDEO_INTEL_IPU7)		+= psys/
+
+diff --git a/drivers/media/pci/intel/ipu7/ipu7.h b/drivers/media/pci/intel/ipu7/ipu7.h
+index f780a7e..3b76d0d 100644
+--- a/drivers/media/pci/intel/ipu7/ipu7.h
++++ b/drivers/media/pci/intel/ipu7/ipu7.h
+@@ -81,9 +81,6 @@ struct ipu7_device {
+
+ 	void __iomem *base;
+ 	void __iomem *pb_base;
+-#ifdef CONFIG_DEBUG_FS
+-	struct dentry *ipu7_dir;
+-#endif
+ 	u8 hw_ver;
+ 	bool ipc_reinit;
+ 	bool secure_mode;
+diff --git a/drivers/media/pci/intel/ipu7/psys/ipu-psys.c b/drivers/media/pci/intel/ipu7/psys/ipu-psys.c
+index d175e4e..0671a22 100644
+--- a/drivers/media/pci/intel/ipu7/psys/ipu-psys.c
++++ b/drivers/media/pci/intel/ipu7/psys/ipu-psys.c
+@@ -1310,7 +1310,7 @@ static int ipu7_psys_init_debugfs(struct ipu7_psys *psys)
+ 	struct dentry *file;
+ 	struct dentry *dir;
+
+-	dir = debugfs_create_dir("psys", psys->adev->isp->ipu7_dir);
++	dir = debugfs_create_dir("intel-ipu7-psys", NULL);
+ 	if (IS_ERR(dir))
+ 		return -ENOMEM;
+
+@@ -1456,11 +1456,9 @@ static void ipu7_psys_remove(struct auxiliary_device *auxdev)
+ {
+ 	struct ipu7_psys *psys = dev_get_drvdata(&auxdev->dev);
+ 	struct device *dev = &auxdev->dev;
+-#ifdef CONFIG_DEBUG_FS
+-	struct ipu7_device *isp = psys->adev->isp;
+
+-	if (isp->ipu7_dir)
+-		debugfs_remove_recursive(psys->debugfsdir);
++#ifdef CONFIG_DEBUG_FS
++	debugfs_remove_recursive(psys->debugfsdir);
+ #endif
+
+ 	mutex_lock(&ipu7_psys_mutex);
+--
+2.50.1

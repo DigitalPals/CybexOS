@@ -1,12 +1,9 @@
 {
   "schema": 1,
-  "publication": "PUBLIC",
-  "reviews": [],
-  "unresolved": {
-    "source": "Owner review of third-party artwork, code notices, Plymouth, wordmarks and trademark use is required for the actual archive.",
-    "desktop-rpm": "Owner review of the actual RPM payload, artwork, third-party notices and marks is required.",
-    "offline-rpm": "Vendor redistribution grants, SDK acceptance, font obligations and corresponding source are unresolved; inspect the actual payload.",
-    "iso": "Actual RPM/Flatpak inventories, firmware, proprietary payloads, codec patents, OpenH264, corresponding source and Fedora/vendor trademarks require owner/legal decisions.",
-    "web": "Review actual compiled web payload, dependency/font notices, wordmarks and provider/Fedora trademark use. Original wallpaper provenance does not resolve these decisions."
+  "status": "owner-review-required",
+  "scopes": {
+    "iso": "Review actual Nix closure, firmware, codecs, proprietary payloads, fonts, artwork, third-party notices and corresponding-source obligations.",
+    "source": "Review source/license notices and bundled extension redistribution.",
+    "web": "Review compiled web dependencies, fonts, marks and artwork."
   }
 }

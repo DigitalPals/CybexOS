@@ -1,64 +1,67 @@
 ---
 name: cybexos
-description: Operate and customize an installed CybexOS Hyprland/Quickshell workstation. Use for CybexOS diagnostics and commands, personal widgets, shell or bar settings, managed desktop changes, screenshots, recording, OCR, reminders, or LocalSend; not for unrelated Fedora systems.
+description: Customize or maintain a CybexOS NixOS Hyprland/Quickshell desktop, including personal packages, services, VPNs, widgets, settings, staged updates and recovery. Use on supported CybexOS installations; not for unrelated NixOS hosts.
 ---
 
 # CybexOS
 
-Use this skill for an installed [CybexOS](https://github.com/DigitalPals/CybexOS)
-desktop (Cybex Opinionated System). Codex can invoke it as `$cybexos`; Claude
-Code exposes the same skill as `/cybexos`. Its description also supports
-automatic selection.
+Read `/etc/os-release` and `/etc/cybexos/release.json` before making changes.
+The supported machine configuration is `/etc/nixos/flake.nix` and its
+`flake.lock`; `/etc/nixos` is the machine-owned working-configuration symlink.
+Read its modules and applicable repository instructions. A checkout is vendor
+source, not the personal configuration of the running desktop.
 
-## Identify the installation
+Choose the owner before editing:
 
-Check `rpm -q cybexos-desktop` first. On ISO installations, packaged vendor
-files are under `/usr/share/cybexos`; the user's
-`~/.local/share/cybexos/runtime` is a compatibility symlink to the packaged
-runtime. These systems do not use `~/.local/share/cybexos/current`.
+- Vendor: `/nix/store`, `/etc/cybexos/runtime` and
+  `/run/current-system/sw/share/cybexos`. Inspect read-only. Personal changes
+  never require editing these files or forking CybexOS.
+- Machine/personal declarations: `/etc/nixos/local/*.nix`, imported by
+  `local/default.nix`. Add packages, services and VPN definitions here.
+  Normal Nix definitions override vendor `mkDefault` values. Preserve unrelated
+  declarations and inputs; do not replace entire files with a small example.
+- Desktop preferences: `~/.config/cybexos/shell.json`, `displays.json` and
+  `hypr/user.lua`. Preferences apply without rebuilding the operating system.
+  Read [Quickshell settings](references/quickshell-settings.md) before edits.
+- Plugins: personal code, preferences, placement and data are separate from
+  the vendor runtime. Read [User widgets](references/user-widgets.md), use the
+  API 1 contract and `cybex plugin` for native or Omarchy plugins. Personal QML
+  must not import private shell types. Plugins are trusted code, not sandboxed.
+- Secrets/state: `/var/lib/cybexos/secrets` (root `0700`, files `0600`),
+  persistent service directories, and the person's home. Use `privateKeyFile`,
+  `LoadCredential` or the service's documented runtime secret API. Never put
+  secret values or `builtins.readFile` of a secret in a flake, Nix string,
+  source archive, command argument, log, or public repository.
 
-If the desktop RPM is absent, check whether this is a source-checkout
-installation. Its active release is selected by
-`~/.local/share/cybexos/current`; inspect it read-only for diagnostics and
-schemas. Do not assume a missing RPM means an incomplete installation.
+For packages, services or a VPN, read
+[Personal declarations](references/managed-configuration.md). NetworkManager
+profiles and credentials may instead use its persistent system D-Bus APIs;
+do not copy a credential into a Nix declaration.
 
-## Choose the ownership layer
+Preview a requested system change through `cybex update stage local`. This
+builds the complete configuration and checks the candidate desktop. Inspect
+`cybex update status`, including actual package changes and errors. Apply only
+the reviewed `transaction` and `reviewToken` using
+`cybex update apply TRANSACTION REVIEW_TOKEN`. An authorized request to make
+and apply a customization covers this workflow; a diagnostic request does not.
+Never substitute a direct `nixos-rebuild switch` or manual lock refresh for the
+supported lifecycle. Explain required administrator authentication.
 
-- User shell preferences belong in `~/.config/cybexos/shell.json`. Read
-  [Quickshell settings](references/quickshell-settings.md) before editing it.
-- Personal bar widgets belong in user-owned plugin packages. Read
-  [User widgets](references/user-widgets.md); use the versioned plugin API and
-  `cybex plugin` commands.
-- Personal Hyprland changes belong in `~/.config/cybexos/hypr/user.lua`.
-- Changes to distro defaults, built-in Quickshell code, services, packages,
-  and other vendor behavior belong in a writable source checkout. Read
-  [Managed configuration](references/managed-configuration.md).
+For updates, select `upstream`, `cybexos` or `both` explicitly. Personal inputs
+are updated only on a separate explicit request. A combined failure offers an
+explicit upstream-only retry retaining installed CybexOS; never remove modules
+or widgets to make a build pass. Keep `system.stateVersion` unchanged. Read
+[Commands and recovery](references/commands.md) when applying or recovering.
 
-For supported operator commands and desktop actions, read
-[Commands and desktop helpers](references/commands.md).
+All live Quickshell tests must source the installed
+`/run/current-system/sw/share/cybexos/lib/quickshell-live` and run `qs_live_begin`
+and `qs_live_end`. In a checkout use `tests/lib/quickshell-live`. The managed
+service's MainPID must be the sole `qs` PID and its current journal must be
+clean. Never use `pkill qs` or launch a second menubar. Preview personal plugin
+code in an isolated test environment, or use the managed service under these
+guards when the user has authorized a live test.
 
-## Boundaries
-
-- Never edit packaged files under `/usr/share/cybexos` or files below the
-  source installation's `~/.local/share/cybexos/current` or
-  `~/.local/share/cybexos/runtime` directly.
-- Do not treat `cybex repair` as a way to deploy checkout changes. On ISO
-  installations it reapplies the policy bundled with the installed RPM; make
-  vendor changes in source, rebuild/update the desktop RPM, and then use the
-  supported package update path.
-- Never add personal plugin IDs or settings to `shell.json`'s built-in `mods`
-  or `modOpts`. Preserve plugin packages, preferences, and state across
-  updates and rollbacks.
-- Preserve unrelated checkout changes. Read every applicable `AGENTS.md`
-  before modifying or testing a checkout.
-- Require explicit user intent before reconfiguration, updates, uninstall,
-  cancellation, reboot, shutdown, reset, package removal, or another
-  destructive operation. A diagnostic request authorizes inspection, not a
-  repair or upgrade.
-- Never use `pkill qs`. Every live Quickshell check must use the checkout's
-  `tests/lib/quickshell-live` start and end functions, including their PID,
-  service, and current-invocation journal checks.
-
-Prefer the least invasive diagnostic that answers the request. Report what was
-observed, what was changed, the verification performed, and anything that
-still needs manual confirmation.
+Report what changed, the preview/build and health results, persistent data
+impact, and any required user-selected restart. Never reboot without an
+explicit preference or instruction. Generation rollback restores system code
+and configuration; it does not roll back credentials or application databases.

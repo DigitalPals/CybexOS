@@ -63,7 +63,7 @@ host's HTTPS reverse proxy or use the Sites build.
 
 ## Explore the desktop
 
-The welcome screen follows the installed Fedora desktop: a centered window,
+The welcome screen follows the installed CybexOS desktop: a centered window,
 Cybex wordmark, wallpaper previews, and a Settings action. Choosing a wallpaper
 also applies its matching accent and saves both in this browser. **Get started**
 closes the welcome; reopen it from Applications whenever needed.
@@ -71,7 +71,7 @@ closes the welcome; reopen it from Applications whenever needed.
 Click Applications to open apps or the workspace numbers to switch desktops.
 The clock shows time first and opens an attached day sheet with a week strip,
 month navigation, and the browser's time zone. Its time follows the 12/24-hour
-preference. The Fedora mark opens the control drawer, attached to the right
+preference. The CybexOS mark opens the control drawer, attached to the right
 screen edge. Sound, Network, Bluetooth, Power, and Notifications glyphs open
 their corresponding tabs in that same drawer. Arrow keys, Home, and End
 navigate its tabs. Sliders and toggles share state across tabs.
@@ -119,11 +119,11 @@ Native Hyprland uses Super-based shortcuts. This browser preview adapts them
 to Alt; some browsers or operating systems reserve these combinations.
 Clickable controls are also available.
 
-## Terminal and Fedora overview
+## Terminal and CybexOS overview
 
 The Kitty-inspired terminal has a Fish-style prompt and a small, fixed command
 set against an in-memory sample filesystem. `fastfetch` and `neofetch` show a
-blue Fedora ASCII logo beside Fedora Linux 44, Hyprland on Wayland, Quickshell,
+blue CybexOS ASCII logo beside NixOS 26.05, Hyprland on Wayland, Quickshell,
 Kitty, and sample kernel, CPU, GPU, package, memory, and disk information. The
 overview identifies its data as simulated and adapts to narrow tiled windows.
 No hardware, installed packages, or kernel information is read from the host.
@@ -191,14 +191,14 @@ The [web workflow](../.github/workflows/web.yml) runs these checks and a
 production HTTP smoke test for changes in `web/`. Native desktop checks remain
 separate. Layout and interaction coverage includes nonoverlapping tiles,
 floating and minimized reflow, stable editor focus, swaps, workspace moves,
-main split controls, narrow-screen stacking, and Fedora terminal completion.
+main split controls, narrow-screen stacking, and CybexOS terminal completion.
 Key native references are
-[`Common/Theme.qml`](../roles/desktop/files/quickshell/Common/Theme.qml),
-[`Common/SettingsHelpers.js`](../roles/desktop/files/quickshell/Common/SettingsHelpers.js),
-[Hyprland layout settings](../roles/desktop/templates/looknfeel.lua.j2),
-[the native drawer](../roles/desktop/files/quickshell/Popovers/Drawer/DrawerPopover.qml),
-[the day sheet](../roles/desktop/files/quickshell/Popovers/DaySheetPopover.qml),
-and the [welcome window](../image/rootfs/usr/share/cybexos/welcome/Main.qml).
+[`Common/Theme.qml`](../desktop/quickshell/Common/Theme.qml),
+[`Common/SettingsHelpers.js`](../desktop/quickshell/Common/SettingsHelpers.js),
+[Hyprland layout settings](../desktop/hypr/looknfeel.lua),
+[the native drawer](../desktop/quickshell/Popovers/Drawer/DrawerPopover.qml),
+[the day sheet](../desktop/quickshell/Popovers/DaySheetPopover.qml),
+and the [welcome window](../installer/cybexos-install).
 Asset sources and license information are recorded in
 [ASSETS.md](ASSETS.md).
 

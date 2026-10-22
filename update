@@ -1,8 +1,3 @@
 #!/usr/bin/env bash
-# Repository entry point for project and system updates.
 set -euo pipefail
-
-repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-export CYBEXOS_SOURCE_DIR="$repo_dir"
-export CYBEXOS_UPDATE_BACKEND="${CYBEXOS_UPDATE_BACKEND:-$repo_dir/assets/scripts/cybexos-update-run}"
-exec "$repo_dir/assets/scripts/cybexos-release-update" "$@"
+exec cybex update "$@"

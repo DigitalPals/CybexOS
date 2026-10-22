@@ -2,10 +2,14 @@
 # Shared safety/readiness helpers for tests that inspect the managed live shell.
 # Source this file; do not execute it directly.  The caller remains responsible
 # for restoring any temporary configuration before qs_live_end is called.
+# qs_live_begin records the service MainPID and InvocationID; qs_live_end fails
+# if either changed, so a crash or restart during the test cannot pass.  After
+# an intentional restart, call qs_live_begin again before qs_live_end.
+# QS_LIVE_READ_ONLY=1 inspects only: it never starts services or kills processes.
 
 QS_LIVE_SERVICE=${QS_LIVE_SERVICE:-quickshell.service}
 QS_LIVE_TIMEOUT=${QS_LIVE_TIMEOUT:-20}
-QS_LIVE_ERROR_PATTERN='Failed to load|Syntax error|Cannot open|(Type|Reference|Range)Error|Type .* unavailable|Invalid property assignment|Binding loop|invalid (width|height|size)|larger than the maximum texture size|requested buffer size is too big|oversized'
+QS_LIVE_ERROR_PATTERN='Process failed to start|Unable to assign|Failed to load|Syntax error|Cannot open|(Type|Reference|Range)Error|Type .* unavailable|Invalid property assignment|Binding loop|invalid (width|height|size)|larger than the maximum texture size|requested buffer size is too big|oversized'
 
 qs_live_error() {
   printf 'quickshell live check: %s\n' "$*" >&2
@@ -13,6 +17,10 @@ qs_live_error() {
 
 qs_live_main_pid() {
   systemctl --user show "$QS_LIVE_SERVICE" -p MainPID --value 2>/dev/null
+}
+
+qs_live_invocation() {
+  systemctl --user show "$QS_LIVE_SERVICE" -p InvocationID --value 2>/dev/null
 }
 
 qs_live_control_group() {
@@ -65,7 +73,7 @@ qs_live_reconcile_processes() {
     unknown=0
     expired=0
     ((SECONDS < scan_deadline)) || expired=1
-    mapfile -t pids < <(pgrep -x qs 2>/dev/null || true)
+    mapfile -t pids < <(pgrep -u "$(id -u)" -x 'qs|quickshell|\.quickshell-wra' 2>/dev/null || true)
     if ((${#pids[@]} == 1)) && [[ ${pids[0]} == "$main" && $(qs_live_main_pid) == "$main" ]]; then
       return 0
     fi
@@ -83,7 +91,7 @@ qs_live_reconcile_processes() {
       # can start its next request as the previous one finishes, so every
       # subsequent snapshot must be inspected, not just the first one.
       if [[ $uid == "$(id -u)" &&
-            $command =~ ^([^[:space:]]*/)?qs[[:space:]]+ipc([[:space:]]|$) ]]; then
+            $command =~ ^([^[:space:]]*/)?(qs|quickshell|\.quickshell-wrapped)[[:space:]]+ipc([[:space:]]|$) ]]; then
         deadline=$((SECONDS + 5))
         ((deadline <= scan_deadline)) || deadline=$scan_deadline
         qs_live_error "waiting for IPC client PID $pid to finish"
@@ -99,8 +107,13 @@ qs_live_reconcile_processes() {
 
       if [[ $uid == "$(id -u)" && -n $process_cgroup &&
             $process_cgroup != "$service_cgroup" &&
-            $command =~ (^|[[:space:]])([^[:space:]]*/)?qs([[:space:]]|$) &&
+            $command =~ (^|[[:space:]])([^[:space:]]*/)?(qs|quickshell|\.quickshell-wrapped)([[:space:]]|$) &&
             $command =~ (^|[[:space:]])-(d|p)([[:space:]]|$) ]]; then
+        if [[ ${QS_LIVE_READ_ONLY:-0} == 1 ]]; then
+          unknown=1
+          qs_live_error "unmanaged developer PID $pid is running; stop it before applying or confirming"
+          continue
+        fi
         qs_live_error "terminating confirmed unmanaged developer PID $pid"
         kill -TERM "$pid"
         deadline=$((SECONDS + 5))
@@ -137,21 +150,39 @@ qs_live_begin() {
     qs_live_error 'qs is unavailable'
     return 1
   }
+  unset QS_LIVE_BEGIN_PID QS_LIVE_BEGIN_INVOCATION
   systemctl --user is-active --quiet "$QS_LIVE_SERVICE" || {
     qs_live_error "$QS_LIVE_SERVICE is not active; refusing a live test"
     return 1
   }
-  qs_live_wait_service && qs_live_reconcile_processes
+  qs_live_wait_service || return 1
+  local pid invocation
+  pid=$(qs_live_main_pid || true)
+  invocation=$(qs_live_invocation || true)
+  [[ $invocation =~ ^[0-9a-fA-F]{32}$ ]] || {
+    qs_live_error "$QS_LIVE_SERVICE has no valid InvocationID"
+    return 1
+  }
+  qs_live_reconcile_processes || return 1
+  # Reconciliation can wait several seconds; a restart meanwhile would leave a
+  # different invocation under test than the one recorded here.
+  if [[ $(qs_live_main_pid || true) != "$pid" || $(qs_live_invocation || true) != "$invocation" ]]; then
+    qs_live_error "$QS_LIVE_SERVICE restarted while the live test was starting"
+    return 1
+  fi
+  QS_LIVE_BEGIN_PID=$pid
+  QS_LIVE_BEGIN_INVOCATION=$invocation
 }
 
 # Select the service PID: the runtime may live outside the default ~/.config
-# tree after migration, so an unqualified IPC call can target a dead config.
+# tree, so an unqualified IPC call can target a different configuration.  After
+# qs_live_begin, address the recorded process rather than any replacement.
 qs_live_wait_ipc() {
   local timeout=$1 target=$2 method=$3 deadline out
   shift 3
   deadline=$((SECONDS + timeout))
   while ((SECONDS < deadline)); do
-    if out=$(qs ipc --pid "$(qs_live_main_pid)" call "$target" "$method" "$@" 2>/dev/null); then
+    if out=$(qs ipc --pid "${QS_LIVE_BEGIN_PID:-$(qs_live_main_pid)}" call "$target" "$method" "$@" 2>/dev/null); then
       printf '%s\n' "$out"
       return 0
     fi
@@ -166,7 +197,7 @@ qs_live_wait_value() {
   shift 4
   deadline=$((SECONDS + timeout))
   while ((SECONDS < deadline)); do
-    if out=$(qs ipc --pid "$(qs_live_main_pid)" call "$target" "$method" "$@" 2>/dev/null) &&
+    if out=$(qs ipc --pid "${QS_LIVE_BEGIN_PID:-$(qs_live_main_pid)}" call "$target" "$method" "$@" 2>/dev/null) &&
        [[ $out == "$expected" ]]; then
       printf '%s\n' "$out"
       return 0
@@ -177,9 +208,9 @@ qs_live_wait_value() {
   return 1
 }
 
+# Read one service invocation's journal; default to the current invocation.
 qs_live_current_journal() {
-  local invocation
-  invocation=$(systemctl --user show "$QS_LIVE_SERVICE" -p InvocationID --value 2>/dev/null)
+  local invocation=${1:-$(qs_live_invocation)}
   [[ $invocation =~ ^[0-9a-fA-F]{32}$ ]] || {
     qs_live_error "$QS_LIVE_SERVICE has no valid InvocationID"
     return 1
@@ -189,18 +220,48 @@ qs_live_current_journal() {
 
 qs_live_check_journal() {
   local log
-  log=$(qs_live_current_journal) || return 1
+  log=$(qs_live_current_journal "${1:-}") || return 1
   if grep -Eqi "$QS_LIVE_ERROR_PATTERN" <<<"$log"; then
-    qs_live_error 'the current service invocation contains QML/runtime errors:'
+    qs_live_error "service invocation ${1:-(current)} contains QML/runtime errors:"
     grep -Ei "$QS_LIVE_ERROR_PATTERN" <<<"$log" | tail -n 30 >&2
     return 1
   fi
 }
 
 qs_live_end() {
-  if ! systemctl --user is-active --quiet "$QS_LIVE_SERVICE"; then
-    qs_live_error "$QS_LIVE_SERVICE stopped during the test; attempting recovery"
-    systemctl --user start "$QS_LIVE_SERVICE" || return 1
+  local status=0 pid invocation
+  if [[ ! ${QS_LIVE_BEGIN_PID:-} =~ ^[1-9][0-9]*$ || ! ${QS_LIVE_BEGIN_INVOCATION:-} =~ ^[0-9a-fA-F]{32}$ ]]; then
+    qs_live_error 'qs_live_begin did not record the service invocation under test'
+    status=1
   fi
-  qs_live_wait_service && qs_live_reconcile_processes && qs_live_check_journal
+  if ! systemctl --user is-active --quiet "$QS_LIVE_SERVICE"; then
+    if [[ ${QS_LIVE_READ_ONLY:-0} == 1 ]]; then
+      # Read-only health never starts, restarts or stops a unit. Report the
+      # inspected invocation's journal, which normally explains the exit.
+      qs_live_error "$QS_LIVE_SERVICE stopped during the check; read-only health does not start it"
+      ((status == 0)) && qs_live_check_journal "$QS_LIVE_BEGIN_INVOCATION"
+      return 1
+    fi
+    # Restore the managed shell for the user, but never let recovery pass.
+    qs_live_error "$QS_LIVE_SERVICE stopped during the test; restoring it, but the test has failed"
+    systemctl --user start "$QS_LIVE_SERVICE" || return 1
+    status=1
+  fi
+  qs_live_wait_service || return 1
+  qs_live_reconcile_processes || status=1
+  pid=$(qs_live_main_pid || true)
+  invocation=$(qs_live_invocation || true)
+  if [[ -n ${QS_LIVE_BEGIN_INVOCATION:-} ]] &&
+     [[ $pid != "${QS_LIVE_BEGIN_PID:-}" || $invocation != "$QS_LIVE_BEGIN_INVOCATION" ]]; then
+    qs_live_error "$QS_LIVE_SERVICE restarted during the test (MainPID ${QS_LIVE_BEGIN_PID:-none} -> ${pid:-none}; InvocationID $QS_LIVE_BEGIN_INVOCATION -> ${invocation:-none})"
+    status=1
+  fi
+  # Validate the invocation that was actually tested, then any replacement.
+  if [[ ${QS_LIVE_BEGIN_INVOCATION:-} =~ ^[0-9a-fA-F]{32}$ ]]; then
+    qs_live_check_journal "$QS_LIVE_BEGIN_INVOCATION" || status=1
+  fi
+  if [[ $invocation != "${QS_LIVE_BEGIN_INVOCATION:-}" ]]; then
+    qs_live_check_journal "$invocation" || status=1
+  fi
+  return "$status"
 }

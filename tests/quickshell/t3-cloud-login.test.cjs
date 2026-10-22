@@ -323,8 +323,8 @@ test("browser-login ownership excludes competitors and logout settles its owner"
         T3CODE_CLOUD_STATE_DIR: stateRoot,
         T3CODE_CLERK_URL: backend,
         T3CODE_RELAY_URL: backend,
-        T3CODE_BROWSER_COMMAND: "/usr/bin/true",
-        T3CODE_MIME_COMMAND: "/usr/bin/true",
+        T3CODE_BROWSER_COMMAND: require("./shell.cjs").executable("true"),
+        T3CODE_MIME_COMMAND: require("./shell.cjs").executable("true"),
     };
     const runningChildren = [];
     t.after(() => {
@@ -890,31 +890,4 @@ require("node:fs").writeFileSync(${JSON.stringify(panelActivated)},
     assert.equal(staleTicketResult.stdout, "",
         "no credential-bearing ticket may reach stdout after logout");
     assert.match(staleTicketResult.stderr, /session changed while this request was running/);
-});
-
-test("the nightly launcher routes pending panel callbacks and preserves its fallback", () => {
-    const updater = readRepo("roles/dotfiles/templates/t3code-update.j2");
-    const launcher = readRepo("roles/dotfiles/templates/t3code-desktop.j2");
-    const desktop = readRepo("roles/dotfiles/templates/t3code-nightly.desktop.j2");
-    const mimeapps = readRepo("roles/dotfiles/templates/mimeapps.list.j2");
-    const packages = readRepo("roles/desktop/tasks/main.yml");
-
-    assert.match(updater, /select\(\.prerelease and \(\.tag_name \| contains\("-nightly\."\)\)\)/,
-        "the updater must remain pinned to prerelease nightlies");
-    assert.ok(launcher.includes(
-        'exec "$appimage" --appimage-extract-and-run --password-store=gnome-libsecret "$@"'),
-        "the launcher must preserve non-panel callback URL arguments");
-    assert.match(launcher, /oauth-callback "\$1"/,
-        "a pending browser sign-in must return to the panel instead of opening Nightly");
-    assert.match(launcher, /\[\[ \$\{1-\} == t3code:\/\/app\/\* \]\]/);
-    assert.match(desktop, /^Exec=\{\{ primary_home \}\}\/\.local\/bin\/t3code-desktop %U$/m);
-    assert.match(desktop, /^MimeType=x-scheme-handler\/t3code;$/m);
-    assert.doesNotMatch(desktop, /x-scheme-handler\/t3code-dev/,
-        "nightly is packaged and therefore uses the production scheme");
-    assert.match(mimeapps, /^x-scheme-handler\/t3code=t3code-nightly\.desktop$/m);
-    assert.doesNotMatch(mimeapps, /^x-scheme-handler\/t3code-dev=/m);
-    assert.match(packages, /^\s+- xdg-utils$/m,
-        "the upstream Linux callback registration invokes xdg-mime");
-    assert.match(packages, /^\s+- fuse-libs$/m,
-        "the upstream-generated callback handler starts the AppImage directly");
 });

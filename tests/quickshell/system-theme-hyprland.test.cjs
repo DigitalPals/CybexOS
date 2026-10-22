@@ -12,7 +12,7 @@ const {
 } = require("./system-theme.cjs");
 
 const template = fs.readFileSync(
-    path.resolve(shellDir, "../../templates/looknfeel.lua.j2"), "utf8");
+    path.resolve(shellDir, "../hypr/looknfeel.lua"), "utf8");
 const luajit = ["/usr/bin/luajit", "/usr/local/bin/luajit"].find(file => fs.existsSync(file))
     || (childProcess.spawnSync("sh", ["-c", "command -v luajit"], { encoding: "utf8" })
         .stdout.trim() || null);

@@ -6,7 +6,7 @@ const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 
 const repoDir = path.resolve(__dirname, "../..");
-const daemon = path.join(repoDir, "roles/xps-2026/files/xps-haptic-touchpad");
+const daemon = path.join(repoDir, "hardware/xps/xps-haptic-touchpad");
 
 // The daemon has no .py suffix; load it as a module without running main().
 const LOAD = [
@@ -53,11 +53,6 @@ function inputEvent(type, code, value) {
     return event;
 }
 
-test("systemctl reload reaches the daemon's SIGHUP reapply", () => {
-    const unit = fs.readFileSync(path.join(repoDir,
-        "roles/xps-2026/templates/xps-haptic-touchpad.service.j2"), "utf8");
-    assert.match(unit, /^ExecReload=\/bin\/kill -HUP \$MAINPID$/m);
-});
 
 test("the unbounded event loop still wakes for SIGHUP and SIGTERM", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "haptic-"));

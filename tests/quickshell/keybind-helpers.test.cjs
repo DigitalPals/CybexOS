@@ -193,7 +193,7 @@ for _, keys in ipairs(order) do
   end
 end
 `;
-    const result = spawnSync("luajit", ["-", path.resolve(shellDir, "../bindings.lua")],
+    const result = spawnSync("luajit", ["-", path.resolve(shellDir, "../hypr/bindings.lua")],
         { input: lua, encoding: "utf8", env: { ...process.env, HOME: "/home/test" } });
     assert.equal(result.status, 0, result.stderr);
     const masks = { SUPER, SHIFT, CTRL, ALT: 8 };

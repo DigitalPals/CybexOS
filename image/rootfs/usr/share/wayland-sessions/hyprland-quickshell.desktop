@@ -1,7 +1,0 @@
-[Desktop Entry]
-Name=CybexOS
-Comment=Hyprland with the Quickshell desktop
-Exec=/usr/bin/hyprland-quickshell
-TryExec=/usr/bin/hyprland-quickshell
-Type=Application
-DesktopNames=Hyprland

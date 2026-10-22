@@ -1,8 +1,10 @@
 # Personal bar widgets
 
 Create a widget for the installed user without changing the distro. The active
-release's [widget contract](../../../docs/architecture/user-widgets.md) is the
-authoritative API reference; read it before implementing behavior.
+release's authoritative API reference is installed at
+`/run/current-system/sw/share/cybexos/source/docs/architecture/user-widgets.md`;
+read it before implementing behavior. In a checkout, read
+[the widget contract](../../../docs/architecture/user-widgets.md).
 
 ## Ownership and workflow
 
@@ -26,15 +28,19 @@ authoritative API reference; read it before implementing behavior.
    error tooltip. Use `cybex plugin disable <id>` to recover without
    deleting code, preferences, or data.
 
-V1 places widgets before the right-hand built-in modules. Width is 24–320
-pixels; lower order comes first, with IDs breaking ties. Widgets that exceed
+API 1 supports left, center and right plugin sections. Native widgets default
+to the right section; move them with `cybex plugin move-widget <id> left|center|right <index>`
+or drag them in the bar. Width is 24–320 pixels; lower order comes first within
+a section, with IDs breaking ties. Widgets that exceed
 the available space are hidden with a count and tooltip. Each output gets its
 own widget instance; settings and state are shared. Run shared background
 services separately rather than starting one daemon per output.
 
-For a live check, follow the repository's `tests/lib/quickshell-live` begin/end
-workflow described in [managed configuration](managed-configuration.md). Test
-through `quickshell.service`; never leave a second source-tree shell running.
+For a live check, source the installed
+`/run/current-system/sw/share/cybexos/lib/quickshell-live` and run
+`qs_live_begin` and `qs_live_end`. In a checkout use `tests/lib/quickshell-live`.
+Test through `quickshell.service`; never leave a second source-tree shell
+running.
 
 ## Minimal package
 

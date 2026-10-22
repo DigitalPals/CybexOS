@@ -15,7 +15,7 @@ function fixture() {
     return {
         directory,
         bin,
-        env: { ...process.env, PATH: `${bin}:/usr/bin:/bin` },
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
         cleanup() { fs.rmSync(directory, { recursive: true, force: true }); }
     };
 }
@@ -27,7 +27,7 @@ function executable(base, name, source) {
 }
 
 function invoke(request, environment) {
-    return spawnSync("/usr/bin/python3", [helper], {
+    return spawnSync("python3", [helper], {
         input: `${JSON.stringify(request)}\n`,
         encoding: "utf8",
         env: environment,
@@ -46,7 +46,7 @@ test("Codex receives a private ephemeral request with the selected model and eff
     try {
         const log = path.join(base.directory, "codex.json");
         base.env.STUB_LOG = log;
-        executable(base, "codex", `#!/usr/bin/python3
+        executable(base, "codex", `#!${require("./shell.cjs").executable("python3")}
 import json, os, sys
 with open(os.environ["STUB_LOG"], "w", encoding="utf-8") as stream:
     json.dump({"argv": sys.argv[1:], "stdin": sys.stdin.read(),
@@ -84,7 +84,7 @@ test("Claude runs without tools or persistence and input is capped at 12,000 cha
     try {
         const log = path.join(base.directory, "claude.json");
         base.env.STUB_LOG = log;
-        executable(base, "claude", `#!/usr/bin/python3
+        executable(base, "claude", `#!${require("./shell.cjs").executable("python3")}
 import json, os, sys
 with open(os.environ["STUB_LOG"], "w", encoding="utf-8") as stream:
     json.dump({"argv": sys.argv[1:], "stdin": sys.stdin.read()}, stream)
@@ -182,14 +182,14 @@ test("a terminated helper kills its CLI group and removes its scratch directory"
     try {
         const marker = path.join(base.directory, "child.json");
         base.env.STUB_MARKER = marker;
-        executable(base, "claude", `#!/usr/bin/python3
+        executable(base, "claude", `#!${require("./shell.cjs").executable("python3")}
 import json, os, time
 with open(os.environ["STUB_MARKER"] + ".tmp", "w", encoding="utf-8") as stream:
     json.dump({"pid": os.getpid(), "cwd": os.getcwd()}, stream)
 os.rename(os.environ["STUB_MARKER"] + ".tmp", os.environ["STUB_MARKER"])
 time.sleep(30)
 `);
-        const child = spawn("/usr/bin/python3", [helper], {
+        const child = spawn("python3", [helper], {
             env: base.env, stdio: ["pipe", "pipe", "pipe"]
         });
         const exited = new Promise(resolve => child.on("exit", (code, signal) =>

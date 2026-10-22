@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Collect a redacted CybexOS diagnostic bundle for a bug report.
 
-cybex report gathers the doctor result, versions, a hardware summary, recent
+cybex report gathers read-only health checks, versions, a hardware summary, recent
 journal excerpts and shell health into one local archive, removes personal
 data, shows what it collected, and can open a prefilled GitHub issue. It
 never uploads anything: the user reviews the archive and attaches it.
@@ -29,13 +29,9 @@ ISSUE_URL = 'https://github.com/DigitalPals/CybexOS/issues/new'
 # archive is a gzip tarball the user can attach directly.
 DEFAULT_SUFFIX = '.tar.gz'
 COMMAND_TIMEOUT = 20
-DOCTOR_TIMEOUT = 240
 JOURNAL_LINES = 300
-# Hostnames that identify nothing; redacting them would erase "Fedora".
-GENERIC_HOSTS = {'localhost', 'localhost.localdomain', 'fedora', 'cybexos', 'linux', 'host'}
-KEY_PACKAGES = ('cybexos-desktop', 'kernel', 'hyprland', 'quickshell', 'aquamarine', 'mesa-dri-drivers',
-                'xorg-x11-drv-nvidia', 'akmod-nvidia', 'systemd', 'sddm', 'pipewire', 'wireplumber',
-                'NetworkManager', 'flatpak', 'xdg-desktop-portal-hyprland', 'linux-firmware')
+# Hostnames that identify nothing; redacting them would erase "NixOS".
+GENERIC_HOSTS = {'localhost', 'localhost.localdomain', 'nixos', 'cybexos', 'linux', 'host'}
 
 
 # ---- redaction ---------------------------------------------------------
@@ -157,19 +153,15 @@ def read(path, limit=None):
 
 
 def tool(name):
-    """The CybexOS helper for either installation path."""
-    for candidate in (shutil.which(name), Path.home() / '.local/bin' / name, Path('/usr/share/cybexos/bin') / name):
+    """Resolve a packaged CybexOS helper in the current user's environment."""
+    for candidate in (shutil.which(name), Path.home() / '.local/bin' / name, Path('/run/current-system/sw/bin') / name):
         if candidate and os.access(candidate, os.X_OK):
             return str(candidate)
     return name
 
 
 def installation():
-    if Path('/usr/share/cybexos/build.json').is_file():
-        return 'iso'
-    if (Path.home() / '.local/share/cybexos/current').exists():
-        return 'checkout'
-    return 'unknown'
+    return 'nixos' if Path('/etc/cybexos/release.json').is_file() else 'unknown'
 
 
 def os_release():
@@ -240,7 +232,7 @@ def hardware_summary():
                    if line.startswith('MemTotal')), '')
     lines.append(f'memory: {memory}')
     sections = ['\n'.join(lines)]
-    for title, argv in (('Secure Boot', ['mokutil', '--sb-state']),
+    for title, argv in (('UEFI and Secure Boot', ['bootctl', 'status', '--no-pager']),
                         ('PCI devices', ['lspci', '-nnk']),
                         ('USB devices', ['lsusb']),
                         ('Block devices', ['lsblk', '-o', 'NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS']),
@@ -277,20 +269,59 @@ def journal(arguments, user=False):
     return output if rc == 0 else f'unavailable ({output})'
 
 
-def collect(doctor_timeout=DOCTOR_TIMEOUT):
+def diagnostics():
+    """Read-only observations, without changing or accepting deployment health."""
+    checks = []
+
+    def record(name, state, detail):
+        checks.append({'name': name, 'state': state, 'detail': detail})
+
+    code, output = run(['systemctl', 'is-system-running'])
+    record('boot', 'ok' if code == 0 and output == 'running' else 'warning', output)
+    declaration = json_or_text(read('/etc/cybexos/health-services.json'))
+    if (not isinstance(declaration, dict) or declaration.get('schema') != 1
+            or not isinstance(declaration.get('units'), list) or not declaration['units']
+            or not isinstance(declaration.get('userUnits'), list)):
+        record('services', 'warning', 'Health service declaration is missing or invalid')
+    else:
+        for scope, units in (('system', declaration['units']), ('user', declaration['userUnits'])):
+            for unit in units:
+                if not isinstance(unit, str) or not re.fullmatch(r'[A-Za-z0-9_.@:-]+\.(service|target)', unit):
+                    record('services', 'warning', 'Invalid health service declaration')
+                    continue
+                code, output = run(['systemctl', *(['--user'] if scope == 'user' else []), 'is-active', unit])
+                record(unit, 'ok' if code == 0 and output == 'active' else 'warning', output)
+    code, output = run([tool('cybex'), 'update', 'status'])
+    deployment = json_or_text(output)
+    state = deployment.get('state') if isinstance(deployment, dict) else None
+    record('deployment', 'ok' if code == 0 and state in ('idle', 'done', 'ready') else 'warning',
+           output[-4000:])
+    code, output = run(['hyprctl', '-j', 'configerrors'])
+    errors = json_or_text(output)
+    healthy = code == 0 and isinstance(errors, list) and all(isinstance(error, str) and not error.strip() for error in errors)
+    record('hyprland', 'ok' if healthy else 'warning', output[-4000:])
+    code, output = run([tool('cybex'), 'shell', 'status'])
+    shell = json_or_text(output)
+    healthy = code == 0 and isinstance(shell, dict) and shell.get('safe') is False
+    record('shell', 'ok' if healthy else 'warning', output[-4000:])
+    code, output = run(['systemctl', '--user', 'is-active', 'quickshell.service'])
+    record('quickshell.service', 'ok' if code == 0 and output == 'active' else 'warning', output)
+    return {'version': 1, 'overall': 'warning' if any(check['state'] != 'ok' for check in checks) else 'ok',
+            'checks': checks, 'scope': 'Read-only diagnostics; these do not confirm a trial deployment or qualify hardware'}
+
+
+def collect():
     """Unredacted sections, by archive member name. Redaction happens once."""
     cybex = tool('cybex')
     sections = {}
-    rc, doctor = run([cybex, 'doctor', '--json'], timeout=doctor_timeout)
-    sections['doctor.json'] = doctor if json_or_text(doctor) is not None else json.dumps(
-        {'available': False, 'exit_code': rc, 'output': doctor[-4000:]})
+    sections['health.json'] = json.dumps(diagnostics())
     release = os_release()
     version_lines = [f'installation: {installation()}', f"os: {release.get('PRETTY_NAME', 'unknown')}",
                      f'kernel: {os.uname().release}', f'architecture: {os.uname().machine}',
                      f"session: {os.environ.get('XDG_CURRENT_DESKTOP', '')} {os.environ.get('XDG_SESSION_TYPE', '')}".strip()]
     rc, version = run([cybex, 'version'])
     version_lines.insert(0, f"cybexos: {version if rc == 0 else 'unknown'}")
-    rc, packages = run(['rpm', '-q', *KEY_PACKAGES])
+    rc, packages = run(['nix', 'path-info', '/run/current-system'])
     version_lines += ['', '## Packages', packages]
     for title, argv in (('Hyprland', ['hyprctl', 'version']), ('Quickshell', ['qs', '--version'])):
         rc, output = run(argv)
@@ -312,20 +343,22 @@ def collect(doctor_timeout=DOCTOR_TIMEOUT):
                                         f'{read(session_log, JOURNAL_LINES)}\n')
     sections['journal/quickshell.txt'] = journal(['-u', 'quickshell.service'], user=True) + '\n'
     sections['journal/sddm.txt'] = journal(['-u', 'sddm.service']) + '\n'
-    rc, update = run([tool('cybexos-update-run'), 'status', '--json'])
-    sections['journal/update-worker.txt'] = (f'## cybexos-update-run status\n{update}\n\n## user units\n'
-                                             f"{journal(['-u', 'cybexos-update-*'], user=True)}\n\n"
-                                             f"## system units\n{journal(['-u', 'cybexos-update-*'])}\n")
+    rc, update = run([cybex, 'update', 'status'])
+    update_units = ('cybexos-stage@*.service', 'cybexos-apply@*.service',
+                    'cybexos-rollback.service', 'cybexos-confirm.service',
+                    'cybexos-recover.service', 'cybexos-region.service')
+    sections['journal/update-worker.txt'] = (f'## cybex update status\n{update}\n\n## system units\n'
+                                             f"{journal([arg for unit in update_units for arg in ('-u', unit)])}\n")
     sections['journal/hardware-setup.txt'] = '\n\n'.join(
         f'## {unit}\n{journal(["-u", unit])}' for unit in
-        ('cybexos-hardware-setup.service', 'akmods.service', 'nvidia-fallback.service')) + '\n'
+        ('xps-haptic-touchpad.service', 'xps-ipu7-abi.service', 'v4l2-relayd-ipu7.service', 'nvidia-persistenced.service')) + '\n'
     return sections
 
 
 def summary(sections, redactions, name):
     release = os_release()
-    doctor = json_or_text(sections.get('doctor.json', '')) or {}
-    failing = [check.get('name', '') for check in doctor.get('checks', [])
+    health = json_or_text(sections.get('health.json', '')) or {}
+    failing = [check.get('name', '') for check in health.get('checks', [])
                if isinstance(check, dict) and check.get('state') in ('fail', 'warning', 'pending')]
     version = next((line.split(': ', 1)[1] for line in sections['versions.txt'].splitlines()
                     if line.startswith('cybexos: ')), 'unknown')
@@ -334,10 +367,10 @@ def summary(sections, redactions, name):
         'archive': name,
         'cybexos': version,
         'installation': installation(),
-        'fedora': release.get('VERSION_ID', 'unknown'),
+        'nixos': release.get('VERSION_ID', 'unknown'),
         'kernel': os.uname().release,
         'gpus': gpu_summary(),
-        'doctor': doctor.get('overall', 'unavailable') if isinstance(doctor, dict) else 'unavailable',
+        'health': health.get('overall', 'unavailable') if isinstance(health, dict) else 'unavailable',
         'attention': failing[:12],
         'members': sorted(sections),
         'redactions': dict(sorted(redactions.items())),
@@ -347,10 +380,10 @@ def summary(sections, redactions, name):
 def issue_url(info, redact):
     """A short, redacted environment block; the logs stay in the archive."""
     lines = [f"- CybexOS: {info['cybexos']} ({info['installation']} installation)",
-             f"- Fedora {info['fedora']}, kernel {info['kernel']}"]
+             f"- NixOS {info['nixos']}, kernel {info['kernel']}"]
     lines += [f'- GPU: {gpu}' for gpu in info['gpus'][:3]]
     attention = ', '.join(info['attention']) if info['attention'] else 'none'
-    lines += [f"- cybex doctor: {info['doctor']} (needs attention: {attention})",
+    lines += [f"- System diagnostics: {info['health']} (needs attention: {attention})",
               f"- Diagnostic bundle: {info['archive']} (attach it to this issue)"]
     query = {'template': 'bug_report.yml', 'labels': 'bug', 'environment': redact('\n'.join(lines))}
     return ISSUE_URL + '?' + urllib.parse.urlencode(query, quote_via=urllib.parse.quote)
@@ -424,7 +457,7 @@ def main(argv=None):
     stamp = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
     path = output_path(args.output, stamp.strftime('%Y%m%d-%H%M%S'))
     if not args.json:
-        print('Collecting diagnostics; cybex doctor can take a minute…', file=sys.stderr, flush=True)
+        print('Collecting read-only system and desktop diagnostics…', file=sys.stderr, flush=True)
     found = identities()
     redact = Redactor(**found)
     members = {name: redact(text) for name, text in collect().items()}
@@ -438,10 +471,10 @@ def main(argv=None):
                           'summary': info}, sort_keys=True))
         return 0
     print(f'Diagnostic bundle: {path} ({size} bytes)')
-    print(f"CybexOS {info['cybexos']} ({info['installation']}), Fedora {info['fedora']}, kernel {info['kernel']}")
+    print(f"CybexOS {info['cybexos']} ({info['installation']}), NixOS {info['nixos']}, kernel {info['kernel']}")
     for gpu in info['gpus']:
         print(f'GPU: {gpu}')
-    print(f"cybex doctor: {info['doctor']}" + (f" (needs attention: {', '.join(info['attention'])})"
+    print(f"System diagnostics: {info['health']}" + (f" (needs attention: {', '.join(info['attention'])})"
                                                 if info['attention'] else ''))
     print('Files: ' + ', '.join(info['members']))
     removed = ', '.join(f'{count} {kind}' for kind, count in info['redactions'].items()) or 'nothing found'

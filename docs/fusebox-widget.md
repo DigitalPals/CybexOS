@@ -20,7 +20,7 @@ Open Settings → Menubar → Widgets → Fusebox:
   `https://fusebox.example.ts.net`. A pasted dashboard link such as
   `…/#/accounts` is accepted. User names, passwords and queries are refused.
 - **Management key**: the server's `management-key`. The field is a password
-  field. Committing it hands the key to `scripts/fusebox.py` over stdin, which
+  field. Committing it hands the key to `desktop/quickshell/scripts/fusebox.py` over stdin, which
   writes it to `~/.config/cybexos/fusebox/management.key` (mode 0600 in a 0700
   directory, replaced atomically). The key is never stored in `shell.json` or
   on a command line. It is sent only to this server, as a bearer token in
@@ -215,7 +215,7 @@ request history.
 
 `Common/Fusebox.qml` owns one `Process` for the whole shell, independent of
 monitor count. It runs while the widget is on, or while its dashboard or
-settings are open, and a server and key are set. `scripts/fusebox.py live`
+settings are open, and a server and key are set. `desktop/quickshell/scripts/fusebox.py live`
 holds one WebSocket to `/api/live`. On every connect it first reads
 `/api/overview`, `/api/accounts`, `/api/requests?limit=40` and `/api/faults`,
 then forwards `load`, `faults`, `request` and `tick` events. Line-delimited
@@ -256,7 +256,7 @@ restarts a helper that stays silent for 30 seconds; the helper prints a
 heartbeat at least every five seconds. The 60-minute history starts from the
 server's own minute buckets on connect and counts each finished request into
 its minute, as Fusebox's dashboard does. Breaker actions, priority and account details
-are one-shot `scripts/fusebox.py action|activity` requests through
+are one-shot `desktop/quickshell/scripts/fusebox.py action|activity` requests through
 `CommandRequest`; `action priority` sends only 10, 0 or -10, the dashboard's
 First, Normal and Last. Nothing is retried automatically.
 
@@ -268,33 +268,22 @@ cybexos-runtime ipc popouts open fusebox
 ```
 
 To remove the key, use the undo chip on the Management key row, or delete
-`~/.config/cybexos/fusebox/management.key`. Uninstalling CybexOS leaves user
-configuration in place.
+`~/.config/cybexos/fusebox/management.key`. System updates and generation
+rollback retain this runtime credential.
 
 ## Tests
 
-`tests/fusebox.py` covers key custody (permissions, atomic replacement,
-symlinks, invalid keys, CLI output), URL handling, timestamps with Fusebox's
-nanoseconds, the account, overview, fault, request, session and client
-allowlists (plans, priority, reset plans, attribution, sources, limits read
-from a configuration full of keys that must not leak), gzip answers and their
-size bound, lockout, restart and rejected-key pacing, the derived fault rules,
-and the live stream against a local Fusebox fake. The stream
-tests check header-only authentication, snapshot order, event forwarding,
-coalesced account refetches, the older-release fallback, rejected keys,
-refused redirects and missing keys, and that seeded requests drop session
-fingerprints. Its banked-reset tests check that reading status never spends,
-that a spend sends the confirmed quote and grant exactly once, that a changed
-inventory is refused, that a timeout, server error or unreadable answer is
-reported as uncertain without a second request, and that unknown operation
-states fail closed. No test spends a real reset. `tests/quickshell/fusebox.test.cjs` covers
+Key custody, HTTP/WebSocket transport, reconnects, secret redaction and
+banked-reset failures still require isolated native runtime qualification;
+no test may spend a real
+reset. `tests/quickshell/fusebox.test.cjs` covers
 the banked-reset rules and the guarantee that only the confirmation spends,
 the settings schema and migration, account state, quota meters and their
 Used/Remaining display, pace and run-out times, plan names, combined weekly
 limits, who used a window, sources, budgets, priority, badge-worthy faults,
 hidden names,
 request counting, figures, fault timing and notification rules, dashboard
-links and registration. `image/test_desktop_payload.py` checks that the ISO
+links and registration. The shared NixOS module checks that the ISO
 payload ships the same widget and derives the same layout as the checkout.
-Run `./tests/run` and `python3 -B image/check-source`; use
+Run `./tests/run` and `nix flake check`; use
 `tests/lib/quickshell-live` and the managed service for live checks.
