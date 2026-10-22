@@ -14,7 +14,7 @@ hardware/security qualification. This record describes development work on
 | Public plugins | Actual Quickshell engine under isolated headless Sway: API 1 replacement, N/N+1/rollback and all six supported Omarchy kinds | Installed Hyprland session, real player/audio/input and third-party dependency coverage |
 | System boot | Real isolated NixOS VM boot; installed password/sudo and SDDM login; Hyprland/titlebars and Quickshell rendering; sole managed shell/current journal health; API 1 personal widget using a machine-added executable; candidate namespace/compositor/QML validation | Repeat on the final source identity; suspend, peripherals and physical authentication |
 | Fresh ISO installation | Complete unencrypted and encrypted UEFI ISO installations, LUKS unlock, password login and encryption-gated automatic login in disposable QEMU on development snapshots; exact installed source identity checked | Both cases must pass on the final source identity; actual testing corrected filesystem-type, public mount-ancestor permission and Quickshell IPC path bugs |
-| Updates and recovery | Actual local stage/build/apply/trial boot/confirmation; injected activation failure and coherent rollback; real initrd root failure and fallback to the previous EFI default; personal hashes preserved; managed-shell crash safe mode and explicit recovery, on development snapshots | Final same-source runs including upstream-only, CybexOS-only, combined, unavailable/malicious delivery, failed evaluation/build, interrupted staging/application and explicit rollback |
+| Updates and recovery | Actual local stage/build/apply/trial boot/confirmation; injected activation failure and coherent rollback; real initrd root failure and fallback to the previous EFI default; personal hashes preserved; managed-shell crash safe mode and explicit recovery, on development snapshots | Final same-source runs including upstream-only, NerdOS-only, combined, unavailable/malicious delivery, failed evaluation/build, interrupted staging/application and explicit rollback |
 | Hardware | Pinned Intel camera HAL/GStreamer and PSYS packages built; private-ABI parser self-test passed | Actual kernel/private ABI and processed camera frames, both XPS SKUs, NVIDIA, fingerprint/FIDO2, Secure Boot and peripheral/power matrix |
 | Release delivery | Publisher-side signature, asset, qualification, sequence and downgrade regression checks | Protected workflow execution, owner keys, immutable publication, public asset verification, Pages promotion and durable custom cache |
 
@@ -59,7 +59,7 @@ tests and failures; inspect that evidence before using a particular image.
 - No application-data migration engine or automatic transaction-root pruning
   ships. Persistent state requires backups; retained Nix generations do not
   roll back documents, VPN credentials, plugin data or service databases.
-- No durable public CybexOS binary cache is configured. Public cache hosting,
+- No durable public NerdOS binary cache is configured. Public cache hosting,
   explicit cache trust and redistribution review remain release work.
 - PXE delivery uses the Beast (`10.10.0.7`), independently of the development
   host. A copied ISO is not advertised as PXE-ready until checksum verification,
