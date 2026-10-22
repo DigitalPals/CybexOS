@@ -23,15 +23,20 @@ ApplicationWindow {
     readonly property color accentDown: "#b8002b"
     readonly property color accentText: "#ff6b86"
 
-    // Hyprland's window rule (looknfeel.lua) floats and centres the window
-    // and sizes it from the monitor it opens on: half its width, 48% of its
-    // height, never below the minimum. Before mapping, Qt only knows its
-    // primary screen, so this same share of it is just the fallback for a
-    // session without that rule.
-    width: Math.max(minimumWidth, Math.round(Screen.width * 0.5))
-    height: Math.max(minimumHeight, Math.round(Screen.height * 0.48))
-    minimumWidth: 760
-    minimumHeight: 660
+    // Available geometry is logical (after display scaling) and excludes
+    // reserved desktop space. Keep the familiar size on roomy displays.
+    readonly property var workArea: {
+        // Re-evaluate when the screen or its reserved geometry changes.
+        void Screen.width; void Screen.height;
+        void Screen.desktopAvailableWidth; void Screen.desktopAvailableHeight;
+        return welcome.availableWorkArea(screen ? screen.name : "");
+    }
+    readonly property real availableWidth: workArea.width
+    readonly property real availableHeight: workArea.height
+    width: Math.min(availableWidth, Math.max(760, Math.round(availableWidth * 0.5)))
+    height: Math.min(availableHeight, Math.max(660, Math.round(availableHeight * 0.48)))
+    minimumWidth: Math.min(360, availableWidth)
+    minimumHeight: Math.min(280, availableHeight)
     visible: true
     title: "Welcome to CybexOS"
     color: "#0e0e10"
@@ -42,6 +47,25 @@ ApplicationWindow {
     palette.buttonText: ink
     palette.button: surface
     palette.highlight: accent
+
+    readonly property real contentMargin: Math.min(40, Math.max(16, width * 0.05))
+
+    // Sequential focus reveals controls in a long, scrolled welcome too.
+    onActiveFocusItemChanged: Qt.callLater(revealFocus)
+    function revealFocus() {
+        const item = activeFocusItem;
+        if (!item) return;
+        let ancestor = item;
+        while (ancestor && ancestor !== content) ancestor = ancestor.parent;
+        if (!ancestor) return;
+        const top = item.mapToItem(viewport.contentItem, 0, 0).y;
+        const last = top + item.height;
+        const maxY = Math.max(0, viewport.contentHeight - viewport.height);
+        if (top < viewport.contentY)
+            viewport.contentY = Math.max(0, top - 8);
+        else if (last > viewport.contentY + viewport.height)
+            viewport.contentY = Math.min(maxY, last - viewport.height + 8);
+    }
 
     onClosing: close => {
         // Installation-only mode has no desktop behind this window.
@@ -247,9 +271,29 @@ ApplicationWindow {
         }
     }
 
-    ColumnLayout {
+    ScrollView {
+        id: scrollView
+        objectName: "welcomeScroll"
         anchors.fill: parent
-        anchors.margins: 40
+        clip: true
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+        Flickable {
+            id: viewport
+            objectName: "welcomeViewport"
+            contentWidth: width
+            contentHeight: content.height + window.contentMargin * 2
+            boundsBehavior: Flickable.StopAtBounds
+        }
+    }
+
+    ColumnLayout {
+        id: content
+        parent: viewport.contentItem
+        x: window.contentMargin
+        y: window.contentMargin
+        width: viewport.width - window.contentMargin * 2
+        height: Math.max(implicitHeight, viewport.height - window.contentMargin * 2)
         spacing: 0
 
         RowLayout {
@@ -318,6 +362,7 @@ ApplicationWindow {
                             : welcome.networkState === "checking" ? "Checking network…" : "Network connection needed"
                         color: welcome.networkState === "connected" ? window.inkMid : window.accentText
                         font.pixelSize: 13
+                        wrapMode: Text.WordWrap
                     }
                     Button {
                         visible: welcome.networkState === "offline"
@@ -382,6 +427,7 @@ ApplicationWindow {
                             : "Offline applications waiting to prepare"
                         color: welcome.seedState === "error" ? window.accentText : window.inkMid
                         font.pixelSize: 13
+                        wrapMode: Text.WordWrap
                     }
                     Button {
                         visible: welcome.seedState === "error"
@@ -647,9 +693,11 @@ ApplicationWindow {
 
         Item { Layout.preferredHeight: 20 }
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
-            spacing: 16
+            columns: window.width < 700 ? 1 : 2
+            columnSpacing: 16
+            rowSpacing: 16
 
             ColumnLayout {
                 visible: !welcome.isLive
@@ -671,48 +719,52 @@ ApplicationWindow {
                 }
             }
 
-            Button {
-                visible: welcome.isLive && !welcome.isInstallMode
-                text: "Try the desktop first →"
-                enabled: !welcome.busy
-                flat: true
-                onClicked: welcome.finish()
-            }
-
-            Button {
-                visible: welcome.isInstallMode
-                text: "Start the live desktop"
-                enabled: !welcome.busy
-                flat: true
-                onClicked: welcome.startDesktop()
-            }
-
-            Button {
-                visible: welcome.isInstallMode
-                text: "Restart"
-                enabled: !welcome.busy
-                flat: true
-                onClicked: welcome.power("reboot")
-            }
-
-            Button {
-                visible: welcome.isInstallMode
-                text: "Power off"
-                enabled: !welcome.busy
-                flat: true
-                onClicked: welcome.power("poweroff")
-            }
-
-            Item {
-                visible: welcome.isLive
+            Flow {
                 Layout.fillWidth: true
-            }
+                Layout.columnSpan: welcome.isLive ? parent.columns : 1
+                Layout.minimumWidth: window.width < 700 ? 0 : 170
+                Layout.preferredWidth: welcome.isLive ? content.width : 170
+                spacing: 8
+                layoutDirection: Qt.RightToLeft
+                ActionButton {
+                    objectName: "welcomePrimaryAction"
+                    primary: true
+                    text: welcome.isLive ? (welcome.busy ? "Installer is open…" : "Install CybexOS") : "Settings"
+                    enabled: !welcome.busy
+                    onClicked: welcome.isLive ? welcome.install() : welcome.openSettings("appearance")
+                }
 
-            ActionButton {
-                primary: true
-                text: welcome.isLive ? (welcome.busy ? "Installer is open…" : "Install CybexOS") : "Settings"
-                enabled: !welcome.busy
-                onClicked: welcome.isLive ? welcome.install() : welcome.openSettings("appearance")
+                Button {
+                    visible: welcome.isInstallMode
+                    text: "Power off"
+                    enabled: !welcome.busy
+                    flat: true
+                    onClicked: welcome.power("poweroff")
+                }
+
+                Button {
+                    visible: welcome.isInstallMode
+                    text: "Restart"
+                    enabled: !welcome.busy
+                    flat: true
+                    onClicked: welcome.power("reboot")
+                }
+
+                Button {
+                    visible: welcome.isInstallMode
+                    text: "Start the live desktop"
+                    enabled: !welcome.busy
+                    flat: true
+                    onClicked: welcome.startDesktop()
+                }
+
+                Button {
+                    visible: welcome.isLive && !welcome.isInstallMode
+                    text: "Try the desktop first →"
+                    enabled: !welcome.busy
+                    flat: true
+                    onClicked: welcome.finish()
+                }
             }
         }
     }

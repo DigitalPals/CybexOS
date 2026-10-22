@@ -3,6 +3,10 @@
   hosts: workstation
   gather_facts: true
   become: true
+  vars:
+    # An explicit checkout docker_sudoless opt-in applies to the selected user.
+    # Installed repair uses saved account intent, regardless of task mode.
+    cybexos_docker_direct_install: true
   # Match the ISO's explicit --exclude-weakdeps policy. Existing packages and
   # user-installed recommendations are retained.
   module_defaults:

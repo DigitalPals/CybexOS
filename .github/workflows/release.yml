@@ -20,13 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Require reviewed license, version and older ISO
+      - name: Require version and older ISO
         env:
           RELEASE_TAG: ${{ github.ref_name }}
           BASELINE_ISO: ${{ vars.CYBEXOS_BASELINE_ISO }}
         run: |
           set -euo pipefail
-          test -s LICENSE || test -s LICENSE.md
           test -n "$BASELINE_ISO"
           version=${RELEASE_TAG#v}
           scripts/semver validate "$version"
@@ -63,7 +62,8 @@ jobs:
     secrets: inherit
 
   publish:
-    name: Build, attest, and publish release asset
+    name: Review, attest, and publish release assets
+    environment: public-distribution
     needs: [source, vm, iso]
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -78,8 +78,6 @@ jobs:
         with:
           name: cybexos-desktop-release
           path: dist/desktop-release
-      - name: Require a repository distribution license
-        run: test -s LICENSE || test -s LICENSE.md
       - name: Install release build dependencies
         run: |
           sudo apt-get update
@@ -99,7 +97,9 @@ jobs:
           jq --arg version "$version" '. + {version:$version}' \
             "$root/release-manifest.json" >"$root/release-manifest.json.new"
           mv "$root/release-manifest.json.new" "$root/release-manifest.json"
-          tar --create --zstd --file "dist/cybexos-$version.tar.zst" \
+          source_epoch=$(git show -s --format=%ct HEAD)
+          tar --create --zstd --sort=name --mtime="@$source_epoch" \
+            --owner=0 --group=0 --numeric-owner --file "dist/cybexos-$version.tar.zst" \
             --directory dist "cybexos-$version"
           (
             cd dist
@@ -127,6 +127,68 @@ jobs:
             printf 'path=%s\n' "${sboms[0]}"
             printf 'iso-checksum=%s\n' "$iso_checksum"
           } >>"$GITHUB_OUTPUT"
+      - name: Capture the actual distribution inventories
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          SBOM_PATH: ${{ steps.sbom.outputs.path }}
+        run: |
+          set -euo pipefail
+          version=${RELEASE_TAG#v}
+          mkdir -p dist/distribution-inventories
+          python3 -B image/distribution_review.py capture --channel source \
+            --root dist/verify --artifact "dist/cybexos-$version.tar.zst" \
+            --output dist/distribution-inventories/source-distribution-inventory.json
+          python3 -B - <<'PYTHON'
+          import json
+          from pathlib import Path
+          import shutil
+          import sys
+          sys.path.insert(0, 'image')
+          from distribution_review import revalidate_artifacts
+          for channel in ('desktop-rpm', 'offline-rpm'):
+              path = Path('dist/desktop-release') / (channel + '-distribution-inventory.json')
+              record = json.loads(path.read_text())
+              if record.get('channel') != channel:
+                  raise ValueError('Wrong captured RPM channel')
+              revalidate_artifacts(record, Path('dist/desktop-release/assets'))
+              shutil.copyfile(path, Path('dist/distribution-inventories') / path.name)
+          PYTHON
+          python3 -B image/distribution_review.py capture --channel iso \
+            --root dist/desktop-release/assets --sbom "$SBOM_PATH" \
+            --output dist/distribution-inventories/iso-distribution-inventory.json
+      - name: Retain exact inventories for owner and legal review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: public-distribution-inventories
+          path: dist/distribution-inventories/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Require reviewed PUBLIC distribution for every channel
+        env:
+          # Owner-supplied after inspecting this exact run's artifacts. Keeping
+          # approvals outside the archive avoids a self-referential digest.
+          PUBLIC_REVIEW: ${{ vars.CYBEXOS_PUBLIC_DISTRIBUTION_REVIEW }}
+        run: |
+          set -euo pipefail
+          python3 -B - <<'PYTHON'
+          import json
+          import os
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, 'image')
+          from distribution_review import verify
+          review = json.loads(os.environ.get('PUBLIC_REVIEW') or Path('assets/distribution-review.json').read_text())
+          for channel in ('source', 'desktop-rpm', 'offline-rpm', 'iso'):
+              path = Path('dist/distribution-inventories') / (channel + '-distribution-inventory.json')
+              verify(json.loads(path.read_text()), review)
+          Path('dist/distribution-review.json').write_text(json.dumps(review, indent=2) + '\n')
+          PYTHON
+          (
+            cd dist
+            sha256sum distribution-review.json >>SHA256SUMS
+            cd distribution-inventories
+            sha256sum *.json >>../SHA256SUMS
+          )
       - name: Attest the exact release archive and ISO SBOM
         id: attest
         # actions/attest v4.2.2
@@ -135,6 +197,8 @@ jobs:
           subject-path: |
             dist/cybexos-*.tar.zst
             ${{ steps.sbom.outputs.path }}
+            dist/distribution-inventories/*.json
+            dist/distribution-review.json
       - name: Attest the SPDX SBOM of the exact ISO
         id: attest-sbom
         # actions/attest v4.2.2: sbom-path makes an SPDX predicate attestation
@@ -194,7 +258,8 @@ jobs:
           gh release upload "$RELEASE_TAG" \
             "dist/cybexos-$version.tar.zst" \
             "dist/cybexos-$version.tar.zst.sigstore.jsonl" dist/SHA256SUMS \
-            dist/*.iso.sbom.sigstore.jsonl dist/desktop-release/assets/*
+            dist/*.iso.sbom.sigstore.jsonl dist/desktop-release/assets/* \
+            dist/distribution-inventories/*.json dist/distribution-review.json
           gh release edit "$RELEASE_TAG" --draft=false
           for _attempt in $(seq 1 12); do
             if test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .immutable)" = true; then

@@ -518,29 +518,6 @@
 - name: Configure the shared account defaults
   ansible.builtin.import_tasks: accounts.yml
 
-- name: Inspect Docker group membership before revoking it
-  ansible.builtin.getent:
-    database: group
-    key: docker
-    fail_key: false
-  register: base_docker_group
-  when:
-    - base_docker_marker.stat.exists
-    - not (features.docker | bool and docker_sudoless | bool)
-
-# Earlier releases granted the group to every Docker user. Revoke it from a
-# CybexOS-managed Docker installation unless sudoless use is explicitly saved;
-# the change applies to new login sessions.
-- name: Revoke root-equivalent Docker group access (opt in with cybex configure)
-  ansible.builtin.command:
-    argv: [gpasswd, --delete, "{{ primary_user }}", docker]
-  changed_when: true
-  when:
-    - base_docker_marker.stat.exists
-    - not (features.docker | bool and docker_sudoless | bool)
-    - ansible_facts.getent_group.docker is defined
-    - primary_user in (ansible_facts.getent_group.docker[2] | default('')).split(',')
-
 - name: Record CybexOS ownership of Docker
   ansible.builtin.copy:
     dest: /var/lib/cybexos/features/docker

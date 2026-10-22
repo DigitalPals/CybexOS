@@ -2,7 +2,7 @@
 
 | Asset | Source | Rights information |
 | --- | --- | --- |
-| `public/wallpapers/moon-mountains-{1280,2560,5120}.webp` | Responsive derivatives of `../assets/wallpapers/snow-capped-mountains-with-full-moon-lo.jpg`; resized with Sharp 0.35.4, WebP quality 90, effort 6. The native wallpaper keeps its original dimensions and filename. | The repository does not identify an author or license for this image. This document records its provenance and does not grant or infer redistribution rights. |
+| `public/wallpapers/moon-mountains-{1280,2560,5120}.png` | Original procedural landscapes from `../scripts/generate-wallpapers.py`; native `moon-mountains.png` and the 2560-pixel web file are byte-identical. All dimensions and generator/file digests are in `../assets/PROVENANCE.json`. | Newly authored geometric artwork under the repository MIT license; no third-party input images. |
 | `public/cybex-wordmark.svg` | Copied from `../image/rootfs/usr/share/cybexos/welcome/cybex-wordmark.svg` | Existing Cybex brand asset; no additional license is asserted here. |
 | `public/fedora.svg` | Unchanged copy of `../roles/desktop/files/quickshell/assets/fedora.svg`, adapted from the Fedora Design Team mark at revision `e7ee4e88ac5b43a1acf2ab39157b63c80e8093f2` | CC BY-SA 4.0, except trademark rights. Attribution, modification history, and license link are in `public/licenses/fedora-mark.txt`. |
 | Figtree | `@fontsource/figtree`, installed through the npm lockfile | SIL Open Font License 1.1. Copyright 2022 The Figtree Project Authors, https://github.com/erikdkennedy/figtree. The full license is also shipped in `public/licenses/`. |
@@ -13,9 +13,12 @@ Font files are bundled and served with the application. They do not depend on
 a remote font CDN. Procedural wallpaper choices are drawn with CSS.
 
 Do not apply a repository-wide code license to third-party images or brand
-marks without checking their original terms. Replace the mountain photograph
-with a rights-cleared image if its existing provenance is insufficient for a
-particular distribution.
+marks without checking their original terms. The former undocumented photograph
+and its WebP derivatives have been removed. Run `python3 -B
+scripts/generate-wallpapers.py --check` from the repository root to verify the
+original replacements. This does not approve the other fonts, dependencies or
+marks for public hosting. The [PUBLIC distribution gate](../docs/licensing-audit.md#public-distribution-gate)
+reviews the actual compiled web output; normal builds and tests remain internal.
 
 ## Model Usage provider marks
 

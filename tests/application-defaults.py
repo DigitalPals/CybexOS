@@ -141,7 +141,32 @@ class ApplicationDefaults(unittest.TestCase):
         tasks = yaml.safe_load((ROOT / "roles/base/tasks/accounts.yml").read_text())
         groups = next(task for task in tasks
                       if task.get("name") == "Configure primary user groups and Fish login shell")
-        self.assertIn("docker_sudoless", groups["ansible.builtin.user"]["groups"])
+        self.assertNotIn("docker", groups["ansible.builtin.user"]["groups"])
+        access = yaml.safe_load((ROOT / "roles/base/tasks/docker-access.yml").read_text())
+        policy = next(task["cybexos_docker_access"] for task in access if "cybexos_docker_access" in task)
+        environment = jinja2.Environment(undefined=jinja2.StrictUndefined)
+        environment.filters["bool"] = bool
+        enabled = environment.from_string(policy["enabled"])
+        explicit = environment.from_string(policy["explicit"])
+        for docker, sudoless in ((False, False), (False, True), (True, False), (True, True)):
+            self.assertEqual(enabled.render(features={"docker": docker}, docker_sudoless=sudoless),
+                             str(docker and sudoless))
+        for saved, authorized in (({}, False), ({"primary_user": "alice"}, False),
+                                  ({"primary_user": "bob", "docker_sudoless": False}, False),
+                                  ({"primary_user": "alice", "docker_sudoless": False}, True)):
+            self.assertEqual(explicit.render(base_docker_saved=saved, primary_user="alice",
+                                             cybexos_reconcile=True, docker_sudoless=True).strip(),
+                             str(authorized))
+        for sudoless in (False, True):
+            self.assertEqual(explicit.render(base_docker_saved={}, primary_user="alice",
+                                             cybexos_docker_direct_install=True,
+                                             docker_sudoless=sudoless).strip(),
+                             str(sudoless))
+            self.assertEqual(explicit.render(base_docker_saved={}, primary_user="bob",
+                                             cybexos_reconcile=False,
+                                             docker_sudoless=sudoless).strip(), "False")
+        checkout = yaml.safe_load((ROOT / "site.yml").read_text())[0]
+        self.assertIs(checkout["vars"]["cybexos_docker_direct_install"], True)
         self.assertEqual(yaml.safe_load((ROOT / "inventory/group_vars/all.yml").read_text())
                          ["docker_sudoless"], False)
         post_install = (ROOT / "image/live-rootfs/usr/share/anaconda/post-scripts/90-cybexos.ks")

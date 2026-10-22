@@ -17,6 +17,7 @@ from build_support import digest
 import offline_upgrade_inputs as inputs
 import qualification
 import upgrade_qualification as upgrade
+from qualification_contract import PUBLIC_UPDATE
 
 
 SIGNATURE = {'tag': 'RSAHEADER', 'value': 'RSA/SHA256, Wed Oct 21 2026, Key ID 0123456789abcdef'}
@@ -398,6 +399,43 @@ else:
                 self.assertEqual(root_calls[-1], 'rm -rf -- ' + sealed_directory + '\n')
             self.assertEqual(calls[-1], 'rm -rf -- ' + directory)
 
+    def test_public_control_owns_both_staging_removals_and_preserves_first_failure(self):
+        bundle = self.bundle()
+        vm = SimpleNamespace(ssh=['ssh', 'fixture'])
+        directory = '/tmp/cybexos-qualification-dependencies.0123456789'
+        sealed_directory = '/tmp/cybexos-qualification-sealed-01234567'
+        sealed = {'directory': sealed_directory, 'candidate': sealed_directory + '/candidates/candidate.rpm',
+                  'offline_candidate': sealed_directory + '/candidates/offline_candidate.rpm',
+                  'dependencies': [sealed_directory + '/dependencies/' + self.rpm.name]}
+        for failed_body in (False, True):
+            with self.subTest(failed_body=failed_body):
+                sessions, removals = [], []
+                def command(args, **kwargs):
+                    sessions.append(args[-1])
+                    if args[-1].startswith('mktemp'):
+                        return SimpleNamespace(stdout=directory + '\n')
+                    self.assertTrue(args[-1].startswith('cat >'))
+                    return SimpleNamespace(stdout='')
+                def cleanup(_vm, script, _password, **options):
+                    self.assertEqual(options['timeout'], 30)
+                    removals.append(script)
+                    if failed_body:
+                        raise RuntimeError('secondary cleanup failure')
+                with patch.object(upgrade, 'run', side_effect=command):
+                    def exercise():
+                        with upgrade.copy_dependencies(vm, bundle, 'password',
+                                Mock(return_value=SimpleNamespace(stdout=json.dumps(sealed))), cleanup=cleanup):
+                            if failed_body:
+                                raise RuntimeError('original worker failure')
+                    if failed_body:
+                        with self.assertRaisesRegex(RuntimeError, 'original worker failure'):
+                            exercise()
+                    else:
+                        exercise()
+                self.assertEqual(removals, ['rm -rf -- ' + sealed_directory + '\n',
+                                            'rm -rf -- ' + directory + '\n'])
+                self.assertEqual(len(sessions), 2)  # setup and upload, never cleanup SSH
+
     def root_fixture(self, program):
         """Only bounded temporary files/processes; no RPM installs or VM resources."""
         prefix = []
@@ -583,15 +621,15 @@ for failure in ('candidate-symlink', 'dependency-symlink', 'candidate-hash', 'ca
                 output = self.root / ('upgrade' if with_dependencies else 'fresh')
                 vm = Mock(owned=True, work=self.root, unused_disk=self.artifacts['baseline_iso'], ssh=['ssh', 'fixture'])
                 vm.prepare.side_effect = lambda: output.mkdir()
-                versions = {'candidate_offline_rpm_sha256': self.manifest['candidate_offline_rpm_sha256'],
+                versions = {'installed': {}, 'candidate_offline_rpm_sha256': self.manifest['candidate_offline_rpm_sha256'],
                             'recovery_point': 'recovery123'}
                 result = (self.manifest['candidate_rpm_sha256'], versions)
                 arguments = ['qualify', str(self.artifacts['baseline_iso']), '--output', str(output),
-                             '--execute-vm', '--erase-disposable-disk', '--scenario', 'plain-us']
+                             '--execute-vm', '--erase-disposable-disk', '--scenario', 'encrypted-us' if with_dependencies else 'plain-us']
                 if with_dependencies:
                     arguments += ['--candidate-rpm', str(self.artifacts['candidate_rpm']), '--candidate-offline-rpm',
                                   str(self.artifacts['candidate_offline_rpm']), '--candidate-dependencies', str(self.directory),
-                                  '--legacy-installer']
+                                  '--legacy-installer', '--recovery-check']
                 stack.enter_context(patch('sys.argv', arguments))
                 stack.enter_context(patch('sys.stdout', new_callable=io.StringIO))
                 stack.enter_context(patch.object(qualification.signal, 'signal'))
@@ -600,8 +638,17 @@ for failure in ('candidate-symlink', 'dependency-symlink', 'candidate-hash', 'ca
                 stack.enter_context(patch.object(qualification.subprocess, 'run',
                                              return_value=SimpleNamespace(returncode=0 if with_dependencies else 1)))
                 for name in ('browser_dependencies', 'run', 'ensure_installer_started', 'boot_installed',
-                             'verify_installed_audit', 'poweroff_guest', 'verify_user_choices'):
+                             'verify_installed_audit', 'poweroff_guest', 'verify_user_choices',
+                             'poweroff_installed', 'select_recovery_boot', 'verify_recovery_boot', 'verify_restored'):
                     stack.enter_context(patch.object(qualification, name))
+                source = {'source_revision': 'a' * 40, 'source_content_sha256': 'd' * 64}
+                stack.enter_context(patch.object(qualification, 'root_script',
+                                                return_value=SimpleNamespace(stdout=json.dumps(source))))
+                def public_fixture(*args, **kwargs):
+                    kwargs['report']['checks'] += sorted(PUBLIC_UPDATE)
+                    kwargs['report'].update(source)
+                public_call = stack.enter_context(patch.object(qualification, 'qualify_public_updater',
+                                                               side_effect=public_fixture))
                 stack.enter_context(patch.object(qualification, 'qualification_disks', return_value=('vda', 'vdb')))
                 stack.enter_context(patch.object(qualification, 'qualify_browser', return_value={'boot_keyboard': 'us'}))
                 stack.enter_context(patch.object(qualification, 'prepare_user_choices', return_value='bottom'))
@@ -618,9 +665,21 @@ for failure in ('candidate-symlink', 'dependency-symlink', 'candidate-hash', 'ca
                     self.assertIs(evidence['guest_signatures_verified'], True)
                     self.assertEqual(report['pre_upgrade_recovery_point'], 'recovery123')
                     self.assertIn('candidate_dependencies', upgrade_call.call_args.kwargs)
+                    self.assertEqual(public_call.call_count, 1)
+                    self.assertIs(public_call.call_args.kwargs['candidate_dependencies'],
+                                  upgrade_call.call_args.kwargs['candidate_dependencies'])
                 else:
                     upgrade_call.assert_not_called()
                     self.assertNotIn('candidate_dependencies', report)
+                    public_call.assert_not_called()
+                    vm.prepare.side_effect = lambda: output.mkdir(exist_ok=True)
+                    with patch.object(qualification, 'validate_qualification',
+                                      side_effect=ValueError('missing mandatory evidence')):
+                        with self.assertRaisesRegex(ValueError, 'mandatory evidence'):
+                            qualification.main()
+                    failed = json.loads((output / 'qualification.json').read_text())
+                    self.assertEqual(failed['status'], 'failed')
+                    self.assertIn('mandatory evidence', failed['error'])
 
 
 class UpgradeTransaction(unittest.TestCase):

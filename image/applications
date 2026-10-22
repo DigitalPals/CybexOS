@@ -10,6 +10,7 @@ import subprocess
 
 import yaml
 from application_payload import relativize_seed_links
+from source_build_provenance import collect as source_build_provenance
 from system_packages import DEPENDENCY, contract as system_package_contract
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -177,7 +178,8 @@ def main():
     if not set(flatpaks).issubset(installed):
         raise RuntimeError("Incomplete offline Flatpak application payload")
     manifest = {"packages": sorted(set(packages)), "flatpaks": flatpaks,
-                "features": inventory["features"], "user_seed": str(SEED)}
+                "features": inventory["features"], "user_seed": str(SEED),
+                "source_builds": source_build_provenance(inventory)}
     (BUILD / "applications.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 

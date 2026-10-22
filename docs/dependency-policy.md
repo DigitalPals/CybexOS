@@ -8,8 +8,13 @@ playbook convergence.
 ## Immutable inputs
 
 - GitHub release applications and Nerd Font archives require an exact release
-  tag and SHA-256. The installer selects only that tag, checks a GitHub release
-  digest when supplied, redownloads a bad cache once, stages non-RPM payloads,
+  tag and SHA-256. Before contacting GitHub, the installer can use one regular,
+  non-symlink cached asset matching the inventory regex in that tag's sanitized
+  cache directory. It checks the actual SHA-256 of a private copy and installs
+  that copy, so cache changes cannot substitute unchecked bytes. Symlink or
+  traversal paths fail safely. Missing, corrupt or ambiguous caches use the
+  normal authorized release metadata/download path, which checks a GitHub release
+  digest when supplied and redownloads a bad cache once. It stages non-RPM payloads
   and atomically switches `current`. Non-RPM installs retain three version
   directories; the cache keeps the two newest releases plus the current pin if
   it is older.
@@ -121,6 +126,11 @@ The image build verifies the series as well: `image/compose` fails when the
 resolved `hyprland` or `quickshell` is missing or outside its series, so an
 ISO is never published on an unqualified compositor or shell.
 
+The shared Fedora source-test action installs the same versionlock policy
+before selecting Quickshell, then rejects a missing or out-of-series installed
+runtime. Required checks therefore exercise the product's supported series;
+the next-Fedora preview reports an unavailable qualified build explicitly.
+
 Because the COPR publishes only its newest build, a fresh install fails with
 "matches only packages excluded by versionlock" once upstream has moved to an
 unqualified series and the old build has been withdrawn; the same is true of
@@ -181,14 +191,41 @@ installation.
 ## Source build caches
 
 Source applications reuse a compiler image keyed by the pinned base and build
-recipe. Cargo's registry and per-application target caches live under
+recipe. The derived image still installs current Fedora RPMs: the base digest
+and requested recipe are not a complete description of the resolved toolchain.
+The helper captures the derived image's immutable `sha256:` ID under the
+builder lock, then runs compilation by that ID. It records all resolved RPM
+NEVRAs, `rustc`, Cargo, GCC and C++ compiler versions, authorized source/base/
+recipe inputs, and output binary SHA-256 digests in each deployment's
+`.cybexos-build-provenance.json`. `.cybexos-builder` remains the short image ID.
+
+Cargo's registry and per-application target caches live under
 `/var/cache/cybexos-source-builds/`, outside installed application stores and
-the ISO payload. These caches trade local disk space for faster rebuilds; they
+the ISO payload. Compiled targets are additionally keyed by the actual derived
+image ID, so a recreated compiler image does not reuse another toolchain's
+object cache; the Cargo registry remains shared. These caches trade local disk space for faster rebuilds; they
 are not automatically expired. When no source build is running, an operator
 can remove an obsolete recipe directory and its matching
 `localhost/cybexos-source-builder:<recipe-hash>` Podman image. The next required
 build recreates them. An unchanged, healthy installed binary still works
 offline without either cache.
+
+The requested inputs and healthy installed deployment allow an unchanged
+converge to return without Git, Podman or network access. They do not promise
+identical output after deleting and recreating a builder: Fedora security
+updates may change the resolved packages. To refresh a toolchain, remove only
+an unused builder image as above and perform a required build (a reviewed
+source/recipe change or repair); routine convergence does not silently rebuild
+intact installations. This retains normal Fedora package currency without
+creating a separate compiler pin registry.
+
+The image assembler exports these records in `applications.json` and the
+checksum-covered `source-build-provenance.json` artifact, and retains them in
+the offline application RPM. The ISO's SPDX root binds the exported file's
+SHA-256 in `sourceInfo`; public assets carry it alongside the current raw RPM,
+Flatpak, package-file and build inventories. This describes the actual derived
+builder used, rather than only the requested container base. Missing compiler
+metadata fails staging before activation and preserves the previous build.
 
 ## Rust toolchain documentation
 

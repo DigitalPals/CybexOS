@@ -526,7 +526,8 @@ def created_time(provenance):
 
 
 def build_document(*, rpms, flatpaks, pins, provenance, version, fedora_release="44",
-                   iso=None, desktop_rpm=None, offline_rpm=None, source_archive_sha256=None, owners=None):
+                   iso=None, desktop_rpm=None, offline_rpm=None, source_archive_sha256=None, owners=None,
+                   source_build_provenance_sha256=None):
     """Assemble the SPDX document. File arguments are (filename, sha256) pairs."""
     revision = str(provenance.get("source_revision", ""))
     build = str(provenance.get("build_id", ""))
@@ -544,6 +545,9 @@ def build_document(*, rpms, flatpaks, pins, provenance, version, fedora_release=
                        f"over {int(provenance.get('source_file_count', 0))} files")
     if source_archive_sha256:
         details.append(f"builder source archive SHA-256 {checksum(source_archive_sha256)}")
+    if source_build_provenance_sha256:
+        details.append("resolved source toolchains source-build-provenance.json SHA-256 "
+                       + checksum(source_build_provenance_sha256))
     details.append(f"build {build}")
     root = {
         "SPDXID": ROOT_ID,
@@ -749,7 +753,8 @@ def load_yaml(path):
 
 
 def generate(*, rpm_list, flatpaks, provenance, output, inventory=None, apps_defaults=None,
-             version_file=None, iso=None, desktop_rpm=None, offline_rpm=None, source_archive_sha256=None, downloads=None):
+             version_file=None, iso=None, desktop_rpm=None, offline_rpm=None, source_archive_sha256=None, downloads=None,
+             source_build_provenance_sha256=None):
     """Write the SBOM atomically. `iso` and `desktop_rpm` are (filename, sha256)."""
     inventory = load_yaml(inventory or ROOT / "inventory/group_vars/all.yml")
     defaults = load_yaml(apps_defaults or ROOT / "roles/apps/defaults/main.yml")
@@ -763,7 +768,8 @@ def generate(*, rpm_list, flatpaks, provenance, output, inventory=None, apps_def
         version=Path(version_file or ROOT / "VERSION").read_text().strip(),
         fedora_release=str(inventory.get("fedora_release", "44")),
         iso=iso, desktop_rpm=desktop_rpm, offline_rpm=offline_rpm,
-        source_archive_sha256=source_archive_sha256, owners=owners)
+        source_archive_sha256=source_archive_sha256, owners=owners,
+        source_build_provenance_sha256=source_build_provenance_sha256)
     output = Path(output)
     data = serialize(document)
     temporary = output.with_name(f".{output.name}.tmp")
@@ -805,7 +811,8 @@ def write_build_sbom(artifacts, iso_name, checksums=None, downloads=None, checko
         apps_defaults=checkout / "roles/apps/defaults/main.yml", version_file=checkout / "VERSION",
         iso=(iso_name, digest(iso_name)), desktop_rpm=(rpms[0], digest(rpms[0])),
         offline_rpm=(offline[0], digest(offline[0])) if offline else None,
-        source_archive_sha256=digest(archive.name) if archive.is_file() else None, downloads=downloads)
+        source_archive_sha256=digest(archive.name) if archive.is_file() else None, downloads=downloads,
+        source_build_provenance_sha256=digest("source-build-provenance.json"))
 
 
 def main(argv=None):

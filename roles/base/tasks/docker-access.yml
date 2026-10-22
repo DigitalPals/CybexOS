@@ -1,0 +1,32 @@
+---
+# A default false is not permission to remove independently administered access.
+# Saved choices belong to their selected account; other accounts need ownership.
+# Only the checkout playbook supplies direct-install consent. Installed repair,
+# ISO configuration and RPM reconciliation use saved account intent/ownership.
+- name: Inspect the saved installation choices for Docker access
+  ansible.builtin.stat:
+    path: "{{ lookup('env', 'CYBEXOS_CONFIG_FILE') | default('/etc/cybexos/config.yml', true) }}"
+  register: base_docker_saved_file
+
+- name: Read the saved installation choices for Docker access
+  ansible.builtin.slurp:
+    src: "{{ lookup('env', 'CYBEXOS_CONFIG_FILE') | default('/etc/cybexos/config.yml', true) }}"
+  register: base_docker_saved_content
+  when: base_docker_saved_file.stat.exists
+
+- name: Resolve the saved Docker access choice
+  ansible.builtin.set_fact:
+    base_docker_saved: "{{ (base_docker_saved_content.content | b64decode | from_yaml) if base_docker_saved_file.stat.exists else {} }}"
+
+- name: Reconcile Docker access without replacing unrelated groups
+  cybexos_docker_access:
+    user: "{{ primary_user }}"
+    enabled: "{{ features.docker | bool and docker_sudoless | bool }}"
+    legacy_owner: >-
+      {{ base_docker_saved is mapping
+         and base_docker_saved.primary_user | default('') == primary_user }}
+    explicit: >-
+      {{ (cybexos_docker_direct_install | default(false) | bool and docker_sudoless | bool)
+         or (base_docker_saved is mapping
+             and base_docker_saved.primary_user | default('') == primary_user
+             and base_docker_saved.docker_sudoless | default(none) is boolean) }}

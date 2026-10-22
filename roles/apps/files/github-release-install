@@ -24,6 +24,7 @@ fi
 dnf_lock="/var/lib/cybexos-upstream/.dnf.lock"
 
 tmp_json=$(mktemp)
+cached_payload_dir=""
 stage=""
 had_existing=false
 committed=false
@@ -34,6 +35,7 @@ cleanup() {
   trap - EXIT
   set +e
   [[ -z $stage || ! -d $stage ]] || rm -rf -- "$stage"
+  [[ -z $cached_payload_dir ]] || rm -rf -- "$cached_payload_dir"
   rm -f "$tmp_json"
   if (( rc != 0 )) && [[ $committed == false ]]; then
     for command_link in "${new_command_links[@]}"; do
@@ -111,9 +113,83 @@ if [[ $authorized_checksum =~ ^sha256:[[:xdigit:]]{64}$ ]]; then
   fi
 fi
 
-gh_api_fetch "$api" "$cache_root/api" "$tmp_json"
+# An imported image cache already carries the inventory-authorized bytes. Open
+# every directory without following symlinks, require one regex-matching regular
+# asset, and verify a private copy. Install from that copy so concurrent cache
+# replacement, deletion or in-place writes cannot change the selected payload.
+release=""
+cached_asset=false
+if [[ $authorized_checksum =~ ^sha256:[[:xdigit:]]{64}$ ]]; then
+  cached_payload_dir=$(mktemp -d)
+  cache_rc=0
+  release=$(python3 - "$cache_root" "$authorized_tag" "$asset_regex" \
+    "$authorized_checksum" "$cached_payload_dir" <<'PY'
+import errno
+import hashlib
+import json
+import os
+import stat
+import subprocess
+import sys
 
-release=$(jq -er --arg re "$asset_regex" --arg wanted "$authorized_tag" '
+root, tag, pattern, checksum, destination = sys.argv[1:]
+safe_tag = ''.join(c if c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._+-' else '_'
+                   for c in tag)
+parts = (root + '/' + safe_tag).split('/')[1:]
+if not root.startswith('/') or any(part in ('', '.', '..') for part in parts):
+    sys.exit(2)
+directory = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+try:
+    for part in parts:
+        child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+        os.close(directory)
+        directory = child
+    # Use the same jq regex engine as the release metadata selection.
+    matches = subprocess.run(
+        ['jq', '-c', '--arg', 're', pattern, '[.[] | select(test($re))]'],
+        input=json.dumps(os.listdir(directory)), text=True, capture_output=True, check=True,
+    )
+    candidates = []
+    for name in json.loads(matches.stdout):
+        mode = os.stat(name, dir_fd=directory, follow_symlinks=False).st_mode
+        if stat.S_ISLNK(mode):
+            sys.exit(2)
+        if stat.S_ISREG(mode):
+            candidates.append(name)
+    if len(candidates) != 1:
+        sys.exit(1)
+    asset = candidates[0]
+    output = os.path.join(destination, asset)
+    source = os.open(asset, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    with os.fdopen(source, 'rb') as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            sys.exit(2)
+        with open(output, 'xb') as target:
+            while block := stream.read(1024 * 1024):
+                target.write(block)
+    with open(output, 'rb') as stream:
+        actual = hashlib.file_digest(stream, 'sha256').hexdigest()
+    if actual != checksum.removeprefix('sha256:'):
+        sys.exit(1)
+    print(json.dumps(dict(tag=tag, name=asset, url='', digest='')))
+except OSError as error:
+    sys.exit(2 if error.errno in (errno.ELOOP, errno.ENOTDIR) else 1)
+except (ValueError, subprocess.CalledProcessError):
+    sys.exit(1)
+finally:
+    os.close(directory)
+PY
+  ) || cache_rc=$?
+  if (( cache_rc == 2 )); then
+    echo "Refusing unsafe cached asset path for $name $authorized_tag" >&2
+    exit 1
+  fi
+fi
+
+if [[ -z $release ]]; then
+  gh_api_fetch "$api" "$cache_root/api" "$tmp_json"
+
+  release=$(jq -er --arg re "$asset_regex" --arg wanted "$authorized_tag" '
   first(
     (if type == "array" then .[] else . end)
     | select(.draft == false and .prerelease == false)
@@ -123,9 +199,12 @@ release=$(jq -er --arg re "$asset_regex" --arg wanted "$authorized_tag" '
     | {tag:$release.tag_name,name:.name,url:.browser_download_url,digest:(.digest // "")}
   )
 ' "$tmp_json") || {
-  echo "No stable $repo asset matches $asset_regex" >&2
-  exit 1
-}
+    echo "No stable $repo asset matches $asset_regex" >&2
+    exit 1
+  }
+else
+  cached_asset=true
+fi
 
 tag=$(jq -r .tag <<<"$release")
 asset=$(jq -r .name <<<"$release")
@@ -134,6 +213,7 @@ digest=$(jq -r .digest <<<"$release")
 safe_tag=$(printf '%s' "$tag" | tr -c 'A-Za-z0-9._+-' _)
 mkdir -p "$cache_root/$safe_tag" "$state_root"
 download="$cache_root/$safe_tag/$asset"
+[[ $cached_asset == false ]] || download="$cached_payload_dir/$asset"
 
 rpm_mode=false
 if [[ $kind == rpm || ( $kind == archive-auto && $asset == *.rpm ) ]]; then
@@ -186,12 +266,14 @@ if installed_matches "$expected_manifest" "$installed_mode"; then
 fi
 
 if [[ ! -f $download ]]; then
+  [[ -n $url ]] || { echo "Verified cached asset $asset disappeared" >&2; exit 1; }
   partial="$download.partial"
   cybexos_curl --fail --location --output "$partial" "$url"
   mv -f "$partial" "$download"
 fi
 
 if ! verify_sha256 "$download" "$expected"; then
+  [[ -n $url ]] || { echo "Verified cached asset $asset changed before installation" >&2; exit 1; }
   # Heal a truncated or stale cached asset once from the authorized URL.
   unlink "$download"
   partial="$download.partial"

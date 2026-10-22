@@ -2,7 +2,8 @@
 // search can jump to, described once. `page` must be a Settings.pages
 // id, `key` a Settings key when the target is a keyed row — the jump
 // highlights that row through Settings.highlightKey — or "" when the entry
-// only navigates to its page. An optional `widget` names a widget whose
+// only navigates to its page. `anchor` names a destination outside the
+// preference schema. An optional `widget` names a widget whose
 // settings dialog holds the row; the jump opens it.
 //
 // Keep this file free of Qt APIs so settings-search.test.cjs can hold it
@@ -139,7 +140,7 @@ var ROWS = [
     { page: "backup", pageLabel: "Backup & recovery", group: "Backups", label: "Automatic backups", key: "", terms: "daily schedule timer reminder battery metered" },
     { page: "backup", pageLabel: "Backup & recovery", group: "Backups", label: "Restore files", key: "", terms: "restore recover deleted lost file folder snapshot restored" },
     { page: "backup", pageLabel: "Backup & recovery", group: "Backups", label: "Recovery key", key: "", terms: "backup password keyring encryption key" },
-    { page: "backup", pageLabel: "Backup & recovery", group: "Recovery points", label: "Recovery points", key: "", terms: "snapshot restore rollback undo update btrfs boot menu grub recovery" },
+    { page: "backup", pageLabel: "Backup & recovery", group: "Recovery points", label: "Recovery points", key: "", anchor: "recoveryPoints", terms: "snapshot restore rollback undo update btrfs boot menu grub recovery" },
     { page: "backup", pageLabel: "Backup & recovery", group: "Recovery points", label: "Factory reset", key: "", terms: "factory reset erase wipe new owner sell give away oem" },
 
     // About
@@ -152,15 +153,18 @@ var ROWS = [
 // Case-insensitive substring match over the words a user would type. Results
 // keep index order — the pages' own order — with label hits ranked above
 // hits that only matched hidden search terms.
-function search(query) {
+function search(query, translate) {
+    var tr = translate || function(text) { return text; };
     var q = (query || "").trim().toLowerCase();
     if (q === "")
         return [];
     var labelHits = [];
     var termHits = [];
     ROWS.forEach(function(row) {
-        var direct = (row.label + " " + row.group + " " + row.pageLabel)
-            .toLowerCase().indexOf(q) !== -1;
+        var labels = [row.label, row.group, row.pageLabel];
+        // Follow launcher actions: translated labels plus English aliases.
+        var direct = labels.concat(labels.map(function(label) { return tr(label); }))
+            .join(" ").toLowerCase().indexOf(q) !== -1;
         if (direct)
             labelHits.push(row);
         else if (row.terms.toLowerCase().indexOf(q) !== -1)

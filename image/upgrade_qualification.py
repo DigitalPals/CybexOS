@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from pathlib import Path
 import re
 import shlex
+import sys
 
 from build_support import digest
 from offline_upgrade_inputs import guest_sealing_script, transfer_stream
@@ -121,23 +122,25 @@ def create_recovery_point(vm, password, root_script):
 
 
 @contextmanager
-def copy_dependencies(vm, bundle, password, root_script, *, firstparty=None):
-    if bundle is None:
+def copy_dependencies(vm, bundle, password, root_script, *, firstparty=None, cleanup=None):
+    if bundle is None and firstparty is None:
         yield {'candidate': CANDIDATE, 'offline_candidate': OFFLINE_CANDIDATE, 'dependencies': []}
         return
-    bundle.revalidate()
+    if bundle is not None:
+        bundle.revalidate()
+    records = bundle.manifest['rpms'] if bundle else []
     directory = run([*vm.ssh, 'mktemp -d /tmp/cybexos-qualification-dependencies.XXXXXXXXXX'],
                     text=True, capture_output=True, timeout=30).stdout.strip()
     if not re.fullmatch(r'/tmp/cybexos-qualification-dependencies\.[A-Za-z0-9]{10}', directory):
         raise RuntimeError('Invalid guest dependency staging directory')
     try:
-        for record in bundle.manifest['rpms']:
+        for record in records:
             destination = directory + '/' + record['filename']
             with transfer_stream(bundle, record) as stream:
                 run([*vm.ssh, 'cat > ' + shlex.quote(destination)], stdin=stream,
                     capture_output=True, timeout=300)
-        sealed = json.loads(root_script(vm, guest_sealing_script(directory, bundle.manifest['rpms'], firstparty),
-                                        password, timeout=300 + 60 * len(bundle.manifest['rpms'])).stdout)
+        sealed = json.loads(root_script(vm, guest_sealing_script(directory, records, firstparty),
+                                        password, timeout=300 + 60 * len(records)).stdout)
         sealed_directory = sealed.get('directory') if isinstance(sealed, dict) else None
         if not isinstance(sealed_directory, str) or not re.fullmatch(SEALED_DIRECTORY, sealed_directory):
             raise RuntimeError('Invalid root-owned upgrade staging directory')
@@ -146,17 +149,30 @@ def copy_dependencies(vm, bundle, password, root_script, *, firstparty=None):
                         'candidate': sealed_directory + '/candidates/candidate.rpm',
                         'offline_candidate': sealed_directory + '/candidates/offline_candidate.rpm',
                         'dependencies': [sealed_directory + '/dependencies/' + record['filename']
-                                         for record in bundle.manifest['rpms']]}
+                                         for record in records]}
             if sealed != expected:
                 raise RuntimeError('Invalid root-owned upgrade staging paths')
             yield sealed
         finally:
+            failed = sys.exc_info()[0] is not None
             try:
-                root_script(vm, 'rm -rf -- ' + shlex.quote(sealed_directory) + '\n', password, timeout=30)
+                (cleanup or root_script)(vm, 'rm -rf -- ' + shlex.quote(sealed_directory) + '\n',
+                                         password, timeout=30)
             except BaseException as error:
-                raise RuntimeError(f'Could not remove root-owned upgrade staging: {sealed_directory}') from error
+                if not failed:
+                    raise RuntimeError(f'Could not remove root-owned upgrade staging: {sealed_directory}') from error
     finally:
-        run([*vm.ssh, 'rm -rf -- ' + shlex.quote(directory)], capture_output=True, timeout=30)
+        failed = sys.exc_info()[0] is not None
+        try:
+            if cleanup:
+                # Public updater control must own BOTH removals: even ordinary
+                # SSH can block in PAM after DNF's systemd RPM triggers.
+                cleanup(vm, 'rm -rf -- ' + shlex.quote(directory) + '\n', password, timeout=30)
+            else:
+                run([*vm.ssh, 'rm -rf -- ' + shlex.quote(directory)], capture_output=True, timeout=30)
+        except BaseException:
+            if not failed:
+                raise
 
 
 def upgrade(vm, candidate, password, root_script, offline_candidate=None, *, candidate_dependencies=None):

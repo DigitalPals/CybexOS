@@ -530,9 +530,11 @@ test("swipe between workspaces is one touchpad switch in the saved input prefere
     const rows = load("SettingsSearchData.js").ROWS;
 
     // Drafted behind Apply with the other switches; on unless saved off.
-    assert.match(page, /property var draft: \(\{[^}]*workspaceSwipe: true/);
-    assert.match(page, /property var original: \(\{[^}]*workspaceSwipe: true/);
-    assert.match(page, /Draft\.patch\(draft, original, \[[^\]]*"workspaceSwipe"/);
+    const drafts = read("Settings/InputDrafts.qml");
+    assert.match(page, /editState: InputDrafts\.touchpad/);
+    assert.match(drafts, /draft: \(\{[^}]*workspaceSwipe: true/);
+    assert.match(drafts, /original: \(\{[^}]*workspaceSwipe: true/);
+    assert.match(drafts, /fields: \[[^\]]*"workspaceSwipe"/);
     assert.match(page,
         /SwitchRow \{[\s\S]{0,120}?label: "Swipe between workspaces"[\s\S]{0,200}?checked: page\.draft\.workspaceSwipe[\s\S]{0,120}?onToggled: value => page\.edit\("workspaceSwipe", value\)/);
     assert.equal((page.match(/SwitchRow \{/g) || []).length, 3, "one new switch, no more");
@@ -573,7 +575,7 @@ test("the grouped rail keeps labeled sections, the save state, and the nav searc
     // highlight the row through Settings.highlightKey.
     assert.match(view, /Qt\.Key_Slash/);
     assert.match(view, /function jumpToResult\(row\)/);
-    assert.match(view, /SearchData\.search\(searchQuery\)/);
+    assert.match(view, /SearchData\.search\(searchQuery, I18n\.tr\)/);
     assert.match(view, /function handleEscape[\s\S]{0,220}?clearSearch\(\)/,
         "Escape backs out of a search before anything else");
     assert.match(settings, /property string highlightKey/);

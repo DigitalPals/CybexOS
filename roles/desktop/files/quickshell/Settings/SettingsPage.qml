@@ -40,14 +40,15 @@ Flickable {
     clip: true
     flickDeceleration: 3000
 
-    // A search jump lands on the row whose settingKey matches
-    // Settings.highlightKey; the row draws its own accent wash, this scrolls
-    // it into view. Depth-first over the visual tree because rows sit inside
+    // A search jump lands on a preference row or a non-preference
+    // searchAnchor matching Settings.highlightKey. Preference rows draw
+    // their own accent wash; both destinations scroll into view. Depth-first over the visual tree because rows sit inside
     // groups, columns and revealers at varying depths.
     function rowForKey(item, key) {
         if (!item)
             return null;
-        if (item.settingKey !== undefined && item.settingKey === key)
+        if ((item.settingKey !== undefined && item.settingKey === key)
+                || (item.searchAnchor !== undefined && item.searchAnchor === key))
             return item;
         for (const child of item.children) {
             const hit = rowForKey(child, key);
@@ -117,7 +118,10 @@ Flickable {
         const last = contentY + height - bottomInset;
         const minY = -topInset;
         const maxY = Math.max(minY, contentHeight - height + bottomInset);
-        if (top < first)
+        // A group taller than the viewport lands at its heading.
+        if (item.height > viewport)
+            contentY = Math.max(minY, Math.min(maxY, top - topInset - 4));
+        else if (top < first)
             contentY = Math.max(minY, top - topInset - 4);
         else if (bottom > last)
             contentY = Math.max(minY, Math.min(maxY, bottom - height + bottomInset + 4));

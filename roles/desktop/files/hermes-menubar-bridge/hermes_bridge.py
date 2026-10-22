@@ -94,6 +94,7 @@ from cybex_hermes.auth import (
     _SameOriginRedirectHandler as _SameOriginRedirectHandler,
     RemoteLoginFault as RemoteLoginFault,
     RemoteWebUIAuth as RemoteWebUIAuth,
+    RemoteSession as RemoteSession,
 )
 from cybex_hermes.registry import (
     default_conversations as default_conversations,
@@ -125,6 +126,13 @@ def remote_observer_failures(failures: int, connected_at: float | None) -> int:
     return failures + 1
 
 
+def remote_auth_retry_delay(failures: int) -> float:
+    """Back off startup transport failures to at most one check per 5 minutes."""
+
+    delay = 3.0 * (2 ** min(max(0, failures - 1), 8))
+    return min(300.0, delay * (0.8 + random.random() * 0.4))
+
+
 class HermesBridge:
     def __init__(
         self,
@@ -152,8 +160,10 @@ class HermesBridge:
         self.remote_stream_completed: dict[str, str] = {}
         self.remote_stream_response_lock = threading.Lock()
         self.remote_observer_tasks: dict[str, asyncio.Task[Any]] = {}
+        self.remote_observer_cleanup_tasks: set[asyncio.Task[Any]] = set()
         self.remote_observer_responses: dict[str, Any] = {}
         self.remote_observer_response_lock = threading.Lock()
+        self.remote_observer_selection_lock = asyncio.Lock()
         self.remote_observed_conversation_id = ""
         self.remote_refresh_task: asyncio.Task[Any] | None = None
         self.remote_refresh_pending = False
@@ -201,6 +211,18 @@ class HermesBridge:
                 "todo_state",
             ],
         }
+        self.remote_contract_defaults = dict(self.remote_contract)
+        self.remote_background_task: asyncio.Task[Any] | None = None
+        self.remote_background_wakeup = asyncio.Event()
+        self.remote_background_session: RemoteSession | None = None
+        self.remote_optional_session: RemoteSession | None = None
+        self.remote_background_ready = False
+        self.remote_background_suspended = False
+        self.remote_stopping = False
+        self.remote_probe_task: asyncio.Task[Any] | None = None
+        self.remote_probe_session: RemoteSession | None = None
+        self.remote_discovery_task: asyncio.Task[Any] | None = None
+        self.remote_optional_tasks: dict[str, tuple[asyncio.Task[Any], float]] = {}
         self.watermarks: dict[str, int] = {}
         self.replay_epoch = ""
         self.conversation_locks: dict[str, asyncio.Lock] = {}
@@ -231,9 +253,13 @@ class HermesBridge:
     def start(self) -> None:
         if self.local_backend_enabled:
             self.gateway.start()
+        self.wake_remote_background()
 
     async def stop(self) -> None:
+        self.remote_stopping = True
+        await self.stop_remote_background()
         await self.stop_remote_observers()
+        await asyncio.gather(*self.remote_observer_cleanup_tasks, return_exceptions=True)
         await self.stop_remote_streams()
         await self.gateway.stop()
         self.registry.flush()
@@ -462,31 +488,32 @@ class HermesBridge:
             if params.get("probe") is False:
                 return self.remote_auth.status
             previous = self.remote_auth.status
-            status = await self.remote_auth.probe(params.get("url"))
+            status = await self.probe_remote_status(params.get("url"))
             candidate = bool(params.get("url")) and status["url"] != self.remote_auth.base_url
             if not candidate:
+                self.remote_background_suspended = False
                 await self.publish_remote_status(status, previous)
-                if status.get("state") == "connected":
-                    with suppress(RpcFault, RemoteLoginFault):
-                        await self.probe_remote_contract()
-                    await self.start_remote_observers()
             return status
         if method in {"remote.probe", "webui.auth.probe", "auth.probe"}:
             previous = self.remote_auth.status
-            status = await self.remote_auth.probe(params.get("url"))
+            status = await self.probe_remote_status(params.get("url"))
             candidate = bool(params.get("url")) and status["url"] != self.remote_auth.base_url
             if not candidate:
+                self.remote_background_suspended = False
                 await self.publish_remote_status(status, previous)
             return status
         if method in {"remote.login", "webui.auth.login", "auth.login"}:
+            login_url = normalize_remote_url(params.get("url"))
+            self.remote_background_suspended = True
+            self.wake_remote_background()
             previous = self.remote_auth.status
             connecting = self.remote_auth.connecting_status(
-                "Signing in to remote Hermes…", params.get("url")
+                "Signing in to remote Hermes…", login_url
             )
             await self.publish_remote_status(connecting, previous)
             try:
                 status = await self.remote_auth.login(
-                    params.get("url"), params.get("password")
+                    login_url, params.get("password")
                 )
             except RemoteLoginFault as fault:
                 failure = fault.data if isinstance(fault.data, dict) else {
@@ -497,14 +524,15 @@ class HermesBridge:
                 }
                 await self.publish_remote_status(failure, connecting)
                 raise
-            await self.refresh_remote_conversations()
-            with suppress(RpcFault, RemoteLoginFault):
-                await self.probe_remote_contract()
-            await self.start_remote_observers()
+            finally:
+                self.remote_background_suspended = False
+                self.wake_remote_background()
             await self.publish_remote_status(status, connecting)
             return status
         if method in {"remote.logout", "webui.auth.logout", "auth.logout"}:
             previous = self.remote_auth.status
+            self.remote_background_suspended = True
+            await self.stop_remote_background()
             await self.stop_remote_observers()
             await self.stop_remote_streams()
             status = await self.remote_auth.logout()
@@ -545,6 +573,11 @@ class HermesBridge:
             result = await self.remote_request(
                 "POST", "/api/reasoning", body, timeout=30
             )
+            # A successful mutation invalidates every model-scoped cached read.
+            for key in list(self.remote_optional_tasks):
+                if key.startswith("reasoning:"):
+                    task, _ = self.remote_optional_tasks.pop(key)
+                    task.cancel()
             state = self.sanitize_remote_reasoning(result)
             await self.update_remote_contract(reasoningEffort=len(state["options"]) > 1)
             return state
@@ -1297,6 +1330,184 @@ class HermesBridge:
         public = self.public_conversation(conversation)
         await self.broadcast_event("conversation.updated", {"conversation": public, **public})
 
+    @staticmethod
+    async def await_remote_task(task: asyncio.Task[Any]) -> Any:
+        # A closing popover must not cancel shared discovery. Conversely, a
+        # replaced session must settle callers with an RPC error, not silently
+        # cancel their request and leave them waiting for their QML deadline.
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if task.cancelled() and current is not None and not current.cancelling():
+                raise RpcFault(-32042, "Remote Hermes session changed during the request") from None
+            raise
+
+    async def probe_remote_status(self, url: Any = None) -> dict[str, Any]:
+        session = self.remote_auth.session_identity
+        if url and normalize_remote_url(url) != session[0]:
+            return await self.remote_auth.probe(url)
+        task = self.remote_probe_task
+        if task is None or task.done() or self.remote_probe_session != session:
+            task = asyncio.create_task(self.remote_auth.probe(), name="hermes-remote-auth-probe")
+            self.remote_probe_task = task
+            self.remote_probe_session = session
+            task.add_done_callback(HermesGateway._log_background_failure)
+        status = await self.await_remote_task(task)
+        return status if self.remote_auth.is_current_session(session) else self.remote_auth.status
+
+    def wake_remote_background(self) -> None:
+        if asyncio.current_task() is not self.remote_background_task:
+            self.remote_background_wakeup.set()
+        if self.remote_stopping or self.remote_background_suspended:
+            return
+        task = self.remote_background_task
+        if task is None or task.done():
+            task = asyncio.create_task(
+                self._remote_background_loop(), name="hermes-remote-auth-recovery"
+            )
+            self.remote_background_task = task
+            task.add_done_callback(HermesGateway._log_background_failure)
+
+    def cancel_remote_discovery(self) -> None:
+        if self.remote_discovery_task is not None:
+            if self.remote_discovery_task is not asyncio.current_task():
+                self.remote_discovery_task.cancel()
+            self.remote_discovery_task = None
+        for task, _ in self.remote_optional_tasks.values():
+            task.cancel()
+        self.remote_optional_tasks.clear()
+
+    async def reset_remote_discovery(self, session: RemoteSession) -> None:
+        if self.remote_optional_session == session:
+            return
+        self.cancel_remote_discovery()
+        self.remote_optional_session = session
+        # Never advertise a previous origin's write capabilities while the
+        # replacement session's optional probes are still pending.
+        previous = self.remote_contract
+        self.remote_contract = dict(self.remote_contract_defaults)
+        if self.remote_contract != previous:
+            await self.publish_remote_contract()
+
+    async def stop_remote_background(self) -> None:
+        tasks = [self.remote_background_task, self.remote_probe_task,
+                 self.remote_discovery_task]
+        tasks.extend(task for task, _ in self.remote_optional_tasks.values())
+        self.remote_background_task = None
+        self.remote_probe_task = None
+        self.cancel_remote_discovery()
+        for task in tasks:
+            if task is not None:
+                task.cancel()
+        await asyncio.gather(*(task for task in tasks if task is not None),
+                             return_exceptions=True)
+
+    async def _remote_background_loop(self) -> None:
+        """Recover startup connectivity, then sleep until auth changes.
+
+        Only a transport failure is retried. A reachable sign-in challenge,
+        invalid configuration or protocol error needs user action. Successful
+        authentication hands liveness to the existing SSE observers; there is
+        no periodic authentication or discovery poll while connected.
+        """
+
+        initial = True
+        failures = 0
+        while True:
+            self.remote_background_wakeup.clear()
+            status = self.remote_auth.status
+            if (not self.remote_background_suspended and self.remote_auth.base_url
+                    and (initial and status.get("state") == "disconnected")):
+                previous = status
+                status = await self.probe_remote_status()
+                await self.publish_remote_status(status, previous)
+            initial = False
+            session = self.remote_auth.session_identity
+            changed = session != self.remote_background_session
+            connected = (not self.remote_background_suspended
+                         and status.get("state") == "connected")
+            if changed or not connected:
+                if not connected or self.remote_optional_session != session:
+                    self.cancel_remote_discovery()
+                await self.stop_remote_observers()
+                if changed or status.get("state") == "expired":
+                    await self.stop_remote_streams()
+                self.remote_background_ready = False
+            if (session != self.remote_auth.session_identity
+                    or status != self.remote_auth.status):
+                continue
+            if changed:
+                self.remote_background_session = session
+                await self.reset_remote_discovery(session)
+            if connected:
+                failures = 0
+                task = self.remote_discovery_task
+                if task is None or task.done():
+                    task = asyncio.create_task(
+                        self.probe_remote_contract(), name="hermes-remote-discovery"
+                    )
+                    self.remote_discovery_task = task
+                    task.add_done_callback(HermesGateway._log_background_failure)
+                if not self.remote_background_ready:
+                    self.remote_background_ready = True
+                    await self.start_remote_observers()
+                    self.request_remote_refresh()
+            retry = (
+                not self.remote_background_suspended and bool(session[0])
+                and status.get("errorKind") == "offline"
+                and not (status.get("authEnabled")
+                         and not status.get("hasSessionCredential"))
+            )
+            if not retry:
+                await self.remote_background_wakeup.wait()
+                continue
+            failures += 1
+            try:
+                await asyncio.wait_for(self.remote_background_wakeup.wait(),
+                                       timeout=remote_auth_retry_delay(failures))
+            except TimeoutError:
+                previous = self.remote_auth.status
+                status = await self.probe_remote_status()
+                await self.publish_remote_status(status, previous)
+
+    async def remote_optional(
+        self, key: str, discover: Callable[[RemoteSession], Awaitable[Any]]
+    ) -> Any:
+        session = self.remote_auth.session_identity
+        if self.remote_auth.status.get("state") != "connected":
+            raise RpcFault(-32042, "Remote Hermes discovery is awaiting authentication")
+        await self.reset_remote_discovery(session)
+        entry = self.remote_optional_tasks.get(key)
+        if entry is not None:
+            task, checked_at = entry
+            ttl = 30.0 if task.done() and (task.cancelled() or task.exception()) else 300.0
+            if task.done() and time.monotonic() - checked_at >= ttl:
+                entry = None
+        if entry is None:
+            # Bound model-scoped reasoning entries without evicting work that
+            # other RPCs are still awaiting.
+            if len(self.remote_optional_tasks) >= 128:
+                for old_key, (old_task, _) in list(self.remote_optional_tasks.items()):
+                    if old_task.done():
+                        self.remote_optional_tasks.pop(old_key)
+            task = asyncio.create_task(discover(session), name=f"hermes-remote-{key}")
+            self.remote_optional_tasks[key] = (task, time.monotonic())
+
+            def completed(done: asyncio.Task[Any]) -> None:
+                current = self.remote_optional_tasks.get(key)
+                if current is not None and current[0] is done:
+                    self.remote_optional_tasks[key] = (done, time.monotonic())
+                HermesGateway._log_background_failure(done)
+
+            task.add_done_callback(completed)
+        else:
+            task = entry[0]
+        result = await self.await_remote_task(task)
+        if not self.remote_auth.is_current_session(session):
+            raise RpcFault(-32042, "Remote Hermes session changed during the request")
+        return result
+
     def remote_mode(self) -> bool:
         """Return whether a remote WebUI is the selected conversation backend."""
 
@@ -1308,17 +1519,24 @@ class HermesBridge:
         path: str,
         payload: dict[str, Any] | None = None,
         timeout: float = 30.0,
+        *,
+        session: RemoteSession | None = None,
     ) -> dict[str, Any]:
         previous = self.remote_auth.status
         try:
             return await self.remote_auth.request_json(
-                method, path, payload, timeout=timeout
+                method, path, payload, timeout=timeout,
+                session=session if session is not None else self.remote_auth.session_identity,
             )
         except RemoteLoginFault:
             await self.publish_remote_status(self.remote_auth.status, previous)
             raise
 
-    async def update_remote_contract(self, **patch: Any) -> None:
+    async def update_remote_contract(
+        self, *, session: RemoteSession | None = None, **patch: Any
+    ) -> None:
+        if session is not None and not self.remote_auth.is_current_session(session):
+            return
         changed = False
         for key, value in patch.items():
             if self.remote_contract.get(key) != value:
@@ -1326,6 +1544,9 @@ class HermesBridge:
                 changed = True
         if not changed:
             return
+        await self.publish_remote_contract()
+
+    async def publish_remote_contract(self) -> None:
         await self.broadcast_event(
             "bridge.capabilities",
             {
@@ -1477,37 +1698,45 @@ class HermesBridge:
         return "/api/reasoning" + ("?" + "&".join(pairs) if pairs else "")
 
     async def remote_model_catalog(self) -> dict[str, Any]:
-        result = await self.remote_request("GET", "/api/models", timeout=45)
+        return await self.remote_optional("models", self._discover_remote_models)
+
+    async def _discover_remote_models(self, session: RemoteSession) -> dict[str, Any]:
+        result = await self.remote_request("GET", "/api/models", timeout=45, session=session)
         catalog = self.sanitize_remote_model_catalog(result)
-        await self.update_remote_contract(modelSelection=bool(catalog["groups"]))
+        await self.update_remote_contract(session=session, modelSelection=bool(catalog["groups"]))
         return catalog
 
     async def remote_reasoning_state(self, params: dict[str, Any]) -> dict[str, Any]:
-        result = await self.remote_request(
-            "GET", self.remote_reasoning_path(params), timeout=20
-        )
-        state = self.sanitize_remote_reasoning(result)
-        await self.update_remote_contract(
-            reasoningEffort=bool(state["options"] and len(state["options"]) > 1)
-        )
-        return state
+        path = self.remote_reasoning_path(params)
+
+        async def discover(session: RemoteSession) -> dict[str, Any]:
+            result = await self.remote_request("GET", path, timeout=20, session=session)
+            state = self.sanitize_remote_reasoning(result)
+            await self.update_remote_contract(
+                session=session, reasoningEffort=len(state["options"]) > 1
+            )
+            return state
+
+        return await self.remote_optional("reasoning:" + path, discover)
 
     async def remote_route_supported(
-        self, path: str, *, multipart: bool = False
+        self, path: str, *, multipart: bool = False, session: RemoteSession | None = None
     ) -> bool:
         """Probe a write route with an invalid, guaranteed non-mutating body."""
 
         if multipart:
             previous = self.remote_auth.status
             try:
-                status_code = await self.remote_auth.probe_multipart_route(path)
+                status_code = await self.remote_auth.probe_multipart_route(path, session=session)
             except RemoteLoginFault:
                 await self.publish_remote_status(self.remote_auth.status, previous)
                 raise
             return status_code in {200, 400, 409, 415, 422}
         try:
-            await self.remote_request("POST", path, {}, timeout=15)
+            await self.remote_request("POST", path, {}, timeout=15, session=session)
             return True
+        except RemoteLoginFault:
+            raise
         except RpcFault as fault:
             details = fault.data if isinstance(fault.data, dict) else {}
             status_code = int(details.get("statusCode") or 0)
@@ -1521,55 +1750,72 @@ class HermesBridge:
             await self.update_remote_contract(**{capability: False})
 
     async def probe_remote_contract(self) -> dict[str, Any]:
-        """Negotiate the read-only WebUI stream contract without guessing writes."""
+        return await self.remote_optional("contract", self._discover_remote_contract)
 
-        try:
-            probe = await self.remote_auth.probe_contract()
-        except RemoteLoginFault:
-            await self.publish_remote_status(self.remote_auth.status)
-            raise
-        except RpcFault:
-            await self.update_remote_contract(checked=True)
-            return dict(self.remote_contract)
-        await self.update_remote_contract(
-            checked=True,
-            server=str(probe.get("server") or "")[:128],
-            probeStatus=int(probe.get("probeStatus") or 0),
-            gatewaySessions=probe.get("gatewaySessions") is True,
-            gatewayWatcher=probe.get("gatewayWatcher") is True,
-            sessionStream=probe.get("sessionStream") is True,
-            sessionStreamPath=str(
-                probe.get("sessionStreamPath") or "/api/session/stream"
+    async def _discover_remote_contract(self, session: RemoteSession) -> dict[str, Any]:
+        """Share optional probes across opens without delaying authentication."""
+
+        probes = {
+            "stream": self.remote_auth.probe_contract(session=session),
+            "models": self.remote_model_catalog(),
+            "reasoning": self.remote_reasoning_state({}),
+            "attachments": self.remote_route_supported(
+                "/api/upload", multipart=True, session=session
             ),
-            fallbackPollMs=int(probe.get("fallbackPollMs") or 30000),
-        )
-        try:
-            await self.remote_model_catalog()
-        except RpcFault:
-            await self.update_remote_contract(modelSelection=False)
-        try:
-            await self.remote_reasoning_state({})
-        except RpcFault:
-            await self.update_remote_contract(reasoningEffort=False)
-        route_support: dict[str, bool] = {
-            "attachments": await self.remote_route_supported(
-                "/api/upload", multipart=True
-            ),
-            "messageEditing": await self.remote_route_supported(
-                "/api/session/truncate"
-            ),
-            "regeneration": await self.remote_route_supported(
-                "/api/session/retry"
+            "messageEditing": self.remote_route_supported("/api/session/truncate", session=session),
+            "regeneration": self.remote_route_supported("/api/session/retry", session=session),
+            "nativeBranches": self.remote_route_supported("/api/session/branch", session=session),
+            "duplicateSessions": self.remote_route_supported(
+                "/api/session/duplicate", session=session
             ),
         }
-        native_branch = await self.remote_route_supported("/api/session/branch")
-        duplicate = await self.remote_route_supported("/api/session/duplicate")
-        route_support["nativeBranches"] = native_branch
-        route_support["duplicateSessions"] = duplicate
-        route_support["branches"] = native_branch or (
-            duplicate and route_support["messageEditing"]
+        results = dict(zip(probes, await asyncio.gather(*probes.values(), return_exceptions=True)))
+        for result in results.values():
+            if isinstance(result, RemoteLoginFault):
+                await self.publish_remote_status(self.remote_auth.status)
+                raise result
+            if isinstance(result, BaseException) and not isinstance(result, RpcFault):
+                raise result
+        if not self.remote_auth.is_current_session(session):
+            raise RpcFault(-32042, "Remote Hermes session changed during the request")
+        probe = results["stream"]
+        if isinstance(probe, dict):
+            stream_path = str(probe.get("sessionStreamPath") or "/api/session/stream")
+            stream_path_changed = self.remote_contract.get("sessionStreamPath") != stream_path
+            await self.update_remote_contract(
+                session=session, checked=True,
+                server=str(probe.get("server") or "")[:128],
+                probeStatus=int(probe.get("probeStatus") or 0),
+                gatewaySessions=probe.get("gatewaySessions") is True,
+                gatewayWatcher=probe.get("gatewayWatcher") is True,
+                sessionStream=(probe.get("sessionStream") is True
+                               or self.remote_contract.get("sessionStream") is True),
+                sessionStreamPath=stream_path,
+                fallbackPollMs=int(probe.get("fallbackPollMs") or 30000),
+            )
+            if stream_path_changed:
+                # Authentication starts observers before optional discovery.
+                # The default route may already have failed with a 404, or an
+                # open stream may still be using the previously advertised path.
+                await self.observe_remote_conversation(
+                    self.registry.selected_conversation_id,
+                    session=session, restart=True,
+                )
+        else:
+            await self.update_remote_contract(session=session, checked=True)
+        if isinstance(results["models"], RpcFault) and results["models"].code != -32042:
+            await self.update_remote_contract(session=session, modelSelection=False)
+        if isinstance(results["reasoning"], RpcFault) and results["reasoning"].code != -32042:
+            # A concurrent reasoning.set supersedes the cached discovery read;
+            # its successful response already established the capability.
+            await self.update_remote_contract(session=session, reasoningEffort=False)
+        route_support = {key: results[key] is True for key in (
+            "attachments", "messageEditing", "regeneration", "nativeBranches", "duplicateSessions"
+        )}
+        route_support["branches"] = route_support["nativeBranches"] or (
+            route_support["duplicateSessions"] and route_support["messageEditing"]
         )
-        await self.update_remote_contract(**route_support)
+        await self.update_remote_contract(session=session, **route_support)
         return dict(self.remote_contract)
 
     async def start_remote_observers(self) -> None:
@@ -1657,31 +1903,47 @@ class HermesBridge:
             if self.remote_refresh_task is asyncio.current_task():
                 self.remote_refresh_task = None
 
-    async def observe_remote_conversation(self, conversation_id: str) -> None:
-        conversation_id = str(conversation_id or "")
-        if conversation_id == self.remote_observed_conversation_id:
-            task = self.remote_observer_tasks.get("session")
-            if not conversation_id or (task is not None and not task.done()):
+    async def observe_remote_conversation(
+        self, conversation_id: str, *, session: RemoteSession | None = None,
+        restart: bool = False,
+    ) -> None:
+        session = self.remote_auth.session_identity if session is None else session
+        async with self.remote_observer_selection_lock:
+            if not self.remote_auth.is_current_session(session):
                 return
-        await self.stop_remote_observer("session")
-        self.remote_observed_conversation_id = conversation_id
-        if (
-            not conversation_id
-            or self.remote_auth.status.get("state") != "connected"
-        ):
-            return
-        conversation = self.registry.conversations.get(conversation_id)
-        if conversation is None:
-            return
-        session_id = str(conversation.get("remote_session_id") or conversation_id)
-        task = asyncio.create_task(
-            self._remote_session_events_loop(
-                conversation_id, session_id, self.remote_auth.base_url
-            ),
-            name=f"hermes-remote-session-events-{conversation_id}",
-        )
-        self.remote_observer_tasks["session"] = task
-        task.add_done_callback(HermesGateway._log_background_failure)
+            # Discovery can yield while publishing capabilities or closing the
+            # old response. Always restart the current selection, never one
+            # captured before a concurrent selection or authentication change.
+            if restart:
+                conversation_id = self.registry.selected_conversation_id
+            conversation_id = str(conversation_id or "")
+            if not restart and conversation_id == self.remote_observed_conversation_id:
+                task = self.remote_observer_tasks.get("session")
+                if not conversation_id or (task is not None and not task.done()):
+                    return
+            await self.stop_remote_observer("session")
+            if not self.remote_auth.is_current_session(session):
+                return
+            if restart:
+                conversation_id = str(self.registry.selected_conversation_id or "")
+            self.remote_observed_conversation_id = conversation_id
+            if (
+                not conversation_id
+                or self.remote_auth.status.get("state") != "connected"
+            ):
+                return
+            conversation = self.registry.conversations.get(conversation_id)
+            if conversation is None:
+                return
+            session_id = str(conversation.get("remote_session_id") or conversation_id)
+            task = asyncio.create_task(
+                self._remote_session_events_loop(
+                    conversation_id, session_id, self.remote_auth.base_url
+                ),
+                name=f"hermes-remote-session-events-{conversation_id}",
+            )
+            self.remote_observer_tasks["session"] = task
+            task.add_done_callback(HermesGateway._log_background_failure)
 
     async def _consume_observer_sse(
         self,
@@ -1740,28 +2002,51 @@ class HermesBridge:
                     raise RpcFault(-32045, "Remote Hermes observer event is too large")
                 data_lines.append(value)
 
+    async def open_remote_observer(self, path: str, session: RemoteSession) -> Any:
+        opening = asyncio.create_task(asyncio.to_thread(
+            self.remote_auth.open_sse, path, timeout=45, session=session
+        ))
+        try:
+            response = await asyncio.shield(opening)
+        except asyncio.CancelledError:
+            # Cancelling to_thread cannot interrupt urllib's open. Keep ownership
+            # of its eventual response so an old session cannot leak a stream.
+            async def close_late_response() -> None:
+                with suppress(Exception):
+                    response = await opening
+                    await asyncio.to_thread(response.close)
+
+            cleanup = asyncio.create_task(close_late_response(), name="hermes-close-old-observer")
+            self.remote_observer_cleanup_tasks.add(cleanup)
+            cleanup.add_done_callback(self.remote_observer_cleanup_tasks.discard)
+            raise
+        if not self.remote_auth.is_current_session(session):
+            await asyncio.to_thread(response.close)
+            raise RpcFault(-32042, "Remote Hermes session changed during the request")
+        return response
+
     async def _remote_global_events_loop(self, origin: str) -> None:
         failures = 0
         key = "global"
+        session = self.remote_auth.session_identity
         try:
             while (
                 self.remote_auth.base_url == origin
+                and self.remote_auth.is_current_session(session)
                 and self.remote_auth.status.get("state") == "connected"
             ):
                 response: Any = None
                 connected_at: float | None = None
                 try:
-                    response = await asyncio.to_thread(
-                        self.remote_auth.open_sse,
-                        "/api/sessions/events",
-                        timeout=45,
-                    )
+                    response = await self.open_remote_observer("/api/sessions/events", session)
                     connected_at = time.monotonic()
                     with self.remote_observer_response_lock:
                         self.remote_observer_responses[key] = response
-                    await self.update_remote_contract(globalSessionEvents=True)
+                    await self.update_remote_contract(session=session, globalSessionEvents=True)
 
                     async def handle(event: str, _event_id: str, _data: dict[str, Any]) -> None:
+                        if not self.remote_auth.is_current_session(session):
+                            return
                         if event.strip().lower().replace("-", "_") != "sessions_changed":
                             return
                         self.request_remote_refresh()
@@ -1774,7 +2059,7 @@ class HermesBridge:
                     return
                 except RpcFault as fault:
                     if "HTTP 404" in fault.message or "invalid event stream" in fault.message:
-                        await self.update_remote_contract(globalSessionEvents=False)
+                        await self.update_remote_contract(session=session, globalSessionEvents=False)
                         return
                 except (OSError, TimeoutError, UnicodeDecodeError):
                     pass  # counted below like any other short-lived stream
@@ -1796,11 +2081,13 @@ class HermesBridge:
     ) -> None:
         failures = 0
         key = "session"
+        session = self.remote_auth.session_identity
         seen_background: list[str] = []
         try:
             while (
                 self.remote_observed_conversation_id == conversation_id
                 and self.remote_auth.base_url == origin
+                and self.remote_auth.is_current_session(session)
                 and self.remote_auth.status.get("state") == "connected"
             ):
                 conversation = self.registry.conversations.get(conversation_id)
@@ -1817,15 +2104,15 @@ class HermesBridge:
                 )
                 connected_at: float | None = None
                 try:
-                    response = await asyncio.to_thread(
-                        self.remote_auth.open_sse, path, timeout=45
-                    )
+                    response = await self.open_remote_observer(path, session)
                     connected_at = time.monotonic()
                     with self.remote_observer_response_lock:
                         self.remote_observer_responses[key] = response
-                    await self.update_remote_contract(sessionStream=True)
+                    await self.update_remote_contract(session=session, sessionStream=True)
 
                     async def handle(event: str, event_id: str, data: dict[str, Any]) -> None:
+                        if not self.remote_auth.is_current_session(session):
+                            return
                         normalized = event.strip().lower().replace("-", "_")
                         active = self.registry.conversations.get(conversation_id)
                         if active is None:
@@ -1876,7 +2163,7 @@ class HermesBridge:
                     return
                 except RpcFault as fault:
                     if "HTTP 404" in fault.message or "invalid event stream" in fault.message:
-                        await self.update_remote_contract(sessionStream=False)
+                        await self.update_remote_contract(session=session, sessionStream=False)
                         return
                 except (OSError, TimeoutError, UnicodeDecodeError):
                     pass  # counted below like any other short-lived stream
@@ -4738,6 +5025,10 @@ class HermesBridge:
             not previous or previous.get("state") != "expired"
         ):
             await self.broadcast_event("remote.session_expired", dict(status))
+        # Candidate-URL probes and failed candidate logins must not start work
+        # against, or replace discovery for, the saved session.
+        if status == self.remote_auth.status:
+            self.wake_remote_background()
 
     async def broadcast_event(self, event_type: str, payload: dict[str, Any]) -> None:
         # Serialize once and enqueue without awaiting any socket: delivery is

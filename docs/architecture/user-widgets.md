@@ -31,7 +31,7 @@ the shell; the command helper honors these when present too.
 | Contents | Default path | Update/rollback behavior |
 | --- | --- | --- |
 | Package source and assets | `~/.local/share/cybexos/plugins/<id>/` | Never reconciled with vendor files |
-| Enablement, order, width, settings | `~/.config/cybexos/plugins.json` | Never written by deployment or shell-settings migrations |
+| Enablement, column, order, width, settings | `~/.config/cybexos/plugins.json` | Never written by deployment or shell-settings migrations |
 | Plugin data | `~/.local/share/cybexos/plugin-data/<id>/` | Retained; plugin controls its own format |
 | Loader and API adapter | `~/.local/share/cybexos/runtime/quickshell/` | Replaced by distro updates |
 
@@ -71,6 +71,7 @@ The independent registry uses this shape (prefer the commands over hand edits):
       "enabled": true,
       "width": 120,
       "order": 0,
+      "section": "right",
       "settings": { "label": "Deep work" }
     }
   }
@@ -124,11 +125,17 @@ must be JSON-serializable (no undefined, functions, cycles, or non-finite
 numbers). Use plain QtQuick and available Qt/Quickshell modules; plugins own
 any additional software, credential, and external-service dependencies.
 
-API 1 places widgets before the built-in right-hand modules. Their combined
-display budget is one quarter of the screen, with room reserved for an
-overflow count. Excess widgets are hidden with a tooltip listing their names.
-Placement in other columns, built-in drag ordering, and custom shell popouts
-are not part of this API. Use QtQuick content inside the supplied bounds.
+API 1 places widgets in the plugin area of their saved left, center or right
+column; the default is right. The left and center areas each have 15% of
+the screen width; the right area has 25%, with room reserved for an overflow
+count. Excess widgets are hidden with a tooltip listing their names.
+Placement and width budgets are defined by
+[`Bar.qml`](../../roles/desktop/files/quickshell/Bar/Bar.qml) and
+[`UserWidgets.qml`](../../roles/desktop/files/quickshell/Bar/UserWidgets.qml);
+registry validation lives in
+[`user-plugins.py`](../../roles/desktop/files/quickshell/scripts/user-plugins.py).
+Built-in drag ordering and custom shell popouts are not part of this plugin API. Use QtQuick content inside the
+supplied bounds.
 
 Malformed QML and incompatible manifests produce a local error placeholder;
 hover it for details. The rest of the bar remains usable. Registry errors

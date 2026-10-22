@@ -151,6 +151,18 @@ def detect(root=Path('/'), entries=None, group=group_name, inventory=INVENTORY, 
     values = {'config_schema_version': 1, 'primary_user': account.pw_name,
               'primary_group': group(account.pw_gid), 'primary_home': account.pw_dir, **identity(root)}
     values.update(installation_defaults(inventory, fresh_account=fresh_account))
+    if not fresh_account:
+        # Repair may record defaults before its first shared policy application.
+        # An existing administrator grant is not an explicit opt-out: retain it
+        # when synthesizing a legacy configuration, until cybex configure changes it.
+        try:
+            for line in (root / 'etc/group').read_text().splitlines():
+                fields = line.split(':')
+                if len(fields) == 4 and fields[0] == 'docker':
+                    values['docker_sudoless'] = (account.pw_name in fields[3].split(',')
+                                                or str(account.pw_gid) == fields[2])
+        except FileNotFoundError:
+            pass
     if fresh_account:
         # The same policy function the checkout installer uses for saved
         # choices; an older account is never opted into them by repair.

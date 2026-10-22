@@ -84,19 +84,29 @@ def rpm_idle():
 def apply(account):
     env = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'HOME': '/root',
            'LANG': 'C.UTF-8', 'PYTHONDONTWRITEBYTECODE': '1'}
-    subprocess.run(['/usr/libexec/cybexos-configure-installed', '--reconcile',
-                    '--user', account.pw_name], env=env, check=True, timeout=600)
-    # All home traversal runs with that account's privilege, never as root.
-    subprocess.run(['/usr/sbin/runuser', '-u', account.pw_name, '--', '/usr/bin/env', '-i',
-                    'HOME=' + account.pw_dir, 'USER=' + account.pw_name,
-                    'PATH=/usr/bin:/bin', 'LANG=C.UTF-8', 'PYTHONDONTWRITEBYTECODE=1',
-                    '/usr/libexec/cybexos-user-init', '--essential'],
-                   env=env, check=True, timeout=120)
+    # The helper bounds and drains its systemd cgroup while holding
+    # provision.lock. Never kill just that supervisor and begin recovery while
+    # its Ansible workers still mutate the system.
+    try:
+        subprocess.run(['/usr/libexec/cybexos-configure-installed', '--reconcile',
+                        '--user', account.pw_name], env=env, check=True)
+    finally:
+        subprocess.run(['/usr/libexec/cybexos-configure-installed', '--drain'], env=env, check=True)
     # New packaged unit definitions take effect at the next service start;
     # do not disrupt a running desktop or the user's in-flight app state.
     if Path(f'/run/user/{account.pw_uid}/bus').exists():
-        subprocess.run(['/usr/bin/systemctl', '--user', '--machine=' + account.pw_name + '@.host',
-                        'daemon-reload'], env=env, check=True, timeout=30)
+        # The local bus needs no machine bridge (and no caller pipe FDs
+        # transferred to PID 1 from this confined system service).
+        user_env = {**env, 'HOME': account.pw_dir,
+                    'XDG_RUNTIME_DIR': f'/run/user/{account.pw_uid}',
+                    'DBUS_SESSION_BUS_ADDRESS': f'unix:path=/run/user/{account.pw_uid}/bus'}
+        # timeout signals the whole process group, including runuser's client;
+        # killing only runuser can leave that client holding our output pipe.
+        subprocess.run(['/usr/bin/timeout', '--kill-after=5s', '30s',
+                        '/usr/sbin/runuser', '-u', account.pw_name, '--',
+                        '/usr/bin/env', '-i', *[f'{key}={value}' for key, value in user_env.items()],
+                        '/usr/bin/systemctl', '--user', 'daemon-reload'],
+                       env=env, check=True)
 
 
 def reconcile(retry=False):

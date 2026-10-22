@@ -105,7 +105,8 @@ preserve unknown fields, retain a recoverable original, and avoid downgrading
 data on rollback. A new API or schema needs a compatibility plan and
 upgrade/rollback fixtures before it is released.
 
-Shell settings now use a sparse schema-27 document: the presence of a known
+Shell settings use a sparse schema-29 document (the version authority is
+[`SettingsHelpers.js`](../../roles/desktop/files/quickshell/Common/SettingsHelpers.js)): the presence of a known
 key records an explicit choice, including a choice equal to the current
 default. Reset removes the override; Undo restores its ownership as well as
 its value. Legacy stored values are conservatively treated as explicit. Visual

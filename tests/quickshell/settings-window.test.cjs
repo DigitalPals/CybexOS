@@ -70,3 +70,27 @@ test("the settings window maps unminimized and raises itself when asked", () => 
     assert.match(window,
         /function onPresentPanel\(\) \{\s*window\.minimized = false;\s*Hyprland\.dispatch\('hl\.dsp\.focus\(\{ window = "title:\^CybexOS Settings\$" \}\)'\);/);
 });
+
+test("English and Dutch settings retain the same compositor raise and placement identity", () => {
+    const { load } = require("./shell.cjs");
+    const translations = load("i18n/nl.js").MESSAGES;
+    const helper = load("I18nHelpers.js");
+    const window = read("SettingsWindow.qml");
+    const rules = fs.readFileSync(path.resolve(shellDir, "../..", "templates/looknfeel.lua.j2"), "utf8");
+    const titleExpression = window.match(/^    title: (.*?)(?: \/\/.*)?$/m)[1];
+    const raiseBody = window.match(/function onPresentPanel\(\) \{([^]*?)^        }/m)[1];
+    const placement = rules.match(/hl\.window_rule\(\{ match = \{ title = \[\[(.*?)\]\]/)[1];
+    for (const catalog of [{}, translations]) {
+        const dispatched = [];
+        const context = {I18n: {tr: text => helper.translate(catalog, text)},
+            window: {minimized: true}, Hyprland: {dispatch: command => dispatched.push(command)}};
+        vm.createContext(context);
+        const actualTitle = vm.runInContext(titleExpression, context);
+        vm.runInContext(raiseBody, context);
+        assert.equal(context.window.minimized, false);
+        const target = dispatched[0].match(/window = "title:(.*?)"/)[1];
+        assert.match(actualTitle, new RegExp(target));
+        assert.match(actualTitle, new RegExp(placement));
+    }
+    assert.equal(helper.translate(translations, "CybexOS Settings"), "CybexOS-instellingen");
+});

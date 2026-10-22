@@ -25,6 +25,10 @@ versionlock = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(versionlock)
 INVENTORY = yaml.safe_load((ROOT / "inventory/group_vars/all.yml").read_text())
 SERIES = INVENTORY["qualified_package_series"]
+ci_spec = importlib.util.spec_from_file_location(
+    "ci_qualified_packages", ROOT / ".github/actions/fedora-source-environment/qualified_packages.py")
+ci_packages = importlib.util.module_from_spec(ci_spec)
+ci_spec.loader.exec_module(ci_packages)
 
 # rpm's tests/rpmvercmp.at, the reference for rpmvercmp().
 RPMVERCMP = [
@@ -230,6 +234,46 @@ value = "0.57.0-1.fc44"
         second = subprocess.run(command, capture_output=True, text=True, env=environment, timeout=120)
         self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
         self.assertIn("SUCCESS", second.stdout)
+
+
+class SourceCi(unittest.TestCase):
+    def test_ci_reuses_the_product_lock_and_preserves_administrator_entries(self):
+        with tempfile.TemporaryDirectory(prefix="cybexos-ci-series-") as temporary:
+            path = Path(temporary) / "versionlock.toml"
+            path.write_text('version = "1.0"\n[[packages]]\nname = "fixture"\n'
+                            '[[packages.conditions]]\nkey = "evr"\ncomparator = "="\nvalue = "1"\n')
+            ci_packages.prepare(SERIES, path)
+            packages = tomllib.loads(path.read_text())["packages"]
+            self.assertEqual(packages[0]["name"], "fixture")
+            self.assertEqual(packages[1:], versionlock.desired_entries(SERIES))
+            before = path.read_bytes()
+            ci_packages.prepare(SERIES, path)
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_ci_fails_when_a_lock_cannot_be_enforced(self):
+        with tempfile.TemporaryDirectory(prefix="cybexos-ci-series-") as temporary:
+            path = Path(temporary) / "versionlock.toml"
+            path.write_text('version = "unrecognized"\n')
+            with self.assertRaisesRegex(ValueError, "Cannot enforce"):
+                ci_packages.prepare(SERIES, path)
+            self.assertEqual(path.read_text(), 'version = "unrecognized"\n')
+
+    def test_ci_rejects_missing_or_unqualified_runtimes(self):
+        for version in (None, "0.2.0-1.fc44", "0.3.0-1.fc44", "1:0.2.1-1.fc44"):
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                ci_packages.verify(SERIES, ["quickshell"], lambda _name: version)
+        self.assertEqual(ci_packages.verify(SERIES, ["quickshell"], lambda _name: "0.2.2-1.fc44"),
+                         {"quickshell": "0.2.2-1.fc44"})
+        with self.assertRaisesRegex(ValueError, "No qualified series"):
+            ci_packages.verify(SERIES, ["unregistered"], lambda _name: "1")
+
+    def test_shared_ci_action_enforces_and_checks_its_runtime(self):
+        action = yaml.safe_load((ROOT / ".github/actions/fedora-source-environment/action.yml").read_text())
+        step = next(step for step in action["runs"]["steps"] if step.get("id") == "copr")
+        command = ".github/actions/fedora-source-environment/qualified_packages.py"
+        self.assertLess(step["run"].index(command + " prepare"), step["run"].index("dnf install -y quickshell"))
+        self.assertGreater(step["run"].index(command + " verify quickshell"),
+                           step["run"].index("dnf install -y quickshell"))
 
 
 class BothPaths(unittest.TestCase):

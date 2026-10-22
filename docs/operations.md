@@ -376,6 +376,23 @@ package passes run `dnf upgrade --no-best`, so a library update that only a
 held-back compositor or shell release could use is skipped and the rest of the
 update still completes; `dnf versionlock list` shows the active entries.
 
+After a successful package phase, the root worker performs one bounded
+`daemon-reload` through systemd's private socket, then requires a valid manager
+version reply through the public system bus before continuing. This synchronizes
+the manager after RPM triggers; it does not retry packages or replay failed
+provisioning service actions. Public manager readiness is checked again before
+commit, without another reload. A failed or timed-out synchronization uses the
+existing transaction recovery path and preserves the package logs.
+`--no-packages` skips the post-package reload and retains the commit readiness
+check.
+
+Installed account reconciliation and feature changes reload an existing user
+manager as that account through its local runtime bus, with a 30-second deadline
+and a five-second forced-termination grace for the whole client process group.
+They do not restart the running desktop. A dormant account with no runtime bus
+needs no reload; a failed reload on an existing bus fails configuration. This
+avoids the transient machine bridge and its descriptor transfer through PID 1.
+
 `--firmware` (also accepted by `cybex update`) installs available fwupd device
 firmware in the same worker after the reversible update has committed, through
 `cybexos-firmware-update`. A firmware failure never fails the run; the final
@@ -530,9 +547,13 @@ skipped), excluding directories tagged with `CACHEDIR.TAG` and:
   Electron applications keep inside `~/.config` (`Cache`, `Code Cache`,
   `GPUCache`, `DawnCache`, `GrShaderCache`, `ShaderCache`,
   `Service Worker/CacheStorage`, `component_crx_cache`);
-- games, containers and applications that are downloaded again:
-  `~/.local/share/Steam`, `~/.steam`, `~/.local/share/containers`,
-  `~/.local/share/docker`, `~/.local/share/flatpak`, the Neovim plugin and
+- downloaded Steam games (`steamapps/common`), downloads, shader caches and
+  client caches in the native and Flatpak Steam stores; `userdata` and
+  `steamapps/compatdata` (Proton prefixes and saves) are included;
+- rootless Podman/Docker image/build stores (`overlay`, `overlay2`, `vfs`,
+  image metadata, BuildKit and containerd), including disposable writable
+  container layers; readable named volumes and home bind-mounted personal data are included;
+- applications that are downloaded again: `~/.local/share/flatpak`, the Neovim plugin and
   Mason stores, Voxtype models and `~/.ollama/models`;
 - the CybexOS vendor runtime and release store
   (`~/.local/share/cybexos/runtime`, `releases` and `current`);
@@ -546,6 +567,45 @@ skipped), excluding directories tagged with `CACHEDIR.TAG` and:
 
 Add restic exclude patterns, one per line, to `~/.config/cybexos/backup-exclude`.
 `cybex backup excludes` prints the effective list.
+
+**Application data.** Steam games that store saves inside their installation
+directory (`steamapps/common`) need a separate export into a backed-up home
+folder. Steam Cloud is not a substitute for that export. Keep persistent
+container data in named volumes or home bind mounts, rather than writable
+container layers. Root-owned stores under `/var/lib`, custom stores outside
+home, symlink targets outside home and separately mounted filesystems are not
+included. The regular cache/dependency exclusions also apply inside volumes.
+
+The backup runs as your desktop account. Private `_data` directories and files
+owned by subordinate UIDs in rootless containers may be unreadable to that
+account, even though the volume lives under home. Export that data with the
+application/container's supported tools into a home folder readable by your
+desktop account, and keep the export until a complete backup succeeds.
+Stopping a database alone does not change file ownership or make private
+volume data readable. The helper does not elevate privileges or change volume
+permissions.
+
+These are file backups, not application-consistent database snapshots. Files
+copied while PostgreSQL, MariaDB/MySQL, SQLite or another database is writing
+may not restore consistently, even when the volume is included. Before backup,
+write an application-supported export (for example `pg_dump`, `mysqldump`, or
+SQLite's `.backup`) into a backed-up home directory and retain it until backup
+finishes, or stop the database for the entire backup when its files are readable.
+Restore and verify those exports with the application's tools. Setup and status describe this coverage
+and consistency limit on both installation paths.
+
+**Incomplete backups.** Restic may save a usable snapshot of readable files
+while omitting an unreadable directory and everything below it. Such a run is
+reported as `lastResult: "partial"`, with the reason in `lastError`; a manual
+`now` returns a nonzero exit status. Its snapshot remains available to restore,
+but `lastSuccess` continues to identify the last complete backup. Incomplete
+runs do not apply retention and remain due for the next scheduled retry.
+`lastSummary.unreadable` is the number of read-error records restic reported,
+not a count of all omitted files: a directory error can hide an unknown number
+of children. It is `null` when restic reports an incomplete backup without
+structured error records, and `0` on a complete run. `lastSummary.errors`
+retains the latest 40 error messages, including affected paths when available;
+the error count includes records beyond that diagnostic limit.
 
 **Schedule.** `cybexos-backup.timer` is a user timer started with the Hyprland
 session (on the ISO by the packaged session target, on checkout installations
@@ -561,8 +621,8 @@ week, after a backup, `restic forget --keep-daily 7 --keep-weekly 4
 --keep-monthly 6 --prune` applies to this computer's snapshots, followed by
 `restic check`.
 
-**Notifications.** A failed backup sends one notification with the reason, at
-most once a day for the same reason, however often the hourly check retries.
+**Notifications.** A failed or incomplete backup sends one notification with
+the reason, at most once a day for the same reason, however often the hourly check retries.
 After seven days without a successful backup, a reminder follows once a day,
 naming the drive to connect when that is the cause; it also comes while
 automatic backups are off. Clicking either opens Settings → Backup & recovery.
@@ -588,8 +648,13 @@ backups already include the browser profiles.
 
 `tests/backup.py` covers the helper against stubbed restic, secret-tool, SSH,
 NetworkManager and power-supply fixtures, and the image parity tests compare
-the units and the `cybex backup` dispatchers of both installation paths. A
-backup to real external media or an SSH server from an installed system, and
+the units and the `cybex backup` dispatchers of both installation paths. When
+restic is available, it also snapshots and restores synthetic home data in a
+temporary local repository, checking saves, readable volumes and cache exclusions.
+It also runs a real unreadable-directory backup as an unprivileged account,
+checking partial status, preserved complete snapshots, read errors and a
+readable volume restore. These fixtures do not qualify private subordinate-UID
+volumes as readable. A backup to real external media or an SSH server from an installed system, and
 the Settings flow in a live session, still need qualification on hardware.
 
 ## Update recovery points
@@ -620,6 +685,20 @@ between restoring root and restoring vendor files in home. Normal convergence
 replaces the bootstrap hook; a package-only update can retain it until that
 convergence. Starting the boot service during the current update never rolls
 back that same-boot worker.
+
+Installed baseline and account provisioning runs in the fixed transient
+`cybexos-provision-work.service` cgroup. The supervising helper holds
+`provision.lock` until `cgroup.events` confirms every descendant has exited,
+including workers that detach into another session. Runtime limits stop the
+whole cgroup; cancellation cannot release serialization during teardown. A
+killed supervisor is fenced by draining that named workload before another
+configuration run or updater recovery. A kernel task that cannot be killed
+keeps the fence held rather than permitting concurrent writes. Live provisioning
+requires a working systemd cgroup v2 manager and fails if it is unavailable.
+Only Anaconda's explicit `--offline --installer-target` invocation in a verified
+chroot provisions without a running target manager; `--offline` alone retains
+live containment. The updater probes the helper's advertised `--drain` interface
+so the first update from an older baseline remains supported.
 
 Commit checks the RPM database and newly failed system services. When the
 desktop was active, it also requires the managed Quickshell service to own the

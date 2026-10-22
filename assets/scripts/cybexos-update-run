@@ -684,7 +684,25 @@ restore_release_configuration() {
 # Files on /home are outside the root recovery point. The shared helper owns
 # a manifest of vendor-only integration paths and journals its checkpoint in
 # the top-level Btrfs store. Settings, plugins and personal data never rewind.
+drain_installed_provisioning() {
+  [[ -x /usr/libexec/cybexos-configure-installed ]] || return 0
+  # Older baseline helpers predate containment and do not accept --drain.
+  # The newly installed helper advertises the interface before it is used.
+  local interface
+  interface=$(/usr/libexec/cybexos-configure-installed --help) || return 1
+  [[ $interface == *--drain* ]] || return 0
+  "${privileged_package[@]}" /usr/libexec/cybexos-configure-installed --drain \
+      >>"$run_dir/run.log" 2>&1
+}
+
 finish_failed_transaction() {
+  # The installed helper uses its own systemd cgroup. A killed reconciler
+  # must not allow recovery to race that independently supervised workload.
+  # Early cancellation can run this finalizer before privilege setup. At that
+  # point no provisioning workload has been launched by this worker.
+  if [[ -n ${privileged_package[0]:-} ]]; then
+    drain_installed_provisioning || return 1
+  fi
   [[ $transaction_started == true ]] || return 0
   local action=abort
   [[ $transaction_applying != true ]] || action=rollback
@@ -1032,6 +1050,37 @@ stop_background_download() {
       >>"$run_dir/run.log"
 }
 
+# Always address the local system manager, independently of the invoking
+# session's bus/host redirects (including SYSTEMCTL_FORCE_BUS). With root and
+# --system, systemctl uses /run/systemd/private rather than the public bus.
+# daemon-reload ignores the usual bus timeout, so bound the process itself.
+bounded_manager_command() {
+  local deadline=$1 command_name=$2 command_path
+  shift 2
+  command_path="/usr/bin/$command_name"
+  if [[ ${CYBEXOS_UPDATE_TESTING:-0} == 1 ]]; then
+    command_path=$(command -v -- "$command_name") || return 127
+  fi
+  "${privileged_package[@]}" env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+    timeout --kill-after=5s "$deadline" "$command_path" "$@"
+}
+
+public_manager_ready() {
+  local reply rc
+  reply=$(bounded_manager_command 15s busctl --system --timeout=10s --json=short \
+    get-property org.freedesktop.systemd1 /org/freedesktop/systemd1 \
+    org.freedesktop.systemd1.Manager Version 2>>"$run_dir/run.log")
+  rc=$?
+  ((rc == 0)) || return "$rc"
+  printf '[manager] %s\n' "$reply" >>"$run_dir/run.log"
+  if ! jq -se 'length == 1 and (.[0] | type == "object" and .type == "s"
+      and (.data | type == "string" and test("^[0-9]")))' \
+      <<<"$reply" >/dev/null 2>&1; then
+    printf '[manager] invalid public manager version reply\n' >>"$run_dir/run.log"
+    return 125
+  fi
+}
+
 worker() {
   run_id=${1:-}; shift || true
   valid_id "$run_id" || exit 2
@@ -1096,6 +1145,9 @@ worker() {
   else
     privileged_package=(sudo -n sh -c \
       'umask 022; exec "$@"' cybexos-update-package)
+  fi
+  if ! drain_installed_provisioning; then
+    worker_failed reconcile "Could not stop abandoned provisioning workers" 125
   fi
   stop_background_download
   local snapshot_helper_root=/usr/local/libexec
@@ -1261,6 +1313,24 @@ worker() {
   fi
   honor_cancellation
 
+  if [[ $with_packages == true ]]; then
+    # RPM triggers can leave PID 1 disconnected from its API bus. One private
+    # reload synchronizes the successful package boundary before work using
+    # the public bus (including systemd-run --wait). It does not replay any
+    # failed service actions recorded by provisioning.
+    printf '[manager] synchronizing after the package phase\n' >>"$run_dir/run.log"
+    bounded_manager_command 30s systemctl --system --no-ask-password daemon-reload \
+      >>"$run_dir/run.log" 2>&1
+    local manager_rc=$?
+    ((manager_rc == 0)) \
+      || worker_failed packages "Could not synchronize the updated system" "$manager_rc"
+    public_manager_ready
+    manager_rc=$?
+    ((manager_rc == 0)) \
+      || worker_failed packages "The system manager is unavailable after the package update" "$manager_rc"
+    honor_cancellation
+  fi
+
   if [[ $full == true ]]; then
     cd -- "$repo" || {
       worker_failed tests "Could not enter repository directory" 1
@@ -1350,6 +1420,10 @@ worker() {
 
   if [[ $transaction_started == true ]]; then
     write_status running health "Validating the updated system and desktop" 0
+    public_manager_ready
+    local health_manager_rc=$?
+    ((health_manager_rc == 0)) \
+      || worker_failed health "The system manager is unavailable" "$health_manager_rc"
     if ! "${privileged_package[@]}" "$transaction_helper" commit "$run_id" \
         >>"$run_dir/run.log" 2>&1; then
       worker_failed health "The installed health check failed" 1

@@ -120,7 +120,200 @@ ShellRoot {
             root.status.destroy();
         }
         runThemeLifecycle();
-        runCommandLifecycle();
+        runSettingsLifetime();
+    }
+
+    // Drive the production SettingsView and its actual asynchronous Loader.
+    // The input backend is a fixture: no compositor/helper command runs.
+    property var settingsFixture: null
+    property var savedInputService: null
+    property SettingsUi.SettingsView settingsView: null
+    property int settingsStage: 0
+    property int settingsPolls: 0
+
+    function inputSnapshot(version, layout) {
+        return {version: version, catalog: [{value: "us", label: "English", variants: []},
+                {value: "nl", label: "Dutch", variants: []}],
+            keyboard: {layouts: [{layout: layout, variant: ""}], shortcut: ""},
+            touchpad: {tap: true, naturalScroll: true, workspaceSwipe: true, sensitivity: 0}};
+    }
+    function runSettingsLifetime() {
+        savedInputService = SettingsUi.InputDrafts.service;
+        settingsFixture = inputServiceComponent.createObject(harness);
+        settingsFixture.snapshot = inputSnapshot("version-a", "us");
+        SettingsUi.InputDrafts.service = settingsFixture;
+        Common.Settings.page = "keyboard";
+        Common.Settings.panelOpen = true;
+        settingsView = settingsViewComponent.createObject(harness);
+        settingsPoll.start();
+    }
+    function finishSettingsLifetime() {
+        settingsPoll.stop();
+        Common.Settings.closePanel();
+        if (settingsView) settingsView.destroy();
+        settingsView = null;
+        Qt.callLater(() => {
+            check(settingsFixture.watchers === 0, "input polling claim leaked on Settings teardown");
+            SettingsUi.InputDrafts.service = savedInputService;
+            settingsFixture.destroy();
+            runRecoveryAnchor();
+            runCommandLifecycle();
+        });
+    }
+    function nextSettingsStage() {
+        settingsPolls++;
+        if (settingsPolls > 120) {
+            check(false, "Settings draft lifecycle timed out at stage " + settingsStage);
+            finishSettingsLifetime();
+            return;
+        }
+        const loader = settingsView ? descendant(settingsView, "settingsPageLoader") : null;
+        if (settingsView && (!loader || loader.status !== Loader.Ready)) return;
+        const page = loader ? loader.item : null;
+        const keyboard = SettingsUi.InputDrafts.keyboard;
+        const touchpad = SettingsUi.InputDrafts.touchpad;
+        if (settingsStage === 0) {
+            page.editLayouts([{layout: "nl", variant: ""}]);
+            check(page.dirty && keyboard.version === "version-a", "keyboard edit has no versioned draft");
+            settingsView.searchQuery = "network";
+        } else if (settingsStage === 1) {
+            check(settingsFixture.watchers === 0, "search retained the input polling claim");
+            check(settingsView.handleEscape(), "Escape did not return from search");
+        } else if (settingsStage === 2) {
+            check(page.draft.layouts[0].layout === "nl" && page.dirty,
+                "edit-search-Escape discarded the keyboard draft");
+            Common.Settings.page = "touchpad";
+        } else if (settingsStage === 3) {
+            page.edit("workspaceSwipe", false);
+            Common.Settings.page = "keyboard";
+        } else if (settingsStage === 4) {
+            check(page.draft.layouts[0].layout === "nl", "page switch discarded the keyboard draft");
+            settingsFixture.snapshot = inputSnapshot("version-b", "us");
+            keyboard.apply();
+            check(settingsFixture.request.version === "version-a", "dirty draft lost stale-write protection");
+            settingsFixture.busy = false;
+            settingsFixture.completed({success: false, error: "Settings changed elsewhere"});
+            check(keyboard.dirty && keyboard.original.layouts[0].layout === "us",
+                "failed apply falsely settled the draft");
+            Common.Settings.closePanel();
+            settingsView.destroy();
+            settingsView = null;
+        } else if (settingsStage === 5) {
+            check(settingsFixture.watchers === 0, "closed Settings kept an input claim");
+            Common.Settings.panelOpen = true;
+            settingsView = settingsViewComponent.createObject(harness);
+        } else if (settingsStage === 6) {
+            check(page.dirty && page.draft.layouts[0].layout === "nl", "close/reopen lost failed edits");
+            keyboard.load();
+            check(!keyboard.dirty && keyboard.version === "version-b", "Discard did not reload current input");
+            page.editLayouts([{layout: "nl", variant: ""}]);
+            keyboard.apply();
+            check(settingsFixture.request.version === "version-b", "new draft did not use the current version");
+            Common.Settings.closePanel();
+            settingsView.destroy();
+            settingsView = null;
+        } else if (settingsStage === 7) {
+            settingsFixture.busy = false;
+            settingsFixture.completed({success: true, version: "version-c"});
+            check(!keyboard.dirty && keyboard.version === "version-c",
+                "apply completion after page destruction did not settle values and version");
+            check(touchpad.dirty, "keyboard completion settled the unrelated touchpad draft");
+            Common.Settings.panelOpen = true;
+            settingsView = settingsViewComponent.createObject(harness);
+        } else if (settingsStage === 8) {
+            check(!page.dirty && page.draft.layouts[0].layout === "nl" && keyboard.version === "version-c",
+                "reopen reloaded cached pre-Apply input");
+            page.editLayouts([{layout: "us", variant: ""}]);
+            settingsFixture.snapshot = inputSnapshot("version-c", "nl");
+            check(page.dirty && page.draft.layouts[0].layout === "us", "refresh lost an edit after completion");
+            keyboard.apply();
+            check(settingsFixture.request.version === "version-c", "second Apply reused a pre-commit version");
+            Common.Settings.closePanel();
+            settingsView.destroy();
+            settingsView = null;
+        } else if (settingsStage === 9) {
+            settingsFixture.snapshot = inputSnapshot("version-d", "us");
+            keyboard.draft = Object.assign({}, keyboard.draft, {layouts: [{layout: "nl", variant: ""}]});
+            settingsFixture.busy = false;
+            settingsFixture.completed({success: true, version: "version-d"});
+            check(keyboard.dirty && keyboard.original.layouts[0].layout === "us" && keyboard.version === "version-d",
+                "snapshot before completion lost a later edit or the committed baseline");
+            Common.Settings.panelOpen = true;
+            settingsView = settingsViewComponent.createObject(harness);
+        } else if (settingsStage === 10) {
+            check(page.dirty && page.draft.layouts[0].layout === "nl", "reopen lost edits made during Apply");
+            keyboard.apply();
+            check(settingsFixture.request.version === "version-d", "later edits did not advance the committed version");
+            settingsFixture.busy = false;
+            settingsFixture.completed({success: true, version: "version-e"});
+            settingsFixture.snapshot = inputSnapshot("version-e", "nl");
+            check(!keyboard.dirty && keyboard.version === "version-e", "follow-up Apply did not settle");
+            Common.Settings.page = "touchpad";
+        } else if (settingsStage === 11) {
+            check(page.dirty && !page.draft.workspaceSwipe, "reopen discarded the touchpad draft");
+            const apply = descendants(page, item => item.pending !== undefined && item.reservedHeight !== undefined)[0];
+            check(!!apply, "touchpad Apply/Discard bar is missing");
+            if (apply) apply.discard();
+            check(!page.dirty && page.draft.workspaceSwipe, "Discard did not settle the touchpad draft");
+            finishSettingsLifetime();
+        }
+        settingsStage++;
+    }
+    Timer { id: settingsPoll; interval: 30; repeat: true; onTriggered: root.nextSettingsStage() }
+    Component { id: settingsViewComponent; SettingsUi.SettingsView { width: 900; height: 664 } }
+    Component {
+        id: inputServiceComponent
+        QtObject {
+            property var snapshot: ({})
+            property var request: ({})
+            property bool loaded: true
+            property bool busy: false
+            property bool loading: false
+            property int watchers: 0
+            property string error: ""
+            property string message: ""
+            signal completed(var result)
+            function acquire() { watchers++; }
+            function release() { watchers--; }
+            function refresh() {}
+            function run(value) { request = value; busy = true; return true; }
+        }
+    }
+
+    function runRecoveryAnchor() {
+        const page = recoveryPageComponent.createObject(harness);
+        Qt.callLater(() => {
+            const group = page.rowForKey(page.contentItem, "recoveryPoints");
+            check(group !== null, "Recovery points destination was not found");
+            Common.Settings.highlightKey = "recoveryPoints";
+            page.revealHighlight();
+            check(page.contentY > 1000, "Recovery points did not scroll past long backup content");
+            if (group) {
+                const point = group.mapToItem(page, 0, 0);
+                check(point.y >= -4 && point.y < page.height,
+                    "Recovery points heading remained below the fold");
+                // A long recovery list must keep its heading as the target,
+                // rather than scrolling to the bottom of the whole group.
+                group.height = 600;
+                page.contentY = 0;
+                page.revealHighlight();
+                check(group.mapToItem(page, 0, 0).y >= -4,
+                    "a tall Recovery points group scrolled past its heading");
+            }
+            Common.Settings.highlightKey = "";
+            page.destroy();
+        });
+    }
+    Component {
+        id: recoveryPageComponent
+        SettingsUi.SettingsPage {
+            width: 560; height: 260
+            Column {
+                width: parent.width
+                Rectangle { width: parent.width; height: 1500 }
+                SettingsUi.RecoveryGroup { width: parent.width }
+            }
+        }
     }
 
     // A named theme through the real Theme, Settings and Themes singletons:

@@ -6,11 +6,17 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
+import sys
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+
+import jinja2
+import yaml
 
 from desktop_payload import prepare_managed_defaults
 
@@ -171,7 +177,129 @@ class Lifecycle(unittest.TestCase):
         commands = [call.args[0] for call in run.call_args_list]
         self.assertEqual(len(commands), 2)
         self.assertIn('--reconcile', commands[0])
-        self.assertEqual(commands[1][0], '/usr/sbin/runuser')
+        self.assertEqual(commands[1], ['/usr/libexec/cybexos-configure-installed', '--drain'])
+        self.assertNotIn('timeout', run.call_args_list[0].kwargs)
+
+    def test_local_user_reload_matches_feature_change_and_checkout_bus_policy(self):
+        worker = load('local_bus_reconcile', 'image/rootfs/usr/libexec/cybexos-reconcile')
+        plays = yaml.safe_load((ROOT / 'image/provision.yml').read_text())[0]['tasks']
+        features = next(task['block'] for task in plays if task['name'] ==
+                        'Apply the configured desktop features to every account')
+        reload_task = next(task for task in features if task['name'] ==
+                           "Reload the account's user manager after a feature change")
+        bus_task = next(task for task in features if task['name'] == "Inspect the account's runtime bus")
+        self.assertNotIn('failed_when', reload_task)
+        self.assertIn('not cybexos_offline | bool', reload_task['when'])
+        self.assertIn('image_account_bus.stat.exists | default(false)', reload_task['when'])
+        self.assertIn('is changed', reload_task['when'][-1])
+        for account in (self.alice, self.bob):
+            with self.subTest(account=account.pw_name), patch.dict(os.environ, {
+                    'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/wrong/session',
+                    'SYSTEMCTL_FORCE_BUS': '1', 'LD_PRELOAD': '/wrong/library'}, clear=True), \
+                    patch.object(Path, 'exists', autospec=True, return_value=True) as exists, \
+                    patch.object(worker.subprocess, 'run') as run:
+                worker.apply(account)
+                exists.assert_called_once_with(Path(f'/run/user/{account.pw_uid}/bus'))
+                calls = run.call_args_list
+                self.assertEqual([call.args[0] for call in calls[:2]], [
+                    ['/usr/libexec/cybexos-configure-installed', '--reconcile', '--user', account.pw_name],
+                    ['/usr/libexec/cybexos-configure-installed', '--drain']])
+                reload = calls[2]
+                self.assertEqual(len(calls), 3)
+                self.assertTrue(reload.kwargs['check'])
+                self.assertEqual(reload.args[0][:3], ['/usr/bin/timeout', '--kill-after=5s', '30s'])
+                self.assertEqual(reload.args[0][3:9], [
+                    '/usr/sbin/runuser', '-u', account.pw_name, '--', '/usr/bin/env', '-i'])
+                self.assertEqual(reload.args[0][-3:], ['/usr/bin/systemctl', '--user', 'daemon-reload'])
+                expected_env = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'HOME': account.pw_dir,
+                                'LANG': 'C.UTF-8', 'PYTHONDONTWRITEBYTECODE': '1',
+                                'XDG_RUNTIME_DIR': f'/run/user/{account.pw_uid}',
+                                'DBUS_SESSION_BUS_ADDRESS': f'unix:path=/run/user/{account.pw_uid}/bus'}
+                self.assertEqual(dict(item.split('=', 1) for item in reload.args[0][9:-3]), expected_env)
+                self.assertEqual(reload.kwargs['env'], {key: value for key, value in expected_env.items()
+                                                      if key not in ('XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS')}
+                                 | {'HOME': '/root'})
+                variables = {'primary_user': account.pw_name, 'primary_home': account.pw_dir,
+                             'ansible_facts': {'getent_passwd': {account.pw_name: [
+                                 'x', str(account.pw_uid), str(account.pw_gid), '', account.pw_dir]}}}
+                def render(value):
+                    return jinja2.Template(value, undefined=jinja2.StrictUndefined).render(variables)
+                feature_command = [render(value) for value in reload_task['ansible.builtin.command']['argv']]
+                self.assertEqual(feature_command[:3], ['/usr/bin/timeout', '--kill-after=5s', '30s'])
+                self.assertEqual(feature_command[3:9], reload.args[0][3:9])
+                self.assertEqual(dict(item.split('=', 1) for item in feature_command[9:-3]), expected_env)
+                self.assertEqual(feature_command[-3:], reload.args[0][-3:])
+                self.assertEqual(render(bus_task['ansible.builtin.stat']['path']),
+                                 f'/run/user/{account.pw_uid}/bus')
+                # The checkout already addresses its own account's local user
+                # manager. Keep installed feature changes on that same bus.
+                desktop = yaml.safe_load((ROOT / 'roles/desktop/tasks/main.yml').read_text())
+                checkout = next(task for task in desktop if task.get('name') ==
+                                'Make the explicitly rooted Quickshell unit immediately available')
+                self.assertEqual(checkout['ansible.builtin.systemd_service']['scope'], 'user')
+                self.assertEqual(render(checkout['environment']['XDG_RUNTIME_DIR']),
+                                 expected_env['XDG_RUNTIME_DIR'])
+
+    def test_local_user_reload_failures_propagate_after_provisioning_drain(self):
+        worker = load('failed_bus_reconcile', 'image/rootfs/usr/libexec/cybexos-reconcile')
+        for failure in (subprocess.CalledProcessError(1, ['systemctl']),
+                        subprocess.TimeoutExpired(['systemctl'], 30)):
+            with self.subTest(failure=type(failure).__name__), \
+                    patch.object(Path, 'exists', return_value=True), \
+                    patch.object(worker.subprocess, 'run', side_effect=[None, None, failure]) as run:
+                with self.assertRaises(type(failure)):
+                    worker.apply(self.alice)
+                self.assertEqual(run.call_args_list[1].args[0],
+                                 ['/usr/libexec/cybexos-configure-installed', '--drain'])
+                self.assertEqual(run.call_count, 3, 'no bridge fallback or reload retry')
+
+    def test_reload_deadline_kills_stalled_client_and_closes_output_pipe(self):
+        worker = load('stalled_bus_reconcile', 'image/rootfs/usr/libexec/cybexos-reconcile')
+        fake_runuser = self.root / 'stalled-runuser.py'
+        process_ids = self.root / 'clients.json'
+        fake_runuser.write_text(
+            'import json, os, signal, subprocess, sys\n'
+            'signal.signal(signal.SIGTERM, signal.SIG_IGN)\n'
+            'child = subprocess.Popen([sys.executable, "-c", '
+            '"import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"])\n'
+            'def identity(pid):\n'
+            '    with open(f"/proc/{pid}/stat") as stream: return [pid, stream.read().rsplit(")", 1)[1].split()[19]]\n'
+            'with open(sys.argv[1], "w") as stream: json.dump([identity(os.getpid()), identity(child.pid)], stream)\n'
+            'child.wait()\n')
+        real_run = subprocess.run
+        def run(command, **kwargs):
+            if command[0] == '/usr/libexec/cybexos-configure-installed':
+                return subprocess.CompletedProcess(command, 0)
+            self.assertEqual(command[:3], ['/usr/bin/timeout', '--kill-after=5s', '30s'])
+            # Keep production's process-group timeout; shorten only this
+            # fixture's deadlines and replace the privileged client body.
+            fixture = [command[0], '--kill-after=0.3s', '0.3s',
+                       sys.executable, str(fake_runuser), str(process_ids)]
+            return real_run(fixture, **kwargs, text=True, capture_output=True, timeout=3)
+        def still_alive(pid, start_ticks):
+            try:
+                fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
+            except (FileNotFoundError, ProcessLookupError):
+                return False
+            return fields[19] == start_ticks and fields[0] != 'Z'
+        try:
+            with patch.object(Path, 'exists', return_value=True), \
+                    patch.object(worker.subprocess, 'run', side_effect=run):
+                started = time.monotonic()
+                with self.assertRaises(subprocess.CalledProcessError):
+                    worker.apply(self.alice)
+                self.assertLess(time.monotonic() - started, 3)
+            for pid, start_ticks in json.loads(process_ids.read_text()):
+                self.assertFalse(still_alive(pid, start_ticks),
+                                 'the client must be dead before the output pipe closes')
+        finally:
+            if process_ids.is_file():
+                for pid, start_ticks in json.loads(process_ids.read_text()):
+                    if still_alive(pid, start_ticks):
+                        try:
+                            os.kill(pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
 
     def test_no_accounts_remains_pending(self):
         self.users.return_value = []
@@ -217,7 +345,6 @@ class UserUpgrade(unittest.TestCase):
         self.assertIn('cybexos-reconcile --queue', spec)
         self.assertNotIn('ansible-playbook', spec)
         self.assertNotIn('cybexos-configure-installed', spec)
-        import jinja2
         source = (ROOT / 'roles/desktop/templates/hermes-menubar-bridge.service.j2').read_text()
         unit = jinja2.Template(source).render(primary_home='%h', hermes_bridge_executable='/usr/libexec/cybexos-hermes-menubar-bridge')
         self.assertIn('ExecStart=/usr/bin/python3 /usr/libexec/cybexos-hermes-menubar-bridge', unit)

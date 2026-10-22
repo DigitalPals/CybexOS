@@ -53,6 +53,15 @@ python3 "$source_root/image/compose"
 phase manifests-and-cache
 cp "$build_root/repo/"*.rpm "$artifacts/"
 cp "$build_root/package-manifest.json" "$build_root/applications.json" "$artifacts/"
+# Export the actual compiler images and resolved RPM versions independently of
+# internal Podman/Cargo caches. applications.json also installs this evidence.
+python3 - "$build_root/applications.json" "$artifacts/source-build-provenance.json" <<'PYTHON'
+import json
+from pathlib import Path
+import sys
+record = json.loads(Path(sys.argv[1]).read_text())
+Path(sys.argv[2]).write_text(json.dumps(record["source_builds"], indent=2) + "\n")
+PYTHON
 cp "$build_root/offline-payload.json" "$artifacts/"
 cp "$build_root/titlebars.json" "$artifacts/"
 cp "$build_root/notification-images.json" "$artifacts/"

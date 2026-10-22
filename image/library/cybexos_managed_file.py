@@ -21,7 +21,41 @@ def atomic(path, data, mode=0o600):
         Path(temporary).unlink(missing_ok=True)
 
 
-def manage(destination, content, ledger, absent=False, mode=0o644, check=False, baseline=None):
+def seed(destination, content, mode=0o600, check=False):
+    """Create a complete absent file, like ISO user-init's copy_absent.
+
+    Existing bytes (including malformed/future documents), symlinks and edits
+    published while preparing the default are user-owned. Never parse or merge.
+    """
+    destination = Path(destination)
+    if destination.exists() or destination.is_symlink() or any(
+            parent.is_symlink() for parent in destination.parents):
+        return {'changed': False, 'preserved': True}
+    if check:
+        return {'changed': True, 'preserved': False}
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix='.cybexos-seed-', dir=destination.parent)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+            os.fchmod(stream.fileno(), mode)
+        try:
+            os.link(temporary, destination)
+        except FileExistsError:
+            return {'changed': False, 'preserved': True}
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+    return {'changed': True, 'preserved': False}
+
+
+def manage(destination, content, ledger, absent=False, mode=0o644, check=False, baseline=None,
+           seed_only=False):
+    if seed_only:
+        if absent:
+            raise ValueError('seed_only cannot remove user files')
+        return seed(destination, content, mode, check)
     if check:
         return _manage(destination, content, ledger, absent, mode, check, baseline)
     ledger = Path(ledger)
@@ -90,6 +124,7 @@ def main():
         'baseline': {'type': 'str', 'default': None},
         'state': {'choices': ['present', 'absent'], 'default': 'present'},
         'mode': {'type': 'str', 'default': '0644'},
+        'seed_only': {'type': 'bool', 'default': False},
     }, supports_check_mode=True)
     try:
         result = manage(module.params['dest'], module.params['content'].encode(),
@@ -97,7 +132,8 @@ def main():
                         absent=module.params['state'] == 'absent',
                         mode=int(module.params['mode'], 8), check=module.check_mode,
                         baseline=(module.params['baseline'].encode()
-                                  if module.params['baseline'] is not None else None))
+                                  if module.params['baseline'] is not None else None),
+                        seed_only=module.params['seed_only'])
     except (OSError, ValueError) as error:
         module.fail_json(msg=str(error))
     module.exit_json(**result)

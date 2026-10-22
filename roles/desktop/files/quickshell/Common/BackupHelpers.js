@@ -26,7 +26,7 @@ function emptyStatus() {
         automatic: false, reachable: null, unreachableReason: "",
         recoveryKeyConfirmed: true, lastSuccess: "", lastAttempt: "", lastResult: "",
         lastError: "", lastSkip: "", nextDue: "", stale: false, lastRestore: null,
-        mediaRoot: "/"
+        mediaRoot: "/", coverage: "", consistency: ""
     };
 }
 
@@ -44,6 +44,8 @@ function parseStatus(raw) {
     status.valid = true;
     status.configured = data.configured === true;
     status.running = data.running === true;
+    status.coverage = text(data.coverage).slice(0, 1000);
+    status.consistency = text(data.consistency).slice(0, 1000);
     if (status.running && data.progress && typeof data.progress === "object") {
         status.progress = {
             operation: text(data.progress.operation) || "backup",
@@ -106,6 +108,8 @@ function tone(status) {
         return "running";
     if (status.lastResult === "failed")
         return "error";
+    if (status.lastResult === "partial")
+        return "warning";
     if (status.stale || !status.recoveryKeyConfirmed || status.lastSuccess === "")
         return "warning";
     return "ok";
@@ -147,8 +151,10 @@ function statusHint(status, dueMs, nowMs, formatTime) {
         return status.progress && status.progress.operation === "restore"
             ? "Restoring into a new folder in Restored."
             : "You can keep working; it continues in the background.";
-    if (status.lastResult === "failed" && status.lastError !== "")
+    if ((status.lastResult === "failed" || status.lastResult === "partial") && status.lastError !== "")
         return status.lastError;
+    if (status.lastResult === "partial")
+        return "The last backup is incomplete. Some files could not be read.";
     var schedule = scheduleText(status, dueMs, nowMs, formatTime);
     if (status.stale)
         return "More than a week since the last backup. " + schedule + ".";
@@ -161,7 +167,7 @@ function hintTone(status) {
         return "error";
     if (verdict === "running")
         return "active";
-    return status && status.stale ? "warning" : "info";
+    return verdict === "warning" ? "warning" : "info";
 }
 
 function validHost(host) {

@@ -444,6 +444,49 @@ Chromium and Playwright operate the actual guest Cockpit installer through a
 restricted SSH tunnel. The separate browser smoke fixture provides source
 checks; it does not replace the graphical installation and boot results.
 
+Qualification reports use the versioned scenario evidence inventory in
+`image/qualification_contract.py`, shared by the producer and GitHub release
+verifier. Missing encrypted login/keyring checks, unknown execution modes,
+stale artifact/source digests and incomplete public updater recovery evidence
+fail admission. Legacy reports must be regenerated, not relabelled.
+
+The existing encrypted-US upgrade guest also qualifies the public updater;
+no extra locale matrix or guest is added. Invoke it with the existing
+`--candidate-rpm DESKTOP.rpm --candidate-offline-rpm OFFLINE.rpm --recovery-check`
+options (and `--candidate-dependencies DIR` when needed). Both candidates and
+`--recovery-check` are required for candidate qualification. After the existing
+RPM/manual-recovery check, the harness authenticates normally and starts the
+public durable updater. A root-owned guest-only DNF adapter selects the same
+sealed offline RPM transaction and runs real DNF with repositories disabled;
+it changes no signature checks, sudo rules, health checks or recovery code.
+The harness kills the updater's complete cgroup after DNF applied the candidate
+while the durable journal still says `applying`. A detached harmless writer
+must stop before reboot. The installed recovery service then restores root and
+vendor files before login and automatically restarts. An observer saves that
+first boot's ordering evidence outside root. Another cold boot must retain the
+restored root UUID and terminal journal, with baseline package identities and
+post-checkpoint personal edits intact. Finally the public updater must commit
+the exact candidate RPMs successfully, pass desktop health and leave no workers.
+SSH access is bootstrapped again only after the automatic recovery restart,
+through the normal authenticated console and login barrier. This supports a
+restored baseline with SSH disabled and its firewall closed without enabling
+SSH or opening the firewall permanently; the next cold boot uses the same
+normal bootstrap fallback.
+The same guest runs a harmless detached writer through the installed
+provisioning helper with a short real systemd timeout, then proves the cgroup is
+empty, its writes stopped and the next locked run cannot overlap it.
+Provisioning uses `systemd-run --wait` with journal output: Fedora 44's systemd
+259 rejects `--pipe` for this service. Each launch has a unique journal identifier
+so diagnostics survive unit collection and exclude earlier launches of the
+fixed containment unit. The caller prints progress and finite journal snapshots
+every 15 seconds and a final snapshot after draining the complete cgroup.
+Each journal read is limited to five seconds and 100 entries; displayed batches
+are limited to 32768 characters. No journal follower is left running, and a
+journal read failure does not replace the worker's failure status.
+`public_updater` records run IDs, source updater digest and recovery root/boot
+identities; fixture tests exercise failure transitions but do not qualify a VM.
+The release gate's existing upgrade invocation runs this scenario automatically.
+
 Installation qualification uses four virtual CPUs, 16 GiB RAM and two new
 100 GiB sparse disks: an installation disk and an untouched guard. Fresh encrypted
 scenarios perform one live boot and four installed cold boots; the three

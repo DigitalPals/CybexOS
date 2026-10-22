@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import "../../Common"
+import ".."
 
 // The drawer's Notifications tab: the recent hour's cards, an EARLIER block
 // for the rest, and the On / Focus switch. Cards reuse the shared NotifCard
@@ -102,7 +103,7 @@ Column {
                         { label: I18n.tr("Focus"), glyph: "do_not_disturb_on", dnd: true }
                     ]
 
-                    delegate: Rectangle {
+                    delegate: ActionButton {
                         id: modeChoice
 
                         required property var modelData
@@ -111,7 +112,8 @@ Column {
                         width: modeContent.implicitWidth + 18
                         height: 22
                         radius: 5
-                        color: on ? Theme.chipHover : "transparent"
+                        fill: on ? Theme.chipHover : "transparent"
+                        onTriggered: Notifs.setDnd(modelData.dnd)
 
                         Row {
                             id: modeContent
@@ -137,13 +139,8 @@ Column {
                             }
                         }
 
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: Notifs.setDnd(modeChoice.modelData.dnd)
-                        }
-
                         Accessible.role: Accessible.RadioButton
+                        Accessible.checkable: true
                         Accessible.checked: modeChoice.on
                         Accessible.name: modeChoice.modelData.label
                     }

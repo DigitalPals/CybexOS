@@ -1414,6 +1414,7 @@ Surface {
                     readonly property bool unread: modelData.date !== ""
                         && GitHub.seenAt !== "" && modelData.date > GitHub.seenAt
                     readonly property var stats: GitHub.statsCache[modelData.sha] ?? null
+                    readonly property string statsError: GitHub.statsErrors[modelData.sha] ?? ""
                     readonly property bool bandBreak: index > 0
                         && Helpers.bucketBreak(modelData.date,
                             root.commitRows[index - 1].date, root.now)
@@ -1704,10 +1705,18 @@ Surface {
 
                                     Text {
                                         visible: commitRow.stats === null
-                                        text: I18n.tr("counting…")
+                                        text: commitRow.statsError !== ""
+                                            ? I18n.tr("Statistics unavailable") : I18n.tr("counting…")
                                         font.family: T3Theme.fontUi
                                         font.pixelSize: Theme.typography.secondary
                                         color: T3Theme.textFaint
+                                    }
+
+                                    Action {
+                                        visible: commitRow.statsError !== ""
+                                        label: I18n.tr("Retry")
+                                        revealed: commitRow.expanded
+                                        onTriggered: GitHub.requestStats(root.selectedSlug, commitRow.modelData.sha)
                                     }
                                 }
 

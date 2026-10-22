@@ -387,6 +387,7 @@ var MESSAGES = {
     "Expand commit": "Commit uitvouwen",
     "Expand group": "Groep uitklappen",
     "Explicit shell command": "Expliciete shell-opdracht",
+    "Export databases to a readable home folder before backup. Stop databases when backing up their files directly; private container volumes still need a readable export.": "Exporteer databases voor de back-up naar een leesbare map in je thuismap. Stop databases als je hun bestanden rechtstreeks opneemt; privécontainervolumes hebben nog steeds een leesbare export nodig.",
     "Extra notifications collect in the center": "Extra meldingen worden verzameld in het meldingencentrum",
     "FILES": "BESTANDEN",
     "Factory reset": "Fabrieksinstellingen terugzetten",
@@ -474,6 +475,7 @@ var MESSAGES = {
     "Inbox": "Inbox",
     "Inbox is clear": "Inbox is leeg",
     "Include Flatpak": "Flatpak meenemen",
+    "Includes readable home files, Steam saves and rootless container volumes. Caches, downloaded games, container images and mounted filesystems are excluded.": "Bevat leesbare persoonlijke bestanden, Steam-opslagbestanden en rootless containervolumes. Caches, gedownloade spellen, containerimages en aangekoppelde bestandssystemen worden overgeslagen.",
     "Indicator settings": "Indicatorinstellingen",
     "Input": "Invoer",
     "Input device": "Invoerapparaat",
@@ -1024,6 +1026,7 @@ var MESSAGES = {
     "Start a new conversation": "Begin een nieuw gesprek",
     "Start expanded": "Uitgevouwen starten",
     "Start or stop screen recording": "Schermopname starten of stoppen",
+    "Statistics unavailable": "Statistieken niet beschikbaar",
     "Status": "Status",
     "Status group": "Statusgroep",
     "Status label": "Statuslabel",
@@ -1223,7 +1226,7 @@ var MESSAGES = {
     "omarchy plugin add https://github.com/…": "omarchy plugin add https://github.com/…",
     "open row": "rij openen",
     "provider/model-id (optional when discoverable)": "provider/model-id (optioneel als het automatisch gevonden kan worden)",
-    "user@hostname or SSH alias": "gebruiker@hostnaam of SSH-alias",
+    "user@hostname or SSH alias": "gebruiker@hostnaam of SSH-alias"
 };
 
 if (typeof module !== "undefined" && module.exports)

@@ -63,7 +63,7 @@ PopoutPanel {
     property int searchSelection: 0
     readonly property bool searchActive: searchQuery.trim() !== ""
     readonly property var searchResults: searchActive
-        ? SearchData.search(searchQuery) : []
+        ? SearchData.search(searchQuery, I18n.tr) : []
 
     function focusSearch() {
         searchField.forceActiveFocus();
@@ -88,7 +88,7 @@ PopoutPanel {
         else
             Settings.page = row.page;
         Settings.highlightKey = "";
-        Settings.highlightKey = row.key;
+        Settings.highlightKey = row.anchor || row.key;
         Settings.announcement = row.pageLabel + " page, " + row.label + " row.";
     }
 
@@ -585,6 +585,7 @@ PopoutPanel {
 
         Loader {
             id: pageLoader
+            objectName: "settingsPageLoader"
             // Incubated off the frame that opens the panel: the pages are the
             // bulk of this view and building one inline stalls the popout's
             // open animation. The loader is explicitly sized, so a page that
@@ -667,8 +668,8 @@ PopoutPanel {
                                 : resultMouse.containsMouse ? Theme.hoverFill
                                 : "transparent"
                             Accessible.role: Accessible.ListItem
-                            Accessible.name: modelData.pageLabel + ", "
-                                + modelData.group + ", " + modelData.label
+                            Accessible.name: I18n.tr(modelData.pageLabel) + ", "
+                                + I18n.tr(modelData.group) + ", " + I18n.tr(modelData.label)
                             Accessible.selected: selected
 
                             Text {
@@ -678,7 +679,7 @@ PopoutPanel {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 180
                                 text: I18n.tr(resultRow.modelData.pageLabel)
-                                    + "  ›  " + resultRow.modelData.group
+                                    + "  ›  " + I18n.tr(resultRow.modelData.group)
                                 font.family: Theme.fontMenu
                                 font.pixelSize: Theme.typography.metadata
                                 color: Theme.textFaint

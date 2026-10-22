@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """cybexos-backup against stubbed restic, secret-tool and desktop commands.
 
-The gate never runs real restic or touches a keyring. The stubs on PATH
+The gate never touches a keyring. Most tests use stubs on PATH, which
 record every call, so these fixtures pin what the helper asks of them: the
 repository setup and its two keys, the includes, excludes and retention,
 the reasons a scheduled run quietly waits, the once-a-day reminder and
-failure notice, and that a restore can only ever land in a new folder.
+failure notice, and that a restore can only ever land in a new folder. When
+restic is installed, an offline temporary snapshot/restore checks real data.
 """
 
 import contextlib
@@ -14,6 +15,9 @@ import importlib.util
 import io
 import json
 import os
+import pwd
+import shutil
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import socket
@@ -82,6 +86,9 @@ if command == "key" and rest[1] == "remove":
 if command == "cat":
     print("{}"); sys.exit(0)
 if command == "backup":
+    for message in json.loads(os.environ.get("STUB_BACKUP_ERRORS", "[]")):
+        print(json.dumps(message), file=sys.stderr)
+    sys.stderr.write(os.environ.get("STUB_BACKUP_STDERR", ""))
     print(json.dumps({"message_type": "status", "percent_done": 0.5, "total_bytes": 10, "bytes_done": 5}))
     print(json.dumps({"message_type": "summary", "snapshot_id": "ab" * 32, "total_files_processed": 3,
                       "total_bytes_processed": 300, "data_added": 120}))
@@ -342,6 +349,171 @@ class Setup(Fixture):
         self.assertFalse(self.config()["recoveryKeyConfirmed"])
 
 
+@unittest.skipUnless(shutil.which("restic"), "real restic is not installed")
+class ResticDataPolicy(unittest.TestCase):
+    def test_real_snapshot_restores_saves_volumes_and_exports_but_skips_downloads(self):
+        with tempfile.TemporaryDirectory(prefix="cybexos-backup-data-") as temporary:
+            root = Path(temporary)
+            home = root / "home"
+            home.mkdir()
+            context = backup.Context({"HOME": str(home), "XDG_RUNTIME_DIR": str(root / "run")})
+            config = {"repository": str(root / "repository"), "host": "offline-fixture",
+                      "destination": {"type": "local", "path": str(root / "repository"),
+                                      "display": "offline fixture"}}
+            included = ["Documents/personal.txt", "Games/bind-mounted-data/save",
+                        ".local/share/containers/storage/volumes/game/_data/save",
+                        ".local/share/docker/volumes/database/_data/personal",
+                        ".config/containers/storage.conf", ".config/docker/daemon.json",
+                        ".local/share/cybexos/plugin-data/mine/data"]
+            excluded = [".cache/throwaway", ".local/share/Trash/files/deleted",
+                        ".local/share/containers/storage/overlay/layer/diff/image",
+                        ".local/share/docker/overlay2/layer/diff/image",
+                        ".local/share/docker/buildkit/cache", "project/node_modules/package/data",
+                        ".local/share/cybexos/runtime/vendor", "Documents/explicit-exclude",
+                        "tagged-cache/data", ".var/app/example/cache/temporary"]
+            for store in (".local/share/Steam", ".steam", ".steam/steam", ".steam/root",
+                          ".var/app/com.valvesoftware.Steam/.local/share/Steam"):
+                included += [store + "/userdata/123/456/remote/save",
+                             store + "/steamapps/compatdata/456/pfx/drive_c/users/steamuser/save",
+                             store + "/config/loginusers.vdf"]
+                excluded += [store + "/steamapps/common/game/downloaded",
+                             store + "/steamapps/downloading/456/download",
+                             store + "/steamapps/shadercache/456/cache", store + "/appcache/cache"]
+            for relative in included + excluded:
+                path = home / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("sentinel: " + relative)
+            (home / "tagged-cache/CACHEDIR.TAG").write_text(
+                "Signature: 8a477f597d28d172789f06886806bc55\n")
+            context.user_excludes.parent.mkdir(parents=True, exist_ok=True)
+            context.user_excludes.write_text(str(home / "Documents/explicit-exclude") + "\n")
+            # A supported database export, rather than a claim about live file consistency.
+            export = home / "Documents/database-export.sqlite"
+            with sqlite3.connect(":memory:") as live, sqlite3.connect(export) as destination:
+                live.execute("CREATE TABLE personal (value TEXT)")
+                live.execute("INSERT INTO personal VALUES ('saved record')")
+                live.commit()
+                live.backup(destination)
+            included.append(str(export.relative_to(home)))
+            # Isolate restic's own cache/config from the real account; no keyring,
+            # network, mount, timer or service is involved in this fixture.
+            with patch.dict(os.environ, {"HOME": str(home), "XDG_CACHE_HOME": str(root / "cache"),
+                                         "XDG_CONFIG_HOME": str(home / ".config"),
+                                         "PATH": os.environ.get("PATH", "/usr/bin:/bin")}, clear=True):
+                repository = backup.Restic(config)
+                password = "synthetic-offline-fixture-password"
+                code, _, error = repository.run(["init"], password)
+                self.assertEqual(code, 0, error)
+                backup.run_backup(context, config, password)
+                state = backup.load_state(context)
+                self.assertEqual(state["lastResult"], "ok")
+                self.assertEqual(state["lastSummary"]["unreadable"], 0)
+                restore = root / "restore"
+                code, _, error = repository.run(["restore", "latest", "--target", str(restore)], password)
+                self.assertEqual(code, 0, error)
+            restored = restore / str(home).lstrip("/")
+            for relative in included:
+                self.assertEqual((restored / relative).read_bytes(), (home / relative).read_bytes(), relative)
+            for relative in excluded:
+                self.assertFalse((restored / relative).exists(), relative)
+            with sqlite3.connect(restored / export.relative_to(home)) as database:
+                self.assertEqual(database.execute("SELECT value FROM personal").fetchall(), [("saved record",)])
+
+    def test_real_unreadable_volume_directory_is_partial_and_readable_volume_restores(self):
+        if os.geteuid() == 0:
+            # Root bypasses mode 000. Run this same real-restic test as nobody,
+            # with a readable copy of just the fixture/helper and no host changes.
+            nobody = pwd.getpwnam("nobody")
+            with tempfile.TemporaryDirectory(prefix="cybexos-backup-unprivileged-") as temporary:
+                fixture = Path(temporary)
+                fixture.chmod(0o755)
+                for source, relative in ((Path(__file__), "tests/backup.py"),
+                                         (HELPER, "assets/scripts/cybexos-backup")):
+                    target = fixture / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source, target)
+                    target.chmod(0o644)
+                for directory in fixture.rglob("*"):
+                    if directory.is_dir():
+                        directory.chmod(0o755)
+                result = subprocess.run(
+                    [sys.executable, "-B", str(fixture / "tests/backup.py"),
+                     "ResticDataPolicy." + self._testMethodName],
+                    user=nobody.pw_uid, group=nobody.pw_gid, extra_groups=[],
+                    env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                         "PYTHONDONTWRITEBYTECODE": "1"},
+                    cwd=fixture, capture_output=True, text=True, timeout=120)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertNotIn("skipped", result.stderr)
+            return
+
+        self.assertNotEqual(os.geteuid(), 0)
+        with tempfile.TemporaryDirectory(prefix="cybexos-backup-private-volume-") as temporary:
+            root = Path(temporary)
+            home = root / "home"
+            home.mkdir()
+            context = backup.Context({"HOME": str(home), "XDG_RUNTIME_DIR": str(root / "run")})
+            config = {"version": 1, "keyId": "offline-fixture", "host": "offline-fixture",
+                      "repository": str(root / "repository"),
+                      "destination": {"type": "local", "path": str(root / "repository"),
+                                      "mount": "/", "display": "offline fixture"}}
+            readable = Path(".local/share/containers/storage/volumes/readable/_data/save")
+            private = Path(".local/share/docker/volumes/private/_data")
+            for relative in (readable, private / "record", private / "nested/record"):
+                path = home / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("sentinel: " + str(relative))
+            backup.write_json(context.config_path, config)
+            with patch.dict(os.environ, {"HOME": str(home), "XDG_CACHE_HOME": str(root / "cache"),
+                                         "XDG_CONFIG_HOME": str(home / ".config"),
+                                         "PATH": os.environ.get("PATH", "/usr/bin:/bin")}, clear=True), \
+                    patch.object(backup, "keyring_password", return_value="offline-fixture-password"):
+                repository = backup.Restic(config)
+                password = "offline-fixture-password"
+                code, _, error = repository.run(["init"], password)
+                self.assertEqual(code, 0, error)
+                backup.back_up_now(context, False)
+                complete = backup.load_state(context)
+                self.assertEqual(complete["lastResult"], "ok")
+                (home / private).chmod(0)
+                try:
+                    with self.assertRaises(PermissionError):
+                        list((home / private).iterdir())
+                    # Advancing the clock proves the complete timestamp was preserved.
+                    with patch.object(backup, "utcnow", return_value=backup.utcnow() + timedelta(hours=1)):
+                        with self.assertRaisesRegex(backup.Failure, "Backup incomplete"):
+                            backup.back_up_now(context, False)
+                    partial = backup.load_state(context)
+                    self.assertEqual(partial["lastResult"], "partial")
+                    self.assertEqual(partial["lastSuccess"], complete["lastSuccess"])
+                    self.assertNotEqual(partial["lastAttempt"], complete["lastAttempt"])
+                    self.assertEqual(partial["lastMaintenance"], complete["lastMaintenance"])
+                    self.assertGreater(partial["lastSummary"]["unreadable"], 0)
+                    errors = "\n".join(partial["lastSummary"]["errors"])
+                    self.assertIn(str(private), errors)
+                    self.assertIn("permission denied", errors.lower())
+                    self.assertIn("missing files is unknown", partial["lastError"])
+                    self.assertNotEqual(partial["lastSnapshot"], complete["lastSnapshot"])
+                    code, lines, error = repository.run(["snapshots", "--json"], password)
+                    self.assertEqual(code, 0, error)
+                    self.assertEqual({snapshot["id"] for snapshot in json.loads("\n".join(lines))},
+                                     {complete["lastSnapshot"], partial["lastSnapshot"]})
+                    for snapshot in (complete["lastSnapshot"], partial["lastSnapshot"]):
+                        restore = root / snapshot
+                        code, _, error = repository.run(["restore", snapshot, "--target", str(restore)], password)
+                        self.assertEqual(code, 0, error)
+                        restored = restore / str(home).lstrip("/")
+                        self.assertEqual((restored / readable).read_bytes(), (home / readable).read_bytes())
+                        if snapshot == partial["lastSnapshot"]:
+                            self.assertFalse((restored / private / "record").exists())
+                            self.assertFalse((restored / private / "nested/record").exists())
+                        else:
+                            self.assertEqual((restored / private / "record").read_text(),
+                                             "sentinel: " + str(private / "record"))
+                finally:
+                    (home / private).chmod(0o755)
+
+
 class BackingUp(Fixture):
     def test_home_is_backed_up_with_the_default_excludes(self):
         self.set_up_drive()
@@ -355,8 +527,9 @@ class BackingUp(Fixture):
         self.assertEqual(argv[-1], str(self.home), "the whole home folder is the include")
         excludes = [argv[i + 1] for i, flag in enumerate(argv) if flag == "--exclude"]
         home = str(self.home)
-        for expected in (home + "/.cache", home + "/.local/share/Trash", home + "/.local/share/Steam",
-                         home + "/.local/share/containers", home + "/.local/share/cybexos/runtime",
+        for expected in (home + "/.cache", home + "/.local/share/Trash",
+                         home + "/.local/share/Steam/steamapps/common",
+                         home + "/.local/share/containers/storage/overlay", home + "/.local/share/cybexos/runtime",
                          home + "/.config/**/Cache", "node_modules", str(self.drive / "cybexos-backup")):
             self.assertIn(expected, excludes)
         for flag in ("--exclude-caches", "--one-file-system", "--skip-if-unchanged"):
@@ -367,6 +540,23 @@ class BackingUp(Fixture):
         self.assertEqual(state["lastResult"], "ok")
         self.assertEqual(state["lastSummary"]["files"], 3)
         self.assertFalse(self.context.progress_path.exists(), "progress belongs to a running backup")
+
+    def test_setup_and_status_explain_data_coverage_and_database_consistency(self):
+        setup = self.set_up_drive()
+        status, text, err = self.main("status", "--json")
+        self.assertEqual(status, 0, err)
+        for report in (setup, json.loads(text)):
+            self.assertIn("Proton saves", report["coverage"])
+            self.assertIn("container volumes", report["coverage"])
+            self.assertIn("writable layers", report["coverage"])
+            self.assertIn("Live database files may be inconsistent", report["consistency"])
+            self.assertIn("pg_dump", report["consistency"])
+            self.assertIn("readable rootless container volumes", report["coverage"])
+            self.assertIn("subordinate UIDs require readable exports", report["consistency"])
+            self.assertIn("alone does not make those files readable", report["consistency"])
+        status, text, err = self.main("status")
+        self.assertEqual(status, 0, err)
+        self.assertIn("Live database files may be inconsistent", text)
 
     def test_retention_prunes_at_most_weekly(self):
         self.set_up_drive()
@@ -381,12 +571,66 @@ class BackingUp(Fixture):
         self.main("now")
         self.assertEqual(len(self.restic_calls("forget")), 1, "pruning waits a week")
 
-    def test_unreadable_files_still_count_as_a_backup(self):
+    def test_incomplete_snapshot_keeps_prior_success_and_actual_stderr_read_errors(self):
         self.set_up_drive()
-        with patch.dict(os.environ, {"STUB_BACKUP_STATUS": "3"}):
+        previous = backup.stamp(backup.utcnow() - timedelta(days=2))
+        backup.save_state(self.context, {"lastSuccess": previous})
+        errors = [{"message_type": "error", "item": f"/home/tester/private-{index}/_data",
+                   "error": {"message": "open: permission denied"}} for index in range(55)]
+        with patch.dict(os.environ, {"STUB_BACKUP_STATUS": "3", "STUB_BACKUP_ERRORS": json.dumps(errors)}):
+            status, out, err = self.main("now", "--notify")
+        self.assertEqual(status, backup.EXIT_FAILED)
+        self.assertNotIn("Backed up", out)
+        self.assertIn("Backup incomplete", err)
+        self.assertIn("55 read error(s)", err)
+        state = self.state()
+        self.assertEqual(state["lastResult"], "partial")
+        self.assertEqual(state["lastSuccess"], previous)
+        self.assertEqual(state["lastSnapshot"], "ab" * 32)
+        self.assertEqual(state["lastSummary"]["unreadable"], 55, "count every error, not just the stderr tail")
+        self.assertEqual(len(state["lastSummary"]["errors"]), 40, "keep bounded diagnostic detail")
+        self.assertIn("private-54/_data: open: permission denied", state["lastSummary"]["errors"][-1])
+        self.assertEqual(self.restic_calls("forget"), [], "partial runs never prune prior snapshots")
+        self.assertTrue(backup.due(state, backup.utcnow()))
+        notices = [call for call in self.calls() if isinstance(call, str) and call.startswith("notify-send")]
+        self.assertEqual(len(notices), 1)
+        self.assertIn("Backup incomplete", notices[0])
+        self.assertIn("--urgency=normal", notices[0])
+        status, text, _ = self.main("status")
+        self.assertEqual(status, 0)
+        self.assertIn("Last attempt: partial: Backup incomplete", text)
+
+    def test_incomplete_snapshot_without_structured_errors_has_an_unknown_count(self):
+        self.set_up_drive()
+        with patch.dict(os.environ, {"STUB_BACKUP_STATUS": "3", "STUB_BACKUP_STDERR":
+                                    "Warning: at least one source file could not be read\n"}):
             status, _, err = self.main("now")
+        self.assertEqual(status, backup.EXIT_FAILED)
+        state = self.state()
+        self.assertEqual(state["lastResult"], "partial")
+        self.assertIsNone(state["lastSummary"]["unreadable"])
+        self.assertNotIn("lastSuccess", state)
+        self.assertIn("count is unknown", err)
+        self.assertIn("Warning: at least one source file could not be read", state["lastSummary"]["errors"][0])
+        self.assertNotIn("0 could not be read", err)
+        # A later complete snapshot clears the warning and becomes the success.
+        status, _, err = self.main("now")
         self.assertEqual(status, 0, err)
-        self.assertEqual(self.state()["lastResult"], "ok")
+        state = self.state()
+        self.assertEqual(state["lastResult"], "ok")
+        self.assertTrue(state["lastSuccess"])
+        self.assertEqual(state["lastSummary"]["unreadable"], 0)
+        self.assertEqual(state["lastSummary"]["errors"], [])
+
+    def test_reported_read_error_cannot_be_success_even_with_exit_zero(self):
+        self.set_up_drive()
+        errors = [{"message_type": "error", "item": "/home/tester/private", "error": "permission denied"}]
+        with patch.dict(os.environ, {"STUB_BACKUP_ERRORS": json.dumps(errors)}):
+            status, _, err = self.main("now")
+        self.assertEqual(status, backup.EXIT_FAILED)
+        self.assertIn("Backup incomplete", err)
+        self.assertEqual(self.state()["lastSummary"]["unreadable"], 1)
+        self.assertEqual(self.state()["lastSummary"]["errors"], ["/home/tester/private: permission denied"])
 
     def test_a_failure_is_explained_and_notified_once(self):
         self.set_up_drive()
@@ -462,6 +706,16 @@ class Scheduled(Fixture):
         self.scheduled(self.now + timedelta(hours=24))
         self.assertEqual(self.backups(), 2)
         self.assertEqual(self.notices(), [], "a successful run is silent")
+
+    def test_partial_snapshots_remain_due_and_notify_without_claiming_success(self):
+        with patch.dict(os.environ, {"STUB_BACKUP_STATUS": "3"}):
+            self.scheduled()
+            self.scheduled(self.now + timedelta(hours=1))
+        self.assertEqual(self.backups(), 2, "a partial snapshot does not defer a complete backup")
+        self.assertEqual(self.state()["lastResult"], "partial")
+        self.assertNotIn("lastSuccess", self.state())
+        self.assertEqual(len(self.notices()), 1, "retries keep the once-a-day notification policy")
+        self.assertIn("Backup incomplete", self.notices()[0])
 
     def test_automatic_off_skips_the_backup(self):
         self.main("automatic", "off")

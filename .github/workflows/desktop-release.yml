@@ -169,6 +169,28 @@ jobs:
             --artifacts /release-work/qualified/build/artifacts \
             --output /release-work/publication --repository "$GITHUB_REPOSITORY" \
             --tag "$RELEASE_TAG" --fingerprint "$fingerprint" "${reports[@]}"
+          # Query RPM headers with Fedora's matching RPM tools; Ubuntu's older
+          # reader need not understand Fedora 44's package format. The publish
+          # job rechecks each artifact digest before using this evidence.
+          for channel in desktop-rpm offline-rpm; do
+            package=cybexos-desktop
+            [[ $channel != offline-rpm ]] || package=cybexos-offline-apps
+            python3 -B image/distribution_review.py capture --channel "$channel" \
+              --artifact /release-work/publication/assets/"$package"-*.rpm \
+              --output "/release-work/publication/$channel-distribution-inventory.json"
+          done
+          # Keep the actual payload inventories and compiler evidence accessible
+          # for channel-specific PUBLIC review. Internal qualification needs no
+          # distribution approval, and these records do not grant any rights.
+          for evidence in rpm-inventory.tsv flatpak-inventory.tsv package-manifest.json \
+              source-build-provenance.json build-provenance.json; do
+            cp "/release-work/qualified/build/artifacts/$evidence" "/release-work/publication/assets/$evidence"
+          done
+          (
+            cd /release-work/publication/assets
+            sha256sum rpm-inventory.tsv flatpak-inventory.tsv package-manifest.json \
+              source-build-provenance.json build-provenance.json >>desktop-SHA256SUMS
+          )
           # The container is root; artifacts must be readable by the hosted
           # runner's upload action. Secret material is outside this directory.
           chmod -R a+rX /release-work/publication

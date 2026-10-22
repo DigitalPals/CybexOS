@@ -32,6 +32,35 @@ ACCOUNTS = load("desktop_seed_accounts", "image/rootfs/usr/libexec/cybexos-seed-
 
 
 class DesktopPayload(unittest.TestCase):
+    def test_github_and_plugin_failure_recovery_ship_identically_on_both_paths(self):
+        checkout = ROOT / "roles/desktop/files/quickshell"
+        files = ("Common/GitHub.qml", "Common/GitHubHelpers.js", "Common/GitHubQueue.js",
+                 "Common/CommandRequest.qml", "Common/ProcHelpers.js", "Common/UserPlugins.qml",
+                 "Popovers/GitHubPopover.qml", "scripts/user-plugins.py", "scripts/plugin_packages.py",
+                 "Common/i18n/nl.js")
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            prepare_quickshell(ROOT, payload)
+            installed = payload / "usr/share/cybexos/runtime/quickshell"
+            for relative in files:
+                self.assertEqual((installed / relative).read_bytes(),
+                                 (checkout / relative).read_bytes(), relative)
+
+    def test_settings_navigation_and_input_drafts_ship_on_both_paths(self):
+        checkout = ROOT / "roles/desktop/files/quickshell"
+        files = ("SettingsWindow.qml", "LauncherView.qml", "Settings/SettingsView.qml",
+                 "Settings/InputDrafts.qml", "Settings/InputDraftState.qml", "Settings/InputDraft.js",
+                 "Settings/KeyboardPage.qml", "Settings/TouchpadPage.qml", "Settings/qmldir",
+                 "Settings/SettingsPage.qml", "Settings/RecoveryGroup.qml", "Common/SettingsSearchData.js",
+                 "Popovers/Drawer/DrawerNotifications.qml", "Popovers/ActionButton.qml")
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            prepare_quickshell(ROOT, payload)
+            installed = payload / "usr/share/cybexos/runtime/quickshell"
+            for relative in files:
+                self.assertEqual((installed / relative).read_bytes(),
+                                 (checkout / relative).read_bytes(), relative)
+
     def test_workspace_and_notification_runtime_ship_on_both_paths(self):
         checkout = ROOT / "roles/desktop/files/quickshell"
         files = ("Common/DesktopWorkspaces.qml", "Common/WorkspaceHelpers.js",
@@ -535,6 +564,33 @@ class SeedLifecycle(unittest.TestCase):
         with patch.object(INIT, "seed_applications", side_effect=ordered):
             INIT.initialize(self.home, self.vendor)
         self.assertEqual((self.home / ".config/nvim/init.lua").read_text(), config.read_text())
+
+    def test_wallpaper_replacement_preserves_saved_old_selection_and_personal_files(self):
+        # New seed names never authorize deleting an earlier installed wallpaper
+        # or overwriting a personal file that happens to share a new name.
+        directory = self.vendor / "essential-seed/Pictures/Wallpapers"
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "moon-mountains.png").write_bytes((ROOT / "assets/wallpapers/moon-mountains.png").read_bytes())
+        personal = self.home / "Pictures/Wallpapers"
+        personal.mkdir(parents=True)
+        old = personal / "snow-capped-mountains-with-full-moon-lo.jpg"
+        old.write_bytes(b"user retained earlier wallpaper")
+        replacement = personal / "moon-mountains.png"
+        replacement.write_bytes(b"personal image with same new filename")
+        settings = self.home / ".config/cybexos/shell.json"
+        settings.parent.mkdir(parents=True)
+        saved = json.dumps({"wall": old.name, "wallDir": "~/Pictures/Wallpapers", "accent": "#112233"})
+        settings.write_text(saved)
+        INIT.initialize(self.home, self.vendor, mode="essential")
+        self.assertEqual(old.read_bytes(), b"user retained earlier wallpaper")
+        self.assertEqual(replacement.read_bytes(), b"personal image with same new filename")
+        self.assertEqual(settings.read_text(), saved)
+        # Checkout uses the same source directory with copy-if-absent semantics;
+        # actual task execution and both-path parity are checked in managed CI.
+        tasks = yaml.safe_load((ROOT / "roles/dotfiles/tasks/wallpapers.yml").read_text())
+        copy = next(task["ansible.builtin.copy"] for task in tasks if task.get("name") == "Install bundled wallpapers")
+        self.assertFalse(copy["force"])
+        self.assertEqual(copy["src"], "{{ config_repo }}/assets/wallpapers/")
 
     def test_existing_personal_file_and_symlink_are_preserved(self):
         INIT.initialize(self.home, self.vendor, mode="essential")
