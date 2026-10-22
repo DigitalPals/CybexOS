@@ -55,7 +55,7 @@ def stitched(frames, max_height=stitch.MAX_HEIGHT):
     for frame in frames:
         stitcher.add(frame)
     stitcher.finish()
-    with tempfile.TemporaryDirectory(prefix="cybexos-stitch-test-") as directory:
+    with tempfile.TemporaryDirectory(prefix="nerdos-stitch-test-") as directory:
         output = Path(directory) / "out.png"
         writer.save(output)
         width, height, decoded = decode_png(output.read_bytes())
@@ -212,7 +212,7 @@ class CaptureLoop(unittest.TestCase):
     def test_capture_stitches_grim_frames_until_stopped(self):
         lines = page(400)
         offsets = (0, 0, 30, 30, 70, 110)
-        with tempfile.TemporaryDirectory(prefix="cybexos-stitch-test-") as directory:
+        with tempfile.TemporaryDirectory(prefix="nerdos-stitch-test-") as directory:
             base = Path(directory)
             frames = base / "frames"
             frames.mkdir()
@@ -250,7 +250,7 @@ cat {frames}/$count.ppm
                              "no temporary file may be left beside the output")
 
     def test_failing_grim_reports_an_error(self):
-        with tempfile.TemporaryDirectory(prefix="cybexos-stitch-test-") as directory:
+        with tempfile.TemporaryDirectory(prefix="nerdos-stitch-test-") as directory:
             base = Path(directory)
             (base / "grim").write_text(f"#!{shutil.which('bash')}\nexit 1\n")
             (base / "grim").chmod(0o755)
@@ -275,7 +275,7 @@ cat {frames}/$count.ppm
                     finally:
                         sys.stderr = stderr
             self.assertEqual(raised.exception.code, 2)
-        with tempfile.TemporaryDirectory(prefix="cybexos-stitch-test-") as directory:
+        with tempfile.TemporaryDirectory(prefix="nerdos-stitch-test-") as directory:
             base = Path(directory)
             (base / "grim").write_text(f"#!{shutil.which('bash')}\nexit 1\n")
             (base / "grim").chmod(0o755)

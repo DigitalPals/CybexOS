@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-state_dir="${QUICKSHELL_REMINDER_STATE_DIR:-$HOME/.local/state/cybexos/shell/reminders}"
+state_dir="${QUICKSHELL_REMINDER_STATE_DIR:-$HOME/.local/state/nerdos/shell/reminders}"
 script_path="$(readlink -f -- "$0")"
 
 usage() {
@@ -57,10 +57,10 @@ schedule_record() {
 suppress_refresh=0
 
 # The shell runs by path, so a bare `qs ipc call` finds no configuration;
-# cybexos-runtime names the active runtime. Best effort: the shell's own
+# nerdos-runtime names the active runtime. Best effort: the shell's own
 # settle and restore reads are the fallback for a missed call.
 refresh_shell() {
-  local runtime=${HOME:-}/.local/bin/cybexos-runtime
+  local runtime=${HOME:-}/.local/bin/nerdos-runtime
   ((suppress_refresh == 0)) || return 0
   [[ -x $runtime ]] || return 0
   "$runtime" ipc reminders refresh >/dev/null 2>&1 || true

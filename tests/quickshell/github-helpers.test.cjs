@@ -20,7 +20,7 @@ const HOUR = 3600000;
 const DAY = 86400000;
 
 test("repoSlug accepts every shape a repository reference is pasted in", () => {
-    assert.equal(H.repoSlug("DigitalPals/CybexOS"), "DigitalPals/CybexOS");
+    assert.equal(H.repoSlug("DigitalPals/NerdOS"), "DigitalPals/NerdOS");
     assert.equal(H.repoSlug("  hyprwm/Hyprland  "), "hyprwm/Hyprland");
     assert.equal(H.repoSlug("https://github.com/quickshell/quickshell"),
         "quickshell/quickshell");
@@ -32,7 +32,7 @@ test("repoSlug accepts every shape a repository reference is pasted in", () => {
 });
 
 test("repoSlug refuses everything that is not one repository", () => {
-    for (const bad of ["", "   ", "CybexOS", "a/b/c", "/leading",
+    for (const bad of ["", "   ", "NerdOS", "a/b/c", "/leading",
                        "-owner/repo", "owner/", "/repo", "own er/repo",
                        "owner/re po", "owner/.", "owner/..", "owner/a\nb",
                        42, null, undefined, ["a/b"]])
@@ -52,14 +52,14 @@ test("normalizeWatch dedupes case-insensitively, keeps order and caps", () => {
 
 test("parseRepos reads the projection and drops rows that are not repos", () => {
     const rows = H.parseRepos(JSON.stringify([
-        { n: "DigitalPals/CybexOS", p: "2026-08-08T17:26:44Z", pr: false,
+        { n: "DigitalPals/NerdOS", p: "2026-08-08T17:26:44Z", pr: false,
             ar: false, b: "main" },
         { n: "not-a-repo", p: "2026-08-08T00:00:00Z" },
         { n: "hyprwm/Hyprland", p: null, pr: true, ar: true, b: "" }
     ]));
     assert.equal(rows.length, 2);
     assert.deepEqual(rows[0], {
-        slug: "DigitalPals/CybexOS", owner: "DigitalPals", name: "CybexOS",
+        slug: "DigitalPals/NerdOS", owner: "DigitalPals", name: "NerdOS",
         pushedAt: "2026-08-08T17:26:44Z", isPrivate: false, archived: false,
         branch: "main", watched: false
     });
@@ -85,15 +85,15 @@ test("an unreadable repository response is null, never an empty account", () => 
 
 test("mergeRepos folds the watch list into one feed, newest push first", () => {
     const own = H.parseRepos(JSON.stringify([
-        { n: "DigitalPals/CybexOS", p: iso(4 * MINUTE), b: "main" },
+        { n: "DigitalPals/NerdOS", p: iso(4 * MINUTE), b: "main" },
         { n: "example-org/website", p: iso(3 * HOUR), b: "main" }
     ]));
     const extra = H.parseRepos(JSON.stringify([
         { n: "hyprwm/Hyprland", p: iso(HOUR), b: "main" }
     ]));
-    const feed = H.mergeRepos(own, extra, ["hyprwm/Hyprland", "DigitalPals/CybexOS"]);
+    const feed = H.mergeRepos(own, extra, ["hyprwm/Hyprland", "DigitalPals/NerdOS"]);
     assert.deepEqual(feed.map(r => r.slug),
-        ["DigitalPals/CybexOS", "hyprwm/Hyprland", "example-org/website"]);
+        ["DigitalPals/NerdOS", "hyprwm/Hyprland", "example-org/website"]);
     assert.deepEqual(feed.map(r => r.watched), [true, true, false]);
 });
 
@@ -118,9 +118,9 @@ test("repositories with no push sort last, then alphabetically", () => {
 test("orgCount counts the owners that are not you", () => {
     const rows = H.parseRepos(JSON.stringify([
         { n: "DigitalPals/one", p: "" }, { n: "DigitalPals/two", p: "" },
-        { n: "CybexHQ/three", p: "" }, { n: "digitalpals/four", p: "" }
+        { n: "NerdOSHQ/three", p: "" }, { n: "digitalpals/four", p: "" }
     ]));
-    assert.equal(H.orgCount(rows, "CybexHQ"), 1);
+    assert.equal(H.orgCount(rows, "NerdOSHQ"), 1);
     assert.equal(H.orgCount(rows, "nobody"), 2);
     assert.equal(H.orgCount([], "x"), 0);
 });

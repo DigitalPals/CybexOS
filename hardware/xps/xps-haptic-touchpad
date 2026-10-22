@@ -15,7 +15,7 @@ import time
 
 
 VENDOR = "06CB"
-CONFIG_PATH = "/etc/cybexos/xps-haptic.conf"
+CONFIG_PATH = "/etc/nerdos/xps-haptic.conf"
 BUTTON_SWITCH_REPORT = 0x06
 HAPTIC_INTENSITY_REPORT = 0x37
 BUTTON_SWITCHES = 0x03  # Surface switch and physical button switch.

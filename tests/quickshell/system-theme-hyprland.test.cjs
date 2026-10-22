@@ -1,6 +1,6 @@
 // The Hyprland system theme target: scripts/theme_hyprland.py renders a
 // data-only table of compositor colours, and looknfeel.lua applies it at
-// config load and, through cybexos_system_theme(), to a running compositor.
+// config load and, through nerdos_system_theme(), to a running compositor.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const childProcess = require("node:child_process");
@@ -122,7 +122,7 @@ function runLook(t, driver, files, env) {
     fs.writeFileSync(script, `
 local look = ${JSON.stringify(look)}
 local home = ${JSON.stringify(home)}
-local theme_file = home .. "/.local/state/cybexos/theme/hyprland.lua"
+local theme_file = home .. "/.local/state/nerdos/theme/hyprland.lua"
 local keys = { ${themeKeys().map(k => JSON.stringify(k)).join(", ")} }
 local expected = {
   dark = { ${Object.entries(expected.dark).map(([k, v]) => `["${k}"] = "${v}"`).join(", ")} },
@@ -187,23 +187,23 @@ print("LOOKNFEEL_OK")
     assert.match(result.stdout, /LOOKNFEEL_OK/);
 }
 
-const THEME = ".local/state/cybexos/theme/hyprland.lua";
+const THEME = ".local/state/nerdos/theme/hyprland.lua";
 
 test("without a theme file the compositor starts on the default dark theme", needsLua, t => {
     runLook(t, `dofile(look)
 assert_theme("dark")
-assert(__cybexos_system_theme.error == nil, tostring(__cybexos_system_theme.error))`);
+assert(__nerdos_system_theme.error == nil, tostring(__nerdos_system_theme.error))`);
 });
 
 test("the compositor applies the rendered theme at config load", needsLua, t => {
     runLook(t, `dofile(look)
 assert_theme("light")
-assert(__cybexos_system_theme.error == nil, tostring(__cybexos_system_theme.error))
+assert(__nerdos_system_theme.error == nil, tostring(__nerdos_system_theme.error))
 assert(hl.get_config("decoration.rounding") == 16, "rounding stays the shell's radius")`,
     { [THEME]: render(lightTokens()) });
     // XDG_STATE_HOME moves the state directory, as it does for theme-apply.py.
     runLook(t, `dofile(look)
-assert_theme("light")`, { ["state/cybexos/theme/hyprland.lua"]: render(lightTokens()) },
+assert_theme("light")`, { ["state/nerdos/theme/hyprland.lua"]: render(lightTokens()) },
     { XDG_STATE_HOME: "$HOME/state" });
 });
 
@@ -222,7 +222,7 @@ test("a damaged theme file never stops the compositor", needsLua, t => {
     for (const [label, text] of Object.entries(broken)) {
         runLook(t, `dofile(look)
 assert_theme("dark")
-assert(type(__cybexos_system_theme.error) == "string", ${JSON.stringify(label)} .. " was not reported")`,
+assert(type(__nerdos_system_theme.error) == "string", ${JSON.stringify(label)} .. " was not reported")`,
         { [THEME]: text });
     }
     // Keys a newer renderer adds are ignored rather than rejecting the file.
@@ -238,25 +238,25 @@ assert_theme("dark")
 -- user.lua runs after looknfeel and pins one colour.
 hl.config({ general = { col = { active_border = "rgb(ff0000)" } } })
 write(theme_file, ${JSON.stringify(render(lightTokens()))})
-cybexos_system_theme(theme_file)
+nerdos_system_theme(theme_file)
 assert(hl.get_config("general.col.active_border") == "rgb(ff0000)", "user.lua keeps its key")
 assert(hl.get_config("general.col.inactive_border") == expected.light["general.col.inactive_border"])
 assert(hl.get_config("group.groupbar.text_color") == expected.light["group.groupbar.text_color"])
 -- A second change still leaves it alone, and still moves everything else.
 write(theme_file, ${JSON.stringify(render(darkTokens()))})
-cybexos_system_theme(theme_file)
+nerdos_system_theme(theme_file)
 assert(hl.get_config("general.col.active_border") == "rgb(ff0000)")
 assert(hl.get_config("general.col.inactive_border") == expected.dark["general.col.inactive_border"])
 -- A config reload takes a fresh baseline; user.lua is now gone.
 live = {}
 dofile(look)
 write(theme_file, ${JSON.stringify(render(lightTokens()))})
-cybexos_system_theme(theme_file)
+nerdos_system_theme(theme_file)
 assert_theme("light")
 -- Errors reach hyprctl eval instead of half-applying anything.
 write(theme_file, "return { general = ")
-assert(not pcall(cybexos_system_theme, theme_file))
-assert(not pcall(cybexos_system_theme, home .. "/missing.lua"))
+assert(not pcall(nerdos_system_theme, theme_file))
+assert(not pcall(nerdos_system_theme, home .. "/missing.lua"))
 assert_theme("light")`, { [THEME]: render(darkTokens()) });
 });
 
@@ -275,7 +275,7 @@ end
 dofile(look)
 hl.config({ group = { groupbar = { text_color = "rgb(ff0000)", col = { active = "rgb(00ff00)" } } } })
 write(theme_file, ${JSON.stringify(render(lightTokens()))})
-cybexos_system_theme(theme_file)
+nerdos_system_theme(theme_file)
 assert(raw("group.groupbar.text_color") == "rgb(ff0000)")
 assert(raw("group.groupbar.col.active") == "rgb(00ff00)")
 assert(raw("group.groupbar.col.inactive") == expected.light["group.groupbar.col.inactive"])
@@ -286,20 +286,20 @@ assert(raw("group.groupbar.text_color_inactive") == expected.light["group.groupb
 test("the theme leaves glass and power saver alone", needsLua, t => {
     runLook(t, `dofile(look)
 assert(layer_rules["quickshell-blur"].enabled == true)
-cybexos_power_saver(true)
+nerdos_power_saver(true)
 assert(hl.get_config("decoration.blur.passes") == 1)
-cybexos_system_theme(theme_file)
+nerdos_system_theme(theme_file)
 assert(hl.get_config("decoration.blur.passes") == 1, "power saver survives a live theme change")
 assert(hl.get_config("animations.enabled") == false)
 assert(layer_rules["quickshell-blur"].enabled == true)
-cybexos_power_saver(false)
+nerdos_power_saver(false)
 assert(hl.get_config("decoration.blur.passes") == 1)`, {
         [THEME]: render(lightTokens()),
-        ".config/cybexos/shell.json": '{"v": 23, "glassEnabled": true}',
+        ".config/nerdos/shell.json": '{"v": 23, "glassEnabled": true}',
     });
     assert.match(template, /^quickshell_blur_rule = hl\.layer_rule\(\{$/m);
-    assert.match(template, /^function cybexos_power_saver\(enabled\)$/m);
-    assert.match(template, /^function cybexos_system_theme\(path\)$/m,
+    assert.match(template, /^function nerdos_power_saver\(enabled\)$/m);
+    assert.match(template, /^function nerdos_system_theme\(path\)$/m,
         "the eval handle must be a global");
     // The load at startup is contained; only the eval handle raises.
     assert.match(template, /pcall\(read_system_theme, theme_path\)/);
@@ -325,7 +325,7 @@ test("apply updates a running compositor through hyprctl eval", t => {
     assert.deepEqual(run.report.targets.hyprland, { changed: true, error: null });
     assert.equal(fs.readFileSync(path.join(state, "hyprland.lua"), "utf8"), render(darkTokens()));
     assert.deepEqual(hyprctlCalls(stub),
-        [`hyprctl eval cybexos_system_theme("${state}/hyprland.lua")`]);
+        [`hyprctl eval nerdos_system_theme("${state}/hyprland.lua")`]);
 
     // Unchanged tokens touch nothing; --force re-sends.
     run = runDriver(state, ["apply"], input, { bin: stub.bin, env });
@@ -350,11 +350,11 @@ test("a compositor that rejects the theme is reported, not ignored", t => {
     const env = { HYPRLAND_INSTANCE_SIGNATURE: "test" };
     const input = JSON.stringify(darkTokens()) + "\n";
     // hyprctl reports Lua errors on stdout, with exit status 0.
-    let stub = hyprctlStub(t, "echo 'attempt to call a nil value (global cybexos_system_theme)'");
+    let stub = hyprctlStub(t, "echo 'attempt to call a nil value (global nerdos_system_theme)'");
     let run = runDriver(scratch(t), ["apply"], input, { bin: stub.bin, env });
     assert.equal(run.report.success, false);
     assert.equal(run.report.targets.hyprland.error,
-        "Hyprland did not apply the theme: attempt to call a nil value (global cybexos_system_theme)");
+        "Hyprland did not apply the theme: attempt to call a nil value (global nerdos_system_theme)");
     stub = hyprctlStub(t, "echo 'no socket' >&2; exit 3");
     run = runDriver(scratch(t), ["apply"], input, { bin: stub.bin, env });
     assert.equal(run.report.targets.hyprland.error, "Hyprland did not apply the theme: no socket");

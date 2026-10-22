@@ -9,11 +9,11 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "desktop/quickshell/scripts/user-plugins.py"
 
-with tempfile.TemporaryDirectory(prefix="cybex-plugin-packages-") as temporary:
+with tempfile.TemporaryDirectory(prefix="nerd-plugin-packages-") as temporary:
     base = Path(temporary)
     packages = base / "plugins"
-    env = {**os.environ, "CYBEXOS_PLUGIN_ROOT": str(packages),
-           "CYBEXOS_USER_CONFIG_ROOT": str(base / "config"),
+    env = {**os.environ, "NERDOS_PLUGIN_ROOT": str(packages),
+           "NERDOS_USER_CONFIG_ROOT": str(base / "config"),
            "XDG_DATA_HOME": str(base / "data"), "PYTHONDONTWRITEBYTECODE": "1"}
     source = base / "source"
     source.mkdir()
@@ -120,7 +120,7 @@ with tempfile.TemporaryDirectory(prefix="cybex-plugin-packages-") as temporary:
     (base / "config/plugins.json").write_text(json.dumps(registry))
     listing = json.loads(cli("list"))
     listed = next(item for item in listing["plugins"] if item["id"] == builtin_id)
-    assert "built into CybexOS" in listed["error"] and not listed["enabled"]
+    assert "built into NerdOS" in listed["error"] and not listed["enabled"]
     assert not any(widget["id"] == builtin_id for widget in listing["widgets"])
     cli("enable", builtin_id, ok=False)
     cli("remove", builtin_id)

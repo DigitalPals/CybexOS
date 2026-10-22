@@ -32,14 +32,14 @@ def valid_id(plugin_id: str) -> bool:
 
 def roots() -> tuple[Path, Path, Path]:
     home = Path.home()
-    config = Path(os.environ.get("CYBEXOS_USER_CONFIG_ROOT") or
-                  Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "cybexos")
-    packages = Path(os.environ.get("CYBEXOS_PLUGIN_ROOT") or
+    config = Path(os.environ.get("NERDOS_USER_CONFIG_ROOT") or
+                  Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "nerdos")
+    packages = Path(os.environ.get("NERDOS_PLUGIN_ROOT") or
                     Path(os.environ.get("XDG_DATA_HOME") or home / ".local/share") /
-                    "cybexos/plugins")
+                    "nerdos/plugins")
     # Persistent plugin data is not disposable updater/diagnostic state. The
     # uninstaller may remove the latter while retaining user customizations.
-    state = Path(os.environ.get("XDG_DATA_HOME") or home / ".local/share") / "cybexos/plugin-data"
+    state = Path(os.environ.get("XDG_DATA_HOME") or home / ".local/share") / "nerdos/plugin-data"
     return config / "plugins.json", packages, state
 
 
@@ -69,7 +69,7 @@ def preferences(path: Path) -> dict:
 # second copy of the built-in widget, so it is listed with this reason and
 # never loaded; its files and preferences are left for the user to remove.
 BUILT_IN = {
-    "digitalpals.model-usage": "Model Usage is built into CybexOS. Add it from "
+    "digitalpals.model-usage": "Model Usage is built into NerdOS. Add it from "
                                "Settings → Bar, then remove this plugin.",
 }
 
@@ -320,12 +320,12 @@ def apply_layout(registry: dict, layout: object, packages: Path) -> None:
             raise ValueError("instances must be an object")
         instances = {}
         for section, order, item in rows:
-            name = item.get("__cybexInstance", "")
+            name = item.get("__nerdosInstance", "")
             if not name and len(rows) > 1:
                 name = "instance" + str(len(instances) + 1)
             if name and (not multiple or not valid_id(name) or name in instances):
                 raise ValueError("Invalid or duplicate widget instance name")
-            settings = {key: data for key, data in item.items() if key not in ("id", "__cybexInstance")}
+            settings = {key: data for key, data in item.items() if key not in ("id", "__nerdosInstance")}
             if name:
                 previous = previous_instances.get(name, {})
                 if not isinstance(previous, dict):
@@ -362,7 +362,7 @@ def edit_layout(config: Path, packages: Path, state: Path, action: str, plugin_i
     for widget in info["widgets"]:
         if widget["enabled"] and not widget["error"] and widget["format"] == "omarchy":
             layout[widget["section"]].append({**widget["settings"], "id": widget["id"],
-                                               "__cybexInstance": widget.get("instanceName", "")})
+                                               "__nerdosInstance": widget.get("instanceName", "")})
     selector = payload.get("selector", {}) if action == "set" else payload
     if not isinstance(selector, dict):
         raise ValueError("Invalid selector")
@@ -387,7 +387,7 @@ def edit_layout(config: Path, packages: Path, state: Path, action: str, plugin_i
     if action == "set":
         if not isinstance(payload.get("key"), str) or "value" not in payload:
             raise ValueError("Setting mutation needs key and value")
-        if payload["key"] in ("id", "__cybexInstance"):
+        if payload["key"] in ("id", "__nerdosInstance"):
             raise ValueError("Cannot change widget identity")
         found[2][payload["key"]] = payload["value"]
     else:
@@ -596,7 +596,7 @@ def main() -> int:
     instance.add_argument("--width", type=int)
     instance.add_argument("--order", type=int)
     instance.add_argument("--remove", action="store_true")
-    bar = commands.add_parser("bar", help="Select a replacement bar, or native to restore Cybex")
+    bar = commands.add_parser("bar", help="Select a replacement bar, or native to restore NerdOS")
     bar.add_argument("id")
     bar.add_argument("--position", choices=("top", "bottom", "left", "right"))
     disable = commands.add_parser("disable", help="Disable a widget, retaining its files and settings")
@@ -613,7 +613,7 @@ def main() -> int:
             with locked(config):
                 result = scan(config, packages, state)
                 if args.live:
-                    cache = Path(os.environ["XDG_RUNTIME_DIR"]) / "cybex-plugin-code"
+                    cache = Path(os.environ["XDG_RUNTIME_DIR"]) / "nerd-plugin-code"
                     cache.mkdir(mode=0o700, exist_ok=True)
                     for old in cache.iterdir():
                         if not old.is_dir() or old.is_symlink():

@@ -4,7 +4,7 @@ All 35 `Ui/*.qml` files, `Commons/{Border.qml,BorderGeometry.js,Util.qml,Style.q
 and `bin/{omarchy-notification-send,omarchy-shell}` derive from omacom/omarchy,
 commit 60663faf8764253646f1d6166e864b608d4a0fa1 (MIT). The accompanying LICENSE
 preserves the upstream notice. `Commons/Color.qml` bridges upstream color roles
-and helpers to Cybex's palette; it does not watch Omarchy theme files.
+and helpers to NerdOS's palette; it does not watch Omarchy theme files.
 The pinned upstream `loadColors`, `parseShell` and `applyShellValues` functions
 are retained for explicit session theme updates through IPC.
 
@@ -17,7 +17,7 @@ existing grouped property instead of declaring an invalid grouped-property ID.
 Controls have accessibility labels/roles; dismissal surfaces declare their
 arrow cursor. BorderGeometry omits its state-free library pragma for the
 repository's JavaScript syntax gate. The notification helper quotes its D-Bus
-signature for ShellCheck. The IPC helper resolves the bundled Cybex runtime
+signature for ShellCheck. The IPC helper resolves the bundled NerdOS runtime
 and queries that existing shell rather than `$OMARCHY_PATH/shell`.
 
 The local `Common/Omarchy*.qml` adapter implements all six plugin kinds with

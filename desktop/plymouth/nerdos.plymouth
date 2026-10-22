@@ -1,0 +1,9 @@
+[Plymouth Theme]
+Name=NerdOS
+Description=NerdOS splash screen.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/nerdos
+ScriptFile=/usr/share/plymouth/themes/nerdos/nerdos.script
+ConsoleLogBackgroundColor=0x0d0d0d

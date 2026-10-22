@@ -1,12 +1,12 @@
 { config, options, lib, pkgs, ... }:
 let
-  cfg = config.cybexos;
+  cfg = config.nerdos;
   xps = cfg.hardware.xps;
   camera = pkgs.callPackage ../packages/ipu7.nix { kernel = config.boot.kernelPackages.kernel; };
   lpmd = pkgs.callPackage ../packages/intel-lpmd.nix {};
   relay = config.services.v4l2-relayd.instances.ipu7;
 in {
-  options.cybexos.hardware = {
+  options.nerdos.hardware = {
     nvidia = lib.mkOption { type = lib.types.bool; default = false; };
     nvidiaOpen = lib.mkOption { type = lib.types.bool; default = true; description = "Use open kernel modules on supported Turing or newer GPUs; choose false for supported older devices"; };
     nvidiaPrime = {
@@ -62,12 +62,12 @@ in {
     boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
     boot.kernelParams = lib.optional (lib.hasPrefix "30e4" xps.panel) "xe.enable_dpcd_backlight=1"
       ++ lib.optional (xps.sku == "0DB9" && xps.panel == "30e4c607") "xe.enable_psr=0";
-    environment.sessionVariables.CYBEXOS_XPS_2026 = "1";
+    environment.sessionVariables.NERDOS_XPS_2026 = "1";
     # PPD owns user-selected profiles. Adaptive thermald supplies the separate
     # firmware/DPTF thermal protection; do not run a competing profile manager.
     services.thermald.enable = lib.mkDefault true;
-    cybexos.updates.additionalHealthServices = lib.optional config.services.thermald.enable "thermald.service";
-    environment.etc."cybexos/xps-haptic.conf".text = "intensity=${xps.hapticIntensity}\n";
+    nerdos.updates.additionalHealthServices = lib.optional config.services.thermald.enable "thermald.service";
+    environment.etc."nerdos/xps-haptic.conf".text = "intensity=${xps.hapticIntensity}\n";
     systemd.services.xps-haptic-touchpad = {
       wantedBy = [ "multi-user.target" ];
       path = [ pkgs.python3 ];
@@ -77,13 +77,13 @@ in {
       };
     };
     hardware.graphics.extraPackages = with pkgs; [ intel-media-driver vpl-gpu-rt intel-compute-runtime ];
-    environment.etc."cybexos/xps-audio/filter-chain.conf".source = ../../hardware/xps/xps-speaker-filter-chain.conf;
-    environment.etc."cybexos/xps-audio/host.conf".source = ../../hardware/xps/xps-speaker-host.conf;
+    environment.etc."nerdos/xps-audio/filter-chain.conf".source = ../../hardware/xps/xps-speaker-filter-chain.conf;
+    environment.etc."nerdos/xps-audio/host.conf".source = ../../hardware/xps/xps-speaker-host.conf;
     environment.systemPackages = [ (pkgs.writeShellApplication {
       name = "xps-speaker-tuning";
       runtimeInputs = with pkgs; [ coreutils gnugrep gnused gawk pulseaudio pipewire ];
       text = ''
-        export CYBEXOS_LSP_LV2=${pkgs.lsp-plugins}/lib/lv2
+        export NERDOS_LSP_LV2=${pkgs.lsp-plugins}/lib/lv2
         export LV2_PATH=${pkgs.lsp-plugins}/lib/lv2
         exec ${pkgs.bash}/bin/bash ${../../hardware/xps/xps-speaker-tuning} "$@"
       '';
@@ -93,7 +93,7 @@ in {
       partOf = [ "hyprland-session.target" ];
       after = [ "pipewire.service" "wireplumber.service" ];
       path = with pkgs; [ bash coreutils gnugrep gnused gawk pulseaudio pipewire ];
-      environment = { CYBEXOS_LSP_LV2 = "${pkgs.lsp-plugins}/lib/lv2"; LV2_PATH = "${pkgs.lsp-plugins}/lib/lv2"; };
+      environment = { NERDOS_LSP_LV2 = "${pkgs.lsp-plugins}/lib/lv2"; LV2_PATH = "${pkgs.lsp-plugins}/lib/lv2"; };
       serviceConfig = {
         ExecStart = "${pkgs.bash}/bin/bash ${../../hardware/xps/xps-speaker-tuning} run";
         ExecStartPost = "${pkgs.bash}/bin/bash ${../../hardware/xps/xps-speaker-tuning} activate";
@@ -118,7 +118,7 @@ in {
       aliases = [ "org.freedesktop.intel_lpmd.service" ];
       after = [ "power-profiles-daemon.service" "upower.service" ];
     };
-    cybexos.updates.additionalHealthServices = [ "intel_lpmd.service" ];
+    nerdos.updates.additionalHealthServices = [ "intel_lpmd.service" ];
   }) (lib.mkIf (xps.enable && xps.camera) {
     environment.systemPackages = [ (pkgs.writeShellApplication {
       name = "xps-ipu7-camera-frame-check";
@@ -227,7 +227,7 @@ in {
         systemctl start v4l2-relayd-ipu7.service
       '';
     };
-    cybexos.updates.additionalHealthServices = [ "xps-ipu7-camera-init.service" ];
+    nerdos.updates.additionalHealthServices = [ "xps-ipu7-camera-init.service" ];
     systemd.tmpfiles.rules = [ "d /run/camera 0750 root video -" ];
   }) ]);
 }

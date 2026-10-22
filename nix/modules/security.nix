@@ -1,11 +1,11 @@
 { config, lib, pkgs, ... }:
-let cfg = config.cybexos;
+let cfg = config.nerdos;
     auth = {
       fprintAuth = lib.mkDefault cfg.authentication.fingerprint;
       u2f.enable = lib.mkDefault true;
     };
 in {
-  options.cybexos.authentication.fingerprint = lib.mkOption { type = lib.types.bool; default = true; };
+  options.nerdos.authentication.fingerprint = lib.mkOption { type = lib.types.bool; default = true; };
   config = lib.mkIf cfg.enable {
     security.sudo.wheelNeedsPassword = lib.mkDefault true;
     security.polkit.enable = true;
@@ -14,7 +14,7 @@ in {
       enable = false;
       settings = { # An unmapped key must fall through to password authentication. With a
         # sufficient PAM rule, nouserok=true could authorize an unenrolled user.
-        cue = true; nouserok = false; userpresence = 1; origin = "pam://cybexos"; appid = "pam://cybexos"; };
+        cue = true; nouserok = false; userpresence = 1; origin = "pam://nerdos"; appid = "pam://nerdos"; };
     };
     security.pam.services = {
       sudo = auth;
@@ -28,7 +28,7 @@ in {
       # shadow enables null-password login at ordinary priority. The product
       # requires a password even if an account accidentally has an empty hash.
       login = { fprintAuth = false; u2f.enable = false; allowNullPassword = lib.mkForce false; };
-      cybexos-lock = { fprintAuth = false; u2f.enable = true; };
+      nerdos-lock = { fprintAuth = false; u2f.enable = true; };
     };
     security.apparmor.enable = lib.mkDefault true;
     security.protectKernelImage = lib.mkDefault true;
@@ -49,6 +49,6 @@ in {
       allowedUDPPortRanges = lib.optional (cfg.features.localNetworkServices && cfg.features.steam) { from = 27031; to = 27036; };
     };
     # Private files are runtime paths, never builtins.readFile/imported store content.
-    systemd.tmpfiles.rules = [ "d /var/lib/cybexos/secrets 0700 root root -" ];
+    systemd.tmpfiles.rules = [ "d /var/lib/nerdos/secrets 0700 root root -" ];
   };
 }

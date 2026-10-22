@@ -45,7 +45,7 @@ jobs:
       - name: Verify the production server and bundled wallpaper
         shell: bash
         run: |
-          log_path="$RUNNER_TEMP/cybexos-web.log"
+          log_path="$RUNNER_TEMP/nerdos-web.log"
           HOST=127.0.0.1 PORT=5174 setsid node dist/standalone/server.js >"$log_path" 2>&1 &
           service_pid=$!
           cleanup() {
@@ -55,8 +55,8 @@ jobs:
           }
           trap cleanup EXIT
           for attempt in {1..40}; do
-            if curl --fail --silent --max-time 2 http://127.0.0.1:5174/ >"$RUNNER_TEMP/cybexos-web.html"; then
-              grep -q 'CybexOS' "$RUNNER_TEMP/cybexos-web.html"
+            if curl --fail --silent --max-time 2 http://127.0.0.1:5174/ >"$RUNNER_TEMP/nerdos-web.html"; then
+              grep -q 'NerdOS' "$RUNNER_TEMP/nerdos-web.html"
               curl --fail --silent --show-error --max-time 10 \
                 http://127.0.0.1:5174/wallpapers/moon-mountains-1280.png >/dev/null
               exit 0

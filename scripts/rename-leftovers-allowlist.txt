@@ -1,0 +1,12 @@
+# Each exception preserves supplied material, immutable attribution or the scanner itself.
+README.md :: ^Formerly CybexOS\.$  # the single public name-history sentence
+docs/rename-to-nerdos.md :: CybexOS|cybex  # scope, baseline evidence and documented old identity
+assets/brand/USAGE.md :: ^\*\*NerdOS\*\* \(formerly CybexOS\)  # supplied usage guide is preserved verbatim
+assets/PROVENANCE.json :: "creator": "CybexOS contributors  # immutable attribution for existing wallpaper bytes
+scripts/generate-wallpapers.py :: Original CybexOS landscapes|\x27creator\x27: \x27CybexOS contributors  # preserve the original generator and its recorded digest
+hardware/xps/camera/patches/0005-ipu7-psys-stock-core-layout.patch :: ^From: CybexOS <cybexos@localhost>$  # historical patch author
+hardware/xps/camera/patches/0006-camera-hal-native-cvs-bridge.patch :: ^From: CybexOS <cybexos@localhost>$  # historical patch author
+desktop/quickshell/ModelUsage/THIRD_PARTY_NOTICES.md :: ^\x23\x23 DigitalPals/cybexos-config$|CybexOS.*commit  # pinned upstream/design-reference attribution
+scripts/check_leftovers.py :: cybex|Cybex  # scanner must recognize the retired spelling
+scripts/rename-inventory.py :: cybex|Cybex|CYBEX  # inventory must recognize the retired spellings
+scripts/rename-leftovers-allowlist.txt :: .  # the explicit exception patterns necessarily contain retired names

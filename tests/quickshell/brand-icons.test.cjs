@@ -6,7 +6,7 @@ const { shellDir, isVendored } = require("./shell.cjs");
 
 const assetsDir = path.join(shellDir, "assets");
 const brands = [
-    "claude", "cybexos", "fusebox", "gemini", "github", "grok", "kimi", "openai",
+    "claude", "nerdos", "fusebox", "gemini", "github", "grok", "kimi", "openai",
     "slack", "t3", "tailscale", "whatsapp", "youtube"
 ];
 const whiteVariants = brands.filter(name => name !== "t3");
@@ -78,7 +78,7 @@ test("every bundled product mark records pinned provenance and licensing", () =>
     ])
         assert.match(provenance, new RegExp(revision));
     assert.match(licenses, /CC0 1\.0 Universal/);
-    assert.match(licenses, /original repository vector code/);
-    assert.match(licenses, /CybexOS monogram/);
+    assert.match(licenses, /original project artwork/);
+    assert.match(licenses, /NerdOS glasses/);
     assert.equal((licenses.match(/MIT License/g) || []).length, 3);
 });

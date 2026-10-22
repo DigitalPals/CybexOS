@@ -78,7 +78,7 @@ def catalog(path=Path('/usr/share/X11/xkb/rules/evdev.xml')):
 
 class InputSettings:
     def __init__(self):
-        self.path = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config') / 'cybexos/input.json'
+        self.path = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config') / 'nerdos/input.json'
 
     def read(self):
         if self.path.is_symlink():
@@ -193,7 +193,7 @@ class InputSettings:
                     raise ValueError('Hyprland rejected the input configuration')
                 # The loader contains errors to keep the compositor alive;
                 # reload's acknowledgement alone therefore cannot prove success.
-                output = run(['hyprctl', 'eval', 'assert(__cybexos_input_error == nil, __cybexos_input_error)'])
+                output = run(['hyprctl', 'eval', 'assert(__nerdos_input_error == nil, __nerdos_input_error)'])
                 if output.lower() != 'ok':
                     raise ValueError('Hyprland rejected the saved input preferences')
             except Exception as error:

@@ -1,9 +1,9 @@
 import QtQuick.tooling 1.2
 Module {
     Component {
-        name: "CybexOS::ImageFingerprints"
+        name: "NerdOS::ImageFingerprints"
         prototype: "QObject"
-        exports: ["CybexOS.Images/ImageFingerprints 1.0"]
+        exports: ["NerdOS.Images/ImageFingerprints 1.0"]
         isSingleton: true
         exportMetaObjectRevisions: [256]
         Property { name: "error"; type: "QString"; isReadonly: true; notify: "errorChanged" }

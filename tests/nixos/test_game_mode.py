@@ -3,7 +3,7 @@
 
 hyprctl, systemctl, systemd-run and notify-send are fakes on PATH that record
 their arguments, so the fixture never reaches a live session. The compositor
-side (cybexos_game_mode in looknfeel.lua) has its own fixture in
+side (nerdos_game_mode in looknfeel.lua) has its own fixture in
 tests/quickshell/game-mode.test.cjs.
 """
 
@@ -18,7 +18,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 HELPER = ROOT / "assets/scripts/game-mode"
-UNIT = "cybexos-game-mode-inhibit.service"
+UNIT = "nerdos-game-mode-inhibit.service"
 
 FAKE = "#!" + shutil.which("bash") + "\n" + """set -euo pipefail
 printf '%s\\n' "$(basename "$0") $*" >>"$FAKE_LOG"
@@ -42,7 +42,7 @@ esac
 
 class GameMode(unittest.TestCase):
     def setUp(self):
-        temporary = tempfile.TemporaryDirectory(prefix="cybexos-game-mode-")
+        temporary = tempfile.TemporaryDirectory(prefix="nerdos-game-mode-")
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.bin = self.root / "bin"
@@ -61,7 +61,7 @@ class GameMode(unittest.TestCase):
             "FAKE_UNITS": str(self.units), "XDG_RUNTIME_DIR": str(self.runtime),
             "HYPRLAND_INSTANCE_SIGNATURE": "instance-one", "HOME": str(self.root),
         }
-        self.state = self.runtime / "cybexos/game-mode.json"
+        self.state = self.runtime / "nerdos/game-mode.json"
 
     def game_mode(self, *args, **environment):
         self.log.unlink(missing_ok=True)
@@ -86,8 +86,8 @@ class GameMode(unittest.TestCase):
         self.assertEqual(state["instance"], "instance-one")
         self.assertIsInstance(state["since"], int)
         self.assertEqual(self.state.stat().st_mode & 0o777, 0o600)
-        self.assertEqual((self.runtime / "cybexos").stat().st_mode & 0o777, 0o700)
-        self.assertEqual(self.calls("hyprctl"), ["eval cybexos_game_mode(true)"])
+        self.assertEqual((self.runtime / "nerdos").stat().st_mode & 0o777, 0o700)
+        self.assertEqual(self.calls("hyprctl"), ["eval nerdos_game_mode(true)"])
         [inhibitor] = self.calls("systemd-run")
         self.assertIn(f"--unit={UNIT}", inhibitor)
         self.assertIn("--property=PartOf=hyprland-session.target", inhibitor)
@@ -117,7 +117,7 @@ class GameMode(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "off\n")
         self.assertEqual(self.saved(), {"active": False})
-        self.assertEqual(self.calls("hyprctl"), ["eval cybexos_game_mode(false)"])
+        self.assertEqual(self.calls("hyprctl"), ["eval nerdos_game_mode(false)"])
         self.assertIn(f"--user stop {UNIT}", self.calls("systemctl"))
         self.assertFalse((self.units / "inhibitor").exists())
         [notification] = self.calls("notify-send")
@@ -168,7 +168,7 @@ class GameMode(unittest.TestCase):
         self.assertIs(json.loads(self.game_mode("status", "--json").stdout)["inhibitor"], False)
 
     def test_damaged_state_reads_as_off_and_is_replaced(self):
-        directory = self.runtime / "cybexos"
+        directory = self.runtime / "nerdos"
         directory.mkdir()
         for text in ("{", "[]", '"on"', '{"active": "true", "instance": "instance-one"}',
                      '{"active": true}', json.dumps({"active": True, "instance": "instance-one",

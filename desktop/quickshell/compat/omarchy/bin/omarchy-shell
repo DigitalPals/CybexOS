@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# omarchy:summary=Send an IPC call to the running Cybex shell
+# omarchy:summary=Send an IPC call to the running NerdOS shell
 # omarchy:args=[-q] <target> <method> [args...]
 # omarchy:examples=omarchy shell shell ping | omarchy-shell shell toggle omarchy.menu '{"menu":"root"}'
 
@@ -20,7 +20,7 @@ if (( $# == 0 )) || [[ $1 == "-h" || $1 == "--help" ]]; then
   cat <<USAGE
 Usage: omarchy-shell [-q] <target> <method> [args...]
 
-Forwards an IPC call to the running Cybex shell. The shell is expected
+Forwards an IPC call to the running NerdOS shell. The shell is expected
 to already be running; this command does not start it.
 
 Options:
@@ -39,8 +39,8 @@ fi
 (( $# >= 2 )) || fail "Usage: omarchy-shell <target> <method> [args...]"
 # Resolve this bundled runtime, including development-mode source selection.
 # IPC only: never start a second shell when the service is unavailable.
-shell_path=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd -P) || fail "Cybex runtime not found"
-[[ -f $shell_path/shell.qml ]] || fail "Cybex shell config not found"
+shell_path=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd -P) || fail "NerdOS runtime not found"
+[[ -f $shell_path/shell.qml ]] || fail "NerdOS shell config not found"
 
 if [[ $1 == "shell" && ( $2 == "summon" || $2 == "toggle" ) ]] && (( $# == 3 )); then
   set -- "$1" "$2" "$3" "{}"

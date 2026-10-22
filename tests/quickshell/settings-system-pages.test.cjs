@@ -56,7 +56,7 @@ test("About reads status in the status colours and the check as a time", () => {
     assert.match(about, /label: "Last deploy check"[\s\S]{0,200}?LocalTime\.fromText\(ShellHealth\.deploymentCheckedAt, clock\.date\.getTime\(\),\s*Settings\.clock24/);
     assert.match(about, /SystemClock \{\s*id: clock\s*precision: SystemClock\.Hours\s*enabled: page\.visible/,
         "relative dates roll over at midnight without a per-minute tick");
-    assert.match(about, /label: "~\/\.config\/cybexos\/shell\.json"\s*labelMono: true/);
+    assert.match(about, /label: "~\/\.config\/nerdos\/shell\.json"\s*labelMono: true/);
     assert.match(about, /hint: "Every page back to its defaults\. You can undo for 8 seconds\."/);
     assert.match(read("Settings/ValueRow.qml"), /elide: Text\.ElideMiddle/,
         "a path label keeps both of its ends");
@@ -125,7 +125,7 @@ test("a pasted install command installs its source", () => {
         `omarchy plugin add ${url} --enable`,
         `omarchy plugin add --enable ${url}`,
         `$ omarchy plugin add "${url}"`,
-        `cybex plugin add '${url}'`,
+        `nerd plugin add '${url}'`,
         `Omarchy Plugin Install ${url}\n# then enable it`
     ])
         assert.equal(PluginSource.parse(text), url, JSON.stringify(text));

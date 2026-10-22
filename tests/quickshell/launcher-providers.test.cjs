@@ -196,14 +196,14 @@ test("the catalogue groups every action under one known verb, in verb order", ()
 test("the catalogue wires every cross-package command exactly as named", () => {
     const byId = Object.fromEntries(P.BUILTIN_ACTIONS.map(action => [action.id, action]));
     const commands = {
-        "webapp-install": ["cybexos-webapp", "install", "--notify", "--url", "{argument}"],
-        "webapp-remove": ["cybexos-webapp", "remove", "--notify", "{argument}"],
-        "theme-install": ["cybex", "theme", "install", "{argument}"],
-        "ai-agent-choose": ["cybex", "agent", "--window", "--pick"],
-        "ai-agent-launch": ["cybex", "agent", "--window"],
+        "webapp-install": ["nerdos-webapp", "install", "--notify", "--url", "{argument}"],
+        "webapp-remove": ["nerdos-webapp", "remove", "--notify", "{argument}"],
+        "theme-install": ["nerd", "theme", "install", "{argument}"],
+        "ai-agent-choose": ["nerd", "agent", "--window", "--pick"],
+        "ai-agent-launch": ["nerd", "agent", "--window"],
         "game-mode": ["game-mode", "toggle"],
-        "updates-check": ["cybexos-runtime", "ipc", "updates", "check"],
-        "updates-open": ["cybexos-runtime", "ipc", "updates", "open"],
+        "updates-check": ["nerdos-runtime", "ipc", "updates", "check"],
+        "updates-open": ["nerdos-runtime", "ipc", "updates", "open"],
         "screenshot-region": ["screenshot", "region"],
         "screenshot-fullscreen": ["screenshot", "fullscreen"],
         "screenshot-scroll": ["screenshot", "scroll"],
@@ -211,9 +211,9 @@ test("the catalogue wires every cross-package command exactly as named", () => {
         "screen-record-webcam": ["screen-record", "--webcam"],
         "color-picker": ["color-picker"],
         "screen-ocr": ["screen-ocr"],
-        "backup-now": ["cybex", "backup", "now"],
-        "overview": ["cybexos-runtime", "ipc", "overview", "open"],
-        "report": ["cybex", "report"]
+        "backup-now": ["nerd", "backup", "now"],
+        "overview": ["nerdos-runtime", "ipc", "overview", "open"],
+        "report": ["nerd", "report"]
     };
     for (const [id, command] of Object.entries(commands))
         assert.deepEqual(byId[id] && byId[id].command, command, id);
@@ -339,7 +339,7 @@ test("the argument reaches the command as one argv element, never spliced", () =
     const install = P.BUILTIN_ACTIONS.find(action => action.id === "webapp-install");
     const hostile = "https://example.com/a b;$(id)`x`";
     assert.deepEqual(P.expandCommand(install.command, "/home/alex", hostile), [
-        "cybexos-webapp", "install", "--notify", "--url", hostile
+        "nerdos-webapp", "install", "--notify", "--url", hostile
     ]);
     assert.deepEqual(P.expandCommand(install.command, "/home/alex", ""), [],
         "a missing argument runs nothing");
@@ -353,7 +353,7 @@ test("the argument reaches the command as one argv element, never spliced", () =
 test("Remove web app… lists installed web apps to choose from", () => {
     const apps = P.parseWebApps(JSON.stringify([
         { id: "slack", name: "Slack", url: "https://app.slack.com/",
-            icon: "/home/a/.local/share/cybexos/webapps/slack/icon.png" },
+            icon: "/home/a/.local/share/nerdos/webapps/slack/icon.png" },
         { id: "../evil", name: "Evil", url: "https://x" },
         { id: "slack", name: "Duplicate" },
         { id: "notes", name: "Notes\nline", url: "https://n.example/", icon: "relative.png" },
@@ -415,7 +415,7 @@ test("pinned entries come first, survive pruning and hide their history twin", (
     const rows = P.clipboardRows(lines, "", 8, {
         pins,
         previews: { "42\t[[ binary data 1920x1080 png ]]": "file:///run/p/abc.png" },
-        pinDir: "/home/a/.local/share/cybexos/clipboard/pins"
+        pinDir: "/home/a/.local/share/nerdos/clipboard/pins"
     });
     assert.deepEqual(rows.map(row => row.title), [
         "deploy token", "Pinned image", "newest text", "Clipboard image"
@@ -423,7 +423,7 @@ test("pinned entries come first, survive pruning and hide their history twin", (
     assert.equal(rows[0].pinned, true);
     assert.equal(rows[0].pinId, "0123456789abcdef");
     assert.equal(rows[1].thumbnail,
-        "file:///home/a/.local/share/cybexos/clipboard/pins/fedcba9876543210-thumb.png");
+        "file:///home/a/.local/share/nerdos/clipboard/pins/fedcba9876543210-thumb.png");
     assert.equal(rows[2].pinned, false);
     assert.equal(rows[3].thumbnail, "file:///run/p/abc.png");
     assert.equal(rows[3].raw, "42\t[[ binary data 1920x1080 png ]]");

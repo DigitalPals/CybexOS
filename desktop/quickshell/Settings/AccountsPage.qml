@@ -4,7 +4,7 @@ import Quickshell
 import "../Common"
 
 // Online accounts: the GNOME Online Accounts on this computer, and whether
-// CybexOS reads their calendars. Signing in happens in the account window
+// NerdOS reads their calendars. Signing in happens in the account window
 // that Add account opens; this page lists what is connected, and removes.
 //
 // Status is hint text, not a standing control: loading and updating are
@@ -44,7 +44,7 @@ SettingsPage {
                     id: note
                     width: parent.width
                     maximumLines: 5
-                    text: I18n.tr("Connect an account to show its calendars in CybexOS. Signing in opens a separate account window and your browser.")
+                    text: I18n.tr("Connect an account to show its calendars in NerdOS. Signing in opens a separate account window and your browser.")
                 }
             }
             SettingsHint {

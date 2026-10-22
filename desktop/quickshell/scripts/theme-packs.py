@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """List, apply, install, export and remove named appearance themes.
 
-`cybex theme` (assets/scripts/cybexos-theme) runs this from the active shell
+`nerd theme` (assets/scripts/nerdos-theme) runs this from the active shell
 runtime, and Settings → Appearance (Common/Themes.qml) uses the same
 commands, so both validate themes and map them to settings identically
 (scripts/theme_packs.py).
@@ -37,7 +37,7 @@ MAX_STDIN = 2 * 1024 * 1024
 
 def ipc(*args):
     """Calls the running shell; None when there is none to answer."""
-    helper = os.environ.get('CYBEXOS_RUNTIME_HELPER') or shutil.which('cybexos-runtime')
+    helper = os.environ.get('NERDOS_RUNTIME_HELPER') or shutil.which('nerdos-runtime')
     if not helper:
         return None
     try:
@@ -74,7 +74,7 @@ def command_list(args):
     for row in [('ID', 'NAME', 'MODE', 'SOURCE')] + rows:
         print('  '.join(value.ljust(width) for value, width in zip(row, widths)) + '  ' + row[3])
     for entry in listing['invalid']:
-        print(f'cybex theme: skipped {entry["id"]}: {entry["error"]}', file=sys.stderr)
+        print(f'nerd theme: skipped {entry["id"]}: {entry["error"]}', file=sys.stderr)
     return 0
 
 
@@ -105,7 +105,7 @@ def command_apply(args):
 def command_install(args):
     theme = theme_packs.install(args.source, replace=args.replace)
     ipc('theme', 'refresh')
-    print(f'Installed {theme["name"]} as {theme["id"]}. Apply it with `cybex theme apply {theme["id"]}`.')
+    print(f'Installed {theme["name"]} as {theme["id"]}. Apply it with `nerd theme apply {theme["id"]}`.')
     return 0
 
 
@@ -120,7 +120,7 @@ def command_export(args):
             raise ThemeError('--name only applies to CURRENT')
         theme = theme_packs.find(args.id)
     written = theme_packs.export(theme, args.directory, wallpaper)
-    print(f'Exported {theme["name"]} to {written}. Install it with `cybex theme install {written}`.')
+    print(f'Exported {theme["name"]} to {written}. Install it with `nerd theme install {written}`.')
     return 0
 
 
@@ -147,7 +147,7 @@ def command_save(args):
 
 
 def parser():
-    root = argparse.ArgumentParser(prog='cybex theme', description='Named appearance themes.')
+    root = argparse.ArgumentParser(prog='nerd theme', description='Named appearance themes.')
     commands = root.add_subparsers(dest='command', required=True)
     listing = commands.add_parser('list', help='list built-in and user themes')
     listing.add_argument('--json', action='store_true')
@@ -185,7 +185,7 @@ def main(argv):
         message = str(error) if isinstance(error, ThemeError) else (error.strerror or str(error))
         if args.command in ('resolve', 'save'):
             print(json.dumps({'error': message}))
-        print(f'cybex theme: {message}', file=sys.stderr)
+        print(f'nerd theme: {message}', file=sys.stderr)
         return 1
 
 

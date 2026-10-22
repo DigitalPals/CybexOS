@@ -9,9 +9,9 @@ const {
 } = require("./system-theme.cjs");
 
 const repoRoot = path.resolve(__dirname, "../..");
-const resolver = path.join(repoRoot, "assets/scripts/cybexos-runtime");
+const resolver = path.join(repoRoot, "assets/scripts/nerdos-runtime");
 const template = path.join(repoRoot, "desktop/hypr/hyprlock.conf");
-const HEADER = "# CybexOS lock screen, rendered by the system theme (theme_hyprlock.py).";
+const HEADER = "# NerdOS lock screen, rendered by the system theme (theme_hyprlock.py).";
 const WALLPAPER = "/home/test/Pictures/Wallpapers/mountains.jpg";
 
 function render(tokens) {
@@ -102,7 +102,7 @@ test("the lock screen renders the shell's font and colours over a solid base", (
     // $FAIL is the latest failure from PAM or hyprlock's fingerprint check.
     assert.equal(field.fail_text, '<span foreground="##ff8f8f">$FAIL</span>');
     // The fingerprint prompt under the field is empty, so unseen, unless
-    // cybexos-runtime turns on hyprlock's fprintd check (docs/security.md).
+    // nerdos-runtime turns on hyprlock's fprintd check (docs/security.md).
     const prompt = section(config, "label", 2);
     assert.equal(prompt.text, "$FPRINTPROMPT");
     assert.equal(prompt.color, "rgba(b3afa4ff)");
@@ -225,34 +225,34 @@ test("the vendor lock screen is the dark default rendered without a wallpaper", 
 function resolverFixture(t) {
     const root = scratch(t);
     const home = path.join(root, "home");
-    const config = path.join(root, "config/cybexos");
-    const runtime = path.join(root, "data/cybexos/runtime");
+    const config = path.join(root, "config/nerdos");
+    const runtime = path.join(root, "data/nerdos/runtime");
     const state = path.join(root, "state");
     fs.mkdirSync(path.join(config, "hypr"), { recursive: true });
     fs.mkdirSync(path.join(runtime, "hypr"), { recursive: true });
-    fs.mkdirSync(path.join(state, "cybexos/theme"), { recursive: true });
-    fs.mkdirSync(path.join(home, ".local/state/cybexos/theme"), { recursive: true });
+    fs.mkdirSync(path.join(state, "nerdos/theme"), { recursive: true });
+    fs.mkdirSync(path.join(home, ".local/state/nerdos/theme"), { recursive: true });
     fs.copyFileSync(template, path.join(runtime, "hypr/hyprlock.conf"));
     // Never the real hyprlock: a stub that prints the arguments it was given.
     const hyprlock = path.join(root, "hyprlock");
     fs.writeFileSync(hyprlock, "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\"\n", { mode: 0o755 });
-    const script = path.join(root, "cybexos-runtime");
+    const script = path.join(root, "nerdos-runtime");
     const source = fs.readFileSync(resolver, "utf8");
     assert.ok(source.includes("exec hyprlock "));
     // The lock screen's PAM service and fingerprintPolicy's state, as fixtures.
-    const lockPam = path.join(root, "pam.d/cybexos-lock");
+    const lockPam = path.join(root, "pam.d/nerdos-lock");
     const fingerprintPolicy = path.join(root, "policy/fingerprint-enabled");
-    for (const [system] of [["lock_pam=/etc/pam.d/cybexos-lock"], ["fingerprint_policy=/etc/cybexos/fingerprint-enabled"]])
+    for (const [system] of [["lock_pam=/etc/pam.d/nerdos-lock"], ["fingerprint_policy=/etc/nerdos/fingerprint-enabled"]])
         assert.ok(source.includes(system), system);
-    fs.writeFileSync(script, source.replace("runtime_root=/etc/cybexos/runtime", `runtime_root=${runtime}`).replace("exec hyprlock ", `exec ${hyprlock} `)
-        .replace("lock_pam=/etc/pam.d/cybexos-lock", `lock_pam=${lockPam}`)
-        .replace("fingerprint_policy=/etc/cybexos/fingerprint-enabled", `fingerprint_policy=${fingerprintPolicy}`));
+    fs.writeFileSync(script, source.replace("runtime_root=/etc/nerdos/runtime", `runtime_root=${runtime}`).replace("exec hyprlock ", `exec ${hyprlock} `)
+        .replace("lock_pam=/etc/pam.d/nerdos-lock", `lock_pam=${lockPam}`)
+        .replace("fingerprint_policy=/etc/nerdos/fingerprint-enabled", `fingerprint_policy=${fingerprintPolicy}`));
     return {
         root, home, lockPam, fingerprintPolicy,
         user: path.join(config, "hypr/hyprlock.conf"),
         vendor: path.join(runtime, "hypr/hyprlock.conf"),
-        generated: path.join(state, "cybexos/theme/hyprlock.conf"),
-        homeGenerated: path.join(home, ".local/state/cybexos/theme/hyprlock.conf"),
+        generated: path.join(state, "nerdos/theme/hyprlock.conf"),
+        homeGenerated: path.join(home, ".local/state/nerdos/theme/hyprlock.conf"),
         exec(env = {}) {
             const result = spawnSync("bash", [script, "exec", "hyprlock"], {
                 encoding: "utf8",
@@ -335,12 +335,12 @@ test("the lock screen's text and field grow with the shell's text size", () => {
     assert.equal(section(small, "input-field").size, "214, 39");
 });
 
-// cybexos-runtime adds the sign-in factors at lock time (docs/security.md).
+// nerdos-runtime adds the sign-in factors at lock time (docs/security.md).
 test("the lock screen gains the fingerprint-free PAM service and hyprlock's fingerprint check", t => {
     const f = resolverFixture(t);
     const runtime = path.join(f.root, "run");
     fs.mkdirSync(runtime, { mode: 0o700 });
-    const rendered = path.join(runtime, "cybexos/hyprlock.conf");
+    const rendered = path.join(runtime, "nerdos/hyprlock.conf");
     // Without the PAM service, the file is used as it is: naming a missing
     // service would refuse every password.
     assert.equal(f.exec({ XDG_RUNTIME_DIR: runtime }), f.vendor);
@@ -353,7 +353,7 @@ test("the lock screen gains the fingerprint-free PAM service and hyprlock's fing
     let config = fs.readFileSync(rendered, "utf8");
     const vendor = fs.readFileSync(f.vendor, "utf8");
     assert.ok(config.startsWith(vendor), "the layout is kept byte for byte");
-    assert.match(config, /auth \{\n  pam \{\n    module = cybexos-lock\n  \}/);
+    assert.match(config, /auth \{\n  pam \{\n    module = nerdos-lock\n  \}/);
     assert.match(config, /fingerprint \{\n    enabled = false\n/,
         "no fingerprint check while fingerprintPolicy does not offer fingerprints");
     assert.equal((fs.statSync(rendered).mode & 0o077), 0, "the rendered file is private");

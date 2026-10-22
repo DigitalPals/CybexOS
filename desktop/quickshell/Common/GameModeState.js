@@ -1,5 +1,5 @@
 // Game mode's runtime state as the game-mode helper writes it to
-// $XDG_RUNTIME_DIR/cybexos/game-mode.json. The file names the compositor
+// $XDG_RUNTIME_DIR/nerdos/game-mode.json. The file names the compositor
 // instance it belongs to: lingering keeps the runtime directory across
 // logins, and a file from an earlier login must never read as on.
 

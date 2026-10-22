@@ -7,7 +7,7 @@ var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
 
 // The edge drawer's tabs, in default strip order. Overview is the drawer's
-// front door — the CybexOS button and the session footer live there — so it
+// front door — the NerdOS button and the session footer live there — so it
 // can be reordered but never disabled.
 var DRAWER_TAB_IDS = ["overview", "sound", "network", "bluetooth", "power",
     "notifications"];
@@ -34,7 +34,7 @@ var IDLE_SUSPEND_MINS = [0, 15, 30, 60, 120];
 // old combined centre pill; schema 11 deliberately introduces the distinct
 // `notifications` id rather than reviving that historical key. `idle` became
 // a Control Panel toggle. Schema 24 restores `control` as a configurable
-// widget, with the CybexOS button's existing rightmost placement by default.
+// widget, with the NerdOS button's existing rightmost placement by default.
 // Schema 25 retired `usage`, the first built-in model usage widget, and its
 // drawer tab. Schema 26 builds Model Usage in as `modelusage`, vendored from
 // the digitalpals.model-usage Omarchy plugin (see ModelUsage/README.md).
@@ -48,7 +48,7 @@ var MODULE_IDS = [
 var RETIRED_MODULE_IDS = ["bell", "idle", "usage"];
 
 // Widgets for services the user signs in to. They start on only when the
-// install's connected-service feature is selected (CYBEXOS_CONNECTED_WIDGETS).
+// install's connected-service feature is selected (NERDOS_CONNECTED_WIDGETS).
 var CONNECTED_WIDGET_IDS = ["modelusage", "fusebox", "gh", "t3", "hermes"];
 
 // Model Usage's quota providers, and the ones it can estimate costs for from
@@ -1155,7 +1155,7 @@ function migrateMods(raw, sourceVersion, context) {
     var migrated = { left: [], center: [], right: [] };
     ["left", "center", "right"].forEach(function(col) {
         var list = Array.isArray(raw[col]) ? raw[col] : [];
-        // Before schema 24 the old control entry was ignored and the CybexOS
+        // Before schema 24 the old control entry was ignored and the NerdOS
         // button always lived on the right. Replace stale historical entries
         // with that effective placement; later user moves/removals persist.
         if (typeof sourceVersion !== "number" || sourceVersion < 24)

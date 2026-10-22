@@ -17,7 +17,7 @@ ShellRoot {
     readonly property var typography: ({ control: 13, body: 14, caption: 12 })
 
     function terminal() { Quickshell.execDetached(["kitty"]); }
-    function recover() { Quickshell.execDetached(["cybexos-runtime", "shell", "recover"]); }
+    function recover() { Quickshell.execDetached(["nerdos-runtime", "shell", "recover"]); }
 
     GlobalShortcut {
         appid: "quickshell"
@@ -72,12 +72,12 @@ ShellRoot {
                 anchors.leftMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 12
-                Text { text: "CybexOS recovery"; color: "#e1df9a"; font.pixelSize: root.typography.body; height: 30; verticalAlignment: Text.AlignVCenter }
+                Text { text: "NerdOS recovery"; color: "#e1df9a"; font.pixelSize: root.typography.body; height: 30; verticalAlignment: Text.AlignVCenter }
                 Action { label: "Terminal"; onTriggered: root.terminal() }
                 Action { label: "Retry desktop"; onTriggered: root.recover() }
                 Text {
                     visible: panel.width > 900
-                    text: I18n.tr("Widgets paused · Your settings are preserved · cybex shell status")
+                    text: I18n.tr("Widgets paused · Your settings are preserved · nerd shell status")
                     color: "#c9c7bd"; font.pixelSize: root.typography.caption; height: 30; verticalAlignment: Text.AlignVCenter
                 }
             }

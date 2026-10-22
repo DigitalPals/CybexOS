@@ -138,13 +138,13 @@ def scaled(value, tokens):
 
 
 def state_dir():
-    """Where rendered files live: ~/.local/state/cybexos/theme."""
-    override = os.environ.get('CYBEXOS_THEME_STATE_DIR')
+    """Where rendered files live: ~/.local/state/nerdos/theme."""
+    override = os.environ.get('NERDOS_THEME_STATE_DIR')
     if override:
         return override
     base = os.environ.get('XDG_STATE_HOME') or os.path.join(os.path.expanduser('~'),
                                                             '.local/state')
-    return os.path.join(base, 'cybexos/theme')
+    return os.path.join(base, 'nerdos/theme')
 
 
 # ---- colour arithmetic ------------------------------------------------------

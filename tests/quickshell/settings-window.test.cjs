@@ -68,5 +68,5 @@ test("the settings window maps unminimized and raises itself when asked", () => 
     assert.match(window,
         /function onPanelOpenChanged\(\) \{\s*if \(Settings\.panelOpen\) \{[^}]*window\.minimized = false;\s*\}\s*window\.visible = Settings\.panelOpen;/);
     assert.match(window,
-        /function onPresentPanel\(\) \{\s*window\.minimized = false;\s*Hyprland\.dispatch\('hl\.dsp\.focus\(\{ window = "title:\^CybexOS Settings\$" \}\)'\);/);
+        /function onPresentPanel\(\) \{\s*window\.minimized = false;\s*Hyprland\.dispatch\('hl\.dsp\.focus\(\{ window = "title:\^NerdOS Settings\$" \}\)'\);/);
 });

@@ -71,8 +71,8 @@ class RegionSettings:
         raise ValueError('Unknown region operation')
 
     def stage(self, field, value, previous):
-        result = subprocess.run(['cybex', 'config', 'region', field, value, json.dumps(previous)],
+        result = subprocess.run(['nerd', 'config', 'region', field, value, json.dumps(previous)],
                                 capture_output=True, text=True, timeout=50)
         if result.returncode:
-            raise ValueError('Regional preview could not start. Check authorization and cybex update status.')
+            raise ValueError('Regional preview could not start. Check authorization and nerd update status.')
         return {'staged': True, 'message': 'Preview started. Open Updates, review the complete build and apply the generation to save this setting.'}

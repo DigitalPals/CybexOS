@@ -19,9 +19,9 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'lifecycle'))
-from cybexos.common import CommandFailure, Failure, Runner, atomic, digest, locked, parse, read, syncdir
-from cybexos import inputs, trust
-from cybexos.engine import Engine, config_digest, copy_config
+from nerdos.common import CommandFailure, Failure, Runner, atomic, digest, locked, parse, read, syncdir
+from nerdos import inputs, trust
+from nerdos.engine import Engine, config_digest, copy_config
 
 REV_OLD, REV_NEW = '1' * 40, '2' * 40
 NAR_OLD, NAR_NEW = 'sha256-' + 'A' * 43 + '=', 'sha256-' + 'B' * 43 + '='
@@ -31,12 +31,12 @@ NEW_SYSTEM = '/nix/store/' + 'b' * 32 + '-nixos-system-new'
 
 def lock():
     return {'version': 7, 'root': 'root', 'nodes': {
-        'root': {'inputs': {'nixpkgs': 'nixpkgs', 'cybexos': 'cybexos', 'personal': 'personal'}},
+        'root': {'inputs': {'nixpkgs': 'nixpkgs', 'nerdos': 'nerdos', 'personal': 'personal'}},
         'nixpkgs': {'original': {'type':'github','owner':'NixOS','repo':'nixpkgs','ref':'nixos-26.05'},
                     'locked': {'type':'github','owner':'NixOS','repo':'nixpkgs','rev':REV_OLD,'narHash':NAR_OLD}},
-        'cybexos': {'inputs': {'nixpkgs':['nixpkgs'], 'lanzaboote':'lanzaboote'},
-                   'original':{'type':'github','owner':'DigitalPals','repo':'CybexOS','rev':REV_OLD},
-                   'locked':{'type':'github','owner':'DigitalPals','repo':'CybexOS','rev':REV_OLD,'narHash':NAR_OLD}},
+        'nerdos': {'inputs': {'nixpkgs':['nixpkgs'], 'lanzaboote':'lanzaboote'},
+                   'original':{'type':'github','owner':'DigitalPals','repo':'NerdOS','rev':REV_OLD},
+                   'locked':{'type':'github','owner':'DigitalPals','repo':'NerdOS','rev':REV_OLD,'narHash':NAR_OLD}},
         'lanzaboote': {'inputs':{'nixpkgs':['nixpkgs']},'locked':{'type':'github','repo':'lanzaboote','rev':REV_OLD}},
         'personal': {'inputs':{'nixpkgs':['nixpkgs']},'locked':{'type':'github','repo':'personal','rev':REV_OLD}}
     }}
@@ -46,7 +46,7 @@ def release():
     return {'schema':1,'version':'1.1.0','revision':REV_NEW,'narHash':NAR_NEW,
             'architectures':['x86_64-linux'],'nixos':['26.05'],'configurationApi':1,'pluginApi':1,
             'minUpdater':1,'notes':'A qualified release','vendorInputs':['lanzaboote'],
-            'assets':[{'name':'source.tar.gz','url':'https://github.com/DigitalPals/CybexOS/releases/download/v1.1.0/source.tar.gz',
+            'assets':[{'name':'source.tar.gz','url':'https://github.com/DigitalPals/NerdOS/releases/download/v1.1.0/source.tar.gz',
                        'sha256':'f'*64,'bytes':1}]}
 
 
@@ -85,7 +85,7 @@ class TrustTests(unittest.TestCase):
                 self.close_connection = True
             def log_message(self, *args):
                 pass
-        endpoint = 'https://digitalpals.github.io/CybexOS/channels/stable.json'
+        endpoint = 'https://digitalpals.github.io/NerdOS/channels/stable.json'
         requests = []
         real_urlopen = urllib.request.urlopen
         with http.server.ThreadingHTTPServer(('127.0.0.1', 0), Interrupted) as server:
@@ -103,7 +103,7 @@ class TrustTests(unittest.TestCase):
                 fetcher = trust.Fetcher(self.base / 'cache')
                 cached = fetcher.cache / hashlib.sha256(endpoint.encode()).hexdigest()
                 atomic(cached, b'previous complete cached metadata')
-                with patch('cybexos.trust.urllib.request.urlopen', side_effect=transport):
+                with patch('nerdos.trust.urllib.request.urlopen', side_effect=transport):
                     with self.assertRaisesRegex(Failure, 'endpoint unreachable'):
                         fetcher.get(endpoint)
                     self.assertEqual(cached.read_bytes(), b'previous complete cached metadata')
@@ -116,8 +116,8 @@ class TrustTests(unittest.TestCase):
                     engine = Engine(self.base / 'state', working, FakeRunner(), release_file, policy, keys)
                     result = engine.check()
                 self.assertEqual(result['upstream']['state'], 'available')
-                self.assertEqual(result['cybexos']['state'], 'unavailable')
-                self.assertIn('endpoint unreachable', result['cybexos']['error'])
+                self.assertEqual(result['nerdos']['state'], 'unavailable')
+                self.assertIn('endpoint unreachable', result['nerdos']['error'])
                 self.assertEqual(len(requests), 2, 'Exercise actual interrupted HTTP reads twice')
             finally:
                 server.shutdown()
@@ -158,10 +158,10 @@ class TrustTests(unittest.TestCase):
 
     def test_channel_manifest_chain_and_replay(self):
         body=json.dumps(release()).encode()
-        url='https://github.com/DigitalPals/CybexOS/releases/download/v1.1.0/manifest.json'
+        url='https://github.com/DigitalPals/NerdOS/releases/download/v1.1.0/manifest.json'
         channel={'schema':1,'channel':'stable','sequence':4,'expires':'2099-01-01T00:00:00Z','manifest':url,'sha256':hashlib.sha256(body).hexdigest()}
         channel_body=json.dumps(channel).encode()
-        base='https://digitalpals.github.io/CybexOS/channels/stable.json'
+        base='https://digitalpals.github.io/NerdOS/channels/stable.json'
         data={base:channel_body,base+'.sig':self.sign(channel_body),url:body,url+'.sig':self.sign(body)}
         class Fetch:
             def get(self,url): return data[url]
@@ -172,19 +172,19 @@ class TrustTests(unittest.TestCase):
         with self.assertRaises(Failure): trust.discover(Fetch(),self.trust,'stable','1.0.0','x86_64-linux','26.05',4)
 
     def test_asset_url_identity(self):
-        for value in ['https://example.com/source.tar.gz','https://github.com/DigitalPals/CybexOS/releases/download/main/source.tar.gz']:
+        for value in ['https://example.com/source.tar.gz','https://github.com/DigitalPals/NerdOS/releases/download/main/source.tar.gz']:
             data=release();data['assets'][0]['url']=value
             with self.assertRaises(Failure): trust.validate_release(data,'1.0.0','x86_64-linux','26.05','stable')
 
 
 class InputTests(unittest.TestCase):
     def test_independent_scopes_and_vendor_dependencies(self):
-        for scope in ('upstream','cybexos','both','local'):
+        for scope in ('upstream','nerdos','both','local'):
             old=lock();new=copy.deepcopy(old)
             if scope in ('upstream','both'):new['nodes']['nixpkgs']['locked']['rev']=REV_NEW
-            if scope in ('cybexos','both'):
-                new['nodes']['cybexos']['locked']['rev']=REV_NEW
-                new['nodes']['cybexos']['original']['rev']=REV_NEW
+            if scope in ('nerdos','both'):
+                new['nodes']['nerdos']['locked']['rev']=REV_NEW
+                new['nodes']['nerdos']['original']['rev']=REV_NEW
                 new['nodes']['lanzaboote']['locked']['rev']=REV_NEW
             inputs.validate_delta(old,new,scope)
             new['nodes']['personal']['locked']['rev']=REV_NEW
@@ -195,21 +195,21 @@ class InputTests(unittest.TestCase):
         with self.assertRaises(Failure):inputs.validate_machine(data)
         data=lock();data['nodes']['nixpkgs']['original']['ref']='nixos-unstable'
         with self.assertRaises(Failure):inputs.validate_machine(data)
-        data=lock();data['nodes']['cybexos']['inputs']['nixpkgs']='nixpkgs'
+        data=lock();data['nodes']['nerdos']['inputs']['nixpkgs']='nixpkgs'
         with self.assertRaises(Failure):inputs.validate_machine(data)
 
     def test_upstream_does_not_move_vendor_or_personal_graphs(self):
-        data=lock();new=copy.deepcopy(data);new['nodes']['cybexos']['locked']['rev']=REV_NEW
+        data=lock();new=copy.deepcopy(data);new['nodes']['nerdos']['locked']['rev']=REV_NEW
         with self.assertRaises(Failure):inputs.validate_delta(data,new,'upstream')
 
     def test_vendor_moving_ref_and_changed_revision_refused(self):
         for mutate in ('branch', 'mismatch'):
             data = lock()
             if mutate == 'branch':
-                data['nodes']['cybexos']['original'].pop('rev')
-                data['nodes']['cybexos']['original']['ref'] = 'main'
+                data['nodes']['nerdos']['original'].pop('rev')
+                data['nodes']['nerdos']['original']['ref'] = 'main'
             else:
-                data['nodes']['cybexos']['locked']['rev'] = REV_NEW
+                data['nodes']['nerdos']['locked']['rev'] = REV_NEW
             with self.subTest(mutate=mutate), self.assertRaises(Failure):
                 inputs.validate_machine(data)
 
@@ -225,7 +225,7 @@ class FakeRunner:
             scope=args[3];config=Path(args[args.index('--flake')+1].removeprefix('path:'))
             data=read(config/'flake.lock')
             data['nodes'][scope]['locked'].update({'rev':REV_NEW,'narHash':NAR_NEW})
-            if scope == 'cybexos':
+            if scope == 'nerdos':
                 data['nodes'][scope]['original']['rev'] = REV_NEW
             atomic(config/'flake.lock',data)
         if args[:3]==('nix','flake','archive'):
@@ -248,7 +248,7 @@ class EngineTests(unittest.TestCase):
         base=Path(self.temp.name);self.base=base
         self.config=base/'config';self.config.mkdir()
         atomic(self.config/'flake.lock',lock())
-        (self.config/'flake.nix').write_text('cybexos.url = "github:DigitalPals/CybexOS/'+REV_OLD+'";')
+        (self.config/'flake.nix').write_text('nerdos.url = "github:DigitalPals/NerdOS/'+REV_OLD+'";')
         (self.config/'local').mkdir();(self.config/'local/personal.nix').write_text('# packages, VPN, services sentinel\n{}')
         self.working=base/'nixos';self.working.symlink_to(self.config)
         self.system=base/'current-system';self.system.symlink_to(OLD_SYSTEM)
@@ -263,12 +263,12 @@ class EngineTests(unittest.TestCase):
         self.personal=base/'personal-data';self.personal.write_text('VPN key, widgets, preferences, plugin data and service database sentinel')
 
     def test_upstream_vendor_combined_and_local_staging(self):
-        for scope in ('upstream','cybexos','both','local'):
+        for scope in ('upstream','nerdos','both','local'):
             record=self.engine.stage(scope)
             self.assertEqual(config_digest(self.config),self.sentinel)
             new=read(self.engine.tx(record['id'])/'config/flake.lock')
             self.assertEqual(inputs.identity(new,'nixpkgs')['rev'],REV_NEW if scope in ('upstream','both') else REV_OLD)
-            self.assertEqual(inputs.identity(new,'cybexos')['rev'],REV_NEW if scope in ('cybexos','both') else REV_OLD)
+            self.assertEqual(inputs.identity(new,'nerdos')['rev'],REV_NEW if scope in ('nerdos','both') else REV_OLD)
             self.assertEqual(inputs.identity(new,'personal')['rev'],REV_OLD)
             self.assertEqual(read(self.engine.status_path)['state'],'ready')
 
@@ -302,16 +302,16 @@ class EngineTests(unittest.TestCase):
         record = self.engine.stage('upstream')
         self.engine.apply(record['id'], record['reviewToken'])
         self.assertEqual(read(self.engine.status_path)['state'], 'awaiting-boot')
-        self.assertIn((NEW_SYSTEM + '/sw/bin/cybexos-health', 'system'), original.calls)
+        self.assertIn((NEW_SYSTEM + '/sw/bin/nerdos-health', 'system'), original.calls)
         original.calls.clear()
         self.engine.rollback(record['id'])
         self.assertEqual(read(self.engine.status_path)['state'], 'rolled-back')
         self.assertFalse(self.engine.pending_path.exists())
-        self.assertIn((OLD_SYSTEM + '/sw/bin/cybexos-health', 'system'), original.calls)
+        self.assertIn((OLD_SYSTEM + '/sw/bin/nerdos-health', 'system'), original.calls)
         disarm = original.calls.index(('bootctl', 'set-oneshot', ''))
         install = original.calls.index((OLD_SYSTEM + '/bin/switch-to-configuration', 'boot'))
         self.assertLess(disarm, install)
-        self.assertLess(install, original.calls.index(('cybexos-boot-trial', '--restore', OLD_SYSTEM)))
+        self.assertLess(install, original.calls.index(('nerdos-boot-trial', '--restore', OLD_SYSTEM)))
 
     def test_preexisting_failed_unit_is_tolerated_but_new_failures_are_rejected(self):
         for code in (0, 4):
@@ -400,7 +400,7 @@ class EngineTests(unittest.TestCase):
             nonlocal entry_exists
             if args == (OLD_SYSTEM + '/bin/switch-to-configuration', 'boot'):
                 entry_exists = True
-            if args == ('cybexos-boot-trial', '--restore', OLD_SYSTEM) and not entry_exists:
+            if args == ('nerdos-boot-trial', '--restore', OLD_SYSTEM) and not entry_exists:
                 raise Failure('No bootable systemd-boot entry')
             return original(*args, **kwargs)
         run.log = None
@@ -429,7 +429,7 @@ class EngineTests(unittest.TestCase):
         def run(*args, **kwargs):
             if args[0].endswith('/bin/switch-to-configuration'):
                 raise CommandFailure(args[0], 4)
-            if args == (NEW_SYSTEM + '/sw/bin/cybexos-health', 'system'):
+            if args == (NEW_SYSTEM + '/sw/bin/nerdos-health', 'system'):
                 raise Failure('required personal.service failed')
             return original(*args, **kwargs)
         run.log = None
@@ -481,7 +481,7 @@ class EngineTests(unittest.TestCase):
             self.engine.apply(record['id'], record['reviewToken'])
         self.assertEqual(read(self.engine.status_path)['state'], 'rolled-back')
         self.assertFalse(self.engine.pending_path.exists())
-        self.assertNotIn((NEW_SYSTEM + '/sw/bin/cybexos-health', 'system'), original.calls)
+        self.assertNotIn((NEW_SYSTEM + '/sw/bin/nerdos-health', 'system'), original.calls)
 
     def test_busy_boot_recovery_defers_to_the_lock_owner_without_failure(self):
         self.engine.status(state='building')
@@ -496,7 +496,7 @@ class EngineTests(unittest.TestCase):
     def test_retry_request_authorizes_the_same_system_across_failed_transactions(self):
         import contextlib
         import io
-        from cybexos import cli
+        from nerdos import cli
         ids = ['1' * 32, '2' * 32, '3' * 32]
         for identifier, system in zip(ids, [NEW_SYSTEM, NEW_SYSTEM, OLD_SYSTEM]):
             tx = self.engine.tx(identifier)
@@ -512,12 +512,12 @@ class EngineTests(unittest.TestCase):
 
     def test_failed_preview_does_not_consume_explicit_retry_authorization(self):
         record = self.engine.stage('upstream')
-        self.runner.fail = lambda args: args == (NEW_SYSTEM + '/sw/bin/cybexos-health', 'system')
+        self.runner.fail = lambda args: args == (NEW_SYSTEM + '/sw/bin/nerdos-health', 'system')
         with self.assertRaises(Failure):
             self.engine.apply(record['id'], record['reviewToken'])
         authorization = self.engine.tx(record['id']) / 'retry-authorized.json'
         atomic(authorization, {'authorizedAt': 1})
-        self.runner.fail = lambda args: 'cybexos-desktop-check' in args[0]
+        self.runner.fail = lambda args: 'nerdos-desktop-check' in args[0]
         with self.assertRaises(Failure):
             self.engine.stage('upstream')
         self.assertTrue(authorization.exists())
@@ -533,7 +533,7 @@ class EngineTests(unittest.TestCase):
         with self.assertRaises(Failure):self.engine.stage('both')
         result=self.engine.check()
         self.assertEqual(result['upstream']['state'],'available')
-        self.assertEqual(result['cybexos']['state'],'unavailable')
+        self.assertEqual(result['nerdos']['state'],'unavailable')
 
     def assert_unknown_upstream(self, result, reason):
         self.assertEqual(result['upstream']['state'], 'unreachable')
@@ -542,10 +542,10 @@ class EngineTests(unittest.TestCase):
         self.assertIn(reason, error)
         self.assertIn('`nix flake metadata --refresh --json github:NixOS/nixpkgs/nixos-26.05`', error)
         self.assertNotIn('transaction log', error)
-        self.assertNotIn('cybex update log', error)
+        self.assertNotIn('nerd update log', error)
         self.assertNotIn('available', result['upstream'])
-        self.assertEqual(result['cybexos']['state'], 'available')
-        self.assertEqual(result['cybexos']['available'], '1.1.0')
+        self.assertEqual(result['nerdos']['state'], 'available')
+        self.assertEqual(result['nerdos']['available'], '1.1.0')
         self.assertFalse(self.engine.status_path.exists())
         self.assertEqual(list((self.engine.state / 'transactions').iterdir()), [])
         self.assertEqual(config_digest(self.config), self.sentinel)
@@ -628,7 +628,7 @@ class EngineTests(unittest.TestCase):
         command = self.base / 'nix'
         command.symlink_to(sys.executable)
         def run(*args, **kwargs):
-            with patch('cybexos.common.time.monotonic', side_effect=(0, 91)):
+            with patch('nerdos.common.time.monotonic', side_effect=(0, 91)):
                 return runner(command, '-B', '-c', 'pass', **kwargs)
         self.engine.run = run
         self.assert_unknown_upstream(self.engine.check(), 'metadata lookup timed out')
@@ -674,7 +674,7 @@ class EngineTests(unittest.TestCase):
                     'state': state, 'installed': REV_OLD, 'available': revision,
                     'detail': 'Stage upstream to build and review actual package changes.',
                 })
-                self.assertEqual(result['cybexos']['state'], 'available')
+                self.assertEqual(result['nerdos']['state'], 'available')
 
     def test_check_reports_both_source_failures_independently(self):
         with patch.object(self.engine, 'run', side_effect=Failure('lookup failed')):
@@ -683,11 +683,11 @@ class EngineTests(unittest.TestCase):
         channel.assert_called_once_with()
         self.assertEqual(result['upstream']['state'], 'unreachable')
         self.assertIn('Nixpkgs (nixos-26.05)', result['upstream']['error'])
-        self.assertEqual(result['cybexos']['state'], 'unavailable')
-        self.assertIn('Release endpoint unreachable', result['cybexos']['error'])
+        self.assertEqual(result['nerdos']['state'], 'unavailable')
+        self.assertIn('Release endpoint unreachable', result['nerdos']['error'])
 
     def test_evaluation_build_and_runtime_check_failure_preserve_working(self):
-        for needle in ('build','cybexos-desktop-check','archive'):
+        for needle in ('build','nerdos-desktop-check','archive'):
             self.runner.fail=lambda args:needle in ' '.join(args)
             with self.subTest(boundary=needle),self.assertRaises(Failure):self.engine.stage('upstream')
             self.assertEqual(config_digest(self.config),self.sentinel)
@@ -697,7 +697,7 @@ class EngineTests(unittest.TestCase):
 
     def test_identity_mismatch_rejected_before_build(self):
         self.engine.channel=lambda:(release()|{'narHash':NAR_OLD},4)
-        with self.assertRaises(Failure):self.engine.stage('cybexos')
+        with self.assertRaises(Failure):self.engine.stage('nerdos')
         self.assertFalse(any(args[:2]==('nix','build') for args in self.runner.calls))
 
     def test_stale_review_and_personal_edits(self):
@@ -758,7 +758,7 @@ class EngineTests(unittest.TestCase):
 
     def test_git_metadata_survives_selection_and_rollback_outside_archives(self):
         self.git(self.config, 'init', '--quiet')
-        self.git(self.config, 'config', 'user.name', 'CybexOS isolated regression')
+        self.git(self.config, 'config', 'user.name', 'NerdOS isolated regression')
         self.git(self.config, 'config', 'user.email', 'regression@invalid.example')
         self.git(self.config, 'add', '.')
         self.git(self.config, 'commit', '--quiet', '-m', 'Personal configuration')
@@ -772,7 +772,7 @@ class EngineTests(unittest.TestCase):
         record = self.engine.stage('upstream')
         self.assertFalse((self.engine.tx(record['id']) / 'config/.git').exists())
         self.assertFalse((self.engine.tx(record['id']) / 'previous-config/.git').exists())
-        self.git(self.config, 'config', 'cybexos.note', 'Bookkeeping changed after preview')
+        self.git(self.config, 'config', 'nerdos.note', 'Bookkeeping changed after preview')
         identity = {str(path.relative_to(metadata)): (path.read_bytes(), path.stat().st_mode)
                     for path in metadata.rglob('*') if path.is_file()}
         self.engine.apply(record['id'], record['reviewToken'])
@@ -852,7 +852,7 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(read(self.engine.pending_path)['phase'], 'recovery')
         self.assertIn('Activation failed:', status['error'])
         self.assertIn('Restoration failed:', status['error'])
-        self.assertIn('cybex update rollback ' + record['id'], status['recovery'])
+        self.assertIn('nerd update rollback ' + record['id'], status['recovery'])
         self.assertNotIn('previous generation restored', status['phase'])
         self.assertEqual(read(tx / 'activation-error.json')['error'], 'injected command failure')
         self.assertEqual(read(tx / 'recovery-error.json')['error'], 'injected command failure')
@@ -886,7 +886,7 @@ class EngineTests(unittest.TestCase):
         record=self.engine.stage('upstream')
         self.engine.apply(record['id'],record['reviewToken'])
         self.assertEqual(read(self.engine.status_path)['state'],'awaiting-boot')
-        self.assertIn(('cybexos-boot-trial',NEW_SYSTEM,OLD_SYSTEM),self.runner.calls)
+        self.assertIn(('nerdos-boot-trial',NEW_SYSTEM,OLD_SYSTEM),self.runner.calls)
         self.engine.recover() # restarting the worker before reboot does not consume the trial
         self.assertEqual(read(self.engine.status_path)['state'],'awaiting-boot')
         self.engine.boot_id=lambda: 'different-boot'
@@ -897,7 +897,7 @@ class EngineTests(unittest.TestCase):
     def test_safe_efi_default_is_set_before_installing_candidate_boot(self):
         record=self.engine.stage('upstream')
         self.engine.apply(record['id'],record['reviewToken'])
-        guard=self.runner.calls.index(('cybexos-boot-trial','--restore',OLD_SYSTEM))
+        guard=self.runner.calls.index(('nerdos-boot-trial','--restore',OLD_SYSTEM))
         install=self.runner.calls.index((NEW_SYSTEM+'/bin/switch-to-configuration','boot'))
         self.assertLess(guard,install)
 
@@ -911,10 +911,10 @@ class EngineTests(unittest.TestCase):
         self.engine.confirm()
         self.assertEqual(read(self.engine.status_path)['state'],'done')
         self.assertFalse(self.engine.pending_path.exists())
-        self.assertIn(('cybexos-boot-trial','--commit',NEW_SYSTEM),self.runner.calls)
+        self.assertIn(('nerdos-boot-trial','--commit',NEW_SYSTEM),self.runner.calls)
 
     def prepare_confirmation(self):
-        record = self.engine.stage('cybexos')
+        record = self.engine.stage('nerdos')
         self.engine.apply(record['id'], record['reviewToken'])
         self.engine.boot_id = lambda: 'different-boot'
         self.system.unlink(); self.system.symlink_to(NEW_SYSTEM)
@@ -929,7 +929,7 @@ class EngineTests(unittest.TestCase):
         self.assertEqual((self.engine.state / 'deployed').resolve(), self.engine.tx(record['id']) / 'config')
         self.assertTrue((self.engine.tx(record['id']) / 'good.json').is_file())
         self.assertEqual(read(self.engine.state / 'channel-sequences.json'), {'stable': 4})
-        self.assertEqual(self.runner.calls.count(('cybexos-boot-trial', '--commit', NEW_SYSTEM)), 1)
+        self.assertEqual(self.runner.calls.count(('nerdos-boot-trial', '--commit', NEW_SYSTEM)), 1)
 
     def test_interrupted_confirmation_completes_after_success_marker(self):
         record = self.prepare_confirmation()
@@ -940,7 +940,7 @@ class EngineTests(unittest.TestCase):
         self.assertNotEqual((self.engine.state / 'deployed').resolve(), self.engine.tx(record['id']) / 'config')
         self.engine.recover()
         self.assert_confirmation_completed(record)
-        self.assertEqual(self.runner.calls.count(('cybexos-health', 'desktop-required')), 1)
+        self.assertEqual(self.runner.calls.count(('nerdos-health', 'desktop-required')), 1)
 
     def test_confirmation_status_interruption_keeps_recoverable_pending_record(self):
         record = self.prepare_confirmation()
@@ -959,7 +959,7 @@ class EngineTests(unittest.TestCase):
 
     def test_confirmation_interruption_after_pending_removal_keeps_completed_status(self):
         record = self.prepare_confirmation()
-        with patch('cybexos.engine.syncdir', side_effect=InterruptedError('power loss after pending removal')):
+        with patch('nerdos.engine.syncdir', side_effect=InterruptedError('power loss after pending removal')):
             with self.assertRaises(InterruptedError):
                 self.engine.confirm()
         self.assertFalse(self.engine.pending_path.exists())
@@ -970,7 +970,7 @@ class EngineTests(unittest.TestCase):
     def test_interrupted_explicit_rollback_of_good_deployment_is_not_reconfirmed(self):
         record = self.prepare_confirmation()
         self.engine.confirm()
-        self.runner.fail = lambda args: args == ('cybexos-boot-trial', '--restore', OLD_SYSTEM)
+        self.runner.fail = lambda args: args == ('nerdos-boot-trial', '--restore', OLD_SYSTEM)
         with self.assertRaises(Failure):
             self.engine.rollback(record['id'])
         self.assertEqual(read(self.engine.pending_path)['phase'], 'recovery')
@@ -983,7 +983,7 @@ class EngineTests(unittest.TestCase):
     def test_interrupted_rollback_remains_journaled_and_resumes(self):
         record=self.engine.stage('upstream')
         self.engine.apply(record['id'],record['reviewToken'])
-        self.runner.fail=lambda args:args==('cybexos-boot-trial','--restore',OLD_SYSTEM)
+        self.runner.fail=lambda args:args==('nerdos-boot-trial','--restore',OLD_SYSTEM)
         with self.assertRaises(Failure):self.engine.rollback()
         self.assertEqual(read(self.engine.pending_path)['phase'],'recovery')
         self.assertEqual(read(self.engine.status_path)['state'], 'recovery-failed')
@@ -1017,7 +1017,7 @@ class EngineTests(unittest.TestCase):
             if Path(path) == self.engine.state:
                 raise InterruptedError('power loss after rollback pending removal')
             return syncdir(path)
-        with patch('cybexos.engine.syncdir', side_effect=interrupt_syncdir):
+        with patch('nerdos.engine.syncdir', side_effect=interrupt_syncdir):
             with self.assertRaises(InterruptedError):
                 self.engine.rollback()
         self.assertFalse(self.engine.pending_path.exists())
@@ -1039,7 +1039,7 @@ class EngineTests(unittest.TestCase):
         record=self.engine.stage('upstream')
         original=self.engine.run
         def run(*args,**kwargs):
-            if args==(NEW_SYSTEM+'/sw/bin/cybexos-health','desktop'):
+            if args==(NEW_SYSTEM+'/sw/bin/nerdos-health','desktop'):
                 (self.config/'local/during-activation.nix').write_text('{}')
             return original(*args,**kwargs)
         self.engine.run=run
@@ -1047,14 +1047,14 @@ class EngineTests(unittest.TestCase):
         self.assertTrue((self.working/'local/during-activation.nix').exists())
 
     def test_authentication_and_nar_verification_precede_input_evaluation(self):
-        self.engine.stage('cybexos')
+        self.engine.stage('nerdos')
         prefetch=next(i for i,args in enumerate(self.runner.calls) if args[:3]==('nix','flake','prefetch'))
         update=next(i for i,args in enumerate(self.runner.calls) if args[:3]==('nix','flake','update'))
         self.assertLess(prefetch,update)
         self.assertIn('narHash=',self.runner.calls[prefetch][-1])
         self.runner.calls.clear()
         self.engine.channel=lambda:(_ for _ in ()).throw(Failure('invalid signature'))
-        with self.assertRaises(Failure):self.engine.stage('cybexos')
+        with self.assertRaises(Failure):self.engine.stage('nerdos')
         self.assertFalse(self.runner.calls)
 
     def test_stage_interruption_is_reported_without_activation(self):
@@ -1076,10 +1076,10 @@ class EngineTests(unittest.TestCase):
 class SourceTests(unittest.TestCase):
     def test_iso_and_entrypoints_use_shared_contract(self):
         for command in ('install','bootstrap'):
-            self.assertIn('exec cybex install', (ROOT/command).read_text())
+            self.assertIn('exec nerd install', (ROOT/command).read_text())
         flake=(ROOT/'flake.nix').read_text()
         self.assertIn('modules = [ module ./nix/modules/installer.nix',flake)
-        self.assertIn('cybexos.nixosModules.default',(ROOT/'templates/machine/flake.nix').read_text())
+        self.assertIn('nerdos.nixosModules.default',(ROOT/'templates/machine/flake.nix').read_text())
 
     def test_release_gate_rejects_fixture_reports_and_wrong_revision(self):
         spec=importlib.util.spec_from_file_location('release_manage',ROOT/'release/manage.py')

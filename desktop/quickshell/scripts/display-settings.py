@@ -4,10 +4,10 @@
 One JSON request per run on stdin; one JSON result on stdout. A change is
 first applied as an unconfirmed trial:
 
-  apply     writes the candidate to $XDG_RUNTIME_DIR/cybexos/displays-trial.json,
+  apply     writes the candidate to $XDG_RUNTIME_DIR/nerdos/displays-trial.json,
             arms a transient systemd timer that restores the previous rules,
             then asks Hyprland to evaluate displays.lua against the candidate.
-  confirm   saves the candidate as ~/.config/cybexos/displays.json and disarms
+  confirm   saves the candidate as ~/.config/nerdos/displays.json and disarms
             the timer.
   rollback  (and the timer's `expire`) discards the candidate and reloads
             Hyprland, which rebuilds every rule from the files on disk.
@@ -35,7 +35,7 @@ WATCHDOG_SECONDS = TRIAL_SECONDS + 5
 CONFIRM_GRACE_SECONDS = 3
 MAX_BYTES = 262144
 MAX_ENTRIES = 64
-UNIT_PREFIX = 'cybexos-display-trial-'
+UNIT_PREFIX = 'nerdos-display-trial-'
 TOKEN = re.compile(r'^[0-9a-f]{16}$')
 CONNECTOR = re.compile(r'^[A-Za-z0-9_.-]{1,64}$')
 CONTROL = re.compile(r'[\x00-\x1f\x7f]')
@@ -43,14 +43,14 @@ CONTROL = re.compile(r'[\x00-\x1f\x7f]')
 
 def config_path():
     base = os.environ.get('XDG_CONFIG_HOME') or str(Path.home() / '.config')
-    return Path(base) / 'cybexos' / 'displays.json'
+    return Path(base) / 'nerdos' / 'displays.json'
 
 
 def runtime_dir():
     base = os.environ.get('XDG_RUNTIME_DIR')
     if not base:
         raise ValueError('XDG_RUNTIME_DIR is not set; display changes need a desktop session.')
-    path = Path(base) / 'cybexos'
+    path = Path(base) / 'nerdos'
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
     return path
 

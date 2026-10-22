@@ -13,7 +13,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
-LAUNCHER = ROOT / "assets/scripts/cybexos-agent"
+LAUNCHER = ROOT / "assets/scripts/nerdos-agent"
 
 
 def executable(path: Path, content: str) -> None:
@@ -103,7 +103,7 @@ def run_picker_in_pty(environment: dict[str, str], cwd: Path) -> tuple[int, str]
 def main() -> None:
     assert LAUNCHER.is_file()
 
-    with tempfile.TemporaryDirectory(prefix="cybexos-default-agent.") as temporary:
+    with tempfile.TemporaryDirectory(prefix="nerdos-default-agent.") as temporary:
         root = Path(temporary)
         home = root / "home"
         binaries = root / "bin"
@@ -116,10 +116,10 @@ def main() -> None:
 
         for name in ("opencode", "claude", "codex", "kitty"):
             fake_capture(binaries / name)
-        executable(binaries / "cybex", "#!/usr/bin/env bash\nexit 99\n")
+        executable(binaries / "nerd", "#!/usr/bin/env bash\nexit 99\n")
 
         environment = test_environment(home, binaries, log)
-        preference = home / "xdg-config/cybexos/defaults/agent"
+        preference = home / "xdg-config/nerdos/defaults/agent"
 
         result = run_launcher(environment, "set", "opencode", cwd=working)
         assert result.returncode == 0, result.stderr
@@ -181,11 +181,11 @@ def main() -> None:
         assert window["program"] == "kitty"
         assert window["argv"] == [
             "--class",
-            "cybexos-agent",
+            "nerdos-agent",
             "--directory",
             str(home / "Code"),
             "-e",
-            str(binaries / "cybex"),
+            str(binaries / "nerd"),
             "agent",
             "--window-child",
             "--pick",
@@ -196,7 +196,7 @@ def main() -> None:
         assert not preference.exists()
         result = run_launcher(environment, cwd=working)
         assert result.returncode == 1
-        assert "run 'cybex agent set' in a terminal" in result.stderr
+        assert "run 'nerd agent set' in a terminal" in result.stderr
 
         preference.parent.mkdir(parents=True, exist_ok=True)
         preference.write_text("codex\nclaude\n")

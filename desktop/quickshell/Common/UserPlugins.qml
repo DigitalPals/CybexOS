@@ -29,8 +29,8 @@ Singleton {
     readonly property var enabledWidgets: widgets.filter(plugin => plugin.enabled)
     readonly property string helper: Quickshell.shellDir + "/scripts/user-plugins.py"
     // Resolved as scripts/user-plugins.py roots() does.
-    readonly property string registryPath: (Quickshell.env("CYBEXOS_USER_CONFIG_ROOT")
-        || (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/cybexos")
+    readonly property string registryPath: (Quickshell.env("NERDOS_USER_CONFIG_ROOT")
+        || (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/nerdos")
         + "/plugins.json"
 
     function registerHost(host) {

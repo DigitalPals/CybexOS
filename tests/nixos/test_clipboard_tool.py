@@ -75,7 +75,7 @@ cat > {str(self.copied)!r}
         patcher = patch.dict(os.environ, environment, clear=True)
         patcher.start()
         self.addCleanup(patcher.stop)
-        self.store = self.home / ".local/share/cybexos/clipboard"
+        self.store = self.home / ".local/share/nerdos/clipboard"
 
     def script(self, name, body):
         path = self.bin / name
@@ -168,7 +168,7 @@ class Previews(Fixture):
     def test_previews_cover_image_lines_only_and_drop_what_history_lost(self):
         result = tool.previews([TEXT_LINE, IMAGE_LINE, OTHER_IMAGE, BINARY_LINE])
         self.assertEqual(sorted(result), sorted([IMAGE_LINE, OTHER_IMAGE]))
-        cache = self.runtime / "cybexos/clipboard-previews"
+        cache = self.runtime / "nerdos/clipboard-previews"
         self.assertEqual(cache.stat().st_mode & 0o777, 0o700)
         for uri in result.values():
             self.assertTrue(uri.startswith("file://" + str(cache)))
@@ -185,7 +185,7 @@ class Previews(Fixture):
         with patch.object(tool, "MAX_CACHE_FILES", 1):
             result = tool.previews([IMAGE_LINE, OTHER_IMAGE])
         self.assertEqual(len(result), 1)
-        self.assertEqual(len(list((self.runtime / "cybexos/clipboard-previews").iterdir())), 1)
+        self.assertEqual(len(list((self.runtime / "nerdos/clipboard-previews").iterdir())), 1)
 
     def test_without_imagemagick_a_small_image_is_shown_as_it_is(self):
         (self.bin / "magick").unlink()

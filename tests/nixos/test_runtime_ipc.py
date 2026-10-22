@@ -41,17 +41,17 @@ ShellRoot {
 ''')
         (self.shell / 'scripts').mkdir()
         shutil.copy2(ROOT / 'desktop/quickshell/scripts/shell-recovery.py', self.shell / 'scripts/shell-recovery.py')
-        self.command = root / 'cybexos-runtime'
-        source = (ROOT / 'assets/scripts/cybexos-runtime').read_text()
-        self.assertEqual(source.count('runtime_root=/etc/cybexos/runtime'), 1)
-        self.command.write_text(source.replace('runtime_root=/etc/cybexos/runtime', 'runtime_root=' + shlex.quote(str(runtime))))
+        self.command = root / 'nerdos-runtime'
+        source = (ROOT / 'assets/scripts/nerdos-runtime').read_text()
+        self.assertEqual(source.count('runtime_root=/etc/nerdos/runtime'), 1)
+        self.command.write_text(source.replace('runtime_root=/etc/nerdos/runtime', 'runtime_root=' + shlex.quote(str(runtime))))
         self.command.chmod(0o755)
         xdg = root / 'xdg'; xdg.mkdir(mode=0o700)
         self.environment = os.environ | {
             'HOME': str(root / 'home'), 'XDG_RUNTIME_DIR': str(xdg),
             'XDG_CONFIG_HOME': str(root / 'config'), 'XDG_DATA_HOME': str(root / 'data'),
             'XDG_STATE_HOME': str(root / 'state'), 'QT_QPA_PLATFORM': 'offscreen',
-            'QT_QUICK_BACKEND': 'software', 'CYBEXOS_RUNTIME_TESTING': '1',
+            'QT_QUICK_BACKEND': 'software', 'NERDOS_RUNTIME_TESTING': '1',
         }
         self.environment.pop('DISPLAY', None)
         self.environment.pop('WAYLAND_DISPLAY', None)

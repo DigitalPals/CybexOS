@@ -12,7 +12,7 @@ URL, and deletes every cached preview not named this time: the cache only
 ever holds what the current history shows. It lives in $XDG_RUNTIME_DIR, so
 a logout clears it as well.
 
-Pins are copies of the entry's bytes under ~/.local/share/cybexos/clipboard,
+Pins are copies of the entry's bytes under ~/.local/share/nerdos/clipboard,
 because cliphist prunes its database to the newest 500 entries and `cliphist
 wipe` empties it. The store is bounded in count and size and refuses a new
 pin rather than evicting one the user chose to keep. The launcher reads
@@ -91,15 +91,15 @@ def data_home() -> Path:
 
 
 def store_root() -> Path:
-    return data_home() / "cybexos/clipboard"
+    return data_home() / "nerdos/clipboard"
 
 
 def preview_root() -> Path:
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     if runtime and Path(runtime).is_dir():
-        return Path(runtime) / "cybexos/clipboard-previews"
+        return Path(runtime) / "nerdos/clipboard-previews"
     cache = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    return Path(cache) / "cybexos/clipboard-previews"
+    return Path(cache) / "nerdos/clipboard-previews"
 
 
 def private_directory(path: Path) -> Path:
@@ -382,7 +382,7 @@ def copy(identifier: str) -> None:
 def notify(message: str) -> None:
     if shutil.which("notify-send"):
         with contextlib.suppress(OSError, subprocess.SubprocessError):
-            subprocess.run(["notify-send", "--app-name=CybexOS", "Clipboard", message],
+            subprocess.run(["notify-send", "--app-name=NerdOS", "Clipboard", message],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                            timeout=3, check=False)
 

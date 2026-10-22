@@ -48,7 +48,7 @@ qml_import_path=$(qtpaths6 --query QT_INSTALL_QML 2>/dev/null \
   || qtpaths --query QT_INSTALL_QML 2>/dev/null || true)
 import_args=()
 [[ -d ${qml_import_path:-} ]] && import_args+=(-I "$qml_import_path")
-IFS=: read -ra nix_imports <<<"${CYBEXOS_QML_IMPORT_PATH:-}"
+IFS=: read -ra nix_imports <<<"${NERDOS_QML_IMPORT_PATH:-}"
 for module_path in "${nix_imports[@]}"; do
   [[ -d $module_path ]] && import_args+=(-I "$module_path")
 done
@@ -67,7 +67,7 @@ $shell_only && harnesses=()
 
 # Quickshell provides qs.* as a virtual import of the configuration root.
 # Reproduce that mapping for Qt's standalone linter without modifying source.
-work=$(mktemp -d "${TMPDIR:-/tmp}/cybexos-qml-imports.XXXXXX") || exit 1
+work=$(mktemp -d "${TMPDIR:-/tmp}/nerdos-qml-imports.XXXXXX") || exit 1
 lint_pids=()
 cleanup() {
   ((${#lint_pids[@]})) && kill -- "${lint_pids[@]}" 2>/dev/null
@@ -98,7 +98,7 @@ if ((${#files[@]} == 0)); then
 fi
 
 # tests/run passes its own --jobs; standalone, up to eight slices.
-shards=${CYBEXOS_TESTS_RUN_JOBS:-}
+shards=${NERDOS_TESTS_RUN_JOBS:-}
 if [[ ! $shards =~ ^[1-9][0-9]*$ ]]; then
   shards=$(nproc 2>/dev/null) || shards=4
   ((shards > 8)) && shards=8

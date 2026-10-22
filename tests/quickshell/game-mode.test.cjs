@@ -22,7 +22,7 @@ const luajit = ["/usr/bin/luajit", "/usr/local/bin/luajit"].find(file => fs.exis
 // runs `driver` after it under luajit with a recording `hl` double. `state`
 // is written as the helper's runtime file; `env` adds to the environment.
 function runLookAndFeel(driver, { state, env } = {}) {
-    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-game-mode-"));
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "nerdos-game-mode-"));
     try {
         const template = fs.readFileSync(
             path.resolve(shellDir, "../hypr/looknfeel.lua"), "utf8");
@@ -31,9 +31,9 @@ function runLookAndFeel(driver, { state, env } = {}) {
         const home = path.join(scratch, "home");
         const runtime = path.join(scratch, "runtime");
         fs.mkdirSync(home);
-        fs.mkdirSync(path.join(runtime, "cybexos"), { recursive: true });
+        fs.mkdirSync(path.join(runtime, "nerdos"), { recursive: true });
         if (state !== undefined)
-            fs.writeFileSync(path.join(runtime, "cybexos/game-mode.json"), state);
+            fs.writeFileSync(path.join(runtime, "nerdos/game-mode.json"), state);
         const script = path.join(scratch, "driver.lua");
         fs.writeFileSync(script, `
 local look = ${JSON.stringify(look)}
@@ -114,17 +114,17 @@ dofile(look)
 assert(get("animations.enabled") == true and get("decoration.rounding") == 16)
 -- user.lua runs after looknfeel; its values are what must come back.
 hl.config({ general = { gaps_in = { top = 2, right = 3, bottom = 2, left = 3 } }, decoration = { rounding = 7 } })
-assert(cybexos_game_mode(true) == true)
+assert(nerdos_game_mode(true) == true)
 assert(in_game_mode(), "game mode values")
-assert(__cybexos_game_mode.restore["general.gaps_out"] == 10)
-assert(cybexos_game_mode(true) == true and in_game_mode(), "a repeated request is a no-op")
-assert(cybexos_game_mode(false) == false)
+assert(__nerdos_game_mode.restore["general.gaps_out"] == 10)
+assert(nerdos_game_mode(true) == true and in_game_mode(), "a repeated request is a no-op")
+assert(nerdos_game_mode(false) == false)
 local gaps = get("general.gaps_in")
 assert(type(gaps) == "table" and gaps.top == 2 and gaps.right == 3, "the user's gaps come back")
 assert(get("decoration.rounding") == 7 and get("general.gaps_out") == 10)
 assert(get("animations.enabled") == true and get("decoration.blur.enabled") == true
   and get("decoration.shadow.enabled") == true)
-assert(cybexos_game_mode(false) == false and get("decoration.rounding") == 7, "off twice touches nothing")
+assert(nerdos_game_mode(false) == false and get("decoration.rounding") == 7, "off twice touches nothing")
 `);
 });
 
@@ -132,35 +132,35 @@ test("game mode and power saver hand animations back in either order", skip, () 
     runLookAndFeel(`
 dofile(look)
 -- Game mode first, power saver second; game mode switched off first.
-cybexos_game_mode(true)
-cybexos_power_saver(true)
-cybexos_game_mode(false)
+nerdos_game_mode(true)
+nerdos_power_saver(true)
+nerdos_game_mode(false)
 assert(get("animations.enabled") == false and get("decoration.blur.passes") == 1,
   "power saver keeps animations off after game mode ends")
 assert(get("decoration.rounding") == 16 and get("decoration.blur.enabled") == true)
-cybexos_power_saver(false)
+nerdos_power_saver(false)
 assert(get("animations.enabled") == true, "the original animations come back")
 
 -- Game mode first, power saver second; power saver switched off first.
-cybexos_game_mode(true)
-cybexos_power_saver(true)
-cybexos_power_saver(false)
+nerdos_game_mode(true)
+nerdos_power_saver(true)
+nerdos_power_saver(false)
 assert(get("animations.enabled") == false, "game mode keeps animations off")
-cybexos_game_mode(false)
+nerdos_game_mode(false)
 assert(get("animations.enabled") == true)
 
 -- Power saver first.
-cybexos_power_saver(true)
-cybexos_game_mode(true)
-cybexos_game_mode(false)
+nerdos_power_saver(true)
+nerdos_game_mode(true)
+nerdos_game_mode(false)
 assert(get("animations.enabled") == false, "power saver still holds animations off")
-cybexos_power_saver(false)
+nerdos_power_saver(false)
 assert(get("animations.enabled") == true)
-cybexos_power_saver(true)
-cybexos_game_mode(true)
-cybexos_power_saver(false)
+nerdos_power_saver(true)
+nerdos_game_mode(true)
+nerdos_power_saver(false)
 assert(get("animations.enabled") == false and in_game_mode())
-cybexos_game_mode(false)
+nerdos_game_mode(false)
 assert(get("animations.enabled") == true and get("decoration.blur.passes") == 1)
 `);
 });
@@ -170,12 +170,12 @@ test("game mode suspends the lone-window margins, including new ones", skip, () 
 monitors = { { name = "DP-1", width = 2560, height = 1440, scale = 1, transform = 0, is_mirror = false } }
 dofile(look)
 assert(enabled_rules() == 1, "an external display gets its lone-window margins")
-cybexos_game_mode(true)
+nerdos_game_mode(true)
 assert(enabled_rules() == 0, "game mode turns every gap off")
 monitors[2] = { name = "HDMI-A-1", width = 1920, height = 1080, scale = 1, transform = 0, is_mirror = false }
 emit("monitor.layout_changed")
 assert(#workspace_rules == 2 and enabled_rules() == 0, "a display plugged in during game mode stays gapless")
-cybexos_game_mode(false)
+nerdos_game_mode(false)
 assert(enabled_rules() == 2)
 `);
 });
@@ -188,8 +188,8 @@ assert(get("animations.enabled") == true, "nothing changes before the configurat
 -- user.lua, loaded after looknfeel, still counts as the value to restore.
 hl.config({ general = { gaps_out = 24 } })
 emit("config.reloaded")
-assert(in_game_mode() and __cybexos_game_mode.error == nil)
-cybexos_game_mode(false)
+assert(in_game_mode() and __nerdos_game_mode.error == nil)
+nerdos_game_mode(false)
 assert(get("general.gaps_out") == 24 and get("animations.enabled") == true)
 `, { state: on });
 
@@ -197,7 +197,7 @@ assert(get("general.gaps_out") == 24 and get("animations.enabled") == true)
 dofile(look)
 emit("config.reloaded")
 assert(get("animations.enabled") == true and get("general.gaps_out") == 10)
-assert(__cybexos_game_mode.restore == nil)
+assert(__nerdos_game_mode.restore == nil)
 `;
     for (const state of [
         JSON.stringify({ active: true, instance: "instance-zero", since: 1 }),
@@ -226,7 +226,7 @@ test("the shell reads game mode for this compositor instance only", () => {
 
     const singleton = read("Common/GameMode.qml");
     assert.match(singleton, /^pragma Singleton/m);
-    assert.match(singleton, /"\/cybexos"/);
+    assert.match(singleton, /"\/nerdos"/);
     assert.match(singleton, /path: root\.stateDir \+ "\/game-mode\.json"/);
     assert.match(singleton, /watchChanges: true/);
     assert.match(singleton, /GameModeState\.isActive\(text\(\), root\.instance\)/);

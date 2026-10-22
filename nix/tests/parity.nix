@@ -9,29 +9,35 @@ let
   machine = nixpkgs.lib.nixosSystem {
     inherit system;
     modules = [ module ({ ... }: {
-      cybexos = {
+      nerdos = {
         enable = true;
-        primaryUser = installer.cybexos.primaryUser;
-        features = installer.cybexos.features;
+        primaryUser = installer.nerdos.primaryUser;
+        features = installer.nerdos.features;
       };
-      fileSystems."/" = { device = "/dev/disk/by-label/cybexos-root"; fsType = "ext4"; };
-      fileSystems."/boot" = { device = "/dev/disk/by-label/CYBEX_EFI"; fsType = "vfat"; };
+      fileSystems."/" = { device = "/dev/disk/by-label/nerdos-root"; fsType = "ext4"; };
+      fileSystems."/boot" = { device = "/dev/disk/by-label/NERDOS_EFI"; fsType = "vfat"; };
       system.stateVersion = "26.05";
     }) ];
   };
   contract = c: {
-    inherit (c.cybexos) features authentication hardware;
-    runtime = toString c.environment.etc."cybexos/runtime".source;
-    updates = builtins.fromJSON c.environment.etc."cybexos/update.json".text;
-    titlebars = toString c.environment.etc."cybexos/titlebars.so".source;
-    updater = toString c.cybexos.updaterPackage;
+    inherit (c.nerdos) features authentication hardware;
+    runtime = toString c.environment.etc."nerdos/runtime".source;
+    updates = builtins.fromJSON c.environment.etc."nerdos/update.json".text;
+    titlebars = toString c.environment.etc."nerdos/titlebars.so".source;
+    updater = toString c.nerdos.updaterPackage;
+    bootBrand = {
+      inherit (c.boot.plymouth) enable theme;
+      packages = map toString c.boot.plymouth.themePackages;
+      logo = toString c.boot.plymouth.logo;
+      label = c.system.nixos.label;
+    };
     fonts = map toString c.fonts.packages;
     compositor = c.programs.hyprland.package.version;
     firewall = { inherit (c.networking.firewall) enable allowedTCPPorts allowedUDPPorts allowedUDPPortRanges; };
-    pam = map (name: c.security.pam.services.${name}.text) [ "login" "sddm" "cybexos-lock" "polkit-1" ];
+    pam = map (name: c.security.pam.services.${name}.text) [ "login" "sddm" "nerdos-lock" "polkit-1" ];
     managedShell = c.systemd.user.services.quickshell.serviceConfig;
-    personalInit = c.systemd.user.services.cybexos-personal-init.serviceConfig;
-    backup = c.systemd.user.services.cybexos-backup.serviceConfig;
+    personalInit = c.systemd.user.services.nerdos-personal-init.serviceConfig;
+    backup = c.systemd.user.services.nerdos-backup.serviceConfig;
     printing = map toString c.services.printing.drivers;
     scanning = map toString c.hardware.sane.extraBackends;
     vpn = map toString c.networking.networkmanager.plugins;
@@ -43,24 +49,24 @@ let
   channel = extra: (builtins.fromJSON (nixpkgs.lib.nixosSystem {
     inherit system;
     modules = [ module ./machine.nix extra ];
-  }).config.environment.etc."cybexos/update.json".text).channel;
+  }).config.environment.etc."nerdos/update.json".text).channel;
   prerelease = builtins.match "[0-9]+\\.[0-9]+\\.[0-9]+-.+" (nixpkgs.lib.trim (builtins.readFile ../../VERSION)) != null;
   live = contract installer;
   installed = contract machine.config;
   xps = (nixpkgs.lib.nixosSystem {
     inherit system;
     modules = [ module ./machine.nix {
-      cybexos.hardware.xps = { enable = true; sku = "0DB9"; camera = true; };
+      nerdos.hardware.xps = { enable = true; sku = "0DB9"; camera = true; };
     } ];
   }).config;
   encrypted = (nixpkgs.lib.nixosSystem {
     inherit system;
     modules = [ module ./machine.nix {
-      cybexos.encrypted = true;
-      cybexos.autoLogin = true;
+      nerdos.encrypted = true;
+      nerdos.autoLogin = true;
     } ];
   }).config;
-  health = c: builtins.fromJSON c.environment.etc."cybexos/health-services.json".text;
+  health = c: builtins.fromJSON c.environment.etc."nerdos/health-services.json".text;
   lib = nixpkgs.lib;
   names = map lib.getName;
   generic = machine.config;
@@ -75,7 +81,7 @@ let
     let auth = pam.services.${name}.rules.auth;
     in auth.u2f.enable && auth.u2f.control == "sufficient"
       && auth.u2f.order < auth.unix.order && auth.unix.enable
-      && builtins.elem "origin=pam://cybexos" auth.u2f.args
+      && builtins.elem "origin=pam://nerdos" auth.u2f.args
       && builtins.elem "userpresence=1" auth.u2f.args
       && !(builtins.elem "nouserok" auth.u2f.args)
       && !(builtins.elem "nullok" auth.unix.args);
@@ -85,35 +91,37 @@ assert builtins.elem nixpkgs.outPath inputSources;
 assert builtins.sort builtins.lessThan inputNarHashes == builtins.sort builtins.lessThan lockedNarHashes;
 assert builtins.length inputSources == builtins.length (nixpkgs.lib.unique inputSources);
 assert builtins.all (path: builtins.elem path installer.system.extraDependencies) inputSources;
-assert builtins.fromJSON installer.environment.etc."cybexos/installer-inputs.json".text == inputSources;
+assert builtins.fromJSON installer.environment.etc."nerdos/installer-inputs.json".text == inputSources;
+assert installer.boot.plymouth.theme == "nerdos";
+assert installer.system.nixos.distroId == "nixos";
 assert live.updates.channel == (if prerelease then "beta" else "stable");
-assert channel { cybexos.release.version = "1.0.0-beta.1"; } == "beta";
-assert channel { cybexos.release.version = "1.0.0-rc.2"; } == "beta";
-assert channel { cybexos.release.version = "1.0.0"; } == "stable";
-assert channel { cybexos.release.version = "1.0.0-beta.1"; cybexos.updates.channel = "stable"; } == "stable";
-assert channel { cybexos.release.version = "1.0.0"; cybexos.updates.channel = "beta"; } == "beta";
+assert channel { nerdos.release.version = "1.0.0-beta.1"; } == "beta";
+assert channel { nerdos.release.version = "1.0.0-rc.2"; } == "beta";
+assert channel { nerdos.release.version = "1.0.0"; } == "stable";
+assert channel { nerdos.release.version = "1.0.0-beta.1"; nerdos.updates.channel = "stable"; } == "stable";
+assert channel { nerdos.release.version = "1.0.0"; nerdos.updates.channel = "beta"; } == "beta";
 assert builtins.all passwordLogin [ "login" "sddm" ];
 assert pam.services.login.rules.auth.unix.enable;
 assert !(builtins.elem "nullok" pam.services.login.rules.auth.unix.args);
 assert pam.services.sddm.rules.auth.login.enable;
 assert pam.services.sddm.rules.auth.login.modulePath == "login";
 assert pam.services.sddm.rules.auth.login.control == "substack";
-assert builtins.all keyWithPassword [ "sudo" "polkit-1" "cybexos-lock" ];
+assert builtins.all keyWithPassword [ "sudo" "polkit-1" "nerdos-lock" ];
 assert pam.u2f.settings.nouserok == false;
 assert machine.config.security.sudo.wheelNeedsPassword;
 assert machine.config.networking.firewall.enable;
 assert machine.config.security.apparmor.enable;
 assert builtins.elem machine.config.system.path machine.config.systemd.user.services.quickshell.path;
 assert machine.config.systemd.user.services.quickshell.serviceConfig.ExecStopPost ==
-  "${machine.config.cybexos.desktopPackage}/bin/cybexos-runtime shell record-stop";
+  "${machine.config.nerdos.desktopPackage}/bin/nerdos-runtime shell record-stop";
 # Force the complete encrypted/autologin option set: merely inspecting the
 # enable flag missed an invalid SDDM option exposed by a real encrypted install.
 assert builtins.isString encrypted.system.build.toplevel.drvPath;
 assert encrypted.services.displayManager.autoLogin.enable;
 assert !encrypted.services.displayManager.sddm.autoLogin.relogin;
-assert encrypted.security.pam.services.sddm-autologin.rules.auth.cybexos-encryption.control == "requisite";
-assert builtins.elem "${encrypted.cybexos.updaterPackage}/bin/cybexos-verify-encryption"
-  encrypted.security.pam.services.sddm-autologin.rules.auth.cybexos-encryption.args;
+assert encrypted.security.pam.services.sddm-autologin.rules.auth.nerdos-encryption.control == "requisite";
+assert builtins.elem "${encrypted.nerdos.updaterPackage}/bin/nerdos-verify-encryption"
+  encrypted.security.pam.services.sddm-autologin.rules.auth.nerdos-encryption.args;
 assert !(builtins.elem "v4l2-relayd-ipu7.service" (health machine.config).units);
 assert (health machine.config).userUnits == [];
 assert builtins.all (unit: builtins.elem unit (health xps).units)
@@ -172,4 +180,4 @@ assert lib.hasInfix "restart xps-ipu7-camera-init.service" xps.systemd.services.
 # 71-* must precede systemd's 73-seat-late uaccess; 99-local.rules is too late.
 assert builtins.elem "xps-ipu7-udev-rules" (names xps.services.udev.packages);
 assert !(lib.hasInfix "IPU7 ISYS" xps.services.udev.extraRules);
-pkgs.writeText "cybexos-shared-installation-contract.json" (builtins.toJSON live)
+pkgs.writeText "nerdos-shared-installation-contract.json" (builtins.toJSON live)

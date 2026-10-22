@@ -61,7 +61,7 @@ Singleton {
         actionError = "";
         actionOutput = "";
         actionInFlight = action;
-        sessionAction.command = ["cybexos-session-action", action];
+        sessionAction.command = ["nerdos-session-action", action];
         sessionAction.running = true;
         return true;
     }

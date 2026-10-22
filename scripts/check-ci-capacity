@@ -39,7 +39,7 @@ if memory < args.memory_gib * gib:
 if args.vm and not os.access('/dev/kvm', os.R_OK | os.W_OK):
     errors.append('/dev/kvm is unavailable or inaccessible; VM qualification requires KVM')
 if errors:
-    sys.exit('CybexOS qualification runner is undersized:\n- ' + '\n- '.join(errors)
-             + '\nProvision the disposable cybexos-isolated runner described in docs/releasing.md.')
+    sys.exit('NerdOS qualification runner is undersized:\n- ' + '\n- '.join(errors)
+             + '\nProvision the disposable nerdos-isolated runner described in docs/releasing.md.')
 print('Qualification runner capacity passed: Nix store, disposable work space, memory'
       + (' and KVM' if args.vm else ''))

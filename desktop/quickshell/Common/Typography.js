@@ -1,6 +1,6 @@
 // Shared native/plugin typography. Logical pixels; output scale belongs to Qt.
 // Reference: Omarchy 961ec7f39fd0d70c7d2944c5b80585a86713693d,
-// shell/Commons/Style.qml. CybexOS uses a 14px default with 18px headings.
+// shell/Commons/Style.qml. NerdOS uses a 14px default with 18px headings.
 // Usage rationale: docs/shell-typography.md.
 var SCALE = {
     caption: ["caption", 0.833], bodySmall: ["body-small", 0.917],

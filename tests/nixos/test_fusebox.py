@@ -250,7 +250,7 @@ class KeyCustody(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.path = Path(self.temporary.name) / "cybexos/fusebox/management.key"
+        self.path = Path(self.temporary.name) / "nerdos/fusebox/management.key"
 
     def test_store_is_private_atomic_and_replaces(self):
         fusebox.store_key("  first-key \n", self.path)

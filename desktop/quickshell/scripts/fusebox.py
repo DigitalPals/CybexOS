@@ -87,7 +87,7 @@ class Failure(Exception):
 def key_path() -> Path:
     config = os.environ.get("XDG_CONFIG_HOME", "")
     base = Path(config) if config.startswith("/") else Path.home() / ".config"
-    return base / "cybexos" / "fusebox" / "management.key"
+    return base / "nerdos" / "fusebox" / "management.key"
 
 
 def valid_key(text: str) -> bool:

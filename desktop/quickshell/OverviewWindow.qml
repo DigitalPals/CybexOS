@@ -54,7 +54,7 @@ PanelWindow {
         onCleared: Overview.close()
     }
 
-    // Shell-wide and registered once. `cybexos-runtime ipc overview toggle`
+    // Shell-wide and registered once. `nerdos-runtime ipc overview toggle`
     // is also what the touchpad's three-finger swipe up runs.
     IpcHandler {
         target: "overview"

@@ -41,7 +41,7 @@ private slots:
         provider->images.insert("7/8", colored());
         provider->images.insert("7/9", colored(Qt::red));
         engine.addImageProvider("qsimage", provider);
-        CybexOS::ImageFingerprints fingerprints(&engine);
+        NerdOS::ImageFingerprints fingerprints(&engine);
         const QString first = fingerprints.fingerprint("image://qsimage/1/2");
         QVERIFY(QRegularExpression("^sha256:[0-9a-f]{64}$").match(first).hasMatch());
         QCOMPARE(first, fingerprints.fingerprint("image://qsimage/7/8"));
@@ -50,14 +50,14 @@ private slots:
         QVERIFY(fingerprints.error().isEmpty());
     }
     void dimensionsArePartOfIdentity() {
-        QVERIFY(CybexOS::imageFingerprint(colored(Qt::red, 1, 2))
-            != CybexOS::imageFingerprint(colored(Qt::red, 2, 1)));
+        QVERIFY(NerdOS::imageFingerprint(colored(Qt::red, 1, 2))
+            != NerdOS::imageFingerprint(colored(Qt::red, 2, 1)));
     }
     void canonicalFormatsMatch() {
         const QImage image = colored();
         for (auto format : {QImage::Format_ARGB32, QImage::Format_RGB32,
                 QImage::Format_ARGB32_Premultiplied, QImage::Format_RGB888})
-            QCOMPARE(CybexOS::imageFingerprint(image), CybexOS::imageFingerprint(image.convertToFormat(format)));
+            QCOMPARE(NerdOS::imageFingerprint(image), NerdOS::imageFingerprint(image.convertToFormat(format)));
     }
     void paddingIsExcluded() {
         QByteArray first(32, char(0x11)), second(40, char(0x77));
@@ -69,7 +69,7 @@ private slots:
                 a.setPixelColor(x, y, QColor(1, 2, 3, 127));
                 b.setPixelColor(x, y, QColor(1, 2, 3, 127));
             }
-        QCOMPARE(CybexOS::imageFingerprint(a), CybexOS::imageFingerprint(b));
+        QCOMPARE(NerdOS::imageFingerprint(a), NerdOS::imageFingerprint(b));
         QCOMPARE(first.at(8), char(0x11));
         QCOMPARE(second.at(8), char(0x77));
     }
@@ -77,7 +77,7 @@ private slots:
         QQmlEngine engine;
         auto *provider = new Provider;
         engine.addImageProvider("qsimage", provider);
-        CybexOS::ImageFingerprints fingerprints(&engine);
+        NerdOS::ImageFingerprints fingerprints(&engine);
         const QStringList sources = {"", "/tmp/image", "file:///tmp/image", "https://example.org/x",
             "image://other/1/2", "image://qsimage/1", "image://qsimage/1/2?x", "image://qsimage/1/2#x",
             "image://qsimage/../2", "image://qsimage/1/%32", "image://QSIMAGE/1/2",
@@ -90,7 +90,7 @@ private slots:
     }
     void unavailableAndNull() {
         QQmlEngine engine;
-        CybexOS::ImageFingerprints fingerprints(&engine);
+        NerdOS::ImageFingerprints fingerprints(&engine);
         QVERIFY(fingerprints.fingerprint("image://qsimage/1/2").isEmpty());
         QCOMPARE(fingerprints.error(), "provider-unavailable");
         engine.addImageProvider("qsimage", new Provider);
@@ -103,15 +103,15 @@ private slots:
     }
     void dimensionAndStorageBounds() {
         QString error;
-        QVERIFY(CybexOS::imageFingerprint(colored(Qt::red, 4097, 1), &error).isEmpty());
+        QVERIFY(NerdOS::imageFingerprint(colored(Qt::red, 4097, 1), &error).isEmpty());
         QCOMPARE(error, "image-bounds");
-        QVERIFY(CybexOS::imageFingerprint(colored(Qt::red, 2049, 2049), &error).isEmpty());
+        QVERIFY(NerdOS::imageFingerprint(colored(Qt::red, 2049, 2049), &error).isEmpty());
         QCOMPARE(error, "image-bounds");
-        const int stride = CybexOS::ImageByteLimit / 2 + 4;
+        const int stride = NerdOS::ImageByteLimit / 2 + 4;
         QByteArray bytes(stride * 2, char(0));
         QImage padded(reinterpret_cast<uchar *>(bytes.data()), 1, 2, stride, QImage::Format_RGBA8888);
         QVERIFY(!padded.isNull());
-        QVERIFY(CybexOS::imageFingerprint(padded, &error).isEmpty());
+        QVERIFY(NerdOS::imageFingerprint(padded, &error).isEmpty());
         QCOMPARE(error, "image-bounds");
     }
     void pixmapProvider() {
@@ -119,8 +119,8 @@ private slots:
         auto *provider = new Provider(QQuickImageProvider::Pixmap);
         provider->images.insert("1/2", colored());
         engine.addImageProvider("qsimage", provider);
-        CybexOS::ImageFingerprints fingerprints(&engine);
-        QCOMPARE(fingerprints.fingerprint("image://qsimage/1/2"), CybexOS::imageFingerprint(colored()));
+        NerdOS::ImageFingerprints fingerprints(&engine);
+        QCOMPARE(fingerprints.fingerprint("image://qsimage/1/2"), NerdOS::imageFingerprint(colored()));
     }
     void realQmlSingletonUsesItsEngineProvider() {
         QQmlEngine engine;
@@ -129,10 +129,10 @@ private slots:
         provider->images.insert("1/2", colored());
         engine.addImageProvider("qsimage", provider);
         QQmlComponent component(&engine);
-        component.setData("import QtQml\nimport CybexOS.Images 1.0\nQtObject { property string identity: ImageFingerprints.fingerprint(\"image://qsimage/1/2\") }", QUrl());
+        component.setData("import QtQml\nimport NerdOS.Images 1.0\nQtObject { property string identity: ImageFingerprints.fingerprint(\"image://qsimage/1/2\") }", QUrl());
         std::unique_ptr<QObject> object(component.create());
         QVERIFY2(object, qPrintable(component.errorString()));
-        QCOMPARE(object->property("identity").toString(), CybexOS::imageFingerprint(colored()));
+        QCOMPARE(object->property("identity").toString(), NerdOS::imageFingerprint(colored()));
         QCOMPARE(provider->calls, 1);
     }
 };

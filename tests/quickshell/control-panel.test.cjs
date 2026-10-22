@@ -9,7 +9,7 @@ function read(relative) {
     return untranslated(fs.readFileSync(path.join(shellDir, relative), "utf8"));
 }
 
-test("the CybexOS widget owns Control Center through the normal module pipeline", () => {
+test("the NerdOS widget owns Control Center through the normal module pipeline", () => {
     const bar = read("Bar/Bar.qml");
     const registry = load("PanelRegistryData.js");
     const button = read("Bar/Modules/Control.qml");
@@ -22,12 +22,12 @@ test("the CybexOS widget owns Control Center through the normal module pipeline"
     assert.match(button, /panelName:\s*"control"/);
     assert.match(button, /tooltip:\s*"Control Center"/);
     assert.match(button, /BarBrandIcon\s*\{/);
-    assert.match(button, /name:\s*"cybexos"/);
+    assert.match(button, /name:\s*"nerdos"/);
     assert.match(button, /width:\s*Theme\.barIconSize/);
     assert.match(button, /height:\s*Theme\.barIconSize/);
     assert.match(button,
         /highlighted:\s*controlButton\.held \|\| controlButton\.hovered/,
-        "the CybexOS mark must switch to its exact white SVG on hover");
+        "the NerdOS mark must switch to its exact white SVG on hover");
     assert.equal(registry.byName("control").moduleId, "control",
         "Control Center must follow its movable widget");
 });
@@ -79,7 +79,7 @@ test("the Control Panel exposes five equal session actions with guarded destruct
 test("session actions use the installed helper and report observed failures", () => {
     const session = read("Common/Session.qml");
     assert.match(session,
-        /sessionAction\.command = \["cybexos-session-action", action\]/);
+        /sessionAction\.command = \["nerdos-session-action", action\]/);
     assert.match(session, /readonly property bool actionBusy:\s*sessionAction\.running/);
     assert.match(session, /Process \{[\s\S]*id:\s*sessionAction/);
     assert.match(session, /ProcHelpers\.NOT_STARTED/);

@@ -47,7 +47,7 @@ function lightTokens() {
 }
 
 function scratch(t) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cybexos-tests.theme."));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nerdos-tests.theme."));
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
     return root;
 }
@@ -62,7 +62,7 @@ function runDriver(stateDir, args, input, options = {}) {
         HOME: options.home || stateDir,
         PATH: options.bin || path.join(stateDir, "no-commands"),
         PYTHONDONTWRITEBYTECODE: "1",
-        CYBEXOS_THEME_STATE_DIR: stateDir,
+        NERDOS_THEME_STATE_DIR: stateDir,
         ...(options.env || {}),
     };
     const result = spawnSync(python, [driver, ...args], {

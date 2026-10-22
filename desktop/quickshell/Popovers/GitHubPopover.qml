@@ -1648,7 +1648,7 @@ Surface {
                             // long account name is enough to cause, and then
                             // the provenance takes its own line under them.
                             // Two absolutely positioned halves of one row is
-                            // what let "−39641" and "CybexFleetBootstrap"
+                            // what let "−39641" and "NerdOSFleetBootstrap"
                             // render on top of each other.
                             Item {
                                 id: metaBox

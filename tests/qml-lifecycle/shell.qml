@@ -397,7 +397,7 @@ ShellRoot {
         request.stdinEnabled = commandStage === 4;
         request.inputText = "payload\n";
         request.command = commandStage === 0 ? ["/usr/bin/printf", "ready"]
-            : commandStage === 1 ? ["/cybexos-test-executable-does-not-exist"]
+            : commandStage === 1 ? ["/nerdos-test-executable-does-not-exist"]
             : commandStage === 2 ? ["/bin/sh", "-c", "trap '' TERM; printf partial; exec sleep 10"]
             : commandStage === 3 ? ["/usr/bin/printf", "after-timeout"]
             : ["/bin/sh", "-c", "IFS= read -r value; printf '%s' \"$value\""];
@@ -598,7 +598,7 @@ ShellRoot {
         id: polkitFlow
         QtObject {
             property string message: "Authenticate to unlock the fixture"
-            property string actionId: "org.cybexos.fixture"
+            property string actionId: "org.nerdos.fixture"
             property var identities: [
                 { string: "john", displayName: "John Example" },
                 { string: "admin", displayName: "Admin" }

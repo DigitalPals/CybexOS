@@ -449,7 +449,7 @@ Singleton {
     readonly property string fontNumeric: Settings.font === "mono" ? fontMono : "Geist Mono"
     // Bundled Tabler icons. Sym owns name resolution, font loading and the
     // consistent outline rendering; views must not draw icon codepoints directly.
-    readonly property string fontIcon: "Cybex Tabler Outline"
+    readonly property string fontIcon: "NerdOS Tabler Outline"
 
     // One library owns the scale AND its usage by native and plugin surfaces.
     readonly property var typography: Typography.resolve(fontBaseSize)

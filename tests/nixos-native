@@ -29,9 +29,9 @@ from urllib.parse import urlencode, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'lifecycle'))
-from cybexos.common import Failure
-from cybexos.inputs import unchanged_graph
-from cybexos.trust import Fetcher, discover
+from nerdos.common import Failure
+from nerdos.inputs import unchanged_graph
+from nerdos.trust import Fetcher, discover
 
 
 def command(*args, cwd=None, fail=False):
@@ -55,7 +55,7 @@ def nix(*args, **kwargs):
 def repository(directory, flake):
     directory.mkdir()
     command('git', 'init', '--initial-branch=stable', directory)
-    command('git', 'config', 'user.name', 'CybexOS isolated qualification', cwd=directory)
+    command('git', 'config', 'user.name', 'NerdOS isolated qualification', cwd=directory)
     command('git', 'config', 'user.email', 'qualification@invalid.example', cwd=directory)
     (directory / 'flake.nix').write_text(flake)
     return directory
@@ -94,7 +94,7 @@ def installed_source_transfer(base):
                                'local?root=' + str(base / 'untrusted-target'), path],
                               capture_output=True, text=True, timeout=60)
     assert rejected.returncode != 0 and 'lacks a signature by a trusted key' in rejected.stderr
-    loader = importlib.machinery.SourceFileLoader('native_installer', str(ROOT / 'installer/cybexos-install'))
+    loader = importlib.machinery.SourceFileLoader('native_installer', str(ROOT / 'installer/nerdos-install'))
     spec = importlib.util.spec_from_loader(loader.name, loader)
     installer = importlib.util.module_from_spec(spec)
     loader.exec_module(installer)
@@ -106,9 +106,9 @@ def installed_source_transfer(base):
     installer.copy_initial_inputs(archive, target, run)
     copied = target / path.lstrip('/')
     assert (copied / 'flake.lock').read_bytes() == (source / 'flake.lock').read_bytes()
-    roots = list((target / 'nix/var/nix/gcroots/cybexos-initial').iterdir())
+    roots = list((target / 'nix/var/nix/gcroots/nerdos-initial').iterdir())
     assert len(roots) == 1 and os.readlink(roots[0]) == path
-    assert json.loads((target / 'var/lib/cybexos/initial-inputs.json').read_text()) == archive
+    assert json.loads((target / 'var/lib/nerdos/initial-inputs.json').read_text()) == archive
     return {'isoRegisteredSourceTransfer': {'result': 'passed',
             'scope': 'Real private Nix stores; default copy rejects ISO-style unsigned registration, installer copies identical bytes and retains input roots with a local-only signature exemption'}}
 
@@ -137,12 +137,12 @@ def native_inputs(base):
         directory.mkdir()
         (directory / 'flake.nix').write_text('''{
   inputs.nixpkgs.url = UPSTREAM;
-  inputs.cybexos.url = VENDOR;
-  inputs.cybexos.inputs.nixpkgs.follows = "nixpkgs";
+  inputs.nerdos.url = VENDOR;
+  inputs.nerdos.inputs.nixpkgs.follows = "nixpkgs";
   inputs.personal.url = PERSONAL;
-  outputs = { nixpkgs, cybexos, personal, ... }: { stamps = {
-    upstream = nixpkgs.stamp; vendor = cybexos.stamp;
-    vendorUpstream = cybexos.upstream; dependency = cybexos.dependency;
+  outputs = { nixpkgs, nerdos, personal, ... }: { stamps = {
+    upstream = nixpkgs.stamp; vendor = nerdos.stamp;
+    vendorUpstream = nerdos.upstream; dependency = nerdos.dependency;
     personal = personal.stamp;
   }; };
 }
@@ -168,28 +168,28 @@ def native_inputs(base):
     vendor_two = commit(vendor)
 
     checks = {}
-    for scope in ('upstream', 'cybexos', 'both'):
+    for scope in ('upstream', 'nerdos', 'both'):
         target = machine('machine-' + scope, vendor_two if scope != 'upstream' else vendor_one)
         (target / 'flake.lock').write_text(json.dumps(old))
         if scope in ('upstream', 'both'):
             nix('flake', 'update', 'nixpkgs', '--flake', 'path:' + str(target))
-        if scope in ('cybexos', 'both'):
-            nix('flake', 'update', 'cybexos', '--flake', 'path:' + str(target))
+        if scope in ('nerdos', 'both'):
+            nix('flake', 'update', 'nerdos', '--flake', 'path:' + str(target))
         new = json.loads((target / 'flake.lock').read_text())
         assert unchanged_graph(old, new, 'personal'), 'Unrelated personal dependency refreshed'
         root = new['nodes'][new['root']]['inputs']
-        vendor_node = new['nodes'][root['cybexos']]
+        vendor_node = new['nodes'][root['nerdos']]
         assert vendor_node['inputs']['nixpkgs'] == ['nixpkgs']
         assert len([node for node in new['nodes'].values()
                     if node.get('locked', {}).get('url') == upstream.as_uri()]) == 1
         if scope == 'upstream':
-            assert unchanged_graph(old, new, 'cybexos')
-        if scope == 'cybexos':
+            assert unchanged_graph(old, new, 'nerdos')
+        if scope == 'nerdos':
             assert unchanged_graph(old, new, 'nixpkgs')
         stamps = json.loads(nix('eval', '--json', '--no-update-lock-file', 'path:' + str(target) + '#stamps'))
         assert stamps['personal'] == 'personal-one'
         assert stamps['upstream'] == stamps['vendorUpstream']
-        assert stamps['upstream'] == ('upstream-one' if scope == 'cybexos' else 'upstream-two')
+        assert stamps['upstream'] == ('upstream-one' if scope == 'nerdos' else 'upstream-two')
         assert stamps['vendor'] == ('vendor-one' if scope == 'upstream' else 'vendor-two')
         assert stamps['dependency'] == ('dependency-one' if scope == 'upstream' else 'dependency-two')
         checks[scope] = {'result': 'passed', 'stamps': stamps}
@@ -202,7 +202,7 @@ def native_inputs(base):
     try:
         nix('flake', 'update', 'nixpkgs', '--flake', 'path:' + str(target))
         new = json.loads((target / 'flake.lock').read_text())
-        assert unchanged_graph(old, new, 'cybexos') and unchanged_graph(old, new, 'personal')
+        assert unchanged_graph(old, new, 'nerdos') and unchanged_graph(old, new, 'personal')
     finally:
         (base / 'vendor-offline').rename(vendor)
     checks['unavailableVendorRemote'] = {'result': 'passed'}
@@ -262,7 +262,7 @@ class DeliveryHandler(socketserver.BaseRequestHandler):
 def delivery(base):
     cert, key = base / 'transport.pem', base / 'transport-key.pem'
     command('openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
-            '-subj', '/CN=CybexOS isolated native integration',
+            '-subj', '/CN=NerdOS isolated native integration',
             '-addext', 'subjectAltName=DNS:digitalpals.github.io,DNS:github.com',
             '-keyout', key, '-out', cert)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -302,11 +302,11 @@ def authenticated_delivery(base, revision, nar_hash):
                'pluginApi': 1, 'minUpdater': 1, 'notes': 'Isolated authenticated transport qualification',
                'vendorInputs': ['vendorlib'], 'assets': [{
                    'name': 'qualification-source.tar.gz',
-                   'url': 'https://github.com/DigitalPals/CybexOS/releases/download/v1.0.0-beta.2/qualification-source.tar.gz',
+                   'url': 'https://github.com/DigitalPals/NerdOS/releases/download/v1.0.0-beta.2/qualification-source.tar.gz',
                    'sha256': '0' * 64, 'bytes': 1,
                }]}
-    channel_url = 'https://digitalpals.github.io/CybexOS/channels/beta.json'
-    manifest_url = 'https://github.com/DigitalPals/CybexOS/releases/download/v1.0.0-beta.2/manifest.json'
+    channel_url = 'https://digitalpals.github.io/NerdOS/channels/beta.json'
+    manifest_url = 'https://github.com/DigitalPals/NerdOS/releases/download/v1.0.0-beta.2/manifest.json'
     channel = {'schema': 1, 'channel': 'beta', 'sequence': 2,
                'expires': (dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=1)).isoformat(),
                'manifest': manifest_url, 'sha256': ''}
@@ -362,7 +362,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
-    with tempfile.TemporaryDirectory(prefix='cybexos-native-') as directory:
+    with tempfile.TemporaryDirectory(prefix='nerdos-native-') as directory:
         base = Path(directory)
         inputs, revision, nar_hash = native_inputs(base)
         authentication = authenticated_delivery(base, revision, nar_hash)

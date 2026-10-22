@@ -510,8 +510,8 @@ test("Hermes exposes capability-gated attachments, branches, editing, and regene
     const helpers = read("Common/HermesHelpers.js");
     const bridge = readRepo(
         "desktop/hermes-menubar-bridge/hermes_bridge.py")
-        + readRepo("desktop/hermes-menubar-bridge/cybex_hermes/auth.py")
-        + readRepo("desktop/hermes-menubar-bridge/cybex_hermes/protocol.py");
+        + readRepo("desktop/hermes-menubar-bridge/nerdos_hermes/auth.py")
+        + readRepo("desktop/hermes-menubar-bridge/nerdos_hermes/protocol.py");
 
     assert.match(composer, /Hermes\.capabilities\.attachments === true/);
     assert.match(facade, /"zenity", "--file-selection", "--multiple"/);

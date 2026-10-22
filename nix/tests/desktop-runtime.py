@@ -21,8 +21,8 @@ required_commands = (
     'xdg-open', 'curl', 'node', 'iw', 'ip', 'brightnessctl', 'playerctl', 'nmcli',
     'bluetoothctl', 'upower', 'powerprofilesctl', 'restic', 'ssh', 'age', 'tar', 'zstd',
     'flock', 'kitty', 'secret-tool', 'gdbus', 'gsettings', 'hyprctl', 'systemctl',
-    'cybexos-runtime', 'quickshell-reminder', 'cybexos-session-action',
-    'fwupdmgr', 'cybexos-firmware-update',
+    'nerdos-runtime', 'quickshell-reminder', 'nerdos-session-action',
+    'fwupdmgr', 'nerdos-firmware-update',
 )
 missing = [command for command in required_commands if shutil.which(command) is None]
 assert not missing, 'Missing desktop executable dependencies: ' + ', '.join(missing)
@@ -32,7 +32,7 @@ languages = subprocess.check_output(['tesseract', '--list-langs'], text=True)
 assert 'eng' in languages.splitlines(), 'The OCR English model is missing'
 png = subprocess.check_output(['magick', '-size', '2x2', 'xc:red', 'png:-'])
 assert Image.open(io.BytesIO(png)).size == (2, 2)
-qr = subprocess.check_output(['qrencode', '-t', 'ASCII', '-m', '2', '-o', '-'], input=b'CybexOS dependency check')
+qr = subprocess.check_output(['qrencode', '-t', 'ASCII', '-m', '2', '-o', '-'], input=b'NerdOS dependency check')
 assert b'##' in qr and len(qr.splitlines()) > 10
 assert subprocess.check_output(['node', '-p', 'JSON.stringify({runtime:"ok"})'], text=True).strip() == '{"runtime":"ok"}'
 
@@ -50,7 +50,7 @@ for namespace, version in versions.items():
 # objects do not connect to a bus, inspect accounts or mutate persistent state.
 assert modules['Gio'].File.new_for_path('/').get_path() == '/'
 assert modules['NM'].SimpleConnection.new() is not None
-assert modules['Secret'].Schema.new('org.cybexos.DependencyCheck', modules['Secret'].SchemaFlags.NONE, {}) is not None
+assert modules['Secret'].Schema.new('org.nerdos.DependencyCheck', modules['Secret'].SchemaFlags.NONE, {}) is not None
 assert modules['Goa'].Client.__gtype__.name == 'GoaClient'
 assert modules['EDataServer'].Source.__gtype__.name == 'ESource'
 assert modules['ECal'].Component.new() is not None

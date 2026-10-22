@@ -310,7 +310,7 @@ PanelWindow {
 
     // ---- rearranging widgets in place -----------------------------------
     // Dragging a widget along the bar is the same edit as dragging its row in
-    // CybexOS Settings, and both commit through LayoutHelpers.moveWidget. Only
+    // NerdOS Settings, and both commit through LayoutHelpers.moveWidget. Only
     // the measurement differs: the settings list has one fixed row pitch to
     // divide by, while the bar has to ask its live slots where they actually
     // came to rest — every widget is a different width, and a group pill puts
@@ -881,7 +881,7 @@ PanelWindow {
             fillColor: Theme.barSurface
         }
 
-        // Right-click anywhere on the slab opens CybexOS Settings. Module mouse
+        // Right-click anywhere on the slab opens NerdOS Settings. Module mouse
         // areas only accept the left button, so right-clicks fall through the
         // layout layer to this area.
         MouseArea {
