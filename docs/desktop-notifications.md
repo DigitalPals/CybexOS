@@ -127,7 +127,7 @@ three groups with three cards each by default, with at most five new popup
 admissions per source in a rolling ten-second window. Excess arrivals remain in
 the center. The front card and group count show while collapsed; hover or
 Expand group reveals the members. Each card has its own dismiss control, and
-Dismiss group clears the currently displayed members. Hover and keyboard focus
+Dismiss group clears the currently displayed members. Hover and explicit expansion
 pause all members. New distinct cards from a held group collect in the center
 rather than rearranging the controls beneath the pointer. No held cards replay
 when the pointer leaves. All motion follows reduced-motion settings.
@@ -136,8 +136,18 @@ A source deck stays on the display chosen at admission. New decks use the
 focused display. The default fullscreen policy routes to another available
 display, or directly to history when all displays are fullscreen. Changing
 focus does not drag a deck between displays; disconnects and fullscreen changes
-reconcile existing decks. Popup surfaces use OnDemand keyboard focus, and their
-height is bounded to the screen with scrolling for expanded content.
+reconcile existing decks. Popup surfaces never take keyboard focus, including
+when they appear beneath the pointer; mouse actions remain available. Use the
+notification center for keyboard navigation. Popup height is bounded to the
+screen with scrolling for expanded content.
+
+The opt-in native regression is `python3 -B tests/notification-focus-live.py`.
+It uses a disposable Qt input window and actual Wayland keyboard enter/leave
+events to check arrival, hover, and low/normal/critical popups appearing beneath
+the pointer. It moves the pointer, injects no keys, closes its own notifications,
+and restores the pointer and original window focus. On Hyprland 0.56.2 the old
+OnDemand mode fails this check at notification arrival; None preserves focus.
+The managed service remains the only Quickshell instance throughout the check.
 
 Code detection requires a nearby English or Dutch verification keyword and a
 numeric or mixed uppercase token. It deliberately excludes product names such

@@ -32,6 +32,21 @@ ACCOUNTS = load("desktop_seed_accounts", "image/rootfs/usr/libexec/cybexos-seed-
 
 
 class DesktopPayload(unittest.TestCase):
+    def test_notification_popups_preserve_keyboard_focus_on_both_paths(self):
+        checkout = ROOT / "roles/desktop/files/quickshell"
+        with tempfile.TemporaryDirectory() as temporary:
+            payload = Path(temporary)
+            prepare_quickshell(ROOT, payload)
+            installed = payload / "usr/share/cybexos/runtime/quickshell"
+            for relative in ("NotificationToasts.qml", "Common/NotifCard.qml",
+                             "Popovers/Drawer/DrawerNotifications.qml"):
+                self.assertEqual((installed / relative).read_bytes(),
+                                 (checkout / relative).read_bytes(), relative)
+            toast = (installed / "NotificationToasts.qml").read_text()
+            self.assertIn("WlrLayershell.keyboardFocus: WlrKeyboardFocus.None", toast)
+            self.assertIn("keyboardEnabled: false", toast)
+            self.assertIn("keyboardEnabled: true", (installed / "Popovers/Drawer/DrawerNotifications.qml").read_text())
+
     def test_github_and_plugin_failure_recovery_ship_identically_on_both_paths(self):
         checkout = ROOT / "roles/desktop/files/quickshell"
         files = ("Common/GitHub.qml", "Common/GitHubHelpers.js", "Common/GitHubQueue.js",
