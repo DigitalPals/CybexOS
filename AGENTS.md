@@ -1,5 +1,12 @@
 # Repository agent instructions
 
+## Git workflow
+
+- Direct commits and pushes to `main` are supported. Do not require a pull
+  request or passing GitHub Actions checks before pushing.
+- The NixOS qualification workflow runs manually or through the release
+  workflow. Ordinary pushes and pull requests do not start it.
+
 ## NixOS installation and lifecycle contract
 
 - NixOS is the sole supported operating system. Target fresh installations.

@@ -29,6 +29,12 @@ This separate credential cannot change the setting; publication still uses the
 Actions contents token. Keep repository policy changes protected during release
 publication. Installed users need neither credential nor a GitHub account.
 
+Development commits may be pushed directly to `main`; pull requests and GitHub
+Actions checks are optional. Run **NixOS qualification** on demand from the
+Actions page, or invoke it through the release workflow. It does not run
+automatically on pushes or pull requests. The release workflow still requires
+qualification before publication.
+
 Full Nix/product/image jobs require a `nerdos-isolated` self-hosted runner;
 standard hosted runners do not provide enough space for the complete desktop,
 build dependencies, ISO copies and installation VMs. Provision a fresh,
