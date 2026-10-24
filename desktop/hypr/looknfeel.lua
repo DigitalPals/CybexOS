@@ -221,7 +221,7 @@ hl.animation({ leaf = "workspaces", enabled = true, speed = 6, bezier = "default
 -- instantaneous so the menubar itself never replays a layer animation.
 hl.layer_rule({
   name = "quickshell-no-animation",
-  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|wallpaper|overview|dock)$]] },
+  match = { namespace = [[^qs-(bar|bar-popout|launcher|notifications|osd|shortcuts|wallpaper|overview|dock|assistant)$]] },
   no_anim = true,
 })
 

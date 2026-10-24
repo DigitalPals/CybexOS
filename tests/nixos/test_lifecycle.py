@@ -1093,4 +1093,40 @@ class SourceTests(unittest.TestCase):
         with self.assertRaises(Failure):module.gate(report,REV_NEW,NAR_NEW)
 
 
+class LiveLifecycleTests(unittest.TestCase):
+    def test_live_check_and_status_are_read_only_and_explain_installation(self):
+        from nerdos import cli
+        with tempfile.TemporaryDirectory() as temporary:
+            marker = Path(temporary) / 'installer'
+            marker.touch()
+            for action in ('check', 'status'):
+                output = io.StringIO()
+                with self.subTest(action=action), patch.object(cli, 'LIVE_MARKER', marker), \
+                     patch.object(sys, 'argv', ['nerd', 'update', action]), \
+                     patch.object(cli.Engine, 'check') as check, patch.object(cli.os, 'execvp') as execute, \
+                     contextlib.redirect_stdout(output):
+                    cli.main()
+                    state = json.loads(output.getvalue())
+                    self.assertFalse(state['available'])
+                    self.assertIn('after installation', state.get('reason', state.get('phase', '')))
+                    check.assert_not_called()
+                    execute.assert_not_called()
+
+    def test_live_mutations_are_refused_at_cli_request_and_worker_boundaries(self):
+        from nerdos import cli
+        with tempfile.TemporaryDirectory() as temporary:
+            marker = Path(temporary) / 'installer'
+            marker.touch()
+            for function, arguments in ((cli.main, ['nerd', 'update', 'stage', 'both']),
+                                        (cli.request, ['request', 'stage', 'both']),
+                                        (cli.admin, ['admin', 'stage', 'both'])):
+                with self.subTest(function=function.__name__), patch.object(cli, 'LIVE_MARKER', marker), \
+                     patch.object(cli.os, 'geteuid', return_value=0), patch.object(sys, 'argv', arguments), \
+                     patch.object(cli.os, 'execvp') as execute, patch.object(cli.subprocess, 'run') as run, \
+                     self.assertRaisesRegex(Failure, 'after installation'):
+                    function()
+                execute.assert_not_called()
+                run.assert_not_called()
+
+
 if __name__=='__main__':unittest.main()

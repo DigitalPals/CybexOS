@@ -74,16 +74,6 @@ DEFAULTS = (
     ("x", "X", "https://x.com/"),
 )
 
-# Brave Origin exactly as bindings.lua starts it for Super+B, plus app mode.
-BRAVE = "brave"
-BRAVE_FLAGS = (
-    "--enable-features=TouchpadOverscrollHistoryNavigation,PipeWireCamera",
-    "--enable-wayland-ime",
-    "--restore-last-session",
-    "--hide-crash-restore-bubble",
-)
-FIREFOX = "firefox"
-
 MONOGRAM_COLORS = ("#3b6fd8", "#6a4fc9", "#b2457b", "#c4572f", "#2f8f6b",
                    "#2f7f9f", "#7d6a2f", "#55607a")
 
@@ -606,10 +596,7 @@ def seed() -> list[str]:
 # ---- Launching ----------------------------------------------------------------
 
 def browser_command(url: str) -> list[str]:
-    brave = shutil.which(BRAVE)
-    if brave:
-        return [brave, *BRAVE_FLAGS, f"--app={url}"]
-    return [shutil.which(FIREFOX) or FIREFOX, url]
+    return ["nerdos-apps", "webapp", url]
 
 
 def spawn(argv: list[str]) -> None:

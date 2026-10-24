@@ -19,13 +19,14 @@ import time
 
 import pexpect
 
-PASSWORD = 'qualification-password-123'
+PASSWORD = 'Nerdos8!'
 
 
 class VM:
     def __init__(self, directory, disk, iso=None):
         self.directory, self.disk, self.iso = directory, disk, iso
         self.process = None
+        self.control_directory = None
         self.command_ready = False
         self.firmware = Path(os.environ['NERDOS_OVMF'])
         self.vars = directory / 'vars.fd'
@@ -34,14 +35,20 @@ class VM:
 
     def start(self):
         self.command_ready = False
-        qmp = self.directory / 'qmp.sock'; qmp.unlink(missing_ok=True)
-        args = ['-machine','q35','-accel','kvm' if os.access('/dev/kvm',os.R_OK|os.W_OK) else 'tcg,thread=multi',
-                '-cpu','host' if os.access('/dev/kvm',os.R_OK|os.W_OK) else 'max', '-m','6144','-smp','4',
+        # Unix socket names are limited to 108 bytes even when disks/logs live
+        # in a deeply nested task directory. Keep only the small control socket
+        # in /tmp, and remove it with this VM's process.
+        self.control_directory = tempfile.TemporaryDirectory(prefix='ndvm.', dir='/tmp')
+        self.qmp = Path(self.control_directory.name) / 'qmp.sock'
+        args = ['-no-user-config','-machine','q35','-accel','kvm' if os.access('/dev/kvm',os.R_OK|os.W_OK) else 'tcg,thread=multi',
+                '-cpu','host' if os.access('/dev/kvm',os.R_OK|os.W_OK) else 'max', '-m','12288','-smp','4',
                 '-drive',f'if=pflash,format=raw,readonly=on,file={self.firmware / "OVMF_CODE.fd"}',
                 '-drive',f'if=pflash,format=raw,file={self.vars}',
                 '-drive',f'file={self.disk},if=none,id=systemdisk,format=qcow2','-device','virtio-blk-pci,drive=systemdisk,serial=NERDOS-QA-DISK',
                 '-netdev','user,id=net','-device','virtio-net-pci,netdev=net','-device','virtio-vga',
-                '-display','none','-serial','stdio','-no-reboot', '-qmp',f'unix:{qmp},server=on,wait=off']
+                # An absolute pointer lets QMP click the installer screen exactly.
+                '-device','qemu-xhci','-device','usb-tablet',
+                '-display','none','-serial','stdio','-no-reboot', '-qmp',f'unix:{self.qmp},server=on,wait=off']
         if self.iso:
             args += ['-cdrom',str(self.iso),'-boot','d']
         self.process = pexpect.spawn('qemu-system-x86_64',args,encoding='utf-8',timeout=600,maxread=65536)
@@ -50,23 +57,27 @@ class VM:
         self.log = (self.directory / 'serial.log').open('a')
         self.process.logfile_read = self.log
 
-    def login(self, live=False, encrypted=False):
+    def login(self, live=False, encrypted=False, password=PASSWORD):
         if encrypted:
             self.process.expect(r'(?i)(passphrase for|enter passphrase)',timeout=600)
-            self.process.sendline(PASSWORD)
-        index = self.process.expect([r'login:',r'nixos@nerdos-installer',r'root@nerdos'],timeout=600)
+            self.process.sendline(password)
+        # The installation medium has no live account: its serial console is
+        # a root shell, used here only to observe the installer services.
+        # The medium's autologin banner itself contains "login:".
+        index = 1 if live else 0
+        self.process.expect(r'root@nerdos-installer' if live else r'login:', timeout=600)
         if index == 0:
-            self.process.sendline('nixos' if live else 'nerdqa')
-            if not live:
-                self.process.expect('Password:');self.process.sendline(PASSWORD)
-        # Fish's terminal capability queries can take ten seconds on a serial
-        # console; wait for the live shell before sending administration commands.
-        time.sleep(12 if live else 2)
-        self.process.sendline('sudo -i')
-        index = self.process.expect([r'password for nerdqa:',r'root@'],timeout=60)
-        if index == 0:
-            self.process.sendline(PASSWORD)
-            self.process.expect(r'root@',timeout=60)
+            self.process.sendline('nerdqa')
+            self.process.expect('Password:');self.process.sendline(password)
+        # Fish's terminal capability queries can take seconds on a serial
+        # console; wait for the shell before sending administration commands.
+        time.sleep(4 if live else 2)
+        if not live:
+            self.process.sendline('sudo -i')
+            index = self.process.expect([r'password for nerdqa:',r'root@'],timeout=60)
+            if index == 0:
+                self.process.sendline(password)
+                self.process.expect(r'root@',timeout=60)
         self.process.sendline('export TERM=dumb; export PS1="NERDOS_ROOT> "; stty -echo')
         self.process.expect('NERDOS_ROOT> ',timeout=30)
         self.command('true')
@@ -93,8 +104,17 @@ class VM:
         """
         if not self.command_ready or self.process is None or not self.process.isalive():
             return {'state': 'unavailable', 'reason': 'No authenticated idle serial command transport'}
+        if self.iso:
+            # The installation medium carries no Python or desktop session.
+            script = '''systemctl --failed --no-pager --no-legend || true
+systemctl status --no-pager -n 0 nerdos-installerd.service nerdos-installer-ui.service || true
+journalctl -b --no-pager -u nerdos-installerd.service -u nerdos-installer-ui.service -n 60 || true'''
+            try:
+                return {'state': 'collected', 'medium': self.command(script, timeout=120)[-6000:]}
+            except Exception as error:
+                return {'state': 'failed', 'error': str(error)[-2000:]}
         script = r'''python3 - <<'QA_DIAGNOSTIC'
-import json, shutil, subprocess
+import json, pwd, shutil, subprocess
 from pathlib import Path
 output = {}
 def run(label, args):
@@ -106,7 +126,7 @@ def run(label, args):
         output[label] = {'error': str(error)}
         return ''
 run('updaterStatus', ['nerd', 'update', 'status'])
-prefix = ['runuser', '-u', 'nerdqa', '--', 'env', 'XDG_RUNTIME_DIR=/run/user/1000', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus']
+prefix = ['runuser', '-u', pwd.getpwuid(1000).pw_name, '--', 'env', 'XDG_RUNTIME_DIR=/run/user/1000', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus']
 environment = run('environment', prefix + ['systemctl', '--user', 'show-environment'])
 output.pop('environment')
 signature = next((line.split('=', 1)[1] for line in environment.splitlines() if line.startswith('HYPRLAND_INSTANCE_SIGNATURE=')), '')
@@ -124,6 +144,11 @@ invocation = run('quickshellInvocation', prefix + ['systemctl', '--user', 'show'
 if invocation:
     run('quickshellCurrentWarnings', ['journalctl', '--no-pager', '_SYSTEMD_INVOCATION_ID=' + invocation, '-p', 'warning', '-n', '20'])
 run('failedSystemUnits', ['systemctl', '--failed', '--no-pager', '--no-legend'])
+run('passwordPam', ['cat', '/etc/pam.d/passwd'])
+run('loginPam', ['cat', '/etc/pam.d/sddm'])
+run('keyringState', prefix + ['busctl', '--user', 'get-property', 'org.freedesktop.secrets',
+    '/org/freedesktop/secrets/collection/login', 'org.freedesktop.Secret.Collection', 'Locked'])
+run('keyringJournal', ['journalctl', '--no-pager', '-g', 'gkr-pam|gnome-keyring', '-n', '40'])
 print(json.dumps(output))
 QA_DIAGNOSTIC'''
         try:
@@ -131,18 +156,18 @@ QA_DIAGNOSTIC'''
         except Exception as error:
             return {'state': 'failed', 'error': str(error)[-2000:]}
 
-    def reboot(self, encrypted):
+    def reboot(self, encrypted, password=PASSWORD):
         self.process.sendline('systemctl reboot')
         self.process.expect(pexpect.EOF, timeout=120)
         self.stop()
         self.iso = None
         self.start()
-        self.login(encrypted=encrypted)
+        self.login(encrypted=encrypted, password=password)
 
-    def login_desktop(self):
+    def login_desktop(self, password=PASSWORD):
         # SDDM has one normal account; its password field has initial focus.
         qmp = socket.socket(socket.AF_UNIX)
-        qmp.connect(str(self.directory/'qmp.sock'))
+        qmp.connect(str(self.qmp))
         stream=qmp.makefile('rwb',buffering=0)
         json.loads(stream.readline())
         def call(execute, arguments=None):
@@ -152,13 +177,220 @@ QA_DIAGNOSTIC'''
                 if 'error' in result:raise RuntimeError(str(result))
                 if 'return' in result:return result
         call('qmp_capabilities')
-        for char in PASSWORD:
-            key={'-':'minus'}.get(char,char)
+        for char in password:
+            key={'-':'minus', '!':'shift-1'}.get(char, 'shift-'+char.lower() if char.isupper() else char)
             call('human-monitor-command',{'command-line':'sendkey '+key})
             time.sleep(.08)
         call('human-monitor-command',{'command-line':'sendkey ret'})
         stream.close();qmp.close()
         self.command('for n in $(seq 1 90); do nerdos-health desktop-required && exit 0; sleep 2; done; exit 1',timeout=240)
+
+    def check_desktop_defaults(self):
+        self.command(r'''python3 - <<'QA_DEFAULTS'
+import json, pathlib, pwd, subprocess
+user = pwd.getpwuid(1000)
+prefix = ['runuser', '-u', user.pw_name, '--', 'env', 'XDG_RUNTIME_DIR=/run/user/1000',
+          'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus']
+environment = subprocess.check_output(prefix + ['systemctl', '--user', 'show-environment'], text=True)
+assert 'XCURSOR_THEME=Bibata-Modern-Classic' in environment
+assert 'XCURSOR_SIZE=24' in environment
+pid = subprocess.check_output(prefix + ['systemctl', '--user', 'show', 'quickshell.service', '-p', 'MainPID', '--value'], text=True).strip()
+runtime = dict(part.split('=', 1) for part in pathlib.Path('/proc', pid, 'environ').read_text().split('\0') if '=' in part)
+schema_environment = [key + '=' + runtime[key] for key in ('XDG_DATA_DIRS', 'GSETTINGS_SCHEMA_DIR') if key in runtime]
+assert subprocess.check_output(prefix + schema_environment + ['gsettings', 'get', 'org.gnome.desktop.interface', 'cursor-theme'], text=True).strip() == "'Bibata-Modern-Classic'"
+subprocess.run(['systemctl', 'is-active', '--quiet', 'avahi-daemon.service'], check=True)
+subprocess.run(['systemctl', 'is-active', '--quiet', 'firewall.service'], check=True)
+assert '5353' in subprocess.check_output(['iptables-save'], text=True)
+path = pathlib.Path(user.pw_dir, '.config/nerdos/shell.json')
+if path.exists():
+    saved = json.loads(path.read_text())
+    if 'mods' in saved:
+        flags = {entry['id']: entry['on'] for column in saved['mods'].values() for entry in column}
+        assert flags['modelusage'] is True
+        assert all(flags[key] is False for key in ('hermes', 'remote', 't3', 'gh', 'fusebox'))
+print('Bibata desktop/session cursor, local discovery, firewall, and saved widget defaults passed')
+QA_DEFAULTS''', timeout=60)
+
+    def password_change(self, encrypted, evidence=None):
+        evidence = {} if evidence is None else evidence
+        evidence.update(result='running', encrypted=encrypted, roundTrips=0)
+        prefix = 'runuser -u nerdqa -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus '
+        self.command('timeout 30 ' + prefix + "sh -c 'printf qa-keyring-value | secret-tool store --label=Qualification nerdos qualification'", timeout=45)
+        evidence['keyringStored'] = True
+        for current, new in ((PASSWORD, 'Changed8!'), ('Changed8!', PASSWORD)):
+            request = json.dumps({'current': current, 'new': new})
+            script = 'printf %s ' + shlex.quote(request) + ' | env PKEXEC_UID=1000 nerdos-password-worker'
+            result = json.loads(self.command(script, timeout=360).strip())
+            if result.get('success') is not True:
+                raise RuntimeError('Installed password worker: ' + json.dumps(result))
+            evidence['accountChanges'] = evidence.get('accountChanges', 0) + 1
+            if encrypted:
+                self.command('printf %s ' + shlex.quote(new) + ' | cryptsetup open --test-passphrase --key-file - /dev/vda2\n' +
+                             '! printf %s ' + shlex.quote(current) + ' | cryptsetup open --test-passphrase --key-file - /dev/vda2', timeout=90)
+            self.command('test ! -e /var/lib/nerdos/password-change.json')
+            self.reboot(encrypted, password=new)
+            self.login_desktop(password=new)
+            self.command('test "$(timeout 20 ' + prefix + 'secret-tool lookup nerdos qualification)" = qa-keyring-value', timeout=35)
+            evidence['roundTrips'] += 1
+        self.command(prefix + 'secret-tool clear nerdos qualification')
+        evidence.update(result='passed', checks=['real packaged worker and PAM',
+            'old disk key rejected' if encrypted else 'no disk change',
+            'reboot and password desktop login', 'login keyring unlocked with changed password'])
+        return evidence
+
+    def qmp_commands(self, *commands):
+        """Run QMP commands on the VM's own monitor, in order."""
+        with socket.socket(socket.AF_UNIX) as qmp:
+            qmp.connect(str(self.qmp))
+            with qmp.makefile('rwb', buffering=0) as stream:
+                json.loads(stream.readline())
+                for command in ({'execute': 'qmp_capabilities'}, *commands):
+                    stream.write((json.dumps(command) + '\n').encode())
+                    while True:
+                        result = json.loads(stream.readline())
+                        if 'error' in result:
+                            raise RuntimeError(str(result['error']))
+                        if 'return' in result:
+                            break
+
+    def screenshot(self, path):
+        """Capture the actual VM display, never a reconstructed installer screen."""
+        from PIL import Image
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix('.ppm')
+        self.qmp_commands({'execute': 'screendump', 'arguments': {'filename': str(temporary)}})
+        try:
+            with Image.open(temporary) as display:
+                display.save(path)
+                return display.size
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    KEYS = {' ': 'spc', '!': 'shift-1', '-': 'minus', '.': 'dot', '@': 'shift-2', '_': 'shift-minus'}
+
+    def press(self, *keys):
+        """Real keyboard input through the VM's PS/2 keyboard."""
+        for key in keys:
+            self.qmp_commands({'execute': 'human-monitor-command', 'arguments': {'command-line': 'sendkey ' + key}})
+            time.sleep(0.12)
+
+    def type_text(self, text):
+        self.press(*[self.KEYS.get(c, 'shift-' + c.lower() if c.isupper() else c) for c in text])
+
+    def click(self, x, y, size=(1280, 800)):
+        """A real pointer click at canvas coordinates through the USB tablet.
+
+        The screen fits its 1280×800 canvas to the display and centres it, with
+        the same zoom rule as nerdos-installer (src/zoom.rs).
+        """
+        zoom = round(min(max(min(size[0] / 1280, size[1] / 800), 0.8), 3.0), 2)
+        px = ((size[0] / zoom - 1280) / 2 + x) * zoom
+        py = ((size[1] / zoom - 800) / 2 + y) * zoom
+        def axis(value, extent):
+            return {'type': 'abs', 'data': {'axis': value, 'value': int(round(extent))}}
+        position = [axis('x', px * 32767 / (size[0] - 1)), axis('y', py * 32767 / (size[1] - 1))]
+        button = lambda down: {'type': 'btn', 'data': {'down': down, 'button': 'left'}}
+        self.qmp_commands({'execute': 'input-send-event', 'arguments': {'events': position}})
+        time.sleep(0.2)
+        self.qmp_commands({'execute': 'input-send-event', 'arguments': {'events': [button(True)]}},
+                          {'execute': 'input-send-event', 'arguments': {'events': [button(False)]}})
+        time.sleep(0.3)
+
+    def installer_state(self, timeout=20):
+        """The installer service's current snapshot, exactly as the screen receives it."""
+        import base64
+        raw = self.command(f'nerdos-installerd --client --timeout {timeout} | base64 -w0', timeout=timeout + 60).strip()
+        return json.loads(base64.b64decode(raw))
+
+    def installer_request(self, request):
+        self.command('nerdos-installerd --client --timeout 5 --request ' + shlex.quote(json.dumps(request)) + ' >/dev/null', timeout=60)
+
+    def wait_installer(self, predicate, what, timeout=600, interval=2):
+        deadline = time.monotonic() + timeout
+        state = {}
+        while time.monotonic() < deadline:
+            state = self.installer_state()
+            if predicate(state):
+                return state
+            if state.get('phase') in ('error', 'cancelled'):
+                raise RuntimeError(f'Installer stopped while waiting for {what}: ' + str(state.get('error')))
+            time.sleep(interval)
+        raise RuntimeError(f'Timed out waiting for {what}; last phase {state.get("phase")}, error {state.get("error")!r}')
+
+    def graphical_install(self, encrypted, applications, screenshots=None):
+        """Install through the real tty1 screen with real keyboard and pointer input.
+
+        The screen (nerdos-installer) and its state service (nerdos-installerd)
+        are the packaged ISO units. The serial console only observes the
+        service's snapshots; every choice that matters is made on the screen:
+        development consent, navigation, encryption, name, username, both
+        passwords and the final erase click. Only QA-only choices without a
+        bearing on the screen (serial console, the smaller application set)
+        are set through the same service the screen uses.
+        """
+        evidence = {'result': 'running'}
+        shot = lambda name: screenshots and self.screenshot(screenshots / name)
+        self.command('systemctl is-active nerdos-installerd.service nerdos-installer-ui.service')
+        self.command('test "$(systemctl show nerdos-installer-ui.service -p User --value)" = nerdos-installer')
+        # The bracket keeps pgrep -f from matching this command's own shell.
+        self.command("! id nixos && ! pgrep -x Hyprland && ! pgrep -f '[q]uickshell' && ! systemctl is-active --quiet display-manager.service")
+        evidence['installerOnlyRuntime'] = 'tty1 kiosk as nerdos-installer; no live account, compositor or display manager'
+        # The installed QA system keeps a serial console for this harness.
+        self.command("mkdir -p /run/systemd/system/nerdos-installerd.service.d\n"
+                     "printf '[Service]\\nEnvironment=NERDOS_INSTALLER_WORKER_ARGS=--serial-console\\n' > /run/systemd/system/nerdos-installerd.service.d/qa.conf\n"
+                     "systemctl daemon-reload\nsystemctl restart nerdos-installerd.service")
+        # The restart disconnects the screen; keys sent before it reconnects
+        # reach no page. Wait for the service's report of an attached screen.
+        state = self.wait_installer(lambda s: s.get('phase') in ('development', 'setup') and s.get('screens', 0) > 0,
+                                    'the release checks and the reconnected screen')
+        size = self.screenshot(screenshots / 'welcome.png') if screenshots else (1280, 800)
+        evidence['display'] = list(size)
+        if state['phase'] == 'development':
+            self.press('ret')
+            state = self.wait_installer(lambda s: s.get('phase') == 'setup', 'development consent')
+            evidence['developmentConsent'] = 'Enter on the screen'
+        shot('welcome-ready.png')
+        if applications == 'minimal':
+            self.installer_request({'action': 'draft', 'values': {'apps': {
+                'developer': False, 'proprietary': False, 'steam': False, 'docker': False, 'connectedWidgets': False}}})
+        self.press('ret')
+        state = self.wait_installer(lambda s: s['draft']['screen'] == 'disk', 'the disk step')
+        if len([d for d in state['disks'] if d['available']]) == 1 and not state['draft']['disk']:
+            raise RuntimeError('The only available disk was not preselected')
+        if not encrypted:
+            self.click(1169, 291, size)
+            state = self.wait_installer(lambda s: s['draft']['encrypted'] is False, 'the encryption switch')
+            evidence['encryptionSwitch'] = 'pointer click turned encryption off'
+        shot('disk.png')
+        self.press('ret')
+        state = self.wait_installer(lambda s: s['draft']['screen'] == 'account', 'the account step')
+        self.type_text('Nerd QA')
+        self.press('ret', 'ctrl-a')
+        self.type_text('NerdQA')
+        state = self.wait_installer(lambda s: s['draft']['username'] == 'nerdqa', 'the lowercase username')
+        if state['draft']['fullName'] != 'Nerd QA':
+            raise RuntimeError('The typed name did not reach the installer service: ' + repr(state['draft']['fullName']))
+        evidence['lowercaseUsername'] = 'typed NerdQA; the screen kept nerdqa'
+        self.press('ret')
+        self.type_text(PASSWORD)
+        self.press('ret')
+        self.type_text(PASSWORD)
+        shot('account.png')
+        self.press('ret')
+        state = self.wait_installer(lambda s: s.get('phase') == 'review' and not s.get('reviewPending'), 'the review')
+        plan = state['review']
+        expected = {'username': 'nerdqa', 'fullName': 'Nerd QA', 'hostname': 'nerdqa-nerdos', 'encrypted': encrypted, 'disk': '/dev/vda'}
+        if {key: plan.get(key) for key in expected} != expected:
+            raise RuntimeError('Reviewed plan differs from the screen input: ' + json.dumps(plan))
+        evidence['reviewedPlan'] = {key: plan.get(key) for key in ('username', 'fullName', 'hostname', 'timezone', 'keyboard', 'encrypted', 'features')}
+        shot('review.png')
+        self.click(1024, 755, size)
+        self.wait_installer(lambda s: s.get('phase') in ('installing', 'complete'), 'the erase confirmation', timeout=120)
+        shot('installing.png')
+        state = self.wait_installer(lambda s: s.get('phase') == 'complete', 'installation', timeout=10800, interval=20)
+        shot('installation-complete.png')
+        evidence.update(result='passed', completed=state.get('result'))
+        return evidence
 
     def stop(self):
         if self.process is not None:
@@ -167,6 +399,9 @@ QA_DIAGNOSTIC'''
             self.process.close()
             self.log.close()
             self.process=None
+        if self.control_directory is not None:
+            self.control_directory.cleanup()
+            self.control_directory = None
 
 
 def wait_state(vm, expected, timeout=2100, previous=None):
@@ -211,8 +446,7 @@ def apply(vm, status):
 def authenticated_boot(vm, encrypted):
     vm.reboot(encrypted)
     wait_state(vm, ('awaiting-login',), timeout=180)
-    if not encrypted:
-        vm.login_desktop()
+    vm.login_desktop()
     vm.command('nerdos-health desktop-required', timeout=180)
 
 
@@ -367,8 +601,7 @@ nerdos-health desktop-required
     vm.command('systemctl kill --kill-whom=all --signal=KILL nerdos-stage@local.service')
     vm.reboot(encrypted)
     wait_state(vm, ('interrupted',), timeout=180)
-    if not encrypted:
-        vm.login_desktop()
+    vm.login_desktop()
     edit_import(vm, 'qualification-fault.nix')
     vm.command(preserve)
     checks['interruptedStageRecovery'] = {'result': 'passed'}
@@ -385,27 +618,28 @@ nerdos-health desktop-required
     vm.command('nerd update rollback ' + candidate['transaction'])
     wait_state(vm, ('rolled-back',), timeout=180)
     vm.reboot(encrypted)
-    if not encrypted:
-        vm.login_desktop()
+    vm.login_desktop()
     vm.command(preserve)
     vm.command('test ! -e /etc/nerdos-qualification-candidate\ntest "$(cat /etc/nerdos-qualification-generation)" = baseline\ntest ! -e /var/lib/nerdos/pending.json')
     checks['rollbackAndPersonalPersistence'] = {'result': 'passed'}
     return checks
 
 
-def qualify(iso, encrypted, base, lifecycle=True, evidence=None):
+def qualify(iso, encrypted, base, lifecycle=True, evidence=None, *, interactive=False, applications='minimal', screenshots=None):
     evidence = {} if evidence is None else evidence
     milestones = evidence.setdefault('milestones', {})
     case=base/('encrypted' if encrypted else 'plain');case.mkdir()
     disk=case/'disk.qcow2'
-    subprocess.run(['qemu-img','create','-f','qcow2',str(disk),'40G'],check=True,capture_output=True)
+    subprocess.run(['qemu-img','create','-f','qcow2',str(disk),'80G'],check=True,capture_output=True)
     plan={'disk':'/dev/vda','serial':'NERDOS-QA-DISK','hostname':'nerdos-qa','username':'nerdqa',
-          'timezone':'UTC','locale':'en_US.UTF-8','keyboard':'us','encrypted':encrypted,'autoLogin':encrypted,
+          'timezone':'UTC','locale':'en_US.UTF-8','keyboard':'us','encrypted':encrypted,'autoLogin':False,
           'secureBoot':False,'nvidiaOpen':True,'serialConsole':True,
           'features':{'developer':False,'proprietary':False,'steam':False,'docker':False,'connectedWidgets':False}}
+    if applications == 'standard':
+        plan.pop('features')
     import base64
     plan64=base64.b64encode(json.dumps(plan).encode()).decode()
-    secrets=json.dumps({'password':PASSWORD,'passphrase':PASSWORD})
+    secrets=json.dumps({'password':PASSWORD})
     vm=VM(case,disk,iso)
     try:
         vm.start();vm.login(live=True)
@@ -417,11 +651,16 @@ def qualify(iso, encrypted, base, lifecycle=True, evidence=None):
         milestones['isoSourceIdentity'] = {'result': 'passed'}
         vm.command(f'printf %s {plan64} | base64 -d > /run/qa-plan.json')
         try:
-            vm.command('nerdos-install --plan-file /run/qa-plan.json --secrets-fd 3 --development-source "$(cat /etc/nerdos/installer-source)" 3< <(printf %s '+shlex.quote(secrets)+')',timeout=10800)
+            if interactive:
+                milestones['nativeGuiAssertions'] = vm.graphical_install(encrypted, applications, screenshots)
+            else:
+                vm.command('systemctl stop nerdos-installer-ui.service nerdos-installerd.service\n'
+                           'for n in $(seq 1 30); do pgrep -f "nerdos-install --json-ui" >/dev/null || exit 0; sleep 1; done; exit 1', timeout=90)
+                vm.command('nerdos-install --plan-file /run/qa-plan.json --secrets-fd 3 --development-source "$(cat /etc/nerdos/installer-source)" 3< <(printf %s '+shlex.quote(secrets)+')',timeout=10800)
         except RuntimeError as error:
-            diagnostics = vm.command('tail -c 6000 /run/nerdos-installer.log')
+            diagnostics = vm.command('tail -c 6000 /run/nerdos-installer.log 2>/dev/null || true')
             raise RuntimeError(str(error) + '\nInstaller diagnostics (disposable QA guest):\n' + diagnostics) from error
-        milestones['installerCompleted'] = {'result': 'passed'}
+        milestones['installerCompleted'] = {'result': 'passed', 'interface': 'tty1 Slint screen with real QMP keyboard and pointer input' if interactive else 'JSON plan', 'applications': applications}
         vm.process.sendline('systemctl poweroff');vm.process.expect(pexpect.EOF,timeout=90);vm.stop()
         vm.iso=None;vm.start();vm.login(encrypted=encrypted)
         milestones['installedBootAndSerialPasswordLogin'] = {'result': 'passed'}
@@ -434,9 +673,13 @@ def qualify(iso, encrypted, base, lifecycle=True, evidence=None):
         milestones['runtimeEncryption'] = {'result': 'passed', 'encrypted': encrypted}
         vm.command('nerdos-desktop-check')
         milestones['desktopConfigurationCheck'] = {'result': 'passed'}
-        if not encrypted:vm.login_desktop()
+        vm.login_desktop()
         vm.command('nerdos-health desktop-required',timeout=180)
-        milestones['authenticatedDesktopHealth'] = {'result': 'passed', 'login': 'encryption-gated automatic login' if encrypted else 'SDDM password login'}
+        vm.check_desktop_defaults()
+        if screenshots:
+            vm.screenshot(screenshots / 'installed-desktop.png')
+        milestones['authenticatedDesktopHealth'] = {'result': 'passed', 'login': 'SDDM password login after disk unlock' if encrypted else 'SDDM password login'}
+        vm.password_change(encrypted, milestones.setdefault('sharedPasswordChanges', {}))
         if not lifecycle:
             evidence.update(result='passed', scope='actual ISO install, installed boot/login, encryption; no update application')
         else:
@@ -453,16 +696,26 @@ def qualify(iso, encrypted, base, lifecycle=True, evidence=None):
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('iso',type=Path);parser.add_argument('--output',type=Path)
     parser.add_argument('--case', choices=('plain', 'encrypted', 'both'), default='both')
+    parser.add_argument('--interactive', action='store_true', help='Install through the real tty1 installer screen with keyboard and pointer input, including the erase click')
+    parser.add_argument('--applications', choices=('standard', 'minimal'), default='standard', help='Use shared default application groups or the smaller optional selection')
+    parser.add_argument('--work-dir', type=Path, help='Parent for disposable VM files; use task storage rather than a memory-backed /tmp')
+    parser.add_argument('--screenshots', type=Path, help='Retain actual VM display captures for UX review')
     parser.add_argument('--scenario', choices=('install', 'lifecycle'), default='lifecycle',
                         help='install stops after actual installed desktop login; lifecycle additionally exercises local deployments and recovery')
     args=parser.parse_args();iso=args.iso.resolve()
     result={'kind':'isolated-installation-evidence','isoSha256':hashlib.file_digest(iso.open('rb'),'sha256').hexdigest(),'checks':{}}
-    with tempfile.TemporaryDirectory(prefix='nerdos-qualification-') as temporary:
+    if args.work_dir:
+        args.work_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='nerdos-qualification-', dir=args.work_dir) as temporary:
         for encrypted in ((False,True) if args.case == 'both' else (args.case == 'encrypted',)):
             name='encrypted-install' if encrypted else 'plain-install'
             evidence = result['checks'][name] = {'result': 'running'}
-            try:qualify(iso,encrypted,Path(temporary), args.scenario == 'lifecycle', evidence)
+            screenshots = args.screenshots.resolve() / name if args.screenshots else None
+            try:qualify(iso,encrypted,Path(temporary), args.scenario == 'lifecycle', evidence,
+                        interactive=args.interactive, applications=args.applications, screenshots=screenshots)
             except Exception as error:evidence.update(result='failed', error=str(error))
+            if args.output:
+                args.output.write_text(json.dumps(result, indent=2) + '\n')
     data=json.dumps(result,indent=2)+'\n'
     if args.output:args.output.write_text(data)
     print(data)

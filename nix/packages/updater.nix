@@ -1,12 +1,12 @@
 { lib, stdenvNoCC, source, python3, makeWrapper, nix, openssl, systemd, util-linux,
   coreutils, bubblewrap, cryptsetup, parted, dosfstools, e2fsprogs, btrfs-progs, gptfdisk, shadow,
-  nixos-install-tools, curl, dbus, procps, bash, callPackage, quickshell, hyprland, qt6 }:
+  nixos-install-tools, curl, dbus, procps, bash, callPackage, quickshell, hyprland, qt6, libxcrypt }:
 let desktopPackage = callPackage ./desktop.nix { inherit source; }; in
 stdenvNoCC.mkDerivation {
   pname = "nerdos-updater";
   version = lib.trim (builtins.readFile (source + /VERSION));
   src = source;
-  nativeBuildInputs = [ makeWrapper ];
+  nativeBuildInputs = [ makeWrapper python3 ];
   dontBuild = true;
   installPhase = ''
     mkdir -p $out/lib/nerdos $out/bin $out/share/nerdos
@@ -25,10 +25,26 @@ stdenvNoCC.mkDerivation {
     patchShebangs $out
     for script in $out/bin/*; do
       wrapProgram "$script" --prefix PYTHONPATH : $out/lib \
+        --set PYTHONDONTWRITEBYTECODE 1 \
         --set NERDOS_UPDATER_SHARE $out/share/nerdos \
+        --set NERDOS_LIBCRYPT ${libxcrypt}/lib/libcrypt.so.2 \
         --prefix QML_IMPORT_PATH : ${desktopPackage.images}/lib/qt-6/qml \
-        --prefix PATH : ${lib.makeBinPath [ python3 nix openssl systemd util-linux coreutils bubblewrap cryptsetup parted dosfstools e2fsprogs btrfs-progs gptfdisk shadow nixos-install-tools curl dbus procps bash quickshell hyprland desktopPackage ]}
+        --prefix PATH : ${lib.makeBinPath [ python3 nix openssl systemd util-linux coreutils bubblewrap cryptsetup parted dosfstools e2fsprogs btrfs-progs gptfdisk shadow nixos-install-tools curl dbus procps bash quickshell hyprland desktopPackage ]} \
+        --prefix PATH : "$out/bin"
     done
+  '';
+  doInstallCheck = stdenvNoCC.buildPlatform.canExecute stdenvNoCC.hostPlatform;
+  installCheckPhase = ''
+    # Dispatch must resolve sibling helpers without a system-profile PATH.
+    # On a builder the helper should refuse the absent live marker cleanly.
+    if env -i HOME="$TMPDIR" "$out/bin/nerd" install >dispatch.log 2>&1; then
+      echo 'Installer unexpectedly accepted a non-live environment' >&2
+      exit 1
+    fi
+    if ! grep -q 'Fresh installation is available only from the NerdOS installation ISO' dispatch.log; then
+      cat dispatch.log >&2
+      exit 1
+    fi
   '';
   meta.license = lib.licenses.mit;
 }

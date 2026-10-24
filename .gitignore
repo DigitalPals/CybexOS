@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+
+# Rust build output of the installer screen.
+/installer/kiosk/target/

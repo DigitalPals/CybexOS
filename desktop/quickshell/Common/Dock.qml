@@ -19,20 +19,21 @@ Singleton {
 
     // Focus history, most recent first, for "focus the app's last window".
     property var recent: []
-    property string browserId: ""
+    readonly property string browserId: String((DefaultApplications.roles.browser || {}).effective || "").replace(/\.desktop$/, "")
+    readonly property string terminalId: String((DefaultApplications.roles.terminal || {}).effective || "").replace(/\.desktop$/, "")
     property var webApps: []
     readonly property var desktopApps: DesktopEntries.applications.values
 
     // One local registry read on construction and when desktop entries change,
     // coalesced across installs/removals. No network or per-window subprocess.
-    onDesktopAppsChanged: webAppRefresh.restart()
-    Component.onCompleted: webAppRefresh.restart()
+    onDesktopAppsChanged: { webAppRefresh.restart(); DefaultApplications.refresh(); }
+    Component.onCompleted: { webAppRefresh.restart(); DefaultApplications.refresh(); }
 
     readonly property string activeAddress: Hyprland.activeToplevel
         ? Hyprland.activeToplevel.address : ""
     readonly property bool pinsExplicit: Settings.explicitOverrides.indexOf("dockPinned") !== -1
     readonly property var pins: DockHelpers.effectivePins(Settings.dockPinned, pinsExplicit,
-        DockHelpers.suggestedPins(browserId))
+        DockHelpers.suggestedPins(browserId, terminalId))
 
     // Desktop entries load after the shell starts, and an app installed later
     // appears then too; reading the list makes both re-resolve.
@@ -208,15 +209,6 @@ Singleton {
         }
     }
 
-    // The default browser joins the suggested pins. mimeapps.list is the
-    // file the session's xdg-open reads; a missing or unreadable one simply
-    // leaves Files and the terminal.
-    FileView {
-        path: Quickshell.env("HOME") + "/.config/mimeapps.list"
-        printErrors: false
-        watchChanges: true
-        onFileChanged: reload()
-        onLoaded: root.browserId = DockHelpers.defaultBrowserId(text())
-        onLoadFailed: root.browserId = ""
-    }
+    // GIO and xdg-terminal-exec resolve personal and system defaults together.
+    Timer { interval: 30000; repeat: true; running: true; onTriggered: DefaultApplications.refresh() }
 }

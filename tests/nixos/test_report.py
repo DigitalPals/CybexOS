@@ -11,7 +11,6 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import socket
 import shutil
 import sys
 import stat
@@ -32,7 +31,9 @@ report = importlib.util.module_from_spec(spec)
 loader.exec_module(report)
 
 USER = getpass.getuser()
-HOST = socket.gethostname()
+# Nix sandboxes use the deliberately public hostname "localhost". Exercise a
+# private hostname deterministically while retaining the generic-hostname test.
+HOST = 'fixture-private-host'
 
 # Values that must never survive into a bundle or the issue URL.
 SECRETS = {
@@ -172,6 +173,7 @@ loader = importlib.machinery.SourceFileLoader('fixture_report', sys.argv[1])
 spec = importlib.util.spec_from_loader(loader.name, loader)
 report = importlib.util.module_from_spec(spec)
 loader.exec_module(report)
+report.socket.gethostname = lambda: 'fixture-private-host'
 original_read = report.read
 report.read = lambda path, limit=None: json.dumps({'schema': 1, 'units': ['NetworkManager.service'], 'userUnits': []}) if str(path) == '/etc/nerdos/health-services.json' else original_read(path, limit)
 sys.exit(report.main(sys.argv[2:]))

@@ -6,7 +6,7 @@
   satty, wayfreeze, tesseract, zbar, qrencode, hyprpicker, hyprsunset, imagemagick,
   libnotify, wtype, pulseaudio, pipewire, wireplumber, wl-clipboard, cliphist, grim, slurp,
   wf-recorder, ffmpeg, libva-utils, jq, procps, findutils, gnugrep, gnused, gawk,
-  xdg-utils, curl, nodejs, iw, iproute2, brightnessctl, playerctl, bluez, upower,
+  xdg-utils, xdg-terminal-exec, curl, nodejs, iw, iproute2, brightnessctl, playerctl, bluez, upower,
   power-profiles-daemon, restic, openssh, age, gnutar, zstd, util-linux, kitty, fetchFromGitHub }:
 let
   lazyvimStarter = fetchFromGitHub {
@@ -23,7 +23,7 @@ let
   runtimeTools = [ bash python coreutils quickshell hyprland hyprlock hypridle systemd dbus glib openssl git
     satty wayfreeze tesseract zbar qrencode hyprpicker hyprsunset imagemagick libnotify wtype
     pulseaudio pipewire wireplumber wl-clipboard cliphist grim slurp wf-recorder ffmpeg libva-utils jq
-    procps findutils gnugrep gnused gawk xdg-utils curl nodejs iw iproute2 brightnessctl playerctl
+    procps findutils gnugrep gnused gawk xdg-utils xdg-terminal-exec curl nodejs iw iproute2 brightnessctl playerctl
     networkmanager bluez upower power-profiles-daemon restic openssh age gnutar zstd util-linux kitty libsecret fwupd ];
   images = stdenv.mkDerivation {
     pname = "nerdos-notification-images";
@@ -53,7 +53,7 @@ in stdenv.mkDerivation {
     cp -r assets/brand $out/share/nerdos/
     mkdir -p $out/share/icons $out/share/applications
     cp -r desktop/icons/hicolor $out/share/icons/
-    cp desktop/nerdos.desktop $out/share/applications/
+    cp desktop/*.desktop $out/share/applications/
     substituteInPlace $out/share/nerdos/defaults/fastfetch.jsonc \
       --replace-fail @NERDOS_FASTFETCH@ $out/share/nerdos/fastfetch/nerdos-large.fastfetch.txt
     cp -r ${lazyvimStarter} $out/share/nerdos/defaults/nvim

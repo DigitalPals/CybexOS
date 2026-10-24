@@ -1,7 +1,7 @@
 // Pure settings-schema helpers shared by QML and Node tests.
 // Keep this file free of Qt APIs so persistence stays deterministic.
 
-var VERSION = 29;
+var VERSION = 30;
 
 var BAR_STYLES = ["hug", "floating", "attached"];
 var PALETTE_MODES = ["wallpaper", "fixed"];
@@ -39,9 +39,11 @@ var IDLE_SUSPEND_MINS = [0, 15, 30, 60, 120];
 // drawer tab. Schema 26 builds Model Usage in as `modelusage`, vendored from
 // the digitalpals.model-usage Omarchy plugin (see ModelUsage/README.md).
 // Schema 28 adds `fusebox`, the Fusebox server widget, beside Model Usage.
+// Schema 30 adds `assistant`, the button that shows and hides the NerdOS
+// Assistant, before the notification and status widgets.
 var MODULE_IDS = [
     "ws", "media", "indicators", "clock", "weather", "notes", "modelusage", "fusebox", "updates", "gh",
-    "t3", "hermes", "remote", "tray",
+    "t3", "hermes", "remote", "tray", "assistant",
     "notifications", "vol", "wifi", "bt", "batt", "control"
 ];
 
@@ -110,6 +112,7 @@ var BAR_COLOR_PRESETS = {
 var MODULE_GROUPS = {
     ws: "solo", media: "solo", indicators: "solo", clock: "time", weather: "time",
     notes: "solo", modelusage: "solo", updates: "solo", gh: "chip", t3: "chip", hermes: "chip", tray: "solo",
+    assistant: "solo",
     notifications: "status",
     vol: "status", wifi: "status", bt: "status", batt: "status", control: "solo"
 };
@@ -197,6 +200,15 @@ var NOTE_CODEX_EFFORTS = NOTE_CODEX_EFFORT_CHOICES.map(
 var NOTE_CLAUDE_EFFORTS = NOTE_CLAUDE_EFFORT_CHOICES.map(
     function(choice) { return choice.value; });
 
+// The NerdOS Assistant (docs/assistant.md). "auto" follows the `nerd agent`
+// default when it is one of the two, else whichever is installed. The model
+// lists reuse the reviewed Notes catalogs; "default" leaves the choice to the
+// agent's own configuration.
+var ASSISTANT_AGENTS = ["auto", "claude", "codex"];
+var ASSISTANT_CHARACTERS = ["mascot", "mark"];
+var ASSISTANT_CLAUDE_MODELS = ["default"].concat(NOTE_CLAUDE_MODELS);
+var ASSISTANT_CODEX_MODELS = ["default"].concat(NOTE_CODEX_MODELS);
+
 // Group kinds that rest on a visible pill fill rather than transparent
 // furniture. Cluster.qml reads this so the decision lives beside the map.
 var FILLED_GROUP_KINDS = ["time", "status"];
@@ -222,10 +234,10 @@ function defaultMods() {
         center: [mod("indicators", true), mod("clock", true), mod("weather", false),
             mod("notes", true)],
         right: [
-            mod("modelusage", false), mod("fusebox", false), mod("updates", true), mod("gh", false),
+            mod("modelusage", true), mod("fusebox", false), mod("updates", true), mod("gh", false),
             mod("t3", false),
-            mod("hermes", false), mod("remote", true),
-            mod("tray", false), mod("notifications", true), mod("vol", true),
+            mod("hermes", false), mod("remote", false),
+            mod("tray", false), mod("assistant", true), mod("notifications", true), mod("vol", true),
             mod("wifi", true), mod("bt", true), mod("batt", true), mod("control", true)
         ]
     };
@@ -455,7 +467,21 @@ function defaults() {
         // and the terminal until the person pins or unpins something.
         dock: false,
         dockAutoHide: false,
-        dockPinned: []
+        dockPinned: [],
+        assistantAgent: "auto",
+        assistantClaudeModel: "default",
+        assistantCodexModel: "default",
+        assistantSpeak: false,
+        // Off until enabled: the screen button attaches a screenshot only
+        // to the question it was pressed for.
+        assistantScreenContext: false,
+        assistantCharacter: "mascot",
+        // Where the character was left. Runtime state, persisted so a shell
+        // reload or a new session finds it there; -1 is the default corner.
+        assistantShown: false,
+        assistantScreen: "",
+        assistantX: -1,
+        assistantY: -1
     };
 }
 
@@ -1233,7 +1259,7 @@ function migrateMods(raw, sourceVersion, context) {
             if (hermesIndex === -1)
                 continue;
             migrated[t3Col].splice(hermesIndex + 1, 0, {
-                id: "hermes", on: true, detail: "auto"
+                id: "hermes", on: false, detail: "auto"
             });
             break;
         }
@@ -1265,7 +1291,7 @@ function migrateMods(raw, sourceVersion, context) {
 
     // Schema 26 builds Model Usage in where the plugin it replaces stood: the
     // leading edge of the right column. Like the other connected-service
-    // widgets it starts on only when that install feature is selected.
+    // widgets its fresh visibility is independent of installed service support.
     var modelUsagePresent = ["left", "center", "right"].some(function(col) {
         return migrated[col].some(function(entry) {
             return entry && entry.id === "modelusage";
@@ -1275,7 +1301,7 @@ function migrateMods(raw, sourceVersion, context) {
             && !modelUsagePresent) {
         migrated.right.unshift({
             id: "modelusage",
-            on: !!(context && context.connectedWidgets),
+            on: true,
             detail: "auto"
         });
     }
@@ -1290,7 +1316,7 @@ function migrateMods(raw, sourceVersion, context) {
     });
     if ((typeof sourceVersion !== "number" || sourceVersion < 28)
             && !fuseboxPresent) {
-        var fusebox = { id: "fusebox", on: !!(context && context.connectedWidgets), detail: "auto" };
+        var fusebox = { id: "fusebox", on: false, detail: "auto" };
         var placed = ["left", "center", "right"].some(function(col) {
             var usageIndex = migrated[col].findIndex(function(entry) {
                 return entry && entry.id === "modelusage";
@@ -1302,6 +1328,28 @@ function migrateMods(raw, sourceVersion, context) {
         });
         if (!placed)
             migrated.right.unshift(fusebox);
+    }
+
+    // Schema 30 adds the NerdOS Assistant's button immediately before the
+    // notification and status widgets still on the right, where schema 11
+    // put Notifications, so an older layout gains it without anything else
+    // moving. Off-feature installs hide it through the bar's auto-rule.
+    var assistantPresent = ["left", "center", "right"].some(function(col) {
+        return migrated[col].some(function(entry) {
+            return entry && entry.id === "assistant";
+        });
+    });
+    if ((typeof sourceVersion !== "number" || sourceVersion < 30)
+            && !assistantPresent) {
+        var trailingIds = ["notifications", "vol", "wifi", "bt", "batt"];
+        var assistantIndex = migrated.right.findIndex(function(entry) {
+            return entry && trailingIds.indexOf(entry.id) !== -1;
+        });
+        if (assistantIndex === -1)
+            assistantIndex = migrated.right.length;
+        migrated.right.splice(assistantIndex, 0, {
+            id: "assistant", on: true, detail: "auto"
+        });
     }
     return normalizeMods(migrated);
 }
@@ -1334,17 +1382,9 @@ function migratePaletteMode(parsed, defaultsValue) {
 }
 
 // `context.connectedWidgets` is the install's connected-service feature; it
-// decides whether a widget that schema migration adds starts on.
+// supplies feature availability without changing saved widget visibility.
 function merge(raw, context) {
     var d = defaults();
-    if (context && context.connectedWidgets) {
-        ["left", "center", "right"].forEach(function(column) {
-            d.mods[column].forEach(function(entry) {
-                if (CONNECTED_WIDGET_IDS.indexOf(entry.id) !== -1)
-                    entry.on = true;
-            });
-        });
-    }
     if (!raw || typeof raw !== "object")
         return d;
     var parsed = raw;
@@ -1446,7 +1486,20 @@ function merge(raw, context) {
         modOpts: migrateModOpts(parsed.modOpts, parsed.v, parsed),
         dock: boolIn(parsed.dock, d.dock),
         dockAutoHide: boolIn(parsed.dockAutoHide, d.dockAutoHide),
-        dockPinned: desktopIdsIn(parsed.dockPinned, d.dockPinned)
+        dockPinned: desktopIdsIn(parsed.dockPinned, d.dockPinned),
+        assistantAgent: enumIn(parsed.assistantAgent, ASSISTANT_AGENTS, d.assistantAgent),
+        assistantClaudeModel: enumIn(parsed.assistantClaudeModel, ASSISTANT_CLAUDE_MODELS,
+            d.assistantClaudeModel),
+        assistantCodexModel: enumIn(parsed.assistantCodexModel, ASSISTANT_CODEX_MODELS,
+            d.assistantCodexModel),
+        assistantSpeak: boolIn(parsed.assistantSpeak, d.assistantSpeak),
+        assistantScreenContext: boolIn(parsed.assistantScreenContext, d.assistantScreenContext),
+        assistantCharacter: enumIn(parsed.assistantCharacter, ASSISTANT_CHARACTERS,
+            d.assistantCharacter),
+        assistantShown: boolIn(parsed.assistantShown, d.assistantShown),
+        assistantScreen: textIn(parsed.assistantScreen, 64, d.assistantScreen),
+        assistantX: intIn(parsed.assistantX, -1, 32768, 1, d.assistantX),
+        assistantY: intIn(parsed.assistantY, -1, 32768, 1, d.assistantY)
     };
 }
 
@@ -1721,6 +1774,10 @@ var exported = {
     NOTE_CLAUDE_MODEL_CHOICES: NOTE_CLAUDE_MODEL_CHOICES,
     NOTE_CODEX_EFFORT_CHOICES: NOTE_CODEX_EFFORT_CHOICES,
     NOTE_CLAUDE_EFFORT_CHOICES: NOTE_CLAUDE_EFFORT_CHOICES,
+    ASSISTANT_AGENTS: ASSISTANT_AGENTS,
+    ASSISTANT_CHARACTERS: ASSISTANT_CHARACTERS,
+    ASSISTANT_CLAUDE_MODELS: ASSISTANT_CLAUDE_MODELS,
+    ASSISTANT_CODEX_MODELS: ASSISTANT_CODEX_MODELS,
     moduleGroup: moduleGroup,
     FILLED_GROUP_KINDS: FILLED_GROUP_KINDS,
     groupFilled: groupFilled,

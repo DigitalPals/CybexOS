@@ -1,0 +1,192 @@
+// Everything the screens show, filled in by src/ui.rs from the daemon's
+// snapshots, and every action they can request. No screen owns state that
+// matters: the daemon has the draft, the worker has the disk.
+
+export struct Check { label: string, value: string, detail: string, state: int }   // 0 ok, 1 running, 2 waiting, 3 warning, 4 error
+export struct Choice { key: string, label: string, detail: string, selected: bool }
+export struct DiskRow { path: string, model: string, size: string, bus: string, contents: string, serial: string, available: bool, reason: string, selected: bool, removable: bool }
+export struct ZoneRow { id: string, title: string, sub: string, note: string, time: string, offset: string, selected: bool }
+export struct SummaryRow { label: string, value: string, detail: string, action: string, action-label: string, warn: bool, mono: bool }
+export struct StageRow { title: string, detail: string, state: int }               // 0 done, 1 current, 2 queued
+export struct WifiRow { ssid: string, bars: int, secure: bool, enterprise: bool, connected: bool }
+export struct AppRow { id: string, name: string, detail: string, on: bool }
+export struct UsbRow { device: string, label: string, size: string }
+export struct Filtered { text: string, caret: int, note: string }
+
+export global Store {
+    // Connection and routing.
+    in-out property <bool> connected;
+    in-out property <string> screen: "welcome";   // welcome disk account review installing done stopped failed
+    in-out property <string> sheet;              // "", wifi, keyboard, language, tools, log, apps, gpu, timezone
+    in-out property <string> toast;
+    in-out property <int> tick;                  // a 1 Hz activity counter while something runs
+    in-out property <string> version;
+
+    // Welcome.
+    in-out property <[Check]> checks;
+    in-out property <string> check-summary;
+    in-out property <bool> can-start;
+    in-out property <bool> busy;
+    in-out property <bool> offline;
+    in-out property <bool> development;
+    in-out property <string> development-message;
+    in-out property <string> preflight-error;
+    in-out property <string> language-name;
+    in-out property <string> language-code;
+    in-out property <string> layout-name;
+    in-out property <string> layout-code;
+    in-out property <[Choice]> languages;
+    in-out property <[Choice]> layouts;
+
+    // Disk.
+    in-out property <[DiskRow]> disks;
+    in-out property <int> hidden-disks;
+    in-out property <bool> show-all-disks;
+    in-out property <bool> encrypted: true;
+    in-out property <bool> disk-chosen;
+    in-out property <string> esp-gib: "16";
+    in-out property <string> minimum-gib: "64";
+    in-out property <string> disk-error;
+
+    // Account. Passwords stay in these two properties until Continue.
+    in-out property <string> full-name;
+    in-out property <string> username;
+    in-out property <string> hostname;
+    in-out property <bool> host-edited;
+    in-out property <string> password;
+    in-out property <string> confirm;
+    in-out property <bool> show-password;
+    in-out property <string> name-help;
+    in-out property <string> username-help;
+    in-out property <int> username-tone;          // 0 neutral, 1 ok, 2 problem, 3 note
+    in-out property <string> username-count;
+    in-out property <string> hostname-help;
+    in-out property <int> hostname-tone;
+    in-out property <int> strength;               // 0..4
+    in-out property <string> confirm-help;
+    in-out property <int> confirm-tone;
+    in-out property <bool> can-review;
+    in-out property <string> account-error;
+    in-out property <string> home-note;
+    in-out property <string> unlock-note;
+
+    // Time zone card and picker.
+    in-out property <string> tz-clock;
+    in-out property <string> tz-city;
+    in-out property <string> tz-sub;
+    in-out property <string> tz-source;
+    in-out property <image> mini-map;
+    in-out property <string> tz-query;
+    in-out property <bool> tz-fixed;
+    in-out property <[ZoneRow]> tz-results;
+    in-out property <int> tz-selected-row: -1;
+    in-out property <image> big-map;
+    in-out property <string> tz-pick-clock;
+    in-out property <string> tz-pick-title;
+    in-out property <string> tz-pick-id;
+    in-out property <string> tz-pick-change;
+    in-out property <bool> tz-pick-changes;
+    in-out property <string> tz-pick-source;
+    in-out property <string> tz-hover;
+    in-out property <float> tz-hover-x;
+    in-out property <float> tz-hover-y;
+    in-out property <bool> tz-detecting;
+    in-out property <string> tz-data;
+
+    // Review.
+    in-out property <string> erase-title;
+    in-out property <string> erase-detail;
+    in-out property <string> erase-button;
+    in-out property <[SummaryRow]> summary-left;
+    in-out property <[SummaryRow]> summary-right;
+    in-out property <bool> review-busy;
+    in-out property <string> review-error;
+
+    // Installing.
+    in-out property <[StageRow]> stages;
+    in-out property <int> stage;
+    in-out property <int> stage-count: 6;
+    in-out property <string> elapsed;
+    in-out property <[string]> tip-keys;
+    in-out property <string> tip-text;
+
+    // Done, stopped and failed.
+    in-out property <string> done-user;
+    in-out property <string> done-host;
+    in-out property <bool> done-encrypted;
+    in-out property <string> stop-kicker;
+    in-out property <string> stop-title;
+    in-out property <string> stop-body;
+    in-out property <string> stop-check-label;
+    in-out property <string> stop-check-value;
+    in-out property <[string]> stop-steps;
+    in-out property <string> stop-action;           // firmware, restart or retry
+    in-out property <string> fail-title;
+    in-out property <string> fail-message;
+    in-out property <bool> fail-touched;
+
+    // Network sheet.
+    in-out property <bool> net-connected;
+    in-out property <string> net-kind;
+    in-out property <string> net-name;
+    in-out property <string> net-address;
+    in-out property <bool> net-busy;
+    in-out property <string> net-error;
+    in-out property <string> net-message;
+    in-out property <bool> wifi-device;
+    in-out property <[WifiRow]> wifi;
+    in-out property <int> wifi-selected: -1;
+
+    // Details, USB, applications and graphics.
+    in-out property <string> details;
+    in-out property <string> details-note;
+    in-out property <string> details-error;
+    in-out property <[UsbRow]> usb;
+    in-out property <string> usb-message;
+    in-out property <[AppRow]> apps;
+    in-out property <string> apps-summary;
+    in-out property <bool> nvidia;
+    in-out property <bool> nvidia-open: true;
+    in-out property <string> gpu-names;
+
+    // Requests.
+    callback navigate(string);
+    callback open-sheet(string);
+    callback close-sheet();
+    callback start();
+    callback accept-development();
+    callback retry();
+    callback choose-language(string);
+    callback choose-layout(string);
+    callback choose-disk(string);
+    callback toggle-encrypted();
+    callback toggle-all-disks();
+    callback rescan();
+    callback full-name-edited(string);
+    pure callback filter-name(string, int) -> Filtered;
+    callback username-edited(string, string);
+    callback hostname-edited(string, string);
+    callback passwords-edited();
+    callback continue-account();
+    callback tz-query-edited(string);
+    callback tz-pick(string);
+    callback tz-use();
+    callback tz-toggle-fixed();
+    callback tz-detect();
+    callback tz-map-click(float, float);
+    callback tz-map-hover(float, float);
+    callback tz-key(string);
+    callback back-to-account();
+    callback install();
+    callback change(string);
+    callback toggle-app(string);
+    callback set-nvidia-open(bool);
+    callback wifi-select(int);
+    callback wifi-connect(int, string, string);
+    callback network-refresh();
+    callback tool(string);
+    callback request-details();
+    callback usb-save(string);
+    callback start-over();
+    callback power(string);
+}

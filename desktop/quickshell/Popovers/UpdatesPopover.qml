@@ -11,6 +11,7 @@ Surface {
     Text { width: parent.width; text: Updates.summary; color: Theme.textHi; wrapMode: Text.Wrap }
     Text {
         width: parent.width
+        visible: Updates.available
         text: "NixOS packages: " + (Updates.sources.upstream.state || "Checking…")
             + "\nNerdOS: " + Updates.installedVersion + (Updates.projectVersion ? " → " + Updates.projectVersion : "")
             + " · " + (Updates.sources.nerdos.state || "Checking…")
@@ -18,6 +19,7 @@ Surface {
     }
     Text { width: parent.width; visible: text !== ""; text: Updates.error; color: Theme.textHi; wrapMode: Text.Wrap; textFormat: Text.PlainText }
     Row {
+        visible: Updates.available
         spacing: 8
         Repeater {
             model: [{label:"Upstream", scope:"upstream"}, {label:"NerdOS", scope:"nerdos"}, {label:"Both", scope:"both"}]
@@ -31,7 +33,7 @@ Surface {
             }
         }
     }
-    Text { width: parent.width; text: Updates.runPhaseLabel; color: Theme.textHi; wrapMode: Text.Wrap }
+    Text { width: parent.width; visible: Updates.available; text: Updates.runPhaseLabel; color: Theme.textHi; wrapMode: Text.Wrap }
     ScrollView {
         width: parent.width
         height: Math.min(240, details.implicitHeight + 8)
@@ -64,6 +66,7 @@ Surface {
         color: Theme.textHi; wrapMode: Text.Wrap
     }
     Row {
+        visible: Updates.available
         spacing: 8
         Repeater {
             model: [{label:"Check sources", action:"check"}, {label:"Recovery", action:"openRecoveryPoints"}, {label:"Rollback", action:"rollback"}]
@@ -87,11 +90,12 @@ Surface {
         onTriggered: Updates.openLog()
     }
     ActionButton {
-        width: parent.width; height: 40; enabled: !Updates.runActive
+        width: parent.width; height: 40; visible: Updates.available; enabled: !Updates.runActive
         label: I18n.tr("Device firmware…"); tint: Theme.textHi
         onTriggered: Updates.openFirmware()
     }
     Text {
+        visible: Updates.available
         width: parent.width; color: Theme.textHi; font.pixelSize: Theme.typography.secondary
         text: I18n.tr("Review firmware separately in a terminal. Firmware changes are not reverted by a system rollback.")
         wrapMode: Text.Wrap

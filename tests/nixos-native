@@ -358,6 +358,87 @@ def authenticated_delivery(base, revision, nar_hash):
         return checks
 
 
+def retained_store_cleanup(base):
+    """Real GC roots/profiles in a private store; boot commands are fixtures."""
+    from nerdos.common import Runner, atomic, read
+    from nerdos.engine import Engine
+    from nerdos.maintenance import DEFAULT_POLICY, Maintenance
+    state = base / 'cleanup-state'; (state / 'transactions').mkdir(parents=True)
+    profiles = base / 'cleanup-profiles'; profiles.mkdir()
+    store_root = base / 'cleanup-store'
+    engine = object.__new__(Engine)
+    engine.state = state
+    engine.status_path, engine.pending_path = state / 'status.json', state / 'pending.json'
+    engine.working = base / 'cleanup-config'; engine.working.mkdir()
+    (state / 'deployed').mkdir()
+    engine.current_system, engine.booted_system = base / 'cleanup-current', base / 'cleanup-booted'
+    old_remote = os.environ.get('NIX_REMOTE')
+    os.environ['NIX_REMOTE'] = 'local?root=' + str(store_root)
+    boot_operations = []
+    runner = Runner()
+    class Commands:
+        log = None
+        def __call__(self, *args, **kwargs):
+            if args[0] == 'nerdos-health':
+                return ''
+            if args[0] == 'nerdos-boot-trial':
+                boot_operations.append(tuple(map(str, args)))
+                return ''
+            runner.log = self.log
+            return runner(*args, **kwargs)
+    engine.run = Commands()
+    engine.switch = lambda system, mode: boot_operations.append((system, mode))
+    try:
+        systems = []
+        for i in range(11):
+            source = base / ('retention-system-' + str(i)); source.write_text('system ' + str(i))
+            systems.append(command('nix-store', '--add', source).strip())
+        now = 2000000000
+        for i in range(1, 11):
+            identifier = f'{i:032x}'; tx = engine.tx(identifier); tx.mkdir()
+            atomic(tx / 'deployment.json', {'id':identifier, 'system':systems[i],
+                   'previousSystem':systems[i-1], 'createdAt':now - (100-i)*86400})
+            atomic(tx / 'good.json', {'at':now - (100-i)*86400})
+            (tx / 'personal-before-rollback').mkdir()
+            (tx / 'personal-before-rollback/edits.nix').write_text('personal sentinel')
+            engine.root(systems[i], 'system', tx); engine.root(systems[i-1], 'previous-system', tx)
+            command('nix-env', '--profile', profiles / 'system', '--set', systems[i])
+        engine.current_system.symlink_to(systems[-1]); engine.booted_system.symlink_to(systems[-1])
+        # A personal root protects a path even after the owning transaction retires.
+        personal_root = base / 'personal-gc-root'
+        command('nix-store', '--add-root', personal_root, '--indirect', '-r', systems[2])
+        policy_path = base / 'cleanup-policy.json'; atomic(policy_path, DEFAULT_POLICY)
+        service = Maintenance(engine, policy_path, profiles, store=store_root / 'nix/store', now=now)
+        plan = service.preview()
+        assert plan['candidates'] == [f'{i:032x}' for i in range(1,6)]
+        service.pin(f'{1:032x}', True)
+        try:
+            service.clean(plan['id'], plan['token'])
+        except Failure as error:
+            assert 'stale' in str(error)
+        else:
+            raise AssertionError('A stale cleanup review was accepted')
+        plan = service.preview()
+        assert plan['estimatedBytes'] > 0, 'Indirect roots were not excluded from the estimate'
+        service.clean(automatic=True)
+        assert not service.pending.exists()
+        assert read(state / 'maintenance-status.json')['state'] == 'done'
+        for i in (0,1,2,5,6,7,8,9,10):
+            assert (store_root / systems[i].lstrip('/')).exists(), systems[i]
+        for i in (3,4):
+            assert not (store_root / systems[i].lstrip('/')).exists(), systems[i]
+        for i in range(1,11):
+            tx = engine.tx(f'{i:032x}')
+            assert (tx / 'personal-before-rollback/edits.nix').read_text() == 'personal sentinel'
+            assert (tx / 'retired.json').exists() == (i in (2,3,4,5))
+        assert (profiles / 'system-10-link').is_symlink() and personal_root.is_symlink()
+        assert boot_operations[0] == (systems[-1], 'boot')
+    finally:
+        if old_remote is None: os.environ.pop('NIX_REMOTE', None)
+        else: os.environ['NIX_REMOTE'] = old_remote
+    return {'retentionWithRealNixRootsProfilesAndGC': {'result':'passed', 'cleanup':'automatic with the default policy', 'bootloaderAndHealth':'command fixtures; requires installed-system qualification'}}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=Path)
@@ -367,9 +448,10 @@ def main():
         inputs, revision, nar_hash = native_inputs(base)
         authentication = authenticated_delivery(base, revision, nar_hash)
         transfer = installed_source_transfer(base)
+        cleanup = retained_store_cleanup(base)
     report = {'kind': 'native-input-and-authenticated-transport-integration',
-              'scope': 'Real Nix lock/prefetch, isolated installation-source store transfer and production metadata verification over isolated HTTPS; no system build, installed updater, activation, boot or physical qualification',
-              'testedCode': str(ROOT), 'checks': inputs | authentication | transfer}
+              'scope': 'Real Nix lock/prefetch, isolated source transfer, retention/GC in a private store and production metadata verification over isolated HTTPS; no system build, installed updater, activation, boot or physical qualification',
+              'testedCode': str(ROOT), 'checks': inputs | authentication | transfer | cleanup}
     body = json.dumps(report, indent=2) + '\n'
     if args.output:
         args.output.write_text(body)

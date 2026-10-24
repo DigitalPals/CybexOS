@@ -16,7 +16,7 @@ ShellRoot {
     // Recovery tokens cannot depend on a possibly broken Theme/Settings tree.
     readonly property var typography: ({ control: 13, body: 14, caption: 12 })
 
-    function terminal() { Quickshell.execDetached(["kitty"]); }
+    function terminal() { Quickshell.execDetached(["nerdos-apps", "terminal"]); }
     function recover() { Quickshell.execDetached(["nerdos-runtime", "shell", "recover"]); }
 
     GlobalShortcut {

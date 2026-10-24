@@ -116,9 +116,12 @@ print('{"title":"Title: ignored JSON prefix"}')
 test("missing binaries and CLI failures return bounded actionable envelopes", () => {
     const base = fixture();
     try {
+        // A developer machine may have the real Codex on its ambient PATH.
+        // The missing-binary case must never launch or contact that account.
+        fs.symlinkSync(require("./shell.cjs").executable("python3"), path.join(base.bin, "python3"));
         let result = invoke({
             provider: "codex", model: "gpt-5.6-luna", effort: "none", body: "Body"
-        }, base.env);
+        }, { ...base.env, PATH: base.bin });
         assert.notEqual(result.status, 0);
         assert.equal(response(result).code, "unavailable");
 

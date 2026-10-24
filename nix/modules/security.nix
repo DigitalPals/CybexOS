@@ -9,6 +9,19 @@ in {
   config = lib.mkIf cfg.enable {
     security.sudo.wheelNeedsPassword = lib.mkDefault true;
     security.polkit.enable = true;
+    environment.systemPackages = [ (pkgs.callPackage ../packages/password.nix { source = ../..; updater = cfg.updaterPackage; })
+      (pkgs.writeTextDir "share/polkit-1/actions/org.nerdos.password.policy" ''
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+      <policyconfig>
+        <action id="org.nerdos.password">
+          <description>Change your NerdOS login and disk password</description>
+          <message>Authenticate to change your NerdOS password</message>
+          <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_self</allow_active></defaults>
+          <annotate key="org.freedesktop.policykit.exec.path">${cfg.updaterPackage}/bin/nerdos-password-worker</annotate>
+        </action>
+      </policyconfig>
+    '') ];
     services.fprintd.enable = lib.mkDefault cfg.authentication.fingerprint;
     security.pam.u2f = {
       enable = false;
@@ -17,6 +30,15 @@ in {
         cue = true; nouserok = false; userpresence = 1; origin = "pam://nerdos"; appid = "pam://nerdos"; };
     };
     security.pam.services = {
+      passwd = {
+        enableGnomeKeyring = true;
+        # A sufficient pam_unix success would return before the following
+        # keyring rule, leaving its password behind after an account change.
+        rules.password.unix.control = lib.mkForce "required";
+        # Surface an integration failure after shadow commits so the password
+        # worker retains the matching disk key and reports keyring recovery.
+        rules.password.gnome_keyring.control = lib.mkForce "required";
+      };
       sudo = auth;
       polkit-1 = auth;
       # Login always asks for the password to unlock the keyring.
@@ -45,7 +67,8 @@ in {
     networking.firewall = {
       enable = lib.mkDefault true;
       allowedTCPPorts = [ 53317 ] ++ lib.optionals (cfg.features.localNetworkServices && cfg.features.steam) [ 27015 27036 27037 ];
-      allowedUDPPorts = [ 53317 5353 ] ++ lib.optionals (cfg.features.localNetworkServices && cfg.features.steam) [ 27015 10400 10401 ];
+      allowedUDPPorts = [ 53317 ] ++ lib.optional cfg.features.localNetworkServices 5353
+        ++ lib.optionals (cfg.features.localNetworkServices && cfg.features.steam) [ 27015 10400 10401 ];
       allowedUDPPortRanges = lib.optional (cfg.features.localNetworkServices && cfg.features.steam) { from = 27031; to = 27036; };
     };
     # Private files are runtime paths, never builtins.readFile/imported store content.

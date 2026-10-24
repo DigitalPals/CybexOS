@@ -4,22 +4,82 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
+import uuid
 
 from .common import Failure, atomic, locked, read
 from .engine import Engine
+
+LIVE_MARKER = Path('/etc/nerdos/installer')
+LIVE_UPDATE_REASON = 'System updates are available after installation. Run nerd install to install NerdOS.'
+
+
+def require_installed():
+    if LIVE_MARKER.exists():
+        raise Failure(LIVE_UPDATE_REASON)
+
+
+def request_status(identifier, state='/var/lib/nerdos'):
+    import re
+    if not re.fullmatch('[a-f0-9]{32}', identifier):
+        raise Failure('Invalid request identifier')
+    value = read(Path(state) / 'request-status' / (identifier + '.json'))
+    if value is None:
+        raise Failure('No supervised request found. Refresh and submit again.')
+    if value.get('state') in ('queued', 'running') and time.time() - value.get('createdAt', 0) > 10:
+        unit = value.get('unit', '')
+        if not re.fullmatch(r'nerdos-(?:software|maintenance-policy|maintenance)@[a-f0-9]{32}\.service', unit):
+            raise Failure('Invalid supervised request record')
+        result = subprocess.run(['systemctl', 'show', unit, '-p', 'ActiveState', '-p', 'Result'],
+                                text=True, capture_output=True, timeout=10)
+        properties = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+        if result.returncode == 0 and properties.get('ActiveState') in ('inactive', 'failed'):
+            return value | {'state':'failed', 'error':'The supervised request stopped before reporting completion. Review its system service log and retry.'}
+    return value
+
+
+def enqueue(state, action, payload):
+    identifier = uuid.uuid4().hex
+    atomic(state / 'requests' / (identifier + '.json'), payload)
+    worker = action if action in ('software', 'maintenance-policy') else 'maintenance'
+    unit = f'nerdos-{worker}@{identifier}.service'
+    status = state / 'request-status' / (identifier + '.json')
+    atomic(status, {'state':'queued', 'unit':unit, 'createdAt':int(time.time())}, 0o644)
+    try:
+        subprocess.run(['systemctl', 'start', '--no-block', unit], check=True)
+    except BaseException:
+        atomic(status, {'state':'failed', 'error':'The supervised service could not be started.'}, 0o644)
+        (state / 'requests' / (identifier + '.json')).unlink(missing_ok=True)
+        raise
+    return {'accepted':True, 'requestId':identifier, 'unit':unit}
 
 
 def main():
     parser = argparse.ArgumentParser(prog='nerd', description='NerdOS — the Opinionated System')
     commands = parser.add_subparsers(dest='command', required=True)
-    commands.add_parser('install')
+    installer = commands.add_parser('install')
+    installer.add_argument('--terminal', action='store_true', help='Open the live installer in a terminal')
     commands.add_parser('version')
+    software = commands.add_parser('software')
+    software_sub = software.add_subparsers(dest='software_action', required=True)
+    software_sub.add_parser('list')
+    search = software_sub.add_parser('search'); search.add_argument('query', nargs='?', default='')
+    software_request = software_sub.add_parser('request'); software_request.add_argument('identifier')
+    software_stage = software_sub.add_parser('stage'); software_stage.add_argument('request')
+    maintenance = commands.add_parser('maintenance')
+    maintenance_sub = maintenance.add_subparsers(dest='maintenance_action', required=True)
+    for name in ('status', 'preview', 'resume'):
+        maintenance_sub.add_parser(name)
+    clean = maintenance_sub.add_parser('clean'); clean.add_argument('review'); clean.add_argument('token')
+    pin = maintenance_sub.add_parser('pin'); pin.add_argument('deployment'); pin.add_argument('enabled', choices=('true', 'false'))
+    maintenance_request = maintenance_sub.add_parser('request'); maintenance_request.add_argument('identifier')
+    maintenance_policy = maintenance_sub.add_parser('policy'); maintenance_policy.add_argument('request')
     config = commands.add_parser('config')
     config.add_argument('domain', choices=('region',))
     config.add_argument('field', choices=('timezone', 'locale'))
     config.add_argument('value')
     config.add_argument('previous', help='JSON value from the current region snapshot')
-    for name in ('agent', 'backup', 'report'):
+    for name in ('agent', 'assistant', 'backup', 'report'):
         command = commands.add_parser(name); command.add_argument('arguments', nargs=argparse.REMAINDER)
     plugin = commands.add_parser('plugin'); plugin.add_argument('arguments', nargs=argparse.REMAINDER)
     shell = commands.add_parser('shell'); shell.add_argument('arguments', nargs=argparse.REMAINDER)
@@ -38,18 +98,49 @@ def main():
     args = parser.parse_args()
     if args.command == 'version':
         print(read('/etc/nerdos/release.json')['version']); return
+    if args.command == 'software':
+        require_installed()
+        from . import software as native
+        if args.software_action == 'list':
+            print(json.dumps(native.inventory())); return
+        if args.software_action == 'search':
+            print(json.dumps(native.search(args.query))); return
+        if args.software_action == 'request':
+            print(json.dumps(request_status(args.identifier))); return
+        os.execvp('pkexec', ['pkexec', '/run/current-system/sw/bin/nerdos-request', 'software', args.request])
+    if args.command == 'maintenance':
+        require_installed()
+        if args.maintenance_action == 'request':
+            print(json.dumps(request_status(args.identifier))); return
+        if args.maintenance_action == 'status':
+            from .maintenance import public_status
+            print(json.dumps(public_status())); return
+        extra = ([args.review, args.token] if args.maintenance_action == 'clean' else
+                 [args.deployment, args.enabled] if args.maintenance_action == 'pin' else
+                 [args.request] if args.maintenance_action == 'policy' else [])
+        action = 'maintenance-policy' if args.maintenance_action == 'policy' else 'maintenance-' + args.maintenance_action
+        os.execvp('pkexec', ['pkexec', '/run/current-system/sw/bin/nerdos-request', action, *extra])
     if args.command == 'config':
         from .common import parse
         payload = {'field': args.field, 'value': args.value, 'previous': parse(args.previous)}
         os.execvp('pkexec', ['pkexec', '/run/current-system/sw/bin/nerdos-request', 'region', json.dumps(payload)])
-    if args.command in ('agent', 'backup', 'report'):
+    if args.command in ('agent', 'assistant', 'backup', 'report'):
         os.execvp('nerdos-' + args.command, ['nerdos-' + args.command, *args.arguments])
     if args.command == 'install':
-        os.execvp('nerdos-install', ['nerdos-install'])
+        os.execvp('nerdos-install', ['nerdos-install', *(['--terminal'] if args.terminal else [])])
     if args.command in ('plugin', 'shell'):
         os.execvp('nerdos-runtime', ['nerdos-runtime', args.command, *args.arguments])
     if args.command == 'theme':
         os.execvp('nerdos-theme', ['nerdos-theme', *args.arguments])
+    if LIVE_MARKER.exists():
+        if args.action == 'check':
+            print(json.dumps({'available': False, 'reason': LIVE_UPDATE_REASON,
+                              'upstream': {'state': 'unavailable'}, 'nerdos': {'state': 'unavailable'}}))
+            return
+        if args.action == 'status':
+            print(json.dumps({'available': False, 'state': 'unavailable', 'phase': LIVE_UPDATE_REASON}))
+            return
+        raise Failure(LIVE_UPDATE_REASON)
     if args.action == 'status':
         status = read('/var/lib/nerdos/status.json', {'state': 'idle'})
         status['phaseElapsedSeconds'] = max(0, int(__import__('time').time()) - status.get('updatedAt', int(__import__('time').time())))
@@ -80,11 +171,28 @@ def request():
     """Small authenticated request boundary; no arbitrary paths or commands."""
     if os.geteuid() != 0:
         raise Failure('Administrator authentication is required')
+    require_installed()
     args = sys.argv[1:]
     if not args:
         raise Failure('Missing lifecycle action')
     state = Path('/var/lib/nerdos')
     action, *values = args
+    if action in ('software', 'maintenance-policy') and len(values) == 1 and len(values[0]) <= 65536:
+        from .common import parse
+        payload = parse(values[0])
+        if not isinstance(payload, dict):
+            raise Failure('Invalid personal declaration request')
+        print(json.dumps(enqueue(state, action, payload))); return
+    if action.startswith('maintenance-'):
+        import re
+        valid = ((action in ('maintenance-preview', 'maintenance-resume') and not values)
+                 or (action == 'maintenance-clean' and len(values) == 2
+                     and re.fullmatch('[0-9a-f]{32}', values[0]) and re.fullmatch('[0-9a-f]{64}', values[1]))
+                 or (action == 'maintenance-pin' and len(values) == 2
+                     and re.fullmatch('[0-9a-f]{32}', values[0]) and values[1] in ('true', 'false')))
+        if not valid:
+            raise Failure('Invalid storage request')
+        print(json.dumps(enqueue(state, action, {'action':action, 'values':values}))); return
     if action == 'region' and len(values) == 1 and len(values[0]) < 4096:
         from .common import parse
         payload = parse(values[0])
@@ -125,7 +233,8 @@ def request():
         records = []
         for tx in sorted((state / 'transactions').glob('*')):
             if (tx / 'deployment.json').exists():
-                records.append(read(tx / 'deployment.json') | {'good': (tx / 'good.json').exists(), 'failed': read(tx / 'failed.json')})
+                records.append(read(tx / 'deployment.json') | {'good': (tx / 'good.json').exists(), 'failed': read(tx / 'failed.json'),
+                                                               'retired': (tx / 'retired.json').exists()})
         print(json.dumps(records)); return
     import re
     if action == 'stage' and len(values) == 1 and values[0] in ('upstream', 'nerdos', 'both', 'local'):
@@ -147,9 +256,47 @@ def request():
 def admin():
     if os.geteuid() != 0:
         raise Failure('Lifecycle worker requires root')
+    require_installed()
     engine = Engine()
     action, *values = sys.argv[1:]
-    if action == 'stage' and len(values) == 1:
+    if action in ('software', 'maintenance-policy', 'maintenance') and len(values) == 1:
+        import re
+        if not re.fullmatch('[a-f0-9]{32}', values[0]):
+            raise Failure('Invalid request identifier')
+        path = engine.state / 'requests' / (values[0] + '.json')
+        payload = read(path)
+        request_status = engine.state / 'request-status' / (values[0] + '.json')
+        atomic(request_status, read(request_status, {}) | {'state':'running', 'unit':f'nerdos-{action}@{values[0]}.service'}, 0o644)
+        try:
+            if action == 'software':
+                engine.stage('local', software=payload, request_id=values[0])
+            elif action == 'maintenance-policy':
+                engine.stage('local', maintenance=payload, request_id=values[0])
+            else:
+                from .maintenance import Maintenance
+                service = Maintenance(engine, request_id=values[0])
+                operation, arguments = payload['action'], payload['values']
+                service.publish(state='checking', error='')
+                try:
+                    if operation == 'maintenance-preview': service.preview()
+                    elif operation == 'maintenance-clean': service.clean(*arguments)
+                    elif operation == 'maintenance-pin': service.pin(arguments[0], arguments[1] == 'true')
+                    elif operation == 'maintenance-resume':
+                        with locked(engine.state / 'operation.lock'): service.resume()
+                    else: raise Failure('Invalid storage worker request')
+                except BaseException as error:
+                    service.publish(state='failed', error=str(error) if isinstance(error, Failure) else 'Storage cleanup failed. Inspect the private maintenance log.', reviewToken=None)
+                    raise
+            atomic(request_status, {'state':'done'}, 0o644)
+        except BaseException as error:
+            atomic(request_status, {'state':'failed', 'error':str(error) if isinstance(error, Failure) else 'The request failed. Inspect its private system service log.'}, 0o644)
+            raise
+        finally:
+            path.unlink(missing_ok=True)
+    elif action == 'maintenance-auto' and not values:
+        from .maintenance import Maintenance
+        Maintenance(engine).clean(automatic=True)
+    elif action == 'stage' and len(values) == 1:
         engine.stage(values[0])
     elif action == 'region' and not values:
         engine.stage('local', region=read(engine.state / 'region-request.json'))

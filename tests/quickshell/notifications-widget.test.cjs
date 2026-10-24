@@ -16,7 +16,10 @@ test("notification history is an always-eligible reorderable widget", () => {
     const defaults = settings.defaultMods();
     const rightIds = defaults.right.map(entry => entry.id);
 
-    assert.equal(rightIds[rightIds.indexOf("tray") + 1], "notifications");
+    // The assistant's button sits between the tray and the notification
+    // history, ahead of the status widgets (schema 30).
+    assert.equal(rightIds[rightIds.indexOf("tray") + 1], "assistant");
+    assert.equal(rightIds[rightIds.indexOf("assistant") + 1], "notifications");
     assert.equal(rightIds[rightIds.indexOf("notifications") + 1], "vol");
     assert.equal(defaults.right.find(entry => entry.id === "notifications").on, true);
     assert.equal(settings.moduleGroup("notifications", settings.defaultModOpts()), "status");

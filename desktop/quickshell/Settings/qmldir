@@ -2,6 +2,7 @@
 # the engine's implicit directory scan proved unreliable for this directory.
 # Every Settings/*.qml type must be listed (settings.test.cjs enforces it).
 AppearancePage AppearancePage.qml
+AssistantPage AssistantPage.qml
 BarLayoutGroups BarLayoutGroups.qml
 BarBackgroundGroup BarBackgroundGroup.qml
 DrawerPage DrawerPage.qml
@@ -78,3 +79,6 @@ RowCluster RowCluster.qml
 PluginRow PluginRow.qml
 InputDraftState InputDraftState.qml
 singleton InputDrafts InputDrafts.qml
+ApplicationsPage ApplicationsPage.qml
+StoragePage StoragePage.qml
+DeploymentReview DeploymentReview.qml

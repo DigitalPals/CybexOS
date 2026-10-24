@@ -1,0 +1,918 @@
+#!/usr/bin/env python3
+"""Privileged owner of the installer screen's state on the installation ISO.
+
+The kiosk on tty1 (nerdos-installer) is an unprivileged, stateless renderer.
+It connects to this daemon's Unix socket, receives bounded JSON state
+snapshots and sends requests. This daemon keeps the draft plan, Wi-Fi,
+time zone detection, keyboard layout and diagnostics, and drives the one
+disk-writing worker, `nerdos-install --json-ui`, over its unchanged private
+stdin/stdout protocol. A screen restart (keyboard change, crash, Ctrl+Alt+
+Backspace) resumes on the same step; the installation itself keeps running.
+
+Passwords are held in memory only between review and the final click, are
+sent to the worker only with the reviewed token, and never appear in a
+snapshot, log line or argument.
+"""
+import argparse
+import asyncio
+import contextlib
+import datetime
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+import urllib.request
+
+from nerdos.common import Failure
+from nerdos.credentials import validate_password
+
+SCHEMA = 'nerdos.installer-state.v1'
+ETC = Path(os.environ.get('NERDOS_INSTALLER_ETC', '/etc/nerdos'))
+RUNTIME = Path(os.environ.get('NERDOS_INSTALLER_RUNTIME', '/run/nerdos-installer'))
+SOCKET = RUNTIME / 'control.sock'
+KEYBOARD_ENV = RUNTIME / 'keyboard.env'
+INSTALL_LOG = Path('/run/nerdos-installer.log')
+MAX_LINE = 1024 * 1024
+NAME = re.compile(r'[a-z][a-z0-9-]{0,30}')
+STAGES = 6
+GEO_URL = 'https://ipapi.co/json/'
+
+# Desktop (XKB) layout, its display name, and the console keymap used for
+# disk unlock. The console names follow the previous installer exactly.
+LAYOUTS = [
+    ('us', 'English (US)', 'us'), ('gb', 'English (UK)', 'uk'), ('nl', 'Dutch', 'nl'),
+    ('de', 'German', 'de-latin1'), ('fr', 'French', 'fr-latin9'), ('es', 'Spanish', 'es'),
+    ('it', 'Italian', 'it'), ('pt', 'Portuguese', 'pt-latin1'), ('se', 'Swedish', 'sv-latin1'),
+    ('no', 'Norwegian', 'no-latin1'), ('dk', 'Danish', 'dk-latin1'), ('fi', 'Finnish', 'fi'),
+    ('pl', 'Polish', 'pl'), ('cz', 'Czech', 'cz'),
+]
+LANGUAGES = [
+    ('en_US.UTF-8', 'English (US)'), ('en_GB.UTF-8', 'English (UK)'), ('nl_NL.UTF-8', 'Nederlands'),
+    ('de_DE.UTF-8', 'Deutsch'), ('fr_FR.UTF-8', 'Français'), ('es_ES.UTF-8', 'Español'),
+    ('it_IT.UTF-8', 'Italiano'), ('pt_PT.UTF-8', 'Português'), ('sv_SE.UTF-8', 'Svenska'),
+    ('nb_NO.UTF-8', 'Norsk'), ('da_DK.UTF-8', 'Dansk'), ('fi_FI.UTF-8', 'Suomi'),
+    ('pl_PL.UTF-8', 'Polski'), ('cs_CZ.UTF-8', 'Čeština'),
+]
+APPLICATIONS = [
+    ('developer', 'Development tools', 'Editors, compilers and dev shells'),
+    ('proprietary', 'Proprietary applications', 'Unfree licenses · downloaded during install'),
+    ('steam', 'Steam and gaming', 'Unfree · downloaded during install'),
+    ('docker', 'Docker', 'Container engine'),
+    ('podman', 'Podman', 'Rootless containers'),
+    ('tailscale', 'Tailscale', 'Mesh VPN'),
+    ('connectedWidgets', 'Connected desktop widgets', 'Widgets for online services'),
+    ('assistant', 'NerdOS Assistant', 'Super + I'),
+    ('localNetworkServices', 'Local network discovery', 'Avahi, .local names and LAN ports'),
+]
+SCREENS = ('welcome', 'disk', 'account')
+DRAFT_STRINGS = {'screen': 64, 'disk': 64, 'fullName': 64, 'username': 31, 'hostname': 31,
+                 'timezone': 64, 'tzSource': 16, 'locale': 32, 'layout': 16}
+DRAFT_BOOLS = ('encrypted', 'userEdited', 'hostEdited', 'nvidiaOpen')
+
+
+def read_json(path, default=None):
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return default
+
+
+def zoneinfo_root():
+    for candidate in (os.environ.get('TZDIR'), '/etc/zoneinfo', '/usr/share/zoneinfo'):
+        if candidate and (Path(candidate) / 'zone.tab').is_file():
+            return Path(candidate)
+    return None
+
+
+def parse_coordinate(text):
+    split = max(text.rfind('+'), text.rfind('-'))
+    def convert(value, degree_digits):
+        sign = -1 if value[0] == '-' else 1
+        digits = value[1:]
+        degrees, minutes = int(digits[:degree_digits]), int(digits[degree_digits:degree_digits + 2])
+        seconds = int(digits[degree_digits + 2:] or 0)
+        return round(sign * (degrees + minutes / 60 + seconds / 3600), 2)
+    return convert(text[:split], 2), convert(text[split:], 3)
+
+
+def timezone_table(root=None):
+    """User-facing zones from the medium's own tzdata.
+
+    zone.tab keeps one familiar entry per country, so Europe/Amsterdam stays
+    listed even where tzdata merges its data with Brussels. Backward links
+    become search aliases (Kiev -> Kyiv). The installed system uses the same
+    tzdata, because both are built from the one tested Nixpkgs revision.
+    """
+    root = root or zoneinfo_root()
+    if root is None:
+        return {'zones': [['UTC', '', 0, 0, '']], 'countries': {}, 'aliases': {}, 'tzdata': 'unavailable'}
+    countries = {}
+    for line in (root / 'iso3166.tab').read_text(encoding='utf-8').splitlines():
+        if line and not line.startswith('#') and '\t' in line:
+            code, name = line.split('\t', 1)
+            countries[code] = name
+    zones = []
+    for line in (root / 'zone.tab').read_text(encoding='utf-8').splitlines():
+        if not line or line.startswith('#'):
+            continue
+        parts = line.split('\t')
+        if len(parts) < 3 or not (root / parts[2]).is_file():
+            continue
+        latitude, longitude = parse_coordinate(parts[1])
+        zones.append([parts[2], parts[0], latitude, longitude, parts[3] if len(parts) > 3 else ''])
+    known = {zone[0] for zone in zones}
+    aliases, version = {}, 'unknown'
+    data = root / 'tzdata.zi'
+    if data.is_file():
+        for line in data.read_text(encoding='utf-8').splitlines():
+            if line.startswith('# version '):
+                version = line.removeprefix('# version ').strip()
+            elif line.startswith('L '):
+                fields = line.split()
+                if len(fields) == 3 and fields[1] in known and '/' in fields[2] \
+                        and not fields[2].startswith(('Etc/', 'SystemV/')):
+                    aliases[fields[2]] = fields[1]
+    return {'zones': zones, 'countries': countries, 'aliases': aliases, 'tzdata': version}
+
+
+def canonical_zone(zone, table):
+    known = {entry[0] for entry in table['zones']}
+    if zone in known or zone == 'UTC' or re.fullmatch(r'Etc/GMT[+-](?:[1-9]|1[0-4])', zone or ''):
+        return zone
+    return table['aliases'].get(zone)
+
+
+def hostname_for(username):
+    return (username[:24] + '-nerdos') if username else 'nerdos'
+
+
+def username_problem(name, reserved):
+    if not NAME.fullmatch(name or ''):
+        return 'Choose a username: lowercase letters, digits and hyphens, starting with a letter.'
+    if name in reserved:
+        return f'“{name}” is reserved by the system. Choose another username.'
+    return ''
+
+
+def hostname_problem(name, reserved):
+    if not NAME.fullmatch(name or ''):
+        return 'Use a computer name of lowercase letters, digits and hyphens, starting with a letter.'
+    if name in ('root', 'nixos'):
+        return 'Choose a computer name other than root or nixos.'
+    return ''
+
+
+FULL_NAME_FORBIDDEN = set(':,\\"$`')
+
+
+def full_name_problem(name):
+    # Mirrors the worker: the name becomes a GECOS field and a Nix string.
+    if len(name) > 64 or any(ord(c) < 32 or ord(c) == 127 or c in FULL_NAME_FORBIDDEN for c in name):
+        return 'Your name may not contain : , \\ " $ ` or control characters (64 characters at most).'
+    return ''
+
+
+def firmware_facts():
+    efi = Path('/sys/firmware/efi').exists()
+    secure = False
+    with contextlib.suppress(OSError):
+        secure = any(p.read_bytes()[-1:] == b'\x01' for p in Path('/sys/firmware/efi/efivars').glob('SecureBoot-*'))
+    return {'uefi': efi, 'secureBoot': secure}
+
+
+def memory_bytes():
+    with contextlib.suppress(OSError, ValueError, IndexError):
+        for line in Path('/proc/meminfo').read_text().splitlines():
+            if line.startswith('MemTotal:'):
+                return int(line.split()[1]) * 1024
+    return 0
+
+
+def graphics_names():
+    try:
+        output = subprocess.run(['lspci', '-mm'], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    names = []
+    for line in output.splitlines():
+        fields = re.findall(r'"([^"]*)"', line)
+        if len(fields) >= 3 and fields[0] in ('VGA compatible controller', '3D controller', 'Display controller'):
+            vendor = re.sub(r'\b(Corporation|Corp\.|Inc\.|\[AMD/ATI\]|Advanced Micro Devices, Inc\.)', '', fields[1]).strip(' ,')
+            device = fields[2].split('[')[-1].rstrip(']') if '[' in fields[2] else fields[2]
+            names.append((vendor + ' ' + device).strip()[:80])
+    return names
+
+
+class Daemon:
+    def __init__(self, worker_args=(), network_helper=None, python=sys.executable):
+        self.worker_args = list(worker_args)
+        self.network_helper = network_helper or os.environ.get('NERDOS_NETWORK_HELPER', '')
+        self.python = python
+        self.clients = set()
+        # Connections whose hello identified the installer screen. Snapshots
+        # report the count so automation can wait until the screen is attached.
+        self.screens = set()
+        self.worker = None
+        self.worker_task = None
+        self.password = ''
+        self.token = ''
+        self.reviewed = None
+        self.review_pending = False
+        self.started_at = None
+        self.static = self.static_data()
+        self.reserved = set(self.static['reserved'])
+        region = read_json(ETC / 'installer-region.json', {}) or {}
+        layout = region.get('desktopKeyboard') if region.get('desktopKeyboard') in {l[0] for l in LAYOUTS} else 'us'
+        locale = region.get('locale') if region.get('locale') in {l[0] for l in LANGUAGES} else 'en_US.UTF-8'
+        saved = read_json(RUNTIME / 'draft.json', {}) or {}
+        self.draft = {'screen': 'welcome', 'disk': '', 'encrypted': True, 'fullName': '', 'username': '',
+                      'userEdited': False, 'hostname': '', 'hostEdited': False,
+                      'timezone': canonical_zone(region.get('timezone', 'UTC'), self.static) or 'UTC',
+                      'tzSource': 'default', 'locale': locale, 'layout': layout,
+                      'apps': dict(self.static['defaults']), 'nvidiaOpen': True}
+        # A daemon restart keeps the non-secret draft from this boot only.
+        for key, value in (saved.get('draft') or {}).items():
+            self.apply_draft_value(key, value)
+        self.state = {'phase': 'loading', 'message': 'Checking this installation medium…', 'error': '',
+                      'stage': 0, 'stages': STAGES, 'elapsed': 0, 'release': '', 'development': False,
+                      'disks': [], 'hardware': {}, 'network': {'busy': False, 'error': '', 'message': ''},
+                      'region': {'busy': False, 'message': '', 'detected': ''},
+                      'firmware': firmware_facts(), 'memory': memory_bytes(), 'graphics': graphics_names(),
+                      'review': None, 'result': None, 'diskTouched': False}
+        self.region_attempted = False
+        self.region_task = None
+        self.network_task = None
+        self.pending_push = None
+
+    # ── static data ──────────────────────────────────────────────────────────
+    def static_data(self):
+        defaults = read_json(ETC / 'installer-defaults.json', {}) or {}
+        layout = read_json(ETC / 'installer-layout.json', {}) or {}
+        reserved = read_json(ETC / 'installer-reserved-names.json', []) or []
+        release = read_json(ETC / 'release.json', {}) or {}
+        table = timezone_table()
+        return {'type': 'static', 'schema': SCHEMA, **table,
+                'layouts': [list(entry) for entry in LAYOUTS], 'languages': [list(entry) for entry in LANGUAGES],
+                'applications': [list(entry) for entry in APPLICATIONS],
+                'defaults': {key: bool(defaults.get(key, True)) for key, _, _ in APPLICATIONS},
+                'reserved': sorted({'root', 'nixos', *[name for name in reserved if isinstance(name, str)]}),
+                'version': str(release.get('version', '')), 'layout': layout}
+
+    # ── snapshots ────────────────────────────────────────────────────────────
+    def snapshot(self):
+        state = dict(self.state)
+        if self.started_at is not None and state['phase'] == 'installing':
+            state['elapsed'] = int(time.monotonic() - self.started_at)
+        return {'type': 'state', 'schema': SCHEMA, **state, 'draft': self.draft,
+                'reviewPending': self.review_pending, 'screens': len(self.screens)}
+
+    def update(self, **values):
+        self.state.update(values)
+        self.push()
+
+    def push(self):
+        # Coalesce bursts (worker events, typing) into one snapshot per tick.
+        if self.pending_push is None:
+            self.pending_push = asyncio.get_running_loop().call_soon(self.flush)
+
+    def flush(self):
+        self.pending_push = None
+        self.send_all(self.snapshot())
+        with contextlib.suppress(OSError):
+            RUNTIME.mkdir(parents=True, exist_ok=True)
+            temporary = RUNTIME / 'draft.json.tmp'
+            temporary.write_text(json.dumps({'draft': self.draft}))
+            os.replace(temporary, RUNTIME / 'draft.json')
+
+    def send_all(self, message):
+        for client in list(self.clients):
+            self.send(client, message)
+
+    def send(self, writer, message):
+        try:
+            writer.write((json.dumps(message, ensure_ascii=False, separators=(',', ':')) + '\n').encode())
+        except (OSError, RuntimeError):
+            self.clients.discard(writer)
+            self.screens.discard(writer)
+
+    # ── worker ───────────────────────────────────────────────────────────────
+    async def start_worker(self):
+        if self.worker is not None and self.worker.returncode is None:
+            return
+        self.password, self.token, self.reviewed, self.review_pending = '', '', None, False
+        self.started_at = None
+        self.update(phase='loading', message='Checking this installation medium…', error='', stage=0,
+                    review=None, result=None, diskTouched=False)
+        self.worker = await asyncio.create_subprocess_exec(
+            'nerdos-install', '--json-ui', *self.worker_args,
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL, limit=MAX_LINE)
+        self.worker_task = asyncio.create_task(self.read_worker(self.worker))
+
+    async def read_worker(self, process):
+        while True:
+            try:
+                line = await process.stdout.readline()
+            except (ValueError, asyncio.LimitOverrunError):
+                continue
+            if not line:
+                break
+            try:
+                value = json.loads(line)
+            except (ValueError, UnicodeError):
+                continue  # Human completion text is not the protocol.
+            if isinstance(value, dict) and isinstance(value.get('event'), str):
+                self.handle_event(value)
+        await process.wait()
+        if process is self.worker:
+            self.worker_exited()
+
+    def worker_send(self, request):
+        if self.worker is None or self.worker.returncode is not None or self.worker.stdin is None:
+            raise Failure('The installation worker is not running. Start over to try again.')
+        self.worker.stdin.write((json.dumps(request) + '\n').encode())
+
+    def worker_exited(self):
+        self.password = ''
+        if self.state['phase'] not in ('complete', 'error', 'cancelled'):
+            message = ('The installation worker stopped. Your disk may have been changed. See the installation details.'
+                       if self.state['diskTouched'] else 'The installation worker stopped before changing any disk.')
+            self.update(phase='error', error=message)
+
+    def handle_event(self, value):
+        kind = value['event']
+        if kind == 'network':
+            self.state['network'] = {**self.state['network'], 'message': str(value.get('message', ''))[:200]}
+            self.push()
+        elif kind == 'development-required':
+            self.update(phase='development', message=str(value.get('message', '')), error='')
+        elif kind == 'preflight-error':
+            self.update(phase='preflight', error=str(value.get('message', ''))[:600])
+        elif kind == 'ready':
+            disks = [self.disk_view(disk) for disk in value.get('disks', []) if isinstance(disk, dict)]
+            self.state.update(disks=disks, hardware=value.get('hardware') or {}, release=str(value.get('release', ''))[:300],
+                              development=bool(value.get('development')))
+            available = [disk['path'] for disk in disks if disk['available']]
+            if self.draft['disk'] not in available:
+                self.draft['disk'] = available[0] if len(available) == 1 else ''
+            if self.state['phase'] in ('loading', 'preflight', 'development'):
+                self.state['phase'] = 'setup'
+            self.update(error='')
+            if not self.region_attempted:
+                self.start_region()
+        elif kind == 'validation-error':
+            self.review_pending = False
+            self.token, self.reviewed = '', None
+            self.update(phase='setup', review=None, error=str(value.get('message', ''))[:600])
+        elif kind == 'review':
+            self.review_pending = False
+            self.reviewed, self.token = value.get('plan'), str(value.get('token', ''))
+            self.update(phase='review', review=self.public_plan(self.reviewed), error='')
+        elif kind == 'started':
+            self.started_at = time.monotonic()
+            self.update(phase='installing', message='Preparing installation…', error='', stage=0, diskTouched=True)
+        elif kind in ('stage', 'activity'):
+            stage = value.get('stage', self.state['stage'])
+            self.update(message=str(value.get('message', ''))[:200], stage=stage if isinstance(stage, int) else self.state['stage'])
+        elif kind == 'complete':
+            self.password = ''
+            result = {key: value.get(key) for key in ('username', 'hostname', 'encrypted')}
+            self.update(phase='complete', result=result, error='', stage=STAGES)
+        elif kind == 'error':
+            self.password = ''
+            message = str(value.get('message', ''))[:600]
+            if 'Another installer is running' in message:
+                # This service restarted while an installation it started
+                # keeps running (KillMode=process); its log shows progress.
+                message = ('An installation that started before this screen restarted is still running. '
+                           'Follow it under Installation details, and restart when it has finished.')
+            self.update(phase='error', error=message)
+        elif kind == 'cancelled':
+            self.password = ''
+            self.update(phase='cancelled', error='')
+
+    @staticmethod
+    def disk_view(disk):
+        return {'path': str(disk.get('path', '')), 'serial': str(disk.get('serial') or ''),
+                'model': str(disk.get('model') or '').strip()[:80], 'size': int(disk.get('size') or 0),
+                'available': bool(disk.get('available')), 'reason': str(disk.get('reason') or '')[:200],
+                'filesystems': [str(f) for f in disk.get('filesystems') or []][:8],
+                'bus': 'NVMe' if '/nvme' in str(disk.get('path', '')) else 'Virtual' if '/vd' in str(disk.get('path', '')) else 'Disk'}
+
+    @staticmethod
+    def public_plan(plan):
+        if not isinstance(plan, dict):
+            return None
+        return {key: plan.get(key) for key in ('disk', 'serial', 'hostname', 'username', 'fullName', 'timezone',
+                                               'locale', 'keyboard', 'desktopKeyboard', 'encrypted', 'nvidiaOpen', 'features')}
+
+    # ── plan ─────────────────────────────────────────────────────────────────
+    def plan(self):
+        draft = self.draft
+        disk = next((d for d in self.state['disks'] if d['path'] == draft['disk']), None)
+        if disk is None or not disk['available']:
+            raise Failure('Choose an available installation disk.')
+        problem = username_problem(draft['username'], self.reserved)
+        if problem:
+            raise Failure(problem)
+        hostname = draft['hostname'] if draft['hostEdited'] and draft['hostname'] else hostname_for(draft['username'])
+        problem = hostname_problem(hostname, self.reserved) or full_name_problem(draft['fullName'].strip())
+        if problem:
+            raise Failure(problem)
+        zone = canonical_zone(draft['timezone'], self.static)
+        if zone is None:
+            raise Failure('Choose a time zone from the list.')
+        console = next(entry[2] for entry in LAYOUTS if entry[0] == draft['layout'])
+        plan = {'disk': disk['path'], 'serial': disk['serial'], 'hostname': hostname, 'username': draft['username'],
+                'timezone': zone, 'locale': draft['locale'], 'keyboard': console, 'desktopKeyboard': draft['layout'],
+                'encrypted': bool(draft['encrypted']), 'autoLogin': False, 'secureBoot': False,
+                'nvidiaOpen': bool(draft['nvidiaOpen']),
+                'features': {key: bool(draft['apps'].get(key, True)) for key, _, _ in APPLICATIONS}}
+        if draft['fullName'].strip():
+            plan['fullName'] = draft['fullName'].strip()
+        return plan
+
+    def request_review(self):
+        plan = self.plan()
+        self.review_pending = True
+        self.token, self.reviewed = '', None
+        self.worker_send({'action': 'review', 'plan': plan})
+        self.push()
+
+    # ── draft ────────────────────────────────────────────────────────────────
+    def apply_draft_value(self, key, value):
+        if key in DRAFT_STRINGS and isinstance(value, str) and len(value) <= DRAFT_STRINGS[key]:
+            if key == 'screen' and value not in SCREENS:
+                return False
+            if key == 'layout' and value not in {entry[0] for entry in LAYOUTS}:
+                return False
+            if key == 'locale' and value not in {entry[0] for entry in LANGUAGES}:
+                return False
+            if key == 'timezone':
+                value = canonical_zone(value, self.static)
+                if value is None:
+                    return False
+            if key in ('username', 'hostname') and value and not re.fullmatch(r'[a-z][a-z0-9-]*', value):
+                return False
+            if key == 'fullName' and any(ord(c) < 32 for c in value):
+                return False
+            self.draft[key] = value
+            return True
+        if key in DRAFT_BOOLS and type(value) is bool:
+            self.draft[key] = value
+            return True
+        if key == 'apps' and isinstance(value, dict):
+            for name, enabled in value.items():
+                if name in self.draft['apps'] and type(enabled) is bool:
+                    self.draft['apps'][name] = enabled
+            return True
+        return False
+
+    def change_draft(self, values):
+        changed = [key for key, value in values.items() if self.apply_draft_value(key, value)]
+        if 'timezone' in changed and values.get('tzSource') is None:
+            self.draft['tzSource'] = 'manual'
+        plan_keys = set(changed) - {'screen', 'userEdited', 'hostEdited', 'tzSource'}
+        if self.state['phase'] == 'review' and plan_keys:
+            # Customizing on the review page re-reviews with the held password,
+            # so the final click is always bound to exactly what is shown.
+            try:
+                self.request_review()
+            except Failure as error:
+                self.back()
+                self.update(error=str(error))
+                return
+        if self.state['phase'] == 'setup' and plan_keys:
+            self.state['error'] = ''
+        self.push()
+
+    def back(self):
+        self.password, self.token, self.reviewed, self.review_pending = '', '', None, False
+        self.draft['screen'] = 'account'
+        self.update(phase='setup', review=None, error='')
+
+    # ── requests ─────────────────────────────────────────────────────────────
+    async def handle_request(self, writer, request):
+        action = request.get('action')
+        phase = self.state['phase']
+        if action == 'hello':
+            if request.get('client') == 'screen':
+                self.screens.add(writer)
+            self.send(writer, self.static)
+            self.send(writer, self.snapshot())
+        elif action == 'draft' and isinstance(request.get('values'), dict):
+            if phase in ('loading', 'development', 'preflight', 'setup', 'review', 'cancelled'):
+                self.change_draft(request['values'])
+        elif action == 'development' and phase == 'development':
+            self.update(phase='loading', message='Preparing the bundled test build…', error='')
+            self.worker_send({'action': 'development', 'consent': True})
+        elif action == 'retry' and phase == 'preflight':
+            self.update(phase='loading', message='Checking this installation medium…', error='')
+            self.worker_send({'action': 'retry'})
+        elif action == 'rescan' and phase == 'setup':
+            self.worker_send({'action': 'rescan'})
+        elif action == 'review' and phase == 'setup':
+            password, confirm = request.get('password'), request.get('confirm')
+            try:
+                if not isinstance(password, str) or not isinstance(confirm, str):
+                    raise Failure('Enter your password twice.')
+                validate_password(password)
+                if password != confirm:
+                    raise Failure('The two passwords do not match.')
+                self.password = password
+                self.request_review()
+            except Failure as error:
+                self.password = ''
+                self.update(error=str(error))
+        elif action == 'back' and phase == 'review':
+            self.back()
+        elif action == 'install' and phase == 'review' and self.token and not self.review_pending and self.password:
+            secrets = {'password': self.password}
+            self.worker_send({'action': 'install', 'token': self.token, 'confirmed': True, 'secrets': secrets})
+            self.password, self.token = '', ''
+            secrets.clear()
+            self.update(phase='installing', message='Checking the selected disk…', error='', stage=0)
+        elif action == 'start-over' and phase in ('error', 'cancelled'):
+            if self.worker is not None and self.worker.returncode is None:
+                with contextlib.suppress(Failure):
+                    self.worker_send({'action': 'cancel'})
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self.worker.wait(), 5)
+            self.draft['screen'] = 'welcome'
+            await self.start_worker()
+        elif action == 'keyboard' and request.get('layout') in {entry[0] for entry in LAYOUTS}:
+            self.set_keyboard(request['layout'])
+            self.send_all({'type': 'restart', 'reason': 'keyboard'})
+        elif action == 'network-refresh':
+            self.network('snapshot', None)
+        elif action == 'network-connect' and isinstance(request.get('network'), dict):
+            self.network('wifi', request['network'])
+        elif action == 'detect-region':
+            self.region_attempted = False
+            self.start_region(manual=True)
+        elif action == 'details':
+            self.send(writer, await self.details())
+        elif action == 'usb-list':
+            self.send(writer, {'type': 'usb', 'targets': usb_targets(), 'error': ''})
+        elif action == 'usb-save' and isinstance(request.get('device'), str):
+            self.send(writer, await asyncio.to_thread(save_log, request['device']))
+        elif action == 'power' and request.get('kind') in ('reboot', 'poweroff', 'firmware'):
+            if phase != 'installing':
+                command = {'reboot': ['systemctl', 'reboot'], 'poweroff': ['systemctl', 'poweroff'],
+                           'firmware': ['systemctl', 'reboot', '--firmware-setup']}[request['kind']]
+                await run_quiet(command)
+        elif action == 'shell':
+            await run_quiet(['chvt', '2'])
+        elif action == 'text-installer' and phase != 'installing':
+            # The switch unit conflicts with this service; stopping it cancels
+            # the idle worker (see shutdown), which releases the installer lock.
+            await run_quiet(['systemctl', '--no-block', 'start', 'nerdos-installer-text-switch.service'])
+
+    # ── keyboard ─────────────────────────────────────────────────────────────
+    def set_keyboard(self, layout):
+        self.draft['layout'] = layout
+        # The screen re-reads this at its next start; the password it held is
+        # gone, so it is retyped with the layout that will unlock the disk.
+        RUNTIME.mkdir(parents=True, exist_ok=True)
+        temporary = KEYBOARD_ENV.with_suffix('.tmp')
+        temporary.write_text(f'XKB_DEFAULT_LAYOUT={layout}\n')
+        temporary.chmod(0o644)
+        os.replace(temporary, KEYBOARD_ENV)
+        console = next(entry[2] for entry in LAYOUTS if entry[0] == layout)
+        asyncio.get_running_loop().create_task(run_quiet(['loadkeys', console]))
+        if self.state['phase'] == 'review':
+            self.back()
+        self.push()
+
+    # ── network ──────────────────────────────────────────────────────────────
+    def network(self, command, request):
+        if self.network_task is not None and not self.network_task.done():
+            return
+        self.state['network'] = {**self.state['network'], 'busy': True, 'error': ''}
+        self.push()
+        self.network_task = asyncio.create_task(self.run_network(command, request))
+
+    async def run_network(self, command, request):
+        result = {'success': False, 'error': 'Network setup is unavailable on this medium.'}
+        if self.network_helper:
+            payload = None
+            if command == 'wifi':
+                wifi = self.state['network'].get('wifi') or {}
+                payload = {key: request.get(key) for key in ('ssid', 'security', 'password', 'identity', 'hidden', 'uuid', 'saved')}
+                payload.update(action='connect', interface=wifi.get('interface', ''))
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    self.python, '-B', self.network_helper, command, stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL, limit=MAX_LINE)
+                output, _ = await asyncio.wait_for(process.communicate(json.dumps(payload).encode() if payload else b''), 60)
+                result = json.loads(output)
+            except (OSError, ValueError, asyncio.TimeoutError):
+                result = {'success': False, 'error': 'Network setup could not run. Retry, or use nmtui on the recovery shell.'}
+            finally:
+                if payload:
+                    payload.clear()
+        network = {**self.state['network'], 'busy': False}
+        if not isinstance(result, dict) or not result.get('success'):
+            network['error'] = str((result or {}).get('error') or 'Connection failed. Check the password and retry.')[:300]
+            self.state['network'] = network
+            self.push()
+            return
+        if command == 'snapshot':
+            self.state['network'] = {**network, **summarize_network(result), 'error': ''}
+            self.push()
+            if self.state['network'].get('connected'):
+                if not self.region_attempted:
+                    self.start_region()
+                if self.state['phase'] == 'preflight':
+                    with contextlib.suppress(Failure):
+                        self.update(phase='loading', message='Checking this installation medium…', error='')
+                        self.worker_send({'action': 'retry'})
+            return
+        # A completed Wi-Fi connection is reported by the next snapshot.
+        self.state['network'] = network
+        self.network_task = None
+        self.network('snapshot', None)
+
+    async def watch_network(self):
+        # NetworkManager can connect Ethernet at any time; keep the welcome
+        # checks honest with a slow poll (no UI animation depends on it).
+        while True:
+            if self.network_task is None or self.network_task.done():
+                self.network('snapshot', None)
+            await asyncio.sleep(10 if self.state['network'].get('connected') else 4)
+
+    # ── region ───────────────────────────────────────────────────────────────
+    def start_region(self, manual=False):
+        if self.region_task is not None and not self.region_task.done():
+            return
+        if manual and self.draft['tzSource'] == 'manual':
+            self.draft['tzSource'] = 'default'
+        self.region_attempted = True
+        self.state['region'] = {**self.state['region'], 'busy': True, 'message': 'Finding your time zone from your internet connection…'}
+        self.push()
+        self.region_task = asyncio.create_task(self.detect_region(manual))
+
+    async def detect_region(self, manual):
+        zone = None
+        try:
+            zone = await asyncio.to_thread(geoip_zone)
+        except Exception:
+            zone = None
+        zone = canonical_zone(zone, self.static) if zone else None
+        region = {**self.state['region'], 'busy': False}
+        if zone is None:
+            self.region_attempted = False  # A later connection may work.
+            region['message'] = 'Your time zone could not be detected. Choose it from the list.'
+        else:
+            region.update(detected=zone, message=f'Detected {zone} from your internet connection.')
+            if self.draft['tzSource'] != 'manual' and self.state['phase'] not in ('installing', 'complete'):
+                self.draft.update(timezone=zone, tzSource='detected')
+                if self.state['phase'] == 'review':
+                    with contextlib.suppress(Failure):
+                        self.request_review()
+        self.state['region'] = region
+        self.push()
+
+    # ── diagnostics ──────────────────────────────────────────────────────────
+    async def details(self):
+        try:
+            process = await asyncio.create_subprocess_exec(
+                'nerdos-install', '--diagnostics', stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL, limit=MAX_LINE)
+            output, _ = await asyncio.wait_for(process.communicate(), 20)
+            result = json.loads(output)
+            if process.returncode != 0 or not isinstance(result.get('text'), str):
+                raise ValueError('invalid details')
+            return {'type': 'details', 'text': result['text'], 'truncated': bool(result.get('truncated')), 'error': ''}
+        except (OSError, ValueError, AttributeError, asyncio.TimeoutError):
+            return {'type': 'details', 'text': '', 'truncated': False,
+                    'error': 'Installation details could not be read. On the recovery shell, run: less /run/nerdos-installer.log'}
+
+    # ── serving ──────────────────────────────────────────────────────────────
+    async def client(self, reader, writer):
+        self.clients.add(writer)
+        self.send(writer, self.static)
+        self.send(writer, self.snapshot())
+        try:
+            while True:
+                try:
+                    line = await reader.readline()
+                except (ValueError, asyncio.LimitOverrunError, ConnectionError, OSError):
+                    break
+                if not line:
+                    break
+                try:
+                    request = json.loads(line)
+                except (ValueError, UnicodeError):
+                    continue
+                if isinstance(request, dict):
+                    try:
+                        await self.handle_request(writer, request)
+                    except Failure as error:
+                        self.update(error=str(error))
+                    finally:
+                        request.clear()
+                with contextlib.suppress(OSError, RuntimeError, ConnectionError):
+                    await writer.drain()
+        finally:
+            self.clients.discard(writer)
+            self.screens.discard(writer)
+            with contextlib.suppress(OSError, RuntimeError):
+                writer.close()
+
+    async def ticker(self):
+        while True:
+            await asyncio.sleep(5)
+            if self.state['phase'] == 'installing':
+                self.push()
+
+    async def shutdown(self, stop):
+        """Stop serving. An idle worker is cancelled; an installation is not.
+
+        The unit uses KillMode=process, so a running installation outlives a
+        service restart. Before installation starts, cancelling releases the
+        installer lock for the text installer or the next daemon.
+        """
+        worker = self.worker
+        if worker is not None and worker.returncode is None and self.state['phase'] not in ('installing',):
+            with contextlib.suppress(Failure, OSError, RuntimeError):
+                self.worker_send({'action': 'cancel'})
+                worker.stdin.close()
+            try:
+                await asyncio.wait_for(worker.wait(), 10)
+            except asyncio.TimeoutError:
+                with contextlib.suppress(ProcessLookupError):
+                    worker.terminate()
+        stop.set()
+
+    async def serve(self):
+        RUNTIME.mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(FileNotFoundError):
+            SOCKET.unlink()
+        server = await asyncio.start_unix_server(self.client, path=str(SOCKET), limit=MAX_LINE)
+        group = os.environ.get('NERDOS_INSTALLER_GROUP', 'nerdos-installer')
+        with contextlib.suppress(KeyError, OSError):
+            import grp
+            os.chown(SOCKET, 0, grp.getgrnam(group).gr_gid)
+        SOCKET.chmod(0o660)
+        await self.start_worker()
+        tasks = [asyncio.create_task(self.watch_network()), asyncio.create_task(self.ticker())]
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for number in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(number, lambda: asyncio.ensure_future(self.shutdown(stop)))
+        await stop.wait()
+        for task in tasks:
+            task.cancel()
+        # Closing the clients first lets the process exit promptly; the server
+        # would otherwise wait for the screen's open connection.
+        for writer in list(self.clients):
+            with contextlib.suppress(OSError, RuntimeError):
+                writer.close()
+        server.close()
+        with contextlib.suppress(FileNotFoundError):
+            SOCKET.unlink()
+
+
+def summarize_network(result):
+    devices = [d for d in result.get('devices', []) if isinstance(d, dict)]
+    connected = [d for d in devices if d.get('connected') and d.get('type') in ('ethernet', 'wifi')]
+    primary = next((d for d in connected if d.get('type') == 'ethernet'), connected[0] if connected else None)
+    wifi = result.get('wifi') or {}
+    networks = []
+    seen = set()
+    for network in sorted(wifi.get('networks') or [], key=lambda n: -int(n.get('signal') or 0)):
+        ssid = str(network.get('ssid') or '')
+        if not ssid or ssid in seen:
+            continue
+        seen.add(ssid)
+        networks.append({'ssid': ssid[:64], 'signal': int(network.get('signal') or 0),
+                         'security': str(network.get('security') or '')[:40],
+                         'connected': bool(network.get('connected')), 'known': bool(network.get('known')),
+                         'uuid': str(network.get('profileUuid') or '')})
+    return {'connected': primary is not None,
+            'kind': primary.get('type', '') if primary else '',
+            'interface': primary.get('interface', '') if primary else '',
+            'name': (primary.get('ssid') or primary.get('connection') or '') if primary else '',
+            'address': primary.get('ipv4', '') if primary else '',
+            'ethernetCable': any(d.get('type') == 'ethernet' and d.get('stateCode', 0) > 20 for d in devices),
+            'wifi': {'interface': str(wifi.get('interface') or ''), 'networks': networks[:24]}}
+
+
+def geoip_zone():
+    request = urllib.request.Request(GEO_URL, headers={'User-Agent': 'NerdOS-Installer/2'})
+    with urllib.request.urlopen(request, timeout=6) as response:
+        data = json.loads(response.read(65536))
+    zone = data.get('timezone') if isinstance(data, dict) else None
+    return zone if isinstance(zone, str) and len(zone) <= 64 else None
+
+
+async def run_quiet(command):
+    with contextlib.suppress(OSError):
+        process = await asyncio.create_subprocess_exec(*command, stdin=asyncio.subprocess.DEVNULL,
+                                                       stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(process.wait(), 30)
+
+
+# ── saving the log to another USB stick ───────────────────────────────────────
+WRITABLE = ('vfat', 'exfat', 'ext4', 'ext3', 'ext2', 'ntfs', 'ntfs3', 'btrfs', 'xfs')
+
+
+def usb_targets():
+    try:
+        tree = json.loads(subprocess.run(['lsblk', '--json', '--bytes', '-o', 'PATH,TYPE,RM,TRAN,FSTYPE,LABEL,SIZE,MOUNTPOINTS,RO'],
+                                         capture_output=True, text=True, timeout=10).stdout)['blockdevices']
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+        return []
+    targets = []
+    for disk in tree:
+        removable = disk.get('rm') in (True, '1', 1) or disk.get('tran') == 'usb'
+        if not removable:
+            continue
+        nodes = [disk, *disk.get('children', [])]
+        # The installation medium itself is read-only ISO 9660 and never offered.
+        if any(node.get('fstype') == 'iso9660' or node.get('label') == 'NERDOS_INSTALL' for node in nodes):
+            continue
+        for node in nodes:
+            if node.get('fstype') in WRITABLE and not node.get('ro') and not any(node.get('mountpoints') or []):
+                targets.append({'device': node['path'], 'label': str(node.get('label') or node['path'])[:40],
+                                'size': int(node.get('size') or 0)})
+    return targets
+
+
+def save_log(device):
+    if device not in {target['device'] for target in usb_targets()}:
+        return {'type': 'usb', 'targets': usb_targets(), 'error': 'That USB stick is no longer available.', 'saved': ''}
+    mountpoint = RUNTIME / 'usb'
+    mountpoint.mkdir(parents=True, exist_ok=True)
+    name = 'nerdos-install-' + datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d-%H%M%S') + '.log'
+    mounted = False
+    try:
+        subprocess.run(['mount', '-o', 'nosuid,nodev,noexec', device, str(mountpoint)], check=True,
+                       capture_output=True, timeout=30)
+        mounted = True
+        shutil.copyfile(INSTALL_LOG, mountpoint / name)
+        os.sync()
+        return {'type': 'usb', 'targets': [], 'error': '', 'saved': name}
+    except (OSError, subprocess.SubprocessError):
+        return {'type': 'usb', 'targets': usb_targets(), 'error': 'The log could not be written to that USB stick.', 'saved': ''}
+    finally:
+        if mounted:
+            subprocess.run(['umount', str(mountpoint)], capture_output=True, timeout=30)
+
+
+# ── a small client for qualification and the recovery shell ──────────────────
+def client_main(arguments):
+    import socket
+    with socket.socket(socket.AF_UNIX) as connection:
+        try:
+            connection.connect(str(SOCKET))
+        except OSError as error:
+            print(f'The installer service is not running ({error.strerror}).', file=sys.stderr)
+            return 2
+        stream = connection.makefile('rwb', buffering=0)
+        for request in arguments.request:
+            stream.write((request.strip() + '\n').encode())
+        deadline = time.monotonic() + arguments.timeout
+        connection.settimeout(arguments.timeout)
+        while time.monotonic() < deadline:
+            line = stream.readline(MAX_LINE)
+            if not line:
+                break
+            message = json.loads(line)
+            if message.get('type') == arguments.wait_type and (
+                    not arguments.wait_phase or message.get('phase') in arguments.wait_phase.split(',')):
+                print(json.dumps(message))
+                return 0
+        return 1
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--client', action='store_true', help='Send requests and print one matching message')
+    parser.add_argument('--request', action='append', default=[], help='JSON request line (client mode)')
+    parser.add_argument('--wait-type', default='state')
+    parser.add_argument('--wait-phase', default='')
+    parser.add_argument('--timeout', type=float, default=10)
+    parser.add_argument('--dump-static', action='store_true', help='Print the static message (previews and tests)')
+    arguments, extra = parser.parse_known_args()
+    if arguments.client:
+        raise SystemExit(client_main(arguments))
+    if arguments.dump_static:
+        print(json.dumps(Daemon.static_data(None), ensure_ascii=False))
+        return
+    if not (ETC / 'installer').is_file():
+        raise SystemExit('The installer service runs only on the NerdOS installation ISO')
+    os.umask(0o077)
+    worker_args = extra + os.environ.get('NERDOS_INSTALLER_WORKER_ARGS', '').split()
+    asyncio.run(Daemon(worker_args).serve())
+
+
+if __name__ == '__main__':
+    main()

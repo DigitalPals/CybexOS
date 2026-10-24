@@ -5,8 +5,12 @@ set -g fish_cursor_replace_one underscore
 set -g fish_cursor_visual underscore
 
 fish_add_path --prepend ~/.local/bin ~/.npm-global/bin ~/Android/Sdk/platform-tools ~/Android/Sdk/cmdline-tools/latest/bin
-set -gx EDITOR nvim
-set -gx VISUAL nvim
+if not set -q EDITOR
+    set -gx EDITOR 'nerdos-apps edit'
+end
+if not set -q VISUAL
+    set -gx VISUAL 'nerdos-apps edit'
+end
 set -gx ANDROID_HOME "$HOME/Android/Sdk"
 set -gx ANDROID_SDK_ROOT "$ANDROID_HOME"
 set -gx RUSTC_WRAPPER sccache

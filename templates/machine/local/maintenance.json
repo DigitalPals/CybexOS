@@ -1,0 +1,4 @@
+{
+  "schema": 1,
+  "policy": { "automatic": true, "keepConfirmed": 5, "keepDays": 30 }
+}

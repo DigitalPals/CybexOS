@@ -1,0 +1,197 @@
+// NerdOS installer screen: one window, drawn by Slint's software renderer
+// straight to KMS/DRM. The 1280×800 canvas is zoomed to the panel by the Rust
+// side and centred when the panel's aspect ratio differs. Flat by design: no
+// blur, no shadows, no animation beyond a 1 Hz activity tick.
+
+import "../assets/fonts/SpaceGrotesk-Regular.ttf";
+import "../assets/fonts/SpaceGrotesk-Medium.ttf";
+import "../assets/fonts/SpaceGrotesk-Bold.ttf";
+import "../assets/fonts/JetBrainsMono-Regular.ttf";
+import "../assets/fonts/JetBrainsMono-Medium.ttf";
+import "../assets/fonts/JetBrainsMono-SemiBold.ttf";
+import "../assets/fonts/JetBrainsMono-Bold.ttf";
+
+import { Theme, Icons } from "theme.slint";
+import { Store, Check, Choice, DiskRow, ZoneRow, SummaryRow, StageRow, WifiRow, AppRow, UsbRow, Filtered } from "store.slint";
+import { Icon, SlotIcon, Chip, Kicker } from "widgets.slint";
+import { WelcomeScreen, DiskScreen, AccountScreen, ReviewScreen, InstallingScreen, DoneScreen, StoppedScreen, FailedScreen } from "screens.slint";
+import { WifiSheet, KeyboardSheet, LanguageSheet, ToolsMenu, LogSheet, AppsSheet, GpuSheet, TimezoneSheet } from "sheets.slint";
+
+export { Store, Check, Choice, DiskRow, ZoneRow, SummaryRow, StageRow, WifiRow, AppRow, UsbRow, Filtered }
+
+component Steps inherits HorizontalLayout {
+    in property <int> current;
+    spacing: 10px;
+    alignment: center;
+    for name[i] in ["Disk", "You", "Review"]: HorizontalLayout {
+        spacing: 10px;
+        if i > 0: Rectangle {
+            width: 40px;
+            Rectangle {
+                height: 1.5px;
+                background: Theme.line-2;
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Rectangle {
+                width: 24px;
+                Rectangle {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 12px;
+                    border-width: i + 1 < root.current ? 0px : 1.5px;
+                    border-color: i + 1 == root.current ? Theme.lime : Theme.line-2;
+                    background: i + 1 < root.current ? Theme.lime-tint : transparent;
+                    if i + 1 < root.current: Icon {
+                        d: Icons.check;
+                        tint: Theme.lime;
+                        size: 13px;
+                    }
+                    if i + 1 >= root.current: Text {
+                        text: i + 1;
+                        font-family: Theme.mono;
+                        font-weight: 700;
+                        font-size: 12px;
+                        color: i + 1 == root.current ? Theme.lime : Theme.faint;
+                    }
+                }
+            }
+            Text {
+                text: name;
+                font-size: 14px;
+                font-weight: 500;
+                color: i + 1 == root.current ? Theme.ink : i + 1 < root.current ? Theme.fog : Theme.faint;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component TopBar inherits Rectangle {
+    property <int> step: Store.screen == "disk" ? 1 : Store.screen == "account" ? 2 : Store.screen == "review" ? 3 : 0;
+    property <bool> locked: Store.screen == "installing";
+    width: 1280px;
+    height: 72px;
+    Image {
+        x: 40px;
+        width: 165px;
+        height: 22px;
+        source: @image-url("../assets/logo.svg");
+        image-fit: contain;
+    }
+    if root.step > 0: Steps {
+        x: (parent.width - self.preferred-width) / 2;
+        width: self.preferred-width;
+        height: parent.height;
+        current: root.step;
+    }
+    HorizontalLayout {
+        x: parent.width - 40px - self.preferred-width;
+        width: self.preferred-width;
+        height: parent.height;
+        spacing: 8px;
+        alignment: center;
+        Rectangle {
+            width: net.width;
+            net := Chip {
+                text: Store.net-connected ? (Store.net-kind == "wifi" ? Store.net-name : "Ethernet") : "Offline";
+                icon: Store.net-connected ? (Store.net-kind == "wifi" ? Icons.wifi : Icons.ethernet) : Icons.offline;
+                warn: !Store.net-connected;
+                enabled: !root.locked;
+                clicked => { Store.open-sheet("wifi"); }
+            }
+        }
+        Rectangle {
+            width: kb.width;
+            kb := Chip {
+                text: Store.layout-code;
+                icon: Icons.keyboard;
+                enabled: !root.locked;
+                clicked => { Store.open-sheet("keyboard"); }
+            }
+        }
+        Rectangle {
+            width: lang.width;
+            lang := Chip {
+                text: Store.language-code;
+                icon: Icons.globe;
+                enabled: !root.locked;
+                clicked => { Store.open-sheet("language"); }
+            }
+        }
+        Rectangle {
+            width: tools.width;
+            tools := Chip {
+                icon: Icons.dots;
+                clicked => { Store.open-sheet("tools"); }
+            }
+        }
+    }
+}
+
+export component InstallerWindow inherits Window {
+    title: "Install NerdOS";
+    background: Theme.bg;
+    default-font-family: Theme.sans;
+    default-font-size: 16px;
+    preferred-width: 1280px;
+    preferred-height: 800px;
+    canvas := Rectangle {
+        x: (parent.width - 1280px) / 2;
+        y: (parent.height - 800px) / 2;
+        width: 1280px;
+        height: 800px;
+        if Store.screen == "welcome": WelcomeScreen { }
+        if Store.screen == "disk": DiskScreen { }
+        if Store.screen == "account": AccountScreen { }
+        if Store.screen == "review": ReviewScreen { }
+        if Store.screen == "installing": InstallingScreen { }
+        if Store.screen == "done": DoneScreen { }
+        if Store.screen == "stopped": StoppedScreen { }
+        if Store.screen == "failed": FailedScreen { }
+        TopBar {
+            x: 0;
+            y: 0;
+        }
+        if Store.sheet == "wifi": WifiSheet { }
+        if Store.sheet == "keyboard": KeyboardSheet { }
+        if Store.sheet == "language": LanguageSheet { }
+        if Store.sheet == "tools": ToolsMenu { }
+        if Store.sheet == "log": LogSheet { }
+        if Store.sheet == "apps": AppsSheet { }
+        if Store.sheet == "gpu": GpuSheet { }
+        if Store.sheet == "timezone": TimezoneSheet { }
+        if Store.toast != "": Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: 688px;
+            width: toast-text.preferred-width + 36px;
+            height: 42px;
+            border-radius: 12px;
+            background: Theme.ink;
+            toast-text := Text {
+                text: Store.toast;
+                color: Theme.lime-ink;
+                font-size: 15px;
+                font-weight: 500;
+            }
+        }
+        if !Store.connected: Rectangle {
+            background: Theme.bg;
+            TouchArea { }
+            Image {
+                y: 330px;
+                width: 150px;
+                height: 47px;
+                source: @image-url("../assets/symbol.svg");
+                image-fit: contain;
+            }
+            Text {
+                y: 420px;
+                text: "Starting the installer…";
+                color: Theme.fog;
+                font-size: 17px;
+            }
+        }
+    }
+}

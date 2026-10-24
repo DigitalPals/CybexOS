@@ -146,7 +146,7 @@ Singleton {
     function configureModel() {
         const home = Quickshell.env("HOME");
         Quickshell.execDetached([
-            "kitty", "--title", "Hermes model setup",
+            "nerdos-apps", "terminal", "--title=Hermes model setup", "--",
             "hermes", "model"
         ]);
     }

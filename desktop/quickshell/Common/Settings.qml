@@ -25,21 +25,16 @@ Singleton {
 
     readonly property bool connectedWidgetsConfigured:
         Quickshell.env("NERDOS_CONNECTED_WIDGETS") === "1"
+    // The installer's assistant feature (docs/assistant.md). Unset, as in a
+    // source-tree run, it counts as on: the default.
+    readonly property bool assistantConfigured:
+        Quickshell.env("NERDOS_ASSISTANT") !== "0"
     // The installer's developer tooling feature (quickshell.service sets
     // it). Unset, as in a source-tree run, it counts as on: the default.
     readonly property bool developerToolsConfigured:
         Quickshell.env("NERDOS_DEVELOPER_TOOLS") !== "0"
     readonly property var defaults: {
         const value = SettingsHelpers.defaults();
-        if (connectedWidgetsConfigured) {
-            for (const column of ["left", "center", "right"])
-                value.mods[column] = value.mods[column].map(entry => ({
-                    id: entry.id,
-                    on: SettingsHelpers.CONNECTED_WIDGET_IDS.indexOf(entry.id) !== -1
-                        ? true : entry.on,
-                    detail: entry.detail
-                }));
-        }
         return value;
     }
     readonly property var fontChoices: SettingsHelpers.FONT_CHOICES
@@ -126,6 +121,16 @@ Singleton {
     property bool dock: defaults.dock
     property bool dockAutoHide: defaults.dockAutoHide
     property var dockPinned: defaults.dockPinned
+    property string assistantAgent: defaults.assistantAgent
+    property string assistantClaudeModel: defaults.assistantClaudeModel
+    property string assistantCodexModel: defaults.assistantCodexModel
+    property bool assistantSpeak: defaults.assistantSpeak
+    property bool assistantScreenContext: defaults.assistantScreenContext
+    property string assistantCharacter: defaults.assistantCharacter
+    property bool assistantShown: defaults.assistantShown
+    property string assistantScreen: defaults.assistantScreen
+    property int assistantX: defaults.assistantX
+    property int assistantY: defaults.assistantY
 
     // ---- Runtime state (not persisted) -----------------------------------
     property bool panelOpen: false
@@ -198,6 +203,8 @@ Singleton {
             description: "Per-display workspaces, layouts and floating windows" },
         { id: "notifications", group: "Personalize", label: I18n.tr("Notifications"), glyph: "notifications",
             description: "Pop-ups, quiet hours and the on-screen display" },
+        { id: "assistant", group: "Personalize", label: I18n.tr("Assistant"), glyph: "assistant",
+            description: "Agent, voice, screen context and character" },
         { id: "displays", group: "Devices", label: I18n.tr("Displays"), glyph: "monitor",
             description: "Arrangement, resolution, scale and night light", system: true },
         { id: "sound", group: "Devices", label: I18n.tr("Sound"), glyph: "volume_up",
@@ -210,6 +217,10 @@ Singleton {
             description: "Layouts and layout switching", system: true },
         { id: "power", group: "System", label: I18n.tr("Power"), glyph: "power",
             description: "Screen off, lock, suspend and stay awake" },
+        { id: "applications", group: "System", label: I18n.tr("Applications"), glyph: "apps",
+            description: "Default applications and native software" },
+        { id: "storage", group: "System", label: I18n.tr("Storage & cleanup"), glyph: "archive",
+            description: "Disk space, retained deployments and automatic cleanup" },
         { id: "region", group: "System", label: I18n.tr("Region & formats"), glyph: "language",
             description: "Timezone, language, clock and temperature formats" },
         { id: "accounts", group: "System", label: I18n.tr("Online accounts"), glyph: "account_circle",
@@ -287,6 +298,11 @@ Singleton {
         power: ["idleLockMins", "idleScreenOffMins", "idleSuspendMins",
             "idleSuspendBatteryOnly", "idleInhibitMode", "idleInhibitUntilMs"],
         region: ["clock24", "unit"],
+        // Where the character stands and whether it is out are runtime
+        // state, reset with the page as idle inhibition is with Power.
+        assistant: ["assistantAgent", "assistantClaudeModel", "assistantCodexModel",
+            "assistantSpeak", "assistantScreenContext", "assistantCharacter",
+            "assistantShown", "assistantScreen", "assistantX", "assistantY"],
         backup: [],
         about: []
     })

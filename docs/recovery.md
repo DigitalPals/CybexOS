@@ -74,8 +74,46 @@ Future data/schema migrations require an application-aware backup, explicit
 migration metadata, tested rollback policy and compatible old readers. Never
 silently downgrade a newer database or unknown preference schema.
 
-Automatic garbage collection is disabled by default. Ordinary Nix GC cannot
-remove the updater's indirect roots. No automatic retention-pruning policy ships
-yet; an administrator must inspect history and backups before explicitly deleting
-superseded transaction roots. Keep at least the last confirmed system, previous
-system, all pending trial identities and required configuration/input archives.
+Open **Settings → Storage & cleanup** to inspect store filesystem capacity,
+review cleanup, set retention, and pin confirmed recovery points. Manual cleanup
+requires authentication and a current review token. Pin/configuration/history
+changes invalidate an earlier review. Estimates count uncompressed NAR bytes;
+shared paths and filesystem compression can make reclaimed disk space differ.
+
+Retention keeps at least five confirmed deployments and 30 days of history,
+plus pins, the running system and its fallback, selected personal configurations,
+and unresolved or failed transactions. A failed build without pending activation
+can still be cleaned up, while its input roots and diagnostics are retained.
+Before the first confirmed deployment,
+manual cleanup collects garbage while retaining every recovery reference;
+automatic cleanup skips that boot. Another kept transaction's input and
+fallback roots remain protected. Cleanup removes only managed GC references
+and matching obsolete system-profile generations. Other Nix profiles and roots
+remain authoritative. Documents, downloads, application data, logs, transaction
+records, lock files and saved personal edits are not deleted. Retired records
+remain visible in history and cannot be rolled back after their store roots
+have been released.
+
+A durable cleanup journal and the updater's operation lock serialize profile
+pruning, boot-entry regeneration, root release and Nix garbage collection.
+Boot entries are regenerated from the confirmed running system before old
+kernels can be collected; its confirmed boot selection is restored. Secure Boot
+configuration is unchanged. An interruption keeps the journal and blocks new
+deployments. **Resume cleanup**, `nerd maintenance resume`, or boot recovery
+continues idempotently from the initiating confirmed system. Inspect the private
+`/var/lib/nerdos/maintenance.log` and the supervised system service on failure.
+Settings detects a stopped worker and offers recovery from the durable journal,
+including after reopening the desktop.
+
+Weekly cleanup is enabled by default on fresh installations. Disable it or
+change retention in **Settings → Storage & cleanup**; preferences change the
+machine-owned `local/maintenance.json` through a staged preview and apply. An
+explicit personal opt-out remains respected. The persistent weekly timer runs
+with idle I/O priority and randomized delay. It
+obeys retention/pins and skips active updates, an unconfirmed boot or unresolved
+recovery. Generic Nix automatic GC remains disabled by default so the NerdOS
+retention policy owns automatic cleanup. Physical boot/recovery qualification
+is a separate launch requirement.
+
+For scripting, use `nerd maintenance status`, `preview`, `clean REVIEW TOKEN`,
+`pin DEPLOYMENT true|false`, `policy JSON`, `request ID`, and `resume`.

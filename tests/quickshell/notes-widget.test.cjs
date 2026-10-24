@@ -14,7 +14,7 @@ function read(relative) {
 }
 
 test("defaults enable Notes immediately after Weather with opt-in title settings", () => {
-    assert.equal(Settings.VERSION, 29);
+    assert.equal(Settings.VERSION, 30);
     const center = Settings.defaultMods().center;
     const weather = center.findIndex(entry => entry.id === "weather");
     assert.equal(center[weather + 1].id, "notes");

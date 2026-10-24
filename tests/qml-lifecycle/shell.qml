@@ -627,6 +627,12 @@ ShellRoot {
         id: appearanceComponent
         SettingsUi.AppearancePage { width: 640; height: 1200 }
     }
+    // Construct the real Flickable-derived page: a JavaScript-only draft test
+    // cannot detect declarations that override Qt's final Item properties.
+    Component {
+        id: storageComponent
+        SettingsUi.StoragePage { width: 640; height: 720 }
+    }
     Component {
         id: revealerComponent
         Common.Revealer {
@@ -658,6 +664,13 @@ ShellRoot {
 
     // Exercise production positioners after polish, not a duplicate formula.
     function checkLayouts() {
+        const storage = storageComponent.createObject(harness);
+        root.check(storage !== null, "storage page did not construct");
+        if (storage) {
+            root.check(storage.policyBaseline.automatic === true,
+                "storage page lost the enabled cleanup default");
+            storage.destroy();
+        }
         const rows = [];
         for (const size of [320, 540, 700]) {
             rows.push(pickerComponent.createObject(harness, { width: size }));

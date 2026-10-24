@@ -6,11 +6,10 @@ the last hour of load, each account's health and quota, which clients are
 connected, and the latest requests. It is the operator's view of the server. The built-in Model Usage
 widget remains the place for quota history and cost estimates.
 
-Like the other connected-service widgets, it is on for new installations,
-including ISO installations, that select connected widgets. Otherwise it is
-available but off. Upgrading places it immediately after Model Usage in
-whichever column Model Usage occupies, and turns it on only for installations
-with connected widgets. No connection starts until a server and key are set.
+Fusebox is available but hidden on new installations, including ISO installs.
+Enable it in Settings → Menubar → Widgets. Connected-service support does not
+force widget visibility. Saved visibility and server preferences are preserved.
+No connection starts until a server and key are set.
 
 ## Setting it up
 

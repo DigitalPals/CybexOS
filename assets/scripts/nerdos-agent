@@ -191,13 +191,13 @@ launch_agent() {
 
 launch_window() {
   local workspace launcher
-  agent_available kitty || fail 127 "Kitty is not installed"
+  agent_available nerdos-apps || fail 127 "The default application helper is not installed"
   launcher=$(command -v nerd) \
     || fail 127 "the nerd command is not installed"
   workspace=${NERDOS_AGENT_WORKSPACE:-$HOME/Code}
   [[ -d $workspace ]] || workspace=$HOME
-  exec kitty --class nerdos-agent --directory "$workspace" \
-    -e "$launcher" agent --window-child "$@"
+  exec nerdos-apps terminal --app-id=nerdos-agent --dir="$workspace" \
+    -- "$launcher" agent --window-child "$@"
   fail 127 "could not open the AI agent terminal"
 }
 

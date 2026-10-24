@@ -17,3 +17,5 @@ OverviewWindow OverviewWindow.qml
 OverviewView OverviewView.qml
 DockWindow DockWindow.qml
 WebcamOverlay WebcamOverlay.qml
+SoftwareWindow SoftwareWindow.qml
+AssistantWindow AssistantWindow.qml

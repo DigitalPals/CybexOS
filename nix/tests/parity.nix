@@ -1,18 +1,20 @@
-# Evaluation parity is distinct from installation/boot qualification. Compare
-# the evaluated product for the live profile's explicit choices with an ordinary
-# machine importing the public module; only live credentials/install tools differ.
+# Evaluation parity is distinct from installation/boot qualification. The ISO
+# runs only the installer; the product it installs is the payload system it
+# carries. Compare that payload with an ordinary machine importing the public
+# module, and check the medium's own shared release, trust and network contract.
 { nixpkgs, pkgs, module, installer, system, inputSources, inputNarHashes }:
 let
   lock = builtins.fromJSON (builtins.readFile ../../flake.lock);
   lockedNarHashes = map (node: node.locked.narHash)
     (builtins.attrValues (builtins.removeAttrs lock.nodes [ lock.root ]));
+  payload = installer.nerdos.installer.payload.config;
   machine = nixpkgs.lib.nixosSystem {
     inherit system;
     modules = [ module ({ ... }: {
       nerdos = {
         enable = true;
-        primaryUser = installer.nerdos.primaryUser;
-        features = installer.nerdos.features;
+        primaryUser = payload.nerdos.primaryUser;
+        features = payload.nerdos.features;
       };
       fileSystems."/" = { device = "/dev/disk/by-label/nerdos-root"; fsType = "ext4"; };
       fileSystems."/boot" = { device = "/dev/disk/by-label/NERDOS_EFI"; fsType = "vfat"; };
@@ -20,9 +22,14 @@ let
     }) ];
   };
   contract = c: {
-    inherit (c.nerdos) features authentication hardware;
+    inherit (c.nerdos) features authentication hardware installation;
     runtime = toString c.environment.etc."nerdos/runtime".source;
     updates = builtins.fromJSON c.environment.etc."nerdos/update.json".text;
+    maintenance = {
+      policy = builtins.fromJSON c.environment.etc."nerdos/maintenance.json".text;
+      timer = c.systemd.timers.nerdos-maintenance-auto.timerConfig;
+      genericGC = c.nix.gc.automatic;
+    };
     titlebars = toString c.environment.etc."nerdos/titlebars.so".source;
     updater = toString c.nerdos.updaterPackage;
     bootBrand = {
@@ -41,6 +48,15 @@ let
     printing = map toString c.services.printing.drivers;
     scanning = map toString c.hardware.sane.extraBackends;
     vpn = map toString c.networking.networkmanager.plugins;
+    networking = {
+      resolver = c.networking.networkmanager.dns;
+      resolved = c.services.resolved.enable;
+      resolvconf = c.networking.resolvconf.enable;
+      resolvFile = c.environment.etc."resolv.conf".source;
+      fallback = c.services.resolved.settings.Resolve.FallbackDNS;
+      initialize = c.systemd.services.nerdos-network-defaults.script;
+      before = c.systemd.services.nerdos-network-defaults.before;
+    };
     inputMethods = map toString c.i18n.inputMethod.ibus.engines;
     accessibility = { inherit (c.services.gnome.at-spi2-core) enable; speech = c.services.speechd.enable; };
   };
@@ -51,7 +67,7 @@ let
     modules = [ module ./machine.nix extra ];
   }).config.environment.etc."nerdos/update.json".text).channel;
   prerelease = builtins.match "[0-9]+\\.[0-9]+\\.[0-9]+-.+" (nixpkgs.lib.trim (builtins.readFile ../../VERSION)) != null;
-  live = contract installer;
+  live = contract payload;
   installed = contract machine.config;
   xps = (nixpkgs.lib.nixosSystem {
     inherit system;
@@ -85,8 +101,41 @@ let
       && builtins.elem "userpresence=1" auth.u2f.args
       && !(builtins.elem "nouserok" auth.u2f.args)
       && !(builtins.elem "nullok" auth.unix.args);
+  medium = name: installer.environment.etc."nerdos/${name}".text;
+  reserved = builtins.fromJSON (medium "installer-reserved-names.json");
+  ui = installer.systemd.services.nerdos-installer-ui;
 in
 assert live == installed;
+# The medium runs only the installer: no desktop, live account, sudo or SSH.
+assert installer.nerdos.installationMedium && !installer.nerdos.enable;
+assert !installer.programs.hyprland.enable && !installer.services.displayManager.sddm.enable;
+assert !installer.users.users.nixos.enable && !installer.security.sudo.enable && !installer.services.openssh.enable;
+assert installer.specialisation == { };
+assert ui.serviceConfig.User == "nerdos-installer" && ui.serviceConfig.TTYPath == "/dev/tty1";
+assert ui.serviceConfig.PAMName == "nerdos-installer";
+assert installer.systemd.services.nerdos-installerd.serviceConfig.KillMode == "process";
+assert installer.systemd.services.nerdos-installerd.serviceConfig.OOMPolicy == "continue";
+# It authenticates and installs with the same release, trust and update policy.
+assert medium "release.json" == payload.environment.etc."nerdos/release.json".text;
+assert medium "trust.json" == payload.environment.etc."nerdos/trust.json".text;
+assert medium "update.json" == payload.environment.etc."nerdos/update.json".text;
+assert installer.services.resolved.enable && installer.systemd.services ? nerdos-network-defaults;
+assert builtins.elem payload.system.path installer.isoImage.storeContents;
+assert builtins.all (name: builtins.elem name reserved) [ "root" "messagebus" "nobody" "wheel" ];
+assert !(builtins.elem payload.nerdos.primaryUser reserved);
+assert builtins.fromJSON installer.environment.etc."nerdos/installer-layout.json".text == installed.installation;
+assert installed.networking.resolved && !installed.networking.resolvconf;
+assert installed.networking.resolver == "systemd-resolved";
+assert installed.networking.resolvFile == "/run/systemd/resolve/stub-resolv.conf";
+assert installed.networking.fallback == [ "8.8.8.8" "8.8.4.4" "2001:4860:4860::8888" "2001:4860:4860::8844" ];
+assert builtins.elem "NetworkManager.service" installed.networking.before;
+assert pam.services.passwd.rules.password.unix.control == "required";
+assert pam.services.passwd.rules.password.gnome_keyring.enable;
+assert pam.services.passwd.rules.password.gnome_keyring.control == "required";
+assert pam.services.passwd.rules.password.unix.order < pam.services.passwd.rules.password.gnome_keyring.order;
+assert installed.maintenance.policy == { automatic = true; keepConfirmed = 5; keepDays = 30; };
+assert installed.maintenance.timer.OnCalendar == "weekly";
+assert !installed.maintenance.genericGC;
 assert builtins.elem nixpkgs.outPath inputSources;
 assert builtins.sort builtins.lessThan inputNarHashes == builtins.sort builtins.lessThan lockedNarHashes;
 assert builtins.length inputSources == builtins.length (nixpkgs.lib.unique inputSources);
@@ -123,10 +172,10 @@ assert encrypted.security.pam.services.sddm-autologin.rules.auth.nerdos-encrypti
 assert builtins.elem "${encrypted.nerdos.updaterPackage}/bin/nerdos-verify-encryption"
   encrypted.security.pam.services.sddm-autologin.rules.auth.nerdos-encryption.args;
 assert !(builtins.elem "v4l2-relayd-ipu7.service" (health machine.config).units);
-assert (health machine.config).userUnits == [];
+assert (health machine.config).userUnits == [ "hypridle.service" ];
 assert builtins.all (unit: builtins.elem unit (health xps).units)
   [ "xps-ipu7-abi.service" "v4l2-relayd-ipu7.service" "xps-haptic-touchpad.service" ];
-assert (health xps).userUnits == [ "xps-speaker-tuning.service" ];
+assert (health xps).userUnits == [ "hypridle.service" "xps-speaker-tuning.service" ];
 assert xps.systemd.services.xps-ipu7-abi.serviceConfig.Type == "oneshot";
 assert xps.systemd.services.xps-ipu7-abi.serviceConfig.RemainAfterExit;
 assert builtins.elem "xps-ipu7-abi.service" xps.systemd.services.v4l2-relayd-ipu7.requires;

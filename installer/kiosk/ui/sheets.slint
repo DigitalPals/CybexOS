@@ -1,0 +1,903 @@
+import { Theme, Icons } from "theme.slint";
+import { Store, Choice, ZoneRow, WifiRow, AppRow, UsbRow } from "store.slint";
+import { Icon, SlotIcon, Kicker, Btn, LinkButton, Card, Field, Toggle, Row, Help, ScrollHint } from "widgets.slint";
+
+component SheetTitle inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    height: subtitle-text.preferred-height + 44px;
+    Text {
+        x: 0;
+        y: 0;
+        text: root.title;
+        font-size: 24px;
+        font-weight: 700;
+        color: Theme.ink;
+    }
+    subtitle-text := Text {
+        x: 0;
+        y: 36px;
+        width: parent.width - 50px;
+        text: root.subtitle;
+        font-size: 14.5px;
+        color: Theme.fog;
+        wrap: word-wrap;
+    }
+    Rectangle {
+        x: parent.width - 38px;
+        y: -6px;
+        width: 38px;
+        height: 38px;
+        border-radius: 19px;
+        background: Theme.card-2;
+        Icon {
+            d: Icons.close;
+            size: 18px;
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { Store.close-sheet(); }
+        }
+    }
+}
+
+// A side panel over a dimmed screen. Escape or a click outside closes it.
+component Panel inherits Rectangle {
+    in property <bool> wide;
+    in property <length> panel-width: 460px;
+    // Children of a sheet resolve `parent` to the sheet itself, so they use
+    // these explicit content sizes instead.
+    out property <length> inner-width: (root.wide ? 1232px : root.panel-width) - 52px;
+    out property <length> inner-height: (root.wide ? 752px : 704px) - 48px;
+    width: 1280px;
+    height: 800px;
+    TouchArea {
+        clicked => { Store.close-sheet(); }
+    }
+    Rectangle {
+        background: Theme.scrim;
+    }
+    frame := Rectangle {
+        x: root.wide ? 24px : 1280px - 24px - root.panel-width;
+        y: root.wide ? 24px : 72px;
+        width: root.wide ? 1232px : root.panel-width;
+        height: root.wide ? 752px : 704px;
+        background: Theme.card;
+        border-width: 1px;
+        border-color: Theme.line-2;
+        border-radius: 22px;
+        clip: true;
+        // Swallow clicks inside the panel.
+        TouchArea { }
+        // An ancestor of every field in the sheet, so Escape always closes it.
+        content := FocusScope {
+            x: 26px;
+            y: 24px;
+            width: parent.width - 52px;
+            height: parent.height - 48px;
+            capture-key-pressed(event) => {
+                if (event.text == Key.Escape) {
+                    Store.close-sheet();
+                    return accept;
+                }
+                return reject;
+            }
+            @children
+        }
+    }
+    init => { content.focus(); }
+}
+
+component ListArea inherits Rectangle {
+    in property <length> content-height;
+    out property <length> offset: flick.content-y;
+    clip: true;
+    flick := Flickable {
+        width: parent.width - 10px;
+        height: parent.height;
+        content-height: root.content-height;
+        @children
+    }
+    ScrollHint {
+        x: parent.width - 4px;
+        height: parent.height;
+        viewport-height: root.content-height;
+        visible-height: root.height;
+        offset: flick.content-y;
+    }
+    public function show(top: length, bottom: length) {
+        if (top < -flick.content-y) {
+            flick.content-y = -top;
+        } else if (bottom > -flick.content-y + root.height) {
+            flick.content-y = -(bottom - root.height);
+        }
+    }
+    public function to-end() {
+        flick.content-y = min(0px, root.height - root.content-height);
+    }
+}
+
+// ── network ──────────────────────────────────────────────────────────────────
+
+export component WifiSheet inherits Panel {
+    property <length> list-height: 54px * Store.wifi.length + (Store.wifi-selected >= 0 ? 130px : 0px);
+    VerticalLayout {
+        alignment: start;
+        spacing: 12px;
+        SheetTitle {
+            title: "Network";
+            subtitle: "Ethernet connects by itself. A Wi-Fi network you join here is used only for this installation.";
+        }
+        Row {
+            selected: Store.net-connected && Store.net-kind == "ethernet";
+            HorizontalLayout {
+                padding-left: 14px;
+                spacing: 12px;
+                SlotIcon { d: Icons.ethernet; }
+                VerticalLayout {
+                    alignment: center;
+                    Text {
+                        text: "Ethernet";
+                        font-weight: 700;
+                        color: Theme.ink;
+                    }
+                    Text {
+                        text: Store.net-connected && Store.net-kind == "ethernet" ? "Connected · " + Store.net-address : "No cable connected";
+                        font-size: 12.5px;
+                        color: Theme.faint;
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            height: 24px;
+            Kicker {
+                text: "WI-FI NETWORKS";
+                vertical-alignment: center;
+            }
+            LinkButton {
+                text: Store.net-busy ? "Working…" : "Refresh";
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                clicked => { Store.network-refresh(); }
+            }
+        }
+        if !Store.wifi-device: Text {
+            text: "This computer has no Wi-Fi adapter that NetworkManager can use.";
+            color: Theme.faint;
+            font-size: 14px;
+            wrap: word-wrap;
+        }
+        ListArea {
+            height: 360px;
+            content-height: root.list-height;
+            VerticalLayout {
+                alignment: start;
+                for network[i] in Store.wifi: VerticalLayout {
+                    Row {
+                        selected: network.connected || Store.wifi-selected == i;
+                        clicked => { Store.wifi-select(i); }
+                        HorizontalLayout {
+                            padding-left: 14px;
+                            padding-right: 14px;
+                            spacing: 12px;
+                            SlotIcon { d: Icons.wifi; }
+                            VerticalLayout {
+                                alignment: center;
+                                Text {
+                                    text: network.ssid;
+                                    font-weight: 700;
+                                    color: Theme.ink;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: (network.enterprise ? "Enterprise · username and password" : network.secure ? "Secured" : "Open") + (network.connected ? " · connected" : "");
+                                    font-size: 12.5px;
+                                    color: Theme.faint;
+                                }
+                            }
+                            HorizontalLayout {
+                                width: 26px;
+                                spacing: 2px;
+                                alignment: end;
+                                for bar in 4: Rectangle {
+                                    width: 4px;
+                                    Rectangle {
+                                        y: parent.height / 2 + 8px - self.height;
+                                        width: 4px;
+                                        height: 4px + bar * 3px;
+                                        border-radius: 1px;
+                                        background: bar < network.bars ? Theme.fog : Theme.line-2;
+                                    }
+                                }
+                            }
+                            if network.secure: SlotIcon {
+                                d: Icons.lock;
+                                size: 16px;
+                            }
+                        }
+                    }
+                    if Store.wifi-selected == i && !network.connected: Rectangle {
+                        height: 130px;
+                        VerticalLayout {
+                            padding-left: 14px;
+                            padding-right: 14px;
+                            padding-top: 6px;
+                            spacing: 8px;
+                            identity := Field {
+                                visible: network.enterprise;
+                                height: network.enterprise ? 44px : 0px;
+                                placeholder: "Username";
+                            }
+                            secret := Field {
+                                visible: network.secure;
+                                height: 44px;
+                                password: true;
+                                placeholder: "Password";
+                                accepted => { Store.wifi-connect(i, secret.text, identity.text); }
+                            }
+                            HorizontalLayout {
+                                spacing: 12px;
+                                alignment: start;
+                                Btn {
+                                    small: true;
+                                    kind: "primary";
+                                    text: Store.net-busy ? "Connecting…" : "Connect";
+                                    enabled: !Store.net-busy;
+                                    clicked => { Store.wifi-connect(i, secret.text, identity.text); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if Store.net-error != "": Help {
+            text: Store.net-error;
+            tone: 2;
+        }
+        if Store.net-error == "" && Store.net-message != "": Help {
+            text: Store.net-message;
+        }
+    }
+}
+
+// ── keyboard and language ────────────────────────────────────────────────────
+
+component ChoiceList inherits ListArea {
+    in property <[Choice]> choices;
+    callback picked(string);
+    content-height: 56px * root.choices.length;
+    VerticalLayout {
+        alignment: start;
+        spacing: 2px;
+        for choice in root.choices: Row {
+            selected: choice.selected;
+            clicked => { root.picked(choice.key); }
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 14px;
+                spacing: 12px;
+                Text {
+                    text: choice.label;
+                    font-weight: 700;
+                    color: Theme.ink;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: choice.detail;
+                    font-family: Theme.mono;
+                    font-size: 13px;
+                    color: Theme.faint;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+                if choice.selected: SlotIcon {
+                    d: Icons.check;
+                    tint: Theme.lime;
+                }
+            }
+        }
+    }
+}
+
+export component KeyboardSheet inherits Panel {
+    VerticalLayout {
+        alignment: start;
+        spacing: 12px;
+        SheetTitle {
+            title: "Keyboard";
+            subtitle: "Used for typing here, unlocking the disk at startup and on your desktop.";
+        }
+        Field { placeholder: "Type to test: @ # € ß ø"; }
+        ChoiceList {
+            height: 470px;
+            choices: Store.layouts;
+            picked(key) => { Store.choose-layout(key); }
+        }
+        Help { text: "Changing the layout redraws this screen and clears any password you typed, so you retype it with the new layout. The disk unlock keymap is shown on the right."; }
+    }
+}
+
+export component LanguageSheet inherits Panel {
+    VerticalLayout {
+        alignment: start;
+        spacing: 12px;
+        SheetTitle {
+            title: "Language";
+            subtitle: "Sets the system language and formats. The keyboard is chosen separately.";
+        }
+        ChoiceList {
+            height: 560px;
+            choices: Store.languages;
+            picked(key) => { Store.choose-language(key); }
+        }
+    }
+}
+
+// ── tools ────────────────────────────────────────────────────────────────────
+
+component MenuItem inherits Row {
+    in property <string> icon;
+    in property <string> text;
+    row-height: 46px;
+    HorizontalLayout {
+        padding-left: 12px;
+        spacing: 12px;
+        SlotIcon { d: root.icon; }
+        Text {
+            text: root.text;
+            font-size: 15px;
+            color: Theme.ink;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component ToolsMenu inherits Rectangle {
+    width: 1280px;
+    height: 800px;
+    TouchArea {
+        clicked => { Store.close-sheet(); }
+    }
+    Rectangle {
+        x: 1280px - 24px - 330px;
+        y: 66px;
+        width: 330px;
+        height: menu.preferred-height;
+        background: Theme.card;
+        border-width: 1px;
+        border-color: Theme.line-2;
+        border-radius: 16px;
+        TouchArea { }
+        keys := FocusScope {
+            capture-key-pressed(event) => {
+                if (event.text == Key.Escape) {
+                    Store.close-sheet();
+                    return accept;
+                }
+                return reject;
+            }
+        menu := VerticalLayout {
+            padding: 8px;
+            MenuItem {
+                icon: Icons.log;
+                text: "Installation log";
+                clicked => { Store.open-sheet("log"); }
+            }
+            MenuItem {
+                icon: Icons.terminal;
+                text: "Recovery shell (Alt+F1 returns)";
+                clicked => { Store.tool("shell"); }
+            }
+            MenuItem {
+                icon: Icons.terminal;
+                text: "Use the text installer";
+                clicked => { Store.tool("text-installer"); }
+            }
+            Rectangle {
+                height: 13px;
+                Rectangle {
+                    height: 1px;
+                    width: parent.width - 16px;
+                    background: Theme.line;
+                }
+            }
+            MenuItem {
+                icon: Icons.firmware;
+                text: "Restart into firmware settings";
+                clicked => { Store.power("firmware"); }
+            }
+            MenuItem {
+                icon: Icons.restart;
+                text: "Restart";
+                clicked => { Store.power("reboot"); }
+            }
+            MenuItem {
+                icon: Icons.power;
+                text: "Power off";
+                clicked => { Store.power("poweroff"); }
+            }
+        }
+        }
+    }
+    init => { keys.focus(); }
+}
+
+// ── installation log ─────────────────────────────────────────────────────────
+
+export component LogSheet inherits Panel {
+    wide: true;
+    property <string> text: Store.details;
+    VerticalLayout {
+        alignment: start;
+        spacing: 12px;
+        SheetTitle {
+            title: "Installation details";
+            subtitle: Store.details-note;
+        }
+        Rectangle {
+            height: 470px;
+            background: Theme.bg-deep;
+            border-radius: 14px;
+            border-width: 1px;
+            border-color: Theme.line;
+            log := ListArea {
+                x: 16px;
+                y: 12px;
+                width: parent.width - 24px;
+                height: parent.height - 24px;
+                content-height: body.preferred-height;
+                body := Text {
+                    width: parent.width - 8px;
+                    text: Store.details-error != "" ? Store.details-error : Store.details;
+                    font-family: Theme.mono;
+                    font-size: 12.5px;
+                    color: Store.details-error != "" ? Theme.red : Theme.fog;
+                    wrap: char-wrap;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            alignment: start;
+            height: 38px;
+            Btn {
+                small: true;
+                icon: Icons.refresh;
+                text: "Refresh";
+                clicked => { Store.request-details(); }
+            }
+            for target in Store.usb: Btn {
+                small: true;
+                icon: Icons.usb;
+                text: "Save to " + target.label + " (" + target.size + ")";
+                clicked => { Store.usb-save(target.device); }
+            }
+        }
+        Help {
+            text: Store.usb-message != "" ? Store.usb-message : "Insert another USB stick to save this log. The installer medium itself is read-only.";
+            tone: 0;
+        }
+    }
+    changed text => { log.to-end(); }
+    init => { log.to-end(); }
+}
+
+// ── applications and graphics ────────────────────────────────────────────────
+
+export component AppsSheet inherits Panel {
+    VerticalLayout {
+        alignment: start;
+        spacing: 12px;
+        SheetTitle {
+            title: "Applications";
+            subtitle: "Everything is included by default. You can change any of these after installation too.";
+        }
+        ListArea {
+            height: 560px;
+            content-height: 64px * Store.apps.length;
+            VerticalLayout {
+                alignment: start;
+                spacing: 2px;
+                for app in Store.apps: Row {
+                    row-height: 62px;
+                    clicked => { Store.toggle-app(app.id); }
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 12px;
+                        VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: app.name;
+                                font-weight: 700;
+                                color: Theme.ink;
+                            }
+                            Text {
+                                text: app.detail;
+                                font-size: 12.5px;
+                                color: Theme.faint;
+                            }
+                        }
+                        Rectangle {
+                            width: 48px;
+                            Toggle {
+                                on: app.on;
+                                toggled => { Store.toggle-app(app.id); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component Option inherits Row {
+    in property <string> title;
+    in property <string> body;
+    in property <bool> chosen;
+    row-height: 72px;
+    selected: root.chosen;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: root.title;
+                font-weight: 700;
+                color: Theme.ink;
+            }
+            Text {
+                text: root.body;
+                font-size: 12.5px;
+                color: Theme.faint;
+                wrap: word-wrap;
+            }
+        }
+        if root.chosen: SlotIcon {
+            d: Icons.check;
+            tint: Theme.lime;
+        }
+    }
+}
+
+export component GpuSheet inherits Panel {
+    VerticalLayout {
+        alignment: start;
+        spacing: 12px;
+        SheetTitle {
+            title: "NVIDIA driver";
+            subtitle: "Detected: " + Store.gpu-names + ". Hybrid laptops get PRIME offload automatically.";
+        }
+        Option {
+            title: "Open kernel driver";
+            body: "Recommended for Turing and newer (GTX 16, RTX 20 and up).";
+            chosen: Store.nvidia-open;
+            clicked => { Store.set-nvidia-open(true); }
+        }
+        Option {
+            title: "Proprietary legacy driver";
+            body: "For Maxwell, Pascal or Volta cards (legacy_580).";
+            chosen: !Store.nvidia-open;
+            clicked => { Store.set-nvidia-open(false); }
+        }
+    }
+}
+
+// ── time zone ────────────────────────────────────────────────────────────────
+
+export component TimezoneSheet inherits Panel {
+    wide: true;
+    property <int> selected-row: Store.tz-selected-row;
+    changed selected-row => {
+        if (self.selected-row >= 0) {
+            list.show(self.selected-row * 58px, (self.selected-row + 1) * 58px);
+        }
+    }
+    SheetTitle {
+        x: 0;
+        y: 0;
+        width: root.inner-width;
+        title: "Time zone";
+        subtitle: "Search for a city, a country or an offset, or click the map. Times are live.";
+    }
+    VerticalLayout {
+        x: 0;
+        y: 74px;
+        width: 430px;
+        height: root.inner-height - 74px;
+        spacing: 10px;
+        search := Field {
+            placeholder: "City, country or UTC offset";
+            text <=> Store.tz-query;
+            edited(text) => { Store.tz-query-edited(text); }
+            accepted => { Store.tz-key("enter"); }
+            key(event) => {
+                if (event.text == Key.DownArrow) {
+                    Store.tz-key("down");
+                    return accept;
+                }
+                if (event.text == Key.UpArrow) {
+                    Store.tz-key("up");
+                    return accept;
+                }
+                return reject;
+            }
+        }
+        Rectangle {
+            height: 26px;
+            HorizontalLayout {
+                spacing: 10px;
+                Rectangle {
+                    width: 20px;
+                    Rectangle {
+                        width: 20px;
+                        height: 20px;
+                        border-radius: 6px;
+                        border-width: Store.tz-fixed ? 0px : 1.5px;
+                        border-color: Theme.line-2;
+                        background: Store.tz-fixed ? Theme.lime : transparent;
+                        if Store.tz-fixed: Icon {
+                            d: Icons.check;
+                            tint: Theme.lime-ink;
+                            size: 13px;
+                        }
+                    }
+                }
+                Text {
+                    text: "Include fixed UTC offsets (no daylight saving)";
+                    font-size: 14px;
+                    color: Theme.fog;
+                    vertical-alignment: center;
+                }
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { Store.tz-toggle-fixed(); }
+            }
+        }
+        list := ListArea {
+            content-height: 58px * Store.tz-results.length;
+            VerticalLayout {
+                alignment: start;
+                for zone in Store.tz-results: Row {
+                    row-height: 58px;
+                    selected: zone.selected;
+                    clicked => { Store.tz-pick(zone.id); }
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 10px;
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 1px;
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                Text {
+                                    text: zone.title;
+                                    font-weight: 700;
+                                    color: Theme.ink;
+                                }
+                                Text {
+                                    text: zone.sub;
+                                    font-size: 13.5px;
+                                    color: Theme.fog;
+                                    vertical-alignment: bottom;
+                                    overflow: elide;
+                                }
+                            }
+                            Text {
+                                text: zone.note;
+                                font-size: 12.5px;
+                                color: Theme.faint;
+                                overflow: elide;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            width: 72px;
+                            Text {
+                                text: zone.time;
+                                font-family: Theme.mono;
+                                font-weight: 500;
+                                font-size: 15px;
+                                color: Theme.ink;
+                                horizontal-alignment: right;
+                            }
+                            Text {
+                                text: zone.offset;
+                                font-family: Theme.mono;
+                                font-size: 11.5px;
+                                color: Theme.faint;
+                                horizontal-alignment: right;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Rectangle {
+        x: 456px;
+        y: 74px;
+        width: root.inner-width - 456px;
+        height: 322px;
+        background: Theme.bg-deep;
+        border-radius: 16px;
+        border-width: 1px;
+        border-color: Theme.line;
+        map := Image {
+            x: 14px;
+            y: 14px;
+            width: parent.width - 28px;
+            height: (parent.width - 28px) * 70 / 180;
+            source: Store.big-map;
+            image-fit: fill;
+        }
+        touch := TouchArea {
+            x: map.x;
+            y: map.y;
+            width: map.width;
+            height: map.height;
+            mouse-cursor: crosshair;
+            pointer-event(event) => {
+                if (event.kind == PointerEventKind.move) {
+                    Store.tz-map-hover(self.mouse-x / self.width, self.mouse-y / self.height);
+                }
+            }
+            clicked => { Store.tz-map-click(self.mouse-x / self.width, self.mouse-y / self.height); }
+        }
+        if touch.has-hover && Store.tz-hover != "": Rectangle {
+            x: map.x + min(Store.tz-hover-x * map.width + 12px, map.width - self.width);
+            y: map.y + max(0px, Store.tz-hover-y * map.height - 14px);
+            width: hover-text.preferred-width + 16px;
+            height: 24px;
+            border-radius: 6px;
+            background: #141517eb;
+            border-width: 1px;
+            border-color: Theme.line-2;
+            hover-text := Text {
+                text: Store.tz-hover;
+                font-family: Theme.mono;
+                font-size: 12px;
+                color: Theme.ink;
+            }
+        }
+        HorizontalLayout {
+            x: 18px;
+            y: parent.height - 26px;
+            height: 16px;
+            spacing: 14px;
+            alignment: start;
+            for legend in [{ c: #b4b7ac, t: "day" }, { c: #34363b, t: "night" }, { c: #c8ff1f, t: "selected" }]: HorizontalLayout {
+                spacing: 5px;
+                Rectangle {
+                    width: 8px;
+                    Rectangle {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: legend.c;
+                        border-width: 1px;
+                        border-color: #4a4c52;
+                    }
+                }
+                Text {
+                    text: legend.t;
+                    font-family: Theme.mono;
+                    font-size: 11.5px;
+                    color: Theme.faint;
+                    vertical-alignment: center;
+                }
+            }
+            Text {
+                text: "tzdata " + Store.tz-data;
+                font-family: Theme.mono;
+                font-size: 11.5px;
+                color: Theme.faint;
+                vertical-alignment: center;
+            }
+        }
+    }
+    Card {
+        x: 456px;
+        y: 412px;
+        width: root.inner-width - 456px;
+        height: 186px;
+        Text {
+            x: 20px;
+            y: 18px;
+            text: Store.tz-pick-clock;
+            font-family: Theme.mono;
+            font-weight: 700;
+            font-size: 40px;
+            letter-spacing: -1.5px;
+            color: Theme.ink;
+        }
+        VerticalLayout {
+            x: 250px;
+            y: 18px;
+            width: parent.width - 270px;
+            height: self.preferred-height;
+            spacing: 2px;
+            Text {
+                text: Store.tz-pick-title;
+                font-size: 20px;
+                font-weight: 700;
+                color: Theme.ink;
+                overflow: elide;
+            }
+            Text {
+                text: Store.tz-pick-id;
+                font-family: Theme.mono;
+                font-size: 13px;
+                color: Theme.fog;
+            }
+        }
+        Rectangle {
+            x: 20px;
+            y: 84px;
+            width: parent.width - 40px;
+            height: 1px;
+            background: Theme.line;
+        }
+        Text {
+            x: 20px;
+            y: 98px;
+            text: "Daylight saving";
+            font-size: 14.5px;
+            color: Theme.fog;
+        }
+        Text {
+            x: 170px;
+            y: 98px;
+            width: parent.width - 190px;
+            text: Store.tz-pick-change;
+            font-size: 15px;
+            color: Store.tz-pick-changes ? Theme.amber : Theme.fog;
+            overflow: elide;
+        }
+        Rectangle {
+            x: 20px;
+            y: 132px;
+            width: parent.width - 40px;
+            height: 1px;
+            background: Theme.line;
+        }
+        Text {
+            x: 20px;
+            y: 148px;
+            text: "Source";
+            font-size: 14.5px;
+            color: Theme.fog;
+        }
+        Text {
+            x: 170px;
+            y: 148px;
+            width: parent.width - 330px;
+            text: Store.tz-pick-source;
+            font-size: 15px;
+            color: Theme.ink;
+            overflow: elide;
+        }
+        LinkButton {
+            x: parent.width - self.width - 20px;
+            y: 148px;
+            text: Store.tz-detecting ? "Detecting…" : Store.net-connected ? "Detect again" : "Detect (needs a network)";
+            clicked => { Store.tz-detect(); }
+        }
+    }
+    Btn {
+        x: root.inner-width - self.width;
+        y: root.inner-height - self.height;
+        kind: "primary";
+        text: "Use this time zone";
+        clicked => { Store.tz-use(); }
+    }
+    init => { search.focus-input(); }
+}

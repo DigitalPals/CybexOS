@@ -610,12 +610,15 @@ PopoutPanel {
                 case "bar": return barPage;
                 case "workspaces": return workspacesPage;
                 case "notifications": return notificationsPage;
+                case "assistant": return assistantPage;
                 case "displays": return displaysPage;
                 case "sound": return soundPage;
                 case "network": return networkPage;
                 case "touchpad": return touchpadPage;
                 case "keyboard": return keyboardPage;
                 case "power": return powerPage;
+                case "applications": return applicationsPage;
+                case "storage": return storagePage;
                 case "region": return regionPage;
                 case "accounts": return accountsPage;
                 case "security": return securityPage;
@@ -801,6 +804,7 @@ PopoutPanel {
         }
         Component { id: workspacesPage; WorkspacesPage {} }
         Component { id: notificationsPage; NotificationsPage {} }
+        Component { id: assistantPage; AssistantPage {} }
         Component { id: pluginsPage; PluginsPage {} }
         Component { id: networkPage; NetworkPage {} }
         Component { id: soundPage; SoundPage {} }
@@ -810,6 +814,8 @@ PopoutPanel {
         Component { id: touchpadPage; TouchpadPage {} }
         Component { id: keyboardPage; KeyboardPage {} }
         Component { id: powerPage; PowerPage {} }
+        Component { id: applicationsPage; ApplicationsPage {} }
+        Component { id: storagePage; StoragePage {} }
         Component { id: regionPage; RegionPage {} }
         Component { id: backupPage; BackupPage {} }
         Component { id: aboutPage; AboutPage {} }

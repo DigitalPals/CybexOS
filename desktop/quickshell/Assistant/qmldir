@@ -1,0 +1,12 @@
+# Sibling-type resolution inside Assistant/ relies on this explicit index; a
+# directory carrying a qmldir is no longer implicitly scanned, so every
+# Assistant/*.qml type must be listed. qmldir.test.cjs enforces that.
+AssistantApproval AssistantApproval.qml
+AssistantButton AssistantButton.qml
+AssistantCharacter AssistantCharacter.qml
+AssistantComposer AssistantComposer.qml
+AssistantReply AssistantReply.qml
+AssistantSetup AssistantSetup.qml
+AssistantSurface AssistantSurface.qml
+AssistantVisualizer AssistantVisualizer.qml
+AssistantWorking AssistantWorking.qml

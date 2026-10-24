@@ -48,6 +48,7 @@ var VERBS = [
 // Factory reset is deliberately absent: it stays behind Settings' own
 // confirmation and is never one mistyped Enter away.
 var BUILTIN_ACTIONS = [
+    { id: "software", verb: "install", name: "Open Software…", subtitle: "Search and review native package changes", keywords: ["install", "remove", "packages", "applications"], glyph: "apps", command: ["nerdos-software"] },
     {
         id: "webapp-install",
         verb: "install",
@@ -91,6 +92,8 @@ var BUILTIN_ACTIONS = [
         choices: "webapps",
         command: ["nerdos-webapp", "remove", "--notify", "{argument}"]
     },
+    { id: "default-applications", verb: "setup", name: "Default applications", subtitle: "Choose your browser, terminal, editor and viewers", keywords: ["browser", "terminal", "editor", "defaults"], glyph: "apps", settingsPage: "applications" },
+    { id: "storage-cleanup", verb: "setup", name: "Storage & cleanup", subtitle: "Review disk space and retained recovery points", keywords: ["disk", "space", "cleanup", "garbage", "retention"], glyph: "archive", settingsPage: "storage" },
     {
         id: "security-fingerprint",
         verb: "setup",
@@ -161,7 +164,7 @@ var BUILTIN_ACTIONS = [
         subtitle: "Check signed device firmware and confirm installation separately",
         keywords: ["firmware", "bios", "uefi", "device", "update"],
         glyph: "refresh",
-        command: ["kitty", "--hold", "nerdos-firmware-update", "interactive"]
+        command: ["nerdos-apps", "terminal", "--hold", "--", "nerdos-firmware-update", "interactive"]
     },
     {
         id: "updates-open",

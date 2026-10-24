@@ -9,6 +9,7 @@ from pathlib import Path
 import pty
 import shutil
 import subprocess
+import sys
 import tempfile
 
 
@@ -18,6 +19,9 @@ LAUNCHER = ROOT / "assets/scripts/nerdos-agent"
 
 def executable(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    # These files are generated after Nix's patchShebangs has run.
+    content = content.replace('#!/usr/bin/env python3\n', '#!' + sys.executable + '\n', 1)
+    content = content.replace('#!/usr/bin/env bash\n', '#!' + shutil.which('bash') + '\n', 1)
     path.write_text(content)
     path.chmod(0o755)
 
@@ -114,7 +118,7 @@ def main() -> None:
         binaries.mkdir()
         working.mkdir()
 
-        for name in ("opencode", "claude", "codex", "kitty"):
+        for name in ("opencode", "claude", "codex", "nerdos-apps"):
             fake_capture(binaries / name)
         executable(binaries / "nerd", "#!/usr/bin/env bash\nexit 99\n")
 
@@ -178,13 +182,12 @@ def main() -> None:
         result = run_launcher(environment, "--window", "--pick", cwd=working)
         assert result.returncode == 0, result.stderr
         window = captured(log)
-        assert window["program"] == "kitty"
+        assert window["program"] == "nerdos-apps"
         assert window["argv"] == [
-            "--class",
-            "nerdos-agent",
-            "--directory",
-            str(home / "Code"),
-            "-e",
+            "terminal",
+            "--app-id=nerdos-agent",
+            "--dir=" + str(home / "Code"),
+            "--",
             str(binaries / "nerd"),
             "agent",
             "--window-child",

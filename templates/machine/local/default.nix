@@ -1,7 +1,7 @@
 { lib, pkgs, ... }: {
   # Personal declarations. Vendor modules are immutable; normal definitions
   # override vendor mkDefault values. Use mkForce only for deliberate conflicts.
-  imports = [ ];
+  imports = [ ./software.nix ./maintenance.nix ];
   environment.systemPackages = [ ];
   # networking.wg-quick.interfaces.work = {
   #   address = [ "10.20.0.2/32" ];

@@ -201,16 +201,20 @@ class Engine:
         retain(data, 'configuration')
         atomic(tx / 'archive.json', data)
 
-    def stage(self, scope, region=None):
+    def stage(self, scope, region=None, software=None, maintenance=None, request_id=None):
         if scope not in SCOPES:
             raise Failure('Select upstream, nerdos, both, or local')
         with locked(self.state / 'operation.lock'):
+            if (self.state / 'maintenance-pending.json').exists():
+                raise Failure('Storage cleanup awaits recovery. Complete it before staging another deployment.')
             if self.pending_path.exists():
                 raise Failure('A deployment awaits recovery or boot/login health. Confirm it or roll it back before staging another.')
             identifier = uuid.uuid4().hex
             tx = self.tx(identifier)
             tx.mkdir(mode=0o700)
-            self.status(transaction=identifier, state='discovering', scope=scope, error='', progress=None)
+            kind = 'software' if software is not None else 'maintenance' if maintenance is not None else 'region' if region is not None else 'configuration'
+            self.status(transaction=identifier, state='discovering', scope=scope, error='', progress=None,
+                        changeKind=kind, requestId=request_id, software=None)
             self.run.log = tx / 'build.log'
             try:
                 # Authentication and metadata compatibility precede lock mutation,
@@ -235,6 +239,16 @@ class Engine:
                         raise Failure('Regional changes require a separate local preview')
                     from .configuration import region as prepare_region
                     prepare_region(config, region, self.run)
+                selections = None
+                if software is not None or maintenance is not None:
+                    if scope != 'local' or (software is not None and maintenance is not None):
+                        raise Failure('Personal software and maintenance changes require separate local previews.')
+                    if software is not None:
+                        from .software import prepare
+                        selections = prepare(config, software)
+                    else:
+                        from .maintenance import prepare
+                        prepare(config, maintenance)
                 old = read(config / 'flake.lock')
                 inputs.validate_machine(old)
                 if scope in ('upstream', 'both'):
@@ -286,13 +300,15 @@ class Engine:
                 atomic(tx / 'changes.txt', changes.encode())
                 record = {'id': identifier, 'scope': scope, 'system': system, 'previousSystem': previous_system,
                           'baseline': baseline, 'configDigest': config_digest(config), 'createdAt': int(time.time()),
-                          'inputs': {name: inputs.identity(new, name) for name in ('nixpkgs', 'nerdos')}}
+                          'inputs': {name: inputs.identity(new, name) for name in ('nixpkgs', 'nerdos')},
+                          'changeKind': kind, 'requestId': request_id, 'software': selections}
                 record['reviewToken'] = hashlib.sha256((record['configDigest'] + changes).encode()).hexdigest()
                 atomic(tx / 'deployment.json', record)
                 self.status(state='ready', phase='Built and checked; review changes before applying',
                             changes=changes, reviewToken=record['reviewToken'], inputs=record['inputs'],
                             installedVersion=read(self.release)['version'], availableVersion=candidate['version'] if candidate else read(self.release)['version'],
-                            notes=candidate['notes'] if candidate else '', restart='Reboot may be required; no reboot is automatic.')
+                            notes=candidate['notes'] if candidate else '', software=selections,
+                            restart='Reboot may be required; no reboot is automatic.')
                 # A failed preview must not spend explicit retry permission.
                 for authorization in retry_authorizations:
                     authorization.unlink(missing_ok=True)
@@ -499,6 +515,9 @@ class Engine:
         with locked(self.state / 'operation.lock', skip_busy=True) as acquired:
             if not acquired:
                 return
+            if (self.state / 'maintenance-pending.json').exists():
+                from .maintenance import Maintenance
+                Maintenance(self, worker_unit='nerdos-recover.service').resume()
             pending = read(self.pending_path)
             if not pending:
                 status = read(self.status_path, {})
@@ -566,6 +585,10 @@ class Engine:
 
     def rollback(self, identifier=None):
         with locked(self.state / 'operation.lock'):
+            if (self.state / 'maintenance-pending.json').exists():
+                raise Failure('Storage cleanup awaits recovery. Complete it before rollback.')
+            if identifier and (self.tx(identifier) / 'retired.json').exists():
+                raise Failure('This recovery point was retired by reviewed storage cleanup. Choose a retained deployment.')
             record = read(self.pending_path) if identifier is None else read(self.tx(identifier) / 'deployment.json')
             if not record:
                 raise Failure('Select a retained deployment from nerd update history')

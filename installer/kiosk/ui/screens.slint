@@ -1,0 +1,1379 @@
+import { Theme, Icons } from "theme.slint";
+import { Store, Check, DiskRow, SummaryRow, StageRow } from "store.slint";
+import { Icon, SlotIcon, Kicker, Heading, Lead, Btn, LinkButton, Card, Field, Toggle, Mark, Tag, Help, FieldLabel } from "widgets.slint";
+
+// ── shared pieces ────────────────────────────────────────────────────────────
+
+component Footer inherits Rectangle {
+    in property <string> note;
+    in property <string> note-icon;
+    in property <bool> show-back: true;
+    callback back;
+    x: 0;
+    y: 712px;
+    width: 1280px;
+    height: 88px;
+    Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.line;
+    }
+    if root.show-back: Btn {
+        x: 64px;
+        y: 18px;
+        text: "Back";
+        clicked => { root.back(); }
+    }
+    HorizontalLayout {
+        x: 190px;
+        y: 0;
+        height: parent.height;
+        width: 640px;
+        spacing: 8px;
+        alignment: start;
+        if root.note-icon != "": SlotIcon {
+            d: root.note-icon;
+            size: 16px;
+            tint: Theme.faint;
+        }
+        Text {
+            text: root.note;
+            color: Theme.faint;
+            font-size: 14px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    @children
+}
+
+component Pick inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    callback clicked;
+    height: 64px;
+    border-radius: 14px;
+    background: Theme.card;
+    border-width: 1px;
+    border-color: touch.has-hover || focus.has-focus ? Theme.line-2 : Theme.line;
+    Kicker {
+        x: 18px;
+        text: root.label;
+        font-size: 11px;
+        color: Theme.faint;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+    Text {
+        x: 128px;
+        text: root.value;
+        font-size: 18px;
+        color: Theme.ink;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+    Icon {
+        x: parent.width - 36px;
+        d: Icons.right;
+        tint: Theme.faint;
+    }
+    focus := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component CheckLine inherits Rectangle {
+    in property <Check> data;
+    in property <bool> first;
+    height: root.data.detail == "" ? 54px : 66px;
+    if !root.first: Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.line;
+    }
+    Mark {
+        x: 0;
+        state: root.data.state;
+        tick: Store.tick;
+    }
+    Text {
+        x: 38px;
+        width: 112px;
+        text: root.data.label;
+        color: Theme.fog;
+        font-size: 15px;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+    VerticalLayout {
+        x: 150px;
+        width: parent.width - 150px;
+        alignment: center;
+        spacing: 2px;
+        Text {
+            text: root.data.value;
+            color: root.data.state == 4 ? Theme.red : root.data.state == 3 ? Theme.amber : Theme.ink;
+            font-size: 15px;
+            overflow: elide;
+        }
+        if root.data.detail != "": Text {
+            text: root.data.detail;
+            color: Theme.faint;
+            font-size: 13px;
+            overflow: elide;
+        }
+    }
+}
+
+// ── welcome ──────────────────────────────────────────────────────────────────
+
+export component WelcomeScreen inherits Rectangle {
+    width: 1280px;
+    height: 800px;
+    keys := FocusScope {
+        capture-key-pressed(event) => {
+            if (event.text == Key.Return && Store.sheet == "") {
+                if (Store.development) {
+                    Store.accept-development();
+                    return accept;
+                }
+                if (Store.can-start) {
+                    Store.start();
+                    return accept;
+                }
+            }
+            return reject;
+        }
+        VerticalLayout {
+            x: 64px;
+            y: 132px;
+            width: 600px;
+            alignment: start;
+            Kicker {
+                text: "FRESH INSTALLATION · " + Store.version;
+                color: Theme.lime;
+            }
+            Rectangle { height: 14px; }
+            Heading { text: "Let's make this\ncomputer yours."; }
+            Rectangle { height: 14px; }
+            Lead { text: "Three short steps. Your disks stay untouched until you review everything and confirm."; }
+            Rectangle { height: 30px; }
+            Pick {
+                label: "LANGUAGE";
+                value: Store.language-name;
+                clicked => { Store.open-sheet("language"); }
+            }
+            Rectangle { height: 10px; }
+            Pick {
+                label: "KEYBOARD";
+                value: Store.layout-name;
+                clicked => { Store.open-sheet("keyboard"); }
+            }
+            Rectangle { height: 10px; }
+            Field { placeholder: "Type here to test your keyboard"; }
+            Rectangle { height: 28px; }
+            if Store.development: Rectangle {
+                height: dev-text.preferred-height + 34px;
+                border-radius: 14px;
+                background: Theme.amber-tint;
+                border-width: 1px;
+                border-color: #f2c14e4d;
+                dev-text := Text {
+                    x: 18px;
+                    width: parent.width - 36px;
+                    text: Store.development-message;
+                    color: Theme.amber;
+                    font-size: 15px;
+                    wrap: word-wrap;
+                    vertical-alignment: center;
+                }
+            }
+            if Store.development: Rectangle { height: 16px; }
+            if Store.preflight-error != "": Text {
+                text: Store.preflight-error;
+                color: Theme.red;
+                font-size: 15px;
+                wrap: word-wrap;
+            }
+            if Store.preflight-error != "": Rectangle { height: 16px; }
+            HorizontalLayout {
+                spacing: 14px;
+                alignment: start;
+                if Store.development: Btn {
+                    kind: "primary";
+                    text: "Use this test build";
+                    clicked => { Store.accept-development(); }
+                }
+                if !Store.development: Btn {
+                    kind: "primary";
+                    text: "Get started";
+                    icon: Icons.right;
+                    icon-right: true;
+                    enabled: Store.can-start;
+                    clicked => { Store.start(); }
+                }
+                if Store.offline || Store.preflight-error != "": Btn {
+                    text: "Connect to Wi-Fi";
+                    icon: Icons.wifi;
+                    clicked => { Store.open-sheet("wifi"); }
+                }
+                if Store.preflight-error != "": Btn {
+                    text: "Retry";
+                    icon: Icons.refresh;
+                    clicked => { Store.retry(); }
+                }
+            }
+        }
+        Card {
+            x: 746px;
+            y: 132px;
+            width: 470px;
+            height: checks.preferred-height;
+            checks := VerticalLayout {
+                padding-left: 24px;
+                padding-right: 24px;
+                padding-top: 16px;
+                alignment: start;
+                HorizontalLayout {
+                    height: 30px;
+                    Kicker {
+                        text: "SYSTEM CHECK";
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: Store.check-summary;
+                        color: Theme.faint;
+                        font-family: Theme.mono;
+                        font-size: 12px;
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
+                    }
+                }
+                for check[i] in Store.checks: CheckLine {
+                    data: check;
+                    first: i == 0;
+                }
+                Rectangle {
+                    height: 50px;
+                    Rectangle {
+                        y: 0;
+                        height: 1px;
+                        background: Theme.line;
+                    }
+                    Text {
+                        text: "Checks run again right before the disk is erased.";
+                        color: Theme.faint;
+                        font-size: 13px;
+                        x: 0;
+                        vertical-alignment: center;
+                        height: parent.height;
+                    }
+                }
+            }
+        }
+    }
+    init => { keys.focus(); }
+}
+
+// ── disk ─────────────────────────────────────────────────────────────────────
+
+component DiskCard inherits Rectangle {
+    in property <DiskRow> data;
+    callback clicked;
+    height: 96px;
+    border-radius: 18px;
+    background: Theme.card;
+    border-width: 1.5px;
+    border-color: root.data.selected ? Theme.lime : touch.has-hover && root.data.available ? Theme.line-2 : Theme.line;
+    opacity: root.data.available ? 1 : 0.55;
+    if root.data.selected: Rectangle {
+        x: -4px;
+        y: -4px;
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        border-radius: 22px;
+        border-width: 3px;
+        border-color: #c8ff1f1a;
+    }
+    Rectangle {
+        x: 22px;
+        width: 52px;
+        height: 52px;
+        border-radius: 14px;
+        background: Theme.bg-deep;
+        Icon {
+            d: root.data.removable ? Icons.usb : Icons.disk;
+            size: 26px;
+        }
+    }
+    VerticalLayout {
+        x: 92px;
+        width: parent.width - 92px - 200px;
+        alignment: center;
+        spacing: 6px;
+        Text {
+            text: root.data.model;
+            font-size: 19px;
+            font-weight: 700;
+            color: Theme.ink;
+            overflow: elide;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Tag { text: root.data.path; }
+            Text {
+                text: root.data.available ? root.data.bus + " · " + root.data.contents : root.data.reason;
+                color: root.data.available ? Theme.fog : Theme.amber;
+                font-size: 14px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+        if Store.show-all-disks: Text {
+            text: "serial " + root.data.serial;
+            font-family: Theme.mono;
+            font-size: 12px;
+            color: Theme.faint;
+            overflow: elide;
+        }
+    }
+    Text {
+        x: parent.width - 210px;
+        width: 150px;
+        text: root.data.size;
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        height: parent.height;
+        color: Theme.ink;
+    }
+    Rectangle {
+        x: parent.width - 46px;
+        width: 24px;
+        height: 24px;
+        border-radius: 12px;
+        border-width: root.data.selected ? 0px : 1.5px;
+        border-color: Theme.line-2;
+        background: root.data.selected ? Theme.lime : transparent;
+        if root.data.selected: Icon {
+            d: Icons.check;
+            tint: Theme.lime-ink;
+            size: 14px;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.data.available;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component DiskScreen inherits Rectangle {
+    width: 1280px;
+    height: 800px;
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (Store.sheet != "") { return reject; }
+            if (event.text == Key.Return && Store.disk-chosen) {
+                Store.navigate("account");
+                return accept;
+            }
+            if (event.text == Key.Escape) {
+                Store.navigate("welcome");
+                return accept;
+            }
+            if (event.text == Key.DownArrow || event.text == Key.UpArrow) {
+                Store.choose-disk(event.text == Key.DownArrow ? "+next" : "+previous");
+                return accept;
+            }
+            return reject;
+        }
+        Text {
+            x: 64px;
+            y: 100px;
+            text: "Where should NerdOS live?";
+            font-size: 40px;
+            font-weight: 700;
+            letter-spacing: -1px;
+            color: Theme.ink;
+        }
+        Lead {
+            x: 64px;
+            y: 156px;
+            width: 700px;
+            text: "NerdOS uses the whole disk. You'll review everything before anything is erased.";
+        }
+        VerticalLayout {
+            x: 64px;
+            y: 214px;
+            width: 740px;
+            spacing: 12px;
+            alignment: start;
+            for disk in Store.disks: DiskCard {
+                data: disk;
+                clicked => { Store.choose-disk(disk.path); }
+            }
+            if Store.disks.length == 0: Text {
+                text: "No installation disk was found. Connect a writable disk of at least " + Store.minimum-gib + " GiB, then refresh.";
+                color: Theme.amber;
+                font-size: 16px;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 18px;
+                alignment: start;
+                height: 34px;
+                more := Rectangle {
+                    width: more-row.preferred-width;
+                    more-row := HorizontalLayout {
+                        spacing: 6px;
+                        SlotIcon {
+                            d: Store.show-all-disks ? "M 5 9 L 12 16 L 19 9" : Icons.right;
+                            size: 16px;
+                        }
+                        Text {
+                            text: Store.show-all-disks ? "Fewer details" : Store.hidden-disks > 0 ? "More options · serial numbers and " + Store.hidden-disks + " disk(s) that can't be used" : "More options · serial numbers";
+                            color: Theme.fog;
+                            font-size: 15px;
+                            vertical-alignment: center;
+                        }
+                    }
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { Store.toggle-all-disks(); }
+                    }
+                }
+                if Store.show-all-disks: LinkButton {
+                    text: "Refresh disks";
+                    vertical-alignment: center;
+                    clicked => { Store.rescan(); }
+                }
+            }
+            if Store.disk-error != "": Text {
+                text: Store.disk-error;
+                color: Theme.red;
+                font-size: 14px;
+                wrap: word-wrap;
+            }
+        }
+        Card {
+            x: 840px;
+            y: 214px;
+            width: 376px;
+            height: options.preferred-height;
+            options := VerticalLayout {
+                alignment: start;
+                Rectangle {
+                    height: enc-text.preferred-height + 40px;
+                    SlotIcon {
+                        x: 22px;
+                        d: Icons.lock;
+                        size: 22px;
+                    }
+                    enc-text := VerticalLayout {
+                        x: 60px;
+                        width: parent.width - 60px - 84px;
+                        alignment: center;
+                        spacing: 4px;
+                        Text {
+                            text: "Encrypt the disk";
+                            font-size: 17px;
+                            font-weight: 700;
+                            color: Theme.ink;
+                        }
+                        Text {
+                            text: Store.encrypted ? "Recommended. Your password unlocks NerdOS at startup. Without encryption, anyone holding the disk can read your files." : "Off: anyone holding this disk can read your files. Your password is still required to sign in.";
+                            font-size: 14px;
+                            color: Store.encrypted ? Theme.fog : Theme.amber;
+                            wrap: word-wrap;
+                        }
+                    }
+                    Toggle {
+                        x: parent.width - 70px;
+                        on: Store.encrypted;
+                        toggled => { Store.toggle-encrypted(); }
+                    }
+                }
+                Rectangle {
+                    height: 1px;
+                    background: Theme.line;
+                }
+                Rectangle {
+                    height: layout-text.preferred-height + 36px;
+                    SlotIcon {
+                        x: 22px;
+                        d: Icons.disk;
+                        size: 22px;
+                    }
+                    layout-text := VerticalLayout {
+                        x: 60px;
+                        width: parent.width - 80px;
+                        alignment: center;
+                        spacing: 4px;
+                        Text {
+                            text: "Layout";
+                            font-size: 17px;
+                            font-weight: 700;
+                            color: Theme.ink;
+                        }
+                        Text {
+                            text: "GPT · " + Store.esp-gib + " GiB EFI system (FAT32)\nrest: ext4" + (Store.encrypted ? " inside LUKS2" : "");
+                            font-family: Theme.mono;
+                            font-size: 13px;
+                            color: Theme.fog;
+                        }
+                        Text {
+                            text: "Set by the release. Minimum disk " + Store.minimum-gib + " GiB.";
+                            font-size: 13px;
+                            color: Theme.faint;
+                        }
+                    }
+                }
+            }
+        }
+        Footer {
+            note: "Nothing is erased until you confirm on the review page.";
+            note-icon: Icons.shield;
+            back => { Store.navigate("welcome"); }
+            Btn {
+                x: 1216px - self.width;
+                y: 18px;
+                kind: "primary";
+                text: "Continue";
+                icon: Icons.right;
+                icon-right: true;
+                enabled: Store.disk-chosen;
+                clicked => { Store.navigate("account"); }
+            }
+        }
+    }
+    init => { keys.focus(); }
+}
+
+// ── account ──────────────────────────────────────────────────────────────────
+
+export component AccountScreen inherits Rectangle {
+    width: 1280px;
+    height: 800px;
+    Text {
+        x: 64px;
+        y: 100px;
+        text: "Who's using this computer?";
+        font-size: 40px;
+        font-weight: 700;
+        letter-spacing: -1px;
+        color: Theme.ink;
+    }
+    Lead {
+        x: 64px;
+        y: 156px;
+        width: 760px;
+        text: Store.encrypted ? "One account with one password. That password also unlocks the disk." : "One account with one password.";
+    }
+    VerticalLayout {
+        x: 64px;
+        y: 206px;
+        width: 552px;
+        alignment: start;
+        spacing: 8px;
+        FieldLabel {
+            text: "YOUR NAME";
+            aux: "optional";
+        }
+        name-field := Field {
+            placeholder: "Ada Lovelace";
+            text <=> Store.full-name;
+            edited(text) => { Store.full-name-edited(text); }
+            accepted => { user-field.focus-input(); }
+        }
+        Help {
+            height: 18px;
+            text: Store.name-help;
+            tone: 2;
+        }
+        FieldLabel {
+            text: "USERNAME";
+            aux: Store.username-count;
+        }
+        user-field := Field {
+            mono: true;
+            placeholder: "ada";
+            bad: Store.username-tone == 2;
+            text <=> Store.username;
+            edited(text) => {
+                let r = Store.filter-name(text, self.caret());
+                Store.username-edited(r.text, r.note);
+                if (r.text != text) {
+                    self.set-caret(r.caret);
+                    self.text = r.text;
+                    self.set-caret(r.caret);
+                }
+            }
+            accepted => { password-field.focus-input(); }
+        }
+        Help {
+            height: 26px;
+            text: Store.username-help;
+            tone: Store.username-tone;
+        }
+        FieldLabel {
+            text: "PASSWORD";
+            aux: "8+ characters · typing with " + Store.layout-name;
+        }
+        Rectangle {
+            height: 52px;
+            password-field := Field {
+                width: parent.width;
+                password: !Store.show-password;
+                right-inset: 70px;
+                placeholder: "At least 8 characters";
+                text <=> Store.password;
+                edited(text) => { Store.passwords-edited(); }
+                accepted => {
+                    if (Store.password != "" && Store.confirm == "") {
+                        confirm-field.focus-input();
+                    } else if (Store.can-review) {
+                        Store.continue-account();
+                    } else {
+                        confirm-field.focus-input();
+                    }
+                }
+            }
+            Rectangle {
+                x: parent.width - 70px;
+                y: 8px;
+                width: 62px;
+                height: 36px;
+                border-radius: 8px;
+                background: Theme.card-2;
+                Text {
+                    text: Store.show-password ? "Hide" : "Show";
+                    color: Theme.fog;
+                    font-size: 13px;
+                }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { Store.show-password = !Store.show-password; }
+                }
+            }
+        }
+        HorizontalLayout {
+            height: 4px;
+            spacing: 4px;
+            for level in [1, 2, 3, 4]: Rectangle {
+                border-radius: 2px;
+                background: Store.strength >= level ? (Store.strength == 1 ? Theme.amber : Theme.lime) : Theme.line-2;
+            }
+        }
+        Help {
+            height: 22px;
+            text: Store.unlock-note;
+            tone: 0;
+        }
+        FieldLabel { text: "CONFIRM PASSWORD"; }
+        confirm-field := Field {
+            password: !Store.show-password;
+            placeholder: "Type it once more";
+            bad: Store.confirm-tone == 2;
+            text <=> Store.confirm;
+            edited(text) => { Store.passwords-edited(); }
+            accepted => {
+                if (Store.can-review) {
+                    Store.continue-account();
+                }
+            }
+        }
+        Help {
+            height: 20px;
+            text: Store.account-error != "" ? Store.account-error : Store.confirm-help;
+            tone: Store.account-error != "" ? 2 : Store.confirm-tone;
+        }
+    }
+    VerticalLayout {
+        x: 664px;
+        y: 206px;
+        width: 552px;
+        alignment: start;
+        spacing: 8px;
+        FieldLabel {
+            text: "TIME ZONE";
+            aux: Store.tz-source;
+        }
+        Card {
+            height: 290px;
+            Image {
+                x: 22px;
+                y: 20px;
+                width: 508px;
+                height: 170px;
+                source: Store.mini-map;
+                image-fit: fill;
+            }
+            Text {
+                x: 22px;
+                y: 206px;
+                text: Store.tz-clock;
+                font-family: Theme.mono;
+                font-weight: 700;
+                font-size: 54px;
+                letter-spacing: -2px;
+                color: Theme.ink;
+            }
+            VerticalLayout {
+                x: 210px;
+                y: 210px;
+                width: 300px;
+                height: self.preferred-height;
+                spacing: 2px;
+                Text {
+                    text: Store.tz-city;
+                    font-size: 22px;
+                    font-weight: 700;
+                    color: Theme.ink;
+                    overflow: elide;
+                }
+                Text {
+                    text: Store.tz-sub;
+                    font-size: 14px;
+                    color: Theme.fog;
+                    overflow: elide;
+                }
+            }
+            LinkButton {
+                x: parent.width - self.width - 22px;
+                y: 238px;
+                text: "Change";
+                clicked => { Store.open-sheet("timezone"); }
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { Store.open-sheet("timezone"); }
+            }
+        }
+        Rectangle { height: 14px; }
+        FieldLabel {
+            text: "COMPUTER NAME";
+            aux: Store.host-edited ? "custom" : "follows your username";
+        }
+        host-field := Field {
+            mono: true;
+            text <=> Store.hostname;
+            bad: Store.hostname-tone == 2;
+            edited(text) => {
+                let r = Store.filter-name(text, self.caret());
+                Store.hostname-edited(r.text, r.note);
+                if (r.text != text) {
+                    self.set-caret(r.caret);
+                    self.text = r.text;
+                    self.set-caret(r.caret);
+                }
+            }
+        }
+        Help {
+            height: 22px;
+            text: Store.hostname-help;
+            tone: Store.hostname-tone;
+        }
+    }
+    Footer {
+        note: Store.home-note;
+        back => { Store.navigate("disk"); }
+        Btn {
+            x: 1216px - self.width;
+            y: 18px;
+            kind: "primary";
+            text: Store.review-busy ? "Checking…" : "Continue";
+            icon: Icons.right;
+            icon-right: true;
+            enabled: Store.can-review && !Store.review-busy;
+            clicked => { Store.continue-account(); }
+        }
+    }
+    init => {
+        if (Store.username == "") {
+            name-field.focus-input();
+        } else {
+            password-field.focus-input();
+        }
+    }
+}
+
+// ── review ───────────────────────────────────────────────────────────────────
+
+component SummaryLine inherits Rectangle {
+    in property <SummaryRow> data;
+    height: 66px;
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+    Text {
+        x: 0;
+        width: 140px;
+        text: root.data.label;
+        color: Theme.fog;
+        font-size: 15px;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+    VerticalLayout {
+        x: 150px;
+        width: parent.width - 150px - 90px;
+        alignment: center;
+        spacing: 2px;
+        Text {
+            text: root.data.value;
+            font-family: root.data.mono ? Theme.mono : Theme.sans;
+            font-size: 16px;
+            color: root.data.warn ? Theme.amber : Theme.ink;
+            overflow: elide;
+        }
+        if root.data.detail != "": Text {
+            text: root.data.detail;
+            font-size: 13px;
+            color: Theme.faint;
+            overflow: elide;
+        }
+    }
+    if root.data.action != "": LinkButton {
+        x: parent.width - self.width;
+        text: root.data.action-label;
+        vertical-alignment: center;
+        height: parent.height;
+        clicked => { Store.change(root.data.action); }
+    }
+}
+
+export component ReviewScreen inherits Rectangle {
+    width: 1280px;
+    height: 800px;
+    keys := FocusScope {
+        key-pressed(event) => {
+            // Enter never erases: the button must be chosen explicitly.
+            if (event.text == Key.Escape && Store.sheet == "") {
+                Store.back-to-account();
+                return accept;
+            }
+            return reject;
+        }
+        Text {
+            x: 64px;
+            y: 100px;
+            text: "Ready when you are.";
+            font-size: 40px;
+            font-weight: 700;
+            letter-spacing: -1px;
+            color: Theme.ink;
+        }
+        Rectangle {
+            x: 64px;
+            y: 166px;
+            width: 1152px;
+            height: 88px;
+            border-radius: 18px;
+            background: Theme.red-tint;
+            border-width: 1px;
+            border-color: Theme.red-line;
+            Rectangle {
+                x: 24px;
+                width: 48px;
+                height: 48px;
+                border-radius: 24px;
+                background: #ff6b5726;
+                Icon {
+                    d: Icons.alert;
+                    tint: Theme.red;
+                    size: 24px;
+                }
+            }
+            VerticalLayout {
+                x: 92px;
+                width: parent.width - 116px;
+                alignment: center;
+                spacing: 3px;
+                Text {
+                    text: Store.erase-title;
+                    font-size: 21px;
+                    font-weight: 700;
+                    color: Theme.ink;
+                    overflow: elide;
+                }
+                Text {
+                    text: Store.erase-detail;
+                    font-size: 15px;
+                    color: Theme.fog;
+                    overflow: elide;
+                }
+            }
+        }
+        VerticalLayout {
+            x: 64px;
+            y: 270px;
+            width: 556px;
+            alignment: start;
+            for row in Store.summary-left: SummaryLine { data: row; }
+        }
+        VerticalLayout {
+            x: 660px;
+            y: 270px;
+            width: 556px;
+            alignment: start;
+            for row in Store.summary-right: SummaryLine { data: row; }
+        }
+        if Store.review-error != "": Text {
+            x: 64px;
+            y: 640px;
+            width: 1152px;
+            text: Store.review-error;
+            color: Theme.red;
+            font-size: 14px;
+            wrap: word-wrap;
+        }
+        Footer {
+            note: Store.review-busy ? "Updating the review…" : "The disk's identity is checked again just before it is erased.";
+            note-icon: Icons.shield;
+            back => { Store.back-to-account(); }
+            Btn {
+                x: 1216px - self.width;
+                y: 18px;
+                kind: "danger";
+                icon: Icons.alert;
+                text: Store.erase-button;
+                enabled: !Store.review-busy;
+                clicked => { Store.install(); }
+            }
+        }
+    }
+    init => { keys.focus(); }
+}
+
+// ── installing ───────────────────────────────────────────────────────────────
+
+component StageLine inherits Rectangle {
+    in property <StageRow> data;
+    in property <int> number;
+    in property <bool> first;
+    height: root.data.state == 1 && root.data.detail != "" ? 74px : 54px;
+    if !root.first: Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.line;
+    }
+    Mark {
+        x: 0;
+        state: root.data.state == 0 ? 0 : root.data.state == 1 ? 1 : 2;
+        tick: Store.tick;
+    }
+    VerticalLayout {
+        x: 40px;
+        width: parent.width - 70px;
+        alignment: center;
+        spacing: 2px;
+        Text {
+            text: root.data.title;
+            font-size: 17px;
+            font-weight: root.data.state == 1 ? 700 : 400;
+            color: root.data.state == 1 ? Theme.ink : root.data.state == 0 ? Theme.fog : Theme.faint;
+            overflow: elide;
+        }
+        if root.data.state == 1 && root.data.detail != "": Text {
+            text: root.data.detail;
+            font-size: 13.5px;
+            color: Theme.fog;
+            overflow: elide;
+        }
+    }
+    Text {
+        x: parent.width - 20px;
+        text: root.number;
+        font-family: Theme.mono;
+        font-size: 12px;
+        color: Theme.faint;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+}
+
+export component InstallingScreen inherits Rectangle {
+    width: 1280px;
+    height: 800px;
+    VerticalLayout {
+        x: 64px;
+        y: 128px;
+        width: 560px;
+        alignment: start;
+        Kicker {
+            text: "INSTALLING · STEP " + max(1, Store.stage) + " OF " + Store.stage-count;
+            color: Theme.lime;
+        }
+        Rectangle { height: 14px; }
+        Heading { text: "Your desktop is\non its way."; }
+        Rectangle { height: 14px; }
+        Lead { text: "Keep the power and internet connected. It finishes on its own, so you can step away."; }
+        Rectangle { height: 26px; }
+        HorizontalLayout {
+            height: 6px;
+            spacing: 6px;
+            for index in Store.stage-count: Rectangle {
+                border-radius: 3px;
+                background: index + 1 < Store.stage ? Theme.lime : index + 1 == Store.stage ? #c8ff1f73 : Theme.line-2;
+            }
+        }
+        Rectangle { height: 10px; }
+        Text {
+            text: "Elapsed " + Store.elapsed;
+            font-family: Theme.mono;
+            font-size: 14px;
+            color: Theme.fog;
+        }
+        Rectangle { height: 26px; }
+        Card {
+            height: tip.preferred-height;
+            tip := VerticalLayout {
+                padding: 22px;
+                spacing: 10px;
+                Kicker { text: "WHILE YOU WAIT"; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    height: 36px;
+                    for key[i] in Store.tip-keys: HorizontalLayout {
+                        spacing: 6px;
+                        if i > 0: Text {
+                            text: "+";
+                            color: Theme.faint;
+                            vertical-alignment: center;
+                        }
+                        Rectangle {
+                            width: key-label.preferred-width + 22px;
+                            border-radius: 8px;
+                            background: Theme.bg-deep;
+                            border-width: 1px;
+                            border-color: Theme.line-2;
+                            key-label := Text {
+                                text: key;
+                                font-family: Theme.mono;
+                                font-weight: 700;
+                                font-size: 15px;
+                                color: Theme.ink;
+                            }
+                        }
+                    }
+                }
+                Text {
+                    text: Store.tip-text;
+                    font-size: 16px;
+                    color: Theme.fog;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        Rectangle { height: 22px; }
+        HorizontalLayout {
+            alignment: start;
+            Btn {
+                small: true;
+                icon: Icons.log;
+                text: "Show installation details";
+                clicked => { Store.open-sheet("log"); }
+            }
+        }
+    }
+    Card {
+        x: 680px;
+        y: 128px;
+        width: 536px;
+        height: steps.preferred-height + 12px;
+        steps := VerticalLayout {
+            x: 26px;
+            y: 6px;
+            width: parent.width - 52px;
+            alignment: start;
+            for stage[i] in Store.stages: StageLine {
+                data: stage;
+                number: i + 1;
+                first: i == 0;
+            }
+        }
+    }
+}
+
+// ── done ─────────────────────────────────────────────────────────────────────
+
+component NextCard inherits Card {
+    in property <string> number;
+    in property <string> title;
+    in property <string> body;
+    height: 150px;
+    VerticalLayout {
+        padding: 20px;
+        spacing: 6px;
+        alignment: start;
+        Text {
+            text: root.number;
+            font-family: Theme.mono;
+            font-weight: 700;
+            font-size: 13px;
+            color: Theme.lime;
+        }
+        Text {
+            text: root.title;
+            font-size: 18px;
+            font-weight: 700;
+            color: Theme.ink;
+        }
+        Text {
+            text: root.body;
+            font-size: 14.5px;
+            color: Theme.fog;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export component DoneScreen inherits Rectangle {
+    width: 1280px;
+    height: 800px;
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: 130px;
+        width: 150px;
+        source: @image-url("../assets/symbol.svg");
+        image-fit: contain;
+    }
+    Heading {
+        x: 0;
+        y: 210px;
+        width: parent.width;
+        horizontal-alignment: center;
+        text: "Welcome home, " + Store.done-user + ".";
+    }
+    Lead {
+        x: 0;
+        y: 280px;
+        width: parent.width;
+        horizontal-alignment: center;
+        text: "NerdOS " + Store.version + " is installed on " + Store.done-host + ".";
+    }
+    HorizontalLayout {
+        x: 190px;
+        y: 344px;
+        width: 900px;
+        spacing: 14px;
+        NextCard {
+            number: "01";
+            title: "Remove the USB drive";
+            body: "Or choose the internal disk if this computer booted over the network.";
+        }
+        NextCard {
+            number: "02";
+            title: Store.done-encrypted ? "Unlock the disk" : "Wait for the login screen";
+            body: Store.done-encrypted ? "Type your password at startup, using the " + Store.layout-name + " layout." : "This disk is not encrypted.";
+        }
+        NextCard {
+            number: "03";
+            title: "Sign in as " + Store.done-user;
+            body: "The first login always asks for your password.";
+        }
+    }
+    HorizontalLayout {
+        x: (parent.width - self.preferred-width) / 2;
+        y: 530px;
+        width: self.preferred-width;
+        spacing: 14px;
+        restart := Btn {
+            kind: "primary";
+            icon: Icons.restart;
+            text: "Restart now";
+            clicked => { Store.power("reboot"); }
+        }
+        Btn {
+            icon: Icons.power;
+            text: "Power off";
+            clicked => { Store.power("poweroff"); }
+        }
+    }
+}
+
+// ── stopped before any disk change, and failures after it ────────────────────
+
+export component StoppedScreen inherits Rectangle {
+    width: 1280px;
+    height: 800px;
+    VerticalLayout {
+        x: 64px;
+        y: 136px;
+        width: 760px;
+        alignment: start;
+        Kicker {
+            text: Store.stop-kicker;
+            color: Theme.amber;
+        }
+        Rectangle { height: 14px; }
+        Heading { text: Store.stop-title; }
+        Rectangle { height: 14px; }
+        Lead { text: Store.stop-body; }
+        if Store.stop-check-label != "": Rectangle { height: 26px; }
+        if Store.stop-check-label != "": Rectangle {
+            height: 58px;
+            border-radius: 14px;
+            background: Theme.red-tint;
+            border-width: 1px;
+            border-color: #ff6b574d;
+            Mark {
+                x: 20px;
+                state: 4;
+            }
+            Text {
+                x: 58px;
+                text: Store.stop-check-label;
+                color: Theme.fog;
+                font-size: 16px;
+                vertical-alignment: center;
+                height: parent.height;
+            }
+            Text {
+                x: 200px;
+                width: parent.width - 220px;
+                text: Store.stop-check-value;
+                font-family: Theme.mono;
+                font-size: 15px;
+                color: Theme.ink;
+                vertical-alignment: center;
+                height: parent.height;
+                overflow: elide;
+            }
+        }
+        Rectangle { height: 22px; }
+        for step[i] in Store.stop-steps: HorizontalLayout {
+            spacing: 14px;
+            height: 44px;
+            Rectangle {
+                width: 26px;
+                Rectangle {
+                    width: 26px;
+                    height: 26px;
+                    border-radius: 13px;
+                    background: Theme.lime-soft;
+                    Text {
+                        text: i + 1;
+                        font-family: Theme.mono;
+                        font-weight: 700;
+                        font-size: 13px;
+                        color: Theme.lime;
+                    }
+                }
+            }
+            Text {
+                text: step;
+                font-size: 17px;
+                color: Theme.ink;
+                vertical-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+        Rectangle { height: 24px; }
+        HorizontalLayout {
+            spacing: 14px;
+            alignment: start;
+            if Store.stop-action == "firmware": Btn {
+                kind: "primary";
+                icon: Icons.firmware;
+                text: "Restart into firmware settings";
+                clicked => { Store.power("firmware"); }
+            }
+            if Store.stop-action == "restart": Btn {
+                kind: "primary";
+                icon: Icons.restart;
+                text: "Restart";
+                clicked => { Store.power("reboot"); }
+            }
+            if Store.stop-action == "retry": Btn {
+                kind: "primary";
+                icon: Icons.refresh;
+                text: "Try again";
+                clicked => { Store.start-over(); }
+            }
+            Btn {
+                icon: Icons.log;
+                text: "Details";
+                clicked => { Store.open-sheet("log"); }
+            }
+            Btn {
+                icon: Icons.power;
+                text: "Power off";
+                clicked => { Store.power("poweroff"); }
+            }
+        }
+    }
+}
+
+export component FailedScreen inherits Rectangle {
+    width: 1280px;
+    height: 800px;
+    VerticalLayout {
+        x: 64px;
+        y: 136px;
+        width: 800px;
+        alignment: start;
+        Kicker {
+            text: Store.fail-touched ? "INSTALLATION STOPPED · THE DISK MAY HAVE CHANGED" : "INSTALLATION STOPPED · NO DISK WAS CHANGED";
+            color: Theme.red;
+        }
+        Rectangle { height: 14px; }
+        Heading { text: Store.fail-title; }
+        Rectangle { height: 16px; }
+        Rectangle {
+            height: message.preferred-height + 36px;
+            border-radius: 14px;
+            background: Theme.red-tint;
+            border-width: 1px;
+            border-color: #ff6b574d;
+            message := Text {
+                x: 20px;
+                width: parent.width - 40px;
+                text: Store.fail-message;
+                color: Theme.ink;
+                font-size: 16px;
+                wrap: word-wrap;
+            }
+        }
+        Rectangle { height: 16px; }
+        Lead { text: "The installation log explains what happened. Save it to another USB stick before restarting: it lives only in this session."; }
+        Rectangle { height: 26px; }
+        HorizontalLayout {
+            spacing: 14px;
+            alignment: start;
+            Btn {
+                kind: "primary";
+                icon: Icons.log;
+                text: "Show installation details";
+                clicked => { Store.open-sheet("log"); }
+            }
+            Btn {
+                icon: Icons.refresh;
+                text: "Start over";
+                clicked => { Store.start-over(); }
+            }
+            Btn {
+                icon: Icons.power;
+                text: "Power off";
+                clicked => { Store.power("poweroff"); }
+            }
+        }
+    }
+}

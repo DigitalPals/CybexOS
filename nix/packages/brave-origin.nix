@@ -1,8 +1,12 @@
-{ lib, brave, fetchurl }:
+{ lib, brave, fetchurl,
+  # Keep the former shortcut flags in the package, so desktop-entry launches,
+  # private actions and the selected-browser helper retain camera/IME support.
+  commandLineArgs ? "--enable-features=TouchpadOverscrollHistoryNavigation,PipeWireCamera,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoEncoder --enable-wayland-ime --restore-last-session --hide-crash-restore-bubble"
+}:
 # Reuse the machine Nixpkgs Chromium wrapper, libraries and sandbox policy.
 # The Origin edition is not yet selectable in that recipe. Remove this pin
 # when stable Nixpkgs packages Origin; review it on every vendor release.
-brave.overrideAttrs (old: {
+(brave.override { inherit commandLineArgs; }).overrideAttrs (old: {
   pname = "brave-origin";
   version = "1.97.59";
   src = fetchurl {

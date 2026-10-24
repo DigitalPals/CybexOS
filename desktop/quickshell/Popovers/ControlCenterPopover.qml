@@ -90,7 +90,7 @@ Surface {
     readonly property real sessionActionWidth:
         Math.max(0, (contentWidth - 4 * sessionSpacing) / 5)
     readonly property var sessionActions: [
-        { key: "lock", glyph: "lock", label: I18n.tr("Lock") },
+        ...(!Session.live ? [{ key: "lock", glyph: "lock", label: I18n.tr("Lock") }] : []),
         { key: "suspend", glyph: "bedtime", label: I18n.tr("Suspend") },
         { key: "logout", glyph: "logout", label: I18n.tr("Log out") },
         { key: "restart", glyph: "restart_alt", label: I18n.tr("Restart") },

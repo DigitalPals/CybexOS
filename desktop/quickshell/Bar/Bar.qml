@@ -241,6 +241,7 @@ PanelWindow {
         case "updates": return Updates.total > 0 || Updates.error !== ""
             || Updates.runState !== "idle" || Updates.rebootRecommended;
         case "tray": return SystemTray.items.values.length > 0;
+        case "assistant": return Settings.assistantConfigured;
         default: return true;
         }
     }
@@ -671,7 +672,8 @@ PanelWindow {
         indicators: "Modules/Indicators.qml",
         t3: "Modules/T3.qml", hermes: "Modules/Hermes.qml",
         gh: "Modules/GitHub.qml", updates: "Modules/Updates.qml",
-        tray: "Modules/Tray.qml", notifications: "Modules/Notifications.qml",
+        tray: "Modules/Tray.qml", assistant: "Modules/Assistant.qml",
+        notifications: "Modules/Notifications.qml",
         vol: "Modules/Volume.qml", wifi: "Modules/Wifi.qml",
         batt: "Modules/Battery.qml", bt: "Modules/Bluetooth.qml",
         control: "Modules/Control.qml"

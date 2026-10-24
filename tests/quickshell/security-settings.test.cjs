@@ -80,10 +80,10 @@ test("a missing reader or key support is one short line, not empty controls", ()
     assert.match(page, /SecurityHelpers\.keyLine\(page\.keys\.state\)/);
 });
 
-test("the page has exactly the Fingerprint and Security keys groups", () => {
+test("the page has Password, Fingerprint and Security keys groups", () => {
     const page = read("Settings/SecurityPage.qml");
     const groups = [...page.matchAll(/SettingsGroup \{\s*width: parent\.width\s*title: "([^"]+)"/g)].map(m => m[1]);
-    assert.deepEqual(groups, ["Fingerprint", "Security keys"]);
+    assert.deepEqual(groups, ["Password", "Fingerprint", "Security keys"]);
     // The NixOS authentication policy is read-only here. Enrolment remains an
     // action; policy changes use a personal module and the staged lifecycle.
     const switches = [...page.matchAll(/SwitchRow \{[\s\S]*?label: "([^"]+)"/g)].map(m => m[1]);

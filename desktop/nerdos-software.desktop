@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Software
+Comment=Install and remove native packages through reviewed NerdOS deployments
+Exec=nerdos-software
+Icon=nerdos
+Type=Application
+Categories=System;PackageManager;
+Keywords=install;remove;packages;applications;
