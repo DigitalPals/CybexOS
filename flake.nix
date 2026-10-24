@@ -69,7 +69,7 @@
         };
         lifecycle = pkgs.runCommand "cybexos-lifecycle-tests" {
           nativeBuildInputs = [
-            (pkgs.python3.withPackages (p: [ p.websockets p.pygobject3 p.pillow p.dbus-python ]))
+            (pkgs.python3.withPackages (p: [ p.websockets p.pygobject3 p.pillow p.dbus-python p.pexpect ]))
             pkgs.openssl pkgs.git pkgs.dbus pkgs.restic pkgs.quickshell pkgs.systemd
             pkgs.xdg-terminal-exec pkgs.desktop-file-utils
           ];

@@ -22,6 +22,29 @@ import pexpect
 PASSWORD = 'Cybexos8!'
 
 
+def check_installed_identity(media, installed, source):
+    """Require the ISO's exact content identity after a bundled test install.
+
+    Development installation locks the bundled directory as a path input. Nix
+    preserves its NAR hash but supplies no Git revision to that flake. Record
+    this metadata distinction rather than rejecting identical source bytes or
+    claiming that the installed flake still carries the medium's Git metadata.
+    """
+    if (not all(media.get(key) for key in ('version', 'revision', 'narHash'))
+            or installed.get('version') != media.get('version')
+            or installed.get('narHash') != media.get('narHash')
+            or source.get('narHash') != media.get('narHash')):
+        raise RuntimeError('Installed product differs from ISO source identity')
+    expected_revision = 'uncommitted' if source.get('type') == 'path' else media.get('revision')
+    if (installed.get('revision') != expected_revision
+            or (source.get('type') != 'path' and source.get('rev') != media.get('revision'))):
+        raise RuntimeError('Installed product has unexpected source revision metadata')
+    return {'result': 'passed', 'isoRelease': media, 'installedRelease': installed,
+            'installedSource': source,
+            'scope': 'same exact source NAR; bundled path inputs have no Git revision metadata'
+                     if source.get('type') == 'path' else 'same exact source revision and NAR'}
+
+
 class VM:
     def __init__(self, directory, disk, iso=None):
         self.directory, self.disk, self.iso = directory, disk, iso
@@ -666,9 +689,13 @@ def qualify(iso, encrypted, base, lifecycle=True, evidence=None, *, interactive=
         milestones['installedBootAndSerialPasswordLogin'] = {'result': 'passed'}
         vm.command('test -L /etc/nixos && test -e /etc/cybexos/runtime/quickshell/shell.qml')
         installed_identity=json.loads(vm.command('cat /etc/cybexos/release.json').strip())
-        if installed_identity != identity:
-            raise RuntimeError('Installed product differs from ISO source identity')
-        milestones['installedSourceIdentity'] = {'result': 'passed'}
+        installed_source=json.loads(vm.command('''python3 - <<'QA_SOURCE'
+import json
+from pathlib import Path
+lock = json.loads(Path('/etc/nixos/flake.lock').read_text())
+print(json.dumps(lock['nodes'][lock['nodes'][lock['root']]['inputs']['cybexos']]['locked']))
+QA_SOURCE''').strip())
+        milestones['installedSourceIdentity'] = check_installed_identity(identity, installed_identity, installed_source)
         vm.command('cybexos-verify-encryption' if encrypted else '! cybexos-verify-encryption')
         milestones['runtimeEncryption'] = {'result': 'passed', 'encrypted': encrypted}
         vm.command('cybexos-desktop-check')

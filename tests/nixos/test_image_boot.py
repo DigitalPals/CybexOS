@@ -9,6 +9,50 @@ spec = importlib.util.spec_from_loader(loader.name, loader)
 parity = importlib.util.module_from_spec(spec)
 loader.exec_module(parity)
 
+loader = importlib.machinery.SourceFileLoader('installation_qualification', str(Path(__file__).resolve().parents[2] / 'scripts/qualify-installations'))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+qualification = importlib.util.module_from_spec(spec)
+loader.exec_module(qualification)
+
+
+class InstalledSourceIdentityTests(unittest.TestCase):
+    media = {'version': '1.0.0-beta.2', 'revision': 'a' * 40, 'narHash': 'sha256-' + 'A' * 43 + '='}
+    path_source = {'type': 'path', 'path': '/nix/store/bundled-source', 'narHash': media['narHash']}
+    installed = dict(media, revision='uncommitted')
+
+    def test_committed_medium_keeps_exact_content_identity_through_a_bundled_path(self):
+        evidence = qualification.check_installed_identity(self.media, self.installed, self.path_source)
+        self.assertEqual(evidence['result'], 'passed')
+        self.assertEqual(evidence['isoRelease']['revision'], 'a' * 40)
+        self.assertEqual(evidence['installedRelease']['revision'], 'uncommitted')
+        self.assertEqual(evidence['installedSource']['narHash'], self.media['narHash'])
+
+    def test_uncommitted_medium_keeps_exact_content_identity(self):
+        qualification.check_installed_identity(self.installed, self.installed, self.path_source)
+
+    def test_git_input_requires_both_the_revision_and_content_identity(self):
+        source = {'type': 'git', 'rev': self.media['revision'], 'narHash': self.media['narHash']}
+        qualification.check_installed_identity(self.media, self.media, source)
+        for installed, locked in ((self.installed, source), (self.media, dict(source, rev='b' * 40))):
+            with self.subTest(installed=installed, locked=locked), self.assertRaises(RuntimeError):
+                qualification.check_installed_identity(self.media, installed, locked)
+
+    def test_rejects_different_installed_bytes_or_version(self):
+        for change in ({'narHash': 'sha256-' + 'B' * 43 + '='}, {'version': '1.0.0'}):
+            with self.subTest(change=change), self.assertRaises(RuntimeError):
+                qualification.check_installed_identity(self.media, dict(self.installed, **change), self.path_source)
+
+    def test_matching_release_labels_cannot_hide_a_different_locked_source(self):
+        with self.assertRaises(RuntimeError):
+            qualification.check_installed_identity(self.media, self.installed,
+                                                   dict(self.path_source, narHash='sha256-' + 'B' * 43 + '='))
+
+    def test_rejects_missing_identities_and_unexpected_path_revision(self):
+        with self.assertRaises(RuntimeError):
+            qualification.check_installed_identity({}, {}, {'type': 'path'})
+        with self.assertRaises(RuntimeError):
+            qualification.check_installed_identity(self.media, dict(self.installed, revision='b' * 40), self.path_source)
+
 
 class BootMenuIdentityTests(unittest.TestCase):
     profiles = [

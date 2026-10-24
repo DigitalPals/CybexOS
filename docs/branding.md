@@ -97,3 +97,11 @@ physical hardware qualification for this revision. No new ISO, published
 release or host OS activation was performed. `flake.lock` and the dependency
 versions in the Cargo/npm locks were retained. Release qualification continues
 to require the same committed revision/NAR for artifacts and tests.
+
+Committed development media carries its Git revision in the live release
+metadata. The development installer locks the exact bundled directory as a
+path input; Nix retains its NAR hash but gives that flake no Git revision, so
+the installed release reports `uncommitted`. Installation qualification checks
+the ISO, installed release and installed input lock against the same NAR and
+records both release identities. Git-backed inputs still require the exact
+revision as well as the NAR. This does not authenticate an unpublished build.
