@@ -59,9 +59,34 @@ screens. The time zone tests read the host's TZif files (`TZDIR`).
   screen (exit 0; the unit restarts it).
 - Exit 75: no usable display after four attempts; the daemon was asked to put
   the text installer on tty1, and the unit does not restart the screen.
+- The pinned Slint dependencies have a small local patch, `slint-kms.patch`,
+  applied to the Nix build's private vendor copy. It draws the software cursor
+  in the same partial-rendering pass, damages its old and new bounds, and adds
+  XKB-aware held-key repeat (350 ms delay, 33 ms interval). Buttons ignore
+  repeated activation keys. Test the packaged KMS backend through Nix; plain
+  Cargo uses the upstream dependencies without this patch.
+- KMS software frames render in cached RAM instead of blending in uncached
+  display memory. Only physical damage is copied to scanout, including the two
+  preceding frames for triple buffering. New buffers or unknown ages receive a
+  complete cached frame. This keeps native resolution and firmware graphics
+  support. `SLINT_KMS_NO_SHADOW_BUFFER=1` restores direct rendering for controlled
+  comparisons; it is not the default. `tests/presentation.rs` exercises the exact
+  vendored damage-copy module, including padding, 16/32-bit formats and physical
+  coordinates after rotation.
+- Sheets disable background keyboard targets; Tab/Shift+Tab stay in the sheet
+  and Escape closes it. Controls show focus rings. Snapshot updates keep list
+  models and delegates, including focused rows and Wi-Fi credentials; a changed
+  network identity clears the Wi-Fi selection instead of transferring a secret.
+- Socket writes run on a background writer and cannot stall the UI. Queued
+  requests belong to one connection and are discarded after reconnecting.
+  Diagnostics and USB discovery run independently of draft edits; duplicate
+  diagnostics are coalesced and disconnected clients cancel their queries.
+- Log scrolling works with arrows, Page Up/Down, Home and End. Updates follow
+  new output only while the reader is at the end; scrolling up preserves the
+  reading position across automatic refreshes.
 - Slint's KMS backend quits on Ctrl+Alt+Backspace/Delete and panics when its
   seat is deactivated (a VT switch); the unit restarts it and the screen resumes
-  from the daemon's next snapshot. Its libinput path has no key repeat.
+  from the daemon's next snapshot.
 
 ## Asset provenance
 

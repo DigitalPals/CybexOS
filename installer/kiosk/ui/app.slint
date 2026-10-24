@@ -137,22 +137,30 @@ export component InstallerWindow inherits Window {
     default-font-size: 16px;
     preferred-width: 1280px;
     preferred-height: 800px;
+    property <string> active-sheet: Store.sheet;
+    changed active-sheet => {
+        if (self.active-sheet == "") { page-focus.focus(); }
+    }
     canvas := Rectangle {
         x: (parent.width - 1280px) / 2;
         y: (parent.height - 800px) / 2;
         width: 1280px;
         height: 800px;
-        if Store.screen == "welcome": WelcomeScreen { }
-        if Store.screen == "disk": DiskScreen { }
-        if Store.screen == "account": AccountScreen { }
-        if Store.screen == "review": ReviewScreen { }
-        if Store.screen == "installing": InstallingScreen { }
-        if Store.screen == "done": DoneScreen { }
-        if Store.screen == "stopped": StoppedScreen { }
-        if Store.screen == "failed": FailedScreen { }
-        TopBar {
-            x: 0;
-            y: 0;
+        page-focus := FocusScope {
+            enabled: Store.sheet == "" && Store.connected;
+            focus-on-tab-navigation: false;
+            if Store.screen == "welcome": WelcomeScreen { }
+            if Store.screen == "disk": DiskScreen { }
+            if Store.screen == "account": AccountScreen { }
+            if Store.screen == "review": ReviewScreen { }
+            if Store.screen == "installing": InstallingScreen { }
+            if Store.screen == "done": DoneScreen { }
+            if Store.screen == "stopped": StoppedScreen { }
+            if Store.screen == "failed": FailedScreen { }
+            TopBar {
+                x: 0;
+                y: 0;
+            }
         }
         if Store.sheet == "wifi": WifiSheet { }
         if Store.sheet == "keyboard": KeyboardSheet { }

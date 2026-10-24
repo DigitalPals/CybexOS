@@ -1,4 +1,5 @@
 import { Theme, Icons } from "theme.slint";
+import { Store } from "store.slint";
 
 export component Icon inherits Path {
     in property <string> d;
@@ -62,6 +63,12 @@ export component Lead inherits Text {
 }
 
 export component Btn inherits Rectangle {
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if (root.enabled) { root.clicked(); } }
+    in property <bool> in-sheet;
+    in property <bool> keyboard-focus: true;
     in property <string> text;
     in property <string> icon;
     in property <string> kind: "ghost";   // ghost, primary, danger
@@ -89,7 +96,7 @@ export component Btn inherits Rectangle {
         border-color: Theme.lime;
     }
     row := HorizontalLayout {
-        x: root.pad;
+        x: (parent.width - self.preferred-width) / 2;
         width: self.preferred-width;
         height: parent.height;
         spacing: 9px;
@@ -98,7 +105,7 @@ export component Btn inherits Rectangle {
             d: root.icon;
             tint: root.ink;
         }
-        Text {
+        if root.text != "": Text {
             text: root.text;
             color: root.ink;
             font-size: root.small ? 14px : 17px;
@@ -113,17 +120,18 @@ export component Btn inherits Rectangle {
     // Keyboard focus sits below the pointer area: the topmost element gets
     // the click, so the FocusScope must not cover the TouchArea.
     focus := FocusScope {
-        enabled: root.enabled;
+        focus-on-tab-navigation: root.keyboard-focus;
+        enabled: root.enabled && (root.in-sheet || Store.sheet == "");
         key-pressed(event) => {
             if (event.text == Key.Return || event.text == " ") {
-                root.clicked();
+                if (!event.repeat) { root.clicked(); }
                 return accept;
             }
             return reject;
         }
     }
     touch := TouchArea {
-        enabled: root.enabled;
+        enabled: root.enabled && (root.in-sheet || Store.sheet == "");
         mouse-cursor: pointer;
         clicked => {
             focus.focus();
@@ -133,17 +141,43 @@ export component Btn inherits Rectangle {
 }
 
 export component LinkButton inherits Text {
+    in property <bool> enabled: true;
+    in property <bool> in-sheet;
+    in property <bool> keyboard-focus: true;
     callback clicked;
     color: Theme.lime;
     font-size: 14px;
     font-weight: 500;
+    if focus.has-focus: Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: 8px;
+        border-width: 2px;
+        border-color: Theme.lime;
+    }
+    focus := FocusScope {
+        enabled: root.enabled && (root.in-sheet || Store.sheet == "");
+        focus-on-tab-navigation: root.keyboard-focus;
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") {
+                if (!event.repeat) { root.clicked(); }
+                return accept;
+            }
+            return reject;
+        }
+    }
     touch := TouchArea {
+        enabled: root.enabled && (root.in-sheet || Store.sheet == "");
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { focus.focus(); root.clicked(); }
     }
 }
 
 export component Chip inherits Rectangle {
+    in property <bool> in-sheet;
+    in property <bool> keyboard-focus: true;
     in property <string> text;
     in property <string> icon;
     in property <bool> warn;
@@ -174,10 +208,30 @@ export component Chip inherits Rectangle {
             vertical-alignment: center;
         }
     }
+    if focus.has-focus: Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: 8px;
+        border-width: 2px;
+        border-color: Theme.lime;
+    }
+    focus := FocusScope {
+        enabled: root.enabled && (root.in-sheet || Store.sheet == "");
+        focus-on-tab-navigation: root.keyboard-focus;
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") {
+                if (!event.repeat) { root.clicked(); }
+                return accept;
+            }
+            return reject;
+        }
+    }
     touch := TouchArea {
-        enabled: root.enabled;
+        enabled: root.enabled && (root.in-sheet || Store.sheet == "");
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { focus.focus(); root.clicked(); }
     }
 }
 
@@ -190,6 +244,7 @@ export component Card inherits Rectangle {
 
 // A text field: TextInput with placeholder, focus ring and optional caret control.
 export component Field inherits Rectangle {
+    in property <bool> in-sheet;
     in property <string> placeholder;
     in-out property <string> text;
     in property <bool> mono;
@@ -232,7 +287,7 @@ export component Field inherits Rectangle {
         height: parent.height;
         vertical-alignment: center;
         single-line: true;
-        enabled: root.enabled;
+        enabled: root.enabled && (root.in-sheet || Store.sheet == "");
         font-family: root.mono ? Theme.mono : Theme.sans;
         font-size: root.mono ? 17px : 18px;
         color: Theme.ink;
@@ -242,7 +297,10 @@ export component Field inherits Rectangle {
         text <=> root.text;
         edited => { root.edited(self.text); }
         accepted => { root.accepted(); }
-        key-pressed(event) => { return root.key(event); }
+        key-pressed(event) => {
+            if (event.repeat && event.text == Key.Return) { return accept; }
+            return root.key(event);
+        }
     }
     public function focus-input() {
         input.focus();
@@ -256,6 +314,9 @@ export component Field inherits Rectangle {
 }
 
 export component Toggle inherits Rectangle {
+    in property <bool> enabled: true;
+    in property <bool> in-sheet;
+    in property <bool> keyboard-focus: true;
     in property <bool> on;
     callback toggled;
     width: 48px;
@@ -280,18 +341,21 @@ export component Toggle inherits Rectangle {
         border-color: Theme.lime;
     }
     focus := FocusScope {
+        focus-on-tab-navigation: root.keyboard-focus;
+        enabled: root.enabled && (root.in-sheet || Store.sheet == "");
         // Space flips the switch; Enter still reaches the screen's Continue.
         key-pressed(event) => {
             if (event.text == " ") {
-                root.toggled();
+                if (!event.repeat) { root.toggled(); }
                 return accept;
             }
             return reject;
         }
     }
     TouchArea {
+        enabled: root.enabled && (root.in-sheet || Store.sheet == "");
         mouse-cursor: pointer;
-        clicked => { root.toggled(); }
+        clicked => { focus.focus(); root.toggled(); }
     }
 }
 
@@ -350,6 +414,9 @@ export component Tag inherits Rectangle {
 
 // A selectable row in sheets and pickers.
 export component Row inherits Rectangle {
+    in property <bool> enabled: true;
+    in property <bool> in-sheet;
+    in property <bool> keyboard-focus: true;
     in property <bool> selected;
     in property <length> row-height: 54px;
     callback clicked;
@@ -358,9 +425,30 @@ export component Row inherits Rectangle {
     background: root.selected ? Theme.lime-soft : touch.has-hover ? Theme.card-2 : transparent;
     border-width: 1px;
     border-color: root.selected ? #c8ff1f59 : transparent;
+    if focus.has-focus: Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: 8px;
+        border-width: 2px;
+        border-color: Theme.lime;
+    }
+    focus := FocusScope {
+        enabled: root.enabled && (root.in-sheet || Store.sheet == "");
+        focus-on-tab-navigation: root.keyboard-focus;
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") {
+                if (!event.repeat) { root.clicked(); }
+                return accept;
+            }
+            return reject;
+        }
+    }
     touch := TouchArea {
+        enabled: root.enabled && (root.in-sheet || Store.sheet == "");
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { focus.focus(); root.clicked(); }
     }
     @children
 }

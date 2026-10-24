@@ -1,2 +1,3 @@
 # Unified patches require a space on otherwise blank context lines.
 scripts/model-usage/integration.patch whitespace=-blank-at-eol
+installer/kiosk/slint-kms.patch whitespace=-blank-at-eol

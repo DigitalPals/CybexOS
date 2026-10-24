@@ -22,6 +22,27 @@ let
     inherit version;
     src = kioskSource;
     cargoLock.lockFile = kioskSource + "/Cargo.lock";
+    # Slint 1.18's KMS software renderer drops the cursor callback, repaints
+    # triple buffers in full and blends in uncached display memory. Its
+    # libinput backend also has no held-key repeat. Patch pinned dependencies
+    # in this build's private vendor copy, never the shared package cache.
+    postPatch = ''
+      patch -d "$cargoDepsCopy" -p1 < ${kioskSource}/slint-kms.patch
+      cp ${kioskSource}/kms-shadow.rs "$cargoDepsCopy/i-slint-backend-linuxkms-1.18.1/renderer/sw_shadow.rs"
+      ${python3}/bin/python3 - "$cargoDepsCopy" <<'PY'
+      import hashlib, json, pathlib, sys
+      vendor = pathlib.Path(sys.argv[1])
+      for name in ('i-slint-backend-linuxkms-1.18.1', 'i-slint-renderer-software-1.18.1'):
+          directory = vendor / name
+          checksum = directory / '.cargo-checksum.json'
+          data = json.loads(checksum.read_text())
+          if name == 'i-slint-backend-linuxkms-1.18.1':
+              data['files']['renderer/sw_shadow.rs'] = ""
+          for name in data['files']:
+              data['files'][name] = hashlib.sha256((directory / name).read_bytes()).hexdigest()
+          checksum.write_text(json.dumps(data))
+      PY
+    '';
     nativeBuildInputs = [ pkg-config ];
     buildInputs = [ fontconfig libinput libxkbcommon udev seatd ];
     cargoBuildFlags = [ "--bin" "nerdos-installer" ];

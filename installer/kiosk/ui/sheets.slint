@@ -23,26 +23,23 @@ component SheetTitle inherits Rectangle {
         color: Theme.fog;
         wrap: word-wrap;
     }
-    Rectangle {
+    Btn {
+        in-sheet: true;
         x: parent.width - 38px;
         y: -6px;
         width: 38px;
         height: 38px;
+        small: true;
+        icon: Icons.close;
         border-radius: 19px;
-        background: Theme.card-2;
-        Icon {
-            d: Icons.close;
-            size: 18px;
-        }
-        TouchArea {
-            mouse-cursor: pointer;
-            clicked => { Store.close-sheet(); }
-        }
+        accessible-label: "Close";
+        clicked => { Store.close-sheet(); }
     }
 }
 
 // A side panel over a dimmed screen. Escape or a click outside closes it.
 component Panel inherits Rectangle {
+    callback key(KeyEvent) -> EventResult;
     in property <bool> wide;
     in property <length> panel-width: 460px;
     // Children of a sheet resolve `parent` to the sheet itself, so they use
@@ -71,6 +68,7 @@ component Panel inherits Rectangle {
         TouchArea { }
         // An ancestor of every field in the sheet, so Escape always closes it.
         content := FocusScope {
+            focus-on-tab-navigation: false;
             x: 26px;
             y: 24px;
             width: parent.width - 52px;
@@ -80,7 +78,7 @@ component Panel inherits Rectangle {
                     Store.close-sheet();
                     return accept;
                 }
-                return reject;
+                return root.key(event);
             }
             @children
         }
@@ -91,6 +89,9 @@ component Panel inherits Rectangle {
 component ListArea inherits Rectangle {
     in property <length> content-height;
     out property <length> offset: flick.content-y;
+    out property <bool> at-end: root.content-height + root.offset <= root.height + 2px;
+    callback scrolled(bool);
+    changed offset => { root.scrolled(root.at-end); }
     clip: true;
     flick := Flickable {
         width: parent.width - 10px;
@@ -115,6 +116,12 @@ component ListArea inherits Rectangle {
     public function to-end() {
         flick.content-y = min(0px, root.height - root.content-height);
     }
+    public function scroll-by(distance: length) {
+        flick.content-y = clamp(flick.content-y - distance, min(0px, root.height - root.content-height), 0px);
+    }
+    public function to-start() {
+        flick.content-y = 0px;
+    }
 }
 
 // ── network ──────────────────────────────────────────────────────────────────
@@ -129,6 +136,8 @@ export component WifiSheet inherits Panel {
             subtitle: "Ethernet connects by itself. A Wi-Fi network you join here is used only for this installation.";
         }
         Row {
+            in-sheet: true;
+            keyboard-focus: false;
             selected: Store.net-connected && Store.net-kind == "ethernet";
             HorizontalLayout {
                 padding-left: 14px;
@@ -156,6 +165,7 @@ export component WifiSheet inherits Panel {
                 vertical-alignment: center;
             }
             LinkButton {
+                in-sheet: true;
                 text: Store.net-busy ? "Working…" : "Refresh";
                 horizontal-alignment: right;
                 vertical-alignment: center;
@@ -175,6 +185,7 @@ export component WifiSheet inherits Panel {
                 alignment: start;
                 for network[i] in Store.wifi: VerticalLayout {
                     Row {
+                        in-sheet: true;
                         selected: network.connected || Store.wifi-selected == i;
                         clicked => { Store.wifi-select(i); }
                         HorizontalLayout {
@@ -225,11 +236,13 @@ export component WifiSheet inherits Panel {
                             padding-top: 6px;
                             spacing: 8px;
                             identity := Field {
+                                in-sheet: true;
                                 visible: network.enterprise;
                                 height: network.enterprise ? 44px : 0px;
                                 placeholder: "Username";
                             }
                             secret := Field {
+                                in-sheet: true;
                                 visible: network.secure;
                                 height: 44px;
                                 password: true;
@@ -240,6 +253,7 @@ export component WifiSheet inherits Panel {
                                 spacing: 12px;
                                 alignment: start;
                                 Btn {
+                                    in-sheet: true;
                                     small: true;
                                     kind: "primary";
                                     text: Store.net-busy ? "Connecting…" : "Connect";
@@ -272,6 +286,7 @@ component ChoiceList inherits ListArea {
         alignment: start;
         spacing: 2px;
         for choice in root.choices: Row {
+            in-sheet: true;
             selected: choice.selected;
             clicked => { root.picked(choice.key); }
             HorizontalLayout {
@@ -309,7 +324,10 @@ export component KeyboardSheet inherits Panel {
             title: "Keyboard";
             subtitle: "Used for typing here, unlocking the disk at startup and on your desktop.";
         }
-        Field { placeholder: "Type to test: @ # € ß ø"; }
+        Field {
+            in-sheet: true;
+            placeholder: "Type to test: @ # € ß ø";
+        }
         ChoiceList {
             height: 470px;
             choices: Store.layouts;
@@ -338,6 +356,7 @@ export component LanguageSheet inherits Panel {
 // ── tools ────────────────────────────────────────────────────────────────────
 
 component MenuItem inherits Row {
+    in-sheet: true;
     in property <string> icon;
     in property <string> text;
     row-height: 46px;
@@ -371,6 +390,7 @@ export component ToolsMenu inherits Rectangle {
         border-radius: 16px;
         TouchArea { }
         keys := FocusScope {
+            focus-on-tab-navigation: false;
             capture-key-pressed(event) => {
                 if (event.text == Key.Escape) {
                     Store.close-sheet();
@@ -429,6 +449,29 @@ export component ToolsMenu inherits Rectangle {
 export component LogSheet inherits Panel {
     wide: true;
     property <string> text: Store.details;
+    property <bool> following: true;
+    key(event) => {
+        if (event.text == Key.PageUp || event.text == Key.UpArrow) {
+            root.following = false;
+            log.scroll-by(event.text == Key.PageUp ? -400px : -40px);
+            return accept;
+        }
+        if (event.text == Key.PageDown || event.text == Key.DownArrow) {
+            log.scroll-by(event.text == Key.PageDown ? 400px : 40px);
+            return accept;
+        }
+        if (event.text == Key.Home) {
+            root.following = false;
+            log.to-start();
+            return accept;
+        }
+        if (event.text == Key.End) {
+            root.following = true;
+            log.to-end();
+            return accept;
+        }
+        return reject;
+    }
     VerticalLayout {
         alignment: start;
         spacing: 12px;
@@ -448,6 +491,7 @@ export component LogSheet inherits Panel {
                 width: parent.width - 24px;
                 height: parent.height - 24px;
                 content-height: body.preferred-height;
+                scrolled(at-end) => { root.following = at-end; }
                 body := Text {
                     width: parent.width - 8px;
                     text: Store.details-error != "" ? Store.details-error : Store.details;
@@ -463,12 +507,14 @@ export component LogSheet inherits Panel {
             alignment: start;
             height: 38px;
             Btn {
+                in-sheet: true;
                 small: true;
                 icon: Icons.refresh;
                 text: "Refresh";
                 clicked => { Store.request-details(); }
             }
             for target in Store.usb: Btn {
+                in-sheet: true;
                 small: true;
                 icon: Icons.usb;
                 text: "Save to " + target.label + " (" + target.size + ")";
@@ -480,7 +526,7 @@ export component LogSheet inherits Panel {
             tone: 0;
         }
     }
-    changed text => { log.to-end(); }
+    changed text => { if (root.following) { log.to-end(); } }
     init => { log.to-end(); }
 }
 
@@ -501,6 +547,7 @@ export component AppsSheet inherits Panel {
                 alignment: start;
                 spacing: 2px;
                 for app in Store.apps: Row {
+                    in-sheet: true;
                     row-height: 62px;
                     clicked => { Store.toggle-app(app.id); }
                     HorizontalLayout {
@@ -523,6 +570,8 @@ export component AppsSheet inherits Panel {
                         Rectangle {
                             width: 48px;
                             Toggle {
+                                in-sheet: true;
+                                keyboard-focus: false;
                                 on: app.on;
                                 toggled => { Store.toggle-app(app.id); }
                             }
@@ -535,6 +584,7 @@ export component AppsSheet inherits Panel {
 }
 
 component Option inherits Row {
+    in-sheet: true;
     in property <string> title;
     in property <string> body;
     in property <bool> chosen;
@@ -612,6 +662,7 @@ export component TimezoneSheet inherits Panel {
         height: root.inner-height - 74px;
         spacing: 10px;
         search := Field {
+            in-sheet: true;
             placeholder: "City, country or UTC offset";
             text <=> Store.tz-query;
             edited(text) => { Store.tz-query-edited(text); }
@@ -628,8 +679,10 @@ export component TimezoneSheet inherits Panel {
                 return reject;
             }
         }
-        Rectangle {
-            height: 26px;
+        Row {
+            in-sheet: true;
+            row-height: 26px;
+            clicked => { Store.tz-toggle-fixed(); }
             HorizontalLayout {
                 spacing: 10px;
                 Rectangle {
@@ -655,16 +708,13 @@ export component TimezoneSheet inherits Panel {
                     vertical-alignment: center;
                 }
             }
-            TouchArea {
-                mouse-cursor: pointer;
-                clicked => { Store.tz-toggle-fixed(); }
-            }
         }
         list := ListArea {
             content-height: 58px * Store.tz-results.length;
             VerticalLayout {
                 alignment: start;
                 for zone in Store.tz-results: Row {
+                    in-sheet: true;
                     row-height: 58px;
                     selected: zone.selected;
                     clicked => { Store.tz-pick(zone.id); }
@@ -886,6 +936,7 @@ export component TimezoneSheet inherits Panel {
             overflow: elide;
         }
         LinkButton {
+            in-sheet: true;
             x: parent.width - self.width - 20px;
             y: 148px;
             text: Store.tz-detecting ? "Detecting…" : Store.net-connected ? "Detect again" : "Detect (needs a network)";
@@ -893,6 +944,7 @@ export component TimezoneSheet inherits Panel {
         }
     }
     Btn {
+        in-sheet: true;
         x: root.inner-width - self.width;
         y: root.inner-height - self.height;
         kind: "primary";

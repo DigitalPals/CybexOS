@@ -1,0 +1,381 @@
+--- a/i-slint-backend-linuxkms-1.18.1/calloop_backend/input.rs
++++ b/i-slint-backend-linuxkms-1.18.1/calloop_backend/input.rs
+@@ -126,7 +126,9 @@
+     /// more than 5 simultaneous contacts.
+     last_touch_positions: [(i32, Option<LogicalPosition>); 5],
+     window: &'a RefCell<Option<Rc<FullscreenWindowAdapter>>>,
+-    keystate: Option<xkb::State>,
++    keystate: Option<Rc<RefCell<xkb::State>>>,
++    repeat_timer: Rc<i_slint_core::timers::Timer>,
++    repeat_key: Option<xkb::Keycode>,
+     libinput_event_hook: &'a Option<Box<dyn Fn(&::input::Event) -> bool>>,
+ }
+ 
+@@ -151,6 +153,8 @@
+             last_touch_positions: Default::default(),
+             window,
+             keystate: Default::default(),
++            repeat_timer: Default::default(),
++            repeat_key: None,
+             libinput_event_hook,
+         };
+ 
+@@ -316,6 +320,10 @@
+                     }
+                     _ => {}
+                 },
++                input::Event::Device(input::event::DeviceEvent::Removed(_)) => {
++                    self.repeat_timer.stop();
++                    self.repeat_key = None;
++                }
+                 input::Event::Keyboard(input::event::KeyboardEvent::Key(key_event)) => {
+                     // On Linux key codes have a fixed offset of 8: https://docs.rs/xkbcommon/0.6.0/xkbcommon/xkb/struct.Keycode.html
+                     let key_code = xkb::Keycode::new(key_event.key() + 8);
+@@ -326,9 +334,11 @@
+                         let keymap =
+                             xkb::Keymap::new_from_names(&xkb_context, "", "", "", "", None, 0)
+                                 .expect("Error compiling keymap");
+-                        xkb::State::new(&keymap)
++                        Rc::new(RefCell::new(xkb::State::new(&keymap)))
+                     });
+ 
++                    let shared_key_state = xkb_key_state.clone();
++                    let mut xkb_key_state = shared_key_state.borrow_mut();
+                     let sym = xkb_key_state.key_get_one_sym(key_code);
+ 
+                     xkb_key_state.update_key(
+@@ -362,6 +372,34 @@
+                             // let target_vt = (sym - xkb::KEY_XF86Switch_VT_1 + 1) as i32;
+                             // TODO: eprintln!("switch vt {target_vt}");
+                         }
++                    }
++
++                    if state == KeyState::Released && self.repeat_key == Some(key_code) {
++                        self.repeat_timer.stop();
++                        self.repeat_key = None;
++                    } else if state == KeyState::Pressed && xkb_key_state.get_keymap().key_repeats(key_code) {
++                        self.repeat_key = Some(key_code);
++                        let key_state = shared_key_state.clone();
++                        let window = Rc::downgrade(&adapter);
++                        let timer = Rc::downgrade(&self.repeat_timer);
++                        let repeat = move || {
++                            if let Some(adapter) = window.upgrade() {
++                                if let Some(text) = map_key_sym(key_state.borrow().key_get_one_sym(key_code)) {
++                                    adapter.window().dispatch_event(WindowEvent::KeyPressRepeated { text });
++                                }
++                            }
++                        };
++                        self.repeat_timer.start(
++                            i_slint_core::timers::TimerMode::SingleShot,
++                            std::time::Duration::from_millis(350),
++                            move || {
++                                repeat();
++                                if let Some(timer) = timer.upgrade() {
++                                    timer.start(i_slint_core::timers::TimerMode::Repeated,
++                                        std::time::Duration::from_millis(33), repeat.clone());
++                                }
++                            },
++                        );
+                     }
+ 
+                     if let Some(text) = map_key_sym(sym) {
+--- a/i-slint-backend-linuxkms-1.18.1/fullscreenwindowadapter.rs
++++ b/i-slint-backend-linuxkms-1.18.1/fullscreenwindowadapter.rs
+@@ -38,6 +38,7 @@
+     rotation: RenderingRotation,
+     loop_signal: RefCell<Option<calloop::LoopSignal>>,
+     mouse_cursor: RefCell<MouseCursorInner>,
++    cursor_rect: Cell<Option<LogicalRect>>,
+ }
+ 
+ impl WindowAdapter for FullscreenWindowAdapter {
+@@ -109,6 +110,7 @@
+             rotation,
+             loop_signal: RefCell::new(None),
+             mouse_cursor: RefCell::new(MouseCursorInner::default()),
++            cursor_rect: Cell::new(None),
+         }))
+     }
+ 
+@@ -121,40 +123,40 @@
+         mouse_position: Pin<&Property<Option<LogicalPosition>>>,
+     ) -> Result<(), PlatformError> {
+         if self.redraw_requested.replace(false) {
++            let cursor = mouse_position.get().and_then(|position| {
++                let (image, hotspot) = match &*self.mouse_cursor.borrow() {
++                    MouseCursorInner::CustomMouseCursor { image, hotspot_x, hotspot_y } => {
++                        let size = image.size();
++                        (image.clone(), LogicalVector::new(
++                            (*hotspot_x).clamp(0, size.width.saturating_sub(1) as i32) as f32,
++                            (*hotspot_y).clamp(0, size.height.saturating_sub(1) as i32) as f32,
++                        ))
++                    }
++                    MouseCursorInner::BuiltIn(BuiltInMouseCursor::None) => return None,
++                    _ => (mouse_cursor_image(), LogicalVector::default()),
++                };
++                let origin = i_slint_core::lengths::logical_point_from_api(position).to_vector() - hotspot;
++                let rect = LogicalRect::new(origin.to_point(), euclid::Size2D::from_untyped(image.size().cast()));
++                Some((image, rect))
++            });
++            // Invalidate BOTH positions before the software renderer computes its
++            // dirty region. Double buffering then erases the previous pointer.
++            if let Some(old) = self.cursor_rect.take() {
++                self.renderer.as_core_renderer().mark_dirty_region(old.into());
++            }
++            if let Some((_, rect)) = &cursor {
++                self.renderer.as_core_renderer().mark_dirty_region((*rect).into());
++                self.cursor_rect.set(Some(*rect));
++            }
+             let outcome = self.renderer.render_and_present(self.rotation, &|item_renderer| {
+-                if let Some(mouse_position) = mouse_position.get() {
+-                    // The image is drawn at its natural size, so the hotspot is just clamped into it.
+-                    let image_and_hotspot = match &*self.mouse_cursor.borrow() {
+-                        MouseCursorInner::CustomMouseCursor { image, hotspot_x, hotspot_y } => {
+-                            let size = image.size();
+-                            let hotspot = LogicalVector::new(
+-                                (*hotspot_x).clamp(0, size.width.saturating_sub(1) as i32) as f32,
+-                                (*hotspot_y).clamp(0, size.height.saturating_sub(1) as i32) as f32,
+-                            );
+-                            Some((image.clone(), hotspot))
+-                        }
+-                        // Only the `none` shape hides the cursor; every other built-in shape falls
+-                        // back to the default pointer, as this backend has a single cursor image.
+-                        MouseCursorInner::BuiltIn(builtin) => {
+-                            (!matches!(builtin, BuiltInMouseCursor::None))
+-                                .then(|| (mouse_cursor_image(), LogicalVector::default()))
+-                        }
+-                        _ => Some((mouse_cursor_image(), LogicalVector::default())),
+-                    };
+-                    if let Some((cursor_image, hotspot)) = image_and_hotspot {
+-                        let origin = i_slint_core::lengths::logical_point_from_api(mouse_position)
+-                            .to_vector()
+-                            - hotspot;
+-                        item_renderer.save_state();
+-                        item_renderer.translate(origin);
+-                        item_renderer.draw_image_direct(cursor_image.clone());
+-                        item_renderer.restore_state();
+-                        let cursor_rect = LogicalRect::new(
+-                            origin.to_point(),
+-                            euclid::Size2D::from_untyped(cursor_image.size().cast()),
+-                        );
+-                        self.renderer.as_core_renderer().mark_dirty_region(cursor_rect.into());
+-                    }
++                // Read inside draw_contents too: movement must invalidate the
++                // window's redraw dependency even over an inert background.
++                let _ = mouse_position.get();
++                if let Some((image, rect)) = &cursor {
++                    item_renderer.save_state();
++                    item_renderer.translate(rect.origin.to_vector());
++                    item_renderer.draw_image_direct(image.clone());
++                    item_renderer.restore_state();
+                 }
+             })?;
+             if !matches!(outcome, DrawOutcome::Success) {
+--- a/i-slint-backend-linuxkms-1.18.1/renderer/sw.rs
++++ b/i-slint-backend-linuxkms-1.18.1/renderer/sw.rs
+@@ -8,15 +8,24 @@
+ use i_slint_core::renderer::DrawOutcome;
+ pub use i_slint_renderer_software::SoftwareRenderer;
+ use i_slint_renderer_software::{PremultipliedRgbaColor, RepaintBufferType, TargetPixel};
++use std::cell::{Cell, RefCell};
+ use std::sync::Arc;
+ 
+ use crate::display::RenderingRotation;
++
++#[path = "sw_shadow.rs"]
++mod shadow;
+ 
+ pub struct SoftwareRendererAdapter {
+     renderer: SoftwareRenderer,
+     display: Arc<dyn crate::display::swdisplay::SoftwareBufferDisplay>,
+     presenter: Arc<dyn crate::display::Presenter>,
+     size: PhysicalWindowSize,
++    use_shadow_buffer: bool,
++    // u32 storage keeps all supported 16/32-bit pixel casts aligned.
++    shadow_pixels: RefCell<Vec<u32>>,
++    shadow_format: Cell<Option<drm::buffer::DrmFourcc>>,
++    damage_history: RefCell<shadow::DamageHistory>,
+ }
+ 
+ const SOFTWARE_RENDER_SUPPORTED_DRM_FOURCC_FORMATS: &[drm::buffer::DrmFourcc] = &[
+@@ -159,15 +168,25 @@
+ 
+         let (width, height) = display.size();
+         let size = i_slint_core::api::PhysicalSize::new(width, height);
++        let use_shadow_buffer = display.is_write_combined_memory()
++            && std::env::var_os("SLINT_KMS_NO_SHADOW_BUFFER").is_none();
+ 
+         let renderer = Box::new(Self {
+             renderer: SoftwareRenderer::new(),
+             display: display.clone(),
+             presenter: display.as_presenter(),
+             size,
++            use_shadow_buffer,
++            shadow_pixels: Default::default(),
++            shadow_format: Default::default(),
++            damage_history: Default::default(),
+         });
+ 
+-        eprintln!("Using Software renderer");
++        eprintln!("Using Software renderer ({})", if use_shadow_buffer {
++            "cached RAM with damage copies"
++        } else {
++            "direct display buffer"
++        });
+ 
+         Ok(renderer)
+     }
+@@ -181,14 +200,31 @@
+     fn render_and_present(
+         &self,
+         rotation: RenderingRotation,
+-        _draw_mouse_cursor_callback: &dyn Fn(&mut dyn i_slint_core::item_rendering::ItemRenderer),
++        draw_mouse_cursor_callback: &dyn Fn(&mut dyn i_slint_core::item_rendering::ItemRenderer),
+     ) -> Result<DrawOutcome, PlatformError> {
+         self.display.map_back_buffer(&mut |pixels, age, format| {
+-            self.renderer.set_repaint_buffer_type(match age {
+-                1 => RepaintBufferType::ReusedBuffer,
+-                2 => RepaintBufferType::SwappedBuffers,
+-                _ => RepaintBufferType::NewBuffer,
+-            });
++            let mut shadow = self.shadow_pixels.borrow_mut();
++            let shadow_new = self.shadow_format.replace(Some(format)) != Some(format)
++                || shadow.len() != pixels.len().div_ceil(4);
++            if self.use_shadow_buffer {
++                shadow.resize(pixels.len().div_ceil(4), 0);
++                if shadow_new {
++                    self.damage_history.borrow_mut().reset();
++                }
++                // This cached frame is always the immediately preceding frame,
++                // regardless of the age of the triple-buffered scanout target.
++                self.renderer.set_repaint_buffer_type(if shadow_new {
++                    RepaintBufferType::NewBuffer
++                } else {
++                    RepaintBufferType::ReusedBuffer
++                });
++            } else {
++                self.renderer.set_repaint_buffer_type(match age {
++                    1 => RepaintBufferType::ReusedBuffer,
++                    2 => RepaintBufferType::SwappedBuffers,
++                    _ => RepaintBufferType::NewBuffer,
++                });
++            }
+ 
+             self.renderer.set_rendering_rotation(match rotation {
+                 RenderingRotation::NoRotation => {
+@@ -207,28 +243,33 @@
+ 
+             // The buffer's rows may be padded to the driver's pitch; the
+             // stride in pixels comes from the mapping, not from the width.
++            let stride_bytes = pixels.len() / (self.size.height as usize).max(1);
+             let stride = |bytes_per_pixel: usize| {
+-                let height = (self.size.height as usize).max(1);
+-                (pixels.len() / height / bytes_per_pixel).max(self.size.width as usize)
++                (stride_bytes / bytes_per_pixel).max(self.size.width as usize)
+             };
+-            match format {
++            let render_pixels = if self.use_shadow_buffer {
++                &mut bytemuck::cast_slice_mut(shadow.as_mut_slice())[..pixels.len()]
++            } else {
++                &mut *pixels
++            };
++            let region = match format {
+                 drm::buffer::DrmFourcc::Xrgb8888 | drm::buffer::DrmFourcc::Argb8888 => {
+                     let stride = stride(std::mem::size_of::<DumbBufferPixelXrgb888>());
+-                    let buffer: &mut [DumbBufferPixelXrgb888] = bytemuck::cast_slice_mut(pixels);
+-                    self.renderer.render(buffer, stride);
++                    let buffer: &mut [DumbBufferPixelXrgb888] = bytemuck::cast_slice_mut(render_pixels);
++                    self.renderer.render_with_post_callback(buffer, stride, draw_mouse_cursor_callback)
+                 }
+ 
+                 drm::buffer::DrmFourcc::Bgra8888 => {
+                     let stride = stride(std::mem::size_of::<DumbBufferPixelBgra8888>());
+-                    let buffer: &mut [DumbBufferPixelBgra8888] = bytemuck::cast_slice_mut(pixels);
+-                    self.renderer.render(buffer, stride);
++                    let buffer: &mut [DumbBufferPixelBgra8888] = bytemuck::cast_slice_mut(render_pixels);
++                    self.renderer.render_with_post_callback(buffer, stride, draw_mouse_cursor_callback)
+                 }
+                 drm::buffer::DrmFourcc::Rgb565 => {
+                     let stride =
+                         stride(std::mem::size_of::<i_slint_renderer_software::Rgb565Pixel>());
+                     let buffer: &mut [i_slint_renderer_software::Rgb565Pixel] =
+-                        bytemuck::cast_slice_mut(pixels);
+-                    self.renderer.render(buffer, stride);
++                        bytemuck::cast_slice_mut(render_pixels);
++                    self.renderer.render_with_post_callback(buffer, stride, draw_mouse_cursor_callback)
+                 }
+                 _ => {
+                     return Err(format!(
+@@ -236,6 +277,25 @@
+                     )
+                     .into());
+                 }
++            };
++            if self.use_shadow_buffer {
++                let bytes_per_pixel = if format == drm::buffer::DrmFourcc::Rgb565 { 2 } else { 4 };
++                let damage = region.iter().map(|(position, size)| shadow::Rect {
++                    x: position.x,
++                    y: position.y,
++                    width: size.width,
++                    height: size.height,
++                }).collect();
++                let layout = shadow::Layout {
++                    width: self.size.width as usize,
++                    height: self.size.height as usize,
++                    stride_bytes,
++                    bytes_per_pixel,
++                };
++                self.damage_history.borrow_mut().copy_to_scanout(
++                    &bytemuck::cast_slice(shadow.as_slice())[..pixels.len()],
++                    pixels, layout, age, damage,
++                );
+             }
+ 
+             Ok(())
+--- a/i-slint-renderer-software-1.18.1/lib.rs
++++ b/i-slint-renderer-software-1.18.1/lib.rs
+@@ -536,7 +536,17 @@
+     /// Returns the physical dirty region for this frame, excluding the extra_draw_region,
+     /// in the window frame of reference. It is affected by the screen rotation.
+     pub fn render(&self, buffer: &mut [impl TargetPixel], pixel_stride: usize) -> PhysicalRegion {
+-        self.render_buffer_impl(&mut TargetPixelSlice { data: buffer, pixel_stride })
++        self.render_with_post_callback(buffer, pixel_stride, &|_| {})
++    }
++
++    /// Render an overlay, such as the KMS cursor, in the same dirty-region pass.
++    pub fn render_with_post_callback(
++        &self,
++        buffer: &mut [impl TargetPixel],
++        pixel_stride: usize,
++        post_callback: &dyn Fn(&mut dyn i_slint_core::item_rendering::ItemRenderer),
++    ) -> PhysicalRegion {
++        self.render_buffer_impl(&mut TargetPixelSlice { data: buffer, pixel_stride }, post_callback)
+     }
+ 
+     /// Render the window to the given frame buffer.
+@@ -553,12 +563,13 @@
+     /// in the window frame of reference. It is affected by the screen rotation.
+     #[cfg(feature = "experimental")]
+     pub fn render_into_buffer(&self, buffer: &mut impl TargetPixelBuffer) -> PhysicalRegion {
+-        self.render_buffer_impl(buffer)
++        self.render_buffer_impl(buffer, &|_| {})
+     }
+ 
+     fn render_buffer_impl(
+         &self,
+         buffer: &mut impl target_pixel_buffer::TargetPixelBuffer,
++        post_callback: &dyn Fn(&mut dyn i_slint_core::item_rendering::ItemRenderer),
+     ) -> PhysicalRegion {
+         let pixels_per_line = buffer.line_slice(0).len();
+         let num_lines = buffer.num_lines();
+@@ -698,8 +709,10 @@
+ 
+                 if partial {
+                     post_render(&mut renderer);
++                    post_callback(&mut renderer);
+                 } else {
+                     post_render(&mut renderer.actual_renderer);
++                    post_callback(&mut renderer.actual_renderer);
+                 }
+ 
+                 self.measure_frame_rendered(&mut renderer);

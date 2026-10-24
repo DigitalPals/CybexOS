@@ -1,6 +1,6 @@
 import { Theme, Icons } from "theme.slint";
 import { Store, Check, DiskRow, SummaryRow, StageRow } from "store.slint";
-import { Icon, SlotIcon, Kicker, Heading, Lead, Btn, LinkButton, Card, Field, Toggle, Mark, Tag, Help, FieldLabel } from "widgets.slint";
+import { Icon, SlotIcon, Kicker, Heading, Lead, Btn, LinkButton, Card, Field, Toggle, Row, Mark, Tag, Help, FieldLabel } from "widgets.slint";
 
 // ── shared pieces ────────────────────────────────────────────────────────────
 
@@ -78,9 +78,10 @@ component Pick inherits Rectangle {
         tint: Theme.faint;
     }
     focus := FocusScope {
+        enabled: Store.sheet == "";
         key-pressed(event) => {
             if (event.text == Key.Return || event.text == " ") {
-                root.clicked();
+                if (!event.repeat) { root.clicked(); }
                 return accept;
             }
             return reject;
@@ -141,8 +142,10 @@ export component WelcomeScreen inherits Rectangle {
     width: 1280px;
     height: 800px;
     keys := FocusScope {
-        capture-key-pressed(event) => {
-            if (event.text == Key.Return && Store.sheet == "") {
+        enabled: Store.sheet == "";
+        focus-on-tab-navigation: false;
+        key-pressed(event) => {
+            if (!event.repeat && event.text == Key.Return && Store.sheet == "") {
                 if (Store.development) {
                     Store.accept-development();
                     return accept;
@@ -374,10 +377,26 @@ component DiskCard inherits Rectangle {
             size: 14px;
         }
     }
+    if disk-focus.has-focus: Rectangle {
+        x: -3px; y: -3px;
+        width: parent.width + 6px; height: parent.height + 6px;
+        border-radius: 20px;
+        border-width: 2px; border-color: Theme.lime;
+    }
+    disk-focus := FocusScope {
+        enabled: root.data.available && Store.sheet == "";
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") {
+                if (!event.repeat) { root.clicked(); }
+                return accept;
+            }
+            return reject;
+        }
+    }
     touch := TouchArea {
-        enabled: root.data.available;
+        enabled: root.data.available && Store.sheet == "";
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => { disk-focus.focus(); root.clicked(); }
     }
 }
 
@@ -385,9 +404,11 @@ export component DiskScreen inherits Rectangle {
     width: 1280px;
     height: 800px;
     keys := FocusScope {
+        enabled: Store.sheet == "";
+        focus-on-tab-navigation: false;
         key-pressed(event) => {
             if (Store.sheet != "") { return reject; }
-            if (event.text == Key.Return && Store.disk-chosen) {
+            if (!event.repeat && event.text == Key.Return && Store.disk-chosen) {
                 Store.navigate("account");
                 return accept;
             }
@@ -436,7 +457,9 @@ export component DiskScreen inherits Rectangle {
                 spacing: 18px;
                 alignment: start;
                 height: 34px;
-                more := Rectangle {
+                more := Row {
+                    row-height: 34px;
+                    clicked => { Store.toggle-all-disks(); }
                     width: more-row.preferred-width;
                     more-row := HorizontalLayout {
                         spacing: 6px;
@@ -450,10 +473,6 @@ export component DiskScreen inherits Rectangle {
                             font-size: 15px;
                             vertical-alignment: center;
                         }
-                    }
-                    TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { Store.toggle-all-disks(); }
                     }
                 }
                 if Store.show-all-disks: LinkButton {
@@ -652,22 +671,13 @@ export component AccountScreen inherits Rectangle {
                     }
                 }
             }
-            Rectangle {
+            Btn {
                 x: parent.width - 70px;
                 y: 8px;
                 width: 62px;
-                height: 36px;
-                border-radius: 8px;
-                background: Theme.card-2;
-                Text {
-                    text: Store.show-password ? "Hide" : "Show";
-                    color: Theme.fog;
-                    font-size: 13px;
-                }
-                TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => { Store.show-password = !Store.show-password; }
-                }
+                small: true;
+                text: Store.show-password ? "Hide" : "Show";
+                clicked => { Store.show-password = !Store.show-password; }
             }
         }
         HorizontalLayout {
@@ -862,6 +872,8 @@ export component ReviewScreen inherits Rectangle {
     width: 1280px;
     height: 800px;
     keys := FocusScope {
+        enabled: Store.sheet == "";
+        focus-on-tab-navigation: false;
         key-pressed(event) => {
             // Enter never erases: the button must be chosen explicitly.
             if (event.text == Key.Escape && Store.sheet == "") {

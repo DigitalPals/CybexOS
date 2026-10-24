@@ -192,6 +192,46 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('messagebus', static['reserved'])
         return await self.until(lambda m: m['type'] == 'state' and m['phase'] == 'setup' and m['draft']['timezone'] == 'Europe/Amsterdam')
 
+    async def test_slow_details_do_not_block_edits_and_refreshes_are_coalesced(self):
+        await self.setup_phase()
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def details():
+            entered.set()
+            await release.wait()
+            return {'type': 'details', 'text': 'test details', 'error': ''}
+
+        with patch.object(self.service, 'details', side_effect=details) as query:
+            await self.send(action='details')
+            await asyncio.wait_for(entered.wait(), 1)
+            for _ in range(20):
+                await self.send(action='details')
+            await self.send(action='draft', values={'username': 'responsive', 'screen': 'account'})
+            state = await self.until(lambda m: m['type'] == 'state' and m['draft']['username'] == 'responsive', timeout=1)
+            self.assertEqual(state['draft']['screen'], 'account')
+            self.assertEqual(query.call_count, 1)
+            release.set()
+            await self.until(lambda m: m['type'] == 'details')
+
+    async def test_disconnect_cancels_inflight_diagnostics(self):
+        await self.setup_phase()
+        entered, cancelled = asyncio.Event(), asyncio.Event()
+
+        async def details():
+            entered.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        with patch.object(self.service, 'details', side_effect=details):
+            await self.send(action='details')
+            await asyncio.wait_for(entered.wait(), 1)
+            self.writer.close()
+            await self.writer.wait_closed()
+            await asyncio.wait_for(cancelled.wait(), 1)
+            self.assertFalse(self.service.queries)
+
     async def test_review_rereview_and_token_bound_install(self):
         state = await self.setup_phase()
         self.assertEqual(state['draft']['disk'], '/dev/vda', 'the only available disk is preselected')

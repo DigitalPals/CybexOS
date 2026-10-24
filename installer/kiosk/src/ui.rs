@@ -68,8 +68,21 @@ fn s(text: impl AsRef<str>) -> SharedString {
     SharedString::from(text.as_ref())
 }
 
-fn model<T: Clone + 'static>(items: Vec<T>) -> ModelRc<T> {
-    ModelRc::new(VecModel::from(items))
+fn model<T: Clone + PartialEq + 'static>(current: ModelRc<T>, items: Vec<T>) -> ModelRc<T> {
+    let Some(rows) = current.as_any().downcast_ref::<VecModel<T>>() else {
+        return ModelRc::new(VecModel::from(items));
+    };
+    for (i, item) in items.iter().enumerate() {
+        if i >= rows.row_count() {
+            rows.push(item.clone());
+        } else if rows.row_data(i).as_ref() != Some(item) {
+            rows.set_row_data(i, item.clone());
+        }
+    }
+    while rows.row_count() > items.len() {
+        rows.remove(rows.row_count() - 1);
+    }
+    current
 }
 
 pub struct App {
@@ -92,6 +105,7 @@ pub struct App {
     elapsed_base: (i64, Instant),
     toast_until: Option<Instant>,
     sheet_opened: Option<Instant>,
+    details_pending: bool,
     timers: Vec<Timer>,
     preview_now: Option<i64>,
 }
@@ -120,6 +134,7 @@ impl App {
             elapsed_base: (0, Instant::now()),
             toast_until: None,
             sheet_opened: None,
+            details_pending: false,
             timers: Vec::new(),
             preview_now: None,
         }));
@@ -161,6 +176,7 @@ impl App {
             Event::Connected => {
                 let mut this = app.borrow_mut();
                 this.synced_account = false;
+                this.details_pending = false;
                 this.send(json!({"action": "hello", "client": "screen"}));
             }
             Event::Disconnected => {
@@ -205,7 +221,7 @@ impl App {
         if let Some(minimum) = self.statics.layout.get("minimumDiskGiB").and_then(Value::as_i64) {
             store.set_minimum_gib(s(minimum.to_string()));
         }
-        if let Some(state) = self.state.clone() {
+        if let Some(state) = self.state.take() {
             self.apply_state(state);
         }
     }
@@ -216,6 +232,9 @@ impl App {
         let Some(window) = self.window() else { return };
         let store = window.global::<Store>();
         store.set_connected(true);
+        if self.state.as_ref() == Some(&state) {
+            return;
+        }
         self.state = Some(state.clone());
         let draft = &state.draft;
 
@@ -248,14 +267,14 @@ impl App {
         let layout = self.statics.layouts.iter().find(|l| l.0 == draft.layout);
         store.set_layout_name(s(layout.map_or(draft.layout.as_str(), |l| l.1.as_str())));
         store.set_layout_code(s(draft.layout.to_uppercase()));
-        store.set_languages(model(
+        store.set_languages(model(store.get_languages(),
             self.statics
                 .languages
                 .iter()
                 .map(|(key, label)| Choice { key: s(key), label: s(label), detail: s(key), selected: *key == draft.locale })
                 .collect(),
         ));
-        store.set_layouts(model(
+        store.set_layouts(model(store.get_layouts(),
             self.statics
                 .layouts
                 .iter()
@@ -274,7 +293,9 @@ impl App {
         self.apply_review(&store, &state);
         self.apply_progress(&store, &state);
         self.apply_network(&store, &state);
-        self.apply_timezone_card(&store, &state);
+        if screen == "account" {
+            self.apply_timezone_card(&store, &state);
+        }
 
         // A finished detection moves an open picker to the detected zone.
         if state.region.detected != self.region_seen {
@@ -353,7 +374,7 @@ impl App {
         });
         let ok = checks.iter().all(|c| c.state == 0);
         let running = checks.iter().any(|c| c.state == 1);
-        store.set_checks(model(checks));
+        store.set_checks(model(store.get_checks(), checks));
         store.set_check_summary(s(if running { "checking…" } else if ok { "all good" } else if !net.connected { "needs a network" } else { "" }));
         store.set_busy(running);
         store.set_can_start(phase == "setup");
@@ -386,7 +407,7 @@ impl App {
                 }
             })
             .collect();
-        store.set_disks(model(rows));
+        store.set_disks(model(store.get_disks(), rows));
         store.set_hidden_disks(state.disks.iter().filter(|d| !d.available).count() as i32);
         store.set_encrypted(state.draft.encrypted);
         store.set_disk_chosen(state.disks.iter().any(|d| d.available && d.path == state.draft.disk));
@@ -579,10 +600,10 @@ impl App {
                 false,
             ),
         ];
-        store.set_summary_left(model(left));
-        store.set_summary_right(model(right));
+        store.set_summary_left(model(store.get_summary_left(), left));
+        store.set_summary_right(model(store.get_summary_right(), right));
         store.set_review_error(s(if state.phase == "review" { state.error.as_str() } else { "" }));
-        store.set_apps(model(
+        store.set_apps(model(store.get_apps(),
             self.statics
                 .applications
                 .iter()
@@ -610,9 +631,9 @@ impl App {
                 }
             })
             .collect();
-        store.set_stages(model(rows));
+        store.set_stages(model(store.get_stages(), rows));
         let (keys, text) = TIPS[(stage.max(1) as usize - 1) % TIPS.len()];
-        store.set_tip_keys(model(keys.iter().map(|k| s(*k)).collect()));
+        store.set_tip_keys(model(store.get_tip_keys(), keys.iter().map(|k| s(*k)).collect()));
         store.set_tip_text(s(text));
         self.elapsed_base = (state.elapsed, Instant::now());
         store.set_elapsed(s(format_elapsed(state.elapsed)));
@@ -654,7 +675,7 @@ impl App {
         store.set_stop_body(s(body));
         store.set_stop_check_label(s(check_label));
         store.set_stop_check_value(s(check_value));
-        store.set_stop_steps(model(steps.into_iter().map(s).collect()));
+        store.set_stop_steps(model(store.get_stop_steps(), steps.into_iter().map(s).collect()));
         store.set_stop_action(s(action));
         store.set_fail_title(s("Installation stopped."));
         store.set_fail_message(s(if error.is_empty() { "The installation worker stopped." } else { error.as_str() }));
@@ -686,10 +707,19 @@ impl App {
                 }
             })
             .collect();
-        if rows.iter().any(|r| r.connected) {
+        let selected = store.get_wifi_selected();
+        let previous = (selected >= 0).then(|| store.get_wifi().row_data(selected as usize)).flatten();
+        let same_network = previous.as_ref().is_some_and(|old| {
+            rows.get(selected as usize).is_some_and(|new| {
+                old.ssid == new.ssid && old.secure == new.secure && old.enterprise == new.enterprise
+            })
+        });
+        // Do not retain credentials if a rescan reorders/replaces the network
+        // at the selected index. Signal-only changes preserve the input field.
+        if rows.iter().any(|r| r.connected) || selected >= 0 && !same_network {
             store.set_wifi_selected(-1);
         }
-        store.set_wifi(model(rows));
+        store.set_wifi(model(store.get_wifi(), rows));
     }
 
     fn apply_timezone_card(&mut self, store: &Store, state: &State) {
@@ -735,7 +765,7 @@ impl App {
         self.tz_hits = zones.search(&query, store.get_tz_fixed(), &self.tz_pick, now);
         let rows: Vec<ZoneRow> = self.tz_hits.iter().map(|hit| self.zone_row(zones, hit, now)).collect();
         let selected = self.tz_hits.iter().position(|h| zones.zones[h.index].id == self.tz_pick).map_or(-1, |p| p as i32);
-        store.set_tz_results(model(rows));
+        store.set_tz_results(model(store.get_tz_results(), rows));
         store.set_tz_selected_row(-1);
         store.set_tz_selected_row(selected);
         self.tz_minute = now / 60;
@@ -837,7 +867,16 @@ impl App {
 
     // ── details and USB ──────────────────────────────────────────────────────
 
+    fn request_details(&mut self) {
+        if !self.details_pending {
+            self.details_pending = true;
+            self.sheet_opened = Some(Instant::now());
+            self.send(json!({"action": "details"}));
+        }
+    }
+
     fn apply_details(&mut self, details: Details) {
+        self.details_pending = false;
         let Some(window) = self.window() else { return };
         let store = window.global::<Store>();
         // Keep the screen light: the most recent part of the bounded log.
@@ -854,7 +893,7 @@ impl App {
     fn apply_usb(&mut self, usb: Usb) {
         let Some(window) = self.window() else { return };
         let store = window.global::<Store>();
-        store.set_usb(model(
+        store.set_usb(model(store.get_usb(),
             usb.targets
                 .iter()
                 .map(|t| UsbRow { device: s(&t.device), label: s(&t.label), size: s(human_size(t.size)) })
@@ -893,7 +932,9 @@ impl App {
             store.set_elapsed(s(format_elapsed(base + at.elapsed().as_secs() as i64)));
         }
         // Clocks: the card changes once a minute, the picker's clock every second.
-        this.apply_timezone_card(&store, &state);
+        if store.get_screen() == "account" {
+            this.apply_timezone_card(&store, &state);
+        }
         if store.get_sheet() == "timezone" {
             let now = this.now();
             if now / 60 != this.tz_minute {
@@ -904,7 +945,7 @@ impl App {
         }
         if store.get_sheet() == "log" && this.sheet_opened.is_some_and(|t| t.elapsed() >= Duration::from_secs(2)) {
             this.sheet_opened = Some(Instant::now());
-            this.send(json!({"action": "details"}));
+            this.request_details();
         }
     }
 }
@@ -945,7 +986,7 @@ fn bind(app: &Shared, window: &InstallerWindow) {
             "log" => {
                 store.set_usb_message(s(""));
                 this.sheet_opened = Some(Instant::now());
-                this.send(json!({"action": "details"}));
+                this.request_details();
                 this.send(json!({"action": "usb-list"}));
             }
             "wifi" => this.send(json!({"action": "network-refresh"})),
@@ -1205,7 +1246,7 @@ fn bind(app: &Shared, window: &InstallerWindow) {
     });
     on!(on_request_details, |this, store| {
         let _ = &store;
-        this.send(json!({"action": "details"}));
+        this.request_details();
         this.send(json!({"action": "usb-list"}));
     });
     on!(on_usb_save, |this, store, device: SharedString| {

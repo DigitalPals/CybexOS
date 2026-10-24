@@ -61,7 +61,9 @@ The flow is **Welcome → Disk → You → Review → Installing → Done**:
   without an invented percentage or estimate. **Show installation details**
   opens the most recent 256 KiB of the private log `/run/nerdos-installer.log`,
   refreshed every two seconds; it can be saved to another USB stick (the medium
-  itself is read-only). The log belongs to this boot only.
+  itself is read-only). Arrow keys, Page Up/Down, Home and End scroll the log.
+  Refresh keeps your reading position; End resumes following new output. The
+  log belongs to this boot only.
 - **Done** offers restart or power off; installation never reboots by itself.
 
 A stop before any disk change explains the cause and the next steps: Secure Boot

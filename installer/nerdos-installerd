@@ -248,6 +248,7 @@ class Daemon:
         self.region_task = None
         self.network_task = None
         self.pending_push = None
+        self.queries = {}
 
     # ── static data ──────────────────────────────────────────────────────────
     def static_data(self):
@@ -556,9 +557,9 @@ class Daemon:
             self.region_attempted = False
             self.start_region(manual=True)
         elif action == 'details':
-            self.send(writer, await self.details())
+            self.query(writer, 'details', self.details)
         elif action == 'usb-list':
-            self.send(writer, {'type': 'usb', 'targets': usb_targets(), 'error': ''})
+            self.query(writer, 'usb', self.list_usb)
         elif action == 'usb-save' and isinstance(request.get('device'), str):
             self.send(writer, await asyncio.to_thread(save_log, request['device']))
         elif action == 'power' and request.get('kind') in ('reboot', 'poweroff', 'firmware'):
@@ -679,7 +680,29 @@ class Daemon:
         self.push()
 
     # ── diagnostics ──────────────────────────────────────────────────────────
+    def query(self, writer, kind, operation):
+        """Keep slow read-only queries out of the connection's input loop.
+
+        Coalesce repeated Refresh presses, and cancel the task on disconnect.
+        Draft edits and keyboard actions must not wait for diagnostics or lsblk.
+        """
+        key = (writer, kind)
+        if key in self.queries:
+            return
+
+        async def reply():
+            try:
+                self.send(writer, await operation())
+            finally:
+                self.queries.pop(key, None)
+
+        self.queries[key] = asyncio.create_task(reply())
+
+    async def list_usb(self):
+        return {'type': 'usb', 'targets': await asyncio.to_thread(usb_targets), 'error': ''}
+
     async def details(self):
+        process = None
         try:
             process = await asyncio.create_subprocess_exec(
                 'nerdos-install', '--diagnostics', stdout=asyncio.subprocess.PIPE,
@@ -692,6 +715,11 @@ class Daemon:
         except (OSError, ValueError, AttributeError, asyncio.TimeoutError):
             return {'type': 'details', 'text': '', 'truncated': False,
                     'error': 'Installation details could not be read. On the recovery shell, run: less /run/nerdos-installer.log'}
+        finally:
+            if process is not None and process.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    process.kill()
+                await process.wait()
 
     # ── serving ──────────────────────────────────────────────────────────────
     async def client(self, reader, writer):
@@ -722,6 +750,10 @@ class Daemon:
         finally:
             self.clients.discard(writer)
             self.screens.discard(writer)
+            queries = [task for (client, _), task in self.queries.items() if client is writer]
+            for task in queries:
+                task.cancel()
+            await asyncio.gather(*queries, return_exceptions=True)
             with contextlib.suppress(OSError, RuntimeError):
                 writer.close()
 
